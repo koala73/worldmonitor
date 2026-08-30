@@ -62,15 +62,15 @@ message PhysicalDivergenceProvenance {
   string physical_source = 1;
   // Physical benchmark contract symbol.
   string physical_symbol = 2;
-  // Physical benchmark trading date in YYYY-MM-DD form.
+  // Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
   string physical_as_of = 3;
-  // Human-readable paper benchmark provider.
+  // Human-readable paper benchmark provider, or empty when unavailable.
   string paper_source = 4;
   // Paper benchmark contract symbol.
   string paper_symbol = 5;
   // Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.
   int64 paper_as_of = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
-  // Human-readable FX provider.
+  // Human-readable FX provider, or empty when unavailable.
   string fx_source = 7;
   // FX conversion pair.
   string fx_pair = 8;
@@ -114,11 +114,11 @@ message PhysicalDivergenceReading {
   PhysicalPremiumTrend trend_20d = 13;
   // Number of valid observations available to the classifier.
   int32 history_points = 14;
-  // Oldest observation date in the evaluated window.
+  // Oldest observation date in the evaluated window, or empty when unavailable.
   string history_window_start = 15;
-  // Newest observation date in the evaluated window.
+  // Newest observation date in the evaluated window, or empty when unavailable.
   string history_window_end = 16;
-  // Physical benchmark trading date in YYYY-MM-DD form.
+  // Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
   string physical_as_of = 17;
   // Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.
   int64 paper_as_of = 18 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];

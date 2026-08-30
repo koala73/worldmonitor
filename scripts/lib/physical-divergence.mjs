@@ -1,4 +1,8 @@
-import { physicalDivergenceStaleReason } from '../shared/physical-divergence-staleness.js';
+import {
+  isPhysicalDivergenceDate,
+  isPhysicalDivergenceInstant,
+  physicalDivergenceStaleReason,
+} from '../shared/physical-divergence-staleness.js';
 
 export const METHODOLOGY_VERSION = 'physical-divergence-v1';
 export const HISTORY_LIMIT = 750;
@@ -30,13 +34,11 @@ function finite(value) {
 }
 
 function isoDate(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = Date.parse(`${value}T00:00:00.000Z`);
-  return Number.isFinite(parsed) && new Date(parsed).toISOString().startsWith(value);
+  return isPhysicalDivergenceDate(value);
 }
 
 function isoInstant(value) {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+  return isPhysicalDivergenceInstant(value);
 }
 
 function round(value, digits = 4) {
@@ -210,7 +212,7 @@ export function buildPhysicalDivergenceReading({ metal, current, history, fx, no
     paperAsOf: current.paper.asOf,
     fxAsOf: fx.asOf,
   }, nowMs);
-  if (staleReason?.endsWith('_in_future')) {
+  if (staleReason?.endsWith('_in_future') || staleReason?.endsWith('_invalid')) {
     return nonOkReading(base, 'missing_input', staleReason);
   }
   if (staleReason) return nonOkReading(base, 'stale_input', staleReason);

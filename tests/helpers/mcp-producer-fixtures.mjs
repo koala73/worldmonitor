@@ -1,5 +1,6 @@
 import { toSeedEtfFlow } from '../../scripts/shared/etf-flow-provider.mjs';
 import { toSeedQuote } from '../../scripts/shared/market-quote-provider.mjs';
+import { buildPhysicalPremiumPayload } from '../../scripts/seed-physical-premiums.mjs';
 import {
   METHODOLOGY_VERSION,
   buildPhysicalDivergenceReading,
@@ -12,6 +13,44 @@ import {
  * coverage, while these rows make schema and JMESPath checks fail if a mapper
  * stops emitting the fields the MCP surface promises.
  */
+export function buildProducerBackedPhysicalComparisonFixture(state = 'ok') {
+  const premium = buildPhysicalPremiumPayload({
+    goldRows: [{ price: 953.88, unit: 'gram', session: 'PM', asOf: '2026-08-18' }],
+    silverRows: [{ price: 12_345, unit: 'kilogram', session: 'PM', asOf: '2026-08-18' }],
+    commodityQuotes: { quotes: [{ symbol: 'GC=F', price: 4455.6 }, { symbol: 'SI=F', price: 77.2 }] },
+    fxRates: { CNY: 0.1486, fallbackCurrencies: [] },
+    computedAt: '2026-08-18T12:30:00.000Z',
+    paperAsOf: '2026-08-18T12:22:24.000Z',
+    fxAsOf: '2026-08-18T12:28:48.000Z',
+  });
+  const baseNowMs = Date.parse('2026-08-18T12:30:00.000Z');
+  const nowMs = state === 'stale_input' ? baseNowMs + 13 * 86_400_000 : baseNowMs;
+  const historyPoints = state === 'insufficient_history' ? 59 : 60;
+  const readings = premium.premiums.map((current) => buildPhysicalDivergenceReading({
+    metal: current.metal,
+    current: state === 'missing_input' ? null : current,
+    history: Array.from({ length: historyPoints }, (_, index) => ({
+      date: new Date(baseNowMs - index * 86_400_000).toISOString().slice(0, 10),
+      premiumPct: current.premiumPct + index / 100,
+      premiumUsdPerOz: current.premiumUsdPerOz + index / 10,
+      physicalAsOf: new Date(baseNowMs - index * 86_400_000).toISOString().slice(0, 10),
+      paperAsOf: new Date(baseNowMs - index * 86_400_000).toISOString(),
+      methodologyVersion: METHODOLOGY_VERSION,
+    })),
+    fx: premium.fx,
+    nowMs,
+  }));
+  return {
+    premium,
+    divergence: {
+      readings,
+      composite: buildPhysicalStressComposite(readings),
+      evaluatedAt: new Date(nowMs).toISOString(),
+      methodologyVersion: METHODOLOGY_VERSION,
+    },
+  };
+}
+
 export function buildProducerBackedMarketFixture(captured) {
   const fixture = structuredClone(captured);
   const quoteLists = [
@@ -58,54 +97,9 @@ export function buildProducerBackedMarketFixture(captured) {
     }));
   }
 
-  const evaluatedAt = Date.parse('2026-08-18T12:30:00.000Z');
-  const fx = {
-    pair: 'CNY/USD',
-    rate: 0.1486,
-    source: 'shared:fx-rates:v1',
-    asOf: '2026-08-18T12:28:48.000Z',
-  };
-  const premiums = ['gold', 'silver'].map((metal) => ({
-    metal,
-    physical: {
-      price: metal === 'gold' ? 953.88 : 12_345,
-      currency: 'CNY',
-      unit: metal === 'gold' ? 'gram' : 'kilogram',
-      source: `Shanghai Gold Exchange ${metal === 'gold' ? 'SHAU' : 'SHAG'} PM benchmark`,
-      asOf: '2026-08-18',
-    },
-    paper: {
-      price: metal === 'gold' ? 4455.6 : 77.2,
-      currency: 'USD',
-      unit: 'troy ounce',
-      source: `COMEX ${metal === 'gold' ? 'GC=F' : 'SI=F'} futures snapshot`,
-      asOf: '2026-08-18T12:22:24.000Z',
-    },
-    premiumUsdPerOz: metal === 'gold' ? -46.7889 : 9.891,
-    premiumPct: metal === 'gold' ? -1.0501 : 12.8122,
-    computedAt: '2026-08-18T12:30:00.000Z',
-  }));
-  const readings = premiums.map((premium) => buildPhysicalDivergenceReading({
-    metal: premium.metal,
-    current: premium,
-    history: Array.from({ length: 60 }, (_, index) => ({
-      date: new Date(evaluatedAt - index * 86_400_000).toISOString().slice(0, 10),
-      premiumPct: premium.premiumPct + index / 100,
-      premiumUsdPerOz: premium.premiumUsdPerOz + index / 10,
-      physicalAsOf: new Date(evaluatedAt - index * 86_400_000).toISOString().slice(0, 10),
-      paperAsOf: new Date(evaluatedAt - index * 86_400_000).toISOString(),
-      methodologyVersion: METHODOLOGY_VERSION,
-    })),
-    fx,
-    nowMs: evaluatedAt,
-  }));
-  fixture.data['physical-premium'] = { premiums, fx };
-  fixture.data['physical-divergence'] = {
-    readings,
-    composite: buildPhysicalStressComposite(readings),
-    evaluatedAt: new Date(evaluatedAt).toISOString(),
-    methodologyVersion: METHODOLOGY_VERSION,
-  };
+  const physical = buildProducerBackedPhysicalComparisonFixture('ok');
+  fixture.data['physical-premium'] = physical.premium;
+  fixture.data['physical-divergence'] = physical.divergence;
 
   return fixture;
 }

@@ -667,6 +667,29 @@ it('rejects a recent transition when any required input clock is stale', () => {
   }), []);
 });
 
+it('does not emit transitions from missing or malformed input clocks', () => {
+  const transition = {
+    id: `physical-premium:gold:normal-elevated:${now - HOUR}`,
+    metal: 'gold',
+    fromRegime: 'normal',
+    toRegime: 'elevated',
+    detectedAt: now - HOUR,
+    methodologyVersion: 'physical-divergence-v1',
+  };
+  for (const mutate of [
+    (reading) => { reading.physicalAsOf = ''; },
+    (reading) => { reading.physicalAsOf = '2026-02-31'; },
+    (reading) => { reading.paperAsOf = 'not-an-instant'; },
+    (reading) => { reading.provenance.fxAsOf = ''; },
+  ]) {
+    const readings = freshPhysicalReadings(now);
+    mutate(readings[0]);
+    assert.deepEqual(extractPhysicalPremiumRegimeTransition({
+      'market:physical-divergence:v1': { readings, transitions: [transition] },
+    }), []);
+  }
+});
+
 it('fails closed when a divergence reading has an unknown state', () => {
   const readings = freshPhysicalReadings(now);
   readings[0].state = 'future_state';

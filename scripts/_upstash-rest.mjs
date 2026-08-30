@@ -18,6 +18,9 @@ export function getOptionalUpstashCreds() {
  * @param {{ restUrl: string; token: string }} creds
  * @param {Array<string>} command Redis command array, e.g. ['GET', 'key']
  */
+export const UPSTASH_COMMAND_TIMEOUT_MS = 15_000;
+export const UPSTASH_RETRY_AFTER_MAX_MS = 2_000;
+
 export async function upstashCommand(creds, command) {
   const resp = await fetch(creds.restUrl, {
     method: 'POST',
@@ -27,7 +30,7 @@ export async function upstashCommand(creds, command) {
       'User-Agent': 'worldmonitor-ops/1.0 (+https://worldmonitor.app)',
     },
     body: JSON.stringify(command),
-    signal: AbortSignal.timeout(15_000),
+    signal: AbortSignal.timeout(UPSTASH_COMMAND_TIMEOUT_MS),
   });
   if (!resp.ok) {
     const error = new Error(`Upstash HTTP ${resp.status}`);
@@ -36,9 +39,12 @@ export async function upstashCommand(creds, command) {
     if (retryAfter) {
       const seconds = Number(retryAfter);
       const retryAt = Date.parse(retryAfter);
-      error.retryAfterMs = Number.isFinite(seconds)
+      const parsedRetryAfterMs = Number.isFinite(seconds)
         ? Math.max(0, seconds * 1000)
         : Number.isFinite(retryAt) ? Math.max(0, retryAt - Date.now()) : undefined;
+      error.retryAfterMs = Number.isFinite(parsedRetryAfterMs)
+        ? Math.min(parsedRetryAfterMs, UPSTASH_RETRY_AFTER_MAX_MS)
+        : undefined;
     }
     throw error;
   }

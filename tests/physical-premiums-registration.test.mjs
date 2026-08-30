@@ -20,6 +20,10 @@ describe('physical premium production registration', () => {
       bundle,
       /label: 'Physical-Premiums'.*script: 'seed-physical-premiums\.mjs'.*intervalMs: DAY/s,
     );
+    assert.match(
+      bundle,
+      /label: 'Physical-Premiums'.*timeoutMs: PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS/s,
+    );
 
     const registry = JSON.parse(read('scripts/railway-services.json'));
     const macro = registry.find((entry) => entry.entry === 'scripts/seed-bundle-macro.mjs');

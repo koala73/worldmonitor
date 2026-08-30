@@ -9,6 +9,8 @@ import {
   PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS,
   PHYSICAL_PREMIUM_HISTORY_KEY_PREFIX,
   PHYSICAL_PREMIUM_LOCK_TTL_MS,
+  PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS,
+  PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS,
   APPEND_HISTORY_LUA,
   PUBLISH_PHYSICAL_PREMIUM_LUA,
   PUBLISH_DIVERGENCE_LUA,
@@ -183,6 +185,9 @@ describe('physical premium seed', () => {
     assert.equal(PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS, 60_000);
     assert.equal(PHYSICAL_PREMIUM_LOCK_TTL_MS, 600_000);
     assert.ok(PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS < PHYSICAL_PREMIUM_LOCK_TTL_MS);
+    assert.ok(120_000 < PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS);
+    assert.ok(PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS < PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS);
+    assert.ok(PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS < PHYSICAL_PREMIUM_LOCK_TTL_MS);
   });
 
   it('parses the latest PM prints from real SGE response fixtures', () => {
@@ -679,6 +684,23 @@ describe('physical premium seed', () => {
     );
     assert.equal(transientAttempts, 3);
     assert.deepEqual(delays, [250, 500]);
+
+    const cappedDelays = [];
+    let cappedAttempts = 0;
+    await assert.rejects(
+      retryDerivedRedisCommand(
+        creds,
+        ['GET', 'test:key'],
+        async () => {
+          cappedAttempts += 1;
+          throw Object.assign(new Error('Upstash HTTP 429'), { status: 429, retryAfterMs: 2_000 });
+        },
+        async (delayMs) => cappedDelays.push(delayMs),
+      ),
+      /Upstash HTTP 429/,
+    );
+    assert.equal(cappedAttempts, 3);
+    assert.deepEqual(cappedDelays, [2_000, 2_000]);
 
     let permanentAttempts = 0;
     await assert.rejects(

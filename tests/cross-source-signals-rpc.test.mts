@@ -63,4 +63,31 @@ describe('ListCrossSourceSignals public contract', () => {
     assert.equal(body.signals[0].type, 'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION');
     assert.equal(body.signals[0].id, payload.signals[0].id);
   });
+
+  it('preserves regulatory actions instead of downgrading them to unspecified', async () => {
+    const payload = {
+      signals: [{
+        id: 'regulatory-action:test-authority:1788087600000',
+        type: 'CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION',
+        theater: 'Global',
+        summary: 'Test authority published a material action',
+        severity: 'CROSS_SOURCE_SIGNAL_SEVERITY_HIGH',
+        severityScore: 75,
+        detectedAt: 1_788_087_600_000,
+        contributingTypes: [],
+        signalCount: 1,
+      }],
+      evaluatedAt: 1_788_087_600_000,
+      compositeCount: 0,
+    };
+    mock.method(globalThis, 'fetch', async () => (
+      new Response(JSON.stringify({ result: JSON.stringify(payload) }))
+    ));
+
+    const response = await routeHandler()(new Request('https://worldmonitor.app/api/intelligence/v1/list-cross-source-signals'));
+    const body = await response.json();
+
+    assert.equal(response.status, 200);
+    assert.equal(body.signals[0].type, 'CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION');
+  });
 });

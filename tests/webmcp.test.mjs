@@ -2977,6 +2977,22 @@ describe('webmcp App.ts binding invariants', () => {
     );
   });
 
+  it('hydrates the physical comparison before selecting its panel tab', () => {
+    const selectPanelTab = objectPropertyInitializer(bindings, appFile, 'selectPanelTab');
+    const selectCall = callByExpression(selectPanelTab, appFile, 'selectWebMcpPanelTab');
+    const options = selectCall.arguments[3];
+    assert.ok(ts.isObjectLiteralExpression(options));
+
+    const prepareTab = objectPropertyInitializer(options, appFile, 'prepareTab');
+    const loadCall = callByExpression(
+      prepareTab,
+      appFile,
+      'this.dataLoader.loadPhysicalPremiumComparison',
+    );
+    assertCallArguments(loadCall, appFile, ['signal']);
+    assert.match(prepareTab.getText(appFile), /selectedTab === 'physical'/);
+  });
+
   it('keeps search readiness lazy and refuses fabricated opener keys without loading search', () => {
     const searchDashboard = objectPropertyInitializer(bindings, appFile, 'searchDashboard');
     const searchReady = callByExpression(

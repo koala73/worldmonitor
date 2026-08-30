@@ -1,4 +1,7 @@
 import { normalizePhysicalDivergenceSnapshot } from './physical-divergence-snapshot';
+import { McpStoredDataValidationError } from './mcp-stored-data-validation-error';
+
+export { McpStoredDataValidationError } from './mcp-stored-data-validation-error';
 
 export const PHYSICAL_PREMIUM_SYMBOL_ALIASES: Record<string, string[]> = {
   gold: ['gold', 'xau', 'gc=f'],
@@ -54,6 +57,7 @@ export const PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA = {
           historyWindowEnd: { type: 'string' },
           physicalAsOf: { type: 'string' },
           paperAsOf: { type: 'string' },
+          historyKey: { type: 'string' },
           methodologyVersion: { type: 'string' },
           provenance: {
             type: 'object',
@@ -87,10 +91,6 @@ export const PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA = {
     },
   },
 } as const;
-
-export class McpStoredDataValidationError extends TypeError {
-  override name = 'McpStoredDataValidationError';
-}
 
 export function normalizePhysicalDivergenceDataset(data: Record<string, unknown>, nowMs = Date.now()): void {
   const raw = data['physical-divergence'];

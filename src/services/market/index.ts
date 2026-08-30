@@ -212,16 +212,16 @@ export async function fetchCommodityQuotes(
   return { data: results };
 }
 
-export async function fetchPhysicalPremiums(): Promise<GetPhysicalPremiumsResponse> {
+export async function fetchPhysicalPremiums(signal?: AbortSignal): Promise<GetPhysicalPremiumsResponse> {
   return physicalPremiumBreaker.execute(async () => {
-    return client.getPhysicalPremiums({ metals: [] }, { signal: AbortSignal.timeout(15_000) });
+    return client.getPhysicalPremiums({ metals: [] }, { signal: signal ?? AbortSignal.timeout(15_000) });
   }, emptyPhysicalPremiumFallback, {
     shouldCache: () => false,
   });
 }
 
-export async function fetchPhysicalDivergence(): Promise<GetPhysicalDivergenceIndexResponse> {
-  return client.getPhysicalDivergenceIndex({ metals: [] }, { signal: AbortSignal.timeout(15_000) });
+export async function fetchPhysicalDivergence(signal?: AbortSignal): Promise<GetPhysicalDivergenceIndexResponse> {
+  return client.getPhysicalDivergenceIndex({ metals: [] }, { signal: signal ?? AbortSignal.timeout(15_000) });
 }
 
 // ========================================================================

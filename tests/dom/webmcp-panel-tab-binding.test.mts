@@ -65,6 +65,55 @@ describe('production WebMCP panel-tab binding', () => {
     expect(waitForUiReady).toHaveBeenCalledTimes(2);
   });
 
+  it('waits for a cold physical comparison before selecting the tab', async () => {
+    const panel = new CommoditiesPanel();
+    const order: string[] = [];
+    const selected = await selectWebMcpPanelTab(
+      { commodities: panel },
+      'commodities',
+      'physical',
+      {
+        waitForUiReady: async () => { order.push('ready'); },
+        prepareTab: async () => {
+          order.push('load');
+          panel.updatePhysicalPremiums({
+            premiums: [{
+              metal: 'gold',
+              premiumUsdPerOz: 1,
+              premiumPct: 1,
+              computedAt: '2026-08-18T12:30:00.000Z',
+            }],
+          });
+        },
+      },
+    );
+
+    expect(order).toEqual(['ready', 'load']);
+    expect(selected).toMatchObject({ ok: true, effectiveTab: 'physical' });
+    expect(panel.getActiveTab()).toBe('physical');
+  });
+
+  it('keeps a completed empty physical comparison unavailable', async () => {
+    const panel = new CommoditiesPanel();
+    const selected = await selectWebMcpPanelTab(
+      { commodities: panel },
+      'commodities',
+      'physical',
+      {
+        waitForUiReady: async () => {},
+        prepareTab: async () => panel.updatePhysicalPremiums({ premiums: [] }),
+      },
+    );
+
+    expect(selected).toMatchObject({
+      ok: false,
+      status: 'denied',
+      reason: 'tab_unavailable',
+      effectiveTab: 'commodities',
+    });
+    expect(panel.getActiveTab()).toBe('commodities');
+  });
+
   it('does not mutate the panel after cancellation', async () => {
     const panel = new CommoditiesPanel();
     const controller = new AbortController();

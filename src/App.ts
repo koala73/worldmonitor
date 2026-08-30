@@ -2006,6 +2006,11 @@ export class App {
       selectPanelTab: async (panelId, tab, execution) => {
         return selectWebMcpPanelTab(this.state.panels, panelId, tab, {
           waitForUiReady: () => this.waitForDashboardReady(false, execution?.signal),
+          prepareTab: (_selectedPanelId, selectedTab, signal) => (
+            selectedTab === 'physical'
+              ? this.dataLoader.loadPhysicalPremiumComparison(signal)
+              : undefined
+          ),
           signal: execution?.signal,
         });
       },

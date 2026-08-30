@@ -240,7 +240,7 @@ describe('FRED publication gates', () => {
 });
 
 describe('Upstash command error handling', () => {
-  it('preserves delta-seconds and HTTP-date Retry-After delays on HTTP errors', async () => {
+  it('caps delta-seconds and HTTP-date Retry-After delays on HTTP errors', async () => {
     globalThis.fetch = async () => new Response('', {
       status: 429,
       headers: { 'Retry-After': '2' },
@@ -262,7 +262,17 @@ describe('Upstash command error handling', () => {
       ['GET', 'key'],
     ).then(() => null, (error) => error);
     assert.equal(dateError?.status, 503);
-    assert.ok(dateError?.retryAfterMs >= 3000 && dateError.retryAfterMs <= 5000);
+    assert.equal(dateError?.retryAfterMs, 2000);
+
+    globalThis.fetch = async () => new Response('', {
+      status: 429,
+      headers: { 'Retry-After': '86400' },
+    });
+    const oversizedError = await upstashCommand(
+      { restUrl: 'https://redis.test', token: 'fake-token' },
+      ['GET', 'key'],
+    ).then(() => null, (error) => error);
+    assert.equal(oversizedError?.retryAfterMs, 2000);
 
     globalThis.fetch = async () => new Response('', {
       status: 503,

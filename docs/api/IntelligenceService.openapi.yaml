@@ -8126,6 +8126,7 @@ components:
                         - CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION
                         - CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE
                         - CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION
+                        - CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION
                     description: CrossSourceSignalType enumerates all monitored cross-domain signal categories.
                 theater:
                     type: string

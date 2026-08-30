@@ -18,6 +18,27 @@ function shanghaiDayMs(nowMs) {
   return Date.UTC(parts.year, parts.month - 1, parts.day);
 }
 
+export function isPhysicalDivergenceDate(value) {
+  if (typeof value !== 'string') return false;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(value);
+  if (!match) return false;
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  return parsed.getUTCFullYear() === year
+    && parsed.getUTCMonth() === month - 1
+    && parsed.getUTCDate() === day;
+}
+
+export function isPhysicalDivergenceInstant(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/.test(value)) {
+    return false;
+  }
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) && new Date(parsed).toISOString() === value;
+}
+
 export function isPhysicalDivergencePrintFuture(value, nowMs) {
   const inputDay = Date.parse(`${value}T00:00:00.000Z`);
   return Number.isFinite(inputDay)
@@ -44,6 +65,9 @@ function isInstantFuture(value, nowMs) {
 }
 
 export function physicalDivergenceStaleReason({ physicalAsOf, paperAsOf, fxAsOf }, nowMs) {
+  if (!isPhysicalDivergenceDate(physicalAsOf)) return 'physical_print_invalid';
+  if (!isPhysicalDivergenceInstant(paperAsOf)) return 'paper_snapshot_invalid';
+  if (!isPhysicalDivergenceInstant(fxAsOf)) return 'fx_snapshot_invalid';
   if (isPhysicalDivergencePrintFuture(physicalAsOf, nowMs)) {
     return 'physical_print_in_future';
   }

@@ -31,7 +31,7 @@ import type {
   McpToolExecutionContext,
 } from './types';
 import { utf8ByteLength } from './utils';
-import { McpStoredDataValidationError } from '../../server/_shared/mcp-physical-divergence';
+import { McpStoredDataValidationError } from '../../server/_shared/mcp-stored-data-validation-error';
 
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)

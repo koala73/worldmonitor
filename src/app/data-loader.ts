@@ -2674,6 +2674,21 @@ export class DataLoaderManager implements AppModule {
     }
   }
 
+  async loadPhysicalPremiumComparison(signal?: AbortSignal): Promise<void> {
+    signal?.throwIfAborted();
+    const panel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
+    if (!panel) return;
+    const { fetchPhysicalDivergence, fetchPhysicalPremiums } = await import('@/services/market');
+    signal?.throwIfAborted();
+    await loadPhysicalPremiumComparison(
+      panel,
+      () => !signal?.aborted,
+      () => fetchPhysicalPremiums(signal),
+      () => fetchPhysicalDivergence(signal),
+    );
+    signal?.throwIfAborted();
+  }
+
   async loadDailyMarketBrief(force = false): Promise<void> {
     if (!hasPremiumAccess()) return;
     if (this.ctx.isDestroyed || this.ctx.inFlight.has('dailyMarketBrief')) return;

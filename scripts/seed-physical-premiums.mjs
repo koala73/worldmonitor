@@ -16,12 +16,19 @@ import {
   runSeed,
 } from './_seed-utils.mjs';
 import { DAY_MIN, tokensToContentMeta } from './_content-age-helpers.mjs';
-import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
+import {
+  UPSTASH_COMMAND_TIMEOUT_MS,
+  UPSTASH_RETRY_AFTER_MAX_MS,
+  getOptionalUpstashCreds,
+  upstashCommand,
+} from './_upstash-rest.mjs';
 import { isMainModule } from './lib/main-module.mjs';
 import {
   PHYSICAL_DIVERGENCE_FX_MAX_AGE_MS,
   PHYSICAL_DIVERGENCE_PAPER_MAX_AGE_MS,
   PHYSICAL_DIVERGENCE_STALE_AFTER_CALENDAR_DAYS,
+  isPhysicalDivergenceDate,
+  isPhysicalDivergenceInstant,
   isPhysicalDivergencePrintFuture,
   physicalDivergenceStaleReason,
 } from './shared/physical-divergence-staleness.js';
@@ -53,8 +60,21 @@ export const PHYSICAL_PREMIUM_LOCK_TTL_MS = 10 * 60 * 1000;
 export const PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS = 60 * 1000;
 const DIVERGENCE_TTL_SECONDS = 16 * 24 * 3600;
 const TRANSITION_COOLDOWN_SECONDS = TRANSITION_COOLDOWN_MS / 1000;
-const DERIVED_REDIS_MAX_ATTEMPTS = 3;
-const DERIVED_REDIS_RETRY_BASE_MS = 250;
+export const DERIVED_REDIS_MAX_ATTEMPTS = 3;
+export const DERIVED_REDIS_RETRY_BASE_MS = 250;
+const DERIVED_REDIS_SEQUENTIAL_WAVES = 3;
+const SHARED_SEED_BOOKKEEPING_BUDGET_MS = 99_000;
+export const PHYSICAL_PREMIUM_DERIVED_REDIS_WORST_CASE_MS = DERIVED_REDIS_SEQUENTIAL_WAVES * (
+  DERIVED_REDIS_MAX_ATTEMPTS * UPSTASH_COMMAND_TIMEOUT_MS
+  + (DERIVED_REDIS_MAX_ATTEMPTS - 1) * Math.max(
+    UPSTASH_RETRY_AFTER_MAX_MS,
+    DERIVED_REDIS_RETRY_BASE_MS * 2,
+  )
+);
+export const PHYSICAL_PREMIUM_SECTION_WORST_CASE_MS = PHYSICAL_PREMIUM_FETCH_TIMEOUT_MS
+  + PHYSICAL_PREMIUM_DERIVED_REDIS_WORST_CASE_MS
+  + SHARED_SEED_BOOKKEEPING_BUDGET_MS;
+export const PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS = 360_000;
 const SGE_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 const SGE_GOLD_URL = 'https://en.sge.com.cn/data_BenchmarkPrice_Daily';
 const SGE_SILVER_URL = 'https://en.sge.com.cn/data/data_silver_daily';
@@ -278,6 +298,7 @@ export async function retryDerivedRedisCommand(creds, command, commandFn, delayF
 }
 
 function physicalPrintFreshUntil(value) {
+  if (!isPhysicalDivergenceDate(value)) return null;
   const inputDay = Date.parse(`${value}T00:00:00.000Z`);
   if (!Number.isFinite(inputDay)) return null;
   const shanghaiOffsetMs = 8 * 60 * 60 * 1000;
@@ -520,7 +541,7 @@ function round(value, decimals = 4) {
 }
 
 function parseIsoInstant(value) {
-  return typeof value === 'string' && Number.isFinite(Date.parse(value));
+  return isPhysicalDivergenceInstant(value);
 }
 
 export function buildPhysicalPremiumPayload({
@@ -606,8 +627,7 @@ export function validatePhysicalPremiumPayload(payload) {
       || premium.physical.price <= 0
       || premium.physical.currency !== 'CNY'
       || !['gram', 'kilogram'].includes(premium.physical.unit)
-      || !/^\d{4}-\d{2}-\d{2}$/.test(premium.physical.asOf ?? '')
-      || !Number.isFinite(Date.parse(`${premium.physical.asOf}T00:00:00Z`))
+      || !isPhysicalDivergenceDate(premium.physical.asOf)
       || isPhysicalDivergencePrintFuture(premium.physical.asOf, Date.parse(premium.computedAt))
       || !Number.isFinite(premium?.paper?.price)
       || premium.paper.price <= 0

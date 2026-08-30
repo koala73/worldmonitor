@@ -330,6 +330,31 @@ describe('GetPhysicalDivergenceIndex public contract', () => {
     assert.equal(body.message, 'Internal server error');
   });
 
+  it('rejects calendar-impossible provenance and history clocks', async () => {
+    const corruptions = [
+      (stored: ReturnType<typeof snapshot>) => {
+        stored.readings[0].physicalAsOf = '2026-02-31';
+        stored.readings[0].provenance.physicalAsOf = '2026-02-31';
+      },
+      (stored: ReturnType<typeof snapshot>) => {
+        stored.readings[0].historyWindowStart = '2026-02-31';
+      },
+      (stored: ReturnType<typeof snapshot>) => {
+        stored.readings[0].paperAsOf = '2026-02-31T12:00:00.000Z';
+        stored.readings[0].provenance.paperAsOf = '2026-02-31T12:00:00.000Z';
+      },
+    ];
+    for (const corrupt of corruptions) {
+      const stored = snapshot(60);
+      corrupt(stored);
+      installRedisMock(stored);
+      const response = await routeHandler()(new Request('https://worldmonitor.app/api/market/v1/get-physical-divergence-index'));
+      assert.equal(response.status, 500);
+      mock.restoreAll();
+      mock.method(Date, 'now', () => NOW_MS);
+    }
+  });
+
   it('rejects a stored composite that disagrees with its member readings', async () => {
     const corrupt = snapshot(60);
     corrupt.composite.index += 1;

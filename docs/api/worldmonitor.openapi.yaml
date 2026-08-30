@@ -19126,6 +19126,9 @@ paths:
                     type: array
                     items:
                         type: string
+                        pattern: ^(?:gold|silver)$
+                    maxItems: 2
+                    uniqueItems: true
                 - name: jmespath
                   in: query
                   description: |-
@@ -44282,6 +44285,7 @@ components:
                         - CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION
                         - CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE
                         - CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION
+                        - CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION
                     description: CrossSourceSignalType enumerates all monitored cross-domain signal categories.
                 theater:
                     type: string
@@ -46326,11 +46330,10 @@ components:
                     type: array
                     items:
                         type: string
-                        maxItems: 2
-                        uniqueItems: true
-                        description: Accepted values are "gold" and "silver". Empty returns both metals.
+                        pattern: ^(?:gold|silver)$
                     maxItems: 2
                     uniqueItems: true
+                    description: Accepted values are "gold" and "silver". Empty returns both metals.
             description: GetPhysicalDivergenceIndexRequest selects zero or more supported metals.
         worldmonitor_market_v1_GetPhysicalDivergenceIndexResponse:
             type: object
@@ -46426,13 +46429,13 @@ components:
                     description: Number of valid observations available to the classifier.
                 historyWindowStart:
                     type: string
-                    description: Oldest observation date in the evaluated window.
+                    description: Oldest observation date in the evaluated window, or empty when unavailable.
                 historyWindowEnd:
                     type: string
-                    description: Newest observation date in the evaluated window.
+                    description: Newest observation date in the evaluated window, or empty when unavailable.
                 physicalAsOf:
                     type: string
-                    description: Physical benchmark trading date in YYYY-MM-DD form.
+                    description: Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
                 paperAsOf:
                     type: integer
                     format: int64
@@ -46457,10 +46460,10 @@ components:
                     description: Physical benchmark contract symbol.
                 physicalAsOf:
                     type: string
-                    description: Physical benchmark trading date in YYYY-MM-DD form.
+                    description: Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
                 paperSource:
                     type: string
-                    description: Human-readable paper benchmark provider.
+                    description: Human-readable paper benchmark provider, or empty when unavailable.
                 paperSymbol:
                     type: string
                     description: Paper benchmark contract symbol.
@@ -46470,7 +46473,7 @@ components:
                     description: 'Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
                 fxSource:
                     type: string
-                    description: Human-readable FX provider.
+                    description: Human-readable FX provider, or empty when unavailable.
                 fxPair:
                     type: string
                     description: FX conversion pair.

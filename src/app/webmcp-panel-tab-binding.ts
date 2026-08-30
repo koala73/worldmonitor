@@ -1,4 +1,4 @@
-import { CommoditiesPanel } from '@/components/MarketPanel';
+import type { CommoditiesPanel, CommoditiesTabSelectionResult } from '@/components/MarketPanel';
 import {
   throwIfWebMcpAborted,
   type PanelTabSelectionResult,
@@ -6,7 +6,16 @@ import {
 
 interface PanelTabBindingOptions {
   waitForUiReady: () => Promise<void> | void;
+  prepareTab?: (panelId: string, tab: string, signal?: AbortSignal) => Promise<void> | void;
   signal?: AbortSignal;
+}
+
+type SelectableCommoditiesPanel = Pick<CommoditiesPanel, 'selectTab'>;
+
+function isSelectableCommoditiesPanel(value: unknown): value is SelectableCommoditiesPanel {
+  return Boolean(value)
+    && typeof value === 'object'
+    && typeof (value as { selectTab?: unknown }).selectTab === 'function';
 }
 
 export async function selectWebMcpPanelTab(
@@ -28,7 +37,7 @@ export async function selectWebMcpPanelTab(
     };
   }
   const panel = panels[panelId];
-  if (!(panel instanceof CommoditiesPanel)) {
+  if (!isSelectableCommoditiesPanel(panel)) {
     return {
       ok: false,
       status: 'denied',
@@ -38,7 +47,9 @@ export async function selectWebMcpPanelTab(
       message: 'The commodities panel is not live.',
     };
   }
-  const selected = panel.selectTab(tab);
+  await options.prepareTab?.(panelId, tab, options.signal);
+  throwIfWebMcpAborted(options.signal);
+  const selected: CommoditiesTabSelectionResult = panel.selectTab(tab);
   return {
     ...selected,
     panelId,

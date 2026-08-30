@@ -1,4 +1,8 @@
-import { physicalDivergenceStaleReason } from '../../shared/physical-divergence-staleness.js';
+import {
+  isPhysicalDivergenceDate,
+  isPhysicalDivergenceInstant,
+  physicalDivergenceStaleReason,
+} from '../../shared/physical-divergence-staleness.js';
 
 export const PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION = 'physical-divergence-v1';
 export const PHYSICAL_DIVERGENCE_METALS = ['gold', 'silver'] as const;
@@ -106,13 +110,11 @@ function finite(value: unknown): value is number {
 }
 
 function isoInstant(value: unknown): value is string {
-  return string(value) && Number.isFinite(Date.parse(value));
+  return isPhysicalDivergenceInstant(value);
 }
 
 function isoDate(value: unknown): value is string {
-  return string(value)
-    && /^\d{4}-\d{2}-\d{2}$/.test(value)
-    && Number.isFinite(Date.parse(`${value}T00:00:00.000Z`));
+  return isPhysicalDivergenceDate(value);
 }
 
 function methodology(value: unknown): string {
@@ -424,7 +426,9 @@ function applyFreshness(
     if (!staleReason) return entry;
     return {
       ...entry,
-      state: staleReason.endsWith('_in_future') ? 'missing_input' : 'stale_input',
+      state: staleReason.endsWith('_in_future') || staleReason.endsWith('_invalid')
+        ? 'missing_input'
+        : 'stale_input',
       reason: staleReason,
       regime: null,
       index: null,
