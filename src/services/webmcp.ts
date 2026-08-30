@@ -769,6 +769,7 @@ const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_cap_exceeded',
   'layer_not_entitled',
   'tab_cap',
+  'preset_not_entitled',
 ]);
 const STALE_DENIAL_REASONS = new Set([
   'invalid_or_expired_key',

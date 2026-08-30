@@ -387,6 +387,12 @@ describe('WebMCP analytics privacy policy', () => {
         status: 'denied',
         reason: 'search_state_changed',
       }),
+      applyMissionPreset: async () => ({
+        ok: false,
+        status: 'denied',
+        reason: 'preset_not_entitled',
+        message: 'That mission preset requires a higher plan.',
+      }),
       searchDashboard: async () => { throw new Error('private internal failure'); },
     }), (event, data) => events.push({ event, data }));
 
@@ -407,6 +413,8 @@ describe('WebMCP analytics privacy policy', () => {
       .execute({ resultKey: `sr_${'b'.repeat(32)}` });
     await tools.find(({ name }) => name === 'open_search_result')
       .execute({ resultKey: `sr_${'c'.repeat(32)}`, extra: true });
+    await tools.find(({ name }) => name === 'apply_mission_preset')
+      .execute({ presetId: 'supply-chain-risk' });
     await assert.rejects(
       tools.find(({ name }) => name === 'search_dashboard').execute({ query: 'safe' }),
     );
@@ -420,6 +428,7 @@ describe('WebMCP analytics privacy policy', () => {
       ['denied', 'unavailable'],
       ['denied', 'stale'],
       ['denied', 'validation'],
+      ['denied', 'entitlement'],
       ['failure', 'internal'],
     ]);
     assert.deepEqual(
