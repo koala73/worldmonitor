@@ -25,13 +25,16 @@
  * ~1 MB cap and flipping orank's function-calling check to "couldn't validate":
  *
  *   - repeated non-2xx error responses      -> components.responses $refs
+ *   - repeated response headers             -> components.headers $refs
  *   - fleet-wide injected parameters        -> components.parameters $refs
  *     (then one inline typed param restored on ops that would otherwise
  *     have only $refs — JSON-only scanners often skip parameter $refs)
  *   - shared China provenance value schemas -> reused $refs
+ *   - byte-identical nested Schema Objects  -> reused local $refs
  *   - repeated response headers, generated int64 warnings, and China
  *     date-precision unions                  -> components $refs
- *     (all dedup transforms are resolved back to the source document in tests)
+ *     (all in openapi-dedup-schemas.mjs; every dedup transform is resolved
+ *     back to the source document in tests, proving they are lossless)
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
  *
@@ -52,6 +55,7 @@ import {
   dedupeRepeatedInt64Schemas,
   dedupeSharedChinaProvenanceSchemas,
   dedupeSharedResponseHeaders,
+  dedupeSharedSchemaSubtrees,
 } from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
@@ -119,10 +123,15 @@ export function buildBundle({ spec: provided } = {}) {
   }
 
   const stats = dedupeErrorResponses(spec);
+  const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
+  // The named passes run before the generic byte-identical sweep. Reversing them
+  // lets the generic pass absorb the int64/China-date shapes into anonymous
+  // shared refs, and the named transforms then report zero engagement — the
+  // silent-disengagement case the contract test watches for.
   const chinaDateStats = dedupeRepeatedChinaDateSchemas(spec);
   const int64Stats = dedupeRepeatedInt64Schemas(spec);
-  const headerStats = dedupeSharedResponseHeaders(spec);
+  const schemaSubtreeStats = dedupeSharedSchemaSubtrees(spec);
   const paramStats = dedupeSharedParameters(spec);
   const inlineTypedStats = ensureInlineTypedInput(spec);
   injectDeprecationPolicyMetadata(spec);
@@ -142,10 +151,11 @@ export function buildBundle({ spec: provided } = {}) {
     json,
     bytes: Buffer.byteLength(json, 'utf8'),
     stats,
+    headerStats,
     schemaStats,
+    schemaSubtreeStats,
     chinaDateStats,
     int64Stats,
-    headerStats,
     paramStats,
     inlineTypedStats,
     unreachableStats,
@@ -159,6 +169,7 @@ function main() {
     bytes,
     stats,
     schemaStats,
+    schemaSubtreeStats,
     chinaDateStats,
     int64Stats,
     headerStats,
@@ -172,11 +183,12 @@ function main() {
   console.log(
     `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
       `${bytes} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
-      `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
       `hoisted ${headerStats.hoisted} shared response headers into ${headerStats.replacedRefs} $refs; ` +
+      `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
       `reused ${int64Stats.replacedRefs} generated int64 schemas; ` +
       `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
+      `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
       `reused ${chinaDateStats.replacedRefs} China date-precision schemas; ` +
       `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );

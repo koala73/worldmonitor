@@ -2209,6 +2209,25 @@
       },
       "cissStale": "ECB daha yeni bir değer yayınlamadı — bu okuma güncel olmayabilir."
     },
+    "supplyVulnerability": {
+      "title": "Emtia kırılganlığı",
+      "help": "Tedarikçi yoğunlaşması, deniz geçişi ve mevcut stratejik tamponlara göre ülkenin emtia bazında maruziyeti.",
+      "loading": "Emtia kırılganlığı yükleniyor…",
+      "unavailable": "Emtia kırılganlığı verileri kullanılamıyor",
+      "noCoverage": "Bu ülke için kanıt yetersiz",
+      "unknown": "Bilinmiyor",
+      "concentration": "Yoğunlaşma",
+      "transit": "Geçiş",
+      "buffer": "Tampon",
+      "sources": "Kaynaklar",
+      "methodology": "Metodoloji",
+      "hormuzTitle": "Emtia bağımlılıkları",
+      "dependentCountries": "Bağımlı ülkeler",
+      "dependentCommodities": "Bağımlı emtialar",
+      "stateOk": "Güncel",
+      "stateStale": "Eski girdi",
+      "stateInsufficient": "Yetersiz veri"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hürmüz Ticaret Takipçisi</strong> Dünyanın en kritik petrol darboğazı olan Hürmüz Boğazı'ndan geçen AIS gemi takibi. Tanker sayılarını, aksama olaylarını ve haftalık akış değişikliklerini izler. Küresel petrol arzının yaklaşık %20'si buradan günlük geçmektedir.",
       "title": "Hormuz Ticaret İzleyicisi",

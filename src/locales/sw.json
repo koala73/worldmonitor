@@ -2419,6 +2419,25 @@
         "failedToLoad": "Imeshindwa kupakia"
       }
     },
+    "supplyVulnerability": {
+      "title": "Udhaifu wa bidhaa",
+      "help": "Mfiduo wa nchi kwa kila bidhaa kulingana na mkusanyiko wa wasambazaji, usafiri wa baharini na akiba za kimkakati zinazopatikana.",
+      "loading": "Inapakia udhaifu wa bidhaa…",
+      "unavailable": "Data ya udhaifu wa bidhaa haipatikani",
+      "noCoverage": "Ushahidi hautoshi kwa nchi hii",
+      "unknown": "Haijulikani",
+      "concentration": "Mkusanyiko",
+      "transit": "Usafiri",
+      "buffer": "Akiba",
+      "sources": "Vyanzo",
+      "methodology": "Mbinu",
+      "hormuzTitle": "Utegemezi wa bidhaa",
+      "dependentCountries": "Nchi tegemezi",
+      "dependentCommodities": "Bidhaa tegemezi",
+      "stateOk": "Ya sasa",
+      "stateStale": "Ingizo la zamani",
+      "stateInsufficient": "Data haitoshi"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Inafuatilia moja kwa moja meli ya AIS kupitia Mlango-Bahari wa Hormuz, sehemu muhimu zaidi ya kusambaza mafuta duniani. Hufuatilia hesabu za meli, matukio ya usumbufu na mabadiliko ya mtiririko wa kila wiki. Takriban 20% ya usambazaji wa mafuta duniani kote husafirishwa hapa kila siku.",
       "title": "Hormuz Trade Tracker",

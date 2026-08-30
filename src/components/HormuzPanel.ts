@@ -3,6 +3,8 @@ import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { fetchHormuzTracker } from '@/services/hormuz-tracker';
 import type { HormuzTrackerData, HormuzChart, HormuzSeries } from '@/services/hormuz-tracker';
+import { fetchChokepointDependencies } from '@/services/supply-chain';
+import type { GetChokepointDependenciesResponse } from '@/services/supply-chain';
 
 const CHART_COLORS = ['#e67e22', '#1abc9c', '#9b59b6', '#27ae60'];
 const ZERO_COLOR = 'rgba(231,76,60,0.5)';
@@ -60,25 +62,43 @@ function renderChart(chart: HormuzChart, idx: number): string {
 
 export class HormuzPanel extends Panel {
   private data: HormuzTrackerData | null = null;
+  private dependencies: GetChokepointDependenciesResponse | null = null;
+  private dependencyState: 'loading' | 'loaded' | 'unavailable' = 'loading';
   private tooltipBound = false;
+  private fetchGeneration = 0;
 
   constructor() {
     super({ id: 'hormuz-tracker', title: t('components.hormuzTracker.title'), showCount: false, infoTooltip: t('components.hormuzTracker.infoTooltip') });
   }
 
   public async fetchData(): Promise<boolean> {
+    const generation = ++this.fetchGeneration;
     this.showLoading();
+    this.dependencyState = 'loading';
+    const dependenciesPromise = fetchChokepointDependencies('hormuz_strait', 25, { signal: this.signal })
+      .catch(() => null);
     try {
       const data = await fetchHormuzTracker();
+      if (generation !== this.fetchGeneration) return false;
       if (!data) {
         this.showError(t('components.hormuzTracker.errors.unavailable'), () => void this.fetchData());
         return false;
       }
       this.data = data;
+      this.dependencies = null;
       this.renderPanel();
       this.bindTooltip();
+      void dependenciesPromise.then((dependencies) => {
+        if (this.signal.aborted || generation !== this.fetchGeneration) return;
+        this.dependencies = dependencies;
+        this.dependencyState = dependencies?.upstreamUnavailable === false
+          ? 'loaded'
+          : 'unavailable';
+        this.renderPanel();
+      });
       return true;
     } catch (e) {
+      if (generation !== this.fetchGeneration) return false;
       this.showError(e instanceof Error ? e.message : t('components.hormuzTracker.errors.failedToLoad'), () => void this.fetchData());
       return false;
     }
@@ -120,6 +140,7 @@ export class HormuzPanel extends Panel {
       : `<div style="color:var(--text-dim);font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:8px 0">${escapeHtml(t('components.hormuzTracker.chartUnavailable'))}</div>`;
 
     const dateStr = d.updatedDate ? `<span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(d.updatedDate)}</span>` : '';
+    const dependencies = this.renderDependencies();
 
     const html = `
       <div style="padding:12px 14px;position:relative">
@@ -129,11 +150,57 @@ export class HormuzPanel extends Panel {
           ${dateStr}
         </div>
         <div>${charts}</div>
+        ${dependencies}
         <div style="margin-top:4px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           ${escapeHtml(t('components.hormuzTracker.sourcePrefix'))} <a href="${escapeHtml(d.attribution.url)}" target="_blank" rel="noopener" style="color:var(--text-dim);text-decoration:underline">${escapeHtml(d.attribution.source)}</a>
         </div>
       </div>`;
 
     this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
+  }
+
+  private renderDependencies(): string {
+    const response = this.dependencies;
+    if (this.dependencyState === 'loading') {
+      return `<div class="hz-dependencies" data-state="loading" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.loading'))}</div></div>`;
+    }
+    if (!response || response.upstreamUnavailable || response.dependencies.length === 0) {
+      const emptyMessage = !response || response.upstreamUnavailable
+        ? t('components.supplyVulnerability.unavailable')
+        : t('components.supplyVulnerability.noCoverage');
+      return `<div class="hz-dependencies" data-state="${this.dependencyState}" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)"><div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div><div class="hz-dependencies-empty" style="margin-top:5px;color:var(--text-dim);font-size:calc(10px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMessage)}</div></div>`;
+    }
+
+    const countries = new Map<string, typeof response.dependencies[number]>();
+    const commodities = new Map<string, typeof response.dependencies[number]>();
+    for (const dependency of response.dependencies) {
+      if (!countries.has(dependency.countryIso2)) countries.set(dependency.countryIso2, dependency);
+      if (!commodities.has(dependency.commodityId)) commodities.set(dependency.commodityId, dependency);
+    }
+    const renderItems = (items: Array<typeof response.dependencies[number]>, mode: 'country' | 'commodity') => items
+      .slice(0, 5)
+      .map((dependency) => {
+        const label = mode === 'country' ? dependency.countryName : dependency.commodity;
+        const context = mode === 'country' ? dependency.commodity : dependency.countryName;
+        const score = dependency.score == null
+          ? t('components.supplyVulnerability.unknown')
+          : dependency.score.toFixed(1);
+        const state = dependency.state === 'ok'
+          ? t('components.supplyVulnerability.stateOk')
+          : dependency.state === 'stale_input'
+            ? t('components.supplyVulnerability.stateStale')
+            : t('components.supplyVulnerability.stateInsufficient');
+        return `<li><span>${escapeHtml(label)}</span><span>${escapeHtml(context)} · ${escapeHtml(state)} · ${escapeHtml(score)}</span></li>`;
+      })
+      .join('');
+
+    return `<div class="hz-dependencies" style="margin-top:12px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08)">
+      <div class="hz-dependencies-title" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;text-transform:uppercase;letter-spacing:0.04em">${escapeHtml(t('components.supplyVulnerability.hormuzTitle'))}</div>
+      <div class="hz-dependencies-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:7px;font-size:calc(9px * var(--wm-panel-effective-scale, 1))">
+        <div><strong>${escapeHtml(t('components.supplyVulnerability.dependentCountries'))}</strong><ul style="list-style:none;margin:5px 0 0;padding:0">${renderItems([...countries.values()], 'country')}</ul></div>
+        <div><strong>${escapeHtml(t('components.supplyVulnerability.dependentCommodities'))}</strong><ul style="list-style:none;margin:5px 0 0;padding:0">${renderItems([...commodities.values()], 'commodity')}</ul></div>
+      </div>
+      <div class="hz-dependencies-method" style="margin-top:7px;color:var(--text-dim);font-size:calc(8px * var(--wm-panel-effective-scale, 1))">${escapeHtml(t('components.supplyVulnerability.methodology'))}: ${escapeHtml(response.methodologyVersion)}</div>
+    </div>`;
   }
 }

@@ -95,6 +95,24 @@ describe('locale completeness', () => {
     });
   });
 
+  it('does not add an English singular variant to an other-only locale', () => {
+    // The projection must not import a CLDR category the locale never uses.
+    // Writing `_one` into a locale whose plural rules have no `one` is what
+    // makes a sync look complete while emitting a key i18next never selects.
+    const template = { alerts_one: '{{count}} alert', alerts_other: '{{count}} alerts', title: 'Status' };
+    const templateFlat = flatten(template);
+    const expected = expectedKeysForLocale(
+      templateFlat,
+      findPluralBases(templateFlat),
+      getPluralCategories('ja'),
+    );
+
+    assert.deepEqual(
+      syncFromTemplate(template, { alerts_other: '通知' }, expected),
+      { alerts_other: '通知', title: 'Status' },
+    );
+  });
+
   it('rebuilds missing flattened array paths as arrays', () => {
     const template = { pricing: { features: ['First', 'Second'] } };
     const expected = { 'pricing.features[0]': 'First', 'pricing.features[1]': 'Second' };

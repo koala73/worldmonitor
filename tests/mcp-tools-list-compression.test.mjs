@@ -159,7 +159,18 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     it('every projection-safe tool has the JMESPath schema and attribution-bound tools omit it', async () => {
       const JMESPATH_SCHEMA = { type: 'string', description: 'Optional JMESPath projection applied to the response. See initialize.instructions for grammar and examples.' };
       const tools = await getRegistry();
-      const attributionBoundTools = new Set(['get_resilience_indicators']);
+      // Derived from the registry's own `_jmespathDisabled` flag rather than a
+      // hardcoded list: a new attribution-bound tool used to pass this assertion
+      // silently, which is exactly how the supply-vulnerability tools shipped
+      // advertising a projection over BGS-licensed evidence.
+      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+      const attributionBoundTools = new Set(
+        TOOL_REGISTRY.filter((tool) => tool._jmespathDisabled === true).map((tool) => tool.name),
+      );
+      assert.ok(
+        attributionBoundTools.size > 0,
+        'expected at least one attribution-bound tool to be declared',
+      );
       for (const t of tools) {
         if (attributionBoundTools.has(t.name)) {
           assert.ok(!('jmespath' in (t.inputSchema?.properties ?? {})), `tool "${t.name}" must omit jmespath`);
@@ -416,14 +427,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
     // ============================================================
     // U4: Version bump + SERVER_INSTRUCTIONS + server-card sync
     // ============================================================
-    it('serverInfo.version === "1.17.0"', async () => {
+    it('serverInfo.version === "1.18.0"', async () => {
       const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
         body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 't', version: '1' } } }),
       }));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.17.0');
+      assert.equal(body.result?.serverInfo?.version, '1.18.0');
     });
 
     it('initialize.result.instructions mentions describe_tool AND the TOOL_DESCRIPTION_MAX_BYTES cap value', async () => {
@@ -440,9 +451,9 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'instructions should mention the TOOL_DESCRIPTION_MAX_BYTES cap');
     });
 
-    it('server-card.json version matches SERVER_VERSION (1.17.0) and tools[] matches the registry count', () => {
+    it('server-card.json version matches SERVER_VERSION (1.18.0) and tools[] matches the registry count', () => {
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.17.0');
+      assert.equal(card.serverInfo.version, '1.18.0');
       // orank (ora.ai) agent-readiness scanner reads the card's `tools` as an
       // ARRAY (tools[]) for pre-connection preview — not the old {count,categories}
       // object. Keep it an array; the count now derives from the length.

@@ -2200,6 +2200,25 @@
       },
       "cissStale": "ECB가 더 최신 값을 발표하지 않았습니다 — 이 수치가 최신이 아닐 수 있습니다."
     },
+    "supplyVulnerability": {
+      "title": "원자재 취약성",
+      "help": "공급자 집중도, 해상 운송 및 이용 가능한 전략 비축량을 바탕으로 한 국가별 원자재 노출도입니다.",
+      "loading": "원자재 취약성을 불러오는 중…",
+      "unavailable": "원자재 취약성 데이터를 사용할 수 없습니다",
+      "noCoverage": "이 국가에 대한 근거가 부족합니다",
+      "unknown": "알 수 없음",
+      "concentration": "집중도",
+      "transit": "운송",
+      "buffer": "비축량",
+      "sources": "출처",
+      "methodology": "방법론",
+      "hormuzTitle": "원자재 의존도",
+      "dependentCountries": "의존 국가",
+      "dependentCommodities": "의존 원자재",
+      "stateOk": "현재",
+      "stateStale": "오래된 입력",
+      "stateInsufficient": "데이터 부족"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과.",
       "title": "호르무즈 무역 추적기",

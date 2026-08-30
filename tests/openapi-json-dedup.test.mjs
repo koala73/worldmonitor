@@ -5,12 +5,17 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
-import { dedupeErrorResponses, dedupeSharedParameters, ensureInlineTypedInput } from '../scripts/openapi-dedup-responses.mjs';
+import {
+  dedupeErrorResponses,
+  dedupeSharedParameters,
+  ensureInlineTypedInput,
+} from '../scripts/openapi-dedup-responses.mjs';
 import {
   dedupeRepeatedInt64Schemas,
   dedupeRepeatedChinaDateSchemas,
   dedupeSharedChinaProvenanceSchemas,
   dedupeSharedResponseHeaders,
+  dedupeSharedSchemaSubtrees,
 } from '../scripts/openapi-dedup-schemas.mjs';
 import { buildBundle } from '../scripts/build-openapi-json.mjs';
 import { SCANNER_BUDGET_BYTES } from '../scripts/openapi-capacity-report.mjs';
@@ -90,6 +95,24 @@ function resolveParameterRefs(spec) {
   return spec;
 }
 
+function resolveResponseHeaderRefs(spec) {
+  for (const site of operationResponses(spec)) {
+    const headers = site.response?.headers;
+    if (!headers || typeof headers !== 'object') continue;
+    for (const [headerName, header] of Object.entries(headers)) {
+      const ref = header?.$ref;
+      if (!ref) continue;
+      const name = ref.replace('#/components/headers/', '');
+      const target = spec.components?.headers?.[name];
+      assert.ok(target, `${site.method.toUpperCase()} ${site.path} ${site.statusCode} ${headerName}: dangling ${ref}`);
+      headers[headerName] = structuredClone(target);
+    }
+  }
+  delete spec.components?.headers;
+  if (spec.components && Object.keys(spec.components).length === 0) delete spec.components;
+  return spec;
+}
+
 function resolveSharedChinaProvenanceRefs(spec) {
   const refPrefix =
     '#/components/schemas/worldmonitor_intelligence_v1_ChinaDecisionSignalProvenanceClaims/';
@@ -118,6 +141,46 @@ function resolveSharedChinaProvenanceRefs(spec) {
   };
   visit(spec);
   return spec;
+}
+
+function resolvePointer(spec, ref) {
+  assert.match(ref, /^#\//, `expected a document-local ref, got ${ref}`);
+  return ref
+    .slice(2)
+    .split('/')
+    .reduce(
+      (value, segment) => value[segment.replaceAll('~1', '/').replaceAll('~0', '~')],
+      spec,
+    );
+}
+
+function restoreGeneratedSchemaRefs(before, after, transformedRoot) {
+  if (
+    before
+    && typeof before === 'object'
+    && !Array.isArray(before)
+    && after
+    && typeof after === 'object'
+    && !Array.isArray(after)
+    && typeof after.$ref === 'string'
+    && before.$ref !== after.$ref
+  ) {
+    return restoreGeneratedSchemaRefs(before, resolvePointer(transformedRoot, after.$ref), transformedRoot);
+  }
+  if (Array.isArray(before)) {
+    assert.ok(Array.isArray(after));
+    return before.map((value, index) => restoreGeneratedSchemaRefs(value, after[index], transformedRoot));
+  }
+  if (before && typeof before === 'object') {
+    assert.ok(after && typeof after === 'object' && !Array.isArray(after));
+    assert.deepEqual(Object.keys(after).sort(), Object.keys(before).sort());
+    return Object.fromEntries(Object.entries(before).map(([key, value]) => [
+      key,
+      restoreGeneratedSchemaRefs(value, after[key], transformedRoot),
+    ]));
+  }
+  assert.equal(after, before);
+  return after;
 }
 
 function resolveAddedComponentRefs(spec, { headerNames = [], schemaNames = [] }) {
@@ -290,6 +353,53 @@ describe('dedupeSharedChinaProvenanceSchemas (fixture)', () => {
   });
 });
 
+describe('dedupeSharedSchemaSubtrees', () => {
+  it('reuses only byte-identical Schema Objects and expands back to the original document', () => {
+    const repeated = {
+      type: 'string',
+      format: 'date-time',
+      description: 'An exact timestamp used across multiple response fields.'.repeat(3),
+    };
+    const original = {
+      openapi: '3.1.0',
+      components: {
+        schemas: {
+          A: { type: 'object', properties: { at: structuredClone(repeated) } },
+          B: { type: 'object', properties: { at: structuredClone(repeated) } },
+          D: { type: 'object', properties: { at: structuredClone(repeated) } },
+          C: { type: 'object', properties: { at: { ...structuredClone(repeated), nullable: true } } },
+        },
+      },
+    };
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSchemaSubtrees(transformed);
+
+    assert.equal(stats.groups, 1);
+    assert.equal(stats.replacedRefs, 2);
+    assert.ok(stats.bytesFreed >= 256);
+    assert.deepEqual(
+      restoreGeneratedSchemaRefs(original, transformed, transformed),
+      original,
+    );
+    assert.equal(transformed.components.schemas.C.properties.at.nullable, true);
+  });
+
+  it('is lossless on the real post-China-dedup schema graph', () => {
+    const original = loadUnifiedOpenApiSpec();
+    dedupeSharedChinaProvenanceSchemas(original);
+    const transformed = structuredClone(original);
+    const stats = dedupeSharedSchemaSubtrees(transformed);
+
+    assert.ok(stats.groups >= 3, `expected several repeated-schema groups, got ${stats.groups}`);
+    assert.ok(stats.replacedRefs >= 10, `expected repeated schema refs, got ${stats.replacedRefs}`);
+    assert.ok(stats.bytesFreed >= 10_000, `expected at least 10 KB headroom, got ${stats.bytesFreed}`);
+    assert.deepEqual(
+      restoreGeneratedSchemaRefs(original, transformed, transformed),
+      original,
+    );
+  });
+});
+
 describe('additional lossless schema dedupe (fixtures)', () => {
   it('hoists structurally identical response headers and leaves unique headers inline', () => {
     const shared = { schema: { type: 'boolean' }, description: 'replayed response' };
@@ -421,10 +531,10 @@ describe('public OpenAPI dedupe (real bundle)', () => {
   const original = loadUnifiedOpenApiSpec();
   const deduped = structuredClone(original);
   const stats = dedupeErrorResponses(deduped);
+  const headerStats = dedupeSharedResponseHeaders(deduped);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(deduped);
   const chinaDateStats = dedupeRepeatedChinaDateSchemas(deduped);
   const int64Stats = dedupeRepeatedInt64Schemas(deduped);
-  const headerStats = dedupeSharedResponseHeaders(deduped);
   const paramStats = dedupeSharedParameters(deduped);
 
   it('is lossless: resolving the $refs reproduces the original spec exactly', () => {
@@ -457,6 +567,10 @@ describe('public OpenAPI dedupe (real bundle)', () => {
       'the per-op 429 rate-limit block must dedupe into components.responses.E429',
     );
     assert.ok(stats.replacedRefs >= 500, `expected wide dedup, got ${stats.replacedRefs} refs`);
+  });
+
+  it('actually engages on repeated response-header documentation', () => {
+    assert.ok(headerStats.replacedRefs >= 20, `expected repeated header dedup, got ${headerStats.replacedRefs} refs`);
   });
 
   it('reuses the shared China provenance value schemas only after exact comparison', () => {
@@ -546,15 +660,21 @@ describe('public OpenAPI dedupe (real bundle)', () => {
 });
 
 describe('build-openapi-json wiring', () => {
+  it('keeps the transform source reviewable as text', () => {
+    const src = readFileSync(resolve(root, 'scripts/openapi-dedup-responses.mjs'));
+    assert.equal(src.includes(0), false, 'literal NUL bytes make Git treat the JavaScript source as binary');
+  });
+
   it('the build script applies response and shared-provenance dedupe before writing JSON', () => {
     const src = readFileSync(buildScriptPath, 'utf8');
     assert.match(src, /from '\.\/openapi-dedup-responses\.mjs'/);
     assert.match(src, /from '\.\/openapi-dedup-schemas\.mjs'/);
     assert.match(src, /dedupeErrorResponses\(spec\)/);
+    assert.match(src, /dedupeSharedResponseHeaders\(spec\)/);
     assert.match(src, /dedupeSharedChinaProvenanceSchemas\(spec\)/);
+    assert.match(src, /dedupeSharedSchemaSubtrees\(spec\)/);
     assert.match(src, /dedupeRepeatedChinaDateSchemas\(spec\)/);
     assert.match(src, /dedupeRepeatedInt64Schemas\(spec\)/);
-    assert.match(src, /dedupeSharedResponseHeaders\(spec\)/);
     assert.match(src, /dedupeSharedParameters\(spec\)/);
     assert.match(src, /ensureInlineTypedInput\(spec\)/);
     assert.match(src, /injectDeprecationPolicyMetadata\(spec\)/);
@@ -567,6 +687,7 @@ describe('build-openapi-json wiring', () => {
     const {
       stats,
       schemaStats,
+      schemaSubtreeStats,
       chinaDateStats,
       int64Stats,
       headerStats,
@@ -586,6 +707,10 @@ describe('build-openapi-json wiring', () => {
     assert.ok(chinaDateStats.replacedRefs >= 5, `China date dedup: ${chinaDateStats.replacedRefs} refs`);
     assert.ok(int64Stats.replacedRefs >= 30, `int64 dedup: ${int64Stats.replacedRefs} refs`);
     assert.ok(headerStats.replacedRefs >= 30, `response-header dedup: ${headerStats.replacedRefs} refs`);
+    assert.ok(
+      schemaSubtreeStats.replacedRefs > 0,
+      `shared schema-subtree dedup: ${schemaSubtreeStats.replacedRefs} refs`,
+    );
     assert.ok(unreachableStats.dropped >= 150, `unreachable drop: ${unreachableStats.dropped} schemas`);
   });
 });

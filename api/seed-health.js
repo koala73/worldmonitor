@@ -214,6 +214,21 @@ const SEED_DOMAINS = {
   'intelligence:wsb-tickers': { key: 'seed-meta:intelligence:wsb-tickers', intervalMin: 270 }, // 180min relay loop (3h); intervalMin = maxStaleMin / 2 (540 / 2), matching api/health.js
   'trade:customs-revenue':    { key: 'seed-meta:trade:customs-revenue',    intervalMin: 720 },
   'comtrade:bilateral-hs4':   { key: 'seed-meta:comtrade:bilateral-hs4',   intervalMin: 25200, minRecordCount: 110 }, // intervalMin*2 = health.js 35d budget for the monthly Railway seed; minRecordCount matches api/health.js + MIN_COUNTRY_COVERAGE
+  'supply-chain:vulnerability': {
+    key: 'seed-meta:supply-chain:vulnerability',
+    intervalMin: 1440,
+    minRecordCount: 110,
+    minRankableRecordCount: 110,
+    requiredRedistributionPolicyVersion: 1,
+    activationKey: 'seed-activated:supply-chain:vulnerability',
+  },
+  'supply-chain:chokepoint-dependencies': {
+    key: 'seed-meta:supply-chain:chokepoint-dependencies',
+    intervalMin: 1440,
+    minRecordCount: 7,
+    requiredRedistributionPolicyVersion: 1,
+    activationKey: 'seed-activated:supply-chain:vulnerability',
+  },
   'thermal:escalation':       { key: 'seed-meta:thermal:escalation',       intervalMin: 180 },
   'radiation:observations':   { key: 'seed-meta:radiation:observations',   intervalMin: 15 },
   'sanctions:pressure':       { key: 'seed-meta:sanctions:pressure',       intervalMin: 360 },
@@ -592,6 +607,7 @@ export async function handleSeedHealth(req, options = {}) {
   const seeds = {};
   let staleCount = 0;
   let missingCount = 0;
+  let criticalCount = 0;
 
   for (const [domain, cfg] of entries) {
     const meta = metaMap.get(cfg.key);
@@ -634,13 +650,20 @@ export async function handleSeedHealth(req, options = {}) {
     const ageMs = evaluationNow - (meta.fetchedAt || 0);
     const recordCount = parseFiniteRecordCount(meta.recordCount);
     const rankableRecordCount = parseRankableRecordCount(meta);
+    const redistributionPolicyVersion = Number.isInteger(meta.redistributionPolicyVersion)
+      ? meta.redistributionPolicyVersion
+      : null;
     const poolCounts = parsePoolCounts(meta.poolCounts, cfg.minPoolCounts);
     const recordCoveragePartial = cfg.minRecordCount != null
       && (recordCount == null || recordCount < cfg.minRecordCount);
     const rankableCoveragePartial = cfg.minRankableRecordCount != null
       && (rankableRecordCount == null || rankableRecordCount < cfg.minRankableRecordCount);
     const poolCoveragePartial = hasPoolCoverageShortfall(poolCounts, cfg.minPoolCounts);
-    const coveragePartial = recordCoveragePartial || rankableCoveragePartial || poolCoveragePartial;
+    const redistributionPolicyPartial = cfg.requiredRedistributionPolicyVersion != null
+      && redistributionPolicyVersion !== cfg.requiredRedistributionPolicyVersion;
+    const coveragePartial = recordCoveragePartial
+      || rankableCoveragePartial
+      || poolCoveragePartial;
     // Source-specific seed projections retain their last-good records while
     // reporting a current upstream failure through sourceState. Treat that as
     // an immediate operator error instead of waiting for the freshness window.
@@ -708,15 +731,27 @@ export async function handleSeedHealth(req, options = {}) {
     const stale = freshnessStale
       || recordCoveragePartial
       || rankableCoveragePartial
+      || redistributionPolicyPartial
       || isError
       || sourceMismatch
       || probe?.ok === false
       || contentFreshnessInvalid
       || contentFreshnessStale;
     if (stale || poolCoveragePartial) staleCount++;
+    // A policy mismatch is an operator error only once the producer has
+    // actually activated. Before the first publish the field is legitimately
+    // absent, so escalating then would drive `overall: degraded` (HTTP 503) for
+    // the WHOLE endpoint on any ordinary API-before-seeder deploy — and, because
+    // the check keys off every configured domain rather than the offending one,
+    // it takes every unrelated seed down with it. The domain still reports
+    // `policy_incompatible` and still counts toward `stale`/warning either way.
+    const policyEnforced = !cfg.activationKey || activatedMap.get(domain) === true;
+    if (redistributionPolicyPartial && policyEnforced) criticalCount++;
 
     seeds[domain] = {
-      status: sourceUnavailable
+      status: redistributionPolicyPartial
+        ? 'policy_incompatible'
+        : sourceUnavailable
         ? 'not_configured'
         : isError
         ? 'error'
@@ -747,6 +782,10 @@ export async function handleSeedHealth(req, options = {}) {
       seeds[domain].minRankableRecordCount = cfg.minRankableRecordCount;
     }
     if (cfg.minPoolCounts) seeds[domain].minPoolCounts = cfg.minPoolCounts;
+    if (cfg.requiredRedistributionPolicyVersion != null) {
+      seeds[domain].redistributionPolicyVersion = redistributionPolicyVersion;
+      seeds[domain].requiredRedistributionPolicyVersion = cfg.requiredRedistributionPolicyVersion;
+    }
     if (activationUnknown) seeds[domain].activationUnknown = true;
     if (poolCounts) seeds[domain].poolCounts = poolCounts;
     if (contentFreshnessActivationWindow) {
@@ -781,7 +820,11 @@ export async function handleSeedHealth(req, options = {}) {
     }
   }
 
-  const overall = missingCount > 0 ? 'degraded' : staleCount > 0 ? 'warning' : 'healthy';
+  const overall = missingCount > 0 || criticalCount > 0
+    ? 'degraded'
+    : staleCount > 0
+      ? 'warning'
+      : 'healthy';
 
   const httpStatus = overall === 'healthy' ? 200 : overall === 'warning' ? 200 : 503;
 

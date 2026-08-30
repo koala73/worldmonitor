@@ -21,8 +21,11 @@ export function getOptionalUpstashCreds() {
 export const UPSTASH_COMMAND_TIMEOUT_MS = 15_000;
 export const UPSTASH_RETRY_AFTER_MAX_MS = 2_000;
 
-export async function upstashCommand(creds, command) {
-  const resp = await fetch(creds.restUrl, {
+export async function upstashCommand(creds, command, {
+  fetchImpl = globalThis.fetch,
+  timeoutMs = UPSTASH_COMMAND_TIMEOUT_MS,
+} = {}) {
+  const resp = await fetchImpl(creds.restUrl, {
     method: 'POST',
     headers: {
       Authorization: `Bearer ${creds.token}`,
@@ -30,13 +33,17 @@ export async function upstashCommand(creds, command) {
       'User-Agent': 'worldmonitor-ops/1.0 (+https://worldmonitor.app)',
     },
     body: JSON.stringify(command),
-    signal: AbortSignal.timeout(UPSTASH_COMMAND_TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!resp.ok) {
     const error = new Error(`Upstash HTTP ${resp.status}`);
     error.status = resp.status;
-    const retryAfter = resp.headers.get('retry-after');
+    error.nonRetryable = resp.status !== 408
+      && resp.status !== 429
+      && !(resp.status >= 500 && resp.status <= 599);
+    const retryAfter = resp.headers?.get?.('retry-after');
     if (retryAfter) {
+      // Accept both delta-seconds and the HTTP-date form.
       const seconds = Number(retryAfter);
       const retryAt = Date.parse(retryAfter);
       const parsedRetryAfterMs = Number.isFinite(seconds)

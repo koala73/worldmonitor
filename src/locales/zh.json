@@ -2200,6 +2200,25 @@
       },
       "cissStale": "欧洲中央银行尚未发布新数值 — 此读数可能已过期。"
     },
+    "supplyVulnerability": {
+      "title": "大宗商品脆弱性",
+      "help": "基于供应商集中度、海运通道和可用战略缓冲评估各国分商品风险敞口。",
+      "loading": "正在加载大宗商品脆弱性…",
+      "unavailable": "大宗商品脆弱性数据不可用",
+      "noCoverage": "该国家的证据不足",
+      "unknown": "未知",
+      "concentration": "集中度",
+      "transit": "运输通道",
+      "buffer": "战略缓冲",
+      "sources": "来源",
+      "methodology": "方法论",
+      "hormuzTitle": "大宗商品依赖",
+      "dependentCountries": "依赖国家",
+      "dependentCommodities": "依赖商品",
+      "stateOk": "当前",
+      "stateStale": "输入已过期",
+      "stateInsufficient": "数据不足"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>霍尔木兹贸易追踪器</strong> 通过全球最关键的石油咽喉要道霍尔木兹海峡的AIS船舶实时追踪。监控油轮数量、中断事件和每周流量变化。全球约20%的石油供应每天经此通过。",
       "title": "霍尔木兹贸易追踪",

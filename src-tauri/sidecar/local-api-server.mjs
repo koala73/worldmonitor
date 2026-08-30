@@ -725,6 +725,9 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
 const cloudPreferredExact = new Set([
   '/api/bootstrap',
   '/api/military/v1/get-defense-industrial-base',
+  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/supply-chain/v1/get-chokepoint-dependencies',
+  '/api/supply-chain/v1/list-vulnerability-rankings',
 ]);
 const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
 

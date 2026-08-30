@@ -27,7 +27,10 @@ const apiDir = resolve(root, 'docs/api');
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const GET_METHOD = new Set(['get']);
-const PROJECTION_DISABLED_OPERATION_IDS = new Set(['GetResilienceIndicators']);
+// Imported rather than restated: a third hand-maintained copy of this set is
+// how an attribution-bound operation ends up documented as projection-safe
+// while the gateway refuses the projection.
+import { PROJECTION_DISABLED_OPERATION_IDS } from '../scripts/openapi-inject-jmespath.mjs';
 const serviceJsonSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
   .sort();

@@ -1091,7 +1091,12 @@ describe('a prolonged relay rejection is visible in /api/seed-health', () => {
             }),
           };
         }
-        return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 10_000 }) };
+        return { result: JSON.stringify({
+          fetchedAt: Date.now(),
+          recordCount: 10_000,
+          rankableRecordCount: 10_000,
+          redistributionPolicyVersion: 1,
+        }) };
       });
       return new Response(JSON.stringify(results), {
         status: 200,

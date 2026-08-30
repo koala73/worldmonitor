@@ -2200,6 +2200,25 @@
       },
       "cissStale": "ECB chưa công bố giá trị mới — phép đo này có thể không còn hiện tại."
     },
+    "supplyVulnerability": {
+      "title": "Mức dễ tổn thương hàng hóa",
+      "help": "Mức phơi nhiễm của quốc gia theo từng hàng hóa dựa trên độ tập trung nhà cung cấp, vận tải biển và vùng đệm chiến lược hiện có.",
+      "loading": "Đang tải mức dễ tổn thương hàng hóa…",
+      "unavailable": "Không có dữ liệu về mức dễ tổn thương hàng hóa",
+      "noCoverage": "Không đủ bằng chứng cho quốc gia này",
+      "unknown": "Không xác định",
+      "concentration": "Mức tập trung",
+      "transit": "Vận chuyển",
+      "buffer": "Dự trữ",
+      "sources": "Nguồn",
+      "methodology": "Phương pháp",
+      "hormuzTitle": "Mức phụ thuộc hàng hóa",
+      "dependentCountries": "Quốc gia phụ thuộc",
+      "dependentCommodities": "Hàng hóa phụ thuộc",
+      "stateOk": "Hiện tại",
+      "stateStale": "Đầu vào cũ",
+      "stateInsufficient": "Không đủ dữ liệu"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",
       "title": "Theo dõi Thương mại Hormuz",

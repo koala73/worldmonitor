@@ -2209,6 +2209,25 @@
       },
       "cissStale": "EZB hat keinen neueren Wert veröffentlicht – dieser Messwert könnte veraltet sein."
     },
+    "supplyVulnerability": {
+      "title": "Rohstoffverwundbarkeit",
+      "help": "Länderexposition nach Rohstoff, abgeleitet aus Lieferantenkonzentration, Seetransit und verfügbaren strategischen Reserven.",
+      "loading": "Rohstoffverwundbarkeit wird geladen…",
+      "unavailable": "Daten zur Rohstoffverwundbarkeit sind nicht verfügbar",
+      "noCoverage": "Unzureichende Nachweise für dieses Land",
+      "unknown": "Unbekannt",
+      "concentration": "Konzentration",
+      "transit": "Transitverkehr",
+      "buffer": "Reserve",
+      "sources": "Quellen",
+      "methodology": "Methodik",
+      "hormuzTitle": "Rohstoffabhängigkeiten",
+      "dependentCountries": "Abhängige Länder",
+      "dependentCommodities": "Abhängige Rohstoffe",
+      "stateOk": "Aktuell",
+      "stateStale": "Veraltete Eingabe",
+      "stateInsufficient": "Unzureichende Daten"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz-Handelstracker</strong> AIS-Schiffsverfolgung in Echtzeit durch die Straße von Hormuz, den kritischsten Öl-Engpass der Welt. Überwacht Tankeranzahl, Störungsereignisse und wöchentliche Flussänderungen. Etwa 20 % der globalen Ölversorgung passiert hier täglich.",
       "title": "Hormuz-Handels-Tracker",

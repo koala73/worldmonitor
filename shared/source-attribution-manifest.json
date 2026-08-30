@@ -2509,6 +2509,9 @@
           "path": "scripts/seed-recovery-reexport-share.mjs"
         },
         {
+          "path": "scripts/seed-supply-vulnerability.mjs"
+        },
+        {
           "path": "scripts/seed-trade-flows.mjs"
         },
         {
@@ -10651,6 +10654,20 @@
       ]
     },
     {
+      "host": "www.bgs.ac.uk",
+      "provider": "British Geological Survey World Mineral Statistics",
+      "kind": "structured",
+      "observed": true,
+      "license": "BGS mineral statistics terms; attribution required; redistribution restricted",
+      "attribution": "British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-supply-vulnerability.mjs"
+        }
+      ]
+    },
+    {
       "host": "www.bild.de",
       "provider": "www.bild.de",
       "kind": "feed",
@@ -13145,6 +13162,9 @@
       "references": [
         {
           "path": "scripts/seed-mineral-production.mjs"
+        },
+        {
+          "path": "scripts/seed-supply-vulnerability.mjs"
         }
       ]
     },

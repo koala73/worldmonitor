@@ -36,8 +36,8 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
   "summary": {
-    "total": 287,
-    "ok": 287,
+    "total": 289,
+    "ok": 289,
     "warn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
@@ -343,6 +343,8 @@ curl -o /dev/null -s -w "%{http_code}" "https://api.worldmonitor.app/api/health?
 ### 过期逻辑
 
 当种子的年龄超过**配置间隔的 2 倍**时，即被视为过期。这考虑了 cron/中继计时的正常抖动。低于总量 `minRecordCount` 的种子会报告 `coverage_partial` 和 `stale: true`。低于预测市场 `minPoolCounts` 等子组下限的种子也会报告 `coverage_partial`，但只要生产者心跳仍然新鲜，就保持 `stale: false`，从而区分新鲜度与覆盖率。
+
+商品脆弱性批次不采用“非空即健康”。所有脆弱性 RPC 实际读取的权威批次指针必须存在。国家投影必须达到配置的国家下限，每个已覆盖国家必须包含全部已审核映射行，并且本次运行必须实际观测到完整的商品、HS4 和运输 HS2 输入集合；注册表常量本身不能满足实测覆盖检查。反向投影必须达到配置的咽喉要道下限。任何不足都会报告 `COVERAGE_PARTIAL`。首个原子批次激活前，两个检查保持 rollout pending。
 
 **消费者：** 以 `status` 和 `overall` 作为覆盖率的权威信号。不要只依赖 `stale`——池覆盖不足按设计保持 `stale: false`。当任一覆盖率下限失败时，条目还会设置 `coveragePartial: true`，以便只检查布尔字段的客户端仍能看到不足。
 

@@ -1839,6 +1839,25 @@
       },
       "cissStale": "O BCE não publicou um valor mais recente — esta leitura pode estar desatualizada."
     },
+    "supplyVulnerability": {
+      "title": "Vulnerabilidade de matérias-primas",
+      "help": "Exposição do país por matéria-prima com base na concentração de fornecedores, no trânsito marítimo e nas reservas estratégicas disponíveis.",
+      "loading": "Carregando vulnerabilidade de matérias-primas…",
+      "unavailable": "Dados de vulnerabilidade de matérias-primas indisponíveis",
+      "noCoverage": "Evidências insuficientes para este país",
+      "unknown": "Desconhecido",
+      "concentration": "Concentração",
+      "transit": "Trânsito",
+      "buffer": "Reserva",
+      "sources": "Fontes",
+      "methodology": "Metodologia",
+      "hormuzTitle": "Dependências de matérias-primas",
+      "dependentCountries": "Países dependentes",
+      "dependentCommodities": "Matérias-primas dependentes",
+      "stateOk": "Atual",
+      "stateStale": "Entrada desatualizada",
+      "stateInsufficient": "Dados insuficientes"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Rastreador comercial de Ormuz</strong> Rastreamento AIS de navios em tempo real através do Estreito de Ormuz, o ponto de estrangulamento petrolífero mais crítico do mundo. Monitoriza contagens de petroleiros, eventos de perturbação e alterações semanais de fluxo. Aproximadamente 20% do fornecimento global de petróleo transita aqui diariamente.",
       "title": "Rastreador de Comércio do Hormuz",

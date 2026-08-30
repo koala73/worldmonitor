@@ -37,7 +37,10 @@ const NEW_TRANSLATED_KEYS = [
 // must not pass only because their keys exist.
 const ENGLISH_CEILING = {
   ar: 359, bg: 250, cs: 292, de: 276, el: 359, es: 433,
-  fa: 2576, fr: 425, hi: 141, hr: 281, hu: 255, it: 242,
+  // fr 425 -> 426: "Concentration" (supply vulnerability) and "Normal"
+  // (divergence regime) are spelled identically in French. Both are correct
+  // translations, not placeholder copies.
+  fa: 2576, fr: 426, hi: 141, hr: 281, hu: 255, it: 242,
   ja: 390, ko: 239, nl: 513, pl: 460, pt: 466, ro: 390,
   ru: 377, sv: 490, sw: 393, th: 307, tr: 404, uk: 2708,
   vi: 185, zh: 358, 'zh-TW': 358,

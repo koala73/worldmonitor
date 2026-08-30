@@ -303,9 +303,14 @@ export const SERVER_NAME = 'worldmonitor';
 //     worldmonitor://account/mcp-allowance without spending a quota slot. The
 //     resource reports the enforcement counters, remaining calls, UTC reset,
 //     and free-account request-window state.
+// Bumped 1.17.0 → 1.18.0 (2026-08-30) reflecting:
+//   - Two subscription tools expose the country commodity-vulnerability
+//     portfolio and the single-pass chokepoint dependency inverse index.
+//   - Provider-restricted mineral evidence remains display-only and fails
+//     closed on verified MCP redistribution paths.
 // Keep aligned with public/.well-known/mcp/server-card.json::serverInfo.version
 // — discovery scanners cross-check both values.
-export const SERVER_VERSION = '1.17.0';
+export const SERVER_VERSION = '1.18.0';
 
 // MCP logging capability — valid severity levels per the 2025-03-26 spec
 // (RFC 5424 subset). Stateless HTTP transport: we ACK the level but do not

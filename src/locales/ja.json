@@ -2200,6 +2200,25 @@
       },
       "cissStale": "ECB がより新しい値を公開していません — このデータは古い可能性があります。"
     },
+    "supplyVulnerability": {
+      "title": "商品脆弱性",
+      "help": "供給元の集中度、海上輸送、利用可能な戦略備蓄に基づく国別・商品別のエクスポージャー。",
+      "loading": "商品脆弱性を読み込み中…",
+      "unavailable": "商品脆弱性データを利用できません",
+      "noCoverage": "この国を評価する証拠が不足しています",
+      "unknown": "不明",
+      "concentration": "集中度",
+      "transit": "輸送",
+      "buffer": "備蓄",
+      "sources": "出典",
+      "methodology": "手法",
+      "hormuzTitle": "商品依存関係",
+      "dependentCountries": "依存国",
+      "dependentCommodities": "依存商品",
+      "stateOk": "最新",
+      "stateStale": "古い入力",
+      "stateInsufficient": "データ不足"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> 世界最重要の石油チョークポイントであるホルムズ海峡を通過するAIS船舶のライブ追跡。タンカー数、混乱イベント、週次フロー変化を監視。世界の石油供給量の約20%が毎日ここを通過。",
       "title": "ホルムズ海峡貿易トラッカー",

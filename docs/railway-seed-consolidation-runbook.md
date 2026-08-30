@@ -1042,10 +1042,10 @@ detects old source material.
 
 ### Bundle 3 heavy: seed-bundle-static-ref-heavy (live, #6806)
 
-Arms-Suppliers (460s worst case) and Military-Bases (410s) cannot share a 570s
+Arms-Suppliers (380s reservation) and Military-Bases (410s) cannot share a 570s
 tick — Railway kills a cron container at 10 minutes, so that ceiling is not
 negotiable. They CAN share a bundle: the runner defers whichever loses the tick
-to the next daily fire, and at 10-day and 30-day cadences a one-day deferral
+to the next daily fire, and at 14-day and 30-day cadences a one-day deferral
 costs nothing. One service carries all three heavy members instead of three
 1-section services, because Railway caps a project at 100 and the fleet is at 82.
 
@@ -1055,22 +1055,35 @@ costs nothing. One service carries all three heavy members instead of three
 | **Start command** | `node scripts/seed-bundle-static-ref-heavy.mjs` |
 | **Cron schedule** | `0 4 * * *` (daily 04:00 UTC, staggered off leftover's 03:00) |
 | **Lifecycle** | active — service `6285c37b-1327-46f1-bfd0-7454612764fb`, provisioned 2026-08-19, first tick published `bundle:heartbeat:static-ref-heavy` at 2026-08-20T04:01:04Z |
-| **Members** | Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), Military-Bases (400s / 30d) |
+| **Members** | Supply-Vulnerability (160s / daily), Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), and Military-Bases (400s / 30d), ordered by the durable turn policy below |
 | **Wall-time budget** | `maxBundleMs: 570_000` |
 | **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `CLOUDFLARE_R2_ACCOUNT_ID` and one of `CLOUDFLARE_R2_TOKEN` / `CLOUDFLARE_API_TOKEN`. `USPTO_API_KEY` stays on leftover. The R2 pair is NOT optional here: `scripts/data/military-bases-final.json` is gitignored and the service has no volume, so without it Military-Bases falls back to the published version and exits non-zero once that is past its 30-day interval (#6845). |
 | **Heartbeat** | `bundle:heartbeat:static-ref-heavy` |
 
-**The lead slot rotates by day and that is load-bearing.** A member that never
-publishes never stops being due, so a fixed order hands it the first slot every
-single tick. That is not hypothetical: Arms-Suppliers has never written
+Supply-Vulnerability is a Redis-only projection with a 170s reservation,
+including kill grace. It does not always run first: Supply-Vulnerability leads
+even durable turns, while the rotated heavy list leads odd turns. This split is
+load-bearing because Supply-Vulnerability and Military-Bases reserve 580s
+together, more than the 570s bundle budget. The admission contract guarantees
+that each cadence class gets a slot within any two consecutive claimed turns.
+
+The scheduler claims the current value of `bundle:turn:static-ref-heavy` under
+a 15-minute lease. It acknowledges and advances that turn after every fully
+completed tick, including a non-zero tick, so a failing lead cannot monopolize
+the next invocation. A process killed or aborted before its terminal summary
+does not acknowledge; after lease expiry, the same unexecuted turn is safe to
+retry. This avoids the missed-day and repeated-parity failures of calendar
+rotation.
+
+Within the heavy list, `turn % 3` rotates Mineral-Production, Arms-Suppliers,
+and Military-Bases. A member that never publishes never stops being due, so a
+fixed order would hand it the first heavy slot every single tick. That is not
+hypothetical: Arms-Suppliers has never written
 `seed-meta:military:arms-suppliers-complete`, and on 2026-08-18 it took 371s of
 leftover's budget, leaving 177s against Mineral-Production's 190s reservation —
-deferring it by 13 seconds on the tick its acknowledgement expired. The bundle
-rotates `dayIndex % 3` (days since epoch, not `getUTCDay()`, which stutters
-across the week boundary and would give one member two consecutive lead days),
-so each member leads every third tick and a permanently failing member can
-consume at most one lead slot in three. `seed-bundle-macro.mjs` uses the same
-device for the same reason.
+deferring it by 13 seconds on the tick its acknowledgement expired. Durable
+turn rotation means each heavy member leads every third claimed turn and a
+permanently failing member can consume at most one heavy lead slot in three.
 
 Start commands in this table keep the `scripts/` prefix so they match the other
 bundle rows and the registry-coverage grep. Railway's actual start command is

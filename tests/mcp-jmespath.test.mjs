@@ -268,9 +268,19 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const body = await res.json();
       const tools = body.result.tools;
       assert.ok(tools.length > 0);
+      // Derived from the registry's own `_jmespathDisabled` flag, not a hardcoded
+      // name: a newly added attribution-bound tool used to slip past this
+      // assertion, which is how the supply-vulnerability tools shipped
+      // advertising a projection over BGS-licensed evidence.
+      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+      const attributionBound = new Set(
+        TOOL_REGISTRY.filter((t) => t._jmespathDisabled === true).map((t) => t.name),
+      );
+      assert.ok(attributionBound.size > 0, 'expected attribution-bound tools to be declared');
       for (const tool of tools) {
-        if (tool.name === 'get_resilience_indicators') {
-          assert.equal(tool.inputSchema?.properties?.jmespath, undefined);
+        if (attributionBound.has(tool.name)) {
+          assert.equal(tool.inputSchema?.properties?.jmespath, undefined,
+            `attribution-bound tool "${tool.name}" must not advertise jmespath`);
           continue;
         }
         assert.ok(tool.inputSchema?.properties?.jmespath,
@@ -307,12 +317,12 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
   // Initialize handshake — version + instructions
   // ============================================================
   describe('initialize handshake', () => {
-    it('serverInfo.version === "1.17.0"', async () => {
+    it('serverInfo.version === "1.18.0"', async () => {
       // Tracks current SERVER_VERSION. Each minor bump needs to update
       // this assertion + the cross-check at line 327 below.
       const res = await mod.default(makeReq(initBody(1)));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.17.0');
+      assert.equal(body.result?.serverInfo?.version, '1.18.0');
     });
 
     it('result.instructions is present and mentions jmespath', async () => {
@@ -334,12 +344,12 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(/daily quota/i.test(inst), 'missing quota note');
     });
 
-    it('server-card.json version matches SERVER_VERSION (currently 1.17.0)', () => {
+    it('server-card.json version matches SERVER_VERSION (currently 1.18.0)', () => {
       // Cross-check the comment at api/mcp.ts:~56 — discovery scanners
       // verify both values; a future bump that misses one would break
       // discovery. This is the test that prevents that drift.
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.17.0');
+      assert.equal(card.serverInfo.version, '1.18.0');
       assert.equal(card.features?.responseProjection, 'jmespath');
     });
 

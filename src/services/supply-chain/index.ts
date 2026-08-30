@@ -1,11 +1,12 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { CargoType } from '@/config/bypass-corridors';
-import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetMineralProductionResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetMineralProductionResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, GetCountryVulnerabilitiesResponse, GetChokepointDependenciesResponse, ListVulnerabilityRankingsResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock, CommodityVulnerability, ChokepointDependency, VulnerabilityInput } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { createHydrationHandoff } from '@/services/hydration-handoff';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import {
   type ChinaCorridorControlTowerResponse,
@@ -40,6 +41,9 @@ export type {
   GetSectorDependencyResponse,
   GetRouteExplorerLaneResponse,
   GetRouteImpactResponse,
+  GetCountryVulnerabilitiesResponse,
+  GetChokepointDependenciesResponse,
+  ListVulnerabilityRankingsResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
@@ -51,6 +55,9 @@ export type {
   CountryProduct,
   ProductExporter,
   MultiSectorCostShock,
+  CommodityVulnerability,
+  ChokepointDependency,
+  VulnerabilityInput,
 };
 
 // Legacy aliases consumed by CountryBriefPanel + CountryDeepDivePanel — match the
@@ -58,6 +65,13 @@ export type {
 export type CountryProductsResponse = GetCountryProductsResponse;
 export type MultiSectorShockResponse = GetMultiSectorCostShockResponse;
 export type MultiSectorShock = MultiSectorCostShock;
+
+const VULNERABILITY_REQUEST_TIMEOUT_MS = 10_000;
+
+function vulnerabilityRequestSignal(callerSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = createTimeoutSignal(VULNERABILITY_REQUEST_TIMEOUT_MS);
+  return callerSignal ? combineAbortSignals([callerSignal, timeoutSignal]) : timeoutSignal;
+}
 
 // premiumFetch for the whole client: 8 of 13 methods target paths in
 // PREMIUM_RPC_PATHS. The gateway runs validateApiKey with forceKey=true on
@@ -474,6 +488,80 @@ export async function fetchCountryProducts(iso2: string): Promise<GetCountryProd
     return await client.getCountryProducts({ iso2 });
   } catch {
     return { ...emptyProducts, iso2 };
+  }
+}
+
+export async function fetchCountryVulnerabilities(
+  iso2: string,
+  options?: { signal?: AbortSignal },
+): Promise<GetCountryVulnerabilitiesResponse> {
+  const empty: GetCountryVulnerabilitiesResponse = {
+    iso2,
+    country: '',
+    vulnerabilities: [],
+    generatedAt: '',
+    methodologyVersion: '',
+    upstreamUnavailable: true,
+  };
+  try {
+    return await client.getCountryVulnerabilities(
+      { iso2 },
+      { signal: vulnerabilityRequestSignal(options?.signal) },
+    );
+  } catch {
+    return empty;
+  }
+}
+
+export async function fetchChokepointDependencies(
+  chokepointId: string,
+  pageSize = 25,
+  options?: { signal?: AbortSignal },
+): Promise<GetChokepointDependenciesResponse> {
+  const empty: GetChokepointDependenciesResponse = {
+    chokepointId,
+    chokepoint: '',
+    dependencies: [],
+    generatedAt: '',
+    methodologyVersion: '',
+    upstreamUnavailable: true,
+  };
+  try {
+    return await client.getChokepointDependencies(
+      { chokepointId, pageSize },
+      { signal: vulnerabilityRequestSignal(options?.signal) },
+    );
+  } catch {
+    return empty;
+  }
+}
+
+export interface VulnerabilityRankingFilters {
+  commodityId?: string;
+  band?: string;
+  state?: string;
+  pageSize?: number;
+}
+
+export async function fetchVulnerabilityRankings(
+  filters: VulnerabilityRankingFilters = {},
+  options?: { signal?: AbortSignal },
+): Promise<ListVulnerabilityRankingsResponse> {
+  const empty: ListVulnerabilityRankingsResponse = {
+    vulnerabilities: [],
+    generatedAt: '',
+    methodologyVersion: '',
+    upstreamUnavailable: true,
+  };
+  try {
+    return await client.listVulnerabilityRankings({
+      commodityId: filters.commodityId || '',
+      band: filters.band || '',
+      state: filters.state || '',
+      pageSize: filters.pageSize || 25,
+    }, { signal: vulnerabilityRequestSignal(options?.signal) });
+  } catch {
+    return empty;
   }
 }
 

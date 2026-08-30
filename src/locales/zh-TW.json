@@ -2200,6 +2200,25 @@
       },
       "cissStale": "歐洲中央銀行尚未釋出新數值 — 此讀數可能已過期。"
     },
+    "supplyVulnerability": {
+      "title": "大宗商品脆弱性",
+      "help": "基於供應商集中度、海運通道和可用戰略緩衝評估各國分商品風險敞口。",
+      "loading": "正在載入大宗商品脆弱性…",
+      "unavailable": "大宗商品脆弱性資料不可用",
+      "noCoverage": "該國家的證據不足",
+      "unknown": "未知",
+      "concentration": "集中度",
+      "transit": "運輸通道",
+      "buffer": "戰略緩衝",
+      "sources": "來源",
+      "methodology": "方法論",
+      "hormuzTitle": "大宗商品依賴",
+      "dependentCountries": "依賴國家",
+      "dependentCommodities": "依賴商品",
+      "stateOk": "當前",
+      "stateStale": "輸入已過期",
+      "stateInsufficient": "資料不足"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>霍爾木茲貿易追蹤器</strong> 透過全球最關鍵的石油咽喉要道霍爾木茲海峽的AIS船舶即時追蹤。監控油輪數量、中斷事件和每週流量變化。全球約20%的石油供應每天經此透過。",
       "title": "霍爾木茲貿易追蹤",

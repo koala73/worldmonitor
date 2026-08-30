@@ -2433,6 +2433,25 @@
       }
     },
     "energyCrisis": {},
+    "supplyVulnerability": {
+      "title": "Ranjivost na robu",
+      "help": "Izloženost države po robi na temelju koncentracije dobavljača, pomorskog tranzita i dostupnih strateških zaliha.",
+      "loading": "Učitavanje ranjivosti na robu…",
+      "unavailable": "Podaci o ranjivosti na robu nisu dostupni",
+      "noCoverage": "Nedovoljno dokaza za ovu državu",
+      "unknown": "Nepoznato",
+      "concentration": "Koncentracija",
+      "transit": "Tranzit",
+      "buffer": "Zaliha",
+      "sources": "Izvori",
+      "methodology": "Metodologija",
+      "hormuzTitle": "Ovisnosti o robi",
+      "dependentCountries": "Ovisne države",
+      "dependentCommodities": "Ovisna roba",
+      "stateOk": "Trenutačno",
+      "stateStale": "Zastarjeli ulaz",
+      "stateInsufficient": "Nedovoljno podataka"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Praćenje živih AIS plovila kroz Hormuzanski tjesnac, svjetski najkritičnije prometno usko grlo za naftu. Prati broj tankera, događaje prekida i tjedne promjene protoka. Približno 20% svjetske opskrbe naftom prolazi ovdje dnevno.",
       "title": "Hormuz Trade Tracker",

@@ -393,6 +393,10 @@ function transformEngagement(bundle) {
       ...bundle.schemaStats,
       engaged: engaged(bundle.schemaStats?.replacedRefs),
     },
+    sharedSchemaSubtrees: {
+      ...bundle.schemaSubtreeStats,
+      engaged: engaged(bundle.schemaSubtreeStats?.replacedRefs),
+    },
     chinaDateSchemas: {
       ...bundle.chinaDateStats,
       engaged: engaged(bundle.chinaDateStats?.replacedRefs),
@@ -417,6 +421,7 @@ function transformEngagement(bundle) {
  * Turn a built bundle into the capacity report.
  *
  * @param {{ spec: object, bytes: number, stats: object, schemaStats: object,
+ *   schemaSubtreeStats: object,
  *   chinaDateStats: object, int64Stats: object, headerStats: object,
  *   paramStats: object, unreachableStats: object }} bundle
  */

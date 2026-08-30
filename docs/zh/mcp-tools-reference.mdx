@@ -1394,6 +1394,41 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_supply_vulnerabilities`
+
+返回一个国家的已审核大宗商品脆弱性组合。每行包含绝对评分和等级（证据足够时）、组成、覆盖状态、过期原因、来源和 `methodologyVersion`。缺失评分表示未知，不是零。
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `country_code` | string | 必填 ISO 3166-1 alpha-2 国家代码，例如 `AE`、`JP` 或 `DE`。不区分大小写。 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-country-vulnerabilities`
+- **访问：** `free-account`
+- **类型：** 从 `supply-chain:vulnerability:v1` 读取 Redis 投影。
+- **方法：** [大宗商品脆弱性方法论](/zh/methodology/supply-vulnerability)。
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_supply_vulnerabilities","arguments":{"country_code":"AE"}}}
+```
+
+### `get_chokepoint_dependencies`
+
+返回一个海运咽喉要道中评分最高的国家和商品依赖。反向索引与国家索引在同一次计算中生成，因此评分、状态、运输份额和方法版本可对账。
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `chokepoint_id` | string | 必填规范 id，例如 `hormuz_strait` 或 `malacca_strait`。 |
+| `page_size` | integer | 可选结果上限，1–100，默认 25。 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-chokepoint-dependencies`
+- **访问：** `free-account`
+- **类型：** 从 `supply-chain:chokepoint-dependencies:v1` 读取 Redis 投影。
+- **方法：** [大宗商品脆弱性方法论](/zh/methodology/supply-vulnerability)。
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_chokepoint_dependencies","arguments":{"chokepoint_id":"hormuz_strait","page_size":25}}}
+```
+
 ### `get_positive_events`
 
 积极的地缘政治事件：外交协议、人道主义援助、发展里程碑和全球和平倡议。

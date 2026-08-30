@@ -60,7 +60,7 @@ import { toFlagEmoji } from '@/utils/country-flag';
 import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
-import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock } from '@/services/supply-chain';
+import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock, fetchCountryVulnerabilities } from '@/services/supply-chain';
 import { getImfCountryBundle, buildImfEconomicIndicators, type ImfCountryBundle } from '@/services/imf-country-data';
 import { getChinaDecisionSignalsData } from '@/services/china-decision-signals';
 import { EconomicServiceClient, IntelligenceServiceClient, MarketServiceClient, MilitaryServiceClient, TradeServiceClient } from '@/services/generated-rpc-clients';
@@ -768,6 +768,7 @@ export class CountryIntelManager implements AppModule {
       if (hasPremiumAccess(getAuthState())) {
         this.fetchProSections(code);
       }
+      this.fetchCommodityVulnerability(code);
 
       this.mountCountryTimeline(code, country);
 
@@ -947,6 +948,19 @@ export class CountryIntelManager implements AppModule {
     if (!page?.isVisible()) return false;
     const activeCode = page.getCode();
     return !!activeCode && activeCode !== '__loading__' && activeCode !== '__error__';
+  }
+
+  private fetchCommodityVulnerability(code: string): void {
+    const page = this.ctx.countryBriefPage;
+    const signal = page?.signal;
+    fetchCountryVulnerabilities(code, { signal }).then(resp => {
+      if (signal?.aborted || this.ctx.countryBriefPage !== page || page?.getCode() !== code) return;
+      page.updateCommodityVulnerabilities?.(resp);
+    }).catch(() => {
+      if (!signal?.aborted && this.ctx.countryBriefPage === page && page?.getCode() === code) {
+        page.updateCommodityVulnerabilities?.(null);
+      }
+    });
   }
 
   private fetchProSections(code: string): void {

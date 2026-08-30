@@ -4,6 +4,10 @@
     "1.17.0": {
       "tools": 72,
       "manifestSha256": "28c51a2caeb612865d404056e4936e048955ae9d63673b4e9294469c459aac87"
+    },
+    "1.18.0": {
+      "tools": 74,
+      "manifestSha256": "bb153560ee54f85f9b00bccd5474f04b9abc256e31049a1040c176f505e8fcef"
     }
   }
 }

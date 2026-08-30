@@ -2,7 +2,7 @@
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **757 active source hosts** representing **748 active providers** (**328 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **758 active source hosts** representing **748 active providers** (**329 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -111,6 +111,7 @@ This generated inventory covers **757 active source hosts** representing **748 a
 | Brave Search API (api.search.brave.com) | structured — scripts/ais-relay.cjs, server/worldmonitor/market/v1/stock-news-search.ts |
 | breakingdefense.com (breakingdefense.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | British Geological Survey World Mineral Statistics (ogcapi.bgs.ac.uk) | structured — scripts/seed-mineral-production.mjs |
+| British Geological Survey World Mineral Statistics (www.bgs.ac.uk) | structured — scripts/seed-supply-vulnerability.mjs |
 | brookings.edu (brookings.edu) | feed — src/config/feeds.ts |
 | budgetlab.yale.edu (budgetlab.yale.edu) | structured — scripts/_trade-parse-utils.mjs |
 | Business Insider (www.businessinsider.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
@@ -151,7 +152,7 @@ This generated inventory covers **757 active source hosts** representing **748 a
 | cointelegraph.com (cointelegraph.com) | feed+structured — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/finance.ts |
 | collisionconf.com (collisionconf.com) | structured — scripts/ais-relay.cjs, scripts/seed-research.mjs, server/worldmonitor/research/v1/list-tech-events.ts |
 | commodity.worldmonitor.app (commodity.worldmonitor.app) | structured — src/app/panel-layout.ts, src/config/variant-meta.ts |
-| comtradeapi.un.org (comtradeapi.un.org) | structured — scripts/seed-comtrade-bilateral-hs4.mjs, scripts/seed-recovery-import-hhi.mjs, scripts/seed-recovery-reexport-share.mjs, scripts/seed-trade-flows.mjs, +1 more |
+| comtradeapi.un.org (comtradeapi.un.org) | structured — scripts/seed-comtrade-bilateral-hs4.mjs, scripts/seed-recovery-import-hhi.mjs, scripts/seed-recovery-reexport-share.mjs, scripts/seed-supply-vulnerability.mjs, +2 more |
 | confluence.status.atlassian.com (confluence.status.atlassian.com) | operational-status — server/worldmonitor/infrastructure/v1/list-service-statuses.ts |
 | conservationoptimism.org (conservationoptimism.org) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |
 | contxto.com (contxto.com) | structured — src/config/variants/tech.ts |
@@ -628,7 +629,7 @@ This generated inventory covers **757 active source hosts** representing **748 a
 | urlhaus-api.abuse.ch (urlhaus-api.abuse.ch) | structured — scripts/ais-relay.cjs, scripts/seed-cyber-threats.mjs, server/worldmonitor/cyber/v1/_shared.ts |
 | USDA FAS PSD (api.fas.usda.gov) | structured — scripts/seed-food-stocks.mjs |
 | USDA FAS PSD (apps.fas.usda.gov) | Excluded / candidate — No current fetch observed |
-| USGS ScienceBase (Mineral Commodity Summaries) (www.sciencebase.gov) | structured — scripts/seed-mineral-production.mjs |
+| USGS ScienceBase (Mineral Commodity Summaries) (www.sciencebase.gov) | structured — scripts/seed-mineral-production.mjs, scripts/seed-supply-vulnerability.mjs |
 | USPTO Open Data Portal (api.uspto.gov) | structured — scripts/_defense-patents-source.mjs |
 | USPTO Open Data Portal (data.uspto.gov) | structured — scripts/_defense-patents-source.mjs |
 | vancouversun.com (vancouversun.com) | feed — server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts |

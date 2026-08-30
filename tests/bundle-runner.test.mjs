@@ -176,6 +176,70 @@ function runBundleWith(sections, opts = {}, env = {}) {
   });
 }
 
+function runBundleWithTerminalHook(sections, hookSource, opts = {}) {
+  const runPath = join(FIXTURES_DIR, `_bundle-runner-test-hook-${randomUUID()}.mjs`);
+  const fixtureSections = sections.map((section) => ({
+    ...section,
+    script: fixtureScript(section.script),
+  }));
+  writeFileSync(
+    runPath,
+    `import { runBundle } from '../_bundle-runner.mjs';\n`
+    + `await runBundle('test-hook', ${JSON.stringify(fixtureSections)}, { ...${JSON.stringify(opts)}, onTerminalComplete: ${hookSource} });\n`,
+  );
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        UPSTASH_REDIS_REST_URL: '',
+        UPSTASH_REDIS_REST_TOKEN: '',
+      },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('close', (code) => {
+      try { unlinkSync(runPath); } catch {}
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+test('terminal completion hook runs before a successful bundle exits', async () => {
+  const result = await runBundleWithTerminalHook([], "async () => { console.log('terminal-hook-called'); }");
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /terminal-hook-called/);
+});
+
+test('terminal completion hook failure turns a successful bundle into a loud failure', async () => {
+  const result = await runBundleWithTerminalHook([], "async () => { throw new Error('ack failed'); }");
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /terminal completion hook failed: ack failed/);
+});
+
+test('an invalid terminal completion hook fails before bundle work starts', async () => {
+  const result = await runBundleWithTerminalHook([], '42');
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /onTerminalComplete must be a function/);
+  assert.doesNotMatch(result.stdout, /\[Bundle:test-hook\] Starting/);
+});
+
+test('a completed non-zero bundle acknowledges its turn without hiding the failure', async () => {
+  const cleanup = writeFixture('_bundle-fixture-terminal-fail.mjs', `process.exit(2);\n`);
+  try {
+    const result = await runBundleWithTerminalHook(
+      [{ label: 'FAIL', script: '_bundle-fixture-terminal-fail.mjs', intervalMs: 1, timeoutMs: 5000 }],
+      "async () => { console.log('terminal-hook-called'); }",
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stdout, /terminal-hook-called/);
+  } finally {
+    cleanup();
+  }
+});
+
 function runBundleWithVirtualClock(sections, opts = {}, clockOffsetsMs = [], env = {}) {
   const runPath = join(FIXTURES_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
   const fixtureSections = sections.map((section) => ({

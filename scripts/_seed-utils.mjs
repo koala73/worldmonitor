@@ -2094,6 +2094,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     validateFn,
     ttlSeconds,
     lockTtlMs = 120_000,
+    lockAcquireRetries = 2,
     extraKeys,
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
@@ -2249,6 +2250,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // Acquire lock
   const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, lockTtlMs, {
     label: `${domain}:${resource}`,
+    maxRetries: lockAcquireRetries,
   });
   if (lockResult.skipped) {
     process.exit(0);
@@ -2485,7 +2487,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       // the prior cohort untouched. If staging or the final switch fails,
       // extend that untouched last-good cohort before surfacing the failure.
       // Validation skips are handled below and retain their stricter policy.
-      if (publishAtomically) {
+      // A thrown `beforePublish` is the same shape: it runs ahead of every
+      // canonical/extra write, so the prior cohort is likewise untouched and the
+      // deep coverage rejections that live there must not cost last-good TTLs.
+      if (publishAtomically || beforePublish) {
         const preserved = await preserveExistingKeys().catch(() => false);
         if (!preserved) {
           console.error(`  FAILURE: atomic publish failed and last-good preservation was incomplete`);

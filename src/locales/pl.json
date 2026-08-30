@@ -2227,6 +2227,25 @@
       },
       "cissStale": "EBC nie opublikował nowszej wartości — ta wartość może być nieaktualna."
     },
+    "supplyVulnerability": {
+      "title": "Podatność surowcowa",
+      "help": "Ekspozycja kraju według surowca na podstawie koncentracji dostawców, tranzytu morskiego i dostępnych rezerw strategicznych.",
+      "loading": "Ładowanie podatności surowcowej…",
+      "unavailable": "Dane o podatności surowcowej są niedostępne",
+      "noCoverage": "Niewystarczające dowody dla tego kraju",
+      "unknown": "Nieznane",
+      "concentration": "Koncentracja",
+      "transit": "Tranzyt",
+      "buffer": "Rezerwa",
+      "sources": "Źródła",
+      "methodology": "Metodyka",
+      "hormuzTitle": "Zależności surowcowe",
+      "dependentCountries": "Kraje zależne",
+      "dependentCommodities": "Surowce zależne",
+      "stateOk": "Aktualne",
+      "stateStale": "Nieaktualne dane wejściowe",
+      "stateInsufficient": "Niewystarczające dane"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Tracker handlu w Hormuzie</strong> Śledzenie statków AIS w czasie rzeczywistym przez Cieśninę Ormuz, najważniejszy punkt zagrożenia naftowego na świecie. Monitoruje liczbę tankowców, zdarzenia zakłóceń i tygodniowe zmiany przepływów. Około 20% światowych dostaw ropy przechodzi tędy codziennie.",
       "title": "Tracker Handlu przez Hormuz",

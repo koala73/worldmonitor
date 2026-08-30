@@ -39,16 +39,26 @@ function findVariable(sf, name) {
 }
 
 function findFunctionReturn(sf, name) {
+  const definition = findFunctionDefinition(sf, name);
+  if (!definition) return null;
+  if (ts.isFunctionDeclaration(definition)) {
+    return definition.body?.statements.find(ts.isReturnStatement)?.expression ?? null;
+  }
+  if (!ts.isBlock(definition.body)) return definition.body;
+  return definition.body.statements.find(ts.isReturnStatement)?.expression ?? null;
+}
+
+function findFunctionDefinition(sf, name) {
   for (const statement of sf.statements) {
     if (ts.isFunctionDeclaration(statement) && statement.name?.text === name && statement.body) {
-      return statement.body.statements.find(ts.isReturnStatement)?.expression ?? null;
+      return statement;
     }
   }
   const declaration = findVariable(sf, name);
   const initializer = declaration?.initializer && unwrapExpression(declaration.initializer);
-  if (!initializer || (!ts.isArrowFunction(initializer) && !ts.isFunctionExpression(initializer))) return null;
-  if (!ts.isBlock(initializer.body)) return initializer.body;
-  return initializer.body.statements.find(ts.isReturnStatement)?.expression ?? null;
+  return initializer && (ts.isArrowFunction(initializer) || ts.isFunctionExpression(initializer))
+    ? initializer
+    : null;
 }
 
 function findImport(sf, localName) {
@@ -114,6 +124,7 @@ function unwrapExpression(node) {
 }
 
 function resolveIdentifierValue(name, context) {
+  if (context.bindings?.has(name)) return context.bindings.get(name);
   const seenKey = `${context.filePath}::${name}`;
   if (context.seen.has(seenKey)) {
     throw new Error(`${context.filePath}: cyclic static reference ${name}`);
@@ -259,6 +270,37 @@ function resolveValue(rawNode, context) {
   if (ts.isCallExpression(node) && ts.isIdentifier(node.expression)) {
     const returned = findFunctionReturn(context.sf, node.expression.text);
     if (returned) return resolveValue(returned, context);
+
+    // Bundle manifests can be ordered by a small imported helper while still
+    // remaining a closed, statically auditable member set. Follow that helper's
+    // return expression just as we already follow imported manifest constants.
+    // Runtime-only arguments (for example a durable scheduler turn) resolve to
+    // UNKNOWN, but a conditional whose two branches contain the same members is
+    // intentionally collapsed by the conditional arm above.
+    const imported = findImport(context.sf, node.expression.text);
+    const targetPath = imported && modulePath(context.filePath, imported.specifier);
+    if (targetPath && imported.importedName !== 'default') {
+      const targetSf = sourceFile(targetPath, context.readSource);
+      const definition = findFunctionDefinition(targetSf, imported.importedName);
+      const importedReturn = definition && findFunctionReturn(targetSf, imported.importedName);
+      if (importedReturn) {
+        const bindings = new Map();
+        definition.parameters.forEach((parameter, index) => {
+          if (!ts.isIdentifier(parameter.name)) return;
+          const argument = node.arguments[index];
+          bindings.set(
+            parameter.name.text,
+            argument ? resolveValue(argument, context) : UNKNOWN,
+          );
+        });
+        return resolveValue(importedReturn, {
+          ...context,
+          filePath: targetPath,
+          sf: targetSf,
+          bindings,
+        });
+      }
+    }
   }
   return UNKNOWN;
 }

@@ -2218,6 +2218,25 @@
       },
       "cissStale": "BCE nu a publicat o valoare mai nouă — această lectură poate fi depășită."
     },
+    "supplyVulnerability": {
+      "title": "Vulnerabilitate la materii prime",
+      "help": "Expunerea țării pe materie primă, bazată pe concentrarea furnizorilor, tranzitul maritim și rezervele strategice disponibile.",
+      "loading": "Se încarcă vulnerabilitatea la materii prime…",
+      "unavailable": "Datele privind vulnerabilitatea la materii prime nu sunt disponibile",
+      "noCoverage": "Dovezi insuficiente pentru această țară",
+      "unknown": "Necunoscut",
+      "concentration": "Concentrare",
+      "transit": "Tranzit",
+      "buffer": "Rezervă",
+      "sources": "Surse",
+      "methodology": "Metodologie",
+      "hormuzTitle": "Dependențe de materii prime",
+      "dependentCountries": "Țări dependente",
+      "dependentCommodities": "Materii prime dependente",
+      "stateOk": "Actual",
+      "stateStale": "Date de intrare învechite",
+      "stateInsufficient": "Date insuficiente"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Tracker comercial Hormuz</strong> Urmărire AIS a navelor în timp real prin Strâmtoarea Hormuz, cel mai critic punct de blocaj petrolier din lume. Monitorizează numărul de tancuri petroliere, evenimente de perturbare și schimbări săptămânale ale fluxurilor. Aproximativ 20% din aprovizionarea globală cu petrol tranzitează zilnic aici.",
       "title": "Urmăritor Comerț Hormuz",
