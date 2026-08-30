@@ -46,7 +46,7 @@ const JMESPATH_ERROR_SCHEMA_NAME = 'JmespathProjectionError';
 const JMESPATH_ERROR_SCHEMA_REF = `#/components/schemas/${JMESPATH_ERROR_SCHEMA_NAME}`;
 // A projection could detach a raw resilience value from the attribution and
 // retrieval fields that make its redistribution permissible.
-const PROJECTION_DISABLED_OPERATION_IDS = new Set([
+export const PROJECTION_DISABLED_OPERATION_IDS = new Set([
   'GetResilienceIndicators',
   'GetCountryVulnerabilities',
   'GetChokepointDependencies',

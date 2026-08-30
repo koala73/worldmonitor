@@ -360,6 +360,7 @@
       "scripts/package-lock.json",
       "scripts/package.json",
       "scripts/seed-bundle-static-ref-heavy.mjs",
+      "scripts/seed-chokepoint-flows.mjs",
       "scripts/seed-defense-industrial-suppliers.mjs",
       "scripts/seed-military-bases.mjs",
       "scripts/seed-mineral-production.mjs",
