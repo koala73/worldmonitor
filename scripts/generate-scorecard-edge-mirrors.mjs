@@ -5,20 +5,21 @@ import { dirname, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const SOURCE_DIR = resolve(ROOT, 'scripts/scorecard/v1');
-const EDGE_DIR = resolve(ROOT, 'server/worldmonitor/scorecard/v1');
-export const SCORECARD_EDGE_MIRRORS = [
-  '_input-registry',
-  '_methodology',
-  '_score-country',
-  '_snapshot',
-  '_source-adapters',
-  '_source-registry',
-  '_types',
+const MIRRORS = [
+  ['_input-registry', 'scripts/scorecard/v1/_input-registry.mts', 'server/worldmonitor/scorecard/v1/_input-registry.ts'],
+  ['_methodology', 'scripts/scorecard/v1/_methodology.mts', 'server/worldmonitor/scorecard/v1/_methodology.ts'],
+  ['_score-country', 'scripts/scorecard/v1/_score-country.mts', 'server/worldmonitor/scorecard/v1/_score-country.ts'],
+  ['_snapshot', 'scripts/scorecard/v1/_snapshot.mts', 'server/worldmonitor/scorecard/v1/_snapshot.ts'],
+  ['_source-adapters', 'scripts/scorecard/v1/_source-adapters.mts', 'server/worldmonitor/scorecard/v1/_source-adapters.ts'],
+  ['_source-registry', 'scripts/scorecard/v1/_source-registry.mts', 'server/worldmonitor/scorecard/v1/_source-registry.ts'],
+  ['_types', 'scripts/scorecard/v1/_types.mts', 'server/worldmonitor/scorecard/v1/_types.ts'],
 ];
+export const SCORECARD_EDGE_MIRRORS = MIRRORS.map(([name]) => name);
 
 export function renderScorecardEdgeMirror(name, source) {
-  const generatedFrom = relative(ROOT, resolve(SOURCE_DIR, `${name}.mts`));
+  const mirror = MIRRORS.find(([candidate]) => candidate === name);
+  if (!mirror) throw new Error(`Unknown scorecard Edge mirror: ${name}`);
+  const generatedFrom = mirror[1];
   return [
     `// Generated from ${generatedFrom} by scripts/generate-scorecard-edge-mirrors.mjs. Do not edit.`,
     source.replace(/(['"]\.\/[^'"]+)\.mts(['"])/g, '$1$2'),
@@ -27,9 +28,9 @@ export function renderScorecardEdgeMirror(name, source) {
 
 export function generateScorecardEdgeMirrors({ check = false } = {}) {
   const stale = [];
-  for (const name of SCORECARD_EDGE_MIRRORS) {
-    const source = readFileSync(resolve(SOURCE_DIR, `${name}.mts`), 'utf8');
-    const outputPath = resolve(EDGE_DIR, `${name}.ts`);
+  for (const [name, sourcePath, edgePath] of MIRRORS) {
+    const source = readFileSync(resolve(ROOT, sourcePath), 'utf8');
+    const outputPath = resolve(ROOT, edgePath);
     const expected = renderScorecardEdgeMirror(name, source);
     let actual = null;
     try {
