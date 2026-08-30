@@ -144,6 +144,40 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
+    listMissionPresets: async () => ({
+      ok: true,
+      variant: 'full',
+      activePresetId: null,
+      presets: [],
+      count: 0,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: false,
+      monitor: 'full',
+      message: 'Unused mission preset binding.',
+    }),
+    openMissionPicker: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'mission_picker',
+      overlay: 'open',
+      message: 'Opened mission presets.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
 
     getPanelLayout: async () => ({
       regions: {
@@ -316,7 +350,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 27, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 30, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(
@@ -403,6 +437,12 @@ describe('WebMCP analytics privacy policy', () => {
         status: 'denied',
         reason: 'search_state_changed',
       }),
+      applyMissionPreset: async () => ({
+        ok: false,
+        status: 'denied',
+        reason: 'preset_not_entitled',
+        message: 'That mission preset requires a higher plan.',
+      }),
       searchDashboard: async () => { throw new Error('private internal failure'); },
     }), (event, data) => events.push({ event, data }));
 
@@ -423,6 +463,8 @@ describe('WebMCP analytics privacy policy', () => {
       .execute({ resultKey: `sr_${'b'.repeat(32)}` });
     await tools.find(({ name }) => name === 'open_search_result')
       .execute({ resultKey: `sr_${'c'.repeat(32)}`, extra: true });
+    await tools.find(({ name }) => name === 'apply_mission_preset')
+      .execute({ presetId: 'supply-chain-risk' });
     await assert.rejects(
       tools.find(({ name }) => name === 'search_dashboard').execute({ query: 'safe' }),
     );
@@ -436,6 +478,7 @@ describe('WebMCP analytics privacy policy', () => {
       ['denied', 'unavailable'],
       ['denied', 'stale'],
       ['denied', 'validation'],
+      ['denied', 'entitlement'],
       ['failure', 'internal'],
     ]);
     assert.deepEqual(

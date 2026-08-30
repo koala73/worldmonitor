@@ -19,6 +19,7 @@ const openskyStatuses = (process.env.RELAY_TEST_OPENSKY_STATUS_SEQUENCE || '')
   .filter((value) => Number.isFinite(value) && value > 0);
 const openskyRetryAfterSeconds = Number(process.env.RELAY_TEST_OPENSKY_RETRY_AFTER_SECONDS || 0);
 const openskyRemainingCredits = Number(process.env.RELAY_TEST_OPENSKY_REMAINING_CREDITS || 0);
+const openskyResponseDelayMs = Number(process.env.RELAY_TEST_OPENSKY_RESPONSE_DELAY_MS || 0);
 const openskyMalformedEncoding = process.env.RELAY_TEST_OPENSKY_MALFORMED_ENCODING === '1';
 const wingbitsEchoAreas = process.env.RELAY_TEST_WINGBITS_ECHO_AREAS === '1';
 const wingbitsGhostRows = process.env.RELAY_TEST_WINGBITS_GHOST_ROWS === '1';
@@ -197,6 +198,7 @@ https.get = function patchedGet(...args) {
       statusCode: status,
       body: JSON.stringify({ states: status === 200 ? [OPENSKY_MIL_STATE] : [], time: Date.now() }),
       headers,
+      delayMs: openskyResponseDelayMs,
     });
   }
   if (parsed.hostname === 'feeds.bbci.co.uk') {

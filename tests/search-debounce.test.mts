@@ -37,6 +37,14 @@ test('SearchModal keystroke input is debounced, not a direct handleSearch (R4)',
   );
 });
 
+test('SearchModal applyQuery seeds the open session without a keystroke debounce', () => {
+  assert.match(
+    searchModalSrc,
+    /public applyQuery\(term: string\): void \{\s*this\.applyProgrammaticQuery\(term\);\s*\}/,
+    'SearchAction / ?q= must reuse the programmatic query seam',
+  );
+});
+
 test('SearchModal exposes and wires a narrow human-interaction authority seam', () => {
   assert.match(
     searchModalSrc,

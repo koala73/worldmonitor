@@ -416,16 +416,25 @@ function findCallSite(functionBody: string, needle: string, occurrence: 'first' 
 function extractWeightedBlendEntries(scorerName: string, occurrence: 'first' | 'last' = 'first'): string[] {
   const functionBody = extractFunctionBody(scorerName);
   let callStart = findCallSite(functionBody, 'return weightedBlend(', occurrence);
+  let traced = false;
   if (callStart === -1) {
     // Scorers that post-process the blend (e.g. `scoreFinancialSystemExposure`
     // applies its comprehensive-embargo cap after blending) assign the result
     // instead of returning it directly.
     callStart = findCallSite(functionBody, 'weightedBlend([', occurrence);
   }
+  if (callStart === -1) {
+    // Traced scorers may have an early missing-envelope fallback with fewer
+    // rows. The final traced blend is the active observed-data formula that
+    // the methodology table documents.
+    callStart = findCallSite(functionBody, 'tracedBlend(', 'last');
+    traced = callStart !== -1;
+  }
   assert.notEqual(callStart, -1, `${scorerName} does not call weightedBlend in the extractable source shape.`);
   const openParen = functionBody.indexOf('(', callStart);
   const closeParen = findMatchingDelimiter(functionBody, openParen, '(', ')');
-  const callArg = functionBody.slice(openParen + 1, closeParen).trim();
+  const callArgs = functionBody.slice(openParen + 1, closeParen).trim();
+  const callArg = traced ? splitTopLevel(callArgs)[1]?.trim() ?? '' : callArgs;
   assert.ok(callArg.startsWith('['), `${scorerName} weightedBlend argument must be an array literal.`);
   const closeBracket = findMatchingDelimiter(callArg, 0, '[', ']');
   return splitTopLevel(stripLineComments(callArg.slice(1, closeBracket)));
@@ -542,10 +551,31 @@ function splitTopLevel(source: string): string[] {
 }
 
 function stripLineComments(source: string): string {
-  return source
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\/\/.*$/, ''))
-    .join('\n');
+  let result = '';
+  let quote: '"' | "'" | '`' | null = null;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i]!;
+    const prev = i > 0 ? source[i - 1] : '';
+    if (quote) {
+      result += ch;
+      if (ch === quote && prev !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      result += ch;
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '/') {
+      const newline = source.indexOf('\n', i + 2);
+      if (newline === -1) break;
+      result += '\n';
+      i = newline;
+      continue;
+    }
+    result += ch;
+  }
+  return result;
 }
 
 function findMatchingDelimiter(source: string, openIndex: number, open: string, close: string): number {

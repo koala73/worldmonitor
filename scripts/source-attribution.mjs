@@ -181,6 +181,12 @@ const PROVIDER_OVERRIDES = {
   'api.x.com': { provider: 'X API' },
   'atbackend.sipri.org': { provider: 'SIPRI Arms Transfers Database' },
   'opendata.adsb.fi': { provider: 'adsb.fi Open Data' },
+  'query.wikidata.org': {
+    provider: 'Wikidata',
+    license: 'Creative Commons CC0 1.0 Universal',
+    attribution: 'Wikidata structured data is CC0. Credit Wikidata and link each reused entity identifier as a best practice.',
+    status: 'reviewed',
+  },
   'population.un.org': {
     provider: 'United Nations Population Division',
     license: 'UN World Population Prospects 2024 is licensed under CC BY 3.0 IGO.',
@@ -847,13 +853,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '824486c88b8da9a37f53719e4b8f870985b7176406a4b65b7fbbc1d19909d7a2',
-  reason: 'Group api.imd.gov.in, rsmcnewdelhi.imd.gov.in, and mausam.imd.gov.in as India Meteorological Department so cyclone and marine product attribution is one provider identity.',
+  sha256: 'dd94e752a93d4c6b07ccd896dbcd3eb1a0cb37283862c7f58e43f44b70d473b8',
+  reason: 'Register Wikidata as the reviewed CC0 identity source for canonical country names and entity identifiers while preserving the existing provider groups.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
+  reviewReference: 'Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
@@ -937,6 +943,7 @@ const EXCLUDED_HOSTS = new Set([
   // Release links, documentation links, and repository links are control/UI
   // surfaces; GitHub API and raw-content hosts remain tracked separately.
   'github.com',
+  'registry.modelcontextprotocol.io',
   // Provider landing-page link in MapPopup; the ingested Wingbits endpoints
   // are tracked as customer-api.wingbits.com and ecs-api.wingbits.com.
   'wingbits.com',

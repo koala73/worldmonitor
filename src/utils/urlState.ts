@@ -59,6 +59,19 @@ export interface ParsedMapUrlState {
 const clamp = (value: number, min: number, max: number): number =>
   Math.min(max, Math.max(min, value));
 
+/** SearchAction and dashboard deep links share `?q=`. Cap keeps a pasted URL bounded. */
+export const DASHBOARD_SEARCH_QUERY_MAX_CHARS = 200;
+
+export function readDashboardSearchQuery(search: string): string | null {
+  const raw = new URLSearchParams(search).get('q');
+  if (raw == null) return null;
+  const query = raw.trim();
+  if (!query) return null;
+  return query.length > DASHBOARD_SEARCH_QUERY_MAX_CHARS
+    ? query.slice(0, DASHBOARD_SEARCH_QUERY_MAX_CHARS)
+    : query;
+}
+
 const parseEnumParam = <T extends string>(
   params: URLSearchParams,
   key: string,

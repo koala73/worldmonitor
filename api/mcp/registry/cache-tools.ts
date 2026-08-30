@@ -43,7 +43,26 @@ import {
   selectDatasets,
   summarizeData,
 } from '../filters';
+import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import type { ToolDef } from '../types';
+
+/**
+ * Country codes for a `countries` filter, resolving names and alpha-3 the way
+ * the country-scoped tools do.
+ *
+ * `pickMapKeys` FAILS OPEN — a filter that matches nothing returns the entire
+ * map (api/mcp/filters.ts:100), by design, so naming keys that do not exist is
+ * not silently an empty result. That makes an unresolved designator expensive
+ * here: the `country-briefing` prompt fans one argument out to three tools, and
+ * a name reaching this one un-normalized would splice EVERY country's macro
+ * indicators into a single-country brief.
+ *
+ * Unresolvable entries pass through untouched, so this is never worse than the
+ * previous behaviour — it only adds the designators the sibling tools accept.
+ */
+function resolveCountryFilter(value: unknown): string[] {
+  return argStrList(value).map((code) => resolveCountryCode(code)?.toLowerCase() ?? code);
+}
 import { utf8ByteLength } from '../utils';
 import {
   CHOKEPOINT_MONITOR_UI_URI,
@@ -1486,7 +1505,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
         return data;
@@ -1536,7 +1555,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'house-prices', 'countries', codes);
         return data;
@@ -1575,7 +1594,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'gov-debt-q', 'countries', codes);
         return data;
@@ -1614,7 +1633,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'industrial-production', 'countries', codes);
         return data;
@@ -1789,7 +1808,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (codes.length > 0) {
         narrowNested(data, 'summary', 'countries', (c) => matchesCode(c.code, codes));

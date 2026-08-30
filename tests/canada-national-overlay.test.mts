@@ -10,6 +10,7 @@ import {
   RESILIENCE_BOC_VALET_KEY,
   RESILIENCE_STATCAN_WDS_KEY,
   STATCAN_SCORE_PROVIDER,
+  STATCAN_WDS_SOURCE_URL,
 } from '../server/worldmonitor/resilience/v1/_canada-national-overlay.ts';
 import { classifyDimensionFreshness } from '../server/worldmonitor/resilience/v1/_dimension-freshness.ts';
 import {
@@ -23,6 +24,7 @@ import {
   scoreMacroFiscal,
   type ResilienceSeedReader,
 } from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import { createIndicatorTraceCollector } from '../server/worldmonitor/resilience/v1/_indicator-trace.ts';
 import { fixtureReader } from './helpers/resilience-fixtures.mts';
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -44,7 +46,14 @@ function canadaReader(opts: { statcan?: boolean; boc?: boolean } = {}): Resilien
     }
     if (key === RESILIENCE_STATCAN_WDS_KEY) {
       return statcan
-        ? { inflationPct: STATCAN_INFLATION, inflationRefPer: '2026-06-01', unemploymentPct: STATCAN_UNEMPLOYMENT, unemploymentRefPer: '2026-07-01' }
+        ? {
+            inflationPct: STATCAN_INFLATION,
+            inflationRefPer: '2026-06-01',
+            inflationReleaseTime: '2026-07-15T08:30:00.000Z',
+            unemploymentPct: STATCAN_UNEMPLOYMENT,
+            unemploymentRefPer: '2026-07-01',
+            unemploymentReleaseTime: '2026-08-07T08:30:00.000Z',
+          }
         : null;
     }
     if (key === RESILIENCE_BOC_VALET_KEY) {
@@ -104,6 +113,25 @@ describe('Canada national overlay', () => {
       return fixtureReader(key);
     });
     assert.ok(!usKeys.includes(RESILIENCE_STATCAN_WDS_KEY));
+  });
+
+  it('records StatCan year, timestamps, and exact observed source for substituted rows', async () => {
+    const trace = createIndicatorTraceCollector();
+    await scoreCurrencyExternal('CA', canadaReader(), { trace });
+    await scoreMacroFiscal('CA', canadaReader(), { trace });
+
+    for (const [dimension, indicatorId, retrievedAt] of [
+      ['currencyExternal', 'inflationStability', '2026-07-15T08:30:00.000Z'],
+      ['macroFiscal', 'unemploymentPct', '2026-08-07T08:30:00.000Z'],
+    ] as const) {
+      const row = trace.readDimension(dimension)?.contributions.find((entry) => entry.indicatorId === indicatorId);
+      assert.ok(row);
+      assert.equal(row.sourceYear, 2026);
+      assert.equal(row.retrievedAt, retrievedAt);
+      assert.equal(row.observedSources[0]?.sourceKey, RESILIENCE_STATCAN_WDS_KEY);
+      assert.equal(row.observedSources[0]?.providerName, STATCAN_SCORE_PROVIDER);
+      assert.equal(row.observedSources[0]?.sourceUrl, STATCAN_WDS_SOURCE_URL);
+    }
   });
 
   it('falls back to IMF when StatCan and BoC are absent — the outage path', () => {
@@ -192,11 +220,15 @@ describe('Canada national overlay', () => {
     assert.deepEqual(ca.inflationFreshness, {
       sourceKey: RESILIENCE_STATCAN_WDS_KEY,
       observedAt: '2026-06-01',
+      retrievedAt: '2026-07-15T08:30',
+      sourceUrl: STATCAN_WDS_SOURCE_URL,
       provider: STATCAN_SCORE_PROVIDER,
     });
     assert.deepEqual(ca.unemploymentFreshness, {
       sourceKey: RESILIENCE_STATCAN_WDS_KEY,
       observedAt: '2026-07-01',
+      retrievedAt: '2026-08-07T08:30',
+      sourceUrl: STATCAN_WDS_SOURCE_URL,
       provider: STATCAN_SCORE_PROVIDER,
     });
     assert.notEqual(ca.inflationFreshness?.sourceKey, 'economic:imf:macro:v2');

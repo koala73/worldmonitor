@@ -32,6 +32,11 @@ import {
   type ResilienceSeedReader,
 } from './_dimension-scorers';
 import { buildPillarList } from './_pillar-membership';
+import {
+  createIndicatorTraceCollector,
+  materializeIndicatorTrace,
+  type ResilienceIndicatorTraceSnapshot,
+} from './_indicator-trace';
 
 // Phase 2 T2.1/T2.3: feature flag for the three-pillar response shape.
 // Default is `true` → responses carry `schemaVersion: "2.0"` and a
@@ -44,6 +49,14 @@ import { buildPillarList } from './_pillar-membership';
 // in both modes for widget + map layer + Country Brief consumers.
 export const RESILIENCE_SCHEMA_V2_ENABLED =
   (process.env.RESILIENCE_SCHEMA_V2_ENABLED ?? 'true').toLowerCase() === 'true';
+
+export function toResilienceDataVersion(value: unknown): string {
+  const timestamp = typeof value === 'number' || typeof value === 'string'
+    ? new Date(value)
+    : null;
+  if (!timestamp || !Number.isFinite(timestamp.getTime())) return '';
+  return timestamp.toISOString().slice(0, 10);
+}
 
 // Phase 2 T2.3 activation: feature flag that switches `overallScore`
 // from the 6-domain weighted aggregate (legacy compensatory form) to
@@ -120,6 +133,8 @@ export function isFinancialSystemExposureEnabled(): boolean {
 }
 
 export const RESILIENCE_SCORE_CACHE_TTL_SECONDS = 6 * 60 * 60;
+export const RESILIENCE_SCORE_TRACE_CACHE_TTL_SECONDS = 7 * 60 * 60;
+export const RESILIENCE_SCORE_TRACE_CACHE_PREFIX = 'resilience:score-trace:v1:';
 // Ranking TTL must exceed the cron interval (6h) by enough to tolerate one
 // missed/slow cron tick. With TTL==cron_interval, writing near the end of a
 // run and firing the next cron near the start of the next interval left a
@@ -399,8 +414,14 @@ const STALENESS_CONFIDENCE_COVERAGE_FACTOR: Record<string, number> = {
 // themselves protect against the default-off-then-activate path —
 // default-off writes land in the new v10/v5 namespace tagged as 'd6',
 // and only the in-payload tag check forces a rebuild / filter on flip.
-type CacheFormulaTag = 'd6' | 'pc';
+export type CacheFormulaTag = 'd6' | 'pc';
 type EducationCacheState = 'education-on' | 'education-off';
+
+export interface ResilienceConstructVersions {
+  energy: 'legacy' | 'v2';
+  education: 'active' | 'rollback';
+  financialSystemExposure: 'active' | 'rollback';
+}
 
 function currentCacheFormula(): CacheFormulaTag {
   // Mirrors the gating in buildResilienceScore's overallScore branch so
@@ -416,6 +437,51 @@ function currentEducationCacheState(): EducationCacheState {
 
 export function getCurrentEducationCacheState(): EducationCacheState {
   return currentEducationCacheState();
+}
+
+export function getCurrentResilienceConstructVersions(): ResilienceConstructVersions {
+  return {
+    energy: isEnergyV2Enabled() ? 'v2' : 'legacy',
+    education: currentEducationCacheState() === 'education-on' ? 'active' : 'rollback',
+    financialSystemExposure: isFinancialSystemExposureEnabled() ? 'active' : 'rollback',
+  };
+}
+
+function scoreGenerationCacheIdentity(
+  formula: CacheFormulaTag,
+  schemaVersion: '1.0' | '2.0',
+  constructs: ResilienceConstructVersions,
+): string {
+  return [
+    formula,
+    `schema-${schemaVersion}`,
+    `energy-${constructs.energy}`,
+    `education-${constructs.education}`,
+    `financial-system-${constructs.financialSystemExposure}`,
+  ].join(':');
+}
+
+function currentScoreGenerationCacheIdentity(
+  constructs = getCurrentResilienceConstructVersions(),
+): string {
+  return scoreGenerationCacheIdentity(
+    currentCacheFormula(),
+    RESILIENCE_SCHEMA_V2_ENABLED ? '2.0' : '1.0',
+    constructs,
+  );
+}
+
+function cachedConstructIdentityMatches(
+  value: unknown,
+  constructs = getCurrentResilienceConstructVersions(),
+): boolean {
+  if (value === currentScoreGenerationCacheIdentity(constructs)) return true;
+  // Payloads written before construct fingerprints existed are safe only in
+  // the original legacy/rollback state. A flag activation must reject them so
+  // ranking warmup rebuilds every country under one coherent construct.
+  return value === undefined
+    && constructs.energy === 'legacy'
+    && constructs.financialSystemExposure === 'rollback';
 }
 
 function educationCacheStateMatches(
@@ -461,6 +527,10 @@ function normalizeCountryCode(countryCode: string): string {
 
 export function scoreCacheKey(countryCode: string): string {
   return `${RESILIENCE_SCORE_CACHE_PREFIX}${countryCode}`;
+}
+
+export function scoreTraceCacheKey(countryCode: string, generationId: string): string {
+  return `${RESILIENCE_SCORE_TRACE_CACHE_PREFIX}${countryCode}:${generationId}`;
 }
 
 function intervalCacheKey(countryCode: string): string {
@@ -787,15 +857,31 @@ async function appendHistory(
   ]);
 }
 
-// Pure compute: no caching, no Redis side-effects (except appendHistory, which
-// is part of the score semantics). Kept separate from `ensureResilienceScoreCached`
-// so the ranking warm path can persist with explicit write-verification via a
-// pipeline (see `warmMissingResilienceScores`) rather than trusting
-// `cachedFetchJson`'s log-and-swallow write semantics.
-async function buildResilienceScore(
+export interface ResilienceScoreTraceSidecar {
+  version: 1;
+  generationId: string;
+  cacheIdentity: string;
+  countryCode: string;
+  formula: CacheFormulaTag;
+  dataVersion: string;
+  schemaVersion: '1.0' | '2.0';
+  constructVersions: ResilienceConstructVersions;
+  snapshot: ResilienceIndicatorTraceSnapshot;
+}
+
+export interface ResilienceScoreGeneration {
+  score: GetResilienceScoreResponse;
+  trace: ResilienceScoreTraceSidecar;
+}
+
+// One scorer execution owns both public score and indicator trace. The trace is
+// persisted separately so public score/ranking reads stay small, while its
+// immutable generation ID prevents an independently refreshed drill-down from
+// explaining an older six-hour score.
+async function buildResilienceScoreGeneration(
   normalizedCountryCode: string,
   reader?: ResilienceSeedReader,
-): Promise<GetResilienceScoreResponse> {
+): Promise<ResilienceScoreGeneration> {
   const staticMeta = await getCachedJson(RESILIENCE_STATIC_META_KEY, true) as { fetchedAt?: number } | null;
   const dataVersion = staticMeta?.fetchedAt
     ? new Date(staticMeta.fetchedAt).toISOString().slice(0, 10)
@@ -805,7 +891,9 @@ async function buildResilienceScore(
   // build so the IMF labor seed read for the headline-eligible gate
   // (below) shares the cache with the dimension scorers' reads.
   const seedReader = reader ?? createMemoizedSeedReader();
-  const scoreMap = await scoreAllDimensions(normalizedCountryCode, seedReader);
+  const constructVersions = getCurrentResilienceConstructVersions();
+  const traceCollector = createIndicatorTraceCollector();
+  const scoreMap = await scoreAllDimensions(normalizedCountryCode, seedReader, { trace: traceCollector });
   const dimensions = buildDimensionList(scoreMap);
   const domains = buildDomainList(dimensions);
   const pillars = buildPillarList(domains, true);
@@ -887,7 +975,7 @@ async function buildResilienceScore(
     lowConfidence,
   });
 
-  return {
+  const score: GetResilienceScoreResponse = {
     countryCode: normalizedCountryCode,
     overallScore,
     baselineScore,
@@ -904,6 +992,22 @@ async function buildResilienceScore(
     schemaVersion: '2.0',
     headlineEligible,
   };
+  const schemaVersion = RESILIENCE_SCHEMA_V2_ENABLED ? '2.0' : '1.0';
+  const generationId = crypto.randomUUID();
+  return {
+    score,
+    trace: {
+      version: 1,
+      generationId,
+      cacheIdentity: scoreGenerationCacheIdentity(formula, schemaVersion, constructVersions),
+      countryCode: normalizedCountryCode,
+      formula,
+      dataVersion,
+      schemaVersion,
+      constructVersions,
+      snapshot: materializeIndicatorTrace(traceCollector, scoreMap),
+    },
+  };
 }
 
 // The shape we actually store in Redis. Extends the public response type
@@ -913,12 +1017,22 @@ async function buildResilienceScore(
 type CachedScorePayload = GetResilienceScoreResponse & {
   _formula?: CacheFormulaTag;
   _educationState?: EducationCacheState;
+  _traceGenerationId?: string;
+  _traceCacheIdentity?: string;
 };
 
 function stripCacheMeta(payload: CachedScorePayload): GetResilienceScoreResponse {
-  const { _formula: _drop, _educationState: _dropEducationState, ...rest } = payload;
+  const {
+    _formula: _drop,
+    _educationState: _dropEducationState,
+    _traceGenerationId: _dropTraceGenerationId,
+    _traceCacheIdentity: _dropTraceCacheIdentity,
+    ...rest
+  } = payload;
   void _drop;
   void _dropEducationState;
+  void _dropTraceGenerationId;
+  void _dropTraceCacheIdentity;
   // Plan 2026-04-26-002 §U3+§U7 — `headlineEligible` backfill semantic
   // changes per cache prefix:
   //
@@ -942,6 +1056,74 @@ function stripCacheMeta(payload: CachedScorePayload): GetResilienceScoreResponse
   return rest;
 }
 
+function cachedPayloadForGeneration(generation: ResilienceScoreGeneration): CachedScorePayload {
+  return {
+    ...generation.score,
+    _formula: generation.trace.formula,
+    _educationState: generation.trace.constructVersions.education === 'active'
+      ? 'education-on'
+      : 'education-off',
+    _traceGenerationId: generation.trace.generationId,
+    _traceCacheIdentity: generation.trace.cacheIdentity,
+  };
+}
+
+function isMatchingTraceSidecar(
+  value: unknown,
+  countryCode: string,
+  payload: CachedScorePayload,
+): value is ResilienceScoreTraceSidecar {
+  if (!value || typeof value !== 'object') return false;
+  const trace = value as Partial<ResilienceScoreTraceSidecar>;
+  return trace.version === 1
+    && trace.countryCode === countryCode
+    && trace.generationId === payload._traceGenerationId
+    && trace.cacheIdentity === payload._traceCacheIdentity
+    && trace.snapshot != null;
+}
+
+async function persistGenerationTrace(generation: ResilienceScoreGeneration): Promise<void> {
+  const persisted = await setCachedJson(
+    scoreTraceCacheKey(generation.trace.countryCode, generation.trace.generationId),
+    generation.trace,
+    RESILIENCE_SCORE_TRACE_CACHE_TTL_SECONDS,
+  );
+  if (!persisted) {
+    throw new Error(`Failed to persist resilience trace generation for ${generation.trace.countryCode}`);
+  }
+}
+
+async function persistFullScoreGeneration(generation: ResilienceScoreGeneration): Promise<CachedScorePayload> {
+  await persistGenerationTrace(generation);
+  const cachedPayload = cachedPayloadForGeneration(generation);
+  const scorePersisted = await setCachedJson(
+    scoreCacheKey(generation.trace.countryCode),
+    cachedPayload,
+    RESILIENCE_SCORE_CACHE_TTL_SECONDS,
+  );
+  if (!scorePersisted) {
+    throw new Error(`Failed to persist resilience score generation for ${generation.trace.countryCode}`);
+  }
+  return cachedPayload;
+}
+
+async function toPublicCachedScore(
+  countryCode: string,
+  cached: CachedScorePayload,
+): Promise<GetResilienceScoreResponse> {
+  let payload = stripCacheMeta(cached);
+  const scoreInterval = await readScoreInterval(countryCode);
+  if (scoreInterval) payload = { ...payload, scoreInterval };
+
+  // The cache stores the v2 superset. Gate the public shape at serve time so a
+  // schema rollback takes effect without waiting for the score TTL.
+  if (!RESILIENCE_SCHEMA_V2_ENABLED) {
+    payload.pillars = [];
+    payload.schemaVersion = '1.0';
+  }
+  return payload;
+}
+
 // Exposed helpers so the ranking handler can apply the same
 // stale-formula invalidation to its own cache key. Kept in this module
 // alongside the score versions so the tag convention has one source of
@@ -957,12 +1139,15 @@ export function stampRankingCacheTag<T extends object>(
   _formula: CacheFormulaTag;
   _educationState: EducationCacheState;
   _intervalMethodology: typeof RESILIENCE_INTERVAL_METHODOLOGY;
+  _scoreCacheIdentity: string;
 } {
+  const constructs = getCurrentResilienceConstructVersions();
   return {
     ...payload,
     _formula: currentCacheFormula(),
     _educationState: currentEducationCacheState(),
     _intervalMethodology: RESILIENCE_INTERVAL_METHODOLOGY,
+    _scoreCacheIdentity: currentScoreGenerationCacheIdentity(constructs),
   };
 }
 
@@ -971,9 +1156,11 @@ export function rankingCacheTagMatches(payload: unknown): boolean {
   const tag = (payload as { _formula?: unknown })._formula;
   const educationState = (payload as { _educationState?: unknown })._educationState;
   const intervalMethodology = (payload as { _intervalMethodology?: unknown })._intervalMethodology;
+  const scoreCacheIdentity = (payload as { _scoreCacheIdentity?: unknown })._scoreCacheIdentity;
   return tag === currentCacheFormula()
     && educationCacheStateMatches(educationState)
-    && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY;
+    && intervalMethodology === RESILIENCE_INTERVAL_METHODOLOGY
+    && cachedConstructIdentityMatches(scoreCacheIdentity);
 }
 
 export function isCurrentResilienceIntervalPayload(
@@ -1036,17 +1223,16 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
   }
 
   const current = currentCacheFormula();
-  const currentEducationState = currentEducationCacheState();
+  const currentTraceIdentity = currentScoreGenerationCacheIdentity();
   const cacheKey = scoreCacheKey(normalizedCountryCode);
 
   let cached = await cachedFetchJson<CachedScorePayload>(
     cacheKey,
     RESILIENCE_SCORE_CACHE_TTL_SECONDS,
     async () => {
-      const built = await buildResilienceScore(normalizedCountryCode, reader);
-      // Tag with the formula buildResilienceScore actually used so
-      // downstream readers can reject cross-formula entries.
-      return { ...built, _formula: current, _educationState: currentEducationState };
+      const generation = await buildResilienceScoreGeneration(normalizedCountryCode, reader);
+      await persistGenerationTrace(generation);
+      return cachedPayloadForGeneration(generation);
     },
     300,
   );
@@ -1059,15 +1245,20 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
   // window would keep serving legacy scores. Legacy untagged entries
   // (pre-PR writes that happen to survive the v9→v10 bump via
   // external writers) are treated as stale-formula and rebuilt.
-  if (cached && (cached._formula !== current || !educationCacheStateMatches(cached._educationState))) {
-    const rebuilt = await buildResilienceScore(normalizedCountryCode, reader);
-    cached = { ...rebuilt, _formula: current, _educationState: currentEducationState };
-    await setCachedJson(cacheKey, cached, RESILIENCE_SCORE_CACHE_TTL_SECONDS);
+  if (cached && (
+    cached._formula !== current
+    || !educationCacheStateMatches(cached._educationState)
+    || typeof cached._traceGenerationId !== 'string'
+    || cached._traceGenerationId.length === 0
+    || cached._traceCacheIdentity !== currentTraceIdentity
+  )) {
+    const rebuilt = await buildResilienceScoreGeneration(normalizedCountryCode, reader);
+    cached = await persistFullScoreGeneration(rebuilt);
   }
 
-  let payload: GetResilienceScoreResponse = cached
-    ? stripCacheMeta(cached)
-    : {
+  if (cached) return toPublicCachedScore(normalizedCountryCode, cached);
+
+  return {
         countryCode: normalizedCountryCode,
         overallScore: 0,
         baselineScore: 0,
@@ -1088,21 +1279,40 @@ export async function ensureResilienceScoreCached(countryCode: string, reader?: 
         // false even during the PR-2 "true-by-default" window.
         headlineEligible: false,
       };
+}
 
-  const scoreInterval = await readScoreInterval(normalizedCountryCode);
-  if (scoreInterval) {
-    payload = { ...payload, scoreInterval };
+export async function ensureResilienceScoreGenerationCached(
+  countryCode: string,
+  reader?: ResilienceSeedReader,
+): Promise<{ score: GetResilienceScoreResponse; trace: ResilienceScoreTraceSidecar }> {
+  const normalizedCountryCode = normalizeCountryCode(countryCode);
+  if (!normalizedCountryCode) {
+    throw new Error('A valid country code is required for a resilience score generation');
   }
 
-  // P1 fix: the cache always stores the v2 superset (pillars + schemaVersion='2.0').
-  // When the flag is off, strip pillars and downgrade schemaVersion so consumers
-  // see the v1 shape. Flag flips take effect immediately, no 6h TTL wait.
-  if (!RESILIENCE_SCHEMA_V2_ENABLED) {
-    payload.pillars = [];
-    payload.schemaVersion = '1.0';
+  await ensureResilienceScoreCached(normalizedCountryCode, reader);
+  const cached = await getCachedJson(scoreCacheKey(normalizedCountryCode)) as CachedScorePayload | null;
+  if (cached?._traceGenerationId && cached._traceCacheIdentity) {
+    const trace = await getCachedJson(
+      scoreTraceCacheKey(normalizedCountryCode, cached._traceGenerationId),
+    );
+    if (isMatchingTraceSidecar(trace, normalizedCountryCode, cached)) {
+      return {
+        score: await toPublicCachedScore(normalizedCountryCode, cached),
+        trace,
+      };
+    }
   }
 
-  return payload;
+  // Missing, evicted, or malformed trace references invalidate the complete
+  // generation. Rebuild score and trace together; never attach a fresh trace to
+  // the older cached score.
+  const rebuilt = await buildResilienceScoreGeneration(normalizedCountryCode, reader);
+  const rebuiltCached = await persistFullScoreGeneration(rebuilt);
+  return {
+    score: await toPublicCachedScore(normalizedCountryCode, rebuiltCached),
+    trace: rebuilt.trace,
+  };
 }
 
 export async function listScorableCountries(): Promise<string[]> {
@@ -1136,6 +1346,7 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
   const scores = new Map<string, GetResilienceScoreResponse>();
   const current = currentCacheFormula();
   const currentEducationState = currentEducationCacheState();
+  const currentConstructs = getCurrentResilienceConstructVersions();
 
   for (let index = 0; index < normalized.length; index += 1) {
     const countryCode = normalized[index]!;
@@ -1164,7 +1375,8 @@ export async function getCachedResilienceScores(countryCodes: string[]): Promise
       // whole cache-tag strategy is meant to prevent.
       if (
         parsed._formula !== current ||
-        !educationCacheStateMatches(parsed._educationState, currentEducationState)
+        !educationCacheStateMatches(parsed._educationState, currentEducationState) ||
+        !cachedConstructIdentityMatches(parsed._traceCacheIdentity, currentConstructs)
       ) continue;
       const publicPayload = stripCacheMeta(parsed);
       // P1 fix: cached payload is always v2 superset. Gate on serve.
@@ -1294,6 +1506,61 @@ function recordWarmFailure(
   warmed.failedCountryCodes.add(failure.countryCode);
 }
 
+interface RedisPersistResult {
+  result?: 'OK';
+  reason?: string;
+  retried: boolean;
+}
+
+async function persistRedisCommandsWithRetry(
+  commands: Array<Array<string>>,
+  batchSize: number,
+): Promise<RedisPersistResult[]> {
+  const batches: Array<Array<Array<string>>> = [];
+  for (let index = 0; index < commands.length; index += batchSize) {
+    batches.push(commands.slice(index, index + batchSize));
+  }
+  const batchPersisted = (batch: Array<Array<string>>, results: Array<{ result?: unknown }>): boolean =>
+    results.length === batch.length && results.every((result) => result?.result === 'OK');
+  const batchOutcomes = await Promise.all(batches.map((batch) => runRedisPipeline(batch)));
+  const retryBatchIndexes: number[] = [];
+  for (let index = 0; index < batches.length; index += 1) {
+    if (!batchPersisted(batches[index]!, batchOutcomes[index]!)) retryBatchIndexes.push(index);
+  }
+  const retryOutcomesByBatch = new Map<number, Array<{ result?: unknown }>>();
+  if (retryBatchIndexes.length > 0) {
+    const retryOutcomes = await Promise.all(
+      retryBatchIndexes.map((batchIndex) => runRedisPipeline(batches[batchIndex]!)),
+    );
+    for (let index = 0; index < retryBatchIndexes.length; index += 1) {
+      retryOutcomesByBatch.set(retryBatchIndexes[index]!, retryOutcomes[index]!);
+    }
+  }
+
+  const resultReason = (result: { result?: unknown } | undefined, fallback: string): string =>
+    result ? `SET returned ${JSON.stringify(result.result ?? null)}` : fallback;
+  const retriedBatchIndexes = new Set(retryBatchIndexes);
+  const results: RedisPersistResult[] = [];
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex += 1) {
+    const batch = batches[batchIndex]!;
+    const initialResults = batchOutcomes[batchIndex]!;
+    const retryResults = retryOutcomesByBatch.get(batchIndex);
+    for (let commandIndex = 0; commandIndex < batch.length; commandIndex += 1) {
+      const initialResult = initialResults.length === batch.length ? initialResults[commandIndex] : undefined;
+      const retryResult = retryResults?.length === batch.length ? retryResults[commandIndex] : undefined;
+      const persisted = initialResult?.result === 'OK' || retryResult?.result === 'OK';
+      results.push({
+        result: persisted ? 'OK' : undefined,
+        reason: persisted
+          ? undefined
+          : resultReason(retryResult, resultReason(initialResult, 'pipeline transport failure')),
+        retried: retriedBatchIndexes.has(batchIndex) && initialResult?.result !== 'OK',
+      });
+    }
+  }
+  return results;
+}
+
 // Warms the resilience score cache for the given countries and returns a map
 // of country-code → score for ONLY the scores whose writes actually landed in
 // Redis. Two subtle requirements:
@@ -1319,7 +1586,7 @@ export async function warmMissingResilienceScores(
   scoreBuilder: (
     countryCode: string,
     reader: ResilienceSeedReader,
-  ) => Promise<GetResilienceScoreResponse> = buildResilienceScore,
+  ) => Promise<GetResilienceScoreResponse | ResilienceScoreGeneration> = buildResilienceScoreGeneration,
 ): Promise<WarmedResilienceScores> {
   const uniqueCodes = [...new Set(countryCodes.map((countryCode) => normalizeCountryCode(countryCode)).filter(Boolean))];
   const warmed = createWarmedResilienceScores();
@@ -1334,14 +1601,26 @@ export async function warmMissingResilienceScores(
   // (#6510).
   const sharedReader = createMemoizedSeedReader(undefined, { retryJoinedSeedMetaNull: true });
   const computed = await Promise.allSettled(
-    uniqueCodes.map(async (cc) => ({ cc, score: await scoreBuilder(cc, sharedReader) })),
+    uniqueCodes.map(async (cc) => ({ cc, built: await scoreBuilder(cc, sharedReader) })),
   );
 
-  const scores: Array<{ cc: string; score: GetResilienceScoreResponse }> = [];
+  const computedScores: Array<{
+    cc: string;
+    score: GetResilienceScoreResponse;
+    generation?: ResilienceScoreGeneration;
+  }> = [];
   for (let i = 0; i < computed.length; i++) {
     const result = computed[i]!;
     if (result.status === 'fulfilled') {
-      scores.push(result.value);
+      const { cc, built } = result.value;
+      const generation = 'score' in built && 'trace' in built
+        ? built as ResilienceScoreGeneration
+        : undefined;
+      computedScores.push({
+        cc,
+        score: generation?.score ?? built as GetResilienceScoreResponse,
+        generation,
+      });
     } else {
       const reason = result.reason instanceof Error ? result.reason.message : String(result.reason);
       recordWarmFailure(warmed, {
@@ -1357,6 +1636,39 @@ export async function warmMissingResilienceScores(
     const sample = computeFailures.slice(0, 10).map((f) => `${f.countryCode}(${f.reason})`).join(', ');
     console.warn(`[resilience] warm compute failed for ${computeFailures.length}/${uniqueCodes.length} countries: ${sample}${computeFailures.length > 10 ? '...' : ''}`);
   }
+  if (computedScores.length === 0) return warmed;
+
+  // Persist immutable trace sidecars before publishing score references. The
+  // small batch size keeps each ~90KB trace pipeline under the shared Redis
+  // timeout/body limits. Explicitly injected legacy builders remain supported
+  // for focused warm-path tests and do not claim a trace generation.
+  const tracedScores = computedScores.filter((entry) => entry.generation != null);
+  const traceCommands = tracedScores.map(({ generation }) => [
+    'SET',
+    scoreTraceCacheKey(generation!.trace.countryCode, generation!.trace.generationId),
+    JSON.stringify(generation!.trace),
+    'EX',
+    String(RESILIENCE_SCORE_TRACE_CACHE_TTL_SECONDS),
+  ]);
+  const tracePersistResults = await persistRedisCommandsWithRetry(traceCommands, 4);
+  const tracePersistedByCountry = new Map<string, boolean>();
+  for (let index = 0; index < tracedScores.length; index += 1) {
+    const entry = tracedScores[index]!;
+    const result = tracePersistResults[index];
+    const persisted = result?.result === 'OK';
+    tracePersistedByCountry.set(entry.cc, persisted);
+    if (!persisted) {
+      recordWarmFailure(warmed, {
+        countryCode: entry.cc,
+        stage: 'persist',
+        reason: `trace: ${result?.reason ?? 'SET did not return OK'}`,
+        retried: result?.retried ?? false,
+      });
+    }
+  }
+  const scores = computedScores.filter((entry) => (
+    entry.generation == null || tracePersistedByCountry.get(entry.cc) === true
+  ));
   if (scores.length === 0) return warmed;
 
   // Default `raw=false` so runRedisPipeline applies the env-based key prefix
@@ -1376,66 +1688,22 @@ export async function warmMissingResilienceScores(
   const SET_BATCH = 30;
   const current = currentCacheFormula();
   const currentEducationState = currentEducationCacheState();
-  const allSetCommands = scores.map(({ cc, score }) => [
+  const allSetCommands = scores.map(({ cc, score, generation }) => [
     'SET',
     scoreCacheKey(cc),
     // Stamp the formula tag on the written payload so the bulk-read
     // path in getCachedResilienceScores can filter stale entries after
     // a flag flip. Without this tag, warmed-then-flipped entries would
     // be served as-is until the 6h TTL expired.
-    JSON.stringify({ ...score, _formula: current, _educationState: currentEducationState } satisfies CachedScorePayload),
+    JSON.stringify(
+      generation
+        ? cachedPayloadForGeneration(generation)
+        : { ...score, _formula: current, _educationState: currentEducationState } satisfies CachedScorePayload,
+    ),
     'EX',
     String(RESILIENCE_SCORE_CACHE_TTL_SECONDS),
   ]);
-  // Fire all batches concurrently. Serial awaits would add 7 extra Upstash
-  // round-trips for a 222-country warm (~100-500ms each on Edge). Each batch
-  // is independent, so Promise.all collapses them into a single wall-clock
-  // window bounded by the slowest batch. Failed batches are retried once and
-  // merged per command so an initial OK is not lost if the retry transport
-  // fails.
-  const batches: Array<Array<Array<string>>> = [];
-  for (let i = 0; i < allSetCommands.length; i += SET_BATCH) {
-    batches.push(allSetCommands.slice(i, i + SET_BATCH));
-  }
-
-  const batchPersisted = (batch: Array<Array<string>>, results: Array<{ result?: unknown }>): boolean =>
-    results.length === batch.length && results.every((result) => result?.result === 'OK');
-
-  const batchOutcomes = await Promise.all(batches.map((batch) => runRedisPipeline(batch)));
-  const retryBatchIndexes: number[] = [];
-  for (let b = 0; b < batches.length; b++) {
-    if (!batchPersisted(batches[b]!, batchOutcomes[b]!)) retryBatchIndexes.push(b);
-  }
-  const retryOutcomesByBatch = new Map<number, Array<{ result?: unknown }>>();
-  if (retryBatchIndexes.length > 0) {
-    const retryOutcomes = await Promise.all(retryBatchIndexes.map((batchIndex) => runRedisPipeline(batches[batchIndex]!)));
-    for (let i = 0; i < retryBatchIndexes.length; i++) {
-      retryOutcomesByBatch.set(retryBatchIndexes[i]!, retryOutcomes[i]!);
-    }
-  }
-
-  const resultReason = (result: { result?: unknown } | undefined, fallback: string): string =>
-    result ? `SET returned ${JSON.stringify(result.result ?? null)}` : fallback;
-  const retriedBatchIndexes = new Set(retryBatchIndexes);
-  const persistResults: Array<{ result?: unknown; reason?: string; retried: boolean }> = [];
-  for (let b = 0; b < batches.length; b++) {
-    const batch = batches[b]!;
-    const batchResults = batchOutcomes[b]!;
-    const batchRetried = retriedBatchIndexes.has(b);
-    const retryResults = retryOutcomesByBatch.get(b);
-    for (let j = 0; j < batch.length; j++) {
-      const initialResult = batchResults.length === batch.length ? batchResults[j] : undefined;
-      const retryResult = retryResults?.length === batch.length ? retryResults[j] : undefined;
-      const persisted = initialResult?.result === 'OK' || retryResult?.result === 'OK';
-      persistResults.push({
-        result: persisted ? 'OK' : undefined,
-        reason: persisted
-          ? undefined
-          : resultReason(retryResult, resultReason(initialResult, 'pipeline transport failure')),
-        retried: batchRetried && initialResult?.result !== 'OK',
-      });
-    }
-  }
+  const persistResults = await persistRedisCommandsWithRetry(allSetCommands, SET_BATCH);
 
   let persistFailures = 0;
   for (let i = 0; i < scores.length; i++) {

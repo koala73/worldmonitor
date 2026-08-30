@@ -34,8 +34,11 @@
 //  24. create_dashboard_tab()     — creates a workspace, or returns one by name.
 //  25. rename_dashboard_tab()     — renames a workspace tab by stable ID.
 //  26. delete_dashboard_tab()     — deletes a workspace tab after confirm=true.
-//  27. get_access_context()       — reads signed-out / loading / signed-in access.
-//  28. open_sign_in()             — opens the existing Clerk sign-in dialog.
+//  27. list_mission_presets()     — lists bundled mission presets for this monitor.
+//  28. apply_mission_preset()     — applies a bundled preset atomically.
+//  29. open_mission_picker()      — opens the mission preset picker.
+//  30. get_access_context()       — reads signed-out / loading / signed-in access.
+//  31. open_sign_in()             — opens the existing Clerk sign-in dialog.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -102,6 +105,14 @@ import {
   type MapLayerCatalogSnapshot,
 } from './webmcp-map-layer-catalog';
 import type { SetPanelEnabledResult } from '../config/panel-enablement';
+import {
+  MissionPresetCatalogError,
+  isMissionPresetId,
+  type MissionPresetApplyDenyReason,
+  type MissionPresetCatalogQuery,
+  type MissionPresetCatalogResult,
+} from './webmcp-mission-preset-catalog';
+import type { MissionPresetId } from './mission-presets';
 import type {
   PanelLayoutMutationResult,
   PanelLayoutSnapshot,
@@ -166,6 +177,17 @@ export interface WebMcpAppBindings {
     enabled: unknown,
     options?: WebMcpExecutionOptions,
   ): SetPanelEnabledResult | Promise<SetPanelEnabledResult>;
+  listMissionPresets(
+    query: MissionPresetCatalogQuery,
+    options?: WebMcpExecutionOptions,
+  ): MissionPresetCatalogResult | Promise<MissionPresetCatalogResult>;
+  applyMissionPreset(
+    presetId: unknown,
+    options?: WebMcpExecutionOptions,
+  ): ApplyMissionPresetResult | Promise<ApplyMissionPresetResult>;
+  openMissionPicker(
+    options?: WebMcpExecutionOptions,
+  ): WebMcpNavigationResult | Promise<WebMcpNavigationResult>;
   getPanelLayout(
     options?: WebMcpExecutionOptions,
   ): PanelLayoutSnapshot | Promise<PanelLayoutSnapshot>;
@@ -191,6 +213,26 @@ export interface WebMcpAppBindings {
   openSignIn(
     options?: WebMcpExecutionOptions,
   ): OpenSignInResult | Promise<OpenSignInResult>;
+}
+
+export interface ApplyMissionPresetResult {
+  ok: boolean;
+  status: 'applied' | 'unchanged' | 'denied' | 'invalid';
+  presetId?: string;
+  label?: string;
+  changed?: boolean;
+  monitor?: string;
+  map?: {
+    view: string;
+    zoom: number;
+    timeRange: string;
+    enabledLayers: string[];
+  };
+  panels?: {
+    enabled: string[];
+  };
+  reason?: MissionPresetApplyDenyReason;
+  message: string;
 }
 
 export interface WebMcpExecutionOptions {
@@ -249,7 +291,7 @@ export interface DashboardContextSnapshot {
 export const WEBMCP_MONITOR_KEYS = SITE_VARIANTS;
 
 export type WebMcpMonitorKey = SiteVariant;
-export type WebMcpNavDestination = WebMcpMonitorKey | 'settings' | 'alerts';
+export type WebMcpNavDestination = WebMcpMonitorKey | 'settings' | 'alerts' | 'mission_picker';
 export type WebMcpMonitorNavigation = 'none' | 'reload' | 'assign';
 
 export interface WebMcpNavigationResult {
@@ -452,6 +494,9 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.createDashboardTab]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.renameDashboardTab]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.deleteDashboardTab]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.listMissionPresets]: 'read-only',
+  [WEBMCP_SPA_TOOL.applyMissionPreset]: 'cancellation-required',
+  [WEBMCP_SPA_TOOL.openMissionPicker]: 'view-state',
 });
 
 /** Tools the page refuses to run without a target-side AbortSignal. */
@@ -524,6 +569,9 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   create_dashboard_tab: 'World Monitor could not create that dashboard tab.',
   rename_dashboard_tab: 'World Monitor could not rename that dashboard tab.',
   delete_dashboard_tab: 'World Monitor could not delete that dashboard tab.',
+  list_mission_presets: 'World Monitor could not list mission presets.',
+  apply_mission_preset: 'World Monitor could not apply that mission preset.',
+  open_mission_picker: 'World Monitor could not open the mission picker.',
   get_access_context: 'World Monitor could not read access context.',
   open_sign_in: 'World Monitor could not open sign-in.',
 };
@@ -712,6 +760,9 @@ function withInvocationLogging(
       if (error instanceof DashboardPanelCatalogError) {
         throw new SafeWebMcpError(error.message, 'validation');
       }
+      if (error instanceof MissionPresetCatalogError) {
+        throw new SafeWebMcpError(error.message, 'validation');
+      }
       throw new SafeWebMcpError(TOOL_FAILURE_MESSAGES[name]);
     }
   };
@@ -757,6 +808,7 @@ const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_cap_exceeded',
   'layer_not_entitled',
   'tab_cap',
+  'preset_not_entitled',
 ]);
 const STALE_DENIAL_REASONS = new Set([
   'invalid_or_expired_key',
@@ -792,6 +844,7 @@ function classifyInvocationError(error: unknown): WebMcpInvocationReason {
   if (error instanceof SafeWebMcpError) return error.analyticsReason;
   if (error instanceof DashboardBindingError) return 'unavailable';
   if (error instanceof DashboardPanelCatalogError) return 'validation';
+  if (error instanceof MissionPresetCatalogError) return 'validation';
   if (isWebMcpAbortError(error)) return 'cancelled';
   return 'internal';
 }
@@ -1132,6 +1185,90 @@ function boundSetPanelEnabledResult(result: SetPanelEnabledResult): SetPanelEnab
     changed: ok && result.changed === true,
     ...(!ok && reason ? { reason } : {}),
     message: boundedText(result.message, 160) || (ok ? 'Panel updated.' : 'Panel change denied.'),
+  };
+}
+
+const MISSION_PRESET_APPLY_REASONS = new Set<MissionPresetApplyDenyReason>([
+  'malformed_arguments',
+  'unknown_preset',
+  'preset_incompatible',
+  'preset_not_entitled',
+  'app_destroyed',
+  'apply_failed',
+]);
+
+function boundMissionPresetCatalog(result: MissionPresetCatalogResult): MissionPresetCatalogResult {
+  const presets = (Array.isArray(result.presets) ? result.presets : []).map((preset) => {
+    const available = preset.available === true;
+    return {
+      id: boundedText(preset.id, 48) as MissionPresetId,
+      label: boundedText(preset.label, 48),
+      ...(available && preset.view
+        ? { view: boundedText(preset.view, 24) as NonNullable<MissionPresetCatalogResult['presets'][number]['view']> }
+        : {}),
+      ...(available && preset.timeRange
+        ? {
+          timeRange: boundedText(preset.timeRange, 8) as NonNullable<
+            MissionPresetCatalogResult['presets'][number]['timeRange']
+          >,
+        }
+        : {}),
+      panelCount: Math.max(0, Math.floor(boundedNumber(preset.panelCount))),
+      layerCount: Math.max(0, Math.floor(boundedNumber(preset.layerCount))),
+      active: preset.active === true,
+      monitorCompatible: preset.monitorCompatible === true,
+      entitled: preset.entitled === true,
+      available,
+      ...(preset.unavailableReason
+        ? { unavailableReason: preset.unavailableReason }
+        : {}),
+    };
+  });
+  return {
+    ok: true,
+    variant: boundedText(result.variant, 24),
+    activePresetId: result.activePresetId && isMissionPresetId(result.activePresetId)
+      ? result.activePresetId
+      : null,
+    presets,
+    count: presets.length,
+  };
+}
+
+function boundApplyMissionPresetResult(result: ApplyMissionPresetResult): ApplyMissionPresetResult {
+  const status = result.status === 'applied'
+    || result.status === 'unchanged'
+    || result.status === 'denied'
+    || result.status === 'invalid'
+    ? result.status
+    : 'denied';
+  const ok = result.ok === true && (status === 'applied' || status === 'unchanged');
+  const reason = result.reason && MISSION_PRESET_APPLY_REASONS.has(result.reason)
+    ? result.reason
+    : undefined;
+  const map = result.map && typeof result.map === 'object'
+    ? {
+      view: boundedText(result.map.view, 24),
+      zoom: boundedNumber(result.map.zoom),
+      timeRange: boundedText(result.map.timeRange, 8),
+      enabledLayers: normalizeIdentifiers(result.map.enabledLayers, 64),
+    }
+    : undefined;
+  const panels = result.panels && typeof result.panels === 'object'
+    ? { enabled: normalizeIdentifiers(result.panels.enabled, 96) }
+    : undefined;
+  return {
+    ok,
+    status: ok ? status : status === 'invalid' ? 'invalid' : 'denied',
+    ...(result.presetId ? { presetId: boundedText(result.presetId, 48) } : {}),
+    ...(result.label ? { label: boundedText(result.label, 80) } : {}),
+    ...(ok ? { changed: result.changed === true } : { changed: false }),
+    ...(result.monitor ? { monitor: boundedText(result.monitor, 24) } : {}),
+    ...(map ? { map } : {}),
+    ...(panels ? { panels } : {}),
+    ...(!ok && reason ? { reason } : {}),
+    message: boundedText(result.message, 160)
+      || (ok ? 'Mission preset applied.' : 'Mission preset change denied.'),
   };
 }
 
@@ -2547,6 +2684,97 @@ export function buildWebMcpTools(
           app,
           extra,
         );
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.listMissionPresets,
+      title: 'List Mission Presets',
+      description:
+        'List every bundled mission preset for the current monitor. Each item uses a stable preset ID and panel/layer counts without premium payloads. Available rows include intended view and time range. Includes active, monitorCompatible, entitled, and available flags with a stable unavailableReason when gated.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          available: {
+            type: 'boolean',
+            description: 'If set, keep only presets the current session can apply.',
+          },
+        },
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listMissionPresets, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['available'])) {
+          throw new SafeWebMcpError(
+            'list_mission_presets accepts only available.',
+            'validation',
+          );
+        }
+        const query: MissionPresetCatalogQuery = {};
+        if (args.available !== undefined) query.available = args.available as boolean;
+        return boundMissionPresetCatalog(await app.listMissionPresets(query, extra));
+      }, trackEvent, {
+        successMetadata: (_args, value) => {
+          const result = value as MissionPresetCatalogResult;
+          return { resultCount: result.presets.length };
+        },
+      }),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.applyMissionPreset,
+      title: 'Apply Mission Preset',
+      description:
+        'Apply a bundled mission preset by stable ID through the same mission-control path a person uses. Reports entitlement and monitor compatibility before writing. Requires target-side cancellation because it persists panels, layers, map view, and time range. On failure, restores the prior dashboard state.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          presetId: {
+            type: 'string',
+            description: 'Bundled mission preset ID from list_mission_presets.',
+            minLength: 1,
+            maxLength: 48,
+            pattern: '^[a-z][a-z0-9-]*$',
+          },
+        },
+        required: ['presetId'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.applyMissionPreset, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['presetId'])) {
+          return boundApplyMissionPresetResult({
+            ok: false,
+            status: 'invalid',
+            reason: 'malformed_arguments',
+            message: 'presetId must be a stable bundled mission preset ID.',
+          });
+        }
+        return boundApplyMissionPresetResult(
+          await app.applyMissionPreset(args.presetId, extra),
+        );
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.openMissionPicker,
+      title: 'Open Mission Picker',
+      description:
+        'Open the mission preset picker through the same mission-control path a person uses. Opening the picker does not apply a preset. Returns the destination and effective dashboard state.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.openMissionPicker, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, [])) {
+          return boundDashboardNavigationResult({
+            ok: false,
+            status: 'invalid',
+            reason: 'malformed_arguments',
+            message: 'open_mission_picker does not accept arguments.',
+            context: await currentNavigationContext(app, extra),
+          });
+        }
+        return boundDashboardNavigationResult(await app.openMissionPicker(extra));
       }, trackEvent),
     },
     {

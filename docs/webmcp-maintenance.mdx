@@ -26,7 +26,7 @@ Treat each WebMCP change as a public UI contract change. Tool names, description
 |---|---|
 | `src/config/webmcp.ts` | Canonical homepage, dashboard, declarative, and per-variant inventories; shared schema and output budgets. |
 | `src/services/webmcp.ts` | Imperative descriptors, schemas, registration lifecycle, bounded results and errors, telemetry, and cancellation policy. |
-| `src/services/webmcp-map-layer-catalog.ts` and `src/services/webmcp-panel-catalog.ts` | Paginated layer and panel catalogs, filters, entitlement overlays, and stable availability reasons. |
+| `src/services/webmcp-map-layer-catalog.ts`, `src/services/webmcp-panel-catalog.ts`, and `src/services/webmcp-mission-preset-catalog.ts` | Paginated layer and panel catalogs plus the bundled mission-preset catalog, filters, entitlement overlays, and stable availability reasons. |
 | `src/App.ts`, `src/app/webmcp-dashboard.ts`, and `src/app/dashboard-action-binding.ts` | Startup ordering, UI readiness, teardown, dashboard context, catalog snapshots, and binding to the human action path. |
 | `shared/agent-bus-actions.ts`, `shared/agent-bus-contract.ts`, and `src/app/agent-bus-applier.ts` | Typed dashboard action protocol and application through existing UI state. |
 | `src/app/country-map-focus.ts` and `src/app/map-dimension-control.ts` | Country bounding-box focus and the shared 2D or 3D control path. |
@@ -57,6 +57,7 @@ npm run docs:check
   tests/dashboard-tab-actions.test.mts \
   tests/panel-layout-actions.test.mts \
   tests/webmcp-panel-catalog.test.mts \
+  tests/webmcp-mission-presets.test.mts \
   tests/agent-bus-actions.test.mts \
   tests/agent-bus-applier.test.mts \
   tests/country-map-focus.test.mts \
@@ -100,7 +101,7 @@ WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
 npm run test:e2e:webmcp:production
 ```
 
-The headed production suite tests the real origin trial. It verifies the served SHA, security headers, twenty-eight-tool inventory and schemas, cold-start invocation, bounded access and sign-in results, read-only catalogs, cancellation behavior, all six dashboard origins, specialized-root redirects, and cross-origin embed denial. Mutation tests that would alter production state remain local.
+The headed production suite tests the real origin trial. It verifies the served SHA, security headers, thirty-one-tool inventory and schemas, cold-start invocation, bounded access and sign-in results, read-only catalogs, cancellation behavior, all six dashboard origins, specialized-root redirects, and cross-origin embed denial. Mutation tests that would alter production state remain local.
 
 Preserve `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` from `test-results/` with the release evidence. Also verify that `/embed` and `/embed.html` return `tools=()`, and that `/?mode=agent`, preview deployments, documentation, and embed pages do not gain the top-level inventory.
 

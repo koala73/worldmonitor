@@ -29,6 +29,9 @@
       "create_dashboard_tab",
       "rename_dashboard_tab",
       "delete_dashboard_tab",
+      "list_mission_presets",
+      "apply_mission_preset",
+      "open_mission_picker",
       "get_access_context",
       "open_sign_in"
     ],
@@ -59,7 +62,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -79,7 +81,10 @@
         "get_panel_layout",
         "set_time_range",
         "focus_country",
-        "set_map_mode"
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -103,7 +108,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -123,7 +127,10 @@
         "get_panel_layout",
         "set_time_range",
         "focus_country",
-        "set_map_mode"
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -149,11 +156,13 @@
         "search_dashboard",
         "open_search_result",
         "open_sign_in",
-        "search_procurement",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -179,11 +188,13 @@
         "search_dashboard",
         "open_search_result",
         "open_sign_in",
-        "search_procurement",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -206,7 +217,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -223,7 +233,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -266,7 +279,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -283,7 +295,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -308,7 +323,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -324,7 +338,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -350,11 +367,13 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -376,7 +395,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -393,7 +411,10 @@
         "move_panel",
         "set_panel_collapsed",
         "get_panel_layout",
-        "focus_country"
+        "focus_country",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -435,7 +456,6 @@
       ],
       "forbiddenTools": [
         "openSearch",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -451,7 +471,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -474,7 +497,6 @@
         "openSearch",
         "open_dashboard_panel",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -491,7 +513,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -521,7 +546,6 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -538,7 +562,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -579,7 +606,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -618,7 +648,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -638,7 +671,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -658,7 +690,10 @@
         "get_panel_layout",
         "set_time_range",
         "focus_country",
-        "set_map_mode"
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -686,7 +721,6 @@
         "openCountryBrief",
         "openSearch",
         "open_dashboard_panel",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -703,7 +737,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -751,7 +788,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_access_context",
         "open_sign_in",
         "list_map_layers",
@@ -768,7 +804,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -825,7 +864,10 @@
         "set_panel_fullscreen",
         "move_panel",
         "set_panel_collapsed",
-        "get_panel_layout"
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 1,
@@ -870,11 +912,13 @@
         "focus_country",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -898,11 +942,13 @@
         "set_map_view",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -926,11 +972,13 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -958,7 +1006,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
@@ -966,7 +1013,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -992,7 +1042,6 @@
       ],
       "forbiddenTools": [
         "openSearch",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
@@ -1000,7 +1049,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1028,7 +1080,6 @@
         "openSearch",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
@@ -1036,7 +1087,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -1076,7 +1130,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "open_settings",
         "open_alerts",
         "list_map_layers",
@@ -1084,7 +1137,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1110,7 +1166,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "open_settings",
         "open_alerts",
         "list_map_layers",
@@ -1118,7 +1173,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1142,7 +1200,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_alerts",
         "list_map_layers",
@@ -1150,7 +1207,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1174,7 +1234,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "list_map_layers",
@@ -1182,7 +1241,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1207,7 +1269,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
@@ -1215,7 +1276,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1242,7 +1306,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "switch_monitor",
         "open_settings",
         "open_alerts",
@@ -1250,7 +1313,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1275,7 +1341,6 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "select_dashboard_tab",
         "create_dashboard_tab",
         "rename_dashboard_tab",
@@ -1283,7 +1348,10 @@
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1314,14 +1382,16 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "select_dashboard_tab",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1364,13 +1434,15 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "rename_dashboard_tab",
         "delete_dashboard_tab",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1402,14 +1474,16 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "select_dashboard_tab",
         "create_dashboard_tab",
         "rename_dashboard_tab",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ],
       "failure": {
         "atStep": 2,
@@ -1450,11 +1524,13 @@
         "set_map_layers",
         "search_dashboard",
         "open_search_result",
-        "search_procurement",
         "get_panel_layout",
         "set_panel_collapsed",
         "move_panel",
-        "set_panel_fullscreen"
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
       ]
     },
     {
@@ -1481,8 +1557,7 @@
         "set_map_view",
         "set_map_layers",
         "search_dashboard",
-        "open_search_result",
-        "search_procurement"
+        "open_search_result"
       ]
     },
     {
@@ -1512,8 +1587,7 @@
         "set_map_view",
         "set_map_layers",
         "search_dashboard",
-        "open_search_result",
-        "search_procurement"
+        "open_search_result"
       ]
     },
     {
@@ -1544,8 +1618,7 @@
         "set_map_view",
         "set_map_layers",
         "search_dashboard",
-        "open_search_result",
-        "search_procurement"
+        "open_search_result"
       ]
     },
     {
@@ -1575,8 +1648,7 @@
         "set_map_view",
         "set_map_layers",
         "search_dashboard",
-        "open_search_result",
-        "search_procurement"
+        "open_search_result"
       ]
     }
   ]

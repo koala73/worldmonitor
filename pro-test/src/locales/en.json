@@ -6,7 +6,7 @@
     "suffixPerYear": "/yr",
     "amountCustom": "Custom",
     "opening": "Opening…",
-    "headerTitle": "Choose Your Plan",
+    "headerTitle": "How much does World Monitor cost?",
     "headerSubtitle": "From real-time monitoring to full intelligence infrastructure. Pick the tier that fits your mission.",
     "billingMonthly": "Monthly",
     "billingAnnual": "Annual",
@@ -170,7 +170,7 @@
     "freeF2": "Curated feeds, attributed sources, and map layers"
   },
   "whyUpgrade": {
-    "title": "Why upgrade",
+    "title": "Why upgrade to World Monitor Pro?",
     "noiseTitle": "Know first",
     "noiseDesc": "AIS anomaly → Brent spike → your Slack in under a minute. Signal, not headlines.",
     "fasterTitle": "Ask anything",
@@ -190,7 +190,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "Your personal intelligence desk",
+    "title": "What is the personal intelligence desk?",
     "body": "Up to 30 ranked items per send, deduped across sources, scored against your watchlist. Choose your cadence — daily, twice-daily, or weekly — with an AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook.",
     "closer": "Not a newsletter. An analyst.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · AES-256 encrypted · Quiet hours"
@@ -212,7 +212,7 @@
     "asToldTo": "as told to"
   },
   "audience": {
-    "title": "Built for people who need signal fast",
+    "title": "Who is World Monitor built for?",
     "investorsTitle": "Investors & portfolio managers",
     "investorsDesc": "Track global equities, analyst targets, valuation metrics, and macro indicators alongside geopolitical risk signals.",
     "tradersTitle": "Energy & commodities traders",
@@ -227,7 +227,7 @@
     "teamsDesc": "Move from individual use to shared workflows, API access, TV apps, and managed deployments."
   },
   "dataCoverage": {
-    "title": "What World Monitor Tracks",
+    "title": "What does World Monitor track?",
     "subtitle": "Service domains ingested simultaneously. Markets, macro, geopolitics, energy, infrastructure — everything normalized and rendered on a WebGL globe.",
     "markets": "Financial Markets & Equities",
     "marketsDesc": "Global stock analysis, commodities, crypto, ETF flows, analyst targets, and FRED macro data",
@@ -264,7 +264,7 @@
   },
   "proShowcase": {
     "proTier": "PRO TIER",
-    "title": "Your AI Analyst That Never Sleeps",
+    "title": "What does the World Monitor AI analyst do?",
     "subtitle": "The free dashboard shows you the world. Pro gives you an analyst to ask, a digest you subscribe to, and primitives to build on. Stocks, macro, geopolitical risk — and the connections between them.",
     "equityResearch": "Equity Research",
     "equityResearchDesc": "Global stock analysis with financials visualization, analyst price targets, and valuation metrics. Track what moves markets.",
@@ -293,7 +293,7 @@
   },
   "apiSection": {
     "apiTier": "API TIER",
-    "title": "Programmatic Intelligence",
+    "title": "How do APIs and agents use World Monitor?",
     "subtitle": "For developers, analysts, and teams building on World Monitor data. Separate from Pro — use both or either.",
     "restApi": "REST API across service domains — official SDKs for JavaScript, Python, Ruby, Go",
     "authenticated": "Authenticated per-key, rate-limited per tier",
@@ -309,7 +309,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE TIER",
-    "title": "Intelligence Infrastructure",
+    "title": "What does World Monitor Enterprise include?",
     "subtitle": "For governments, institutions, trading desks, and organizations that need the full platform with maximum security, AI agents, TV apps, and data depth.",
     "security": "Government-Grade Security",
     "securityDesc": "Air-gapped deployment, on-premises Docker, dedicated cloud tenant, SOC 2 Type II path, SSO/MFA, and full audit trail.",
@@ -346,7 +346,7 @@
     "contactFailed": "Failed to send. Please email enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Compare Tiers",
+    "title": "How do World Monitor plans compare?",
     "feature": "Feature",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -408,7 +408,7 @@
     "fAll": "All"
   },
   "faq": {
-    "title": "Frequently Asked Questions",
+    "title": "Frequently asked questions about World Monitor Pro",
     "q1": "Is World Monitor still free?",
     "a1": "Yes. The core platform remains free. Pro adds equity research, macro analytics, and AI briefings. Pro Business adds the commercial license and data export. Enterprise adds team deployments and TV apps.",
     "q2": "Why pay for Pro?",
@@ -437,7 +437,7 @@
     "a13": "Notification channels are AES-256 encrypted at rest. Digests never leave our pipeline unredacted."
   },
   "finalCta": {
-    "title": "Start with Pro. Scale to Enterprise.",
+    "title": "How do I start with Pro or talk to sales?",
     "subtitle": "Keep using World Monitor for free, or upgrade for equity research, macro analytics, and AI briefings. If your organization needs team access, TV apps, or API support, talk to us.",
     "talkToSales": "Talk to Sales"
   },
@@ -495,7 +495,7 @@
     },
     "live": {
       "eyebrow": "Live right now",
-      "title": "This page is plugged into the same APIs as the dashboard.",
+      "title": "What live data is this page showing right now?",
       "subtitle": "Four of the hundred-plus signals World Monitor watches around the clock.",
       "liveBadge": "Live",
       "sampleBadge": "Sample",
@@ -514,7 +514,7 @@
     },
     "moments": {
       "eyebrow": "Correlation engine",
-      "title": "The edge is seeing the signals move together.",
+      "title": "How does World Monitor correlate signals?",
       "sub": "You can find the feeds in a hundred places. The edge is one surface where geopolitics, shipping, commodities, macro, markets, weather, infrastructure, cyber, news and country risk can explain each other.",
       "signalStack": "Signals fused",
       "correlation": "Correlation",
@@ -578,7 +578,7 @@
     },
     "firstFive": {
       "eyebrow": "Zero to oriented",
-      "title": "Your first five minutes on the live map.",
+      "title": "What happens in your first five minutes on the map?",
       "sub": "No tour, no empty states, no signup wall. This is what actually happens.",
       "f1Title": "The map is already moving",
       "f1Desc": "Conflicts, vessels, flights, fires and outages render as the page loads. Nothing to configure first.",
@@ -594,7 +594,7 @@
     },
     "depth": {
       "eyebrow": "Under the hood",
-      "title": "The depth is the product.",
+      "title": "How deep is the World Monitor data model?",
       "sub": "Every number below is live in the dashboard today — not a roadmap.",
       "s1v": "Shared",
       "s1l": "Map layers",
@@ -644,7 +644,7 @@
     },
     "agents": {
       "eyebrow": "For builders & AI agents",
-      "title": "Build on live world intelligence — from any stack.",
+      "title": "How do I build on World Monitor from my own stack?",
       "sub": "Everything on the map is also an API. Wire it into Claude over MCP, call the REST endpoints from anywhere, or install a native client for Python, Ruby, Go, or JavaScript — your code researches with live data instead of training-data memories.",
       "b1": "MCP tools — risk scores, chokepoints, conflicts, markets, briefs",
       "b2": "Documented REST API — one OpenAPI 3.1 spec, one key",
@@ -687,7 +687,7 @@
     },
     "faq": {
       "eyebrow": "No catch",
-      "title": "Fair questions.",
+      "title": "What are common questions about World Monitor?",
       "q1": "Is World Monitor really free?",
       "a1": "Yes. The live map — every layer except Resilience, curated feeds, country briefs, breaking alerts, and monitoring surfaces — is free with no signup and no trial clock. Pro pays for the feeds: it adds WM Analyst, the scenario engine, Route Explorer, scheduled digests, MCP access for AI clients and the Resilience map layer. No ads, and no account means there's no user data to sell.",
       "q2": "What is a global intelligence dashboard?",
@@ -712,7 +712,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "The world map doesn't wait for you.",
+      "title": "How do I start watching the world map?",
       "subtitle": "While you read this page it kept moving — straits, hotspots, markets, curated feeds. One of them is tomorrow's front page. Find it first — free, no account.",
       "button": "Find it first",
       "note": "Free · No signup · Loads in seconds",

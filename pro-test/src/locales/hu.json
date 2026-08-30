@@ -51,7 +51,7 @@
     "freeF2": "Válogatott feedek, forrásokkal megjelölt tartalmak és térképrétegek"
   },
   "whyUpgrade": {
-    "title": "Miért érdemes frissíteni",
+    "title": "Miért érdemes frissíteni a World Monitor Pro-ra?",
     "noiseTitle": "Tudja meg elsőként",
     "noiseDesc": "AIS-anomália → Brent-ugrás → Slack-értesítés egy percen belül. Jel, nem címlapzaj.",
     "fasterTitle": "Kérdezzen bármit",
@@ -71,7 +71,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "Az Ön személyes hírszerzési deskje",
+    "title": "Mi az a személyes intelligence desk?",
     "body": "Legfeljebb 30 rangsorolt elem küldésenként, forrásokon közösen eltávolítva, figyelőlistádhoz képest pontozva. Válaszd meg az ütemezésedet — napi, naponta kétszer vagy hetente — AI Assessment és Signals to watch mellett a Slackre, Discordra, Telegramba, e-mailbe vagy webhookra.",
     "closer": "Nem hírlevél. Elemző.",
     "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 titkosítás · Csendes órák"
@@ -93,7 +93,7 @@
     "asToldTo": "elmondva"
   },
   "audience": {
-    "title": "Azoknak készült, akiknek gyorsan kell a jel",
+    "title": "Kinek készült a World Monitor?",
     "investorsTitle": "Befektetők és portfóliókezelők",
     "investorsDesc": "Kövesse a globális részvényeket, elemzői célárakat, értékelési mutatókat és makróindikátorokat a geopolitikai kockázati jelekkel együtt.",
     "tradersTitle": "Energia- és árupiaci kereskedők",
@@ -108,7 +108,7 @@
     "teamsDesc": "Lépjen túl az egyéni használaton: közös munkafolyamatok, API-hozzáférés, TV-appok és menedzselt telepítések."
   },
   "dataCoverage": {
-    "title": "Mit követ a World Monitor",
+    "title": "Mit követ nyomon a World Monitor?",
     "subtitle": "Szolgáltatási tartományok párhuzamosan feldolgozva. Piacok, makroökonómia, geopolitika, energia, infrastruktúra — minden normalizálva és megjelenítve egy WebGL-földgömbön.",
     "markets": "Pénzügyi piacok és részvények",
     "marketsDesc": "Globális részvényelemzés, árupiacok, kripto, ETF-áramlások, elemzői célárak és FRED makróadatok",
@@ -145,7 +145,7 @@
   },
   "proShowcase": {
     "proTier": "PRO SZINT",
-    "title": "Az AI-elemzője, aki sosem alszik",
+    "title": "Mit csinál a World Monitor AI elemző?",
     "subtitle": "Az ingyenes irányítópult megmutatja a világot. A Pro elemzőt ad, akit kérdezhet, digestet, amelyre feliratkozhat, és építőkockákat, amelyekre építhet. Részvények, makró, geopolitikai kockázat — és a köztük lévő kapcsolatok.",
     "equityResearch": "Részvénykutatás",
     "equityResearchDesc": "Globális részvényelemzés pénzügyi vizualizációval, elemzői célárakkal és értékelési mutatókkal. Kövesse, mi mozgatja a piacokat.",
@@ -174,7 +174,7 @@
   },
   "apiSection": {
     "apiTier": "API SZINT",
-    "title": "Programozható intelligencia",
+    "title": "Hogyan használják az API-k és ágensek a World Monitor-t?",
     "subtitle": "Fejlesztőknek, elemzőknek és csapatoknak, akik World Monitor adatokra építenek. Különálló a Pro csomagtól — használhatja mindkettőt vagy bármelyiket.",
     "restApi": "REST API szolgáltatási tartományokon — hivatalos SDK-k JavaScripthez, Pythonhoz, Rubyhoz, Go-hoz",
     "authenticated": "Kulcsonként hitelesített, csomagonként rate-limitált",
@@ -190,7 +190,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE SZINT",
-    "title": "Hírszerzési infrastruktúra",
+    "title": "Mit tartalmaz a World Monitor Enterprise?",
     "subtitle": "Kormányoknak, intézményeknek, kereskedési deskeknek és szervezeteknek, amelyeknek a teljes platform kell maximális biztonsággal, AI-ügynökökkel, TV-appokkal és mély adatokkal.",
     "security": "Kormányzati szintű biztonság",
     "securityDesc": "Air-gapped telepítés, on-premises Docker, dedikált cloud tenant, SOC 2 Type II útvonal, SSO/MFA és teljes audit trail.",
@@ -227,7 +227,7 @@
     "contactFailed": "A küldés sikertelen. Írjon az enterprise@worldmonitor.app címre"
   },
   "pricingTable": {
-    "title": "Csomagok összehasonlítása",
+    "title": "Hogyan hasonlítanak össze a World Monitor-csomagok?",
     "feature": "Funkció",
     "freeHeader": "Ingyenes ($0)",
     "proHeader": "Pro ($39,99)",
@@ -289,7 +289,7 @@
     "fAll": "Összes"
   },
   "faq": {
-    "title": "Gyakori kérdések",
+    "title": "Gyakran ismételt kérdések a World Monitor Pro-ról",
     "q1": "A World Monitor továbbra is ingyenes?",
     "a1": "Igen. Az alapplatform ingyenes marad. A Pro kiegészíti az értékpapír-kutatást, makroökonómiai elemzéseket és AI-összefoglalókat. A Pro Business hozzáadja a kereskedelmi licencet és adatexportálást. Az Enterprise csapatos telepítéseket és TV-alkalmazásokat biztosít.",
     "q2": "Miért érdemes a Pro csomagért fizetni?",
@@ -318,7 +318,7 @@
     "a13": "Az értesítési csatornák nyugalmi állapotban AES-256-tal titkosítottak. A digestek soha nem hagyják el a pipeline-unkat az érzékeny adatok kitakarása nélkül."
   },
   "finalCta": {
-    "title": "Kezdje a Pro csomaggal. Skálázzon Enterprise-ra.",
+    "title": "Hogyan kezdhetek a Pro-val vagy beszélhetek az értékesítéssel?",
     "subtitle": "Használja tovább ingyen a World Monitort, vagy frissítsen részvénykutatásért, makróanalitikáért és AI-briefekért. Ha szervezetének csapathozzáférésre, TV-appokra vagy API-támogatásra van szüksége, beszéljen velünk.",
     "talkToSales": "Beszéljen az értékesítéssel"
   },
@@ -341,7 +341,7 @@
     "suffixPerYear": "/év",
     "amountCustom": "Egyedi",
     "opening": "Megnyitás…",
-    "headerTitle": "Válassza ki csomagját",
+    "headerTitle": "Mennyibe kerül a World Monitor?",
     "headerSubtitle": "A valós idejű monitoringtól a teljes hírszerzési infrastruktúráig. Válassza ki a küldetéséhez illő szintet.",
     "billingMonthly": "Havi",
     "billingAnnual": "Éves",
@@ -483,7 +483,7 @@
     },
     "live": {
       "eyebrow": "Most élő",
-      "title": "Ez az oldal ugyanazokkal az API-kkal csatlakozik, mint az irányítópult.",
+      "title": "Milyen élő adatokat mutat ez az oldal éppen most?",
       "subtitle": "A száz feletti jelzések közül négy, amelyet a World Monitor folyamatosan figyel.",
       "liveBadge": "Élő",
       "sampleBadge": "Minta",
@@ -502,7 +502,7 @@
     },
     "moments": {
       "eyebrow": "Korrelációs motor",
-      "title": "Az él a jelek együttes mozgását látja.",
+      "title": "Hogyan korrelál a World Monitor jeleket?",
       "sub": "A feedeket száz helyen megtalálhatod. Az él egy felület, ahol a geopolitika, a tengeri szállítás, az árucikkek, a makró, a piacok, az időjárás, az infrastruktúra, a kibernetika, a hírek és az országkockázat magyarázhatják egymást.",
       "signalStack": "Jelek fúzionálva",
       "correlation": "Korreláció",
@@ -566,7 +566,7 @@
     },
     "firstFive": {
       "eyebrow": "Nulla az orientációtól",
-      "title": "Az első öt perce az élő térképen.",
+      "title": "Mi történik az első öt percedben a térképen?",
       "sub": "Nincs túra, nincsenek üres állapotok, nincs regisztrációs fal. Ez történik valójában.",
       "f1Title": "A térkép már mozog",
       "f1Desc": "A konfliktusok, hajók, repülőgépek, tüzek és üzemszünetek az oldal betöltésével jelennek meg. Előzetes konfigurálásra nincs szükség.",
@@ -582,7 +582,7 @@
     },
     "depth": {
       "eyebrow": "A motorháztető alatt",
-      "title": "A mélység a termék.",
+      "title": "Milyen mély a World Monitor adatmodell?",
       "sub": "Az alábbi minden szám ma élesben van az irányítópulton — nem egy ütemterv.",
       "s1v": "Megosztott",
       "s1l": "Térképrétegek",
@@ -632,7 +632,7 @@
     },
     "agents": {
       "eyebrow": "Építőknek és AI ágenseknek",
-      "title": "Építs élő világtudáson alapuló alkalmazásokat — bármilyen stackből.",
+      "title": "Hogyan építhetek rá a World Monitor-ra a saját stack-ből?",
       "sub": "A térkép minden eleme API is. Kösd össze Claudeval MCP-n keresztül, hívd meg a REST végpontokat bárhonnan, vagy telepítsen natív klienst Pythonhoz, Rubyhoz, Gohoz vagy JavaScripthez — a kódod élő adatokkal kutat az edzésadatok helyett.",
       "b1": "MCP eszközök — kockázati pontszámok, szűk keresztmetszetek, konfliktusok, piacok, összefoglalók",
       "b2": "Dokumentált REST API — egy OpenAPI 3.1 specifikáció, egy kulcs",
@@ -675,7 +675,7 @@
     },
     "faq": {
       "eyebrow": "Nincs másodszándék",
-      "title": "Jogos kérdések.",
+      "title": "Milyen gyakori kérdések vannak a World Monitor-ról?",
       "q1": "Tényleg ingyenes a World Monitor?",
       "a1": "Igen. Az élő térkép — minden réteg kivéve a Resilience, válogatott feedek, országösszefoglalók, break riasztások és monitorozási felületek — ingyenes regisztráció és próbaidő nélkül. A Pro a feedekért fizet: hozzáadja a WM Analystr, a forgatókönyv motort, a Route Explorert, az ütemezett összefoglalókat, az MCP hozzáférést az AI-ügyfeleknek és a Resilience térképréteg. Nincsenek hirdetések, és mivel nincs fiók, nincsenek felhasználói adatok az eladáshoz.",
       "q2": "Mi az a globális hírszerzési irányítópult?",
@@ -700,7 +700,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "A világtérkép nem vár rád.",
+      "title": "Hogyan kezdhetek a világtérkép figyelésbe?",
       "subtitle": "Míg ezt az oldalt olvasod, továbbra is mozgott — szorosok, forrópontok, piacok, kurátori feedek. Az egyikük holnap címlapja. Találd meg először — ingyenes, regisztráció nélkül.",
       "button": "Találd meg először",
       "note": "Ingyenes · Nincs regisztráció · Másodpercekben betöltődik",

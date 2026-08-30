@@ -46,6 +46,7 @@ const DISCOVERY_SURFACES = [
 const plugin = JSON.parse(readFileSync(join(ROOT, 'plugin.json'), 'utf-8'));
 const publicPlugin = readFileSync(join(ROOT, 'public/plugin.json'));
 const mcp = JSON.parse(readFileSync(join(ROOT, 'mcp.json'), 'utf-8'));
+const publicLlms = readFileSync(join(ROOT, 'public/llms.txt'), 'utf-8');
 const pkg = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8'));
 const vercelConfig = JSON.parse(readFileSync(join(ROOT, 'vercel.json'), 'utf-8'));
 const serverCard = JSON.parse(
@@ -123,10 +124,16 @@ describe('agent readiness: Agent Plugins manifest', () => {
     }
   });
 
-  it('does not publish mcp.json on the HTTP origin (collides with /.well-known/mcp.json)', () => {
+  it('describes mcp.json as part of the repository package, not the HTTP manifest', () => {
     assert.equal(existsSync(join(ROOT, 'public/mcp.json')), false);
     const mcpRoute = (vercelConfig.headers ?? []).find((rule) => rule.source === '/mcp.json');
     assert.equal(mcpRoute, undefined, 'vercel.json must not serve /mcp.json as a static Agent Plugin file');
+    assert.doesNotMatch(
+      publicLlms,
+      /\[Agent Plugin\][^\n]*`plugin\.json` \+ `mcp\.json` \+ `skills\/`/,
+      'the public /plugin.json link must not promise sibling HTTP files that only exist in the repository package',
+    );
+    assert.match(publicLlms, /repository package/i);
   });
 
   it('every well-known agent skill has a plugin skills/ SKILL.md inside the plugin root', () => {

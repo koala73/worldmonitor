@@ -26,7 +26,8 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
-  OPENSKY_COOLDOWN_KEY,
+  cooldownKeyForAccount,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
   OPENSKY_MAX_COOLDOWN_MS,
   OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
   OPENSKY_MAX_DEADLINE_SET_LUA,
@@ -36,7 +37,10 @@ const {
   inspectCooldownRecord,
   buildCooldownRecord,
   maxDeadlineSetCommand,
+  legacyCooldownCompatibilityEnabled,
 } = require('./_opensky-account-cooldown.cjs');
+const OPENSKY_ACCOUNT_FINGERPRINT = openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID);
+const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(OPENSKY_ACCOUNT_FINGERPRINT);
 const {
   GROQ_DEFAULT_MODEL,
   GROQ_REASONING_EXTRA_BODY,
@@ -5799,6 +5803,7 @@ const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
 const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
+const { buildWorldBankTechObservations } = require('./_wb-tech-readiness-projection.cjs');
 
 const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
 const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
@@ -5897,7 +5902,13 @@ function wbComputeRankings(indicatorData) {
     }
     const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
     const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
-    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components });
+    const observations = buildWorldBankTechObservations({
+      internet: indicatorData.internet[cc],
+      mobile: indicatorData.mobile[cc],
+      broadband: indicatorData.broadband[cc],
+      rdSpend: indicatorData.rdSpend[cc],
+    });
+    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components, observations });
   }
   scores.sort((a, b) => b.score - a.score);
   scores.forEach((s, i) => { s.rank = i + 1; });
@@ -9107,28 +9118,56 @@ function mergeLocalOpenSkyCooldown(untilMs) {
 }
 
 // Aviation bbox callers abort this relay hop after 6s
-// (track-aircraft BBOX_RELAY_TIMEOUT_MS). The default Upstash GET waits 5s,
-// and the queued fetch used to repeat that read — a slow Redis consumed the
-// fail-open path before OpenSky could answer. Bound the GET and reuse the
-// result for the same request's second check (#6253).
+// (track-aircraft BBOX_RELAY_TIMEOUT_MS). Bound the shared Redis GET so a
+// slow read still fails open with enough time for OpenSky. Deduplicate only
+// while the read is in flight: a completed zero must not hide a cooldown that
+// the seeder writes before the queued upstream boundary (#6253).
 const OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS = 1_000;
-const OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS = 5_000;
 let sharedOpenSkyCooldownReadPromise = null;
-let sharedOpenSkyCooldownReadResult = 0;
-let sharedOpenSkyCooldownReadExpiresAt = 0;
+
+async function readLegacySharedOpenSkyCooldownMs() {
+  const record = await upstashGet(OPENSKY_LEGACY_COOLDOWN_KEY, (reason) => {
+    console.warn('[Relay] OpenSky legacy cooldown read failed, proceeding without it: ' + reason);
+  }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
+  const inspected = inspectCooldownRecord(record, {
+    account: OPENSKY_ACCOUNT_FINGERPRINT,
+  });
+  if (inspected.ignoreReason === 'account-mismatch') {
+    console.warn('[Relay] OpenSky legacy cooldown ignored — recorded for a different account');
+  } else if (inspected.ignoreReason === 'implausible-deadline') {
+    console.warn('[Relay] OpenSky legacy cooldown ignored — implausible deadline ' + inspected.until);
+  }
+  if (inspected.remainingMs <= 0) return 0;
+
+  // Copy, never delete: a rolling deploy can still have v1 writers. The
+  // account-scoped max-deadline EVAL protects a concurrent v2 writer.
+  try {
+    const command = maxDeadlineSetCommand(
+      OPENSKY_COOLDOWN_KEY,
+      record,
+      ttlSecondsForCooldown(inspected.remainingMs),
+    );
+    const written = await upstashEval(
+      OPENSKY_MAX_DEADLINE_SET_LUA,
+      [OPENSKY_COOLDOWN_KEY],
+      command.slice(4),
+    );
+    if (written == null && UPSTASH_ENABLED) {
+      console.warn('[Relay] OpenSky legacy cooldown migration returned non-OK');
+    }
+  } catch (err) {
+    console.warn('[Relay] OpenSky legacy cooldown migration failed, proceeding with the observed cooldown: ' + (err.message || err));
+  }
+  return inspected.remainingMs;
+}
 
 // Shared Redis record written by this relay and by seed-military-flights.
 // Fails OPEN on every error path: a Redis problem must never disable the
 // data tier, and the in-process cooldown still works when Redis is down (#6253).
 async function remainingSharedOpenSkyCooldownMs() {
   if (sharedOpenSkyCooldownReadPromise) return sharedOpenSkyCooldownReadPromise;
-  if (Date.now() < sharedOpenSkyCooldownReadExpiresAt) return sharedOpenSkyCooldownReadResult;
 
-  const pending = readSharedOpenSkyCooldownMs().then((remainingMs) => {
-    sharedOpenSkyCooldownReadResult = remainingMs;
-    sharedOpenSkyCooldownReadExpiresAt = Date.now() + OPENSKY_SHARED_COOLDOWN_READ_REUSE_MS;
-    return remainingMs;
-  });
+  const pending = readSharedOpenSkyCooldownMs();
   sharedOpenSkyCooldownReadPromise = pending;
   try {
     return await pending;
@@ -9141,11 +9180,13 @@ async function remainingSharedOpenSkyCooldownMs() {
 
 async function readSharedOpenSkyCooldownMs() {
   try {
+    let v2ReadFailed = false;
     const record = await upstashGet(OPENSKY_COOLDOWN_KEY, (reason) => {
+      v2ReadFailed = true;
       console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${reason}`);
     }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
     const inspected = inspectCooldownRecord(record, {
-      account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+      account: OPENSKY_ACCOUNT_FINGERPRINT,
     });
     if (inspected.ignoreReason === 'account-mismatch') {
       console.warn('[Relay] OpenSky shared cooldown ignored — recorded for a different account');
@@ -9154,8 +9195,17 @@ async function readSharedOpenSkyCooldownMs() {
     }
     if (inspected.remainingMs > 0) {
       mergeLocalOpenSkyCooldown(Date.now() + inspected.remainingMs);
+      return inspected.remainingMs;
     }
-    return inspected.remainingMs;
+    // A v2 transport or parse failure must remain fail-open. Only a clean
+    // empty, expired, or mismatched v2 read may consult the legacy key.
+    if (v2ReadFailed) return 0;
+    if (!legacyCooldownCompatibilityEnabled()) return 0;
+    const legacyRemainingMs = await readLegacySharedOpenSkyCooldownMs();
+    if (legacyRemainingMs > 0) {
+      mergeLocalOpenSkyCooldown(Date.now() + legacyRemainingMs);
+    }
+    return legacyRemainingMs;
   } catch (err) {
     console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${err.message || err}`);
     return 0;
@@ -9173,18 +9223,26 @@ async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Dat
     now: completedAt,
     cooldownMs: persistCooldownMs,
     retryAfterSeconds,
-    account: openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID),
+    account: OPENSKY_ACCOUNT_FINGERPRINT,
     recordedBy: 'ais-relay',
   });
   try {
-    // Atomic max-deadline write: a late shorter persist must not erase a
-    // longer seeder (or earlier relay) lockout already stored at this key.
+    // During the bounded rollout bridge, one EVAL updates the account-scoped
+    // key and v1 atomically so an old process cannot miss a new lockout.
+    // After the cutoff, only v2 remains on the hot path.
+    const keys = legacyCooldownCompatibilityEnabled({ now: completedAt })
+      ? [OPENSKY_COOLDOWN_KEY, OPENSKY_LEGACY_COOLDOWN_KEY]
+      : [OPENSKY_COOLDOWN_KEY];
     const command = maxDeadlineSetCommand(
-      OPENSKY_COOLDOWN_KEY,
+      keys,
       record,
       ttlSecondsForCooldown(persistCooldownMs),
     );
-    const written = await upstashEval(OPENSKY_MAX_DEADLINE_SET_LUA, [OPENSKY_COOLDOWN_KEY], command.slice(4));
+    const written = await upstashEval(
+      OPENSKY_MAX_DEADLINE_SET_LUA,
+      keys,
+      command.slice(3 + keys.length),
+    );
     if (written == null && UPSTASH_ENABLED) {
       console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
     }

@@ -1,0 +1,91 @@
+name: Publish MCP Registry
+
+# Publishes server.json (description derived from the server card's live tool
+# inventory) to registry.modelcontextprotocol.io under app.worldmonitor.
+#
+# Triggers — the release-only wiring this replaces logged zero runs: the last
+# GitHub release predated it by ~6 months and tracks the desktop app, not
+# SERVER_VERSION, so the registry stayed at 1.13.0/39 tools against a live
+# 1.17.0/72 (#7372). Publication now follows the cadence that exists:
+#   - push to main touching a manifest input: republish the moment the payload
+#     the registry serves can change. Same shape as desktop-release-train.yml.
+#   - schedule (daily): self-healing backstop. GitHub keeps one pending run per
+#     concurrency group, so a merge burst can drop a queued publish; the next
+#     scheduled run re-attempts it from current main.
+#   - release published + workflow_dispatch: retained for manual and tagged runs.
+# Re-running is safe: scripts/publish-mcp-registry.mjs looks the version up
+# first, skips an identical published payload, and fails closed on a differing
+# one rather than silently diverging.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/publish-mcp-registry.yml'
+      - 'public/.well-known/mcp/server-card.json'
+      - 'scripts/mcp-registry-published-versions.json'
+      - 'scripts/prepare-mcp-registry-manifest.mjs'
+      - 'scripts/publish-mcp-registry.mjs'
+      - 'server.json'
+  schedule:
+    - cron: '41 5 * * *'
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-mcp-registry
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: ${{ github.event_name == 'release' || github.ref == 'refs/heads/main' }}
+    environment: mcp-registry-publish
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Install mcp-publisher
+        env:
+          MCP_PUBLISHER_SHA256: ab128162b0616090b47cf245afe0a23f3ef08936fdce19074f5ba0a4469281ac
+          MCP_PUBLISHER_VERSION: v1.7.9
+        run: |
+          curl --fail --location --silent --show-error \
+            --connect-timeout 15 \
+            --max-time 90 \
+            --retry 3 \
+            --retry-delay 2 \
+            --output mcp-publisher.tar.gz \
+            "https://github.com/modelcontextprotocol/registry/releases/download/${MCP_PUBLISHER_VERSION}/mcp-publisher_linux_amd64.tar.gz"
+          echo "${MCP_PUBLISHER_SHA256}  mcp-publisher.tar.gz" | sha256sum --check
+          tar -xzf mcp-publisher.tar.gz mcp-publisher
+          chmod +x mcp-publisher
+
+      - name: Prepare registry manifest
+        run: node scripts/prepare-mcp-registry-manifest.mjs registry-server.json
+
+      - name: Validate server manifest
+        run: ./mcp-publisher validate registry-server.json
+
+      - name: Authenticate to MCP Registry
+        env:
+          MCP_REGISTRY_PRIVATE_KEY: ${{ secrets.MCP_REGISTRY_PRIVATE_KEY }}
+        run: |
+          test -n "${MCP_REGISTRY_PRIVATE_KEY}"
+          ./mcp-publisher login http \
+            --domain worldmonitor.app \
+            --private-key "${MCP_REGISTRY_PRIVATE_KEY}"
+
+      - name: Publish server
+        run: |
+          node scripts/publish-mcp-registry.mjs registry-server.json -- \
+            ./mcp-publisher publish registry-server.json

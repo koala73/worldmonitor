@@ -146,6 +146,37 @@ function createBindings(overrides = {}) {
       changed: true,
       message: 'Panel enabled.',
     }),
+    listMissionPresets: async () => ({
+      ok: true,
+      variant: 'full',
+      activePresetId: null,
+      presets: [],
+      count: 0,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: true,
+      monitor: 'full',
+      map: {
+        view: 'global',
+        zoom: 2.3,
+        timeRange: '7d',
+        enabledLayers: ['tradeRoutes'],
+      },
+      panels: { enabled: ['map', 'supply-chain'] },
+      message: 'Mission preset applied: Supply-Chain Risk.',
+    }),
+    openMissionPicker: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'mission_picker',
+      overlay: 'open',
+      message: 'Opened mission presets.',
+      context,
+    }),
     getPanelLayout: async () => ({
       regions: {
         sidebar: { available: true, panelCount: 1 },
@@ -340,6 +371,7 @@ describe('webmcp.ts: current API contract', () => {
           'list_map_layers',
           'list_dashboard_panels',
           'list_dashboard_tabs',
+          'list_mission_presets',
           'search_dashboard',
         ]
           .includes(tool.name),
@@ -1344,6 +1376,46 @@ describe('webmcp.ts: current API contract', () => {
           effectiveEnabled: true,
           changed: true,
           message: 'Panel enabled.',
+        };
+      },
+      applyMissionPreset: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          presetId: 'supply-chain-risk',
+          label: 'Supply-Chain Risk',
+          changed: true,
+          monitor: 'full',
+          map: {
+            view: 'global',
+            zoom: 2.3,
+            timeRange: '7d',
+            enabledLayers: ['tradeRoutes'],
+          },
+          panels: { enabled: ['map', 'supply-chain'] },
+          message: 'Mission preset applied: Supply-Chain Risk.',
+        };
+      },
+      openMissionPicker: async () => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'applied',
+          destination: 'mission_picker',
+          overlay: 'open',
+          message: 'Opened mission presets.',
+          context: {
+            variant: 'full',
+            map: {
+              view: 'global',
+              center: { lat: 0, lon: 0 },
+              zoom: 2,
+              timeRange: '7d',
+              enabledLayers: ['weather'],
+            },
+            panels: { mounted: ['map'], enabled: ['map'] },
+          },
         };
       },
       setPanelFullscreen: async () => {
