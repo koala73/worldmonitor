@@ -427,6 +427,8 @@ async function loadEventHandlerManager(): Promise<EventHandlerManagerCtor> {
       };
       export function track(...args) { push('track', args); }
       export function trackPanelView(...args) { push('trackPanelView', args); }
+      export function trackMissionPickerShown(...args) { push('trackMissionPickerShown', args); }
+      export function trackMissionSelected(...args) { push('trackMissionSelected', args); }
       export function trackVariantSwitch(...args) { push('trackVariantSwitch', args); }
       export function trackThemeChanged(...args) { push('trackThemeChanged', args); }
       export function trackMapViewChange(...args) { push('trackMapViewChange', args); }

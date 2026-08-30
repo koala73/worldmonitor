@@ -90,9 +90,9 @@ describe('variant env guards', () => {
     );
   });
 
-  it('reuses buildVariant for SSR, Tauri, and localhost fallback paths', () => {
+  it('reuses buildVariant for SSR, Tauri, missing-location, and localhost fallback paths', () => {
     const buildVariantUses = variantSrc.match(/return buildVariant;/g) ?? [];
-    assert.equal(buildVariantUses.length, 3, `Expected three buildVariant fallbacks, got ${buildVariantUses.length}`);
+    assert.equal(buildVariantUses.length, 4, `Expected four buildVariant fallbacks, got ${buildVariantUses.length}`);
     assert.ok(variantSrc.includes("if (typeof window === 'undefined') return buildVariant;"), 'SSR should fall back to buildVariant');
   });
 });
