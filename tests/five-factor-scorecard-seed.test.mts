@@ -26,6 +26,8 @@ import {
   readScorecardSources,
   redisPipeline,
   SCORECARD_ACTIVATION_KEY,
+  SCORECARD_FINGERPRINT_KEY,
+  scorecardPayloadFingerprint,
   stageScorecardReadModel,
 } from '../scripts/seed-five-factor-scorecard.mjs';
 
@@ -270,14 +272,21 @@ describe('five-factor atomic snapshot', () => {
     assert.match(String(atomicCommand[1]), /SET.*RENAME.*EXPIRE.*SET.*KEYS\[4\]/);
     assert.match(String(atomicCommand[1]), /redis\.call\('SET', KEYS\[4\], '1'\)/);
     assert.doesNotMatch(String(atomicCommand[1]), /KEYS\[4\].*'EX'/);
+    // The idempotency branch must compare the fingerprint, never the payload:
+    // GET KEYS[1] == ARGV[1] copied and compared the whole multi-MB canonical
+    // value inside the script.
+    assert.match(String(atomicCommand[1]), /redis\.call\('GET', KEYS\[5\]\) == ARGV\[3\]/);
+    assert.doesNotMatch(String(atomicCommand[1]), /redis\.call\('GET', KEYS\[1\]\) == ARGV\[1\]/);
     assert.deepEqual(atomicCommand.slice(2), [
-      '4',
+      '5',
       'scorecard:five-factor:v1',
       stagingKey,
       'scorecard:five-factor:v1:read-model',
       SCORECARD_ACTIVATION_KEY,
+      SCORECARD_FINGERPRINT_KEY,
       '{"cohort":1}',
       '123',
+      scorecardPayloadFingerprint('{"cohort":1}'),
     ]);
     const hsetValues = commands.filter((command) => command[0] === 'HSET').flatMap((command) => command.slice(2));
     const fields = new Map<string, string>();
@@ -303,25 +312,33 @@ describe('five-factor atomic snapshot', () => {
       assert.equal(commands.length, 1);
       const command = commands[0]!;
       assert.equal(command[0], 'EVAL');
-      const [, script, keyCount, commandCanonicalKey, commandStagingKey, commandLiveKey, commandActivationKey, payload, ttl] = command.map(String);
-      assert.equal(keyCount, '4');
+      const [, script, keyCount, commandCanonicalKey, commandStagingKey, commandLiveKey, commandActivationKey, commandFingerprintKey, payload, ttl, fingerprint] = command.map(String);
+      assert.equal(keyCount, '5');
       assert.equal(commandActivationKey, SCORECARD_ACTIVATION_KEY);
+      assert.equal(commandFingerprintKey, SCORECARD_FINGERPRINT_KEY);
+      assert.equal(fingerprint, scorecardPayloadFingerprint(payload));
       assert.match(script, /scorecard staging cohort missing/);
       assert.match(script, /redis\.call\('SET', KEYS\[4\], '1'\)/);
       if (values.has(commandStagingKey)) {
         values.set(commandCanonicalKey, payload);
         values.set(commandLiveKey, values.get(commandStagingKey)!);
         values.set(commandActivationKey, '1');
+        values.set(commandFingerprintKey, fingerprint);
         values.delete(commandStagingKey);
         ttls.set(commandCanonicalKey, Number(ttl));
         ttls.set(commandLiveKey, Number(ttl));
+        ttls.set(commandFingerprintKey, Number(ttl));
         if (loseFirstResponse) {
           loseFirstResponse = false;
           throw new Error('synthetic response lost after Redis committed');
         }
         return [{ result: 1 }];
       }
-      if (values.get(commandCanonicalKey) === payload && values.has(commandLiveKey)) {
+      // Idempotency is decided by the fingerprint, never by re-reading the
+      // multi-MB canonical value.
+      if (values.get(commandFingerprintKey) === fingerprint
+        && values.has(commandCanonicalKey)
+        && values.has(commandLiveKey)) {
         values.set(commandActivationKey, '1');
         return [{ result: 1 }];
       }
@@ -345,7 +362,7 @@ describe('five-factor atomic snapshot', () => {
     assert.deepEqual([values.get(canonicalKey), values.get(liveReadModelKey)], ['new-canonical', 'new-read-model']);
   });
 
-  it('deletes a partial staging hash when any batch fails', async () => {
+  it('deletes a partial staging hash when a batch fails permanently', async () => {
     const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
     const calls: unknown[][][] = [];
     let call = 0;
@@ -355,11 +372,41 @@ describe('five-factor atomic snapshot', () => {
       pipeline: async (commands) => {
         calls.push(commands);
         call += 1;
-        if (call === 2) throw new Error('synthetic staging failure');
+        if (call === 2) {
+          // Tagged non-retryable so this exercises the cleanup path directly
+          // rather than waiting out the retry ladder a transient error now gets.
+          const error = Object.assign(new Error('synthetic staging failure'), { nonRetryable: true });
+          throw error;
+        }
         return commands.map(() => ({ result: 1 }));
       },
     }), /synthetic staging failure/);
     assert.ok(calls.flat().some((command) => command[0] === 'DEL' && command[1] === 'scorecard:five-factor:v1:read-model:staging:failed-run'));
+  });
+
+  it('still stages the cohort when a batch fails once and succeeds on retry', async () => {
+    const snapshot = buildFiveFactorSnapshot(['AA'], sources, '2026-08-29T00:00:00.000Z');
+    const calls: unknown[][][] = [];
+    let call = 0;
+    // atomicPublish invokes beforePublish outside its own retry loop, so an
+    // unretried transient Upstash 5xx on any one of the staging requests used to
+    // abort the whole daily publication until the next six-hour tick.
+    const stagingKey = await stageScorecardReadModel(snapshot, {
+      runId: 'flaky-run',
+      batchSize: 1,
+      pipeline: async (commands) => {
+        calls.push(commands);
+        call += 1;
+        if (call === 2) throw new Error('synthetic transient Upstash failure');
+        return commands.map(() => ({ result: 1 }));
+      },
+    });
+    assert.equal(stagingKey, 'scorecard:five-factor:v1:read-model:staging:flaky-run');
+    assert.equal(
+      calls.flat().some((command) => command[0] === 'DEL'),
+      false,
+      'a recovered staging run must not delete the cohort it just wrote',
+    );
   });
 
   it('reads one country and the compact list without downloading the canonical cohort', async () => {

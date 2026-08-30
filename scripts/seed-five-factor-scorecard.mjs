@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 
+import { createHash } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { register } from 'tsx/esm/api';
-import { getRedisCredentials, loadEnvFile, loadSharedConfig, runSeed } from './_seed-utils.mjs';
+import { getRedisCredentials, loadEnvFile, loadSharedConfig, runSeed, withRetry } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { listRankableCountries } from './shared/rankable-universe.mjs';
 register();
@@ -34,6 +35,8 @@ const {
 export const SCORECARD_TTL_SECONDS = 3 * 24 * 3600;
 export const SCORECARD_MAX_STALE_MIN = 36 * 60;
 export const SCORECARD_ACTIVATION_KEY = 'seed-activated:scorecard:five-factor';
+/** sha256 of the last published canonical payload, used for retry idempotency. */
+export const SCORECARD_FINGERPRINT_KEY = 'scorecard:five-factor:v1:fingerprint';
 
 const FIXED_SOURCE_ENTRIES = Object.entries(SCORECARD_SOURCE_KEYS)
   .filter(([field]) => field !== 'staticByCountry');
@@ -110,9 +113,15 @@ export async function stageScorecardReadModel(snapshot, {
   }
   const [firstBatch, ...remainingBatches] = batches;
   if (!firstBatch) throw new Error('scorecard read model has no fields');
+  // atomicPublish calls beforePublish OUTSIDE its own retry loop, on the stated
+  // assumption that "the callback's own writes own their retry policy". These
+  // nine staging requests are that callback, and redisPipeline is a bare fetch
+  // with no retry, so a single transient Upstash 5xx used to abort the whole
+  // daily publication until the next six-hour tick. Match atomicPublish's policy.
+  const stage = (commands) => withRetry(() => pipeline(commands), 2, 1000);
   try {
-    await pipeline([...firstBatch, ['EXPIRE', stagingKey, '3600']]);
-    const results = await Promise.allSettled(remainingBatches.map((commands) => pipeline(commands)));
+    await stage([...firstBatch, ['EXPIRE', stagingKey, '3600']]);
+    const results = await Promise.allSettled(remainingBatches.map((commands) => stage(commands)));
     const failed = results.find((result) => result.status === 'rejected');
     if (failed?.status === 'rejected') throw failed.reason;
   } catch (error) {
@@ -122,6 +131,10 @@ export async function stageScorecardReadModel(snapshot, {
   return stagingKey;
 }
 
+export function scorecardPayloadFingerprint(payload) {
+  return createHash('sha256').update(payload).digest('hex');
+}
+
 export async function publishScorecardCohortAtomically(stagingKey, {
   canonicalKey = FIVE_FACTOR_SCORECARD_KEY,
   payload,
@@ -129,17 +142,28 @@ export async function publishScorecardCohortAtomically(stagingKey, {
   ttlSeconds = SCORECARD_TTL_SECONDS,
 } = {}) {
   if (!stagingKey || typeof payload !== 'string') throw new Error('scorecard atomic publish requires stagingKey and payload');
+  // The retry-idempotency branch answers "did MY payload already land?". It used
+  // to answer that with GET KEYS[1] == ARGV[1], copying and comparing the whole
+  // multi-MB canonical value inside a single-threaded, atomically-executing
+  // script on a Redis instance shared with every other WorldMonitor service --
+  // on exactly the ambiguous-retry path the retry logic exists for. Compare a
+  // sha256 of the payload written alongside the canonical SET instead. The
+  // fingerprint carries the canonical TTL so it can never outlive what it
+  // describes, and the canonical/read-model EXISTS checks still gate the answer.
+  const fingerprint = scorecardPayloadFingerprint(payload);
   await pipeline([
     [
       'EVAL',
-      "if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]); redis.call('RENAME', KEYS[2], KEYS[3]); redis.call('EXPIRE', KEYS[3], ARGV[2]); redis.call('SET', KEYS[4], '1'); return 1 end; if redis.call('GET', KEYS[1]) == ARGV[1] and redis.call('EXISTS', KEYS[3]) == 1 then redis.call('SET', KEYS[4], '1'); return 1 end; return redis.error_reply('scorecard staging cohort missing')",
-      '4',
+      "if redis.call('EXISTS', KEYS[2]) == 1 then redis.call('SET', KEYS[1], ARGV[1], 'EX', ARGV[2]); redis.call('RENAME', KEYS[2], KEYS[3]); redis.call('EXPIRE', KEYS[3], ARGV[2]); redis.call('SET', KEYS[5], ARGV[3], 'EX', ARGV[2]); redis.call('SET', KEYS[4], '1'); return 1 end; if redis.call('GET', KEYS[5]) == ARGV[3] and redis.call('EXISTS', KEYS[1]) == 1 and redis.call('EXISTS', KEYS[3]) == 1 then redis.call('SET', KEYS[4], '1'); return 1 end; return redis.error_reply('scorecard staging cohort missing')",
+      '5',
       canonicalKey,
       stagingKey,
       FIVE_FACTOR_SCORECARD_READ_MODEL_KEY,
       SCORECARD_ACTIVATION_KEY,
+      SCORECARD_FINGERPRINT_KEY,
       payload,
       String(ttlSeconds),
+      fingerprint,
     ],
   ]);
 }
