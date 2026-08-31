@@ -3,10 +3,34 @@ title: "Disease Outbreak Alert Level"
 description: "How World Monitor derives ALERT, WARNING, and WATCH tiers for disease outbreaks using a keyword classifier over item titles and descriptions."
 ---
 
-The "Disease Outbreaks" panel labels each item with one of three categorical
-levels: **ALERT**, **WARNING**, or **WATCH**. This page documents how that
-label is derived so the value is reproducible from the inputs displayed
-on the panel.
+## Start here
+
+The "Disease Outbreaks" panel tags each item **ALERT**, **WARNING**, or
+**WATCH**. Here is the honest version of what that tag is:
+
+**It reads the headline.** If the title or summary contains words like
+*outbreak*, *emergency*, *epidemic*, or *pandemic*, the item is tagged ALERT.
+Words like *warning* or *spread* make it WARNING. Everything else is WATCH.
+
+That is the whole mechanism. There is no model, no case-count threshold, and no
+epidemiological assessment behind it.
+
+<Warning>
+**Treat this as a reading-order hint, not a health judgement.** Because it
+matches words rather than meaning:
+
+- A minor press release that happens to say "outbreak" once is promoted to ALERT.
+- A genuinely serious situation described without those words falls to WATCH.
+- "False outbreak rumor" matches `outbreak` and is promoted to ALERT.
+- Non-English headlines systematically under-classify.
+
+For a clinical assessment, go to the underlying WHO, CDC, or ProMED source —
+every item links to it.
+</Warning>
+
+The value of the tag is that it is **reproducible and inspectable**: you can
+read the item title and know exactly why it got the label it did. The rest of
+this page documents the keyword sets so that stays true.
 
 ## Editorial weights
 

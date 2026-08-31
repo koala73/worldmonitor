@@ -89,6 +89,25 @@ describe('lcp attribution helpers', () => {
     assert.equal(__testing__.classifyCriticalResource('/assets/index-abc.css', 'css'), 'style');
   });
 
+  // #7267 mounted the digest coverage row into footer.site-footer, where it
+  // became the mobile LCP element. Attribution had no footer bucket, so it
+  // reported '' -- which e2e/dashboard-lcp-attribution.spec.ts accepts as
+  // "outside every known container". The one guard positioned to catch that
+  // regression stayed green through it.
+  it('names the site footer instead of degrading to an unattributed empty label', () => {
+    const inside = (...matches: string[]) =>
+      ({ closest: (selector: string) => (matches.includes(selector) ? { dataset: {} } : null) }) as unknown as Element;
+
+    assert.equal(__testing__.closestAttributionLabel(inside('.site-footer')), 'site-footer');
+    // Positive controls: the existing vocabulary still wins where it should,
+    // so the new branch cannot have been inserted ahead of a more specific one.
+    assert.equal(__testing__.closestAttributionLabel(inside('#mapContainer')), 'map-container');
+    assert.equal(__testing__.closestAttributionLabel(inside('.skeleton-shell')), 'shell');
+    assert.equal(__testing__.closestAttributionLabel(inside('.panel')), 'panel');
+    assert.equal(__testing__.closestAttributionLabel(inside('.site-footer', '.panel')), 'panel');
+    assert.equal(__testing__.closestAttributionLabel(inside('.nothing-known')), '');
+  });
+
   it('caps text snippets for debug evidence', () => {
     assert.equal(__testing__.capText('  hello   world  ', 20), 'hello world');
     assert.equal(__testing__.capText('x'.repeat(200), 10), 'xxxxxxxxxx');
