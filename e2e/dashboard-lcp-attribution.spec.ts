@@ -91,12 +91,27 @@ const expectContext = (snapshot: LcpDebugSnapshot): void => {
   expect(snapshot.context.visibilityState).toBeTruthy();
 };
 
-// Vocabulary produced by closestAttributionLabel(); '' is valid when the LCP
-// element is outside every known container. A non-empty value must be a real
-// label — this catches a regression where attribution silently degrades to ''.
+// Vocabulary produced by closestAttributionLabel(). '' is valid when the LCP
+// element is outside every known container, so this set alone cannot catch a
+// regression that degrades attribution to '' — expectNotFooterAnchored below
+// is what pins the one container we know must never win LCP.
 const KNOWN_ATTRIBUTION = new Set([
   '', 'shell-lcp', 'shell', 'map-container', 'map-section', 'map-renderer-shell', 'panel',
+  'site-footer',
 ]);
+
+// #7267 mounted the digest coverage row into footer.site-footer and collapsed
+// the mobile footer around it. On a fixed-viewport shell with no document
+// scroll that pinned the row inside the fold, where its wrapped mono text
+// outgrew the skeleton and took over as LCP — and because the text only lands
+// on the first digest load, LCP then waited on a network round trip (mobile
+// field p75 1137ms -> 2357ms). The footer is chrome; it must never be the
+// largest paint on any viewport.
+const expectNotFooterAnchored = (latest: LcpDebugSnapshot['entries'][number]): void => {
+  expect(latest.element?.closest ?? '').not.toBe('site-footer');
+  expect(latest.element?.selector ?? '').not.toContain('digest-coverage-row');
+  expect(latest.element?.selector ?? '').not.toContain('status-panel-container');
+};
 
 const expectMeaningfulCandidate = (latest: LcpDebugSnapshot['entries'][number]): void => {
   expect(latest.element?.selector || latest.url).toBeTruthy();
@@ -124,6 +139,7 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
     expectMeaningfulCandidate(latest!);
+    expectNotFooterAnchored(latest!);
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
     expect(latest!.url).not.toContain('wms_');
     expect(latest!.url).not.toContain('token=');
@@ -152,6 +168,7 @@ test.describe('dashboard LCP attribution debug on mobile', () => {
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
     expectMeaningfulCandidate(latest!);
+    expectNotFooterAnchored(latest!);
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
   });
 });

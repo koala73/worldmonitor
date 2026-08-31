@@ -28325,7 +28325,7 @@ body.map-width-resizing {
 
 @media (max-width: 768px) {
   :root {
-    /* Matches the .site-footer .status-panel-container offset convention. */
+    /* Clears .mobile-tab-bar, whose min-height is the 58px below. */
     --wm-bottom-base: calc(58px + env(safe-area-inset-bottom, 0px));
   }
 }
