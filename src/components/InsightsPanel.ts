@@ -419,6 +419,9 @@ export class InsightsPanel extends Panel {
   }
 
   private async updateFromClient(clusters: ClusteredEvent[], thisGeneration: number): Promise<void> {
+    if (this.updateGeneration !== thisGeneration) return;
+    this.lastMissedStories = [];
+
     // Web-only: if no AI providers enabled, show disabled state
     if (!isDesktopRuntime() && !isAnyAiProviderEnabled()) {
       this.setDataBadge('unavailable');
@@ -441,9 +444,10 @@ export class InsightsPanel extends Panel {
 
       // Run parallel multi-perspective analysis in background
       const parallelPromise = parallelAnalysis.analyzeHeadlines(clusters).then(report => {
-        this.lastMissedStories = report.missedByKeywords;
+        return report.missedByKeywords;
       }).catch(err => {
         console.warn('[ParallelAnalysis] Error:', err);
+        return [];
       });
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
@@ -575,10 +579,11 @@ export class InsightsPanel extends Panel {
       // the wait back on LCP.
       this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
 
-      await parallelPromise;
+      const missedStories = await parallelPromise;
 
       if (this.updateGeneration !== thisGeneration) return;
 
+      this.lastMissedStories = missedStories;
       this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);

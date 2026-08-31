@@ -73,6 +73,7 @@ vi.mock('@/services/parallel-analysis', () => ({
 import { InsightsPanel } from '@/components/InsightsPanel';
 import type { ClusteredEvent } from '@/types';
 import type { ServerInsights } from '@/services/insights-loader';
+import type { AnalysisReport, AnalyzedHeadline } from '@/services/parallel-analysis';
 
 const CONTENT_DEBOUNCE_MS = 150;
 
@@ -92,6 +93,36 @@ function serverInsights(overrides: Partial<ServerInsights> = {}): ServerInsights
     fastMovingCount: 1,
     ...overrides,
   } as ServerInsights;
+}
+
+function missedStory(id: string, title: string): AnalyzedHeadline {
+  return {
+    id,
+    title,
+    sourceCount: 1,
+    perspectives: [{
+      name: 'entities',
+      score: 0.9,
+      confidence: 0.9,
+      reasoning: 'test fixture',
+    }],
+    finalScore: 0.9,
+    confidence: 0.9,
+    disagreement: 0,
+    flagged: true,
+  };
+}
+
+function analysisReport(missedByKeywords: AnalyzedHeadline[] = []): AnalysisReport {
+  return {
+    timestamp: Date.now(),
+    totalHeadlines: missedByKeywords.length,
+    analyzed: missedByKeywords,
+    topByConsensus: [],
+    topByDisagreement: [],
+    missedByKeywords,
+    perspectiveCorrelations: {},
+  };
 }
 
 function contentOf(panel: object): HTMLElement {
@@ -117,16 +148,9 @@ beforeEach(() => {
   mockFetchServerInsights.mockReset().mockResolvedValue(null);
   mockClassifySentiment.mockReset().mockResolvedValue(null);
   mockGenerateSummary.mockReset();
-  mockAnalyzeHeadlines.mockReset().mockResolvedValue({
-    timestamp: Date.now(),
-    totalHeadlines: 0,
-    analyzed: [],
-    topByConsensus: [],
-    topByDisagreement: [],
-    missedByKeywords: [],
-    perspectiveCorrelations: {},
-  });
+  mockAnalyzeHeadlines.mockReset().mockResolvedValue(analysisReport());
   mlWorkerStub.isAvailable = true;
+  localStorage.removeItem('wm:debug-ml');
 });
 
 afterEach(() => {
@@ -348,9 +372,9 @@ describe('early paint awaits insights hydration (#7464)', () => {
     panel.destroy();
   });
 
-  it('stops waiting at the paint budget without passing that budget into the fetch', async () => {
+  it('re-samples hydrated insights after the paint budget without shortening the fetch', async () => {
     mockGetPersistentCache.mockResolvedValue(null);
-    mockGetServerInsights.mockReturnValue(null);
+    mockGetServerInsights.mockReturnValueOnce(null).mockReturnValue(serverInsights());
     mockFetchServerInsights.mockReturnValue(new Promise(() => { /* hang */ }));
 
     const panel = new InsightsPanel();
@@ -360,10 +384,9 @@ describe('early paint awaits insights hydration (#7464)', () => {
     vi.advanceTimersByTime(2500);
     await flushEarlyPaint();
 
-    expect(
-      contentOf(panel).querySelector('.insights-brief-text'),
-      'a hung insights fetch must not hold the early paint past 2500ms',
-    ).toBeNull();
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the TimeoutError path must re-sample hydration that landed during the wait').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
     expect(mockFetchServerInsights).toHaveBeenCalled();
     expect(
       mockFetchServerInsights.mock.calls[0] ?? [],
@@ -433,16 +456,9 @@ describe('client render does not hold the brief behind parallel analysis (#7464)
       model: 'test',
       cached: false,
     });
+    localStorage.setItem('wm:debug-ml', '1');
 
-    let releaseAnalysis!: (value: {
-      timestamp: number;
-      totalHeadlines: number;
-      analyzed: never[];
-      topByConsensus: never[];
-      topByDisagreement: never[];
-      missedByKeywords: never[];
-      perspectiveCorrelations: Record<string, number>;
-    }) => void;
+    let releaseAnalysis!: (value: AnalysisReport) => void;
     mockAnalyzeHeadlines.mockReturnValue(new Promise((res) => { releaseAnalysis = res; }));
 
     const panel = new InsightsPanel();
@@ -467,17 +483,71 @@ describe('client render does not hold the brief behind parallel analysis (#7464)
       contentOf(panel).querySelector('.insights-progress'),
       'the brief must have superseded any step-4 progress bar',
     ).toBeNull();
+    expect(
+      contentOf(panel).querySelector('.insights-missed'),
+      'the first render must not invent current analysis results before they resolve',
+    ).toBeNull();
 
-    releaseAnalysis({
-      timestamp: Date.now(),
-      totalHeadlines: 0,
-      analyzed: [],
-      topByConsensus: [],
-      topByDisagreement: [],
-      missedByKeywords: [],
-      perspectiveCorrelations: {},
-    });
+    releaseAnalysis(analysisReport([
+      missedStory('current-missed', 'Current analysis found this missed story'),
+    ]));
     await pending;
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(contentOf(panel).querySelector('.insights-missed')?.textContent)
+      .toContain('Current analysis found this missed story');
+    panel.destroy();
+  });
+
+  it('does not show a previous cycle missed story while current analysis is pending', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
+    mockGenerateSummary.mockResolvedValue({
+      summary: CLIENT_BRIEF,
+      provider: 'test',
+      model: 'test',
+      cached: false,
+    });
+    localStorage.setItem('wm:debug-ml', '1');
+
+    let releaseCurrentAnalysis!: (value: AnalysisReport) => void;
+    mockAnalyzeHeadlines
+      .mockResolvedValueOnce(analysisReport([
+        missedStory('previous-missed', 'Previous cycle missed story'),
+      ]))
+      .mockReturnValueOnce(new Promise((res) => { releaseCurrentAnalysis = res; }));
+
+    const clusters = [clientCluster(), {
+      ...clientCluster(),
+      id: 'cluster-client-2',
+      primaryTitle: 'Second corroborated report of overnight strikes',
+    }];
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    await panel.updateInsights(clusters);
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+    expect(contentOf(panel).querySelector('.insights-missed')?.textContent)
+      .toContain('Previous cycle missed story');
+
+    const pending = panel.updateInsights(clusters);
+    for (let i = 0; i < 40; i += 1) await Promise.resolve();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(
+      contentOf(panel).querySelector('.insights-missed'),
+      'the current early render must not reuse missed stories from the previous generation',
+    ).toBeNull();
+
+    releaseCurrentAnalysis(analysisReport([
+      missedStory('current-missed', 'Current cycle missed story'),
+    ]));
+    await pending;
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(contentOf(panel).querySelector('.insights-missed')?.textContent)
+      .toContain('Current cycle missed story');
     panel.destroy();
   });
 });
