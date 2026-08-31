@@ -549,13 +549,15 @@ test('the source walk ignores generated inventory modules and compiled handler s
     writeUrlModule(join(fixture.dir, 'api/worldmonitor/probe/v1/list-probe.ts'), 'authored-ts.example');
     writeUrlModule(join(fixture.dir, 'api/worldmonitor/probe/v1/list-probe.js'), 'pollution-compiled.example');
     writeUrlModule(join(fixture.dir, 'api/authored-handler.js'), 'authored-js.example');
+    writeUrlModule(join(fixture.dir, 'scripts/legacy-probe.js'), 'scripts-js.example');
+    writeUrlModule(join(fixture.dir, 'scripts/legacy-probe.ts'), 'scripts-ts.example');
 
     const inventory = scanUpstreamHosts(fixture.dir);
     const hosts = inventory.map((entry) => entry.host).sort();
     assert.deepEqual(
       hosts,
-      ['authored-js.example', 'authored-ts.example', 'fixture.example'],
-      'generated *.generated.* files and compiled .js siblings of .ts handlers must not enter the inventory',
+      ['authored-js.example', 'authored-ts.example', 'fixture.example', 'scripts-js.example', 'scripts-ts.example'],
+      'generated *.generated.* files and compiled api/ .js siblings of .ts handlers must not enter the inventory',
     );
     assert.equal(
       inventory.find((entry) => entry.host === 'authored-ts.example')?.references[0]?.path,
@@ -565,11 +567,23 @@ test('the source walk ignores generated inventory modules and compiled handler s
       inventory.find((entry) => entry.host === 'authored-js.example')?.references[0]?.path,
       'api/authored-handler.js',
     );
+    assert.equal(
+      inventory.find((entry) => entry.host === 'scripts-js.example')?.references[0]?.path,
+      'scripts/legacy-probe.js',
+    );
+    assert.equal(
+      inventory.find((entry) => entry.host === 'scripts-ts.example')?.references[0]?.path,
+      'scripts/legacy-probe.ts',
+    );
 
     const { errors } = checkSourceAttribution(fixture.dir);
     assert.ok(
       errors.some((error) => error.includes('missing manifest entry for authored-js.example')),
       `authored JS without a sibling .ts must remain visible: ${JSON.stringify(errors)}`,
+    );
+    assert.ok(
+      errors.some((error) => error.includes('missing manifest entry for scripts-js.example')),
+      `authored scripts/ JS with a sibling .ts must remain visible: ${JSON.stringify(errors)}`,
     );
     assert.equal(
       errors.some((error) => /pollution-(?:generated|compiled)\.example/.test(error)),

@@ -987,8 +987,11 @@ function isGeneratedSourcePath(rootDir, relativePath) {
   if (/\.generated\./.test(base)) return true;
   // docker/build-handlers.mjs emits a .js sibling next to each api/**/*.ts
   // handler. The TypeScript source is the authority; the bundle just repeats
-  // its URLs (and any inlined deps).
+  // its URLs (and any inlined deps). Restrict the sibling skip to api/:
+  // authored JS under scripts/, server/, or src/ stays in the inventory even
+  // when a same-stem .ts/.tsx sibling exists.
   if (extname(base) !== '.js') return false;
+  if (!relativePath.startsWith('api/')) return false;
   const stem = relativePath.slice(0, -'.js'.length);
   return existsSync(join(rootDir, `${stem}.ts`)) || existsSync(join(rootDir, `${stem}.tsx`));
 }
