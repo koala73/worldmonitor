@@ -90,7 +90,7 @@ describe('webmcp mission preset catalog', () => {
       assert.ok(preset.layerCount >= 0);
       assert.equal('description' in preset, false);
     }
-    assert.ok(JSON.stringify(result).length <= 1_500);
+    assert.ok(JSON.stringify(result).length <= 2_200);
   });
 
   it('marks monitor-incompatible presets with a stable reason', () => {
@@ -144,7 +144,7 @@ describe('webmcp mission preset catalog', () => {
       const result = listMissionPresetCatalog(live({ variant }));
       const serialized = JSON.stringify(result);
       assert.ok(
-        serialized.length <= 1_500,
+        serialized.length <= 2_200,
         `${variant} catalog is ${serialized.length} chars`,
       );
       assert.ok(result.presets.some((preset) => preset.available));

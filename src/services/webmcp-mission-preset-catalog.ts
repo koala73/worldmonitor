@@ -3,6 +3,7 @@ import { isSiteVariant, type SiteVariant } from '@/config/variant';
 import {
   MISSION_PRESETS,
   getMissionPreset,
+  isMissionPresetAvailableForVariant,
   type MissionMapView,
   type MissionPresetId,
   type MissionTimeRange,
@@ -123,6 +124,8 @@ export function isMissionPresetMonitorCompatible(
   presetId: MissionPresetId,
   variant: string,
 ): boolean {
+  const preset = getMissionPreset(presetId);
+  if (!preset || !isMissionPresetAvailableForVariant(preset, variant)) return false;
   return getMissionPresetPanelMatches(presetId, variant).length >= MISSION_PRESET_MIN_PANEL_MATCHES;
 }
 
@@ -163,7 +166,7 @@ export function buildMissionPresetCatalogItem(
   }
 
   const matchingPanels = getMissionPresetPanelMatches(presetId, live.variant);
-  const monitorCompatible = matchingPanels.length >= MISSION_PRESET_MIN_PANEL_MATCHES;
+  const monitorCompatible = isMissionPresetMonitorCompatible(presetId, live.variant);
   const panelIds = monitorCompatible
     ? preset.panels.filter((panelId) => panelId === 'map' || matchingPanels.includes(panelId))
     : [];

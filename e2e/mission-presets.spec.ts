@@ -94,7 +94,14 @@ test.describe('mission presets', () => {
     await expect(page.locator('#missionPresetBtn')).toBeVisible({ timeout: 30_000 });
     await openMissionPopover(page);
 
-    await expect(page.locator('.mission-preset-card')).toHaveCount(7);
+    await expect(page.locator('.mission-preset-card')).toHaveCount(
+      process.env.VITE_VARIANT === 'finance' ? 8 : 7,
+    );
+    if (process.env.VITE_VARIANT === 'finance') {
+      await expect(page.locator('.mission-preset-card')).toContainText('NQ Day Trader');
+    } else {
+      await expect(page.locator('.mission-preset-card')).not.toContainText('NQ Day Trader');
+    }
     await applyMission(page, 'supply-chain-risk', 'Supply');
 
     await expect(page.locator('.panel[data-panel="supply-chain"]:not(.hidden)')).toBeVisible({ timeout: 30_000 });
@@ -165,7 +172,9 @@ test.describe('mission presets', () => {
 
     const popover = page.locator('.mission-preset-popover');
     await expect(popover).toBeVisible();
-    await expect(page.locator('.mission-preset-card')).toHaveCount(7);
+    await expect(page.locator('.mission-preset-card')).toHaveCount(
+      process.env.VITE_VARIANT === 'finance' ? 8 : 7,
+    );
     const box = await popover.boundingBox();
     expect(box).not.toBeNull();
     expect(box!.x).toBeGreaterThanOrEqual(0);
