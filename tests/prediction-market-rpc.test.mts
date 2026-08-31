@@ -55,4 +55,42 @@ describe('listPredictionMarkets legacy bootstrap compatibility', () => {
     assert.equal(response.markets[0].volume, 30);
     assert.equal(response.fetchedAt, 123);
   });
+
+  it('reads the country index directly when countryCode is supplied', async () => {
+    const payload = {
+      countries: {
+        US: [{
+          title: 'Will United States GDP grow in 2027?',
+          yesPrice: 61,
+          volume: 25_000,
+          url: 'https://kalshi.com/markets/USGDP-27',
+          endDate: '2027-12-31T00:00:00Z',
+          source: 'kalshi',
+        }],
+      },
+      fetchedAt: 456,
+    };
+    const requestedKeys: string[] = [];
+    globalThis.fetch = async (input) => {
+      requestedKeys.push(decodeURIComponent(new URL(String(input)).pathname.split('/').pop() || ''));
+      return new Response(JSON.stringify({ result: JSON.stringify(payload) }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    };
+
+    const response = await listPredictionMarkets({} as never, {
+      category: '',
+      query: '',
+      pageSize: 5,
+      cursor: '',
+      countryCode: 'US',
+    } as never);
+
+    assert.deepEqual(requestedKeys, ['prediction:markets-country-index:v1']);
+    assert.equal(response.dataAvailable, true);
+    assert.equal(response.markets.length, 1);
+    assert.equal(response.markets[0].source, 'MARKET_SOURCE_KALSHI');
+    assert.equal(response.fetchedAt, 456);
+  });
 });

@@ -23,7 +23,7 @@ const root = resolve(import.meta.dirname, '..');
 const entryPath = resolve(root, 'src/services/prediction/index.ts');
 
 interface CountryMarketsTestState {
-  rpcCalls: { category: string; query: string }[];
+  rpcCalls: { category: string; query: string; countryCode?: string }[];
   rpcMarketsByCategory: Record<string, unknown[]>;
   hydrated?: unknown;
 }
@@ -75,8 +75,8 @@ async function loadPredictionService() {
       export class PredictionServiceClient {
         async listPredictionMarkets(req) {
           const state = globalThis.__wmCountryMarketsTestState;
-          state.rpcCalls.push({ category: req.category, query: req.query });
-          return { markets: state.rpcMarketsByCategory[req.category] ?? [] };
+          state.rpcCalls.push({ category: req.category, query: req.query, countryCode: req.countryCode });
+          return { markets: state.rpcMarketsByCategory[req.countryCode || req.category] ?? [] };
         }
       }
     `],
@@ -121,29 +121,31 @@ after(() => {
   delete globalThis.__wmCountryMarketsTestState;
 });
 
-describe('fetchCountryMarkets reaches every pool (#5733)', () => {
-  it('queries a tech category in the RPC fan-out, not just geopolitics + economy', async () => {
+describe('fetchCountryMarkets uses the producer country index', () => {
+  it('sends one ISO2 request instead of literal-title category fan-out', async () => {
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {} };
     const service = await loadPredictionService();
-    await service.fetchCountryMarkets('China');
+    await service.fetchCountryMarkets('China', 'CN');
 
-    const categories = globalThis.__wmCountryMarketsTestState!.rpcCalls.map((c) => c.category).sort();
-    assert.deepEqual(categories, ['economy', 'geopolitics', 'tech']);
+    assert.deepEqual(globalThis.__wmCountryMarketsTestState!.rpcCalls, [{
+      category: '',
+      query: '',
+      countryCode: 'CN',
+    }]);
   });
 
-  it('does not let a geopolitics hit early-return past the tech pool', async () => {
-    // This is the actual defect: the function returns as soon as any
-    // geopolitics/economy market matches the country, so a tech-only category
-    // would never be seen if it were not in the fan-out above.
+  it('returns the server-ranked cross-pool country selection', async () => {
     globalThis.__wmCountryMarketsTestState = {
       rpcCalls: [],
       rpcMarketsByCategory: {
-        geopolitics: [protoMarket('Will China invade Taiwan by 2027?', 5_000_000)],
-        tech: [protoMarket('Will China ship the best AI model?', 9_000_000)],
+        CN: [
+          protoMarket('Will China invade Taiwan by 2027?', 5_000_000),
+          protoMarket('Will China ship the best AI model?', 9_000_000),
+        ],
       },
     };
     const service = await loadPredictionService();
-    const out = await service.fetchCountryMarkets('China');
+    const out = await service.fetchCountryMarkets('China', 'CN');
 
     const titles = out.map((m: { title: string }) => m.title);
     assert.ok(titles.some((t: string) => t.includes('invade Taiwan')), `geo market missing: ${titles}`);
@@ -164,7 +166,7 @@ describe('fetchCountryMarkets reaches every pool (#5733)', () => {
       },
     };
     const service = await loadPredictionService();
-    const out = await service.fetchCountryMarkets('China');
+    const out = await service.fetchCountryMarkets('China', 'CN');
 
     const titles = out.map((m: { title: string }) => m.title);
     assert.ok(titles.some((t: string) => t.includes('best AI model')), `tech bucket missing: ${titles}`);
