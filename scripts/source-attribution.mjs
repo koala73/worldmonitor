@@ -979,6 +979,20 @@ function readdirPresentSync(absoluteDir) {
   }
 }
 
+function isGeneratedSourcePath(rootDir, relativePath) {
+  const base = relativePath.split('/').pop() ?? relativePath;
+  // Inventory facts and other generator outputs use `*.generated.*` and are
+  // gitignored. Scanning them after a Docker/local generate step invents
+  // references the committed manifest was never built against (#7435).
+  if (/\.generated\./.test(base)) return true;
+  // docker/build-handlers.mjs emits a .js sibling next to each api/**/*.ts
+  // handler. The TypeScript source is the authority; the bundle just repeats
+  // its URLs (and any inlined deps).
+  if (extname(base) !== '.js') return false;
+  const stem = relativePath.slice(0, -'.js'.length);
+  return existsSync(join(rootDir, `${stem}.ts`)) || existsSync(join(rootDir, `${stem}.tsx`));
+}
+
 function walkSourceFiles(rootDir) {
   const files = [];
   const visit = (relativeDir) => {
@@ -988,7 +1002,11 @@ function walkSourceFiles(rootDir) {
       if (entry.isDirectory()) {
         if (['node_modules', '.git', 'generated', 'e2e', 'fixtures', '__fixtures__', 'test', 'tests'].includes(entry.name)) continue;
         visit(relativePath);
-      } else if (SOURCE_EXTENSIONS.has(extname(entry.name)) && !/\.(test|spec)\./.test(entry.name)) {
+      } else if (
+        SOURCE_EXTENSIONS.has(extname(entry.name))
+        && !/\.(test|spec)\./.test(entry.name)
+        && !isGeneratedSourcePath(rootDir, relativePath)
+      ) {
         files.push(relativePath);
       }
     }

@@ -26,6 +26,12 @@ ARG VITE_WS_API_URL=https://api.worldmonitor.app
 ENV VITE_VARIANT=${VITE_VARIANT}
 ENV VITE_WS_API_URL=${VITE_WS_API_URL}
 
+# The crawlable-corpus step runs the source-attribution drift gate. Inventory
+# facts write untracked .js into api/, so the gate must see the pristine
+# checkout first (#7435). tsc + vite stay later so they copy the generated
+# assets into dist/.
+RUN npm run build:crawlable-corpus && npm run build:sitemap
+
 # Generated inventory assets are intentionally untracked. Recreate them in the
 # clean release image before Vite copies public/ into dist/.
 RUN node scripts/generate-inventory-facts.mjs
@@ -36,11 +42,10 @@ RUN node scripts/generate-inventory-facts.mjs
 # serves a 404 behind a live route. build:pro installs pro-test's own lockfile.
 RUN npm run build:pro
 
-# Build the crawlable static corpus, then tsc + vite build directly like the
-# sidecar image's builder. `npm run build` would chain build:blog
-# (blog-site has its own lockfile, not installed here) and the prebuild
-# openapi/agent-skills generators.
-RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build
+# tsc + vite build directly like the sidecar image's builder. `npm run build`
+# would chain build:blog (blog-site has its own lockfile, not installed here)
+# and the prebuild openapi/agent-skills generators.
+RUN npx tsc && npx vite build
 RUN test -s dist/product-facts.json
 # Assert the /pro pages survived the public/ -> dist/ copy. build:pro succeeding
 # proves public/pro/ exists; it does NOT prove Vite copied it, and nginx routes
