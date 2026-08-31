@@ -11,18 +11,19 @@ import type { FlowSource } from '../../src/generated/server/worldmonitor/supply_
  * the new member would simply be absent, and a consumer would silently strip
  * the very value the proto had just declared legal.
  */
-export const FLOW_SOURCE_MEMBERS: Record<Exclude<FlowSource, 'FLOW_SOURCE_UNSPECIFIED'>, true> = {
+const FLOW_SOURCE_MEMBERS: Record<Exclude<FlowSource, 'FLOW_SOURCE_UNSPECIFIED'>, true> = {
   'portwatch-dwt': true,
   'portwatch-counts': true,
 };
 
 /**
- * Deliberately module-private: `narrowFlowSource` below is the ONLY narrowing
- * entry point any surface should use. Exporting the raw set invites a second
- * hand-rolled `FLOW_SOURCES.has(...)` predicate elsewhere, and the axis that
- * drifts in practice is the predicate (case-folding, trimming, a legacy alias),
- * not the member list — so sharing the set without sharing the decision would
- * leave exactly the REST/MCP divergence #6113 exists to close.
+ * Module-private, along with the record above it: `narrowFlowSource` and
+ * `FLOW_SOURCE_WIRE_VALUES` are this module's whole public surface, so there is
+ * no exported handle a caller could rebuild a second predicate from. The axis
+ * that drifts in practice is the predicate (case-folding, trimming, a legacy
+ * alias), not the member list, so exporting either the set OR the record it is
+ * derived from would leave the REST/MCP divergence #6113 exists to close —
+ * `new Set(Object.keys(FLOW_SOURCE_MEMBERS))` is a one-line copy of this line.
  */
 const FLOW_SOURCES: ReadonlySet<string> = new Set(Object.keys(FLOW_SOURCE_MEMBERS));
 

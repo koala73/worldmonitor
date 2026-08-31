@@ -41,6 +41,19 @@ function flowsData() {
         currentMbd: 1.1, baselineMbd: 1.2, flowRatio: 0.917, disrupted: false,
         source: null, hazardAlertLevel: null, hazardAlertName: null,
       },
+      // The drift axis flow-source.ts names as the reason narrowing is
+      // centralised: a case variant and a whitespace-padded value. Both are
+      // undeclared today, and if narrowFlowSource ever learns to case-fold or
+      // trim, these two assertions are what forces the REST twin to learn it in
+      // the same edit instead of silently diverging.
+      gibraltar: {
+        currentMbd: 3, baselineMbd: 3, flowRatio: 1, disrupted: false,
+        source: 'Portwatch-Dwt', hazardAlertLevel: null, hazardAlertName: null,
+      },
+      dover_strait: {
+        currentMbd: 2, baselineMbd: 2, flowRatio: 1, disrupted: false,
+        source: ' portwatch-dwt ', hazardAlertLevel: null, hazardAlertName: null,
+      },
       korea_strait: {
         // `source` key absent ENTIRELY — the case the REST twin pins as
         // `korea_strait: flow(undefined)` in chokepoint-flow-source-taxonomy
@@ -54,12 +67,17 @@ function flowsData() {
 }
 
 describe('get_chokepoint_status FlowSource taxonomy (#6113)', () => {
-  // Every assertion below reads the RETURNED object, never the argument that
-  // was passed in. api/mcp/dispatch.ts serves `_postFilter`'s return value
-  // (`result = tool._postFilter(structuredClone(data), params)`), so asserting
-  // on the caller's own reference would keep passing if a future refactor
-  // rebuilt entries instead of mutating them — and would keep passing while
-  // un-narrowed sources went out on the wire.
+  // Every assertion below reads the RETURNED object, because that is what
+  // api/mcp/dispatch.ts serves (`result = tool._postFilter(structuredClone(
+  // data), params)`), not the caller's reference.
+  //
+  // Honest limit on what that buys: selectDatasets shallow-copies
+  // (api/mcp/filters.ts:189), so the flows map and its entries are the SAME
+  // objects in both. Reading the return therefore pins the top-level shape the
+  // dispatcher serves, but it canNOT distinguish "mutated in place" from
+  // "rebuilt" — an entry-rebuilding refactor stays invisible either way. The
+  // end-to-end block at the bottom of this file is what actually crosses the
+  // structuredClone + JSON boundary; trust that one for served-bytes claims.
   it('narrows an out-of-taxonomy source to FLOW_SOURCE_UNSPECIFIED and keeps declared values verbatim', () => {
     assert.ok(tool, 'tool must exist in CACHE_TOOLS');
 
@@ -75,6 +93,14 @@ describe('get_chokepoint_status FlowSource taxonomy (#6113)', () => {
     assert.equal(
       flows.korea_strait.source, 'FLOW_SOURCE_UNSPECIFIED',
       'an entry that omits `source` entirely must be narrowed, not served with the field missing — REST emits UNSPECIFIED for the same blob',
+    );
+    assert.equal(
+      flows.gibraltar.source, 'FLOW_SOURCE_UNSPECIFIED',
+      'a case variant of a declared basis is NOT a member — narrowing does not case-fold today, and REST must adopt it in the same edit if it ever does',
+    );
+    assert.equal(
+      flows.dover_strait.source, 'FLOW_SOURCE_UNSPECIFIED',
+      'a whitespace-padded declared basis is NOT a member — narrowing does not trim today',
     );
     assert.equal(flows.hormuz_strait.currentMbd, 2.6, 'narrowing must not disturb the numeric fields');
   });
@@ -101,12 +127,11 @@ describe('get_chokepoint_status FlowSource taxonomy (#6113)', () => {
   });
 
   it('leaves an absent or null chokepoint-flows dataset alone', () => {
-    const empty = { 'chokepoint-flows': null };
-    assert.doesNotThrow(() => tool._postFilter(empty, {}));
-    assert.equal(empty['chokepoint-flows'], null);
+    let served: Record<string, unknown> | undefined;
+    assert.doesNotThrow(() => { served = tool._postFilter({ 'chokepoint-flows': null }, {}); });
+    assert.equal(served!['chokepoint-flows'], null);
 
-    const missing = {};
-    assert.doesNotThrow(() => tool._postFilter(missing, {}));
+    assert.doesNotThrow(() => tool._postFilter({}, {}));
   });
 
   // The guard is `entry && typeof entry === 'object'`; the test above only
@@ -224,5 +249,60 @@ describe('get_chokepoint_status narrows source end-to-end through tools/call (#6
       );
       assert.equal(served[id].source, 'FLOW_SOURCE_UNSPECIFIED');
     }
+  });
+
+  // KNOWN LIMIT, pinned rather than claimed away. api/mcp/dispatch.ts wraps
+  // `_postFilter` in a try/catch that falls back to the RAW, un-narrowed `data`
+  // on any non-stored-contract throw, so the closed-enum guarantee holds only
+  // while the WHOLE filter body avoids throwing — not just the narrowing loop,
+  // which is total over any JSON shape. The reachable trigger today is
+  // pre-existing and downstream of the narrowing: narrowNested dereferences
+  // `c.id` on every chokepoint-baselines row, so a null row throws once a
+  // `chokepoint` argument is supplied.
+  //
+  // This asserts what the code ACTUALLY does, so the day someone makes the
+  // enum fail closed (or the fallback stops discarding the narrowed clone),
+  // this test goes red and the decision is deliberate instead of accidental.
+  it('fails OPEN: a throw later in the filter serves the raw un-narrowed source', async () => {
+    globalThis.fetch = async (url, init) => {
+      const u = url.toString();
+      if (u.endsWith('/pipeline')) {
+        const commands = JSON.parse(init.body);
+        return Response.json(commands.map(() => ({ result: 0 })));
+      }
+      if (u.includes(`/get/${encodeURIComponent('energy:chokepoint-flows:v1')}`)) {
+        return Response.json({ result: JSON.stringify(FLOWS) });
+      }
+      // A null row makes narrowNested's `c.id` deref throw — but only once the
+      // `chokepoint` argument below sends the filter down that branch.
+      if (u.includes(`/get/${encodeURIComponent('energy:chokepoint-baselines:v1')}`)) {
+        return Response.json({ result: JSON.stringify({ chokepoints: [null] }) });
+      }
+      return Response.json({ result: null });
+    };
+
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+    const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-WorldMonitor-Key': VALID_KEY },
+      body: JSON.stringify({
+        jsonrpc: '2.0', id: 2, method: 'tools/call',
+        params: { name: 'get_chokepoint_status', arguments: { chokepoint: 'suez' } },
+      }),
+    }));
+
+    assert.equal(res.status, 200, 'the fail-open path must still answer 200, not surface the filter bug');
+    const body = await res.json();
+    assert.ok(body.result?.content, 'tools/call must return content on the fail-open path');
+    const served = JSON.parse(body.result.content[0].text).data['chokepoint-flows'];
+
+    assert.equal(
+      served.suez.source, 'satellite-blend',
+      'CURRENT behaviour: the fallback discards the narrowed clone, so an undeclared basis reaches the client verbatim despite the outputSchema advertising a closed enum. Change this assertion only alongside a deliberate decision to make the enum fail closed.',
+    );
+    assert.ok(
+      !WIRE_TAXONOMY.includes(served.suez.source),
+      'and that served value is outside the declared enum — this is the gap, stated plainly',
+    );
   });
 });

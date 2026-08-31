@@ -2544,12 +2544,18 @@ export const CACHE_TOOLS: ToolDef[] = [
       // that deploys independently; an undeclared basis must read as
       // FLOW_SOURCE_UNSPECIFIED, never leak verbatim.
       //
-      // Deliberately NOT guarded on `'source' in entry`: the REST twin builds
-      // `source: toFlowSource(...)` unconditionally, so an entry that omits the
-      // key entirely must still read FLOW_SOURCE_UNSPECIFIED here rather than
-      // arrive with the field missing — otherwise the two surfaces answer
-      // differently for the same blob, which is the divergence this closes.
-      // tests/chokepoint-flow-source-taxonomy.test.mts pins that case on REST.
+      // Deliberately NOT guarded on `'source' in entry`. This is about the
+      // CLOSED-ENUM field specifically: the schema above declares a closed set
+      // for `source`, and "absent" is not a member of it, so an entry omitting
+      // the key must read FLOW_SOURCE_UNSPECIFIED — the declared way to say
+      // "not one of the known bases". The REST twin resolves it the same way
+      // (`source: toFlowSource(...)`, built unconditionally), and
+      // tests/chokepoint-flow-source-taxonomy.test.mts pins that case there.
+      //
+      // Scope note: this is NOT a general "match REST field-for-field" rule.
+      // REST also defaults hazardAlertLevel/hazardAlertName (`?? ''`), and this
+      // surface deliberately does not — see the nullability comment on those
+      // two fields above. Closed enum here, raw passthrough there, on purpose.
       const flows = data['chokepoint-flows'];
       if (flows && typeof flows === 'object') {
         for (const entry of Object.values(flows)) {

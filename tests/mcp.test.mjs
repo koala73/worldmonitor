@@ -2569,12 +2569,13 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const portwatchPortsPayload = { countries: { US: { ports: 23 } } };
     const chokepointBaselinesPayload = { suez: { lat: 30.0, lon: 32.5 } };
     const portwatchChokepointsRefPayload = { count: 13, ids: ['suez', 'hormuz', 'malacca'] };
-    // Carries an in-taxonomy `source` so this label-walk assertion keeps testing
-    // LABELLING only: get_chokepoint_status's _postFilter narrows every flow
-    // entry's `source` onto the FlowSource taxonomy (#6113), so a source-less
-    // fixture would come back with `source: 'FLOW_SOURCE_UNSPECIFIED'` added and
-    // fail the deepEqual below for a reason that has nothing to do with labels.
-    const chokepointFlowsPayload = { suez: { dailyBarrels: 9_200_000, source: 'portwatch-dwt' } };
+    // Deliberately source-LESS, mirroring a blob an older seeder deploy could
+    // still hold. The served expectation below states the narrowed shape
+    // explicitly rather than hiding the synthesis behind an in-taxonomy fixture
+    // value, so this stays a byte-identity check on the served slice: any field
+    // get_chokepoint_status's _postFilter adds or drops in future goes red here,
+    // in a file independent of the taxonomy suite that introduced the behaviour.
+    const chokepointFlowsPayload = { suez: { dailyBarrels: 9_200_000 } };
 
     // transit-summaries budget=30min → 5min old (fresh)
     const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
@@ -2683,7 +2684,11 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     assert.deepEqual(payload.data['_countries'], portwatchPortsPayload, 'portwatch-ports slice labelled from trailing _countries segment');
     assert.deepEqual(payload.data['chokepoint-baselines'], chokepointBaselinesPayload, 'chokepoint-baselines slice labelled from cache-key suffix');
     assert.deepEqual(payload.data['ref'], portwatchChokepointsRefPayload, 'portwatch:chokepoints:ref slice labelled from trailing ref segment');
-    assert.deepEqual(payload.data['chokepoint-flows'], chokepointFlowsPayload, 'chokepoint-flows slice labelled from cache-key suffix');
+    assert.deepEqual(
+      payload.data['chokepoint-flows'],
+      { suez: { dailyBarrels: 9_200_000, source: 'FLOW_SOURCE_UNSPECIFIED' } },
+      'chokepoint-flows slice labelled from cache-key suffix, with `source` narrowed onto the FlowSource taxonomy (#6113)',
+    );
   });
 
   it('get_chokepoint_status: fast transit-summaries fresh but slow portwatch-ports past budget flips aggregate stale', async () => {
