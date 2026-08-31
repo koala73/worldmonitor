@@ -84,11 +84,11 @@ const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
 // Public ranking / confidence gates. Keep aligned with
 // server/worldmonitor/resilience/v1/_shared.ts and
 // docs/methodology/country-resilience-index.mdx.
-const HEADLINE_RANKING_MIN_COVERAGE = 0.65;
-const HEADLINE_RANKING_MIN_POPULATION = 200_000;
-const HEADLINE_RANKING_HIGH_COVERAGE = 0.85;
-const LOW_CONFIDENCE_MIN_COVERAGE = 0.55;
-const LOW_CONFIDENCE_MAX_IMPUTATION = 0.40;
+export const HEADLINE_RANKING_MIN_COVERAGE = 0.65;
+export const HEADLINE_RANKING_MIN_POPULATION = 200_000;
+export const HEADLINE_RANKING_HIGH_COVERAGE = 0.85;
+export const LOW_CONFIDENCE_MIN_COVERAGE = 0.55;
+export const LOW_CONFIDENCE_MAX_IMPUTATION = 0.40;
 export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%, no low-confidence flag, and either a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%. Low confidence means coverage falls below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% or imputation share exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%.`;
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
@@ -1903,7 +1903,7 @@ function countryFaqs(country, capturedAt, rankedCount) {
     return [
       {
         question: `What is ${country.name}'s resilience score?`,
-        answer: `No resilience score or rank is published for ${country.name}. ${country.name}'s published rank would require coverage of at least 65%, no low-confidence flag, and either a population of at least 200,000 or coverage of at least 85%. Low confidence for ${country.name} means coverage falls below 55% or imputation share exceeds 40%. ${describeHeadlineIneligibilityReason(country)}`,
+        answer: `No resilience score or rank is published for ${country.name}. ${country.name}'s published rank would require coverage of at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%, no low-confidence flag, and either a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%. Low confidence for ${country.name} means coverage falls below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% or imputation share exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%. ${describeHeadlineIneligibilityReason(country)}`,
       },
       {
         question: `What evidence is available for ${country.name}?`,
@@ -1970,7 +1970,9 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
     const status = getSovereignStatus(country.code);
     const statusBit = status === 'sar'
       ? ` ${country.name} is in the rankable universe as a standalone special administrative region.`
-      : ` ${country.name} is in the rankable universe as a UN member.`;
+      : status === 'un-member'
+        ? ` ${country.name} is in the rankable universe as a UN member.`
+        : '';
     const html = `      <article data-country-analysis>
         <h2>${escapeHtml(country.name)} resilience analysis</h2>
         <p>${escapeHtml(describeHeadlineIneligibility(country))}${escapeHtml(officialBit)}${escapeHtml(statusBit)} Ranked comparisons use ${escapeHtml(country.regionName)} peers rather than other unpublished pages. The snapshot records ${escapeHtml(country.name)} as ${escapeHtml(country.code)}.</p>

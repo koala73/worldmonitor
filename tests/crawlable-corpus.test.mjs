@@ -1285,6 +1285,8 @@ describe('crawlable corpus generator', () => {
       assert.match(taiwan, /World Bank/);
       assert.match(taiwan, /WHO/);
       assert.match(taiwan, /Nearest ranked comparators:/);
+      assert.match(taiwan, /standalone special administrative region/);
+      assert.match(taiwan, /a low-confidence listing/);
       assert.doesNotMatch(taiwan, /\bTW · /);
       assert.doesNotMatch(
         taiwan,
@@ -1407,6 +1409,7 @@ describe('crawlable corpus generator', () => {
         'covered-ineligible meta description must not call a standard-confidence snapshot low-confidence',
       );
       assert.match(andorra, /an unpublished listing/);
+      assert.match(andorra, /in the rankable universe as a UN member/);
       for (let left = 0; left < unrankedArticles.length; left += 1) {
         for (let right = left + 1; right < unrankedArticles.length; right += 1) {
           const share = pairwiseUniqueShare(unrankedArticles[left].text, unrankedArticles[right].text);

@@ -1,12 +1,26 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
+  countryMetaDescription,
   describeAvailableEvidence,
   describeCoverageGaps,
   describeHeadlineIneligibility,
+  HEADLINE_RANKING_HIGH_COVERAGE,
+  HEADLINE_RANKING_MIN_COVERAGE,
+  HEADLINE_RANKING_MIN_POPULATION,
+  LOW_CONFIDENCE_MAX_IMPUTATION,
+  LOW_CONFIDENCE_MIN_COVERAGE,
   RANKING_ELIGIBILITY_CLAUSE,
 } from '../scripts/build-crawlable-corpus.mjs';
+
+const sharedSource = readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), '../server/worldmonitor/resilience/v1/_shared.ts'),
+  'utf8',
+);
 
 function dimension(id, coverage, imputationClass = '') {
   return { id, coverage, imputationClass };
@@ -37,6 +51,105 @@ describe('unranked country copy', () => {
     assert.match(RANKING_ELIGIBILITY_CLAUSE, /at least 85%/);
     assert.match(RANKING_ELIGIBILITY_CLAUSE, /below 55%/);
     assert.match(RANKING_ELIGIBILITY_CLAUSE, /exceeds 40%/);
+  });
+
+  it('keeps ranking copy gates aligned with the server eligibility constants', () => {
+    assert.match(
+      sharedSource,
+      new RegExp(`export const HEADLINE_ELIGIBLE_MIN_COVERAGE = ${HEADLINE_RANKING_MIN_COVERAGE};`),
+    );
+    assert.match(
+      sharedSource,
+      new RegExp(`export const HEADLINE_ELIGIBLE_MIN_POPULATION_MILLIONS = ${HEADLINE_RANKING_MIN_POPULATION / 1_000_000};`),
+    );
+    assert.match(
+      sharedSource,
+      new RegExp(`export const HEADLINE_ELIGIBLE_HIGH_COVERAGE = ${HEADLINE_RANKING_HIGH_COVERAGE};`),
+    );
+    assert.match(
+      sharedSource,
+      new RegExp(`const LOW_CONFIDENCE_COVERAGE_THRESHOLD = ${LOW_CONFIDENCE_MIN_COVERAGE};`),
+    );
+    assert.match(
+      sharedSource,
+      /const LOW_CONFIDENCE_IMPUTATION_SHARE_THRESHOLD = 0\.40;/,
+    );
+    assert.equal(LOW_CONFIDENCE_MAX_IMPUTATION, 0.40);
+    assert.match(
+      RANKING_ELIGIBILITY_CLAUSE,
+      new RegExp(`at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%`),
+    );
+    assert.match(
+      RANKING_ELIGIBILITY_CLAUSE,
+      new RegExp(HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')),
+    );
+    assert.match(
+      RANKING_ELIGIBILITY_CLAUSE,
+      new RegExp(`at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%`),
+    );
+    assert.match(
+      RANKING_ELIGIBILITY_CLAUSE,
+      new RegExp(`below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}%`),
+    );
+    assert.match(
+      RANKING_ELIGIBILITY_CLAUSE,
+      new RegExp(`exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%`),
+    );
+  });
+
+  it('explains an imputation-only low-confidence snapshot without blaming coverage', () => {
+    const country = countryFixture({
+      name: 'Imputia',
+      dimensionCoverage: 0.60,
+      imputationShare: 0.45,
+      lowConfidence: true,
+    }, [
+      dimension('macroFiscal', 0.8),
+    ]);
+    const eligibility = describeHeadlineIneligibility(country);
+    assert.match(eligibility, /imputation share is 45%, above the 40% confidence limit/);
+    assert.doesNotMatch(eligibility, /below the 55% confidence gate/);
+    assert.doesNotMatch(eligibility, /below the 65% ranking floor/);
+  });
+
+  it('describes snapshots with no usable observed dimensions', () => {
+    const country = countryFixture({
+      name: 'Sparseville',
+      dimensionCoverage: 0.12,
+      imputationShare: 0.61,
+      lowConfidence: true,
+    }, [
+      dimension('macroFiscal', 0),
+      dimension('governanceInstitutional', 0.2, 'unmonitored'),
+      dimension('reserveAdequacy', 0),
+    ]);
+    assert.match(
+      describeAvailableEvidence(country),
+      /no dimension clears a usable observed threshold/,
+    );
+    assert.match(describeAvailableEvidence(country), /Input coverage is 12%/);
+    assert.match(describeAvailableEvidence(country), /imputation share is 61%/);
+  });
+
+  it('labels low-confidence unpublished meta descriptions distinctly', () => {
+    assert.match(
+      countryMetaDescription({
+        name: 'Taiwan',
+        rank: null,
+        rankedCount: 196,
+        lowConfidence: true,
+      }),
+      /a low-confidence listing/,
+    );
+    assert.doesNotMatch(
+      countryMetaDescription({
+        name: 'Andorra',
+        rank: null,
+        rankedCount: 196,
+        lowConfidence: false,
+      }),
+      /a low-confidence listing/,
+    );
   });
 
   it('explains Taiwan-style source-universe gaps without ISO scaffolding', () => {
