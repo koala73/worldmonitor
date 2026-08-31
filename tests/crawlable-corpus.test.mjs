@@ -1136,10 +1136,19 @@ describe('crawlable corpus generator', () => {
         const countryHtml = read(outDir, `${route.slice(1)}index.html`);
         const countryDocument = htmlDocument(countryHtml, `https://www.worldmonitor.app${route}`);
         if (country.rank == null) {
-          assert.match(countryHtml, /Reference pages:/);
-          const comparisonText = countryDocument.querySelector('[data-country-analysis] h3:nth-of-type(4) + p')?.textContent ?? '';
+          assert.match(countryHtml, /Nearest ranked comparators:/);
+          assert.doesNotMatch(
+            countryHtml,
+            /\b[A-Z]{2} · /,
+            `${route} must not prefix unpublished copy with ISO scaffolding`,
+          );
+          const comparisonHeading = [...countryDocument.querySelectorAll('[data-country-analysis] h3')]
+            .find((heading) => heading.textContent === 'Nearest ranked comparators');
+          const comparisonText = comparisonHeading?.nextElementSibling?.textContent ?? '';
+          assert.ok(country.peers.length > 0, `${route} must name ranked comparators`);
           for (const peer of country.peers) {
-            assert.ok(comparisonText.includes(peer.name), `${route} must include ${peer.name} as a reference page`);
+            assert.notEqual(peer.rank, null, `${route} comparator ${peer.name} must be ranked`);
+            assert.ok(comparisonText.includes(peer.name), `${route} must include ${peer.name} as a ranked comparator`);
             assert.ok(
               !comparisonText.includes(`${peer.name} (`),
               `${route} must not reveal ${peer.name}'s score in an ineligible comparison set`,
@@ -1255,11 +1264,17 @@ describe('crawlable corpus generator', () => {
       assert.equal(taiwanDataset.rank, null);
       assert.equal(taiwanDataset.overallScore, null);
       assert.equal(taiwanDataset.level, 'unpublished');
-      assert.ok(
-        taiwan.includes(
-          `World Monitor does not publish a resilience score for Taiwan. Taiwan does not meet the published ranking eligibility criteria. Input coverage is ${Math.round(taiwanDataset.dimensionCoverage * 100)}%.`,
-        ),
-      );
+      assert.match(taiwan, /does not meet the published ranking eligibility criteria/);
+      assert.match(taiwan, /Ranking requires coverage of at least 65%/);
+      assert.match(taiwan, /population of at least 200,000/);
+      assert.match(taiwan, /coverage falls below 55%/);
+      assert.match(taiwan, /imputation share exceeds 40%/);
+      assert.match(taiwan, /coverage is 38%/);
+      assert.match(taiwan, /imputation share is 42%/);
+      assert.match(taiwan, /World Bank/);
+      assert.match(taiwan, /WHO/);
+      assert.match(taiwan, /Nearest ranked comparators:/);
+      assert.doesNotMatch(taiwan, /\bTW · /);
       assert.doesNotMatch(
         taiwan,
         /below the threshold/,
@@ -1303,11 +1318,24 @@ describe('crawlable corpus generator', () => {
       );
       const coveredHtml = read(outDir, `countries/${coveredIneligible.slug}/index.html`);
       const coveredCoverage = `${Math.round(Number(coveredIneligible.dimensionCoverage) * 100)}%`;
-      assert.ok(
-        coveredHtml.includes(
-          `World Monitor does not publish a resilience score for ${coveredIneligible.name}. ${coveredIneligible.name} does not meet the published ranking eligibility criteria. Input coverage is ${coveredCoverage}.`,
-        ),
-        `${coveredIneligible.name} must use neutral eligibility wording and keep coverage as a separate fact`,
+      assert.match(
+        coveredHtml,
+        /does not meet the published ranking eligibility criteria/,
+      );
+      assert.match(
+        coveredHtml,
+        new RegExp(`coverage is ${coveredCoverage}`),
+        `${coveredIneligible.name} must keep coverage as a separate fact`,
+      );
+      assert.match(
+        coveredHtml,
+        /population of at least 200,000/,
+        `${coveredIneligible.name} must quote the population-or-high-coverage ranking rule`,
+      );
+      assert.doesNotMatch(
+        coveredHtml,
+        /below the 65% ranking floor/,
+        `${coveredIneligible.name} must not explain ranking exclusion as low coverage`,
       );
       const coveredWebPage = jsonLdObjects(coveredHtml)
         .find((entry) => entry['@type'] === 'WebPage');
@@ -1315,10 +1343,47 @@ describe('crawlable corpus generator', () => {
         coveredWebPage?.mainEntity?.description ?? '',
         /does not meet the published ranking eligibility criteria/,
       );
+      assert.match(
+        coveredWebPage?.mainEntity?.description ?? '',
+        /Ranking requires coverage of at least 65%/,
+      );
       assert.doesNotMatch(
         coveredWebPage?.mainEntity?.description ?? '',
         /below the ranking threshold|input coverage is below/i,
       );
+
+      const unrankedSampleCodes = ['AD', 'SM', 'SY', 'TV', 'TW'];
+      const unrankedArticles = [];
+      const rankedNames = new Set(
+        corpusData.countries.filter((country) => country.rank != null).map((country) => country.name),
+      );
+      for (const code of unrankedSampleCodes) {
+        const country = countryByCode.get(code);
+        assert.ok(country, `missing unranked corpus country ${code}`);
+        const route = `/countries/${country.slug}/`;
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        unrankedArticles.push({ route, text: document.querySelector('main')?.textContent || '' });
+        assert.match(html, /Nearest ranked comparators:/);
+        assert.doesNotMatch(html, new RegExp(`\\b${code} · `));
+        for (const peer of country.peers) {
+          assert.ok(rankedNames.has(peer.name), `${route} peer ${peer.name} must be ranked`);
+        }
+      }
+      const syria = read(outDir, 'countries/syria/index.html');
+      assert.match(syria, /Macro-fiscal position/);
+      assert.match(syria, /IMF/);
+      const andorra = read(outDir, 'countries/andorra/index.html');
+      assert.match(andorra, /200,000/);
+      for (let left = 0; left < unrankedArticles.length; left += 1) {
+        for (let right = left + 1; right < unrankedArticles.length; right += 1) {
+          const share = pairwiseUniqueShare(unrankedArticles[left].text, unrankedArticles[right].text);
+          assert.ok(
+            share >= 0.4,
+            `${unrankedArticles[left].route} and ${unrankedArticles[right].route} unranked pair must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
+          );
+        }
+      }
 
       const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);

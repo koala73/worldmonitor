@@ -37,6 +37,7 @@ import {
   CHANGELOG_PAGINATION_ROBOTS_CONTENT,
   INDEXABLE_ROBOTS_CONTENT,
 } from '../shared/seo-robots.mjs';
+import { getSovereignStatus } from './shared/rankable-universe.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -80,6 +81,18 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-30';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
+// Public ranking / confidence gates. Keep aligned with
+// server/worldmonitor/resilience/v1/_shared.ts and
+// docs/methodology/country-resilience-index.mdx.
+const HEADLINE_RANKING_MIN_COVERAGE = 0.65;
+const HEADLINE_RANKING_MIN_POPULATION = 200_000;
+const HEADLINE_RANKING_HIGH_COVERAGE = 0.85;
+const LOW_CONFIDENCE_MIN_COVERAGE = 0.55;
+const LOW_CONFIDENCE_MAX_IMPUTATION = 0.40;
+export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%, no low-confidence flag, and either a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%. Low confidence means coverage falls below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% or imputation share exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%.`;
+const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
+const UNRANKED_INVENTORY_LIMIT = 12;
+const AVAILABLE_EVIDENCE_LIMIT = 6;
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-30';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
@@ -1032,16 +1045,14 @@ function addCountryContext(countries, regionsByCode, crises) {
   const ranked = countries.filter((country) => country.rank != null);
   return countries.map((country) => {
     const regionId = regionsByCode[country.code] || 'global';
-    const peerCandidates = country.rank == null
-      ? countries.filter((candidate) => candidate.code !== country.code)
-      : ranked.filter((candidate) => candidate.code !== country.code);
-    const peers = peerCandidates
-      .filter((candidate) => country.rank == null || Number.isFinite(candidate.overallScore))
+    const unpublished = country.rank == null;
+    const peers = ranked
+      .filter((candidate) => candidate.code !== country.code)
       .sort((left, right) => {
-        if (country.rank == null) {
+        if (unpublished) {
           const regionDifference = Number(regionsByCode[right.code] === regionId)
             - Number(regionsByCode[left.code] === regionId);
-          return regionDifference || left.name.localeCompare(right.name);
+          return regionDifference || left.rank - right.rank || left.name.localeCompare(right.name);
         }
         const distanceDifference = Math.abs(left.rank - country.rank)
           - Math.abs(right.rank - country.rank);
@@ -1050,14 +1061,14 @@ function addCountryContext(countries, regionsByCode, crises) {
           || left.name.localeCompare(right.name);
       })
       .slice(0, 4);
-    const regionalPeers = countries
+    const regionalPeers = (unpublished ? ranked : countries)
       .filter((candidate) => (
         candidate.code !== country.code
         && regionsByCode[candidate.code] === regionId
-        && (country.rank == null || Number.isFinite(candidate.overallScore))
+        && (unpublished || Number.isFinite(candidate.overallScore))
       ))
-      .sort((left, right) => country.rank == null
-        ? left.name.localeCompare(right.name)
+      .sort((left, right) => unpublished
+        ? left.rank - right.rank || left.name.localeCompare(right.name)
         : Math.abs(left.overallScore - country.overallScore)
           - Math.abs(right.overallScore - country.overallScore)
           || left.name.localeCompare(right.name))
@@ -1691,11 +1702,180 @@ const DIMENSION_LABELS = {
   sovereignFiscalBuffer: 'Sovereign fiscal buffer',
 };
 
+const DIMENSION_PRIMARY_SOURCES = Object.freeze({
+  macroFiscal: ['IMF'],
+  currencyExternal: ['IMF', 'World Bank'],
+  tradePolicy: ['WTO', 'World Bank'],
+  financialSystemExposure: ['BIS', 'World Bank IDS', 'FATF'],
+  cyberDigital: ['cyber and outage monitors'],
+  logisticsSupply: ['World Bank'],
+  infrastructure: ['World Bank'],
+  energy: ['World Bank', 'IEA', 'OWID'],
+  governanceInstitutional: ['World Bank WGI'],
+  socialCohesion: ['IEP', 'UNHCR', 'UCDP'],
+  borderSecurity: ['UCDP', 'UNHCR'],
+  informationCognitive: ['Reporters Without Borders'],
+  education: ['World Bank'],
+  healthPublicService: ['WHO'],
+  foodWater: ['FAO IPC', 'World Bank'],
+  fiscalSpace: ['IMF'],
+  liquidReserveAdequacy: ['World Bank'],
+  externalDebtCoverage: ['World Bank'],
+  importConcentration: ['UN Comtrade'],
+  stateContinuity: ['World Bank WGI', 'UCDP', 'UNHCR'],
+  sovereignFiscalBuffer: ['sovereign-wealth records'],
+});
+
 function humanizeId(value) {
   return String(value || '')
     .replace(/([a-z])([A-Z])/g, '$1 $2')
     .replace(/-/g, ' ')
     .replace(/^./, (letter) => letter.toUpperCase());
+}
+
+function formatProseList(items) {
+  const values = [...new Set(items.map((item) => String(item || '').trim()).filter(Boolean))];
+  if (values.length === 0) return '';
+  if (values.length === 1) return values[0];
+  if (values.length === 2) return `${values[0]} and ${values[1]}`;
+  return `${values.slice(0, -1).join(', ')}, and ${values.at(-1)}`;
+}
+
+function dimensionLabel(dimension) {
+  return DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id);
+}
+
+function activeCountryDimensions(country) {
+  return (country.domains || []).flatMap((domain) => (
+    (domain.dimensions || [])
+      .filter((dimension) => !RETIRED_DIMENSION_IDS.has(dimension.id))
+      .map((dimension) => ({
+        ...dimension,
+        domainId: domain.id,
+      }))
+  ));
+}
+
+function isCoverageGap(dimension) {
+  const imputationClass = String(dimension.imputationClass || '');
+  if (imputationClass === 'not-applicable') return false;
+  if (imputationClass === 'source-failure' || imputationClass === 'unmonitored') return true;
+  return Number(dimension.coverage) === 0;
+}
+
+function dimensionSources(dimension) {
+  return DIMENSION_PRIMARY_SOURCES[dimension.id] || [];
+}
+
+export function describeHeadlineIneligibilityReason(country) {
+  const coverage = Number(country.dimensionCoverage);
+  const imputation = Number(country.imputationShare);
+  const coverageText = formatPercent(country.dimensionCoverage);
+  const imputationText = formatPercent(country.imputationShare);
+  if (country.lowConfidence) {
+    const coverageMiss = Number.isFinite(coverage) && coverage < LOW_CONFIDENCE_MIN_COVERAGE;
+    const imputationMiss = Number.isFinite(imputation) && imputation > LOW_CONFIDENCE_MAX_IMPUTATION;
+    if (coverageMiss && imputationMiss) {
+      return `${country.name}'s coverage is ${coverageText} and imputation share is ${imputationText}, so the snapshot is low-confidence.`;
+    }
+    if (coverageMiss) {
+      return `${country.name}'s coverage is ${coverageText}, below the ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% confidence gate and the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% ranking floor.`;
+    }
+    if (imputationMiss) {
+      return `${country.name}'s imputation share is ${imputationText}, above the ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}% confidence limit.`;
+    }
+    return `${country.name}'s snapshot is flagged low-confidence, so no rank is published.`;
+  }
+  if (Number.isFinite(coverage) && coverage < HEADLINE_RANKING_MIN_COVERAGE) {
+    return `${country.name}'s coverage is ${coverageText}, below the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% ranking floor.`;
+  }
+  return `${country.name}'s coverage is ${coverageText}, which meets the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% floor, but a published rank also needs a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%.`;
+}
+
+export function describeHeadlineIneligibility(country) {
+  return `World Monitor does not publish a resilience score or rank for ${country.name} because it does not meet the published ranking eligibility criteria. ${describeHeadlineIneligibilityReason(country)}`;
+}
+
+export function describeCoverageGaps(country) {
+  const gaps = activeCountryDimensions(country)
+    .filter(isCoverageGap)
+    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id));
+  if (gaps.length === 0) {
+    const strongest = activeCountryDimensions(country)
+      .filter((dimension) => Number(dimension.coverage) > 0)
+      .sort((left, right) => Number(right.coverage) - Number(left.coverage) || left.id.localeCompare(right.id))
+      .slice(0, 3)
+      .map((dimension) => `${dimensionLabel(dimension)} at ${formatPercent(dimension.coverage)}`);
+    const strongestClause = strongest.length > 0
+      ? `, including ${formatProseList(strongest)}`
+      : '';
+    return `The active dimensions are mostly observed${strongestClause}. The unpublished rank is an eligibility-rule outcome, not a hole in the source inventory.`;
+  }
+  const labels = formatProseList(gaps.map(dimensionLabel));
+  const sources = formatProseList(gaps.flatMap(dimensionSources));
+  const verb = gaps.length === 1 ? 'has' : 'have';
+  const sourceClause = sources
+    ? ` Those slots depend on ${sources}, which do not contribute observed series for ${country.name}.`
+    : '';
+  const failures = gaps.filter((dimension) => dimension.imputationClass === 'source-failure');
+  const unmonitored = gaps.filter((dimension) => dimension.imputationClass === 'unmonitored');
+  const failureClause = failures.length > 0
+    ? ` ${formatProseList(failures.map(dimensionLabel))} ${failures.length === 1 ? 'is' : 'are'} marked source unavailable, so the gap is a source-universe limit rather than a missing World Monitor score.`
+    : '';
+  const unmonitoredClause = unmonitored.length > 0
+    ? ` ${formatProseList(unmonitored.map(dimensionLabel))} ${unmonitored.length === 1 ? 'is' : 'are'} tagged unmonitored because the source does not cover ${country.name}.`
+    : '';
+  return `${labels} ${verb} no usable observed series.${sourceClause}${failureClause}${unmonitoredClause}`;
+}
+
+export function describeAvailableEvidence(country) {
+  const observed = activeCountryDimensions(country)
+    .filter((dimension) => (
+      !isCoverageGap(dimension)
+      && Number(dimension.coverage) >= 0.5
+    ))
+    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id))
+    .slice(0, AVAILABLE_EVIDENCE_LIMIT);
+  if (observed.length === 0) {
+    return `The snapshot still records coverage and evidence state for ${country.name}, even though no dimension clears a usable observed threshold. Input coverage is ${formatPercent(country.dimensionCoverage)} and imputation share is ${formatPercent(country.imputationShare)}.`;
+  }
+  return `Observed evidence is present for ${formatProseList(observed.map((dimension) => `${dimensionLabel(dimension)} (${formatPercent(dimension.coverage)})`))}. Input coverage is ${formatPercent(country.dimensionCoverage)} and imputation share is ${formatPercent(country.imputationShare)}.`;
+}
+
+function dimensionInventoryNote(country, dimension) {
+  const sources = dimensionSources(dimension);
+  const sourceLabel = formatProseList(sources);
+  const imputationClass = String(dimension.imputationClass || '');
+  if (imputationClass === 'source-failure') {
+    return sourceLabel
+      ? `${sourceLabel} did not deliver a usable series in this snapshot`
+      : 'source unavailable in this snapshot';
+  }
+  if (imputationClass === 'unmonitored' || Number(dimension.coverage) === 0) {
+    return sourceLabel
+      ? `${sourceLabel} ${sources.length === 1 ? 'does' : 'do'} not contribute observed series for ${country.name}`
+      : `no observed series for ${country.name}`;
+  }
+  if (imputationClass === 'stable-absence') return 'stable absence in the source feed';
+  if (imputationClass === 'not-applicable') return 'not applicable';
+  return 'observed';
+}
+
+function selectUnrankedInventory(country) {
+  const dimensions = activeCountryDimensions(country);
+  const gaps = dimensions.filter(isCoverageGap)
+    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id));
+  const observed = dimensions.filter((dimension) => !isCoverageGap(dimension) && Number(dimension.coverage) < 1)
+    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id));
+  const selected = [];
+  const seen = new Set();
+  for (const dimension of [...gaps, ...observed]) {
+    if (seen.has(dimension.id)) continue;
+    seen.add(dimension.id);
+    selected.push(dimension);
+    if (selected.length >= UNRANKED_INVENTORY_LIMIT) break;
+  }
+  return selected;
 }
 
 function formatSignedScore(value) {
@@ -1711,15 +1891,15 @@ function countryFaqs(country, capturedAt, rankedCount) {
     return [
       {
         question: `What is ${country.name}'s resilience score?`,
-        answer: `No resilience score or rank is published for ${country.name}. Input coverage is ${formatPercent(country.dimensionCoverage)}.`,
+        answer: `No resilience score or rank is published for ${country.name}. ${country.name}'s published rank would require coverage of at least 65%, no low-confidence flag, and either a population of at least 200,000 or coverage of at least 85%. Low confidence for ${country.name} means coverage falls below 55% or imputation share exceeds 40%. ${describeHeadlineIneligibilityReason(country)}`,
       },
       {
         question: `What evidence is available for ${country.name}?`,
-        answer: `The ${prettyDate(capturedAt)} ${country.code} snapshot lists coverage and evidence state for three pillars, six domains, and their dimensions.`,
+        answer: describeAvailableEvidence(country),
       },
       {
         question: `How should readers use ${country.name}'s page?`,
-        answer: `Use the evidence inventory with the live monitor. A missing score does not mean risk is absent.`,
+        answer: `Use the evidence inventory and nearest ranked comparators with the live monitor. A missing score does not mean risk is absent.`,
       },
     ];
   }
@@ -1756,30 +1936,6 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
   if (pillars.length < 3 || domains.length < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
   }
-  const [weakestPillar, secondPillar] = pillars;
-  const strongestPillar = pillars.at(-1);
-  const [weakestDomain] = domains;
-  const strongestDomain = domains.at(-1);
-  const rankSentence = !scorePublished
-    ? `World Monitor does not publish a resilience score or rank for ${country.name} because it does not meet the published ranking eligibility criteria.`
-    : `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore)} out of 100.`;
-  const trendSentence = Number.isFinite(Number(country.change30d))
-    ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d)} points.`
-    : 'The committed snapshot does not contain a comparable 30-day change.';
-  const weakestPillarLabel = PILLAR_LABELS[weakestPillar.id] || humanizeId(weakestPillar.id);
-  const secondPillarLabel = PILLAR_LABELS[secondPillar.id] || humanizeId(secondPillar.id);
-  const strongestPillarLabel = PILLAR_LABELS[strongestPillar.id] || humanizeId(strongestPillar.id);
-  const weakestDomainLabel = DOMAIN_LABELS[weakestDomain.id] || humanizeId(weakestDomain.id);
-  const strongestDomainLabel = DOMAIN_LABELS[strongestDomain.id] || humanizeId(strongestDomain.id);
-  const summary = scorePublished
-    ? `${rankSentence} ${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score)}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score)}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score)}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score)}. ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`
-    : `${rankSentence} Input coverage is ${formatPercent(country.dimensionCoverage)} and confidence is low. The inventory lists three pillars, six domains, dimensions, and evidence states without exposing score-derived fields.`;
-  const dimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
-    ...dimension,
-    domainId: domain.id,
-  }))).sort((left, right) => scorePublished
-    ? left.score - right.score || left.id.localeCompare(right.id)
-    : left.id.localeCompare(right.id));
   const peerLinks = country.peers.map((peer) => (
     `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${scorePublished ? ` (${escapeHtml(formatScore(peer.overallScore))})` : ''}</a>`
   )).join(', ');
@@ -1790,42 +1946,90 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
     ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
     : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
   const faqs = countryFaqs(country, capturedAt, rankedCount);
+  if (!scorePublished) {
+    const inventory = selectUnrankedInventory(country);
+    const inventoryItems = inventory.length > 0
+      ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
+      : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
+    const officialName = country.identity?.officialName;
+    const officialBit = officialName && officialName !== country.name
+      ? ` Officially ${officialName}.`
+      : '';
+    const status = getSovereignStatus(country.code);
+    const statusBit = status === 'sar'
+      ? ` ${country.name} is in the rankable universe as a standalone special administrative region.`
+      : ` ${country.name} is in the rankable universe as a UN member.`;
+    const html = `      <article data-country-analysis>
+        <h2>${escapeHtml(country.name)} resilience analysis</h2>
+        <p>${escapeHtml(describeHeadlineIneligibility(country))}${escapeHtml(officialBit)}${escapeHtml(statusBit)} Ranked comparisons use ${escapeHtml(country.regionName)} peers rather than other unpublished pages. The snapshot records ${escapeHtml(country.name)} as ${escapeHtml(country.code)}.</p>
+        <h3>Why ${escapeHtml(country.name)} is unpublished</h3>
+        <p>${escapeHtml(describeCoverageGaps(country))}</p>
+        <h3>What the snapshot does cover</h3>
+        <p>${escapeHtml(describeAvailableEvidence(country))}</p>
+        <h3>Dimension evidence inventory</h3>
+        <ul class="routes">
+${inventoryItems}
+        </ul>
+        <h3>Nearest ranked comparators</h3>
+        <p>Nearest ranked comparators: ${peerLinks}. Ranked comparisons in ${escapeHtml(country.regionName)}: ${regionalLinks}. Links do not use unpublished scores.</p>
+        <h3>Tracked crisis context</h3>
+        <p>${country.crisisMemberships.length > 0 ? crisisText : `${escapeHtml(country.name)} is outside the ${country.crisisRegistrySize} crawlable crisis trackers.`}</p>
+        <h3>Reading limits</h3>
+        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${escapeHtml(country.name)} coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))} with imputation share ${escapeHtml(formatPercent(country.imputationShare))}. No score is published.</p>
+        <h3>Questions about ${escapeHtml(country.name)}</h3>
+${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
+      </article>`;
+    return { html, faqs };
+  }
+  const [weakestPillar, secondPillar] = pillars;
+  const strongestPillar = pillars.at(-1);
+  const [weakestDomain] = domains;
+  const strongestDomain = domains.at(-1);
+  const trendSentence = Number.isFinite(Number(country.change30d))
+    ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d)} points.`
+    : 'The committed snapshot does not contain a comparable 30-day change.';
+  const weakestPillarLabel = PILLAR_LABELS[weakestPillar.id] || humanizeId(weakestPillar.id);
+  const secondPillarLabel = PILLAR_LABELS[secondPillar.id] || humanizeId(secondPillar.id);
+  const strongestPillarLabel = PILLAR_LABELS[strongestPillar.id] || humanizeId(strongestPillar.id);
+  const weakestDomainLabel = DOMAIN_LABELS[weakestDomain.id] || humanizeId(weakestDomain.id);
+  const strongestDomainLabel = DOMAIN_LABELS[strongestDomain.id] || humanizeId(strongestDomain.id);
+  const summary = `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore)} out of 100. ${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score)}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score)}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score)}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score)}. ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
+  const dimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
+    ...dimension,
+    domainId: domain.id,
+  }))).sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
   const html = `      <article data-country-analysis>
         <h2>${escapeHtml(country.name)} resilience analysis</h2>
         <p>${escapeHtml(summary)}</p>
-        <h3>${scorePublished ? 'Pillar profile' : `${escapeHtml(country.code)} pillar profile`}</h3>
+        <h3>Pillar profile</h3>
         <ul class="routes">
-${pillars.map((pillar) => `          <li><strong>${scorePublished ? '' : `${escapeHtml(country.code)} · `}${escapeHtml(PILLAR_LABELS[pillar.id] || humanizeId(pillar.id))}${scorePublished ? `: ${escapeHtml(formatScore(pillar.score))}` : ''}</strong>; coverage ${escapeHtml(formatPercent(pillar.coverage))}; domains ${pillar.domainIds.map((id) => escapeHtml(DOMAIN_LABELS[id] || humanizeId(id))).join(', ')}.</li>`).join('\n')}
+${pillars.map((pillar) => `          <li><strong>${escapeHtml(PILLAR_LABELS[pillar.id] || humanizeId(pillar.id))}: ${escapeHtml(formatScore(pillar.score))}</strong>; coverage ${escapeHtml(formatPercent(pillar.coverage))}; domains ${pillar.domainIds.map((id) => escapeHtml(DOMAIN_LABELS[id] || humanizeId(id))).join(', ')}.</li>`).join('\n')}
         </ul>
-        <h3>${scorePublished ? 'Six-domain profile' : `${escapeHtml(country.code)} six-domain profile`}</h3>
+        <h3>Six-domain profile</h3>
         <ul class="routes">
 ${domains.map((domain) => {
-    const dimensions = [...domain.dimensions].sort((left, right) => scorePublished
-      ? left.score - right.score
-      : left.id.localeCompare(right.id));
+    const dimensions = [...domain.dimensions].sort((left, right) => left.score - right.score);
     const weakest = dimensions[0];
     const strongest = dimensions.at(-1);
-    const dimensionSummary = !scorePublished
-      ? `dimensions ${dimensions.map((dimension) => DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id)).join(', ')}`
-      : dimensions.length === 1
+    const dimensionSummary = dimensions.length === 1
       ? `${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}`
       : `low ${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}; high ${DIMENSION_LABELS[strongest.id] || humanizeId(strongest.id)} ${formatScore(strongest.score)}`;
-    return `          <li><strong>${scorePublished ? '' : `${escapeHtml(country.code)} · `}${escapeHtml(DOMAIN_LABELS[domain.id] || humanizeId(domain.id))}${scorePublished ? `: ${escapeHtml(formatScore(domain.score))}` : ''}</strong>; weight ${escapeHtml(formatPercent(domain.weight))}; ${escapeHtml(dimensionSummary)}.</li>`;
+    return `          <li><strong>${escapeHtml(DOMAIN_LABELS[domain.id] || humanizeId(domain.id))}: ${escapeHtml(formatScore(domain.score))}</strong>; weight ${escapeHtml(formatPercent(domain.weight))}; ${escapeHtml(dimensionSummary)}.</li>`;
   }).join('\n')}
         </ul>
-        <h3>${scorePublished ? 'Dimension evidence, weakest first' : `${escapeHtml(country.code)} dimension evidence inventory`}</h3>
+        <h3>Dimension evidence, weakest first</h3>
         <div class="table-scroll"><table>
           <thead><tr><th scope="col">Dimension</th><th scope="col">Domain</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Evidence state</th></tr></thead>
           <tbody>
-${dimensionRows.map((dimension) => `            <tr><td>${scorePublished ? '' : `${escapeHtml(country.code)} · `}${escapeHtml(DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id))}</td><td>${escapeHtml(DOMAIN_LABELS[dimension.domainId] || humanizeId(dimension.domainId))}</td><td>${scorePublished ? escapeHtml(formatScore(dimension.score)) : '—'}</td><td>${escapeHtml(formatPercent(dimension.coverage))}</td><td>${escapeHtml(humanizeId(dimension.imputationClass || dimension.freshness?.staleness || 'observed'))}</td></tr>`).join('\n')}
+${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id))}</td><td>${escapeHtml(DOMAIN_LABELS[dimension.domainId] || humanizeId(dimension.domainId))}</td><td>${escapeHtml(formatScore(dimension.score))}</td><td>${escapeHtml(formatPercent(dimension.coverage))}</td><td>${escapeHtml(humanizeId(dimension.imputationClass || dimension.freshness?.staleness || 'observed'))}</td></tr>`).join('\n')}
           </tbody>
         </table></div>
-        <h3>${scorePublished ? 'Comparison set' : `${escapeHtml(country.code)} comparison set`}</h3>
-        <p>${scorePublished ? 'Nearest ranked peers' : 'Reference pages'}: ${peerLinks}. Comparisons in ${escapeHtml(country.regionName)}: ${regionalLinks}. ${scorePublished ? 'Similar scores do not mean equal conditions.' : 'Links do not use unpublished scores.'}</p>
+        <h3>Comparison set</h3>
+        <p>Nearest ranked peers: ${peerLinks}. Comparisons in ${escapeHtml(country.regionName)}: ${regionalLinks}. Similar scores do not mean equal conditions.</p>
         <h3>Tracked crisis context</h3>
         <p>${crisisText}</p>
         <h3>Reading limits</h3>
-        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${scorePublished ? `Top domain: ${escapeHtml(strongestDomainLabel)}, ${escapeHtml(formatScore(strongestDomain.score))}. Weak pillars reduce the result; compare with coverage and imputation visible.` : 'No score is published. Coverage and imputation show the evidence boundary.'}</p>
+        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. Top domain: ${escapeHtml(strongestDomainLabel)}, ${escapeHtml(formatScore(strongestDomain.score))}. Weak pillars reduce the result; compare with coverage and imputation visible.</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>
 ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
@@ -1864,13 +2068,12 @@ function renderCountryPage({
     ? `      <p><strong>Official name:</strong> ${escapeHtml(country.identity.officialName)}. <a href="${escapeHtml(country.identity.sameAs)}">Wikidata identity record</a>.</p>\n`
     : '';
   const scorePublished = country.headlineEligible !== false;
-  const coverageFact = `Input coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))}.`;
   const scoreDisclosure = scorePublished
     ? ''
-    : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)}. ${escapeHtml(country.name)} does not meet the published ranking eligibility criteria. ${coverageFact}</p>`;
+    : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)}. ${escapeHtml(describeHeadlineIneligibilityReason(country))}</p>`;
   const datasetDescription = scorePublished
     ? `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`
-    : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because the country does not meet the published ranking eligibility criteria.`;
+    : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because the country does not meet the published ranking eligibility criteria. ${RANKING_ELIGIBILITY_CLAUSE}`;
   const pulse = livePulse?.countries?.[country.code] || null;
   // Gate on presence, not truthiness: a legitimate score of 0 must still publish.
   const hasPulse = pulse != null && (pulse.partial === true || pulse.score != null);
