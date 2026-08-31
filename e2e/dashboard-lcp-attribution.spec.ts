@@ -93,7 +93,7 @@ const expectContext = (snapshot: LcpDebugSnapshot): void => {
 
 // Vocabulary produced by closestAttributionLabel(). '' is valid when the LCP
 // element is outside every known container, so this set alone cannot catch a
-// regression that degrades attribution to '' — expectFooterNeverWinsLcp below
+// regression that degrades attribution to '' — expectCoverageRowContract below
 // is what pins the one container we know must never win LCP.
 const KNOWN_ATTRIBUTION = new Set([
   '', 'shell-lcp', 'shell', 'map-container', 'map-section', 'map-renderer-shell', 'panel',
@@ -120,15 +120,52 @@ const KNOWN_ATTRIBUTION = new Set([
 // t=80ms) and only at t=2872ms does div.digest-coverage-row take over at
 // 14,233px2. Asserting against the early entry passes on the pre-fix code,
 // which is precisely the vacuous guard this replaces.
-const expectFooterNeverWinsLcp = async (page: Page): Promise<void> => {
-  // A row that never mounts would make every assertion below vacuously true,
-  // and is itself the #7085 defect #7267 fixed — so require it.
+//
+// The two halves must be asserted together. Hiding the row outright satisfies
+// the LCP half for the wrong reason — a row that does not render cannot be the
+// largest paint — while silently reintroducing the #7085 defect #7267 fixed.
+// toBeAttached() does not catch that: it tests DOM connection, and a
+// display:none row is still attached. Playwright's role engine reads the
+// accessibility tree instead, so it fails on display:none, visibility:hidden
+// and aria-hidden, which is exactly the regression #7267's review rejected.
+//
+// Size is asserted rather than text because text depends on the digest
+// response. A degraded or empty digest yields a much shorter string
+// (StatusPanel's unavailable/unknown branch), which would be too small to win
+// LCP and would pass this guard for a reason unrelated to the fix — on the
+// pre-fix stylesheet too. The rendered box does not have that dependency: the
+// clip holds it at 1px on mobile whatever the digest says.
+const expectCoverageRowContract = async (
+  page: Page,
+  presentation: 'clipped-to-screen-readers' | 'visible',
+): Promise<void> => {
   await expect(
-    page.locator('.digest-coverage-row'),
-    'the #7085 coverage row must still mount, or this guard proves nothing',
+    page.getByRole('status').filter({ hasText: 'Digest coverage' }),
+    'the #7085 coverage row must stay in the accessibility tree',
   ).toBeAttached({ timeout: 30000 });
+
   // Let any LCP entry the freshly painted row would produce be emitted.
   await page.waitForTimeout(2000);
+
+  // Measure the container, not the row. The clip applies to the container, so
+  // that is what bounds painted area: measured 1x1 on mobile against 1240x21 on
+  // desktop. The row inside a clipped container still reports its own
+  // line-height (1x21 on mobile), which would make a height assertion on it
+  // fail against correct code.
+  const box = await page.evaluate(() => {
+    const el = document.querySelector('.status-panel-container');
+    if (!el) return null;
+    const rect = el.getBoundingClientRect();
+    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  });
+  expect(box, 'the coverage row container must be in the DOM').not.toBeNull();
+  if (presentation === 'clipped-to-screen-readers') {
+    expect(box!.width, 'mobile row must stay clipped, not repaint').toBeLessThanOrEqual(2);
+    expect(box!.height, 'mobile row must stay clipped, not repaint').toBeLessThanOrEqual(2);
+  } else {
+    expect(box!.width, 'desktop row must stay a readable line').toBeGreaterThan(100);
+    expect(box!.height, 'desktop row must stay a readable line').toBeGreaterThan(5);
+  }
 
   const latest = await page.evaluate(() => window.__wmLcpDebug!.getSnapshot().entries.at(-1));
   expect(latest?.element?.closest ?? '').not.toBe('site-footer');
@@ -162,7 +199,7 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
     expectMeaningfulCandidate(latest!);
-    await expectFooterNeverWinsLcp(page);
+    await expectCoverageRowContract(page, 'visible');
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
     expect(latest!.url).not.toContain('wms_');
     expect(latest!.url).not.toContain('token=');
@@ -191,7 +228,7 @@ test.describe('dashboard LCP attribution debug on mobile', () => {
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
     expectMeaningfulCandidate(latest!);
-    await expectFooterNeverWinsLcp(page);
+    await expectCoverageRowContract(page, 'clipped-to-screen-readers');
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
   });
 });
