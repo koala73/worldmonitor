@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -252,12 +253,13 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     });
   }
 
-  it('/pro seeds a crawlable H1 in #root without duplicating it in the no-JavaScript fallback', () => {
+  it('/pro seeds crawlable pricing copy in #root without a hidden SEO sibling', () => {
     const html = builtSrc('public/pro/index.html');
-    const rootMatch = html.match(/<div id="root">(?<content>[\s\S]*?)<\/div>\s*<noscript>/);
-    assert.ok(rootMatch?.groups, 'the /pro static H1 should be seeded inside #root');
-    assert.equal([...rootMatch.groups.content.matchAll(/<h1\b/g)].length, 1);
+    const root = crawlerDocumentSnapshot(html).visibleRootMarkup;
+    assert.equal([...root.matchAll(/<h1\b/g)].length, 1);
     assert.equal([...stripNoscript(html).matchAll(/<h1\b/g)].length, 1);
+    assert.match(root, /How much does World Monitor Pro cost\?/);
+    assert.match(root, /\$39\.99/);
     assert.match(html, /World Monitor Pro/);
     assert.doesNotMatch(html, /id="seo-prerender"/);
     assert.doesNotMatch(html, /html\.js #seo-prerender/);

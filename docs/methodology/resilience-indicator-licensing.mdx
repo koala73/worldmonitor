@@ -3,6 +3,50 @@ title: "Country Resilience Indicator Licensing"
 description: "Raw-value redistribution decisions and attribution requirements for the 72 Country Resilience Index indicators."
 ---
 
+## Start here
+
+**Why some numbers are blank when the data clearly exists.**
+
+WorldMonitor buys, fetches, and computes with data from dozens of publishers.
+Many of them allow us to *use* their figures but not to *republish* them. Those
+are different permissions, and the difference is the whole subject of this page.
+
+So the indicator drill-down does two things at once:
+
+- **Always** serves WorldMonitor's own derived output — the normalized score,
+  the weight, the contribution, and full credit to whoever published the
+  underlying data.
+- **Sometimes** serves the raw upstream number too, but only when that
+  publisher's terms clearly permit it.
+
+A blank raw value **never** means "it is zero." But it has two different causes,
+and the row tells you which:
+
+- **Licensing** — the value exists and was used, and we may not republish it.
+  That is what the table below records, source by source.
+- **State** — there was no measured value to publish in the first place. A row
+  that is `imputed`, `fallback`, `missing`, `inactive`, `retired`,
+  `not-applicable`, or `source-failure` never carries a raw value regardless of
+  licence, and neither does one whose provider or retrieval time is ambiguous.
+
+**Read the row's `state` and its raw-value policy status before concluding
+anything from a blank.** Treating every absence as a licence restriction
+misclassifies genuine data gaps and inactive indicators.
+
+The policy is **fail-closed**: if a source has not been reviewed yet, or a
+composite indicator draws on one source that has not, the raw value is withheld.
+Being publicly accessible is not permission, and neither is a general licence
+label in our own registry — only a completed review of the exact dataset counts.
+
+<Note>
+This is also why this particular response refuses JMESPath projection. A
+projection could separate a licensed raw value from the attribution and
+retrieval fields that authorize publishing it, so both REST and MCP reject a
+non-empty projection here rather than risk stripping the credit.
+</Note>
+
+## Detailed policy
+
 The Pro indicator drill-down returns all 72 registered indicator rows and a normalized score whenever the scorer has one. It returns a raw source value only when the exact observation is measured, every contributing provider has a completed redistribution review, the response includes the required attribution, and the exact contributing seed has a retrieval timestamp. An imputed, fallback, missing, inactive, retired, not-applicable, source-failure, provider-ambiguous, or retrieval-time-ambiguous row never includes a raw value.
 
 The broad `license` label in the indicator registry is source inventory metadata. It is not permission to redistribute a value. The executable policy in `server/worldmonitor/resilience/v1/_indicator-source-policy.ts` is stricter and uses the exact provider provenance of each observation.

@@ -3,13 +3,53 @@ title: "News Credibility Score"
 description: "How WorldMonitor scores per-headline source reliability separately from newsworthiness — source tier, propaganda risk, independent corroboration, and the state-media cap."
 ---
 
-This page is the canonical public methodology for the per-headline
-`credibilityScore` field on `NewsItem`
-(`GET /api/news/v1/list-feed-digest`, proto
-`worldmonitor.news.v1.NewsItem.credibility_score`).
+## Start here
 
-`credibilityScore` and `importanceScore` answer different questions. Mixing
-them is the flaw a sophisticated buyer finds first.
+Every headline in WorldMonitor carries two separate numbers, and keeping them
+separate is the entire idea.
+
+**Importance** asks: *how much does this matter right now?*
+**Credibility** asks: *how much should I trust this source on this story?*
+
+A state-controlled outlet breaking real news about its own government's military
+movements is **highly important and poorly credible at the same time**. Most news
+tools collapse that into one ranking and force you to choose between missing the
+story and trusting the source. WorldMonitor shows you both numbers and lets you
+decide.
+
+### What credibility is built from
+
+| Ingredient | Weight | The question behind it |
+|---|---:|---|
+| **Propaganda risk** | 0.50 | Does this outlet answer to a government or an interest with a stake in the story? |
+| **Source tier** | 0.30 | What is this outlet's track record? |
+| **Independent corroboration** | 0.20 | Is anyone unconnected reporting the same thing? |
+
+Note what is *absent*. Severity, recency, and how dramatic the event is carry no
+weight here at all — those belong to importance. Only things that bear on
+truthfulness are allowed to move this number.
+
+<Note>
+**State media is capped, not banned.** An outlet under state control cannot reach
+a high credibility score no matter how many others repeat it — because
+repetition inside a controlled media environment is not independent
+corroboration. It stays visible and readable, with an honest label on it.
+</Note>
+
+### No human sits in this loop
+
+The pipeline is automated end to end. Quality comes from a curated source-tier
+table, a fail-closed propaganda-risk registry, and corroboration counts the
+digest already computes. Third-party bias ratings (AllSides, MBFC) are
+deliberately **not** applied today.
+
+<Info>
+**For developers.** The field is `credibilityScore` on `NewsItem`, served from
+`GET /api/news/v1/list-feed-digest` (proto
+`worldmonitor.news.v1.NewsItem.credibility_score`).
+</Info>
+
+## How it differs from importance
 
 | Score | Question | Typical high scorer |
 | --- | --- | --- |
@@ -17,12 +57,8 @@ them is the flaw a sophisticated buyer finds first.
 | `credibilityScore` | How much should I trust this source on this story? | The same story reported by Reuters |
 
 A state-controlled outlet can score **high** on importance and **low** on
-credibility at the same time. That split is the product.
-
-The pipeline is automated. There is no human review queue. Quality comes from
-the curated source-tier table, the fail-closed propaganda-risk registry, and
-digest corroboration counts that already exist. Third-party bias/factuality
-ratings (AllSides, MBFC) are reserved and **not currently applied**.
+credibility at the same time. That split is the product, and mixing the two is
+the flaw a sophisticated buyer finds first.
 
 ## Inputs
 

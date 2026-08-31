@@ -27,6 +27,18 @@ const DATASET_LICENSE = {
   url: 'https://www.worldmonitor.app/docs/terms',
 };
 
+// Mirrors WORLD_MONITOR_ORG in scripts/build-crawlable-corpus.mjs. Declared here
+// rather than imported because that module injects this one's template functions,
+// so importing back would close a cycle. Carries `@type` + `name` alongside the
+// `@id`: parsers resolve `@id` within one document and no /research/ page declares
+// the canonical Organization, so a bare reference would not resolve (#7459b).
+const WORLD_MONITOR_ORG = Object.freeze({
+  '@id': 'https://www.worldmonitor.app/#organization',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: 'https://www.worldmonitor.app/',
+});
+
 const CHART_WIDTH = 720;
 const LINE_CHART_HEIGHT = 260;
 const BAR_CHART_HEIGHT = 240;
@@ -871,8 +883,12 @@ ${justification}
     dateModified: report.dateModified,
     version: report.version,
     inLanguage: 'en-US',
-    author: { '@type': 'Organization', name: report.author.name, url: report.author.url },
-    publisher: { '@type': 'Organization', name: 'World Monitor', url: 'https://www.worldmonitor.app/' },
+    // The "World Monitor Research" byline stays in the visible page text and the
+    // citation block; in the entity graph it folds into the canonical Organization
+    // so the page stops publishing a second, differently-named org claiming the
+    // same homepage url (#7459b).
+    author: { ...WORLD_MONITOR_ORG },
+    publisher: { ...WORLD_MONITOR_ORG },
     isBasedOn: 'https://portwatch.imf.org/',
     temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
     hasPart: {
@@ -880,7 +896,7 @@ ${justification}
       name: `Strait of Hormuz daily transit calls, ${focus.observationStart} to ${focus.observationEnd}`,
       description:
         'Daily AIS-observed vessel transit calls by class with deadweight-tonnage aggregates, from IMF PortWatch, frozen in a versioned snapshot.',
-      creator: { '@type': 'Organization', name: report.author.name, url: report.author.url },
+      creator: { ...WORLD_MONITOR_ORG },
       license: DATASET_LICENSE,
       datePublished: report.datePublished,
       temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,

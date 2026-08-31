@@ -3,7 +3,56 @@ title: "Thermal Escalation Methodology"
 description: "How WorldMonitor clusters FIRMS/VIIRS thermal detections, compares them with local baselines, and assigns thermal escalation status and relevance."
 ---
 
-## Overview
+## Start here
+
+Weather satellites detect heat. Every day they log thousands of hot spots
+worldwide — most of them farmers burning stubble, flares at refineries, and
+ordinary wildfires. Buried in that noise are the ones that matter: a burning
+depot, a struck refinery, a fire that should not be there.
+
+Thermal Escalation is the filter. It asks one question about every heat
+detection: **is this unusual for this place?**
+
+### How it decides something is unusual
+
+Individual satellite pixels are first grouped into **clusters** — nearby
+detections seen around the same time are almost certainly one event, not
+fifteen. Each cluster is then compared against what that same patch of ground
+normally looks like, using the previous seven days as the yardstick.
+
+A fire in a place that burns every week is normal. The same fire where nothing
+has burned in a month is not. That comparison is the entire idea.
+
+Each cluster comes out with a status:
+
+| Status | What it means |
+|---|---|
+| `spike` | A sudden, sharp departure from the local baseline. Something just started. |
+| `persistent` | Burning for 12+ hours and still above baseline. Something is sustained. |
+| `elevated` | Above the local norm, but not dramatically. |
+| `normal` | Consistent with what this area usually does. |
+
+Two more fields shape what reaches the top of the panel. **Relevance** is raised
+when a cluster is both unusual *and* in a region with active conflict — the
+combination that most often means infrastructure rather than agriculture.
+**Confidence** reports how much evidence stands behind the call: how many
+detections, how many separate satellites saw it, and how much baseline history
+exists to compare against.
+
+<Note>
+**Terminology.** *FRP* (fire radiative power) is the measured energy output of a
+detection — roughly, how intensely it is burning, as opposed to how many pixels
+lit up. Both are used, because a small very hot event and a large smouldering one
+are different situations.
+</Note>
+
+<Warning>
+**A detection is heat, not a cause.** These satellites cannot distinguish a
+struck fuel depot from a crop burn. Everything here is a prompt to look, never a
+conclusion about what happened. The conflict-adjacency test is also a
+region-label match, not a live distance calculation against confirmed conflict
+events.
+</Warning>
 
 Thermal Escalation turns FIRMS/VIIRS hotspot detections into clustered, baseline-aware watch items for the `thermal-escalation` panel. The implementation lives in `scripts/lib/thermal-escalation.mjs`.
 

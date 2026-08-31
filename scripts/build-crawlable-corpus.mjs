@@ -38,6 +38,14 @@ import {
   INDEXABLE_ROBOTS_CONTENT,
 } from '../shared/seo-robots.mjs';
 import { getSovereignStatus } from './shared/rankable-universe.mjs';
+// Single source with the browser copy: crawlable-live-tools.mjs is what gets
+// written verbatim to public/tools/live-tools.js, and importing it here is
+// side-effect-free in Node (its only module-scope statement is a
+// `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
+import {
+  publishedTransitCountLabel,
+  withheldTransitCountSentence,
+} from './crawlable-live-tools.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -93,7 +101,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-30';
+const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-31';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -104,8 +112,9 @@ const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // dateModified is pinned to the snapshot capturedAt as a truthful freshness
 // contract (#7391), so their recrawl signal is COUNTRY_PAGE_CONTENT_VERSION.
 const DATASET_SCHEMA_CONTENT_VERSION = {
-  chokepoint: '2026-08-30',
+  chokepoint: '2026-08-31',
   crisis: '2026-08-31',
+  tools: '2026-08-31',
 };
 const CRISIS_PAGE_CONTENT_VERSION = '2026-08-31';
 const TOOLS_PAGE_CONTENT_VERSION = '2026-08-30';
@@ -119,7 +128,15 @@ const CHOKEPOINT_DATASET_DOWNLOAD = 'reference.json';
 const CRISIS_DATASET_DOWNLOAD = 'tracker.json';
 const CONVERGENCE_DATASET_DOWNLOAD = 'reference.json';
 const DATA_CATALOG_FRAGMENT = '#data-catalog';
-const WORLD_MONITOR_ORG = Object.freeze({
+// Role filler for Dataset.creator / DataCatalog.publisher. The `@id` folds every
+// occurrence into the canonical Organization declared on welcome.html (#7459b),
+// but the `@type` + `name` must stay: structured-data parsers resolve `@id` within
+// ONE document, and no generated corpus page declares that node. A bare `@id` here
+// is an unresolvable stub for exactly the naive extractors #7459b set out to serve.
+// This is the same typed-stub-plus-@id shape blog-site/src/layouts/BlogPost.astro
+// already uses for the canonical Person.
+export const WORLD_MONITOR_ORG = Object.freeze({
+  '@id': 'https://www.worldmonitor.app/#organization',
   '@type': 'Organization',
   name: 'World Monitor',
   url: 'https://www.worldmonitor.app/',
@@ -1666,7 +1683,7 @@ ${countries.map((country) => {
         description,
         url: absoluteUrl(baseUrl, path),
         identifier: `country-resilience-ranking-${capturedAt}`,
-        creator: { '@type': 'Organization', name: 'World Monitor', url: 'https://www.worldmonitor.app/' },
+        creator: { ...WORLD_MONITOR_ORG },
         license: DATASET_LICENSE,
         datePublished: capturedAt,
         dateModified: capturedAt,
@@ -2375,19 +2392,26 @@ ${routes.map((route) => {
   // Presence, not truthiness -- a fully calm chokepoint scores 0, which is a
   // real published value and must not fall back to the loading skeleton.
   const hasPulse = pulse != null && pulse.disruptionScore != null;
-  const liveState = hasPulse ? (pulse.partial ? 'partial' : 'ready') : 'loading';
+  const transitsLabel = publishedTransitCountLabel(pulse?.todayTransits);
+  const transitsWithheld = hasPulse && transitsLabel == null;
+  const pulsePartial = pulse?.partial === true || transitsWithheld;
+  const liveState = hasPulse ? (pulsePartial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
-    ? (pulse.partial ? 'Published partial pulse' : 'Published pulse')
+    ? (pulsePartial ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
+  const transitsNote = transitsWithheld
+    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName))}</p>`
+    : '        <p data-chokepoint-transits-note hidden></p>';
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(pulse.disruptionScore)}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
           <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion>${escapeHtml(pulse.congestion)}</strong></div>
           <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings>${escapeHtml(pulse.warnings)}</strong></div>
-          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(pulse.todayTransits ?? 'Unavailable')}</strong></div>
+          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(pulse.weekMovement ?? 'Unavailable')}</strong></div>
         </div>
-        <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>`
+        <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>
+${transitsNote}`
     : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
         <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score></span><small data-chokepoint-band></small></strong></div>
@@ -2396,12 +2420,13 @@ ${routes.map((route) => {
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits></strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement></strong></div>
         </div>
-        <p data-chokepoint-description hidden></p>`;
+        <p data-chokepoint-description hidden></p>
+        <p data-chokepoint-transits-note hidden></p>`;
 
   const body = `      <p class="eyebrow">Chokepoint</p>
       <h1>${escapeHtml(chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
-      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
         <div class="tool-head">
           <div>
             <p class="eyebrow">Current status</p>
@@ -2820,8 +2845,10 @@ ${examples}
           license: DATASET_LICENSE,
           // This reference is a formula plus documentation-derived examples --
           // it has no observation window, so it carries no temporalCoverage and
-          // is dated from its content version, not the freeze wall clock.
-          dateModified: lastmod,
+          // is dated from its content version, not the freeze wall clock. The
+          // family schema stamp rides alongside so a Dataset-shape change signals
+          // recrawl without dragging the page lastmod with it (#7382).
+          dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION.tools),
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured: [

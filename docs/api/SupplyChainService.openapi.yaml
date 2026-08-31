@@ -5092,10 +5092,21 @@ components:
                 dataAvailable:
                     type: boolean
                     description: |-
-                        False when the upstream portwatch/relay source did not return data for
-                         this chokepoint in the current cycle — the summary fields are zero-state
-                         fill, not a genuine "zero traffic" reading. Client should render a
-                         "transit data unavailable" indicator and skip stat/chart rendering.
+                        False when the upstream portwatch source did not return history for this
+                         chokepoint in the current cycle — wow_change_pct and history are then
+                         zero-state fill, not genuine readings. Client should render a "transit
+                         data unavailable" indicator and skip chart rendering.
+
+                         This says nothing about today_* — those come from the relay's in-memory
+                         AIS window, a separate source. Read today_counts_available for those.
+                todayCountsAvailable:
+                    type: boolean
+                    description: |-
+                        False when the relay's 24h AIS window held no crossings for this
+                         chokepoint, so today_total/tanker/cargo/other are unsupplied rather than
+                         a measured zero (#7457). The fields stay 0 to keep the int32 contract;
+                         clients must withhold the count when this is false instead of publishing
+                         the 0. True means the counts are a real measurement.
         TransitDayCount:
             type: object
             properties:

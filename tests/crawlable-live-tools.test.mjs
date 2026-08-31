@@ -13,8 +13,10 @@ import {
   loadHazards,
   militaryFlightsViewModel,
   pointInBounds,
+  publishedTransitCountLabel,
   requestLiveJson,
   runLatestToolRequest,
+  withheldTransitCountSentence,
 } from '../scripts/crawlable-live-tools.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
@@ -108,6 +110,170 @@ describe('crawlable live intelligence view models', () => {
       ),
       /stale/i,
     );
+  });
+
+  it('does not publish a numeric 0 transit count when the AIS window is empty', () => {
+    const payload = {
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [
+        {
+          id: 'hormuz_strait',
+          disruptionScore: 70,
+          status: 'red',
+          congestionLevel: 'normal',
+          activeWarnings: 0,
+          aisDisruptions: 0,
+          description: 'Active conflict.',
+          transitSummary: {
+            // PortWatch history is present (dataAvailable true + non-zero WoW),
+            // but today's AIS-window count was zero-filled. Publishing that 0
+            // as "Today's transits" is the #7457 GEO failure.
+            dataAvailable: true,
+            todayTotal: 0,
+            wowChangePct: 12.9,
+          },
+        },
+      ],
+    };
+
+    const view = chokepointStatusViewModel(payload, 'hormuz_strait', NOW);
+    assert.equal(view.todayTransits, null);
+    assert.equal(view.weekMovement, '+12.9% vs prior week');
+    assert.equal(view.partial, true);
+    assert.notEqual(view.todayTransits, '0');
+  });
+
+  it('hydrates withheld transits instead of a numeric 0 when AIS is empty and WoW is present', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid>
+          <div class="metric"><strong><span data-chokepoint-score>70</span><small data-chokepoint-band>Red</small></strong></div>
+          <div class="metric"><strong data-chokepoint-congestion>Normal</strong></div>
+          <div class="metric"><strong data-chokepoint-warnings>0 warnings</strong></div>
+          <div class="metric"><strong data-chokepoint-transits>0</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>+12.9% vs prior week</strong></div>
+        </div>
+        <p data-chokepoint-description>Active conflict.</p>
+        <p data-chokepoint-transits-note hidden></p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+      </section>
+    `;
+
+    const tool = document.querySelector('[data-live-chokepoint]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-chokepoint-status')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+            upstreamUnavailable: false,
+            chokepoints: [{
+              id: 'hormuz_strait',
+              disruptionScore: 70,
+              status: 'red',
+              congestionLevel: 'normal',
+              activeWarnings: 0,
+              aisDisruptions: 0,
+              description: 'Active conflict.',
+              transitSummary: {
+                dataAvailable: true,
+                todayTotal: 0,
+                wowChangePct: 12.9,
+              },
+            }],
+          }),
+        };
+      }
+      return anonymousSessionResponse();
+    };
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '—');
+    assert.notEqual(tool.querySelector('[data-chokepoint-transits]').textContent, '0');
+    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+12.9% vs prior week');
+    assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, false);
+    assert.match(
+      tool.querySelector('[data-chokepoint-transits-note]').textContent,
+      /not currently publishing a transit count for Strait of Hormuz for this period/,
+    );
+  });
+
+  // The mirror-parity test this replaces could not do its job: of its ten
+  // values only `11` reached a formatter, and it renders identically under
+  // every variant, so deleting the formatter outright still passed. The mirror
+  // is gone (one source now), and these are the cases that actually bite.
+  it('publishes a supplied transit count and withholds every unsupplied shape', () => {
+    // Positive control. The corpus suite derives this from whichever
+    // chokepoints have AIS traffic on the freeze date, which the monthly
+    // refresh can take to zero; this one is synthetic and always runs.
+    assert.equal(publishedTransitCountLabel(7), '7');
+    assert.equal(publishedTransitCountLabel('7'), '7');
+    assert.equal(publishedTransitCountLabel(1), '1', 'a single crossing is a real measurement');
+    assert.equal(publishedTransitCountLabel(1234), '1,234', 'counts are thousands-separated');
+    assert.equal(publishedTransitCountLabel('1,234'), '1,234', 'an already-formatted string round-trips');
+    assert.equal(publishedTransitCountLabel(1234567), '1,234,567');
+
+    // Withheld: absent, empty, and the zero-fill this exists to stop.
+    for (const value of [null, undefined, '', '0', 0, -1, '-3', 'Unavailable', NaN, Infinity]) {
+      assert.equal(publishedTransitCountLabel(value), null, `${String(value)} must withhold`);
+    }
+
+    // A fraction clears a bare `> 0` gate and then formats to the literal "0".
+    assert.equal(publishedTransitCountLabel(0.4), null, 'a sub-1 fraction must not render as "0"');
+    assert.equal(publishedTransitCountLabel(0.6), null);
+
+    // Strings are re-formatted from the parsed number, never echoed, so a
+    // malformed upstream value cannot reach the page verbatim.
+    assert.equal(publishedTransitCountLabel('1e3'), '1,000');
+    assert.equal(publishedTransitCountLabel('12abc'), null);
+  });
+
+  it('publishes a real AIS count even when PortWatch dropped the chokepoint', () => {
+    // dataAvailable is PortWatch history presence; today's count is the relay's
+    // AIS window. Gating the count on dataAvailable discarded live measurements
+    // whenever PortWatch went partial -- it dropped two chokepoints for ~4.5h
+    // on 2026-08-25 -- and then rendered the withhold note over real data.
+    const payload = {
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [{
+        id: 'suez',
+        disruptionScore: 30,
+        status: 'yellow',
+        congestionLevel: 'normal',
+        activeWarnings: 0,
+        aisDisruptions: 0,
+        description: 'Normal.',
+        transitSummary: { dataAvailable: false, todayTotal: 9, wowChangePct: 0 },
+      }],
+    };
+
+    const view = chokepointStatusViewModel(payload, 'suez', NOW);
+    assert.equal(view.todayTransits, '9', 'a measured AIS count must publish without PortWatch history');
+    assert.equal(view.weekMovement, null, 'week movement still needs PortWatch and must stay withheld');
+    assert.equal(view.partial, true, 'missing PortWatch history is still a partial pulse');
+  });
+
+  it('withholds without blaming the AIS feed', () => {
+    // dataAvailable is PortWatch history presence and the AIS window is a
+    // separate source, so the note must not name either one.
+    const note = withheldTransitCountSentence('Strait of Hormuz');
+    assert.equal(
+      note,
+      'World Monitor is not currently publishing a transit count for Strait of Hormuz for this period.',
+    );
+    assert.doesNotMatch(note, /AIS/, 'the note must not attribute the gap to a specific feed');
+    assert.match(withheldTransitCountSentence(''), /for this chokepoint for this period/);
   });
 
   it('aggregates same-period crisis summaries and names missing coverage', () => {
