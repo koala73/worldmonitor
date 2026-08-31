@@ -241,6 +241,23 @@ function foodEvidence(countryCode: string, source: unknown): Pick<CountryScoreca
   };
 }
 
+type EnergyImportDependencyProvenance =
+  | { source: 'World Bank'; indicatorCode: 'EG.IMP.CONS.ZS' }
+  | { source: 'Eurostat'; indicatorCode: 'nrg_ind_id' };
+
+function parseEnergyImportDependencyProvenance(
+  outerSource: unknown,
+  innerSource: unknown,
+): EnergyImportDependencyProvenance | null {
+  if (outerSource === 'worldbank-energy-imports' && innerSource === 'worldbank') {
+    return { source: 'World Bank', indicatorCode: 'EG.IMP.CONS.ZS' };
+  }
+  if (outerSource === 'eurostat-nrg_ind_id' && innerSource === 'eurostat') {
+    return { source: 'Eurostat', indicatorCode: 'nrg_ind_id' };
+  }
+  return null;
+}
+
 function energyBalance(
   countryCode: string,
   source: unknown,
@@ -262,25 +279,32 @@ function energyBalance(
     || importDependency?.value == null || importDependency.year == null) {
     return countryUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
   }
+  const importProvenance = parseEnergyImportDependencyProvenance(iea?.source, importDependency.source);
+  if (!importProvenance) {
+    return {
+      availability: 'unavailable',
+      inputId: 'energy.productionBalance',
+      reason: 'redistribution-blocked',
+      source: 'OWID and World Bank or Eurostat',
+      sourceKey: SCORECARD_INPUT_REGISTRY['energy.productionBalance'].sourceKey,
+    };
+  }
   if (consumption == null || !(consumption > 0) || consumptionYear == null
     || netImports == null || importsYear == null) {
     return invalidValue('energy.productionBalance', 'OWID and World Bank or Eurostat');
   }
   const production = consumption * (1 - netImports / 100);
   if (!(production >= 0)) return invalidValue('energy.productionBalance', 'OWID and World Bank or Eurostat');
-  const importSourceTag = String(importDependency.source || iea?.source || '').toLowerCase();
-  const importSource = importSourceTag.includes('eurostat') ? 'Eurostat' : 'World Bank';
-  const importIndicatorCode = importSource === 'Eurostat' ? 'nrg_ind_id' : 'EG.IMP.CONS.ZS';
   const observationYear = Math.min(consumptionYear, importsYear);
   return available(
     'energy.productionBalance',
     production / consumption,
     observationYear,
-    `OWID and ${importSource}`,
+    `OWID and ${importProvenance.source}`,
     [
       { name: 'primaryEnergyConsumptionTwh', value: consumption, year: consumptionYear, unit: 'TWh', source: 'Our World in Data', indicatorCode: 'primary_energy_consumption' },
-      { name: 'netEnergyImportsPercent', value: netImports, year: importsYear, unit: 'percent of energy use', source: importSource, indicatorCode: importIndicatorCode },
-      { name: 'primaryEnergyProductionTwh', value: production, year: observationYear, unit: 'TWh', source: `Derived from OWID and ${importSource}` },
+      { name: 'netEnergyImportsPercent', value: netImports, year: importsYear, unit: 'percent of energy use', ...importProvenance },
+      { name: 'primaryEnergyProductionTwh', value: production, year: observationYear, unit: 'TWh', source: `Derived from OWID and ${importProvenance.source}` },
     ],
     { quality: 'derived', aggregation: { numerator: production, denominator: consumption, unit: 'TWh' } },
   );

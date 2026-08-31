@@ -129,9 +129,28 @@ describe('five-factor source adapters', () => {
         source: 'unknown-energy-imports',
         energyImportDependency: { value: 20, year: 2024, source: 'unknown' },
       },
+      {
+        source: 'worldbank-energy-imports',
+        energyImportDependency: { value: 20, year: 2024, source: 'eurostat' },
+      },
+      {
+        source: 'eurostat-nrg_ind_id',
+        energyImportDependency: { value: 20, year: 2024, source: 'worldbank' },
+      },
+      {
+        energyImportDependency: { value: 20, year: 2024, source: 'worldbank' },
+      },
+      {
+        source: 'worldbank-energy-imports',
+        energyImportDependency: { value: 20, year: 2024 },
+      },
+      {
+        source: 'Worldbank-energy-imports',
+        energyImportDependency: { value: 20, year: 2024, source: 'worldbank' },
+      },
     ]) {
       const sources = sourceFixture();
-      sources.staticByCountry.US.iea = iea;
+      (sources.staticByCountry.US as { iea?: unknown }).iea = iea;
       const balance = adaptCountryEvidence('US', sources).inputs['energy.productionBalance'];
       assert.equal(balance.availability === 'unavailable' && balance.reason, 'redistribution-blocked');
     }
