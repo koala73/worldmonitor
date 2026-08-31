@@ -32,9 +32,9 @@ tags:
 ## Problem
 
 Commits were repeatedly landing under fake test-fixture identities instead of the real
-contributor — "Fixture <fixture@example.invalid>" (2026-08-30), "test <test@example.com>"
-(2026-08-29/30, this one reached `main`), "WorldMonitor Test <test@worldmonitor.app>", and
-"e <e@e.co>". The identities didn't come from a misconfigured `git config --global`; they came
+contributor — `Fixture <fixture@example.invalid>` (2026-08-30), `test <test@example.com>`
+(2026-08-29/30, this one reached `main`), `WorldMonitor Test <test@worldmonitor.app>`, and
+`e <e@e.co>`. The identities didn't come from a misconfigured `git config --global`; they came
 from git itself.
 
 **Root cause.** During a push, git exports `GIT_DIR`, `GIT_WORK_TREE`, and `GIT_INDEX_FILE` into

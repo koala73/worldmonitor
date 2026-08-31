@@ -3,16 +3,65 @@ title: "News Digest and Briefing Methodology"
 description: "How WorldMonitor collects RSS/Atom feeds, classifies news, scores importance, tracks stories, filters briefs, uses LLMs, and controls bias."
 ---
 
+## Start here
+
+Thousands of headlines arrive every day. This is the machinery that decides
+which ones you see, in what order, and what gets written into your morning
+brief.
+
+There are four stages, and they answer four different questions:
+
+```mermaid
+flowchart TD
+  A["RSS and Atom feeds<br/>curated inventory"] --> B["Classify<br/>what is this about,<br/>where, how severe?"]
+  B --> C["Score importance<br/>how much does this matter<br/>right now?"]
+  C --> D["Track stories<br/>is this new, or the tenth<br/>update on one thing?"]
+  D --> E["Ranked panel items"]
+  D --> F["Digest notifications"]
+  D --> G["Personalised brief"]
+```
+
+**Story tracking is the part people underestimate.** Without it a single
+developing event floods the panel with twenty near-identical headlines and
+buries everything else. Grouping headlines into a persistent story means a major
+event occupies one slot that updates, rather than crowding out the rest of the
+world.
+
+### Two numbers, deliberately kept apart
+
+Every headline carries an **importance** score (how much this matters now) and a
+separate **credibility** score (how much to trust this source on this story). A
+state outlet can rank high on the first and low on the second at the same time.
+See [News credibility](/methodology/news-credibility) for how the second is
+built.
+
+### Where AI is used, and where it is not
+
+Language models act as **bounded editorial assistants, never the source of
+record**. They write the brief's prose and can adjust a story's category or
+severity — but only within hard caps that stop a model from unilaterally
+promoting something to critical.
+
+What they are never allowed to do is invent provenance. Publishers, article
+URLs, and publication times come from the structured feed, never from the model.
+Brief prose must pass a proper-noun grounding check against its input headlines;
+output that fails falls back to a deterministic synthesis. Every LLM step has
+such a fallback, so a model outage degrades the brief rather than breaking it —
+or worse, filling it in.
+
+<Note>
+**No human review queue.** Quality comes from source curation, date gates,
+classifier caps, published score formulae, read-path filters, cooldown
+telemetry, and those LLM fallback guards — not from an editor approving items.
+Every one of those mechanisms is documented on this page.
+</Note>
+
 ## Scope
 
 This page is the canonical public methodology for the news-feed digest,
 daily digest notifications, and WorldMonitor Brief. It covers the automated
 pipeline that turns RSS/Atom feeds into ranked panel items, persisted story
 tracks, digest notifications, and the personalised editorial brief.
-
-The pipeline is automated. There is no human review queue in the normal path.
-Quality comes from source curation, date gates, classifier caps, score
-formulae, read-path filters, cooldown telemetry, and LLM fallback guards.
 
 ## Feed Inventory
 

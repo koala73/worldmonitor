@@ -130,9 +130,59 @@ describe('seedTransitSummaries (relay)', () => {
     'return seedTransitSummaries;',
   ].join('\n');
 
+  // The sibling writer. Both seeders read the SAME chokepointCrossings map and
+  // both ship inside one get-chokepoint-status bundle, so they must agree on
+  // whether today's counts exist. Extracted the same way as the harness above.
+  const transitsFnBody = relaySrc.match(/async function seedChokepointTransits\(\)\s*\{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(transitsFnBody, 'seedChokepointTransits body not found');
+
+  function extractArrayConst(name) {
+    const m = relaySrc.match(new RegExp(`const ${name} = \\[[\\s\\S]*?\\n\\];`));
+    assert.ok(m, `${name} definition not found in relaySrc`);
+    return m[0];
+  }
+
+  const transitsHarnessSrc = [
+    extractArrayConst('CHOKEPOINTS'),
+    extractConstLine('TRANSIT_WINDOW_MS'),
+    extractConstLine('CHOKEPOINT_TRANSIT_KEY'),
+    extractConstLine('CHOKEPOINT_TRANSIT_TTL'),
+    `async function seedChokepointTransits() {${transitsFnBody}\n}`,
+    'return seedChokepointTransits;',
+  ].join('\n');
+
+  // Evaluated once in test scope so the cross-writer invariant below can walk
+  // the real relay-name -> canonical-id mapping rather than a hand-copied list.
+  // eslint-disable-next-line no-new-func
+  const RELAY_NAME_TO_ID = new Function(
+    `${extractObjectConst('RELAY_NAME_TO_ID')}\nreturn RELAY_NAME_TO_ID;`,
+  )();
+
+  function buildSeedChokepointTransits({
+    envelopeWrite,
+    upstashSet = async () => {},
+    chokepointCrossings = new Map(),
+    log = () => {},
+  }) {
+    // eslint-disable-next-line no-new-func
+    const factory = new Function(
+      'envelopeWrite', 'upstashSet', 'console', 'chokepointCrossings',
+      transitsHarnessSrc,
+    );
+    return factory(envelopeWrite, upstashSet, { log, warn: () => {} }, chokepointCrossings);
+  }
+
   // Fresh sandbox per call — `latestCorridorRiskData` resets like a cold
   // relay restart instead of leaking state between tests.
-  function buildSeedTransitSummaries({ envelopeRead, envelopeWrite, upstashSet, upstashEnabled = true, warn = () => {}, log = () => {} }) {
+  function buildSeedTransitSummaries({
+    envelopeRead,
+    envelopeWrite,
+    upstashSet,
+    upstashEnabled = true,
+    warn = () => {},
+    log = () => {},
+    chokepointCrossings = new Map(),
+  }) {
     // eslint-disable-next-line no-new-func
     const factory = new Function(
       'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED', 'chokepointCrossings',
@@ -140,7 +190,7 @@ describe('seedTransitSummaries (relay)', () => {
       seedHarnessSrc,
     );
     return factory(
-      envelopeRead, envelopeWrite, upstashSet, { warn, log }, upstashEnabled, new Map(),
+      envelopeRead, envelopeWrite, upstashSet, { warn, log }, upstashEnabled, chokepointCrossings,
       detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS,
     );
   }
@@ -175,9 +225,10 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(summaries.suez.dataAvailable, true);
     assert.equal(summaries.hormuz_strait.dataAvailable, true);
     // Chokepoint missing from this cycle's portwatch payload still publishes
-    // a zero-state row instead of vanishing (partial-coverage regression).
+    // a row instead of vanishing (partial-coverage regression). AIS is also
+    // empty in this harness, so todayTotal stays absent rather than a filled 0.
     assert.equal(summaries.panama.dataAvailable, false);
-    assert.equal(summaries.panama.todayTotal, 0);
+    assert.equal(summaries.panama.todayTotal, null);
     assert.equal(summaryWrites[0].meta.recordCount, 2, 'recordCount must reflect pwCovered, not the always-13 shape');
     // The count alone is unattributable after the fact. On 2026-08-25 portwatch
     // dropped exactly two chokepoints for ~4.5 hours; every cycle logged an
@@ -207,6 +258,175 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(metaWrites[0].key, 'seed-meta:supply_chain:transit-summaries');
     assert.equal(metaWrites[0].data.recordCount, 2);
     assert.equal(metaWrites[0].ttlSeconds, 604800);
+  });
+
+  it('does not publish a fake 0 todayTotal next to a PortWatch WoW when the AIS window is empty', async () => {
+    // #7457 data layer: todayTotal is an in-memory AIS 24h count; wowChangePct
+    // is PortWatch. dataAvailable only means PortWatch history exists. An empty
+    // AIS window must stay absent, not become a published zero-traffic reading.
+    const fakePortwatch = {
+      hormuz_strait: { history: makeDays(40, 80, 0), wowChangePct: 12.9 },
+      suez: { history: makeDays(40, 120, 0), wowChangePct: 2.8 },
+      panama: { history: makeDays(40, 30, 0), wowChangePct: -10.1 },
+      bab_el_mandeb: { history: makeDays(40, 40, 0), wowChangePct: 0 },
+    };
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1' ? fakePortwatch : null),
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async () => {},
+    });
+
+    await seed();
+
+    const { summaries } = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    for (const id of ['hormuz_strait', 'suez', 'panama', 'bab_el_mandeb']) {
+      assert.equal(summaries[id].todayTotal, null, `${id} empty AIS window must not zero-fill todayTotal`);
+      assert.equal(summaries[id].todayTanker, null);
+      assert.equal(summaries[id].todayCargo, null);
+      assert.equal(summaries[id].todayOther, null);
+      assert.equal(summaries[id].dataAvailable, true);
+    }
+    assert.equal(summaries.hormuz_strait.wowChangePct, 12.9);
+    assert.equal(summaries.suez.wowChangePct, 2.8);
+    assert.equal(summaries.panama.wowChangePct, -10.1);
+    assert.equal(summaries.bab_el_mandeb.wowChangePct, 0, 'a real PortWatch WoW of 0 must still publish');
+  });
+
+  it('publishes AIS todayTotal when the 24h crossing window has ships', async () => {
+    const now = Date.now();
+    const fakePortwatch = {
+      suez: { history: makeDays(40, 120, 0), wowChangePct: 2.8 },
+      hormuz_strait: { history: makeDays(40, 80, 0), wowChangePct: 12.9 },
+    };
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1' ? fakePortwatch : null),
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async () => {},
+      chokepointCrossings: new Map([
+        ['Suez Canal', [
+          { ts: now - 1_000, type: 'cargo' },
+          { ts: now - 2_000, type: 'tanker' },
+          { ts: now - 3_000, type: 'other' },
+          { ts: now - 25 * 60 * 60 * 1000, type: 'cargo' },
+        ]],
+      ]),
+    });
+
+    await seed();
+
+    const { summaries } = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    assert.equal(summaries.suez.todayTotal, 3);
+    assert.equal(summaries.suez.todayTanker, 1);
+    assert.equal(summaries.suez.todayCargo, 1);
+    assert.equal(summaries.suez.todayOther, 1);
+    assert.equal(summaries.suez.wowChangePct, 2.8);
+    assert.equal(summaries.hormuz_strait.todayTotal, null, 'a chokepoint with no AIS crossings stays absent');
+  });
+
+  it('makes both AIS writers agree on whether today has a count', async () => {
+    // #7457 second half. seedTransitSummaries leaves todayTotal null for an
+    // empty window, but seedChokepointTransits writes total: recent.length
+    // unconditionally. Both keys ship in ONE get-chokepoint-status bundle
+    // (api/mcp/registry/cache-tools.ts exposes 'transit-summaries' and
+    // 'chokepoint_transits' as sub-datasets), so before the `available` flag a
+    // single response said Suez was both "unknown" and "0" and the answer
+    // depended on which half the reader picked.
+    const now = Date.now();
+    const crossings = new Map([
+      ['Suez Canal', [
+        { ts: now - 1_000, type: 'cargo' },
+        { ts: now - 2_000, type: 'tanker' },
+      ]],
+      // Present in the map but entirely outside the 24h window: the empty-window
+      // case, which must read as absent on BOTH sides rather than as zero traffic.
+      ['Strait of Hormuz', [{ ts: now - 25 * 60 * 60 * 1000, type: 'cargo' }]],
+    ]);
+
+    const summaryWrites = [];
+    const seedSummaries = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1'
+        ? { suez: { history: makeDays(40, 120, 0), wowChangePct: 2.8 }, hormuz_strait: { history: makeDays(40, 80, 0), wowChangePct: 12.9 } }
+        : null),
+      envelopeWrite: async (key, data) => { summaryWrites.push({ key, data }); return true; },
+      upstashSet: async () => {},
+      chokepointCrossings: new Map(crossings),
+    });
+
+    const transitWrites = [];
+    const seedTransits = buildSeedChokepointTransits({
+      envelopeWrite: async (key, data) => { transitWrites.push({ key, data }); return true; },
+      chokepointCrossings: new Map(crossings),
+    });
+
+    await seedSummaries();
+    await seedTransits();
+
+    const { summaries } = summaryWrites.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    const { transits } = transitWrites.find(w => w.key === 'supply_chain:chokepoint_transits:v1').data;
+
+    // Measured window: both sides say present, with the same count.
+    assert.equal(summaries.suez.todayTotal, 2);
+    assert.equal(transits['Suez Canal'].total, 2);
+    assert.equal(transits['Suez Canal'].available, true);
+
+    // Empty window: both sides say absent. The sibling keeps its documented
+    // {tanker, cargo, other, total} numeric shape, so `available` is what
+    // carries the distinction there.
+    assert.equal(summaries.hormuz_strait.todayTotal, null);
+    assert.equal(transits['Strait of Hormuz'].total, 0);
+    assert.equal(transits['Strait of Hormuz'].available, false);
+
+    // The invariant itself, over every chokepoint in the bundle: a null
+    // todayTotal and an `available: true` can never coexist for one waterway.
+    const idByRelayName = new Map(Object.entries(RELAY_NAME_TO_ID));
+    let checked = 0;
+    for (const [relayName, row] of Object.entries(transits)) {
+      const cpId = idByRelayName.get(relayName);
+      if (!cpId || !summaries[cpId]) continue;
+      checked++;
+      assert.equal(
+        row.available,
+        summaries[cpId].todayTotal != null,
+        `${relayName}: chokepoint_transits.available must match transit-summaries presence`,
+      );
+    }
+    assert.ok(checked >= 13, `expected every canonical chokepoint compared, got ${checked}`);
+  });
+
+  it('still publishes a real Panama disruptionPct of 0 from corridor risk', async () => {
+    const fakePortwatch = {
+      panama: { history: makeDays(40, 30, 0), wowChangePct: -10.1 },
+    };
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async (key) => {
+        if (key === 'supply_chain:portwatch:v1') return fakePortwatch;
+        if (key === 'supply_chain:corridorrisk:v1') {
+          return {
+            panama: {
+              riskLevel: 'normal',
+              incidentCount7d: 0,
+              disruptionPct: 0,
+              riskSummary: 'Calm transit conditions',
+              riskReportAction: '',
+            },
+          };
+        }
+        return null;
+      },
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async () => {},
+    });
+
+    await seed();
+
+    const { summaries } = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    assert.equal(summaries.panama.disruptionPct, 0, 'Panama disruption 0 is a published calm value');
+    assert.equal(summaries.panama.riskLevel, 'normal');
+    assert.equal(summaries.panama.todayTotal, null);
+    assert.equal(summaries.panama.wowChangePct, -10.1);
   });
 
   it('empty portwatch writes NOTHING to Redis — the exact "scheduler wired but keys never populate" failure class this suite must catch', async () => {

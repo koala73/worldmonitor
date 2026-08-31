@@ -124,13 +124,7 @@ const jsonLd = {
     "@type": "Person",
     "name": authorName,
     ...(resolvedAuthorUrl ? { "url": resolvedAuthorUrl } : {}),
-    ...(authorName === DEFAULT_AUTHOR ? {
-      "@id": DEFAULT_AUTHOR_ID,
-      "sameAs": [
-        "https://x.com/eliehabib",
-        `https://github.com/${DEFAULT_AUTHOR_GITHUB}`
-      ]
-    } : {})
+    ...(authorName === DEFAULT_AUTHOR ? { "@id": DEFAULT_AUTHOR_ID } : {})
   },
   "publisher": {
     "@id": "https://www.worldmonitor.app/#organization"

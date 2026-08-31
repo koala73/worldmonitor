@@ -3,13 +3,72 @@ title: "Physical Precious-Metals Divergence Index"
 description: "How WorldMonitor classifies Shanghai physical gold and silver premiums against COMEX futures with robust history, explicit data states, and transition-only signals."
 ---
 
-## Purpose
+## Start here
 
-The Physical Precious-Metals Divergence Index measures stress between Shanghai Gold Exchange physical benchmark prices and the related COMEX futures snapshots. It is a market-structure indicator, not trading advice.
+**The idea in one paragraph.** Gold and silver trade in two different worlds:
+paper contracts on COMEX in New York, and physical metal in Shanghai. Normally
+the two prices track each other closely. When Shanghai starts paying a
+noticeable *premium* over the paper price, it means somebody is willing to pay
+extra to hold the actual metal rather than a promise of it — and that gap is a
+recognized early symptom of physical-market stress.
 
-The method uses the daily gold and silver premiums from `GET /api/market/v1/get-physical-premiums`. The derived response is available from `GET /api/market/v1/get-physical-divergence-index`.
+This index watches that gap for gold and silver, and tells you whether today's
+reading is unusual.
 
-Both routes require a Pro subscription — see [Pro Intelligence Suite](/pro-intelligence-suite). The cache-backed MCP tool `get_market_data` also carries the `physical-premium` and `physical-divergence` datasets in its bundle, and that tool remains available to signed-in free accounts within their daily allowance.
+### What the output tells you
+
+Each metal gets a **regime** — `normal`, `elevated`, `stressed`, or `extreme` —
+and a **stress index** from 0 to 100.
+
+The regime is decided two ways at once, and the more severe answer wins:
+
+- **Absolute:** is the premium simply large? A 3% gold premium is `stressed`
+  whatever the history says.
+- **Relative:** is the premium unusual *for this metal recently*? A modest
+  premium that sits in the top 1% of the last year still counts.
+
+That double test is deliberate. Absolute alone misses a market quietly drifting
+away from its own norms; relative alone screams every time a calm period ticks
+up by a rounding error. A magnitude floor stops that second failure — a premium
+has to be at least half-way to `elevated` before its percentile can promote it
+at all.
+
+<Note>
+**This is a market-structure indicator, not trading advice.** It describes a
+condition in the physical metals market. It does not forecast prices and it is
+not a signal to buy or sell anything.
+</Note>
+
+### How a reading is produced
+
+```mermaid
+flowchart TD
+  A["Shanghai physical benchmark"] --> P["Daily premium<br/>vs COMEX futures"]
+  B["COMEX futures snapshot"] --> P
+  P --> H["Trailing window<br/>newest 250 points, min 60"]
+  H --> Z["Robust z-score and percentile<br/>median and MAD, not mean"]
+  P --> ABS["Absolute test<br/>is the premium simply large?"]
+  Z --> REL["Relative test<br/>is it unusual for this metal?"]
+  ABS --> R["Regime = the more severe of the two"]
+  REL --> R
+  R --> I["Stress index 0-100<br/>floored by regime rank"]
+  I --> C["Composite<br/>70% gold + 30% silver"]
+```
+
+The window statistics use the **median and MAD** rather than the mean and
+standard deviation, because a single spike would otherwise inflate the yardstick
+it is being measured against and hide the very event you care about.
+
+### Why a reading can be missing
+
+The index refuses to publish rather than guess. Every result carries one
+explicit state — `missing_input`, `stale_input`, `insufficient_history`, or
+`ok` — and only `ok` results carry a number. The composite fails closed if
+either metal is not `ok`. See [Explicit data states](#explicit-data-states).
+
+<Info>
+**Access.** The daily premiums come from `GET /api/market/v1/get-physical-premiums`; the derived index from `GET /api/market/v1/get-physical-divergence-index`. Both require a Pro subscription — see [Pro Intelligence Suite](/pro-intelligence-suite). The cache-backed MCP tool `get_market_data` also carries the `physical-premium` and `physical-divergence` datasets in its bundle, and that tool remains available to signed-in free accounts within their daily allowance.
+</Info>
 
 ## History
 

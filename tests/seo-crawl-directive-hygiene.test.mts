@@ -23,12 +23,13 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
     assert.match(INDEXABLE_ROBOTS_CONTENT, /max-snippet:-1/);
   });
 
-  it('ships uncapped snippet directives on homepage and dashboard shells', () => {
+  it('ships uncapped snippet directives on homepage, /pro, and dashboard shells', () => {
     const robotsRe = new RegExp(
       `name="robots" content="${INDEXABLE_ROBOTS_CONTENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`,
     );
     assert.match(read('index.html'), robotsRe);
     assert.match(read('pro-test/welcome.html'), robotsRe);
+    assert.match(read('pro-test/index.html'), robotsRe);
     assert.match(
       read('scripts/build-crawlable-corpus.mjs'),
       /robots = INDEXABLE_ROBOTS_CONTENT/,
