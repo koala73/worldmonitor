@@ -37,10 +37,15 @@ function buildClassifyDigestHeaders({ userAgent, relayKey } = {}) {
 }
 
 function formatClassifyDigestFetchFailure(status, relayKey) {
-  const keyNote = relayKey
-    ? ''
-    : ' (WORLDMONITOR_RELAY_KEY not set — 401 expected; set it on the relay AND the API host)';
+  const authFailure = status === 401 || status === 403;
+  const keyNote = !relayKey && authFailure
+    ? ' (WORLDMONITOR_RELAY_KEY not set — 401 expected; set it on the relay AND the API host)'
+    : '';
   return `[Classify] digest fetch failed: HTTP ${status}${keyNote}`;
+}
+
+function shouldWriteClassifySeedMeta({ fetchOk = 0, fetchFailed = 0 } = {}) {
+  return fetchOk > 0 || fetchFailed === 0;
 }
 
 module.exports = {
@@ -51,4 +56,5 @@ module.exports = {
   classifyDigestTransport,
   buildClassifyDigestHeaders,
   formatClassifyDigestFetchFailure,
+  shouldWriteClassifySeedMeta,
 };

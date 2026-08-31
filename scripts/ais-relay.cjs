@@ -57,6 +57,7 @@ const {
   classifyDigestTransport,
   buildClassifyDigestHeaders,
   formatClassifyDigestFetchFailure,
+  shouldWriteClassifySeedMeta,
 } = require('./lib/classify-digest-request.cjs');
 const {
   YahooQuoteSummaryClient,
@@ -4845,7 +4846,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     if (resp.statusCode !== 200) {
       resp.resume();
       console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
-      return { total: 0, classified: 0, skipped: 0 };
+      return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
     }
     const body = await new Promise((resolve) => {
       let d = '';
@@ -4855,7 +4856,7 @@ async function seedClassifyForVariant(variant, seenTitles) {
     digest = JSON.parse(body);
   } catch (e) {
     console.warn('[Classify] digest fetch error:', e?.message || e);
-    return { total: 0, classified: 0, skipped: 0 };
+    return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
   }
 
   // #7084: stale RSS titles already had their alert pass when served fresh.
@@ -5021,12 +5022,16 @@ async function seedClassify() {
 
     let totalClassified = 0;
     let totalSkipped = 0;
+    let fetchOk = 0;
+    let fetchFailed = 0;
     const mergedByCountry = {};
     const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
       if (v > 0) await new Promise((r) => setTimeout(r, CLASSIFY_VARIANT_STAGGER_MS));
       try {
         const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles);
+        if (stats.fetchFailed) fetchFailed += 1;
+        else fetchOk += 1;
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
@@ -5039,6 +5044,11 @@ async function seedClassify() {
       } catch (e) {
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
+    }
+
+    if (!shouldWriteClassifySeedMeta({ fetchOk, fetchFailed })) {
+      console.warn('[Classify] Digest fetch failed for every variant — not writing seed-meta:classify');
+      return;
     }
 
     await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);

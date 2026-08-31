@@ -27,6 +27,7 @@ const {
   classifyDigestTransport,
   buildClassifyDigestHeaders,
   formatClassifyDigestFetchFailure,
+  shouldWriteClassifySeedMeta,
 } = require('../scripts/lib/classify-digest-request.cjs');
 
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf8');
@@ -90,10 +91,24 @@ describe('classify digest request builder (#7437)', () => {
       formatClassifyDigestFetchFailure(401, ''),
       /HTTP 401.*WORLDMONITOR_RELAY_KEY not set/,
     );
+    assert.match(
+      formatClassifyDigestFetchFailure(403, ''),
+      /HTTP 403.*WORLDMONITOR_RELAY_KEY not set/,
+    );
+    assert.equal(
+      formatClassifyDigestFetchFailure(502, ''),
+      '[Classify] digest fetch failed: HTTP 502',
+    );
     assert.equal(
       formatClassifyDigestFetchFailure(403, 'set'),
       '[Classify] digest fetch failed: HTTP 403',
     );
+  });
+
+  it('withholds seed-meta after an all-variant digest fetch failure', () => {
+    assert.equal(shouldWriteClassifySeedMeta({ fetchOk: 0, fetchFailed: 5 }), false);
+    assert.equal(shouldWriteClassifySeedMeta({ fetchOk: 1, fetchFailed: 4 }), true);
+    assert.equal(shouldWriteClassifySeedMeta({ fetchOk: 0, fetchFailed: 0 }), true);
   });
 });
 
@@ -111,6 +126,8 @@ describe('ais-relay Classify wiring (#7437)', () => {
     const classifyFn = classifyFnSrc();
     assert.match(classifyFn, /formatClassifyDigestFetchFailure\(/);
     assert.match(classifyFn, /\[Classify\] digest fetch error:/);
+    assert.match(classifyFn, /fetchFailed:\s*true/);
+    assert.match(relaySrc, /shouldWriteClassifySeedMeta\(\{ fetchOk, fetchFailed \}\)/);
   });
 
   it('copies the helper into the relay image next to digest-stale-gate.cjs', () => {
