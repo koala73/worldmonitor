@@ -24,7 +24,11 @@ const { strict: assert } = require('node:assert');
 const { readFileSync } = require('node:fs');
 const { join } = require('node:path');
 const test = require('node:test');
-const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
+const {
+  mergeLastGoodQuotes,
+  planYahooRefresh,
+  resolveMergedQuotesAsOf,
+} = require('./shared/market-quote-refresh.cjs');
 
 const relaySource = readFileSync(join(__dirname, 'ais-relay.cjs'), 'utf8');
 
@@ -133,6 +137,7 @@ test('seedMarketQuotes: envelope fetchedAt matches seed-meta fetchedAt for one p
   globalThis.envelopeRead = async () => null; // no previous payload to merge
   globalThis.planYahooRefresh = planYahooRefresh;
   globalThis.mergeLastGoodQuotes = mergeLastGoodQuotes;
+  globalThis.resolveMergedQuotesAsOf = resolveMergedQuotesAsOf;
   globalThis._lastYahooMarketRefreshAt = 0;
   globalThis.MARKET_YAHOO_REFRESH_INTERVAL_MS = 300_000;
   globalThis.fetchYahooChartDirect = async () => ({ price: 200, change: 1, sparkline: [1, 2, 3] });
