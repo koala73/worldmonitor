@@ -30,14 +30,14 @@
     "annualPrice": 359.99,
     "description": "Full intelligence dashboard",
     "features": [
-      "Everything in Free",
-      "AI stock analysis & backtesting",
-      "Daily market briefs",
-      "Military & geopolitical tracking",
-      "Custom widget builder",
-      "10 custom dashboards (vs 3)",
+      "Everything in Free — panels, sources & followed countries uncapped",
+      "WM Analyst chat + AI stock analysis & backtesting",
+      "Cost-shock modelling & supply-chain stress tests",
+      "Intel memory — historical search, timelines & similar events",
+      "Physical metals divergence, minerals concentration & sovereign debt data",
+      "Scheduled AI digest + alert rules engine",
       "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-      "Priority data refresh"
+      "Custom widgets & 10 dashboards (vs 3)"
     ],
     "highlightFeatures": [
       "Personal license",

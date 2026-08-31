@@ -32,7 +32,7 @@
     "proF6": "Búsqueda y comparación de precios de vuelos",
     "proF7": "Motor de reglas de alerta — activadores personalizados, horas de silencio, canales cifrados AES-256",
     "proF8": "Watchlist de mercado, seguimiento macro y de bancos centrales",
-    "proF9": "AI Market Implications y Regional Intelligence (Próximamente: vigilancia orbital, capas de mapa premium, historial extendido)",
+    "proF9": "Implicaciones de mercado e inteligencia regional con IA",
     "choosePlan": "Elige tu plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Para equipos que necesitan monitoreo compartido, acceso API, opciones de despliegue, apps de TV y soporte directo.",
@@ -48,7 +48,8 @@
     "entF10": "Despliegue en la nube, on-premises o air-gapped",
     "entF11": "Onboarding y soporte dedicados",
     "entCta": "Habla con ventas",
-    "freeF2": "Feeds curados, fuentes atribuidas y capas de mapa"
+    "freeF2": "Feeds curados, fuentes atribuidas y capas de mapa",
+    "proF10": "Memoria de inteligencia — búsqueda histórica, cronogramas y búsqueda de eventos similares"
   },
   "whyUpgrade": {
     "title": "¿Por qué actualizar a World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "PIB, inflación, tipos de interés y ciclos de crecimiento. Datos macro correlacionados con señales de mercado y eventos geopolíticos.",
     "riskMonitoring": "Monitoreo de riesgo y escenarios",
     "riskMonitoringDesc": "Puntuación de riesgo global, análisis de escenarios y evaluación de riesgo geopolítico. Detección de convergencias entre señales de mercado y políticas.",
-    "orbitalSurveillance": "Vigilancia orbital",
-    "orbitalSurveillanceDesc": "(Próximamente) Predicciones de pasos orbitales, análisis de frecuencia de revisita y alertas de ventana de captura. Sabe cuándo los satélites de inteligencia observan tus áreas de interés.",
     "morningBriefs": "Mesa de inteligencia personal",
     "morningBriefsDesc": "Hasta 30 noticias clasificadas por resumen, deduplicadas entre fuentes. Elige cadencia diaria, dos veces al día o semanal — o alertas en tiempo real para eventos críticos. Evaluación IA y Señales a monitorear entregadas a Slack, Discord, Telegram, Email o webhook. No es un boletín — es un analista.",
     "oneKey": "Servicios Activos, 1 Clave",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky y más — todos activos, sin registros separados.",
-    "deliveryLabel": "Elige cómo la inteligencia te encuentra"
+    "deliveryLabel": "Elige cómo la inteligencia te encuentra",
+    "supplyChainLab": "Laboratorio de Estrés en la Cadena de Suministro",
+    "supplyChainLabDesc": "Modela un shock de costos entre países y sectores. Clasifica la vulnerabilidad de materias primas por dependencia de cuellos de botella. Rastrea la concentración de mina a refinería y la divergencia del premio físico SGE–COMEX — la serie que se mueve antes de que salga en titulares.",
+    "roadmapNote": "En la hoja de ruta: vigilancia orbital, historial más extenso, capas de mapa premium."
   },
   "slackMock": {
     "morningBrief": "Resumen matutino",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Panel de inteligencia completo",
         "features": [
-          "Todo en Free",
-          "Análisis de acciones e histórico con IA",
-          "Resúmenes diarios del mercado",
-          "Seguimiento militar y geopolítico",
-          "Constructor de widgets personalizado",
-          "10 paneles personalizados (vs 3)",
+          "Todo en Free — paneles, fuentes y países seguidos sin límite",
+          "Chat de analista WM + análisis de acciones y backtesting con IA",
+          "Modelado de shock de costos y pruebas de estrés en cadena de suministro",
+          "Memoria de inteligencia — búsqueda histórica, cronogramas y eventos similares",
+          "Divergencia de metales físicos, concentración de minerales y datos de deuda soberana",
+          "Resumen de IA programado + motor de reglas de alerta",
           "Acceso a MCP + SDK para Claude Desktop y otros clientes de IA (50 llamadas/día)",
-          "Actualización de datos prioritaria"
+          "Widgets personalizados y 10 dashboards (vs 3)"
         ],
         "highlightFeatures": [
           "Licencia personal",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Traza las señales políticas, de seguridad, económicas y de resiliencia detrás del cambio de un país.",
       "open": "Abrir evidencia"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Registro de envíos",
+    "title": "Novedades en WorldMonitor",
+    "subtitle": "Nuevas funciones de los últimos 30 días — correcciones e infraestructura no incluidas.",
+    "proTag": "PRO",
+    "m1": "Índice de divergencia del premio físico — SGE vs COMEX, con historial",
+    "m2": "Clasificaciones de vulnerabilidad de suministro de materias primas — expansión de dependencia de cuellos de botella",
+    "m3": "Concentración de producción mineral y la base industrial de defensa",
+    "m4": "Tarjetas de resiliencia de cinco factores con puntuaciones a nivel de indicadores",
+    "m5": "Listas de vigilancia de canales de Telegram personalizados",
+    "m6": "Inicio de sesión con passkey",
+    "m7": "Los agentes de IA pueden dirigir el dashboard — paneles, pestañas, capas de mapa y misiones",
+    "m8": "Páginas de resiliencia de país más enriquecidas"
   }
 }

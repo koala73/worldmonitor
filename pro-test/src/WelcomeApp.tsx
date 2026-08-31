@@ -3,6 +3,7 @@ import { Nav } from './welcome/Nav';
 import { Hero } from './welcome/Hero';
 import { TaskRoutes } from './welcome/TaskRoutes';
 import { LiveStrip } from './welcome/LiveStrip';
+import { WhatsNew } from './components/WhatsNew';
 import { Moments } from './welcome/Moments';
 import { FirstFive } from './welcome/FirstFive';
 import { Depth } from './welcome/Depth';
@@ -31,6 +32,7 @@ export default function WelcomeApp() {
         <Hero />
         <TaskRoutes />
         <LiveStrip />
+        <WhatsNew />
         <Moments />
         <FirstFive />
         <Depth />

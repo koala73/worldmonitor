@@ -9,7 +9,7 @@ import {
   Bell, Brain, Key, Plug, PanelTop, ExternalLink,
   BarChart3, Clock, Radio, Ship, Plane, Flame,
   Cable, Wifi, MapPin, TrendingUp,
-  Filter, Lightbulb, SlidersHorizontal, Telescope,
+  Boxes, Filter, Lightbulb, SlidersHorizontal, Telescope,
   LineChart, Search, Shield, Building2,
   Landmark, Fuel
 } from 'lucide-react';
@@ -20,7 +20,7 @@ import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-u
 import { hasLiveClientSession } from './services/clerk-session';
 import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
 import { PricingSection } from './components/PricingSection';
-import { SoonBadge } from './components/SoonBadge';
+import { WhatsNew } from './components/WhatsNew';
 import { Logo } from './components/Logo';
 import { WiredBadge } from './components/WiredBadge';
 import { Footer } from './components/Footer';
@@ -534,7 +534,7 @@ const TwoPathSplit = () => (
         <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
         <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
         <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9')].map((f, i) => (
+          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9'), t('twoPath.proF10')].map((f, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
               <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
               <span className="text-wm-muted">{f}</span>
@@ -776,13 +776,10 @@ const ProShowcase = () => (
             </div>
           </div>
           <div className="flex gap-4">
-            <Telescope className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
+            <Boxes className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
             <div>
-              <h4 className="font-bold mb-1">
-                {t('proShowcase.orbitalSurveillance')}
-                <SoonBadge />
-              </h4>
-              <p className="text-sm text-wm-muted">{t('proShowcase.orbitalSurveillanceDesc').replace(/^\(Soon\)\s*/, '')}</p>
+              <h4 className="font-bold mb-1">{t('proShowcase.supplyChainLab')}</h4>
+              <p className="text-sm text-wm-muted">{t('proShowcase.supplyChainLabDesc')}</p>
             </div>
           </div>
           <div className="flex gap-4">
@@ -800,6 +797,8 @@ const ProShowcase = () => (
             </div>
           </div>
         </div>
+
+        <p className="mt-6 text-xs text-wm-muted">{t('proShowcase.roadmapNote')}</p>
 
         <div className="mt-10 pt-8 border-t border-wm-border">
           <p className="font-mono text-xs text-wm-muted uppercase tracking-widest mb-4">{t('proShowcase.deliveryLabel')}</p>
@@ -1452,6 +1451,7 @@ export default function App() {
           <AudiencePersonas />
           <SocialProof />
           <LivePreview />
+          <WhatsNew />
           <PricingSection refCode={getRefCode()} attributionSource={getMcpAttributionSource()} />
           <PricingTable />
           <ApiSection />

@@ -32,7 +32,7 @@
     "proF6": "Flugsuche und Preisvergleich",
     "proF7": "Alert-Regel-Engine — eigene Trigger, Ruhezeiten, AES-256-verschlüsselte Kanäle",
     "proF8": "Market-Watchlist, Makro- und Zentralbank-Tracking",
-    "proF9": "AI Market Implications und Regional Intelligence (Bald: orbitale Überwachung, Premium-Kartenebenen, längere Historie)",
+    "proF9": "KI-Marktauswirkungen und regionale Intelligence",
     "choosePlan": "Tarif wählen",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Für Teams, die gemeinsames Monitoring, API-Zugang, Deployment-Optionen, TV-Apps und direkten Support brauchen.",
@@ -48,7 +48,8 @@
     "entF10": "Cloud-, On-Premises- oder Air-Gapped-Deployment",
     "entF11": "Dediziertes Onboarding und Support",
     "entCta": "Vertrieb kontaktieren",
-    "freeF2": "Kuratierte Feeds, attribuierte Quellen und Kartenebenen"
+    "freeF2": "Kuratierte Feeds, attribuierte Quellen und Kartenebenen",
+    "proF10": "Intelligence-Speicher — historische Suche, Zeitstränge und ähnliche Ereignisse"
   },
   "whyUpgrade": {
     "title": "Warum auf World Monitor Pro upgraden?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "BIP, Inflation, Zinssätze und Wachstumszyklen. Makrodaten korreliert mit Marktsignalen und geopolitischen Ereignissen.",
     "riskMonitoring": "Risiko-Monitoring & Szenarien",
     "riskMonitoringDesc": "Globales Risiko-Scoring, Szenarioanalyse und geopolitische Risikobewertung. Konvergenz-Erkennung über Markt- und politische Signale hinweg.",
-    "orbitalSurveillance": "Orbitale Überwachung",
-    "orbitalSurveillanceDesc": "(Bald) Vorhersagen von Überflugzeiten, Revisit-Frequenzanalyse und Aufnahmefenster-Alerts. Wissen Sie, wann Aufklärungssatelliten Ihre Interessenbereiche beobachten.",
     "morningBriefs": "Persönlicher Intelligence-Desk",
     "morningBriefsDesc": "Bis zu 30 bewertete Stories pro Digest, dedupliziert über Quellen. Wählen Sie täglichen, zweimal täglich oder wöchentlichen Rhythmus – oder Echtzeit-Warnungen für kritische Events. KI-Bewertung und zu beobachtenden Signale, geliefert an Slack, Discord, Telegram, Email oder Webhook. Kein Newsletter – ein Analyst.",
     "oneKey": "Live-Services, 1 Key",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky und mehr — alle aktiv, keine separaten Registrierungen.",
-    "deliveryLabel": "Wählen Sie, wie Intelligence Sie findet"
+    "deliveryLabel": "Wählen Sie, wie Intelligence Sie findet",
+    "supplyChainLab": "Supply-Chain-Stress-Lab",
+    "supplyChainLabDesc": "Modellieren Sie einen Kostenschock über Länder und Sektoren. Ranking der Rohstoffvulnerabilität nach Engpass-Abhängigkeit. Verfolgung der Mine-zu-Raffinerie-Konzentration und die SGE–COMEX-Physik-Premium-Divergenz — die Serie, die sich vor der Schlagzeile bewegt.",
+    "roadmapNote": "Auf der Roadmap: Orbitalüberwachung, längere Historie, Premium-Kartenschichten."
   },
   "slackMock": {
     "morningBrief": "Morning Brief",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Vollständiges Intelligence-Dashboard",
         "features": [
-          "Alles aus Free",
-          "KI-Aktienanalyse & Backtesting",
-          "Tägliche Marktübersichten",
-          "Militär- & geopolitische Verfolgung",
-          "Custom-Widget-Builder",
-          "10 benutzerdefinierte Dashboards (vs. 3)",
+          "Alles aus Free — Panels, Quellen und verfolgte Länder unbegrenzt",
+          "WM Analyst Chat + KI-Aktienanalyse und Backtesting",
+          "Kostenschock-Modellierung und Supply-Chain-Stresstests",
+          "Intelligence-Speicher — historische Suche, Zeitstränge und ähnliche Ereignisse",
+          "Physische Metalle-Divergenz, Mineralien-Konzentration und Staatsverschuldungsdaten",
+          "Geplante KI-Zusammenfassung + Warnregeln-Engine",
           "MCP + SDK-Zugriff für Claude Desktop & andere KI-Clients (50 Aufrufe/Tag)",
-          "Prioritäts-Datenaktualisierung"
+          "Benutzerdefinierte Widgets und 10 Dashboards (vs. 3)"
         ],
         "highlightFeatures": [
           "Persönliche Lizenz",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Verfolgen Sie die politischen, sicherheitstechnischen, wirtschaftlichen und Resilienz-Signale hinter einer Länderveränderung.",
       "open": "Belege öffnen"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Versandlog",
+    "title": "Neuigkeiten in World Monitor",
+    "subtitle": "Neue Funktionen der letzten 30 Tage — Fehlerbehebungen und technische Details nicht inbegriffen.",
+    "proTag": "PRO",
+    "m1": "Physik-Premium-Divergenz-Index — SGE vs. COMEX, mit Historie",
+    "m2": "Rohstoff-Versorgungsvulnerabilitäts-Rankings — Engpass-Abhängigkeit Fächerung",
+    "m3": "Mineralienproduktions-Konzentration und die Rüstungsindustriebasis",
+    "m4": "Fünf-Faktor-Resilienz-Scorecards mit Indikator-Level-Scores",
+    "m5": "Benutzerdefinierte Telegram-Kanal-Beobachtungslisten",
+    "m6": "Passkey-Anmeldung",
+    "m7": "KI-Agenten können das Dashboard steuern — Panels, Reiter, Kartenschichten und Missionen",
+    "m8": "Umfangreichere Länder-Resilienz-Seiten"
   }
 }
