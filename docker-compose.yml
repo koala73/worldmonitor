@@ -30,6 +30,7 @@ services:
       WM_TRUSTED_PROXY_CIDRS: "${WM_TRUSTED_PROXY_CIDRS:-}"
       WS_RELAY_URL: "http://ais-relay:3004"
       RELAY_SHARED_SECRET: "${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required — generate with: openssl rand -hex 32}"
+      WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       # LLM provider (any OpenAI-compatible endpoint)
       LLM_API_URL: "${LLM_API_URL:-}"
       LLM_API_KEY: "${LLM_API_KEY:-}"
@@ -80,6 +81,9 @@ services:
       UPSTASH_REDIS_REST_TOKEN: "${REDIS_TOKEN:?REDIS_TOKEN required — generate with: openssl rand -hex 32}"
       UPSTASH_ALLOW_INSECURE_HTTP: "true"
       UCDP_ACCESS_TOKEN: "${UCDP_ACCESS_TOKEN:-}"
+      # Classify reads list-feed-digest from this install, not production (#7437).
+      API_BASE_URL: "${API_BASE_URL:-http://worldmonitor:8080}"
+      WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       PORT: "3004"
     depends_on:
       redis-rest:

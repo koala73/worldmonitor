@@ -53,6 +53,12 @@ const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs')
 const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
+  buildClassifyDigestUrl,
+  classifyDigestTransport,
+  buildClassifyDigestHeaders,
+  formatClassifyDigestFetchFailure,
+} = require('./lib/classify-digest-request.cjs');
+const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
   buildSectorValuationCoverage,
@@ -4821,25 +4827,34 @@ async function classifyFetchLlm(titles) {
 let classifyInFlight = false;
 
 async function seedClassifyForVariant(variant, seenTitles) {
-  const digestUrl = `https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
+  const digestUrl = buildClassifyDigestUrl(variant);
+  const transport = classifyDigestTransport(digestUrl) === 'http' ? http : https;
   let digest;
   try {
     const resp = await new Promise((resolve, reject) => {
-      const req = https.get(digestUrl, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      const req = transport.get(digestUrl, {
+        headers: buildClassifyDigestHeaders({
+          userAgent: CHROME_UA,
+          relayKey: RELAY_API_KEY,
+        }),
         timeout: 15000,
       }, resolve);
       req.on('error', reject);
       req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
     });
-    if (resp.statusCode !== 200) { resp.resume(); return { total: 0, classified: 0, skipped: 0 }; }
+    if (resp.statusCode !== 200) {
+      resp.resume();
+      console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
+      return { total: 0, classified: 0, skipped: 0 };
+    }
     const body = await new Promise((resolve) => {
       let d = '';
       resp.on('data', (c) => { d += c; });
       resp.on('end', () => resolve(d));
     });
     digest = JSON.parse(body);
-  } catch {
+  } catch (e) {
+    console.warn('[Classify] digest fetch error:', e?.message || e);
     return { total: 0, classified: 0, skipped: 0 };
   }
 

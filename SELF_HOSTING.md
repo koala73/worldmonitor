@@ -106,10 +106,16 @@ services:
       LLM_API_URL: ""             # e.g. http://localhost:11434/v1/chat/completions
       LLM_API_KEY: ""
       LLM_MODEL: ""
+      # Same value as ais-relay — gateway accepts it on list-feed-digest (#7437).
+      WORLDMONITOR_RELAY_KEY: ""
 
   ais-relay:
     environment:
       AISSTREAM_API_KEY: ""       # same key as above — relay needs it too
+      # Classify fetches the local digest (compose defaults API_BASE_URL to
+      # http://worldmonitor:8080). Set the same WORLDMONITOR_RELAY_KEY on
+      # worldmonitor so the digest GET is not a silent 401.
+      WORLDMONITOR_RELAY_KEY: ""
 ```
 
 ### 💰 Free vs Paid
