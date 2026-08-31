@@ -46,7 +46,7 @@ curl -H "Authorization: Bearer $WM_TOKEN" \
 
 将当前溢价与其自身的历史序列进行分类——稳健 z 分数（中位数/MAD，而非均值/标准差，因为该序列具有厚尾）、百分位排名、状态区间，以及全金属综合指数。
 
-状态字段至关重要。有效历史点少于 60 个时分类器拒绝评级：`state` 变为 `PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY`，`reason` 说明缺口，指数为 null。请在读取任何数值字段之前先读 `state`。
+状态字段至关重要。有效历史点少于 60 个时分类器拒绝评级：`state` 变为 `PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY`，`reason` 说明缺口，`index` 从 JSON 中省略而非返回 `null`。客户端应检查字段是否存在并读取 `state`/`reason`，而不是用 `=== null` 判断。请在读取任何数值字段之前先读 `state`。
 
 区间阈值、窗口大小、综合权重与版本变更记录见[实物背离指数方法论](/zh/methodology/physical-divergence-index)。
 

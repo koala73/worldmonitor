@@ -29,7 +29,7 @@ Each commodity carries up to two independent snapshots:
 - `mine` — extraction
 - `refinery` — processing
 
-A commodity can have one stage and not the other. A missing stage is `null`, and the API renders it as an explicit unavailable rather than an empty share table.
+A commodity can have one stage and not the other. A missing stage is omitted from the JSON — the `mine` or `refinery` property is absent, not `null` and not an explicit unavailable object. Clients should check field presence, not `=== null`.
 
 ## Concentration
 

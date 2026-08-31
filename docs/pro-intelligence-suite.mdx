@@ -62,7 +62,7 @@ The two legs can carry different `asOf` dates. Compare them before treating a pr
 
 Classifies the current premium against its own trailing history — a robust z-score (median/MAD, not mean/stddev, because the series has fat tails), a percentile rank, a regime, and an all-metal composite.
 
-The state field is load-bearing. Below 60 valid history points the classifier refuses to rate: `state` becomes `PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY`, `reason` names the shortfall, and the index is null. Read `state` before any numeric field.
+The state field is load-bearing. Below 60 valid history points the classifier refuses to rate: `state` becomes `PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY`, `reason` names the shortfall, and `index` is omitted rather than returned as `null`. Clients should check field presence plus `state`/`reason`, not `=== null`. Read `state` before any numeric field.
 
 ```json
 {
