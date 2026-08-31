@@ -377,14 +377,22 @@ export default async function handler(req) {
     const isTimeout = error?.name === 'AbortError';
     // No `details`: the underlying message can carry relay transport detail
     // (undici cause chains, MTProto text) and the browser has no use for it.
-    // Non-timeout failures are captured server-side instead.
+    // Failures are captured server-side instead.
     console.warn('[telegram-feed] relay request failed:', error?.message || String(error));
-    // Skip Sentry on AbortError — fetchWithTimeout aborts on the mode budget
-    // (TELEGRAM_RELAY_TIMEOUT_MS); those 504s are routine relay latency, not
-    // product defects. Match api/rss-proxy.js. Keep capturing real failures.
-    if (!isTimeout) {
-      void captureSilentError(error, { tags: { route: 'api/telegram-feed', step: 'relay-fetch' } });
-    }
+    // Timeouts capture at `warning`, not `error`: fetchWithTimeout aborts on the
+    // mode budget (TELEGRAM_RELAY_TIMEOUT_MS), so those 504s are routine relay
+    // latency rather than product defects. Skipping them outright (the previous
+    // posture, inherited from api/rss-proxy.js) left relay degradation with no
+    // signal at all — nothing in scripts/ or .github/workflows/ watches it.
+    // `warning` keeps it queryable without counting toward error totals.
+    // `mode` is mandatory on both paths: the budgets differ by 7s, so without
+    // it a feed stall and a channel stall are the same Sentry issue.
+    void captureSilentError(error, {
+      tags: { route: 'api/telegram-feed', step: 'relay-fetch', mode },
+      ...(isTimeout
+        ? { level: 'warning', extra: { timeout_ms: TELEGRAM_RELAY_TIMEOUT_MS[mode] } }
+        : {}),
+    });
     return jsonResponse({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',
     }, isTimeout ? 504 : 502, { 'Cache-Control': 'no-store', ...corsHeaders });
