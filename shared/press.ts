@@ -6,9 +6,6 @@
  * Silicon Canals 2M cite, the WIRED feature, or the country-reach figure.
  */
 
-/** Studio lockup target — resolves (301) onto www.worldmonitor.app. */
-export const SOMEONE_CEO_URL = 'https://someone.ceo';
-
 export const WIRED_FEATURE_URL =
   'https://www.wired.com/story/world-monitor-elie-habib/';
 

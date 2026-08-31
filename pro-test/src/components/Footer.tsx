@@ -1,5 +1,5 @@
 import { DASHBOARD_PATH } from '../routes';
-import { ABOUT_DOCS_PATH, SOMEONE_CEO_URL } from '../../../shared/press';
+import { ABOUT_DOCS_PATH } from '../../../shared/press';
 import { LegalFooterNav } from './LegalFooterNav';
 import { PressFooterNav } from './PressFooterNav';
 
@@ -8,16 +8,7 @@ export const Footer = () => (
     <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
       <div className="flex items-center gap-3 mb-4 md:mb-0">
         <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
-        <div className="flex flex-col text-left">
-          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-          <a
-            href={SOMEONE_CEO_URL}
-            className="text-[10px] uppercase tracking-[2px] text-wm-muted mt-0.5 hover:text-wm-text transition-colors"
-            rel="noopener noreferrer"
-          >
-            by Someone.ceo
-          </a>
-        </div>
+        <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
       </div>
       <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-2">
         <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>

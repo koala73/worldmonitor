@@ -14,7 +14,6 @@ import {
   GITHUB_STARS_BADGE_URL,
   PRESS_LINKS,
   SILICON_CANALS_2M_URL,
-  SOMEONE_CEO_URL,
   WIRED_FEATURE_URL,
 } from '../shared/press.ts';
 
@@ -139,18 +138,10 @@ describe('issue #7377 GEO content credibility', () => {
     assert.match(pressNav, /In the press/);
   });
 
-  it('(d) links the Someone.ceo studio lockup to a resolvable URL', () => {
-    for (const path of [
-      'pro-test/src/components/Logo.tsx',
-      'pro-test/src/components/Footer.tsx',
-      'blog-site/src/layouts/Base.astro',
-    ]) {
-      const source = read(path);
-      assert.ok(
-        source.includes('SOMEONE_CEO_URL') || source.includes(SOMEONE_CEO_URL),
-        `${path} must link Someone.ceo via SOMEONE_CEO_URL`,
-      );
-      assert.match(source, /by Someone\.ceo/);
-    }
-  });
+  // (d) pinned a "by Someone.ceo" studio byline into the header/footer lockups.
+  // Dropped deliberately: stacking it under the wordmark made two sub-24px
+  // links 16px apart and scored 0 on axe target-size (#7382). The byline
+  // carried no product information, so it was removed rather than resized.
+  // The removal invariant now lives in
+  // tests/a11y-issue-7382-welcome-invariants.test.mjs.
 });

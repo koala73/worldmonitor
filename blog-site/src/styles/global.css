@@ -90,11 +90,6 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   border-radius: 50%;
 }
 
-.site-header .logo .logo-text {
-  display: flex;
-  flex-direction: column;
-}
-
 .site-header .logo .logo-name {
   font-family: var(--font-display);
   font-weight: 700;
@@ -105,18 +100,6 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   transition: opacity 0.2s;
 }
 .site-header .logo .logo-name:hover { opacity: 0.8; }
-
-.site-header .logo .logo-sub {
-  font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  color: var(--wm-muted);
-  text-transform: uppercase;
-  letter-spacing: 0.1em;
-  line-height: 1;
-  margin-top: 3px;
-  transition: color 0.2s;
-}
-.site-header .logo .logo-sub:hover { color: var(--wm-text); }
 
 .site-header .nav-links {
   display: flex;
@@ -175,11 +158,6 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   border-radius: 50%;
 }
 
-.site-footer .footer-brand-text {
-  display: flex;
-  flex-direction: column;
-}
-
 .site-footer .footer-name {
   font-family: var(--font-display);
   font-weight: 700;
@@ -187,16 +165,6 @@ img { max-width: 100%; height: auto; border-radius: var(--radius); }
   color: var(--wm-text);
   letter-spacing: 0.02em;
 }
-
-.site-footer .footer-sub {
-  font-family: var(--font-mono);
-  font-size: 0.5625rem;
-  color: var(--wm-muted);
-  text-transform: uppercase;
-  letter-spacing: 2px;
-  transition: color 0.2s;
-}
-.site-footer .footer-sub:hover { color: var(--wm-text); }
 
 .site-footer .footer-links {
   display: flex;

@@ -41,7 +41,7 @@ import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
 import { PressFooterNav } from './components/PressFooterNav';
-import { ABOUT_DOCS_PATH, SOMEONE_CEO_URL } from '../../shared/press';
+import { ABOUT_DOCS_PATH } from '../../shared/press';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -1168,7 +1168,7 @@ const EnterprisePage = () => (
   <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
     <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }}><Logo /></a>
+        <Logo />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
           <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} className="hover:text-wm-text transition-colors">{t('nav.pro')}</a>
           <a href="#enterprise" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
@@ -1357,16 +1357,7 @@ const EnterprisePage = () => (
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
-          <div className="flex flex-col text-left">
-            <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-            <a
-              href={SOMEONE_CEO_URL}
-              className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5 hover:opacity-100 hover:text-wm-text transition-colors"
-              rel="noopener noreferrer"
-            >
-              by Someone.ceo
-            </a>
-          </div>
+          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
         </div>
         <div className="flex items-center gap-6">
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>

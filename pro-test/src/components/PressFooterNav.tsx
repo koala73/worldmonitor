@@ -12,7 +12,7 @@ export const PressFooterNav = () => (
     aria-label="In the press"
     className="max-w-7xl mx-auto mt-4 flex flex-wrap items-center justify-center gap-x-5 gap-y-2 text-[11px] text-wm-muted font-mono"
   >
-    <span className="uppercase tracking-[2px] opacity-60">In the press</span>
+    <span className="uppercase tracking-[2px] text-wm-muted">In the press</span>
     {PRESS_LINKS.map(link => (
       <a
         key={link.url}

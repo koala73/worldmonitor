@@ -1,6 +1,5 @@
 ---
 import productFacts from '../../../shared/product-facts.generated.json';
-import { SOMEONE_CEO_URL } from '../../../shared/press';
 import TrackedProductLink from '../components/TrackedProductLink.astro';
 
 interface Props {
@@ -108,10 +107,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
           <a href="/blog/" class="logo-mark" aria-label="World Monitor Blog — Home">
             <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="logo-icon-img" />
           </a>
-          <div class="logo-text">
-            <a href="/blog/" class="logo-name">WORLD MONITOR</a>
-            <a href={SOMEONE_CEO_URL} class="logo-sub" rel="noopener noreferrer">by Someone.ceo</a>
-          </div>
+          <a href="/blog/" class="logo-name">WORLD MONITOR</a>
         </div>
         <ul class="nav-links">
           <li><a href="/blog/">Blog</a></li>
@@ -149,10 +145,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
       <div class="footer-inner">
         <div class="footer-brand">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="footer-icon-img" />
-          <div class="footer-brand-text">
-            <span class="footer-name">WORLD MONITOR</span>
-            <a href={SOMEONE_CEO_URL} class="footer-sub" rel="noopener noreferrer">by Someone.ceo</a>
-          </div>
+          <span class="footer-name">WORLD MONITOR</span>
         </div>
         <div class="footer-links">
           <a href="/blog/authors/elie-habib/">About</a>
