@@ -149,9 +149,18 @@ async function writeBundleHeartbeat(label) {
  * mark them due on every tick — the #6806 failure this must not reintroduce.
  */
 export async function readSectionFreshness(section, readKey = readRedisKey) {
+  // Opt-in, per the invariant above: a section that declares no
+  // `expectedSourceVersion` keeps its pre-migration clock byte-for-byte,
+  // error markers included. The `status` check exists only so a FAILED
+  // migration cannot claim success — seed-owid-energy-mix's failure path
+  // writes a fresh `fetchedAt` under the NEW sourceVersion, so without it the
+  // gate would pass on the very run it must reject. Applying that check to
+  // every section instead would strip the fresh-fetchedAt backoff that
+  // sections like Resilience-Static (90-day interval) rely on, making them due
+  // on every tick — the #6806 failure this docstring forbids.
   const acceptsVersion = (meta) => (
-    meta?.status !== 'error'
-    && (!section.expectedSourceVersion || meta?.sourceVersion === section.expectedSourceVersion)
+    !section.expectedSourceVersion
+    || (meta?.status !== 'error' && meta?.sourceVersion === section.expectedSourceVersion)
   );
   if (section.freshnessMetaKey) {
     if (section.requireCanonical && section.canonicalKey) {
