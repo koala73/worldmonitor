@@ -132,7 +132,15 @@ describe('seedTransitSummaries (relay)', () => {
 
   // Fresh sandbox per call — `latestCorridorRiskData` resets like a cold
   // relay restart instead of leaking state between tests.
-  function buildSeedTransitSummaries({ envelopeRead, envelopeWrite, upstashSet, upstashEnabled = true, warn = () => {}, log = () => {} }) {
+  function buildSeedTransitSummaries({
+    envelopeRead,
+    envelopeWrite,
+    upstashSet,
+    upstashEnabled = true,
+    warn = () => {},
+    log = () => {},
+    chokepointCrossings = new Map(),
+  }) {
     // eslint-disable-next-line no-new-func
     const factory = new Function(
       'envelopeRead', 'envelopeWrite', 'upstashSet', 'console', 'UPSTASH_ENABLED', 'chokepointCrossings',
@@ -140,7 +148,7 @@ describe('seedTransitSummaries (relay)', () => {
       seedHarnessSrc,
     );
     return factory(
-      envelopeRead, envelopeWrite, upstashSet, { warn, log }, upstashEnabled, new Map(),
+      envelopeRead, envelopeWrite, upstashSet, { warn, log }, upstashEnabled, chokepointCrossings,
       detectTrafficAnomaly, CHOKEPOINT_THREAT_LEVELS,
     );
   }
@@ -175,9 +183,10 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(summaries.suez.dataAvailable, true);
     assert.equal(summaries.hormuz_strait.dataAvailable, true);
     // Chokepoint missing from this cycle's portwatch payload still publishes
-    // a zero-state row instead of vanishing (partial-coverage regression).
+    // a row instead of vanishing (partial-coverage regression). AIS is also
+    // empty in this harness, so todayTotal stays absent rather than a filled 0.
     assert.equal(summaries.panama.dataAvailable, false);
-    assert.equal(summaries.panama.todayTotal, 0);
+    assert.equal(summaries.panama.todayTotal, null);
     assert.equal(summaryWrites[0].meta.recordCount, 2, 'recordCount must reflect pwCovered, not the always-13 shape');
     // The count alone is unattributable after the fact. On 2026-08-25 portwatch
     // dropped exactly two chokepoints for ~4.5 hours; every cycle logged an
@@ -207,6 +216,105 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(metaWrites[0].key, 'seed-meta:supply_chain:transit-summaries');
     assert.equal(metaWrites[0].data.recordCount, 2);
     assert.equal(metaWrites[0].ttlSeconds, 604800);
+  });
+
+  it('does not publish a fake 0 todayTotal next to a PortWatch WoW when the AIS window is empty', async () => {
+    // #7457 data layer: todayTotal is an in-memory AIS 24h count; wowChangePct
+    // is PortWatch. dataAvailable only means PortWatch history exists. An empty
+    // AIS window must stay absent, not become a published zero-traffic reading.
+    const fakePortwatch = {
+      hormuz_strait: { history: makeDays(40, 80, 0), wowChangePct: 12.9 },
+      suez: { history: makeDays(40, 120, 0), wowChangePct: 2.8 },
+      panama: { history: makeDays(40, 30, 0), wowChangePct: -10.1 },
+      bab_el_mandeb: { history: makeDays(40, 40, 0), wowChangePct: 0 },
+    };
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1' ? fakePortwatch : null),
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async () => {},
+    });
+
+    await seed();
+
+    const { summaries } = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    for (const id of ['hormuz_strait', 'suez', 'panama', 'bab_el_mandeb']) {
+      assert.equal(summaries[id].todayTotal, null, `${id} empty AIS window must not zero-fill todayTotal`);
+      assert.equal(summaries[id].todayTanker, null);
+      assert.equal(summaries[id].todayCargo, null);
+      assert.equal(summaries[id].todayOther, null);
+      assert.equal(summaries[id].dataAvailable, true);
+    }
+    assert.equal(summaries.hormuz_strait.wowChangePct, 12.9);
+    assert.equal(summaries.suez.wowChangePct, 2.8);
+    assert.equal(summaries.panama.wowChangePct, -10.1);
+    assert.equal(summaries.bab_el_mandeb.wowChangePct, 0, 'a real PortWatch WoW of 0 must still publish');
+  });
+
+  it('publishes AIS todayTotal when the 24h crossing window has ships', async () => {
+    const now = Date.now();
+    const fakePortwatch = {
+      suez: { history: makeDays(40, 120, 0), wowChangePct: 2.8 },
+      hormuz_strait: { history: makeDays(40, 80, 0), wowChangePct: 12.9 },
+    };
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1' ? fakePortwatch : null),
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async () => {},
+      chokepointCrossings: new Map([
+        ['Suez Canal', [
+          { ts: now - 1_000, type: 'cargo' },
+          { ts: now - 2_000, type: 'tanker' },
+          { ts: now - 3_000, type: 'other' },
+          { ts: now - 25 * 60 * 60 * 1000, type: 'cargo' },
+        ]],
+      ]),
+    });
+
+    await seed();
+
+    const { summaries } = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    assert.equal(summaries.suez.todayTotal, 3);
+    assert.equal(summaries.suez.todayTanker, 1);
+    assert.equal(summaries.suez.todayCargo, 1);
+    assert.equal(summaries.suez.todayOther, 1);
+    assert.equal(summaries.suez.wowChangePct, 2.8);
+    assert.equal(summaries.hormuz_strait.todayTotal, null, 'a chokepoint with no AIS crossings stays absent');
+  });
+
+  it('still publishes a real Panama disruptionPct of 0 from corridor risk', async () => {
+    const fakePortwatch = {
+      panama: { history: makeDays(40, 30, 0), wowChangePct: -10.1 },
+    };
+    const writes = [];
+    const seed = buildSeedTransitSummaries({
+      envelopeRead: async (key) => {
+        if (key === 'supply_chain:portwatch:v1') return fakePortwatch;
+        if (key === 'supply_chain:corridorrisk:v1') {
+          return {
+            panama: {
+              riskLevel: 'normal',
+              incidentCount7d: 0,
+              disruptionPct: 0,
+              riskSummary: 'Calm transit conditions',
+              riskReportAction: '',
+            },
+          };
+        }
+        return null;
+      },
+      envelopeWrite: async (key, data, ttlSeconds, meta) => { writes.push({ key, data, ttlSeconds, meta }); return true; },
+      upstashSet: async () => {},
+    });
+
+    await seed();
+
+    const { summaries } = writes.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    assert.equal(summaries.panama.disruptionPct, 0, 'Panama disruption 0 is a published calm value');
+    assert.equal(summaries.panama.riskLevel, 'normal');
+    assert.equal(summaries.panama.todayTotal, null);
+    assert.equal(summaries.panama.wowChangePct, -10.1);
   });
 
   it('empty portwatch writes NOTHING to Redis — the exact "scheduler wired but keys never populate" failure class this suite must catch', async () => {
