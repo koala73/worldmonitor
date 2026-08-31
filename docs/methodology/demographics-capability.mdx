@@ -15,15 +15,15 @@ The response is deliberately not a single blended index. Each group resolves on 
 
 ### Age structure — UN World Population Prospects
 
-`medianAge`, `workingAgePopulation`, `oldAgeDependency`, `totalDependency`, and a forward `workingAgeProjection`. WPP publishes revisions every two years; between revisions the projection is the same series, not a fresh estimate.
+`medianAgeYears`, `workingAgePopulationPeople`, `oldAgeDependencyRatioPercent`, `totalDependencyRatioPercent`, and a forward `workingAgePopulationProjected10yPeople`. WPP publishes revisions every two years; between revisions the projection is the same series, not a fresh estimate.
 
 ### Education pipeline — UNESCO UIS and World Bank WDI
 
-`tertiaryEnrollment`, `stemGraduates`, and related attainment measures. UIS is primary; WDI fills where UIS coverage lapses. Reporting lag is long — three to five years is ordinary, not a fault.
+`tertiaryEnrollmentGrossPercent`, `stemGraduatesSharePercent`, and `researchersPerMillion`. UIS is primary; WDI fills where UIS coverage lapses. Reporting lag is long — three to five years is ordinary, not a fault.
 
 ### Industrial workforce — ILOSTAT
 
-`manufacturingShare`, `trainedIndustrialWorkforce`, `craftTrades`, `plantOperators`, `researchers`. ILOSTAT coverage is the thinnest of the three: a country can have current WPP age structure and no usable ILOSTAT observation at all.
+`manufacturingEmploymentSharePercent`, `trainedIndustrialWorkforcePeople`, `craftTradesEmploymentPeople`, and `plantMachineOperatorsEmploymentPeople`. ILOSTAT coverage is the thinnest of the three: a country can have current WPP age structure and no usable ILOSTAT observation at all.
 
 ## Reading the response
 
@@ -33,7 +33,7 @@ Every metric carries four things: the value, its `year`, its `source`, its `unit
 
 **Do not average across groups.** They have different vintages and different coverage. A country whose ILOSTAT row is eight years old and whose WPP row is current does not have an eight-year-old demographic profile; it has two observations that must be read separately. The response keeps them apart for that reason.
 
-**`retained`** marks a value carried forward from a previous fetch because the current upstream request failed. It is real data with a known age.
+**Retention lives on `stages[].status`, not on each value.** A stage is `fresh`, `retained`, or `unavailable`. `retained` means that source group was carried forward from a previous fetch because the current upstream request failed. Individual observations have no `retained` field.
 
 The top-level `available: false` means no group resolved at all — the country has no usable observation in any of the three, which is different from a country whose groups each carry their own partial availability.
 
