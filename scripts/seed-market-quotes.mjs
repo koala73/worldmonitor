@@ -5,7 +5,7 @@ import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
 import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
-import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
+import { mergeLastGoodQuotes, resolveMergedQuotesAsOf } from './shared/market-quote-refresh.cjs';
 import { countCatalogFreshQuotes, loadMarketSeedUniverse } from './shared/market-seed-universe.cjs';
 import {
   authorizedProvidersMissingReason,
@@ -80,13 +80,14 @@ async function fetchMarketQuotes() {
   if (providersUsed.length > 0) {
     console.log(`  [providers] ${providersUsed.join(' → ')}`);
   }
+  const fetchedAt = Date.now();
 
   return {
     quotes: mergedQuotes,
     finnhubSkipped: !finnhubKey && !avKey,
     skipReason: (!finnhubKey && !avKey) ? authorizedProvidersMissingReason() : '',
     rateLimited: false,
-    asOf: new Date().toISOString(),
+    asOf: resolveMergedQuotesAsOf(quotes, mergedQuotes, previousPayload?.asOf, fetchedAt),
     // Catalog-only fresh count: auxiliary misses must not fail an otherwise
     // healthy seed. Symbols are omitted by JSON.stringify, so this proof is
     // available to validateFn at the publication boundary but never changes

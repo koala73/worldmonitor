@@ -83,7 +83,7 @@ const {
 } = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
-const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
+const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
@@ -3369,7 +3369,13 @@ async function seedMarketQuotes() {
   // _seed.fetchedAt and seed-meta.fetchedAt agree for this one publish,
   // instead of each awaited round-trip sampling Date.now() independently.
   const fetchedAt = Date.now();
-  const payload = { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false, asOf: new Date(fetchedAt).toISOString() };
+  const payload = {
+    quotes,
+    finnhubSkipped: skipped,
+    skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '',
+    rateLimited: false,
+    asOf: resolveMergedQuotesAsOf(freshQuotes, quotes, previousPayload?.asOf, fetchedAt),
+  };
   const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
