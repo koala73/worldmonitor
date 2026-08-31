@@ -217,3 +217,6 @@ npm run build:full       # Production build
    <img alt="星标历史图表" src="https://star-history.dera.page/svg?repos=koala73/worldmonitor&type=Date" />
  </picture>
 </a>
+---
+
+> 💡 **文档维护说明**：本中文文档由社区志愿者（@JasonYeYuhe）翻译维护，最后同步更新于 2026年8月31日。如发现内容与官方英文原版存在差异或新特性滞后，欢迎提交 PR 共同完善！
