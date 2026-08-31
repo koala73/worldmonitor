@@ -2569,7 +2569,12 @@ describe('api/mcp.ts — PRO MCP Server', () => {
     const portwatchPortsPayload = { countries: { US: { ports: 23 } } };
     const chokepointBaselinesPayload = { suez: { lat: 30.0, lon: 32.5 } };
     const portwatchChokepointsRefPayload = { count: 13, ids: ['suez', 'hormuz', 'malacca'] };
-    const chokepointFlowsPayload = { suez: { dailyBarrels: 9_200_000 } };
+    // Carries an in-taxonomy `source` so this label-walk assertion keeps testing
+    // LABELLING only: get_chokepoint_status's _postFilter narrows every flow
+    // entry's `source` onto the FlowSource taxonomy (#6113), so a source-less
+    // fixture would come back with `source: 'FLOW_SOURCE_UNSPECIFIED'` added and
+    // fail the deepEqual below for a reason that has nothing to do with labels.
+    const chokepointFlowsPayload = { suez: { dailyBarrels: 9_200_000, source: 'portwatch-dwt' } };
 
     // transit-summaries budget=30min → 5min old (fresh)
     const transitSummariesFetchedAt = Date.now() - 5 * 60_000;
