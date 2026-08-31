@@ -992,6 +992,20 @@ describe('crawlable corpus generator', () => {
         descriptions.set(description, route);
       }
 
+      for (const route of manifest.sections.countries.routes) {
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        assert.match(
+          html,
+          /href="\/docs\/corrections"/,
+          `${route} must link the corrections log`,
+        );
+        assert.doesNotMatch(
+          html,
+          /Post-P1-1/,
+          `${route} must not publish ticket jargon`,
+        );
+      }
+
       // Google requires Dataset descriptions to be 50-5000 characters and
       // recommends creator and license. Walk every generated JSON-LD object
       // recursively so this catches both the country snapshot Dataset and
@@ -2195,7 +2209,7 @@ describe('crawlable corpus generator', () => {
     // Family lastmods use material + page/generator versions only — not the
     // Dataset schema stamp that previously forced a shared build date (#7382).
     assert.equal(data.lastmod.countries, '2026-08-31');
-    assert.equal(data.lastmod.research, '2026-08-30');
+    assert.equal(data.lastmod.research, '2026-07-27');
     assert.equal(data.lastmod.chokepoints, '2026-08-31');
     assert.equal(
       data.lastmod.sources,

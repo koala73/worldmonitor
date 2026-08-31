@@ -65,7 +65,9 @@ describe('published resilience snapshot freshness', () => {
       assert.equal(dataset?.dateModified, data.resilience.capturedAt);
       assert.equal(dataset?.temporalCoverage, data.resilience.capturedAt);
       assert.ok(data.resilience.snapshotNote, 'canonical snapshots must explain their publication state');
+      assert.doesNotMatch(data.resilience.snapshotNote, /Post-P1-1/);
       assert.ok(norway.includes(data.resilience.snapshotNote), 'country page must surface snapshotNote verbatim');
+      assert.match(norway, /href="\/docs\/corrections"/);
       assert.match(
         norway,
         new RegExp(`<meta name="lastmod" content="${data.lastmod.countries}">`),
@@ -92,6 +94,9 @@ describe('published resilience snapshot freshness', () => {
     assert.match(revisions, /2026-06-01/);
     assert.match(revisions, /P1-1/);
     assert.match(revisions, /coverage-only member aggregation/);
+    assert.match(revisions, /first day of each month/);
+    assert.match(revisions, /resilience-ranking-2026-08-29/);
+    assert.match(revisions, /[Oo]ff-cycle/);
   });
 
   it('runs a credentialed monthly capture and opens an idempotent review PR', () => {

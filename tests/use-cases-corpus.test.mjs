@@ -10,7 +10,7 @@ import { runInNewContext } from 'node:vm';
 
 import {
   buildCorpus,
-  CORPUS_GENERATOR_CONTENT_VERSION,
+  gitFileLastmod,
 } from '../scripts/build-crawlable-corpus.mjs';
 import {
   HANDOFF_PRESERVE_SCRIPT,
@@ -21,8 +21,8 @@ import {
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
-  CORPUS_GENERATOR_CONTENT_VERSION,
-].sort().at(-1);
+  gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
+].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
