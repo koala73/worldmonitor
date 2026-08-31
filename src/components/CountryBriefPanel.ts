@@ -130,6 +130,9 @@ export interface CountryEnergyProfileData {
   solarShare: number;
   hydroShare: number;
   importShare: number;
+  importShareAvailable: boolean;
+  importShareYear: number;
+  importShareSource: string;
   gasStorageAvailable: boolean;
   gasStorageFillPct: number;
   gasStorageChange1d: number;

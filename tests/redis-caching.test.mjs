@@ -1856,6 +1856,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     return importPatchedTsModule('server/worldmonitor/intelligence/v1/get-country-intel-brief.ts', {
       './_shared': resolve(root, 'server/worldmonitor/intelligence/v1/_shared.ts'),
       './_country-brief-context': resolve(root, 'server/worldmonitor/intelligence/v1/_country-brief-context.ts'),
+      './_energy-import-dependency': resolve(root, 'server/worldmonitor/intelligence/v1/_energy-import-dependency.ts'),
+      '../../resilience/v1/_energy-import-dependency-source': resolve(root, 'server/worldmonitor/resilience/v1/_energy-import-dependency-source.ts'),
+      '../../resilience/v1/_indicator-source-policy': resolve(root, 'server/worldmonitor/resilience/v1/_indicator-source-policy.ts'),
       '../../../_shared/constants': resolve(root, 'server/_shared/constants.ts'),
       '../../../_shared/redis': resolve(root, 'server/_shared/redis.ts'),
       '../../../_shared/llm-health': resolve(root, 'tests/helpers/llm-health-stub.ts'),
@@ -1993,6 +1996,15 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
     const originalFetch = globalThis.fetch;
 
     const store = new Map();
+    store.set('resilience:static:IL', JSON.stringify({
+      iea: {
+        energyImportDependency: {
+          value: -9.001,
+          year: 2023,
+          source: 'worldbank-energy-imports',
+        },
+      },
+    }));
     store.set('news:digest:v1:full:en', JSON.stringify({
       categories: {
         conflict: {
@@ -2015,11 +2027,13 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(counters.groqCalls, 1, 'anon context variations must share one cache entry');
       assert.equal(setKeys.length, 1, 'one shared cache write');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:en:shared'), `anon key should use the shared v5 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v6:IL:en:shared'), `anon key should use the shared v6 namespace, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.includes(':i2023'), `anon key should include the import data year, got ${setKeys[0]}`);
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-1', 'second anon caller must be served from cache');
       assert.ok(!userPrompts[0]?.includes('alpha'), 'anon caller context must not reach the prompt');
       assert.match(userPrompts[0], /Israel announces new security framework/, 'prompt should be grounded on the server-side digest');
+      assert.match(userPrompts[0], /Net energy import dependency \(2023, World Bank Open Data\): -9\.001%\./);
       assert.ok(!userPrompts[0]?.includes('Unrelated commodity report'), 'digest grounding should be country-filtered');
       assert.equal(alpha.sources[0]?.url, 'https://example.com/il-1', 'sources should be server-derived');
       assert.deepEqual(beta.sources, alpha.sources, 'cached sources are shared');
@@ -2050,7 +2064,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
       assert.equal(counters.groqCalls, 2, 'different premium contexts should not share one cache entry');
       assert.equal(setKeys.length, 2, 'one cache write per unique premium context');
       assert.notEqual(setKeys[0], setKeys[1], 'context hash should differentiate premium cache keys');
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:IL:'), 'cache key should use the v5 country-intel namespace');
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v6:IL:'), 'cache key should use the v6 country-intel namespace');
       assert.ok(!setKeys[0]?.includes(':shared'), 'premium keys must not use the shared namespace');
       assert.equal(alpha.brief, 'brief-1');
       assert.equal(beta.brief, 'brief-2');
@@ -2115,8 +2129,9 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
 
       assert.equal(groqCalls, 1, 'blank context should reuse the shared cache entry');
       assert.equal(setKeys.length, 1);
-      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v5:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
+      assert.ok(setKeys[0]?.startsWith('ci-sebuf:v6:US:en:shared'), `anon callers land on the shared key, got ${setKeys[0]}`);
       assert.ok(!userPrompts[0]?.includes('Context snapshot:'), 'prompt should omit context block when digest grounding is unavailable');
+      assert.match(userPrompts[0], /Net energy import dependency: unavailable from audited sources\./);
       assert.equal(first.brief, 'base-brief');
       assert.equal(second.brief, 'base-brief');
     } finally {
