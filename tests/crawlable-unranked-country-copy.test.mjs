@@ -110,9 +110,12 @@ describe('unranked country copy', () => {
       dimension('macroFiscal', 0.8),
     ]);
     const eligibility = describeHeadlineIneligibility(country);
-    assert.match(eligibility, /imputation share is 45%, above the 40% confidence limit/);
-    assert.doesNotMatch(eligibility, /below the 55% confidence gate/);
-    assert.doesNotMatch(eligibility, /below the 65% ranking floor/);
+    assert.match(eligibility, /does not meet the published ranking eligibility criteria/);
+    assert.doesNotMatch(eligibility, /imputation share is 45%/);
+    const reason = describeHeadlineIneligibilityReason(country);
+    assert.match(reason, /imputation share is 45%, above the 40% confidence limit/);
+    assert.doesNotMatch(reason, /below the 55% confidence gate/);
+    assert.doesNotMatch(reason, /below the 65% ranking floor/);
   });
 
   it('describes snapshots with no usable observed dimensions', () => {
@@ -195,9 +198,11 @@ describe('unranked country copy', () => {
 
     const eligibility = describeHeadlineIneligibility(taiwan);
     assert.match(eligibility, /does not meet the published ranking eligibility criteria/);
-    assert.match(eligibility, /38%/);
-    assert.match(eligibility, /42%/);
     assert.doesNotMatch(eligibility, /\bTW · /);
+    const reason = describeHeadlineIneligibilityReason(taiwan);
+    assert.match(reason, /38%/);
+    assert.match(reason, /42%/);
+    assert.doesNotMatch(reason, /\bTW · /);
 
     const gaps = describeCoverageGaps(taiwan);
     assert.match(gaps, /Governance and institutions/);
@@ -236,10 +241,12 @@ describe('unranked country copy', () => {
     ]);
 
     const eligibility = describeHeadlineIneligibility(syria);
-    assert.match(eligibility, /54%/);
-    assert.match(eligibility, /55%/);
-    assert.match(eligibility, /65%/);
-    assert.doesNotMatch(eligibility, /imputation share is/);
+    assert.match(eligibility, /does not meet the published ranking eligibility criteria/);
+    const reason = describeHeadlineIneligibilityReason(syria);
+    assert.match(reason, /54%/);
+    assert.match(reason, /55%/);
+    assert.match(reason, /65%/);
+    assert.doesNotMatch(reason, /imputation share is/);
 
     const gaps = describeCoverageGaps(syria);
     assert.match(gaps, /Macro-fiscal position/);
@@ -263,11 +270,13 @@ describe('unranked country copy', () => {
     ]);
 
     const eligibility = describeHeadlineIneligibility(andorra);
-    assert.match(eligibility, /69%/);
-    assert.match(eligibility, /200,000/);
-    assert.match(eligibility, /85%/);
-    assert.doesNotMatch(eligibility, /below the 65%/);
-    assert.doesNotMatch(eligibility, /below the 55%/);
+    assert.match(eligibility, /does not meet the published ranking eligibility criteria/);
+    const reason = describeHeadlineIneligibilityReason(andorra);
+    assert.match(reason, /69%/);
+    assert.match(reason, /recorded population of at least 200,000/);
+    assert.match(reason, /85%/);
+    assert.doesNotMatch(reason, /below the 65%/);
+    assert.doesNotMatch(reason, /below the 55%/);
 
     const gaps = describeCoverageGaps(andorra);
     assert.match(gaps, /eligibility-rule|population|mostly observed/i);

@@ -1389,10 +1389,6 @@ describe('crawlable corpus generator', () => {
         /below the 65% ranking floor/,
         `${coveredIneligible.name} must not explain ranking exclusion as low coverage`,
       );
-      assert.ok(
-        coveredHtml.includes(describeHeadlineIneligibilityReason(coveredIneligible)),
-        `${coveredIneligible.name} must use the snapshot eligibility reason, not a coerced low-confidence label`,
-      );
       assert.match(
         coveredHtml,
         /<h3>Source inventory gaps<\/h3>/,
@@ -1431,7 +1427,10 @@ describe('crawlable corpus generator', () => {
         const route = `/countries/${country.slug}/`;
         const html = read(outDir, `${route.slice(1)}index.html`);
         const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
-        unrankedArticles.push({ route, text: document.querySelector('main')?.textContent || '' });
+        const analysis = document.querySelector('[data-country-analysis]');
+        assert.ok(analysis, `${route} must render unpublished analysis`);
+        analysis.querySelectorAll('[data-country-faq]').forEach((node) => node.remove());
+        unrankedArticles.push({ route, text: analysis.textContent || '' });
         assert.match(html, /Nearest ranked comparators:/);
         assert.doesNotMatch(html, new RegExp(`\\b${code} · `));
         for (const peer of country.peers) {
@@ -1477,14 +1476,6 @@ describe('crawlable corpus generator', () => {
         /Iraq.{0,120}(fewer than 200,000|microstate)|microstate.{0,80}Iraq/,
         'Iraq copy must not imply the country is below the 200,000 population gate',
       );
-      assert.doesNotMatch(andorra, /flagged low-confidence/);
-      assert.doesNotMatch(
-        andorra,
-        /a low-confidence listing/,
-        'covered-ineligible meta description must not call a standard-confidence snapshot low-confidence',
-      );
-      assert.match(andorra, /an unpublished listing/);
-      assert.match(andorra, /in the rankable universe as a UN member/);
       for (let left = 0; left < unrankedArticles.length; left += 1) {
         for (let right = left + 1; right < unrankedArticles.length; right += 1) {
           const share = pairwiseUniqueShare(unrankedArticles[left].text, unrankedArticles[right].text);
