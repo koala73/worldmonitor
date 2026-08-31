@@ -160,6 +160,12 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.equal(webPage.speakable['@type'], 'SpeakableSpecification');
     const crumbs = blocks.find((b) => b['@type'] === 'BreadcrumbList');
     assert.equal(crumbs.itemListElement[1].name, 'Finance Monitor');
+    const injected = [...html.matchAll(/<script\b([^>]*\btype=["']application\/ld\+json["'][^>]*)>/gi)]
+      .map((match) => match[1]);
+    assert.equal(injected.length, 3);
+    for (const attrs of injected) {
+      assert.match(attrs, /nonce="wm-static-bootstrap"/, 'variant JSON-LD must keep the header CSP nonce');
+    }
   });
 
   it('injects variant-specific SEO summary and noscript differentiation copy', () => {

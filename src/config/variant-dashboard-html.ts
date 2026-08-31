@@ -99,7 +99,10 @@ const WEBSITE_ID = 'https://www.worldmonitor.app/#website';
 const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
 
 function jsonLdScript(payload: Record<string, unknown>): string {
-  return `<script type="application/ld+json">\n    ${JSON.stringify(payload, null, 2).replace(/\n/g, '\n    ')}\n    </script>`;
+  // generateBundle runs after Vite stamps html.cspNonce onto dashboard.html.
+  // Injected JSON-LD must carry the same nonce: variant payloads differ, so
+  // they cannot join the committed sha256 allowlist (#7459c).
+  return `<script type="application/ld+json" nonce="wm-static-bootstrap">\n    ${JSON.stringify(payload, null, 2).replace(/\n/g, '\n    ')}\n    </script>`;
 }
 
 function variantWebPageJsonLd(meta: VariantMeta): string {
