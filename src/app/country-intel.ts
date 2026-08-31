@@ -38,6 +38,7 @@ import { collectStoryData } from '@/services/story-data';
 
 import { hasPremiumAccess } from '@/services/panel-gating';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
+import { onEntitlementChange } from '@/services/entitlements';
 import { showMapContextMenu } from '@/components/MapContextMenu';
 import { BETA_MODE } from '@/config/beta';
 import { mlWorker } from '@/services/ml-worker';
@@ -130,7 +131,9 @@ export class CountryIntelManager implements AppModule {
   // entitlement so unrelated auth events (session refresh, prefs sync)
   // don't re-hammer fetchProSections.
   private authUnsubscribe: (() => void) | null = null;
+  private entitlementUnsubscribe: (() => void) | null = null;
   private lastHadPremium = false;
+  private countryPremiumSectionsToken = 0;
   private countryBriefPageLoading: Promise<boolean> | null = null;
 
   constructor(ctx: AppContext) {
@@ -152,18 +155,9 @@ export class CountryIntelManager implements AppModule {
     });
 
     this.lastHadPremium = hasPremiumAccess(getAuthState());
-    this.authUnsubscribe = subscribeAuthState(() => {
-      const nowPremium = hasPremiumAccess(getAuthState());
-      if (nowPremium && !this.lastHadPremium) {
-        // Entitlement just resolved — refetch PRO sections for whatever
-        // country the user is currently viewing. No current country =
-        // nothing to retry; the next country open will pick up the new
-        // entitlement naturally.
-        const openCode = this.ctx.countryBriefPage?.getCode();
-        if (openCode) this.fetchProSections(openCode);
-      }
-      this.lastHadPremium = nowPremium;
-    });
+    const syncPremiumAccess = () => this.handlePremiumAccessTransition(hasPremiumAccess(getAuthState()));
+    this.authUnsubscribe = subscribeAuthState(syncPremiumAccess);
+    this.entitlementUnsubscribe = onEntitlementChange(syncPremiumAccess);
   }
 
   destroy(): void {
@@ -178,6 +172,27 @@ export class CountryIntelManager implements AppModule {
     this.frameworkUnsubscribe = null;
     this.authUnsubscribe?.();
     this.authUnsubscribe = null;
+    this.entitlementUnsubscribe?.();
+    this.entitlementUnsubscribe = null;
+    this.countryPremiumSectionsToken++;
+  }
+
+  private handlePremiumAccessTransition(nowPremium: boolean): void {
+    if (nowPremium === this.lastHadPremium) return;
+    const wasPremium = this.lastHadPremium;
+    this.lastHadPremium = nowPremium;
+    this.countryPremiumSectionsToken++;
+
+    const page = this.ctx.countryBriefPage;
+    const openCode = page?.getCode();
+    if (!page?.isVisible() || !openCode || openCode === '__loading__' || openCode === '__error__') return;
+
+    page.syncCountryPremiumSectionsAccess?.(nowPremium);
+    if (!wasPremium && nowPremium) {
+      this.fetchProSections(openCode);
+      this.fetchDefenseIndustrialBase(openCode);
+      this.fetchCommodityVulnerability(openCode);
+    }
   }
 
   private handleCountryBriefOpenError(err: unknown): void {
@@ -566,29 +581,7 @@ export class CountryIntelManager implements AppModule {
       const intelClient = new IntelligenceServiceClient(getRpcBaseUrl(), {
         fetch: (...args: Parameters<typeof globalThis.fetch>) => globalThis.fetch(...args),
       });
-      // Defense industrial base is Pro (#6438). Skip the call outright for a
-      // free viewer rather than spending a guaranteed 401 — the panel renders
-      // its own upgrade card from the same predicate, and the section used to
-      // fetch through publicRpcFetch's anonymous `public=1` shape, which the
-      // gate removed.
-      if (hasPremiumAccess(getAuthState())) {
-        const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
-          fetch: premiumFetch,
-        });
-        void getCountryDefenseIndustrialBase(code, militaryClient)
-          .then((industrial) => {
-            if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
-              this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(industrial.available ? industrial : null);
-            }
-          })
-          .catch(() => {
-            if (token === this.briefRequestToken && this.ctx.countryBriefPage?.getCode() === code) {
-              this.ctx.countryBriefPage.updateDefenseIndustrialBase?.(null);
-            }
-          });
-      } else {
-        this.ctx.countryBriefPage?.updateDefenseIndustrialBase?.(null);
-      }
+      this.fetchDefenseIndustrialBase(code, token);
       intelClient.getCountryFacts({ countryCode: code.toUpperCase() })
         .then((facts) => {
           if (this.ctx.countryBriefPage?.getCode() !== code) return;
@@ -958,20 +951,58 @@ export class CountryIntelManager implements AppModule {
     return !!activeCode && activeCode !== '__loading__' && activeCode !== '__error__';
   }
 
+  private fetchDefenseIndustrialBase(code: string, requestToken = this.briefRequestToken): void {
+    const page = this.ctx.countryBriefPage;
+    const signal = page?.signal;
+    const premiumToken = this.countryPremiumSectionsToken;
+    const stillCurrent = (): boolean => (
+      requestToken === this.briefRequestToken
+      && premiumToken === this.countryPremiumSectionsToken
+      && this.ctx.countryBriefPage === page
+      && page?.getCode() === code
+      && !signal?.aborted
+      && hasPremiumAccess(getAuthState())
+    );
+    // Defense industrial base is Pro (#6438). A free viewer must not spend a
+    // guaranteed 401, and this route no longer supports the old anonymous
+    // `public=1` CDN shape.
+    if (!hasPremiumAccess(getAuthState())) {
+      page?.updateDefenseIndustrialBase?.(null);
+      return;
+    }
+    const militaryClient = new MilitaryServiceClient(getRpcBaseUrl(), {
+      fetch: premiumFetch,
+    });
+    void getCountryDefenseIndustrialBase(code, militaryClient)
+      .then((industrial) => {
+        if (stillCurrent()) page?.updateDefenseIndustrialBase?.(industrial.available ? industrial : null);
+      })
+      .catch(() => {
+        if (stillCurrent()) page?.updateDefenseIndustrialBase?.(null);
+      });
+  }
+
   private fetchCommodityVulnerability(code: string): void {
     const page = this.ctx.countryBriefPage;
     const signal = page?.signal;
-    // Pro (#6449). fetchCountryVulnerabilities swallows its own errors into an
-    // upstreamUnavailable envelope, so an ungated free call would paint the
-    // card's generic "unavailable" state over what is really a paywall. Return
-    // without touching the body: the panel already mounted the upgrade card.
+    const requestToken = this.briefRequestToken;
+    const premiumToken = this.countryPremiumSectionsToken;
+    const stillCurrent = (): boolean => (
+      requestToken === this.briefRequestToken
+      && premiumToken === this.countryPremiumSectionsToken
+      && this.ctx.countryBriefPage === page
+      && page?.getCode() === code
+      && !signal?.aborted
+      && hasPremiumAccess(getAuthState())
+    );
+    // Pro (#6449). Leave the mounted upgrade card alone for free viewers.
     if (!hasPremiumAccess(getAuthState())) return;
     fetchCountryVulnerabilities(code, { signal }).then(resp => {
-      if (signal?.aborted || this.ctx.countryBriefPage !== page || page?.getCode() !== code) return;
-      page.updateCommodityVulnerabilities?.(resp);
+      if (!stillCurrent()) return;
+      page?.updateCommodityVulnerabilities?.(resp);
     }).catch(() => {
-      if (!signal?.aborted && this.ctx.countryBriefPage === page && page?.getCode() === code) {
-        page.updateCommodityVulnerabilities?.(null);
+      if (stillCurrent()) {
+        page?.updateCommodityVulnerabilities?.(null);
       }
     });
   }

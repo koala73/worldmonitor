@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 
 import {
   HMAC_SECRET,
-  PRO_USER_ID,
   callBody,
   makeProDeps,
+  PRO_USER_ID,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
 

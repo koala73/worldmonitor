@@ -134,6 +134,11 @@ export class SupplyChainPanel extends Panel {
     this.render();
   }
 
+  public clearMineralProduction(): void {
+    this.mineralProductionData = null;
+    this.render();
+  }
+
   public updateShippingStress(data: GetShippingStressResponse): void {
     this.stressData = data;
     this.render();

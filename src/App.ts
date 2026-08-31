@@ -2385,8 +2385,10 @@ export class App {
         // market-brief / market-implications because their schedulers are
         // gated to SITE_VARIANT === 'finance'). The audit-locking regression
         // test in tests/premium-loaders-fan-out-coverage.test.mts asserts
-        // every `hasPremiumAccess() && shouldLoad('X')` gate in data-loader.ts
+        // every premium gate in data-loader.ts
         // has a matching call here.
+        void this.dataLoader.loadPhysicalPremiumComparison();
+        void this.dataLoader.loadMineralProduction();
         void this.dataLoader.loadTradePolicy();
         void this.dataLoader.loadStockAnalysis();
         void this.dataLoader.loadStockBacktest();
@@ -2395,12 +2397,12 @@ export class App {
         void this.dataLoader.loadWsbTickers();
         void this.dataLoader.loadResilienceRanking();
         void this.dataLoader.loadGlobalTenders();
-        void this.dataLoader.loadPhysicalPremiumComparison();
       } else if (!nowPremium && hadPremium) {
         // Pro data must not remain visible or available from the client cache
         // after sign-out, expiry, or downgrade.
+        this.dataLoader.clearPhysicalPremiumComparison();
+        this.dataLoader.clearMineralProduction();
         void this.dataLoader.clearGlobalTenders();
-        void this.dataLoader.clearPhysicalPremiumComparison();
       }
       _prevHadPremium = nowPremium;
     };
