@@ -252,12 +252,14 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     });
   }
 
-  it('/pro seeds a crawlable H1 in #root without duplicating it in the no-JavaScript fallback', () => {
+  it('/pro seeds crawlable pricing copy in #root without a hidden SEO sibling', () => {
     const html = builtSrc('public/pro/index.html');
-    const rootMatch = html.match(/<div id="root">(?<content>[\s\S]*?)<\/div>\s*<noscript>/);
-    assert.ok(rootMatch?.groups, 'the /pro static H1 should be seeded inside #root');
+    const rootMatch = html.match(/<div id="root">(?<content>[\s\S]*?)<\/div>\s*(?:<noscript>|<script\b)/);
+    assert.ok(rootMatch?.groups, 'the /pro static copy should be seeded inside #root');
     assert.equal([...rootMatch.groups.content.matchAll(/<h1\b/g)].length, 1);
     assert.equal([...stripNoscript(html).matchAll(/<h1\b/g)].length, 1);
+    assert.match(rootMatch.groups.content, /How much does World Monitor Pro cost\?/);
+    assert.match(rootMatch.groups.content, /\$39\.99/);
     assert.match(html, /World Monitor Pro/);
     assert.doesNotMatch(html, /id="seo-prerender"/);
     assert.doesNotMatch(html, /html\.js #seo-prerender/);
