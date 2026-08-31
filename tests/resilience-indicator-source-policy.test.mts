@@ -16,6 +16,10 @@ const worldBank = (indicatorId: string) => ({
 });
 const WORLD_BANK_FX = worldBank('FI.RES.TOTL.MO');
 const WORLD_BANK_ENERGY_IMPORT = worldBank('EG.IMP.CONS.ZS');
+const EUROSTAT_ENERGY_IMPORT = {
+  providerName: 'Eurostat',
+  sourceUrl: 'https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_id/default/table?lang=en',
+};
 const OWID = { providerName: 'Our World in Data', sourceUrl: 'https://ourworldindata.org/grapher/share-electricity-low-carbon' };
 const UNESCO_VIA_WDI = {
   providerName: 'UNESCO Institute for Statistics via World Bank WDI',
@@ -182,15 +186,24 @@ describe('resilience indicator raw-source policy', () => {
       sources: [WORLD_BANK_ENERGY_IMPORT],
     });
     assert.equal(worldBankEnergy.expose, true);
-    assert.equal(worldBankEnergy.policyStatus, 'conditional');
+    assert.equal(worldBankEnergy.policyStatus, 'allow');
 
     const eurostatEnergy = decideIndicatorRawRedistribution({
       indicatorId: 'energyImportDependency',
       observationState: 'observed',
+      sources: [EUROSTAT_ENERGY_IMPORT],
+    });
+    assert.equal(eurostatEnergy.expose, true);
+    assert.equal(eurostatEnergy.reason, 'audited-observed-source');
+    assert.equal(eurostatEnergy.providerName, 'Eurostat');
+
+    const eurostatRoot = decideIndicatorRawRedistribution({
+      indicatorId: 'energyImportDependency',
+      observationState: 'observed',
       sources: [{ providerName: 'Eurostat', sourceUrl: 'https://ec.europa.eu/eurostat/' }],
     });
-    assert.equal(eurostatEnergy.expose, false);
-    assert.equal(eurostatEnergy.reason, 'provider-not-audited-for-redistribution');
+    assert.equal(eurostatRoot.expose, false, 'a provider-root URL is not the reviewed dataset');
+    assert.equal(eurostatRoot.reason, 'provider-not-audited-for-redistribution');
 
     const adjustedLiquidReserves = decideIndicatorRawRedistribution({
       indicatorId: 'recoveryLiquidReserveMonths',
@@ -213,10 +226,18 @@ describe('resilience indicator raw-source policy', () => {
     const eurostatFossil = decideIndicatorRawRedistribution({
       indicatorId: 'importedFossilDependence',
       observationState: 'observed',
-      sources: [worldBank('EG.ELC.FOSL.ZS'), { providerName: 'Eurostat', sourceUrl: 'https://ec.europa.eu/eurostat/' }],
+      sources: [worldBank('EG.ELC.FOSL.ZS'), EUROSTAT_ENERGY_IMPORT],
     });
-    assert.equal(eurostatFossil.expose, false);
-    assert.equal(eurostatFossil.reason, 'provider-not-audited-for-redistribution');
+    assert.equal(eurostatFossil.expose, true);
+    assert.equal(eurostatFossil.reason, 'audited-observed-source');
+
+    const fossilWithoutNetImports = decideIndicatorRawRedistribution({
+      indicatorId: 'importedFossilDependence',
+      observationState: 'observed',
+      sources: [worldBank('EG.ELC.FOSL.ZS')],
+    });
+    assert.equal(fossilWithoutNetImports.expose, false, 'the net-import constituent is still mandatory');
+    assert.equal(fossilWithoutNetImports.reason, 'required-provider-provenance-missing');
 
     const contradictoryHint = decideIndicatorRawRedistribution({
       indicatorId: 'energyImportDependency',
