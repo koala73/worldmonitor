@@ -82,6 +82,21 @@ function threeCountryFixture() {
 // ─── Tests ────────────────────────────────────────────────────────────────
 
 describe('parseEmberCsv', () => {
+  it('rejects a CSV missing any mapped Ember column', () => {
+    const [header, ...rows] = threeCountryFixture().split('\n');
+    const headers = header.split(',');
+    const dateIndex = headers.indexOf(DATE_COL);
+    const withoutDate = [
+      headers.filter((_, index) => index !== dateIndex).join(','),
+      ...rows.map((row) => row.split(',').filter((_, index) => index !== dateIndex).join(',')),
+    ].join('\n');
+
+    assert.throws(
+      () => parseEmberCsv(withoutDate),
+      /missing mapped columns: Date/,
+    );
+  });
+
   it('parses a minimal 3-country fixture', () => {
     const csv = threeCountryFixture();
     const result = parseEmberCsv(csv);
