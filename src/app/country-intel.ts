@@ -57,7 +57,7 @@ import {
 import { getNearbyInfrastructure, preloadInfrastructureTables } from '@/services/related-assets';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { toFlagEmoji } from '@/utils/country-flag';
-import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
+import { iso2ToIso3, iso2ToUnCode, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock, fetchCountryVulnerabilities } from '@/services/supply-chain';
@@ -1045,14 +1045,15 @@ export class CountryIntelManager implements AppModule {
       if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateSanctionsPressure?.(null);
     });
 
-    const unCode = iso2ToComtradeReporterCode(code);
+    const comtradeReporterCode = iso2ToComtradeReporterCode(code);
+    const tariffCountryCode = iso2ToUnCode(code);
     // Trade RPCs (listComtradeFlows + getTariffTrends) are PRO-gated and
     // 401 for anonymous/free users. Mirror the hasPremiumAccess() guard
     // already used above for the other premium country-brief cards so we
     // don't spray the console with 401s on every country click.
     const hasPremium = hasPremiumAccess(getAuthState());
-    if (unCode && hasPremium) {
-      tradeClient.listComtradeFlows({ reporterCode: unCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
+    if (comtradeReporterCode && tariffCountryCode && hasPremium) {
+      tradeClient.listComtradeFlows({ reporterCode: comtradeReporterCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         const topFlows = (resp.flows || [])
           .sort((a, b) => b.tradeValueUsd - a.tradeValueUsd)
@@ -1063,7 +1064,7 @@ export class CountryIntelManager implements AppModule {
         if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateComtradeFlows?.(null);
       });
 
-      tradeClient.getTariffTrends({ reportingCountry: unCode, productSector: '', years: 10, partnerCountry: '' }).then(resp => {
+      tradeClient.getTariffTrends({ reportingCountry: tariffCountryCode, productSector: '', years: 10, partnerCountry: '' }).then(resp => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         const pts = resp.datapoints || [];
         const latest = pts[pts.length - 1];
