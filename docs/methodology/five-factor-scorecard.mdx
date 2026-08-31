@@ -129,13 +129,19 @@ diversity component scores are population-weighted across members with evidence.
 
 Energy measures physical primary-energy balance and supporting power-system
 quality. Consumption comes from OWID `primary_energy_consumption`. Production
-is derived from the audited import-dependency observation already carried by
-the resilience static source: Eurostat `nrg_ind_id` for covered European
-countries and World Bank `EG.IMP.CONS.ZS` elsewhere:
+is derived from the audited World Bank `EG.IMP.CONS.ZS` import-dependency
+observation already carried by the resilience static source:
 
 ```text
 production TWh = consumption TWh * (1 - net imports percent / 100)
 ```
+
+Where that observation is Eurostat `nrg_ind_id` rather than World Bank, the
+input reports `redistribution-blocked` and the country scores no primary
+balance. Eurostat is not audited for raw redistribution of this indicator, and
+publishing the derived ratio would expose the raw percentage anyway, since
+consumption is published beside it. Restoring those countries requires a source
+audit, not a code change.
 
 | Component | Weight | Direction and goalposts | Input source |
 |---|---:|---|---|
