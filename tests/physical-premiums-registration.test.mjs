@@ -32,6 +32,7 @@ describe('physical premium production registration', () => {
     assert.ok(macro.watchPatterns.includes('scripts/seed-physical-premiums.mjs'));
     assert.ok(macro.watchPatterns.includes('scripts/lib/main-module.mjs'));
     assert.ok(macro.watchPatterns.includes('scripts/lib/physical-divergence.mjs'));
+    assert.ok(macro.watchPatterns.includes('scripts/shared/physical-divergence-contract.js'));
   });
 
   it('aligns paper freshness with the daily publisher and health alarm', () => {

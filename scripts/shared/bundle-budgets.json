@@ -7,11 +7,11 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1698698
+    "raw": 1709382
   },
   "chunks": {
     "analytics": {
-      "raw": 120219,
+      "raw": 122576,
       "files": 1
     },
     "cached-risk-scores": {
@@ -31,7 +31,7 @@
       "files": 1
     },
     "data-freshness": {
-      "raw": 85761,
+      "raw": 85698,
       "files": 1
     },
     "dom-utils": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "gdelt-intel": {
-      "raw": 134004,
+      "raw": 133774,
       "files": 1
     },
     "i18n": {
@@ -59,11 +59,11 @@
       "files": 1
     },
     "main": {
-      "raw": 944751,
+      "raw": 953361,
       "files": 1
     },
     "panel-gating": {
-      "raw": 3132,
+      "raw": 3142,
       "files": 1
     },
     "panels": {

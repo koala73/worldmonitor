@@ -71,7 +71,7 @@ function makeRepo({ baseFiles = { 'README.md': 'base\n' }, branchFiles = {} } = 
   const root = mkdtempSync(join(tmpdir(), 'wm-prepush-attest-'));
   fixtures.push(root);
   git(root, ['init', '--quiet', '--initial-branch=main', '.']);
-  git(root, ['config', 'user.email', 'prepush-attest@example.invalid']);
+  git(root, ['config', 'user.email', 'prepush-attest@wm-fixture.localhost']);
   git(root, ['config', 'user.name', 'Prepush Attest Fixture']);
   for (const [path, contents] of Object.entries(baseFiles)) write(root, path, contents);
   git(root, ['add', '-A']);
@@ -511,7 +511,7 @@ describe('base-guard fetches lazily and only to disprove a violation (#6764)', (
     const clone = join(root, 'clone');
     execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', origin], { env: isolatedGitEnv(), encoding: 'utf8' });
     execFileSync('git', ['clone', '--quiet', origin, clone], { env: isolatedGitEnv(), encoding: 'utf8' });
-    git(clone, ['config', 'user.email', 'base-guard@example.invalid']);
+    git(clone, ['config', 'user.email', 'base-guard@wm-fixture.localhost']);
     git(clone, ['config', 'user.name', 'Base Guard Fixture']);
     write(clone, 'README.md', 'base\n');
     git(clone, ['add', '-A']);

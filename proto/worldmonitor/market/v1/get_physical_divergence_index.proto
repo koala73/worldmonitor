@@ -91,7 +91,7 @@ message PhysicalDivergenceReading {
   // Explicit availability and freshness state.
   PhysicalDivergenceState state = 2;
   // Machine-readable explanation for the state.
-  string reason = 3;
+  string reason = 3 [(buf.validate.field).string.pattern = "^(?:|history_points_below_60|physical_print_older_than_12_calendar_days|paper_snapshot_older_than_36_hours|fx_snapshot_older_than_60_hours|current_premium_missing|evaluation_clock_invalid|physical_print_invalid|paper_snapshot_invalid|fx_snapshot_invalid|physical_print_in_future|paper_snapshot_in_future|fx_snapshot_in_future|history_window_not_aligned|history_values_invalid|divergence_snapshot_unavailable|divergence_methodology_unsupported)$"];
   // Distribution regime for an OK reading.
   PhysicalPremiumRegime regime = 4;
   // Normalized divergence index from 0 to 100.
@@ -145,7 +145,7 @@ message PhysicalStressComposite {
   // Fail-closed aggregate state.
   PhysicalDivergenceState state = 1;
   // Machine-readable explanation for the aggregate state.
-  string reason = 2;
+  string reason = 2 [(buf.validate.field).string.pattern = "^(?:|divergence_snapshot_unavailable|divergence_methodology_unsupported|member_not_ok:gold:missing_input|member_not_ok:silver:missing_input|member_not_ok:gold:stale_input|member_not_ok:silver:stale_input|member_not_ok:gold:insufficient_history|member_not_ok:silver:insufficient_history)$"];
   // Weighted aggregate index from 0 to 100 when state is OK.
   optional double index = 3;
   // Fixed metal weights used by the aggregate.

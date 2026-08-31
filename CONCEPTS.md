@@ -388,6 +388,12 @@ A gate failure caused by an external service being unavailable or answering unus
 
 Two properties keep the soft path from becoming a hole. It may fire only when the external system produced no usable result at all, never when a result exists and reports a genuine problem; and the skip must be annotated with what went unchecked, because an unannounced skip is indistinguishable from a pass. The diagnostic corollary matters as much as the split: because the tree is not the variable, the same commit can pass and then fail with nothing changed, so a gate that reddens repo-wide is diagnosed by comparing *when* each run executed rather than by reading pass/fail — sibling branches showing green are often stale runs from before the outage. See also: Tiered Gate, Vacuous Guard.
 
+### Identity Gate
+
+The state-dependent pre-push check that refuses to publish commits whose author or committer email matches a known test-fixture pattern, and fails a push outright while the shared repository configuration itself still carries such an identity. It exists because git hands its repository-location environment down to hook children, overriding their working directory — so an un-isolated test fixture run by the hook writes its fake identity into configuration that every linked worktree inherits.
+
+The gate checks the state that will actually be published rather than trusting upstream hardening: outgoing commits and the shared configuration are examined at push time, so a leak produced by a stale worktree running an old hook is still caught at the boundary even when the current tree is fully isolated. On failure it prints the repair recipe rather than only refusing, because the pusher is usually not the party that poisoned the configuration. See also: Tiered Gate.
+
 ### Baselined Advisory
 
 A dependency advisory the security gate knowingly tolerates, recorded per-lockfile with written reasoning for why the vulnerable path is unreachable in this project — typically a build-time-only or dev-tooling chain, or a fix that is semver-major on a parent the project cannot yet move.

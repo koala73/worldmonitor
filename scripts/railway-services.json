@@ -27,6 +27,7 @@
       "scripts/ais-relay.cjs",
       "scripts/docs-stats.mjs",
       "scripts/generate-inventory-facts.mjs",
+      "scripts/lib/classify-digest-request.cjs",
       "scripts/lib/digest-stale-gate.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
@@ -525,6 +526,7 @@
       "scripts/shared/iso2-to-region.json",
       "scripts/shared/iso3-to-iso2.json",
       "scripts/shared/notification-dedup.cjs",
+      "scripts/shared/physical-divergence-contract.js",
       "scripts/shared/physical-divergence-staleness.js",
       "shared/country-names.json",
       "shared/iso3-to-iso2.json"
@@ -696,6 +698,7 @@
       "scripts/shared/country-names.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
+      "scripts/shared/physical-divergence-contract.js",
       "scripts/shared/physical-divergence-staleness.js",
       "scripts/shared/sovereign-status.json",
       "shared/iso2-to-iso3.json"

@@ -22,6 +22,7 @@ import { readCachedJson } from '../../../_shared/redis';
 import { markNoStoreFallbackResponse } from '../../../_shared/response-headers';
 import { parseStringArray } from './_shared';
 import { resolvePhysicalPremiumMetals } from './get-physical-premiums';
+import { PHYSICAL_DIVERGENCE_CONTRACT } from '../../../../shared/physical-divergence-contract.js';
 
 const PHYSICAL_DIVERGENCE_KEY = 'market:physical-divergence:v1';
 
@@ -98,7 +99,7 @@ function mapComposite(raw: PhysicalDivergenceRawComposite): PhysicalStressCompos
 
 function missingResponse(
   metals: readonly string[],
-  reason = 'divergence_snapshot_unavailable',
+  reason: string = PHYSICAL_DIVERGENCE_CONTRACT.reasons.snapshotUnavailable,
 ): GetPhysicalDivergenceIndexResponse {
   const selected = metals.length > 0 ? metals : PHYSICAL_DIVERGENCE_METALS;
   return {
@@ -114,16 +115,17 @@ function missingResponse(
       historyWindowEnd: '',
       physicalAsOf: '',
       paperAsOf: 0,
-      historyKey: `market:physical-premium-history:v1:${metal}`,
+      historyKey: PHYSICAL_DIVERGENCE_CONTRACT.metals[metal as keyof typeof PHYSICAL_DIVERGENCE_CONTRACT.metals].historyKey,
       methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
     })),
     composite: {
       state: 'PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT',
       reason,
-      weights: [
-        { metal: 'gold', weight: 0.7, methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION },
-        { metal: 'silver', weight: 0.3, methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION },
-      ],
+      weights: PHYSICAL_DIVERGENCE_CONTRACT.metalOrder.map((metal) => ({
+        metal,
+        weight: PHYSICAL_DIVERGENCE_CONTRACT.metals[metal].weight,
+        methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
+      })),
       methodologyVersion: PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION,
     },
     evaluatedAt: 0,
@@ -149,7 +151,7 @@ export const getPhysicalDivergenceIndex: MarketServiceHandler['getPhysicalDiverg
     if (isUnsupportedPhysicalDivergenceMethodology(error)) {
       return markNoStoreFallbackResponse(
         ctx.request,
-        missingResponse(metals, 'divergence_methodology_unsupported'),
+        missingResponse(metals, PHYSICAL_DIVERGENCE_CONTRACT.reasons.methodologyUnsupported),
       );
     }
     throw error;

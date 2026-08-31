@@ -480,10 +480,21 @@ describe('crawlable content corpus deployment contracts', () => {
         source.indexOf('node scripts/generate-inventory-facts.mjs') < source.indexOf('npx vite build'),
         name + ' must generate ignored inventory assets in a clean build context before Vite runs',
       );
+      // generate-inventory-facts and build-handlers write untracked .js into
+      // SOURCE_ROOTS. The corpus step runs the attribution drift gate against
+      // those same roots, so it must see the pristine tree (#7435).
+      assert.ok(
+        source.indexOf('npm run build:crawlable-corpus') < source.indexOf('node scripts/generate-inventory-facts.mjs'),
+        name + ' must run the attribution gate before inventory-facts writes untracked JS into api/',
+      );
     }
     assert.ok(
       dockerfileSource.indexOf('node scripts/generate-inventory-facts.mjs') < dockerfileSource.indexOf('node docker/build-handlers.mjs'),
       'the self-host image must generate the Edge inventory module before handler bundling',
+    );
+    assert.ok(
+      dockerfileSource.indexOf('npm run build:crawlable-corpus') < dockerfileSource.indexOf('node docker/build-handlers.mjs'),
+      'the self-host image must run the attribution gate before build-handlers writes compiled .js into api/',
     );
     assert.match(frontendDockerfileSource, /RUN test -s dist\/product-facts\.json/);
     assert.ok(!packageJson.scripts['build:full'].includes('npm run build:blog &&'), 'build:full must not regenerate inventory facts inside build:blog');

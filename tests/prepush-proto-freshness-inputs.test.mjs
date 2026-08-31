@@ -109,7 +109,7 @@ function makeProtoInputRepo() {
     writeFileSync(target, contents);
   };
   git(['init', '--quiet', '--initial-branch=main', '.']);
-  git(['config', 'user.email', 'proto-freshness@example.invalid']);
+  git(['config', 'user.email', 'proto-freshness@wm-fixture.localhost']);
   git(['config', 'user.name', 'Proto Freshness Fixture']);
   write('proto/service.proto', 'syntax = "proto3";\n');
   write('Makefile', 'generate:\n\t@true\n');

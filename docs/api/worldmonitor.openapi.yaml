@@ -19154,7 +19154,7 @@ paths:
                                 "composite":
                                     "index": 1.5
                                     "methodologyVersion": "example"
-                                    "reason": "example"
+                                    "reason": ""
                                     "state": "PHYSICAL_DIVERGENCE_STATE_OK"
                                     "weights":
                                         - "metal": "example"
@@ -46798,6 +46798,7 @@ components:
                     description: PhysicalDivergenceState is exhaustive for every divergence consumer.
                 reason:
                     type: string
+                    pattern: ^(?:|history_points_below_60|physical_print_older_than_12_calendar_days|paper_snapshot_older_than_36_hours|fx_snapshot_older_than_60_hours|current_premium_missing|evaluation_clock_invalid|physical_print_invalid|paper_snapshot_invalid|fx_snapshot_invalid|physical_print_in_future|paper_snapshot_in_future|fx_snapshot_in_future|history_window_not_aligned|history_values_invalid|divergence_snapshot_unavailable|divergence_methodology_unsupported)$
                     description: Machine-readable explanation for the state.
                 regime:
                     type: string
@@ -46935,6 +46936,7 @@ components:
                     description: PhysicalDivergenceState is exhaustive for every divergence consumer.
                 reason:
                     type: string
+                    pattern: ^(?:|divergence_snapshot_unavailable|divergence_methodology_unsupported|member_not_ok:gold:missing_input|member_not_ok:silver:missing_input|member_not_ok:gold:stale_input|member_not_ok:silver:stale_input|member_not_ok:gold:insufficient_history|member_not_ok:silver:insufficient_history)$
                     description: Machine-readable explanation for the aggregate state.
                 index:
                     type: number

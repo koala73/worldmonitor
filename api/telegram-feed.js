@@ -377,9 +377,14 @@ export default async function handler(req) {
     const isTimeout = error?.name === 'AbortError';
     // No `details`: the underlying message can carry relay transport detail
     // (undici cause chains, MTProto text) and the browser has no use for it.
-    // It is captured server-side instead.
+    // Non-timeout failures are captured server-side instead.
     console.warn('[telegram-feed] relay request failed:', error?.message || String(error));
-    void captureSilentError(error, { tags: { route: 'api/telegram-feed', step: 'relay-fetch' } });
+    // Skip Sentry on AbortError — fetchWithTimeout aborts on the mode budget
+    // (TELEGRAM_RELAY_TIMEOUT_MS); those 504s are routine relay latency, not
+    // product defects. Match api/rss-proxy.js. Keep capturing real failures.
+    if (!isTimeout) {
+      void captureSilentError(error, { tags: { route: 'api/telegram-feed', step: 'relay-fetch' } });
+    }
     return jsonResponse({
       error: isTimeout ? 'Relay timeout' : 'Relay request failed',
     }, isTimeout ? 504 : 502, { 'Cache-Control': 'no-store', ...corsHeaders });

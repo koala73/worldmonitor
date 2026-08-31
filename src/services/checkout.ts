@@ -54,7 +54,7 @@ import {
 } from './checkout-banner-state';
 import { startEntitlementWait } from './checkout-entitlement-wait';
 import { isAffiliateCode, loadActiveReferral } from './referral-capture';
-import { trackCheckoutStart } from './analytics';
+import { trackCheckoutStart, type CheckoutAttribution, type CheckoutSurface } from './analytics';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
@@ -168,6 +168,8 @@ interface PendingCheckoutIntent {
   productId: string;
   referralCode?: string;
   discountCode?: string;
+  /** Mission/panel attribution from the originating surface; re-bucketed on emit. */
+  analyticsAttribution?: CheckoutAttribution;
   /**
    * User id who saved this intent, or null if saved anonymously (the
    * common "click Buy, get sign-in modal" path). On resume, we only
@@ -740,7 +742,11 @@ export async function resumePendingCheckout(options?: {
       referralCode: intent.referralCode,
       discountCode: intent.discountCode,
     },
-    { fallbackToPricingPage: false, analyticsSurface: 'dashboard-resume' },
+    {
+      fallbackToPricingPage: false,
+      analyticsSurface: 'dashboard-resume',
+      analyticsAttribution: intent.analyticsAttribution,
+    },
   );
   if (success) clearPendingCheckoutIntent();
   return success;
@@ -840,7 +846,11 @@ export async function startCheckout(
     attributionSource?: string;
     bypassPendingGuard?: boolean;
   },
-  behavior?: { fallbackToPricingPage?: boolean; analyticsSurface?: 'dashboard' | 'dashboard-resume' },
+  behavior?: {
+    fallbackToPricingPage?: boolean;
+    analyticsSurface?: CheckoutSurface;
+    analyticsAttribution?: CheckoutAttribution;
+  },
 ): Promise<boolean> {
   if (_checkoutInFlight) return false;
   const fallbackToPricingPage = behavior?.fallbackToPricingPage ?? true;
@@ -851,12 +861,16 @@ export async function startCheckout(
   // intent clicks are counted (flagged authed:false). The post-sign-in
   // auto-resume passes 'dashboard-resume' so a signed-out conversion isn't
   // read as two independent attempts.
-  trackCheckoutStart(productId, Boolean(user), behavior?.analyticsSurface ?? 'dashboard');
+  trackCheckoutStart(productId, Boolean(user), behavior?.analyticsSurface ?? 'dashboard', behavior?.analyticsAttribution);
   if (!user) {
     const intent = {
       productId,
       referralCode: options?.referralCode,
       discountCode: options?.discountCode,
+      // Kept so the post-sign-in auto-resume re-emits checkout-start with the
+      // originating mission/panel; trackCheckoutStart re-buckets on emit, so a
+      // tampered stored value still collapses to 'unknown'.
+      analyticsAttribution: behavior?.analyticsAttribution,
     };
     reportCheckoutError(
       classifySyntheticCheckoutError('unauthorized'),
@@ -1065,6 +1079,7 @@ export async function startCheckout(
           productId,
           referralCode: options?.referralCode,
           discountCode: options?.discountCode,
+          analyticsAttribution: behavior?.analyticsAttribution,
         });
         openSignIn();
         return false;

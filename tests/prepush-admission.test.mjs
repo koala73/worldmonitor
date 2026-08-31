@@ -82,7 +82,7 @@ describe('pre-push heavy-phase admission', () => {
     const gitEnv = isolatedGitEnv();
     mkdirSync(repo);
     execFileSync('git', ['init', '--quiet', '--initial-branch=main', '.'], { cwd: repo, env: gitEnv });
-    execFileSync('git', ['config', 'user.email', 'prepush-admission@example.invalid'], { cwd: repo, env: gitEnv });
+    execFileSync('git', ['config', 'user.email', 'prepush-admission@wm-fixture.localhost'], { cwd: repo, env: gitEnv });
     execFileSync('git', ['config', 'user.name', 'Prepush Admission Fixture'], { cwd: repo, env: gitEnv });
     execFileSync('git', ['commit', '--quiet', '--allow-empty', '-m', 'base'], { cwd: repo, env: gitEnv });
     const worktrees = Array.from({ length: 5 }, (_, index) => join(dir, `worktree-${index + 1}`));

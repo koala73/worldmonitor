@@ -10,6 +10,7 @@ import { subscribeAuthState, type AuthSession } from './auth-state';
 import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
+import { SITE_VARIANT, isSiteVariant } from '@/config/variant';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
 import {
   collectorFailureFromError,
@@ -183,6 +184,20 @@ const EVENTS = {
   'passkey-offer-created': true,
   'passkey-offer-failed': true,
   'passkey-offer-dismissed': true,
+  // Mission conversion funnel (ONBOARDING_STRATEGY.md, plan 2026-08-30-001).
+  // Picker -> selection -> panel views -> preview -> attributed checkout.
+  // `panel-viewed` is global (the funnel needs a denominator) but deduped per
+  // panel per tab session inside trackPanelView, so volume stays bounded.
+  // The pro-preview-* and mission-returned-after-purchase names are pinned
+  // here from Release 0 so dashboards can be built before Release 1 emits
+  // them; their emission sites land with the preview component.
+  'mission-picker-shown': true,
+  'mission-selected': true,
+  'panel-viewed': true,
+  'pro-preview-viewed': true,
+  'pro-preview-cta': true,
+  'pro-preview-dismissed': true,
+  'mission-returned-after-purchase': true,
 } as const;
 
 export type UmamiEvent = keyof typeof EVENTS;
@@ -928,18 +943,87 @@ function forgetPendingConversion(event: PendingConversion['event']): void {
  * redirect. Entries stay durable until the collector confirms them, so this is
  * a no-op on ordinary boots.
  */
+const CHECKOUT_SURFACES: ReadonlySet<string> = new Set([
+  'dashboard',
+  'dashboard-resume',
+  'mission-preview',
+]);
+
+/**
+ * Rebuild a stored pending-conversion payload from an allowlist before
+ * replaying it. Write-time bucketing does not protect this path — the entry
+ * sat in sessionStorage, which a crafted value can reach directly — so the
+ * replay re-derives every field: ids through their bucketers, surface
+ * restricted to the known union, authed coerced, unknown keys dropped.
+ * Mirrors the sanitize-on-read rule the /pro funnel replay already follows.
+ */
+function sanitizePendingConversionData(
+  event: PendingConversion['event'],
+  data: Record<string, unknown>,
+): Record<string, unknown> {
+  if (event === 'checkout-failed') {
+    const status = data.status;
+    return {
+      status: typeof status === 'string' && CHECKOUT_FAILED_STATUSES.has(status) ? status : 'other',
+    };
+  }
+  const out: Record<string, unknown> = {
+    productId: bucketProductIdForAnalytics(typeof data.productId === 'string' ? data.productId : ''),
+    surface: typeof data.surface === 'string' && CHECKOUT_SURFACES.has(data.surface)
+      ? data.surface
+      : 'dashboard',
+    authed: data.authed === true,
+  };
+  if (typeof data.missionId === 'string') out.missionId = bucketMissionIdForAnalytics(data.missionId);
+  if (typeof data.panelKey === 'string') out.panelKey = bucketPanelKeyForAnalytics(data.panelKey);
+  if (typeof data.variant === 'string' && isSiteVariant(data.variant)) out.variant = data.variant;
+  if (data.deviceClass === 'mobile' || data.deviceClass === 'desktop') out.deviceClass = data.deviceClass;
+  return out;
+}
+
 export function replayPendingConversionEvents(): void {
   for (const item of readPendingConversions()) {
-    track(item.event, { ...item.data, replayed: true });
+    track(item.event, { ...sanitizePendingConversionData(item.event, item.data), replayed: true });
   }
+}
+
+export type CheckoutSurface = 'dashboard' | 'dashboard-resume' | 'mission-preview';
+
+/**
+ * Optional mission attribution for a checkout. Ids are bucketed against their
+ * closed vocabularies before they reach Umami for the same reason as
+ * bucketProductIdForAnalytics: the dashboard-resume path replays payloads that
+ * travelled through sessionStorage, so a crafted value must not inject
+ * unbounded cardinality.
+ */
+export interface CheckoutAttribution {
+  missionId?: string;
+  panelKey?: string;
 }
 
 export function trackCheckoutStart(
   productId: string,
   authed: boolean,
-  surface: 'dashboard' | 'dashboard-resume' = 'dashboard',
+  surface: CheckoutSurface = 'dashboard',
+  attribution?: CheckoutAttribution,
 ): void {
-  const data = { productId: bucketProductIdForAnalytics(productId), surface, authed };
+  // Seeded with the shared funnel context (variant, deviceClass, ambient
+  // missionId) so the baseline read can segment checkout-starts. Semantics of
+  // missionId on this event: ambient mission context when the surface is a
+  // generic one ('dashboard'), preview-attributed when explicit attribution
+  // overrides it below (surface 'mission-preview').
+  const data: Record<string, unknown> = {
+    ...missionFunnelFields(),
+    productId: bucketProductIdForAnalytics(productId),
+    surface,
+    authed,
+  };
+  if (attribution?.missionId != null) {
+    data.missionId = bucketMissionIdForAnalytics(attribution.missionId);
+  }
+  if (attribution?.panelKey != null) {
+    data.panelKey = bucketPanelKeyForAnalytics(attribution.panelKey);
+  }
   rememberPendingConversion('checkout-start', data);
   track('checkout-start', data);
 }
@@ -1189,7 +1273,207 @@ export function trackProActivation(
 
 export function trackEvent(_name: string, _props?: Record<string, unknown>): void {}
 export function trackEventBeforeUnload(_name: string, _props?: Record<string, unknown>): void {}
-export function trackPanelView(_panelId: string): void {}
+
+// ---------------------------------------------------------------------------
+// Mission conversion funnel (ONBOARDING_STRATEGY.md, plan 2026-08-30-001)
+// ---------------------------------------------------------------------------
+
+/**
+ * Keep 768 in sync with MOBILE_BREAKPOINT_PX in src/utils/index.ts (and the
+ * matching media query noted in src/styles/main.css). Duplicated literally
+ * rather than imported so the analytics module graph stays free of the utils
+ * barrel, which is not safely importable under node for tests.
+ */
+const MISSION_FUNNEL_MOBILE_BREAKPOINT_PX = 768;
+
+function analyticsDeviceClass(): 'mobile' | 'desktop' {
+  if (typeof window === 'undefined') return 'desktop';
+  return window.innerWidth <= MISSION_FUNNEL_MOBILE_BREAKPOINT_PX ? 'mobile' : 'desktop';
+}
+
+/**
+ * Mission-id vocabulary and storage key, duplicated literally from
+ * src/services/mission-presets.ts and pinned against it by
+ * tests/mission-funnel-events.test.mts. Importing mission-presets here would
+ * drag config/panels' side-effectful chain (runtime-config registers window
+ * listeners at import) into the analytics module graph — the same reason
+ * KNOWN_PRODUCT_IDS is a separate generated module (#5165).
+ */
+const MISSION_PRESET_STORAGE_KEY = 'worldmonitor-mission-preset-v1';
+const KNOWN_MISSION_IDS = new Set([
+  'crisis-desk',
+  'supply-chain-risk',
+  'energy-security',
+  'osint-newsroom',
+  'macro-market-watch',
+  'tech-ai-watch',
+  'good-news-explorer',
+]);
+
+/** Unknown mission ids collapse to 'unknown' — closed vocabulary, like productId. */
+export function bucketMissionIdForAnalytics(missionId: string): string {
+  return KNOWN_MISSION_IDS.has(missionId) ? missionId : 'unknown';
+}
+
+/**
+ * Panel keys at every call site are code-controlled (panel registry constants,
+ * `data-panel` attributes our own mount code writes), so this is a structural
+ * guard, not a catalog check: anything that does not look like a panel key
+ * collapses to 'unknown'. The full catalog lives in config/panels, whose
+ * import-time side effects must stay out of the analytics graph. The registry
+ * mixes kebab-case and camelCase ids (`gccNews`, `regionalStartups`), so the
+ * shape allows interior uppercase; the real-catalog sweep in
+ * tests/mission-funnel-events.test.mts pins that every live key passes.
+ */
+const PANEL_KEY_PATTERN = /^[a-z][a-zA-Z0-9-]{0,39}$/;
+
+/**
+ * User-created panels carry generated ids (`cw-<uuid>` custom widgets,
+ * `mcp-<uuid>` MCP panels) that pass the structural guard but would fragment
+ * the funnel into one Umami row per widget instance. Collapse each family to
+ * a stable bucket before the shape check.
+ */
+const DYNAMIC_PANEL_KEY_BUCKETS: ReadonlyArray<[prefix: string, bucket: string]> = [
+  ['cw-', 'custom-widget'],
+  ['mcp-', 'mcp-panel'],
+];
+
+export function bucketPanelKeyForAnalytics(panelKey: string): string {
+  for (const [prefix, bucket] of DYNAMIC_PANEL_KEY_BUCKETS) {
+    if (panelKey.startsWith(prefix)) return bucket;
+  }
+  return PANEL_KEY_PATTERN.test(panelKey) ? panelKey : 'unknown';
+}
+
+/**
+ * Shared context fields for every mission-funnel event: the active mission (if
+ * any), the site variant, and the device class. The stored mission id is
+ * validated against the closed vocabulary, so a corrupted localStorage value
+ * reads as absent rather than flowing to Umami.
+ */
+function missionFunnelFields(): Record<string, unknown> {
+  const fields: Record<string, unknown> = {
+    variant: SITE_VARIANT,
+    deviceClass: analyticsDeviceClass(),
+  };
+  try {
+    const stored = window.localStorage.getItem(MISSION_PRESET_STORAGE_KEY);
+    if (stored && KNOWN_MISSION_IDS.has(stored)) fields.missionId = stored;
+  } catch {
+    // Storage denied — the event still carries variant + device class.
+  }
+  return fields;
+}
+
+/**
+ * Session-scoped dedupe for panel-viewed (KTD5): a panel fires once per tab
+ * session, not once per page load, so reload-heavy dashboard sessions do not
+ * multiply the funnel denominator. sessionStorage is per-tab; when it is
+ * unavailable the in-memory set still bounds a single page's emissions.
+ */
+const PANEL_VIEWED_SESSION_KEY = 'wm-panel-viewed-v1';
+const PANEL_VIEWED_SESSION_LIMIT = 400;
+let viewedPanelsMemory = new Set<string>();
+
+function readViewedPanelsFromSession(): string[] {
+  try {
+    const raw = window.sessionStorage.getItem(PANEL_VIEWED_SESSION_KEY);
+    if (!raw) return [];
+    const items: unknown = JSON.parse(raw);
+    return Array.isArray(items) ? items.filter((i): i is string => typeof i === 'string') : [];
+  } catch {
+    return [];
+  }
+}
+
+function rememberViewedPanel(panelId: string): void {
+  viewedPanelsMemory.add(panelId);
+  try {
+    const items = readViewedPanelsFromSession();
+    items.push(panelId);
+    window.sessionStorage.setItem(
+      PANEL_VIEWED_SESSION_KEY,
+      JSON.stringify(items.slice(-PANEL_VIEWED_SESSION_LIMIT)),
+    );
+  } catch {
+    // Storage denied — the in-memory set still dedupes this page.
+  }
+}
+
+function hasViewedPanel(panelId: string): boolean {
+  if (viewedPanelsMemory.has(panelId)) return true;
+  return readViewedPanelsFromSession().includes(panelId);
+}
+
+/** `keepSession: true` clears only the in-memory set — simulates a page reload. */
+export function resetMissionFunnelAnalyticsForTesting(opts?: { keepSession?: boolean }): void {
+  viewedPanelsMemory = new Set();
+  if (opts?.keepSession) return;
+  try {
+    window.sessionStorage.removeItem(PANEL_VIEWED_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+/**
+ * Real emitter for the former no-op: one event per panel per tab session,
+ * carrying the funnel context. Callers (the IntersectionObserver in
+ * event-handlers) may keep their own cheap in-memory dedupe; the authoritative
+ * session dedupe lives here so every caller gets it.
+ */
+export function trackPanelView(panelId: string): void {
+  if (hasViewedPanel(panelId)) return;
+  rememberViewedPanel(panelId);
+  track('panel-viewed', { panelKey: bucketPanelKeyForAnalytics(panelId), ...missionFunnelFields() });
+}
+
+export type MissionPickerTrigger = 'auto' | 'manual' | 'agent';
+
+export function trackMissionPickerShown(
+  trigger: MissionPickerTrigger,
+  surface: 'desktop' | 'mobile',
+): void {
+  track('mission-picker-shown', { trigger, surface, ...missionFunnelFields() });
+}
+
+/** `source: 'agent'` marks WebMCP-applied presets so the human funnel can be read clean. */
+export function trackMissionSelected(missionId: string, source: 'user' | 'agent' = 'user'): void {
+  track('mission-selected', {
+    ...missionFunnelFields(),
+    missionId: bucketMissionIdForAnalytics(missionId),
+    source,
+  });
+}
+
+function trackProPreviewEvent(
+  event: 'pro-preview-viewed' | 'pro-preview-cta' | 'pro-preview-dismissed' | 'mission-returned-after-purchase',
+  missionId: string,
+  panelKey: string,
+): void {
+  track(event, {
+    ...missionFunnelFields(),
+    missionId: bucketMissionIdForAnalytics(missionId),
+    panelKey: bucketPanelKeyForAnalytics(panelKey),
+  });
+}
+
+export function trackProPreviewViewed(missionId: string, panelKey: string): void {
+  trackProPreviewEvent('pro-preview-viewed', missionId, panelKey);
+}
+
+export function trackProPreviewCta(missionId: string, panelKey: string): void {
+  trackProPreviewEvent('pro-preview-cta', missionId, panelKey);
+}
+
+export function trackProPreviewDismissed(missionId: string, panelKey: string): void {
+  trackProPreviewEvent('pro-preview-dismissed', missionId, panelKey);
+}
+
+export function trackMissionReturnedAfterPurchase(missionId: string, panelKey: string): void {
+  trackProPreviewEvent('mission-returned-after-purchase', missionId, panelKey);
+}
+
 export function trackApiKeysSnapshot(): void {}
 export function trackUpdateShown(_current: string, _remote: string): void {}
 export function trackUpdateClicked(_version: string): void {}

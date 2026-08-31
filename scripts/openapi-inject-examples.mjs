@@ -598,6 +598,7 @@ function stringExample(name, schema = {}, context = {}) {
   if (schema.pattern === '^(?:|observed|retained|derived)$') return 'observed';
   if (schema.pattern === '^[A-Z]{2}$') return 'US';
   if (schema.pattern === '^(?:|[A-Z]{2})$') return 'US';
+  if (key === 'reason' && where.includes('getphysicaldivergenceindex')) return '';
   // get-similar-events `situation` enforces min_len 10; the generic
   // placeholder is shorter and produces an un-runnable request sample.
   if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);

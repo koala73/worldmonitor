@@ -164,7 +164,7 @@ describe('Telegram alert-tier policy (#6600)', () => {
     const classifyEnd = aisRelaySrc.indexOf('\nasync function seedClassify()', classifyStart);
     assert.ok(classifyStart >= 0 && classifyEnd > classifyStart);
     const classifyFn = aisRelaySrc.slice(classifyStart, classifyEnd);
-    assert.match(classifyFn, /list-feed-digest/);
+    assert.match(classifyFn, /buildClassifyDigestUrl\(variant\)/);
     assert.doesNotMatch(classifyFn, /telegramState\.items/);
 
     // BEFORE: generic platform source and unlisted labels default to 4 for

@@ -79,6 +79,9 @@ import {
 } from '@/services';
 import {
   track,
+  trackMissionPickerShown,
+  type MissionPickerTrigger,
+  trackMissionSelected,
   trackPanelView,
   trackVariantSwitch,
   trackMapViewChange,
@@ -111,6 +114,7 @@ import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import {
   isAgentAnalyticsSuppressed,
   isAgentPanelViewSuppressed,
+  suppressNextAgentPanelView,
 } from '@/services/agent-analytics-privacy';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
@@ -905,8 +909,8 @@ export class EventHandlerManager implements AppModule {
       // the idle wait can outlast an early user choice.
       scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
-        if (loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
-        this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false);
+        if (this.missionPresetPopover || loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
+        this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false, 'auto');
       });
     }
   }
@@ -956,8 +960,16 @@ export class EventHandlerManager implements AppModule {
     this.openMissionPresetPopover(anchor, mobile);
   }
 
-  private openMissionPresetPopover(anchor: HTMLElement | null, mobile: boolean): void {
+  private openMissionPresetPopover(
+    anchor: HTMLElement | null,
+    mobile: boolean,
+    trigger: MissionPickerTrigger = 'manual',
+  ): void {
     this.closeMissionPresetPopover();
+    // One emission site covers every path onto the picker: the desktop button,
+    // the mobile menu item, the deferred auto-open, and the WebMCP entry
+    // (tagged 'agent' so the human funnel reads clean).
+    trackMissionPickerShown(trigger, mobile ? 'mobile' : 'desktop');
     // The desktop trigger (#missionPresetBtn) is display:none on mobile, where the
     // popover opens from the menu item instead, so remember the real opener.
     this.missionPresetReturnFocus = anchor ?? document.getElementById('missionPresetBtn');
@@ -1196,7 +1208,7 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
-  private applyMissionPreset(presetId: MissionPresetId): void {
+  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): void {
     const applied = applyMissionPresetToState(
       presetId,
       this.ctx.panelSettings,
@@ -1212,6 +1224,16 @@ export class EventHandlerManager implements AppModule {
     saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
     this.persistMissionPanelOrder(applied.panelOrder);
     saveMissionPreset(applied.preset.id);
+    trackMissionSelected(applied.preset.id, source);
+    if (source === 'agent') {
+      // An agent-applied preset mounts panels the user never asked to see.
+      // Suppress the panel-view records those mounts trigger (same rule the
+      // WebMCP search flows apply via search-selection-dispatcher) so the
+      // funnel's denominator stays human.
+      for (const [key, cfg] of Object.entries(applied.panelSettings)) {
+        if (cfg?.enabled) suppressNextAgentPanelView(key);
+      }
+    }
 
     this.applyPanelSettings();
     this.callbacks.applySavedPanelOrder?.(applied.panelOrder);
@@ -1237,7 +1259,7 @@ export class EventHandlerManager implements AppModule {
     if (this.ctx.isDestroyed) return false;
     const mobile = this.ctx.isMobile;
     const anchor = document.getElementById(mobile ? 'mobileMenuMission' : 'missionPresetBtn');
-    this.openMissionPresetPopover(anchor, mobile);
+    this.openMissionPresetPopover(anchor, mobile, 'agent');
     return this.missionPresetPopover !== null;
   }
 
@@ -1256,7 +1278,7 @@ export class EventHandlerManager implements AppModule {
 
     const snapshot = this.snapshotMissionDashboardState();
     try {
-      this.applyMissionPreset(presetId);
+      this.applyMissionPreset(presetId, 'agent');
       const nextPresetId = loadStoredMissionPreset()?.id ?? null;
       const mapState = this.ctx.map?.getState();
       const changed = snapshot.presetId !== nextPresetId
@@ -2322,11 +2344,19 @@ export class EventHandlerManager implements AppModule {
 
     const grid = document.getElementById('panelsGrid');
     if (grid) {
-      for (const child of Array.from(grid.children)) {
-        if ((child as HTMLElement).dataset.panel) {
-          observer.observe(child);
+      const observeGridPanels = () => {
+        for (const child of Array.from(grid.children)) {
+          if ((child as HTMLElement).dataset.panel) {
+            observer.observe(child);
+          }
         }
-      }
+      };
+      observeGridPanels();
+      // Panels mounted after boot (mission apply, add-panel, tab switch) must
+      // join the funnel denominator too; observe() is idempotent, so a bulk
+      // re-scan per childList change is cheap and cannot double-count.
+      const lateMounts = new MutationObserver(() => observeGridPanels());
+      lateMounts.observe(grid, { childList: true });
     }
   }
 

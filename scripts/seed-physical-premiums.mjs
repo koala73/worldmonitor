@@ -39,6 +39,7 @@ import {
   isPhysicalDivergencePrintFuture,
   physicalDivergenceStaleReason,
 } from './shared/physical-divergence-staleness.js';
+import { PHYSICAL_DIVERGENCE_CONTRACT } from './shared/physical-divergence-contract.js';
 import {
   HISTORY_LIMIT,
   METHODOLOGY_VERSION,
@@ -111,22 +112,14 @@ const SGE_MAX_CONTENT_AGE_MIN = 10 * DAY_MIN;
 const SGE_GOLD_URL = 'https://en.sge.com.cn/data_BenchmarkPrice_Daily';
 const SGE_SILVER_URL = 'https://en.sge.com.cn/data/data_silver_daily';
 
-const METALS = [
-  {
-    metal: 'gold',
-    contract: 'SHAU',
-    unit: 'gram',
-    paperSymbol: 'GC=F',
-    url: SGE_GOLD_URL,
-  },
-  {
-    metal: 'silver',
-    contract: 'SHAG',
-    unit: 'kilogram',
-    paperSymbol: 'SI=F',
-    url: SGE_SILVER_URL,
-  },
-];
+const METAL_URLS = { gold: SGE_GOLD_URL, silver: SGE_SILVER_URL };
+const METALS = PHYSICAL_DIVERGENCE_CONTRACT.metalOrder.map((metal) => ({
+  metal,
+  contract: PHYSICAL_DIVERGENCE_CONTRACT.metals[metal].physicalSymbol,
+  unit: PHYSICAL_DIVERGENCE_CONTRACT.metals[metal].physicalUnit,
+  paperSymbol: PHYSICAL_DIVERGENCE_CONTRACT.metals[metal].paperSymbol,
+  url: METAL_URLS[metal],
+}));
 
 export function shouldWritePhysicalPremiumActivationMarker(env) {
   return env === 'production';
@@ -271,7 +264,7 @@ function findPriorReading(snapshot, metal) {
   if (!Array.isArray(snapshot.readings)) throw nonRetryableError('Prior physical divergence snapshot has no readings');
   const reading = snapshot.readings.find((candidate) => candidate?.metal === metal);
   if (!reading) return null;
-  if (!['ok', 'insufficient_history', 'stale_input', 'missing_input'].includes(reading.state)) {
+  if (!PHYSICAL_DIVERGENCE_CONTRACT.states.includes(reading.state)) {
     throw nonRetryableError(`Prior physical divergence snapshot has unknown state: ${reading.state}`);
   }
   return reading;
@@ -407,7 +400,7 @@ function physicalDivergencePriorHighWater(previousMeta) {
 }
 
 export function physicalDivergenceMeta(snapshot, nowMs, previousMeta = null) {
-  const stateCounts = { ok: 0, insufficient_history: 0, stale_input: 0, missing_input: 0 };
+  const stateCounts = Object.fromEntries(PHYSICAL_DIVERGENCE_CONTRACT.states.map((state) => [state, 0]));
   for (const reading of snapshot?.readings ?? []) {
     if (Object.hasOwn(stateCounts, reading?.state)) stateCounts[reading.state] += 1;
   }
@@ -864,8 +857,8 @@ export async function fetchPhysicalPremiumPayload(
   } = {},
 ) {
   const [goldHtml, silverHtml, commoditySnapshot, fxSnapshot] = await Promise.all([
-    fetchSgeHtmlFn(SGE_GOLD_URL, 'SHAU'),
-    fetchSgeHtmlFn(SGE_SILVER_URL, 'SHAG'),
+    fetchSgeHtmlFn(METALS[0].url, METALS[0].contract),
+    fetchSgeHtmlFn(METALS[1].url, METALS[1].contract),
     readSeedSnapshotFn(COMMODITY_QUOTES_KEY, { strict: true, includeEnvelopeMeta: true }),
     readSeedSnapshotFn(FX_RATES_KEY, { strict: true, includeEnvelopeMeta: true }),
   ]);

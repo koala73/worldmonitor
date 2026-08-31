@@ -3,24 +3,20 @@ import {
   isPhysicalDivergenceInstant,
   physicalDivergenceStaleReason,
 } from '../shared/physical-divergence-staleness.js';
+import {
+  PHYSICAL_DIVERGENCE_CONTRACT,
+  buildPhysicalStressComposite,
+  physicalDivergenceStateForFreshnessReason,
+} from '../shared/physical-divergence-contract.js';
 
-export const METHODOLOGY_VERSION = 'physical-divergence-v2';
-export const HISTORY_LIMIT = 750;
-export const TRAILING_WINDOW_POINTS = 250;
-export const MIN_HISTORY_POINTS = 60;
+export const METHODOLOGY_VERSION = PHYSICAL_DIVERGENCE_CONTRACT.methodologyVersion;
+export const HISTORY_LIMIT = PHYSICAL_DIVERGENCE_CONTRACT.history.retainedPoints;
+export const TRAILING_WINDOW_POINTS = PHYSICAL_DIVERGENCE_CONTRACT.history.windowPoints;
+export const MIN_HISTORY_POINTS = PHYSICAL_DIVERGENCE_CONTRACT.history.minimumPoints;
 // Two times the daily physical-print cadence prevents a repeated transition on the next seed run.
 export const TRANSITION_COOLDOWN_MS = 48 * 60 * 60 * 1000;
 
-const METAL_METHODOLOGY = Object.freeze({
-  gold: Object.freeze({
-    weight: 0.7,
-    absoluteFloors: Object.freeze({ elevated: 1, stressed: 3, extreme: 5 }),
-  }),
-  silver: Object.freeze({
-    weight: 0.3,
-    absoluteFloors: Object.freeze({ elevated: 5, stressed: 10, extreme: 20 }),
-  }),
-});
+const METAL_METHODOLOGY = PHYSICAL_DIVERGENCE_CONTRACT.metals;
 
 const REGIME_RANK = Object.freeze({ normal: 0, elevated: 1, stressed: 2, extreme: 3 });
 // Index floors stay ordered with absoluteStressIndex band tops. Absolute extreme alone
@@ -28,10 +24,6 @@ const REGIME_RANK = Object.freeze({ normal: 0, elevated: 1, stressed: 2, extreme
 // (#7423). Absolute stressed maps into [70, 90), so no stressed reading can outscore any
 // extreme reading.
 const REGIME_INDEX_FLOOR = Object.freeze({ normal: 0, elevated: 45, stressed: 70, extreme: 90 });
-const PROVENANCE_SYMBOLS = Object.freeze({
-  gold: Object.freeze({ physical: 'SHAU', paper: 'GC=F' }),
-  silver: Object.freeze({ physical: 'SHAG', paper: 'SI=F' }),
-});
 
 function finite(value) {
   return typeof value === 'number' && Number.isFinite(value);
@@ -165,7 +157,7 @@ export function isPhysicalPremiumHistoryPoint(value) {
 }
 
 function readingBase(metal, current, historyPoints, fx) {
-  const symbols = PROVENANCE_SYMBOLS[metal];
+  const contract = METAL_METHODOLOGY[metal];
   return {
     metal,
     premiumPct: finite(current?.premiumPct) ? current.premiumPct : null,
@@ -178,15 +170,15 @@ function readingBase(metal, current, historyPoints, fx) {
     methodologyVersion: METHODOLOGY_VERSION,
     provenance: {
       physicalSource: typeof current?.physical?.source === 'string' ? current.physical.source : '',
-      physicalSymbol: symbols.physical,
+      physicalSymbol: contract.physicalSymbol,
       physicalAsOf: isoDate(current?.physical?.asOf) ? current.physical.asOf : '',
       paperSource: typeof current?.paper?.source === 'string' ? current.paper.source : '',
-      paperSymbol: symbols.paper,
+      paperSymbol: contract.paperSymbol,
       paperAsOf: isoInstant(current?.paper?.asOf) ? current.paper.asOf : '',
       fxSource: typeof fx?.source === 'string' ? fx.source : '',
       fxPair: typeof fx?.pair === 'string' ? fx.pair : '',
       fxAsOf: isoInstant(fx?.asOf) ? fx.asOf : '',
-      historyKey: `market:physical-premium-history:v1:${metal}`,
+      historyKey: contract.historyKey,
       historyWindowPoints: TRAILING_WINDOW_POINTS,
       methodologyVersion: METHODOLOGY_VERSION,
     },
@@ -226,20 +218,21 @@ export function buildPhysicalDivergenceReading({ metal, current, history, fx, no
     || fx?.pair !== 'CNY/USD'
     || !isoInstant(fx?.asOf)
   ) {
-    return nonOkReading(base, 'missing_input', 'current_premium_missing');
+    return nonOkReading(base, 'missing_input', PHYSICAL_DIVERGENCE_CONTRACT.reasons.currentPremiumMissing);
   }
-  if (!Number.isFinite(nowMs)) return nonOkReading(base, 'missing_input', 'evaluation_clock_invalid');
+  if (!Number.isFinite(nowMs)) {
+    return nonOkReading(base, 'missing_input', PHYSICAL_DIVERGENCE_CONTRACT.reasons.evaluationClockInvalid);
+  }
   const staleReason = physicalDivergenceStaleReason({
     physicalAsOf: current.physical.asOf,
     paperAsOf: current.paper.asOf,
     fxAsOf: fx.asOf,
   }, nowMs);
-  if (staleReason?.endsWith('_in_future') || staleReason?.endsWith('_invalid')) {
-    return nonOkReading(base, 'missing_input', staleReason);
+  if (staleReason) {
+    return nonOkReading(base, physicalDivergenceStateForFreshnessReason(staleReason), staleReason);
   }
-  if (staleReason) return nonOkReading(base, 'stale_input', staleReason);
   if (window.length < MIN_HISTORY_POINTS) {
-    return nonOkReading(base, 'insufficient_history', 'history_points_below_60');
+    return nonOkReading(base, 'insufficient_history', PHYSICAL_DIVERGENCE_CONTRACT.reasons.historyPointsInsufficient);
   }
   // delta5d/delta20d index the window POSITIONALLY, which is only the true 5- and 20-print
   // delta when the current print is the newest stored one. The window is sorted by date, so
@@ -247,12 +240,14 @@ export function buildPhysicalDivergenceReading({ metal, current, history, fx, no
   // would silently shift both offsets while the reading still reported `ok`. Fail closed
   // instead of publishing a quietly wrong trend.
   if (window[0].date !== current.physical.asOf) {
-    return nonOkReading(base, 'missing_input', 'history_window_not_aligned');
+    return nonOkReading(base, 'missing_input', PHYSICAL_DIVERGENCE_CONTRACT.reasons.historyWindowNotAligned);
   }
 
   const values = window.map((entry) => entry.premiumPct);
   const percentile = percentileRank(current.premiumPct, values);
-  if (percentile == null) return nonOkReading(base, 'missing_input', 'history_values_invalid');
+  if (percentile == null) {
+    return nonOkReading(base, 'missing_input', PHYSICAL_DIVERGENCE_CONTRACT.reasons.historyValuesInvalid);
+  }
   const regime = classifyPhysicalPremiumRegime(metal, current.premiumPct, percentile);
   const delta5d = round(current.premiumPct - window[5].premiumPct);
   const delta20d = round(current.premiumPct - window[20].premiumPct);
@@ -274,57 +269,7 @@ export function buildPhysicalDivergenceReading({ metal, current, history, fx, no
   };
 }
 
-export function buildPhysicalStressComposite(readings) {
-  const byMetal = new Map((Array.isArray(readings) ? readings : []).map((reading) => [reading?.metal, reading]));
-  const weights = Object.entries(METAL_METHODOLOGY).map(([metal, methodology]) => ({
-    metal,
-    weight: methodology.weight,
-    methodologyVersion: METHODOLOGY_VERSION,
-  }));
-  for (const metal of Object.keys(METAL_METHODOLOGY)) {
-    const reading = byMetal.get(metal);
-    if (!reading) {
-      return {
-        state: 'missing_input',
-        reason: `member_not_ok:${metal}:missing_input`,
-        index: null,
-        weights,
-        methodologyVersion: METHODOLOGY_VERSION,
-      };
-    }
-    if (!['ok', 'insufficient_history', 'stale_input', 'missing_input'].includes(reading.state)) {
-      throw new TypeError(`Unknown physical divergence state: ${reading.state}`);
-    }
-  }
-  for (const state of ['missing_input', 'stale_input', 'insufficient_history']) {
-    const metal = Object.keys(METAL_METHODOLOGY)
-      .find((candidate) => byMetal.get(candidate)?.state === state);
-    if (!metal) continue;
-    return {
-      state,
-      reason: `member_not_ok:${metal}:${state}`,
-      index: null,
-      weights,
-      methodologyVersion: METHODOLOGY_VERSION,
-    };
-  }
-  for (const metal of Object.keys(METAL_METHODOLOGY)) {
-    if (!finite(byMetal.get(metal)?.index)) {
-      throw new TypeError(`Ok physical divergence reading has an invalid index: ${metal}`);
-    }
-  }
-  const index = Object.entries(METAL_METHODOLOGY).reduce(
-    (sum, [metal, config]) => sum + byMetal.get(metal).index * config.weight,
-    0,
-  );
-  return {
-    state: 'ok',
-    reason: '',
-    index: round(index, 2),
-    weights,
-    methodologyVersion: METHODOLOGY_VERSION,
-  };
-}
+export { buildPhysicalStressComposite };
 
 export function createPhysicalPremiumTransition({
   previous,

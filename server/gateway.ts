@@ -507,6 +507,10 @@ export const RELAY_WARM_PING_PATHS = new Set<string>([
   '/api/infrastructure/v1/list-temporal-anomalies',
   '/api/intelligence/v1/get-risk-scores',
   '/api/supply-chain/v1/get-chokepoint-status',
+  // Classify reads the same public digest a session holder can already trigger
+  // so self-host / Railway can send WORLDMONITOR_RELAY_KEY instead of an
+  // enterprise key (#7437).
+  '/api/news/v1/list-feed-digest',
 ]);
 
 /**
