@@ -22,9 +22,13 @@ const DASHBOARD_SCREENSHOT_ASSETS = [
   { filenamePrefix: DASHBOARD_SCREENSHOT_BASENAME + '-1280', extension: '.webp' },
 ];
 
-// This inline critical CSS is UNLAYERED, so it wins the cascade over the
-// full Tailwind stylesheet (which lives in @layer utilities) regardless of
-// specificity/media -- even after the deferred sheet loads. That means any
+// The region-scoped rules in this inline critical CSS are UNLAYERED, so they
+// win the cascade over the full Tailwind stylesheet (which lives in @layer
+// utilities) regardless of specificity/media -- even after the deferred sheet
+// loads. The preflight-equivalent reset is the ONE exception: it sits in
+// @layer base so element-level defaults like `a{color:inherit}` lose to the
+// utilities that are supposed to override them (an unlayered reset held the
+// nav CTA at 1.58:1 contrast). That means any
 // `hidden <bp>:<display>` reveal (e.g. `hidden lg:flex` / `hidden md:block`
 // nav rows, `hidden sm:block`) must ALSO be re-shown here in the matching
 // @media block, or the
@@ -36,8 +40,20 @@ const DASHBOARD_SCREENSHOT_ASSETS = [
 // `nav[data-wm-nav]`, the sticky header's marker — never to a bare element that
 // a landmark added elsewhere on the page can also match (#6983).
 const CRITICAL_CSS = [
+  // Declare Tailwind's cascade-layer order up front. This inline block loads
+  // BEFORE the external sheet, so whatever it names first fixes the order the
+  // external sheet's @layer blocks slot into. Without it the reset below is
+  // unlayered — and unlayered CSS outranks EVERY layer, so Tailwind's
+  // `@layer utilities` text-colour utilities lost to `a{color:inherit}` on
+  // every anchor. That painted the nav's "Upgrade to Pro" CTA #f3f4f6 on
+  // #4ade80: 1.58:1, against a 4.5:1 requirement.
+  '@layer properties,theme,base,components,utilities;',
   ':root{--font-sans:system-ui,-apple-system,BlinkMacSystemFont,Segoe UI,sans-serif;--font-mono:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;--font-display:system-ui,sans-serif;--color-wm-bg:#050505;--color-wm-card:#111;--color-wm-border:#222;--color-wm-green:#4ade80;--color-wm-blue:#60a5fa;--color-wm-text:#f3f4f6;--color-wm-muted:#9ca3af}',
-  '*,::before,::after{box-sizing:border-box;border:0 solid #222}html{background:#050505;color:#f3f4f6;-webkit-text-size-adjust:100%;tab-size:4}body{margin:0;background:#050505;color:#f3f4f6;font-family:var(--font-sans);line-height:1.5;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}img,svg{display:block;vertical-align:middle}img{max-width:100%;height:auto}h1,h2,h3,p{margin:0}',
+  // Preflight-equivalent reset, layered so utilities outrank it once the
+  // external sheet lands. The region-scoped mirrors below stay UNLAYERED on
+  // purpose: they must win during the pre-stylesheet window, and they carry
+  // the same values Tailwind resolves to afterwards.
+  '@layer base{*,::before,::after{box-sizing:border-box;border:0 solid #222}html{background:#050505;color:#f3f4f6;-webkit-text-size-adjust:100%;tab-size:4}body{margin:0;background:#050505;color:#f3f4f6;font-family:var(--font-sans);line-height:1.5;-webkit-font-smoothing:antialiased}a{color:inherit;text-decoration:none}img,svg{display:block;vertical-align:middle}img{max-width:100%;height:auto}h1,h2,h3,p{margin:0}}',
   '#root,#root>div{min-height:100vh}.glass-panel{background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222}.text-glow{text-shadow:0 0 20px rgba(74,222,128,.3)}.border-glow{box-shadow:0 0 20px rgba(74,222,128,.1)}',
   // Every rule here is scoped to `nav[data-wm-nav]` — the sticky header — and
   // never to the bare `nav` element. This CSS is unlayered, so a bare type
@@ -46,7 +62,7 @@ const CRITICAL_CSS = [
   // legal footer row (#6982) shipped exactly that, painted across the header
   // and over the Launch CTA on both / and /pro. deploy-config.test.mjs proves
   // the containment against the prerendered welcome page.
-  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;padding:.5rem .75rem;border-radius:.25rem;font:700 .75rem/1 ui-monospace,SFMono-Regular,monospace;text-transform:uppercase;letter-spacing:.025em}nav[data-wm-nav] .hidden{display:none}nav[data-wm-nav] [class~=font-display]{font-family:var(--font-display);font-weight:700}nav[data-wm-nav] [class~=text-wm-muted],main [class~=text-wm-muted]{color:#9ca3af}nav[data-wm-nav] [class~=text-wm-green],main [class~=text-wm-green]{color:#4ade80}nav[data-wm-nav] [class~=text-wm-blue]{color:#60a5fa}',
+  'nav[data-wm-nav]{position:fixed;top:0;left:0;right:0;z-index:50;background:rgba(17,17,17,.7);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border:1px solid #222;border-inline-width:0;border-bottom-width:0}nav[data-wm-nav]>div{max-width:80rem;margin-inline:auto;padding-inline:1rem;height:4rem;display:flex;align-items:center;justify-content:space-between;gap:.75rem}nav[data-wm-nav] a{display:flex;align-items:center;gap:.5rem}nav[data-wm-nav] a[aria-label*="Launch"]{flex-shrink:0;background:#4ade80;color:#050505;padding:.5rem .75rem;border-radius:.25rem;font:700 .75rem/1 ui-monospace,SFMono-Regular,monospace;text-transform:uppercase;letter-spacing:.025em}nav[data-wm-nav] .hidden{display:none}nav[data-wm-nav] [class~=font-display]{font-family:var(--font-display);font-weight:700}nav[data-wm-nav] [class~=text-wm-muted],main [class~=text-wm-muted]{color:#9ca3af}nav[data-wm-nav] [class~=text-wm-green],main [class~=text-wm-green]{color:#4ade80}nav[data-wm-nav] [class~=text-wm-blue]{color:#60a5fa}nav[data-wm-nav] [class~=text-wm-bg]{color:#050505}',
   'main>section:first-child{position:relative;overflow:hidden;padding:7rem 1rem 4rem}main>section:first-child>div:first-child{position:absolute;inset:0;background:radial-gradient(circle at 50% 0%,rgba(74,222,128,.10) 0%,transparent 55%);pointer-events:none}main>section:first-child>div:nth-child(2){position:relative;z-index:10;max-width:64rem;margin-inline:auto;text-align:center}main h1{font-family:var(--font-display);font-weight:700;font-size:2.25rem;line-height:1.08;letter-spacing:-.025em}main p{margin:1.5rem auto 0;max-width:42rem;color:#9ca3af;font-size:1rem;line-height:1.5}',
   'main [class~=relative]{position:relative}main [class~=absolute]{position:absolute}main [class~=inset-0]{inset:0}main [class~=z-10]{z-index:10}main [class~=pointer-events-none]{pointer-events:none}main [class~=flex]{display:flex}main [class~=inline-flex]{display:inline-flex}main [class~=grid]{display:grid}main [class~=block]{display:block}main .hidden{display:none}main [class~=items-center]{align-items:center}main [class~=items-stretch]{align-items:stretch}main [class~=justify-center]{justify-content:center}main [class~=justify-between]{justify-content:space-between}main [class~=flex-col]{flex-direction:column}main [class~=flex-wrap]{flex-wrap:wrap}main [class~=grid-cols-2]{grid-template-columns:repeat(2,minmax(0,1fr))}',
   'main [class~=mx-auto]{margin-inline:auto}main [class~=mt-1]{margin-top:.25rem}main [class~=mt-3]{margin-top:.75rem}main [class~=mt-6]{margin-top:1.5rem}main [class~=mt-8]{margin-top:2rem}main [class~=mt-9]{margin-top:2.25rem}main [class~=mt-10]{margin-top:2.5rem}main [class~=mb-5]{margin-bottom:1.25rem}main [class~=gap-1]{gap:.25rem}main [class~=gap-2]{gap:.5rem}main [class~=gap-3]{gap:.75rem}main [class~=gap-4]{gap:1rem}main [class~=gap-x-6]{column-gap:1.5rem}main [class~=gap-y-3]{row-gap:.75rem}',
