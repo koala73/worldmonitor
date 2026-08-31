@@ -101,6 +101,10 @@ function layerBlock(css, name) {
   return null;
 }
 
+function hasBareAnchorColorRule(css) {
+  return /(?:^|[;{}])\s*a\s*\{[^}]*\bcolor\s*:/.test(css);
+}
+
 /** The inline critical CSS, stripped of its <style> wrapper. */
 function criticalStyleText(html) {
   const firstPreload = deferredStylePreloadTags(html)[0];
@@ -132,6 +136,17 @@ describe('pro critical CSS parser', () => {
       `),
       ['/assets/main.css', '/assets/screen.css'],
     );
+  });
+
+  it('detects spaced bare-anchor colour rules left outside the base layer', () => {
+    for (const css of [
+      '@layer base{a{color:inherit}}a { color: inherit }',
+      '@layer base{a{color:inherit}}@media(min-width:640px){a { color: inherit }}',
+    ]) {
+      const base = layerBlock(css, 'base');
+      assert.ok(base);
+      assert.equal(hasBareAnchorColorRule(css.replace(base.whole, '')), true);
+    }
   });
 });
 
@@ -285,9 +300,9 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
         assert.match(base.body, /a\{color:inherit/, 'the anchor reset belongs in @layer base');
         // Outside the base block there must be no unlayered bare-`a` colour
         // rule left to outrank the utilities again.
-        assert.doesNotMatch(
-          critical.replace(base.whole, ''),
-          /(?:^|[;}])a\{[^}]*color:/,
+        assert.equal(
+          hasBareAnchorColorRule(critical.replace(base.whole, '')),
+          false,
           'no unlayered bare-anchor colour rule may survive',
         );
       });
