@@ -28,7 +28,7 @@ const defiBreaker = createCircuitBreaker<ListDefiTokensResponse>({ name: 'DeFi T
 const aiBreaker = createCircuitBreaker<ListAiTokensResponse>({ name: 'AI Tokens', persistCache: true });
 const otherBreaker = createCircuitBreaker<ListOtherTokensResponse>({ name: 'Other Tokens', persistCache: true });
 
-const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false, unavailableSymbols: [] };
+const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false, unavailableSymbols: [], asOf: '' };
 const emptyCommodityFallback: ListCommodityQuotesResponse = { quotes: [] };
 const emptyPhysicalPremiumFallback: GetPhysicalPremiumsResponse = { premiums: [] };
 const emptySectorFallback: GetSectorSummaryResponse = { sectors: [] };
@@ -80,13 +80,15 @@ export interface MarketFetchResult {
    * from `data` with no signal at all.
    */
   unavailableSymbols?: MarketQuoteUnavailable[];
+  /** ISO-8601 seed-batch timestamp when the RPC supplied one. */
+  asOf?: string;
 }
 
 // ========================================================================
 // Stocks -- replaces fetchMultipleStocks + fetchStockQuote
 // ========================================================================
 
-const lastSuccessfulByKey = new Map<string, MarketData[]>();
+const lastSuccessfulByKey = new Map<string, MarketFetchResult>();
 
 function symbolSetKey(symbols: string[]): string {
   return [...new Set(symbols.map((symbol) => symbol.trim()))].sort().join(',');
@@ -136,18 +138,27 @@ export async function fetchMultipleStocks(
   }
 
   if (results.length > 0) {
-    lastSuccessfulByKey.set(setKey, results);
+    lastSuccessfulByKey.set(setKey, {
+      data: results,
+      skipped: resp.finnhubSkipped || undefined,
+      reason: resp.skipReason || undefined,
+      rateLimited: resp.rateLimited || undefined,
+      unavailableSymbols: resp.unavailableSymbols?.length ? resp.unavailableSymbols : undefined,
+      asOf: resp.asOf || undefined,
+    });
   }
 
-  const data = results.length > 0 ? results : (lastSuccessfulByKey.get(setKey) || []);
+  const cached = lastSuccessfulByKey.get(setKey);
+  const data = results.length > 0 ? results : (cached?.data || []);
   return {
     data,
-    skipped: resp.finnhubSkipped || undefined,
-    reason: resp.skipReason || undefined,
-    rateLimited: resp.rateLimited || undefined,
-    // `resp` can be the pre-#6305 breaker cache or the empty fallback, so
-    // treat a missing field as "nothing to report" rather than trusting it.
-    unavailableSymbols: resp.unavailableSymbols?.length ? resp.unavailableSymbols : undefined,
+    skipped: (results.length > 0 ? resp.finnhubSkipped : cached?.skipped) || undefined,
+    reason: (results.length > 0 ? resp.skipReason : cached?.reason) || undefined,
+    rateLimited: (results.length > 0 ? resp.rateLimited : cached?.rateLimited) || undefined,
+    unavailableSymbols: results.length > 0
+      ? (resp.unavailableSymbols?.length ? resp.unavailableSymbols : undefined)
+      : cached?.unavailableSymbols,
+    asOf: results.length > 0 ? (resp.asOf || undefined) : cached?.asOf,
   };
 }
 

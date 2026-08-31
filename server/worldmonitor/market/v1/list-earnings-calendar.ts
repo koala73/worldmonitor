@@ -10,7 +10,7 @@ import { getCachedJson } from '../../../_shared/redis';
 const SEED_CACHE_KEY = 'market:earnings-calendar:v1';
 
 export function buildEarningsCalendarResponse(
-  cached: { earnings?: EarningsEntry[] },
+  cached: { earnings?: EarningsEntry[]; asOf?: string },
   req: ListEarningsCalendarRequest,
 ): ListEarningsCalendarResponse {
   const entries: EarningsEntry[] = (cached.earnings ?? []).map(e => ({
@@ -33,7 +33,7 @@ export function buildEarningsCalendarResponse(
     dates[dates.length - 1],
   );
   const earnings = filterCalendarRange(entries, range, (entry) => entry.date);
-  return { earnings, ...range, total: earnings.length, unavailable: false };
+  return { earnings, ...range, total: earnings.length, unavailable: false, asOf: cached.asOf ?? '' };
 }
 
 export async function listEarningsCalendar(
@@ -41,13 +41,13 @@ export async function listEarningsCalendar(
   req: ListEarningsCalendarRequest,
 ): Promise<ListEarningsCalendarResponse> {
   try {
-    const cached = await getCachedJson(SEED_CACHE_KEY, true) as { earnings?: EarningsEntry[]; unavailable?: boolean } | null;
+    const cached = await getCachedJson(SEED_CACHE_KEY, true) as { earnings?: EarningsEntry[]; unavailable?: boolean; asOf?: string } | null;
     if (!cached?.earnings?.length) {
-      return { earnings: [], fromDate: '', toDate: '', total: 0, unavailable: true };
+      return { earnings: [], fromDate: '', toDate: '', total: 0, unavailable: true, asOf: cached?.asOf ?? '' };
     }
 
     return buildEarningsCalendarResponse(cached, req);
   } catch {
-    return { earnings: [], fromDate: '', toDate: '', total: 0, unavailable: true };
+    return { earnings: [], fromDate: '', toDate: '', total: 0, unavailable: true, asOf: '' };
   }
 }

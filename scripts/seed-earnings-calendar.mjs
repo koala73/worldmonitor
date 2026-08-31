@@ -15,7 +15,7 @@ async function fetchAll() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {
     console.warn('  FINNHUB_API_KEY not set — skipping');
-    return { earnings: [], unavailable: true };
+    return { earnings: [], unavailable: true, asOf: new Date().toISOString() };
   }
 
   const from = new Date();
@@ -85,7 +85,7 @@ async function fetchAll() {
     .slice(0, 100);
 
   console.log(`  Fetched ${earnings.length} earnings entries (from ${raw.length} total)`);
-  return { earnings, unavailable: false };
+  return { earnings, unavailable: false, asOf: new Date().toISOString() };
 }
 
 function validate(data) {
