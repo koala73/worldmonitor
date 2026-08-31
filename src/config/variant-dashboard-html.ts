@@ -1,3 +1,8 @@
+import {
+  CANONICAL_ORIGIN,
+  ORGANIZATION_ID,
+  WEBSITE_ID,
+} from './schema-graph-ids';
 import { VARIANT_META, type VariantMeta } from './variant-meta';
 import {
   VARIANT_SEO_PARAGRAPHS,
@@ -93,6 +98,58 @@ function replaceCounted(
 
 const ONE: CountBounds = { min: 1, max: 1 };
 const TWO: CountBounds = { min: 2, max: 2 };
+
+function jsonLdScript(payload: Record<string, unknown>): string {
+  // generateBundle runs after Vite stamps html.cspNonce onto dashboard.html, so
+  // the nonce is added here for consistency with every other script in the
+  // document. It is not load-bearing: `application/ld+json` is a data block, and
+  // CSP script-src is never consulted for one — an un-nonced JSON-LD block would
+  // not have been blocked (#7459c).
+  const serialized = JSON.stringify(payload, null, 2)
+    .replace(/\n/g, '\n    ')
+    // Escape `<` so a `</script>` in any value cannot close the element early.
+    .replace(/</g, '\\u003c');
+  return `<script type="application/ld+json" nonce="wm-static-bootstrap">\n    ${serialized}\n    </script>`;
+}
+
+function variantWebPageJsonLd(meta: VariantMeta): string {
+  return jsonLdScript({
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${meta.url}#webpage`,
+    url: meta.url,
+    name: meta.title,
+    description: meta.description,
+    isPartOf: { '@id': WEBSITE_ID },
+    publisher: { '@id': ORGANIZATION_ID },
+    mainEntity: { '@id': `${meta.url}#software` },
+    speakable: {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.app-seo-summary'],
+    },
+  });
+}
+
+function variantBreadcrumbJsonLd(meta: VariantMeta): string {
+  return jsonLdScript({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: [
+      {
+        '@type': 'ListItem',
+        position: 1,
+        name: 'World Monitor',
+        item: CANONICAL_ORIGIN,
+      },
+      {
+        '@type': 'ListItem',
+        position: 2,
+        name: meta.siteName,
+        item: meta.url,
+      },
+    ],
+  });
+}
 
 function removeJsonLdType(html: string, expectedType: string): string {
   let count = 0;
@@ -210,6 +267,20 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   );
 
   html = removeJsonLdType(html, 'WebSite');
+
+  // Variants stay on their own canonical URL but must not be entity-orphaned:
+  // join the canonical Organization/WebSite via WebPage + breadcrumbs + speakable
+  // instead of redeclaring those nodes (#7459c).
+  html = replaceCounted(
+    html,
+    // /g so replaceCounted can observe a SECOND WebApplication block and throw.
+    // Without it String.replace stops at the first match, count can never exceed
+    // 1, and the ONE bound's max half is unenforceable.
+    /(<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*\{[\s\S]*?"@type": "WebApplication"[\s\S]*?<\/script>)/g,
+    (_m, script) => `${script}\n    ${variantWebPageJsonLd(meta)}\n    ${variantBreadcrumbJsonLd(meta)}`,
+    ONE,
+    'variant WebPage and BreadcrumbList',
+  );
 
   // Visually-hidden <h1> — the topic signal crawlers read on this page.
   html = replaceCounted(html, /(<h1 class="app-heading">)[^<]*(<\/h1>)/g, (_m, a, b) => `${a}${escHtml(meta.title)}${b}`, ONE, 'app-heading h1');

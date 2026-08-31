@@ -13,6 +13,7 @@ import {
   chokepointMetaDescription,
   countryMetaDescription,
   datasetTemporalCoverage,
+  describeHeadlineIneligibilityReason,
   GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
@@ -61,6 +62,20 @@ function pairwiseUniqueShare(left, right) {
   const rightShingles = wordShingles(right);
   const shared = [...leftShingles].filter((shingle) => rightShingles.has(shingle)).length;
   return 1 - (shared / Math.max(leftShingles.size, rightShingles.size));
+}
+
+function decodeBasicHtml(value) {
+  return String(value || '')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
+}
+
+function unpublishedHeadingParagraph(html, headingRe) {
+  const match = html.match(new RegExp(`<h3>${headingRe}</h3>\\s*<p>([\\s\\S]*?)</p>`));
+  return decodeBasicHtml(match?.[1] || '');
 }
 
 const DATASET_DESCRIPTION_MIN_LENGTH = 50;
@@ -462,15 +477,20 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false, re
       `${route} Dataset ${index + 1} description must be at most ${DATASET_DESCRIPTION_MAX_LENGTH} characters`,
     );
 
+    // A creator must be BOTH anchored on the canonical @id and self-describing.
+    // An @id alone would reference a node no generated page declares, so a
+    // per-page parser resolves it to nothing (#7459b); a name alone would mint a
+    // competing anonymous Organization. Require both together.
     const creators = Array.isArray(dataset.creator) ? dataset.creator : [dataset.creator];
     assert.ok(
       creators.some((creator) => (
         creator
+        && creator['@id'] === 'https://www.worldmonitor.app/#organization'
         && (creator['@type'] === 'Person' || creator['@type'] === 'Organization')
         && typeof creator.name === 'string'
         && creator.name.trim().length > 0
       )),
-      `${route} Dataset ${index + 1} must identify a Person or Organization creator`,
+      `${route} Dataset ${index + 1} creator must be the canonical Organization AND carry @type + name so the reference resolves in-page`,
     );
 
     const licenses = Array.isArray(dataset.license) ? dataset.license : [dataset.license];
@@ -568,6 +588,7 @@ describe('Dataset spatialCoverage Google contract', () => {
       name: 'Contract test dataset',
       description: 'A focused contract fixture with enough detail for the Google Dataset description requirement.',
       creator: {
+        '@id': 'https://www.worldmonitor.app/#organization',
         '@type': 'Organization',
         name: 'World Monitor',
       },
@@ -609,6 +630,22 @@ function assertDataCatalogPresent(html, route) {
   assert.ok(typeof catalog['@id'] === 'string' && catalog['@id'].includes('#data-catalog'), `${route} DataCatalog must use a stable @id`);
   assert.equal(catalog.isAccessibleForFree, true, `${route} DataCatalog must be free`);
   assert.ok(typeof catalog.name === 'string' && catalog.name.trim().length > 0, `${route} DataCatalog must have a name`);
+  const CANONICAL_ORG_ROLE = {
+    '@id': 'https://www.worldmonitor.app/#organization',
+    '@type': 'Organization',
+    name: 'World Monitor',
+    url: 'https://www.worldmonitor.app/',
+  };
+  assert.deepEqual(
+    catalog.publisher,
+    CANONICAL_ORG_ROLE,
+    `${route} DataCatalog.publisher must reference the canonical Organization`,
+  );
+  assert.deepEqual(
+    catalog.creator,
+    CANONICAL_ORG_ROLE,
+    `${route} DataCatalog.creator must reference the canonical Organization`,
+  );
   return catalog;
 }
 
@@ -774,6 +811,16 @@ describe('crawlable corpus generator', () => {
             name: 'B'.repeat(length),
             rank: null,
             rankedCount: 999_999,
+            lowConfidence: true,
+          }),
+        },
+        {
+          name: 'D'.repeat(length),
+          description: countryMetaDescription({
+            name: 'D'.repeat(length),
+            rank: null,
+            rankedCount: 999_999,
+            lowConfidence: false,
           }),
         },
         {
@@ -1136,10 +1183,19 @@ describe('crawlable corpus generator', () => {
         const countryHtml = read(outDir, `${route.slice(1)}index.html`);
         const countryDocument = htmlDocument(countryHtml, `https://www.worldmonitor.app${route}`);
         if (country.rank == null) {
-          assert.match(countryHtml, /Reference pages:/);
-          const comparisonText = countryDocument.querySelector('[data-country-analysis] h3:nth-of-type(4) + p')?.textContent ?? '';
+          assert.match(countryHtml, /Nearest ranked comparators:/);
+          assert.doesNotMatch(
+            countryHtml,
+            /\b[A-Z]{2} · /,
+            `${route} must not prefix unpublished copy with ISO scaffolding`,
+          );
+          const comparisonHeading = [...countryDocument.querySelectorAll('[data-country-analysis] h3')]
+            .find((heading) => heading.textContent === 'Nearest ranked comparators');
+          const comparisonText = comparisonHeading?.nextElementSibling?.textContent ?? '';
+          assert.ok(country.peers.length > 0, `${route} must name ranked comparators`);
           for (const peer of country.peers) {
-            assert.ok(comparisonText.includes(peer.name), `${route} must include ${peer.name} as a reference page`);
+            assert.notEqual(peer.rank, null, `${route} comparator ${peer.name} must be ranked`);
+            assert.ok(comparisonText.includes(peer.name), `${route} must include ${peer.name} as a ranked comparator`);
             assert.ok(
               !comparisonText.includes(`${peer.name} (`),
               `${route} must not reveal ${peer.name}'s score in an ineligible comparison set`,
@@ -1255,11 +1311,36 @@ describe('crawlable corpus generator', () => {
       assert.equal(taiwanDataset.rank, null);
       assert.equal(taiwanDataset.overallScore, null);
       assert.equal(taiwanDataset.level, 'unpublished');
-      assert.ok(
-        taiwan.includes(
-          `World Monitor does not publish a resilience score for Taiwan. Taiwan does not meet the published ranking eligibility criteria. Input coverage is ${Math.round(taiwanDataset.dimensionCoverage * 100)}%.`,
-        ),
+      assert.equal(taiwanDataset.sourceStatus, 'low-confidence');
+      assert.equal(taiwanDataset.confidence, 'low');
+      assert.match(taiwan, /does not meet the published ranking eligibility criteria/);
+      assert.match(taiwan, /Ranking requires coverage of at least 65%/);
+      assert.match(taiwan, /population of at least 200,000/);
+      assert.match(taiwan, /coverage falls below 55%/);
+      assert.match(taiwan, /imputation share exceeds 40%/);
+      const taiwanWhy = unpublishedHeadingParagraph(taiwan, 'Why Taiwan is unpublished');
+      assert.match(taiwanWhy, /coverage is 38%/);
+      assert.match(taiwanWhy, /imputation share is 42%/);
+      assert.doesNotMatch(
+        taiwanWhy,
+        /Ranking requires coverage of at least 65%/,
+        'eligibility thresholds in FAQ/JSON-LD must not be the Why-unpublished analysis reason',
       );
+      const taiwanCovered = unpublishedHeadingParagraph(taiwan, 'What the snapshot does cover');
+      assert.match(
+        taiwanCovered,
+        /Cyber and digital capacity \(100%\)|Macro-fiscal position \(95%\)/,
+        'available-evidence copy must name a strongest observed dimension, not only weak usable rows',
+      );
+      assert.match(taiwan, /coverage is 38%/);
+      assert.match(taiwan, /imputation share is 42%/);
+      assert.match(taiwan, /World Bank/);
+      assert.match(taiwan, /WHO/);
+      assert.match(taiwan, /Nearest ranked comparators:/);
+      assert.match(taiwan, /Taiwan is included separately in the rankable universe/);
+      assert.doesNotMatch(taiwan, /special administrative region/);
+      assert.match(taiwan, /a low-confidence listing/);
+      assert.doesNotMatch(taiwan, /\bTW · /);
       assert.doesNotMatch(
         taiwan,
         /below the threshold/,
@@ -1277,6 +1358,21 @@ describe('crawlable corpus generator', () => {
         taiwanWebPage?.mainEntity?.description ?? '',
         /below the ranking threshold|input coverage is below/i,
       );
+
+      for (const slug of ['taiwan', 'palau', 'san-marino']) {
+        const html = read(outDir, `countries/${slug}/index.html`);
+        const sourceGaps = unpublishedHeadingParagraph(html, 'Source inventory gaps');
+        assert.match(
+          sourceGaps,
+          /marked source unavailable in this snapshot/,
+          `${slug} must describe upstream unavailability in the current snapshot`,
+        );
+        assert.doesNotMatch(
+          sourceGaps,
+          /source-universe limit/,
+          `${slug} must not explain an upstream outage as structural exclusion`,
+        );
+      }
 
       const headlineIneligible = corpusData.countries
         .filter((country) => country.headlineEligible === false);
@@ -1303,22 +1399,130 @@ describe('crawlable corpus generator', () => {
       );
       const coveredHtml = read(outDir, `countries/${coveredIneligible.slug}/index.html`);
       const coveredCoverage = `${Math.round(Number(coveredIneligible.dimensionCoverage) * 100)}%`;
-      assert.ok(
-        coveredHtml.includes(
-          `World Monitor does not publish a resilience score for ${coveredIneligible.name}. ${coveredIneligible.name} does not meet the published ranking eligibility criteria. Input coverage is ${coveredCoverage}.`,
-        ),
-        `${coveredIneligible.name} must use neutral eligibility wording and keep coverage as a separate fact`,
+      const coveredWhy = unpublishedHeadingParagraph(
+        coveredHtml,
+        `Why ${coveredIneligible.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is unpublished`,
       );
+      assert.equal(
+        coveredWhy,
+        describeHeadlineIneligibilityReason(coveredIneligible),
+        `${coveredIneligible.name} Why-unpublished paragraph must be the eligibility reason, not gap copy`,
+      );
+      assert.match(
+        coveredHtml,
+        /does not meet the published ranking eligibility criteria/,
+      );
+      assert.match(
+        coveredHtml,
+        new RegExp(`coverage is ${coveredCoverage}`),
+        `${coveredIneligible.name} must keep coverage as a separate fact`,
+      );
+      assert.match(
+        coveredHtml,
+        /population of at least 200,000/,
+        `${coveredIneligible.name} must quote the population-or-high-coverage ranking rule`,
+      );
+      assert.doesNotMatch(
+        coveredHtml,
+        /below the 65% ranking floor/,
+        `${coveredIneligible.name} must not explain ranking exclusion as low coverage`,
+      );
+      assert.match(
+        coveredHtml,
+        /<h3>Source inventory gaps<\/h3>/,
+        `${coveredIneligible.name} must keep source-gap copy on a separate heading`,
+      );
+      if (coveredIneligible.lowConfidence !== true) {
+        assert.doesNotMatch(
+          coveredHtml,
+          /flagged low-confidence/,
+          `${coveredIneligible.name} must not be described as low-confidence when the snapshot is not`,
+        );
+      }
       const coveredWebPage = jsonLdObjects(coveredHtml)
         .find((entry) => entry['@type'] === 'WebPage');
       assert.match(
         coveredWebPage?.mainEntity?.description ?? '',
         /does not meet the published ranking eligibility criteria/,
       );
+      assert.match(
+        coveredWebPage?.mainEntity?.description ?? '',
+        /Ranking requires coverage of at least 65%/,
+      );
       assert.doesNotMatch(
         coveredWebPage?.mainEntity?.description ?? '',
         /below the ranking threshold|input coverage is below/i,
       );
+
+      const unrankedSampleCodes = ['AD', 'SM', 'SY', 'TV', 'TW'];
+      const unrankedArticles = [];
+      const rankedNames = new Set(
+        corpusData.countries.filter((country) => country.rank != null).map((country) => country.name),
+      );
+      for (const code of unrankedSampleCodes) {
+        const country = countryByCode.get(code);
+        assert.ok(country, `missing unranked corpus country ${code}`);
+        const route = `/countries/${country.slug}/`;
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        const analysis = document.querySelector('[data-country-analysis]');
+        assert.ok(analysis, `${route} must render unpublished analysis`);
+        analysis.querySelectorAll('[data-country-faq]').forEach((node) => node.remove());
+        unrankedArticles.push({ route, text: analysis.textContent || '' });
+        assert.match(html, /Nearest ranked comparators:/);
+        assert.doesNotMatch(html, new RegExp(`\\b${code} · `));
+        for (const peer of country.peers) {
+          assert.ok(rankedNames.has(peer.name), `${route} peer ${peer.name} must be ranked`);
+        }
+      }
+      const syria = read(outDir, 'countries/syria/index.html');
+      assert.match(syria, /Macro-fiscal position/);
+      assert.match(syria, /IMF/);
+      const andorra = read(outDir, 'countries/andorra/index.html');
+      assert.equal(countryByCode.get('AD')?.lowConfidence, false);
+      const andorraDataset = JSON.parse(read(outDir, 'countries/andorra/resilience.json'));
+      assert.equal(andorraDataset.confidence, 'standard');
+      assert.equal(andorraDataset.sourceStatus, 'unpublished');
+      assert.match(andorra, /coverage is 69%/);
+      assert.match(andorra, /recorded population of at least 200,000/);
+      assert.match(andorra, /<span>Confidence<\/span><strong>Standard<\/strong>/);
+      assert.doesNotMatch(andorra, /flagged low-confidence/);
+      assert.doesNotMatch(
+        andorra,
+        /a low-confidence listing/,
+        'covered-ineligible meta description must not call a standard-confidence snapshot low-confidence',
+      );
+      assert.match(andorra, /an unpublished listing/);
+      assert.match(andorra, /in the rankable universe as a UN member/);
+      assert.match(
+        andorra,
+        /Sovereign fiscal buffer<\/strong>: 0% coverage; not applicable/,
+      );
+      assert.doesNotMatch(
+        andorra,
+        /sovereign-wealth records does not contribute/,
+      );
+      const iraq = countryByCode.get('IQ');
+      assert.ok(iraq, 'snapshot must include unpublished Iraq');
+      const iraqHtml = read(outDir, 'countries/iraq/index.html');
+      const iraqWhy = unpublishedHeadingParagraph(iraqHtml, 'Why Iraq is unpublished');
+      assert.equal(iraqWhy, describeHeadlineIneligibilityReason(iraq));
+      assert.match(iraqWhy, /recorded population of at least 200,000/);
+      assert.doesNotMatch(iraqWhy, /below the 65% ranking floor/);
+      assert.doesNotMatch(
+        iraqHtml,
+        /Iraq.{0,120}(fewer than 200,000|microstate)|microstate.{0,80}Iraq/,
+        'Iraq copy must not imply the country is below the 200,000 population gate',
+      );
+      for (let left = 0; left < unrankedArticles.length; left += 1) {
+        for (let right = left + 1; right < unrankedArticles.length; right += 1) {
+          const share = pairwiseUniqueShare(unrankedArticles[left].text, unrankedArticles[right].text);
+          assert.ok(
+            share >= 0.4,
+            `${unrankedArticles[left].route} and ${unrankedArticles[right].route} unranked pair must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
+          );
+        }
+      }
 
       const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);

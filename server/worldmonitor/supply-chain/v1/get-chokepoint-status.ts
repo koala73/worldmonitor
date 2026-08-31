@@ -20,6 +20,7 @@ import { getVesselSnapshot } from '../../maritime/v1/get-vessel-snapshot';
 import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL } from './_scoring.mjs';
 import { type ThreatLevel, threatLevelToWarRiskTier } from './_insurance-tier';
 import { CHOKEPOINT_STATUS_KEY as REDIS_CACHE_KEY } from '../../../_shared/cache-keys';
+import { narrowFlowSource } from '../../../_shared/flow-source';
 const TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 // NOTE: historical fallback via supply_chain:portwatch:v1 / corridorrisk / chokepoint_transits
@@ -147,10 +148,14 @@ type DirectionLabel = 'eastbound' | 'westbound' | 'northbound' | 'southbound';
 // lives in `supply_chain:transit-summaries:history:v1:{id}` and is served by
 // GetChokepointHistory on card expand.
 interface PreBuiltTransitSummary {
-  todayTotal: number;
-  todayTanker: number;
-  todayCargo: number;
-  todayOther: number;
+  // null when the relay's 24h AIS window held no crossings. That is unsupplied,
+  // not a measured zero: seedTransitSummaries only builds relayTransit when
+  // `recent.length > 0`, so the two are indistinguishable at the source and the
+  // count must not be published either way (#7457). Older writers emit 0 here.
+  todayTotal: number | null;
+  todayTanker: number | null;
+  todayCargo: number | null;
+  todayOther: number | null;
   wowChangePct: number;
   riskLevel: string;
   incidentCount7d: number;
@@ -323,20 +328,9 @@ interface ChokepointFetchResult {
 
 interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null }
 
-/**
- * The coverage bases seed-chokepoint-flows.mjs can emit. Declared as an
- * EXHAUSTIVE record over the non-UNSPECIFIED FlowSource members so that adding
- * a member to the proto is a compile error here. A plain `Set<FlowSource>`
- * caught a typo but not an omission — the new member would simply be absent,
- * and this handler would silently strip the very value the proto had just
- * declared legal.
- */
-const FLOW_SOURCE_MEMBERS: Record<Exclude<FlowSource, 'FLOW_SOURCE_UNSPECIFIED'>, true> = {
-  'portwatch-dwt': true,
-  'portwatch-counts': true,
-};
-
-const FLOW_SOURCES: ReadonlySet<string> = new Set(Object.keys(FLOW_SOURCE_MEMBERS));
+// The taxonomy record lives in server/_shared/flow-source.ts (#6113) so this
+// handler and the MCP cache tool narrow and declare from one source of truth;
+// the exhaustive-record compile check moved with it.
 
 /**
  * Narrow the seeder's `source` onto the FlowSource taxonomy the proto declares
@@ -360,7 +354,12 @@ const FLOW_SOURCES: ReadonlySet<string> = new Set(Object.keys(FLOW_SOURCE_MEMBER
 const warnedFlowSources = new Set<string>();
 
 function toFlowSource(value: unknown): FlowSource {
-  if (typeof value === 'string' && FLOW_SOURCES.has(value)) return value as FlowSource;
+  // Delegate the DECISION, not just the member set: a second copy of the
+  // predicate here would let REST and the MCP cache tool answer differently for
+  // the same Redis blob the moment either side learned to trim or case-fold.
+  // This wrapper adds only the REST-side warn (#6113).
+  const narrowed = narrowFlowSource(value);
+  if (narrowed !== 'FLOW_SOURCE_UNSPECIFIED') return narrowed;
   if (value !== undefined && value !== null && value !== '') {
     const seen = String(value);
     if (!warnedFlowSources.has(seen)) {
@@ -487,11 +486,17 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       description: descriptions.join('; '),
       directions: cp.directions,
       directionalDwt: [],
+      // today_* are non-nullable int32 in the proto and integers in the
+      // published OpenAPI schema, so the relay's null (an empty AIS window,
+      // the common case) must not reach the wire. Hold the contract here and
+      // carry absence in todayCountsAvailable instead; clients withhold on
+      // that flag rather than inferring it from a 0 they cannot interpret.
       transitSummary: ts ? {
-        todayTotal: ts.todayTotal,
-        todayTanker: ts.todayTanker,
-        todayCargo: ts.todayCargo,
-        todayOther: ts.todayOther,
+        todayTotal: ts.todayTotal ?? 0,
+        todayTanker: ts.todayTanker ?? 0,
+        todayCargo: ts.todayCargo ?? 0,
+        todayOther: ts.todayOther ?? 0,
+        todayCountsAvailable: ts.todayTotal != null,
         wowChangePct: ts.wowChangePct,
         // History is served separately by GetChokepointHistory (lazy-loaded on
         // card expand) — field stays declared for proto compat but is empty
@@ -505,7 +510,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         // Default true for pre-fix writers (absence = covered). New writers
         // explicitly emit false for canonical zero-state fills.
         dataAvailable: ts.dataAvailable ?? true,
-      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
+      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, todayCountsAvailable: false, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
       flowEstimate: flowsData?.[cp.id] ? {
         currentMbd: flowsData[cp.id]!.currentMbd,
         baselineMbd: flowsData[cp.id]!.baselineMbd,

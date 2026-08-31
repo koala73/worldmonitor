@@ -78,6 +78,7 @@ export interface TransitSummary {
   riskSummary: string;
   riskReportAction: string;
   dataAvailable: boolean;
+  todayCountsAvailable: boolean;
 }
 
 export interface TransitDayCount {
