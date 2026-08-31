@@ -1795,6 +1795,14 @@ function isCoverageGap(dimension) {
   return Number(dimension.coverage) === 0;
 }
 
+function compareDimensionsByCoverageAsc(left, right) {
+  return Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id);
+}
+
+function compareDimensionsByCoverageDesc(left, right) {
+  return Number(right.coverage) - Number(left.coverage) || left.id.localeCompare(right.id);
+}
+
 function dimensionSources(dimension) {
   return DIMENSION_PRIMARY_SOURCES[dimension.id] || [];
 }
@@ -1821,7 +1829,7 @@ export function describeHeadlineIneligibilityReason(country) {
   if (Number.isFinite(coverage) && coverage < HEADLINE_RANKING_MIN_COVERAGE) {
     return `${country.name}'s coverage is ${coverageText}, below the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% ranking floor.`;
   }
-  return `${country.name}'s coverage is ${coverageText}, which meets the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% floor, but a published rank also needs a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%.`;
+  return `${country.name}'s coverage is ${coverageText}, which meets the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% floor, but a published rank also needs a recorded population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%.`;
 }
 
 export function describeHeadlineIneligibility(country) {
@@ -1829,13 +1837,12 @@ export function describeHeadlineIneligibility(country) {
 }
 
 export function describeCoverageGaps(country) {
-  const gaps = activeCountryDimensions(country)
-    .filter(isCoverageGap)
-    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id));
+  const dimensions = activeCountryDimensions(country);
+  const gaps = dimensions.filter(isCoverageGap).sort(compareDimensionsByCoverageAsc);
   if (gaps.length === 0) {
-    const strongest = activeCountryDimensions(country)
+    const strongest = dimensions
       .filter((dimension) => Number(dimension.coverage) > 0)
-      .sort((left, right) => Number(right.coverage) - Number(left.coverage) || left.id.localeCompare(right.id))
+      .sort(compareDimensionsByCoverageDesc)
       .slice(0, 3)
       .map((dimension) => `${dimensionLabel(dimension)} at ${formatPercent(dimension.coverage)}`);
     const strongestClause = strongest.length > 0
@@ -1847,7 +1854,7 @@ export function describeCoverageGaps(country) {
   const uniqueSources = [...new Set(gaps.flatMap(dimensionSources))];
   const verb = gaps.length === 1 ? 'has' : 'have';
   const sourceClause = uniqueSources.length > 0
-    ? ` Those slots depend on ${formatProseList(uniqueSources)}, which ${uniqueSources.length === 1 ? 'does' : 'do'} not contribute observed series for ${country.name}.`
+    ? ` Those slots depend on ${formatProseList(uniqueSources)}, which ${uniqueSources.length === 1 ? 'does' : 'do'} not contribute observed series for those dimensions.`
     : '';
   const failures = gaps.filter((dimension) => dimension.imputationClass === 'source-failure');
   const unmonitored = gaps.filter((dimension) => dimension.imputationClass === 'unmonitored');
@@ -1866,7 +1873,7 @@ export function describeAvailableEvidence(country) {
       !isCoverageGap(dimension)
       && Number(dimension.coverage) >= 0.5
     ))
-    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id))
+    .sort(compareDimensionsByCoverageDesc)
     .slice(0, AVAILABLE_EVIDENCE_LIMIT);
   if (observed.length === 0) {
     return `The snapshot still records coverage and evidence state for ${country.name}, even though no dimension clears a usable observed threshold. Input coverage is ${formatPercent(country.dimensionCoverage)} and imputation share is ${formatPercent(country.imputationShare)}.`;
@@ -1874,10 +1881,12 @@ export function describeAvailableEvidence(country) {
   return `Observed evidence is present for ${formatProseList(observed.map((dimension) => `${dimensionLabel(dimension)} (${formatPercent(dimension.coverage)})`))}. Input coverage is ${formatPercent(country.dimensionCoverage)} and imputation share is ${formatPercent(country.imputationShare)}.`;
 }
 
-function dimensionInventoryNote(country, dimension) {
+export function dimensionInventoryNote(country, dimension) {
   const sources = dimensionSources(dimension);
   const sourceLabel = formatProseList(sources);
   const imputationClass = String(dimension.imputationClass || '');
+  if (imputationClass === 'not-applicable') return 'not applicable';
+  if (imputationClass === 'stable-absence') return 'stable absence in the source feed';
   if (imputationClass === 'source-failure') {
     return sourceLabel
       ? `${sourceLabel} did not deliver a usable series in this snapshot`
@@ -1888,20 +1897,25 @@ function dimensionInventoryNote(country, dimension) {
       ? `${sourceLabel} ${sources.length === 1 ? 'does' : 'do'} not contribute observed series for ${country.name}`
       : `no observed series for ${country.name}`;
   }
-  if (imputationClass === 'stable-absence') return 'stable absence in the source feed';
-  if (imputationClass === 'not-applicable') return 'not applicable';
   return 'observed';
 }
 
 function selectUnrankedInventory(country) {
   const dimensions = activeCountryDimensions(country);
-  const gaps = dimensions.filter(isCoverageGap)
-    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id));
-  const observed = dimensions.filter((dimension) => !isCoverageGap(dimension) && Number(dimension.coverage) < 1)
-    .sort((left, right) => Number(left.coverage) - Number(right.coverage) || left.id.localeCompare(right.id));
+  const notApplicable = dimensions
+    .filter((dimension) => String(dimension.imputationClass || '') === 'not-applicable')
+    .sort((left, right) => left.id.localeCompare(right.id));
+  const gaps = dimensions.filter(isCoverageGap).sort(compareDimensionsByCoverageAsc);
+  const observed = dimensions
+    .filter((dimension) => (
+      !isCoverageGap(dimension)
+      && String(dimension.imputationClass || '') !== 'not-applicable'
+      && Number(dimension.coverage) < 1
+    ))
+    .sort(compareDimensionsByCoverageAsc);
   const selected = [];
   const seen = new Set();
-  for (const dimension of [...gaps, ...observed]) {
+  for (const dimension of [...notApplicable, ...gaps, ...observed]) {
     if (seen.has(dimension.id)) continue;
     seen.add(dimension.id);
     selected.push(dimension);
@@ -1923,7 +1937,7 @@ function countryFaqs(country, capturedAt, rankedCount) {
     return [
       {
         question: `What is ${country.name}'s resilience score?`,
-        answer: `No resilience score or rank is published for ${country.name}. ${country.name}'s published rank would require coverage of at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%, no low-confidence flag, and either a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%. Low confidence for ${country.name} means coverage falls below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% or imputation share exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%. ${describeHeadlineIneligibilityReason(country)}`,
+        answer: `No resilience score or rank is published for ${country.name}. ${country.name}'s published rank would require coverage of at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%, no low-confidence flag, and either a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%. Low confidence for ${country.name} means coverage falls below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% or imputation share exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%.`,
       },
       {
         question: `What evidence is available for ${country.name}?`,
@@ -1959,13 +1973,7 @@ function countryFaqs(country, capturedAt, rankedCount) {
 
 function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount }) {
   const scorePublished = country.headlineEligible !== false;
-  const pillars = [...country.pillars].sort((left, right) => scorePublished
-    ? left.score - right.score
-    : left.id.localeCompare(right.id));
-  const domains = [...country.domains].sort((left, right) => scorePublished
-    ? left.score - right.score
-    : left.id.localeCompare(right.id));
-  if (pillars.length < 3 || domains.length < 6) {
+  if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
   }
   const peerLinks = country.peers.map((peer) => (
@@ -1997,6 +2005,8 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
         <h2>${escapeHtml(country.name)} resilience analysis</h2>
         <p>${escapeHtml(describeHeadlineIneligibility(country))}${escapeHtml(officialBit)}${escapeHtml(statusBit)} Ranked comparisons use ${escapeHtml(country.regionName)} peers rather than other unpublished pages. The snapshot records ${escapeHtml(country.name)} as ${escapeHtml(country.code)}.</p>
         <h3>Why ${escapeHtml(country.name)} is unpublished</h3>
+        <p>${escapeHtml(describeHeadlineIneligibilityReason(country))}</p>
+        <h3>Source inventory gaps</h3>
         <p>${escapeHtml(describeCoverageGaps(country))}</p>
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(describeAvailableEvidence(country))}</p>
@@ -2007,7 +2017,7 @@ ${inventoryItems}
         <h3>Nearest ranked comparators</h3>
         <p>Nearest ranked comparators: ${peerLinks}. Ranked comparisons in ${escapeHtml(country.regionName)}: ${regionalLinks}. Links do not use unpublished scores.</p>
         <h3>Tracked crisis context</h3>
-        <p>${country.crisisMemberships.length > 0 ? crisisText : `${escapeHtml(country.name)} is outside the ${country.crisisRegistrySize} crawlable crisis trackers.`}</p>
+        <p>${crisisText}</p>
         <h3>Reading limits</h3>
         <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${escapeHtml(country.name)} coverage is ${escapeHtml(formatPercent(country.dimensionCoverage))} with imputation share ${escapeHtml(formatPercent(country.imputationShare))}. No score is published.</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>
@@ -2015,6 +2025,8 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
       </article>`;
     return { html, faqs };
   }
+  const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
+  const domains = [...country.domains].sort((left, right) => left.score - right.score);
   const [weakestPillar, secondPillar] = pillars;
   const strongestPillar = pillars.at(-1);
   const [weakestDomain] = domains;
