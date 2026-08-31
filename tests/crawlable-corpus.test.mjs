@@ -1000,7 +1000,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="alternate" hreflang="x-default" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
-      assert.match(norway, /<meta name="lastmod" content="2026-08-30">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-08-31">/);
       assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
       assert.match(
         norway,
@@ -1829,7 +1829,7 @@ describe('crawlable corpus generator', () => {
     assert.ok(data.sources.resilienceSnapshot.includes(data.resilience.capturedAt));
     // Family lastmods use material + page/generator versions only — not the
     // Dataset schema stamp that previously forced a shared build date (#7382).
-    assert.equal(data.lastmod.countries, '2026-08-30');
+    assert.equal(data.lastmod.countries, '2026-08-31');
     assert.equal(data.lastmod.research, '2026-08-30');
     assert.equal(data.lastmod.chokepoints, '2026-08-30');
     assert.equal(
