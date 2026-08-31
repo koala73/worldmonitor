@@ -27,6 +27,7 @@
       "scripts/ais-relay.cjs",
       "scripts/docs-stats.mjs",
       "scripts/generate-inventory-facts.mjs",
+      "scripts/lib/classify-digest-request.cjs",
       "scripts/lib/digest-stale-gate.cjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
