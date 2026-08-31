@@ -32,7 +32,7 @@
     "proF6": "Uçuş arama ve fiyat karşılaştırma",
     "proF7": "Uyarı kuralı motoru — özel tetikleyiciler, sessiz saatler, AES-256 şifreli kanallar",
     "proF8": "Pazar watchlist'i, makro ve merkez bankası takibi",
-    "proF9": "AI Market Implications ve Regional Intelligence (Yakında: yörünge gözetimi, premium harita katmanları, uzatılmış geçmiş)",
+    "proF9": "AI Pazar Etkileri ve Bölgesel İstihbarat",
     "choosePlan": "Planınızı seçin",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Paylaşılan izleme, API erişimi, deployment seçenekleri, TV uygulamaları ve doğrudan desteğe ihtiyaç duyan ekipler için.",
@@ -48,7 +48,8 @@
     "entF10": "Bulut, on-premises veya air-gapped deployment",
     "entF11": "Adanmış onboarding ve destek",
     "entCta": "Satışla konuşun",
-    "freeF2": "Seçilmiş akışlar, atfedilmiş kaynaklar ve harita katmanları"
+    "freeF2": "Seçilmiş akışlar, atfedilmiş kaynaklar ve harita katmanları",
+    "proF10": "İntel belleği — geçmiş arama, zaman çizelgeleri ve benzer olay arama"
   },
   "whyUpgrade": {
     "title": "World Monitor Pro'ya neden yükseltme yapmalısınız?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "GSYH, enflasyon, faiz oranları ve büyüme döngüleri. Piyasa sinyalleri ve jeopolitik olaylarla ilişkili makro veriler.",
     "riskMonitoring": "Risk izleme ve senaryolar",
     "riskMonitoringDesc": "Küresel risk puanlama, senaryo analizi ve jeopolitik risk değerlendirmesi. Piyasa ve siyasi sinyaller arasında yakınsama tespiti.",
-    "orbitalSurveillance": "Yörünge gözetimi",
-    "orbitalSurveillanceDesc": "(Yakında) Yörünge geçiş tahminleri, yeniden ziyaret frekansı analizi ve görüntüleme penceresi uyarıları. İstihbarat uydularının ilgi alanlarınızı ne zaman gözlediğini bilin.",
     "morningBriefs": "Kişisel istihbarat masası",
     "morningBriefsDesc": "Özet başına 30'a kadar sıralanmış haber, kaynaklar arasında kopyasız. Günlük, iki günlük veya haftalık cadenceyi seç — veya kritik olaylar için gerçek zamanlı uyarılar. AI Değerlendirmesi ve İzlenecek Sinyallerle birlikte Slack, Discord, Telegram, Email veya webhook'a gönderilir. Haber bülteni değil — bir analist.",
     "oneKey": "Canlı Hizmetler, 1 Anahtarla",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky ve daha fazlası — hepsi aktif, ayrı kayıt yok.",
-    "deliveryLabel": "İstihbaratın sizi nasıl bulacağını seçin"
+    "deliveryLabel": "İstihbaratın sizi nasıl bulacağını seçin",
+    "supplyChainLab": "Tedarik Zinciri Stres Laboratuvarı",
+    "supplyChainLabDesc": "Ülkeler ve sektörler arasında maliyet şokunun modelini oluşturun. Darboğaz bağımlılığına göre emtia kırılganlığını sıralayın. Madenden rafineri haline kadar konsantrasyon ve SGE–COMEX fiziksel premium farklılaşmasını izleyin — manşet gelmeden hareket eden seri.",
+    "roadmapNote": "Yol haritasında: yörüngesel gözetim, daha uzun geçmiş, premium harita katmanları."
   },
   "slackMock": {
     "morningBrief": "Sabah brifi",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Tam istihbarat gösterge paneli",
         "features": [
-          "Ücretsizde her şey",
-          "AI hisse senedi analizi ve geri test",
-          "Günlük pazar özeti",
-          "Askeri ve jeopolitik izleme",
-          "Özel widget oluşturucu",
-          "10 özel pano (3'e karşılık)",
+          "Ücretsiz tarafta her şey — paneller, kaynaklar ve izlenen ülkeler sınırsız",
+          "WM Analist sohbeti + AI hisse senedi analizi ve geriye dönük test",
+          "Maliyet şoku modelleme ve tedarik zinciri stres testleri",
+          "İntel belleği — geçmiş arama, zaman çizelgeleri ve benzer olaylar",
+          "Fiziksel metaller farklılaşması, mineraller konsantrasyonu ve egemen borç verileri",
+          "Planlı AI özeti + uyarı kuralları motoru",
           "Claude Desktop ve diğer AI istemcileri için MCP + SDK erişimi (50 çağrı/gün)",
-          "Öncelikli veri yenileme"
+          "Özel parçacıklar ve 10 pano (vs 3)"
         ],
         "highlightFeatures": [
           "Kişisel lisans",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Bir ülkenin değişiminin arkasındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin.",
       "open": "Kanıt görüntüle"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Gemi sevkiyat günlüğü",
+    "title": "WorldMonitor'daki yenilikler",
+    "subtitle": "Son 30 gündeki yeni özellikler — düzeltmeler ve altyapı güncellemeleri dahil değil.",
+    "proTag": "PRO",
+    "m1": "Fiziksel premium farklılaşma endeksi — SGE vs COMEX, geçmiş verileriyle birlikte",
+    "m2": "Emtia tedarik kırılganlığı sıralaması — darboğaz bağımlılığı yayılımı",
+    "m3": "Mineral üretim konsantrasyonu ve savunma endüstrisi temeli",
+    "m4": "Beş faktörlü dayanıklılık karne sistemleri gösterge düzeyinde puanlarla",
+    "m5": "Özel Telegram kanal izleme listeleri",
+    "m6": "Şifre anahtarı ile oturum açma",
+    "m7": "AI ajanları panoyu yönlendirebilir — paneller, sekmeler, harita katmanları ve görevler",
+    "m8": "Daha zengin ülke dayanıklılığı sayfaları"
   }
 }

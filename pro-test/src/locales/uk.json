@@ -36,14 +36,14 @@
       "pro": {
         "description": "Full intelligence dashboard",
         "features": [
-          "Everything in Free",
-          "AI stock analysis & backtesting",
-          "Daily market briefs",
-          "Military & geopolitical tracking",
-          "Custom widget builder",
-          "10 custom dashboards (vs 3)",
+          "Все з Free версії — панелі, джерела й відслідковувані країни без обмежень",
+          "WM Analyst chat + аналіз акцій та бектестування на базі AI",
+          "Змоделювання впливу цінових шоків та тести стресу ланцюга поставок",
+          "Розвідувальна пам'ять — історичний пошук, часові шкали й схожі події",
+          "Дані про розбіжність фізичних металів, концентрацію мінералів і суверенний борг",
+          "Запланований AI-дайджест + механізм правил сповіщень",
           "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-          "Priority data refresh"
+          "Користувацькі віджети й 10 інформаційних панелей (проти 3)"
         ],
         "highlightFeatures": [
           "Personal license",
@@ -151,7 +151,7 @@
     "proF6": "Flight search & price comparison",
     "proF7": "Alert rules engine — custom triggers, quiet hours, AES-256 encrypted channels",
     "proF8": "Market watchlist, macro & central bank tracking",
-    "proF9": "AI Market Implications & Regional Intelligence (Soon: orbital surveillance, premium map layers, longer history)",
+    "proF9": "Наслідки для ринків AI та регіональна розвідка",
     "choosePlan": "Choose Your Plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "For teams that need shared monitoring, API access, deployment options, TV apps, and direct support.",
@@ -167,7 +167,8 @@
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
     "entCta": "Talk to Sales",
-    "freeF2": "Курировані стрічки, атрибутовані джерела та шари карт"
+    "freeF2": "Курировані стрічки, атрибутовані джерела та шари карт",
+    "proF10": "Розвідувальна пам'ять — історичний пошук, часові шкали й пошук схожих подій"
   },
   "whyUpgrade": {
     "title": "Чому варто перейти на World Monitor Pro?",
@@ -274,13 +275,14 @@
     "economyAnalyticsDesc": "GDP, inflation, interest rates, and growth cycles. Macro data correlated with market signals and geopolitical events.",
     "riskMonitoring": "Risk Monitoring & Scenarios",
     "riskMonitoringDesc": "Global risk scoring, scenario analysis, and geopolitical risk assessment. Convergence detection across market and political signals.",
-    "orbitalSurveillance": "Orbital Surveillance",
-    "orbitalSurveillanceDesc": "(Soon) Overhead pass predictions, revisit frequency analysis, and imaging window alerts. Know when intelligence satellites are watching your areas of interest.",
     "morningBriefs": "Personal Intelligence Desk",
     "morningBriefsDesc": "До 30 ранжованих новин на дайджест, дедубльовано по джерелам. Обирай щоденну, двічі денну чи щотижневу частоту — або оповіщення в реальному часі для критичних подій. AI Assessment та Signals to watch, доставлені на Slack, Discord, Telegram, Email чи webhook. Це не розсилка — це аналітик.",
     "oneKey": "Живі сервіси, 1 ключ",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
-    "deliveryLabel": "Choose how intelligence finds you"
+    "deliveryLabel": "Choose how intelligence finds you",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Змоделюйте вплив цінового шоку на країни й сектори. Визначте вразливість товарів за залежністю від вузьких місць. Відстежуйте концентрацію від шахти до рафінування та розбіжність премії SGE–COMEX на фізичному ринку — показник, що змінюється перед заголовками новин.",
+    "roadmapNote": "На плані розроблення: супутникове спостереження, довша історія, преміальні шари карт."
   },
   "slackMock": {
     "morningBrief": "Morning Brief",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Відстежте політичні, безпекові, економічні та стійкісні сигнали, що стоять за змінами в країні.",
       "open": "Відкрити докази"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Журнал доставок",
+    "title": "Що нового в WorldMonitor",
+    "subtitle": "Нові функції за останні 30 днів — виправлення й організаційні роботи не включені.",
+    "proTag": "PRO",
+    "m1": "Індекс розбіжності фізичної премії — SGE проти COMEX з історією",
+    "m2": "Рейтинги вразливості товарних поставок — розгортання залежності від вузьких місць",
+    "m3": "Концентрація мінеральної продукції та оборонна промисловість",
+    "m4": "П'ятифакторні карткові оцінки стійкості з оцінками на рівні показників",
+    "m5": "Користувацькі списки спостереження в Telegram",
+    "m6": "Вхід за допомогою passkey",
+    "m7": "AI-агенти можуть керувати інформаційною панеллю — панелі, вкладки, шари карт і завдання",
+    "m8": "Розширені сторінки стійкості країн"
   }
 }

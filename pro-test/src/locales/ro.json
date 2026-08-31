@@ -32,7 +32,7 @@
     "proF6": "Căutare zboruri și comparație de prețuri",
     "proF7": "Motor de reguli de alertă — trigeri proprii, ore silențioase, canale criptate AES-256",
     "proF8": "Watchlist de piață, urmărire macro și bănci centrale",
-    "proF9": "AI Market Implications și Regional Intelligence (În curând: supraveghere orbitală, straturi premium de hartă, istoric extins)",
+    "proF9": "Implicații de piață AI și Intelligence regional",
     "choosePlan": "Alege planul",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Pentru echipe care au nevoie de monitoring partajat, acces API, opțiuni de deployment, aplicații TV și suport direct.",
@@ -48,7 +48,8 @@
     "entF10": "Deployment cloud, on-premises sau air-gapped",
     "entF11": "Onboarding și suport dedicate",
     "entCta": "Vorbește cu vânzările",
-    "freeF2": "Fluxuri curate, surse atribuite și straturi de hartă"
+    "freeF2": "Fluxuri curate, surse atribuite și straturi de hartă",
+    "proF10": "Memorie Intel — căutare istorică, cronologii și căutare de evenimente similare"
   },
   "whyUpgrade": {
     "title": "De ce să faceți upgrade la World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "PIB, inflație, rate de dobândă și cicluri de creștere. Date macro corelate cu semnale de piață și evenimente geopolitice.",
     "riskMonitoring": "Monitoring de risc și scenarii",
     "riskMonitoringDesc": "Scoring global de risc, analiză de scenarii și evaluare a riscului geopolitic. Detecție de convergențe între semnale de piață și politice.",
-    "orbitalSurveillance": "Supraveghere orbitală",
-    "orbitalSurveillanceDesc": "(În curând) Predicții de treceri orbitale, analiză a frecvenței de revizitare și alerte de fereastră de captare. Află când sateliții de intelligence observă zonele tale de interes.",
     "morningBriefs": "Birou personal de intelligence",
     "morningBriefsDesc": "Până la 30 de articole clasate pe digest, deduplicate pe surse. Alege cadență zilnică, de două ori pe zi sau săptămânală — sau alerte în timp real pentru evenimente critice. Evaluare AI și Semnale de urmărit trimise la Slack, Discord, Telegram, Email sau webhook. Nu o newsletter — un analist.",
     "oneKey": "Servicii Live, 1 Cheie",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky și mai mult — toate active, fără înregistrări separate.",
-    "deliveryLabel": "Alege cum te găsește intelligence-ul"
+    "deliveryLabel": "Alege cum te găsește intelligence-ul",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Modelează un șoc de cost pe țări și sectoare. Clasifică vulnerabilitatea mărfurilor după dependența de puncte de strangulare. Urmărește concentrația mine-rafinărie și divergența primei fizice SGE–COMEX — seria care se mișcă înainte ca titlul să apară.",
+    "roadmapNote": "Pe foaia de parcurs: supraveghere orbitală, istoric mai lung, straturi de hartă premium."
   },
   "slackMock": {
     "morningBrief": "Brief matinal",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Tablou de bord complet de intelligence",
         "features": [
-          "Totul din Gratuit",
-          "Analiza și backtesting pentru acțiuni cu AI",
-          "Rezumate zilnice de piață",
-          "Urmărirea militară și geopolitică",
-          "Constructor de widget-uri personalizate",
-          "10 tablouri de bord personalizate (vs 3)",
+          "Tot din Free — panouri, surse și țări urmărite nelimitate",
+          "Chat WM Analyst + analiză și backtesting bursier AI",
+          "Modelarea șocului de cost și teste de stres lanț aprovizionare",
+          "Memorie Intel — căutare istorică, cronologii și evenimente similare",
+          "Divergență metale fizice, concentrație minerale și date datorii suverane",
+          "Digest AI programat + motor reguli de alertare",
           "Acces MCP + SDK pentru Claude Desktop și alți clienți AI (50 apeluri/zi)",
-          "Reîmprospătare prioritară a datelor"
+          "Widgeturi personalizate și 10 dashboard-uri (vs 3)"
         ],
         "highlightFeatures": [
           "Licență personală",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Urmăriți semnalele politice, de securitate, economice și de reziliență din spatele unei schimbări în țară.",
       "open": "Deschideți dovezi"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Jurnal transport maritim",
+    "title": "Ce e nou în WorldMonitor",
+    "subtitle": "Funcții noi din ultimele 30 de zile — corecții și lucrări de infrastructură nu incluse.",
+    "proTag": "PRO",
+    "m1": "Index divergență primă fizică — SGE vs COMEX, cu istoric",
+    "m2": "Clasificări vulnerabilitate aprovizionare mărfuri — despicarea dependenței de puncte de strangulare",
+    "m3": "Concentrație producție minerale și baza industrială de apărare",
+    "m4": "Fișe de reziență cu cinci factori și scoruri la nivel indicator",
+    "m5": "Liste de monitorizare personalizate pe canal Telegram",
+    "m6": "Autentificare cu parolă de acces",
+    "m7": "Agenți AI pot gestiona dashboard-ul — panouri, file, straturi hartă și misiuni",
+    "m8": "Pagini de reziență țări mai bogate"
   }
 }
