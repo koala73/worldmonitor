@@ -9417,11 +9417,19 @@ async function seedChokepointTransits() {
     const crossings = chokepointCrossings.get(cp.name) || [];
     const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
     chokepointCrossings.set(cp.name, recent);
+    // `available` is the same signal seedTransitSummaries encodes by leaving
+    // todayTotal null. Both writers read this one in-memory map and both ship
+    // in a single get-chokepoint-status bundle, so without it one response
+    // carried summaries.suez.todayTotal === null next to
+    // transits["Suez Canal"].total === 0 and an agent's answer depended on
+    // which half it read. The counts stay numeric here because the documented
+    // shape of this key is {tanker, cargo, other, total}.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
       cargo: recent.filter(c => c.type === 'cargo').length,
       other: recent.filter(c => c.type === 'other').length,
       total: recent.length,
+      available: recent.length > 0,
     };
   }
   const payload = { transits, fetchedAt: now };
@@ -9526,15 +9534,15 @@ async function seedTransitSummaries() {
 
     // Compact summary: no history field. Consumed by get-chokepoint-status on
     // every request, so keep it small.
-    // dataAvailable distinguishes genuine zero-traffic (cpData present, 0
-    // crossings) from zero-state fill (upstream missing this cycle). False
-    // here makes the RPC response explicit and lets the client render a
-    // "data unavailable" indicator instead of silently-empty stat rows.
+    // dataAvailable is PortWatch history presence, not AIS today-counts.
+    // todayTotal comes from the in-memory 24h AIS window; an empty window is
+    // unsupplied, not a published zero-traffic measurement (#7457). Leave the
+    // count absent so PortWatch WoW cannot sit next to a fake 0.
     summaries[cpId] = {
-      todayTotal: relayTransit?.total ?? 0,
-      todayTanker: relayTransit?.tanker ?? 0,
-      todayCargo: relayTransit?.cargo ?? 0,
-      todayOther: relayTransit?.other ?? 0,
+      todayTotal: relayTransit?.total ?? null,
+      todayTanker: relayTransit?.tanker ?? null,
+      todayCargo: relayTransit?.cargo ?? null,
+      todayOther: relayTransit?.other ?? null,
       wowChangePct: cpData?.wowChangePct ?? 0,
       riskLevel: cr?.riskLevel ?? '',
       incidentCount7d: cr?.incidentCount7d ?? 0,

@@ -207,9 +207,12 @@ readable.
 The scorecard also refuses to publish a thin day. A fresh daily cohort replaces
 the previous one only when it covers at least 180 countries with a scoreable
 factor and 150 with usable population evidence, and clears these per-factor
-country counts: food 80, energy 120, demographics 150, technology 120,
+country counts: food 80, energy 120, demographics 150, technology 110,
 defense 30. These floors came from an audit of 196 countries against production
-sources, with headroom for normal coverage wobble. A partial source outage
+sources, with headroom for normal coverage wobble. The pre-activation
+production refresh measured 116 scoreable technology countries, so that floor
+was corrected to 110 — a six-country outage margin — without loosening any
+country's evidence, scoring, freshness, or null rules. A partial source outage
 therefore cannot overwrite a richer snapshot with a poorer one — the previous
 good cohort simply stays live.
 
@@ -254,11 +257,19 @@ population-weighted across the members that have evidence.
 the system that delivers it sound?
 
 Consumption comes from OWID `primary_energy_consumption`. Production is derived
-from World Bank net energy imports (`EG.IMP.CONS.ZS`):
+from the audited World Bank net-energy-imports observation (`EG.IMP.CONS.ZS`)
+already carried by the resilience static source:
 
 ```text
 production TWh = consumption TWh * (1 - net imports percent / 100)
 ```
+
+Where that import-dependency observation is Eurostat `nrg_ind_id` rather than
+World Bank, the input reports `redistribution-blocked` and the country scores no
+primary balance. Eurostat is not audited for raw redistribution of this
+indicator, and publishing the derived ratio would expose the raw percentage
+anyway, since consumption is published beside it. Restoring those countries
+requires a source audit, not a code change.
 
 | Component | Weight | Direction and goalposts | Input source |
 |---|---:|---|---|

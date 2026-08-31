@@ -2477,6 +2477,10 @@ export const CACHE_TOOLS: ToolDef[] = [
             incidentCount7d: { type: ['number', 'null'] }, disruptionPct: { type: ['number', 'null'] },
             riskSummary: { type: 'string' }, riskReportAction: { type: 'string' },
             anomaly: { type: 'object' }, dataAvailable: { type: 'boolean' },
+            // null todayTotal means the relay's 24h AIS window was empty --
+            // unsupplied, not a measured zero (#7457). dataAvailable is
+            // PortWatch history presence and says nothing about today's count.
+            todayCountsAvailable: { type: 'boolean' },
           } } },
           fetchedAt: { type: ['number', 'string'] },
         },
@@ -2484,7 +2488,14 @@ export const CACHE_TOOLS: ToolDef[] = [
       chokepoint_transits: {
         type: ['object', 'null'],
         properties: {
-          transits: { type: 'object', additionalProperties: { type: 'object' } },
+          // Same in-memory AIS window as transit-summaries, so the same caveat
+          // applies: `available: false` means the window was empty and the
+          // numeric counts are a zero fill, not a measurement.
+          transits: { type: 'object', additionalProperties: { type: 'object', properties: {
+            tanker: { type: 'number' }, cargo: { type: 'number' },
+            other: { type: 'number' }, total: { type: 'number' },
+            available: { type: 'boolean' },
+          } } },
           fetchedAt: { type: ['number', 'string'] },
         },
       },

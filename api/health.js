@@ -1221,7 +1221,7 @@ const SEED_META = {
     key: 'seed-meta:scorecard:five-factor',
     maxStaleMin: 2160, // Daily section; 36h allows one delayed Railway tick before the 3d data TTL.
     minRecordCount: 180,
-    minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 120, defense: 30 },
+    minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 110, defense: 30 },
     activationKey: 'seed-activated:scorecard:five-factor',
     cutover: {
       mode: 'activation-marker',

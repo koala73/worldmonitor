@@ -147,10 +147,14 @@ type DirectionLabel = 'eastbound' | 'westbound' | 'northbound' | 'southbound';
 // lives in `supply_chain:transit-summaries:history:v1:{id}` and is served by
 // GetChokepointHistory on card expand.
 interface PreBuiltTransitSummary {
-  todayTotal: number;
-  todayTanker: number;
-  todayCargo: number;
-  todayOther: number;
+  // null when the relay's 24h AIS window held no crossings. That is unsupplied,
+  // not a measured zero: seedTransitSummaries only builds relayTransit when
+  // `recent.length > 0`, so the two are indistinguishable at the source and the
+  // count must not be published either way (#7457). Older writers emit 0 here.
+  todayTotal: number | null;
+  todayTanker: number | null;
+  todayCargo: number | null;
+  todayOther: number | null;
   wowChangePct: number;
   riskLevel: string;
   incidentCount7d: number;
@@ -487,11 +491,17 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       description: descriptions.join('; '),
       directions: cp.directions,
       directionalDwt: [],
+      // today_* are non-nullable int32 in the proto and integers in the
+      // published OpenAPI schema, so the relay's null (an empty AIS window,
+      // the common case) must not reach the wire. Hold the contract here and
+      // carry absence in todayCountsAvailable instead; clients withhold on
+      // that flag rather than inferring it from a 0 they cannot interpret.
       transitSummary: ts ? {
-        todayTotal: ts.todayTotal,
-        todayTanker: ts.todayTanker,
-        todayCargo: ts.todayCargo,
-        todayOther: ts.todayOther,
+        todayTotal: ts.todayTotal ?? 0,
+        todayTanker: ts.todayTanker ?? 0,
+        todayCargo: ts.todayCargo ?? 0,
+        todayOther: ts.todayOther ?? 0,
+        todayCountsAvailable: ts.todayTotal != null,
         wowChangePct: ts.wowChangePct,
         // History is served separately by GetChokepointHistory (lazy-loaded on
         // card expand) — field stays declared for proto compat but is empty
@@ -505,7 +515,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         // Default true for pre-fix writers (absence = covered). New writers
         // explicitly emit false for canonical zero-state fills.
         dataAvailable: ts.dataAvailable ?? true,
-      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
+      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, todayCountsAvailable: false, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
       flowEstimate: flowsData?.[cp.id] ? {
         currentMbd: flowsData[cp.id]!.currentMbd,
         baselineMbd: flowsData[cp.id]!.baselineMbd,

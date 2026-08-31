@@ -27,7 +27,7 @@ export const SCORECARD_PUBLICATION_FLOORS = {
     food: 80,
     energy: 120,
     demographics: 150,
-    technology: 120,
+    technology: 110,
     defense: 30,
   },
 } as const;

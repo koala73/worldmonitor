@@ -6,7 +6,7 @@ await runBundle('energy-sources', [
   { label: 'Gas-Storage-Countries', script: 'seed-gas-storage-countries.mjs', seedMetaKey: 'energy:gas-storage-countries', intervalMs: DAY, timeoutMs: 600_000 },
   { label: 'JODI-Gas', script: 'seed-jodi-gas.mjs', seedMetaKey: 'energy:jodi-gas', canonicalKey: 'energy:jodi-gas:v1:_countries', completionMetaKey: 'seed-completion:energy:jodi-gas', intervalMs: 35 * DAY, timeoutMs: 600_000 },
   { label: 'JODI-Oil', script: 'seed-jodi-oil.mjs', seedMetaKey: 'energy:jodi-oil', canonicalKey: 'energy:jodi-oil:v1:_countries', intervalMs: 35 * DAY, timeoutMs: 600_000 },
-  { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', seedMetaKey: 'economic:owid-energy-mix', intervalMs: 35 * DAY, timeoutMs: 600_000 },
+  { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', seedMetaKey: 'economic:owid-energy-mix', expectedSourceVersion: 'owid-energy-mix-v2', intervalMs: 35 * DAY, timeoutMs: 600_000 },
   { label: 'IEA-Oil-Stocks', script: 'seed-iea-oil-stocks.mjs', seedMetaKey: 'energy:iea-oil-stocks', canonicalKey: 'energy:iea-oil-stocks:v1:index', completionMetaKey: 'seed-completion:energy:iea-oil-stocks', intervalMs: 40 * DAY, timeoutMs: 300_000 },
   { label: 'EIA-Petroleum', script: 'seed-eia-petroleum.mjs', seedMetaKey: 'energy:eia-petroleum', canonicalKey: 'energy:eia-petroleum:v1', intervalMs: DAY, timeoutMs: 90_000 },
   { label: 'IEA-Crisis-Policies', script: 'seed-energy-crisis-policies.mjs', seedMetaKey: 'energy:crisis-policies', canonicalKey: 'energy:crisis-policies:v1', intervalMs: 7 * DAY, timeoutMs: 120_000 },
