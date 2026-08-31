@@ -9,7 +9,7 @@ description: "The indicator-level explainability layer under the country resilie
 
 It exists to make a score auditable. If a country's resilience moved, this is the endpoint that says which indicator moved and by how much.
 
-Served from `GET /api/resilience/v1/get-resilience-indicators?country_code=<ISO2>` and MCP `get_resilience_indicators`. Both require a Pro subscription. There is no dashboard surface — this is an API and agent endpoint.
+Served from `GET /api/resilience/v1/get-resilience-indicators?countryCode=<ISO2>` and MCP `get_resilience_indicators`. Both require a Pro subscription. There is no dashboard surface — this is an API and agent endpoint.
 
 ## Per indicator
 
@@ -18,17 +18,18 @@ Each of the 72 rows carries:
 | Field | Meaning |
 | --- | --- |
 | Normalized score | The indicator on the engine's common scale |
-| State | Whether the value was **observed** or **imputed** |
+| State | `observed`, `imputed`, `missing`, `fallback`, `not-applicable`, `source-failure`, `inactive`, or `retired` |
 | Runtime weight | The weight actually applied on this run, not the registry default |
 | Contribution | The indicator's share of its dimension, reconciled so the dimension's contributions sum correctly |
+| Availability flags | `normalizedScoreAvailable`, `runtimeWeightAvailable`, and `scoringWeightShareAvailable` decide whether the matching numeric fields apply |
 | Observation age | How old the underlying observation is |
 | Source provenance | Which upstream published it |
 
 Weights are served as applied rather than as configured because the engine renormalizes when an indicator is unavailable for a country. Reading the registry default would misattribute the score.
 
-## Observed versus imputed
+## Indicator states
 
-An imputed indicator is a real part of the score and is not hidden — but it is a modelled value, not a measurement. Any audit that treats the two identically will over-credit countries with thin coverage. The `state` field is what separates them.
+`observed` and `imputed` are only two possible states. `missing` means no usable observation resolved, `fallback` means a lower-confidence substitute was used, `not-applicable` is structural, `source-failure` is an upstream or seed failure, and `inactive` or `retired` marks an indicator outside the active scoring path. An imputed or fallback indicator can still be a real part of the score, but it is not a measurement. Read `state` and the availability flags before any numeric field.
 
 ## Raw values and licensing
 

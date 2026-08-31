@@ -7,7 +7,7 @@ description: "WorldMonitor 如何将世界银行军事能力指标与 SIPRI 武�
 
 关于一个国家国防态势的两个问题：它资助并维持多少军事能力，以及它在主要武器上依赖谁。前者来自世界银行的年度指标，后者来自 SIPRI 的武器转让登记册，归约为供应国份额。
 
-由 `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` 与 MCP `get_defense_industrial_base` 提供。两者均需 Pro 订阅。
+由 `GET /api/military/v1/get-defense-industrial-base?countryCode=<ISO2>` 与 MCP `get_defense_industrial_base` 提供。两者均需 Pro 订阅。
 
 ## 第一部分——军事能力
 
@@ -53,7 +53,7 @@ supplierHhi = sum(tivShare_i^2)   对每个供应国 i
 
 ## 时钟
 
-`fetchedAt` 是所提供数值中**最早**的来源时间戳，因此可安全地理解为"此处没有任何数据比它更新"。`industrialFetchedAt` 与 `supplierFetchedAt` 给出各部分的时钟。世界银行与 SIPRI 两部分按不同日程更新——SIPRI 的年度更新在每年三月发布。
+`fetchedAt` 是所提供数值中**最早**的来源时间戳，因此可安全地理解为"此处没有任何数据比它更旧"。其他部分可能更新。`industrialFetchedAt` 与 `supplierFetchedAt` 给出各部分的时钟。世界银行与 SIPRI 两部分按不同日程更新——SIPRI 的年度更新在每年三月发布。
 
 ## 许可
 

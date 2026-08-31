@@ -7,7 +7,7 @@ description: "WorldMonitor 如何按商品与国家提供 USDA PSD 谷物期末�
 
 库存消费比是谷物平衡表的标准缓冲指标：一个销售年度的消费量中有多少已存放在仓库中。比率下降是某种商品余量耗尽的最早的广泛公布信号。
 
-由 `GET /api/resilience/v1/get-food-stocks?country_code=<ISO2|WORLD>` 与 MCP `get_food_stocks` 提供。两者均需 Pro 订阅。
+由 `GET /api/resilience/v1/get-food-stocks?countryCode=<ISO2|WORLD>` 与 MCP `get_food_stocks` 提供。两者均需 Pro 订阅。
 
 ## 数据源
 
@@ -19,7 +19,7 @@ FAOSTAT 在 PSD 之后作为仅产量的缺口填补，覆盖 PSD 未覆盖的�
 
 `wheat`、`corn`、`rice`、`soybeans`、`barley`、`palmOil`。传入 `commodity` 以缩小范围；省略则返回该国报告的所有商品。
 
-`country_code=WORLD` 返回 PSD 发布的全球平衡表——不是在此基于国家行计算的合计。
+`countryCode=WORLD` 返回 PSD 发布的全球平衡表——不是在此基于国家行计算的合计。
 
 ## 比率
 
@@ -27,7 +27,7 @@ FAOSTAT 在 PSD 之后作为仅产量的缺口填补，覆盖 PSD 未覆盖的�
 库存消费比 = 期末库存 / 总消费量
 ```
 
-每一行同时提供 `endingStocks`、`production`、`use` 与派生的 `stocksToUse`，因此调用方可以看出比率的哪一侧发生了变化。因消费量上升而下降的比率，与因产量歉收而下降的比率是不同的情形，而仅凭比率无法区分二者。
+每一行同时提供 `endingStocksTmt`、`productionTmt`、`totalUseTmt` 与派生的 `stocksToUse`，因此调用方可以看出比率的哪一侧发生了变化。因消费量上升而下降的比率，与因产量歉收而下降的比率是不同的情形，而仅凭比率无法区分二者。
 
 ## 销售年度不是日历年度
 
@@ -38,12 +38,12 @@ FAOSTAT 在 PSD 之后作为仅产量的缺口填补，覆盖 PSD 未覆盖的�
 由此产生的后果：
 
 - **切勿因年份标签相同就比较两国数据。** 标签不是时期。
-- **切勿通过累加国家行构建全球总量。** 请使用 `country_code=WORLD`。
+- **切勿通过累加国家行构建全球总量。** 请使用 `countryCode=WORLD`。
 - **一国的年度可能已推进而其邻国尚未。** 那是日历使然，不是陈旧数据。
 
 ## 可用性
 
-数据行携带明确的不可用状态而非零值。某国未报告的商品在响应中缺席，而不是以 `endingStocks: 0` 出现——零库存与无覆盖是相反的解读，API 不会将二者混为一谈。
+数据行使用明确的存在性标志，而不是只靠数值字段。`hasEndingStocks` 与 `hasStocksToUse` 表示 `endingStocksTmt` 与 `stocksToUse` 是否为测量值。FAOSTAT 的仅产量填补行可以携带 `endingStocksTmt`、`totalUseTmt` 与 `stocksToUse` 的占位零值，同时这些库存标志为 false。某国未报告的商品在响应中缺席。零库存与无覆盖是相反的解读，调用方不能由一方推断另一方。
 
 ## 更新频率
 

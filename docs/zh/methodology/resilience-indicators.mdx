@@ -9,7 +9,7 @@ description: "国家韧性评分之下的指标级可解释层——归一化数
 
 它的存在是为了让评分可被审计。如果某国的韧性发生变动，这就是说明哪项指标变动、变动多少的端点。
 
-由 `GET /api/resilience/v1/get-resilience-indicators?country_code=<ISO2>` 与 MCP `get_resilience_indicators` 提供。两者均需 Pro 订阅。此路由没有仪表盘界面——它是面向 API 与智能体的端点。
+由 `GET /api/resilience/v1/get-resilience-indicators?countryCode=<ISO2>` 与 MCP `get_resilience_indicators` 提供。两者均需 Pro 订阅。此路由没有仪表盘界面——它是面向 API 与智能体的端点。
 
 ## 每项指标
 
@@ -18,17 +18,18 @@ description: "国家韧性评分之下的指标级可解释层——归一化数
 | 字段 | 含义 |
 | --- | --- |
 | 归一化得分 | 该指标在引擎通用标度上的取值 |
-| 状态 | 该值是**观测**得来还是**插补**得来 |
+| 状态 | `observed`、`imputed`、`missing`、`fallback`、`not-applicable`、`source-failure`、`inactive` 或 `retired` |
 | 运行时权重 | 本次运行实际应用的权重，而非注册表默认值 |
 | 贡献值 | 该指标在其维度中的占比，经对账后维度内贡献值可正确求和 |
+| 可用性标志 | `normalizedScoreAvailable`、`runtimeWeightAvailable` 与 `scoringWeightShareAvailable` 决定对应数值字段是否适用 |
 | 观测时效 | 底层观测值的年龄 |
 | 来源出处 | 由哪个上游发布 |
 
 权重按实际应用值提供而非按配置值，因为当某指标对某国不可用时引擎会重新归一化。读取注册表默认值会错误归因该评分。
 
-## 观测与插补
+## 指标状态
 
-插补指标是评分的真实组成部分，并未被隐藏——但它是建模值而非测量值。任何将二者等同看待的审计都会高估覆盖稀薄国家的得分。`state` 字段正是区分二者的依据。
+`observed` 与 `imputed` 只是两种可能状态。`missing` 表示没有解析出可用观测，`fallback` 表示使用了低置信度替代值，`not-applicable` 是结构性不适用，`source-failure` 是上游或种子失败，`inactive` 或 `retired` 表示该指标不在当前评分路径中。插补或回退指标仍可能是评分的真实组成部分，但它不是测量值。读取任何数值字段前，请先读 `state` 与可用性标志。
 
 ## 原始数值与许可
 

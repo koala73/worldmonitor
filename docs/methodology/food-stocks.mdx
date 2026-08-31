@@ -7,7 +7,7 @@ description: "How WorldMonitor serves USDA PSD cereal ending stocks, production,
 
 Stocks-to-use is the standard buffer measure for a cereal balance: how much of a marketing year's consumption is already sitting in store. A falling ratio is the earliest widely-published signal that a commodity's slack is gone.
 
-Served from `GET /api/resilience/v1/get-food-stocks?country_code=<ISO2|WORLD>` and MCP `get_food_stocks`. Both require a Pro subscription.
+Served from `GET /api/resilience/v1/get-food-stocks?countryCode=<ISO2|WORLD>` and MCP `get_food_stocks`. Both require a Pro subscription.
 
 ## Source
 
@@ -19,7 +19,7 @@ FAOSTAT is applied after PSD as a production-only gap fill for commodity-country
 
 `wheat`, `corn`, `rice`, `soybeans`, `barley`, `palmOil`. Pass `commodity` to narrow; omit it for every commodity the country reports.
 
-`country_code=WORLD` returns the global balance, which is the aggregate PSD publishes — not a sum computed here over the country rows.
+`countryCode=WORLD` returns the global balance, which is the aggregate PSD publishes — not a sum computed here over the country rows.
 
 ## The ratio
 
@@ -27,7 +27,7 @@ FAOSTAT is applied after PSD as a production-only gap fill for commodity-country
 stocks-to-use = ending stocks / total use
 ```
 
-Each row serves `endingStocks`, `production`, `use` and the derived `stocksToUse` together, so a caller can see which side of the ratio moved. A ratio that fell because use rose is a different situation from one that fell because production failed, and the ratio alone cannot distinguish them.
+Each row serves `endingStocksTmt`, `productionTmt`, `totalUseTmt` and the derived `stocksToUse` together, so a caller can see which side of the ratio moved. A ratio that fell because use rose is a different situation from one that fell because production failed, and the ratio alone cannot distinguish them.
 
 ## Marketing years are not calendar years
 
@@ -38,12 +38,12 @@ A marketing year runs from harvest, so it differs by both commodity and country.
 Consequences:
 
 - **Never compare two countries' figures because their year labels match.** The label is not a period.
-- **Never build a global total by summing country rows.** Use `country_code=WORLD`.
+- **Never build a global total by summing country rows.** Use `countryCode=WORLD`.
 - **A country's year can advance while its neighbour's has not.** That is the calendar, not a stale row.
 
 ## Availability
 
-Rows carry an explicit unavailable state rather than a zero. A commodity a country does not report is absent from the response, not present with `endingStocks: 0` — zero stocks and no coverage are opposite readings and the API does not conflate them.
+Rows use explicit presence flags rather than numeric fields alone. `hasEndingStocks` and `hasStocksToUse` say whether `endingStocksTmt` and `stocksToUse` are measured values. FAOSTAT production-only fill rows can carry placeholder zeroes for `endingStocksTmt`, `totalUseTmt`, and `stocksToUse` while those stock flags are false. A commodity a country does not report is absent from the response. Zero stocks and no coverage are opposite readings, and callers must not infer one from the other.
 
 ## Cadence
 

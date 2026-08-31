@@ -7,7 +7,7 @@ description: "How WorldMonitor combines World Bank military-capacity indicators 
 
 Two questions about one country's defense position: how much military capacity does it fund and field, and who does it depend on for major weapons. The first comes from World Bank annual indicators, the second from SIPRI's arms-transfer register reduced to supplier shares.
 
-Served from `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` and MCP `get_defense_industrial_base`. Both require a Pro subscription.
+Served from `GET /api/military/v1/get-defense-industrial-base?countryCode=<ISO2>` and MCP `get_defense_industrial_base`. Both require a Pro subscription.
 
 ## Part A — military capacity
 
@@ -53,7 +53,7 @@ The two are deliberately not reconciled: dropping unmapped TIV from the denomina
 
 ## Clocks
 
-`fetchedAt` is the **oldest** source timestamp among the values served, so it is safe to treat as "nothing here is newer than this". `industrialFetchedAt` and `supplierFetchedAt` give the per-part clocks. The World Bank and SIPRI parts update on different schedules — SIPRI's annual update lands each March.
+`fetchedAt` is the **oldest** source timestamp among the values served, so it is safe to treat as "nothing here is older than this". Another part may be newer. `industrialFetchedAt` and `supplierFetchedAt` give the per-part clocks. The World Bank and SIPRI parts update on different schedules — SIPRI's annual update lands each March.
 
 ## Licensing
 
