@@ -11,9 +11,9 @@ Served from `GET /api/resilience/v1/get-food-stocks?country_code=<ISO2|WORLD>` a
 
 ## Source
 
-USDA Production, Supply and Distribution (PSD). Public domain, monthly release cycle, global coverage by commodity and country.
+USDA Production, Supply and Distribution (PSD) is the source for balances and stocks. Public domain, monthly release cycle, global coverage by commodity and country.
 
-FAO was assessed first and not adopted: its depth per commodity-country did not support a consistent stocks-to-use series across the set, and mixing the two would have produced rows whose denominators meant different things.
+FAOSTAT is applied after PSD as a production-only gap fill for commodity-country pairs the balance sheet missed. Those rows expose `source: "faostat"`; every stocks field on them is a placeholder, not a USDA/PSD measurement, and they do not carry a stocks-to-use ratio.
 
 ## Commodities
 
