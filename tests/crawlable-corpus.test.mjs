@@ -64,6 +64,20 @@ function pairwiseUniqueShare(left, right) {
   return 1 - (shared / Math.max(leftShingles.size, rightShingles.size));
 }
 
+function decodeBasicHtml(value) {
+  return String(value || '')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
+}
+
+function unpublishedHeadingParagraph(html, headingRe) {
+  const match = html.match(new RegExp(`<h3>${headingRe}</h3>\\s*<p>([\\s\\S]*?)</p>`));
+  return decodeBasicHtml(match?.[1] || '');
+}
+
 const DATASET_DESCRIPTION_MIN_LENGTH = 50;
 const DATASET_DESCRIPTION_MAX_LENGTH = 5000;
 const SOURCE_DOMAIN_IDS = new Set([
@@ -1282,6 +1296,20 @@ describe('crawlable corpus generator', () => {
       assert.match(taiwan, /population of at least 200,000/);
       assert.match(taiwan, /coverage falls below 55%/);
       assert.match(taiwan, /imputation share exceeds 40%/);
+      const taiwanWhy = unpublishedHeadingParagraph(taiwan, 'Why Taiwan is unpublished');
+      assert.match(taiwanWhy, /coverage is 38%/);
+      assert.match(taiwanWhy, /imputation share is 42%/);
+      assert.doesNotMatch(
+        taiwanWhy,
+        /Ranking requires coverage of at least 65%/,
+        'eligibility thresholds in FAQ/JSON-LD must not be the Why-unpublished analysis reason',
+      );
+      const taiwanCovered = unpublishedHeadingParagraph(taiwan, 'What the snapshot does cover');
+      assert.match(
+        taiwanCovered,
+        /Cyber and digital capacity \(100%\)|Macro-fiscal position \(95%\)/,
+        'available-evidence copy must name a strongest observed dimension, not only weak usable rows',
+      );
       assert.match(taiwan, /coverage is 38%/);
       assert.match(taiwan, /imputation share is 42%/);
       assert.match(taiwan, /World Bank/);
@@ -1333,6 +1361,15 @@ describe('crawlable corpus generator', () => {
       );
       const coveredHtml = read(outDir, `countries/${coveredIneligible.slug}/index.html`);
       const coveredCoverage = `${Math.round(Number(coveredIneligible.dimensionCoverage) * 100)}%`;
+      const coveredWhy = unpublishedHeadingParagraph(
+        coveredHtml,
+        `Why ${coveredIneligible.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is unpublished`,
+      );
+      assert.equal(
+        coveredWhy,
+        describeHeadlineIneligibilityReason(coveredIneligible),
+        `${coveredIneligible.name} Why-unpublished paragraph must be the eligibility reason, not gap copy`,
+      );
       assert.match(
         coveredHtml,
         /does not meet the published ranking eligibility criteria/,
@@ -1355,6 +1392,11 @@ describe('crawlable corpus generator', () => {
       assert.ok(
         coveredHtml.includes(describeHeadlineIneligibilityReason(coveredIneligible)),
         `${coveredIneligible.name} must use the snapshot eligibility reason, not a coerced low-confidence label`,
+      );
+      assert.match(
+        coveredHtml,
+        /<h3>Source inventory gaps<\/h3>/,
+        `${coveredIneligible.name} must keep source-gap copy on a separate heading`,
       );
       if (coveredIneligible.lowConfidence !== true) {
         assert.doesNotMatch(
@@ -1405,8 +1447,36 @@ describe('crawlable corpus generator', () => {
       assert.equal(andorraDataset.confidence, 'standard');
       assert.equal(andorraDataset.sourceStatus, 'unpublished');
       assert.match(andorra, /coverage is 69%/);
-      assert.match(andorra, /population of at least 200,000/);
+      assert.match(andorra, /recorded population of at least 200,000/);
       assert.match(andorra, /<span>Confidence<\/span><strong>Standard<\/strong>/);
+      assert.doesNotMatch(andorra, /flagged low-confidence/);
+      assert.doesNotMatch(
+        andorra,
+        /a low-confidence listing/,
+        'covered-ineligible meta description must not call a standard-confidence snapshot low-confidence',
+      );
+      assert.match(andorra, /an unpublished listing/);
+      assert.match(andorra, /in the rankable universe as a UN member/);
+      assert.match(
+        andorra,
+        /Sovereign fiscal buffer<\/strong>: 0% coverage; not applicable/,
+      );
+      assert.doesNotMatch(
+        andorra,
+        /sovereign-wealth records does not contribute/,
+      );
+      const iraq = countryByCode.get('IQ');
+      assert.ok(iraq, 'snapshot must include unpublished Iraq');
+      const iraqHtml = read(outDir, 'countries/iraq/index.html');
+      const iraqWhy = unpublishedHeadingParagraph(iraqHtml, 'Why Iraq is unpublished');
+      assert.equal(iraqWhy, describeHeadlineIneligibilityReason(iraq));
+      assert.match(iraqWhy, /recorded population of at least 200,000/);
+      assert.doesNotMatch(iraqWhy, /below the 65% ranking floor/);
+      assert.doesNotMatch(
+        iraqHtml,
+        /Iraq.{0,120}(fewer than 200,000|microstate)|microstate.{0,80}Iraq/,
+        'Iraq copy must not imply the country is below the 200,000 population gate',
+      );
       assert.doesNotMatch(andorra, /flagged low-confidence/);
       assert.doesNotMatch(
         andorra,

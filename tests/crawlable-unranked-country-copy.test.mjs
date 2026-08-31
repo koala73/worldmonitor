@@ -10,6 +10,8 @@ import {
   describeAvailableEvidence,
   describeCoverageGaps,
   describeHeadlineIneligibility,
+  describeHeadlineIneligibilityReason,
+  dimensionInventoryNote,
   HEADLINE_RANKING_HIGH_COVERAGE,
   HEADLINE_RANKING_MIN_COVERAGE,
   HEADLINE_RANKING_MIN_POPULATION,
@@ -211,8 +213,9 @@ describe('unranked country copy', () => {
     assert.doesNotMatch(gaps, /\bTW · /);
 
     const available = describeAvailableEvidence(taiwan);
-    assert.match(available, /Cyber and digital capacity/);
-    assert.match(available, /Border security/);
+    assert.match(available, /Cyber and digital capacity \(100%\)/);
+    assert.match(available, /Macro-fiscal position \(95%\)/);
+    assert.match(available, /Border security \(86%\)/);
     assert.doesNotMatch(available, /\bTW · /);
   });
 
@@ -283,7 +286,76 @@ describe('unranked country copy', () => {
     ]);
     assert.match(
       describeCoverageGaps(country),
-      /World Bank, which does not contribute observed series for Andorra/,
+      /World Bank, which does not contribute observed series for those dimensions/,
     );
+  });
+
+  it('does not claim a named source is absent country-wide when it still feeds observed dimensions', () => {
+    const country = countryFixture({
+      name: 'Taiwan',
+      code: 'TW',
+      dimensionCoverage: 0.38,
+      imputationShare: 0.417,
+      lowConfidence: true,
+    }, [
+      dimension('education', 0.8),
+      dimension('externalDebtCoverage', 0, 'unmonitored'),
+      dimension('borderSecurity', 0.86),
+    ]);
+    const gaps = describeCoverageGaps(country);
+    assert.match(gaps, /World Bank, which does not contribute observed series for those dimensions/);
+    assert.doesNotMatch(gaps, /contribute observed series for Taiwan/);
+    assert.match(gaps, /does not cover Taiwan/);
+  });
+
+  it('labels not-applicable inventory slots before missing-source copy', () => {
+    const country = countryFixture({ name: 'Andorra', code: 'AD' }, []);
+    assert.equal(
+      dimensionInventoryNote(country, dimension('sovereignFiscalBuffer', 0, 'not-applicable')),
+      'not applicable',
+    );
+    assert.equal(
+      dimensionInventoryNote(country, dimension('macroFiscal', 0, 'stable-absence')),
+      'stable absence in the source feed',
+    );
+  });
+
+  it('lists the strongest observed dimensions, not the weakest usable ones', () => {
+    const available = describeAvailableEvidence(countryFixture({
+      name: 'Taiwan',
+      code: 'TW',
+      dimensionCoverage: 0.38,
+      imputationShare: 0.417,
+      lowConfidence: true,
+    }, [
+      dimension('currencyExternal', 0.55),
+      dimension('energy', 0.75),
+      dimension('healthPublicService', 0.8),
+      dimension('education', 0.85),
+      dimension('borderSecurity', 0.9),
+      dimension('cyberDigital', 0.95),
+      dimension('macroFiscal', 1),
+      dimension('tradePolicy', 0.4),
+    ]));
+    assert.match(available, /Macro-fiscal position \(100%\)/);
+    assert.match(available, /Cyber and digital capacity \(95%\)/);
+    assert.doesNotMatch(available, /Currency and external balance/);
+  });
+
+  it('does not imply a covered ineligible country has fewer than 200,000 people', () => {
+    const iraq = countryFixture({
+      name: 'Iraq',
+      code: 'IQ',
+      dimensionCoverage: 0.69,
+      imputationShare: 0.1,
+      lowConfidence: false,
+    }, [
+      dimension('macroFiscal', 0.9),
+    ]);
+    const reason = describeHeadlineIneligibilityReason(iraq);
+    assert.match(reason, /recorded population of at least 200,000/);
+    assert.match(reason, /coverage is 69%/);
+    assert.doesNotMatch(reason, /below the 65%/);
+    assert.doesNotMatch(reason, /fewer than 200,000|microstate/);
   });
 });
