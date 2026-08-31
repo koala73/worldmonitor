@@ -40,7 +40,48 @@ declare global {
   }
 }
 
+const DIGEST_GLOB = '**/api/news/v1/list-feed-digest*';
+const PARTIAL_DIGEST_COVERAGE_TEXT =
+  'Digest coverage: partial — 0 publishers, 0 items, feeds 7/12, categories 0/6 ' +
+  '(no completed feed: politics, military, economy, climate, …) ' +
+  '(some categories had no completed feed in this cycle)';
+
 const installLcpDebug = async (page: Page): Promise<void> => {
+  await page.route(DIGEST_GLOB, (route) => route.fulfill({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify({
+      categories: {
+        politics: { items: [] },
+        military: { items: [] },
+        economy: { items: [] },
+        climate: { items: [] },
+        cyber: { items: [] },
+        maritime: { items: [] },
+      },
+      feedStatuses: {},
+      generatedAt: new Date(0).toISOString(),
+      coverage: {
+        state: 'partial',
+        attemptedAt: new Date(0).toISOString(),
+        itemsServed: 0,
+        publisherCount: 0,
+        feedTotal: 12,
+        feedCompleted: 7,
+        categoryTotal: 6,
+        categoryCompleted: 0,
+        categoryStates: {
+          politics: 'missing',
+          military: 'missing',
+          economy: 'missing',
+          climate: 'missing',
+          cyber: 'missing',
+          maritime: 'missing',
+        },
+        servedStale: false,
+      },
+    }),
+  }));
   await page.addInitScript(() => {
     localStorage.setItem('wm_lcp_debug', '1');
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
@@ -91,6 +132,17 @@ const expectContext = (snapshot: LcpDebugSnapshot): void => {
   expect(snapshot.context.visibilityState).toBeTruthy();
 };
 
+const readLcpAfterCoveragePaint = async (
+  page: Page,
+): Promise<LcpDebugSnapshot['entries'][number]> => page.evaluate(async () => {
+  await new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)));
+  });
+  const entry = window.__wmLcpDebug!.getSnapshot().entries.at(-1);
+  if (!entry) throw new Error('LCP observer has no entry after the coverage row paint');
+  return entry;
+});
+
 // Vocabulary produced by closestAttributionLabel(). '' is valid when the LCP
 // element is outside every known container, so this set alone cannot catch a
 // regression that degrades attribution to '' — expectCoverageRowContract below
@@ -128,46 +180,55 @@ const KNOWN_ATTRIBUTION = new Set([
 // display:none row is still attached. Playwright's role engine reads the
 // accessibility tree instead, so it fails on display:none, visibility:hidden
 // and aria-hidden, which is exactly the regression #7267's review rejected.
-//
-// Size is asserted rather than text because text depends on the digest
-// response. A degraded or empty digest yields a much shorter string
-// (StatusPanel's unavailable/unknown branch), which would be too small to win
-// LCP and would pass this guard for a reason unrelated to the fix — on the
-// pre-fix stylesheet too. The rendered box does not have that dependency: the
-// clip holds it at 1px on mobile whatever the digest says.
 const expectCoverageRowContract = async (
   page: Page,
   presentation: 'clipped-to-screen-readers' | 'visible',
 ): Promise<void> => {
+  const coverageRow = page.getByRole('status', { name: 'Digest coverage status' });
   await expect(
-    page.getByRole('status').filter({ hasText: 'Digest coverage' }),
+    coverageRow,
     'the #7085 coverage row must stay in the accessibility tree',
   ).toBeAttached({ timeout: 30000 });
+  await expect(coverageRow).toHaveText(PARTIAL_DIGEST_COVERAGE_TEXT);
 
-  // Let any LCP entry the freshly painted row would produce be emitted.
-  await page.waitForTimeout(2000);
+  const latest = await readLcpAfterCoveragePaint(page);
 
   // Measure the container, not the row. The clip applies to the container, so
   // that is what bounds painted area: measured 1x1 on mobile against 1240x21 on
   // desktop. The row inside a clipped container still reports its own
   // line-height (1x21 on mobile), which would make a height assertion on it
   // fail against correct code.
-  const box = await page.evaluate(() => {
-    const el = document.querySelector('.status-panel-container');
-    if (!el) return null;
-    const rect = el.getBoundingClientRect();
-    return { width: Math.round(rect.width), height: Math.round(rect.height) };
+  const box = await coverageRow.evaluate((row) => {
+    const container = row.closest('.status-panel-container');
+    if (!container) return null;
+    const rect = container.getBoundingClientRect();
+    const style = getComputedStyle(container);
+    return {
+      width: Math.round(rect.width),
+      height: Math.round(rect.height),
+      overflowX: style.overflowX,
+      overflowY: style.overflowY,
+      clipPath: style.clipPath,
+      whiteSpace: style.whiteSpace,
+    };
   });
   expect(box, 'the coverage row container must be in the DOM').not.toBeNull();
+  const clipsBothAxes = box!.overflowX !== 'visible' && box!.overflowY !== 'visible';
+  const hasClipPath = box!.clipPath !== 'none';
   if (presentation === 'clipped-to-screen-readers') {
     expect(box!.width, 'mobile row must stay clipped, not repaint').toBeLessThanOrEqual(2);
     expect(box!.height, 'mobile row must stay clipped, not repaint').toBeLessThanOrEqual(2);
+    expect(clipsBothAxes || hasClipPath, 'mobile row must clip overflowing text').toBe(true);
+    expect(box!.whiteSpace, 'mobile row must not wrap outside its clipped box').toBe('nowrap');
   } else {
     expect(box!.width, 'desktop row must stay a readable line').toBeGreaterThan(100);
     expect(box!.height, 'desktop row must stay a readable line').toBeGreaterThan(5);
+    expect(
+      box!.whiteSpace === 'nowrap' && (clipsBothAxes || hasClipPath),
+      'desktop row must not use the screen-reader-only clipping treatment',
+    ).toBe(false);
   }
 
-  const latest = await page.evaluate(() => window.__wmLcpDebug!.getSnapshot().entries.at(-1));
   expect(latest?.element?.closest ?? '').not.toBe('site-footer');
   expect(latest?.element?.selector ?? '').not.toContain('digest-coverage-row');
   expect(latest?.element?.selector ?? '').not.toContain('status-panel-container');
