@@ -14229,6 +14229,9 @@
           "path": "src/config/docs-locale-seo.ts"
         },
         {
+          "path": "src/config/variant-dashboard-html.ts"
+        },
+        {
           "path": "src/config/variant-meta.ts"
         },
         {

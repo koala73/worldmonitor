@@ -1700,13 +1700,13 @@ describe('crawlable corpus generator', () => {
       assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
       assert.equal(
         hormuzDataset.dateModified,
-        '2026-08-30',
-        'unchanged chokepoint Dataset schema must keep its family stamp',
+        '2026-08-31',
+        'changed chokepoint Dataset schema must advance only the family stamp',
       );
       assert.equal(
         pageLastmod(hormuz),
         '2026-08-30',
-        'unchanged chokepoint page must keep its family lastmod',
+        'chokepoint page lastmod must not inherit the Dataset schema stamp',
       );
       assertSourceDerivedTemporalCoverage(hormuzDataset, {
         route: '/chokepoints/strait-of-hormuz/',
