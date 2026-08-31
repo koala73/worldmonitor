@@ -82,6 +82,34 @@ function inlineStyleTags(html) {
   return [...html.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/gi)].map((match) => match[0]);
 }
 
+/**
+ * Body of the first `@layer <name> {…}` block, brace-balanced. A non-greedy
+ * `[\s\S]*?}` stops at the first nested rule's closing brace, which silently
+ * returns an empty-looking block and makes the assertion below unfalsifiable.
+ */
+function layerBlock(css, name) {
+  const open = css.indexOf(`@layer ${name}{`);
+  if (open === -1) return null;
+  const start = css.indexOf('{', open);
+  let depth = 0;
+  for (let i = start; i < css.length; i++) {
+    if (css[i] === '{') depth += 1;
+    if (css[i] === '}' && --depth === 0) {
+      return { body: css.slice(start + 1, i), whole: css.slice(open, i + 1) };
+    }
+  }
+  return null;
+}
+
+/** The inline critical CSS, stripped of its <style> wrapper. */
+function criticalStyleText(html) {
+  const firstPreload = deferredStylePreloadTags(html)[0];
+  return inlineStyleTags(html)
+    .filter((tag) => html.indexOf(tag) < html.indexOf(firstPreload))
+    .map((tag) => tag.replace(/^<style\b[^>]*>/i, '').replace(/<\/style>$/i, ''))
+    .join('\n');
+}
+
 describe('pro critical CSS parser', () => {
   it('detects stylesheet links regardless of attribute order', () => {
     assert.deepEqual(
@@ -227,5 +255,51 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
     assert.doesNotMatch(html, /html\.js #seo-prerender/);
     assert.match(html, /<h1\b/);
     assert.match(html, /fetchPriority="high"/);
+  });
+
+  // The reset's `a{color:inherit}` used to sit unlayered, and unlayered CSS
+  // outranks every @layer. Tailwind v4 emits utilities into @layer utilities,
+  // so `text-wm-bg` lost to the reset on every anchor and the nav's "Upgrade
+  // to Pro" CTA painted #f3f4f6 on #4ade80 — 1.58:1 where 4.5:1 is required.
+  describe('critical-CSS reset loses to Tailwind utilities (cascade layers)', () => {
+    for (const { relPath, label } of PRO_PAGES) {
+      it(`${label} declares the Tailwind layer order before any rule`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        const order = critical.match(/@layer\s+([a-z,\s]+);/);
+        assert.ok(order, 'critical CSS must declare a cascade-layer order');
+        assert.deepEqual(
+          order[1].split(',').map((name) => name.trim()),
+          ['properties', 'theme', 'base', 'components', 'utilities'],
+          'layer order must match the order Tailwind emits in the external sheet',
+        );
+        assert.ok(
+          order.index < critical.indexOf('{'),
+          'the layer statement must precede every rule so later @layer blocks slot into it',
+        );
+      });
+
+      it(`${label} keeps the anchor reset inside @layer base`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        const base = layerBlock(critical, 'base');
+        assert.ok(base, 'critical CSS must ship an @layer base block');
+        assert.match(base.body, /a\{color:inherit/, 'the anchor reset belongs in @layer base');
+        // Outside the base block there must be no unlayered bare-`a` colour
+        // rule left to outrank the utilities again.
+        assert.doesNotMatch(
+          critical.replace(base.whole, ''),
+          /(?:^|[;}])a\{[^}]*color:/,
+          'no unlayered bare-anchor colour rule may survive',
+        );
+      });
+
+      it(`${label} mirrors text-wm-bg for the nav, not just main`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        assert.match(
+          critical,
+          /nav\[data-wm-nav\][^{]*\[class~=text-wm-bg\]\{color:#050505\}/,
+          'the nav CTA needs the dark-on-green colour during the pre-stylesheet window',
+        );
+      });
+    }
   });
 });
