@@ -13,15 +13,11 @@ import {
   loadHazards,
   militaryFlightsViewModel,
   pointInBounds,
-  publishedTransitCountLabel as liveTransitLabel,
+  publishedTransitCountLabel,
   requestLiveJson,
   runLatestToolRequest,
-  withheldTransitCountSentence as liveTransitSentence,
+  withheldTransitCountSentence,
 } from '../scripts/crawlable-live-tools.mjs';
-import {
-  publishedTransitCountLabel as sharedTransitLabel,
-  withheldTransitCountSentence as sharedTransitSentence,
-} from '../scripts/chokepoint-transit-publish.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
 
@@ -208,18 +204,76 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, false);
     assert.match(
       tool.querySelector('[data-chokepoint-transits-note]').textContent,
-      /not currently publishing a transit count for Strait of Hormuz/,
+      /not currently publishing a transit count for Strait of Hormuz for this period/,
     );
   });
 
-  it('keeps the copied live-tools transit helpers aligned with the generator module', () => {
-    for (const value of [null, undefined, '', '0', 0, '11', 11, '1,234', -1, 'Unavailable']) {
-      assert.equal(liveTransitLabel(value), sharedTransitLabel(value), String(value));
+  // The mirror-parity test this replaces could not do its job: of its ten
+  // values only `11` reached a formatter, and it renders identically under
+  // every variant, so deleting the formatter outright still passed. The mirror
+  // is gone (one source now), and these are the cases that actually bite.
+  it('publishes a supplied transit count and withholds every unsupplied shape', () => {
+    // Positive control. The corpus suite derives this from whichever
+    // chokepoints have AIS traffic on the freeze date, which the monthly
+    // refresh can take to zero; this one is synthetic and always runs.
+    assert.equal(publishedTransitCountLabel(7), '7');
+    assert.equal(publishedTransitCountLabel('7'), '7');
+    assert.equal(publishedTransitCountLabel(1), '1', 'a single crossing is a real measurement');
+    assert.equal(publishedTransitCountLabel(1234), '1,234', 'counts are thousands-separated');
+    assert.equal(publishedTransitCountLabel('1,234'), '1,234', 'an already-formatted string round-trips');
+    assert.equal(publishedTransitCountLabel(1234567), '1,234,567');
+
+    // Withheld: absent, empty, and the zero-fill this exists to stop.
+    for (const value of [null, undefined, '', '0', 0, -1, '-3', 'Unavailable', NaN, Infinity]) {
+      assert.equal(publishedTransitCountLabel(value), null, `${String(value)} must withhold`);
     }
+
+    // A fraction clears a bare `> 0` gate and then formats to the literal "0".
+    assert.equal(publishedTransitCountLabel(0.4), null, 'a sub-1 fraction must not render as "0"');
+    assert.equal(publishedTransitCountLabel(0.6), null);
+
+    // Strings are re-formatted from the parsed number, never echoed, so a
+    // malformed upstream value cannot reach the page verbatim.
+    assert.equal(publishedTransitCountLabel('1e3'), '1,000');
+    assert.equal(publishedTransitCountLabel('12abc'), null);
+  });
+
+  it('publishes a real AIS count even when PortWatch dropped the chokepoint', () => {
+    // dataAvailable is PortWatch history presence; today's count is the relay's
+    // AIS window. Gating the count on dataAvailable discarded live measurements
+    // whenever PortWatch went partial -- it dropped two chokepoints for ~4.5h
+    // on 2026-08-25 -- and then rendered the withhold note over real data.
+    const payload = {
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [{
+        id: 'suez',
+        disruptionScore: 30,
+        status: 'yellow',
+        congestionLevel: 'normal',
+        activeWarnings: 0,
+        aisDisruptions: 0,
+        description: 'Normal.',
+        transitSummary: { dataAvailable: false, todayTotal: 9, wowChangePct: 0 },
+      }],
+    };
+
+    const view = chokepointStatusViewModel(payload, 'suez', NOW);
+    assert.equal(view.todayTransits, '9', 'a measured AIS count must publish without PortWatch history');
+    assert.equal(view.weekMovement, null, 'week movement still needs PortWatch and must stay withheld');
+    assert.equal(view.partial, true, 'missing PortWatch history is still a partial pulse');
+  });
+
+  it('withholds without blaming the AIS feed', () => {
+    // dataAvailable is PortWatch history presence and the AIS window is a
+    // separate source, so the note must not name either one.
+    const note = withheldTransitCountSentence('Strait of Hormuz');
     assert.equal(
-      liveTransitSentence('Strait of Hormuz'),
-      sharedTransitSentence('Strait of Hormuz'),
+      note,
+      'World Monitor is not currently publishing a transit count for Strait of Hormuz for this period.',
     );
+    assert.doesNotMatch(note, /AIS/, 'the note must not attribute the gap to a specific feed');
+    assert.match(withheldTransitCountSentence(''), /for this chokepoint for this period/);
   });
 
   it('aggregates same-period crisis summaries and names missing coverage', () => {

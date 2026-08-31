@@ -36,20 +36,36 @@ function formatNumber(value, maximumFractionDigits = 1) {
   }).format(value);
 }
 
-// Copied into public/tools/live-tools.js verbatim — keep in sync with
-// scripts/chokepoint-transit-publish.mjs. Do not import that module from here.
+// Today's transits are counts from the relay's in-memory 24h AIS window. That
+// window is empty far more often than it is zero-trafficked, and the seeder
+// cannot tell the two apart (`relayTransit` is only built when
+// `recent.length > 0`), so a count below 1 is unsupplied and must not publish
+// as "0" (#7457 / #7370 class).
+//
+// This module is copied verbatim into public/tools/live-tools.js by
+// build-crawlable-corpus.mjs, so it must stay import-free at module scope. The
+// generator imports THESE exports rather than mirroring them -- a "keep in
+// sync" comment is a contract nothing can fail on.
 export function publishedTransitCountLabel(value) {
   if (value == null || value === '') return null;
   const numeric = typeof value === 'number'
     ? value
     : Number(String(value).replace(/,/g, ''));
-  if (!Number.isFinite(numeric) || numeric <= 0) return null;
-  return typeof value === 'string' ? String(value).trim() : formatNumber(numeric, 0);
+  // Always re-format the parsed number instead of echoing the input string:
+  // a passthrough would publish "1e3" or "0x10" verbatim, and a fraction such
+  // as 0.4 clears a `> 0` gate only to render as the "0" this exists to stop.
+  if (!Number.isFinite(numeric) || numeric < 1) return null;
+  return formatNumber(numeric, 0);
 }
 
 export function withheldTransitCountSentence(displayName) {
   const name = String(displayName || '').trim() || 'this chokepoint';
-  return `World Monitor is not currently publishing a transit count for ${name}; the AIS-derived feed has no data for this period.`;
+  // Do NOT attribute the gap to AIS specifically. `dataAvailable` is PortWatch
+  // history presence and the AIS window is a separate source, so a count can
+  // be withheld while AIS is healthy (PortWatch dropped 2 chokepoints for
+  // ~4.5h on 2026-08-25) and vice versa during a relay warm-up. Naming the
+  // wrong feed would be a false claim on a page whose point is not making any.
+  return `World Monitor is not currently publishing a transit count for ${name} for this period.`;
 }
 
 function humanizeToken(value, prefixes = []) {
@@ -221,9 +237,13 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   const activeWarnings = Math.max(0, nonNegativeNumber(row.activeWarnings) ?? 0);
   const aisDisruptions = Math.max(0, nonNegativeNumber(row.aisDisruptions) ?? 0);
   const transit = row.transitSummary;
+  // dataAvailable is PortWatch history presence, so it gates wowChangePct --
+  // but NOT today's count, which comes from the relay's AIS window. Gating the
+  // count on it discarded a real measurement whenever PortWatch dropped a
+  // chokepoint (it dropped two for ~4.5h on 2026-08-25) and then rendered the
+  // withhold note over live data. The count carries its own absence.
   const transitAvailable = transit?.dataAvailable === true;
-  const todayTotal = transitAvailable ? nonNegativeNumber(transit.todayTotal) : null;
-  const todayTransits = publishedTransitCountLabel(todayTotal);
+  const todayTransits = publishedTransitCountLabel(nonNegativeNumber(transit?.todayTotal));
   const weekMovement = transitAvailable ? finiteNumber(transit.wowChangePct) : null;
 
   return {
@@ -955,7 +975,10 @@ export async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
     setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
     setText(tool, '[data-chokepoint-warnings]', 'Unavailable');
-    setText(tool, '[data-chokepoint-transits]', '—');
+    // Total fetch failure: match the sibling cells. An em dash here is the
+    // "withheld, see the note" signal, and the note is hidden in this branch,
+    // so it would read as an unexplained blank next to four "Unavailable"s.
+    setText(tool, '[data-chokepoint-transits]', 'Unavailable');
     setText(tool, '[data-chokepoint-movement]', 'Unavailable');
     const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
     if (transitsNote) {

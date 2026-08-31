@@ -37,10 +37,14 @@ import {
   CHANGELOG_PAGINATION_ROBOTS_CONTENT,
   INDEXABLE_ROBOTS_CONTENT,
 } from '../shared/seo-robots.mjs';
+// Single source with the browser copy: crawlable-live-tools.mjs is what gets
+// written verbatim to public/tools/live-tools.js, and importing it here is
+// side-effect-free in Node (its only module-scope statement is a
+// `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
   publishedTransitCountLabel,
   withheldTransitCountSentence,
-} from './chokepoint-transit-publish.mjs';
+} from './crawlable-live-tools.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);

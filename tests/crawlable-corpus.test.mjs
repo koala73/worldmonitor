@@ -1667,7 +1667,12 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(
         hormuz,
-        /World Monitor is not currently publishing a transit count for Strait of Hormuz/,
+        /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
+      );
+      assert.doesNotMatch(
+        hormuz,
+        /AIS-derived feed has no data/,
+        'the withhold note must not name AIS -- dataAvailable is PortWatch presence, so the count can be withheld while AIS is healthy',
       );
       assert.doesNotMatch(
         hormuz,
@@ -1740,15 +1745,15 @@ describe('crawlable corpus generator', () => {
         /Disruption score|Congestion|AIS disruptions|Daily vessel transits/,
         'chokepoint Dataset metadata must describe the generated reference artifact, not live API fields',
       );
-      const hormuzMeasured = Array.isArray(hormuzDataset.variableMeasured)
-        ? hormuzDataset.variableMeasured
-        : [hormuzDataset.variableMeasured];
-      for (const measurement of hormuzMeasured) {
-        if (measurement && typeof measurement === 'object' && /transit/i.test(String(measurement.name || ''))) {
-          assert.notEqual(measurement.value, 0, 'Dataset.variableMeasured must omit unsupplied transit counts');
-          assert.notEqual(measurement.value, '0', 'Dataset.variableMeasured must omit unsupplied transit counts');
-        }
-      }
+      // The deepEqual above already pins variableMeasured exactly, so an
+      // object-shaped `{name: 'Transit count', value: 0}` entry cannot slip in.
+      // This adds the case-insensitive bare-string form the alternation above
+      // misses (it only names "Daily vessel transits").
+      assert.doesNotMatch(
+        JSON.stringify(hormuzDataset),
+        /transit/i,
+        'chokepoint Dataset must not carry a transit count in any casing -- the AIS window is not part of this reference artifact',
+      );
       const additionalProps = Array.isArray(hormuzPage.about.additionalProperty)
         ? hormuzPage.about.additionalProperty
         : [hormuzPage.about.additionalProperty].filter(Boolean);
@@ -1763,31 +1768,58 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(dover, /0 routes?|none configured/);
       assert.match(dover, /tracked as a strategic waterway reference/);
 
-      for (const [slug, name] of [
-        ['suez-canal', 'Suez Canal'],
-        ['panama-canal', 'Panama Canal'],
-        ['bab-el-mandeb', 'Bab el-Mandeb'],
-      ]) {
-        const page = read(outDir, `chokepoints/${slug}/index.html`);
-        assert.doesNotMatch(
-          page,
-          /data-chokepoint-transits>0</,
-          `${name} must not render a numeric 0 for an unsupplied transit count`,
-        );
-        assert.match(page, /data-chokepoint-transits>—/);
-        assert.match(
-          page,
-          new RegExp(`World Monitor is not currently publishing a transit count for ${name}`),
-        );
-      }
-
-      const taiwanStrait = read(outDir, 'chokepoints/taiwan-strait/index.html');
-      assert.match(
-        taiwanStrait,
-        /data-chokepoint-transits>1</,
-        'a supplied non-zero transit count must still publish',
+      // Drive the expectation off the SNAPSHOT rather than off whichever
+      // chokepoint happened to have AIS traffic on the freeze date. The old
+      // form hardcoded Taiwan Strait's "1" -- the only publishable count in
+      // the 2026-08-30 freeze -- so the monthly refresh
+      // (.github/workflows/crawlable-pulse-refresh.yml, `41 4 2 * *`) could
+      // both break the assertion and silently delete the suite's only proof
+      // that the withhold does not suppress everything. The oracle below is
+      // the spec restated by hand ("a raw count of 1 or more publishes"), not
+      // a call back into publishedTransitCountLabel, so it can still fail if
+      // that helper regresses.
+      const corpus = await loadCorpusData({ rootDir: repoRoot });
+      const pulseSnapshot = JSON.parse(
+        readFileSync(resolve(repoRoot, corpus.sources.livePulseSnapshot), 'utf8'),
       );
-      assert.doesNotMatch(taiwanStrait, /not currently publishing a transit count for Taiwan Strait/);
+      const chokepointSlugs = new Map(
+        corpus.chokepoints.map((cp) => [cp.id, { slug: cp.slug, name: cp.displayName }]),
+      );
+      let publishedCounts = 0;
+      let withheldCounts = 0;
+      for (const [cpId, pulse] of Object.entries(pulseSnapshot.chokepoints ?? {})) {
+        const meta = chokepointSlugs.get(cpId);
+        if (!meta) continue;
+        const page = read(outDir, `chokepoints/${meta.slug}/index.html`);
+        const raw = Number(String(pulse.todayTransits ?? '').replace(/,/g, ''));
+        const noteRe = new RegExp(
+          `World Monitor is not currently publishing a transit count for ${meta.name} for this period`,
+        );
+        if (Number.isFinite(raw) && raw >= 1) {
+          publishedCounts++;
+          assert.match(
+            page,
+            new RegExp(`data-chokepoint-transits>${pulse.todayTransits}<`),
+            `${meta.name} has a supplied count of ${pulse.todayTransits} and must publish it`,
+          );
+          assert.doesNotMatch(page, noteRe, `${meta.name} publishes a count and must not carry the withhold note`);
+        } else {
+          withheldCounts++;
+          assert.match(page, /data-chokepoint-transits>—/);
+          assert.doesNotMatch(
+            page,
+            /data-chokepoint-transits>0</,
+            `${meta.name} must not render a numeric 0 for an unsupplied transit count`,
+          );
+          assert.match(page, noteRe);
+        }
+      }
+      assert.equal(
+        publishedCounts + withheldCounts,
+        Object.keys(pulseSnapshot.chokepoints ?? {}).length,
+        'every frozen chokepoint pulse must map to a generated page',
+      );
+      assert.ok(withheldCounts > 0, 'the freeze must exercise the withhold path');
 
       const crisesIndex = read(outDir, 'crises/index.html');
       assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
