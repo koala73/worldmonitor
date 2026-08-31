@@ -106,6 +106,62 @@ describe('CommoditiesPanel physical-premium tab', () => {
     expect(unavailablePanel.shouldRefreshPhysicalComparison()).toBe(true);
   });
 
+  it('clears premium rows, divergence, and the Physical tab on downgrade', async () => {
+    panel.renderCommodities([
+      { symbol: 'GC=F', display: 'Gold', price: 4455.6, change: 0.5 },
+    ]);
+    panel.updatePhysicalPremiums({
+      premiums: [{
+        metal: 'gold',
+        physical: {
+          price: 953.88,
+          currency: 'CNY',
+          unit: 'gram',
+          source: 'Shanghai Gold Exchange SHAU PM benchmark',
+          asOf: '2026-08-18',
+        },
+        paper: {
+          price: 4455.6,
+          currency: 'USD',
+          unit: 'troy ounce',
+          source: 'COMEX GC=F futures snapshot',
+          asOf: '2026-08-18T12:22:24.000Z',
+        },
+        premiumUsdPerOz: -46.7889,
+        premiumPct: -1.0501,
+        computedAt: '2026-08-18T12:30:00.000Z',
+      }],
+      fx: {
+        pair: 'CNY/USD',
+        rate: 0.1486,
+        source: 'shared:fx-rates:v1',
+        asOf: '2026-08-18T12:28:48.000Z',
+      },
+    });
+    panel.updatePhysicalDivergence(divergenceResponse('PHYSICAL_DIVERGENCE_STATE_OK'));
+    await flush();
+    expect(panel.selectTab('physical').ok).toBe(true);
+    await flush();
+    expect(panel.getActiveTab()).toBe('physical');
+    expect(panel.getElement().querySelector('[data-tab="physical"]')).not.toBeNull();
+    expect(panel.getElement().textContent).toContain('Physical stress index: 62.5 / 100');
+
+    panel.clearPhysicalPremiums();
+    await flush();
+
+    expect(panel.getActiveTab()).toBe('commodities');
+    expect(panel.getElement().querySelector('[data-tab="physical"]')).toBeNull();
+    expect(panel.getElement().textContent).not.toContain('Physical stress index');
+    expect(panel.getElement().textContent).not.toContain('Shanghai Gold Exchange SHAU PM benchmark');
+    expect(panel.shouldRefreshPhysicalComparison()).toBe(true);
+    expect(panel.selectTab('physical')).toEqual({
+      ok: false,
+      status: 'denied',
+      effectiveTab: 'commodities',
+      reason: 'tab_unavailable',
+    });
+  });
+
   it('shows raw SGE and COMEX legs, premium, source, and physical observation date', async () => {
     panel.renderCommodities([
       { symbol: 'GC=F', display: 'Gold', price: 4455.6, change: 0.5 },

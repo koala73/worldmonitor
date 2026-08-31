@@ -677,6 +677,16 @@ export class CommoditiesPanel extends Panel {
     this._render();
   }
 
+  public clearPhysicalPremiums(): void {
+    this._physicalPremiums = [];
+    this._physicalPremiumFxAsOf = '';
+    this._physicalDivergence = null;
+    this._physicalDivergenceUnavailable = false;
+    this._physicalComparisonAttempted = false;
+    if (this._tab === 'physical') this._tab = 'commodities';
+    this._render();
+  }
+
   private _buildTabBar(hasPhysical: boolean, hasFx: boolean, hasXau: boolean): string {
     const firstTabLabel = t('components.commodities.commodities');
     const tabs: string[] = [

@@ -204,4 +204,38 @@ describe('physical premium data loading', () => {
     expect(panel.updatePhysicalDivergence).not.toHaveBeenCalled();
     expect(panel.showPhysicalDivergenceUnavailable).not.toHaveBeenCalled();
   });
+
+  it('drops an in-flight paid comparison after a downgrade advances the guard', async () => {
+    const inFlightPremiums = deferred<GetPhysicalPremiumsResponse>();
+    const inFlightDivergence = deferred<GetPhysicalDivergenceIndexResponse>();
+    marketMocks.fetchPhysicalPremiums.mockReset().mockImplementationOnce(() => inFlightPremiums.promise);
+    marketMocks.fetchPhysicalDivergence.mockReset().mockImplementationOnce(() => inFlightDivergence.promise);
+    const panel = {
+      updatePhysicalPremiums: vi.fn(),
+      updatePhysicalDivergence: vi.fn(),
+      showPhysicalDivergenceUnavailable: vi.fn(),
+      clearPhysicalPremiums: vi.fn(),
+    };
+    const ctx = { panels: { commodities: panel } } as unknown as AppContext;
+    const loader = new DataLoaderManager(ctx, {
+      renderCriticalBanner: () => undefined,
+      refreshOpenCountryBrief: () => undefined,
+    });
+
+    const inFlight = loader.loadPhysicalPremiumComparison();
+    await vi.waitFor(() => expect(marketMocks.fetchPhysicalPremiums).toHaveBeenCalledTimes(1));
+    loader.clearPhysicalPremiumComparison();
+    expect(panel.clearPhysicalPremiums).toHaveBeenCalledOnce();
+
+    inFlightPremiums.resolve({ premiums: [{ metal: 'gold', premiumPct: 2 }] } as GetPhysicalPremiumsResponse);
+    inFlightDivergence.resolve({
+      readings: [],
+      composite: undefined,
+    } as unknown as GetPhysicalDivergenceIndexResponse);
+    await inFlight;
+
+    expect(panel.updatePhysicalPremiums).not.toHaveBeenCalled();
+    expect(panel.updatePhysicalDivergence).not.toHaveBeenCalled();
+    expect(panel.showPhysicalDivergenceUnavailable).not.toHaveBeenCalled();
+  });
 });

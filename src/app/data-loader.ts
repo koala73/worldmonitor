@@ -2689,6 +2689,7 @@ export class DataLoaderManager implements AppModule {
     // Pro (#6436/#6448) — mirrors the guard on the bulk market pass above.
     // This is the tab-activation entry point, so without it clicking Physical
     // would re-fire the two gated RPCs for a free user on every open.
+    // Free→Pro / Pro→free transitions are handled in App.firePremiumLoaders().
     if (!hasPremiumAccess()) return;
     const panel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
     if (!panel) return;
@@ -2705,6 +2706,14 @@ export class DataLoaderManager implements AppModule {
       () => fetchPhysicalDivergence(signal),
     );
     signal?.throwIfAborted();
+  }
+
+  clearPhysicalPremiumComparison(): void {
+    // Advance first so an in-flight paid response cannot repaint the tab
+    // after the panel clear below.
+    this.physicalComparisonLoadGuard.begin();
+    const panel = this.ctx.panels['commodities'] as CommoditiesPanel | undefined;
+    panel?.clearPhysicalPremiums();
   }
 
   async loadDailyMarketBrief(force = false): Promise<void> {

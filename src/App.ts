@@ -2395,10 +2395,12 @@ export class App {
         void this.dataLoader.loadWsbTickers();
         void this.dataLoader.loadResilienceRanking();
         void this.dataLoader.loadGlobalTenders();
+        void this.dataLoader.loadPhysicalPremiumComparison();
       } else if (!nowPremium && hadPremium) {
         // Pro data must not remain visible or available from the client cache
         // after sign-out, expiry, or downgrade.
         void this.dataLoader.clearGlobalTenders();
+        void this.dataLoader.clearPhysicalPremiumComparison();
       }
       _prevHadPremium = nowPremium;
     };

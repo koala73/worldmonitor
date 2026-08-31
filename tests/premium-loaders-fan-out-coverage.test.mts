@@ -134,6 +134,24 @@ describe('firePremiumLoaders fan-out coverage', () => {
     assert.ok(fanOutLoaders.size > 0, 'firePremiumLoaders has no `void this.dataLoader.loadX()` calls — has the function been renamed?');
   });
 
+  it('reloads Physical comparison on upgrade and clears it on downgrade', () => {
+    // loadPhysicalPremiumComparison is gated by an early `if (!hasPremiumAccess())
+    // return`, not `this.loadX()` inside a hasPremiumAccess if-block, so the
+    // extractor above cannot see it. Pin the transition pair explicitly.
+    assert.ok(
+      fanOutLoaders.has('loadPhysicalPremiumComparison'),
+      'firePremiumLoaders must reload Physical premiums when Pro access resolves',
+    );
+    const start = APP_TS.indexOf('const firePremiumLoaders');
+    const end = APP_TS.indexOf('\n    };', start);
+    const block = APP_TS.slice(start, end);
+    assert.match(
+      block,
+      /void this\.dataLoader\.clearPhysicalPremiumComparison\(\)/,
+      'firePremiumLoaders must clear Physical premiums on Pro→free',
+    );
+  });
+
   it('every PRO-gated loader is fanned out on Free→Pro transition', () => {
     const missing: string[] = [];
     for (const loader of gatedLoaders) {
