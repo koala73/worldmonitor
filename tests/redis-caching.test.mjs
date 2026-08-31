@@ -2001,7 +2001,7 @@ describe('country intel brief caching behavior', { concurrency: 1 }, () => {
         energyImportDependency: {
           value: -9.001,
           year: 2023,
-          source: 'worldbank-energy-imports',
+          source: 'worldbank',
         },
       },
     }));
