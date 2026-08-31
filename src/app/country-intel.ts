@@ -547,18 +547,9 @@ export class CountryIntelManager implements AppModule {
           if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets([]);
         });
 
-      const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
-      const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
-      const matchingNews = this.ctx.allNews.filter((n) => {
-        const t = n.title.toLowerCase();
-        return CountryIntelManager.firstMentionPosition(t, searchTerms) !== Infinity;
-      });
-      const filteredNews = matchingNews.filter((n) => {
-        const t = n.title.toLowerCase();
-        const ourPos = CountryIntelManager.firstMentionPosition(t, searchTerms);
-        const otherPos = CountryIntelManager.firstMentionPosition(t, otherCountryTerms);
-        return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
-      }).sort((a, b) => {
+      const filteredNews = this.ctx.allNews.filter((item) => (
+        CountryIntelManager.isCountryHeadline(item.title, country, code)
+      )).sort((a, b) => {
         const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
         if (severityDelta !== 0) return severityDelta;
         return effectivePubDateMs(b) - effectivePubDateMs(a);
@@ -1433,13 +1424,8 @@ export class CountryIntelManager implements AppModule {
       ? globalCluster.signals.filter((s) => s.type === 'temporal_anomaly').length
       : 0;
 
-    const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
-    const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
     const criticalNews = this.ctx.latestClusters.filter((cluster) => {
-      const title = cluster.primaryTitle.toLowerCase();
-      const ourPos = CountryIntelManager.firstMentionPosition(title, searchTerms);
-      const otherPos = CountryIntelManager.firstMentionPosition(title, otherCountryTerms);
-      if (ourPos === Infinity || (otherPos !== Infinity && otherPos < ourPos)) return false;
+      if (!CountryIntelManager.isCountryHeadline(cluster.primaryTitle, country, code)) return false;
       return cluster.isAlert || cluster.threat?.level === 'critical' || cluster.threat?.level === 'high';
     }).length;
 
@@ -1854,7 +1840,7 @@ export class CountryIntelManager implements AppModule {
     EG: ['egypt', 'egyptian', 'cairo', 'suez'],
     LB: ['lebanon', 'lebanese', 'beirut'],
     TR: ['turkey', 'turkish', 'ankara', 'erdogan', 'türkiye'],
-    US: ['united states', 'american', 'washington', 'pentagon', 'white house'],
+    US: ['united states', 'US', 'u.s.', 'u.s', 'american', 'washington', 'pentagon', 'white house'],
     GB: ['united kingdom', 'british', 'london', 'uk '],
     BR: ['brazil', 'brazilian', 'brasilia', 'lula', 'bolsonaro'],
     AE: ['united arab emirates', 'uae', 'emirati', 'dubai', 'abu dhabi'],
@@ -1867,9 +1853,15 @@ export class CountryIntelManager implements AppModule {
   }
 
   static countryTermIndex(text: string, term: string): number {
-    const normalizedTerm = term.trim().toLowerCase();
-    if (!normalizedTerm) return -1;
-    const match = new RegExp(`(^|[^a-z0-9])${CountryIntelManager.escapeRegExp(normalizedTerm)}(?=$|[^a-z0-9])`, 'i').exec(text);
+    const trimmedTerm = term.trim();
+    if (!trimmedTerm) return -1;
+    // Plain two/three-letter country acronyms are case-sensitive so US does
+    // not match the pronoun "us". Dotted forms such as U.S. are unambiguous
+    // and remain case-insensitive with every full-name and demonym alias.
+    const caseSensitive = /^[A-Z]{2,3}$/.test(trimmedTerm);
+    const matchText = caseSensitive ? text : text.toLowerCase();
+    const matchTerm = caseSensitive ? trimmedTerm : trimmedTerm.toLowerCase();
+    const match = new RegExp(`(^|[^a-z0-9])${CountryIntelManager.escapeRegExp(matchTerm)}(?=$|[^a-z0-9])`).exec(matchText);
     return match ? match.index + (match[1] ?? '').length : -1;
   }
 
@@ -1883,21 +1875,30 @@ export class CountryIntelManager implements AppModule {
   }
 
   static getOtherCountryTerms(code: string): string[] {
-    const cached = CountryIntelManager.otherCountryTermsCache.get(code);
+    const normalizedCode = code.toUpperCase();
+    const cached = CountryIntelManager.otherCountryTermsCache.get(normalizedCode);
     if (cached) return cached;
 
     const dedup = new Set<string>();
     Object.entries(CountryIntelManager.COUNTRY_ALIASES).forEach(([countryCode, aliases]) => {
-      if (countryCode === code) return;
+      if (countryCode === normalizedCode) return;
       aliases.forEach((alias) => {
-        const normalized = alias.toLowerCase();
-        if (normalized.trim().length > 0) dedup.add(normalized);
+        const trimmed = alias.trim();
+        if (trimmed.length > 0) dedup.add(trimmed);
       });
     });
 
     const terms = [...dedup];
-    CountryIntelManager.otherCountryTermsCache.set(code, terms);
+    CountryIntelManager.otherCountryTermsCache.set(normalizedCode, terms);
     return terms;
+  }
+
+  static isCountryHeadline(title: string, country: string, code: string): boolean {
+    const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
+    const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
+    const ourPos = CountryIntelManager.firstMentionPosition(title, searchTerms);
+    const otherPos = CountryIntelManager.firstMentionPosition(title, otherCountryTerms);
+    return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
   }
 
   static resolveCountryName(code: string): string {
@@ -1917,10 +1918,10 @@ export class CountryIntelManager implements AppModule {
   }
 
   static getCountrySearchTerms(country: string, code: string): string[] {
-    const aliases = CountryIntelManager.COUNTRY_ALIASES[code];
+    const aliases = CountryIntelManager.COUNTRY_ALIASES[code.toUpperCase()];
     if (aliases) return aliases;
     if (/^[A-Z]{2}$/i.test(country.trim())) return [];
-    return [country.toLowerCase()];
+    return [country];
   }
 
   static toFlagEmoji(code: string): string {
