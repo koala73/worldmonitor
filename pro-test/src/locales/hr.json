@@ -32,7 +32,7 @@
     "proF6": "Pretraga letova i usporedba cijena",
     "proF7": "Mehanizam pravila upozorenja — prilagođeni okidači, mirni sati, kanali šifrirani AES-256",
     "proF8": "Tržišna watchlista, makro i praćenje središnjih banaka",
-    "proF9": "AI Market Implications i Regional Intelligence (uskoro: orbitalni nadzor, premium slojevi karte, dulja povijest)",
+    "proF9": "AI implikacije na tržištu i regionalna obavještajna izvještavanja",
     "choosePlan": "Odaberite plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Za timove kojima trebaju zajednički monitoring, API pristup, opcije implementacije, TV aplikacije i izravna podrška.",
@@ -48,7 +48,8 @@
     "entF10": "Cloud, on-prem ili air-gapped implementacija",
     "entF11": "Namjenski onboarding i podrška",
     "entCta": "Razgovarajte s prodajom",
-    "freeF2": "Kurirani feedovi, atribuirani izvori i slojevi karte"
+    "freeF2": "Kurirani feedovi, atribuirani izvori i slojevi karte",
+    "proF10": "Intel memorija — povijesna pretraga, vremenske linije i pretraga sličnih događaja"
   },
   "whyUpgrade": {
     "title": "Zašto nadograditi na World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "BDP, inflacija, kamatne stope i ciklusi rasta. Makro podaci povezani s tržišnim signalima i geopolitičkim događajima.",
     "riskMonitoring": "Monitoring rizika i scenariji",
     "riskMonitoringDesc": "Globalno bodovanje rizika, analiza scenarija i procjena geopolitičkog rizika. Detekcija konvergencije tržišnih i političkih signala.",
-    "orbitalSurveillance": "Orbitalni nadzor",
-    "orbitalSurveillanceDesc": "(Uskoro) Predikcije preleta, analiza učestalosti ponovnog snimanja i upozorenja o prozorima snimanja. Znajte kada obavještajni sateliti promatraju vaša područja interesa.",
     "morningBriefs": "Osobni obavještajni desk",
     "morningBriefsDesc": "Do 30 rangiranih članaka po sažetku, deduplikovano kroz izvore. Odaberi dnevni, dva puta dnevni ili tjedno ritam — ili upozorenja u stvarnom vremenu za kritične događaje. AI Procjena i Signali za praćenje dostavljeni na Slack, Discord, Telegram, Email ili webhook. Nije newsletter — to je analyst.",
     "oneKey": "Live Services, 1 ključ",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky i drugi — svi aktivni, bez zasebnih registracija.",
-    "deliveryLabel": "Odaberite kako obavještajni uvidi dolaze do vas"
+    "deliveryLabel": "Odaberite kako obavještajni uvidi dolaze do vas",
+    "supplyChainLab": "Laboratorij za stres u lancu opskrbe",
+    "supplyChainLabDesc": "Simulirajte šok troškova u zemljama i sektorima. Rangujte ranjivost roba prema ovisnosti o uskim grlima. Pratite koncentraciju od rudnika do rafinerije i divergenciju premije SGE–COMEX — seriju koja se mijenja prije nego što se vijest pojavi.",
+    "roadmapNote": "Na planu: orbitalno nadziranje, duža povijest, premium kartografske slojeve."
   },
   "slackMock": {
     "morningBrief": "Jutarnji sažetak",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Puna obavještajna nadzorna ploča",
         "features": [
-          "Sve iz besplatnog plana",
-          "AI analiza dionica i backtesting",
-          "Dnevni tržišni sažeci",
-          "Vojno i geopolitičko praćenje",
-          "Custom widget builder",
-          "10 prilagođenih nadzornih ploča (nasuprot 3)",
+          "Sve iz Besplatnog plana — paneli, izvori i pratene zemlje bez ograničenja",
+          "WM Analyst chat + AI analiza dionica i backtesting",
+          "Modeliranje šoka troškova i testovi stresa u lancu opskrbe",
+          "Intel memorija — povijesna pretraga, vremenske linije i slični događaji",
+          "Divergencija fizičkih metala, koncentracija minerala i podaci o suverenoj dugu",
+          "Zakazani AI sažetak + sustav pravila za upozorenja",
           "MCP + SDK pristup za Claude Desktop i druge AI klijente (50 poziva/dan)",
-          "Prioritetno osvježavanje podataka"
+          "Prilagođeni widgeti i 10 nadzornih ploča (nasuprot 3)"
         ],
         "highlightFeatures": [
           "Osobna licenca",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Prati političke, sigurnosne, ekonomske i otpornosti signale iza promjene zemlje.",
       "open": "Otvori dokaze"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Dnevnik dostave",
+    "title": "Što je novo u WorldMonitoru",
+    "subtitle": "Nove funkcije iz posljednjih 30 dana — ispravke i tehnički rad nisu uključeni.",
+    "proTag": "PRO",
+    "m1": "Indeks divergencije fizičke premije — SGE vs COMEX, s historijom",
+    "m2": "Rangiranje ranjivosti opskrbe robom — razvoj ovisnosti o uskim grlima",
+    "m3": "Koncentracija proizvodnje minerala i industrijska baza obrane",
+    "m4": "Izvještaji otpornosti s pet čimbenika s ocjenama na razini pokazatelja",
+    "m5": "Prilagođene liste praćenja Telegram kanala",
+    "m6": "Prijava putem ključa",
+    "m7": "AI agenti mogu upravljati panelima — paneli, kartice, slojevi karte i misije",
+    "m8": "Bogatije stranice otpornosti zemlje"
   }
 }

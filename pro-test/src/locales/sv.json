@@ -32,7 +32,7 @@
     "proF6": "Flygsökning och prisjämförelse",
     "proF7": "Regelmotor för larm — egna triggers, tysta timmar, AES-256-krypterade kanaler",
     "proF8": "Market watchlist, makro- och centralbanksspårning",
-    "proF9": "AI Market Implications och Regional Intelligence (Snart: orbital övervakning, premiumkartlager, utökad historik)",
+    "proF9": "AI-marknadsimplikationer och regional underrättelse",
     "choosePlan": "Välj din plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "För team som behöver delad övervakning, API-åtkomst, deployment-alternativ, TV-appar och direkt support.",
@@ -48,7 +48,8 @@
     "entF10": "Moln, on-premises eller air-gapped deployment",
     "entF11": "Dedikerad onboarding och support",
     "entCta": "Prata med sälj",
-    "freeF2": "Kurerade flöden, attribuerade källor och kartlager"
+    "freeF2": "Kurerade flöden, attribuerade källor och kartlager",
+    "proF10": "Intel-minne — historisk sökning, tidslinjer och sökning efter liknande händelser"
   },
   "whyUpgrade": {
     "title": "Varför uppgradera till World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "BNP, inflation, räntor och tillväxtcykler. Makrodata korrelerade med marknadssignaler och geopolitiska händelser.",
     "riskMonitoring": "Riskövervakning och scenarier",
     "riskMonitoringDesc": "Global riskpoäng, scenarieanalys och geopolitisk riskbedömning. Konvergensdetektering över marknads- och politiska signaler.",
-    "orbitalSurveillance": "Orbital övervakning",
-    "orbitalSurveillanceDesc": "(Snart) Prognoser för satellitpassager, revisit-frekvensanalys och fönstervarning för bildtagning. Vet när underrättelsesatelliter observerar dina intresseområden.",
     "morningBriefs": "Personligt intelligence-skrivbord",
     "morningBriefsDesc": "Upp till 30 rankade nyhetsartiklar per sammandrag, avduplicerade över källor. Välj daglig, två gånger daglig eller veckovis cadence — eller realtidsaviseringar för kritiska händelser. AI-bedömning och signaler att bevaka levererade till Slack, Discord, Telegram, E-post eller webhook. Inte ett nyhetsbrev — en analytiker.",
     "oneKey": "Live-tjänster, 1 nyckel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky och fler — alla aktiva, inga separata registreringar.",
-    "deliveryLabel": "Välj hur intelligence hittar dig"
+    "deliveryLabel": "Välj hur intelligence hittar dig",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Modellera en kostnadschock över länder och sektorer. Rangordna råvaruöversälj efter beroende av flaskhalsar. Spåra koncentration från gruva till raffin och SGE–COMEX-premiumskillnaden — serien som rör sig före rubrikerna.",
+    "roadmapNote": "På vägkartan: orbitövervakning, längre historik, premiumkartlager."
   },
   "slackMock": {
     "morningBrief": "Morgonbriefing",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Fullständig underrättelsepanel",
         "features": [
-          "Allt i Free",
-          "AI-aktieanalys och backtesting",
-          "Dagliga marknadsöversikter",
-          "Militär- och geopolitisk spårning",
-          "Anpassad widgetbyggare",
-          "10 anpassade instrumentpaneler (mot 3)",
+          "Allt i Gratis — paneler, källor och följda länder obegränsade",
+          "WM Analyst-chatt + AI-aktieanalys och backtesting",
+          "Kostnadschockmodellering och tester av försörjningskedjestress",
+          "Intel-minne — historisk sökning, tidslinjer och liknande händelser",
+          "Data om fysisk metallskillnad, mineralkoncentration och statsskuld",
+          "Schemalagd AI-sammanfattning och varningsregelmotor",
           "MCP + SDK-åtkomst för Claude Desktop och andra AI-klienter (50 samtal/dag)",
-          "Prioriterad datauppdatering"
+          "Anpassade widgetar och 10 instrumentpaneler (mot 3)"
         ],
         "highlightFeatures": [
           "Personlig licens",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Spåra de politiska, säkerhetsmässiga, ekonomiska och motståndskraftssignaler bakom ett lands förändring.",
       "open": "Öppna bevis"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Fraktlogg",
+    "title": "Vad är nytt i WorldMonitor",
+    "subtitle": "Nya funktioner från de senaste 30 dagarna — felrättningar och inte inkluderad.",
+    "proTag": "PRO",
+    "m1": "Index för fysisk premiumskillnad — SGE mot COMEX, med historik",
+    "m2": "Rangordning av råvarutillgångssårbarhet — beroendespridning för flaskhalsar",
+    "m3": "Mineralproduktionskoncentration och försvarets industriell bas",
+    "m4": "Femfaktorers motståndskraftskort med poäng på indikatornivå",
+    "m5": "Anpassade Telegram-kanalövervakarlistor",
+    "m6": "Passkey-inloggning",
+    "m7": "AI-agenter kan styra instrumentpanelen — paneler, flikar, kartlager och uppdrag",
+    "m8": "Rikare landsöversidor för motståndskraft"
   }
 }

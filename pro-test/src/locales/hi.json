@@ -32,7 +32,7 @@
     "proF6": "फ़्लाइट खोज और कीमत तुलना",
     "proF7": "अलर्ट नियम इंजन — कस्टम triggers, quiet hours, AES-256 एन्क्रिप्टेड चैनल",
     "proF8": "मार्केट watchlist, macro और central bank tracking",
-    "proF9": "AI Market Implications और Regional Intelligence (जल्द: orbital surveillance, premium map layers, लंबा history)",
+    "proF9": "AI मार्केट निहितार्थ और क्षेत्रीय इंटेलिजेंस",
     "choosePlan": "अपना प्लान चुनें",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "उन टीमों के लिए जिन्हें shared monitoring, API access, deployment options, TV apps और direct support चाहिए।",
@@ -48,7 +48,8 @@
     "entF10": "Cloud, on-prem या air-gapped deployment",
     "entF11": "Dedicated onboarding और support",
     "entCta": "Sales से बात करें",
-    "freeF2": "क्यूरेटेड फीड, सत्रोपित स्रोत, और मानचित्र परतें"
+    "freeF2": "क्यूरेटेड फीड, सत्रोपित स्रोत, और मानचित्र परतें",
+    "proF10": "इंटेल मेमोरी — ऐतिहासिक खोज, टाइमलाइन और समान-घटना लुकअप"
   },
   "whyUpgrade": {
     "title": "World Monitor Pro में अपग्रेड क्यों करें?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "GDP, inflation, interest rates और growth cycles. Macro data को market signals और geopolitical events से correlate किया गया।",
     "riskMonitoring": "Risk Monitoring और Scenarios",
     "riskMonitoringDesc": "Global risk scoring, scenario analysis और geopolitical risk assessment. Market और political signals में convergence detection.",
-    "orbitalSurveillance": "Orbital Surveillance",
-    "orbitalSurveillanceDesc": "(जल्द) Overhead pass predictions, revisit frequency analysis और imaging window alerts. जानें कि intelligence satellites कब आपकी areas of interest देख रहे हैं।",
     "morningBriefs": "Personal Intelligence Desk",
     "morningBriefsDesc": "प्रति डाइजेस्ट 30 तक क्रमबद्ध कहानियां, स्रोतों के पार डीडुप की गई। दैनिक, दिन में दो बार, या साप्ताहिक आवृत्ति चुनें — या महत्वपूर्ण ईवेंटों के लिए रीयल-टाइम सतर्कताएं। AI मूल्यांकन और Slack, Discord, Telegram, Email, या webhook को वितरित देखने के लिए संकेत। एक समाचार पत्र नहीं — एक विश्लेषक।",
     "oneKey": "लाइव सेवाएं, 1 कुंजी",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky और अधिक — सब active, अलग registrations नहीं।",
-    "deliveryLabel": "चुनें कि intelligence आप तक कैसे पहुँचे"
+    "deliveryLabel": "चुनें कि intelligence आप तक कैसे पहुँचे",
+    "supplyChainLab": "सप्लाई-चेन स्ट्रेस लैब",
+    "supplyChainLabDesc": "देशों और क्षेत्रों में लागत आघात का मॉडल बनाएं। चोकपॉइंट निर्भरता द्वारा कमोडिटी कमजोरी को रैंक करें। खदान-से-रिफाइनरी एकाग्रता और SGE–COMEX भौतिक प्रीमियम विचलन को ट्रैक करें — वह श्रृंखला जो हेडलाइन से पहले हिलती है।",
+    "roadmapNote": "रोडमैप पर: कक्षीय निगरानी, लंबा इतिहास, प्रीमियम मैप लेयर्स।"
   },
   "slackMock": {
     "morningBrief": "Morning Brief",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "पूरा इंटेलिजेंस डैशबोर्ड",
         "features": [
-          "मुफ़्त प्लान की हर चीज़",
-          "AI स्टॉक विश्लेषण और backtesting",
-          "दैनिक मार्केट ब्रीफ़",
-          "सैन्य और भू-राजनीतिक ट्रैकिंग",
-          "कस्टम विजेट बिल्डर",
-          "10 कस्टम डैशबोर्ड (बनाम 3)",
+          "फ्री में सब कुछ — पैनल, स्रोत और अनुसरण किए गए देश अनंत",
+          "WM एनालिस्ट चैट + AI स्टॉक विश्लेषण और बैकटेस्टिंग",
+          "लागत-आघात मॉडलिंग और सप्लाई-चेन स्ट्रेस टेस्ट",
+          "इंटेल मेमोरी — ऐतिहासिक खोज, टाइमलाइन और समान घटनाएं",
+          "भौतिक धातु विचलन, खनिज एकाग्रता और संप्रभु ऋण डेटा",
+          "अनुसूचित AI डाइजेस्ट + अलर्ट नियम इंजन",
           "Claude Desktop और अन्य AI क्लाइंट के लिए MCP + SDK एक्सेस (50 कॉल/दिन)",
-          "प्राथमिकता डेटा रीफ्रेश"
+          "कस्टम विजेट और 10 डैशबोर्ड (बनाम 3)"
         ],
         "highlightFeatures": [
           "व्यक्तिगत लाइसेंस",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "किसी देश के परिवर्तन के पीछे राजनीतिक, सुरक्षा, आर्थिक, और लचीलेपन के संकेतों का पता लगाएं।",
       "open": "साक्ष्य खोलें"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "शिपिंग लॉग",
+    "title": "WorldMonitor में क्या नया है",
+    "subtitle": "पिछले 30 दिनों से नई सुविधाएं — फिक्स और प्लंबिंग शामिल नहीं।",
+    "proTag": "PRO",
+    "m1": "भौतिक प्रीमियम विचलन सूचकांक — SGE बनाम COMEX, इतिहास के साथ",
+    "m2": "कमोडिटी सप्लाई-कमजोरी रैंकिंग — चोकपॉइंट निर्भरता फैन-आउट",
+    "m3": "खनिज उत्पादन एकाग्रता और रक्षा औद्योगिक आधार",
+    "m4": "पांच-कारक लचीलापन स्कोरकार्ड संकेतक-स्तर स्कोर के साथ",
+    "m5": "कस्टम टेलीग्राम चैनल वॉचलिस्ट",
+    "m6": "पासकी साइन-इन",
+    "m7": "AI एजेंट डैशबोर्ड चला सकते हैं — पैनल, टैब, मैप लेयर्स और मिशन",
+    "m8": "समृद्ध देश लचीलापन पृष्ठ"
   }
 }

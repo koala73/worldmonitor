@@ -36,14 +36,14 @@
       "pro": {
         "description": "Full intelligence dashboard",
         "features": [
-          "Everything in Free",
-          "AI stock analysis & backtesting",
-          "Daily market briefs",
-          "Military & geopolitical tracking",
-          "Custom widget builder",
-          "۱۰ داشبورد سفارشی (در مقابل ۳)",
+          "همه چیز در نسخه رایگان — پنل‌ها، منابع و کشورهای دنبال‌شده نامحدود",
+          "گفتگوی تحلیلگر WM + تجزیه و تحلیل سهام و بک‌تست هوش‌مندی",
+          "مدل‌سازی شوک هزینه و آزمایش‌های تنش زنجیره تامین",
+          "هوش‌مندی — جستجوی تاریخی، خط‌مسیرهای زمانی و رویدادهای مشابه",
+          "داده‌های واگرایی فلزات فیزیکی، غلظت معادن و بدهی حاکمیتی",
+          "خلاصه هوش‌مندی برنامه‌ریزی‌شده + موتور قوانین هشدار",
           "دسترسی MCP + SDK برای Claude Desktop و سایر کلاینت‌های AI (۵۰ فراخوانی/روز)",
-          "Priority data refresh"
+          "ابزارک‌های سفارشی و ۱۰ داشبورد (در برابر ۳)"
         ],
         "highlightFeatures": [
           "Personal license",
@@ -151,7 +151,7 @@
     "proF6": "Flight search & price comparison",
     "proF7": "Alert rules engine — custom triggers, quiet hours, AES-256 encrypted channels",
     "proF8": "Market watchlist, macro & central bank tracking",
-    "proF9": "AI Market Implications & Regional Intelligence (Soon: orbital surveillance, premium map layers, longer history)",
+    "proF9": "پیامدهای بازار هوش‌مندی و هوش‌مندی منطقه‌ای",
     "choosePlan": "Choose Your Plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "For teams that need shared monitoring, API access, deployment options, TV apps, and direct support.",
@@ -167,7 +167,8 @@
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
     "entCta": "Talk to Sales",
-    "freeF2": "خوراک‌های منتخب، منابع مرجع‌شده، و لایه‌های نقشه"
+    "freeF2": "خوراک‌های منتخب، منابع مرجع‌شده، و لایه‌های نقشه",
+    "proF10": "هوش‌مندی — جستجوی تاریخی، خط‌مسیرهای زمانی و جستجوی رویدادهای مشابه"
   },
   "whyUpgrade": {
     "title": "چرا به World Monitor Pro ارتقا دهیم؟",
@@ -274,13 +275,14 @@
     "economyAnalyticsDesc": "GDP, inflation, interest rates, and growth cycles. Macro data correlated with market signals and geopolitical events.",
     "riskMonitoring": "Risk Monitoring & Scenarios",
     "riskMonitoringDesc": "Global risk scoring, scenario analysis, and geopolitical risk assessment. Convergence detection across market and political signals.",
-    "orbitalSurveillance": "Orbital Surveillance",
-    "orbitalSurveillanceDesc": "(Soon) Overhead pass predictions, revisit frequency analysis, and imaging window alerts. Know when intelligence satellites are watching your areas of interest.",
     "morningBriefs": "Personal Intelligence Desk",
     "morningBriefsDesc": "تا ۳۰ داستان رتبه‌بندی شده در هر خلاصه، حذف تکرار در سراسر منابع. برنامه روزانه، دو بار روزانه، یا هفتگی را انتخاب کنید — یا هشدارهای بی‌درنگ برای رویدادهای حیاتی. ارزیابی هوشمند و سیگنال‌های نظارتی، تحویل شده به Slack، Discord، Telegram، Email یا webhook. نه یک خبرنامه — یک تحلیلگر.",
     "oneKey": "خدمات زنده، ۱ کلید",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
-    "deliveryLabel": "Choose how intelligence finds you"
+    "deliveryLabel": "Choose how intelligence finds you",
+    "supplyChainLab": "آزمایشگاه تنش زنجیره تامین",
+    "supplyChainLabDesc": "مدل‌سازی شوک هزینه در کشورها و بخش‌ها. رتبه‌بندی آسیب‌پذیری کالا بر اساس وابستگی به نقاط تنگنای توزیع. پیگیری غلظت معدن تا پالایشگاه و واگرایی حق‌الزحمه فیزیکی SGE–COMEX — سری‌ای که پیش از تیتر خبر حرکت می‌کند.",
+    "roadmapNote": "در برنامه: نظارت مداری، تاریخچه طولانی‌تر، لایه‌های نقشه ارزشمند."
   },
   "slackMock": {
     "morningBrief": "Morning Brief",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "سیگنال‌های سیاسی، امنیتی، اقتصادی و تاب‌آوری پشت تغییر کشور را ردیابی کنید.",
       "open": "باز کردن شواهد"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "سیاهه کشتی‌رانی",
+    "title": "جدید در World Monitor",
+    "subtitle": "ویژگی‌های جدید از ۳۰ روز گذشته — اصلاحات و بهبودهای داخلی شامل نیستند.",
+    "proTag": "PRO",
+    "m1": "شاخص واگرایی حق‌الزحمه فیزیکی — SGE در برابر COMEX، با تاریخچه",
+    "m2": "رتبه‌بندی آسیب‌پذیری عرضه کالا — بسط وابستگی به نقاط تنگنای توزیع",
+    "m3": "غلظت تولید معادن و پایگاه صنعت دفاعی",
+    "m4": "کارت‌های امتیاز تاب‌آوری پنج‌عاملی با نمرات سطح شاخص",
+    "m5": "فهرست‌های نظارتی کانال تلگرام سفارشی",
+    "m6": "ورود کلید دسترسی",
+    "m7": "عوامل هوش‌مندی می‌توانند داشبورد را رانندگی کنند — پنل‌ها، برگه‌ها، لایه‌های نقشه و ماموریت‌ها",
+    "m8": "صفحات تاب‌آوری کشور غنی‌تر"
   }
 }

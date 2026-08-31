@@ -32,7 +32,7 @@
     "proF6": "Tìm chuyến bay và so sánh giá",
     "proF7": "Động cơ quy tắc cảnh báo — trình kích hoạt tùy chỉnh, giờ yên lặng, kênh mã hóa AES-256",
     "proF8": "Watchlist thị trường, theo dõi vĩ mô và ngân hàng trung ương",
-    "proF9": "AI Market Implications và Regional Intelligence (Sắp ra mắt: giám sát quỹ đạo, lớp bản đồ cao cấp, lịch sử mở rộng)",
+    "proF9": "Hàm ý thị trường AI & Thông tin tình báo khu vực",
     "choosePlan": "Chọn gói",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Dành cho các nhóm cần giám sát chia sẻ, truy cập API, các tùy chọn triển khai, ứng dụng TV và hỗ trợ trực tiếp.",
@@ -48,7 +48,8 @@
     "entF10": "Triển khai đám mây, on-premises hoặc air-gapped",
     "entF11": "Onboarding và hỗ trợ chuyên trách",
     "entCta": "Liên hệ kinh doanh",
-    "freeF2": "Các nguồn cấp được chọn lọc, nguồn được quy định và lớp bản đồ"
+    "freeF2": "Các nguồn cấp được chọn lọc, nguồn được quy định và lớp bản đồ",
+    "proF10": "Bộ nhớ Intel — tìm kiếm lịch sử, dòng thời gian & tra cứu sự kiện tương tự"
   },
   "whyUpgrade": {
     "title": "Tại sao nâng cấp lên World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "GDP, lạm phát, lãi suất và chu kỳ tăng trưởng. Dữ liệu vĩ mô tương quan với tín hiệu thị trường và sự kiện địa chính trị.",
     "riskMonitoring": "Giám sát rủi ro và kịch bản",
     "riskMonitoringDesc": "Ghi điểm rủi ro toàn cầu, phân tích kịch bản và đánh giá rủi ro địa chính trị. Phát hiện hội tụ giữa tín hiệu thị trường và chính trị.",
-    "orbitalSurveillance": "Giám sát quỹ đạo",
-    "orbitalSurveillanceDesc": "(Sắp ra mắt) Dự báo đi qua quỹ đạo, phân tích tần suất ghé thăm lại và cảnh báo cửa sổ chụp ảnh. Biết khi nào các vệ tinh tình báo quan sát các khu vực quan tâm của bạn.",
     "morningBriefs": "Bàn tình báo cá nhân",
     "morningBriefsDesc": "Lên đến 30 bài báo xếp hạng trên mỗi bản tóm tắt, loại bỏ trùng lặp trên các nguồn. Chọn lịch hàng ngày, hai lần mỗi ngày hoặc hàng tuần — hoặc cảnh báo thời gian thực cho các sự kiện quan trọng. Đánh giá AI và Tín hiệu cần theo dõi được gửi đến Slack, Discord, Telegram, Email hoặc webhook. Không phải một bản tin — một nhà phân tích.",
     "oneKey": "Các dịch vụ trực tiếp, 1 khóa",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky và nhiều hơn nữa — tất cả đang hoạt động, không cần đăng ký riêng.",
-    "deliveryLabel": "Chọn cách tình báo tìm đến bạn"
+    "deliveryLabel": "Chọn cách tình báo tìm đến bạn",
+    "supplyChainLab": "Phòng Lab Áp lực Chuỗi cung ứng",
+    "supplyChainLabDesc": "Mô phỏng một cú sốc chi phí trên các quốc gia và lĩnh vực. Xếp hạng lỗ hổng hàng hóa theo phụ thuộc điểm tắc nghẽn. Theo dõi tập trung từ mỏ đến nhà máy lọc và sự phân kỳ phí bảo hiểm vật lý SGE–COMEX — chuỗi dữ liệu thay đổi trước khi tiêu đề thay đổi.",
+    "roadmapNote": "Trên lộ trình: giám sát quỹ đạo, lịch sử dài hơn, lớp bản đồ cao cấp."
   },
   "slackMock": {
     "morningBrief": "Bản tóm tắt buổi sáng",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Bảng điều khiển trí tuệ đầy đủ",
         "features": [
-          "Tất cả trong Miễn phí",
-          "Phân tích cổ phiếu AI & backtesting",
-          "Tóm tắt thị trường hàng ngày",
-          "Theo dõi quân sự & địa chính trị",
-          "Trình tạo widget tùy chỉnh",
-          "10 bảng điều khiển tùy chỉnh (so với 3)",
+          "Tất cả trong Miễn phí — bảng, nguồn & quốc gia theo dõi không giới hạn",
+          "Trò chuyện với WM Analyst + phân tích cổ phiếu AI & kiểm tra lại",
+          "Mô phỏng cú sốc chi phí & kiểm tra áp lực chuỗi cung ứng",
+          "Bộ nhớ Intel — tìm kiếm lịch sử, dòng thời gian & sự kiện tương tự",
+          "Dữ liệu sự phân kỳ kim loại vật lý, tập trung khoáng sản & nợ chủ quyền",
+          "Bản tóm tắt AI theo lịch trình + công cụ quy tắc cảnh báo",
           "Truy cập MCP + SDK cho Claude Desktop & các ứng dụng AI khác (50 lệnh gọi/ngày)",
-          "Làm mới dữ liệu ưu tiên"
+          "Tiện ích tùy chỉnh & 10 bảng điều khiển (so với 3)"
         ],
         "highlightFeatures": [
           "Giấy phép cá nhân",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Truy vết các tín hiệu chính trị, an ninh, kinh tế và khả năng phục hồi đằng sau sự thay đổi của một quốc gia.",
       "open": "Mở chứng cứ"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Nhật ký vận tải",
+    "title": "Có gì mới trong WorldMonitor",
+    "subtitle": "Tính năng mới từ 30 ngày qua — sửa chữa và hạ tầng không được tính.",
+    "proTag": "PRO",
+    "m1": "Chỉ số sự phân kỳ phí bảo hiểm vật lý — SGE so với COMEX, có lịch sử",
+    "m2": "Xếp hạng lỗ hổng cung ứng hàng hóa — quạt phân kỳ phụ thuộc điểm tắc nghẽn",
+    "m3": "Tập trung sản xuất khoáng sản & cơ sở công nghiệp quốc phòng",
+    "m4": "Thẻ điểm kiên cường năm yếu tố với điểm cấp chỉ báo",
+    "m5": "Danh sách theo dõi kênh Telegram tùy chỉnh",
+    "m6": "Đăng nhập bằng Passkey",
+    "m7": "Các tác nhân AI có thể điều khiển bảng điều khiển — các bảng, tab, lớp bản đồ & nhiệm vụ",
+    "m8": "Các trang kiên cường quốc gia phong phú hơn"
   }
 }

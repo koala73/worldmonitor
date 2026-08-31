@@ -32,7 +32,7 @@
     "proF6": "航班搜索与价格比较",
     "proF7": "告警规则引擎 — 自定义触发器、静音时段、AES-256 加密通道",
     "proF8": "市场观察列表、宏观与央行追踪",
-    "proF9": "AI Market Implications 与 Regional Intelligence(即将推出:轨道监视、高级地图图层、更长历史)",
+    "proF9": "AI 市场影响与区域情报",
     "choosePlan": "选择方案",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "面向需要共享监测、API 访问、部署选项、TV 应用和直接支持的团队。",
@@ -48,7 +48,8 @@
     "entF10": "云、本地或气隙部署",
     "entF11": "专属上手与支持",
     "entCta": "联系销售",
-    "freeF2": "精选信息源、标注来源和地图图层"
+    "freeF2": "精选信息源、标注来源和地图图层",
+    "proF10": "Intel 记忆库 — 历史搜索、时间线和相似事件查询"
   },
   "whyUpgrade": {
     "title": "为什么升级到 World Monitor Pro？",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "GDP、通胀、利率与增长周期。将宏观数据与市场信号和地缘政治事件相关联。",
     "riskMonitoring": "风险监测与情景分析",
     "riskMonitoringDesc": "全球风险评分、情景分析与地缘政治风险评估。跨市场与政治信号的收敛检测。",
-    "orbitalSurveillance": "轨道监视",
-    "orbitalSurveillanceDesc": "(即将推出)过顶预测、重访频率分析与成像窗口告警。得知情报卫星何时正在观察您关注的区域。",
     "morningBriefs": "个人情报工作台",
     "morningBriefsDesc": "每份摘要最多30条排序新闻，跨源去重。选择每日、两次每日或每周的频率——或针对重要事件的实时警报。AI评估和监控信号发送至Slack、Discord、Telegram、Email或webhook。不是新闻通讯——是分析师。",
     "oneKey": "实时服务，1个密钥",
     "oneKeyDesc": "Finnhub、FRED、ACLED、UCDP、NASA FIRMS、AISStream、OpenSky 等 — 全部开启,无需单独注册。",
-    "deliveryLabel": "选择情报如何找到您"
+    "deliveryLabel": "选择情报如何找到您",
+    "supplyChainLab": "供应链压力实验室",
+    "supplyChainLabDesc": "对各国和行业进行成本冲击建模。按瓶颈依赖度对商品脆弱性排名。追踪矿山到炼油厂的浓度和上期所-COMEX 现货溢价差异 — 这是在头条新闻出现前就会变动的数据序列。",
+    "roadmapNote": "路线图中计划：卫星监测、更长历史数据、高级地图图层。"
   },
   "slackMock": {
     "morningBrief": "晨间简报",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "完整的情报仪表板",
         "features": [
-          "免费版的所有功能",
-          "AI 股票分析和回测",
-          "每日市场简报",
-          "军事和地缘政治追踪",
-          "自定义小部件构建器",
-          "10 个自定义仪表板（相比 3 个）",
+          "免费版的所有内容 — 面板、数据源和关注国家无限制",
+          "WM 分析师聊天 + AI 股票分析和回测",
+          "成本冲击建模和供应链压力测试",
+          "Intel 记忆库 — 历史搜索、时间线和相似事件",
+          "贵金属现货溢价、矿物浓度和主权债务数据",
+          "定时 AI 摘要 + 告警规则引擎",
           "MCP + SDK 访问权限，适用于 Claude Desktop 和其他 AI 客户端（50 次调用/天）",
-          "优先数据刷新\t"
+          "自定义小部件和 10 个仪表板（相比 3 个）"
         ],
         "highlightFeatures": [
           "个人许可证\t",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "追踪国家变化背后的政治、安全、经济和韧性信号。",
       "open": "打开证据"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "航运日志",
+    "title": "World Monitor 有什么新内容",
+    "subtitle": "过去 30 天的新功能 — 不包括修复和底层优化。",
+    "proTag": "PRO",
+    "m1": "现货溢价差异指数 — 上期所 vs COMEX，含历史数据",
+    "m2": "商品供应脆弱性排名 — 瓶颈依赖度展开图",
+    "m3": "矿物生产浓度与国防工业基础",
+    "m4": "五因子韧性记分卡及指标级得分",
+    "m5": "自定义 Telegram 频道监测列表",
+    "m6": "通行密钥登录",
+    "m7": "AI 智能体可驱动仪表板 — 面板、标签页、地图图层和任务",
+    "m8": "更丰富的国家韧性页面"
   }
 }
