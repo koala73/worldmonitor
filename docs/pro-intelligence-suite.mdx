@@ -118,7 +118,7 @@ TIV is a transfer-volume indicator, not money. Do not render it with a currency 
 }
 ```
 
-`supplierHhi` is computed over the full TIV denominator while `suppliers` lists only rows that mapped to an ISO-2 country. `supplierMappingCoverage` is the share that mapped — read it before treating the listed suppliers as the whole picture. `supplierRetained: true` means the current SIPRI request failed and the previous importer row was kept rather than dropped.
+`supplierHhi` is computed over the full TIV denominator while `suppliers` lists only rows that mapped to an ISO-2 country. `supplierMappingCoverage` is the share that mapped — read it before treating the listed suppliers as the whole picture. `supplierRetained: true` means this importer's previously published row was not refreshed in this tick. Retention is normally chunk carry-forward; a failed importer request is only one possible reason.
 
 SIPRI's license permits derived aggregates, not redistribution of the full database, which is why per-country supplier shares are served and the trade register is not. See [Defense industrial base methodology](/methodology/defense-industrial-base).
 

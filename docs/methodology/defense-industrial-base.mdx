@@ -49,7 +49,7 @@ The two are deliberately not reconciled: dropping unmapped TIV from the denomina
 
 ### Retention
 
-`supplierRetained: true` means this importer's current SIPRI request failed and the previously stored row was kept rather than dropped. `supplierFetchedAt` then reports the retained row's original timestamp, not the failed attempt. A retained row is real data with a known age, which is why it is served instead of an empty response.
+`supplierRetained: true` means this importer's previously published row was not refreshed in this tick. The seeder carries every prior importer forward and overlays only the current chunk as fresh, so retention is normally chunk carry-forward; a failed importer request is only one possible reason. `supplierFetchedAt` then reports the retained row's original timestamp, not this tick. A retained row is real data with a known age, which is why it is served instead of an empty response.
 
 ## Clocks
 

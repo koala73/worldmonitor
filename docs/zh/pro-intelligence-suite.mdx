@@ -70,7 +70,7 @@ curl -H "Authorization: Bearer $WM_TOKEN" \
 
 TIV 是转让量指标，不是货币。不要用货币符号呈现它。
 
-`supplierHhi` 基于完整的 TIV 分母计算，而 `suppliers` 仅列出能映射到 ISO-2 国家的行。`supplierMappingCoverage` 是已映射的份额——在将所列供应国视为全貌之前请先读取它。`supplierRetained: true` 表示当前 SIPRI 请求失败，保留了此前的进口国记录而非丢弃。
+`supplierHhi` 基于完整的 TIV 分母计算，而 `suppliers` 仅列出能映射到 ISO-2 国家的行。`supplierMappingCoverage` 是已映射的份额——在将所列供应国视为全貌之前请先读取它。`supplierRetained: true` 表示该进口国此前已发布的记录在本轮未被刷新。保留通常是分片结转；进口国请求失败只是可能原因之一。
 
 SIPRI 的许可允许衍生合计值，不允许再分发完整数据库，因此提供的是各国供应国份额而非贸易登记册本身。参见[国防工业基础方法论](/zh/methodology/defense-industrial-base)。
 
