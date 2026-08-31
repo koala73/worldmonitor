@@ -336,7 +336,7 @@ const SITE_BASELINE = {
   "server/worldmonitor/supply-chain/v1/get-sector-dependency.ts::isCallerPremium": 1,
   "server/worldmonitor/trade/v1/get-tariff-trends.ts::isCallerPremium": 1,
   "server/worldmonitor/trade/v1/list-comtrade-flows.ts::isCallerPremium": 1,
-  "src/app/data-loader.ts::hasPremiumAccess": 11,
+  "src/app/data-loader.ts::hasPremiumAccess": 13,
   "src/app/event-handlers.ts::isProUser": 2,
   "src/app/panel-layout.ts::hasPremiumAccess": 1,
   "src/components/RegionalIntelligenceBoard.ts::hasPremiumAccess": 1,
