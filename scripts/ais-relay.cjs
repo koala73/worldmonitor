@@ -58,6 +58,8 @@ const {
   buildClassifyDigestHeaders,
   formatClassifyDigestFetchFailure,
   shouldWriteClassifySeedMeta,
+  CLASSIFY_DIGEST_RETRY_DELAYS_MS,
+  classifyDigestRetryDecision,
 } = require('./lib/classify-digest-request.cjs');
 const {
   YahooQuoteSummaryClient,
@@ -4831,31 +4833,51 @@ async function seedClassifyForVariant(variant, seenTitles) {
   const digestUrl = buildClassifyDigestUrl(variant);
   const transport = classifyDigestTransport(digestUrl) === 'http' ? http : https;
   let digest;
-  try {
-    const resp = await new Promise((resolve, reject) => {
-      const req = transport.get(digestUrl, {
-        headers: buildClassifyDigestHeaders({
-          userAgent: CHROME_UA,
-          relayKey: RELAY_API_KEY,
-        }),
-        timeout: 15000,
-      }, resolve);
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-    });
-    if (resp.statusCode !== 200) {
-      resp.resume();
-      console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
+  const maxDigestAttempts = CLASSIFY_DIGEST_RETRY_DELAYS_MS.length + 1;
+  for (let attempt = 0; attempt < maxDigestAttempts; attempt++) {
+    try {
+      const resp = await new Promise((resolve, reject) => {
+        const req = transport.get(digestUrl, {
+          headers: buildClassifyDigestHeaders({
+            userAgent: CHROME_UA,
+            relayKey: RELAY_API_KEY,
+          }),
+          timeout: 15000,
+        }, resolve);
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      });
+      if (resp.statusCode !== 200) {
+        resp.resume();
+        const retry = classifyDigestRetryDecision({ attempt, status: resp.statusCode });
+        if (retry.retry) {
+          console.warn(`[Classify] digest fetch HTTP ${resp.statusCode}; retrying in ${retry.delayMs}ms`);
+          await new Promise((r) => setTimeout(r, retry.delayMs));
+          continue;
+        }
+        console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
+        return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
+      }
+      const body = await new Promise((resolve) => {
+        let d = '';
+        resp.on('data', (c) => { d += c; });
+        resp.on('end', () => resolve(d));
+      });
+      digest = JSON.parse(body);
+      break;
+    } catch (e) {
+      const retry = classifyDigestRetryDecision({ attempt, error: e });
+      if (retry.retry) {
+        console.warn(`[Classify] digest fetch error: ${e?.message || e}; retrying in ${retry.delayMs}ms`);
+        await new Promise((r) => setTimeout(r, retry.delayMs));
+        continue;
+      }
+      console.warn('[Classify] digest fetch error:', e?.message || e);
       return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
     }
-    const body = await new Promise((resolve) => {
-      let d = '';
-      resp.on('data', (c) => { d += c; });
-      resp.on('end', () => resolve(d));
-    });
-    digest = JSON.parse(body);
-  } catch (e) {
-    console.warn('[Classify] digest fetch error:', e?.message || e);
+  }
+  if (!digest) {
+    console.warn('[Classify] digest fetch error: exhausted retries');
     return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
   }
 

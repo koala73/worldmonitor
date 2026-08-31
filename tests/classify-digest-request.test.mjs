@@ -28,6 +28,10 @@ const {
   buildClassifyDigestHeaders,
   formatClassifyDigestFetchFailure,
   shouldWriteClassifySeedMeta,
+  CLASSIFY_DIGEST_RETRY_DELAYS_MS,
+  isTransientClassifyDigestFetchError,
+  isRetryableClassifyDigestStatus,
+  classifyDigestRetryDecision,
 } = require('../scripts/lib/classify-digest-request.cjs');
 
 const relaySrc = readFileSync(resolve(__dirname, '..', 'scripts', 'ais-relay.cjs'), 'utf8');
@@ -110,6 +114,39 @@ describe('classify digest request builder (#7437)', () => {
     assert.equal(shouldWriteClassifySeedMeta({ fetchOk: 1, fetchFailed: 4 }), true);
     assert.equal(shouldWriteClassifySeedMeta({ fetchOk: 0, fetchFailed: 0 }), true);
   });
+
+  it('retries connection refusals and 502/503/504, not auth failures', () => {
+    assert.equal(isTransientClassifyDigestFetchError({ code: 'ECONNREFUSED' }), true);
+    assert.equal(isTransientClassifyDigestFetchError(new Error('timeout')), true);
+    assert.equal(isTransientClassifyDigestFetchError(new Error('socket hang up')), true);
+    assert.equal(isTransientClassifyDigestFetchError(new Error('certificate has expired')), false);
+    assert.equal(isRetryableClassifyDigestStatus(502), true);
+    assert.equal(isRetryableClassifyDigestStatus(503), true);
+    assert.equal(isRetryableClassifyDigestStatus(504), true);
+    assert.equal(isRetryableClassifyDigestStatus(401), false);
+    assert.equal(isRetryableClassifyDigestStatus(403), false);
+    assert.equal(isRetryableClassifyDigestStatus(200), false);
+
+    assert.deepEqual(
+      classifyDigestRetryDecision({ attempt: 0, error: { code: 'ECONNREFUSED' } }),
+      { retry: true, delayMs: 2000 },
+    );
+    assert.deepEqual(
+      classifyDigestRetryDecision({ attempt: 1, status: 503 }),
+      { retry: true, delayMs: 4000 },
+    );
+    assert.deepEqual(
+      classifyDigestRetryDecision({ attempt: 0, status: 401 }),
+      { retry: false, delayMs: 0 },
+    );
+    assert.deepEqual(
+      classifyDigestRetryDecision({
+        attempt: CLASSIFY_DIGEST_RETRY_DELAYS_MS.length,
+        error: { code: 'ECONNREFUSED' },
+      }),
+      { retry: false, delayMs: 0 },
+    );
+  });
 });
 
 describe('ais-relay Classify wiring (#7437)', () => {
@@ -128,6 +165,8 @@ describe('ais-relay Classify wiring (#7437)', () => {
     assert.match(classifyFn, /\[Classify\] digest fetch error:/);
     assert.match(classifyFn, /fetchFailed:\s*true/);
     assert.match(relaySrc, /shouldWriteClassifySeedMeta\(\{ fetchOk, fetchFailed \}\)/);
+    assert.match(classifyFn, /classifyDigestRetryDecision\(/);
+    assert.match(classifyFn, /CLASSIFY_DIGEST_RETRY_DELAYS_MS\.length \+ 1/);
   });
 
   it('copies the helper into the relay image next to digest-stale-gate.cjs', () => {

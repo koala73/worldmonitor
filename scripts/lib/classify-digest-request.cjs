@@ -48,13 +48,50 @@ function shouldWriteClassifySeedMeta({ fetchOk = 0, fetchFailed = 0 } = {}) {
   return fetchOk > 0 || fetchFailed === 0;
 }
 
+// Compose starts ais-relay before worldmonitor (the app already depends_on the
+// relay; reversing that would cycle). A refused first `full` fetch would
+// otherwise sit until the 15-minute interval. Bounded retries cover the
+// seconds between relay listen and app listen without waiting on HTTP 4xx.
+const CLASSIFY_DIGEST_RETRY_DELAYS_MS = Object.freeze([2000, 4000, 8000, 8000, 8000]);
+const CLASSIFY_DIGEST_TRANSIENT_ERROR = /ECONNREFUSED|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|ENETUNREACH|EHOSTUNREACH|timeout|socket hang up/i;
+
+function isTransientClassifyDigestFetchError(error) {
+  if (error == null) return false;
+  const code = typeof error === 'object' && error.code ? String(error.code) : '';
+  const message = typeof error === 'object' && error.message ? String(error.message) : String(error);
+  return CLASSIFY_DIGEST_TRANSIENT_ERROR.test(code) || CLASSIFY_DIGEST_TRANSIENT_ERROR.test(message);
+}
+
+function isRetryableClassifyDigestStatus(status) {
+  return status === 502 || status === 503 || status === 504;
+}
+
+function classifyDigestRetryDelayMs(attempt) {
+  const delay = CLASSIFY_DIGEST_RETRY_DELAYS_MS[attempt];
+  return typeof delay === 'number' ? delay : 0;
+}
+
+function classifyDigestRetryDecision({ attempt = 0, error, status } = {}) {
+  const maxAttempts = CLASSIFY_DIGEST_RETRY_DELAYS_MS.length + 1;
+  if (attempt >= maxAttempts - 1) return { retry: false, delayMs: 0 };
+  if (isTransientClassifyDigestFetchError(error) || isRetryableClassifyDigestStatus(status)) {
+    return { retry: true, delayMs: classifyDigestRetryDelayMs(attempt) };
+  }
+  return { retry: false, delayMs: 0 };
+}
+
 module.exports = {
   DEFAULT_CLASSIFY_API_HOST,
   DEFAULT_CLASSIFY_API_BASE,
+  CLASSIFY_DIGEST_RETRY_DELAYS_MS,
   resolveClassifyApiBase,
   buildClassifyDigestUrl,
   classifyDigestTransport,
   buildClassifyDigestHeaders,
   formatClassifyDigestFetchFailure,
   shouldWriteClassifySeedMeta,
+  isTransientClassifyDigestFetchError,
+  isRetryableClassifyDigestStatus,
+  classifyDigestRetryDelayMs,
+  classifyDigestRetryDecision,
 };

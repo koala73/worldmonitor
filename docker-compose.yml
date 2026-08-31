@@ -82,6 +82,8 @@ services:
       UPSTASH_ALLOW_INSECURE_HTTP: "true"
       UCDP_ACCESS_TOKEN: "${UCDP_ACCESS_TOKEN:-}"
       # Classify reads list-feed-digest from this install, not production (#7437).
+      # Do not depends_on worldmonitor here — the app already depends_on ais-relay.
+      # Transient connection retries cover the compose boot race instead.
       API_BASE_URL: "${API_BASE_URL:-http://worldmonitor:8080}"
       WORLDMONITOR_RELAY_KEY: "${WORLDMONITOR_RELAY_KEY:-}"
       PORT: "3004"
