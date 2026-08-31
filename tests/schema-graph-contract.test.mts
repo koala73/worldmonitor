@@ -89,9 +89,12 @@ describe('canonical schema graph', () => {
     const dashboardApp = blocksOfType(dashboardBlocks, 'WebApplication')[0];
     const dashboardSite = blocksOfType(dashboardBlocks, 'WebSite')[0];
     const proApp = blocksOfType(proBlocks, 'SoftwareApplication')[0];
+    const welcomeApp = blocksOfType(welcomeBlocks, 'SoftwareApplication')[0];
     assert.deepEqual(dashboardApp.publisher, { '@id': ORGANIZATION_ID });
     assert.deepEqual(dashboardSite.publisher, { '@id': ORGANIZATION_ID });
     assert.deepEqual(proApp.publisher, { '@id': ORGANIZATION_ID });
+    assert.ok(proApp.sameAs.includes(PRODUCT_WIKIDATA_URL));
+    assert.ok(welcomeApp.sameAs.includes(PRODUCT_WIKIDATA_URL));
     assert.doesNotMatch(read('pro-test/prerender.mjs'), /ORGANIZATION_JSONLD|inject Organization JSON-LD/);
   });
 
@@ -154,6 +157,7 @@ describe('canonical schema graph', () => {
       assert.deepEqual(application.publisher, { '@id': ORGANIZATION_ID });
       assert.deepEqual(application.isPartOf, { '@id': WEBSITE_ID });
       assert.deepEqual(application.author, PERSON_ROLE);
+      assert.ok(application.sameAs.includes(PRODUCT_WIKIDATA_URL));
 
       const webPage = blocksOfType(renderedBlocks, 'WebPage')[0];
       const crumbs = blocksOfType(renderedBlocks, 'BreadcrumbList')[0];
