@@ -52,6 +52,7 @@
       "scripts/shared/defi-tokens.json",
       "scripts/shared/market-hours.cjs",
       "scripts/shared/market-quote-refresh.cjs",
+      "scripts/shared/market-seed-universe.cjs",
       "scripts/shared/notification-dedup.cjs",
       "scripts/shared/other-tokens.json",
       "scripts/shared/product-catalog.generated.json",

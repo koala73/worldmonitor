@@ -31,6 +31,5 @@ message GetEconomicCalendarResponse {
   // are graceful degradation, not confirmed zero data.
   bool unavailable = 5;
 
-  // ISO-8601 timestamp of the seed batch that produced this payload.
   string as_of = 6;
 }

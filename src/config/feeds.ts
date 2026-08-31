@@ -1119,7 +1119,7 @@ export const ON_DEMAND_FEEDS: Record<string, Feed[]> = {
   'nq-news': [
     { name: 'Reuters Nasdaq Futures', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(Nasdaq+futures+OR+NQ+OR+"E-mini")+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Nasdaq-100 & QQQ', url: rss('https://news.google.com/rss/search?q=("Nasdaq-100"+OR+QQQ+OR+"Nasdaq+100")+when:1d&hl=en-US&gl=US&ceid=US:en') },
-    { name: 'Federal Reserve Press', url: rss('https://www.federalreserve.gov/feeds/press_all.xml') },
+    { name: 'Federal Reserve', url: rss('https://www.federalreserve.gov/feeds/press_all.xml') },
     { name: 'NQ Influence Basket', url: rss('https://news.google.com/rss/search?q=(AAPL+OR+Apple+OR+MSFT+OR+Microsoft+OR+NVDA+OR+NVIDIA+OR+AMZN+OR+Amazon+OR+GOOGL+OR+Alphabet+OR+META+OR+AVGO+OR+Broadcom+OR+TSLA+OR+Tesla)+when:1d&hl=en-US&gl=US&ceid=US:en') },
     { name: 'Semiconductors', url: rss('https://news.google.com/rss/search?q=(semiconductor+OR+chip+OR+"AI+chip"+OR+TSMC+OR+ASML)+when:1d&hl=en-US&gl=US&ceid=US:en') },
   ],
