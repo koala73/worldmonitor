@@ -33,6 +33,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { join, relative, basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import ts from 'typescript';
+import { isMainModule } from './lib/main-module.mjs';
 
 const ROOT = new URL('..', import.meta.url).pathname;
 const PREMIUM_PATHS_SRC = join(ROOT, 'src/shared/premium-paths.ts');
@@ -60,31 +61,87 @@ const DELEGATING_ADAPTERS = new Set(['proFreshRpcFetch']);
 
 /**
  * Prove each DELEGATING_ADAPTERS entry is a real function in premium-fetch.ts
- * whose body calls `premiumFetch(...)` under an `isPremiumRpcTarget(...)`
- * guard. Structural, not a substring scan, so a body that merely mentions the
- * names in a comment does not pass.
+ * whose body returns `premiumFetch(input, init)` under an affirmative
+ * `isPremiumRpcTarget(input)` call. Identifiers must match the adapter
+ * parameters. A substring scan is not enough: inverted, wrong-argument, and
+ * text-only guards would still send premium targets through unauthenticated
+ * `globalThis.fetch`.
  */
-function assertDelegatingAdapters() {
-  const src = readFileSync(PREMIUM_FETCH_SRC, 'utf8');
+function unwrapParens(node) {
+  let cur = node;
+  while (cur && ts.isParenthesizedExpression(cur)) cur = cur.expression;
+  return cur;
+}
+
+function identifierText(node) {
+  const inner = unwrapParens(node);
+  return inner && ts.isIdentifier(inner) ? inner.text : null;
+}
+
+function adapterParamNames(fnNode) {
+  const names = [];
+  for (const param of fnNode.parameters) {
+    if (!ts.isIdentifier(param.name)) return null;
+    names.push(param.name.text);
+  }
+  return names;
+}
+
+/** `isPremiumRpcTarget(input)` — a CallExpression, not `!isPremiumRpcTarget(...)`. */
+function isAffirmativePremiumTargetCall(expr, inputName) {
+  const call = unwrapParens(expr);
+  if (!call || !ts.isCallExpression(call)) return false;
+  if (identifierText(call.expression) !== 'isPremiumRpcTarget') return false;
+  if (call.arguments.length < 1) return false;
+  return identifierText(call.arguments[0]) === inputName;
+}
+
+/** `return premiumFetch(input, init)` as the then-branch or its first statement. */
+function isPremiumFetchReturn(stmt, inputName, initName) {
+  if (ts.isBlock(stmt)) {
+    const first = stmt.statements[0];
+    return first ? isPremiumFetchReturn(first, inputName, initName) : false;
+  }
+  if (!ts.isReturnStatement(stmt) || !stmt.expression) return false;
+  const call = unwrapParens(stmt.expression);
+  if (!call || !ts.isCallExpression(call)) return false;
+  if (identifierText(call.expression) !== 'premiumFetch') return false;
+  if (call.arguments.length !== 2) return false;
+  return identifierText(call.arguments[0]) === inputName
+    && identifierText(call.arguments[1]) === initName;
+}
+
+function hasAffirmativePremiumDelegation(fnNode) {
+  const params = adapterParamNames(fnNode);
+  if (!params || params.length < 2 || !fnNode.body) return false;
+  const [inputName, initName] = params;
+  let guarded = false;
+  function findGuard(n) {
+    if (
+      ts.isIfStatement(n)
+      && isAffirmativePremiumTargetCall(n.expression, inputName)
+      && isPremiumFetchReturn(n.thenStatement, inputName, initName)
+    ) {
+      guarded = true;
+      return;
+    }
+    ts.forEachChild(n, findGuard);
+  }
+  findGuard(fnNode.body);
+  return guarded;
+}
+
+export function assertDelegatingAdapters(
+  src = readFileSync(PREMIUM_FETCH_SRC, 'utf8'),
+  adapters = DELEGATING_ADAPTERS,
+) {
   const ast = ts.createSourceFile(PREMIUM_FETCH_SRC, src, ts.ScriptTarget.Latest, true);
   const seen = new Set();
 
   function visit(node) {
-    if (ts.isFunctionDeclaration(node) && node.name && DELEGATING_ADAPTERS.has(node.name.text) && node.body) {
+    if (ts.isFunctionDeclaration(node) && node.name && adapters.has(node.name.text) && node.body) {
       const bodyText = node.body.getText(ast);
-      let guarded = false;
-      function findGuard(n) {
-        if (
-          ts.isIfStatement(n)
-          && n.expression.getText(ast).includes('isPremiumRpcTarget')
-          && n.thenStatement.getText(ast).includes('premiumFetch(')
-        ) {
-          guarded = true;
-        }
-        ts.forEachChild(n, findGuard);
-      }
-      findGuard(node.body);
-      if (!guarded) {
+      if (!hasAffirmativePremiumDelegation(node)) {
         throw new Error(
           `${relative(ROOT, PREMIUM_FETCH_SRC)}: ${node.name.text} is listed in `
           + `DELEGATING_ADAPTERS but no longer routes isPremiumRpcTarget() traffic to `
@@ -99,7 +156,7 @@ function assertDelegatingAdapters() {
   }
   visit(ast);
 
-  for (const name of DELEGATING_ADAPTERS) {
+  for (const name of adapters) {
     if (!seen.has(name)) {
       throw new Error(
         `DELEGATING_ADAPTERS names "${name}" but ${relative(ROOT, PREMIUM_FETCH_SRC)} exports no such `
@@ -109,6 +166,8 @@ function assertDelegatingAdapters() {
     }
   }
 }
+
+export { DELEGATING_ADAPTERS, PREMIUM_FETCH_SRC };
 
 function walk(dir, fn) {
   for (const name of readdirSync(dir)) {
@@ -403,7 +462,9 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (isMainModule(import.meta.url, process.argv[1])) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}
