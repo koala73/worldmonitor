@@ -115,6 +115,28 @@ describe('five-factor source adapters', () => {
     assert.equal(eurostatBalance.observations[1]?.source, 'Eurostat');
   });
 
+  it('withholds an energy balance unless import provenance is an exact audited pair', () => {
+    for (const iea of [
+      {
+        source: 'eurostat-other',
+        energyImportDependency: { value: 20, year: 2024, source: 'eurostat' },
+      },
+      {
+        source: 'eurostat-nrg_ind_id',
+        energyImportDependency: { value: 20, year: 2024, source: 'eurostat-other' },
+      },
+      {
+        source: 'unknown-energy-imports',
+        energyImportDependency: { value: 20, year: 2024, source: 'unknown' },
+      },
+    ]) {
+      const sources = sourceFixture();
+      sources.staticByCountry.US.iea = iea;
+      const balance = adaptCountryEvidence('US', sources).inputs['energy.productionBalance'];
+      assert.equal(balance.availability === 'unavailable' && balance.reason, 'redistribution-blocked');
+    }
+  });
+
   it('distinguishes missing balance observations from finite invalid denominators', () => {
     const missing = sourceFixture();
     delete (missing.energyMix.US as Partial<typeof missing.energyMix.US>).primaryEnergyConsumptionTwh;

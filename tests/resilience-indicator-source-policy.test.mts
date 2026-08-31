@@ -196,6 +196,14 @@ describe('resilience indicator raw-source policy', () => {
     assert.equal(eurostatEnergy.expose, true);
     assert.equal(eurostatEnergy.reason, 'audited-observed-source');
     assert.equal(eurostatEnergy.providerName, 'Eurostat');
+    assert.equal(eurostatEnergy.licenseUrl, 'https://ec.europa.eu/eurostat/help/copyright-notice');
+
+    const eurostatMetadata = getObservedSourceDisplayMetadata(
+      getIndicatorSourcePolicy('energyImportDependency'),
+      EUROSTAT_ENERGY_IMPORT,
+    );
+    assert.equal(eurostatMetadata.licenseUrl, 'https://ec.europa.eu/eurostat/help/copyright-notice');
+    assert.equal(eurostatMetadata.attributionUrl, 'https://ec.europa.eu/eurostat/help/copyright-notice');
 
     const eurostatRoot = decideIndicatorRawRedistribution({
       indicatorId: 'energyImportDependency',
