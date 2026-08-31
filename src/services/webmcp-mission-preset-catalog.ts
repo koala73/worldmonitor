@@ -3,6 +3,7 @@ import { isSiteVariant, type SiteVariant } from '@/config/variant';
 import {
   MISSION_PRESETS,
   getMissionPreset,
+  getMissionPresetsForVariant,
   isMissionPresetAvailableForVariant,
   type MissionMapView,
   type MissionPresetId,
@@ -217,7 +218,7 @@ export function listMissionPresetCatalog(
     );
   }
 
-  const presets = MISSION_PRESETS
+  const presets = getMissionPresetsForVariant(live.variant)
     .map((preset) => buildMissionPresetCatalogItem(preset.id, {
       ...live,
       variant: live.variant as SiteVariant,

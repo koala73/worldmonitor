@@ -4,9 +4,13 @@ import { describe, it } from 'node:test';
 import { applyWebMcpMissionPreset } from '../src/app/webmcp-dashboard.ts';
 import type { AppContext } from '../src/app/app-context.ts';
 import { SITE_VARIANTS } from '../src/config/variant.ts';
-import { MISSION_PRESETS } from '../src/services/mission-presets.ts';
+import {
+  getMissionPresetsForVariant,
+  MISSION_PRESETS,
+} from '../src/services/mission-presets.ts';
 import {
   WEBMCP_SPA_TOOL,
+  WEBMCP_TOOL_BUDGETS,
 } from '../src/config/webmcp.ts';
 import {
   buildWebMcpTools,
@@ -73,13 +77,14 @@ function live(overrides: {
 }
 
 describe('webmcp mission preset catalog', () => {
-  it('lists every bundled preset from the canonical registry', () => {
+  it('lists the presets offered on the current monitor', () => {
     const result = listMissionPresetCatalog(live());
+    const offered = getMissionPresetsForVariant('full');
     assert.equal(result.ok, true);
-    assert.equal(result.count, MISSION_PRESETS.length);
+    assert.equal(result.count, offered.length);
     assert.deepEqual(
       result.presets.map((preset) => preset.id),
-      MISSION_PRESETS.map((preset) => preset.id),
+      offered.map((preset) => preset.id),
     );
     for (const preset of result.presets) {
       assert.equal(typeof preset.label, 'string');
@@ -90,7 +95,19 @@ describe('webmcp mission preset catalog', () => {
       assert.ok(preset.layerCount >= 0);
       assert.equal('description' in preset, false);
     }
-    assert.ok(JSON.stringify(result).length <= 2_200);
+    assert.ok(JSON.stringify(result).length <= WEBMCP_TOOL_BUDGETS.outputJsonChars);
+  });
+
+  it('omits NQ Day Trader from non-finance monitors and lists it on finance', () => {
+    for (const variant of SITE_VARIANTS.filter((item) => item !== 'finance')) {
+      const result = listMissionPresetCatalog(live({ variant }));
+      assert.equal(result.presets.some((preset) => preset.id === 'nq-day-trader'), false);
+      assert.equal(result.count, getMissionPresetsForVariant(variant).length);
+    }
+    const finance = listMissionPresetCatalog(live({ variant: 'finance' }));
+    assert.equal(finance.presets.some((preset) => preset.id === 'nq-day-trader'), true);
+    assert.equal(finance.count, getMissionPresetsForVariant('finance').length);
+    assert.equal(finance.count, getMissionPresetsForVariant('full').length + 1);
   });
 
   it('marks monitor-incompatible presets with a stable reason', () => {
@@ -144,7 +161,7 @@ describe('webmcp mission preset catalog', () => {
       const result = listMissionPresetCatalog(live({ variant }));
       const serialized = JSON.stringify(result);
       assert.ok(
-        serialized.length <= 2_200,
+        serialized.length <= WEBMCP_TOOL_BUDGETS.outputJsonChars,
         `${variant} catalog is ${serialized.length} chars`,
       );
       assert.ok(result.presets.some((preset) => preset.available));
