@@ -101,12 +101,17 @@ const KNOWN_ATTRIBUTION = new Set([
 ]);
 
 // #7267 mounted the digest coverage row into footer.site-footer and collapsed
-// the mobile footer around it. On a fixed-viewport shell with no document
-// scroll that pinned the row inside the fold, where its wrapped mono text
-// outgrew the skeleton and took over as LCP — and because the text only lands
-// on the first digest load, LCP then waited on a network round trip (mobile
-// field p75 1137ms -> 2357ms). The footer is chrome; it must never be the
-// largest paint on any viewport.
+// the mobile footer around it, where its wrapped mono text outgrew the shell
+// skeleton and took over as LCP — and because the text only lands on the first
+// digest load, LCP then waited on a network round trip (mobile field p75
+// 1137ms -> 2357ms).
+//
+// This asserts on desktop too, and that is not redundant. #app is a
+// fixed-viewport flex column with .main-content scrolling internally, so the
+// footer is pinned to the viewport bottom and LCP-eligible at every width.
+// Desktop escaped only on margin: ~29,400px2 of row against ~607,000px2 of
+// .map-section. Shrink the desktop first-paint candidate and it regresses the
+// same way, so the invariant is pinned on both.
 //
 // This MUST re-read the snapshot rather than reuse the entry expectLcpDebug()
 // returned. That entry is sampled once the boot and map marks land, which is

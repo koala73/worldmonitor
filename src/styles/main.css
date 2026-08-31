@@ -1701,17 +1701,25 @@ canvas,
     display: none;
   }
 
-  /* The mobile dashboard is a fixed-viewport shell with no document scroll, so
-     collapsing the footer around this row pinned it permanently inside the
-     fold. There, 139 characters of wrapped 10px mono outgrew the shell
-     skeleton and took over as the LCP element — and since the text is written
-     only on the first digest load, LCP then waited on a network round trip.
-     Field p75 for mobile /dashboard went 1137ms to 2357ms across the three
-     days after #7267, and the throttled lab check measured a 13.3s render
-     delay against a 271ms baseline. Off-screen keeps role="status" announcing
-     with zero candidate area; display:none and visibility:hidden are the two
-     the #7267 review already rejected. Same declarations as
-     .wm-visually-hidden, which plain CSS cannot share into a media query. */
+  /* #app is a fixed-viewport flex column and .main-content scrolls internally,
+     so .site-footer is pinned to the viewport bottom and its contents are
+     LCP-eligible at EVERY width — desktop included. What differs is only the
+     competition: at 1440x900 the row measures ~29,400px2 against .map-section's
+     ~607,000px2 and never wins, but collapsing the footer on mobile left the
+     row facing a 12,302px2 shell skeleton, which its 139 characters of wrapped
+     10px mono beat at 15,066px2. Since the text is written only on the first
+     digest load, LCP then waited on a network round trip: field p75 for mobile
+     /dashboard went 1137ms to 2357ms across the three days after #7267, and the
+     throttled lab check measured a 13.3s render delay against a 271ms baseline.
+     Do not read this as "desktop is safe because the footer is out of view" —
+     it is in view, and shrinking the desktop first-paint candidate would
+     regress it the same way. e2e/dashboard-lcp-attribution.spec.ts pins the
+     invariant on both viewports for that reason.
+     Off-screen keeps role="status" announcing with zero candidate area;
+     display:none and visibility:hidden are the two the #7267 review rejected.
+     Same declarations as .wm-visually-hidden, duplicated the way
+     .passkey-offer-announce already does, since plain CSS (no preprocessor in
+     this repo) cannot share a rule into a media query. */
   .site-footer .status-panel-container {
     position: absolute;
     width: 1px;
