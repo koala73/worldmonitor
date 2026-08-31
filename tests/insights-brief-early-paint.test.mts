@@ -33,13 +33,13 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
     const method = sliceBetween('private async paintCachedBriefEarly()', 'private extractISQInput');
     assert.match(
       method,
-      /if \(this\.updateGeneration > 0\) return;[\s\S]*?await this\.loadBriefFromCache\(\)/,
-      'must bail before the cache read when a real update already started',
+      /if \(this\.signal\.aborted \|\| this\.updateGeneration > 0\) return;[\s\S]*?await this\.loadBriefFromCache\(\)/,
+      'must bail before the cache read when a real update already started or the panel was destroyed',
     );
     assert.match(
       method,
-      /await this\.loadBriefFromCache\(\);\s*if \(this\.updateGeneration > 0\) return;/,
-      'must re-check updateGeneration AFTER the async cache read — updateInsights() may have started during the await',
+      /await this\.loadBriefFromCache\(\);\s*if \(this\.signal\.aborted \|\| this\.updateGeneration > 0\) return;/,
+      'must re-check abort + updateGeneration AFTER the async cache read — updateInsights() or destroy() may have run during the await',
     );
     assert.match(
       method,
@@ -122,13 +122,28 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
     const method = sliceBetween('private async paintCachedBriefEarly()', 'private extractISQInput');
     assert.match(
       method,
-      /getServerInsights\(\);[\s\S]*?await fetchServerInsights\(/,
+      /getServerInsights\(\);[\s\S]*?withTimeout\([\s\S]*?fetchServerInsights\(\)/,
       'a cold construction that loses the consume-once hydration race must await the on-demand insights fetch, not sample once and give up',
     );
     assert.match(
       method,
-      /await fetchServerInsights\([\s\S]*?if \(this\.updateGeneration > 0\) return;/,
-      'must re-check updateGeneration AFTER the fetch — updateInsights() may have started during the await',
+      /withTimeout\([\s\S]*?InsightsPanel\.EARLY_PAINT_INSIGHTS_TIMEOUT_MS/,
+      'the 2500ms figure is a local paint wait — withTimeout must bound the constructor, not the shared fetch abort',
+    );
+    assert.doesNotMatch(
+      method,
+      /fetchServerInsights\(\s*InsightsPanel\.EARLY_PAINT_INSIGHTS_TIMEOUT_MS/,
+      'passing 2500ms into fetchServerInsights aborts the shared in-flight request before updateInsights can join with the 5s recovery',
+    );
+    assert.match(
+      method,
+      /TimeoutError[\s\S]*?if \(this\.signal\.aborted \|\| this\.updateGeneration > 0\) return;/,
+      'must re-check abort + updateGeneration AFTER the fetch wait — updateInsights() or destroy() may have run during the await',
+    );
+    assert.match(
+      method,
+      /server \?\?= getServerInsights\(\)/,
+      'after a fetch miss or paint-budget timeout, re-sample getServerInsights in case bootstrap hydration landed during the wait',
     );
   });
 

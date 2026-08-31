@@ -229,10 +229,12 @@ describe('server render does not hold the brief behind sentiment (#7118)', () =>
     mockGetPersistentCache.mockResolvedValue(null);
     // The bootstrap payload lands BETWEEN panel construction and the first
     // update — a real cold sequence, and the only one that isolates this
-    // paint from the constructor's early paint (#7118 U1). Without the
-    // `Once`, the early paint would satisfy the assertion and the test would
-    // pass no matter what updateFromServer does.
-    mockGetServerInsights.mockReturnValueOnce(null).mockReturnValue(serverInsights());
+    // paint from the constructor's early paint (#7118 U1). Keep
+    // getServerInsights() null through the constructor retry (sync miss +
+    // on-demand fetch miss + post-fetch re-sample); flipping it after
+    // flushEarlyPaint is what this test is measuring.
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
 
     let releaseSentiment!: (value: null) => void;
     mockClassifySentiment.mockReturnValue(new Promise<null>((res) => { releaseSentiment = res; }));
@@ -243,6 +245,8 @@ describe('server render does not hold the brief behind sentiment (#7118)', () =>
       contentOf(panel).querySelector('.insights-brief-text'),
       'guard: the constructor must NOT have painted, or this test proves nothing',
     ).toBeNull();
+
+    mockGetServerInsights.mockReturnValue(serverInsights());
 
     // updateInsights → updateFromServer, which awaits classifySentiment.
     const pending = panel.updateInsights([]);
@@ -340,7 +344,62 @@ describe('early paint awaits insights hydration (#7464)', () => {
     const brief = contentOf(panel).querySelector('.insights-brief-text');
     expect(brief, 'the early paint must retry when insights land after the first sync miss').not.toBeNull();
     expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+    expect(mockFetchServerInsights.mock.calls[0] ?? []).toEqual([]);
     panel.destroy();
+  });
+
+  it('stops waiting at the paint budget without passing that budget into the fetch', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockReturnValue(new Promise(() => { /* hang */ }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    expect(contentOf(panel).querySelector('.insights-brief-text')).toBeNull();
+
+    vi.advanceTimersByTime(2500);
+    await flushEarlyPaint();
+
+    expect(
+      contentOf(panel).querySelector('.insights-brief-text'),
+      'a hung insights fetch must not hold the early paint past 2500ms',
+    ).toBeNull();
+    expect(mockFetchServerInsights).toHaveBeenCalled();
+    expect(
+      mockFetchServerInsights.mock.calls[0] ?? [],
+      'the shared fetch must keep the 5s default abort so updateInsights can still coalesce',
+    ).toEqual([]);
+    panel.destroy();
+  });
+
+  it('paints a bootstrap snapshot that lands after the on-demand fetch misses', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValueOnce(null).mockReturnValue(serverInsights());
+    mockFetchServerInsights.mockResolvedValue(null);
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'a second sync read must pick up hydration that landed during the fetch').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+    panel.destroy();
+  });
+
+  it('does not paint a cached brief onto a panel destroyed during the fetch', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+
+    let releaseFetch!: (value: ServerInsights) => void;
+    mockFetchServerInsights.mockReturnValue(new Promise<ServerInsights>((res) => { releaseFetch = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    panel.destroy();
+    releaseFetch(serverInsights());
+    await flushEarlyPaint();
+
+    expect(contentOf(panel).querySelector('.insights-brief-text')).toBeNull();
   });
 
   it('does not clobber a real update that started during the hydration fetch', async () => {

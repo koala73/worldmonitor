@@ -22,6 +22,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import { fetchServerInsights, getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
 import { computeISQ, type SignalQuality, type SignalQualityInput } from '@/utils/signal-quality';
+import { TimeoutError, withTimeout } from '@/utils/with-timeout';
 import { extractEntitiesFromTitle } from '@/services/entity-extraction';
 import { getEntityIndex } from '@/services/entity-index';
 
@@ -48,11 +49,13 @@ export class InsightsPanel extends Panel {
   // list at the legacy 6 orphans [7]/[8] citations on the early paint (#4890)
   // and client cooldown renders. Keep read + write on this shared bound.
   private static readonly BRIEF_CACHE_MAX_SOURCES = 12;
-  // #7464: bound the constructor's on-demand insights wait. Longer than the
-  // 1.2s FAST-tier abort so a cold `?keys=insights` recovery can still win
-  // LCP, shorter than fetchServerInsights' 5s default so a hung request
-  // cannot replace the 0.6–1.0s skeleton with a 5s blank. Same budget as the
-  // Pro-activation brief preview.
+  // #7464: local paint wait only — do not pass this to fetchServerInsights.
+  // The loader's shared AbortController follows the longest caller budget; a
+  // 2500ms abort here would cut off the later 5s updateInsights recovery
+  // (insights-loader.ts:166-168). Longer than the 1.2s FAST-tier abort so a
+  // cold `?keys=insights` recovery can still win LCP, shorter than the 5s
+  // fetch default so a hung request cannot replace the 0.6–1.0s skeleton
+  // with a 5s blank. Same wait as the Pro-activation brief preview.
   private static readonly EARLY_PAINT_INSIGHTS_TIMEOUT_MS = 2500;
 
   constructor() {
@@ -172,20 +175,33 @@ export class InsightsPanel extends Panel {
    * leave `insights` empty), so a cold visitor fell through to the slow
    * pipeline and the brief became LCP at p75 2.5–8s. Await the coalesced
    * on-demand fetch when the sync read misses; fetchServerInsights memoises
-   * on success, so updateInsights() still sees the payload.
+   * on success, so updateInsights() still sees the payload. Race a local
+   * 2500ms wait via withTimeout — do not pass that budget into
+   * fetchServerInsights, or the shared abort would kill the request before
+   * updateInsights can join with the 5s recovery.
    */
   private async paintCachedBriefEarly(): Promise<void> {
-    if (this.updateGeneration > 0) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
     await this.loadBriefFromCache();
-    if (this.updateGeneration > 0) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
 
     let brief = this.cachedBrief;
     let sources = this.cachedBriefSources;
     if (!brief) {
       let server = getServerInsights();
       if (!server) {
-        server = await fetchServerInsights(InsightsPanel.EARLY_PAINT_INSIGHTS_TIMEOUT_MS);
-        if (this.updateGeneration > 0) return;
+        try {
+          server = await withTimeout(
+            fetchServerInsights(),
+            InsightsPanel.EARLY_PAINT_INSIGHTS_TIMEOUT_MS,
+            'insights-early-paint',
+          );
+        } catch (err) {
+          if (!(err instanceof TimeoutError)) throw err;
+        }
+        if (this.signal.aborted || this.updateGeneration > 0) return;
+        // Bootstrap populateCache may have landed while the fetch raced.
+        server ??= getServerInsights();
       }
       if (server?.worldBrief) {
         brief = server.worldBrief;
@@ -193,6 +209,7 @@ export class InsightsPanel extends Panel {
       }
     }
     if (!brief) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
 
     this.setDataBadge('cached');
     this.setSafeContent(unsafeRawHtml(
