@@ -17,6 +17,7 @@ const SOFTWARE_ID = 'https://www.worldmonitor.app/#software';
 const SOURCE_ID = 'https://www.worldmonitor.app/#source';
 const PERSON_ID = 'https://www.worldmonitor.app/blog/authors/elie-habib/#person';
 const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
+const PRODUCT_WIKIDATA_URL = 'https://www.wikidata.org/wiki/Q141237754';
 // Person role filler: anchored on the canonical @id AND self-describing, so the
 // reference resolves inside a single document (#7459a). The strong sameAs
 // anchors stay on the canonical node only.
@@ -113,6 +114,32 @@ describe('canonical schema graph', () => {
     assert.equal(sourceCode.codeRepository, 'https://github.com/koala73/worldmonitor');
     assert.equal(sourceCode.license, 'https://www.gnu.org/licenses/agpl-3.0.html');
     assert.deepEqual(sourceCode.targetProduct, { '@id': SOFTWARE_ID });
+  });
+
+  it('binds every canonical product surface to the World Monitor Wikidata item (#7373)', () => {
+    const dashboardBlocks = jsonLdBlocks(read('index.html'));
+    const proBlocks = jsonLdBlocks(read('pro-test/index.html'));
+    const welcomeBlocks = jsonLdBlocks(read('pro-test/welcome.html'));
+    const productNodes = [
+      ['dashboard', blocksOfType(dashboardBlocks, 'WebApplication')[0]],
+      ['Pro', blocksOfType(proBlocks, 'SoftwareApplication')[0]],
+      ['welcome', blocksOfType(welcomeBlocks, 'SoftwareApplication')[0]],
+    ] as const;
+
+    for (const [surface, product] of productNodes) {
+      assert.ok(product, `${surface} must declare its product node`);
+      assert.deepEqual(
+        product.sameAs?.filter((url: string) => url === PRODUCT_WIKIDATA_URL),
+        [PRODUCT_WIKIDATA_URL],
+        `${surface} must identify the product with Q141237754 exactly once`,
+      );
+    }
+
+    const organization = blocksOfType(welcomeBlocks, 'Organization')[0];
+    assert.ok(
+      !organization.sameAs?.includes(PRODUCT_WIKIDATA_URL),
+      'the web-application Wikidata item must not be attached to the distinct Organization node',
+    );
   });
 
   it('serves every variant dashboard identically to browsers and AI crawlers', () => {
