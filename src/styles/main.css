@@ -1690,8 +1690,8 @@ canvas,
 @media (max-width: 768px) {
   /* #7085: display:none on the whole footer removed the digest coverage row's
      live region from the mobile accessibility tree (PR #7267 review). Keep the
-     footer in flow but collapse it: brand/nav/copy stay hidden, so it renders
-     zero-height until the coverage row mounts, then only the row shows. */
+     footer in flow but collapse it: brand/nav/copy stay hidden, and the
+     coverage row announces from off-screen instead of painting. */
   .site-footer {
     padding: 0;
     border-top: none;
@@ -1701,11 +1701,27 @@ canvas,
     display: none;
   }
 
+  /* The mobile dashboard is a fixed-viewport shell with no document scroll, so
+     collapsing the footer around this row pinned it permanently inside the
+     fold. There, 139 characters of wrapped 10px mono outgrew the shell
+     skeleton and took over as the LCP element — and since the text is written
+     only on the first digest load, LCP then waited on a network round trip.
+     Field p75 for mobile /dashboard went 1137ms to 2357ms across the three
+     days after #7267, and the throttled lab check measured a 13.3s render
+     delay against a 271ms baseline. Off-screen keeps role="status" announcing
+     with zero candidate area; display:none and visibility:hidden are the two
+     the #7267 review already rejected. Same declarations as
+     .wm-visually-hidden, which plain CSS cannot share into a media query. */
   .site-footer .status-panel-container {
-    border-top: 1px solid var(--border);
-    /* Clear the fixed mobile tab bar (58px + safe area) so the row's text is
-       reachable at full scroll, matching the .cached-mode-banner offset. */
-    padding: 8px 12px calc(8px + 58px + env(safe-area-inset-bottom, 0px));
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   .mobile-tab-bar {
