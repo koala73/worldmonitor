@@ -14,6 +14,7 @@ import {
   computeCredibilityScore,
 } from '../../../shared/news-credibility.js';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
+import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
@@ -2519,11 +2520,61 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       'chokepoint-flows': {
         type: ['object', 'null'],
-        additionalProperties: { type: 'object' },
+        additionalProperties: { type: 'object', properties: {
+          currentMbd: { type: ['number', 'null'] },
+          baselineMbd: { type: ['number', 'null'] },
+          flowRatio: { type: ['number', 'null'] },
+          disrupted: { type: 'boolean' },
+          // The closed taxonomy #6101 promoted on the REST path; served
+          // values are narrowed onto it in _postFilter below, so this enum
+          // is enforced, not aspirational (#6113).
+          source: { type: 'string', enum: [...FLOW_SOURCE_WIRE_VALUES] },
+          // Raw seeder value, NOT the closed hazard enum. Hand-authored JSON
+          // Schema COULD express it here today (#6113 says so explicitly; see
+          // the `source` enums on get_toronto_* above) — this is DEFERRED, not
+          // blocked: #6106 blocks the REST twin on sebuf codegen, and shipping
+          // the closed set on one surface only would recreate the very
+          // declare-vs-serve split this tool just closed for `source`.
+          //
+          // Nullability is likewise a DELIBERATE divergence from REST, not an
+          // oversight: get-chokepoint-status.ts coerces `null -> ''` because
+          // the proto field is non-nullable, a constraint this hand-authored
+          // schema does not have. Serving `null` keeps "no hazard nearby"
+          // distinguishable from "hazard with an empty name", which is the more
+          // useful answer for an agent. Declared as it is actually served.
+          hazardAlertLevel: { type: ['string', 'null'] },
+          hazardAlertName: { type: ['string', 'null'] },
+        } },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      // Narrow BEFORE any filtering so the declared source enum above is a
+      // property of every served response, exactly as the REST boundary's
+      // narrowServedSources makes it (#6113). The blob is written by a seeder
+      // that deploys independently; an undeclared basis must read as
+      // FLOW_SOURCE_UNSPECIFIED, never leak verbatim.
+      //
+      // Deliberately NOT guarded on `'source' in entry`. This is about the
+      // CLOSED-ENUM field specifically: the schema above declares a closed set
+      // for `source`, and "absent" is not a member of it, so an entry omitting
+      // the key must read FLOW_SOURCE_UNSPECIFIED — the declared way to say
+      // "not one of the known bases". The REST twin resolves it the same way
+      // (`source: toFlowSource(...)`, built unconditionally), and
+      // tests/chokepoint-flow-source-taxonomy.test.mts pins that case there.
+      //
+      // Scope note: this is NOT a general "match REST field-for-field" rule.
+      // REST also defaults hazardAlertLevel/hazardAlertName (`?? ''`), and this
+      // surface deliberately does not — see the nullability comment on those
+      // two fields above. Closed enum here, raw passthrough there, on purpose.
+      const flows = data['chokepoint-flows'];
+      if (flows && typeof flows === 'object') {
+        for (const entry of Object.values(flows)) {
+          if (entry && typeof entry === 'object') {
+            (entry as { source: unknown }).source = narrowFlowSource((entry as { source: unknown }).source);
+          }
+        }
+      }
       const cp = argStr(params.chokepoint);
       if (cp) {
         mapNested(data, 'transit-summaries', 'summaries', (m) => pickMapKeysLike(m, cp));
