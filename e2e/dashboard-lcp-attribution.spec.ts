@@ -93,7 +93,7 @@ const expectContext = (snapshot: LcpDebugSnapshot): void => {
 
 // Vocabulary produced by closestAttributionLabel(). '' is valid when the LCP
 // element is outside every known container, so this set alone cannot catch a
-// regression that degrades attribution to '' — expectNotFooterAnchored below
+// regression that degrades attribution to '' — expectFooterNeverWinsLcp below
 // is what pins the one container we know must never win LCP.
 const KNOWN_ATTRIBUTION = new Set([
   '', 'shell-lcp', 'shell', 'map-container', 'map-section', 'map-renderer-shell', 'panel',
@@ -107,10 +107,28 @@ const KNOWN_ATTRIBUTION = new Set([
 // on the first digest load, LCP then waited on a network round trip (mobile
 // field p75 1137ms -> 2357ms). The footer is chrome; it must never be the
 // largest paint on any viewport.
-const expectNotFooterAnchored = (latest: LcpDebugSnapshot['entries'][number]): void => {
-  expect(latest.element?.closest ?? '').not.toBe('site-footer');
-  expect(latest.element?.selector ?? '').not.toContain('digest-coverage-row');
-  expect(latest.element?.selector ?? '').not.toContain('status-panel-container');
+//
+// This MUST re-read the snapshot rather than reuse the entry expectLcpDebug()
+// returned. That entry is sampled once the boot and map marks land, which is
+// well before reportDigestCoverage() mounts the row: measured on the pre-fix
+// stylesheet, the candidate at that moment is p.skeleton-panel-copy (11,200px2,
+// t=80ms) and only at t=2872ms does div.digest-coverage-row take over at
+// 14,233px2. Asserting against the early entry passes on the pre-fix code,
+// which is precisely the vacuous guard this replaces.
+const expectFooterNeverWinsLcp = async (page: Page): Promise<void> => {
+  // A row that never mounts would make every assertion below vacuously true,
+  // and is itself the #7085 defect #7267 fixed — so require it.
+  await expect(
+    page.locator('.digest-coverage-row'),
+    'the #7085 coverage row must still mount, or this guard proves nothing',
+  ).toBeAttached({ timeout: 30000 });
+  // Let any LCP entry the freshly painted row would produce be emitted.
+  await page.waitForTimeout(2000);
+
+  const latest = await page.evaluate(() => window.__wmLcpDebug!.getSnapshot().entries.at(-1));
+  expect(latest?.element?.closest ?? '').not.toBe('site-footer');
+  expect(latest?.element?.selector ?? '').not.toContain('digest-coverage-row');
+  expect(latest?.element?.selector ?? '').not.toContain('status-panel-container');
 };
 
 const expectMeaningfulCandidate = (latest: LcpDebugSnapshot['entries'][number]): void => {
@@ -139,7 +157,7 @@ test.describe('dashboard LCP attribution debug', () => {
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
     expectMeaningfulCandidate(latest!);
-    expectNotFooterAnchored(latest!);
+    await expectFooterNeverWinsLcp(page);
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
     expect(latest!.url).not.toContain('wms_');
     expect(latest!.url).not.toContain('token=');
@@ -168,7 +186,7 @@ test.describe('dashboard LCP attribution debug on mobile', () => {
     expect(latest!.startTime).toBeGreaterThanOrEqual(0);
     expect(latest!.size).toBeGreaterThan(0);
     expectMeaningfulCandidate(latest!);
-    expectNotFooterAnchored(latest!);
+    await expectFooterNeverWinsLcp(page);
     expect(latest!.context.viewport.width).toBeGreaterThan(0);
   });
 });
