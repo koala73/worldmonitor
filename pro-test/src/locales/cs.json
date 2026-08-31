@@ -32,7 +32,7 @@
     "proF6": "Vyhledávání letů a porovnání cen",
     "proF7": "Engine pravidel alertů — vlastní spouštěče, tiché hodiny, kanály šifrované AES-256",
     "proF8": "Tržní watchlist, sledování makro a centrálních bank",
-    "proF9": "AI Market Implications a Regional Intelligence (Brzy: orbitální dohled, prémiové vrstvy map, delší historie)",
+    "proF9": "Důsledky na trhu AI a regionální zpravodajství",
     "choosePlan": "Vyberte plán",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Pro týmy, které potřebují sdílený monitoring, API přístup, možnosti nasazení, TV aplikace a přímou podporu.",
@@ -48,7 +48,8 @@
     "entF10": "Cloud, on-premises nebo air-gapped nasazení",
     "entF11": "Dedikovaný onboarding a podpora",
     "entCta": "Kontaktujte prodej",
-    "freeF2": "Kurované kanály, atribuované zdroje a mapové vrstvy"
+    "freeF2": "Kurované kanály, atribuované zdroje a mapové vrstvy",
+    "proF10": "Historické vyhledávání v paměti, časové osy a hledání podobných událostí"
   },
   "whyUpgrade": {
     "title": "Proč upgradovat na World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "HDP, inflace, úrokové sazby a růstové cykly. Makro data korelovaná s tržními signály a geopolitickými událostmi.",
     "riskMonitoring": "Monitoring rizik a scénáře",
     "riskMonitoringDesc": "Globální hodnocení rizika, analýza scénářů a posouzení geopolitického rizika. Detekce konvergence napříč tržními a politickými signály.",
-    "orbitalSurveillance": "Orbitální dohled",
-    "orbitalSurveillanceDesc": "(Brzy) Předpovědi přeletů satelitů, analýza frekvence návratů a alerty oken pořizování snímků. Vězte, kdy zpravodajské satelity pozorují vaše oblasti zájmu.",
     "morningBriefs": "Osobní zpravodajské pracoviště",
     "morningBriefsDesc": "Až 30 řazených příspěvků na souhrn, deduplikovány napříč zdroji. Zvolte si denní, dvakrát denní nebo týdenní rytmus — nebo upozornění v reálném čase na kritické události. AI vyhodnocení a signály k monitorování doručované na Slack, Discord, Telegram, Email nebo webhook. Není to bulletin — je to analytik.",
     "oneKey": "Živé služby, 1 klíč",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky a další — všechny aktivní, bez samostatných registrací.",
-    "deliveryLabel": "Zvolte, jak vás zpravodajství najde"
+    "deliveryLabel": "Zvolte, jak vás zpravodajství najde",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Modelujte nákladový šok napříč zeměmi a sektory. Řaďte zranitelnost komodit podle závislosti na kritických místech. Sledujte koncentraci od těžby až po rafinerii a divergenci fyzické prémie SGE–COMEX — řadu, která se pohybuje dříve než titulky.",
+    "roadmapNote": "Na plánech: orbitální sledování, delší historie, prémiové vrstvy map."
   },
   "slackMock": {
     "morningBrief": "Ranní brief",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Kompletní dashboard pro zpravodajství",
         "features": [
-          "Vše ze zdarma verze",
-          "AI analýza akcií a backtesting",
-          "Denní tržní přehledy",
-          "Sledování vojenských a geopolitických situací",
-          "Tvůrce vlastních widgetů",
-          "10 vlastních dashboardů (vs 3)",
+          "Vše z bezplatné verze — panely, zdroje a sledované země bez omezení",
+          "WM Analyst chat + AI analýza akcií a backtesting",
+          "Modelování nákladových šoků a testy zátěže supply chain",
+          "Historické vyhledávání v paměti, časové osy a podobné události",
+          "Divergence fyzických kovů, koncentrace minerálů a data o státního dluhu",
+          "Plánovaný AI přehled + stroj s pravidly upozornění",
           "Přístup k MCP + SDK pro Claude Desktop a další AI klienty (50 volání/den)",
-          "Prioritní aktualizace dat"
+          "Vlastní widgety a 10 dashboardů (vs 3)"
         ],
         "highlightFeatures": [
           "Osobní licence",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Sledujte politické, bezpečnostní, ekonomické a resilienční signály za změnou v zemi.",
       "open": "Otevřít důkazy"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Lodní deník",
+    "title": "Co je nového ve World Monitor",
+    "subtitle": "Nové funkce z posledních 30 dní — opravy a údržba nejsou součástí seznamu.",
+    "proTag": "PRO",
+    "m1": "Index divergence fyzické prémie — SGE vs COMEX, s historií",
+    "m2": "Hodnocení zranitelnosti nabídky komodit — rozprostření závislosti na kritických místech",
+    "m3": "Koncentrace těžby minerálů a obranná průmyslová báze",
+    "m4": "Pětifaktorové karty odolnosti s skóre na úrovni jednotlivých indikátorů",
+    "m5": "Vlastní seznamy sledování Telegram kanálů",
+    "m6": "Přihlášení pomocí hesla",
+    "m7": "AI agenti mohou ovládat dashboard — panely, záložky, vrstvy map a mise",
+    "m8": "Bohatší stránky odolnosti zemí"
   }
 }

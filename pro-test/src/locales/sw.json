@@ -36,14 +36,14 @@
       "pro": {
         "description": "Dashibodi kamili ya ujumbe",
         "features": [
-          "Kila kitu katika Bure",
-          "Uchambuzi wa hisa wa AI na kujaribu nyuma",
-          "Kumbukumbu za soko kwa kila siku",
-          "Ufuatiliaji wa kijeshi na simu za dunia",
-          "Kujenga kwa ajili ya zana za kadhaa",
-          "Dashibodi 10 za kadhaa (vs 3)",
+          "Kila kitu katika Bure — paneli, vyanzo & nchi zilizosomwa bila kikomo",
+          "Mazungumzo ya WM Analyst + uchambuzi wa stoku wa AI & ubadilisho wa nyuma",
+          "Kuunda mfano wa mshtuko wa gharama & majaribio ya matatizo ya mlangalanga wa ugavi",
+          "Akili ya juu — utafutaji wa kihistoria, mstari wa wakati & matukio yanayofanana",
+          "Tofauti ya metali ya kimwili, mkusanyo wa madini & data ya deni la serikali",
+          "Muhtasari wa AI uliopangiliwa + kinjini cha sheria ya neno la onyo",
           "Upatikanaji wa MCP + SDK kwa Claude Desktop & wateja wengine wa AI (mahitaji 50 kwa siku)",
-          "Muonyajaji wa data wa haraka"
+          "Vidget maalum & mdashboard 10 (dhidi ya 3)"
         ],
         "highlightFeatures": [
           "Leseni ya binafsi",
@@ -151,7 +151,7 @@
     "proF6": "Utafutaji wa ndege & kulinganisha bei",
     "proF7": "Injini ya sheria za onyo — vigezo maalum, saa za utulivu, salikhani zilizochorwa AES-256",
     "proF8": "Orodha ya kuzingatia soko, kufuatilia mambo makuu na benki ya kati",
-    "proF9": "Machafuko ya Soko ya AI & Habari za Kikanda (Ndani ya karibuni: ufuatiliaji wa satellite, tabaka la ramani la kiwango cha juu, historia ndefu)",
+    "proF9": "Athari za Soko la AI & Akili ya Kanda",
     "choosePlan": "Chagua Mpango Wako",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Kwa timu zinazohitaji ufuatiliaji wa pamoja, upatikanaji wa API, chaguzi za uongezaji, programu za TV, na msaada wa moja kwa moja.",
@@ -167,7 +167,8 @@
     "entF10": "Uongezaji wa juu ya wingu, ndani ya matangazo, au uhaba wa hewa",
     "entF11": "Kuandaa kwa mkakati na msaada mahususi",
     "entCta": "Ongea na Mauzo",
-    "freeF2": "Milo iliyoteuliwa, vyanzo vilivyohesabiwa, na tabaka za ramani"
+    "freeF2": "Milo iliyoteuliwa, vyanzo vilivyohesabiwa, na tabaka za ramani",
+    "proF10": "Akili ya juu — utafutaji wa kihistoria, mstari wa wakati & utafutaji wa matukio yanayofanana"
   },
   "whyUpgrade": {
     "title": "Kwa nini kubadilisha kwenda World Monitor Pro?",
@@ -274,13 +275,14 @@
     "economyAnalyticsDesc": "GDP, mgawanyiko wa bei, kiwango cha riba, na mizunguko ya ukuaji. Data ya macroeconomics iliyounganishwa na miazo ya soko na matukio ya kijiyeolojia.",
     "riskMonitoring": "Ufuatiliaji wa Hatari & Mifumo",
     "riskMonitoringDesc": "Alama za hatari ya ulimwengu, uchambuzi wa mifumo, na tathmini ya hatari ya kijiyeolojia. Kugundua muunganisho katika miazo ya soko na simu za kisiasa.",
-    "orbitalSurveillance": "Ufuatiliaji wa Orbital",
-    "orbitalSurveillanceDesc": "(Yakumkuja) Utabiri wa kupita juu, uchambuzi wa mzunguko wa kuzunguka, na onyo za dirisha la picha. Jua wakati satelaiti za akili zinakuwa na macho juu ya maeneo yako ya maslahi.",
     "morningBriefs": "Meza ya Akili za Kibinafsi",
     "morningBriefsDesc": "Hadi 50 hadithi iliyoainishwa kwa kila muhtasari, ikaduliwe katika vyanzo. Chagua matangatanga ya kila siku, mara mbili kwa siku, au kila wiki — au onyo za moja kwa moja kwa matukio muhimu. Tathmini ya AI na Ishara za ufuatiliaji zilitumwa kwa Slack, Discord, Telegram, Barua pepe, au webhook. Sio jarida — mchambuzi.",
     "oneKey": "Huduma za Moja kwa Moja, Ufunguo 1",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, na zaidi — zote amilifu, bila kazi za kujiandikisha tofauti.",
-    "deliveryLabel": "Chagua jinsi akili inakukamatia"
+    "deliveryLabel": "Chagua jinsi akili inakukamatia",
+    "supplyChainLab": "Kiwanda cha Matatizo ya Mlangalanga wa Ugavi",
+    "supplyChainLabDesc": "Unda mfano wa mshtuko wa gharama katika nchi na sekta. Weka cheo cha ukubwa wa haba ya bidhaa kulingana na utegemezi wa njia nyingi. Fuatilia mkusanyo wa konsentresheni kutoka kwa migodi hadi kwa rafinery na tofauti ya bhabharimu ya SGE–COMEX — safu inayobadilika kabla ya maneno makuu yanajitokeza.",
+    "roadmapNote": "Kwenye ramani ya njia: ufuatiliaji wa angani, historia ndefu zaidi, tabaka la ramani za beza."
   },
   "slackMock": {
     "morningBrief": "Muhtasari wa Asubuhi",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Fuatilia maaashimiano ya kisiasa, usalama, kiuchumi, na upinzani nyuma ya mabadiliko ya nchi.",
       "open": "Fungua ushahidi"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Nchi ya kuokolea",
+    "title": "Habari mpya katika World Monitor",
+    "subtitle": "Sifa mpya kutoka siku 30 zilizopita — marekebisho na mabomba hayajajumuishwa.",
+    "proTag": "PRO",
+    "m1": "Faharasa ya tofauti ya bhabharimu ya kimwili — SGE dhidi ya COMEX, na historia",
+    "m2": "Cheo cha ukubwa wa bidhaa — tegemezi la njia nyingi yenye matawi",
+    "m3": "Mkusanyo wa uzalishaji wa madini & msingi wa sekta ya ulinzi",
+    "m4": "Karata za uweza wa upinga wenye sababu tano na alama za kiwango cha kila kielelezo",
+    "m5": "Orodha za ufuatiliaji wa chaneli maalum ya Telegram",
+    "m6": "Kuingia kwa Passkey",
+    "m7": "Mawakala ya AI yanaweza kueneza dashboard — paneli, tabaka & hadithi",
+    "m8": "Ukurasa wa upinga wa nchi wenye habari zaidi"
   }
 }

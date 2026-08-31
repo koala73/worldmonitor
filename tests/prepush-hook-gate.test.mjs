@@ -686,6 +686,24 @@ describe('pro-test freshness install prefers the shared npm cache (#6766)', () =
     assert.match(stdout, /product catalog, generated config, or pro locales is stale/);
   });
 
+  test('git diff 128 is not reported as a stale catalog (#7445)', () => {
+    // `git diff --exit-code` exits 128 on an unknown path — the same status
+    // as "fatal: this operation must be run in a work tree". Drop a listed
+    // freshness path from the index and the worktree so the command cannot
+    // run, then assert the hook does not print the regenerate-config recipe.
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    fixture.git(['rm', '--cached', '--quiet', 'src/config/products.generated.ts']);
+    rmSync(join(fixture.root, 'src/config/products.generated.ts'));
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /freshness check could not run/);
+    assert.doesNotMatch(stdout, /product catalog, generated config, or pro locales is stale/);
+    assert.doesNotMatch(stdout, /npx tsx scripts\/generate-product-config/);
+  });
+
   test('refuses a pro-test/node_modules symlink instead of installing through it', (t) => {
     const fixture = makeFixture({
       branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },

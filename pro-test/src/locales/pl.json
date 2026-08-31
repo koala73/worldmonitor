@@ -32,7 +32,7 @@
     "proF6": "Wyszukiwanie lotów i porównywanie cen",
     "proF7": "Silnik reguł alertów — własne wyzwalacze, ciche godziny, kanały szyfrowane AES-256",
     "proF8": "Watchlista rynkowa, śledzenie makro i banków centralnych",
-    "proF9": "AI Market Implications i Regional Intelligence (Wkrótce: obserwacja orbitalna, premium warstwy map, rozszerzona historia)",
+    "proF9": "Implikacje AI dla rynków i wywiad regionalny",
     "choosePlan": "Wybierz plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Dla zespołów, które potrzebują współdzielonego monitoringu, dostępu do API, opcji wdrożenia, aplikacji TV i bezpośredniego wsparcia.",
@@ -48,7 +48,8 @@
     "entF10": "Wdrożenie w chmurze, on-premises lub air-gapped",
     "entF11": "Dedykowane wdrożenie i wsparcie",
     "entCta": "Porozmawiaj ze sprzedażą",
-    "freeF2": "Kluczowane kanały, źródła przypisane i warstwy map"
+    "freeF2": "Kluczowane kanały, źródła przypisane i warstwy map",
+    "proF10": "Pamięć wywiadu — przeszukiwanie historyczne, osie czasu i wyszukiwanie podobnych zdarzeń"
   },
   "whyUpgrade": {
     "title": "Dlaczego warto przejść na World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "PKB, inflacja, stopy procentowe i cykle wzrostu. Dane makro skorelowane z sygnałami rynkowymi i wydarzeniami geopolitycznymi.",
     "riskMonitoring": "Monitoring ryzyka i scenariusze",
     "riskMonitoringDesc": "Globalna punktacja ryzyka, analiza scenariuszy i ocena ryzyka geopolitycznego. Wykrywanie konwergencji między sygnałami rynkowymi i politycznymi.",
-    "orbitalSurveillance": "Obserwacja orbitalna",
-    "orbitalSurveillanceDesc": "(Wkrótce) Prognozy przelotów, analiza częstotliwości powrotów i alerty okna obrazowania. Wiedz, kiedy satelity wywiadowcze obserwują Twoje obszary zainteresowania.",
     "morningBriefs": "Osobiste stanowisko wywiadowcze",
     "morningBriefsDesc": "Do 30 rankingowanych artykułów na podsumowanie, zdeduplikowane w źródłach. Wybierz częstotliwość codziennie, dwa razy dziennie lub tygodniowo — lub alerty w czasie rzeczywistym dla krytycznych zdarzeń. Ocena AI i sygnały do obserwacji dostarczone na Slack, Discord, Telegram, Email lub webhook. Nie biuletyn — analityk.",
     "oneKey": "Live Services, 1 Key",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky i więcej — wszystkie aktywne, bez osobnych rejestracji.",
-    "deliveryLabel": "Wybierz, jak wywiad Cię znajdzie"
+    "deliveryLabel": "Wybierz, jak wywiad Cię znajdzie",
+    "supplyChainLab": "Laboratorium stresu łańcucha dostaw",
+    "supplyChainLabDesc": "Modeluj szok kosztów na świecie i sektorach. Rankinguj podatność surowców na podstawie zależności od wąskich gardeł. Śledź koncentrację od kopalni do rafinerii i rozbieżność premii fizycznej SGE–COMEX — szereg, który zmienia się przed nagłówkiem.",
+    "roadmapNote": "Na mapie drogowej: obserwacja orbitalna, dłuższa historia, premium warstwy mapy."
   },
   "slackMock": {
     "morningBrief": "Poranny brief",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Pełny pulpit analityczny",
         "features": [
-          "Wszystko z planu Free",
-          "Analiza akcji i backtesting AI",
-          "Codzienne briefingi rynkowe",
-          "Śledzenie geopolityczne i wojskowe",
-          "Konstruktor widżetów niestandardowych",
-          "10 niestandardowych pulpitów (vs 3)",
+          "Wszystko z wersji Free — panele, źródła i śledzone kraje bez limitu",
+          "Chat analityka WM + analiza AI i backtesting",
+          "Modelowanie szoku kosztów i testy stresu łańcucha dostaw",
+          "Pamięć wywiadu — przeszukiwanie historyczne, osie czasu i podobne wydarzenia",
+          "Rozbieżność metali fizycznych, koncentracja minerałów i dane długu suwerennego",
+          "Zaplanowany digest AI + silnik reguł alertów",
           "Dostęp do MCP + SDK dla Claude Desktop i innych klientów AI (50 wywołań/dzień)",
-          "Priorytetowe odświeżanie danych"
+          "Niestandardowe widgety i 10 dashboardów (zamiast 3)"
         ],
         "highlightFeatures": [
           "Licencja osobista",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Prześledzij polityczne, bezpieczeństwa, ekonomiczne i odpornościowe sygnały za zmianą kraju.",
       "open": "Otwórz dowody"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Dziennik wysyłki",
+    "title": "Co nowego w WorldMonitor",
+    "subtitle": "Nowe funkcje z ostatnich 30 dni — poprawki i infrastruktura nie uwzględnione.",
+    "proTag": "PRO",
+    "m1": "Indeks rozbieżności premii fizycznej — SGE vs COMEX, z historią",
+    "m2": "Rankingami podatności dostaw surowców — rozłożenie zależności od wąskich gardeł",
+    "m3": "Koncentracja produkcji minerałów i przemysłowa baza obronności",
+    "m4": "Karty odporności pięcioczynnikowej ze wskaźnikami na poziomie składnika",
+    "m5": "Niestandardowe listy monitorowania kanałów Telegram",
+    "m6": "Logowanie z passkey",
+    "m7": "Agenci AI mogą kierować dashboardem — panele, karty, warstwy map i misje",
+    "m8": "Bogatsze strony odporności krajów"
   }
 }

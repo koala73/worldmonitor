@@ -32,7 +32,7 @@
     "proF6": "航班搜尋與價格比較",
     "proF7": "告警規則引擎 — 自訂觸發器、靜音時段、AES-256 加密通道",
     "proF8": "市場觀察列表、宏觀與央行追蹤",
-    "proF9": "AI Market Implications 與 Regional Intelligence(即將推出:軌道監視、進階地圖圖層、更長歷史)",
+    "proF9": "AI 市場影響與區域情報",
     "choosePlan": "選擇方案",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "面向需要共享監測、API 存取、部署選項、TV 應用和直接支援的團隊。",
@@ -48,7 +48,8 @@
     "entF10": "雲、本地或氣隙部署",
     "entF11": "專屬上手與支援",
     "entCta": "聯絡銷售",
-    "freeF2": "精選資訊源、標註來源和地圖圖層"
+    "freeF2": "精選資訊源、標註來源和地圖圖層",
+    "proF10": "Intel 記憶庫 — 歷史搜尋、時間線和相似事件查詢"
   },
   "whyUpgrade": {
     "title": "為什麼升級到 World Monitor Pro？",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "GDP、通脹、利率與增長週期。將宏觀資料與市場訊號和地緣政治事件相關聯。",
     "riskMonitoring": "風險監測與情景分析",
     "riskMonitoringDesc": "全球風險評分、情景分析與地緣政治風險評估。跨市場與政治訊號的收斂檢測。",
-    "orbitalSurveillance": "軌道監視",
-    "orbitalSurveillanceDesc": "(即將推出)過頂預測、重訪頻率分析與成像視窗告警。得知情報衛星何時正在觀察您關注的區域。",
     "morningBriefs": "個人情報工作臺",
     "morningBriefsDesc": "每份摘要最多30條排序新聞，跨源去重。選擇每日、兩次每日或每週的頻率——或針對重要事件的即時警報。AI評估和監控訊號傳送至Slack、Discord、Telegram、Email或webhook。不是新聞通訊——是分析師。",
     "oneKey": "即時服務，1個金鑰",
     "oneKeyDesc": "Finnhub、FRED、ACLED、UCDP、NASA FIRMS、AISStream、OpenSky 等 — 全部開啟,無需單獨註冊。",
-    "deliveryLabel": "選擇情報如何找到您"
+    "deliveryLabel": "選擇情報如何找到您",
+    "supplyChainLab": "供應鏈壓力實驗室",
+    "supplyChainLabDesc": "對各國和行業進行成本衝擊建模。按瓶頸依賴度對商品脆弱性排名。追蹤礦山到煉油廠的濃度和上期所-COMEX 現貨溢價差異 — 這是在頭條新聞出現前就會變動的資料序列。",
+    "roadmapNote": "路線圖中計劃：衛星監測、更長歷史資料、進階地圖圖層。"
   },
   "slackMock": {
     "morningBrief": "晨間簡報",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "完整的情報儀表板",
         "features": [
-          "免費版的所有功能",
-          "AI 股票分析和回測",
-          "每日市場簡報",
-          "軍事和地緣政治追蹤",
-          "自訂小工具構建器",
-          "10 個自訂儀表板（相比 3 個）",
+          "免費版的所有內容 — 面板、資料來源和關注國家無限制",
+          "WM 分析師聊天 + AI 股票分析和回測",
+          "成本衝擊建模和供應鏈壓力測試",
+          "Intel 記憶庫 — 歷史搜尋、時間線和相似事件",
+          "貴金屬現貨溢價、礦物濃度和主權債務資料",
+          "定時 AI 摘要 + 告警規則引擎",
           "MCP + SDK 存取權限，適用於 Claude Desktop 和其他 AI 客戶端（50 次呼叫/天）",
-          "優先資料重新整理\t"
+          "自訂小工具和 10 個儀表板（相比 3 個）"
         ],
         "highlightFeatures": [
           "個人許可證\t",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "追蹤國家變化背後的政治、安全、經濟和韌性訊號。",
       "open": "開啟證據"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "航運日誌",
+    "title": "World Monitor 有什麼新內容",
+    "subtitle": "過去 30 天的新功能 — 不包括修復和底層最佳化。",
+    "proTag": "PRO",
+    "m1": "現貨溢價差異指數 — 上期所 vs COMEX，含歷史資料",
+    "m2": "商品供應脆弱性排名 — 瓶頸依賴度展開圖",
+    "m3": "礦物生產濃度與國防工業基礎",
+    "m4": "五因子韌性記分卡及指標級得分",
+    "m5": "自訂 Telegram 頻道監測列表",
+    "m6": "通行金鑰登入",
+    "m7": "AI 智慧體可驅動儀表板 — 面板、標籤頁、地圖圖層和任務",
+    "m8": "更豐富的國家韌性頁面"
   }
 }

@@ -34,7 +34,16 @@ report_commit() {
 }
 
 check_range() {
-  # $@ = git rev-list selector for the new commits of one pushed ref
+  # $@ = git rev-list selector for the new commits of one pushed ref.
+  # Returns 1 when the selector itself cannot be resolved (e.g. a force-push
+  # whose advertised remote tip was never fetched, so the SHA is not in the
+  # local object database) — the caller MUST fall back to another scan rather
+  # than treat "no output" as "no commits": a swallowed resolution error here
+  # is exactly the vacuous pass this gate exists to prevent.
+  local log_output
+  if ! log_output=$(git log --format='%H%x09%an <%ae>%x09%cn <%ce>' "$@" 2>/dev/null); then
+    return 1
+  fi
   while IFS=$'\t' read -r sha author committer; do
     [ -z "${sha:-}" ] && continue
     local blocked=0
@@ -47,16 +56,29 @@ check_range() {
       report_commit "$sha" "$author" "$committer"
       fail=1
     fi
-  done < <(git log --format='%H%x09%an <%ae>%x09%cn <%ce>' "$@" 2>/dev/null || true)
+  done <<< "$log_output"
+  return 0
 }
 
 while read -r _local_ref local_sha _remote_ref remote_sha; do
   [ -z "${local_sha:-}" ] && continue
   if printf '%s' "$local_sha" | grep -qE "$ZERO_RE"; then continue; fi # deletion
   if [ -n "${remote_sha:-}" ] && ! printf '%s' "$remote_sha" | grep -qE "$ZERO_RE"; then
-    check_range "$remote_sha..$local_sha"
+    if ! check_range "$remote_sha..$local_sha"; then
+      # Advertised remote tip is not in the local object database (unfetched
+      # force-push target). Fail closed: scan everything locally reachable
+      # that origin does not already have; if even that cannot resolve,
+      # block outright rather than pass unverified.
+      if ! check_range "$local_sha" --not --remotes=origin; then
+        echo "IDENTITY GATE: could not resolve the outgoing commit range for $local_sha; refusing to push unverified."
+        fail=1
+      fi
+    fi
   else
-    check_range "$local_sha" --not --remotes=origin
+    if ! check_range "$local_sha" --not --remotes=origin; then
+      echo "IDENTITY GATE: could not resolve the outgoing commit range for $local_sha; refusing to push unverified."
+      fail=1
+    fi
   fi
 done
 

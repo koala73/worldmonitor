@@ -36,14 +36,14 @@
       "pro": {
         "description": "Full intelligence dashboard",
         "features": [
-          "Everything in Free",
-          "AI stock analysis & backtesting",
-          "Daily market briefs",
-          "Military & geopolitical tracking",
-          "Custom widget builder",
-          "10 custom dashboards (vs 3)",
+          "Everything in Free — panels, sources & followed countries uncapped",
+          "WM Analyst chat + AI stock analysis & backtesting",
+          "Cost-shock modelling & supply-chain stress tests",
+          "Intel memory — historical search, timelines & similar events",
+          "Physical metals divergence, minerals concentration & sovereign debt data",
+          "Scheduled AI digest + alert rules engine",
           "MCP + SDK access for Claude Desktop & other AI clients (50 calls/day)",
-          "Priority data refresh"
+          "Custom widgets & 10 dashboards (vs 3)"
         ],
         "highlightFeatures": [
           "Personal license",
@@ -151,7 +151,7 @@
     "proF6": "Flight search & price comparison",
     "proF7": "Alert rules engine — custom triggers, quiet hours, AES-256 encrypted channels",
     "proF8": "Market watchlist, macro & central bank tracking",
-    "proF9": "AI Market Implications & Regional Intelligence (Soon: orbital surveillance, premium map layers, longer history)",
+    "proF9": "AI Market Implications & Regional Intelligence",
     "choosePlan": "Choose Your Plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "For teams that need shared monitoring, API access, deployment options, TV apps, and direct support.",
@@ -167,7 +167,8 @@
     "entF10": "Cloud, on-prem, or air-gapped deployment",
     "entF11": "Dedicated onboarding & support",
     "entCta": "Talk to Sales",
-    "freeF2": "Curated feeds, attributed sources, and map layers"
+    "freeF2": "Curated feeds, attributed sources, and map layers",
+    "proF10": "Intel memory — historical search, timelines & similar-event lookup"
   },
   "whyUpgrade": {
     "title": "Why upgrade to World Monitor Pro?",
@@ -274,13 +275,14 @@
     "economyAnalyticsDesc": "GDP, inflation, interest rates, and growth cycles. Macro data correlated with market signals and geopolitical events.",
     "riskMonitoring": "Risk Monitoring & Scenarios",
     "riskMonitoringDesc": "Global risk scoring, scenario analysis, and geopolitical risk assessment. Deep-forecast simulations auto-run on the hourly cron — fresh outcomes appear without manual triggers. Convergence detection across market and political signals.",
-    "orbitalSurveillance": "Orbital Surveillance",
-    "orbitalSurveillanceDesc": "(Soon) Overhead pass predictions, revisit frequency analysis, and imaging window alerts. Know when intelligence satellites are watching your areas of interest.",
     "morningBriefs": "Personal Intelligence Desk",
     "morningBriefsDesc": "Up to 30 ranked stories per digest, deduped across sources. Pick daily, twice-daily, or weekly cadence — or real-time alerts for critical events. AI Assessment and Signals to watch delivered to Slack, Discord, Telegram, Email, or webhook. Not a newsletter — an analyst.",
     "oneKey": "Live Services, 1 Key",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, and more — all active, no separate registrations.",
-    "deliveryLabel": "Choose how intelligence finds you"
+    "deliveryLabel": "Choose how intelligence finds you",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Model a cost shock across countries and sectors. Rank commodity vulnerability by chokepoint dependency. Track mine-to-refinery concentration and the SGE–COMEX physical premium divergence — the series that moves before the headline does.",
+    "roadmapNote": "On the roadmap: orbital surveillance, longer history, premium map layers."
   },
   "slackMock": {
     "morningBrief": "Morning Brief",
@@ -718,5 +720,19 @@
       "note": "Free · No signup · Loads in seconds",
       "secondary": "Or see Pro plans →"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Shipping log",
+    "title": "What's new in WorldMonitor",
+    "subtitle": "New features from the last 30 days — fixes and plumbing not included.",
+    "proTag": "PRO",
+    "m1": "Physical premium divergence index — SGE vs COMEX, with history",
+    "m2": "Commodity supply-vulnerability rankings — chokepoint dependency fan-out",
+    "m3": "Mineral production concentration & the defense industrial base",
+    "m4": "Five-factor resilience scorecards with indicator-level scores",
+    "m5": "Custom Telegram channel watchlists",
+    "m6": "Passkey sign-in",
+    "m7": "AI agents can drive the dashboard — panels, tabs, map layers & missions",
+    "m8": "Richer country resilience pages"
   }
 }

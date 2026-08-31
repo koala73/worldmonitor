@@ -32,7 +32,7 @@
     "proF6": "Vluchten zoeken en prijsvergelijking",
     "proF7": "Alert rules engine — eigen triggers, stille uren, AES-256 versleutelde kanalen",
     "proF8": "Market watchlist, macro- en centralebank-tracking",
-    "proF9": "AI Market Implications en Regional Intelligence (Binnenkort: orbitale surveillance, premium kaartlagen, langere historiek)",
+    "proF9": "AI-marktgevolgen en regionale inlichtingen",
     "choosePlan": "Kies je plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Voor teams die gedeelde monitoring, API-toegang, deployment-opties, TV-apps en directe support nodig hebben.",
@@ -48,7 +48,8 @@
     "entF10": "Cloud, on-premises of air-gapped deployment",
     "entF11": "Dedicated onboarding en support",
     "entCta": "Praat met sales",
-    "freeF2": "Samengestelde feeds, geattribueerde bronnen en kaartlagen"
+    "freeF2": "Samengestelde feeds, geattribueerde bronnen en kaartlagen",
+    "proF10": "Intel-geheugen — historisch zoeken, tijdlijnen en vergelijkbare gebeurtenissen opzoeken"
   },
   "whyUpgrade": {
     "title": "Waarom upgraden naar World Monitor Pro?",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "BBP, inflatie, rente en groeicycli. Macro-data gecorreleerd aan marktsignalen en geopolitieke events.",
     "riskMonitoring": "Risicomonitoring en scenario's",
     "riskMonitoringDesc": "Wereldwijde risicoscoring, scenario-analyse en geopolitieke risicobeoordeling. Detectie van convergentie tussen markt- en politieke signalen.",
-    "orbitalSurveillance": "Orbitale surveillance",
-    "orbitalSurveillanceDesc": "(Binnenkort) Voorspellingen van satellietpassages, analyse van revisit-frequentie en opname-venster-alerts. Weet wanneer inlichtingensatellieten jouw interessegebieden bekijken.",
     "morningBriefs": "Persoonlijk intelligence desk",
     "morningBriefsDesc": "Tot 30 gerangschikte verhalen per digest, gededupliceerd over bronnen. Kies dagelijks, tweemaal per dag of wekelijks ritme — of real-time waarschuwingen voor kritieke events. AI-beoordeling en signalen om op te letten verzonden naar Slack, Discord, Telegram, Email of webhook. Geen nieuwsbrief — een analist.",
     "oneKey": "Live Services, 1 Sleutel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky en meer — alles actief, geen aparte registraties.",
-    "deliveryLabel": "Kies hoe intelligence jou vindt"
+    "deliveryLabel": "Kies hoe intelligence jou vindt",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Model een kostenschok over landen en sectoren. Rank grondstoffengevoeligheid op basis van chokepoint-afhankelijkheid. Volg concentratie van mijn tot raffinaderij en de SGE–COMEX fysieke premiumafwijking — de reeks die vóór het bericht beweegt.",
+    "roadmapNote": "Op de routekaart: orbitale bewaking, langere geschiedenis, premiumkaartlagen."
   },
   "slackMock": {
     "morningBrief": "Ochtendbriefing",
@@ -363,14 +365,14 @@
       "pro": {
         "description": "Volledig intelligence-dashboard",
         "features": [
-          "Alles in Gratis",
-          "AI-aandelen analyse & backtesting",
-          "Dagelijkse marktbriefings",
-          "Militair- en geopolitieke tracking",
-          "Aangepaste widget builder",
-          "10 aangepaste dashboards (tegenover 3)",
+          "Alles in Gratis — panelen, bronnen en gevolgde landen onbeperkt",
+          "WM Analyst-chat + AI-voorraadanalyse en backtesting",
+          "Kostenschokmodellering en supply-chain stresstests",
+          "Intel-geheugen — historisch zoeken, tijdlijnen en vergelijkbare gebeurtenissen",
+          "Fysieke metalen afwijking, mineraalconcentratie en staatsschuldgegevens",
+          "Geplande AI-digest + waarschuwingsregelengine",
           "MCP + SDK-toegang voor Claude Desktop & andere AI-clients (50 oproepen/dag)",
-          "Prioriteitsgegevensvernieuwing"
+          "Aangepaste widgets en 10 dashboards (versus 3)"
         ],
         "highlightFeatures": [
           "Persoonlijke licentie",
@@ -718,5 +720,19 @@
       "countryRiskDesc": "Traceer de politieke, veiligheids-, economische en veerkrachtssignalen achter een verandering van een land.",
       "open": "Open bewijs"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Scheepsvrachtlogboek",
+    "title": "Wat is er nieuw in WorldMonitor",
+    "subtitle": "Nieuwe functies van de afgelopen 30 dagen — correcties en onderhoud niet inbegrepen.",
+    "proTag": "PRO",
+    "m1": "Fysieke premiumafwijkingsindex — SGE versus COMEX, met geschiedenis",
+    "m2": "Rankings grondstoffentoevoergebonden kwetsbaarheid — chokepoint-afhankelijkheid uitwaaier",
+    "m3": "Concentratie van mineraalproductie en de defensie-industriële basis",
+    "m4": "Vijf-factorveerkracht scorecards met scores op indicatorniveau",
+    "m5": "Aangepaste Telegram-kanaalwachtlijsten",
+    "m6": "Passkey-aanmelding",
+    "m7": "AI-agenten kunnen het dashboard aansturen — panelen, tabbladen, kaartlagen en missies",
+    "m8": "Rijkere pagina's voor landveerkracht"
   }
 }

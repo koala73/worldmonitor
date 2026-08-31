@@ -79,15 +79,22 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-30';
-const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-30';
+const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
 const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-30';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
-// Dataset schema version stamps Dataset JSON-LD shape changes. It must NOT
-// fold into every family's sitemap/page lastmod — that made ~90% of main
-// sitemap entries share one schema-bump date (#7382). Keep it for Dataset
-// dateModified only where a schema change actually lands in the payload.
-const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-30';
-const CRISIS_PAGE_CONTENT_VERSION = '2026-08-30';
+// Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
+// must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
+// sitemap entries share one schema-bump date (#7382). A family's stamp advances
+// only when a schema change lands in ITS payload, so one shared constant cannot
+// serve them: bumping it for a crisis-only change advertises every untouched
+// chokepoint dataset as modified. Country pages are absent by design — their
+// dateModified is pinned to the snapshot capturedAt as a truthful freshness
+// contract (#7391), so their recrawl signal is COUNTRY_PAGE_CONTENT_VERSION.
+const DATASET_SCHEMA_CONTENT_VERSION = {
+  chokepoint: '2026-08-30',
+  crisis: '2026-08-31',
+};
+const CRISIS_PAGE_CONTENT_VERSION = '2026-08-31';
 const TOOLS_PAGE_CONTENT_VERSION = '2026-08-30';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
@@ -570,9 +577,11 @@ function chokepointGeoShape(lat, lon, halfSpan = CHOKEPOINT_GEO_HALF_SPAN_DEG) {
   return geoShapeBox(lat - halfSpan, lon - halfSpan, lat + halfSpan, lon + halfSpan);
 }
 
+// Google's Dataset parser accepts only Text or a literal Place here — the Country
+// subtype is rejected as "Invalid object type for field spatialCoverage".
 function countrySpatialCoverage(country, bbox) {
   const place = {
-    '@type': 'Country',
+    '@type': 'Place',
     name: country.name,
     identifier: country.code,
   };
@@ -2208,7 +2217,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
           description: `A World Monitor maritime reference dataset for ${chokepoint.displayName}, with its position, connected waters, energy shock model support, and modelled trade-route corridors.`,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION),
+          dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION.chokepoint),
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured: [
@@ -2376,6 +2385,8 @@ ${snapshotSection}
     name: country.name,
     identifier: country.code,
   }));
+  // Dataset.spatialCoverage must stay a literal Place for Google; WebPage.about keeps Country.
+  const coverageSpatial = coveragePlaces.map((place) => ({ ...place, '@type': 'Place' }));
   const distribution = [
     dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))),
   ];
@@ -2418,13 +2429,13 @@ ${snapshotSection}
           license: DATASET_LICENSE,
           dateModified: laterDate(
             hasPulse ? pulseDateOnly(pulse.asOf, lastmod) : lastmod,
-            DATASET_SCHEMA_CONTENT_VERSION,
+            DATASET_SCHEMA_CONTENT_VERSION.crisis,
           ),
           temporalCoverage: hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured,
-          spatialCoverage: coveragePlaces.length === 1 ? coveragePlaces[0] : coveragePlaces,
+          spatialCoverage: coverageSpatial.length === 1 ? coverageSpatial[0] : coverageSpatial,
           distribution,
         },
       },
