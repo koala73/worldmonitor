@@ -1690,8 +1690,8 @@ canvas,
 @media (max-width: 768px) {
   /* #7085: display:none on the whole footer removed the digest coverage row's
      live region from the mobile accessibility tree (PR #7267 review). Keep the
-     footer in flow but collapse it: brand/nav/copy stay hidden, so it renders
-     zero-height until the coverage row mounts, then only the row shows. */
+     footer in flow but collapse it: brand/nav/copy stay hidden, and the
+     coverage row announces from off-screen instead of painting. */
   .site-footer {
     padding: 0;
     border-top: none;
@@ -1701,11 +1701,35 @@ canvas,
     display: none;
   }
 
+  /* #app is a fixed-viewport flex column and .main-content scrolls internally,
+     so .site-footer is pinned to the viewport bottom and its contents are
+     LCP-eligible at EVERY width — desktop included. What differs is only the
+     competition: at 1440x900 the row measures ~29,400px2 against .map-section's
+     ~607,000px2 and never wins, but collapsing the footer on mobile left the
+     row facing a 12,302px2 shell skeleton, which its 139 characters of wrapped
+     10px mono beat at 15,066px2. Since the text is written only on the first
+     digest load, LCP then waited on a network round trip: field p75 for mobile
+     /dashboard went 1137ms to 2357ms across the three days after #7267, and the
+     throttled lab check measured a 13.3s render delay against a 271ms baseline.
+     Do not read this as "desktop is safe because the footer is out of view" —
+     it is in view, and shrinking the desktop first-paint candidate would
+     regress it the same way. e2e/dashboard-lcp-attribution.spec.ts pins the
+     invariant on both viewports for that reason.
+     Off-screen keeps role="status" announcing with zero candidate area;
+     display:none and visibility:hidden are the two the #7267 review rejected.
+     Same declarations as .wm-visually-hidden, duplicated the way
+     .passkey-offer-announce already does, since plain CSS (no preprocessor in
+     this repo) cannot share a rule into a media query. */
   .site-footer .status-panel-container {
-    border-top: 1px solid var(--border);
-    /* Clear the fixed mobile tab bar (58px + safe area) so the row's text is
-       reachable at full scroll, matching the .cached-mode-banner offset. */
-    padding: 8px 12px calc(8px + 58px + env(safe-area-inset-bottom, 0px));
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   .mobile-tab-bar {
@@ -28309,7 +28333,7 @@ body.map-width-resizing {
 
 @media (max-width: 768px) {
   :root {
-    /* Matches the .site-footer .status-panel-container offset convention. */
+    /* Clears .mobile-tab-bar, whose min-height is the 58px below. */
     --wm-bottom-base: calc(58px + env(safe-area-inset-bottom, 0px));
   }
 }

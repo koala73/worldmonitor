@@ -56,6 +56,16 @@ for _git_env in $(git rev-parse --local-env-vars 2>/dev/null); do
 done
 unset _git_env
 
+# Absolute worktree root, captured while cwd-based discovery still works.
+# Later gates must not re-discover from cwd: the pro-test block symlinks
+# `pro-test/node_modules/.vite` into `$common/wm-vite-cache/`, and a git
+# invocation whose cwd resolves through that link is physically inside .git
+# (`fatal: this operation must be run in a work tree`, exit 128). #7445.
+WM_PREPUSH_ROOT=$(git rev-parse --show-toplevel) || {
+  echo "ERROR: could not resolve the work tree for pre-push."
+  exit 1
+}
+
 echo "Checking for local environment dumps..."
 node scripts/check-local-secret-dumps.mjs --pre-push "${1:-}" || exit 1
 
@@ -138,8 +148,23 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
 fi
 
 echo "Checking scripts/package-lock.json sync..."
-if git diff --name-only origin/main -- scripts/package.json | grep -q .; then
-  if ! git diff --name-only origin/main -- scripts/package-lock.json | grep -q .; then
+# The package.json probe is "did this path change vs origin/main?". When
+# origin/main is missing the old `git diff | grep -q` pipeline treated git
+# 128 as "no names" and skipped — that skip is the RUN_ALL fallback. Keep
+# it. The inner `if ! git diff ... lockfile | grep -q .` is the actual
+# conflation: git 128 looked like "lock was not committed". Once we know
+# package.json changed, any git failure here is distinct from a missing lock.
+_pkg_status=0
+_pkg_changed=$(git -C "$WM_PREPUSH_ROOT" diff --name-only origin/main -- scripts/package.json) || _pkg_status=$?
+if [ "$_pkg_status" -eq 0 ] && [ -n "$_pkg_changed" ]; then
+  _lock_status=0
+  _lock_changed=$(git -C "$WM_PREPUSH_ROOT" diff --name-only origin/main -- scripts/package-lock.json) || _lock_status=$?
+  if [ "$_lock_status" -ne 0 ]; then
+    echo "ERROR: could not check scripts/package-lock.json (git exited $_lock_status)."
+    echo "This is a gate failure, not a missing lockfile commit."
+    exit 1
+  fi
+  if [ -z "$_lock_changed" ]; then
     echo ""
     echo "============================================================"
     echo "ERROR: scripts/package.json was modified but scripts/package-lock.json was not committed."
@@ -788,14 +813,27 @@ if git diff --name-only origin/main -- "${PROTO_INPUTS[@]}" | grep -q .; then
       echo "Proto-generated code is up to date (inputs unchanged since last green run)."
     else
       make generate
-      if ! git diff --exit-code src/generated/ docs/api/; then
-        echo ""
-        echo "============================================================"
-        echo "ERROR: Proto-generated code is out of date."
-        echo "Run 'make generate' locally and commit the updated files."
-        echo "============================================================"
-        exit 1
-      fi
+      _diff_status=0
+      bash "$ATTEST" worktree-diff "$WM_PREPUSH_ROOT" -- src/generated/ docs/api/ || _diff_status=$?
+      case "$_diff_status" in
+        0) ;;
+        3)
+          echo ""
+          echo "============================================================"
+          echo "ERROR: Proto-generated code is out of date."
+          echo "Run 'make generate' locally and commit the updated files."
+          echo "============================================================"
+          exit 1
+          ;;
+        *)
+          echo ""
+          echo "============================================================"
+          echo "ERROR: proto freshness check could not run (status $_diff_status)."
+          echo "This is a gate failure, not out-of-date generated code — do not run make generate to 'fix' it."
+          echo "============================================================"
+          exit 1
+          ;;
+      esac
       UNTRACKED=$(git ls-files --others --exclude-standard src/generated/ docs/api/)
       if [ -n "$UNTRACKED" ]; then
         echo ""
@@ -876,25 +914,46 @@ if [ "$RUN_ALL" = true ] || path_matches '^pro-test/|^convex/config/productCatal
       echo "ERROR: pro-test build failed"
       exit 1
     }
-    # Paths must all exist: `git diff` exits 128 on an unknown path, which this
-    # check cannot tell apart from a real diff, so a generated file that is later
-    # deleted silently converts the gate into "always fails". #5672 removed
-    # api/_product-fallback-prices.js and left it listed here, which blocked every
-    # push touching pro-test/ or public/pro/ until it was noticed. Keep this list
-    # in step with what scripts/generate-product-config.mjs actually writes.
-    if ! git diff --exit-code src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/; then
-      echo ""
-      echo "============================================================"
-      echo "ERROR: product catalog, generated config, or pro locales is stale."
-      echo "public/pro/ itself is built on deploy (#6898) and is not checked here,"
-      echo "but the generated config it compiles against is still committed."
-      echo "Fix:"
-      echo "  npx tsx scripts/generate-product-config.mjs"
-      echo "  git add src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/"
-      echo "  git commit --amend --no-edit"
-      echo "============================================================"
-      exit 1
-    fi
+    # `git diff --exit-code` is three-valued: 0 clean, 1 real diff, anything
+    # else (typically 128) could not run. `if !` used to collapse 1 and 128,
+    # so a work-tree-resolution failure was printed as a stale catalog and
+    # the regenerate-config recipe was a no-op (#7445). worktree-diff maps
+    # those onto 0 / 3 / 1. Paths must still all exist: an unknown path is
+    # 128, which is now a distinct error rather than "always stale". #5672
+    # removed `api/_product-fallback-prices.js` and left it listed here.
+    # Keep this list in step with what scripts/generate-product-config.mjs
+    # actually writes. Pin the worktree captured at hook start: the vite
+    # cache symlink below lives inside the git common dir.
+    _diff_status=0
+    bash "$ATTEST" worktree-diff "$WM_PREPUSH_ROOT" -- \
+      src/config/products.generated.ts \
+      src/config/product-ids.generated.ts \
+      pro-test/src/generated/tiers.json \
+      pro-test/src/locales/ || _diff_status=$?
+    case "$_diff_status" in
+      0) ;;
+      3)
+        echo ""
+        echo "============================================================"
+        echo "ERROR: product catalog, generated config, or pro locales is stale."
+        echo "public/pro/ itself is built on deploy (#6898) and is not checked here,"
+        echo "but the generated config it compiles against is still committed."
+        echo "Fix:"
+        echo "  npx tsx scripts/generate-product-config.mjs"
+        echo "  git add src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/"
+        echo "  git commit --amend --no-edit"
+        echo "============================================================"
+        exit 1
+        ;;
+      *)
+        echo ""
+        echo "============================================================"
+        echo "ERROR: freshness check could not run (status $_diff_status)."
+        echo "This is a gate failure, not a stale catalog — do not run the regenerate steps."
+        echo "============================================================"
+        exit 1
+        ;;
+    esac
     echo "  pro-test builds and its generated config is up to date."
     gate_mark_green pro-test-build "${PRO_TEST_INPUTS[@]}"
   fi

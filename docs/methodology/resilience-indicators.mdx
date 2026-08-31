@@ -3,13 +3,43 @@ title: "Resilience Indicators"
 description: "The indicator-level explainability layer under the country resilience score — normalized values, runtime weights, contributions reconciled per dimension, observation age, and source provenance."
 ---
 
-## Purpose
+## Start here
 
-[The country resilience index](/methodology/country-resilience-index) publishes one score per country. This route publishes the arithmetic behind it: all 72 registered indicators, what each contributed, and where each number came from.
+**This is the receipt.**
 
-It exists to make a score auditable. If a country's resilience moved, this is the endpoint that says which indicator moved and by how much.
+[The country resilience index](/methodology/country-resilience-index) gives a
+country one number. This gives you every one of the 72 ingredients behind it:
+what each indicator scored, how much it counted, and which organization
+published it.
 
-Served from `GET /api/resilience/v1/get-resilience-indicators?countryCode=<ISO2>` and MCP `get_resilience_indicators`. Both require a Pro subscription. There is no dashboard surface — this is an API and agent endpoint.
+Use it when you need to answer "*why* did this country move?" — because the
+answer is always a specific indicator, and this is where it is named. It is also
+what makes the index arguable: you can disagree with a particular indicator's
+contribution only if you can see it.
+
+### Two things to check before trusting a row
+
+**Read `state` before any number.** An indicator can be `observed`, `imputed`,
+`missing`, `fallback`, `not-applicable`, `source-failure`, `inactive`, or
+`retired`. An imputed or fallback value can still be a legitimate part of the
+score — but it is an inference, not a measurement, and the field says which.
+
+**A blank raw value is usually a licence, not a gap.** Where an upstream
+publisher forbids redistribution, the row serves WorldMonitor's normalized score
+and the attribution but withholds the underlying number. The engine has the
+value and used it; it just may not republish it. See
+[Raw values and licensing](#raw-values-and-licensing).
+
+### Why weights look different from the published defaults
+
+The weights served here are the ones **actually applied on this run**, not the
+registry defaults. When an indicator is unavailable for a country, the engine
+redistributes its weight across the rest. Reading the default instead would
+misattribute the score.
+
+<Info>
+**Access.** Served from `GET /api/resilience/v1/get-resilience-indicators?countryCode=<ISO2>` and MCP `get_resilience_indicators`. Both require a Pro subscription. There is no dashboard surface — this is an API and agent endpoint.
+</Info>
 
 ## Per indicator
 
