@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -254,10 +255,7 @@ describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutpu
 
   it('/pro seeds crawlable pricing copy in #root without a hidden SEO sibling', () => {
     const html = builtSrc('public/pro/index.html');
-    const rootStart = html.lastIndexOf('<div id="root">');
-    assert.ok(rootStart >= 0, 'the /pro static copy should be seeded inside #root');
-    const rootEnd = html.indexOf('</body>', rootStart);
-    const root = html.slice(rootStart, rootEnd);
+    const root = crawlerDocumentSnapshot(html).visibleRootMarkup;
     assert.equal([...root.matchAll(/<h1\b/g)].length, 1);
     assert.equal([...stripNoscript(html).matchAll(/<h1\b/g)].length, 1);
     assert.match(root, /How much does World Monitor Pro cost\?/);

@@ -9,7 +9,7 @@ import { dirname, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { crawlerVisibleHtml } from './_lib/crawler-visible-html.mjs';
+import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import { INDEXABLE_ROBOTS_CONTENT } from '../shared/seo-robots.mjs';
 
@@ -21,16 +21,11 @@ const CATALOG_PRICES = [
   ['Pro', { monthly: '$39.99', annual: '$359.99' }],
   ['Pro Business', { monthly: '$49.99', annual: '$449.99' }],
   ['API Starter', { monthly: '$99.99', annual: '$899.99' }],
-  ['API Pro', { monthly: '$299.99', annual: '$2,699.99' }],
+  ['API Business', { monthly: '$299.99', annual: '$2,699.99' }],
 ];
 
-const ROBOTS_META = new RegExp(
-  `name="robots" content="${INDEXABLE_ROBOTS_CONTENT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}"`,
-);
-
-function parsePricingRows(html) {
-  const visible = crawlerVisibleHtml(html);
-  const table = visible.match(/<table\b[\s\S]*?<\/table>/i)?.[0];
+function parsePricingRows(visibleRootMarkup) {
+  const table = visibleRootMarkup.match(/<table\b[\s\S]*?<\/table>/i)?.[0];
   assert.ok(table, 'crawler-visible HTML must include a pricing table');
   const rows = [...table.matchAll(/<tr>\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<td>([^<]+)<\/td>\s*<\/tr>/gi)].map(
     (match) => ({
@@ -44,9 +39,9 @@ function parsePricingRows(html) {
 }
 
 function assertVisibleCatalogPrices(html, label) {
-  const visible = crawlerVisibleHtml(html);
-  assert.match(visible, /How much does World Monitor Pro cost\?/, `${label} must ask the pricing question outside noscript`);
-  const rows = parsePricingRows(html);
+  const { visibleRootMarkup } = crawlerDocumentSnapshot(html);
+  assert.match(visibleRootMarkup, /How much does World Monitor Pro cost\?/, `${label} must ask the pricing question inside #root`);
+  const rows = parsePricingRows(visibleRootMarkup);
   assert.deepEqual(
     Object.keys(rows).sort(),
     CATALOG_PRICES.map(([name]) => name).sort(),
@@ -55,67 +50,106 @@ function assertVisibleCatalogPrices(html, label) {
   for (const [name, prices] of CATALOG_PRICES) {
     assert.equal(rows[name].monthly, prices.monthly, `${label} ${name} monthly must be ${prices.monthly} outside noscript`);
     assert.equal(rows[name].annual, prices.annual, `${label} ${name} annual must be ${prices.annual} outside noscript`);
-    assert.match(visible, new RegExp(prices.monthly.replace(/[$.]/g, '\\$&')));
-    assert.match(visible, new RegExp(prices.annual.replace(/[$.]/g, '\\$&')));
+    assert.match(visibleRootMarkup, new RegExp(prices.monthly.replace(/[$.]/g, '\\$&')));
+    assert.match(visibleRootMarkup, new RegExp(prices.annual.replace(/[$.]/g, '\\$&')));
   }
 }
 
+function normalizeRobotsContent(content) {
+  return content.split(',').map((directive) => directive.trim().toLowerCase()).sort();
+}
+
 function assertIndexableRobots(html, label) {
-  assert.match(html, ROBOTS_META, `${label} must emit ${INDEXABLE_ROBOTS_CONTENT}`);
+  const { headRobotsContents } = crawlerDocumentSnapshot(html);
+  assert.equal(
+    headRobotsContents.length,
+    1,
+    `${label} must emit exactly one active robots directive`,
+  );
+  assert.deepEqual(
+    normalizeRobotsContent(headRobotsContents[0]),
+    normalizeRobotsContent(INDEXABLE_ROBOTS_CONTENT),
+    `${label} active robots directive must have the shared content`,
+  );
+}
+
+const PRICING_COPY = `<h2>How much does World Monitor Pro cost?</h2>
+<table><tbody>
+  <tr><td>Free</td><td>$0</td><td>$0</td></tr>
+  <tr><td>Pro</td><td>$39.99</td><td>$359.99</td></tr>
+  <tr><td>Pro Business</td><td>$49.99</td><td>$449.99</td></tr>
+  <tr><td>API Starter</td><td>$99.99</td><td>$899.99</td></tr>
+  <tr><td>API Business</td><td>$299.99</td><td>$2,699.99</td></tr>
+</tbody></table>`;
+
+function htmlFixture({ head = '', root = '', sibling = '' }) {
+  return `<!doctype html><html><head>${head}</head><body><div id="root">${root}</div>${sibling}</body></html>`;
 }
 
 guardProBuiltOutput();
 
 describe('crawler-visible HTML must not count noscript (#7458)', () => {
   it('treats a noscript-only pricing table as invisible', () => {
-    const noscriptOnly = `<!doctype html>
-<html lang="en">
-  <head>
-    <title>World Monitor Pro</title>
-    <meta name="robots" content="${INDEXABLE_ROBOTS_CONTENT}" />
-  </head>
-  <body>
-    <div id="root"><h1>World Monitor Pro</h1></div>
-    <noscript>
-      <h2>How much does World Monitor Pro cost?</h2>
-      <table>
-        <tbody>
-          <tr><td>Free</td><td>$0</td><td>$0</td></tr>
-          <tr><td>Pro</td><td>$39.99</td><td>$359.99</td></tr>
-          <tr><td>Pro Business</td><td>$49.99</td><td>$449.99</td></tr>
-          <tr><td>API Starter</td><td>$99.99</td><td>$899.99</td></tr>
-          <tr><td>API Pro</td><td>$299.99</td><td>$2,699.99</td></tr>
-        </tbody>
-      </table>
-    </noscript>
-  </body>
-</html>`;
-    const visible = crawlerVisibleHtml(noscriptOnly);
+    const noscriptOnly = htmlFixture({
+      head: `<meta name="robots" content="${INDEXABLE_ROBOTS_CONTENT}">`,
+      root: `<h1>World Monitor Pro</h1><noscript>${PRICING_COPY}</noscript>`,
+    });
+    const visible = crawlerDocumentSnapshot(noscriptOnly).visibleRootMarkup;
     assert.doesNotMatch(visible, /\$39\.99/);
     assert.doesNotMatch(visible, /How much does World Monitor Pro cost\?/);
     assert.throws(
       () => assertVisibleCatalogPrices(noscriptOnly, 'noscript-only fixture'),
-      /outside noscript|pricing table/,
+      /inside #root|pricing table/,
     );
   });
 
   it('does not treat JSON-LD Offer prices as visible body copy', () => {
-    const jsonLdOnly = `<!doctype html>
-<html lang="en">
-  <body>
-    <div id="root"><h1>World Monitor Pro</h1></div>
-    <script type="application/ld+json">
-      {"@type":"Offer","name":"Pro","price":"39.99","priceCurrency":"USD"}
-    </script>
-  </body>
-</html>`;
-    const visible = crawlerVisibleHtml(jsonLdOnly);
+    const jsonLdOnly = htmlFixture({
+      root: `<h1>World Monitor Pro</h1><script type="application/ld+json">
+        {"@type":"Offer","name":"Pro","price":"39.99","priceCurrency":"USD"}
+      </script>`,
+    });
+    const visible = crawlerDocumentSnapshot(jsonLdOnly).visibleRootMarkup;
     assert.doesNotMatch(visible, /39\.99/);
     assert.throws(
       () => assertVisibleCatalogPrices(jsonLdOnly, 'json-ld-only fixture'),
-      /outside noscript|pricing table/,
+      /inside #root|pricing table/,
     );
   });
+
+  for (const [name, fixture] of [
+    ['template', htmlFixture({ root: `<template>${PRICING_COPY}</template>` })],
+    ['comment', htmlFixture({ root: `<!-- ${PRICING_COPY} -->` })],
+    ['body sibling', htmlFixture({ sibling: PRICING_COPY })],
+  ]) {
+    it(`does not treat ${name} pricing as visible #root copy`, () => {
+      assert.throws(
+        () => assertVisibleCatalogPrices(fixture, `${name} fixture`),
+        /inside #root|pricing table/,
+      );
+    });
+  }
+});
+
+describe('/pro robots metadata must be active and unambiguous (#7458)', () => {
+  const indexable = `<meta name="robots" content="${INDEXABLE_ROBOTS_CONTENT}">`;
+  const invalidFixtures = [
+    ['missing', htmlFixture({})],
+    ['duplicate', htmlFixture({ head: `${indexable}${indexable}` })],
+    ['conflicting', htmlFixture({ head: `${indexable}<meta name="robots" content="noindex">` })],
+    ['body-only', htmlFixture({ root: indexable })],
+    ['script-only', htmlFixture({ head: `<script>const robots = '${indexable}'</script>` })],
+    ['comment-only', htmlFixture({ head: `<!-- ${indexable} -->` })],
+  ];
+
+  for (const [name, fixture] of invalidFixtures) {
+    it(`rejects ${name} robots metadata`, () => {
+      assert.throws(
+        () => assertIndexableRobots(fixture, `${name} fixture`),
+        /must emit|exactly one active robots directive/,
+      );
+    });
+  }
 });
 
 describe('/pro raw HTML is indexable (#7458)', () => {

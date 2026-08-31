@@ -1,5 +1,5 @@
 import { test } from 'node:test';
-import { crawlerVisibleHtml } from './_lib/crawler-visible-html.mjs';
+import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -40,6 +40,12 @@ const priceCentsFor = (planKey) => {
   const m = catalogEntrySourceFor(planKey).match(/priceCents:\s*(\d+)/);
   assert.ok(m, `no priceCents found for ${planKey}`);
   return Number(m[1]);
+};
+
+const displayNameFor = (planKey) => {
+  const m = catalogEntrySourceFor(planKey).match(/displayName:\s*"([^"]+)"/);
+  assert.ok(m, `no displayName found for ${planKey}`);
+  return m[1];
 };
 
 const stringArrayPropertyFromSource = (entrySource, property, context, { required = true } = {}) => {
@@ -248,7 +254,7 @@ guardProBuiltOutput();
 // Visible USD figures must live in the static body outside noscript (and not
 // only in JSON-LD Offers) so "how much does it cost?" answers remain
 // extractable (#7381, #7458). PLAN_KEYS omits api_business_annual, so a
-// body-wide contains() check can stay green while the API Pro annual cell
+// body-wide contains() check can stay green while the API Business annual cell
 // drifts ($2,699.99 → $2,600.00). Parse named rows and compare every monthly
 // and annual cell to productCatalog.ts.
 const VISIBLE_TABLE_EXPECT = [
@@ -256,7 +262,7 @@ const VISIBLE_TABLE_EXPECT = [
   ['Pro', { monthly: 'pro_monthly', annual: 'pro_annual' }],
   ['Pro Business', { monthly: 'pro_business_monthly', annual: 'pro_business_annual' }],
   ['API Starter', { monthly: 'api_starter', annual: 'api_starter_annual' }],
-  ['API Pro', { monthly: 'api_business', annual: 'api_business_annual' }],
+  [displayNameFor('api_business'), { monthly: 'api_business', annual: 'api_business_annual' }],
 ];
 
 const parseUsdCell = (text, context) => {
@@ -299,13 +305,13 @@ const assertVisiblePricesMatchCatalog = (html) => {
   }
 };
 
-const proVisibleBody = () => crawlerVisibleHtml(read('pro-test/index.html'));
+const proVisibleBody = () => crawlerDocumentSnapshot(read('pro-test/index.html')).visibleRootMarkup;
 
 test('/pro crawler-visible body exposes catalog USD prices (#7381, #7458)', () => {
   assertVisiblePricesMatchCatalog(proVisibleBody());
 });
 
-test('/pro visible pricing guard rejects a drifted API Pro annual cell', () => {
+test('/pro visible pricing guard rejects a drifted API Business annual cell', () => {
   const drifted = proVisibleBody().replace('$2,699.99', '$2,600.00');
   assert.throws(
     () => assertVisiblePricesMatchCatalog(drifted),
