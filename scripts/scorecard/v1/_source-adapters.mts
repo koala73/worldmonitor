@@ -87,17 +87,6 @@ function invalidValue(inputId: ScorecardInputId, source: string): ScorecardEvide
   };
 }
 
-function redistributionBlocked(inputId: ScorecardInputId, source: string, detail: string): ScorecardEvidence {
-  return {
-    availability: 'unavailable',
-    inputId,
-    reason: 'redistribution-blocked',
-    source,
-    sourceKey: SCORECARD_INPUT_REGISTRY[inputId].sourceKey,
-    detail,
-  };
-}
-
 function available(
   inputId: ScorecardInputId,
   value: unknown,
@@ -282,20 +271,6 @@ function energyBalance(
   const importSourceTag = String(importDependency.source || iea?.source || '').toLowerCase();
   const importSource = importSourceTag.includes('eurostat') ? 'Eurostat' : 'World Bank';
   const importIndicatorCode = importSource === 'Eurostat' ? 'nrg_ind_id' : 'EG.IMP.CONS.ZS';
-  // Eurostat's nrg_ind_id observation is audit-incomplete for raw
-  // redistribution (ENERGY_IMPORT_CONDITIONAL: "Allow only the exact World
-  // Bank EG.IMP.CONS.ZS observation"), and the resilience API already
-  // withholds it. Publishing the derived ratio here would leak it anyway:
-  // production = consumption * (1 - netImports / 100) is emitted alongside
-  // consumption, so the raw percentage is recoverable by arithmetic. Block the
-  // whole input for that provenance, matching defense.supplierDiversity.
-  if (importSource === 'Eurostat') {
-    return redistributionBlocked(
-      'energy.productionBalance',
-      'OWID and Eurostat',
-      'Eurostat energy import dependency is not audited for raw redistribution.',
-    );
-  }
   const observationYear = Math.min(consumptionYear, importsYear);
   return available(
     'energy.productionBalance',
