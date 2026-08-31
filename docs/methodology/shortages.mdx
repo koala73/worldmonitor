@@ -3,6 +3,41 @@ title: "Fuel Shortage Alert Methodology"
 description: "How World Monitor classifies and publishes fuel shortage alerts (jet, petrol, diesel, heating oil) using an automated evidence-threshold pipeline."
 ---
 
+## Start here
+
+This tracks one thing: **places where people cannot get fuel.** Jet fuel, petrol,
+diesel, and heating oil, anywhere in the world.
+
+### Expensive is not the same as unavailable
+
+A price spike is not a shortage. Prices rise for many reasons, most of them
+unremarkable, and treating every jump as a supply emergency produces a feed
+nobody can act on.
+
+So the trigger is always **physical**: flights cancelled for lack of fuel,
+filling stations closed, formal rationing announced, imports cut. Something has
+to have actually stopped.
+
+### Two tiers, and the difference between them
+
+| Tier | What it means |
+|---|---|
+| `watch` | One credible source reports a constraint. Worth knowing, not yet established. |
+| `confirmed` | Multiple independent sources, or a regulator plus a concrete operational impact. |
+
+Promotion from `watch` to `confirmed` needs corroboration from genuinely separate
+outlets — two outlets plus a regulator, three outlets, or a regulator plus a hard
+operational signal like a cancelled flight. Ten stories rewriting one wire report
+do not add up to confirmation.
+
+<Note>
+**No human sits in this loop.** Every classifier here runs automatically. Quality
+comes from the evidence thresholds above, a second-pass language-model check that
+can veto a promotion, and automatic decay of stale rows — not from a review
+queue. An alert that stops being refreshed expires on its own rather than sitting
+there looking current.
+</Note>
+
 ## What we track
 
 Four product categories, two severity tiers, global coverage:

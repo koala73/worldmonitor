@@ -3,11 +3,44 @@ title: "Mineral Production & Processing Concentration"
 description: "How WorldMonitor derives per-commodity mine and refinery country shares and HHI concentration from USGS Mineral Commodity Summaries with BGS fill."
 ---
 
-## Purpose
+## Start here
 
-Deposits and production are different maps. The critical-minerals layer shows where a resource *sits*; this dataset shows where it is actually mined and, separately, where it is refined. Refining is usually the more concentrated of the two, and it is the stage that fails first under an export control.
+**Where a mineral is buried, where it is dug up, and where it is turned into
+something usable are three different maps** — and the last one is where supply
+chains actually break.
 
-Served from `GET /api/supply-chain/v1/get-mineral-production` and MCP `get_mineral_production`. Both require a Pro subscription.
+A country can hold enormous reserves and still be helpless, because the
+refining capacity sits somewhere else. Export controls almost always bite at the
+processing stage, not the mine, which is why this dataset keeps the two apart:
+
+- **`mine`** — where the ore comes out of the ground.
+- **`refinery`** — where it is processed into usable material.
+
+For most strategic commodities, refining is far more concentrated than mining.
+That gap is the finding.
+
+### Reading the concentration number
+
+Each stage carries an **HHI** on the conventional 0-10,000 scale. Higher means
+fewer countries dominate. As a rough orientation: a commodity spread across many
+producers lands in the hundreds; one where a single country holds most of the
+world's capacity runs into the thousands.
+
+<Warning>
+Three fields will mislead you if you skip them, and all three are explained in
+[Three fields that change the reading](#three-fields-that-change-the-reading):
+
+- **`residual`** is the "Other countries" bucket, not a producer. It is often
+  large enough to outrank real countries — filter it before ranking anything.
+- **`withheld`** means the source suppressed a figure. That share is *unknown*,
+  not zero, and a stage with many withheld rows has a correspondingly shakier HHI.
+- **`year`** is per commodity-stage. The envelope's `dataYear` is only the newest
+  across the whole set, not the vintage of the row you are reading.
+</Warning>
+
+<Info>
+**Access.** Served from `GET /api/supply-chain/v1/get-mineral-production` and MCP `get_mineral_production`. Both require a Pro subscription.
+</Info>
 
 ## Sources
 

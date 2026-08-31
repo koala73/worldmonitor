@@ -3,10 +3,50 @@ title: "China Activity Nowcast"
 description: "Deterministic comparison of revision-aware official activity releases with reviewed logistics, operational, commodity, and market proxies."
 ---
 
-The China Activity Nowcast is a transparent directional comparison. It is not
-a replacement GDP estimate, a hidden-activity verification, or a China risk
-score. No language model participates in numeric computation, input
-eligibility, direction, confidence, or state assignment.
+## Start here
+
+China publishes official activity figures on a schedule. Meanwhile, the physical
+world leaves its own traces: containers move, ports load, planes fly, copper
+changes price. This nowcast puts the two side by side and asks a single narrow
+question:
+
+**Are the independent signals pointing the same way as the official release?**
+
+That is all it claims. When both are strengthening, that is agreement. When the
+official number strengthens while freight, shipping, and commodity signals
+weaken, that is a divergence worth investigating — and the panel names which
+signals disagree and by how much.
+
+### What this is not
+
+<Warning>
+- **Not a replacement GDP estimate.** It produces a *direction*, not a number to
+  substitute for the official one.
+- **Not a claim that any figure is wrong.** A divergence is a question, not an
+  accusation. Proxies have their own biases, seasonality, and coverage gaps.
+- **Not a China risk score.**
+- **Not written by an AI.** No language model participates in the numbers,
+  input eligibility, direction, confidence, or state. Every step is
+  deterministic and reproducible from the published inputs.
+</Warning>
+
+### Point-in-time honesty
+
+The comparison respects what was actually knowable at the time. Each evaluation
+may only use a data vintage that had already been retrieved by that moment, so a
+later revision cannot be quietly backfilled into an earlier reading. A historical
+evaluation shows what the nowcast would genuinely have said that day — not a
+flattering reconstruction with hindsight.
+
+This matters more than it sounds: without it, any nowcast can be made to look
+prescient after the fact.
+
+### The signals it watches
+
+Six independent families — freight rates, port activity, aviation, energy
+demand, industrial metals, and trade-corridor breadth — each with a published
+rationale, transformation, and freshness budget. A signal past its freshness
+budget drops out rather than going stale in place.
 
 The live method version is `china-activity-nowcast/v1`.
 
