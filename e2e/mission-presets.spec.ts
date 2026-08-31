@@ -38,14 +38,15 @@ async function readJsonLocalStorage<T>(page: Page, key: string): Promise<T | nul
   return value ? JSON.parse(value) as T : null;
 }
 
-async function seedFreshFullVariant(page: Page): Promise<void> {
-  await page.addInitScript(() => {
+async function seedFreshVariant(page: Page): Promise<void> {
+  const variant = process.env.VITE_VARIANT || 'full';
+  await page.addInitScript((selectedVariant) => {
     if (sessionStorage.getItem('__mission_presets_e2e_init__')) return;
     localStorage.clear();
     sessionStorage.clear();
-    localStorage.setItem('worldmonitor-variant', 'full');
+    localStorage.setItem('worldmonitor-variant', selectedVariant);
     sessionStorage.setItem('__mission_presets_e2e_init__', '1');
-  });
+  }, variant);
 }
 
 async function openMissionPopover(page: Page): Promise<void> {
@@ -65,7 +66,7 @@ async function waitForEventHandlers(page: Page): Promise<void> {
 
 async function setupMissionPage(page: Page, viewport: { width: number; height: number }): Promise<void> {
   await page.setViewportSize(viewport);
-  await seedFreshFullVariant(page);
+  await seedFreshVariant(page);
   await installLocalOnlyNetwork(page);
 
   await page.goto('/', { waitUntil: 'domcontentloaded' });
