@@ -1031,14 +1031,24 @@ describe('crawlable corpus generator', () => {
         if (catalogLinkedRoutes.has(route)) {
           assertDataCatalogPresent(html, route);
         }
-        if (countryObservationRoutes.has(route) || liveObservationRoutes.has(route)) {
+        if (countryObservationRoutes.has(route)) {
           const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
           for (const [index, dataset] of datasets.entries()) {
             assertSourceDerivedTemporalCoverage(dataset, {
               route,
-              observationInterval: countryObservationRoutes.has(route)
-                ? manifest.sections.countries.sourceCapturedAt
-                : undefined,
+              observationInterval: manifest.sections.countries.sourceCapturedAt,
+              lastmod: pageLastmod(html),
+              index: index + 1,
+            });
+          }
+        }
+        if (liveObservationRoutes.has(route)) {
+          const reference = JSON.parse(read(outDir, `${route.slice(1)}reference.json`));
+          const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+          for (const [index, dataset] of datasets.entries()) {
+            assertSourceDerivedTemporalCoverage(dataset, {
+              route,
+              observationInterval: reference.capturedAt,
               lastmod: pageLastmod(html),
               index: index + 1,
             });
@@ -1914,6 +1924,7 @@ describe('crawlable corpus generator', () => {
       );
       assertSourceDerivedTemporalCoverage(hormuzDataset, {
         route: '/chokepoints/strait-of-hormuz/',
+        observationInterval: JSON.parse(read(outDir, 'chokepoints/strait-of-hormuz/reference.json')).capturedAt,
         lastmod: pageLastmod(hormuz),
       });
       const hormuzShapes = [
@@ -1937,13 +1948,22 @@ describe('crawlable corpus generator', () => {
       const hormuzReference = JSON.parse(read(outDir, 'chokepoints/strait-of-hormuz/reference.json'));
       assert.equal(hormuzReference.dataset, 'chokepoint-reference');
       assert.equal(hormuzReference.id, 'hormuz_strait');
+      assert.ok(hormuzReference.capturedAt);
       assert.ok(hormuzReference.modelledTradeRoutes.length > 0);
-      assert.deepEqual(hormuzDataset.variableMeasured, [
-        'Geographic coordinates',
-        'Connected waters',
-        'Energy shock model support',
-        'Modelled trade routes',
-      ]);
+      assert.equal(hormuzDataset.url, 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/');
+      assert.equal(hormuzDataset.identifier, 'hormuz_strait');
+      assert.equal(hormuzDataset.temporalCoverage, hormuzReference.capturedAt);
+      const hormuzMeasurements = new Map(
+        hormuzDataset.variableMeasured.map((measurement) => [measurement.name, measurement.value]),
+      );
+      assert.equal(hormuzMeasurements.get('Geographic coordinates'), '26.5°N, 56.5°E');
+      assert.equal(hormuzMeasurements.get('Connected waters'), 'Persian Gulf ↔ Gulf of Oman');
+      assert.equal(hormuzMeasurements.get('Energy shock model support'), 'Yes');
+      assert.equal(hormuzMeasurements.get('Modelled trade routes'), hormuzReference.modelledTradeRoutes.length);
+      assert.ok(
+        hormuzDataset.variableMeasured.every((measurement) => measurement['@type'] === 'PropertyValue' && measurement.value != null && measurement.value !== ''),
+        'chokepoint variableMeasured must be valued PropertyValue entries',
+      );
       assert.doesNotMatch(
         JSON.stringify(hormuzDataset),
         /Disruption score|Congestion|AIS disruptions|Daily vessel transits/,
@@ -1971,18 +1991,83 @@ describe('crawlable corpus generator', () => {
       const dover = read(outDir, 'chokepoints/dover-strait/index.html');
       assert.doesNotMatch(dover, /0 routes?|none configured/);
       assert.match(dover, /tracked as a strategic waterway reference/);
+      assert.match(dover, /<table data-chokepoint-routes>/);
 
-      // Drive the expectation off the SNAPSHOT rather than off whichever
-      // chokepoint happened to have AIS traffic on the freeze date. The old
-      // form hardcoded Taiwan Strait's "1" -- the only publishable count in
-      // the 2026-08-30 freeze -- so the monthly refresh
-      // (.github/workflows/crawlable-pulse-refresh.yml, `41 4 2 * *`) could
-      // both break the assertion and silently delete the suite's only proof
-      // that the withhold does not suppress everything. The oracle below is
-      // the spec restated by hand ("a raw count of 1 or more publishes"), not
-      // a call back into publishedTransitCountLabel, so it can still fail if
-      // that helper regresses.
       const corpus = await loadCorpusData({ rootDir: repoRoot });
+      const chokepointArticles = [];
+      for (const cp of corpus.chokepoints) {
+        const route = `/chokepoints/${cp.slug}/`;
+        const html = read(outDir, `chokepoints/${cp.slug}/index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        const analysis = document.querySelector('[data-chokepoint-analysis]');
+        assert.ok(analysis, `${route} must render a chokepoint analysis block`);
+        const faqEntries = [...document.querySelectorAll('[data-chokepoint-faq]')];
+        assert.ok(
+          faqEntries.length >= 2 && faqEntries.length <= 3,
+          `${route} must show 2-3 FAQs`,
+        );
+        const pageLd = jsonLdObjects(html);
+        const faqPage = pageLd.find((entry) => entry['@type'] === 'FAQPage');
+        assert.equal(faqPage?.mainEntity?.length, faqEntries.length, `${route} FAQPage must match visible FAQs`);
+        assert.match(
+          analysis.querySelector('h2')?.textContent ?? '',
+          /\?$/,
+          `${route} analysis heading must be question-shaped`,
+        );
+        const table = document.querySelector('table[data-chokepoint-routes]');
+        assert.ok(table, `${route} must publish a trade-route table`);
+        assert.ok(
+          table.querySelector('time[datetime]'),
+          `${route} trade-route table must stamp figures with time datetime`,
+        );
+        const articleWordCount = words(analysis.textContent).length;
+        assert.ok(
+          articleWordCount >= 400,
+          `${route} analysis must contain at least 400 waterway-specific words, got ${articleWordCount}`,
+        );
+        const pageWordCount = words(document.querySelector('main')?.textContent).length;
+        assert.ok(
+          pageWordCount >= 600 && pageWordCount <= 1400,
+          `${route} main content must contain 600-1400 words, got ${pageWordCount}`,
+        );
+        const dataset = pageLd.flatMap((entry) => collectDatasets(entry))[0];
+        const reference = JSON.parse(read(outDir, `chokepoints/${cp.slug}/reference.json`));
+        assert.equal(dataset.url, `https://www.worldmonitor.app${route}`);
+        assert.equal(dataset.identifier, cp.id);
+        assert.equal(dataset.temporalCoverage, reference.capturedAt);
+        assert.ok(
+          Array.isArray(dataset.variableMeasured)
+            && dataset.variableMeasured.every((measurement) => (
+              measurement['@type'] === 'PropertyValue'
+              && measurement.value != null
+              && measurement.value !== ''
+            )),
+          `${route} Dataset variableMeasured must be valued PropertyValue entries`,
+        );
+        const pageGeo = pageLd.find((entry) => entry['@type'] === 'WebPage')?.about?.geo;
+        const geos = [pageGeo, dataset.spatialCoverage?.geo].flat().filter(Boolean);
+        assert.ok(
+          geos.some((geo) => geo?.['@type'] === 'GeoShape'),
+          `${route} Place/Dataset must include GeoShape`,
+        );
+        chokepointArticles.push({ route, text: analysis.textContent });
+      }
+      const uniquenessSample = chokepointArticles.filter((entry) => (
+        /strait-of-hormuz|suez-canal|panama-canal|dover-strait|taiwan-strait/.test(entry.route)
+      ));
+      assert.equal(uniquenessSample.length, 5, 'country-standard uniqueness sample must resolve five chokepoints');
+      for (let left = 0; left < uniquenessSample.length; left += 1) {
+        for (let right = left + 1; right < uniquenessSample.length; right += 1) {
+          const share = pairwiseUniqueShare(uniquenessSample[left].text, uniquenessSample[right].text);
+          assert.ok(
+            share >= 0.4,
+            `${uniquenessSample[left].route} and ${uniquenessSample[right].route} must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
+          );
+        }
+      }
+
+      // Drive the withhold expectation off the SNAPSHOT rather than off whichever
+      // chokepoint happened to have AIS traffic on the freeze date.
       const pulseSnapshot = JSON.parse(
         readFileSync(resolve(repoRoot, corpus.sources.livePulseSnapshot), 'utf8'),
       );
