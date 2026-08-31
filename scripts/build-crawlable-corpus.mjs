@@ -760,13 +760,13 @@ function selectMetaDescription(candidates, fallbackCandidates) {
   );
 }
 
-export function countryMetaDescription({ name, rank, rankedCount }) {
+export function countryMetaDescription({ name, rank, rankedCount, lowConfidence = false }) {
   const subjects = [
     `${name} country risk and resilience`,
     `${name} country risk`,
     `${name} risk and resilience`,
   ];
-  const standings = rank == null
+  const unpublishedStandings = lowConfidence
     ? [
       `a low-confidence listing in World Monitor's Country Resilience Index`,
       `a low-confidence listing in World Monitor's resilience index`,
@@ -774,6 +774,15 @@ export function countryMetaDescription({ name, rank, rankedCount }) {
       `a low-confidence World Monitor index listing`,
       `a low-confidence index listing`,
     ]
+    : [
+      `an unpublished listing in World Monitor's Country Resilience Index`,
+      `an unpublished listing in World Monitor's resilience index`,
+      `an unpublished listing in World Monitor's index`,
+      `an unpublished World Monitor index listing`,
+      `an unpublished index listing`,
+    ];
+  const standings = rank == null
+    ? unpublishedStandings
     : [
       `ranked #${rank} of ${rankedCount} in World Monitor's Country Resilience Index`,
       `ranked #${rank} of ${rankedCount} in World Monitor's resilience index`,
@@ -2056,6 +2065,7 @@ function renderCountryPage({
     name: country.name,
     rank: country.rank,
     rankedCount,
+    lowConfidence: country.lowConfidence === true,
   });
   const mapUrl = withUtmSource(
     absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`),

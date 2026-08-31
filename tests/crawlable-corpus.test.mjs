@@ -775,6 +775,16 @@ describe('crawlable corpus generator', () => {
             name: 'B'.repeat(length),
             rank: null,
             rankedCount: 999_999,
+            lowConfidence: true,
+          }),
+        },
+        {
+          name: 'D'.repeat(length),
+          description: countryMetaDescription({
+            name: 'D'.repeat(length),
+            rank: null,
+            rankedCount: 999_999,
+            lowConfidence: false,
           }),
         },
         {
@@ -1391,6 +1401,12 @@ describe('crawlable corpus generator', () => {
       assert.match(andorra, /population of at least 200,000/);
       assert.match(andorra, /<span>Confidence<\/span><strong>Standard<\/strong>/);
       assert.doesNotMatch(andorra, /flagged low-confidence/);
+      assert.doesNotMatch(
+        andorra,
+        /a low-confidence listing/,
+        'covered-ineligible meta description must not call a standard-confidence snapshot low-confidence',
+      );
+      assert.match(andorra, /an unpublished listing/);
       for (let left = 0; left < unrankedArticles.length; left += 1) {
         for (let right = left + 1; right < unrankedArticles.length; right += 1) {
           const share = pairwiseUniqueShare(unrankedArticles[left].text, unrankedArticles[right].text);
