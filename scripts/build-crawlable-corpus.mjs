@@ -956,7 +956,12 @@ function normalizeCountries(snapshot, reverseNames) {
   const rankedCodes = new Set(ranked.map((country) => country.code));
   const greyedOut = (snapshot.greyedOut || [])
     .filter((item) => !rankedCodes.has(String(item.countryCode || '').toUpperCase()))
-    .map((item) => normalizeCountry(item, 'low-confidence', seen, reverseNames));
+    .map((item) => normalizeCountry(
+      item,
+      item.lowConfidence ? 'low-confidence' : 'unpublished',
+      seen,
+      reverseNames,
+    ));
 
   return [...ranked, ...greyedOut].sort((a, b) => {
     if (a.rank == null && b.rank == null) return a.name.localeCompare(b.name);
@@ -1053,6 +1058,23 @@ const REGION_LABELS = {
   'east-asia': 'East Asia and the Pacific',
 };
 
+export function compareUnpublishedRankedPeers(left, right, country, regionId, regionsByCode) {
+  const regionDifference = Number(regionsByCode[right.code] === regionId)
+    - Number(regionsByCode[left.code] === regionId);
+  const countryScore = Number(country.overallScore);
+  const leftScore = Number(left.overallScore);
+  const rightScore = Number(right.overallScore);
+  const scoreDistance = Number.isFinite(countryScore)
+    && Number.isFinite(leftScore)
+    && Number.isFinite(rightScore)
+    ? Math.abs(leftScore - countryScore) - Math.abs(rightScore - countryScore)
+    : 0;
+  return regionDifference
+    || scoreDistance
+    || left.rank - right.rank
+    || left.name.localeCompare(right.name);
+}
+
 function addCountryContext(countries, regionsByCode, crises) {
   const ranked = countries.filter((country) => country.rank != null);
   return countries.map((country) => {
@@ -1062,9 +1084,7 @@ function addCountryContext(countries, regionsByCode, crises) {
       .filter((candidate) => candidate.code !== country.code)
       .sort((left, right) => {
         if (unpublished) {
-          const regionDifference = Number(regionsByCode[right.code] === regionId)
-            - Number(regionsByCode[left.code] === regionId);
-          return regionDifference || left.rank - right.rank || left.name.localeCompare(right.name);
+          return compareUnpublishedRankedPeers(left, right, country, regionId, regionsByCode);
         }
         const distanceDifference = Math.abs(left.rank - country.rank)
           - Math.abs(right.rank - country.rank);
@@ -1080,7 +1100,7 @@ function addCountryContext(countries, regionsByCode, crises) {
         && (unpublished || Number.isFinite(candidate.overallScore))
       ))
       .sort((left, right) => unpublished
-        ? left.rank - right.rank || left.name.localeCompare(right.name)
+        ? compareUnpublishedRankedPeers(left, right, country, regionId, regionsByCode)
         : Math.abs(left.overallScore - country.overallScore)
           - Math.abs(right.overallScore - country.overallScore)
           || left.name.localeCompare(right.name))

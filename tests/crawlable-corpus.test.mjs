@@ -1275,6 +1275,8 @@ describe('crawlable corpus generator', () => {
       assert.equal(taiwanDataset.rank, null);
       assert.equal(taiwanDataset.overallScore, null);
       assert.equal(taiwanDataset.level, 'unpublished');
+      assert.equal(taiwanDataset.sourceStatus, 'low-confidence');
+      assert.equal(taiwanDataset.confidence, 'low');
       assert.match(taiwan, /does not meet the published ranking eligibility criteria/);
       assert.match(taiwan, /Ranking requires coverage of at least 65%/);
       assert.match(taiwan, /population of at least 200,000/);
@@ -1399,6 +1401,9 @@ describe('crawlable corpus generator', () => {
       assert.match(syria, /IMF/);
       const andorra = read(outDir, 'countries/andorra/index.html');
       assert.equal(countryByCode.get('AD')?.lowConfidence, false);
+      const andorraDataset = JSON.parse(read(outDir, 'countries/andorra/resilience.json'));
+      assert.equal(andorraDataset.confidence, 'standard');
+      assert.equal(andorraDataset.sourceStatus, 'unpublished');
       assert.match(andorra, /coverage is 69%/);
       assert.match(andorra, /population of at least 200,000/);
       assert.match(andorra, /<span>Confidence<\/span><strong>Standard<\/strong>/);

@@ -5,6 +5,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  compareUnpublishedRankedPeers,
   countryMetaDescription,
   describeAvailableEvidence,
   describeCoverageGaps,
@@ -149,6 +150,22 @@ describe('unranked country copy', () => {
         lowConfidence: false,
       }),
       /a low-confidence listing/,
+    );
+  });
+
+  it('orders unpublished ranked comparators by score proximity, not best rank', () => {
+    const andorra = { overallScore: 62 };
+    const switzerland = { code: 'CH', name: 'Switzerland', rank: 1, overallScore: 91 };
+    const czechia = { code: 'CZ', name: 'Czechia', rank: 18, overallScore: 64 };
+    const japan = { code: 'JP', name: 'Japan', rank: 8, overallScore: 63 };
+    const regions = { CH: 'europe', CZ: 'europe', JP: 'east-asia' };
+    assert.ok(
+      compareUnpublishedRankedPeers(czechia, switzerland, andorra, 'europe', regions) < 0,
+      'same-region closer score must beat a higher-ranked distant score',
+    );
+    assert.ok(
+      compareUnpublishedRankedPeers(czechia, japan, andorra, 'europe', regions) < 0,
+      'same-region peers still outrank other regions even when the other score is closer',
     );
   });
 
