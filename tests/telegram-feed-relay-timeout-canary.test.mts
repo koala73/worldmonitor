@@ -30,14 +30,25 @@ const SESSION_SECRET = 'x'.repeat(48);
 const previousNodeTestContext = process.env.NODE_TEST_CONTEXT;
 delete process.env.NODE_TEST_CONTEXT;
 
+// UPSTASH_* must be UNSET, not merely assumed unset. `getRatelimit` reads both
+// on every call, so an inherited pair (a shell that sourced .env.local, a job
+// that exports the secrets) sends checkRateLimit down the real Redis path —
+// and with NODE_TEST_CONTEXT cleared above, REDIS_TEST_RETRY_OPTS no longer
+// suppresses its retries. The stub then rejects the Upstash URL, the fail-open
+// catch in `logRateLimitDegraded` fires a SECOND envelope, and every
+// `events.length === 1` assertion fails ~4.3s late. Restored in `after()`.
+const previousUpstash = {
+  url: process.env.UPSTASH_REDIS_REST_URL,
+  token: process.env.UPSTASH_REDIS_REST_TOKEN,
+};
+delete process.env.UPSTASH_REDIS_REST_URL;
+delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
 // Set before the dynamic import so parseDsn() wires up the envelope transport.
 process.env.VITE_SENTRY_DSN = 'https://testpublickey@sentry.test/12345';
 process.env.WS_RELAY_URL = 'https://relay.example.com';
 process.env.RELAY_SHARED_SECRET = 'test-secret';
 process.env.WM_SESSION_SECRET = SESSION_SECRET;
-// Leave UPSTASH_* unset: checkRateLimit returns null without fetching when the
-// limiter is unconfigured, so the relay and the Sentry envelope are the only
-// two URLs the handler ever hits.
 
 // parseDsn() derives `${protocol}//${host}/api/${projectId}/envelope/` from the
 // DSN above → this prefix.
@@ -52,6 +63,8 @@ after(() => {
   globalThis.fetch = originalFetch;
   if (previousNodeTestContext === undefined) delete process.env.NODE_TEST_CONTEXT;
   else process.env.NODE_TEST_CONTEXT = previousNodeTestContext;
+  if (previousUpstash.url !== undefined) process.env.UPSTASH_REDIS_REST_URL = previousUpstash.url;
+  if (previousUpstash.token !== undefined) process.env.UPSTASH_REDIS_REST_TOKEN = previousUpstash.token;
 });
 
 interface SentryEvent {
