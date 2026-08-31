@@ -49,7 +49,9 @@ import {
 import {
   CHOKEPOINT_CONTENT,
   CHOKEPOINT_PAGE_CONTENT_PATH,
+  CHOKEPOINT_REGISTRY_OBSERVED_AT,
   EIA_OIL_TRANSIT_BASELINES,
+  TRADE_ROUTES_OBSERVED_AT,
 } from './chokepoint-page-content.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -327,6 +329,27 @@ function laterDate(...values) {
     .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
     .sort()
     .at(-1) ?? null;
+}
+
+/** Observation window for chokepoint Dataset temporalCoverage and table stamps.
+ *  Git lastmod wins when history is present; committed dates keep Docker
+ *  corpus builds (no `.git`) from publishing capturedAt: null. */
+export function resolveChokepointObservation({
+  registryGitLastmod = null,
+  tradeRoutesGitLastmod = null,
+} = {}) {
+  return {
+    capturedAt: laterDate(
+      registryGitLastmod,
+      tradeRoutesGitLastmod,
+      CHOKEPOINT_REGISTRY_OBSERVED_AT,
+      TRADE_ROUTES_OBSERVED_AT,
+    ),
+    volumeObservedAt: laterDate(
+      tradeRoutesGitLastmod,
+      TRADE_ROUTES_OBSERVED_AT,
+    ),
+  };
 }
 
 export function sourcePageLastmod({
@@ -1255,12 +1278,11 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     latestDatedChangelogRelease(changelog),
     CORPUS_GENERATOR_CONTENT_VERSION,
   );
-  const chokepointCapturedAt = laterDate(
-    gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
-    gitFileLastmod(rootDir, TRADE_ROUTES_PATH),
-  );
-  const chokepointVolumeObservedAt = gitFileLastmod(rootDir, TRADE_ROUTES_PATH)
-    || chokepointCapturedAt;
+  const { capturedAt: chokepointCapturedAt, volumeObservedAt: chokepointVolumeObservedAt } =
+    resolveChokepointObservation({
+      registryGitLastmod: gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
+      tradeRoutesGitLastmod: gitFileLastmod(rootDir, TRADE_ROUTES_PATH),
+    });
   const chokepointsLastmod = laterDate(
     gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
     gitFileLastmod(rootDir, TRADE_ROUTES_PATH),

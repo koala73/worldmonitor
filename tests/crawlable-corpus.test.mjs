@@ -17,6 +17,7 @@ import {
   GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
+  resolveChokepointObservation,
   SOURCE_CATALOG_LASTMOD_PATHS,
   sourcePageLastmod,
 } from '../scripts/build-crawlable-corpus.mjs';
@@ -725,6 +726,17 @@ describe('crawlable corpus generator', () => {
     assert.equal(datasetTemporalCoverage(''), undefined);
     assert.equal(datasetTemporalCoverage('2026-08-29T00:00:00Z'), undefined);
     assert.equal(datasetTemporalCoverage('schema-edit'), undefined);
+  });
+
+  it('dates chokepoint observations without git history', () => {
+    const gitless = resolveChokepointObservation();
+    assert.equal(gitless.capturedAt, '2026-04-09');
+    assert.equal(gitless.volumeObservedAt, '2026-03-14');
+    const newerRegistry = resolveChokepointObservation({
+      registryGitLastmod: '2026-05-01',
+    });
+    assert.equal(newerRegistry.capturedAt, '2026-05-01');
+    assert.equal(newerRegistry.volumeObservedAt, '2026-03-14');
   });
 
   it('advances the sources lastmod when the shared page template changes', () => {
@@ -2019,6 +2031,16 @@ describe('crawlable corpus generator', () => {
         assert.ok(
           table.querySelector('time[datetime]'),
           `${route} trade-route table must stamp figures with time datetime`,
+        );
+        assert.doesNotMatch(
+          analysis.textContent,
+          /no (corridor|trade-route) table/i,
+          `${route} must not say the rendered corridor table is absent`,
+        );
+        assert.doesNotMatch(
+          analysis.textContent,
+          /in the same (trade-route )?table/i,
+          `${route} must not claim off-page alternatives live in this page’s table`,
         );
         const articleWordCount = words(analysis.textContent).length;
         assert.ok(

@@ -6,6 +6,13 @@
 
 export const CHOKEPOINT_PAGE_CONTENT_PATH = 'scripts/chokepoint-page-content.mjs';
 
+// Committed observation dates for Dataset temporalCoverage and <time datetime>
+// stamps. Docker corpus builds exclude `.git`, so gitFileLastmod() is null
+// there; these dates keep Hormuz-class pages dated without repository history.
+// Bump when the corresponding src/config file's data actually changes.
+export const CHOKEPOINT_REGISTRY_OBSERVED_AT = '2026-04-09';
+export const TRADE_ROUTES_OBSERVED_AT = '2026-03-14';
+
 export const EIA_OIL_TRANSIT_BASELINES = Object.freeze({
   source: 'EIA World Oil Transit Chokepoints',
   referenceYear: 2023,
@@ -29,7 +36,7 @@ export const CHOKEPOINT_CONTENT = {
     whyHeading: 'What happens to Europe–Asia shipping if the Suez Canal is blocked?',
     analysis: [
       'Opened as a sea-level canal across the Isthmus of Suez, this cut is not a natural strait: it is an engineered slot whose banks, locks-free channel, and convoy system set a hard daily capacity. A grounded boxship in a single-lane reach can halt both directions, which is why Ever Given in March 2021 remains the canonical illustration. World Monitor treats Suez as one of four energy-shock-model waterways because oil and LNG that already cleared Hormuz and Bab el-Mandeb still have to pass here to reach the Mediterranean and Northwest Europe.',
-      'The modelled corridor set is container-heavy: China → Europe (Suez), China → US East Coast (Suez), Singapore → Mediterranean, and India → Europe, plus the energy legs Persian Gulf → Europe (Oil) and Qatar LNG → Europe. Those are the routes that become Cape sailings when the canal or its Red Sea approach is unsafe. The Cape alternative is already in the same trade-route table as Asia → Europe (Cape Route); it is longer, not theoretical.',
+      'The modelled corridor set is container-heavy: China → Europe (Suez), China → US East Coast (Suez), Singapore → Mediterranean, and India → Europe, plus the energy legs Persian Gulf → Europe (Oil) and Qatar LNG → Europe. Those are the routes that become Cape sailings when the canal or its Red Sea approach is unsafe. The Cape alternative is modelled on the Cape of Good Hope page as Asia → Europe (Cape Route); it is longer, not theoretical, and it is not a row in this canal’s waypoint table.',
     ],
     alternative:
       'When Suez is closed or the southern approach is too risky, operators send Europe–Asia loops around the Cape of Good Hope and still re-enter the Mediterranean through Gibraltar. That is extra distance and bunker burn, not a second canal. SUMED pipeline capacity can move some Gulf crude from the Red Sea to the Mediterranean, but it does not carry containers or LNG, so most of the modelled Suez book has no pipeline substitute.',
@@ -100,7 +107,7 @@ export const CHOKEPOINT_CONTENT = {
       'The modelled routes are the same Suez-dependent set: China → Europe, China → US East Coast (Suez), Persian Gulf → Europe (Oil), Qatar LNG → Europe, Singapore → Mediterranean, and India → Europe. Gulf–Asia oil and LNG that turn east after Hormuz do not need Bab el-Mandeb; the Europe-bound energy and the Asia–Europe container loops do.',
     ],
     alternative:
-      'The operational substitute is the Cape of Good Hope, already listed as Asia → Europe (Cape Route) and as the Americas energy Cape leg. That substitute adds thousands of nautical miles. It does not require a second Red Sea strait. The EIA 2023 Bab el-Mandeb baseline is 6.2 million barrels a day; shock modelling is enabled because those barrels sit on the same Suez-bound energy legs.',
+      'The operational substitute is the Cape of Good Hope, modelled on that waterway’s page as Asia → Europe (Cape Route) and as the Americas energy Cape leg. That substitute adds thousands of nautical miles. It does not require a second Red Sea strait. The EIA 2023 Bab el-Mandeb baseline is 6.2 million barrels a day; shock modelling is enabled because those barrels sit on the same Suez-bound energy legs.',
     faqs: [
       {
         question: 'Can a ship use Suez without using Bab el-Mandeb?',
@@ -119,7 +126,7 @@ export const CHOKEPOINT_CONTENT = {
       'The Panama Canal cuts across the Isthmus of Panama to link the Atlantic and Pacific oceans, saving vessels the long voyage around South America. Its lock system depends on freshwater from Gatún Lake, so drought can throttle daily transits and reshape Asia–US East Coast routing.',
     analysis: [
       'Panama is a lock canal, not a sea-level cut. Each lockage spends Gatún Lake freshwater. In a dry season the authority rationing is daily slots and draft, not a wartime closure. That is a different failure mode from Hormuz or Bab el-Mandeb: the oceans stay open while the engineered shortcut shrinks. World Monitor does not attach the energy shock model here; the committed EIA 2023 Panama baseline is 0.9 million barrels a day, an order of magnitude below Hormuz.',
-      'Only two modelled corridors use this waypoint: China → US East Coast (Panama) at 8M+ TEU/year, and Panama Transit at 14K+ transits/year between Colon and Balboa. The competing Asia–US East Coast product in the same table is China → US East Coast (Suez). When Panama slots tighten, that Suez (or Cape) option is the documented substitute, not a second Central American canal.',
+      'Only two modelled corridors use this waypoint: China → US East Coast (Panama) at 8M+ TEU/year, and Panama Transit at 14K+ transits/year between Colon and Balboa. The competing Asia–US East Coast product is China → US East Coast (Suez), waypointed on the Suez page rather than in this canal’s table. When Panama slots tighten, that Suez (or Cape) option is the documented substitute, not a second Central American canal.',
     ],
     alternative:
       'Ships that miss a Panama slot go around Cape Horn, use the US intermodal landbridge, or take the Suez/Cape eastbound product already in the trade-route table. None of those recreate the freshwater lock system. Drought rationing therefore shows up first as fewer daily transits and shallower permitted draft, which is why the live pulse on this page can publish a calm disruption score while still withholding an unsupplied AIS day-count.',
@@ -130,7 +137,7 @@ export const CHOKEPOINT_CONTENT = {
       },
       {
         question: 'Which modelled routes use the Panama Canal?',
-        answer: 'China → US East Coast (Panama) and the local Panama Transit corridor. The Suez-routed China → US East Coast product is the documented alternative in the same table.',
+        answer: 'China → US East Coast (Panama) and the local Panama Transit corridor. The Suez-routed China → US East Coast product is the documented alternative; it is waypointed on the Suez page, not in this canal’s two-row table.',
       },
     ],
   },
@@ -228,7 +235,7 @@ export const CHOKEPOINT_CONTENT = {
     blurb:
       'The Korea Strait lies between the Korean Peninsula and the Japanese islands, linking the East China Sea to the Sea of Japan. It is a key passage for North Asian container and energy traffic and a closely watched naval corridor.',
     analysis: [
-      'The Korea Strait (with the Western Channel / Tsushima) is the door between the East China Sea and the Sea of Japan / East Sea. Busan, Kitakyushu, and the Russian Far East lanes all feel this geography. World Monitor has not yet attached a TRADE_ROUTES waypoint here, so this page is a strategic-waterway reference rather than a corridor table. That is a registry gap, not a claim that nothing sails.',
+      'The Korea Strait (with the Western Channel / Tsushima) is the door between the East China Sea and the Sea of Japan / East Sea. Busan, Kitakyushu, and the Russian Far East lanes all feel this geography. World Monitor has not yet attached a TRADE_ROUTES waypoint here, so this page is a strategic-waterway reference whose corridor table has no mapped rows. That is a registry gap, not a claim that nothing sails.',
       'There is no EIA oil-transit baseline and no energy shock model. Intra-Asia Container in the trade-route table uses Taiwan Strait, not this id. Readers should not infer zero traffic from an empty modelled table; they should infer that this waterway is monitored for disruption and AIS while its corridor book is still unmapped.',
     ],
     alternative:
@@ -258,7 +265,7 @@ export const CHOKEPOINT_CONTENT = {
     faqs: [
       {
         question: 'Does World Monitor publish modelled TEU or bpd through Dover?',
-        answer: 'No modelled TRADE_ROUTES waypoint uses dover_strait, so this page has no corridor table. That is not a zero-traffic claim.',
+        answer: 'No modelled TRADE_ROUTES waypoint uses dover_strait, so the corridor table on this page has no mapped rows. That is not a zero-traffic claim.',
       },
       {
         question: 'Why does methodology mention 3.0 million barrels a day near Dover?',
@@ -283,7 +290,7 @@ export const CHOKEPOINT_CONTENT = {
         answer: 'No. That modelled corridor waypoints the Bosporus from Novorossiysk. Kerch gates the Sea of Azov, a different basin.',
       },
       {
-        question: 'Why is there no trade-route table on this page?',
+        question: 'Why does this page’s corridor table have no mapped rows?',
         answer: 'No TRADE_ROUTES entry lists kerch_strait as a waypoint. Kerch is tracked as a strategic waterway reference; disruption signals can still appear in the live pulse.',
       },
     ],

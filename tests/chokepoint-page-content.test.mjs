@@ -3,7 +3,9 @@ import { describe, it } from 'node:test';
 
 import {
   CHOKEPOINT_CONTENT,
+  CHOKEPOINT_REGISTRY_OBSERVED_AT,
   EIA_OIL_TRANSIT_BASELINES,
+  TRADE_ROUTES_OBSERVED_AT,
 } from '../scripts/chokepoint-page-content.mjs';
 
 const REGISTRY_IDS = [
@@ -50,5 +52,41 @@ describe('chokepoint page content (#7461)', () => {
     assert.equal(EIA_OIL_TRANSIT_BASELINES.byRegistryId.hormuz_strait.mbd, 21.0);
     assert.equal(EIA_OIL_TRANSIT_BASELINES.byRegistryId.panama.mbd, 0.9);
     assert.equal(EIA_OIL_TRANSIT_BASELINES.byRegistryId.dover_strait.eiaName, 'Danish Straits');
+  });
+
+  it('does not claim a missing table or off-page rows as this page’s table', () => {
+    const emptyRouteIds = new Set(['korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait']);
+    for (const id of REGISTRY_IDS) {
+      const content = CHOKEPOINT_CONTENT[id];
+      const visible = [
+        ...content.analysis,
+        content.alternative,
+        ...content.faqs.flatMap((faq) => [faq.question, faq.answer]),
+      ].join('\n');
+      assert.doesNotMatch(
+        visible,
+        /no (corridor|trade-route) table/i,
+        `${id} must not say the rendered corridor table is absent`,
+      );
+      assert.doesNotMatch(
+        visible,
+        /in the same (trade-route )?table/i,
+        `${id} must not place off-page alternatives inside this page’s table`,
+      );
+      if (emptyRouteIds.has(id)) {
+        assert.match(
+          visible,
+          /no mapped rows|empty modelled table|corridor book/i,
+          `${id} empty-route copy must describe an unmapped table, not a missing one`,
+        );
+      }
+    }
+  });
+
+  it('pins observation dates that survive a git-less corpus build', () => {
+    assert.match(CHOKEPOINT_REGISTRY_OBSERVED_AT, /^\d{4}-\d{2}-\d{2}$/);
+    assert.match(TRADE_ROUTES_OBSERVED_AT, /^\d{4}-\d{2}-\d{2}$/);
+    assert.equal(CHOKEPOINT_REGISTRY_OBSERVED_AT, '2026-04-09');
+    assert.equal(TRADE_ROUTES_OBSERVED_AT, '2026-03-14');
   });
 });
