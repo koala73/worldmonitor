@@ -57,6 +57,9 @@ describe('getCountryFacts provider contract', () => {
         return new Response(JSON.stringify({
           results: {
             bindings: [
+              ...(query.includes('wdt:P2936')
+                ? [{ ...shared, languageLabel: wikidataValue('English') }]
+                : []),
               { ...shared, languageLabel: wikidataValue('Spanish') },
               { ...shared, languageLabel: wikidataValue('Hawaiian') },
             ],
@@ -92,5 +95,36 @@ describe('getCountryFacts provider contract', () => {
       !requestedHosts.includes('restcountries.com'),
       'the retired REST Countries v3 endpoint must not be called',
     );
+  });
+
+  it('does not infer a language for a territory with no factual language binding', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+
+      if (url.hostname === 'query.wikidata.org') {
+        return new Response(JSON.stringify({
+          results: {
+            bindings: [{
+              countryLabel: wikidataValue('Antarctica'),
+              population: wikidataValue('1000'),
+              area: wikidataValue('14200000'),
+            }],
+          },
+        }));
+      }
+
+      if (url.hostname === 'en.wikipedia.org') {
+        return new Response(JSON.stringify({ extract: 'Antarctica is a continent.' }));
+      }
+
+      throw new Error(`Unexpected country-facts request: ${url}`);
+    }) as typeof fetch;
+
+    const result = await getCountryFacts({} as never, { countryCode: 'AQ' });
+
+    assert.deepEqual(result.languages, []);
   });
 });

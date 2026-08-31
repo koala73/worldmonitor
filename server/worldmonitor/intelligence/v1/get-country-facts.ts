@@ -85,11 +85,11 @@ async function fetchWikidata(code: string): Promise<WikiResult | null> {
   if (!/^[A-Z]{2}$/.test(code)) return null;
   try {
     return await cachedFetchJson<WikiResult>(
-      `intel:country-facts:wikidata:v2:${code}`,
+      `intel:country-facts:wikidata:v3:${code}`,
       FACTS_TTL,
       async () => {
         try {
-          const sparql = `SELECT ?countryLabel ?headLabel ?officeLabel ?population ?area ?capitalLabel ?languageLabel ?currencyLabel WHERE { ?country wdt:P297 "${code}". OPTIONAL { ?country p:P35 ?headStatement. ?headStatement ps:P35 ?head. FILTER NOT EXISTS { ?headStatement pq:P582 ?headEnd } OPTIONAL { ?headStatement pq:P39 ?office } } OPTIONAL { ?country wdt:P1082 ?population } OPTIONAL { ?country wdt:P2046 ?area } OPTIONAL { ?country wdt:P36 ?capital } OPTIONAL { ?country wdt:P37 ?language } OPTIONAL { ?country wdt:P38 ?currency } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } ORDER BY ?capitalLabel ?languageLabel ?currencyLabel LIMIT 100`;
+          const sparql = `SELECT ?countryLabel ?headLabel ?officeLabel ?population ?area ?capitalLabel ?languageLabel ?currencyLabel WHERE { ?country wdt:P297 "${code}". OPTIONAL { ?country p:P35 ?headStatement. ?headStatement ps:P35 ?head. FILTER NOT EXISTS { ?headStatement pq:P582 ?headEnd } OPTIONAL { ?headStatement pq:P39 ?office } } OPTIONAL { ?country wdt:P1082 ?population } OPTIONAL { ?country wdt:P2046 ?area } OPTIONAL { ?country wdt:P36 ?capital } OPTIONAL { { ?country wdt:P37 ?language } UNION { ?country wdt:P2936 ?language } } OPTIONAL { ?country wdt:P38 ?currency } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } ORDER BY ?capitalLabel ?languageLabel ?currencyLabel LIMIT 100`;
           const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
           const resp = await fetch(url, {
             headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
@@ -97,7 +97,7 @@ async function fetchWikidata(code: string): Promise<WikiResult | null> {
           });
           if (!resp.ok) return null;
           const data = (await resp.json()) as WikidataResponse;
-          return parseWikidataFacts(code, data.results?.bindings ?? []);
+          return parseWikidataFacts(data.results?.bindings ?? []);
         } catch {
           return null;
         }
@@ -109,7 +109,7 @@ async function fetchWikidata(code: string): Promise<WikiResult | null> {
   }
 }
 
-function parseWikidataFacts(code: string, bindings: WikidataBinding[]): WikiResult | null {
+function parseWikidataFacts(bindings: WikidataBinding[]): WikiResult | null {
   if (bindings.length === 0) return null;
 
   const firstLabel = (field: keyof WikidataBinding): string => {
@@ -127,16 +127,13 @@ function parseWikidataFacts(code: string, bindings: WikidataBinding[]): WikiResu
     return 0;
   };
 
-  const primaryLanguage = displayPrimaryLanguage(code);
-  const wikidataLanguages = uniqueLabels(bindings.map(binding => binding.languageLabel?.value));
-
   return {
     headOfState: firstLabel('headLabel'),
     headOfStateTitle: firstLabel('officeLabel'),
     population: Math.trunc(firstNumber('population')),
     areaSqKm: firstNumber('area'),
     capital: firstLabel('capitalLabel'),
-    languages: uniqueLabels([primaryLanguage, ...wikidataLanguages]),
+    languages: uniqueLabels(bindings.map(binding => binding.languageLabel?.value)),
     currencies: uniqueLabels(bindings.map(binding => binding.currencyLabel?.value)),
     countryName: firstLabel('countryLabel'),
   };
@@ -163,16 +160,6 @@ function uniqueLabels(values: Array<string | undefined>): string[] {
 function displayCountryName(code: string): string {
   try {
     return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? '';
-  } catch {
-    return '';
-  }
-}
-
-function displayPrimaryLanguage(code: string): string {
-  try {
-    const language = new Intl.Locale(`und-${code}`).maximize().language;
-    if (!language || language === 'und') return '';
-    return new Intl.DisplayNames(['en'], { type: 'language' }).of(language) ?? '';
   } catch {
     return '';
   }
