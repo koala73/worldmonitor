@@ -1113,6 +1113,18 @@ export const FEEDS = SITE_VARIANT === 'tech'
 //  • data-loader `loadNews()` — loads preset categories + custom enabled panels
 //  • panel-layout — creates a NewsPanel for any enabled category, not just preset
 // See src/config/feed-resolution.ts for the merge + resolution helpers.
+// On-demand categories are in the canonical registry so an enabled matching
+// panel can resolve feeds, but they are NOT part of any variant FEEDS preset.
+export const ON_DEMAND_FEEDS: Record<string, Feed[]> = {
+  'nq-news': [
+    { name: 'Reuters Nasdaq Futures', url: rss('https://news.google.com/rss/search?q=site:reuters.com+(Nasdaq+futures+OR+NQ+OR+"E-mini")+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Nasdaq-100 & QQQ', url: rss('https://news.google.com/rss/search?q=("Nasdaq-100"+OR+QQQ+OR+"Nasdaq+100")+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Federal Reserve Press', url: rss('https://www.federalreserve.gov/feeds/press_all.xml') },
+    { name: 'NQ Influence Basket', url: rss('https://news.google.com/rss/search?q=(AAPL+OR+Apple+OR+MSFT+OR+Microsoft+OR+NVDA+OR+NVIDIA+OR+AMZN+OR+Amazon+OR+GOOGL+OR+Alphabet+OR+META+OR+AVGO+OR+Broadcom+OR+TSLA+OR+Tesla)+when:1d&hl=en-US&gl=US&ceid=US:en') },
+    { name: 'Semiconductors', url: rss('https://news.google.com/rss/search?q=(semiconductor+OR+chip+OR+"AI+chip"+OR+TSMC+OR+ASML)+when:1d&hl=en-US&gl=US&ceid=US:en') },
+  ],
+};
+
 export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
   FULL_FEEDS,
   TECH_FEEDS,
@@ -1120,6 +1132,7 @@ export const CANONICAL_FEEDS: Record<string, Feed[]> = mergeCanonicalFeeds([
   COMMODITY_FEEDS,
   ENERGY_FEEDS,
   HAPPY_FEEDS,
+  ON_DEMAND_FEEDS,
 ]);
 
 export const SOURCE_REGION_MAP: Record<string, { labelKey: string; feedKeys: string[] }> = {
