@@ -533,6 +533,19 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false, re
         dataset.spatialCoverage,
         `${route} Dataset ${index + 1} must declare spatialCoverage`,
       );
+      // Google's Dataset parser accepts only Text or a literal Place for spatialCoverage;
+      // Place subtypes such as Country are rejected as "Invalid object type for field".
+      const coverages = Array.isArray(dataset.spatialCoverage)
+        ? dataset.spatialCoverage
+        : [dataset.spatialCoverage];
+      for (const coverage of coverages) {
+        assert.ok(
+          typeof coverage === 'string'
+            ? coverage.trim().length > 0
+            : isJsonLdType(coverage, 'Place'),
+          `${route} Dataset ${index + 1} spatialCoverage must be Text or @type Place, got ${JSON.stringify(coverage?.['@type'] ?? coverage)}`,
+        );
+      }
     }
   }
 
@@ -1301,10 +1314,15 @@ describe('crawlable corpus generator', () => {
       assert.equal(norwaySnapshot.countryCode, 'NO');
       assert.equal(norwaySnapshot.dataset, 'country-resilience-snapshot');
       assert.match(norway, /href="\/countries\/norway\/resilience\.json"/);
-      assert.ok(
-        norwayDataset.spatialCoverage?.geo?.['@type'] === 'GeoShape'
-          || norwayDataset.spatialCoverage?.['@type'] === 'Country',
-        'country Dataset spatialCoverage must identify the country (with GeoShape when bbox exists)',
+      assert.equal(
+        norwayDataset.spatialCoverage?.identifier,
+        'NO',
+        'country Dataset spatialCoverage must identify the country by code',
+      );
+      assert.equal(
+        norwayDataset.spatialCoverage?.geo?.['@type'],
+        'GeoShape',
+        'country Dataset spatialCoverage must carry the bbox as a GeoShape',
       );
       assertDataCatalogPresent(norway, '/countries/norway/');
 

@@ -86,7 +86,7 @@ const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // fold into every family's sitemap/page lastmod — that made ~90% of main
 // sitemap entries share one schema-bump date (#7382). Keep it for Dataset
 // dateModified only where a schema change actually lands in the payload.
-const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-30';
+const DATASET_SCHEMA_CONTENT_VERSION = '2026-08-31';
 const CRISIS_PAGE_CONTENT_VERSION = '2026-08-30';
 const TOOLS_PAGE_CONTENT_VERSION = '2026-08-30';
 const DATASET_LICENSE = {
@@ -570,9 +570,11 @@ function chokepointGeoShape(lat, lon, halfSpan = CHOKEPOINT_GEO_HALF_SPAN_DEG) {
   return geoShapeBox(lat - halfSpan, lon - halfSpan, lat + halfSpan, lon + halfSpan);
 }
 
+// Google's Dataset parser accepts only Text or a literal Place here — the Country
+// subtype is rejected as "Invalid object type for field spatialCoverage".
 function countrySpatialCoverage(country, bbox) {
   const place = {
-    '@type': 'Country',
+    '@type': 'Place',
     name: country.name,
     identifier: country.code,
   };
@@ -2376,6 +2378,8 @@ ${snapshotSection}
     name: country.name,
     identifier: country.code,
   }));
+  // Dataset.spatialCoverage must stay a literal Place for Google; WebPage.about keeps Country.
+  const coverageSpatial = coveragePlaces.map((place) => ({ ...place, '@type': 'Place' }));
   const distribution = [
     dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))),
   ];
@@ -2424,7 +2428,7 @@ ${snapshotSection}
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured,
-          spatialCoverage: coveragePlaces.length === 1 ? coveragePlaces[0] : coveragePlaces,
+          spatialCoverage: coverageSpatial.length === 1 ? coverageSpatial[0] : coverageSpatial,
           distribution,
         },
       },
