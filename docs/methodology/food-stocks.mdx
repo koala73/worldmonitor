@@ -3,11 +3,41 @@ title: "Food Stocks & Stocks-to-Use"
 description: "How WorldMonitor serves USDA PSD cereal ending stocks, production, use, and the stocks-to-use ratio per commodity and country, and why marketing years are not comparable across countries."
 ---
 
-## Purpose
+## Start here
 
-Stocks-to-use is the standard buffer measure for a cereal balance: how much of a marketing year's consumption is already sitting in store. A falling ratio is the earliest widely-published signal that a commodity's slack is gone.
+**Stocks-to-use is the pantry question.** If a country ate nothing new for a
+year, how much of that year could it cover from what is already in store?
 
-Served from `GET /api/resilience/v1/get-food-stocks?countryCode=<ISO2|WORLD>` and MCP `get_food_stocks`. Both require a Pro subscription.
+A stocks-to-use ratio of `0.20` means 20% of a marketing year's consumption —
+about two and a half months of it — is already sitting in store. It is the
+standard buffer measure for a cereal balance, and a falling ratio is the
+earliest widely-published warning that a commodity's slack is gone.
+
+### How to read it
+
+WorldMonitor publishes no "safe" threshold, because the level that counts as
+comfortable differs by commodity, by country, and by who else is willing to
+sell. Read the ratio as a **direction and a comparison against that same
+country and commodity's own recent history**, not against a universal line.
+
+What generalizes is the mechanism: buffers absorb shocks, and thin buffers
+transmit them. Prices turn jumpy well before anything physically runs out.
+
+Two habits matter more than the number itself:
+
+**Look at which side of the ratio moved.** Every row serves ending stocks,
+production, and total use next to the derived ratio, because a ratio that fell
+because consumption rose is a completely different story from one that fell
+because the harvest failed. The ratio alone cannot tell them apart.
+
+**Never sum country rows into a world total.** Ask for `countryCode=WORLD`
+instead. And never compare two countries just because their year labels match —
+see [Marketing years are not calendar years](#marketing-years-are-not-calendar-years),
+which is the single most common way this dataset gets misread.
+
+<Info>
+**Access.** Served from `GET /api/resilience/v1/get-food-stocks?countryCode=<ISO2|WORLD>` and MCP `get_food_stocks`. Both require a Pro subscription.
+</Info>
 
 ## Source
 

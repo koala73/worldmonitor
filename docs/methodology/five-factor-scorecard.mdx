@@ -1,110 +1,234 @@
 ---
 title: "Five-factor country scorecard"
-description: "Absolute 1-5 food, energy, demographics, technology, and defense capability scores with source provenance and bloc aggregation."
+description: "A plain-English guide to World Monitor's 1-5 food, energy, demographics, technology, and defense capability scores — how to read them, how they are built, and where the numbers come from."
 ---
 
-The five-factor scorecard answers five structural questions for a country or
-bloc: can it feed itself, supply its energy, sustain its people, develop and use
-technology, and defend itself? It is an annual-cadence judgment layer over
-source observations. It is not the Country Instability Index (CII), the Country
-Resilience Index (CRI), or a replacement for either one.
+## Start here
 
-All three scorecard RPCs — `GetFiveFactorScorecard`, `GetBlocScorecard`, and
-`ListFiveFactorScorecards` — require a Pro subscription (tier 1), as do the MCP
-tools `get_five_factor_scorecard` and `list_five_factor_scorecards`. See
-[Pro Intelligence Suite](/pro-intelligence-suite) for the request shapes.
+The five-factor scorecard asks five blunt questions about a country, and answers
+each one with a number from 1 to 5:
 
-## Version contract
+1. **Food** — can it feed itself?
+2. **Energy** — can it supply its own energy?
+3. **Demographics** — does it have the people, skills, and workforce to sustain itself?
+4. **Technology** — can it develop and use technology?
+5. **Defense** — can it defend itself?
 
-- **Methodology:** `1.0.0`
-- **Input registry:** `1.0.0`
-- **Stored schema:** `1`
-- **Canonical snapshot:** `scorecard:five-factor:v1`
-- **Atomic read model:** `scorecard:five-factor:v1:read-model`
-- **Seed health:** `seed-meta:scorecard:five-factor`
+A **1** means a severe structural deficit. A **5** means the country is largely
+self-sufficient on that factor. Nothing else about the number is complicated.
 
-Every result carries its methodology version and computation time. A change to
-a weight, goalpost, band, coverage floor, required group, aggregation rule, or
-input mapping requires a methodology version and changelog entry. A storage
-shape change also requires a schema version change.
+The point is to answer, in one screen, the question analysts usually spend a
+week assembling from a dozen datasets: *if this country were cut off, what
+would break first?*
 
-## Common scoring rules
+<Note>
+The scorecard describes **structure**, not **events**. It changes on the scale of
+years, because the underlying data — harvests, energy balances, census age
+structures, defense budgets — is published annually. For fast-moving risk, use
+the [Composite Instability Index](/methodology/cii-risk-scores) instead.
+</Note>
 
-Each input is normalized to an absolute 0-100 component score with the frozen
-goalposts below. Values outside a goalpost are clamped. The scorer then:
+## How to read a score
 
-1. Adds the declared weights of available components.
-2. Reports that sum as `inputCoverage` from 0 to 1.
-3. Divides the available weighted component total by available weight.
-4. Applies the pillar coverage floor and required-group rules.
-5. Maps the unrounded continuous sub-score to an integer band.
-6. Rounds the published sub-score and coverage to two and four decimal places,
-   respectively. Rounding never changes the band, because the band is always
-   derived in step 5 from the unrounded sub-score. Near a boundary the two can
-   therefore disagree by design: a continuous sub-score of `19.996` publishes as
-   `subScore: 20.00` with `band: 1`, not `band: 2`. Read the published `band`;
-   do not re-derive it from the published `subScore`.
+Each score is **absolute**, not a ranking. A 4 for Japan and a 4 for Brazil mean
+the same thing about self-sufficiency; they are not "4th place." A country can
+score 5 on every factor, or 1 on every factor, and both are legitimate outcomes.
+Nothing is graded on a curve.
 
-Unavailable inputs do not receive a neutral score and do not enter the weighted
-mean. Internally, a pillar below its floor has `hasScore=false`, `score=null`,
-`subScore=null`, and one or more explicit reasons. Protobuf JSON keeps numeric
-fields present as zero; API and MCP clients must read `hasScore` first because
-those zeros are insufficient-data placeholders, not measured zero resilience.
+| Score | Label | What it means in practice |
+|---:|---|---|
+| 1 | `severe-deficit` | The country cannot cover this need on its own. Disruption bites almost immediately. |
+| 2 | `material-deficit` | A real gap, closed by imports or partners. Vulnerable to a supplier shock. |
+| 3 | `mixed-capability` | Covers much of the need domestically, with important holes. |
+| 4 | `strong-capability` | Broadly self-sufficient. Gaps exist but are manageable. |
+| 5 | `high-capability` | Structurally self-sufficient, often with surplus to export. |
 
-### Absolute bands
+Alongside the 1-5 score, every factor also reports a **sub-score from 0 to 100**.
+Use the 1-5 score to compare countries at a glance; use the sub-score when you
+need to see movement *inside* a band — the difference between a country sitting
+at 61 (a shaky 4) and one sitting at 79 (nearly a 5).
 
-The lower boundary is inclusive. For example, exactly 40.0 is band 3.
+### A worked reading
 
-| Unrounded sub-score | Band | General meaning |
-|---:|---:|---|
-| `0 <= x < 20` | 1 | Severe structural deficit |
-| `20 <= x < 40` | 2 | Material deficit and external dependence |
-| `40 <= x < 60` | 3 | Mixed capability with important gaps |
-| `60 <= x < 80` | 4 | Strong capability with manageable gaps |
-| `80 <= x <= 100` | 5 | High structural self-sufficiency or capability |
+Suppose a country returns:
 
-### Unavailable reasons
+- Food **4** (sub-score 68.8)
+- Energy **2** (sub-score 31.0)
+- Demographics **3**
+- Technology **4**
+- Defense **2**
 
-The closed reason set is:
+The plain reading: this country grows more food than it eats and holds decent
+reserves, but it buys most of its energy abroad and depends on foreign suppliers
+for military equipment. A blockade or a sanctions regime would hurt it through
+fuel and weapons long before it hurt anyone's dinner plate.
 
-- `source-unavailable`: the upstream snapshot could not be read.
-- `country-unavailable`: the source is healthy but has no country observation.
-- `invalid-value`: the observation is non-finite or outside its valid domain.
-- `stale`: the observation is older than the input freshness contract.
-- `coverage-below-floor`: available weight is below the pillar floor.
-- `required-group-missing`: no available input satisfies a required group.
-- `missing-population`: a population-weighted calculation has no population.
-- `redistribution-blocked`: source policy forbids the partner-facing evidence.
+### What the scorecard is *not*
 
-Each evidence item is a tagged available/unavailable record. Available evidence
-includes input ID, value, year, unit, source, and source key. A retained
-last-good upstream observation stays available and carries `quality=retained`.
+- **Not a quality-of-life or "good country" index.** A wealthy, safe, deeply
+  interdependent country can score low. Self-sufficiency and desirability are
+  different things.
+- **Not a forecast.** It says what capacity exists today, not what will happen.
+- **Not the [Composite Instability Index (CII)](/methodology/cii-risk-scores)**,
+  which measures near-term instability risk, and **not the
+  [Country Resilience Index (CRI)](/methodology/country-resilience-index)**,
+  which measures recovery capacity. The three are independent and are not
+  substitutes for one another.
+- **Not editorial.** Every number traces back to a named public source
+  observation with a year attached, which the API returns alongside the score.
 
-### Freshness and publication floors
+## How a score gets built
 
-V1 applies observation-age limits before scoring. Population, food-balance,
-food-stock, and age-structure inputs allow at most 3 years; physical energy
-balance allows 4; low-carbon generation, trade diversity, workforce, and
-defense allow 5; all other annual inputs allow 7. The boundary year is
-inclusive. An expired source content-age envelope also makes its declared
-inputs `stale` even when the stored values remain readable.
+Every factor is built the same way, in four steps.
 
-A daily cohort replaces last-good only when at least 180 countries have one
-scoreable pillar, at least 150 have usable population evidence, and the
-scoreable-country counts meet these frozen floors: food 80, energy 120,
-demographics 150, technology 120, and defense 30. The
-floors were set from the 196-country production-source audit with headroom for
-normal source coverage. Health publishes population and the five pillar counts separately. A
-partial source outage cannot refresh health or replace a richer cohort.
+```mermaid
+flowchart TD
+  A["Published source observations<br/>(tonnes, %, dollars, people)"] --> B{"Recent enough?"}
+  B -- no --> S["Marked stale<br/>and dropped"]
+  B -- yes --> C["Rescale each one to 0-100<br/>against two frozen goalposts"]
+  C --> D["Weighted average<br/>of whatever is available"]
+  D --> E{"Enough weight present,<br/>and the must-have inputs?"}
+  E -- no --> N["No score<br/>plus a stated reason"]
+  E -- yes --> F["Sub-score 0-100"]
+  F --> G["Score 1-5"]
+```
 
-## Food
+**Step 1 — collect the observations.** For each factor, the scorer pulls a small
+set of published indicators. Food, for example, uses calorie production,
+calorie consumption, ending stocks, water stress, and import concentration.
 
-Food measures the ability to meet caloric use from production and stocks. It
-uses commodity production, consumption, ending stocks, and use from
-`resilience:food-stocks:v1`. Source quantities in thousand metric tonnes are
-converted to trillion kcal as `thousand metric tonnes * kcal/kg / 1,000,000`
-with the frozen commodity conversion
-table before aggregation.
+**Step 2 — put every indicator on the same 0-100 ruler.** Raw indicators arrive
+in incompatible units — tonnes, percentages, dollars, people. Each one is
+converted onto a common 0-100 scale using two fixed reference points, called
+*goalposts*: a value that scores 0 and a value that scores 100. Anything at or
+beyond a goalpost is clamped to that end.
+
+For example, the food-balance goalposts are `0.50 -> 0` and `1.25 -> 100`. A
+country producing half the calories it consumes scores 0; one producing 25%
+more than it consumes scores 100; one producing exactly as much as it consumes
+lands at 67. The goalposts are frozen as part of the published methodology, so
+last year's score and this year's score are measured against the same ruler.
+
+**Step 3 — take a weighted average.** Indicators are not equally important.
+Within Food, the production-versus-consumption balance carries 55% of the
+weight, while import diversity carries 5%. The weighted average of the
+component scores becomes the factor's 0-100 sub-score.
+
+**Step 4 — convert to a 1-5 score.** The sub-score is mapped to a band using
+fixed cutoffs. The lower boundary is inclusive, so exactly 40.0 is a 3.
+
+| Sub-score | Score | Label |
+|---|---:|---|
+| `0 <= x < 20` | 1 | `severe-deficit` |
+| `20 <= x < 40` | 2 | `material-deficit` |
+| `40 <= x < 60` | 3 | `mixed-capability` |
+| `60 <= x < 80` | 4 | `strong-capability` |
+| `80 <= x <= 100` | 5 | `high-capability` |
+
+### Worked example: one country's food score
+
+Take a country with these four published observations.
+
+| Indicator | Observed value | Goalposts | Component score | Weight | Contribution |
+|---|---:|---|---:|---:|---:|
+| Calorie production / consumption | 1.05 | `0.50 -> 0`, `1.25 -> 100` | 73.33 | 0.55 | 40.33 |
+| Calorie ending stocks / total use | 0.15 | `0.05 -> 0`, `0.25 -> 100` | 50.00 | 0.25 | 12.50 |
+| Water security (water stress) | 25% | `100 -> 0`, `10 -> 100` | 83.33 | 0.15 | 12.50 |
+| Import partner diversity (HHI) | 0.30 | `0.65 -> 0`, `0.15 -> 100` | 70.00 | 0.05 | 3.50 |
+
+All four indicators are present, so coverage is `1.00` and the contributions
+simply add up:
+
+```text
+sub-score = 40.33 + 12.50 + 12.50 + 3.50 = 68.83
+score     = 4  (because 60 <= 68.83 < 80)
+```
+
+Read as prose: the country grows about 5% more calories than it eats, holds
+roughly two months of buffer stock, has moderate water stress, and spreads its
+food imports across enough partners that no single supplier can squeeze it.
+**Strong capability, with room to improve on buffers.**
+
+## Why a factor sometimes has no score at all
+
+Sometimes a factor comes back empty instead of low. That is deliberate, and the
+distinction matters: **a missing score is not a bad score.**
+
+The scorer never invents a placeholder for a missing indicator. It does not
+substitute a neutral 50, and it does not treat "we have no data" as zero
+capability — doing either would quietly turn a data gap into a false finding
+about a real country.
+
+Instead, each factor has a **coverage floor**: a minimum share of its indicator
+weight that must actually be present, plus a short list of indicators it cannot
+do without. Food, for instance, needs 70% of its weight available *and* must
+have the production-versus-consumption balance. If a country clears the bar, the
+factor is scored using only the indicators that are present, with the weights
+rescaled across them. If it does not clear the bar, the factor reports no score
+and says why.
+
+<Warning>
+**Never read a missing score as a zero.** Over the API, unscored factors come
+back with `hasScore: false` and numeric fields set to `0` — those zeros are
+protocol placeholders for "no data," not measurements. Always check `hasScore`
+before reading `score` or `subScore`. See [Reading the API response](#reading-the-api-response).
+</Warning>
+
+Every unscored factor names its reason from this closed set:
+
+| Reason | In plain English |
+|---|---|
+| `source-unavailable` | The upstream dataset could not be read at all. |
+| `country-unavailable` | The dataset is healthy but has no entry for this country. |
+| `invalid-value` | The published figure is impossible or out of range. |
+| `stale` | The most recent figure is older than this indicator's age limit. |
+| `coverage-below-floor` | Too few indicators were available to score the factor honestly. |
+| `required-group-missing` | An indicator the factor cannot do without is missing. |
+| `missing-population` | A population-weighted calculation had no population figure. |
+| `redistribution-blocked` | The source licence forbids republishing this evidence. |
+
+## How current the data is
+
+Each indicator carries a maximum age, because a 12-year-old energy balance is
+not evidence about today. The boundary year is inclusive.
+
+| Maximum age | Indicators |
+|---:|---|
+| 3 years | Population, food balance, food stocks, age structure |
+| 4 years | Physical energy balance |
+| 5 years | Low-carbon generation, trade diversity, workforce, defense |
+| 7 years | All other annual indicators |
+
+An observation past its limit is marked `stale` and drops out of the score
+rather than dragging it. If a source's own content-age envelope expires, every
+indicator it feeds goes stale too, even when the stored values are still
+readable.
+
+The scorecard also refuses to publish a thin day. A fresh daily cohort replaces
+the previous one only when it covers at least 180 countries with a scoreable
+factor and 150 with usable population evidence, and clears these per-factor
+country counts: food 80, energy 120, demographics 150, technology 120,
+defense 30. These floors came from an audit of 196 countries against production
+sources, with headroom for normal coverage wobble. A partial source outage
+therefore cannot overwrite a richer snapshot with a poorer one — the previous
+good cohort simply stays live.
+
+## The five factors in detail
+
+Each factor below lists the indicators it uses, how much each one counts, the
+0-100 goalposts, and how the score is aggregated when you ask for a bloc rather
+than a single country.
+
+### Food
+
+**The question:** can the country cover the calories it consumes from its own
+production and stored reserves, without being at the mercy of one supplier?
+
+Food combines a physical calorie balance with buffer stocks, water stress, and
+import concentration. Commodity quantities published in thousand metric tonnes
+are converted to trillion kcal as
+`thousand metric tonnes * kcal/kg / 1,000,000` using a frozen commodity
+conversion table before anything is aggregated.
 
 | Component | Weight | Direction and goalposts | Input source |
 |---|---:|---|---|
@@ -115,19 +239,22 @@ table before aggregation.
 
 Coverage floor: **0.70**. Calorie production / consumption is required.
 
-- Band 1: production is near or below half of use and buffers are weak.
-- Band 3: domestic output covers much, but not all, use or buffers are mixed.
-- Band 5: output materially exceeds use and stock buffers are strong.
+- **Score 1:** production is near or below half of use and buffers are weak.
+- **Score 3:** domestic output covers much, but not all, use — or buffers are mixed.
+- **Score 5:** output materially exceeds use and stock buffers are strong.
 
-For blocs, production and consumption are summed before their ratio is scored;
-ending stocks and total use are also summed before scoring. Water and import
-diversity component scores are population-weighted across members with evidence.
+**For blocs:** production and consumption are summed across members before their
+ratio is scored, and ending stocks and total use are summed the same way — the
+bloc is treated as one physical system. Water and import diversity are
+population-weighted across the members that have evidence.
 
-## Energy
+### Energy
 
-Energy measures physical primary-energy balance and supporting power-system
-quality. Consumption comes from OWID `primary_energy_consumption`. Production
-is derived from World Bank net energy imports (`EG.IMP.CONS.ZS`):
+**The question:** does the country produce the primary energy it burns, and is
+the system that delivers it sound?
+
+Consumption comes from OWID `primary_energy_consumption`. Production is derived
+from World Bank net energy imports (`EG.IMP.CONS.ZS`):
 
 ```text
 production TWh = consumption TWh * (1 - net imports percent / 100)
@@ -141,20 +268,24 @@ production TWh = consumption TWh * (1 - net imports percent / 100)
 
 Coverage floor: **0.60**. Primary production / consumption is required.
 
-- Band 1: production covers little of use.
-- Band 3: balance is mixed and imports remain material.
-- Band 5: the country is energy self-sufficient or a net producer with strong
-  supporting power-system evidence.
+- **Score 1:** production covers little of use.
+- **Score 3:** the balance is mixed and imports remain material.
+- **Score 5:** energy self-sufficient or a net producer, with strong supporting
+  power-system evidence.
 
-For blocs, primary production and consumption TWh are summed before scoring.
-Low-carbon generation and grid efficiency component scores are
-population-weighted across members with evidence.
+**For blocs:** production and consumption TWh are summed before scoring.
+Low-carbon share and grid efficiency are population-weighted across members with
+evidence.
 
-## Demographics
+### Demographics
 
-Demographics combines age structure, the projected working-age population,
-education, research capacity, and trained industrial labor. Inputs come from
-`demographics:capability:v1`.
+**The question:** does the country have enough working-age people, and are they
+educated and trained enough to run a modern economy?
+
+This factor deliberately mixes *how many* people are available to work with
+*what they can do* — a favorable age pyramid with no engineers is not capability,
+and neither is a deep university system attached to a collapsing workforce.
+Inputs come from `demographics:capability:v1`.
 
 | Component | Weight | Direction and goalposts |
 |---|---:|---|
@@ -170,19 +301,22 @@ education, research capacity, and trained industrial labor. Inputs come from
 Coverage floor: **0.60**. At least one age-structure input and one education,
 research, or workforce input are required.
 
-- Band 1: severe dependency or contraction with little capability evidence.
-- Band 3: mixed age structure and human-capability depth.
-- Band 5: favorable labor supply and deep education, research, and industrial
-  workforce capacity.
+- **Score 1:** severe dependency or contraction, with little capability evidence.
+- **Score 3:** mixed age structure and human-capability depth.
+- **Score 5:** favorable labor supply plus deep education, research, and
+  industrial workforce capacity.
 
-Bloc demographics is the population-weighted mean of member unrounded
-continuous demographic sub-scores. It never averages integer bands.
+**For blocs:** the population-weighted mean of member sub-scores. It never
+averages the 1-5 scores — averaging bands would let a tiny member swing the
+result as hard as a large one.
 
-## Technology
+### Technology
 
-Technology uses source-preserving World Bank observations. The existing
-technology readiness score, rank, and components remain unchanged; v1 adds the
-raw observations needed to show and reproduce this scorecard.
+**The question:** is the country connected, and does it generate its own
+technology rather than only consuming it?
+
+The existing technology-readiness score, rank, and components are unchanged;
+v1 adds the raw observations needed to show and reproduce this scorecard.
 
 | Component | Weight | Direction and goalposts | Input source |
 |---|---:|---|---|
@@ -197,20 +331,22 @@ raw observations needed to show and reproduce this scorecard.
 Coverage floor: **0.65**. At least one connectivity input and one innovation
 input are required.
 
-- Band 1: limited digital access and little measured innovation capacity.
-- Band 3: broad use or research capacity, but material gaps remain.
-- Band 5: high connectivity plus deep and sustained innovation capability.
+- **Score 1:** limited digital access and little measured innovation capacity.
+- **Score 3:** broad use *or* research capacity, but material gaps remain.
+- **Score 5:** high connectivity plus deep and sustained innovation capability.
 
-Bloc technology is the population-weighted mean of member unrounded continuous
-technology sub-scores.
+**For blocs:** the population-weighted mean of member sub-scores.
 
-## Defense
+### Defense
 
-Defense measures sustained national defense capacity. World Bank defense
-observations come from `military:industrial-base:v1`. SIPRI raw transfer rows
-are not stored or returned. Until the source policy permits public use of the
-already derived supplier HHI, that component is explicitly unavailable with
-`redistribution-blocked`.
+**The question:** can the country sustain a military — and equip it without
+depending on someone else's factories?
+
+Note the heaviest weight sits on the arms-transfer balance rather than on
+spending. A large budget spent entirely on imported equipment is a weaker
+structural position than a smaller budget backed by domestic production, and
+the weighting says so. World Bank defense observations come from
+`military:industrial-base:v1`.
 
 | Component | Weight | Direction and goalposts |
 |---|---:|---|
@@ -220,50 +356,133 @@ already derived supplier HHI, that component is explicitly unavailable with
 | Arms export share of transfers | 0.30 | higher; `0 -> 0`, `1 -> 100`; same-year exports / (exports + imports) |
 | Supplier diversity | 0.20 | lower HHI; `0.65 -> 0`, `0.15 -> 100` |
 
-Coverage floor: **0.50**. At least one posture input (spending or personnel)
-and the arms-transfer industrial-balance input are required.
+Coverage floor: **0.50**. At least one posture input (spending or personnel) and
+the arms-transfer industrial-balance input are required.
 
-- Band 1: small posture with high external equipment dependence.
-- Band 3: material posture or industrial capability, with important gaps.
-- Band 5: large sustained posture and strong domestic/export industrial depth.
+- **Score 1:** small posture with high external equipment dependence.
+- **Score 3:** material posture *or* industrial capability, with important gaps.
+- **Score 5:** large sustained posture and strong domestic and export industrial
+  depth.
 
-Bloc defense is the population-weighted mean of member unrounded continuous
-defense sub-scores. Supplier diversity remains unavailable while the policy
-block applies.
-
-The industrial balance is available only when both exports and imports are
-explicit finite observations from the same year. A missing side is never
+The industrial balance is only computed when exports and imports are both
+explicit, finite observations from the same year. A missing side is never
 coerced to zero; an explicit measured zero remains valid.
 
-## Bloc rules
+<Info>
+**Supplier diversity is currently unavailable for every country.** SIPRI raw
+transfer rows are not stored or returned, and until the source policy permits
+public use of the already derived supplier HHI, that component reports
+`redistribution-blocked`. Defense scores are therefore computed from the
+remaining 0.80 of weight.
+</Info>
 
-V1 presets are versioned as part of the methodology: `USMCA`, `EU27`, `BRICS`,
-`GCC`, `ASEAN`, and `NATO`. Custom blocs accept 2-30 unique uppercase ISO-2
-country codes from the public rankable universe. A request must select exactly
-one preset or one custom member list. Presets may contain more than 30 members.
+**For blocs:** the population-weighted mean of member sub-scores, with supplier
+diversity still unavailable while the policy block applies.
 
-Membership was checked on 2026-08-29 against the official
+## Scoring a bloc instead of a country
+
+You can score a group of countries as a single unit — the EU as one energy
+system, BRICS as one food system.
+
+Six presets ship as part of the versioned methodology: `USMCA`, `EU27`,
+`BRICS`, `GCC`, `ASEAN`, and `NATO`. Custom blocs take 2-30 unique uppercase
+ISO-2 codes from the public rankable universe. A request selects exactly one
+preset *or* one custom member list. Presets themselves may exceed 30 members.
+
+Two aggregation rules are used, and the difference is deliberate:
+
+- **Food and energy are aggregated physically, then scored.** Tonnes and
+  terawatt-hours are summed across members first, because a bloc really does
+  share one physical balance sheet.
+- **Demographics, technology, and defense are population-weighted continuous
+  scores.** These are per-capita capabilities that cannot be summed, so member
+  sub-scores are averaged by population.
+
+**No bloc formula ever averages the 1-5 scores.** Each bloc factor reports its
+aggregation method, its included and excluded members, population coverage where
+applicable, and the evidence used.
+
+Preset membership was verified on 2026-08-29 against the official
 [EU country list](https://european-union.europa.eu/principles-countries-history/eu-countries_en),
 [BRICS member list](https://brics.br/en/about-the-brics),
 [ASEAN member list](https://asean.org/member-states/), and
 [NATO member-country history](https://www.nato.int/cps/en/natohq/nato_countries.htm).
-The ASEAN preset includes Timor-Leste, and the BRICS preset uses the official
-11-member list. Preset membership changes require a methodology changelog entry.
+The ASEAN preset includes Timor-Leste and the BRICS preset uses the official
+11-member list. Membership changes require a methodology changelog entry.
 
-Each bloc pillar reports its aggregation method, included and excluded members,
-population coverage where applicable, and the evidence used. Food and energy
-use physical aggregate-then-score rules. Demographics, technology, and defense
-population-weight continuous scores. No bloc formula averages country bands.
+## For developers
+
+### Access
+
+All three scorecard RPCs — `GetFiveFactorScorecard`, `GetBlocScorecard`, and
+`ListFiveFactorScorecards` — require a Pro subscription (tier 1), as do the MCP
+tools `get_five_factor_scorecard` and `list_five_factor_scorecards`. See
+[Pro Intelligence Suite](/pro-intelligence-suite) for request shapes.
+
+### Reading the API response
+
+Each factor returns four fields that are easy to confuse:
+
+| Field | Type | Meaning |
+|---|---|---|
+| `hasScore` | bool | Read this first. When `false`, the factor was not scored. |
+| `score` | int32 | The 1-5 score. `0` when `hasScore` is `false`. |
+| `subScore` | double | The 0-100 sub-score, rounded to 2 decimals. `0` when `hasScore` is `false`. |
+| `band` | string | The label for `score`: `severe-deficit`, `material-deficit`, `mixed-capability`, `strong-capability`, or `high-capability`. Empty when `hasScore` is `false`. |
+
+`inputCoverage` reports the share of indicator weight that was available,
+from 0 to 1, rounded to 4 decimals.
+
+<Warning>
+Protobuf JSON keeps numeric fields present as zero, so an unscored factor is
+indistinguishable from a genuine zero unless you branch on `hasScore` first.
+Those zeros are insufficient-data placeholders, not measured zero capability.
+</Warning>
+
+### Do not re-derive the score from the sub-score
+
+`score` is derived from the **unrounded** continuous value; `subScore` is that
+same value rounded to two decimals. Near a band boundary the two can legitimately
+disagree. A continuous value of `19.996` publishes as:
+
+```json
+{ "hasScore": true, "score": 1, "subScore": 20, "band": "severe-deficit" }
+```
+
+That is correct, not a bug. Always use the published `score` and `band`; never
+recompute a band from `subScore`.
+
+### Evidence records
+
+Every indicator returns a tagged available/unavailable record. Available
+evidence carries the input ID, value, year, unit, source, and source key. A
+retained last-good upstream observation stays available and is marked
+`quality=retained`.
+
+### Version contract
+
+- **Methodology:** `1.0.0`
+- **Input registry:** `1.0.0`
+- **Stored schema:** `1`
+- **Canonical snapshot:** `scorecard:five-factor:v1`
+- **Atomic read model:** `scorecard:five-factor:v1:read-model`
+- **Seed health:** `seed-meta:scorecard:five-factor`
+
+Every result carries its methodology version and computation time. Changing a
+weight, goalpost, band cutoff, coverage floor, required group, aggregation rule,
+or input mapping requires a methodology version bump and a changelog entry. A
+change to the stored shape also requires a schema version bump. Health publishes
+the population count and the five per-factor counts separately.
 
 ## Changelog
 
 ### 1.0.0 - 2026-08-29
 
-- Initial five-pillar methodology.
+- Initial five-factor methodology.
 - Frozen absolute bands, goalposts, weights, coverage floors, required groups,
   aggregation rules, unavailable reasons, and rounding rules.
 - Added source-safe evidence provenance and an explicit SIPRI redistribution
   block.
 - Defined current preset and custom bloc validation contracts.
-- Froze per-input evidence ages and per-pillar publication floors; stale or
+- Froze per-input evidence ages and per-factor publication floors; stale or
   coverage-collapsed cohorts preserve the prior last-good snapshot.

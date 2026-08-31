@@ -3,58 +3,59 @@ title: "CII 风险评分方法论"
 description: "综合不稳定指数（CII）与战略风险汇总背后的编辑方法论：baselineRisk 基准风险、eventMultiplier 事件乘数、四分量评分模型与战略风险等级带，以及在 CiiScore 上戳记的 v7 公式版本，帮助用户理解国家风险评分的构成、更新逻辑与可解释性。"
 ---
 
-`GET /api/intelligence/v1/get-risk-scores`（proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`）暴露的 **综合不稳定指数（CII）** 和 **战略风险** 汇总的已发布方法论说明。
+## 从这里开始
 
-这些权重是**编辑性**的——由 WorldMonitor 情报团队基于对历史事件和当前地缘政治姿态的内部审阅撰写。它们**并非派生自已发布的学术指数**、同行评审论文或第三方风险产品。请将这些评分视为有态度的，而非经验性的。本说明的目的是使这些态度可被检查，以便下游消费者决定是否同意。
+综合不稳定指数回答一个可操作的问题：
+**今天我应该先看哪个国家？**
 
-每个 `CiiScore` 上传输的 `methodology_version` 字段反映了计算评分时本文档的哪个修订版本处于活跃状态。当前版本为 **v8**。
+它是一个 0–100 的压力读数，为一份策展的观察名单持续重算。当抗议、交火、军事调动与新闻压力在同一时间、同一地点一起抬头时，这个数字就会上升。
 
-> **v8（2026-06-06）。** 修复了失效的 UCDP 冲突下限归属。服务端
-> 评分器从缓存的 `conflict:ucdp-events:v1` 源读取了不存在的
-> `intensity_level` / `type_of_violence` 字段（该源的行实际携带
-> `violenceType` / `deathsBest` / `dateStart`），因此 UCDP 从未应用其
-> 战争（下限 70）/ 轻度（下限 50）评分下限，也从未计入
-> `riskScores` 实时健康/缓存信号覆盖。UCDP 现按国家在 2 年滚动窗口内分类
-> （战争：死亡总数 > 1000 或事件数 > 100；轻度：事件数 > 10），与前端的
-> `deriveUcdpClassifications` 启发式一致。分类器为该
-> 2 年窗口配置，但 Redis 写入器当前抓取最新的六页 UCDP，
-> 并从 365 天滚动切片中保留最多 2,000 条映射事件。中继
-> `/ucdp-events` 读取器最多可抓取 12 页，但应用相同的 365 天
-> 过滤器。因此，在 UCDP 保留范围通过生产级 API 体量与
-> Redis 载荷保障扩展之前，实时评分受种子输入约束。
-> 健康覆盖度指标的冲突
-> 族现在由 ACLED API 路径**或** UCDP 满足，因此当 UCDP 健康时，
-> 薄/空 ACLED 窗口不再将健康翻转为 `COVERAGE_PARTIAL`。
-> 当前 ACLED 或 UCDP 的健康覆盖语义请参见
-> [国家不稳定指数](/zh/country-instability-index)。
-> 活跃 UCDP 冲突国家的 `combinedScore` 值上升（例如 UA/PK/MX
-> 获得战争下限）；风险评分缓存键家族迁移到
-> `risk:scores:sebuf:v8`，发射的 `methodology_version` 现为 `v8`，固定于
-> `methodology_version` 的客户端应重新基线。
+高 CII **不等于**"危险的国家"。它意味着**此地此刻正在发生很多事**。一个稳定国家真正糟糕的一周，得分会高过一个长期动荡国家平静的一周——这正是设计意图：CII 是一个分诊转盘，不是一份判决书。
 
-> **v8 修正（2026-06-07）。** 来源发现与可观测性得到澄清，
-> 未改变评分系数、CII 公式版本或
-> `risk:scores:sebuf:v8` 缓存键。UCDP 种子器现在优先选择返回事件的
-> 最新 GED 版本，而非停留在第一个响应版本
-> （[#4200](https://github.com/koala73/worldmonitor/issues/4200)），且
-> CII 刷新路径在 ACLED 对两个比较窗口均返回零事件时发出警告，
-> 以便运维人员区分安静源与鉴权/上游缺口。
+### 它观察的四件事
 
-> **v7（2026-06-06）。** 第二批 CII 缺口关闭的评分归属发生了变化。坐标归属现在在成对边界规则之前处理三向 bbox 重叠，因此 Punggye-ri 归属到 KP 而非 CN，Lublin 归属到 PL 而非 UA；种子镜像使用相同的解析器。针对 Lhasa、Gaziantep、Kermanshah、Quetta、Islamabad、Dammam、Tabuk、Ruili、Belogorsk、北海道北部和 Amman 添加了定向矩形 bbox 探测。气候异常加成现在覆盖生产者发射的 `Europe`、`East Asia` 和 `Latin America` 区域，恢复了 KP/KR/JP/PL/DE/FR/GB/VE 的加成覆盖，且未知的未来区域名在存在异常坐标时可通过其回退。受影响记录此前归属到错误国家或被忽略处，`combinedScore` 值可能发生变化。风险评分缓存键家族迁移到 `risk:scores:sebuf:v7`；固定于 `methodology_version` 的客户端应重新基线。剩余的坐标归属仍是矩形近似，而非完整的点在多边形内边界几何。
+| 分量 | 它捕捉什么 |
+|---|---|
+| **动荡（Unrest）** | 抗议、骚乱，以及随之而来的中断——暴力之前的摩擦。 |
+| **冲突（Conflict）** | 真正的交火：战斗、爆炸、针对平民的暴力。 |
+| **安全（Security）** | 周边的军事节奏——军机、军舰、空域中断、GPS 干扰。 |
+| **信息（Information）** | 关于这个国家的新闻环境有多热。 |
 
-> **v6（2026-06-06）。** 国家文本、坐标和气候异常输入的评分归属发生了变化。文本归属现在将 `north korean` 识别为 KP，将 `taiwanese` 识别为 TW，同时仍拒绝歧义的裸 `korean`。坐标归属在高价值重叠区域保持种子与服务端对齐：Rio Grande US/MX 边界段、朝鲜非军事区西部、RU/UA、IN/PK、CN/RU 和 RU/JP。气候异常加成现在消费气候生产者发射的区域名（`Ukraine`、`California`、`Amazon`、`Taiwan Strait`、`Caribbean` 等），并将枚举严重性映射到数值加成尺度。受影响的军事、火灾、GPS、地震、新闻或气候记录此前归属到错误国家或被忽略处，`combinedScore` 值可能发生变化。风险评分缓存键家族迁移到 `risk:scores:sebuf:v6`；固定于 `methodology_version` 的客户端应重新基线。
+### 这个数字是怎么拼出来的
 
-> **v5（2026-06-06）。** `dynamicScore` 现在是范围 `-100..100` 内的带符号移动增量，派生自约 24 小时前的有效 CII 快照。正值表示国家评分上升，负值表示下降，`0` 表示稳定或无有效先前快照。服务端趋势标签使用严格的一点死区：`+1` 或 `-1` 的整点评分变化保持稳定，而 `+2` 和 `-2` 是首个上升/下降标签。浏览器回退使用相同的趋势死区。此版本升级未改变 `combinedScore` 系数，但此前将 `dynamicScore` 视为非负实时评分的 API 客户端应重新基线。
+每个国家都带有一个**基准值**——它在平常时期有多不稳定——以及一个**事件乘数**，用来决定同一起事件在该国应当推动多大幅度。头条评分是 40% 基准 + 60% 实时事件，再叠加地震、网络事件、旅行警告等情境性加成。
 
-> **v4（2026-06-06）。** 归属和源输入语义发生变化，同时保持已发布的系数表不变。国家文本归属现在使用规范化 token 精确匹配 / 短语匹配而非原始子串匹配，坐标归属将已知边界框重叠通过显式边界启发式路由，地震种子使用 USGS 4.5 周（`4.5_week`）信息流，制裁评分从 `sanctions:country-counts:v1` 读取完整国家计数图，而非依赖顶部压力显示列表。`combinedScore` 值在这些来源此前误归属或遗漏国家压力之处可能发生变化；固定于 `methodology_version` 的客户端应重新基线。
+这个 40/60 的比例就是全部设计。它使得一个脆弱国家永远不会读作平静，也使得一个稳定国家真正的危机仍能迅速拉动数字。
 
-> **v3（2026-05-27）。** 冲突事件活动现在在最终分量上限（`cap = 70`，`pivot = 4000`）之前使用对数缩放曲线，取代了早期线性提前上限——后者可能将中等和极端政治暴力体量压缩到同一分量值。浏览器侧旧版 CII 路径现在使用与服务端相同的位移对数斜坡（`100K ≈ +4`、`500K ≈ +10`、`1M ≈ +12`、`5M ≈ +18`、`10M+ = +20`），而非旧的两档 `+4/+8` 加成。浏览器新闻警报压力不再乘以各国 `eventMultiplier`；它仍是一个信息分量信号，而非国内不稳定性的国家调校代理。固定于 `methodology_version` 的客户端应重新基线。
+```mermaid
+flowchart TD
+  U["动荡<br/>抗议、骚乱、中断"] --> E["事件评分<br/>U 25% + C 30% + S 20% + I 25%"]
+  C["冲突<br/>战斗、爆炸、<br/>针对平民的暴力"] --> E
+  S["安全<br/>军机、军舰、<br/>GPS 干扰"] --> E
+  I["信息<br/>加权的关键新闻"] --> E
+  B["基准风险<br/>该国在平常时期<br/>有多不稳定"] --> M["复合<br/>基准 40% + 事件 60%"]
+  E --> M
+  M --> X["情境性加成<br/>气候、网络、火情、地震、<br/>旅行警告、制裁、流离失所"]
+  X --> R["combinedScore 0-100"]
+```
 
-> **实现说明（2026-05-27）。** `baselineRisk` 和 `eventMultiplier` 现在来自服务端和前端共用的一张共享系数表。这通过为 AF、EG、IQ、JP、KR、LB 和 QA 保留此前已发布的服务端/API 值，解决了 [#3789](https://github.com/koala73/worldmonitor/issues/3789) 跟踪的 7 国漂移。前端客户端 CII 渲染现在使用相同的值。服务端/API 值在此重构中未变化——上方的 v3 升级来自校准变更，而非此次真相源迁移。
+### 它是什么，不是什么
 
-> **v2（2026-05-22）。** `Security` 分量不再是仅 GPS 干扰——它现在与 GPS 干扰一起对军事飞行、军事船舶和航空中断进行评分（issue #3738）。复合混合获得了 `newsUrgencyBoost`、`earthquakeBoost`、`sanctionsBoost` 和 AIS 中断加成，且 `cyberBoost`/`fireBoost` 现在按严重性加权而非原始计数。`combinedScore` 值相应变化——固定于 `methodology_version` 的客户端应重新基线。
+**它是**一个帮助值班人员在快速变化的仪表盘上决定先看哪里的单一数字。
 
-> **注意 — 评分契约变更。** 任何更改服务端/API 各国基线、事件乘数、战略风险汇总系数、内联服务端公式字面量、受保护的顶级公式常量或 CII 移动语义的编辑，必须伴随 `server/worldmonitor/intelligence/v1/_risk-config.ts` 中 `CII_FORMULA_VERSION` 的提升，在同一提交中更新本文档，以及一条公开 CHANGELOG 条目。保留服务端/API 评分的真相源重构不提升传输版本。`tests/cii-scoring.test.mts` 中的测试强制本文档列出 `CURATED_COUNTRIES` 中的每个国家代码。
+**它不是**预测、保险定价输入，也不能替代主权国家发布的旅行警告。它同样**不是**[国家韧性指数](/zh/methodology/country-resilience-index)——后者问的是相反的问题：不是*这个国家正在发生什么*，而是*它扛得住吗*。仪表盘把两者并排展示，正是因为一个国家可以平静而脆弱，也可以承压而坚韧。
+
+<Warning>
+**这些权重是编辑性的，不是经验性的。** 它们由 WorldMonitor 情报团队基于对历史事件和当前地缘政治姿态的内部审阅撰写，**并非**派生自已发布的学术指数、同行评审论文或第三方风险产品。合理的分析师会对其中某些条目持不同意见。
+
+公开本页的全部意义，就是让这些判断可被检查，以便你在依赖它们之前先决定是否同意。如果某个重要决策依赖这些评分，请固定每个 `CiiScore` 上的 `methodology_version` 字段、留意版本提升，并对照你自己的实况来权衡各国的 `event_multiplier`。
+</Warning>
+
+覆盖的国家是一份**策展的监测范围**，而非全部主权国家——参见[一级国家标准](#2-各国-baselinerisk-和-eventmultiplier)。CRI 覆盖更广的 196 国范围。
+
+<Note>
+**面向开发者。** CII 与战略风险汇总由 `GET /api/intelligence/v1/get-risk-scores`（proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`）提供。每个 `CiiScore` 上传输的 `methodology_version` 字段记录了计算该评分时本文档所处的修订版本。当前版本为 **v8**——参见[版本历史](#版本历史)。
+</Note>
 
 ---
 
@@ -152,6 +153,10 @@ composite = baseline * 0.4
 
 ## 2. 各国 `baselineRisk` 和 `eventMultiplier`
 
+**这两个数字是干什么的。** `baselineRisk` 是一个国家在没什么事发生时所处的位置——它的静息脉搏。`eventMultiplier` 则决定同一起事件在那里应当发出多大的响声：在一个近期毫无动荡记录的国家发生一次抗议，其信息量远大于在一个每周都有抗议的地方发生一次，而乘数正是用来编码这个判断的。
+
+两者都是人工设定的值，公布在此正是为了让你可以质疑它们。
+
 这些是服务端 API 评分和前端客户端 CII 渲染都应用的编辑值。真相源是 [`shared/cii-weights.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-weights.ts)；服务端和前端表从该模块派生，因此系数漂移在测试中失败而非静默发布。
 
 Tier-1 国家集是一个精选的监测范围，而非所有主权国家的自动排名。当一个国家满足至少一项编辑标准时进入该集：持续的全球风险相关性、活跃/近期的武装冲突或严重国内动荡、高影响区域升级潜力、重大经济/安全体系重要性，或仪表盘中的特定运营覆盖需求。该集有意保持小规模，以使 CII 维持为高频分诊面；CRI 覆盖更广的 196 国可排名范围。
@@ -209,6 +214,10 @@ CII 是一个编辑性分诊指数，而非中性测量系统。因此策展的 
 
 ## 3. 战略风险汇总
 
+**这就是仪表盘顶部那个全局数字**——"今天世界有多紧张"的那个转盘。它只由压力最大的五个国家构成，加权时最糟的那个权重最高，最后压缩到 15–85 的区间。
+
+它的行为由两个刻意的选择决定。它永远不会读作零，因为全局图景从来不是真正的"一切正常"。它也永远不会因某一国的危机而饱和到 100，因为一个每逢坏日子就顶格的转盘，就不再携带任何信息。
+
 `StrategicRisk[0]` 中的全球战略风险评分是排名前 5 的最高分国家 `combinedScore` 值的加权平均：
 
 ```
@@ -235,10 +244,55 @@ overallScore = min(100, round(weightedAvg * 0.70 + 15))             # banded to 
 
 ---
 
-## 4. 这个评分是什么以及不是什么
+## 4. 评分契约变更
 
-**它是**一个单一数字，帮助运营者在新闻速度仪表盘上分诊先看哪里。
+本评分的适用范围与局限已在[它是什么，不是什么](#它是什么，不是什么)中开门见山地说明。这里只保留一条与公式同处的操作规则：
 
-**它不是**预测、保险定价输入，或替代主权政府旅行建议指导。第 2 节中发布的值是编辑性的；合理的分析师会对个别条目持有不同意见。
+任何更改服务端/API 各国基线、事件乘数、气候分区的国家归属、战略风险汇总系数、内联服务端公式字面量、受保护的顶级公式常量或 CII 移动语义的编辑，**必须**同时提升 `server/worldmonitor/intelligence/v1/_risk-config.ts` 中的 `CII_FORMULA_VERSION`、在同一提交中更新本文档，并新增一条公开 CHANGELOG 条目。保留服务端/API 评分的真相源重构不提升传输版本。`tests/cii-scoring.test.mts` 中的测试会强制本文档列出 `CURATED_COUNTRIES` 中的每一个国家代码。
 
-如果您依赖这些评分做任何重要决策，请固定每个 `CiiScore` 上的 `methodology_version` 字段，关注公开 CHANGELOG 中的版本升级，并在依赖复合评分之前，对照您自己的真实情况考虑您在 `event_multiplier` 中看到的各国权重。
+## 版本历史
+
+> **v8（2026-06-06）。** 修复了失效的 UCDP 冲突下限归属。服务端
+> 评分器从缓存的 `conflict:ucdp-events:v1` 源读取了不存在的
+> `intensity_level` / `type_of_violence` 字段（该源的行实际携带
+> `violenceType` / `deathsBest` / `dateStart`），因此 UCDP 从未应用其
+> 战争（下限 70）/ 轻度（下限 50）评分下限，也从未计入
+> `riskScores` 实时健康/缓存信号覆盖。UCDP 现按国家在 2 年滚动窗口内分类
+> （战争：死亡总数 > 1000 或事件数 > 100；轻度：事件数 > 10），与前端的
+> `deriveUcdpClassifications` 启发式一致。分类器为该
+> 2 年窗口配置，但 Redis 写入器当前抓取最新的六页 UCDP，
+> 并从 365 天滚动切片中保留最多 2,000 条映射事件。中继
+> `/ucdp-events` 读取器最多可抓取 12 页，但应用相同的 365 天
+> 过滤器。因此，在 UCDP 保留范围通过生产级 API 体量与
+> Redis 载荷保障扩展之前，实时评分受种子输入约束。
+> 健康覆盖度指标的冲突
+> 族现在由 ACLED API 路径**或** UCDP 满足，因此当 UCDP 健康时，
+> 薄/空 ACLED 窗口不再将健康翻转为 `COVERAGE_PARTIAL`。
+> 当前 ACLED 或 UCDP 的健康覆盖语义请参见
+> [国家不稳定指数](/zh/country-instability-index)。
+> 活跃 UCDP 冲突国家的 `combinedScore` 值上升（例如 UA/PK/MX
+> 获得战争下限）；风险评分缓存键家族迁移到
+> `risk:scores:sebuf:v8`，发射的 `methodology_version` 现为 `v8`，固定于
+> `methodology_version` 的客户端应重新基线。
+
+> **v8 修正（2026-06-07）。** 来源发现与可观测性得到澄清，
+> 未改变评分系数、CII 公式版本或
+> `risk:scores:sebuf:v8` 缓存键。UCDP 种子器现在优先选择返回事件的
+> 最新 GED 版本，而非停留在第一个响应版本
+> （[#4200](https://github.com/koala73/worldmonitor/issues/4200)），且
+> CII 刷新路径在 ACLED 对两个比较窗口均返回零事件时发出警告，
+> 以便运维人员区分安静源与鉴权/上游缺口。
+
+> **v7（2026-06-06）。** 第二批 CII 缺口关闭的评分归属发生了变化。坐标归属现在在成对边界规则之前处理三向 bbox 重叠，因此 Punggye-ri 归属到 KP 而非 CN，Lublin 归属到 PL 而非 UA；种子镜像使用相同的解析器。针对 Lhasa、Gaziantep、Kermanshah、Quetta、Islamabad、Dammam、Tabuk、Ruili、Belogorsk、北海道北部和 Amman 添加了定向矩形 bbox 探测。气候异常加成现在覆盖生产者发射的 `Europe`、`East Asia` 和 `Latin America` 区域，恢复了 KP/KR/JP/PL/DE/FR/GB/VE 的加成覆盖，且未知的未来区域名在存在异常坐标时可通过其回退。受影响记录此前归属到错误国家或被忽略处，`combinedScore` 值可能发生变化。风险评分缓存键家族迁移到 `risk:scores:sebuf:v7`；固定于 `methodology_version` 的客户端应重新基线。剩余的坐标归属仍是矩形近似，而非完整的点在多边形内边界几何。
+
+> **v6（2026-06-06）。** 国家文本、坐标和气候异常输入的评分归属发生了变化。文本归属现在将 `north korean` 识别为 KP，将 `taiwanese` 识别为 TW，同时仍拒绝歧义的裸 `korean`。坐标归属在高价值重叠区域保持种子与服务端对齐：Rio Grande US/MX 边界段、朝鲜非军事区西部、RU/UA、IN/PK、CN/RU 和 RU/JP。气候异常加成现在消费气候生产者发射的区域名（`Ukraine`、`California`、`Amazon`、`Taiwan Strait`、`Caribbean` 等），并将枚举严重性映射到数值加成尺度。受影响的军事、火灾、GPS、地震、新闻或气候记录此前归属到错误国家或被忽略处，`combinedScore` 值可能发生变化。风险评分缓存键家族迁移到 `risk:scores:sebuf:v6`；固定于 `methodology_version` 的客户端应重新基线。
+
+> **v5（2026-06-06）。** `dynamicScore` 现在是范围 `-100..100` 内的带符号移动增量，派生自约 24 小时前的有效 CII 快照。正值表示国家评分上升，负值表示下降，`0` 表示稳定或无有效先前快照。服务端趋势标签使用严格的一点死区：`+1` 或 `-1` 的整点评分变化保持稳定，而 `+2` 和 `-2` 是首个上升/下降标签。浏览器回退使用相同的趋势死区。此版本升级未改变 `combinedScore` 系数，但此前将 `dynamicScore` 视为非负实时评分的 API 客户端应重新基线。
+
+> **v4（2026-06-06）。** 归属和源输入语义发生变化，同时保持已发布的系数表不变。国家文本归属现在使用规范化 token 精确匹配 / 短语匹配而非原始子串匹配，坐标归属将已知边界框重叠通过显式边界启发式路由，地震种子使用 USGS 4.5 周（`4.5_week`）信息流，制裁评分从 `sanctions:country-counts:v1` 读取完整国家计数图，而非依赖顶部压力显示列表。`combinedScore` 值在这些来源此前误归属或遗漏国家压力之处可能发生变化；固定于 `methodology_version` 的客户端应重新基线。
+
+> **v3（2026-05-27）。** 冲突事件活动现在在最终分量上限（`cap = 70`，`pivot = 4000`）之前使用对数缩放曲线，取代了早期线性提前上限——后者可能将中等和极端政治暴力体量压缩到同一分量值。浏览器侧旧版 CII 路径现在使用与服务端相同的位移对数斜坡（`100K ≈ +4`、`500K ≈ +10`、`1M ≈ +12`、`5M ≈ +18`、`10M+ = +20`），而非旧的两档 `+4/+8` 加成。浏览器新闻警报压力不再乘以各国 `eventMultiplier`；它仍是一个信息分量信号，而非国内不稳定性的国家调校代理。固定于 `methodology_version` 的客户端应重新基线。
+
+> **实现说明（2026-05-27）。** `baselineRisk` 和 `eventMultiplier` 现在来自服务端和前端共用的一张共享系数表。这通过为 AF、EG、IQ、JP、KR、LB 和 QA 保留此前已发布的服务端/API 值，解决了 [#3789](https://github.com/koala73/worldmonitor/issues/3789) 跟踪的 7 国漂移。前端客户端 CII 渲染现在使用相同的值。服务端/API 值在此重构中未变化——上方的 v3 升级来自校准变更，而非此次真相源迁移。
+
+> **v2（2026-05-22）。** `Security` 分量不再是仅 GPS 干扰——它现在与 GPS 干扰一起对军事飞行、军事船舶和航空中断进行评分（issue #3738）。复合混合获得了 `newsUrgencyBoost`、`earthquakeBoost`、`sanctionsBoost` 和 AIS 中断加成，且 `cyberBoost`/`fireBoost` 现在按严重性加权而非原始计数。`combinedScore` 值相应变化——固定于 `methodology_version` 的客户端应重新基线。

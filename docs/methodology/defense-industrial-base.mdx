@@ -3,11 +3,35 @@ title: "Defense Industrial Base"
 description: "How WorldMonitor combines World Bank military-capacity indicators with SIPRI arms-transfer data into per-country supplier shares and dependency concentration."
 ---
 
-## Purpose
+## Start here
 
-Two questions about one country's defense position: how much military capacity does it fund and field, and who does it depend on for major weapons. The first comes from World Bank annual indicators, the second from SIPRI's arms-transfer register reduced to supplier shares.
+A defense budget tells you what a country **spends**. It does not tell you what
+happens to that country if the government supplying its aircraft decides to stop.
 
-Served from `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` and MCP `get_defense_industrial_base`. Both require a Pro subscription.
+This dataset answers both halves:
+
+- **How much military does it fund and field?** Spending, share of GDP, personnel
+  — the World Bank annual series. That is **Part A** below.
+- **Who does it depend on for major weapons?** Which countries actually supply
+  its hardware, and how concentrated that dependence is. That is **Part B**.
+
+The second question is the one that rarely gets asked and often matters more. A
+country buying 90% of its major systems from a single supplier has a political
+vulnerability that no budget line reveals. The `supplierHhi` figure puts a number
+on it: **higher means fewer suppliers**, so a country near 1.0 depends on
+essentially one, while a country near 0.2 spreads its purchasing widely.
+
+<Warning>
+**TIV is not money.** Arms transfers are measured in SIPRI's Trend Indicator
+Value, a proxy for military capability delivered, calibrated to known unit
+production costs. It is not a price, not a contract value, and not comparable to
+the USD spending figures in Part A. Never render it with a currency symbol. See
+[TIV is not money](#tiv-is-not-money).
+</Warning>
+
+<Info>
+**Access.** Served from `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` and MCP `get_defense_industrial_base`. Both require a Pro subscription.
+</Info>
 
 <Note>
 This route's query parameter is `country_code`, in snake_case — unlike its
