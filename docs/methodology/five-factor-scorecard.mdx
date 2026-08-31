@@ -92,9 +92,11 @@ inputs `stale` even when the stored values remain readable.
 A daily cohort replaces last-good only when at least 180 countries have one
 scoreable pillar, at least 150 have usable population evidence, and the
 scoreable-country counts meet these frozen floors: food 80, energy 120,
-demographics 150, technology 120, and defense 30. The
-floors were set from the 196-country production-source audit with headroom for
-normal source coverage. Health publishes population and the five pillar counts separately. A
+demographics 150, technology 110, and defense 30. The floors were set from the
+196-country production-source audit with headroom for normal source coverage.
+The pre-activation production refresh measured 116 scoreable technology
+countries; 110 preserves a six-country outage margin without accepting stale or
+missing country evidence. Health publishes population and the five pillar counts separately. A
 partial source outage cannot refresh health or replace a richer cohort.
 
 ## Food
@@ -127,7 +129,9 @@ diversity component scores are population-weighted across members with evidence.
 
 Energy measures physical primary-energy balance and supporting power-system
 quality. Consumption comes from OWID `primary_energy_consumption`. Production
-is derived from World Bank net energy imports (`EG.IMP.CONS.ZS`):
+is derived from the audited import-dependency observation already carried by
+the resilience static source: Eurostat `nrg_ind_id` for covered European
+countries and World Bank `EG.IMP.CONS.ZS` elsewhere:
 
 ```text
 production TWh = consumption TWh * (1 - net imports percent / 100)

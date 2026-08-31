@@ -48,11 +48,15 @@ function sourceFixture() {
       },
     },
     energyMix: {
-      US: { year: 2023, balanceYear: 2023, primaryEnergyConsumptionTwh: 25_000, balanceImportSharePercent: -8 },
+      US: { year: 2023, primaryEnergyConsumptionYear: 2024, primaryEnergyConsumptionTwh: 25_000 },
     },
     staticByCountry: {
       US: {
         aquastat: { value: 25, year: 2022, source: 'worldbank-aquastat', indicator: 'water stress' },
+        iea: {
+          source: 'worldbank-energy-imports',
+          energyImportDependency: { value: -8, year: 2023, source: 'worldbank' },
+        },
         infrastructure: [{ indicator: 'EG.ELC.ACCS.ZS', value: 100, year: 2023 }],
       },
     },
@@ -81,12 +85,27 @@ describe('five-factor source adapters', () => {
     assert.equal(balance.aggregation?.denominator, 25_000);
     assert.equal(balance.aggregation?.numerator, 27_000);
     assert.equal(balance.value, 1.08);
+    assert.equal(balance.year, 2023, 'derived freshness uses the older contributing observation');
     assert.equal(balance.sourceKey, 'energy:mix:v1:_all');
-    assert.deepEqual(balance.observations.map((observation) => observation.name), [
-      'primaryEnergyConsumptionTwh',
-      'netEnergyImportsPercent',
-      'primaryEnergyProductionTwh',
-    ]);
+    assert.deepEqual(
+      balance.observations.map((observation) => [observation.name, observation.year, observation.source]),
+      [
+        ['primaryEnergyConsumptionTwh', 2024, 'Our World in Data'],
+        ['netEnergyImportsPercent', 2023, 'World Bank'],
+        ['primaryEnergyProductionTwh', 2023, 'Derived from OWID and World Bank'],
+      ],
+    );
+
+    const eurostatSources = sourceFixture();
+    eurostatSources.staticByCountry.US.iea = {
+      source: 'eurostat-energy-import-dependency',
+      energyImportDependency: { value: 20, year: 2024, source: 'eurostat' },
+    };
+    const eurostatBalance = adaptCountryEvidence('US', eurostatSources).inputs['energy.productionBalance'];
+    assert.equal(eurostatBalance.availability, 'available');
+    if (eurostatBalance.availability !== 'available') return;
+    assert.equal(eurostatBalance.source, 'OWID and Eurostat');
+    assert.equal(eurostatBalance.observations[1]?.indicatorCode, 'nrg_ind_id');
   });
 
   it('distinguishes missing balance observations from finite invalid denominators', () => {
@@ -94,6 +113,11 @@ describe('five-factor source adapters', () => {
     delete (missing.energyMix.US as Partial<typeof missing.energyMix.US>).primaryEnergyConsumptionTwh;
     const missingEnergy = adaptCountryEvidence('US', missing).inputs['energy.productionBalance'];
     assert.equal(missingEnergy.availability === 'unavailable' && missingEnergy.reason, 'country-unavailable');
+
+    const missingImports = sourceFixture();
+    delete missingImports.staticByCountry.US.iea;
+    const missingImportEvidence = adaptCountryEvidence('US', missingImports).inputs['energy.productionBalance'];
+    assert.equal(missingImportEvidence.availability === 'unavailable' && missingImportEvidence.reason, 'country-unavailable');
 
     const invalidEnergySources = sourceFixture();
     invalidEnergySources.energyMix.US.primaryEnergyConsumptionTwh = 0;
@@ -352,10 +376,13 @@ describe('five-factor source adapters', () => {
     const fresh = adaptCountryEvidence('US', sources, 2026);
     assert.equal(fresh.inputs['food.waterSecurity'].availability, 'available');
     assert.equal(fresh.inputs['technology.electricityAccess'].availability, 'available');
+    assert.equal(fresh.inputs['energy.productionBalance'].availability, 'available');
 
     sourceFreshness.staticByCountry.byCountry.US = { status: 'stale', detail: 'US static content expired.' };
     const stale = adaptCountryEvidence('US', sources, 2026);
     assert.equal(stale.inputs['food.waterSecurity'].availability === 'unavailable'
       && stale.inputs['food.waterSecurity'].reason, 'stale');
+    assert.equal(stale.inputs['energy.productionBalance'].availability === 'unavailable'
+      && stale.inputs['energy.productionBalance'].reason, 'stale');
   });
 });

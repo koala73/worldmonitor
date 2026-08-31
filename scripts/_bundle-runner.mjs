@@ -149,6 +149,10 @@ async function writeBundleHeartbeat(label) {
  * mark them due on every tick — the #6806 failure this must not reintroduce.
  */
 export async function readSectionFreshness(section, readKey = readRedisKey) {
+  const acceptsVersion = (meta) => (
+    meta?.status !== 'error'
+    && (!section.expectedSourceVersion || meta?.sourceVersion === section.expectedSourceVersion)
+  );
   if (section.freshnessMetaKey) {
     if (section.requireCanonical && section.canonicalKey) {
       const canonical = await readKey(section.canonicalKey);
@@ -156,7 +160,7 @@ export async function readSectionFreshness(section, readKey = readRedisKey) {
     }
     const raw = await readKey(section.freshnessMetaKey);
     const meta = unwrapEnvelope(raw).data;
-    if (!Number.isFinite(meta?.fetchedAt)) return null;
+    if (!Number.isFinite(meta?.fetchedAt) || !acceptsVersion(meta)) return null;
     if (!section.completionMetaKey) return { fetchedAt: meta.fetchedAt };
     const completionRaw = await readKey(section.completionMetaKey);
     const completion = unwrapEnvelope(completionRaw).data;
@@ -172,6 +176,7 @@ export async function readSectionFreshness(section, readKey = readRedisKey) {
     const raw = await readKey(section.canonicalKey);
     const { _seed } = unwrapEnvelope(raw);
     if (_seed?.fetchedAt) {
+      if (!acceptsVersion(_seed)) return null;
       if (!section.completionMetaKey) return { fetchedAt: _seed.fetchedAt };
       const completionRaw = await readKey(section.completionMetaKey);
       const completion = unwrapEnvelope(completionRaw).data;
@@ -192,7 +197,7 @@ export async function readSectionFreshness(section, readKey = readRedisKey) {
     // Legacy seed-meta is `{ fetchedAt, recordCount, sourceVersion }` at top
     // level. It has no `_seed` wrapper so unwrapEnvelope returns it as data.
     const meta = unwrapEnvelope(raw).data;
-    if (meta?.fetchedAt) return { fetchedAt: meta.fetchedAt };
+    if (meta?.fetchedAt && acceptsVersion(meta)) return { fetchedAt: meta.fetchedAt };
   }
   return null;
 }

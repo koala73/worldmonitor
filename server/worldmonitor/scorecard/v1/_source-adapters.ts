@@ -242,35 +242,39 @@ function foodEvidence(countryCode: string, source: unknown): Pick<CountryScoreca
   };
 }
 
-function energyBalance(countryCode: string, source: unknown): ScorecardEvidence {
-  if (!source) return sourceUnavailable('energy.productionBalance', 'OWID and World Bank');
+function energyBalance(countryCode: string, source: unknown, staticRecord: JsonRecord | null): ScorecardEvidence {
+  if (!source) return sourceUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
   const entry = readCountry(source, countryCode);
-  if (!entry) return countryUnavailable('energy.productionBalance', 'OWID and World Bank');
-  // Read the SAME-ROW balance pair, never the standalone `importShare`.
-  // `importShare` tracks its own latest year for the pre-existing energy
-  // surfaces, so pairing it with `primaryEnergyConsumptionTwh` would derive
-  // production from two different vintages. `balanceYear` is set only when both
-  // readings came from one row, so it must not fall back to the mix year.
+  if (!entry) return countryUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
+  const iea = asRecord(staticRecord?.iea);
+  const importDependency = asRecord(iea?.energyImportDependency);
   const consumption = finite(entry.primaryEnergyConsumptionTwh);
-  const netImports = finite(entry.balanceImportSharePercent);
-  const observationYear = year(entry.balanceYear);
-  if (entry.primaryEnergyConsumptionTwh == null || entry.balanceImportSharePercent == null || entry.balanceYear == null) {
-    return countryUnavailable('energy.productionBalance', 'OWID and World Bank');
+  const consumptionYear = year(entry.primaryEnergyConsumptionYear);
+  const netImports = finite(importDependency?.value);
+  const importsYear = year(importDependency?.year);
+  if (entry.primaryEnergyConsumptionTwh == null || entry.primaryEnergyConsumptionYear == null
+    || importDependency?.value == null || importDependency.year == null) {
+    return countryUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
   }
-  if (consumption == null || !(consumption > 0) || netImports == null || observationYear == null) {
-    return invalidValue('energy.productionBalance', 'OWID and World Bank');
+  if (consumption == null || !(consumption > 0) || consumptionYear == null
+    || netImports == null || importsYear == null) {
+    return invalidValue('energy.productionBalance', 'OWID and World Bank or Eurostat');
   }
   const production = consumption * (1 - netImports / 100);
-  if (!(production >= 0)) return invalidValue('energy.productionBalance', 'OWID and World Bank');
+  if (!(production >= 0)) return invalidValue('energy.productionBalance', 'OWID and World Bank or Eurostat');
+  const importSourceTag = String(importDependency.source || iea?.source || '').toLowerCase();
+  const importSource = importSourceTag.includes('eurostat') ? 'Eurostat' : 'World Bank';
+  const importIndicatorCode = importSource === 'Eurostat' ? 'nrg_ind_id' : 'EG.IMP.CONS.ZS';
+  const observationYear = Math.min(consumptionYear, importsYear);
   return available(
     'energy.productionBalance',
     production / consumption,
     observationYear,
-    'OWID and World Bank',
+    `OWID and ${importSource}`,
     [
-      { name: 'primaryEnergyConsumptionTwh', value: consumption, year: observationYear, unit: 'TWh', source: 'Our World in Data', indicatorCode: 'primary_energy_consumption' },
-      { name: 'netEnergyImportsPercent', value: netImports, year: observationYear, unit: 'percent of energy use', source: 'World Bank via Our World in Data', indicatorCode: 'EG.IMP.CONS.ZS' },
-      { name: 'primaryEnergyProductionTwh', value: production, year: observationYear, unit: 'TWh', source: 'Derived from OWID and World Bank' },
+      { name: 'primaryEnergyConsumptionTwh', value: consumption, year: consumptionYear, unit: 'TWh', source: 'Our World in Data', indicatorCode: 'primary_energy_consumption' },
+      { name: 'netEnergyImportsPercent', value: netImports, year: importsYear, unit: 'percent of energy use', source: importSource, indicatorCode: importIndicatorCode },
+      { name: 'primaryEnergyProductionTwh', value: production, year: observationYear, unit: 'TWh', source: `Derived from OWID and ${importSource}` },
     ],
     { quality: 'derived', aggregation: { numerator: production, denominator: consumption, unit: 'TWh' } },
   );
@@ -442,9 +446,8 @@ export function adaptCountryEvidence(
   Object.assign(inputs, demographicsEvidence(countryCode, sources.demographics));
   Object.assign(inputs, techEvidence(countryCode, sources.techByIso2));
   Object.assign(inputs, defenseEvidence(countryCode, sources.defense));
-  inputs['energy.productionBalance'] = energyBalance(countryCode, sources.energyMix);
-
   const staticRecord = asRecord(sources.staticByCountry?.[countryCode]);
+  inputs['energy.productionBalance'] = energyBalance(countryCode, sources.energyMix, staticRecord);
   inputs['food.waterSecurity'] = sources.staticByCountry
     ? aquastatWaterStress(staticRecord)
     : sourceUnavailable('food.waterSecurity', 'World Bank AQUASTAT');
@@ -475,13 +478,20 @@ export function adaptCountryEvidence(
   for (const inputId of Object.keys(SCORECARD_INPUT_REGISTRY) as ScorecardInputId[]) {
     const evidence = inputs[inputId];
     const definition = SCORECARD_INPUT_REGISTRY[inputId];
-    const sourceFreshnessEntry = definition.sourceField
-      ? sources.sourceFreshness?.[definition.sourceField]
+    const freshnessFor = (field: ScorecardSourceField | null | undefined) => {
+      if (!field) return undefined;
+      const freshness = sources.sourceFreshness?.[field];
+      return field === 'staticByCountry'
+        ? freshness?.byCountry?.[countryCode] ?? freshness
+        : freshness;
+    };
+    const sourceFreshness = freshnessFor(definition.sourceField);
+    const staticFreshness = inputId === 'energy.productionBalance'
+      ? freshnessFor('staticByCountry')
       : undefined;
-    const sourceFreshness = definition.sourceField === 'staticByCountry'
-      ? sourceFreshnessEntry?.byCountry?.[countryCode] ?? sourceFreshnessEntry
-      : sourceFreshnessEntry;
-    const staleByEnvelope = sourceFreshness?.status === 'stale';
+    const staleSourceFreshness = [sourceFreshness, staticFreshness]
+      .find((freshness) => freshness?.status === 'stale');
+    const staleByEnvelope = staleSourceFreshness != null;
     const staleByObservation = evidence.availability === 'available'
       && asOfYear - evidence.year > definition.maxAgeYears;
     if (!staleByEnvelope && !staleByObservation) continue;
@@ -492,7 +502,7 @@ export function adaptCountryEvidence(
       source: evidence.source,
       sourceKey: evidence.sourceKey,
       detail: staleByEnvelope
-        ? sourceFreshness?.detail || 'The source freshness contract expired.'
+        ? staleSourceFreshness?.detail || 'The source freshness contract expired.'
         : `Observation year ${evidence.availability === 'available' ? evidence.year : 'unknown'} exceeds the frozen ${definition.maxAgeYears}-year age limit.`,
     };
   }
