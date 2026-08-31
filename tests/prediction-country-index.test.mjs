@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   buildCountryMarketIndex,
+  countCountryMarkets,
 } from '../scripts/_prediction-country-index.mjs';
 
 const NOW = Date.parse('2026-08-31T00:00:00Z');
@@ -21,6 +22,11 @@ function market(title, source, volume, options = {}) {
 }
 
 describe('buildCountryMarketIndex', () => {
+  it('counts only published country-market arrays', () => {
+    assert.equal(countCountryMarkets({ US: [{}, {}], CN: [{}], invalid: null }), 3);
+    assert.equal(countCountryMarkets(undefined), 0);
+  });
+
   it('selects country markets before the global top-25 pool cap', () => {
     const globallyPopular = Array.from({ length: 30 }, (_, index) => (
       market(`Will Iran event ${index} happen?`, 'polymarket', 10_000_000 - index)

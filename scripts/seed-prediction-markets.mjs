@@ -10,11 +10,12 @@ import {
   isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume,
   selectPricedKalshiMarket, isExpired,
 } from './_prediction-scoring.mjs';
-import { buildCountryMarketIndex } from './_prediction-country-index.mjs';
+import { buildCountryMarketIndex, countCountryMarkets } from './_prediction-country-index.mjs';
 import {
   fetchKalshiEvents as fetchKalshiEventPages,
   fetchPolymarketEventsByTag,
 } from './_prediction-upstream.mjs';
+import { getOptionalUpstashCreds, upstashCommand } from './_upstash-rest.mjs';
 import predictionTags from './data/prediction-tags.json' with { type: 'json' };
 
 loadEnvFile(import.meta.url);
@@ -22,6 +23,7 @@ loadEnvFile(import.meta.url);
 const CANONICAL_KEY = 'prediction:markets-bootstrap:v1';
 const COUNTRY_INDEX_KEY = 'prediction:markets-country-index:v1';
 const COUNTRY_INDEX_META_KEY = 'seed-meta:prediction:markets-country-index';
+const COUNTRY_INDEX_ACTIVATION_KEY = 'seed-activated:prediction:markets-country-index';
 const CACHE_TTL = 10800; // 3h — 6x the 30 min cron interval (gold standard: survive 5 missed runs)
 
 const GAMMA_BASE = 'https://gamma-api.polymarket.com';
@@ -222,6 +224,17 @@ export function declareRecords(data) {
   return (data?.geopolitical?.length || 0) + (data?.tech?.length || 0) + (data?.finance?.length || 0);
 }
 
+async function markCountryIndexActivated(data) {
+  if (countCountryMarkets(data?.countryMarkets) === 0) return;
+  try {
+    const creds = getOptionalUpstashCreds();
+    if (!creds) return;
+    await upstashCommand(creds, ['SET', COUNTRY_INDEX_ACTIVATION_KEY, '1']);
+  } catch (err) {
+    console.warn(`  WARN: country-index activation marker write failed: ${err?.message || err}`);
+  }
+}
+
 await runSeed('prediction', 'markets', CANONICAL_KEY, fetchAllPredictions, {
   ttlSeconds: CACHE_TTL,
   lockTtlMs: 60_000,
@@ -235,17 +248,19 @@ await runSeed('prediction', 'markets', CANONICAL_KEY, fetchAllPredictions, {
   extraKeys: [{
     key: COUNTRY_INDEX_KEY,
     transform: (data) => ({ countries: data.countryMarkets, fetchedAt: data.fetchedAt }),
-    declareRecords: (data) => Object.values(data?.countries ?? {})
-      .reduce((count, markets) => count + (Array.isArray(markets) ? markets.length : 0), 0),
+    declareRecords: (data) => countCountryMarkets(data?.countries),
     skipWhenEmpty: true,
     metaKey: COUNTRY_INDEX_META_KEY,
     metaCritical: true,
   }],
-  afterPublish: (data) => ({
-    freshnessMetaPatch: {
-      poolCounts: predictionPoolCounts(data),
-    },
-  }),
+  afterPublish: async (data) => {
+    await markCountryIndexActivated(data);
+    return {
+      freshnessMetaPatch: {
+        poolCounts: predictionPoolCounts(data),
+      },
+    };
+  },
   schemaVersion: 1,
   maxStaleMin: 90,
   sourceVersion: 'prediction-markets-v1',

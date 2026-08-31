@@ -310,6 +310,7 @@ const BOOTSTRAP_KEYS = {
 // aggregate is cleanly absent. Include both fallback keys in the same health
 // sweep so the canadaAlerts probe grades the data clients actually receive.
 const STANDALONE_KEYS = {
+  predictionCountryMarkets: 'prediction:markets-country-index:v1',
   chinaCoverage:      CHINA_COVERAGE_SUMMARY_KEY,
   // Control-plane heartbeat only. Convex owns every durable scan lease,
   // checkpoint, receipt, and replay decision; this Redis value is disposable.
@@ -622,6 +623,18 @@ const SEED_META = {
     // #5875: one is the narrowest floor that detects a dead category signal
     // without treating ordinary pool-volume variation as an incident.
     minPoolCounts: PREDICTION_MARKET_MIN_POOL_COUNTS,
+  },
+  predictionCountryMarkets: {
+    key: 'seed-meta:prediction:markets-country-index',
+    maxStaleMin: 90,
+    minRecordCount: 1,
+    activationKey: 'seed-activated:prediction:markets-country-index',
+    cutover: {
+      mode: 'activation-marker',
+      fromKey: null,
+      issue: 7489,
+      activationKey: 'seed-activated:prediction:markets-country-index',
+    },
   },
   newsInsights:     {
     key: 'seed-meta:news:insights',
@@ -1481,6 +1494,9 @@ const ON_DEMAND_KEYS = new Set([
   // strict from that point onward.
   'torontoTfs',
   'torontoTps',
+  // Scheduled country-index projection. The marker is written only after the
+  // projection and its seed metadata publish successfully.
+  'predictionCountryMarkets',
   // Scheduled producer. The marker is written only after a successful
   // publish of the canonical snapshot. Before that first publish, absence is
   // pending activation; after it, missing or stale data is strict.
@@ -1575,6 +1591,7 @@ const ACTIVATION_MARKERS = {
   statcanWds: 'seed-activated:economic:statcan-wds',
   torontoTfs: SEED_META.torontoTfs.activationKey,
   torontoTps: SEED_META.torontoTps.activationKey,
+  predictionCountryMarkets: SEED_META.predictionCountryMarkets.activationKey,
   physicalPremiums: SEED_META.physicalPremiums.activationKey,
   physicalDivergence: SEED_META.physicalDivergence.activationKey,
   scorecardFiveFactor: SEED_META.scorecardFiveFactor.activationKey,

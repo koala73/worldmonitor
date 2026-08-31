@@ -3,6 +3,11 @@ import { isExpired, shouldInclude } from './_prediction-scoring.mjs';
 
 export const COUNTRY_MARKET_LIMIT = 5;
 
+export function countCountryMarkets(countryMarkets) {
+  return Object.values(countryMarkets ?? {})
+    .reduce((count, markets) => count + (Array.isArray(markets) ? markets.length : 0), 0);
+}
+
 const PREDICTION_COUNTRY_KEYWORDS = Object.freeze({
   US: ['american', 'congress', 'white house', 'federal reserve', 'fed rate', 'fed chair', 'fed cut', 'fed hike', 'us recession', 'us gdp', 'us election', 'us tariff', 'us president', 'us presidency'],
   GB: ['british', 'uk election', 'uk economy', 'uk prime minister'],
