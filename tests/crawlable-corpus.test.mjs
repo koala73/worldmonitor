@@ -13,6 +13,7 @@ import {
   chokepointMetaDescription,
   countryMetaDescription,
   datasetTemporalCoverage,
+  describeHeadlineIneligibilityReason,
   GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
@@ -1337,6 +1338,17 @@ describe('crawlable corpus generator', () => {
         /below the 65% ranking floor/,
         `${coveredIneligible.name} must not explain ranking exclusion as low coverage`,
       );
+      assert.ok(
+        coveredHtml.includes(describeHeadlineIneligibilityReason(coveredIneligible)),
+        `${coveredIneligible.name} must use the snapshot eligibility reason, not a coerced low-confidence label`,
+      );
+      if (coveredIneligible.lowConfidence !== true) {
+        assert.doesNotMatch(
+          coveredHtml,
+          /flagged low-confidence/,
+          `${coveredIneligible.name} must not be described as low-confidence when the snapshot is not`,
+        );
+      }
       const coveredWebPage = jsonLdObjects(coveredHtml)
         .find((entry) => entry['@type'] === 'WebPage');
       assert.match(
@@ -1374,7 +1386,11 @@ describe('crawlable corpus generator', () => {
       assert.match(syria, /Macro-fiscal position/);
       assert.match(syria, /IMF/);
       const andorra = read(outDir, 'countries/andorra/index.html');
-      assert.match(andorra, /200,000/);
+      assert.equal(countryByCode.get('AD')?.lowConfidence, false);
+      assert.match(andorra, /coverage is 69%/);
+      assert.match(andorra, /population of at least 200,000/);
+      assert.match(andorra, /<span>Confidence<\/span><strong>Standard<\/strong>/);
+      assert.doesNotMatch(andorra, /flagged low-confidence/);
       for (let left = 0; left < unrankedArticles.length; left += 1) {
         for (let right = left + 1; right < unrankedArticles.length; right += 1) {
           const share = pairwiseUniqueShare(unrankedArticles[left].text, unrankedArticles[right].text);

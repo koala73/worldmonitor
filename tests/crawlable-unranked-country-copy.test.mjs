@@ -140,4 +140,20 @@ describe('unranked country copy', () => {
     assert.match(gaps, /eligibility-rule|population|mostly observed/i);
     assert.doesNotMatch(gaps, /Governance and institutions have no/);
   });
+
+  it('uses a singular verb when one named source is missing', () => {
+    const country = countryFixture({
+      name: 'Andorra',
+      code: 'AD',
+      dimensionCoverage: 0.69,
+      imputationShare: 0.139,
+      lowConfidence: false,
+    }, [
+      dimension('externalDebtCoverage', 0, 'unmonitored'),
+    ]);
+    assert.match(
+      describeCoverageGaps(country),
+      /World Bank, which does not contribute observed series for Andorra/,
+    );
+  });
 });

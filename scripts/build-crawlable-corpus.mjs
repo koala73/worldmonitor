@@ -921,8 +921,11 @@ function normalizeCountry(item, sourceStatus, seen, reverseNames) {
     baselineScore: item.baselineScore ?? null,
     stressScore: item.stressScore ?? null,
     stressFactor: item.stressFactor ?? null,
-    level: item.level || (sourceStatus === 'ranked' ? 'unclassified' : 'low-confidence'),
-    lowConfidence: sourceStatus === 'ranked' ? Boolean(item.lowConfidence) : true,
+    level: item.level || (sourceStatus === 'ranked' ? 'unclassified' : 'unpublished'),
+    // Greyed-out rows include covered-ineligible countries. Preserve the
+    // snapshot flag so unpublished copy can name the population/85% rule
+    // instead of calling every unpublished page low-confidence.
+    lowConfidence: Boolean(item.lowConfidence),
     dimensionCoverage: item.dimensionCoverage ?? item.overallCoverage ?? null,
     headlineEligible: item.headlineEligible === true,
     trend: item.trend || 'unknown',
@@ -1812,10 +1815,10 @@ export function describeCoverageGaps(country) {
     return `The active dimensions are mostly observed${strongestClause}. The unpublished rank is an eligibility-rule outcome, not a hole in the source inventory.`;
   }
   const labels = formatProseList(gaps.map(dimensionLabel));
-  const sources = formatProseList(gaps.flatMap(dimensionSources));
+  const uniqueSources = [...new Set(gaps.flatMap(dimensionSources))];
   const verb = gaps.length === 1 ? 'has' : 'have';
-  const sourceClause = sources
-    ? ` Those slots depend on ${sources}, which do not contribute observed series for ${country.name}.`
+  const sourceClause = uniqueSources.length > 0
+    ? ` Those slots depend on ${formatProseList(uniqueSources)}, which ${uniqueSources.length === 1 ? 'does' : 'do'} not contribute observed series for ${country.name}.`
     : '';
   const failures = gaps.filter((dimension) => dimension.imputationClass === 'source-failure');
   const unmonitored = gaps.filter((dimension) => dimension.imputationClass === 'unmonitored');
