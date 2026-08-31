@@ -12,6 +12,8 @@
  * - x-default points at the English URL
  */
 
+import { WEBSITE_ID } from './schema-graph-ids';
+
 export const DOCS_PUBLIC_ORIGIN = 'https://www.worldmonitor.app';
 export const DOCS_ZH_HREFLANG = 'zh-Hans';
 export const DOCS_EN_HREFLANG = 'en';
@@ -144,28 +146,67 @@ function injectAfterCanonical(html: string, linkTags: string[]): string {
   return `${html}${block}`;
 }
 
-const CANONICAL_WEBSITE_ID = `${DOCS_PUBLIC_ORIGIN}/#website`;
-const DOCS_WEBSITE_ID = `${DOCS_PUBLIC_ORIGIN}/docs#website`;
+const CANONICAL_WEBSITE_ID = WEBSITE_ID;
+// Mintlify may emit the docs WebSite id with or without a trailing slash; both
+// must retarget onto the canonical node or the page keeps a second WebSite.
+const DOCS_WEBSITE_IDS = new Set([
+  `${DOCS_PUBLIC_ORIGIN}/docs#website`,
+  `${DOCS_PUBLIC_ORIGIN}/docs/#website`,
+]);
 const JSON_LD_SCRIPT_RE =
   /<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi;
 
-function isMintlifyCreator(value: unknown): boolean {
+/** `@type` may be a string or an array of strings in valid JSON-LD. */
+function hasJsonLdType(node: Record<string, unknown>, type: string): boolean {
+  const declared = node['@type'];
+  if (Array.isArray(declared)) return declared.includes(type);
+  return declared === type;
+}
+
+/**
+ * Vendor attribution reaches us as `creator` today, but Mintlify is free to move
+ * it to `publisher`/`provider`. Read all three rather than pinning the one shape
+ * the current fixture happens to use.
+ */
+function isMintlifyAgent(value: unknown): boolean {
   if (!value || typeof value !== 'object') return false;
-  const creator = value as Record<string, unknown>;
-  const name = typeof creator.name === 'string' ? creator.name.toLowerCase() : '';
-  const url = typeof creator.url === 'string' ? creator.url.toLowerCase() : '';
+  const agent = value as Record<string, unknown>;
+  const name = typeof agent.name === 'string' ? agent.name.toLowerCase() : '';
+  const url = typeof agent.url === 'string' ? agent.url.toLowerCase() : '';
   return name.includes('mintlify') || url.includes('mintlify.com');
 }
 
-function isVendorAttributedWebSite(node: unknown): boolean {
+function isWebSiteNode(node: unknown): node is Record<string, unknown> {
   if (!node || typeof node !== 'object' || Array.isArray(node)) return false;
-  const candidate = node as Record<string, unknown>;
-  return candidate['@type'] === 'WebSite' && isMintlifyCreator(candidate.creator);
+  return hasJsonLdType(node as Record<string, unknown>, 'WebSite');
+}
+
+/**
+ * A docs page must not declare any WebSite other than the canonical one. Keying
+ * the drop on "not canonical" rather than on Mintlify-specific attribution text
+ * means a vendor rename, a move to `publisher`, or an unattributed duplicate all
+ * still get removed instead of silently surviving (#7459d).
+ */
+function isCompetingWebSite(node: unknown): boolean {
+  if (!isWebSiteNode(node)) return false;
+  if (node['@id'] === CANONICAL_WEBSITE_ID) return false;
+  return true;
+}
+
+function isVendorAttributedWebSite(node: unknown): boolean {
+  if (!isWebSiteNode(node)) return false;
+  return isMintlifyAgent(node.creator)
+    || isMintlifyAgent(node.publisher)
+    || isMintlifyAgent(node.provider);
+}
+
+function shouldDropWebSite(node: unknown): boolean {
+  return isCompetingWebSite(node) || isVendorAttributedWebSite(node);
 }
 
 function rewriteDocsWebsiteIds(value: unknown): unknown {
   if (typeof value === 'string') {
-    return value === DOCS_WEBSITE_ID ? CANONICAL_WEBSITE_ID : value;
+    return DOCS_WEBSITE_IDS.has(value) ? CANONICAL_WEBSITE_ID : value;
   }
   if (Array.isArray(value)) return value.map(rewriteDocsWebsiteIds);
   if (value && typeof value === 'object') {
@@ -179,44 +220,73 @@ function rewriteDocsWebsiteIds(value: unknown): unknown {
 }
 
 function collapseCanonicalWebSite(node: Record<string, unknown>): Record<string, unknown> {
-  if (node['@type'] === 'WebSite' && node['@id'] === CANONICAL_WEBSITE_ID) {
+  if (hasJsonLdType(node, 'WebSite') && node['@id'] === CANONICAL_WEBSITE_ID) {
     return { '@type': 'WebSite', '@id': CANONICAL_WEBSITE_ID };
   }
   return node;
 }
 
+/**
+ * Walk every node at every depth — a WebSite can sit at the top level, inside a
+ * top-level array, under `@graph`, or nested beneath any property such as
+ * `mainEntity`. Returns null when the value itself must be removed.
+ */
+function pruneWebSites(value: unknown): unknown | null {
+  if (Array.isArray(value)) {
+    // pruneWebSites returns null for a droppable entry, so mapping then
+    // discarding nulls removes and recurses in one pass.
+    return value
+      .map((entry) => pruneWebSites(entry))
+      .filter((entry) => entry !== null);
+  }
+  if (!value || typeof value !== 'object') return value;
+  if (shouldDropWebSite(value)) return null;
+
+  const node = collapseCanonicalWebSite(value as Record<string, unknown>);
+  // A collapsed canonical reference is terminal — do not recurse into the
+  // two keys it was reduced to.
+  if (node !== value) return node;
+
+  const next: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(node)) {
+    const pruned = pruneWebSites(nested);
+    if (pruned === null) continue;
+    next[key] = pruned;
+  }
+  return next;
+}
+
 function rewriteDocsJsonLdValue(value: unknown): unknown | null {
-  const rewritten = rewriteDocsWebsiteIds(value);
-  if (isVendorAttributedWebSite(rewritten)) return null;
-  if (!rewritten || typeof rewritten !== 'object' || Array.isArray(rewritten)) {
-    return rewritten;
-  }
-  const node = rewritten as Record<string, unknown>;
-  if (Array.isArray(node['@graph'])) {
-    node['@graph'] = (node['@graph'] as unknown[])
-      .filter((entry) => !isVendorAttributedWebSite(entry))
-      .map((entry) => (
-        entry && typeof entry === 'object' && !Array.isArray(entry)
-          ? collapseCanonicalWebSite(entry as Record<string, unknown>)
-          : entry
-      ));
-    return node;
-  }
-  return collapseCanonicalWebSite(node);
+  return pruneWebSites(rewriteDocsWebsiteIds(value));
 }
 
 /**
- * Drop Mintlify's vendor-attributed WebSite and retarget `/docs#website`
+ * Drop competing / vendor-attributed WebSite nodes and retarget `/docs#website`
  * onto the canonical `/#website` so docs pages join the product graph
  * instead of claiming a competing site (#7459d).
+ *
+ * `pathname` is used only to attribute a parse failure in logs; the rewrite is
+ * pathname-independent.
  */
-export function rewriteDocsEntityGraph(html: string): string {
+export function rewriteDocsEntityGraph(html: string, pathname?: string): string {
   return html.replace(JSON_LD_SCRIPT_RE, (script, body: string) => {
     try {
       const next = rewriteDocsJsonLdValue(JSON.parse(body));
       if (next === null) return '';
-      return `<script type="application/ld+json">${JSON.stringify(next)}</script>`;
-    } catch {
+      // Escape `<` so a `</script>` inside any string value cannot close the
+      // element early. JSON.parse turns Mintlify's escaped `<\/script>` back
+      // into a literal, and JSON.stringify would re-emit it raw. Mirrors
+      // escapeJsonScript in scripts/build-crawlable-corpus.mjs.
+      const serialized = JSON.stringify(next).replace(/</g, '\\u003c');
+      return `<script type="application/ld+json">${serialized}</script>`;
+    } catch (err) {
+      // Fail open so a shape we cannot parse still reaches the reader, but say
+      // so: without this the vendor WebSite silently ships behind a 200 and the
+      // response headers look identical to a successful rewrite.
+      console.error('[docs-locale-seo] JSON-LD rewrite failed; shipping upstream block', {
+        pathname,
+        error: err instanceof Error ? err.message : String(err),
+      });
       return script;
     }
   });
@@ -240,7 +310,7 @@ export function rewriteDocsLocaleHtml(html: string, pathname: string): string {
     next = replaceOgLocale(next, 'en_US');
   }
   next = injectAfterCanonical(next, buildDocsHreflangLinkTags(pathname));
-  return rewriteDocsEntityGraph(next);
+  return rewriteDocsEntityGraph(next, pathname);
 }
 
 export function shouldTransformDocsUpstreamHtml(

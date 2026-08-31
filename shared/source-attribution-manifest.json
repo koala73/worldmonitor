@@ -7107,9 +7107,6 @@
       "references": [
         {
           "path": "scripts/build-chokepoint-transit-snapshot.mjs"
-        },
-        {
-          "path": "scripts/build-research-reports.mjs"
         }
       ]
     },
@@ -14229,7 +14226,7 @@
           "path": "src/config/docs-locale-seo.ts"
         },
         {
-          "path": "src/config/variant-dashboard-html.ts"
+          "path": "src/config/schema-graph-ids.ts"
         },
         {
           "path": "src/config/variant-meta.ts"

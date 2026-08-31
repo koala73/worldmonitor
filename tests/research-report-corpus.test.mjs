@@ -105,7 +105,20 @@ describe('research report corpus (#5668)', () => {
     assert.match(html, new RegExp(`<h1>${report.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}</h1>`));
     assert.equal(reportLd.name, report.title);
     assert.equal(dataJson.title, report.title);
-    assert.equal(reportLd.author.name, report.author.name);
+    // The "World Monitor Research" byline stays on the page and in the download;
+    // in the entity graph author/publisher fold into the canonical Organization
+    // so the page does not publish a second org claiming the same homepage
+    // (#7459b). Assert both roles against GENERATED output, not generator source.
+    const CANONICAL_ORG_ROLE = {
+      '@id': 'https://www.worldmonitor.app/#organization',
+      '@type': 'Organization',
+      name: 'World Monitor',
+      url: 'https://www.worldmonitor.app/',
+    };
+    assert.deepEqual(reportLd.author, CANONICAL_ORG_ROLE);
+    assert.deepEqual(reportLd.publisher, CANONICAL_ORG_ROLE);
+    assert.deepEqual(reportLd.hasPart.creator, CANONICAL_ORG_ROLE);
+    assert.match(html, new RegExp(report.author.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.equal(dataJson.author, report.author.name);
     assert.equal(reportLd.version, report.version);
     assert.equal(dataJson.version, report.version);

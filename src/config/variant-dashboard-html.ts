@@ -1,3 +1,8 @@
+import {
+  CANONICAL_ORIGIN,
+  ORGANIZATION_ID,
+  WEBSITE_ID,
+} from './schema-graph-ids';
 import { VARIANT_META, type VariantMeta } from './variant-meta';
 import {
   VARIANT_SEO_PARAGRAPHS,
@@ -94,15 +99,17 @@ function replaceCounted(
 const ONE: CountBounds = { min: 1, max: 1 };
 const TWO: CountBounds = { min: 2, max: 2 };
 
-const ORGANIZATION_ID = 'https://www.worldmonitor.app/#organization';
-const WEBSITE_ID = 'https://www.worldmonitor.app/#website';
-const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
-
 function jsonLdScript(payload: Record<string, unknown>): string {
-  // generateBundle runs after Vite stamps html.cspNonce onto dashboard.html.
-  // Injected JSON-LD must carry the same nonce: variant payloads differ, so
-  // they cannot join the committed sha256 allowlist (#7459c).
-  return `<script type="application/ld+json" nonce="wm-static-bootstrap">\n    ${JSON.stringify(payload, null, 2).replace(/\n/g, '\n    ')}\n    </script>`;
+  // generateBundle runs after Vite stamps html.cspNonce onto dashboard.html, so
+  // the nonce is added here for consistency with every other script in the
+  // document. It is not load-bearing: `application/ld+json` is a data block, and
+  // CSP script-src is never consulted for one — an un-nonced JSON-LD block would
+  // not have been blocked (#7459c).
+  const serialized = JSON.stringify(payload, null, 2)
+    .replace(/\n/g, '\n    ')
+    // Escape `<` so a `</script>` in any value cannot close the element early.
+    .replace(/</g, '\\u003c');
+  return `<script type="application/ld+json" nonce="wm-static-bootstrap">\n    ${serialized}\n    </script>`;
 }
 
 function variantWebPageJsonLd(meta: VariantMeta): string {
@@ -266,7 +273,10 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   // instead of redeclaring those nodes (#7459c).
   html = replaceCounted(
     html,
-    /(<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*\{[\s\S]*?"@type": "WebApplication"[\s\S]*?<\/script>)/,
+    // /g so replaceCounted can observe a SECOND WebApplication block and throw.
+    // Without it String.replace stops at the first match, count can never exceed
+    // 1, and the ONE bound's max half is unenforceable.
+    /(<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*\{[\s\S]*?"@type": "WebApplication"[\s\S]*?<\/script>)/g,
     (_m, script) => `${script}\n    ${variantWebPageJsonLd(meta)}\n    ${variantBreadcrumbJsonLd(meta)}`,
     ONE,
     'variant WebPage and BreadcrumbList',

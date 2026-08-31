@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import middleware from '../middleware';
+import { WORLD_MONITOR_ORG } from '../scripts/build-crawlable-corpus.mjs';
 import {
   WEB_DASHBOARD_VARIANTS,
   renderVariantDashboardHtml,
@@ -16,6 +17,14 @@ const SOFTWARE_ID = 'https://www.worldmonitor.app/#software';
 const SOURCE_ID = 'https://www.worldmonitor.app/#source';
 const PERSON_ID = 'https://www.worldmonitor.app/blog/authors/elie-habib/#person';
 const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
+// Person role filler: anchored on the canonical @id AND self-describing, so the
+// reference resolves inside a single document (#7459a). The strong sameAs
+// anchors stay on the canonical node only.
+const PERSON_ROLE = {
+  '@id': PERSON_ID,
+  '@type': 'Person',
+  name: 'Elie Habib',
+};
 const PERSON_ENTITY_SAME_AS = [
   'https://www.linkedin.com/in/eliashabib',
   'https://www.wikidata.org/wiki/Q121365724',
@@ -33,6 +42,30 @@ function blocksOfType(blocks: Record<string, any>[], type: string): Record<strin
   return blocks.filter((block) => block['@type'] === type);
 }
 
+/**
+ * Every node of `type` at any depth in a page's JSON-LD. Role fillers such as
+ * `author` and `founder` are nested inside their parent node, so a top-level
+ * scan cannot see them.
+ */
+function collectNodesOfType(html: string, type: string): Record<string, any>[] {
+  const found: Record<string, any>[] = [];
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(walk);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const node = value as Record<string, any>;
+    const declared = node['@type'];
+    if (declared === type || (Array.isArray(declared) && declared.includes(type))) {
+      found.push(node);
+    }
+    Object.values(node).forEach(walk);
+  };
+  jsonLdBlocks(html).forEach(walk);
+  return found;
+}
+
 describe('canonical schema graph', () => {
   guardProBuiltOutput();
 
@@ -47,7 +80,7 @@ describe('canonical schema graph', () => {
     assert.equal(organizations.length, 1, 'the canonical welcome page must declare Organization once');
     assert.equal(organizations[0]['@id'], ORGANIZATION_ID);
     assert.equal(organizations[0].url, CANONICAL_ORIGIN);
-    assert.deepEqual(organizations[0].founder, { '@id': PERSON_ID });
+    assert.deepEqual(organizations[0].founder, PERSON_ROLE);
     assert.equal(organizations[0].foundingDate, '2026-01');
     assert.equal(blocksOfType(proBlocks, 'Organization').length, 0, '/pro must reference the canonical Organization');
     assert.equal(blocksOfType(dashboardBlocks, 'Organization').length, 0, '/dashboard must reference the canonical Organization');
@@ -93,7 +126,7 @@ describe('canonical schema graph', () => {
       assert.equal(blocksOfType(renderedBlocks, 'WebSite').length, 0, `${variant} must not claim the canonical WebSite`);
       assert.deepEqual(application.publisher, { '@id': ORGANIZATION_ID });
       assert.deepEqual(application.isPartOf, { '@id': WEBSITE_ID });
-      assert.deepEqual(application.author, { '@id': PERSON_ID });
+      assert.deepEqual(application.author, PERSON_ROLE);
 
       const webPage = blocksOfType(renderedBlocks, 'WebPage')[0];
       const crumbs = blocksOfType(renderedBlocks, 'BreadcrumbList')[0];
@@ -126,7 +159,7 @@ describe('canonical schema graph', () => {
 
     assert.equal(application['@id'], SOFTWARE_ID);
     assert.deepEqual(application.publisher, { '@id': ORGANIZATION_ID });
-    assert.deepEqual(application.author, { '@id': PERSON_ID });
+    assert.deepEqual(application.author, PERSON_ROLE);
     assert.equal(webPage['@id'], 'https://www.worldmonitor.app/pro#webpage');
     assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
     assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
@@ -177,14 +210,21 @@ describe('canonical schema graph', () => {
       const html = read(path);
       assert.match(
         html,
-        /"author": \{\s*"@id": "https:\/\/www\.worldmonitor\.app\/blog\/authors\/elie-habib\/#person"\s*\}/,
-        `${path} must replace anonymous Person authors with the canonical @id`,
+        /"author": \{\s*"@id": "https:\/\/www\.worldmonitor\.app\/blog\/authors\/elie-habib\/#person"/,
+        `${path} must anchor the author on the canonical @id`,
       );
-      assert.doesNotMatch(
-        html,
-        /"@type": "Person"/,
-        `${path} must not emit an anonymous or competing Person node`,
-      );
+      // Every Person node must carry the canonical @id. Banning the literal
+      // '"@type": "Person"' outright would also forbid the anchored typed stub
+      // that makes the @id resolve within this document — the shape
+      // blog-site/src/layouts/BlogPost.astro already uses. What must not appear
+      // is an UNANCHORED Person, so assert over the parsed graph.
+      for (const person of collectNodesOfType(html, 'Person')) {
+        assert.equal(
+          person['@id'],
+          PERSON_ID,
+          `${path} Person nodes must carry the canonical @id, got ${JSON.stringify(person['@id'])}`,
+        );
+      }
       for (const url of PERSON_ENTITY_SAME_AS) {
         assert.doesNotMatch(
           html,
@@ -196,25 +236,24 @@ describe('canonical schema graph', () => {
   });
 
   it('points DataCatalog and Dataset roles at the canonical Organization (#7459b)', () => {
-    const generator = read('scripts/build-crawlable-corpus.mjs');
-    assert.match(
-      generator,
-      /WORLD_MONITOR_ORG = Object\.freeze\(\{\s*'@id': 'https:\/\/www\.worldmonitor\.app\/#organization',\s*\}\)/,
-    );
-    assert.doesNotMatch(
-      generator,
-      /creator: \{ '@type': 'Organization', name: 'World Monitor'/,
-      'corpus Datasets must not inline an anonymous Organization creator',
-    );
-
-    const reports = read('scripts/build-research-reports.mjs');
-    assert.match(reports, /publisher: \{ '@id': 'https:\/\/www\.worldmonitor\.app\/#organization' \}/);
-    assert.match(reports, /creator: \{ '@id': 'https:\/\/www\.worldmonitor\.app\/#organization' \}/);
+    // Assert the generator's runtime VALUE, not its source formatting: a
+    // behaviour-preserving reflow must not red the gate, and a source regex
+    // cannot see what the generator actually emits.
+    assert.deepEqual(WORLD_MONITOR_ORG, {
+      '@id': ORGANIZATION_ID,
+      '@type': 'Organization',
+      name: 'World Monitor',
+      url: CANONICAL_ORIGIN,
+    });
+    // The role filler must stay RESOLVABLE: `@id` alone would reference a node
+    // no generated corpus page declares (#7459b).
+    assert.equal(WORLD_MONITOR_ORG['@type'], 'Organization');
+    assert.ok(WORLD_MONITOR_ORG.name, 'role filler must carry a name so the reference resolves');
   });
 
   it('grounds the source Organization with founder and foundingDate (#7459e)', () => {
     const welcome = blocksOfType(jsonLdBlocks(read('pro-test/welcome.html')), 'Organization')[0];
-    assert.deepEqual(welcome.founder, { '@id': PERSON_ID });
+    assert.deepEqual(welcome.founder, PERSON_ROLE);
     assert.equal(welcome.foundingDate, '2026-01');
   });
 });
