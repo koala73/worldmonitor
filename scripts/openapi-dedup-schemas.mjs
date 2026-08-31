@@ -40,16 +40,16 @@ const SCHEMA_SINGLE_KEYS = new Set([
   'unevaluatedItems',
   'unevaluatedProperties',
 ]);
-// Lowered 80 -> 56 and 256 -> 96 when this branch's three supply-chain
-// operations landed alongside #7400's divergence operation: the bundle reached
-// 937,954 bytes of the 950,000 budget, leaving 12,046 free against a
-// 12,234-byte three-operation reserve. Extending the dedup is the prescribed
-// lever (tests/openapi-json-dedup.test.mjs: raising the budget is not an
-// option); these thresholds recover 2,327 bytes across 51 groups instead of 25.
+// The schema byte floor was lowered from 80 to 56 and the group saving floor
+// from 256 to 96 when #7400 brought the bundle close to its three-operation
+// reserve. Energy import metadata later left the bundle 276 bytes short of that
+// reserve. Lowering the group floor from 96 to 72 recovers 326 bytes through
+// the same lossless transform. The floor still exceeds each replacement ref's
+// cost, so selected groups always reduce the served artifact.
 // The pass stays lossless either way — every transform is resolved back to the
 // source document in tests — so the thresholds only trade emit time for bytes.
 const MIN_SHARED_SCHEMA_BYTES = 56;
-const MIN_GROUP_SAVING_BYTES = 96;
+const MIN_GROUP_SAVING_BYTES = 72;
 
 function pointerSegment(value) {
   return value.replaceAll('~', '~0').replaceAll('/', '~1');
