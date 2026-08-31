@@ -130,6 +130,48 @@ describe('seedTransitSummaries (relay)', () => {
     'return seedTransitSummaries;',
   ].join('\n');
 
+  // The sibling writer. Both seeders read the SAME chokepointCrossings map and
+  // both ship inside one get-chokepoint-status bundle, so they must agree on
+  // whether today's counts exist. Extracted the same way as the harness above.
+  const transitsFnBody = relaySrc.match(/async function seedChokepointTransits\(\)\s*\{([\s\S]*?)\n\}/)?.[1];
+  assert.ok(transitsFnBody, 'seedChokepointTransits body not found');
+
+  function extractArrayConst(name) {
+    const m = relaySrc.match(new RegExp(`const ${name} = \\[[\\s\\S]*?\\n\\];`));
+    assert.ok(m, `${name} definition not found in relaySrc`);
+    return m[0];
+  }
+
+  const transitsHarnessSrc = [
+    extractArrayConst('CHOKEPOINTS'),
+    extractConstLine('TRANSIT_WINDOW_MS'),
+    extractConstLine('CHOKEPOINT_TRANSIT_KEY'),
+    extractConstLine('CHOKEPOINT_TRANSIT_TTL'),
+    `async function seedChokepointTransits() {${transitsFnBody}\n}`,
+    'return seedChokepointTransits;',
+  ].join('\n');
+
+  // Evaluated once in test scope so the cross-writer invariant below can walk
+  // the real relay-name -> canonical-id mapping rather than a hand-copied list.
+  // eslint-disable-next-line no-new-func
+  const RELAY_NAME_TO_ID = new Function(
+    `${extractObjectConst('RELAY_NAME_TO_ID')}\nreturn RELAY_NAME_TO_ID;`,
+  )();
+
+  function buildSeedChokepointTransits({
+    envelopeWrite,
+    upstashSet = async () => {},
+    chokepointCrossings = new Map(),
+    log = () => {},
+  }) {
+    // eslint-disable-next-line no-new-func
+    const factory = new Function(
+      'envelopeWrite', 'upstashSet', 'console', 'chokepointCrossings',
+      transitsHarnessSrc,
+    );
+    return factory(envelopeWrite, upstashSet, { log, warn: () => {} }, chokepointCrossings);
+  }
+
   // Fresh sandbox per call — `latestCorridorRiskData` resets like a cold
   // relay restart instead of leaking state between tests.
   function buildSeedTransitSummaries({
@@ -281,6 +323,76 @@ describe('seedTransitSummaries (relay)', () => {
     assert.equal(summaries.suez.todayOther, 1);
     assert.equal(summaries.suez.wowChangePct, 2.8);
     assert.equal(summaries.hormuz_strait.todayTotal, null, 'a chokepoint with no AIS crossings stays absent');
+  });
+
+  it('makes both AIS writers agree on whether today has a count', async () => {
+    // #7457 second half. seedTransitSummaries leaves todayTotal null for an
+    // empty window, but seedChokepointTransits writes total: recent.length
+    // unconditionally. Both keys ship in ONE get-chokepoint-status bundle
+    // (api/mcp/registry/cache-tools.ts exposes 'transit-summaries' and
+    // 'chokepoint_transits' as sub-datasets), so before the `available` flag a
+    // single response said Suez was both "unknown" and "0" and the answer
+    // depended on which half the reader picked.
+    const now = Date.now();
+    const crossings = new Map([
+      ['Suez Canal', [
+        { ts: now - 1_000, type: 'cargo' },
+        { ts: now - 2_000, type: 'tanker' },
+      ]],
+      // Present in the map but entirely outside the 24h window: the empty-window
+      // case, which must read as absent on BOTH sides rather than as zero traffic.
+      ['Strait of Hormuz', [{ ts: now - 25 * 60 * 60 * 1000, type: 'cargo' }]],
+    ]);
+
+    const summaryWrites = [];
+    const seedSummaries = buildSeedTransitSummaries({
+      envelopeRead: async key => (key === 'supply_chain:portwatch:v1'
+        ? { suez: { history: makeDays(40, 120, 0), wowChangePct: 2.8 }, hormuz_strait: { history: makeDays(40, 80, 0), wowChangePct: 12.9 } }
+        : null),
+      envelopeWrite: async (key, data) => { summaryWrites.push({ key, data }); return true; },
+      upstashSet: async () => {},
+      chokepointCrossings: new Map(crossings),
+    });
+
+    const transitWrites = [];
+    const seedTransits = buildSeedChokepointTransits({
+      envelopeWrite: async (key, data) => { transitWrites.push({ key, data }); return true; },
+      chokepointCrossings: new Map(crossings),
+    });
+
+    await seedSummaries();
+    await seedTransits();
+
+    const { summaries } = summaryWrites.find(w => w.key === 'supply_chain:transit-summaries:v1').data;
+    const { transits } = transitWrites.find(w => w.key === 'supply_chain:chokepoint_transits:v1').data;
+
+    // Measured window: both sides say present, with the same count.
+    assert.equal(summaries.suez.todayTotal, 2);
+    assert.equal(transits['Suez Canal'].total, 2);
+    assert.equal(transits['Suez Canal'].available, true);
+
+    // Empty window: both sides say absent. The sibling keeps its documented
+    // {tanker, cargo, other, total} numeric shape, so `available` is what
+    // carries the distinction there.
+    assert.equal(summaries.hormuz_strait.todayTotal, null);
+    assert.equal(transits['Strait of Hormuz'].total, 0);
+    assert.equal(transits['Strait of Hormuz'].available, false);
+
+    // The invariant itself, over every chokepoint in the bundle: a null
+    // todayTotal and an `available: true` can never coexist for one waterway.
+    const idByRelayName = new Map(Object.entries(RELAY_NAME_TO_ID));
+    let checked = 0;
+    for (const [relayName, row] of Object.entries(transits)) {
+      const cpId = idByRelayName.get(relayName);
+      if (!cpId || !summaries[cpId]) continue;
+      checked++;
+      assert.equal(
+        row.available,
+        summaries[cpId].todayTotal != null,
+        `${relayName}: chokepoint_transits.available must match transit-summaries presence`,
+      );
+    }
+    assert.ok(checked >= 13, `expected every canonical chokepoint compared, got ${checked}`);
   });
 
   it('still publishes a real Panama disruptionPct of 0 from corridor risk', async () => {
