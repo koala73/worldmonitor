@@ -6,10 +6,16 @@ import { getEnergyImportDependencyObservedSources } from '../server/worldmonitor
 
 describe('getEnergyImportDependencyObservedSources', () => {
   it('maps the Eurostat static source to the exact audited dataset', () => {
-    assert.deepEqual(getEnergyImportDependencyObservedSources('eurostat-nrg_ind_id'), [{
+    assert.deepEqual(getEnergyImportDependencyObservedSources('eurostat'), [{
       providerName: 'Eurostat',
       sourceUrl: 'https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_id/default/table?lang=en',
     }]);
+  });
+
+  it('rejects labels that only contain an audited provider name', () => {
+    for (const source of ['not-worldbank', 'worldbank-derived', 'eurostat-nrg_ind_id', 'World Bank']) {
+      assert.deepEqual(getEnergyImportDependencyObservedSources(source), [], source);
+    }
   });
 });
 
