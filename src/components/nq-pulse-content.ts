@@ -1,7 +1,7 @@
 import { formatChange, formatPrice, getChangeClass } from '@/utils/market-format';
 import { escapeHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
-import type { MarketData } from '@/types';
+import type { MarketData, MarketSymbol } from '@/types';
 import {
   NQ_CURRENT_MAX_MS,
   NQ_DELAYED_MAX_MS,
@@ -46,7 +46,7 @@ export function freshnessLabelForAsOf(
 
 export function orderNqPulseRows(
   quotes: readonly MarketData[],
-  basket: readonly MarketData[] = NQ_PULSE_BASKET,
+  basket: readonly MarketSymbol[] = NQ_PULSE_BASKET,
 ): NqPulseRow[] {
   const bySymbol = new Map(quotes.map((quote) => [quote.symbol, quote]));
   return basket.map((meta) => {
