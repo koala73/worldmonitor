@@ -1,11 +1,11 @@
 ---
 title: "Pro Intelligence Suite"
-description: "The Pro-only derived datasets — physical metals premiums and divergence, mineral concentration, defense industrial base, demographics, food stocks, resilience indicators, supply vulnerability, and the five-factor scorecard — with the REST route and MCP tool for each."
+description: "The Pro-only derived datasets — physical metals premiums and divergence, mineral concentration, defense industrial base, demographics, food stocks, resilience indicators, supply vulnerability, and the five-factor scorecard — with each dataset's REST route, seed cadence, and MCP surface where one exists."
 ---
 
 A family of derived datasets ships behind the Pro tier. Each one answers a question the raw feeds cannot: not *what is the gold price* but *is the physical premium abnormal for gold right now*; not *where is cobalt* but *who refines it, and how concentrated is that*.
 
-They share one shape. A daily seeder writes a bounded snapshot to Redis, a sebuf RPC serves it, and an MCP tool wraps that RPC for agents. None of them accept a write. All of them carry explicit provenance and an explicit unavailable state, so an absent number never has to be read as a zero.
+They share a read-only contract, not one pipeline. Seed cadence and surfaces differ by dataset: physical premiums refresh daily and feed the divergence index; mineral production every 60 days; the defense-industrial World Bank snapshot every 10 days and SIPRI supplier shares every 14; demographics every 20 days; food stocks every 30 days; supply-vulnerability and the five-factor scorecard project daily derived snapshots; resilience indicators are built from the score trace on demand. A sebuf RPC serves each read. Most routes also have an MCP wrapper, but not all — `list-vulnerability-rankings` is REST-only. None of them accept a write. All of them carry explicit provenance and an explicit unavailable state, so an absent number never has to be read as a zero.
 
 ## Access
 
