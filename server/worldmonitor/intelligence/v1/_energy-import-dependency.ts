@@ -40,10 +40,11 @@ export function resolveEnergyImportDependency(
     return UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY;
   }
 
+  const observedSources = getEnergyImportDependencyObservedSources(observation.source);
   const decision = decideIndicatorRawRedistribution({
     indicatorId: 'energyImportDependency',
     observationState: 'observed',
-    sources: getEnergyImportDependencyObservedSources(observation.source),
+    sources: observedSources,
   });
   if (!decision.expose) return UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY;
 
@@ -51,6 +52,6 @@ export function resolveEnergyImportDependency(
     available: true,
     value: observation.value,
     year: observation.year,
-    source: decision.providerName,
+    source: observedSources[0]?.providerName ?? '',
   };
 }

@@ -425,7 +425,6 @@ export async function getCountryEnergyProfile(
     return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback, sprPolicy, importDependency);
   }
 
-  // Direct-source fallback for a cold spine or a country that is not in it.
   const [mixResult, jodiOilResult, jodiGasResult, ieaStocksResult, emberResult] =
     await Promise.allSettled([
       getCachedJson(`energy:mix:v1:${code}`, true),

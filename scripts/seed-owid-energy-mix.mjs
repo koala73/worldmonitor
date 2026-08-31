@@ -175,8 +175,6 @@ export function parseOwidCsv(csvText) {
 export function buildExposureIndex(countries) {
   const all = [...countries.values()];
 
-  // Each bucket filters only on its own metric so countries with valid
-  // oil or renewables data but no gas or coal value are not excluded.
   const top20 = (key) =>
     all
       .filter((c) => c[key] != null)

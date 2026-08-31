@@ -2,6 +2,16 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import { resolveEnergyImportDependency } from '../server/worldmonitor/intelligence/v1/_energy-import-dependency.ts';
+import { getEnergyImportDependencyObservedSources } from '../server/worldmonitor/resilience/v1/_energy-import-dependency-source.ts';
+
+describe('getEnergyImportDependencyObservedSources', () => {
+  it('maps the Eurostat static source to the exact audited dataset', () => {
+    assert.deepEqual(getEnergyImportDependencyObservedSources('eurostat-nrg_ind_id'), [{
+      providerName: 'Eurostat',
+      sourceUrl: 'https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_id/default/table?lang=en',
+    }]);
+  });
+});
 
 describe('resolveEnergyImportDependency', () => {
   it('publishes the audited World Bank observation with provenance', () => {

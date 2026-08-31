@@ -122,7 +122,6 @@ export function parseEmberCsv(csvText) {
     throw new Error(`Ember CSV missing mapped columns: ${missingColumns.join(', ')}`);
   }
 
-  // Abort if the Fossil series is missing entirely.
   const hasFossil = rows.some((r) => String(r[COLS.series] || '').trim() === 'Fossil');
   if (!hasFossil) {
     throw new Error('Ember CSV schema changed — "Fossil" series not found; update parser');

@@ -54,7 +54,6 @@ describe('buildExposureIndex', () => {
 
   it('each bucket includes only countries with a non-null value for that metric', () => {
     const idx = buildExposureIndex(makeCountries());
-    // MT has no gasShare/coalShare but has an oil share.
     assert.ok(!idx.gas.some((e) => e.iso2 === 'MT'), 'MT has null gasShare — should not appear in gas bucket');
     assert.ok(!idx.coal.some((e) => e.iso2 === 'MT'), 'MT has null coalShare — should not appear in coal bucket');
     assert.ok(idx.oil.some((e) => e.iso2 === 'MT'), 'MT has oilShare=3 — must appear in oil bucket');
