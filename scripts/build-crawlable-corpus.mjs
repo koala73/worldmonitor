@@ -1829,11 +1829,22 @@ export function describeHeadlineIneligibilityReason(country) {
   if (Number.isFinite(coverage) && coverage < HEADLINE_RANKING_MIN_COVERAGE) {
     return `${country.name}'s coverage is ${coverageText}, below the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% ranking floor.`;
   }
-  return `${country.name}'s coverage is ${coverageText}, which meets the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% floor, but a published rank also needs a recorded population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%.`;
+  const strongest = activeCountryDimensions(country)
+    .filter((dimension) => (
+      Number(dimension.coverage) > 0
+      && String(dimension.imputationClass || '') !== 'not-applicable'
+    ))
+    .sort(compareDimensionsByCoverageDesc)
+    .slice(0, 3)
+    .map((dimension) => `${dimensionLabel(dimension)} at ${formatPercent(dimension.coverage)}`);
+  const strongestClause = strongest.length > 0
+    ? ` Strongest observed coverage is ${formatProseList(strongest)}.`
+    : '';
+  return `${country.name}'s coverage is ${coverageText}, which meets the ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}% floor, but a published rank also needs a recorded population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%.${strongestClause}`;
 }
 
 export function describeHeadlineIneligibility(country) {
-  return `World Monitor does not publish a resilience score or rank for ${country.name} because it does not meet the published ranking eligibility criteria. ${describeHeadlineIneligibilityReason(country)}`;
+  return `World Monitor does not publish a resilience score or rank for ${country.name} because it does not meet the published ranking eligibility criteria.`;
 }
 
 export function describeCoverageGaps(country) {
@@ -2117,7 +2128,7 @@ function renderCountryPage({
   const scorePublished = country.headlineEligible !== false;
   const scoreDisclosure = scorePublished
     ? ''
-    : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)}. ${escapeHtml(describeHeadlineIneligibilityReason(country))}</p>`;
+    : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)} because it does not meet the published ranking eligibility criteria.</p>`;
   const datasetDescription = scorePublished
     ? `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`
     : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because the country does not meet the published ranking eligibility criteria. ${RANKING_ELIGIBILITY_CLAUSE}`;
