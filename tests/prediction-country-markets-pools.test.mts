@@ -163,4 +163,47 @@ describe('fetchCountryMarkets uses the producer country index', () => {
     assert.ok(titles.some((t: string) => t.includes('best AI model')), `tech bucket missing: ${titles}`);
     assert.ok(titles.some((t: string) => t.includes('policy rate')), `finance bucket missing: ${titles}`);
   });
+
+  it('keeps precise country aliases in the bootstrap rollout fallback', async () => {
+    globalThis.__wmCountryMarketsTestState = {
+      rpcCalls: [],
+      rpcMarketsByCategory: {},
+      hydrated: {
+        geopolitical: [
+          bootstrapMarket('Will Trump nominate the next Fed chair?', 5_000_000),
+          bootstrapMarket('Will the Fed pause rates?', 4_000_000),
+          bootstrapMarket('Will The Last of Us win best drama?', 9_000_000),
+        ],
+        tech: [],
+        finance: [],
+        fetchedAt: Date.now(),
+      },
+    };
+    const service = await loadPredictionService();
+    const out = await service.fetchCountryMarkets('United States', 'US');
+
+    assert.deepEqual(out.map((m: { title: string }) => m.title), [
+      'Will Trump nominate the next Fed chair?',
+      'Will the Fed pause rates?',
+    ]);
+  });
+
+  it('uses the UK alias when the literal country name is absent', async () => {
+    globalThis.__wmCountryMarketsTestState = {
+      rpcCalls: [],
+      rpcMarketsByCategory: {},
+      hydrated: {
+        geopolitical: [bootstrapMarket('Will the UK hold an early election?', 2_000_000)],
+        tech: [],
+        finance: [],
+        fetchedAt: Date.now(),
+      },
+    };
+    const service = await loadPredictionService();
+    const out = await service.fetchCountryMarkets('United Kingdom', 'GB');
+
+    assert.deepEqual(out.map((m: { title: string }) => m.title), [
+      'Will the UK hold an early election?',
+    ]);
+  });
 });

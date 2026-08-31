@@ -118,13 +118,29 @@ export async function fetchPredictions(opts?: { region?: string }): Promise<Pred
   return markets.slice(0, 15);
 }
 
-function matchesCountryName(title: string, country: string): boolean {
-  const escaped = country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`\\b${escaped}\\b`, 'i').test(title);
+const COUNTRY_SEARCH_ALIASES: Record<string, string[]> = {
+  US: ['American', 'Trump', 'Biden', 'Congress', 'White House', 'Federal Reserve', 'The Fed', 'Fed rate', 'Fed chair', 'Fed cut', 'Fed hike', 'US recession', 'US GDP', 'US election', 'US tariff', 'US president', 'US presidency'],
+  GB: ['UK', 'Britain', 'British'],
+  KR: ['South Korean'],
+  KP: ['DPRK', 'Pyongyang', 'Kim Jong'],
+  AE: ['UAE', 'Dubai', 'Abu Dhabi', 'Emirati'],
+  SA: ['Saudi', 'MBS'],
+};
+
+function countrySearchTerms(country: string, countryCode: string): string[] {
+  return [country, ...(COUNTRY_SEARCH_ALIASES[countryCode] ?? [])];
+}
+
+function matchesCountryTerms(title: string, terms: string[]): boolean {
+  return terms.some((term) => {
+    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    return new RegExp(`\\b${escaped}\\b`, 'i').test(title);
+  });
 }
 
 export async function fetchCountryMarkets(country: string, countryCode: string): Promise<PredictionMarket[]> {
   const normalizedCode = countryCode.trim().toUpperCase();
+  const terms = countrySearchTerms(country, normalizedCode);
   if (/^[A-Z]{2}$/.test(normalizedCode)) {
     const response = await client.listPredictionMarkets({
       category: `country:${normalizedCode}`,
@@ -147,7 +163,7 @@ export async function fetchCountryMarkets(country: string, countryCode: string):
   if (hydrated) {
     const buckets = [...(hydrated.geopolitical ?? []), ...(hydrated.tech ?? []), ...(hydrated.finance ?? [])];
     const filtered = buckets
-      .filter(m => !isExpired(m.endDate) && matchesCountryName(m.title, country))
+      .filter(m => !isExpired(m.endDate) && matchesCountryTerms(m.title, terms))
       .filter((market, index, all) => all.findIndex((candidate) => candidate.url === market.url) === index)
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 5);

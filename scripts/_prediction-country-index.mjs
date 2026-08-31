@@ -9,16 +9,23 @@ export function countCountryMarkets(countryMarkets) {
 }
 
 const PREDICTION_COUNTRY_KEYWORDS = Object.freeze({
-  US: ['american', 'congress', 'white house', 'federal reserve', 'fed rate', 'fed chair', 'fed cut', 'fed hike', 'us recession', 'us gdp', 'us election', 'us tariff', 'us president', 'us presidency'],
+  US: ['american', 'congress', 'white house', 'federal reserve', 'the fed', 'fed rate', 'fed chair', 'fed cut', 'fed hike', 'us recession', 'us gdp', 'us election', 'us tariff', 'us president', 'us presidency'],
   GB: ['british', 'uk election', 'uk economy', 'uk prime minister'],
   KR: ['south korean'],
   KP: ['dprk'],
   AE: ['emirati'],
   SA: ['saudi'],
+  CD: ['democratic republic of congo', 'democratic republic of the congo'],
+  GE: ['georgian'],
 });
 
 const AMBIGUOUS_COUNTRY_KEYWORDS = Object.freeze({
-  US: new Set(['america']),
+  US: new Set(['america', 'washington']),
+  CD: new Set(['congo']),
+});
+
+const REQUIRED_COUNTRY_CONTEXT = Object.freeze({
+  GE: ['tbilisi', 'georgian', 'abkhazia', 'ossetia', 'caucasus', 'saakashvili', 'ivanishvili', 'batumi', 'kutaisi'],
 });
 
 function normalizeSearchText(value) {
@@ -30,6 +37,10 @@ function normalizeSearchText(value) {
     .trim();
   return words ? ` ${words} ` : '';
 }
+
+const COUNTRY_TERM_SHADOWS = Object.freeze({
+  CG: { term: normalizeSearchText('congo'), specificCountryCode: 'CD' },
+});
 
 function compileCountryMatchers(countries) {
   return Object.entries(countries).map(([countryCode, country]) => {
@@ -44,14 +55,53 @@ function compileCountryMatchers(countries) {
       countryCode,
       name: normalizeSearchText(name),
       keywords: keywords.map(normalizeSearchText),
+      requiredContext: (REQUIRED_COUNTRY_CONTEXT[countryCode] ?? []).map(normalizeSearchText),
     };
   });
 }
 
-function countryMatchStrength(normalizedTitle, matcher) {
-  if (matcher.name && normalizedTitle.includes(matcher.name)) return 2;
-  if (matcher.keywords.some((keyword) => normalizedTitle.includes(keyword))) return 1;
-  return 0;
+function termOccurrences(normalizedTitle, term, matchStrength, countryCode) {
+  const matches = [];
+  let start = normalizedTitle.indexOf(term);
+  while (start >= 0) {
+    matches.push({ countryCode, start, end: start + term.length, term, matchStrength });
+    start = normalizedTitle.indexOf(term, start + 1);
+  }
+  return matches;
+}
+
+function countryMatches(normalizedTitle, matchers) {
+  const rawMatches = [];
+  for (const matcher of matchers) {
+    if (matcher.requiredContext.length > 0
+      && !matcher.requiredContext.some((term) => normalizedTitle.includes(term))) continue;
+    if (matcher.name) rawMatches.push(...termOccurrences(normalizedTitle, matcher.name, 2, matcher.countryCode));
+    for (const keyword of matcher.keywords) {
+      rawMatches.push(...termOccurrences(normalizedTitle, keyword, 1, matcher.countryCode));
+    }
+  }
+
+  const strongest = new Map();
+  for (const candidate of rawMatches) {
+    const shadow = COUNTRY_TERM_SHADOWS[candidate.countryCode];
+    const shadowedByCountryContext = shadow
+      && candidate.term === shadow.term
+      && rawMatches.some((other) => other.countryCode === shadow.specificCountryCode);
+    const embeddedInSpecificCountry = rawMatches.some((other) => (
+      other.countryCode !== candidate.countryCode
+      && other.term.length > candidate.term.length
+      && other.start <= candidate.start
+      && other.end >= candidate.end
+    ));
+    if (shadowedByCountryContext || embeddedInSpecificCountry) continue;
+    const incumbent = strongest.get(candidate.countryCode);
+    if (!incumbent
+      || candidate.matchStrength > incumbent.matchStrength
+      || (candidate.matchStrength === incumbent.matchStrength && candidate.term.length > incumbent.term.length)) {
+      strongest.set(candidate.countryCode, candidate);
+    }
+  }
+  return strongest;
 }
 
 function marketEventIdentity(market) {
@@ -126,23 +176,30 @@ export function buildCountryMarketIndex(markets, {
   now = Date.now(),
   countries = countryCodes,
 } = {}) {
+  const matchers = compileCountryMatchers(countries);
   const candidates = Array.isArray(markets)
     ? markets
       .filter((market) => market && !isExpired(market.endDate, now))
-      .map((market) => ({ market, normalizedTitle: normalizeSearchText(market.title) }))
+      .map((market) => {
+        const normalizedTitle = normalizeSearchText(market.title);
+        return { market, countryMatches: countryMatches(normalizedTitle, matchers) };
+      })
     : [];
   const strictCandidates = candidates.filter(({ market }) => shouldInclude(market));
   const relaxedCandidates = candidates.filter(({ market }) => shouldInclude(market, true));
   const index = {};
 
-  for (const matcher of compileCountryMatchers(countries)) {
+  for (const matcher of matchers) {
     const rank = (eligible) => dedupeEvents(eligible
-      .map(({ market, normalizedTitle }) => ({
-        market,
-        matchStrength: countryMatchStrength(normalizedTitle, matcher),
-        closeAt: closeTime(market),
-        volume: volume(market),
-      }))
+      .map(({ market, countryMatches: matches }) => {
+        const match = matches.get(matcher.countryCode);
+        return {
+          market,
+          matchStrength: match?.matchStrength ?? 0,
+          closeAt: closeTime(market),
+          volume: volume(market),
+        };
+      })
       .filter(({ matchStrength }) => matchStrength > 0));
 
     let ranked = rank(strictCandidates);

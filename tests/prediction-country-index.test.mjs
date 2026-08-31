@@ -94,4 +94,33 @@ describe('buildCountryMarketIndex', () => {
     assert.equal(index.US.length, 1);
     assert.equal(index.US[0].title, sameEvent[1].title);
   });
+
+  it('keeps overlapping country names on the most specific country only', () => {
+    const drCongo = market('Will Democratic Republic of the Congo hold an election?', 'polymarket', 50_000);
+    const southSudan = market('Will South Sudan reach a peace agreement?', 'kalshi', 40_000);
+    const equatorialGuinea = market('Will Equatorial Guinea increase oil output?', 'polymarket', 30_000);
+
+    const index = buildCountryMarketIndex([drCongo, southSudan, equatorialGuinea], { now: NOW });
+
+    assert.deepEqual(index.CD.map((entry) => entry.title), [drCongo.title]);
+    assert.equal(index.CG, undefined);
+    assert.deepEqual(index.SS.map((entry) => entry.title), [southSudan.title]);
+    assert.equal(index.SD, undefined);
+    assert.deepEqual(index.GQ.map((entry) => entry.title), [equatorialGuinea.title]);
+    assert.equal(index.GN, undefined);
+
+    const kinshasa = market('Will Kinshasa, Congo hold a local election?', 'kalshi', 20_000);
+    const contextIndex = buildCountryMarketIndex([kinshasa], { now: NOW });
+    assert.deepEqual(contextIndex.CD.map((entry) => entry.title), [kinshasa.title]);
+    assert.equal(contextIndex.CG, undefined);
+  });
+
+  it('requires country context before assigning a Georgia market', () => {
+    const usState = market('Will Georgia voters approve the ballot measure?', 'kalshi', 90_000);
+    const country = market('Will Georgian Dream win the Tbilisi election?', 'polymarket', 30_000);
+
+    const index = buildCountryMarketIndex([usState, country], { now: NOW });
+
+    assert.deepEqual(index.GE.map((entry) => entry.title), [country.title]);
+  });
 });
