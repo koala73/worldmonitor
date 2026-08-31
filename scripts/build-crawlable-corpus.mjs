@@ -1887,7 +1887,7 @@ export function describeCoverageGaps(country) {
   const failures = gaps.filter((dimension) => dimension.imputationClass === 'source-failure');
   const unmonitored = gaps.filter((dimension) => dimension.imputationClass === 'unmonitored');
   const failureClause = failures.length > 0
-    ? ` ${formatProseList(failures.map(dimensionLabel))} ${failures.length === 1 ? 'is' : 'are'} marked source unavailable, so the gap is a source-universe limit rather than a missing World Monitor score.`
+    ? ` ${formatProseList(failures.map(dimensionLabel))} ${failures.length === 1 ? 'is' : 'are'} marked source unavailable in this snapshot.`
     : '';
   const unmonitoredClause = unmonitored.length > 0
     ? ` ${formatProseList(unmonitored.map(dimensionLabel))} ${unmonitored.length === 1 ? 'is' : 'are'} tagged unmonitored because the source does not cover ${country.name}.`
@@ -2024,8 +2024,9 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
       ? ` Officially ${officialName}.`
       : '';
     const status = getSovereignStatus(country.code);
+    // The internal sar bucket also includes Taiwan; describe membership only.
     const statusBit = status === 'sar'
-      ? ` ${country.name} is in the rankable universe as a standalone special administrative region.`
+      ? ` ${country.name} is included separately in the rankable universe.`
       : status === 'un-member'
         ? ` ${country.name} is in the rankable universe as a UN member.`
         : '';

@@ -212,7 +212,8 @@ describe('unranked country copy', () => {
     assert.match(gaps, /World Bank/);
     assert.match(gaps, /WHO/);
     assert.match(gaps, /does not cover Taiwan|do not contribute observed series for Taiwan/);
-    assert.match(gaps, /source unavailable/);
+    assert.match(gaps, /State continuity is marked source unavailable in this snapshot/);
+    assert.doesNotMatch(gaps, /source-universe limit/);
     assert.doesNotMatch(gaps, /Fuel-stock buffer/);
     assert.doesNotMatch(gaps, /Reserve adequacy/);
     assert.doesNotMatch(gaps, /\bTW · /);

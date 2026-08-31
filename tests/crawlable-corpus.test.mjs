@@ -1337,7 +1337,8 @@ describe('crawlable corpus generator', () => {
       assert.match(taiwan, /World Bank/);
       assert.match(taiwan, /WHO/);
       assert.match(taiwan, /Nearest ranked comparators:/);
-      assert.match(taiwan, /standalone special administrative region/);
+      assert.match(taiwan, /Taiwan is included separately in the rankable universe/);
+      assert.doesNotMatch(taiwan, /special administrative region/);
       assert.match(taiwan, /a low-confidence listing/);
       assert.doesNotMatch(taiwan, /\bTW · /);
       assert.doesNotMatch(
@@ -1357,6 +1358,21 @@ describe('crawlable corpus generator', () => {
         taiwanWebPage?.mainEntity?.description ?? '',
         /below the ranking threshold|input coverage is below/i,
       );
+
+      for (const slug of ['taiwan', 'palau', 'san-marino']) {
+        const html = read(outDir, `countries/${slug}/index.html`);
+        const sourceGaps = unpublishedHeadingParagraph(html, 'Source inventory gaps');
+        assert.match(
+          sourceGaps,
+          /marked source unavailable in this snapshot/,
+          `${slug} must describe upstream unavailability in the current snapshot`,
+        );
+        assert.doesNotMatch(
+          sourceGaps,
+          /source-universe limit/,
+          `${slug} must not explain an upstream outage as structural exclusion`,
+        );
+      }
 
       const headlineIneligible = corpusData.countries
         .filter((country) => country.headlineEligible === false);
