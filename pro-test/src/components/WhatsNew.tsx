@@ -12,7 +12,7 @@ const ITEMS: ReadonlyArray<{ key: string; pro: boolean }> = [
   { key: 'm1', pro: true },
   { key: 'm2', pro: true },
   { key: 'm3', pro: true },
-  { key: 'm4', pro: false },
+  { key: 'm4', pro: true },
   { key: 'm5', pro: false },
   { key: 'm6', pro: false },
   { key: 'm7', pro: false },
