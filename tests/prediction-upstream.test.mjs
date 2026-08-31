@@ -24,6 +24,7 @@ describe('prediction-market upstream coverage', () => {
 
     assert.deepEqual(events.map((event) => event.id), ['one', 'two']);
     assert.equal(urls.length, 2);
+    assert.equal(new URL(urls[0]).searchParams.get('limit'), '200');
     assert.equal(new URL(urls[1]).searchParams.get('cursor'), 'next-page');
   });
 
@@ -38,6 +39,35 @@ describe('prediction-market upstream coverage', () => {
 
     assert.equal(calls, 3);
     assert.equal(events.length, 3);
+  });
+
+  it('keeps earlier Kalshi pages when a later page fails', async () => {
+    const pageErrors = [];
+    let calls = 0;
+    const events = await fetchKalshiEvents({
+      fetchFn: async () => {
+        calls += 1;
+        if (calls === 1) return Response.json({ events: [{ id: 'one' }], cursor: 'next-page' });
+        return new Response(null, { status: 503 });
+      },
+      baseUrl: 'https://kalshi.example.test',
+      userAgent: 'test',
+      onPageError: (error, page) => pageErrors.push({ message: error.message, page }),
+    });
+
+    assert.deepEqual(events.map((event) => event.id), ['one']);
+    assert.deepEqual(pageErrors, [{ message: 'Kalshi HTTP 503', page: 2 }]);
+  });
+
+  it('still rejects when the first Kalshi page fails', async () => {
+    await assert.rejects(
+      fetchKalshiEvents({
+        fetchFn: async () => new Response(null, { status: 503 }),
+        baseUrl: 'https://kalshi.example.test',
+        userAgent: 'test',
+      }),
+      /Kalshi HTTP 503/,
+    );
   });
 
   it('requests 100 Polymarket events per tag instead of truncating at 20', async () => {

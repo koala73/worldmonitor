@@ -7,10 +7,12 @@ const legacyBrief = readFileSync(new URL('../src/components/CountryBriefPage.ts'
 
 describe('country prediction-market source attribution', () => {
   it('renders the provider in the active deep-dive card', () => {
-    assert.match(deepDive, /market\.source[\s\S]{0,300}(?:Kalshi|Polymarket)/);
+    assert.match(deepDive, /this\.el\('span', 'prediction-source', source\)/);
+    assert.match(deepDive, /sourceBadge\.dataset\.source\s*=\s*market\.source/);
   });
 
   it('renders the provider in the legacy country brief card', () => {
-    assert.match(legacyBrief, /m\.source[\s\S]{0,300}(?:Kalshi|Polymarket)/);
+    assert.match(legacyBrief, /class="prediction-source" data-source="\$\{sourceKey\}"/);
+    assert.match(legacyBrief, />\$\{source\}<\/span>/);
   });
 });

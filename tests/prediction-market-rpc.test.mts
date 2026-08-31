@@ -56,7 +56,7 @@ describe('listPredictionMarkets legacy bootstrap compatibility', () => {
     assert.equal(response.fetchedAt, 123);
   });
 
-  it('reads the country index directly when countryCode is supplied', async () => {
+  it('reads the country index directly for a country category', async () => {
     const payload = {
       countries: {
         US: [{
@@ -80,11 +80,10 @@ describe('listPredictionMarkets legacy bootstrap compatibility', () => {
     };
 
     const response = await listPredictionMarkets({} as never, {
-      category: '',
+      category: 'country:US',
       query: '',
       pageSize: 5,
       cursor: '',
-      countryCode: 'US',
     } as never);
 
     assert.deepEqual(requestedKeys, ['prediction:markets-country-index:v1']);
@@ -92,5 +91,24 @@ describe('listPredictionMarkets legacy bootstrap compatibility', () => {
     assert.equal(response.markets.length, 1);
     assert.equal(response.markets[0].source, 'MARKET_SOURCE_KALSHI');
     assert.equal(response.fetchedAt, 456);
+  });
+
+  it('fails closed for a malformed country category', async () => {
+    let fetchCalls = 0;
+    globalThis.fetch = async () => {
+      fetchCalls += 1;
+      return Response.json({ result: null });
+    };
+
+    const response = await listPredictionMarkets({} as never, {
+      category: 'country:USA',
+      query: '',
+      pageSize: 5,
+      cursor: '',
+    });
+
+    assert.equal(fetchCalls, 0);
+    assert.equal(response.dataAvailable, false);
+    assert.deepEqual(response.markets, []);
   });
 });

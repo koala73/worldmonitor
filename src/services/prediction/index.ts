@@ -118,56 +118,24 @@ export async function fetchPredictions(opts?: { region?: string }): Promise<Pred
   return markets.slice(0, 15);
 }
 
-const COUNTRY_SEARCH_ALIASES: Record<string, string[]> = {
-  'United States': ['US', 'America', 'American', 'Trump', 'Biden', 'Fed', 'tariff'],
-  'United Kingdom': ['UK', 'Britain', 'British'],
-  'South Korea': ['Korea'],
-  'United Arab Emirates': ['UAE', 'Dubai', 'Abu Dhabi'],
-  'Saudi Arabia': ['Saudi', 'MBS'],
-  'North Korea': ['DPRK', 'Pyongyang', 'Kim Jong'],
-};
-
-function countrySearchTerms(country: string): string[] {
-  const terms = [country];
-  const aliases = COUNTRY_SEARCH_ALIASES[country];
-  if (aliases) terms.push(...aliases);
-  return terms;
+function matchesCountryName(title: string, country: string): boolean {
+  const escaped = country.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}\\b`, 'i').test(title);
 }
 
-function matchesCountryTerms(title: string, terms: string[]): boolean {
-  return terms.some(t => new RegExp(`\\b${t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i').test(title));
-}
-
-export async function fetchCountryMarkets(country: string): Promise<PredictionMarket[]> {
-  const terms = countrySearchTerms(country);
-  const allMarkets: PredictionMarket[] = [];
-
-  // Try RPC across geopolitics + finance + tech (parallel; together they cover
-  // every pool). `tech` is not optional here: since #5733 made the producer's
-  // pools a disjoint partition, a tech-classified country market (a Chinese AI
-  // model line, say) lives ONLY in the tech pool, and the early return below
-  // fires as soon as any geopolitics/economy match is found — so without this
-  // category the bootstrap fallback that also unions tech would never be reached
-  // for any country that has a single geo or finance market.
-  const rpcResults = await Promise.allSettled(
-    (['geopolitics', 'economy', 'tech'] as const).map(category =>
-      client.listPredictionMarkets({ category, query: country, pageSize: 30, cursor: '' })
-    )
-  );
-  for (const result of rpcResults) {
-    if (result.status === 'fulfilled' && result.value.markets?.length) {
-      allMarkets.push(...result.value.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)));
+export async function fetchCountryMarkets(country: string, countryCode: string): Promise<PredictionMarket[]> {
+  const normalizedCode = countryCode.trim().toUpperCase();
+  if (/^[A-Z]{2}$/.test(normalizedCode)) {
+    const response = await client.listPredictionMarkets({
+      category: `country:${normalizedCode}`,
+      query: '',
+      pageSize: 5,
+      cursor: '',
+    }).catch(() => null);
+    if (response?.markets?.length) {
+      return response.markets.map(protoToMarket).filter(m => !isExpired(m.endDate)).slice(0, 5);
     }
-  }
-
-  if (allMarkets.length > 0) {
-    // Filter by any matching term, deduplicate by URL, sort by volume
-    const matched = allMarkets
-      .filter(m => matchesCountryTerms(m.title, terms))
-      .filter((m, i, arr) => arr.findIndex(x => x.url === m.url) === i)
-      .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
-      .slice(0, 5);
-    if (matched.length > 0) return matched;
+    if (response?.dataAvailable) return [];
   }
 
   // Fallback: search bootstrap data across all buckets. `tech` must be included
@@ -179,7 +147,8 @@ export async function fetchCountryMarkets(country: string): Promise<PredictionMa
   if (hydrated) {
     const buckets = [...(hydrated.geopolitical ?? []), ...(hydrated.tech ?? []), ...(hydrated.finance ?? [])];
     const filtered = buckets
-      .filter(m => !isExpired(m.endDate) && matchesCountryTerms(m.title, terms))
+      .filter(m => !isExpired(m.endDate) && matchesCountryName(m.title, country))
+      .filter((market, index, all) => all.findIndex((candidate) => candidate.url === market.url) === index)
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 5);
     if (filtered.length > 0) return filtered;

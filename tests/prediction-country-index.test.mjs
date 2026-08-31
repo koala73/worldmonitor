@@ -32,16 +32,17 @@ describe('buildCountryMarketIndex', () => {
     assert.deepEqual(index.US.map((entry) => entry.title), [usMarket.title]);
   });
 
-  it('uses curated country terms and does not treat the word us as the United States', () => {
+  it('uses precise country terms and rejects ambiguous United States aliases', () => {
     const lastOfUs = market('Will The Last of Us win best drama?', 'polymarket', 1_000_000);
+    const southAmerica = market('Will South America grow faster in 2027?', 'polymarket', 500_000);
     const trump = market('Will Trump sign the tariff bill in 2027?', 'kalshi', 25_000);
 
-    const index = buildCountryMarketIndex([lastOfUs, trump], { now: NOW });
+    const index = buildCountryMarketIndex([lastOfUs, southAmerica, trump], { now: NOW });
 
     assert.deepEqual(index.US.map((entry) => entry.title), [trump.title]);
   });
 
-  it('ranks nearer contracts ahead of equally relevant 2045 contracts', () => {
+  it('ranks a nearer country alias ahead of an exact-name 2045 contract', () => {
     const distant = market(
       'Will Nick Fuentes become President of the United States before 2045?',
       'kalshi',
@@ -49,7 +50,7 @@ describe('buildCountryMarketIndex', () => {
       { endDate: '2045-01-08T19:00:00Z' },
     );
     const near = market(
-      'Will United States GDP grow in 2027?',
+      'Will the Fed cut rates in 2027?',
       'kalshi',
       20_000,
       { endDate: '2027-12-31T00:00:00Z' },

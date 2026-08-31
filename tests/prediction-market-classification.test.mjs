@@ -603,6 +603,13 @@ describe('the seeder is wired to the tested pool-building path', () => {
       /afterPublish:[\s\S]{0,300}freshnessMetaPatch:[\s\S]{0,200}poolCounts:\s*predictionPoolCounts\(data\)/,
     );
   });
+
+  it('builds the country index before publishing it to the on-demand key', () => {
+    assert.match(source, /buildCountryMarketIndex\(countryCandidates\)/);
+    assert.match(source, /key:\s*COUNTRY_INDEX_KEY/);
+    assert.match(source, /metaKey:\s*COUNTRY_INDEX_META_KEY/);
+    assert.match(source, /publishTransform:\s*\(\{ countryMarkets:/);
+  });
 });
 
 describe('classification tag data', () => {

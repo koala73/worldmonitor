@@ -1,14 +1,6 @@
-// fetchCountryMarkets must reach every pool after #5733 made the producer's
-// geopolitical/tech/finance buckets a disjoint partition.
-//
-// Before the fix, `bootstrap.geopolitical` was an unfiltered copy of every
-// market, so BOTH of this function's paths could ignore the tech pool and still
-// see tech-classified markets. Now they cannot:
-//   - the RPC fan-out must query a tech category, because it early-returns as
-//     soon as any geopolitics/economy match is found and would otherwise never
-//     reach the fallback below;
-//   - the bootstrap fallback must union all three buckets.
-// Both holes were live in the same function, so this pins both.
+// fetchCountryMarkets reads the producer-ranked country projection first. Its
+// rollout fallback still has to union every disjoint bootstrap pool so a market
+// does not disappear only because it was classified as tech or finance.
 //
 // Loaded through an esbuild stub bundle (the pattern in
 // tests/giving-service-recovery.test.mts) because the module is browser-side and
@@ -23,7 +15,7 @@ const root = resolve(import.meta.dirname, '..');
 const entryPath = resolve(root, 'src/services/prediction/index.ts');
 
 interface CountryMarketsTestState {
-  rpcCalls: { category: string; query: string; countryCode?: string }[];
+  rpcCalls: { category: string; query: string }[];
   rpcMarketsByCategory: Record<string, unknown[]>;
   hydrated?: unknown;
 }
@@ -75,8 +67,8 @@ async function loadPredictionService() {
       export class PredictionServiceClient {
         async listPredictionMarkets(req) {
           const state = globalThis.__wmCountryMarketsTestState;
-          state.rpcCalls.push({ category: req.category, query: req.query, countryCode: req.countryCode });
-          return { markets: state.rpcMarketsByCategory[req.countryCode || req.category] ?? [] };
+          state.rpcCalls.push({ category: req.category, query: req.query });
+          return { markets: state.rpcMarketsByCategory[req.category] ?? [] };
         }
       }
     `],
@@ -128,9 +120,8 @@ describe('fetchCountryMarkets uses the producer country index', () => {
     await service.fetchCountryMarkets('China', 'CN');
 
     assert.deepEqual(globalThis.__wmCountryMarketsTestState!.rpcCalls, [{
-      category: '',
+      category: 'country:CN',
       query: '',
-      countryCode: 'CN',
     }]);
   });
 
@@ -138,7 +129,7 @@ describe('fetchCountryMarkets uses the producer country index', () => {
     globalThis.__wmCountryMarketsTestState = {
       rpcCalls: [],
       rpcMarketsByCategory: {
-        CN: [
+        'country:CN': [
           protoMarket('Will China invade Taiwan by 2027?', 5_000_000),
           protoMarket('Will China ship the best AI model?', 9_000_000),
         ],
