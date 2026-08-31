@@ -36,6 +36,22 @@ function formatNumber(value, maximumFractionDigits = 1) {
   }).format(value);
 }
 
+// Copied into public/tools/live-tools.js verbatim — keep in sync with
+// scripts/chokepoint-transit-publish.mjs. Do not import that module from here.
+export function publishedTransitCountLabel(value) {
+  if (value == null || value === '') return null;
+  const numeric = typeof value === 'number'
+    ? value
+    : Number(String(value).replace(/,/g, ''));
+  if (!Number.isFinite(numeric) || numeric <= 0) return null;
+  return typeof value === 'string' ? String(value).trim() : formatNumber(numeric, 0);
+}
+
+export function withheldTransitCountSentence(displayName) {
+  const name = String(displayName || '').trim() || 'this chokepoint';
+  return `World Monitor is not currently publishing a transit count for ${name}; the AIS-derived feed has no data for this period.`;
+}
+
 function humanizeToken(value, prefixes = []) {
   let token = String(value || '').trim();
   for (const prefix of prefixes) {
@@ -207,6 +223,7 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   const transit = row.transitSummary;
   const transitAvailable = transit?.dataAvailable === true;
   const todayTotal = transitAvailable ? nonNegativeNumber(transit.todayTotal) : null;
+  const todayTransits = publishedTransitCountLabel(todayTotal);
   const weekMovement = transitAvailable ? finiteNumber(transit.wowChangePct) : null;
 
   return {
@@ -215,12 +232,12 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     congestion: humanizeToken(row.congestionLevel) || 'Not reported',
     warnings: `${formatNumber(activeWarnings, 0)} ${activeWarnings === 1 ? 'warning' : 'warnings'} · ${formatNumber(aisDisruptions, 0)} AIS ${aisDisruptions === 1 ? 'disruption' : 'disruptions'}`,
     description: String(row.description || '').trim() || 'No additional status note was supplied.',
-    todayTransits: todayTotal === null ? null : formatNumber(todayTotal, 0),
+    todayTransits,
     weekMovement: weekMovement === null
       ? null
       : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
     fetchedAt,
-    partial: payload.upstreamUnavailable === true || !transitAvailable || todayTotal === null,
+    partial: payload.upstreamUnavailable === true || !transitAvailable || todayTransits === null,
   };
 }
 
@@ -910,9 +927,21 @@ export async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-band]', view.status);
     setText(tool, '[data-chokepoint-congestion]', view.congestion);
     setText(tool, '[data-chokepoint-warnings]', view.warnings);
-    setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? 'Unavailable');
+    setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? '—');
     setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? 'Unavailable');
     setText(tool, '[data-chokepoint-description]', view.description);
+    const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
+    if (transitsNote) {
+      if (view.todayTransits == null) {
+        transitsNote.hidden = false;
+        transitsNote.textContent = withheldTransitCountSentence(
+          tool.dataset.chokepointName || '',
+        );
+      } else {
+        transitsNote.hidden = true;
+        transitsNote.textContent = '';
+      }
+    }
     setTime(tool, '[data-live-updated]', view.fetchedAt, 'Snapshot');
     markPublishedLivePulse(tool);
     setToolState(tool, view.partial ? 'partial' : 'ready', view.partial ? 'Partial API result' : 'API result');
@@ -926,8 +955,13 @@ export async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
     setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
     setText(tool, '[data-chokepoint-warnings]', 'Unavailable');
-    setText(tool, '[data-chokepoint-transits]', 'Unavailable');
+    setText(tool, '[data-chokepoint-transits]', '—');
     setText(tool, '[data-chokepoint-movement]', 'Unavailable');
+    const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
+    if (transitsNote) {
+      transitsNote.hidden = true;
+      transitsNote.textContent = '';
+    }
     setText(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
     setTime(tool, '[data-live-updated]', null, 'Snapshot');
     setToolState(tool, 'error', 'Temporarily unavailable');

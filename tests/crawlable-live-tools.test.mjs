@@ -13,9 +13,15 @@ import {
   loadHazards,
   militaryFlightsViewModel,
   pointInBounds,
+  publishedTransitCountLabel as liveTransitLabel,
   requestLiveJson,
   runLatestToolRequest,
+  withheldTransitCountSentence as liveTransitSentence,
 } from '../scripts/crawlable-live-tools.mjs';
+import {
+  publishedTransitCountLabel as sharedTransitLabel,
+  withheldTransitCountSentence as sharedTransitSentence,
+} from '../scripts/chokepoint-transit-publish.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
 
@@ -107,6 +113,112 @@ describe('crawlable live intelligence view models', () => {
         NOW,
       ),
       /stale/i,
+    );
+  });
+
+  it('does not publish a numeric 0 transit count when the AIS window is empty', () => {
+    const payload = {
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [
+        {
+          id: 'hormuz_strait',
+          disruptionScore: 70,
+          status: 'red',
+          congestionLevel: 'normal',
+          activeWarnings: 0,
+          aisDisruptions: 0,
+          description: 'Active conflict.',
+          transitSummary: {
+            // PortWatch history is present (dataAvailable true + non-zero WoW),
+            // but today's AIS-window count was zero-filled. Publishing that 0
+            // as "Today's transits" is the #7457 GEO failure.
+            dataAvailable: true,
+            todayTotal: 0,
+            wowChangePct: 12.9,
+          },
+        },
+      ],
+    };
+
+    const view = chokepointStatusViewModel(payload, 'hormuz_strait', NOW);
+    assert.equal(view.todayTransits, null);
+    assert.equal(view.weekMovement, '+12.9% vs prior week');
+    assert.equal(view.partial, true);
+    assert.notEqual(view.todayTransits, '0');
+  });
+
+  it('hydrates withheld transits instead of a numeric 0 when AIS is empty and WoW is present', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid>
+          <div class="metric"><strong><span data-chokepoint-score>70</span><small data-chokepoint-band>Red</small></strong></div>
+          <div class="metric"><strong data-chokepoint-congestion>Normal</strong></div>
+          <div class="metric"><strong data-chokepoint-warnings>0 warnings</strong></div>
+          <div class="metric"><strong data-chokepoint-transits>0</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>+12.9% vs prior week</strong></div>
+        </div>
+        <p data-chokepoint-description>Active conflict.</p>
+        <p data-chokepoint-transits-note hidden></p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+      </section>
+    `;
+
+    const tool = document.querySelector('[data-live-chokepoint]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-chokepoint-status')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+            upstreamUnavailable: false,
+            chokepoints: [{
+              id: 'hormuz_strait',
+              disruptionScore: 70,
+              status: 'red',
+              congestionLevel: 'normal',
+              activeWarnings: 0,
+              aisDisruptions: 0,
+              description: 'Active conflict.',
+              transitSummary: {
+                dataAvailable: true,
+                todayTotal: 0,
+                wowChangePct: 12.9,
+              },
+            }],
+          }),
+        };
+      }
+      return anonymousSessionResponse();
+    };
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '—');
+    assert.notEqual(tool.querySelector('[data-chokepoint-transits]').textContent, '0');
+    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+12.9% vs prior week');
+    assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, false);
+    assert.match(
+      tool.querySelector('[data-chokepoint-transits-note]').textContent,
+      /not currently publishing a transit count for Strait of Hormuz/,
+    );
+  });
+
+  it('keeps the copied live-tools transit helpers aligned with the generator module', () => {
+    for (const value of [null, undefined, '', '0', 0, '11', 11, '1,234', -1, 'Unavailable']) {
+      assert.equal(liveTransitLabel(value), sharedTransitLabel(value), String(value));
+    }
+    assert.equal(
+      liveTransitSentence('Strait of Hormuz'),
+      sharedTransitSentence('Strait of Hormuz'),
     );
   });
 

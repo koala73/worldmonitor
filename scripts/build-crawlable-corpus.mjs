@@ -37,6 +37,10 @@ import {
   CHANGELOG_PAGINATION_ROBOTS_CONTENT,
   INDEXABLE_ROBOTS_CONTENT,
 } from '../shared/seo-robots.mjs';
+import {
+  publishedTransitCountLabel,
+  withheldTransitCountSentence,
+} from './chokepoint-transit-publish.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -80,7 +84,7 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-30';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
-const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-30';
+const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-31';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -2114,19 +2118,26 @@ ${routes.map((route) => {
   // Presence, not truthiness -- a fully calm chokepoint scores 0, which is a
   // real published value and must not fall back to the loading skeleton.
   const hasPulse = pulse != null && pulse.disruptionScore != null;
-  const liveState = hasPulse ? (pulse.partial ? 'partial' : 'ready') : 'loading';
+  const transitsLabel = publishedTransitCountLabel(pulse?.todayTransits);
+  const transitsWithheld = hasPulse && transitsLabel == null;
+  const pulsePartial = pulse?.partial === true || transitsWithheld;
+  const liveState = hasPulse ? (pulsePartial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
-    ? (pulse.partial ? 'Published partial pulse' : 'Published pulse')
+    ? (pulsePartial ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
+  const transitsNote = transitsWithheld
+    ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName))}</p>`
+    : '        <p data-chokepoint-transits-note hidden></p>';
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(pulse.disruptionScore)}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
           <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion>${escapeHtml(pulse.congestion)}</strong></div>
           <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings>${escapeHtml(pulse.warnings)}</strong></div>
-          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(pulse.todayTransits ?? 'Unavailable')}</strong></div>
+          <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(pulse.weekMovement ?? 'Unavailable')}</strong></div>
         </div>
-        <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>`
+        <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>
+${transitsNote}`
     : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
         <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score></span><small data-chokepoint-band></small></strong></div>
@@ -2135,12 +2146,13 @@ ${routes.map((route) => {
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits></strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement></strong></div>
         </div>
-        <p data-chokepoint-description hidden></p>`;
+        <p data-chokepoint-description hidden></p>
+        <p data-chokepoint-transits-note hidden></p>`;
 
   const body = `      <p class="eyebrow">Chokepoint</p>
       <h1>${escapeHtml(chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
-      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
         <div class="tool-head">
           <div>
             <p class="eyebrow">Current status</p>

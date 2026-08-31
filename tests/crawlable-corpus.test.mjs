@@ -1657,6 +1657,23 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(hormuz, /data-chokepoint-band>Loading/);
       assert.match(hormuz, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
       assert.match(hormuz, /data-chokepoint-score>\d/);
+      // #7457: the frozen pulse stores todayTransits "0" with a non-zero WoW
+      // for Hormuz. That 0 is an AIS-window zero-fill, not a measurement.
+      assert.match(hormuz, /data-chokepoint-transits>—/);
+      assert.doesNotMatch(
+        hormuz,
+        /data-chokepoint-transits>0</,
+        'absent-feed chokepoint must not render a numeric 0 transit count',
+      );
+      assert.match(
+        hormuz,
+        /World Monitor is not currently publishing a transit count for Strait of Hormuz/,
+      );
+      assert.doesNotMatch(
+        hormuz,
+        /data-chokepoint-transits>0[\s\S]{0,400}data-chokepoint-movement>\+12\.9%/,
+        'a page cannot show 0 transits and a non-zero WoW change together',
+      );
       // Operator-facing review-hygiene text must never reach crawlable HTML.
       assert.doesNotMatch(
         hormuz,
@@ -1678,13 +1695,13 @@ describe('crawlable corpus generator', () => {
       assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
       assert.equal(
         hormuzDataset.dateModified,
-        '2026-08-30',
-        'unchanged chokepoint Dataset schema must keep its family stamp',
+        '2026-08-31',
+        'chokepoint page template change must advance Dataset dateModified with page lastmod',
       );
       assert.equal(
         pageLastmod(hormuz),
-        '2026-08-30',
-        'unchanged chokepoint page must keep its family lastmod',
+        '2026-08-31',
+        'chokepoint transit-withhold template change must advance page lastmod',
       );
       assertSourceDerivedTemporalCoverage(hormuzDataset, {
         route: '/chokepoints/strait-of-hormuz/',
@@ -1723,6 +1740,15 @@ describe('crawlable corpus generator', () => {
         /Disruption score|Congestion|AIS disruptions|Daily vessel transits/,
         'chokepoint Dataset metadata must describe the generated reference artifact, not live API fields',
       );
+      const hormuzMeasured = Array.isArray(hormuzDataset.variableMeasured)
+        ? hormuzDataset.variableMeasured
+        : [hormuzDataset.variableMeasured];
+      for (const measurement of hormuzMeasured) {
+        if (measurement && typeof measurement === 'object' && /transit/i.test(String(measurement.name || ''))) {
+          assert.notEqual(measurement.value, 0, 'Dataset.variableMeasured must omit unsupplied transit counts');
+          assert.notEqual(measurement.value, '0', 'Dataset.variableMeasured must omit unsupplied transit counts');
+        }
+      }
       const additionalProps = Array.isArray(hormuzPage.about.additionalProperty)
         ? hormuzPage.about.additionalProperty
         : [hormuzPage.about.additionalProperty].filter(Boolean);
@@ -1736,6 +1762,32 @@ describe('crawlable corpus generator', () => {
       const dover = read(outDir, 'chokepoints/dover-strait/index.html');
       assert.doesNotMatch(dover, /0 routes?|none configured/);
       assert.match(dover, /tracked as a strategic waterway reference/);
+
+      for (const [slug, name] of [
+        ['suez-canal', 'Suez Canal'],
+        ['panama-canal', 'Panama Canal'],
+        ['bab-el-mandeb', 'Bab el-Mandeb'],
+      ]) {
+        const page = read(outDir, `chokepoints/${slug}/index.html`);
+        assert.doesNotMatch(
+          page,
+          /data-chokepoint-transits>0</,
+          `${name} must not render a numeric 0 for an unsupplied transit count`,
+        );
+        assert.match(page, /data-chokepoint-transits>—/);
+        assert.match(
+          page,
+          new RegExp(`World Monitor is not currently publishing a transit count for ${name}`),
+        );
+      }
+
+      const taiwanStrait = read(outDir, 'chokepoints/taiwan-strait/index.html');
+      assert.match(
+        taiwanStrait,
+        /data-chokepoint-transits>1</,
+        'a supplied non-zero transit count must still publish',
+      );
+      assert.doesNotMatch(taiwanStrait, /not currently publishing a transit count for Taiwan Strait/);
 
       const crisesIndex = read(outDir, 'crises/index.html');
       assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
@@ -1908,7 +1960,7 @@ describe('crawlable corpus generator', () => {
     // Dataset schema stamp that previously forced a shared build date (#7382).
     assert.equal(data.lastmod.countries, '2026-08-31');
     assert.equal(data.lastmod.research, '2026-08-30');
-    assert.equal(data.lastmod.chokepoints, '2026-08-30');
+    assert.equal(data.lastmod.chokepoints, '2026-08-31');
     assert.equal(
       data.lastmod.sources,
       sourcePageLastmod({
