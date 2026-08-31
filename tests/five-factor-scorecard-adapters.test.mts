@@ -334,10 +334,13 @@ describe('five-factor source adapters', () => {
   it('uses source-unavailable for a missing source and country-unavailable for a country gap', () => {
     const sources = sourceFixture();
     sources.techByIso2 = null as never;
+    sources.staticByCountry = null as never;
     delete sources.demographics.countries.US;
     const evidence = adaptCountryEvidence('US', sources);
     assert.equal(evidence.inputs['technology.internetUse'].availability, 'unavailable');
     assert.equal(evidence.inputs['technology.internetUse'].availability === 'unavailable' && evidence.inputs['technology.internetUse'].reason, 'source-unavailable');
+    assert.equal(evidence.inputs['energy.productionBalance'].availability === 'unavailable'
+      && evidence.inputs['energy.productionBalance'].reason, 'source-unavailable');
     assert.equal(evidence.inputs['demographics.totalDependency'].availability === 'unavailable' && evidence.inputs['demographics.totalDependency'].reason, 'country-unavailable');
   });
 

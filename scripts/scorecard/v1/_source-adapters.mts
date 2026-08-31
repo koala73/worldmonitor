@@ -241,10 +241,17 @@ function foodEvidence(countryCode: string, source: unknown): Pick<CountryScoreca
   };
 }
 
-function energyBalance(countryCode: string, source: unknown, staticRecord: JsonRecord | null): ScorecardEvidence {
-  if (!source) return sourceUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
+function energyBalance(
+  countryCode: string,
+  source: unknown,
+  staticByCountry: Record<string, unknown> | null,
+): ScorecardEvidence {
+  if (!source || !staticByCountry) {
+    return sourceUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
+  }
   const entry = readCountry(source, countryCode);
   if (!entry) return countryUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
+  const staticRecord = asRecord(staticByCountry[countryCode]);
   const iea = asRecord(staticRecord?.iea);
   const importDependency = asRecord(iea?.energyImportDependency);
   const consumption = finite(entry.primaryEnergyConsumptionTwh);
@@ -446,7 +453,7 @@ export function adaptCountryEvidence(
   Object.assign(inputs, techEvidence(countryCode, sources.techByIso2));
   Object.assign(inputs, defenseEvidence(countryCode, sources.defense));
   const staticRecord = asRecord(sources.staticByCountry?.[countryCode]);
-  inputs['energy.productionBalance'] = energyBalance(countryCode, sources.energyMix, staticRecord);
+  inputs['energy.productionBalance'] = energyBalance(countryCode, sources.energyMix, sources.staticByCountry);
   inputs['food.waterSecurity'] = sources.staticByCountry
     ? aquastatWaterStress(staticRecord)
     : sourceUnavailable('food.waterSecurity', 'World Bank AQUASTAT');
