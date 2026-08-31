@@ -7590,15 +7590,10 @@
       "host": "restcountries.com",
       "provider": "restcountries.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit restcountries.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "server/worldmonitor/intelligence/v1/get-country-facts.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "reuters-reutersnow-1-eu.rakuten.wurl.tv",
