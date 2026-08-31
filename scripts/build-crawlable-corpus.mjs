@@ -91,7 +91,7 @@ const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // dateModified is pinned to the snapshot capturedAt as a truthful freshness
 // contract (#7391), so their recrawl signal is COUNTRY_PAGE_CONTENT_VERSION.
 const DATASET_SCHEMA_CONTENT_VERSION = {
-  chokepoint: '2026-08-30',
+  chokepoint: '2026-08-31',
   crisis: '2026-08-31',
 };
 const CRISIS_PAGE_CONTENT_VERSION = '2026-08-31';
@@ -107,9 +107,7 @@ const CRISIS_DATASET_DOWNLOAD = 'tracker.json';
 const CONVERGENCE_DATASET_DOWNLOAD = 'reference.json';
 const DATA_CATALOG_FRAGMENT = '#data-catalog';
 const WORLD_MONITOR_ORG = Object.freeze({
-  '@type': 'Organization',
-  name: 'World Monitor',
-  url: 'https://www.worldmonitor.app/',
+  '@id': 'https://www.worldmonitor.app/#organization',
 });
 // Approximate monitoring footprint around each registry centroid (degrees).
 // Registry entries are points; GeoShape.box lets crawlers treat the waterway as
@@ -1623,7 +1621,7 @@ ${countries.map((country) => {
         description,
         url: absoluteUrl(baseUrl, path),
         identifier: `country-resilience-ranking-${capturedAt}`,
-        creator: { '@type': 'Organization', name: 'World Monitor', url: 'https://www.worldmonitor.app/' },
+        creator: { '@id': 'https://www.worldmonitor.app/#organization' },
         license: DATASET_LICENSE,
         datePublished: capturedAt,
         dateModified: capturedAt,

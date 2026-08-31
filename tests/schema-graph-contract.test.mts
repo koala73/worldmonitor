@@ -14,7 +14,13 @@ const ORGANIZATION_ID = 'https://www.worldmonitor.app/#organization';
 const WEBSITE_ID = 'https://www.worldmonitor.app/#website';
 const SOFTWARE_ID = 'https://www.worldmonitor.app/#software';
 const SOURCE_ID = 'https://www.worldmonitor.app/#source';
+const PERSON_ID = 'https://www.worldmonitor.app/blog/authors/elie-habib/#person';
 const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
+const PERSON_ENTITY_SAME_AS = [
+  'https://www.linkedin.com/in/eliashabib',
+  'https://www.wikidata.org/wiki/Q121365724',
+  'https://www.crunchbase.com/person/elie-habib-2',
+];
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
@@ -41,6 +47,8 @@ describe('canonical schema graph', () => {
     assert.equal(organizations.length, 1, 'the canonical welcome page must declare Organization once');
     assert.equal(organizations[0]['@id'], ORGANIZATION_ID);
     assert.equal(organizations[0].url, CANONICAL_ORIGIN);
+    assert.deepEqual(organizations[0].founder, { '@id': PERSON_ID });
+    assert.equal(organizations[0].foundingDate, '2026-01');
     assert.equal(blocksOfType(proBlocks, 'Organization').length, 0, '/pro must reference the canonical Organization');
     assert.equal(blocksOfType(dashboardBlocks, 'Organization').length, 0, '/dashboard must reference the canonical Organization');
 
@@ -85,6 +93,19 @@ describe('canonical schema graph', () => {
       assert.equal(blocksOfType(renderedBlocks, 'WebSite').length, 0, `${variant} must not claim the canonical WebSite`);
       assert.deepEqual(application.publisher, { '@id': ORGANIZATION_ID });
       assert.deepEqual(application.isPartOf, { '@id': WEBSITE_ID });
+      assert.deepEqual(application.author, { '@id': PERSON_ID });
+
+      const webPage = blocksOfType(renderedBlocks, 'WebPage')[0];
+      const crumbs = blocksOfType(renderedBlocks, 'BreadcrumbList')[0];
+      assert.ok(webPage, `${variant} must declare a WebPage that joins the canonical graph`);
+      assert.equal(webPage['@id'], `${VARIANT_META[variant].url}#webpage`);
+      assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
+      assert.deepEqual(webPage.publisher, { '@id': ORGANIZATION_ID });
+      assert.deepEqual(webPage.mainEntity, { '@id': `${VARIANT_META[variant].url}#software` });
+      assert.equal(webPage.speakable?.['@type'], 'SpeakableSpecification');
+      assert.ok(Array.isArray(webPage.speakable?.cssSelector) && webPage.speakable.cssSelector.includes('h1'));
+      assert.ok(crumbs, `${variant} must declare BreadcrumbList`);
+      assert.equal(crumbs.itemListElement?.[0]?.item, CANONICAL_ORIGIN);
 
       const host = new URL(VARIANT_META[variant].url).hostname;
       const browser = middleware(new Request(`https://${host}/`, {
@@ -105,6 +126,7 @@ describe('canonical schema graph', () => {
 
     assert.equal(application['@id'], SOFTWARE_ID);
     assert.deepEqual(application.publisher, { '@id': ORGANIZATION_ID });
+    assert.deepEqual(application.author, { '@id': PERSON_ID });
     assert.equal(webPage['@id'], 'https://www.worldmonitor.app/pro#webpage');
     assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
     assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
@@ -141,5 +163,58 @@ describe('canonical schema graph', () => {
         'https://www.wired.com/story/world-monitor-elie-habib/',
       ],
     });
+  });
+
+  it('puts the strongest Person anchors on the addressable #person node (#7459a)', () => {
+    const authorPage = read('blog-site/src/pages/authors/elie-habib.astro');
+    const personMatch = authorPage.match(/'@type': 'Person',[\s\S]*?sameAs:\s*\[([\s\S]*?)\]/);
+    assert.ok(personMatch, 'author page must declare the canonical Person sameAs list');
+    for (const url of PERSON_ENTITY_SAME_AS) {
+      assert.ok(personMatch[1].includes(url), `canonical #person must include ${url}`);
+    }
+
+    for (const path of ['index.html', 'pro-test/index.html', 'pro-test/welcome.html']) {
+      const html = read(path);
+      assert.match(
+        html,
+        /"author": \{\s*"@id": "https:\/\/www\.worldmonitor\.app\/blog\/authors\/elie-habib\/#person"\s*\}/,
+        `${path} must replace anonymous Person authors with the canonical @id`,
+      );
+      assert.doesNotMatch(
+        html,
+        /"@type": "Person"/,
+        `${path} must not emit an anonymous or competing Person node`,
+      );
+      for (const url of PERSON_ENTITY_SAME_AS) {
+        assert.doesNotMatch(
+          html,
+          new RegExp(url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')),
+          `${path} must not keep ${url} on an unreachable author object`,
+        );
+      }
+    }
+  });
+
+  it('points DataCatalog and Dataset roles at the canonical Organization (#7459b)', () => {
+    const generator = read('scripts/build-crawlable-corpus.mjs');
+    assert.match(
+      generator,
+      /WORLD_MONITOR_ORG = Object\.freeze\(\{\s*'@id': 'https:\/\/www\.worldmonitor\.app\/#organization',\s*\}\)/,
+    );
+    assert.doesNotMatch(
+      generator,
+      /creator: \{ '@type': 'Organization', name: 'World Monitor'/,
+      'corpus Datasets must not inline an anonymous Organization creator',
+    );
+
+    const reports = read('scripts/build-research-reports.mjs');
+    assert.match(reports, /publisher: \{ '@id': 'https:\/\/www\.worldmonitor\.app\/#organization' \}/);
+    assert.match(reports, /creator: \{ '@id': 'https:\/\/www\.worldmonitor\.app\/#organization' \}/);
+  });
+
+  it('grounds the source Organization with founder and foundingDate (#7459e)', () => {
+    const welcome = blocksOfType(jsonLdBlocks(read('pro-test/welcome.html')), 'Organization')[0];
+    assert.deepEqual(welcome.founder, { '@id': PERSON_ID });
+    assert.equal(welcome.foundingDate, '2026-01');
   });
 });

@@ -872,7 +872,7 @@ ${justification}
     version: report.version,
     inLanguage: 'en-US',
     author: { '@type': 'Organization', name: report.author.name, url: report.author.url },
-    publisher: { '@type': 'Organization', name: 'World Monitor', url: 'https://www.worldmonitor.app/' },
+    publisher: { '@id': 'https://www.worldmonitor.app/#organization' },
     isBasedOn: 'https://portwatch.imf.org/',
     temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
     hasPart: {
@@ -880,7 +880,7 @@ ${justification}
       name: `Strait of Hormuz daily transit calls, ${focus.observationStart} to ${focus.observationEnd}`,
       description:
         'Daily AIS-observed vessel transit calls by class with deadweight-tonnage aggregates, from IMF PortWatch, frozen in a versioned snapshot.',
-      creator: { '@type': 'Organization', name: report.author.name, url: report.author.url },
+      creator: { '@id': 'https://www.worldmonitor.app/#organization' },
       license: DATASET_LICENSE,
       datePublished: report.datePublished,
       temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,

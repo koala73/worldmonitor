@@ -153,3 +153,41 @@ describe('rewriteDocsLocaleHtml', () => {
     );
   });
 });
+
+describe('docs entity-graph rewrite (#7459d)', () => {
+  const CANONICAL_WEBSITE = 'https://www.worldmonitor.app/#website';
+  const mintlifySeed = `<!DOCTYPE html><html lang="en"><head>
+<link rel="canonical" href="https://www.worldmonitor.app/docs/getting-started"/>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"WebSite","name":"World Monitor","creator":{"@type":"Organization","name":"Mintlify","url":"https://mintlify.com"}}</script>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"Organization","@id":"https://www.worldmonitor.app/#organization","name":"World Monitor"},{"@type":"WebSite","@id":"https://www.worldmonitor.app/docs#website","name":"World Monitor","url":"https://www.worldmonitor.app/docs","publisher":{"@id":"https://www.worldmonitor.app/#organization"}},{"@type":"WebPage","@id":"https://www.worldmonitor.app/docs/getting-started#webpage","isPartOf":{"@id":"https://www.worldmonitor.app/docs#website"}}]}</script>
+</head><body></body></html>`;
+
+  function jsonLdBlocks(html: string): Record<string, unknown>[] {
+    return [...html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+      .map((match) => JSON.parse(match[1]));
+  }
+
+  it('drops the vendor-attributed WebSite and joins docs pages to the canonical website', () => {
+    const html = rewriteDocsLocaleHtml(mintlifySeed, '/docs/getting-started');
+    const blocks = jsonLdBlocks(html);
+    assert.equal(
+      blocks.some((block) => (
+        block['@type'] === 'WebSite'
+        && typeof block.creator === 'object'
+        && block.creator !== null
+        && (block.creator as { name?: string }).name === 'Mintlify'
+      )),
+      false,
+      'Mintlify-attributed WebSite must not survive the docs rewrite',
+    );
+    assert.doesNotMatch(html, /docs#website/);
+    const graph = blocks.find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    assert.ok(graph, 'Mintlify @graph must remain');
+    const website = graph.find((node) => node['@type'] === 'WebSite' || node['@id'] === CANONICAL_WEBSITE);
+    assert.ok(website, 'docs graph must keep a WebSite node');
+    assert.equal(website['@id'], CANONICAL_WEBSITE);
+    assert.equal(website.url, undefined);
+    const webPage = graph.find((node) => node['@type'] === 'WebPage');
+    assert.deepEqual(webPage?.isPartOf, { '@id': CANONICAL_WEBSITE });
+  });
+});

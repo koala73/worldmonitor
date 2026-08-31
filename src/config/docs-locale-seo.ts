@@ -144,9 +144,88 @@ function injectAfterCanonical(html: string, linkTags: string[]): string {
   return `${html}${block}`;
 }
 
+const CANONICAL_WEBSITE_ID = `${DOCS_PUBLIC_ORIGIN}/#website`;
+const DOCS_WEBSITE_ID = `${DOCS_PUBLIC_ORIGIN}/docs#website`;
+const JSON_LD_SCRIPT_RE =
+  /<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi;
+
+function isMintlifyCreator(value: unknown): boolean {
+  if (!value || typeof value !== 'object') return false;
+  const creator = value as Record<string, unknown>;
+  const name = typeof creator.name === 'string' ? creator.name.toLowerCase() : '';
+  const url = typeof creator.url === 'string' ? creator.url.toLowerCase() : '';
+  return name.includes('mintlify') || url.includes('mintlify.com');
+}
+
+function isVendorAttributedWebSite(node: unknown): boolean {
+  if (!node || typeof node !== 'object' || Array.isArray(node)) return false;
+  const candidate = node as Record<string, unknown>;
+  return candidate['@type'] === 'WebSite' && isMintlifyCreator(candidate.creator);
+}
+
+function rewriteDocsWebsiteIds(value: unknown): unknown {
+  if (typeof value === 'string') {
+    return value === DOCS_WEBSITE_ID ? CANONICAL_WEBSITE_ID : value;
+  }
+  if (Array.isArray(value)) return value.map(rewriteDocsWebsiteIds);
+  if (value && typeof value === 'object') {
+    const next: Record<string, unknown> = {};
+    for (const [key, nested] of Object.entries(value)) {
+      next[key] = rewriteDocsWebsiteIds(nested);
+    }
+    return next;
+  }
+  return value;
+}
+
+function collapseCanonicalWebSite(node: Record<string, unknown>): Record<string, unknown> {
+  if (node['@type'] === 'WebSite' && node['@id'] === CANONICAL_WEBSITE_ID) {
+    return { '@type': 'WebSite', '@id': CANONICAL_WEBSITE_ID };
+  }
+  return node;
+}
+
+function rewriteDocsJsonLdValue(value: unknown): unknown | null {
+  const rewritten = rewriteDocsWebsiteIds(value);
+  if (isVendorAttributedWebSite(rewritten)) return null;
+  if (!rewritten || typeof rewritten !== 'object' || Array.isArray(rewritten)) {
+    return rewritten;
+  }
+  const node = rewritten as Record<string, unknown>;
+  if (Array.isArray(node['@graph'])) {
+    node['@graph'] = (node['@graph'] as unknown[])
+      .filter((entry) => !isVendorAttributedWebSite(entry))
+      .map((entry) => (
+        entry && typeof entry === 'object' && !Array.isArray(entry)
+          ? collapseCanonicalWebSite(entry as Record<string, unknown>)
+          : entry
+      ));
+    return node;
+  }
+  return collapseCanonicalWebSite(node);
+}
+
+/**
+ * Drop Mintlify's vendor-attributed WebSite and retarget `/docs#website`
+ * onto the canonical `/#website` so docs pages join the product graph
+ * instead of claiming a competing site (#7459d).
+ */
+export function rewriteDocsEntityGraph(html: string): string {
+  return html.replace(JSON_LD_SCRIPT_RE, (script, body: string) => {
+    try {
+      const next = rewriteDocsJsonLdValue(JSON.parse(body));
+      if (next === null) return '';
+      return `<script type="application/ld+json">${JSON.stringify(next)}</script>`;
+    } catch {
+      return script;
+    }
+  });
+}
+
 /**
  * Rewrite a Mintlify HTML document so Chinese pages declare zh-Hans and both
- * locale sides carry a reciprocal hreflang cluster.
+ * locale sides carry a reciprocal hreflang cluster. Also folds the docs
+ * JSON-LD graph onto the canonical WebSite (#7459d).
  */
 export function rewriteDocsLocaleHtml(html: string, pathname: string): string {
   const pair = resolveDocsLocalePair(pathname);
@@ -160,7 +239,8 @@ export function rewriteDocsLocaleHtml(html: string, pathname: string): string {
     next = replaceHtmlLang(next, DOCS_EN_HREFLANG);
     next = replaceOgLocale(next, 'en_US');
   }
-  return injectAfterCanonical(next, buildDocsHreflangLinkTags(pathname));
+  next = injectAfterCanonical(next, buildDocsHreflangLinkTags(pathname));
+  return rewriteDocsEntityGraph(next);
 }
 
 export function shouldTransformDocsUpstreamHtml(

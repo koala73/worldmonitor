@@ -136,13 +136,16 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.ok(html.includes(`<h1 class="app-heading">${escHtml(tech.title)}</h1>`), 'h1');
   });
 
-  it('rewrites WebApplication and removes canonical entity declarations', () => {
+  it('rewrites WebApplication and attaches WebPage plus breadcrumbs instead of claiming the site', () => {
     const html = renderVariantDashboardHtml(fixture, 'finance');
     const finance = VARIANT_META.finance;
     const blocks = [...html.matchAll(/<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>/gi)].map(
       (m) => JSON.parse(m[1]),
     );
-    assert.equal(blocks.length, 1, 'only the variant WebApplication stays');
+    assert.deepEqual(
+      blocks.map((b) => b['@type']).sort(),
+      ['BreadcrumbList', 'WebApplication', 'WebPage'],
+    );
     const webApp = blocks.find((b) => b['@type'] === 'WebApplication');
     assert.equal(webApp['@id'], `${finance.url}#software`);
     assert.equal(webApp.name, 'Finance Monitor');
@@ -151,6 +154,12 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.deepEqual(webApp.featureList, finance.features);
     assert.deepEqual(webApp.publisher, { '@id': 'https://www.worldmonitor.app/#organization' });
     assert.deepEqual(webApp.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+    const webPage = blocks.find((b) => b['@type'] === 'WebPage');
+    assert.equal(webPage['@id'], `${finance.url}#webpage`);
+    assert.deepEqual(webPage.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+    assert.equal(webPage.speakable['@type'], 'SpeakableSpecification');
+    const crumbs = blocks.find((b) => b['@type'] === 'BreadcrumbList');
+    assert.equal(crumbs.itemListElement[1].name, 'Finance Monitor');
   });
 
   it('injects variant-specific SEO summary and noscript differentiation copy', () => {
