@@ -18,6 +18,13 @@ describe('country brief news matching', () => {
     ).toBe(false);
   });
 
+  it('does not treat US as a country boundary inside an uppercase word', () => {
+    const title = 'USD rises as China cuts rates';
+
+    expect(CountryIntelManager.isCountryHeadline(title, 'United States', 'US')).toBe(false);
+    expect(CountryIntelManager.isCountryHeadline(title, 'China', 'CN')).toBe(true);
+  });
+
   it('keeps the first-country-mentioned rule for multi-country headlines', () => {
     expect(
       CountryIntelManager.isCountryHeadline('Iran considers latest US proposal', 'United States', 'US'),

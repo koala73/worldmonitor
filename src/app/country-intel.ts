@@ -1861,7 +1861,7 @@ export class CountryIntelManager implements AppModule {
     const caseSensitive = /^[A-Z]{2,3}$/.test(trimmedTerm);
     const matchText = caseSensitive ? text : text.toLowerCase();
     const matchTerm = caseSensitive ? trimmedTerm : trimmedTerm.toLowerCase();
-    const match = new RegExp(`(^|[^a-z0-9])${CountryIntelManager.escapeRegExp(matchTerm)}(?=$|[^a-z0-9])`).exec(matchText);
+    const match = new RegExp(`(^|[^A-Za-z0-9])${CountryIntelManager.escapeRegExp(matchTerm)}(?=$|[^A-Za-z0-9])`).exec(matchText);
     return match ? match.index + (match[1] ?? '').length : -1;
   }
 
