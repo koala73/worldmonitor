@@ -94,7 +94,7 @@ const DATASET_SCHEMA_CONTENT_VERSION = {
   chokepoint: '2026-08-30',
   crisis: '2026-08-31',
 };
-const CRISIS_PAGE_CONTENT_VERSION = '2026-08-30';
+const CRISIS_PAGE_CONTENT_VERSION = '2026-08-31';
 const TOOLS_PAGE_CONTENT_VERSION = '2026-08-30';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',

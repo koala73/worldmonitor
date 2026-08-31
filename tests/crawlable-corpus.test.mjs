@@ -529,21 +529,30 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false, re
           `${route} Dataset ${index + 1} temporalCoverage must be an observation date or closed interval`,
         );
       }
+    }
+
+    if (requireCatalogLinkage) {
       assert.ok(
         dataset.spatialCoverage,
         `${route} Dataset ${index + 1} must declare spatialCoverage`,
       );
-      // Google's Dataset parser accepts only Text or a literal Place for spatialCoverage;
-      // Place subtypes such as Country are rejected as "Invalid object type for field".
+    }
+    if (dataset.spatialCoverage != null) {
+      // Google's Dataset parser uses an exact allowlist here: non-empty Text or
+      // a literal Place. It rejects Place subtypes such as Country.
       const coverages = Array.isArray(dataset.spatialCoverage)
         ? dataset.spatialCoverage
         : [dataset.spatialCoverage];
+      assert.ok(
+        coverages.length > 0,
+        `${route} Dataset ${index + 1} spatialCoverage must be Text or exact @type Place, got []`,
+      );
       for (const coverage of coverages) {
         assert.ok(
           typeof coverage === 'string'
             ? coverage.trim().length > 0
-            : isJsonLdType(coverage, 'Place'),
-          `${route} Dataset ${index + 1} spatialCoverage must be Text or @type Place, got ${JSON.stringify(coverage?.['@type'] ?? coverage)}`,
+            : coverage?.['@type'] === 'Place',
+          `${route} Dataset ${index + 1} spatialCoverage must be Text or exact @type Place, got ${JSON.stringify(coverage?.['@type'] ?? coverage)}`,
         );
       }
     }
@@ -551,6 +560,47 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false, re
 
   return datasets;
 }
+
+describe('Dataset spatialCoverage Google contract', () => {
+  function datasetHtml(spatialCoverage) {
+    return `<script type="application/ld+json">${JSON.stringify({
+      '@type': 'Dataset',
+      name: 'Contract test dataset',
+      description: 'A focused contract fixture with enough detail for the Google Dataset description requirement.',
+      creator: {
+        '@type': 'Organization',
+        name: 'World Monitor',
+      },
+      license: 'https://www.worldmonitor.app/docs/terms',
+      spatialCoverage,
+    })}</script>`;
+  }
+
+  it('accepts only non-empty Text or exact Place values on every Dataset route', () => {
+    assert.doesNotThrow(() => assertDatasetGoogleProperties(
+      datasetHtml('Worldwide'),
+      '/tools/signal-convergence/',
+    ));
+    assert.doesNotThrow(() => assertDatasetGoogleProperties(
+      datasetHtml({ '@type': 'Place', name: 'Norway' }),
+      '/countries/',
+    ));
+
+    for (const invalidCoverage of [
+      { '@type': 'Country', name: 'Norway' },
+      { '@type': ['Place', 'Country'], name: 'Norway' },
+      [],
+    ]) {
+      assert.throws(
+        () => assertDatasetGoogleProperties(
+          datasetHtml(invalidCoverage),
+          '/countries/',
+        ),
+        /spatialCoverage must be Text or exact @type Place/,
+      );
+    }
+  });
+});
 
 function assertDataCatalogPresent(html, route) {
   const catalogs = jsonLdObjects(html).filter((entry) => isJsonLdType(entry, 'DataCatalog'));
@@ -1294,6 +1344,11 @@ describe('crawlable corpus generator', () => {
       assert.equal(switzerlandWebPage?.about?.sameAs, 'https://www.wikidata.org/wiki/Q39');
       const norwayDataset = collectDatasets(norwayWebPage)[0];
       assert.ok(norwayDataset, 'country page must expose a Dataset mainEntity');
+      assert.equal(
+        norwayDataset.dateModified,
+        '2026-08-29',
+        'country Dataset dateModified must stay pinned to the published snapshot',
+      );
       assertSourceDerivedTemporalCoverage(norwayDataset, {
         route: '/countries/norway/',
         observationInterval: manifest.sections.countries.sourceCapturedAt,
@@ -1621,6 +1676,16 @@ describe('crawlable corpus generator', () => {
       );
       const hormuzDataset = collectDatasets(hormuzPage)[0];
       assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
+      assert.equal(
+        hormuzDataset.dateModified,
+        '2026-08-30',
+        'unchanged chokepoint Dataset schema must keep its family stamp',
+      );
+      assert.equal(
+        pageLastmod(hormuz),
+        '2026-08-30',
+        'unchanged chokepoint page must keep its family lastmod',
+      );
       assertSourceDerivedTemporalCoverage(hormuzDataset, {
         route: '/chokepoints/strait-of-hormuz/',
         lastmod: pageLastmod(hormuz),
@@ -1700,10 +1765,22 @@ describe('crawlable corpus generator', () => {
         observationInterval: redSeaReference.maintainedPulse?.referencePeriod,
         lastmod: pageLastmod(redSea),
       });
-      assert.match(
-        String(redSeaDataset.dateModified),
-        /^\d{4}-\d{2}-\d{2}$/,
-        'crisis Dataset dateModified must be a calendar date, not a full ISO timestamp',
+      assert.equal(
+        redSeaDataset.dateModified,
+        '2026-08-31',
+        'changed crisis Dataset schema must advance only the crisis family stamp',
+      );
+      assert.equal(
+        pageLastmod(redSea),
+        '2026-08-31',
+        'crisis page lastmod must advance with its changed Dataset schema',
+      );
+      assert.equal(
+        sitemapEntries.find((entry) => (
+          new URL(entry.loc).pathname === '/crises/red-sea-security/'
+        ))?.lastmod,
+        '2026-08-31',
+        'crisis sitemap lastmod must advance with its changed Dataset schema',
       );
       assert.equal(redSeaDataset.isAccessibleForFree, true);
       assert.match(
