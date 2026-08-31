@@ -7,7 +7,17 @@ description: "How WorldMonitor combines World Bank military-capacity indicators 
 
 Two questions about one country's defense position: how much military capacity does it fund and field, and who does it depend on for major weapons. The first comes from World Bank annual indicators, the second from SIPRI's arms-transfer register reduced to supplier shares.
 
-Served from `GET /api/military/v1/get-defense-industrial-base?countryCode=<ISO2>` and MCP `get_defense_industrial_base`. Both require a Pro subscription.
+Served from `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` and MCP `get_defense_industrial_base`. Both require a Pro subscription.
+
+<Note>
+This route's query parameter is `country_code`, in snake_case — unlike its
+siblings in this suite, which use `countryCode`. The name is fixed per route by
+the proto's `sebuf.http.query` option, and the generated server reads that key
+only. Sending `countryCode` here is not rejected: the handler sees an empty
+country code, fails its `^[A-Z]{2}$` check, and returns HTTP 200 with
+`available: false`, which reads as "no data for this country" rather than as a
+bad request.
+</Note>
 
 ## Part A — military capacity
 

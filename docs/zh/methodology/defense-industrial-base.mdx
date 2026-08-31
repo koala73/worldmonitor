@@ -7,7 +7,13 @@ description: "WorldMonitor 如何将世界银行军事能力指标与 SIPRI 武�
 
 关于一个国家国防态势的两个问题：它资助并维持多少军事能力，以及它在主要武器上依赖谁。前者来自世界银行的年度指标，后者来自 SIPRI 的武器转让登记册，归约为供应国份额。
 
-由 `GET /api/military/v1/get-defense-industrial-base?countryCode=<ISO2>` 与 MCP `get_defense_industrial_base` 提供。两者均需 Pro 订阅。
+由 `GET /api/military/v1/get-defense-industrial-base?country_code=<ISO2>` 与 MCP `get_defense_industrial_base` 提供。两者均需 Pro 订阅。
+
+<Note>
+此路由的查询参数是蛇形命名的 `country_code`，与本套件中使用 `countryCode` 的其他路由不同。参数名由 proto 的
+`sebuf.http.query` 选项按路由固定，生成的服务端只读取该键。在此处发送 `countryCode` 不会被拒绝：处理程序会看到空的
+国家代码，未通过 `^[A-Z]{2}$` 校验，并返回 HTTP 200 及 `available: false`——读起来像"该国无数据"，而不是一个错误请求。
+</Note>
 
 ## 第一部分——军事能力
 
