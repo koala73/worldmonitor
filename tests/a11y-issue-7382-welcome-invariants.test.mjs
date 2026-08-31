@@ -56,7 +56,7 @@ describe('welcome a11y invariants (#7382)', () => {
 
   it('never nests an interactive control around the lockup', () => {
     // <a href="#"><Logo /></a> on the Enterprise page put an anchor inside an
-    // anchor: invalid HTML, and the inner href silently wins the click.
+    // anchor: invalid HTML.
     // Matched line-wise on purpose — an `onClick={(e) => ...}` attribute
     // contains a bare `>`, so a `<a[^>]*>` pattern stops short and can never
     // see the <Logo /> that follows.
@@ -64,6 +64,23 @@ describe('welcome a11y invariants (#7382)', () => {
       .split('\n')
       .filter((line) => line.includes('<Logo') && /<a[\s>]/.test(line));
     assert.deepEqual(wrapped, [], 'Logo must not be wrapped in an anchor');
+  });
+
+  it('keeps the Enterprise lockup returning to the Pro page, not leaving the site', () => {
+    // The removed wrapper was not inert. It caught the click bubbling up from
+    // the whole lockup and called preventDefault(), so the inner anchor's
+    // href never navigated — clicking the wordmark on /pro#enterprise cleared
+    // the hash and stayed on /pro (confirmed against production).
+    // Unwrapping without forwarding the handler would silently send that
+    // click off-site to worldmonitor.app, so Logo takes the destination.
+    assert.match(logo, /href = 'https:\/\/worldmonitor\.app'/, 'Logo keeps the home default');
+    assert.match(logo, /href=\{href\}/);
+    assert.match(logo, /onClick=\{onClick\}/);
+    assert.match(
+      app,
+      /<Logo\s+href="#"\s+onClick=\{\(e\) => \{ e\.preventDefault\(\); window\.location\.hash = ''; \}\}\s*\/>/,
+      'the Enterprise nav lockup must still clear the hash instead of leaving the site',
+    );
   });
 
   it('carries no Someone.ceo studio byline in marketing chrome', () => {

@@ -1,4 +1,12 @@
+import type { MouseEventHandler } from 'react';
 import { Globe, Activity } from 'lucide-react';
+
+interface LogoProps {
+  /** Destination for the lockup. Defaults to the marketing home. */
+  href?: string;
+  /** Intercept the click — e.g. the Enterprise view clearing its hash route. */
+  onClick?: MouseEventHandler<HTMLAnchorElement>;
+}
 
 /**
  * Home lockup for the marketing chrome.
@@ -8,10 +16,17 @@ import { Globe, Activity } from 'lucide-react';
  * from the visible WORLD MONITOR text rather than a mismatched aria-label.
  * Splitting this into stacked 14px/10px text links scored 0 on axe
  * target-size (#7382).
+ *
+ * Call sites needing an in-page destination pass `href`/`onClick` instead of
+ * wrapping this in another anchor: nesting is invalid HTML, and the outer
+ * handler's preventDefault() silently cancelled the inner link's navigation
+ * too, so unwrapping without forwarding the handler changes where the logo
+ * goes.
  */
-export const Logo = () => (
+export const Logo = ({ href = 'https://worldmonitor.app', onClick }: LogoProps = {}) => (
   <a
-    href="https://worldmonitor.app"
+    href={href}
+    onClick={onClick}
     className="flex items-center gap-2 hover:opacity-80 transition-opacity"
   >
     <span
