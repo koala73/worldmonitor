@@ -19,9 +19,19 @@ So the indicator drill-down does two things at once:
 - **Sometimes** serves the raw upstream number too, but only when that
   publisher's terms clearly permit it.
 
-A blank raw value means "we are not licensed to hand you this figure," never
-"we don't have it" and never "it is zero." The table below records the decision
-for every source, one by one.
+A blank raw value **never** means "it is zero." But it has two different causes,
+and the row tells you which:
+
+- **Licensing** — the value exists and was used, and we may not republish it.
+  That is what the table below records, source by source.
+- **State** — there was no measured value to publish in the first place. A row
+  that is `imputed`, `fallback`, `missing`, `inactive`, `retired`,
+  `not-applicable`, or `source-failure` never carries a raw value regardless of
+  licence, and neither does one whose provider or retrieval time is ambiguous.
+
+**Read the row's `state` and its raw-value policy status before concluding
+anything from a blank.** Treating every absence as a licence restriction
+misclassifies genuine data gaps and inactive indicators.
 
 The policy is **fail-closed**: if a source has not been reviewed yet, or a
 composite indicator draws on one source that has not, the raw value is withheld.
