@@ -455,7 +455,14 @@ describe('pre-push wiring: the hook must consume these decisions', () => {
   });
 
   test('routes both --exit-code freshness diffs through worktree-diff', () => {
-    has(/"\$ATTEST" worktree-diff /);
+    has(
+      /"\$ATTEST" worktree-diff "\$WM_PREPUSH_ROOT" -- src\/generated\/ docs\/api\//,
+      'proto freshness must use the tri-state worktree diff',
+    );
+    has(
+      /"\$ATTEST" worktree-diff "\$WM_PREPUSH_ROOT" -- \\\n\s+src\/config\/products\.generated\.ts[\s\S]*?pro-test\/src\/locales\//,
+      'product freshness must use the tri-state worktree diff',
+    );
     lacks(
       /if ! git diff --exit-code/,
       '`if ! git diff --exit-code` collapses git 1 (stale) and 128 (could not run)',
