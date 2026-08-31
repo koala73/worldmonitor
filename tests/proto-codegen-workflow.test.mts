@@ -233,7 +233,7 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
     assert.equal(update.status, 0, update.stderr);
   }
 
-  const result = spawnSync('bash', ['-euo', 'pipefail', '-c', writer.run ?? ''], {
+  const spawnWriter = () => spawnSync('bash', ['-euo', 'pipefail', '-c', writer.run ?? ''], {
     cwd: repo,
     encoding: 'utf8',
     env: {
@@ -249,6 +249,12 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
       RUNNER_TEMP: temp,
     },
   });
+  // 16-way `test:data` can SIGPIPE (141) the fixture bash; one retry is the
+  // same writer script against the same repo, not a changed assertion.
+  let result = spawnWriter();
+  if (result.status === 141 || result.signal === 'SIGPIPE') {
+    result = spawnWriter();
+  }
 
   const returned = {
     expectedSha,
@@ -535,7 +541,11 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
 
   it('executes writer boundary, status, and lease failure paths', () => {
     const current = runWriter('current');
-    assert.equal(current.result.status, 0, current.result.stderr);
+    assert.equal(
+      current.result.status,
+      0,
+      `${current.result.stderr || ''}\nsignal=${String(current.result.signal)}`,
+    );
     assert.match(current.output, /^pushed=false$/m);
     assert.match(current.ghLog, new RegExp(`statuses/${current.expectedSha}.*state=success`));
 
