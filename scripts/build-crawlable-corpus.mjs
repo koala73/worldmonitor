@@ -87,7 +87,7 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
-export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-30';
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-31';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
 // Public ranking / confidence gates. Keep aligned with
 // server/worldmonitor/resilience/v1/_shared.ts and
@@ -141,6 +141,24 @@ export const WORLD_MONITOR_ORG = Object.freeze({
   name: 'World Monitor',
   url: 'https://www.worldmonitor.app/',
 });
+export const WEBSITE_ID = 'https://www.worldmonitor.app/#website';
+const DEFAULT_SPEAKABLE = Object.freeze({
+  '@type': 'SpeakableSpecification',
+  cssSelector: ['h1', '.lede'],
+});
+const PAGE_TYPES_WITH_SPEAKABLE = new Set([
+  'WebPage',
+  'CollectionPage',
+  'ItemPage',
+  'Article',
+  'Report',
+  'BlogPosting',
+]);
+const PAGE_TYPES_WITH_WEBPAGE_ID = new Set([
+  'WebPage',
+  'CollectionPage',
+  'ItemPage',
+]);
 // Approximate monitoring footprint around each registry centroid (degrees).
 // Registry entries are points; GeoShape.box lets crawlers treat the waterway as
 // a corridor envelope rather than a zero-area pin.
@@ -1415,9 +1433,11 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
 }
 
 function breadcrumbLd(baseUrl, items) {
+  const currentPath = items[items.length - 1]?.path;
   return {
     '@context': SCHEMA_ORG_CONTEXT_URL,
     '@type': 'BreadcrumbList',
+    ...(currentPath ? { '@id': `${absoluteUrl(baseUrl, currentPath)}#breadcrumb` } : {}),
     itemListElement: items.map((item, index) => ({
       '@type': 'ListItem',
       position: index + 1,
@@ -1425,6 +1445,26 @@ function breadcrumbLd(baseUrl, items) {
       item: absoluteUrl(baseUrl, item.path),
     })),
   };
+}
+
+function jsonLdTypes(entry) {
+  const type = entry?.['@type'];
+  return Array.isArray(type) ? type : type ? [type] : [];
+}
+
+function withSpeakableAndGraph(entry, { canonical, breadcrumbId }) {
+  if (!entry || typeof entry !== 'object') return entry;
+  const types = jsonLdTypes(entry);
+  if (!types.some((type) => PAGE_TYPES_WITH_SPEAKABLE.has(type))) return entry;
+  const next = { ...entry };
+  if (!next.speakable) next.speakable = { ...DEFAULT_SPEAKABLE };
+  if (types.some((type) => PAGE_TYPES_WITH_WEBPAGE_ID.has(type))) {
+    if (!next['@id']) next['@id'] = `${canonical}#webpage`;
+    if (!next.isPartOf) next.isPartOf = { '@id': WEBSITE_ID };
+    if (!next.breadcrumb && breadcrumbId) next.breadcrumb = { '@id': breadcrumbId };
+    if (!next.publisher) next.publisher = { ...WORLD_MONITOR_ORG };
+  }
+  return next;
 }
 
 function imageObjectLd(baseUrl, ogImage, ogImageAlt) {
@@ -1487,12 +1527,14 @@ function pageDocument({
   // + FAQPage + ItemList for AI-extractable use-case workflows — #7381).
   // Attach ImageObject to page-shaped graphs so multimodal crawlers see a
   // primary image even when the HTML body is mostly text (#7382).
+  const breadcrumbId = breadcrumbs?.['@id'] || null;
   const ld = [
     ...(Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : []),
     breadcrumbs,
   ]
     .filter(Boolean)
-    .map((entry) => withPrimaryImage(entry, pageImage));
+    .map((entry) => withPrimaryImage(entry, pageImage))
+    .map((entry) => withSpeakableAndGraph(entry, { canonical, breadcrumbId }));
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>
@@ -1629,16 +1671,50 @@ ${body}
 function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod, snapshotPath }) {
   const path = '/countries/';
   const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
-  const itemList = countries.map((country, index) => ({
-    '@type': 'ListItem',
-    position: index + 1,
-    name: country.name,
-    url: absoluteUrl(baseUrl, `/countries/${country.slug}/`),
-  }));
+  const hubFaqs = [
+    {
+      question: 'Which countries are most resilient in 2026?',
+      answer:
+        'The Country Resilience Index ranks 196 countries by how well they can absorb a shock and recover. Rank 1 on this dated snapshot is the most resilient today. A high score is not wealth or calm: it is fiscal room, institutions, infrastructure, and supplies. Countries below the headline cutoff stay unranked rather than guessed.',
+    },
+    {
+      question: 'How is the Country Resilience Index calculated?',
+      answer:
+        'Seventy-two published indicators are rescaled to 0-100, blended into 21 dimensions, grouped into six domains, then three pillars. Those pillars combine at 0.40/0.35/0.25, then a min-pillar penalty drags the total toward the weakest link. Coverage ships with every score; thin evidence is flagged low-confidence and held out of the ranking.',
+    },
+  ];
+  const itemList = countries.map((country, index) => {
+    const scorePublished = country.headlineEligible !== false;
+    const url = absoluteUrl(baseUrl, `/countries/${country.slug}/`);
+    return {
+      '@type': 'ListItem',
+      position: index + 1,
+      name: country.name,
+      url,
+      item: {
+        '@type': 'Country',
+        name: country.name,
+        url,
+        ...(scorePublished
+          ? {
+            additionalProperty: {
+              '@type': 'PropertyValue',
+              name: 'Country Resilience Index score',
+              value: country.overallScore,
+              minValue: 0,
+              maxValue: 100,
+            },
+          }
+          : {}),
+      },
+    };
+  });
   const body = `      <p class="eyebrow">Country corpus</p>
       <h1>Country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <p>For the evergreen monitoring procedure that uses these pages as evidence, see <a href="/use-cases/monitor-country-risk/">Monitor country risk</a>.</p>
+${hubFaqs.map((faq) => `      <h2>${escapeHtml(faq.question)}</h2>
+      <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
       <div class="table-scroll"><table data-country-ranking>
         <caption>${escapeHtml(prettyDate(capturedAt))} Country Resilience Index snapshot</caption>
         <thead><tr><th scope="col">Rank</th><th scope="col">Country</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Confidence</th></tr></thead>
@@ -1667,6 +1743,15 @@ ${countries.map((country) => {
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: hubFaqs.map((faq) => ({
+          '@type': 'Question',
+          name: faq.question,
+          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+        })),
       },
       {
         '@context': 'https://schema.org',

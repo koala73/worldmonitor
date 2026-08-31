@@ -123,6 +123,7 @@ function variantWebPageJsonLd(meta: VariantMeta): string {
     isPartOf: { '@id': WEBSITE_ID },
     publisher: { '@id': ORGANIZATION_ID },
     mainEntity: { '@id': `${meta.url}#software` },
+    breadcrumb: { '@id': `${meta.url}#breadcrumb` },
     speakable: {
       '@type': 'SpeakableSpecification',
       cssSelector: ['h1', '.app-seo-summary'],
@@ -134,6 +135,7 @@ function variantBreadcrumbJsonLd(meta: VariantMeta): string {
   return jsonLdScript({
     '@context': 'https://schema.org',
     '@type': 'BreadcrumbList',
+    '@id': `${meta.url}#breadcrumb`,
     itemListElement: [
       {
         '@type': 'ListItem',
