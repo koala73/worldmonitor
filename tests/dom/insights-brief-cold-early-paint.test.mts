@@ -29,6 +29,8 @@ const {
   mockGetServerInsights,
   mockFetchServerInsights,
   mockClassifySentiment,
+  mockGenerateSummary,
+  mockAnalyzeHeadlines,
   mlWorkerStub,
 } = vi.hoisted(() => {
   const mockClassifySentiment = vi.fn();
@@ -39,6 +41,8 @@ const {
     mockGetServerInsights: vi.fn(),
     mockFetchServerInsights: vi.fn(),
     mockClassifySentiment,
+    mockGenerateSummary: vi.fn(),
+    mockAnalyzeHeadlines: vi.fn(),
     mlWorkerStub: { isAvailable: true, classifySentiment: mockClassifySentiment },
   };
 });
@@ -58,7 +62,16 @@ vi.mock('@/services/insights-loader', () => ({
 
 vi.mock('@/services/ml-worker', () => ({ mlWorker: mlWorkerStub }));
 
+vi.mock('@/services/summarization', () => ({
+  generateSummary: mockGenerateSummary,
+}));
+
+vi.mock('@/services/parallel-analysis', () => ({
+  parallelAnalysis: { analyzeHeadlines: mockAnalyzeHeadlines },
+}));
+
 import { InsightsPanel } from '@/components/InsightsPanel';
+import type { ClusteredEvent } from '@/types';
 import type { ServerInsights } from '@/services/insights-loader';
 
 const CONTENT_DEBOUNCE_MS = 150;
@@ -101,8 +114,18 @@ beforeEach(() => {
   mockSetPersistentCache.mockReset().mockResolvedValue(undefined);
   mockDeletePersistentCache.mockReset().mockResolvedValue(undefined);
   mockGetServerInsights.mockReset();
-  mockFetchServerInsights.mockReset();
-  mockClassifySentiment.mockReset();
+  mockFetchServerInsights.mockReset().mockResolvedValue(null);
+  mockClassifySentiment.mockReset().mockResolvedValue(null);
+  mockGenerateSummary.mockReset();
+  mockAnalyzeHeadlines.mockReset().mockResolvedValue({
+    timestamp: Date.now(),
+    totalHeadlines: 0,
+    analyzed: [],
+    topByConsensus: [],
+    topByDisagreement: [],
+    missedByKeywords: [],
+    perspectiveCorrelations: {},
+  });
   mlWorkerStub.isAvailable = true;
 });
 
@@ -169,9 +192,10 @@ describe('cold-visitor early brief paint (#7118)', () => {
     panel.destroy();
   });
 
-  it('paints nothing when the cache misses and the bootstrap payload has not landed', async () => {
+  it('paints nothing when the cache misses and neither bootstrap nor on-demand fetch has a brief', async () => {
     mockGetPersistentCache.mockResolvedValue(null);
     mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
 
     const panel = new InsightsPanel();
     await flushEarlyPaint();
@@ -271,6 +295,129 @@ describe('server render does not hold the brief behind sentiment (#7118)', () =>
     ).toBeNull();
 
     releaseSentiment(null);
+    await pending;
+    panel.destroy();
+  });
+});
+
+const CLIENT_BRIEF = 'SITUATION NOW\nClient-path brief painted before parallel analysis [1].';
+
+function clientCluster(): ClusteredEvent {
+  const lastUpdated = new Date();
+  return {
+    id: 'cluster-client',
+    primaryTitle: 'Missile strikes reported across multiple cities overnight',
+    primarySource: 'Reuters',
+    primaryLink: 'https://example.com/strikes',
+    sourceCount: 4,
+    uniquePublisherCount: 3,
+    topSources: [],
+    allItems: [],
+    firstSeen: lastUpdated,
+    lastUpdated,
+    isAlert: true,
+  } as unknown as ClusteredEvent;
+}
+
+describe('early paint awaits insights hydration (#7464)', () => {
+  it('paints the on-demand fetch brief when construction loses the bootstrap race', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+
+    let releaseFetch!: (value: ServerInsights) => void;
+    mockFetchServerInsights.mockReturnValue(new Promise<ServerInsights>((res) => { releaseFetch = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    expect(
+      contentOf(panel).querySelector('.insights-brief-text'),
+      'guard: must not paint before the delayed hydration arrives',
+    ).toBeNull();
+
+    releaseFetch(serverInsights());
+    await flushEarlyPaint();
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the early paint must retry when insights land after the first sync miss').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+    panel.destroy();
+  });
+
+  it('does not clobber a real update that started during the hydration fetch', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+
+    let releaseFetch!: (value: ServerInsights) => void;
+    mockFetchServerInsights.mockReturnValue(new Promise<ServerInsights>((res) => { releaseFetch = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    void panel.updateInsights([]);
+    releaseFetch(serverInsights());
+    await flushEarlyPaint();
+
+    const badge = (panel as unknown as { element: HTMLElement }).element
+      .querySelector('.panel-data-badge')?.textContent ?? '';
+    expect(badge.toLowerCase()).not.toContain('cached');
+    panel.destroy();
+  });
+});
+
+describe('client render does not hold the brief behind parallel analysis (#7464)', () => {
+  it('paints the brief before analyzeHeadlines resolves', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
+    mockGenerateSummary.mockResolvedValue({
+      summary: CLIENT_BRIEF,
+      provider: 'test',
+      model: 'test',
+      cached: false,
+    });
+
+    let releaseAnalysis!: (value: {
+      timestamp: number;
+      totalHeadlines: number;
+      analyzed: never[];
+      topByConsensus: never[];
+      topByDisagreement: never[];
+      missedByKeywords: never[];
+      perspectiveCorrelations: Record<string, number>;
+    }) => void;
+    mockAnalyzeHeadlines.mockReturnValue(new Promise((res) => { releaseAnalysis = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    expect(
+      contentOf(panel).querySelector('.insights-brief-text'),
+      'guard: constructor must not have painted, or this test proves nothing about updateFromClient',
+    ).toBeNull();
+
+    const pending = panel.updateInsights([clientCluster(), {
+      ...clientCluster(),
+      id: 'cluster-client-2',
+      primaryTitle: 'Second corroborated report of overnight strikes',
+    }]);
+    for (let i = 0; i < 40; i += 1) await Promise.resolve();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the brief is already in hand — it must not wait on parallel analysis').not.toBeNull();
+    expect(brief?.textContent).toContain('Client-path brief painted before parallel analysis');
+    expect(
+      contentOf(panel).querySelector('.insights-progress'),
+      'the brief must have superseded any step-4 progress bar',
+    ).toBeNull();
+
+    releaseAnalysis({
+      timestamp: Date.now(),
+      totalHeadlines: 0,
+      analyzed: [],
+      topByConsensus: [],
+      topByDisagreement: [],
+      missedByKeywords: [],
+      perspectiveCorrelations: {},
+    });
     await pending;
     panel.destroy();
   });

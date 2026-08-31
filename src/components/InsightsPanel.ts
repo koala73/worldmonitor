@@ -48,6 +48,12 @@ export class InsightsPanel extends Panel {
   // list at the legacy 6 orphans [7]/[8] citations on the early paint (#4890)
   // and client cooldown renders. Keep read + write on this shared bound.
   private static readonly BRIEF_CACHE_MAX_SOURCES = 12;
+  // #7464: bound the constructor's on-demand insights wait. Longer than the
+  // 1.2s FAST-tier abort so a cold `?keys=insights` recovery can still win
+  // LCP, shorter than fetchServerInsights' 5s default so a hung request
+  // cannot replace the 0.6–1.0s skeleton with a 5s blank. Same budget as the
+  // Pro-activation brief preview.
+  private static readonly EARLY_PAINT_INSIGHTS_TIMEOUT_MS = 2500;
 
   constructor() {
     super({
@@ -160,6 +166,13 @@ export class InsightsPanel extends Panel {
    * bootstrap tier (api/_bootstrap-tier-keys.js), so on a cold visit the
    * brief is usually already hydrated — fall back to it. The cache is still
    * preferred: it is the cheaper read and needs no bootstrap round trip.
+   *
+   * #7464: that fallback was a single synchronous sample. Panel construction
+   * can lose the race with `populateCache` (or the 1.2s FAST-tier abort can
+   * leave `insights` empty), so a cold visitor fell through to the slow
+   * pipeline and the brief became LCP at p75 2.5–8s. Await the coalesced
+   * on-demand fetch when the sync read misses; fetchServerInsights memoises
+   * on success, so updateInsights() still sees the payload.
    */
   private async paintCachedBriefEarly(): Promise<void> {
     if (this.updateGeneration > 0) return;
@@ -169,10 +182,11 @@ export class InsightsPanel extends Panel {
     let brief = this.cachedBrief;
     let sources = this.cachedBriefSources;
     if (!brief) {
-      // getServerInsights() is synchronous and memoises on success, so this
-      // opens no new race window and does not deprive the later
-      // updateInsights() pass of the payload.
-      const server = getServerInsights();
+      let server = getServerInsights();
+      if (!server) {
+        server = await fetchServerInsights(InsightsPanel.EARLY_PAINT_INSIGHTS_TIMEOUT_MS);
+        if (this.updateGeneration > 0) return;
+      }
       if (server?.worldBrief) {
         brief = server.worldBrief;
         sources = InsightsPanel.serverBriefSources(server);
@@ -402,7 +416,7 @@ export class InsightsPanel extends Panel {
       skipBrowserFallback: !aiFlow.browserModel,
     };
 
-    const totalSteps = 4;
+    const totalSteps = 3;
 
     try {
       // Step 1: Signal aggregation + focal point detection (must run BEFORE ranking)
@@ -534,18 +548,21 @@ export class InsightsPanel extends Panel {
 
       this.setDataBadge(worldBrief ? 'live' : 'unavailable');
 
-      // Step 4: Wait for parallel analysis to complete
-      this.setProgress(4, totalSteps, t('components.insights.multiPerspectiveAnalysis'));
+      const briefSources = this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources;
+      // #7464: the brief is already in hand. #7118 named holding it behind
+      // the parallel-analysis await and did not ship the change — that wait
+      // held `#insightsContent .brief-para` until ONNX NER/embeddings
+      // finished, which is the 8.7s-of-pure-render-delay cohort. Missed-story
+      // chrome is debug-gated; re-render when the analysis lands. Do not
+      // setProgress(4) here: that would replace the brief with a bar and put
+      // the wait back on LCP.
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
+
       await parallelPromise;
 
       if (this.updateGeneration !== thisGeneration) return;
 
-      this.renderInsights(
-        importantItems,
-        sentiments,
-        worldBrief,
-        this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources,
-      );
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
       this.showError();
