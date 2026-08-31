@@ -7,12 +7,10 @@ import { transformSync } from 'esbuild';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
-// `src/utils/index.ts` is a barrel that re-exports from `./proxy`, which reads
-// `import.meta.env.DEV` at module load — a documented gotcha that breaks plain
-// tsx/node imports (see comments in src/utils/cloud-prefs-migrations.ts and
-// src/components/resilience-widget-utils.ts). The pure formatters in the barrel
-// (formatPrice/formatChange/...) have no env or DOM dependency, so we strip the
-// side-effecting re-export/import lines and evaluate just the standalone code.
+// `src/utils/market-format.ts` holds the pure formatters (formatPrice /
+// formatChange / getChangeClass / getHeatmapClass). The `@/utils` barrel
+// re-exports them and also loads `./proxy`, which reads `import.meta.env.DEV`
+// at module load — a documented gotcha that breaks plain tsx/node imports.
 interface LoadedUtils {
   formatPrice: (p: number | null | undefined) => string;
   formatChange: (p: number | null | undefined) => string;
@@ -21,12 +19,8 @@ interface LoadedUtils {
 }
 
 async function loadUtils(): Promise<LoadedUtils> {
-  const src = readFileSync(resolve(__dirname, '../src/utils/index.ts'), 'utf-8');
-  const stripped = src
-    .split('\n')
-    .filter((line) => !/^\s*(export\s+(type\s+)?\{[^}]*\}\s+from|export\s+\*\s+from|import\s+(type\s+)?\{[^}]*\}\s+from)\s+['"]/.test(line))
-    .join('\n');
-  const { code } = transformSync(stripped, { loader: 'ts', format: 'esm' });
+  const src = readFileSync(resolve(__dirname, '../src/utils/market-format.ts'), 'utf-8');
+  const { code } = transformSync(src, { loader: 'ts', format: 'esm' });
   const dataUrl = `data:text/javascript;base64,${Buffer.from(code).toString('base64')}#${Date.now()}-${Math.random()}`;
   return import(dataUrl);
 }
