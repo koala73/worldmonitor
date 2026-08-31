@@ -5,6 +5,7 @@ import {
   HMAC_SECRET,
   callBody,
   makeProDeps,
+  PRO_USER_ID,
   proReq,
 } from './helpers/mcp-pro-deps.mjs';
 
@@ -99,11 +100,12 @@ describe('get_defense_industrial_base MCP tool', () => {
     // shape bypassed the gateway's tier check, so leaving it here would give
     // the tool a route to Pro data that the gate no longer inspects.
     assert.equal(requestUrl.searchParams.get('public'), null);
-    assert.equal(requests[0].init.headers['X-WM-MCP-Internal'], undefined);
+    assert.ok(requests[0].init.headers['X-WM-MCP-Internal'], 'Pro route call must retain internal entitlement identity');
+    assert.equal(requests[0].init.headers['X-WM-MCP-User-Id'], PRO_USER_ID);
     assert.deepEqual(JSON.parse(body.result.content[0].text), canonicalResponse);
   });
 
-  it('authenticates only a local loopback self-fetch with the sidecar token', async () => {
+  it('authenticates a local loopback self-fetch with both the sidecar token and Pro HMAC identity', async () => {
     process.env.LOCAL_API_TOKEN = 'local-sidecar-token';
     const { deps } = makeProDeps();
     const response = await mcpHandler(new Request('http://127.0.0.1:43123/mcp', {
@@ -118,5 +120,7 @@ describe('get_defense_industrial_base MCP tool', () => {
     assert.equal(response.status, 200);
     assert.equal(new URL(requests[0].url).origin, 'http://127.0.0.1:43123');
     assert.equal(requests[0].init.headers['X-WorldMonitor-Local-Token'], 'local-sidecar-token');
+    assert.ok(requests[0].init.headers['X-WM-MCP-Internal'], 'loopback call must retain internal entitlement identity');
+    assert.equal(requests[0].init.headers['X-WM-MCP-User-Id'], PRO_USER_ID);
   });
 });

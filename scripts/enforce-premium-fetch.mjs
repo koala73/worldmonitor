@@ -60,10 +60,81 @@ const DELEGATING_ADAPTERS = new Set(['proFreshRpcFetch']);
 
 /**
  * Prove each DELEGATING_ADAPTERS entry is a real function in premium-fetch.ts
- * whose body calls `premiumFetch(...)` under an `isPremiumRpcTarget(...)`
- * guard. Structural, not a substring scan, so a body that merely mentions the
- * names in a comment does not pass.
+ * whose body returns `premiumFetch(input, init)` under a positive
+ * `isPremiumRpcTarget(input)` guard. Structural, not a substring scan, so a
+ * body that merely mentions the names in a comment does not pass.
  */
+export function hasValidPremiumDelegation(src, adapterName = 'proFreshRpcFetch') {
+  const ast = ts.createSourceFile('premium-fetch-fixture.ts', src, ts.ScriptTarget.Latest, true);
+
+  function isNamedIdentifier(node, name) {
+    return ts.isIdentifier(node) && node.text === name;
+  }
+
+  function isPositivePremiumGuard(expression, inputName) {
+    return ts.isCallExpression(expression)
+      && isNamedIdentifier(expression.expression, 'isPremiumRpcTarget')
+      && expression.arguments.length === 1
+      && isNamedIdentifier(expression.arguments[0], inputName);
+  }
+
+  function hasMatchingPremiumReturn(branch, inputName, initName) {
+    let found = false;
+    function visit(node) {
+      if (found) return;
+      // A return nested in a function belongs to that function, not this
+      // adapter's affirmative branch.
+      if (node !== branch && ts.isFunctionLike(node)) return;
+      if (
+        ts.isReturnStatement(node)
+        && ts.isCallExpression(node.expression)
+        && isNamedIdentifier(node.expression.expression, 'premiumFetch')
+        && node.expression.arguments.length === 2
+        && isNamedIdentifier(node.expression.arguments[0], inputName)
+        && isNamedIdentifier(node.expression.arguments[1], initName)
+      ) {
+        found = true;
+        return;
+      }
+      ts.forEachChild(node, visit);
+    }
+    visit(branch);
+    return found;
+  }
+
+  let valid = false;
+  function visit(node) {
+    if (
+      ts.isFunctionDeclaration(node)
+      && node.name
+      && node.name.text === adapterName
+      && node.body
+      && node.parameters.length >= 2
+      && ts.isIdentifier(node.parameters[0].name)
+      && ts.isIdentifier(node.parameters[1].name)
+    ) {
+      const inputName = node.parameters[0].name.text;
+      const initName = node.parameters[1].name.text;
+      function findAffirmativeBranch(branchNode) {
+        if (valid) return;
+        if (
+          ts.isIfStatement(branchNode)
+          && isPositivePremiumGuard(branchNode.expression, inputName)
+          && hasMatchingPremiumReturn(branchNode.thenStatement, inputName, initName)
+        ) {
+          valid = true;
+          return;
+        }
+        ts.forEachChild(branchNode, findAffirmativeBranch);
+      }
+      findAffirmativeBranch(node.body);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(ast);
+  return valid;
+}
+
 function assertDelegatingAdapters() {
   const src = readFileSync(PREMIUM_FETCH_SRC, 'utf8');
   const ast = ts.createSourceFile(PREMIUM_FETCH_SRC, src, ts.ScriptTarget.Latest, true);
@@ -72,19 +143,7 @@ function assertDelegatingAdapters() {
   function visit(node) {
     if (ts.isFunctionDeclaration(node) && node.name && DELEGATING_ADAPTERS.has(node.name.text) && node.body) {
       const bodyText = node.body.getText(ast);
-      let guarded = false;
-      function findGuard(n) {
-        if (
-          ts.isIfStatement(n)
-          && n.expression.getText(ast).includes('isPremiumRpcTarget')
-          && n.thenStatement.getText(ast).includes('premiumFetch(')
-        ) {
-          guarded = true;
-        }
-        ts.forEachChild(n, findGuard);
-      }
-      findGuard(node.body);
-      if (!guarded) {
+      if (!hasValidPremiumDelegation(node.getText(ast), node.name.text)) {
         throw new Error(
           `${relative(ROOT, PREMIUM_FETCH_SRC)}: ${node.name.text} is listed in `
           + `DELEGATING_ADAPTERS but no longer routes isPremiumRpcTarget() traffic to `
@@ -403,7 +462,9 @@ async function main() {
   );
 }
 
-main().catch((err) => {
-  console.error(err);
-  process.exit(1);
-});
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  main().catch((err) => {
+    console.error(err);
+    process.exit(1);
+  });
+}

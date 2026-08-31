@@ -88,6 +88,22 @@ afterEach(() => {
 });
 
 describe('CommoditiesPanel physical-premium tab', () => {
+  it('clears retained premium state and returns to the free commodities tab', async () => {
+    panel.renderCommodities([{ symbol: 'GC=F', display: 'Gold', price: 4455.6, change: 0.5 }]);
+    panel.updatePhysicalPremiums({
+      premiums: [{ metal: 'gold', premiumUsdPerOz: 1, premiumPct: 1, computedAt: '2026-08-18T12:30:00.000Z' }],
+    });
+    panel.updatePhysicalDivergence(divergenceResponse('PHYSICAL_DIVERGENCE_STATE_OK'));
+    expect(panel.selectTab('physical').effectiveTab).toBe('physical');
+
+    panel.clearPhysicalPremiumComparison();
+    await flush();
+
+    expect(panel.getActiveTab()).toBe('commodities');
+    expect(panel.shouldRefreshPhysicalComparison()).toBe(true);
+    expect(panel.getElement().querySelector('[data-tab="physical"]')).toBeNull();
+  });
+
   it('loads once for discovery and refreshes only while unavailable or selected', () => {
     expect(panel.shouldRefreshPhysicalComparison()).toBe(true);
     panel.updatePhysicalPremiums({

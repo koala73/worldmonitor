@@ -1092,8 +1092,10 @@ export const RPC_TOOLS: ToolDef[] = [
       // bypass of the route's new tier gate, so keeping it here would have let
       // the tool reach the data by a path the gateway no longer checks.
       const url = `${base}/api/military/v1/get-defense-industrial-base?country_code=${encodeURIComponent(countryCode)}`;
+      const auth = await buildAuthHeaders(context, 'GET', url, null);
       const response = await fetch(url, {
         headers: buildMcpDownstreamHeaders(base, execution, {
+          ...auth,
           'User-Agent': 'worldmonitor-mcp-edge/1.0',
         }),
         signal: AbortSignal.timeout(8_000),

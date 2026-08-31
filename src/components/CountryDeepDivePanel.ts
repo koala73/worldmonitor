@@ -146,6 +146,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
   private signalRecentBody: HTMLElement | null = null;
   private newsBody: HTMLElement | null = null;
   private militaryBody: HTMLElement | null = null;
+  private defenseIndustrialBody: HTMLElement | null = null;
   private currentMilitarySummary: CountryDeepDiveMilitarySummary | null = null;
   private currentDefenseIndustrial: GetDefenseIndustrialBaseResponse | null = null;
   private infrastructureBody: HTMLElement | null = null;
@@ -500,7 +501,16 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
   public updateDefenseIndustrialBase(data: GetDefenseIndustrialBaseResponse | null): void {
     this.currentDefenseIndustrial = data;
-    this.renderMilitaryActivity();
+    this.renderDefenseIndustrialBase();
+  }
+
+  public syncCountryPremiumSectionsAccess(hasAccess: boolean): void {
+    this.currentDefenseIndustrial = null;
+    this.renderDefenseIndustrialBase(hasAccess ? 'loading' : 'locked');
+    if (!this.commodityVulnerabilityBody) return;
+    this.commodityVulnerabilityBody.replaceChildren(hasAccess
+      ? this.makeLoading(t('components.supplyVulnerability.loading'))
+      : this.makeProLocked(t('components.supplyVulnerability.proLocked')));
   }
 
   private renderMilitaryActivity(): void {
@@ -536,21 +546,33 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
     }
 
+    this.defenseIndustrialBody = this.el('div', 'cdp-defense-industrial-mount');
+    this.militaryBody.append(this.defenseIndustrialBody);
     this.renderDefenseIndustrialBase();
   }
 
-  private renderDefenseIndustrialBase(): void {
-    if (!this.militaryBody) return;
+  private renderDefenseIndustrialBase(state: 'current' | 'loading' | 'locked' = 'current'): void {
+    const body = this.defenseIndustrialBody;
+    if (!body) return;
+    body.replaceChildren();
+    if (state === 'loading') {
+      body.append(this.makeLoading('Loading defense industrial base...'));
+      return;
+    }
+    if (state === 'locked') {
+      body.append(this.makeProLocked(t('countryBrief.defenseIndustrialBase.proLocked')));
+      return;
+    }
     // Pro (#6438). The gate lives here rather than only at the fetch site
     // because renderMilitaryActivity() also re-runs on updateMilitaryActivity,
     // whose free-tier flight/base data stays free — without this the section
     // would simply vanish for a free viewer instead of naming the paywall.
     if (!hasPremiumAccess(getAuthState())) {
-      this.militaryBody.append(this.makeProLocked(t('countryBrief.defenseIndustrialBase.proLocked')));
+      body.append(this.makeProLocked(t('countryBrief.defenseIndustrialBase.proLocked')));
       return;
     }
     if (!this.currentDefenseIndustrial?.available) return;
-    this.militaryBody.append(renderDefenseIndustrialSection(
+    body.append(renderDefenseIndustrialSection(
       this.currentDefenseIndustrial,
       (label, value, chipClass) => this.metric(label, value, chipClass),
     ));
@@ -3206,6 +3228,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
     this.scoreCard = null;
     this.currentMilitarySummary = null;
     this.currentDefenseIndustrial = null;
+    this.defenseIndustrialBody = null;
     this.energyBody = null;
     this.maritimeBody = null;
     this.tradeExposureBody = null;

@@ -29,7 +29,7 @@ const ALLOWLIST: Record<string, string> = {
   // None today. Format: `loaderName: 'why this is intentionally excluded'`.
 };
 
-/** Pull every `this.loadX()` call that sits inside an `if (hasPremiumAccess(...))` gate. */
+/** Pull every loader that a Free viewer can skip because of a premium gate. */
 function extractGatedLoaders(src: string): Set<string> {
   const loaders = new Set<string>();
   const callRe = /this\.load([A-Z][A-Za-z0-9]+)\(\)/g;
@@ -71,6 +71,12 @@ function extractGatedLoaders(src: string): Set<string> {
       }
     }
   }
+
+  const negativeEarlyReturn = /async\s+(load[A-Z][A-Za-z0-9]+)\([^\n]*\): Promise<void> \{(?:\n.*){0,8}?\n\s*if\s*\(!hasPremiumAccess\(\)\)\s*return;/g;
+  for (const match of src.matchAll(negativeEarlyReturn)) {
+    loaders.add(match[1]!);
+  }
+
   return loaders;
 }
 
@@ -122,6 +128,21 @@ describe('firePremiumLoaders fan-out coverage', () => {
     assert.ok(extracted.has('loadDdd'), 'missed shape (c) single-line gate — fan-out coverage would have a blind spot');
   });
 
+  it('extracts negative premium early-return loaders', () => {
+    const fixture = `
+    async loadPhysicalPremiumComparison(signal?: AbortSignal): Promise<void> {
+      signal?.throwIfAborted();
+      if (!hasPremiumAccess()) return;
+      await this.fetchPhysical();
+    }
+    `;
+    const extracted = extractGatedLoaders(fixture);
+    assert.ok(
+      extracted.has('loadPhysicalPremiumComparison'),
+      'missed negative premium early-return loader; transition fan-out would be false-green',
+    );
+  });
+
   it('extracts at least one PRO-gated loader from data-loader.ts (sanity)', () => {
     // If this fails, the regex stopped matching — likely because data-loader.ts
     // changed the gate shape (e.g. `hasPremiumAccess()` got replaced or moved).
@@ -150,5 +171,22 @@ describe('firePremiumLoaders fan-out coverage', () => {
       `If you intentionally do NOT want this loader re-fired (e.g. it has its own entitlement subscription),\n` +
       `add it to the ALLOWLIST in this test with a one-line rationale.`,
     );
+  });
+
+  it('includes the physical and mineral transition reloads in the real fan-out', () => {
+    assert.ok(fanOutLoaders.has('loadPhysicalPremiumComparison'));
+    assert.ok(fanOutLoaders.has('loadMineralProduction'));
+  });
+
+  it('fails when either targeted transition reload is removed', () => {
+    for (const loader of ['loadPhysicalPremiumComparison', 'loadMineralProduction']) {
+      const mutation = APP_TS.replace(`void this.dataLoader.${loader}();`, '');
+      const mutatedFanOut = extractFanOutLoaders(mutation);
+      const missing = [...gatedLoaders].filter((gated) => !mutatedFanOut.has(gated));
+      assert.ok(
+        missing.includes(loader),
+        `removing ${loader} must make the transition coverage guard fail`,
+      );
+    }
   });
 });
