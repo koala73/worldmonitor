@@ -71,18 +71,20 @@ type PullFile = {
   status?: string;
 };
 
+type ChangeClassifierOptions = {
+  action?: string;
+  actor?: string;
+  baseSha?: string;
+  changedFiles?: number;
+  headRepository?: string;
+  headSha?: string;
+  pullRequestAuthor?: string;
+  repositoryOwner?: string;
+};
+
 function runChangeClassifier(
   files?: Array<string | PullFile> | Array<Array<string | PullFile>>,
-  options: {
-    action?: string;
-    actor?: string;
-    baseSha?: string;
-    changedFiles?: number;
-    headRepository?: string;
-    headSha?: string;
-    pullRequestAuthor?: string;
-    repositoryOwner?: string;
-  } = {},
+  options: ChangeClassifierOptions = {},
 ) {
   const temp = mkdtempSync(join(tmpdir(), 'wm-proto-classifier-'));
   const fakeBin = join(temp, 'bin');
@@ -482,7 +484,11 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.equal(trusted.status, 0, trusted.stderr);
     assert.match(trusted.output, /^trusted_fork=true$/m);
 
-    const untrustedCases: Array<[string, Parameters<typeof runChangeClassifier>[0], Parameters<typeof runChangeClassifier>[1]]> = [
+    const untrustedCases: Array<[
+      string,
+      Parameters<typeof runChangeClassifier>[0],
+      ChangeClassifierOptions,
+    ]> = [
       ['contributor push', ['proto/service.proto'], { action: 'synchronize', actor: 'contributor' }],
       ['opened by owner', ['proto/service.proto'], { action: 'opened', actor: 'koala73' }],
       ['reopened by owner', ['proto/service.proto'], { action: 'reopened', actor: 'koala73' }],
