@@ -18,6 +18,7 @@ import {
   countSectionScriptKeys,
   extractBundleOption,
   extractBundleSections,
+  hasNamedImportBinding,
   resolveExpr,
   stripLineComments,
 } from './helpers/bundle-section-parser.mjs';
@@ -102,6 +103,38 @@ test('resolver: a bare package specifier is not followed', () => {
   assert.equal(resolveExpr(src, 'SOME_MS', {}, { file: bundlePath }), null);
 });
 
+test('hasNamedImportBinding accepts only the exact static named import', () => {
+  const expected = {
+    moduleSpecifier: './seed-owid-energy-mix.mjs',
+    importedName: 'OWID_SOURCE_VERSION',
+  };
+  assert.equal(
+    hasNamedImportBinding(
+      "import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';\n",
+      expected,
+    ),
+    true,
+  );
+
+  const impostors = [
+    `const text = "import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs'";
+const OWID_SOURCE_VERSION = 'hard-coded';`,
+    "// import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';",
+    "/* import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs'; */",
+    "const text = `import { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs'`;",
+    "import { OWID_SOURCE_VERSION } from './wrong-producer.mjs';",
+    "import { OTHER_VERSION as OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';",
+    "import { OWID_SOURCE_VERSION as LOCAL_VERSION } from './seed-owid-energy-mix.mjs';",
+    "import OWID_SOURCE_VERSION from './seed-owid-energy-mix.mjs';",
+    "import * as OWID_SOURCE_VERSION from './seed-owid-energy-mix.mjs';",
+    "await import('./seed-owid-energy-mix.mjs');",
+    "export { OWID_SOURCE_VERSION } from './seed-owid-energy-mix.mjs';",
+  ];
+  for (const source of impostors) {
+    assert.equal(hasNamedImportBinding(source, expected), false, source);
+  }
+});
+
 // ── Comment stripping ────────────────────────────────────────────────────
 
 test('stripLineComments: removes line and block comments, keeps string literals', () => {
@@ -150,7 +183,7 @@ test('extractBundleSections: catches sections with intervalMs and timeoutMs', ()
   const sample = `
 const HOUR = 60 * 60 * 1000;
 export const SECTIONS = [
-  { label: 'A', script: 'seed-a.mjs', intervalMs: HOUR, timeoutMs: 120_000 },
+  { label: 'A', script: 'seed-a.mjs', expectedSourceVersion: SOURCE_VERSION, intervalMs: HOUR, timeoutMs: 120_000 },
   { label: 'B', script: 'seed-b.mjs', canonicalKey: 'foo', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
 ];
 `;
@@ -158,7 +191,9 @@ export const SECTIONS = [
   assert.equal(sections.length, 2);
   assert.equal(sections[0].label, 'A');
   assert.equal(sections[0].timeoutMsExpr, '120_000');
+  assert.equal(sections[0].expectedSourceVersionExpr, 'SOURCE_VERSION');
   assert.equal(sections[1].intervalMsExpr, '12 * HOUR');
+  assert.equal(sections[1].expectedSourceVersionExpr, null);
   assert.equal(countSectionAnchors(stripLineComments(sample)), 2);
 });
 
@@ -167,6 +202,74 @@ test('extractBundleSections: reports a missing timeoutMs as null, not as a defau
   // invent a number, so callers can tell "omitted" from "declared".
   const sample = "const S = [{ label: 'A', script: 'seed-a.mjs', intervalMs: 1000 }];\n";
   assert.equal(extractBundleSections(sample)[0].timeoutMsExpr, null);
+});
+
+test('extractBundleSections: reads only an exact direct source-version property', () => {
+  const sample = `
+const S = [{
+  label: 'A',
+  script: 'seed-a.mjs',
+  retry: { expectedSourceVersion: RETRY_VERSION },
+  note: 'expectedSourceVersion: STRING_VERSION',
+  unexpectedSourceVersion: PREFIX_VERSION,
+  ['unrelatedKey']: OTHER_VERSION,
+  expectedSourceVersion: SOURCE_VERSION,
+  intervalMs: 1000,
+}];
+`;
+  assert.equal(extractBundleSections(sample)[0].expectedSourceVersionExpr, 'SOURCE_VERSION');
+
+  const unsupportedOnly = [
+    ['nested object', 'retry: { expectedSourceVersion: RETRY_VERSION },'],
+    ['prefixed key', 'unexpectedSourceVersion: PREFIX_VERSION,'],
+    ['string contents', "note: 'expectedSourceVersion: STRING_VERSION',"],
+    ['shorthand', 'expectedSourceVersion,'],
+  ];
+  for (const [description, declaration] of unsupportedOnly) {
+    const unsupportedSample = `
+const S = [{
+  label: 'A',
+  script: 'seed-a.mjs',
+  ${declaration}
+  intervalMs: 1000,
+}];
+`;
+    assert.equal(
+      extractBundleSections(unsupportedSample)[0].expectedSourceVersionExpr,
+      null,
+      description,
+    );
+  }
+});
+
+test('extractBundleSections: fails closed on direct source-version overrides', () => {
+  const overrides = [
+    'expectedSourceVersion: OTHER_VERSION,',
+    'expectedSourceVersion,',
+    "'expectedSourceVersion': OTHER_VERSION,",
+    "['expectedSourceVersion']: OTHER_VERSION,",
+    'expected\\u0053ourceVersion: OTHER_VERSION,',
+    '[RUNTIME_KEY]: OTHER_VERSION,',
+    "get expectedSourceVersion() { return OTHER_VERSION; },",
+    'expectedSourceVersion() { return OTHER_VERSION; },',
+  ];
+
+  for (const override of overrides) {
+    const sample = `
+const S = [{
+  label: 'A',
+  script: 'seed-a.mjs',
+  expectedSourceVersion: SOURCE_VERSION,
+  ${override}
+  intervalMs: 1000,
+}];
+`;
+    assert.equal(
+      extractBundleSections(sample)[0].expectedSourceVersionExpr,
+      null,
+      override,
+    );
+  }
 });
 
 test('extractBundleSections: handles sections with nested objects (Greptile P2)', () => {

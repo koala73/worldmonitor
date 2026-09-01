@@ -15,6 +15,7 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
+import ts from 'typescript';
 
 /**
  * Conventional bundle-level duration constants, re-exported by
@@ -27,6 +28,46 @@ export const PRESEEDED = {
   DAY: 24 * 60 * 60 * 1000,
   WEEK: 7 * 24 * 60 * 60 * 1000,
 };
+
+function parseJavaScriptSource(name, source) {
+  return ts.createSourceFile(name, source, ts.ScriptTarget.Latest, true, ts.ScriptKind.JS);
+}
+
+/**
+ * Prove that `src` contains the requested top-level named import binding.
+ * Text in comments, strings, templates, dynamic imports, and re-exports does
+ * not count. Both the exported and local names are checked so an unrelated
+ * alias cannot make a static wiring assertion pass.
+ */
+export function hasNamedImportBinding(src, {
+  moduleSpecifier,
+  importedName,
+  localName = importedName,
+}) {
+  const sourceFile = parseJavaScriptSource('bundle-source.mjs', src);
+  if (sourceFile.parseDiagnostics.length > 0) return false;
+
+  return sourceFile.statements.some((statement) => {
+    if (
+      !ts.isImportDeclaration(statement)
+      || !ts.isStringLiteralLike(statement.moduleSpecifier)
+      || statement.moduleSpecifier.text !== moduleSpecifier
+    ) {
+      return false;
+    }
+
+    const clause = statement.importClause;
+    if (!clause || clause.isTypeOnly) return false;
+    const bindings = clause.namedBindings;
+    if (!bindings || !ts.isNamedImports(bindings)) return false;
+
+    return bindings.elements.some((element) => (
+      !element.isTypeOnly
+      && (element.propertyName?.text ?? element.name.text) === importedName
+      && element.name.text === localName
+    ));
+  });
+}
 
 /**
  * Remove `//` line comments and block comments, leaving string literals
@@ -265,6 +306,65 @@ const SECTION_ANCHOR_RE = /\{\s*label:\s*(['"])((?:(?!\1).)+)\1/g;
 const SECTION_SCRIPT_KEY_RE = /(?:^|[{,\s])script:\s*['"]/g;
 
 /**
+ * Read one direct, conventional property assignment from an object literal.
+ * Fail closed when a spread or dynamic computed key could override it, or
+ * when the same semantic key is expressed more than once or with a shape the
+ * static bundle checks do not support (shorthand, quoted/computed name,
+ * getter, setter, or method).
+ */
+function extractDirectPropertyAssignmentExpr(objectSrc, propertyName) {
+  const sourceFile = parseJavaScriptSource(
+    'bundle-section.mjs',
+    `const __bundleSection = ${objectSrc};`,
+  );
+  if (sourceFile.parseDiagnostics.length > 0) return null;
+
+  const statement = sourceFile.statements[0];
+  const declaration = ts.isVariableStatement(statement)
+    ? statement.declarationList.declarations[0]
+    : null;
+  const object = declaration?.initializer;
+  if (!object || !ts.isObjectLiteralExpression(object)) return null;
+
+  let matches = 0;
+  let candidate = null;
+  for (const property of object.properties) {
+    if (ts.isSpreadAssignment(property)) return null;
+
+    const name = property.name;
+    if (!name) continue;
+
+    let semanticName;
+    if (ts.isComputedPropertyName(name)) {
+      if (!ts.isStringLiteralLike(name.expression) && !ts.isNumericLiteral(name.expression)) {
+        return null;
+      }
+      semanticName = name.expression.text;
+    } else if (
+      ts.isIdentifier(name)
+      || ts.isStringLiteralLike(name)
+      || ts.isNumericLiteral(name)
+    ) {
+      semanticName = name.text;
+    } else {
+      return null;
+    }
+
+    if (semanticName !== propertyName) continue;
+    matches++;
+    candidate = (
+      ts.isPropertyAssignment(property)
+      && ts.isIdentifier(property.name)
+      && property.name.getText(sourceFile) === propertyName
+    )
+      ? property.initializer.getText(sourceFile).trim()
+      : null;
+  }
+
+  return matches === 1 ? candidate : null;
+}
+
+/**
  * Count `{ label: ... }` anchors in already-comment-stripped source.
  * `extractBundleSections` drops an anchor it cannot fully parse; comparing
  * the two counts is how a caller proves nothing was dropped silently.
@@ -336,6 +436,10 @@ export function extractBundleSections(rawBundleSrc) {
       script: scriptM[1],
       intervalMsExpr: intervalM[1].trim(),
       timeoutMsExpr: timeoutMatches.length === 1 ? timeoutMatches[0][1].trim() : null,
+      expectedSourceVersionExpr: extractDirectPropertyAssignmentExpr(
+        block,
+        'expectedSourceVersion',
+      ),
     });
   }
   return sections;
