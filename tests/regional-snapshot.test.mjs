@@ -702,7 +702,7 @@ describe('snapshot meta', () => {
   for (const [inputKey, metaKey] of [
     [CII_RISK_SCORE_CACHE_KEYS.stale,        'seed-meta:intelligence:risk-scores'],
     ['intelligence:cross-source-signals:v1', 'seed-meta:intelligence:cross-source-signals'],
-    ['energy:mix:v1:_all',                   'seed-meta:economic:owid-energy-mix'],
+    ['resilience:static:index:v1',           'seed-meta:resilience:static'],
     ['supply_chain:transit-summaries:v1',    'seed-meta:supply_chain:transit-summaries'],
     ['relay:oref:history:v1',                'seed-meta:relay:oref:history'],
   ]) {
@@ -735,7 +735,7 @@ describe('snapshot meta', () => {
     const expected = {
       [CII_RISK_SCORE_CACHE_KEYS.stale]:      'seed-meta:intelligence:risk-scores',
       'intelligence:cross-source-signals:v1': 'seed-meta:intelligence:cross-source-signals',
-      'energy:mix:v1:_all':                   'seed-meta:economic:owid-energy-mix',
+      'resilience:static:index:v1':           'seed-meta:resilience:static',
       'supply_chain:transit-summaries:v1':    'seed-meta:supply_chain:transit-summaries',
       'relay:oref:history:v1':                'seed-meta:relay:oref:history',
     };

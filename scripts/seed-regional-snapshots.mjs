@@ -42,6 +42,7 @@ import { diffRegionalSnapshot, inferTriggerReason } from './regional-snapshot/di
 import { persistSnapshot, readLatestSnapshot } from './regional-snapshot/persist-snapshot.mjs';
 import { ALL_INPUT_KEYS, ALL_META_KEYS } from './regional-snapshot/freshness.mjs';
 import { generateSnapshotId, unwrapEnvelope } from './regional-snapshot/_helpers.mjs';
+import { hydrateEnergyImportAggregate } from './regional-snapshot/_energy-import-aggregate.mjs';
 import { generateRegionalNarrative, emptyNarrative } from './regional-snapshot/narrative.mjs';
 import { emitRegionalAlerts } from './regional-snapshot/alert-emitter.mjs';
 import { buildMobilityState } from './regional-snapshot/mobility.mjs';
@@ -95,6 +96,40 @@ async function readAllInputs() {
     }
   }
   return { sources, metaSources };
+}
+
+/**
+ * Pipeline-GET arbitrary Redis keys and unwrap seed envelopes.
+ * Used to hydrate the audited energy-import aggregate from per-country
+ * resilience:static:{ISO2} records.
+ *
+ * @param {string[]} keys
+ * @returns {Promise<Record<string, unknown>>}
+ */
+async function readRedisKeys(keys) {
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  if (!keys.length) return out;
+  const { url, token } = getRedisCredentials();
+  const resp = await fetch(`${url}/pipeline`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify(keys.map((k) => ['GET', k])),
+    signal: AbortSignal.timeout(15_000),
+  });
+  if (!resp.ok) throw new Error(`Redis pipeline read: HTTP ${resp.status}`);
+  const results = await resp.json();
+  for (let i = 0; i < keys.length; i += 1) {
+    const raw = results[i]?.result;
+    if (raw === null || raw === undefined) continue;
+    try {
+      out[keys[i]] = unwrapEnvelope(JSON.parse(raw));
+    } catch {
+      // Malformed country payloads stay absent so the import component
+      // renormalizes rather than scoring garbage.
+    }
+  }
+  return out;
 }
 
 /**
@@ -226,6 +261,12 @@ async function main() {
   // Step 1: read all inputs once (shared across regions), plus seed-meta
   // companions for inputs whose payloads lack top-level timestamps.
   const { sources, metaSources } = await readAllInputs();
+  try {
+    await hydrateEnergyImportAggregate(sources, readRedisKeys);
+  } catch (hydrateErr) {
+    const hydrateMsg = /** @type {any} */ (hydrateErr)?.message ?? hydrateErr;
+    console.warn(`[regional-snapshots] energy-import hydrate failed: ${hydrateMsg}`);
+  }
   const presentKeys = Object.entries(sources).filter(([, v]) => v !== null).length;
   const presentMetaKeys = Object.entries(metaSources).filter(([, v]) => v !== null).length;
   console.log(`[regional-snapshots] Read inputs: ${presentKeys}/${ALL_INPUT_KEYS.length} keys present, ${presentMetaKeys}/${ALL_META_KEYS.length} meta keys present`);

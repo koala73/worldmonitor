@@ -6,6 +6,10 @@
 import { clip, num, weightedAverage, percentile } from './_helpers.mjs';
 import { sanitizeEvidenceString } from './_sanitize.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../_cii-risk-cache-keys.mjs';
+import {
+  ENERGY_IMPORT_SOURCE_KEY,
+  readAuditedImportObservation,
+} from './_energy-import-aggregate.mjs';
 // Use scripts/shared mirror (not repo-root shared/): Railway service has
 // rootDirectory=scripts so ../../shared/ escapes the deploy root. See #2954.
 import {
@@ -26,7 +30,12 @@ const ISO3_TO_ISO2 = iso3ToIso2Raw;
 // scored 0 for every region → flat 'calm'). Fixed at the loader via
 // unwrapEnvelope; bumped so the scoring_version in snapshot meta makes the
 // resulting score shift traceable.
-const SCORING_VERSION = '1.1.0';
+// 1.2.0: energy_vulnerability reads audited World Bank / Eurostat import
+// dependency (resilience:static:energy-import:v1) instead of the removed
+// OWID energy:mix importShare field. Missing import observations renormalize
+// the remaining storage/SPR weights instead of scoring the 50% import
+// component as a favorable zero.
+const SCORING_VERSION = '1.2.0';
 
 export { SCORING_VERSION };
 
@@ -245,28 +254,26 @@ function computeCapitalStress(countries, sources, drivers) {
 }
 
 function computeEnergyVulnerability(countries, sources, drivers) {
-  // energy:mix:v1:_all shape: Record<ISO2, {
-  //   year, coalShare, gasShare, oilShare, nuclearShare, renewShare,
-  //   windShare, solarShare, hydroShare, importShare: number|null
-  // }>
-  // Values are OWID PERCENTAGES (0-100), not 0-1 fractions. Field is
-  // `importShare`, not `imported`. Countries with null importShare are
-  // excluded from the average (not treated as zero).
-  const mix = sources['energy:mix:v1:_all'];
-  if (!mix || typeof mix !== 'object') return 0;
-  const entries = Object.entries(mix).filter(([iso]) => countries.has(iso));
-  if (!entries.length) return 0;
+  // Audited import dependency (World Bank EG.IMP.CONS.ZS / Eurostat nrg_ind_id)
+  // is hydrated onto ENERGY_IMPORT_SOURCE_KEY. Values are PERCENTAGES (0-100,
+  // exporters negative). `energy:mix:v1:_all`.importShare is an invalid OWID
+  // electricity-import mapping and must not be read.
+  const importSource = sources[ENERGY_IMPORT_SOURCE_KEY];
+  const importMap = importSource?.countries && typeof importSource.countries === 'object'
+    ? importSource.countries
+    : (importSource && typeof importSource === 'object' ? importSource : {});
 
-  // Vulnerability = 0.5 * import share + 0.25 * (1 - storage proxy) + 0.25 * (1 - SPR proxy)
-  // Phase 0: only import share is reliably present per-country.
   let totalImport = 0;
   let validCount = 0;
-  for (const [, m] of entries) {
-    if (m == null || m.importShare == null) continue;
-    totalImport += clip(num(m.importShare) / 100, 0, 1);
+  for (const [iso, record] of Object.entries(importMap)) {
+    if (!countries.has(iso)) continue;
+    const observation = readAuditedImportObservation(record);
+    if (!observation) continue;
+    totalImport += clip(observation.value / 100, 0, 1);
     validCount += 1;
   }
-  const avgImport = validCount > 0 ? totalImport / validCount : 0;
+  const importAvailable = validCount > 0;
+  const avgImport = importAvailable ? totalImport / validCount : 0;
 
   // Storage proxy from EU gas storage (single number for EU region)
   const euGas = sources['economic:eu-gas-storage:v1'];
@@ -279,14 +286,22 @@ function computeEnergyVulnerability(countries, sources, drivers) {
   const sprDays = num(spr?.daysOfCover, 90);
   const cSpr = 1 - clip(sprDays / 90, 0, 1);
 
-  const score = 0.5 * avgImport + 0.25 * cStorage + 0.25 * cSpr;
+  // When the import component is unavailable, drop its 50% weight and
+  // renormalize the remaining storage/SPR halves. Treating a missing
+  // import signal as avgImport=0 scored a favorable zero and shifted
+  // energy_vulnerability / net_balance across regime thresholds.
+  const importWeight = importAvailable ? 0.5 : 0;
+  const remainder = 1 - importWeight;
+  const storageWeight = remainder * 0.5;
+  const sprWeight = remainder * 0.5;
+  const score = importWeight * avgImport + storageWeight * cStorage + sprWeight * cSpr;
 
-  if (avgImport > 0.4 && validCount > 0) {
+  if (avgImport > 0.4 && importAvailable) {
     drivers.push({
       axis: 'energy_vulnerability',
       description: `Average import dependency ${(avgImport * 100).toFixed(0)}% across ${validCount} countries`,
       magnitude: round(avgImport),
-      evidence_ids: ['energy:mix'],
+      evidence_ids: [ENERGY_IMPORT_SOURCE_KEY],
       orientation: 'pressure',
     });
   }
