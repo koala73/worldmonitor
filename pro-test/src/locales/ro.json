@@ -386,7 +386,7 @@
           "Cheie de licență / API inclusă",
           "Fluxuri de date în timp real",
           "60 de cereri/minut",
-          "1.000 de cereri/zi incluse",
+          "1.000 de cereri/zi incluse (REST + MCP combinate)",
           "Notificări webhook"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Totul din API Starter",
           "Drepturi de redistribuire — încorporați datele noastre în ceea ce vindeți",
           "300 cereri/minut",
-          "10.000 cereri/zi incluse",
+          "10.000 de cereri/zi incluse (REST + MCP combinate)",
           "5 licențe Pro — invitați utilizatori cu orice domeniu de e-mail corporativ",
           "Suport prioritar"
         ],
