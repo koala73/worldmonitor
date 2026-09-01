@@ -290,4 +290,65 @@ describe('getCountryFacts provider contract', () => {
     assert.equal(result.countryName, 'Antarctica');
     assert.deepEqual(result.languages, []);
   });
+
+  it('keeps official India languages when the factual list exceeds 100 rows', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    // Labels that sort before English/Hindi, matching the live A-Tong..Desia truncation.
+    const earlyLanguages = [
+      'A-Tong', 'Adi', 'Angika', 'Ao', 'Assamese', 'Awadhi', 'Bagheli', 'Bagri',
+      'Balti', 'Bangani', 'Banjari', 'Balti Tibetan', 'Bhojpuri', 'Bishnupriya',
+      'Bodo', 'Braj', 'Bundeli', 'Chakma', 'Chhattisgarhi', 'Chokri', 'Chothe',
+      'Deccani', 'Desia',
+    ];
+    const filler = Array.from({ length: 100 - earlyLanguages.length }, (_, index) => (
+      `A-${String(index + 1).padStart(3, '0')}`
+    ));
+    const indiaLanguages = [...earlyLanguages, ...filler, 'English', 'Hindi', 'Tamil'];
+    indiaLanguages.sort((left, right) => left.localeCompare(right, 'en'));
+    assert.ok(indiaLanguages.length > 100);
+    assert.ok(indiaLanguages.indexOf('English') >= 100);
+    assert.ok(indiaLanguages.indexOf('Hindi') >= 100);
+
+    let capturedQuery = '';
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+
+      if (url.hostname === 'query.wikidata.org') {
+        capturedQuery = url.searchParams.get('query') ?? '';
+        assert.match(capturedQuery, /wdt:P297 "IN"/);
+        assert.match(capturedQuery, /wdt:P298 "IND"/);
+        const shared = {
+          countryLabel: wikidataValue('India'),
+          headLabel: wikidataValue('Droupadi Murmu'),
+          officeLabel: wikidataValue('president'),
+          population: wikidataValue('1400000000'),
+          area: wikidataValue('3287263'),
+          capitalLabel: wikidataValue('New Delhi'),
+          currencyLabel: wikidataValue('Indian rupee'),
+        };
+        let bindings = indiaLanguages.map(language => ({
+          ...shared,
+          languageLabel: wikidataValue(language),
+        }));
+        const limitMatch = /\bLIMIT\s+(\d+)\s*$/i.exec(capturedQuery);
+        if (limitMatch) bindings = bindings.slice(0, Number(limitMatch[1]));
+        return new Response(JSON.stringify({ results: { bindings } }));
+      }
+
+      if (url.hostname === 'en.wikipedia.org') {
+        return new Response(JSON.stringify({ extract: 'India is a country in South Asia.' }));
+      }
+
+      throw new Error(`Unexpected country-facts request: ${url}`);
+    }) as typeof fetch;
+
+    const result = await getCountryFacts({} as never, { countryCode: 'IN' });
+
+    assert.doesNotMatch(capturedQuery, /\bLIMIT\b/i);
+    assert.ok(result.languages.includes('Hindi'), `expected Hindi in ${JSON.stringify(result.languages)}`);
+    assert.ok(result.languages.includes('English'), `expected English in ${JSON.stringify(result.languages)}`);
+    assert.ok(result.languages.length > 100);
+  });
 });
