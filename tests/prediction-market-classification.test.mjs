@@ -609,9 +609,14 @@ describe('the seeder is wired to the tested pool-building path', () => {
   });
 
   it('builds the country index before publishing it to the on-demand key', () => {
-    assert.match(source, /buildCountryMarketIndex\(countryCandidates\)/);
+    assert.match(source, /projectCountryMarketIndex\(countryCandidates,\s*\{\s*complete:\s*countryProjectionComplete/);
+    assert.match(source, /countryProjectionComplete = false/);
+    assert.match(source, /onPageError:[\s\S]{0,180}complete = false/);
+    assert.match(source, /return \{ events: \[\], complete: false \}/);
+    assert.match(source, /if \(!kalshiMarkets\.complete\) countryProjectionComplete = false/);
     assert.match(source, /key:\s*COUNTRY_INDEX_KEY/);
     assert.match(source, /metaKey:\s*COUNTRY_INDEX_META_KEY/);
+    assert.match(source, /skipWhenEmpty:\s*true/);
     assert.match(source, /publishTransform:\s*\(\{ countryMarkets:/);
     assert.match(source, /markCountryIndexActivated\(data\)/);
     assert.match(source, /SET', COUNTRY_INDEX_ACTIVATION_KEY, '1'/);

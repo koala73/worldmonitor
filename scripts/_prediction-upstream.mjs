@@ -31,7 +31,8 @@ export async function fetchPolymarketEventsByTag(tag, {
   });
   if (!response.ok) throw new Error(`Polymarket HTTP ${response.status}`);
   const data = await response.json();
-  return Array.isArray(data) ? data : [];
+  if (!Array.isArray(data)) throw new Error('Polymarket invalid payload: expected an array');
+  return data;
 }
 
 export async function fetchKalshiEvents({
@@ -63,6 +64,9 @@ export async function fetchKalshiEvents({
       });
       if (!response.ok) throw new Error(`Kalshi HTTP ${response.status}`);
       data = await response.json();
+      if (!Array.isArray(data?.events)) {
+        throw new Error('Kalshi invalid payload: expected events array');
+      }
     } catch (error) {
       if (events.length === 0) throw error;
       onPageError?.(error, page + 1);

@@ -110,8 +110,13 @@ export const listPredictionMarkets: PredictionServiceHandler['listPredictionMark
         const countryMarkets = Array.isArray(countryIndex.countries?.[countryCode])
           ? countryIndex.countries[countryCode]
           : [];
+        let markets = countryMarkets.map((market) => toProtoMarket(market, ''));
+        if (query) {
+          const q = query.toLowerCase();
+          markets = markets.filter((m) => m.title.toLowerCase().includes(q));
+        }
         return {
-          markets: countryMarkets.slice(0, limit).map((market) => toProtoMarket(market, '')),
+          markets: markets.slice(0, limit),
           pagination: undefined,
           fetchedAt: Number(countryIndex.fetchedAt ?? 0),
           dataAvailable: true,

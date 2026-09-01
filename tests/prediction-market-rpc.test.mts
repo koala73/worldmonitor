@@ -93,6 +93,55 @@ describe('listPredictionMarkets legacy bootstrap compatibility', () => {
     assert.equal(response.fetchedAt, 456);
   });
 
+  it('filters country markets by query before applying page size', async () => {
+    const payload = {
+      countries: {
+        US: [
+          {
+            title: 'Will the Fed cut rates in 2026?',
+            yesPrice: 40,
+            volume: 50_000,
+            url: 'https://kalshi.com/markets/FEDCUT-26',
+            endDate: '2026-12-31T00:00:00Z',
+            source: 'kalshi',
+          },
+          {
+            title: 'Will United States GDP grow in 2027?',
+            yesPrice: 61,
+            volume: 25_000,
+            url: 'https://kalshi.com/markets/USGDP-27',
+            endDate: '2027-12-31T00:00:00Z',
+            source: 'kalshi',
+          },
+          {
+            title: 'Will US GDP exceed 30T in 2028?',
+            yesPrice: 55,
+            volume: 12_000,
+            url: 'https://kalshi.com/markets/USGDP-28',
+            endDate: '2028-12-31T00:00:00Z',
+            source: 'kalshi',
+          },
+        ],
+      },
+      fetchedAt: 456,
+    };
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      result: JSON.stringify(payload),
+    }), { status: 200, headers: { 'content-type': 'application/json' } });
+
+    const response = await listPredictionMarkets({} as never, {
+      category: 'country:US',
+      query: 'GDP',
+      pageSize: 1,
+      cursor: '',
+    } as never);
+
+    assert.equal(response.dataAvailable, true);
+    assert.equal(response.markets.length, 1);
+    assert.match(response.markets[0].title, /GDP/i);
+    assert.equal(response.markets[0].url, 'https://kalshi.com/markets/USGDP-27');
+  });
+
   it('fails closed for a malformed country category', async () => {
     let fetchCalls = 0;
     globalThis.fetch = async () => {
