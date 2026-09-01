@@ -168,6 +168,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.codegen == 'true' &&
+      needs.changes.outputs.trusted_fork != 'true' &&
       (github.event.pull_request.head.repo.full_name != github.repository ||
       github.event.pull_request.user.login == 'dependabot[bot]')
     runs-on: ubuntu-latest
@@ -185,8 +186,9 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.codegen == 'true' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      ((github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]') ||
+      needs.changes.outputs.trusted_fork == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -194,7 +196,7 @@ jobs:
     outputs:
       changed: ${{ steps.patch.outputs.changed }}
     steps:
-      - name: Checkout the exact internal PR head without persisted credentials
+      - name: Checkout the exact PR head without persisted credentials
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
@@ -258,6 +260,8 @@ jobs:
 
       - name: Prepare generated artifact patch
         id: patch
+        env:
+          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
         run: |
           read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
           git add -A -- "${GENERATED_PATH_ARRAY[@]}"
@@ -266,11 +270,20 @@ jobs:
             exit 0
           fi
 
+          if [ "$TRUSTED_FORK" = "true" ]; then
+            echo "ERROR: Generated artifacts are stale on the owner-trusted fork head."
+            echo "Regenerate the artifacts and push the reviewed result from the repository owner account."
+            git diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            exit 1
+          fi
+
           git diff --cached --binary --full-index -- "${GENERATED_PATH_ARRAY[@]}" > "$RUNNER_TEMP/generated.patch"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload generated artifact patch
-        if: steps.patch.outputs.changed == 'true'
+        if: >-
+          needs.changes.outputs.trusted_fork != 'true' &&
+          steps.patch.outputs.changed == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.2
         with:
           name: generated-proto-patch
@@ -379,18 +392,24 @@ jobs:
           echo "generated-sha=$GENERATED_SHA" >> "$GITHUB_OUTPUT"
 
   internal-merge-freshness:
-    needs: [changes, internal-auto-generate]
+    needs: [changes, internal-generate, internal-auto-generate]
     if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.internal-generate.result == 'success' &&
       needs.changes.outputs.codegen == 'true' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
-      needs.internal-auto-generate.outputs.pushed != 'true'
+      needs.internal-auto-generate.result == 'success' &&
+      needs.internal-auto-generate.outputs.pushed != 'true') ||
+      (needs.changes.outputs.trusted_fork == 'true' &&
+      needs.internal-auto-generate.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: read
     steps:
-      - name: Checkout internal PR merge commit
+      - name: Checkout PR merge commit
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
         with:
           persist-credentials: false
@@ -461,6 +480,7 @@ jobs:
           CHANGE_RESULT: ${{ needs.changes.result }}
           CODEGEN_CHANGED: ${{ needs.changes.outputs.codegen }}
           BREAKING_CHANGED: ${{ needs.changes.outputs.breaking }}
+          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
           WRITABLE_INTERNAL_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' }}
           BREAKING_RESULT: ${{ needs.proto-breaking.result }}
           FORK_RESULT: ${{ needs.fork-artifact-check.result }}
@@ -484,20 +504,36 @@ jobs:
             exit 1
           fi
 
-          if [ "$WRITABLE_INTERNAL_PR" != "true" ]; then
-            if [ "$FORK_RESULT" != "success" ]; then
-              echo "ERROR: Read-only PR codegen changes require a trusted internal branch."
+          if [ "$TRUSTED_FORK" = "true" ]; then
+            if [ "$WRITABLE_INTERNAL_PR" = "true" ] || \
+               [ "$FORK_RESULT" != "skipped" ] || \
+               [ "$GENERATE_RESULT" != "success" ] || \
+               [ "$PUBLISH_RESULT" != "skipped" ] || \
+               [ "$MERGE_RESULT" != "success" ]; then
+              echo "ERROR: Owner-trusted fork generation did not complete through the read-only path."
               exit 1
             fi
+            echo "Owner-trusted fork artifacts are fresh at the exact head and merge result."
             exit 0
           fi
 
-          if [ "$GENERATE_RESULT" != "success" ] || [ "$PUBLISH_RESULT" != "success" ]; then
+          if [ "$WRITABLE_INTERNAL_PR" != "true" ]; then
+            echo "ERROR: Fork and Dependabot codegen changes require an owner-trusted head or a trusted internal branch."
+            exit 1
+          fi
+
+          if [ "$FORK_RESULT" != "skipped" ] || \
+             [ "$GENERATE_RESULT" != "success" ] || \
+             [ "$PUBLISH_RESULT" != "success" ]; then
             echo "ERROR: Internal generation or publication did not pass."
             exit 1
           fi
 
           if [ "$GENERATED_PUSHED" = "true" ]; then
+            if [ "$MERGE_RESULT" != "skipped" ]; then
+              echo "ERROR: Merge freshness ran against a superseded internal head."
+              exit 1
+            fi
             echo "Generated artifacts were committed. A follow-up run will validate the new head."
             exit 0
           fi

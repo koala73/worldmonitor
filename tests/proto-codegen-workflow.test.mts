@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { describe, it } from 'node:test';
@@ -10,6 +10,7 @@ import { parse as parseYaml } from 'yaml';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(root, '.github/workflows/proto-check.yml');
 const workflowSource = readFileSync(workflowPath, 'utf8');
+const deployGateSource = readFileSync(resolve(root, '.github/workflows/deploy-gate.yml'), 'utf8');
 const contributing = readFileSync(resolve(root, 'CONTRIBUTING.md'), 'utf8');
 const scorecardMirrorSource = readFileSync(
   resolve(root, 'scripts/generate-scorecard-edge-mirrors.mjs'),
@@ -20,6 +21,7 @@ const scorecardMirrorPaths = [
 ].map((match) => match[1]);
 
 type Step = {
+  if?: string;
   name?: string;
   run?: string;
   uses?: string;
@@ -179,6 +181,82 @@ function git(cwd: string, args: string[]) {
     encoding: 'utf8',
     env: isolatedGitEnv(),
   });
+}
+
+type GenerationMode =
+  | 'clean'
+  | 'generated-drift'
+  | 'unexpected-staged'
+  | 'unexpected-tracked'
+  | 'unexpected-untracked';
+
+function runGenerationVerdict(mode: GenerationMode, trustedFork: boolean) {
+  const temp = mkdtempSync(join(tmpdir(), 'wm-proto-generation-'));
+  const repo = join(temp, 'repo');
+  const output = join(temp, 'output');
+  const patch = join(temp, 'generated.patch');
+  const generatedPaths = (workflow.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean);
+  const guard = stepByName(
+    'internal-generate',
+    'Reject generator writes outside generated artifact paths',
+  );
+  const verdict = stepByName('internal-generate', 'Prepare generated artifact patch');
+
+  mkdirSync(repo);
+  writeFileSync(output, '');
+  assert.equal(git(repo, ['init', '--quiet', '--initial-branch=generation']).status, 0);
+  assert.equal(git(repo, ['config', 'user.email', 'fixture@example.invalid']).status, 0);
+  assert.equal(git(repo, ['config', 'user.name', 'Fixture']).status, 0);
+
+  for (const generatedPath of generatedPaths) {
+    const fixturePath = generatedPath.endsWith('/')
+      ? join(generatedPath, generatedPath.startsWith('docs/') ? 'fixture.yaml' : 'fixture.ts')
+      : generatedPath;
+    mkdirSync(dirname(join(repo, fixturePath)), { recursive: true });
+    writeFileSync(join(repo, fixturePath), 'generated fixture\n');
+  }
+  mkdirSync(join(repo, 'src/components'), { recursive: true });
+  writeFileSync(join(repo, 'src/components/Panel.ts'), 'export const panel = 1;\n');
+  assert.equal(git(repo, ['add', '-A']).status, 0);
+  assert.equal(git(repo, ['commit', '--quiet', '-m', 'base']).status, 0);
+
+  if (mode === 'generated-drift') {
+    writeFileSync(join(repo, 'src/generated/fixture.ts'), 'generated fixture changed\n');
+  } else if (mode === 'unexpected-tracked' || mode === 'unexpected-staged') {
+    writeFileSync(join(repo, 'src/components/Panel.ts'), 'export const panel = 2;\n');
+    if (mode === 'unexpected-staged') assert.equal(git(repo, ['add', 'src/components/Panel.ts']).status, 0);
+  } else if (mode === 'unexpected-untracked') {
+    writeFileSync(join(repo, 'src/components/Unexpected.ts'), 'export const unexpected = true;\n');
+  }
+
+  const env = {
+    ...isolatedGitEnv(),
+    ...workflow.env,
+    GITHUB_OUTPUT: output,
+    RUNNER_TEMP: temp,
+    TRUSTED_FORK: String(trustedFork),
+  };
+  const guardResult = spawnSync('bash', ['-euo', 'pipefail', '-c', guard.run ?? ''], {
+    cwd: repo,
+    encoding: 'utf8',
+    env,
+  });
+  const verdictResult = guardResult.status === 0
+    ? spawnSync('bash', ['-euo', 'pipefail', '-c', verdict.run ?? ''], {
+        cwd: repo,
+        encoding: 'utf8',
+        env,
+      })
+    : undefined;
+
+  const returned = {
+    guardResult,
+    output: readFileSync(output, 'utf8'),
+    patchExists: existsSync(patch),
+    verdictResult,
+  };
+  rmSync(temp, { recursive: true, force: true });
+  return returned;
 }
 
 function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failure' | 'current') {
@@ -468,6 +546,7 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(fork.if ?? '', /head\.repo\.full_name != github\.repository/);
     assert.match(fork.if ?? '', /dependabot\[bot\]/);
     assert.match(fork.if ?? '', /needs\.changes\.outputs\.codegen == 'true'/);
+    assert.match(fork.if ?? '', /needs\.changes\.outputs\.trusted_fork != 'true'/);
 
     const executedCommands = (fork.steps ?? [])
       .flatMap((step) => (step.run ?? '').split('\n'))
@@ -493,12 +572,25 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.equal(stepByName('proto-breaking', 'Check for breaking proto changes').run, 'make breaking');
   });
 
-  it('isolates read-only generation from the credentialed writer', () => {
+  it('runs trusted-fork generation read-only while keeping the writer internal-only', () => {
     const generation = job('internal-generate');
     assert.deepEqual(generation.permissions, { contents: 'read' });
     assert.match(generation.if ?? '', /head\.repo\.full_name == github\.repository/);
+    assert.match(generation.if ?? '', /needs\.changes\.outputs\.trusted_fork == 'true'/);
     assert.match(generation.if ?? '', /user\.login != 'dependabot\[bot\]'/);
     assert.doesNotMatch(JSON.stringify(generation), /github\.token|GH_TOKEN/);
+
+    const generationCheckout = generation.steps?.find((step) => step.uses?.startsWith('actions/checkout@'));
+    assert.equal(generationCheckout?.with?.['persist-credentials'], false);
+    assert.match(String(generationCheckout?.with?.ref), /pull_request\.head\.sha/);
+
+    const verdict = stepByName('internal-generate', 'Prepare generated artifact patch');
+    assert.match(verdict.env?.TRUSTED_FORK ?? '', /needs\.changes\.outputs\.trusted_fork/);
+    assert.match(verdict.run ?? '', /TRUSTED_FORK/);
+    assert.match(verdict.run ?? '', /Generated artifacts are stale on the owner-trusted fork head/);
+
+    const upload = generation.steps?.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
+    assert.match(upload?.if ?? '', /needs\.changes\.outputs\.trusted_fork != 'true'/);
 
     const internal = job('internal-auto-generate');
     assert.deepEqual(internal.permissions, { contents: 'write', statuses: 'write' });
@@ -535,6 +627,40 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     );
   });
 
+  it('executes clean, drift, and unexpected-write generation verdicts', () => {
+    for (const trustedFork of [false, true]) {
+      const clean = runGenerationVerdict('clean', trustedFork);
+      assert.equal(clean.guardResult.status, 0, clean.guardResult.stderr);
+      assert.equal(clean.verdictResult?.status, 0, clean.verdictResult?.stderr);
+      assert.match(clean.output, /^changed=false$/m);
+      assert.equal(clean.patchExists, false);
+    }
+
+    const internalDrift = runGenerationVerdict('generated-drift', false);
+    assert.equal(internalDrift.guardResult.status, 0, internalDrift.guardResult.stderr);
+    assert.equal(internalDrift.verdictResult?.status, 0, internalDrift.verdictResult?.stderr);
+    assert.match(internalDrift.output, /^changed=true$/m);
+    assert.equal(internalDrift.patchExists, true);
+
+    const trustedDrift = runGenerationVerdict('generated-drift', true);
+    assert.equal(trustedDrift.guardResult.status, 0, trustedDrift.guardResult.stderr);
+    assert.notEqual(trustedDrift.verdictResult?.status, 0);
+    assert.equal(trustedDrift.output, '');
+    assert.equal(trustedDrift.patchExists, false);
+
+    for (const mode of [
+      'unexpected-tracked',
+      'unexpected-staged',
+      'unexpected-untracked',
+    ] satisfies GenerationMode[]) {
+      const result = runGenerationVerdict(mode, true);
+      assert.notEqual(result.guardResult.status, 0, mode);
+      assert.equal(result.verdictResult, undefined);
+      assert.equal(result.output, '');
+      assert.equal(result.patchExists, false);
+    }
+  });
+
   it('fails generator writes outside the complete generated-output allowlist', () => {
     const guard = stepByName(
       'internal-generate',
@@ -565,7 +691,19 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(mergeCheck, /GENERATED_PATHS/);
   });
 
-  it('requires a clean follow-up on the generated SHA and preserves the aggregate check name', () => {
+  it('runs merge freshness after a deliberately skipped trusted-fork writer', () => {
+    const merge = job('internal-merge-freshness');
+    assert.deepEqual(merge.needs, ['changes', 'internal-generate', 'internal-auto-generate']);
+    assert.match(merge.if ?? '', /always\(\)/);
+    assert.match(merge.if ?? '', /needs\.changes\.result == 'success'/);
+    assert.match(merge.if ?? '', /needs\.internal-generate\.result == 'success'/);
+    assert.match(merge.if ?? '', /needs\.changes\.outputs\.trusted_fork == 'true'/);
+    assert.match(merge.if ?? '', /needs\.internal-auto-generate\.result == 'skipped'/);
+    assert.match(merge.if ?? '', /needs\.internal-auto-generate\.result == 'success'/);
+    assert.match(merge.if ?? '', /needs\.internal-auto-generate\.outputs\.pushed != 'true'/);
+  });
+
+  it('uses a closed-world aggregate while preserving every published proto check', () => {
     const commit = stepByName('internal-auto-generate', 'Commit generated artifacts to the internal PR branch').run ?? '';
     assert.match(commit, /context=proto-generated-followup/);
     assert.match(commit, /state=pending/);
@@ -582,10 +720,24 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       'internal-auto-generate',
       'internal-merge-freshness',
     ]);
+    for (const checkName of [
+      'proto-changes',
+      'proto-breaking',
+      'fork-artifact-check',
+      'internal-generate',
+      'internal-auto-generate',
+      'internal-merge-freshness',
+      'proto-freshness',
+    ]) {
+      assert.match(deployGateSource, new RegExp(`"${checkName}"`), `${checkName} must remain required`);
+    }
+    const aggregateStep = stepByName('proto-freshness', 'Publish aggregate proto freshness result');
+    assert.equal(aggregateStep.env?.TRUSTED_FORK, '${{ needs.changes.outputs.trusted_fork }}');
     const base = {
       CHANGE_RESULT: 'success',
       CODEGEN_CHANGED: 'true',
       BREAKING_CHANGED: 'false',
+      TRUSTED_FORK: 'false',
       WRITABLE_INTERNAL_PR: 'true',
       BREAKING_RESULT: 'skipped',
       FORK_RESULT: 'skipped',
@@ -598,8 +750,13 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       ['non-codegen push', { ...base, CODEGEN_CHANGED: 'false' }, 0],
       ['failed classification', { ...base, CHANGE_RESULT: 'failure' }, 1],
       [
-        'blocked read-only PR',
+        'untrusted fork stays red after blocker failure',
         { ...base, WRITABLE_INTERNAL_PR: 'false', FORK_RESULT: 'failure' },
+        1,
+      ],
+      [
+        'untrusted fork stays red if blocker unexpectedly succeeds',
+        { ...base, WRITABLE_INTERNAL_PR: 'false', FORK_RESULT: 'success' },
         1,
       ],
       ['failed generation', { ...base, GENERATE_RESULT: 'failure' }, 1],
@@ -607,6 +764,60 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       ['generated push', { ...base, GENERATED_PUSHED: 'true', MERGE_RESULT: 'skipped' }, 0],
       ['failed merge freshness', { ...base, MERGE_RESULT: 'failure' }, 1],
       ['clean no-push success', base, 0],
+      [
+        'clean trusted fork',
+        {
+          ...base,
+          TRUSTED_FORK: 'true',
+          WRITABLE_INTERNAL_PR: 'false',
+          PUBLISH_RESULT: 'skipped',
+        },
+        0,
+      ],
+      [
+        'trusted fork generation failure',
+        {
+          ...base,
+          TRUSTED_FORK: 'true',
+          WRITABLE_INTERNAL_PR: 'false',
+          GENERATE_RESULT: 'failure',
+          PUBLISH_RESULT: 'skipped',
+          MERGE_RESULT: 'skipped',
+        },
+        1,
+      ],
+      [
+        'trusted fork merge failure',
+        {
+          ...base,
+          TRUSTED_FORK: 'true',
+          WRITABLE_INTERNAL_PR: 'false',
+          PUBLISH_RESULT: 'skipped',
+          MERGE_RESULT: 'failure',
+        },
+        1,
+      ],
+      [
+        'trusted fork requires skipped blocker',
+        {
+          ...base,
+          TRUSTED_FORK: 'true',
+          WRITABLE_INTERNAL_PR: 'false',
+          FORK_RESULT: 'failure',
+          PUBLISH_RESULT: 'skipped',
+        },
+        1,
+      ],
+      [
+        'trusted fork requires skipped writer',
+        {
+          ...base,
+          TRUSTED_FORK: 'true',
+          WRITABLE_INTERNAL_PR: 'false',
+          PUBLISH_RESULT: 'success',
+        },
+        1,
+      ],
     ];
     for (const [name, env, expected] of cases) {
       const result = runAggregate(env);
