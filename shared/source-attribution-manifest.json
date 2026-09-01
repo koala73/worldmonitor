@@ -6335,6 +6335,9 @@
         },
         {
           "path": "src/config/variants/tech.ts"
+        },
+        {
+          "path": "src/services/country-coverage.ts"
         }
       ],
       "role": "transport"
