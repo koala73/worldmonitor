@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 
 import {
@@ -93,19 +96,27 @@ describe('freeze crawlable live pulse coverage gates', () => {
         status: 'green',
         activeWarnings: 0,
         aisDisruptions: 0,
-        transitSummary: { dataAvailable: false },
+        transitSummary: {
+          dataAvailable: true,
+          todayTotal: 0,
+          todayCountsAvailable: true,
+          wowChangePct: 0,
+        },
       })),
     };
   }
 
-  function humanitarianPayload() {
+  function humanitarianPayload(countryCode) {
     return {
-      updatedAt: Date.now(),
-      referencePeriod: '2026-08-01',
-      events: 10,
-      fatalities: 2,
-      politicalViolenceEvents: 3,
-      demonstrationEvents: 1,
+      summary: {
+        countryCode,
+        updatedAt: Date.now(),
+        referencePeriod: '2026-08-01',
+        conflictEventsTotal: 10,
+        conflictFatalities: 2,
+        conflictPoliticalViolenceEvents: 3,
+        conflictDemonstrations: 1,
+      },
     };
   }
 
@@ -133,7 +144,9 @@ describe('freeze crawlable live pulse coverage gates', () => {
           'korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait',
         ]));
       }
-      if (href.includes('get-humanitarian-summary')) return jsonResponse(humanitarianPayload());
+      if (href.includes('get-humanitarian-summary')) {
+        return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
+      }
       throw new Error(`unexpected request: ${href}`);
     };
   }
@@ -170,5 +183,29 @@ describe('freeze crawlable live pulse coverage gates', () => {
       /captured only 0 of \d+ chokepoints/,
       'a chokepoint outage must degrade into the coverage gate, not an uncaught throw',
     );
+  });
+
+  it('preserves explicit transit-count availability in the frozen snapshot', async () => {
+    stubFetch();
+    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
+    try {
+      const { snapshot } = await freezeCrawlableLivePulse({
+        apiBase: BASE,
+        rootDir,
+        requestGapMs: 0,
+      });
+      assert.ok(Object.values(snapshot.chokepoints).length > 0);
+      assert.ok(
+        Object.values(snapshot.chokepoints).every((pulse) => (
+          pulse.todayTransits === '0'
+          && pulse.todayCountsAvailable === true
+          && pulse.warnings === '0 warnings · 0 AIS disruptions'
+          && pulse.weekMovement === '0% vs prior week'
+        )),
+      );
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
   });
 });
