@@ -686,6 +686,9 @@ export interface GetCountryEnergyProfileResponse {
   sprAvailable: boolean;
   jodiOilObservedMeasurements: string[];
   jodiGasObservedMeasurements: string[];
+  importShareAvailable: boolean;
+  importShareYear: number;
+  importShareSource: string;
 }
 
 export interface ComputeEnergyShockScenarioRequest {

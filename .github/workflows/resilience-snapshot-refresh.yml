@@ -43,7 +43,7 @@ jobs:
               --base main \
               --head "$branch" \
               --title "chore(resilience): refresh published snapshot ${period}" \
-              --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus and root sitemap."
+              --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and llms-full corpus."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -72,10 +72,12 @@ jobs:
         run: |
           npm run build:crawlable-corpus
           npm run build:sitemap
+          npm run build:llms-full
           node --import tsx --test \
             tests/resilience-published-snapshot.test.mjs \
             tests/resilience-ranking-snapshot.test.mts \
-            tests/sitemap-generation.test.mjs
+            tests/sitemap-generation.test.mjs \
+            tests/seo-geo-residue.test.mjs
       - name: Open the monthly snapshot PR
         if: steps.reconcile.outputs.skip != 'true'
         env:
@@ -87,11 +89,11 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml
+          git add "$snapshot_path" public/sitemap.xml public/llms-full.txt
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(resilience): refresh published snapshot ${snapshot_date}" \
-            --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus and root sitemap."
+            --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and llms-full corpus."

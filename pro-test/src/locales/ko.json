@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor 실시간 인텔리전스 대시보드 — 분쟁, 해운 및 시장 레이어가 포함된 글로벌 지도",
       "plateNote": "실시간 지도에서 캡처됨 — 클릭하여 열기",
       "trustBuild": "기반 구축:",
-      "positioningLink": "WorldMonitor는 오픈소스 Palantir이 아닙니다"
+      "positioningLink": "WorldMonitor는 오픈소스 Palantir이 아닙니다",
+      "asOf": "2026년 8월 31일 기준"
     },
     "live": {
       "eyebrow": "지금 실시간",

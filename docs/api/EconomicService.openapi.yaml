@@ -2107,6 +2107,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "asOf": "example"
                                 "events":
                                     - "actual": "example"
                                       "country": "US"
@@ -2116,7 +2117,6 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicCalendarResponse'
                 "400":
@@ -5167,6 +5167,8 @@ components:
                     description: |-
                         True when the upstream or seed-backed variant is unavailable; empty payload fields
                          are graceful degradation, not confirmed zero data.
+                asOf:
+                    type: string
         EconomicEvent:
             type: object
             properties:

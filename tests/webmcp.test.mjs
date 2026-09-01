@@ -610,6 +610,7 @@ describe('webmcp.ts: current API contract', () => {
       for (const result of [settings, alerts, switched]) {
         assert.equal(result.ok, true, context.variant);
         assert.equal(result.status, 'applied', context.variant);
+        // Navigation envelopes stay at 1,500 even when the catalog ceiling is higher.
         assert.ok(JSON.stringify(result).length <= 1_500, context.variant);
       }
       assert.equal(switched.destination, 'tech');

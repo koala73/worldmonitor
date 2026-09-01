@@ -100,8 +100,8 @@ describe('China A/H-share market coverage (#5272)', () => {
   it('keeps both seeders on the complete shared catalog instead of private symbol lists', () => {
     const relay = readText('scripts/ais-relay.cjs');
     const standalone = readText('scripts/seed-market-quotes.mjs');
-    assert.match(relay, /const MARKET_SYMBOLS = _stockCfg\.symbols\.map\(\(s\) => s\.symbol\)/);
-    assert.match(standalone, /const MARKET_SYMBOLS = stocksConfig\.symbols\.map\(s => s\.symbol\)/);
+    assert.match(relay, /loadMarketSeedUniverse\(_stockCfg\)/);
+    assert.match(standalone, /loadMarketSeedUniverse\(stocksConfig\)/);
     assert.equal(canonical.symbols.length, 93);
     assert.ok(canonical.symbols.every((entry) => entry.region), 'every catalog symbol needs region metadata');
   });
@@ -109,8 +109,8 @@ describe('China A/H-share market coverage (#5272)', () => {
   it('makes the long-running Railway relay consume stock symbols and metadata from the shared config', () => {
     const relay = readText('scripts/ais-relay.cjs');
     assert.match(relay, /const _stockCfg = requireShared\('stocks\.json'\)/);
-    assert.match(relay, /const MARKET_SYMBOLS = _stockCfg\.symbols\.map\(\(s\) => s\.symbol\)/);
-    assert.match(relay, /const MARKET_META = new Map\(_stockCfg\.symbols\.map/);
+    assert.match(relay, /loadMarketSeedUniverse\(_stockCfg\)/);
+    assert.match(relay, /const MARKET_META = _stockUniverse\.metaBySymbol/);
   });
 
   it('keeps available quotes when one requested China symbol is unavailable', async () => {
@@ -123,6 +123,7 @@ describe('China A/H-share market coverage (#5272)', () => {
       finnhubSkipped: true,
       skipReason: 'test fallback',
       rateLimited: false,
+      asOf: '2026-08-31T12:00:00.000Z',
     }, ['600519.SS', '999999.SS', '0700.HK']);
 
     assert.deepEqual(response.quotes.map((quote) => quote.symbol), ['600519.SS', '0700.HK']);

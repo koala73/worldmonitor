@@ -1378,17 +1378,18 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   );
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
+  // Family lastmods are change-dates, not build-dates (#7463). Do not fold
+  // CORPUS_GENERATOR_CONTENT_VERSION into any family. Country and chokepoint
+  // pages include the published pulse, so their lastmod includes its date.
   const countriesLastmod = laterDate(
     resilience.capturedAt,
     livePulse.capturedAt,
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
-    CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
     latestDatedChangelogRelease(changelog),
-    CORPUS_GENERATOR_CONTENT_VERSION,
   );
   const { capturedAt: chokepointCapturedAt, volumeObservedAt: chokepointVolumeObservedAt } =
     resolveChokepointObservation({
@@ -1398,28 +1399,22 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const chokepointsLastmod = laterDate(
     ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
   const toolsLastmod = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
-    livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     TOOLS_PAGE_CONTENT_VERSION,
   );
   const crisesLastmod = laterDate(
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     CRISIS_PAGE_CONTENT_VERSION,
   );
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
-    CORPUS_GENERATOR_CONTENT_VERSION,
   );
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
   );
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
@@ -2501,7 +2496,7 @@ ${liveGrid}
       </section>${scoreDisclosure}
 ${analysis.html}
       <h2>How to read this page</h2>
-      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules.</p>
+      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals.</p>
       <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${escapeHtml(snapshotPath)}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;

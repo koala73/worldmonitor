@@ -1029,6 +1029,20 @@ describe('crawlable corpus generator', () => {
         descriptions.set(description, route);
       }
 
+      for (const route of manifest.sections.countries.routes) {
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        assert.match(
+          html,
+          /href="\/docs\/corrections"/,
+          `${route} must link the corrections log`,
+        );
+        assert.doesNotMatch(
+          html,
+          /Post-P1-1/,
+          `${route} must not publish ticket jargon`,
+        );
+      }
+
       // Google requires Dataset descriptions to be 50-5000 characters and
       // recommends creator and license. Walk every generated JSON-LD object
       // recursively so this catches both the country snapshot Dataset and
@@ -2514,10 +2528,11 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-08-29');
     assert.ok(data.sources.resilienceSnapshot.includes(data.resilience.capturedAt));
-    // Family lastmods use material + page/generator versions only — not the
-    // Dataset schema stamp that previously forced a shared build date (#7382).
-    assert.equal(data.lastmod.countries, '2026-09-01');
-    assert.equal(data.lastmod.research, '2026-09-01');
+    // Family lastmods use material + page versions + pulse where the HTML
+    // publishes pulse values. CORPUS_GENERATOR_CONTENT_VERSION stays out
+    // (#7463). Research lastmod is the report dateModified, not a rebuild stamp.
+    assert.equal(data.lastmod.countries, '2026-08-31');
+    assert.equal(data.lastmod.research, '2026-07-27');
     assert.equal(data.lastmod.chokepoints, '2026-09-01');
     assert.equal(
       data.lastmod.sources,

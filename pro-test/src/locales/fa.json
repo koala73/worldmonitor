@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor live intelligence dashboard — global map with conflict, shipping and market layers",
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
-      "positioningLink": "WorldMonitor is not an open-source Palantir"
+      "positioningLink": "WorldMonitor is not an open-source Palantir",
+      "asOf": "تا ۳۱ اوت ۲۰۲۶"
     },
     "live": {
       "eyebrow": "Live right now",

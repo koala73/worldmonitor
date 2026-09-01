@@ -640,6 +640,25 @@ describe('China energy spine availability', () => {
     assert.equal(response.gasolineDemandKbd, 0, 'legacy scalar default remains backward-compatible');
     assert.deepEqual(response.jodiOilObservedMeasurements, ['crude.importsKbd']);
     assert.deepEqual(response.jodiGasObservedMeasurements, ['lngImportsTj']);
+    assert.equal(response.importShareAvailable, false);
+    assert.equal(response.importShare, 0, 'unavailable proto scalar remains backward-compatible');
+  });
+
+  it('reports import dependency independently from the OWID mix', () => {
+    const response = buildResponseFromSpine({
+      coverage: { hasMix: false },
+    }, null, null, null, null, {
+      available: true,
+      value: -9.001,
+      year: 2023,
+      source: 'World Bank Open Data',
+    });
+
+    assert.equal(response.mixAvailable, false);
+    assert.equal(response.importShareAvailable, true);
+    assert.equal(response.importShare, -9.001);
+    assert.equal(response.importShareYear, 2023);
+    assert.equal(response.importShareSource, 'World Bank Open Data');
   });
 
   it('derives both spine and API availability from the shared measurement field catalogue', () => {

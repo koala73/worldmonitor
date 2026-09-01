@@ -27,11 +27,14 @@ import {
   dismissMissionPresetPrompt,
   filterMissionLayersForRenderer,
   getMissionPreset,
+  getMissionPresetsForVariant,
+  isMissionPresetAvailableForVariant,
   isMissionPresetPromptDismissed,
   loadStoredMissionPreset,
   resetMissionPresetState,
   saveMissionPreset,
 } from '../src/services/mission-presets.ts';
+import { MARKET_WATCHLIST_STORAGE_KEY } from '../src/services/market-watchlist.ts';
 
 class MemoryStorage {
   private store = new Map<string, string>();
@@ -640,6 +643,7 @@ describe('mission preset definitions', () => {
         'macro-market-watch',
         'tech-ai-watch',
         'good-news-explorer',
+        'nq-day-trader',
       ],
     );
   });
@@ -706,10 +710,70 @@ describe('applyMissionPresetToState', () => {
     assert.equal(applied.mapLayers.ciiChoropleth, true);
   });
 
+  it('lists NQ Day Trader only on finance and rejects it on other variants', () => {
+    const financeIds = getMissionPresetsForVariant('finance').map((preset) => preset.id);
+    assert.equal(financeIds.length, 8);
+    assert.ok(financeIds.includes('nq-day-trader'));
+    for (const variant of VARIANTS.filter((item) => item !== 'finance')) {
+      const ids = getMissionPresetsForVariant(variant).map((preset) => preset.id);
+      assert.equal(ids.length, 7, `${variant} should keep the seven shared missions`);
+      assert.ok(!ids.includes('nq-day-trader'), `${variant} must not offer NQ Day Trader`);
+    }
+
+    const before = makePanelSettings('full');
+    const snapshot = structuredClone(before);
+    assert.throws(
+      () => applyMissionPresetToState('nq-day-trader', before, DEFAULT_MAP_LAYERS, 'full'),
+      /not available on this variant/,
+    );
+    assert.deepEqual(before, snapshot);
+  });
+
+  it('applies the NQ Day Trader workspace without touching the market watchlist', () => {
+    const originalWatchlist = '["AAPL","MSFT","NVDA"]';
+    localStorage.setItem(MARKET_WATCHLIST_STORAGE_KEY, originalWatchlist);
+
+    const current = makePanelSettings('finance');
+    const applied = applyMissionPresetToState('nq-day-trader', current, DEFAULT_MAP_LAYERS, 'finance');
+
+    assert.equal(applied.preset.id, 'nq-day-trader');
+    assert.equal(applied.preset.view, 'america');
+    assert.equal(applied.preset.timeRange, '24h');
+    assert.deepEqual(applied.panelOrder, [
+      'nq-pulse',
+      'nq-catalysts',
+      'nq-news',
+      'live-news',
+      'heatmap',
+      'economic',
+      'fear-greed',
+      'fsi',
+      'yield-curve',
+      'markets',
+    ]);
+    for (const key of applied.panelOrder) {
+      assert.equal(applied.panelSettings[key]?.enabled, true, `${key} should be enabled`);
+    }
+    assert.equal(applied.mapLayers.stockExchanges, true);
+    assert.equal(applied.mapLayers.financialCenters, true);
+    assert.equal(applied.mapLayers.centralBanks, true);
+    assert.equal(applied.mapLayers.economic, true);
+    assert.equal(applied.mapLayers.outages, true);
+    assert.equal(applied.mapLayers.conflicts, false);
+    assert.equal(localStorage.getItem(MARKET_WATCHLIST_STORAGE_KEY), originalWatchlist);
+
+    const reset = resetMissionPresetState(applied.panelSettings, DEFAULT_MAP_LAYERS, 'finance');
+    assert.equal(reset.panelSettings['nq-pulse']?.enabled, false);
+    assert.equal(reset.panelSettings['nq-catalysts']?.enabled, false);
+    assert.equal(reset.panelSettings['nq-news']?.enabled, false);
+    assert.equal(localStorage.getItem(MARKET_WATCHLIST_STORAGE_KEY), originalWatchlist);
+  });
+
   it('filters enabled panels to the active variant instead of creating mini-variants', () => {
     for (const variant of VARIANTS) {
       const allowedPanels = new Set(VARIANT_DEFAULTS[variant] ?? []);
       for (const preset of MISSION_PRESETS) {
+        if (!isMissionPresetAvailableForVariant(preset, variant)) continue;
         const applied = applyMissionPresetToState(
           preset.id,
           makePanelSettings(variant),
@@ -730,7 +794,10 @@ describe('applyMissionPresetToState', () => {
   });
 
   it('falls back to variant defaults when a preset has too few matching panels', () => {
-    for (const preset of MISSION_PRESETS.filter((preset) => preset.id !== 'good-news-explorer')) {
+    for (const preset of MISSION_PRESETS.filter((preset) => (
+      preset.id !== 'good-news-explorer'
+      && isMissionPresetAvailableForVariant(preset, 'happy')
+    ))) {
       const applied = applyMissionPresetToState(
         preset.id,
         makePanelSettings('happy'),
@@ -797,6 +864,7 @@ describe('applyMissionPresetToState', () => {
   it('never applies a preset as an empty or single-panel workspace across variants', () => {
     for (const variant of VARIANTS) {
       for (const preset of MISSION_PRESETS) {
+        if (!isMissionPresetAvailableForVariant(preset, variant)) continue;
         const applied = applyMissionPresetToState(
           preset.id,
           makePanelSettings(variant),
@@ -815,6 +883,7 @@ describe('applyMissionPresetToState', () => {
     for (const variant of VARIANTS) {
       const allowedLayers = getAllowedLayerKeys(variant);
       for (const preset of MISSION_PRESETS) {
+        if (!isMissionPresetAvailableForVariant(preset, variant)) continue;
         const applied = applyMissionPresetToState(
           preset.id,
           makePanelSettings(variant),
@@ -927,6 +996,12 @@ describe('mission preset persistence', () => {
     localStorage.setItem(MISSION_PRESET_STORAGE_KEY, 'stale');
 
     assert.equal(loadStoredMissionPreset(), null);
+  });
+
+  it('ignores a stored NQ Day Trader preset on a non-finance variant', () => {
+    localStorage.setItem(MISSION_PRESET_STORAGE_KEY, 'nq-day-trader');
+    assert.equal(loadStoredMissionPreset('full'), null);
+    assert.equal(loadStoredMissionPreset('finance')?.id, 'nq-day-trader');
   });
 
   it('does not throw when storage is unavailable', () => {

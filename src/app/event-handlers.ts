@@ -59,7 +59,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
 import {
-  MISSION_PRESETS,
+  getMissionPresetsForVariant,
   applyMissionPresetToState,
   clearMissionPreset,
   dismissMissionPresetPrompt,
@@ -981,7 +981,7 @@ export class EventHandlerManager implements AppModule {
     popover.setAttribute('aria-label', 'Mission presets');
     popover.tabIndex = -1;
 
-    const cards = MISSION_PRESETS.map((preset) => {
+    const cards = getMissionPresetsForVariant(SITE_VARIANT).map((preset) => {
       const selected = active?.id === preset.id;
       return `
         <button
@@ -1209,12 +1209,18 @@ export class EventHandlerManager implements AppModule {
   }
 
   private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): void {
-    const applied = applyMissionPresetToState(
-      presetId,
-      this.ctx.panelSettings,
-      this.getMissionDefaultLayers(),
-      SITE_VARIANT,
-    );
+    let applied: ReturnType<typeof applyMissionPresetToState>;
+    try {
+      applied = applyMissionPresetToState(
+        presetId,
+        this.ctx.panelSettings,
+        this.getMissionDefaultLayers(),
+        SITE_VARIANT,
+      );
+    } catch {
+      showToast('This mission is not available on this dashboard.');
+      return;
+    }
     const mapLayers = this.filterMissionLayersForCurrentRenderer(applied.mapLayers);
     const previousMapLayers = { ...this.ctx.mapLayers };
 

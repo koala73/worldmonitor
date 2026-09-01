@@ -481,7 +481,8 @@
       "screenshotAlt": "Жива панель World Monitor — глобальна мапа з шарами конфліктів, судноплавства та ринків",
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
-      "positioningLink": "WorldMonitor is not an open-source Palantir"
+      "positioningLink": "WorldMonitor is not an open-source Palantir",
+      "asOf": "Станом на 31 серпня 2026"
     },
     "live": {
       "eyebrow": "Live right now",

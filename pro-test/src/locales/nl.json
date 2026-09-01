@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor live inlichtingendashboard — wereldkaart met conflicten, scheepvaart- en marktlagen",
       "plateNote": "Vastgelegd van de live kaart — klik om deze te openen",
       "trustBuild": "Bouw erop:",
-      "positioningLink": "WorldMonitor is geen open-source Palantir"
+      "positioningLink": "WorldMonitor is geen open-source Palantir",
+      "asOf": "Per 31 augustus 2026"
     },
     "live": {
       "eyebrow": "Nu live",

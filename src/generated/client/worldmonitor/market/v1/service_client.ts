@@ -11,6 +11,7 @@ export interface ListMarketQuotesResponse {
   skipReason: string;
   rateLimited: boolean;
   unavailableSymbols: MarketQuoteUnavailable[];
+  asOf: string;
 }
 
 export interface MarketQuote {
@@ -576,6 +577,7 @@ export interface ListEarningsCalendarResponse {
   toDate: string;
   total: number;
   unavailable: boolean;
+  asOf: string;
 }
 
 export interface EarningsEntry {

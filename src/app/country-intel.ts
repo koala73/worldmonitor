@@ -24,6 +24,7 @@ import {
   ME_STRIKE_BOUNDS,
   iso3ToIso2Code,
   nameToCountryCode,
+  preloadCountryGeometry,
 } from '@/services/country-geometry';
 import { getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
 import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cached-risk-scores';
@@ -539,7 +540,7 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
       }).catch(() => { /* non-fatal */ });
 
-      fetchCountryMarkets(country)
+      fetchCountryMarkets(country, code)
         .then((markets) => {
           if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets(markets);
         })
@@ -556,8 +557,9 @@ export class CountryIntelManager implements AppModule {
       });
       page.updateNews(filteredNews.slice(0, 10));
 
-      page.updateInfrastructure(code);
+      if (getCountryCentroid(code, ME_STRIKE_BOUNDS)) page.updateInfrastructure(code);
       void Promise.all([
+        preloadCountryGeometry(),
         preloadMilitaryBases().catch(() => []),
         preloadInfrastructureTables().catch(() => {}),
       ])
@@ -613,6 +615,9 @@ export class CountryIntelManager implements AppModule {
             solarShare: profile.solarShare,
             hydroShare: profile.hydroShare,
             importShare: profile.importShare,
+            importShareAvailable: profile.importShareAvailable,
+            importShareYear: profile.importShareYear,
+            importShareSource: profile.importShareSource,
             gasStorageAvailable: profile.gasStorageAvailable,
             gasStorageFillPct: profile.gasStorageFillPct,
             gasStorageChange1d: profile.gasStorageChange1d,
@@ -668,7 +673,8 @@ export class CountryIntelManager implements AppModule {
           this.ctx.countryBriefPage.updateEnergyProfile?.({
             mixAvailable: false, mixYear: 0, coalShare: 0, gasShare: 0, oilShare: 0,
             nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0,
-            importShare: 0, gasStorageAvailable: false, gasStorageFillPct: 0,
+            importShare: 0, importShareAvailable: false, importShareYear: 0,
+            importShareSource: '', gasStorageAvailable: false, gasStorageFillPct: 0,
             gasStorageChange1d: 0, gasStorageTrend: '', gasStorageDate: '', electricityAvailable: false,
             electricityPriceMwh: 0, electricitySource: '', electricityDate: '',
             jodiOilAvailable: false, jodiOilDataMonth: '', gasolineDemandKbd: 0,
