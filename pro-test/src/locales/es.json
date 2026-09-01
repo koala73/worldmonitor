@@ -481,7 +481,8 @@
       "screenshotAlt": "Panel de inteligencia en vivo de World Monitor — mapa global con capas de conflicto, envío y mercado",
       "plateNote": "Capturado del mapa en vivo — haz clic para abrirlo",
       "trustBuild": "Construye sobre él:",
-      "positioningLink": "WorldMonitor no es un Palantir de código abierto"
+      "positioningLink": "WorldMonitor no es un Palantir de código abierto",
+      "asOf": "A partir del 31 de agosto de 2026"
     },
     "live": {
       "eyebrow": "En vivo ahora mismo",

@@ -300,6 +300,13 @@ export function buildSitemapEntries({
 
   const corpusPages = discoverContentCorpusPages({ publicDir });
   if (requireCompleteCorpus) {
+    const corpusPathnames = new Set(corpusPages.map((page) => new URL(page.loc).pathname));
+    if (!corpusPathnames.has('/country-instability-index/')) {
+      throw new Error(
+        'generated content corpus is incomplete: no /country-instability-index/ page; '
+        + 'run npm run build:crawlable-corpus before npm run build:sitemap',
+      );
+    }
     for (const prefix of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/research/', '/reference/']) {
       if (!corpusPages.some((page) => new URL(page.loc).pathname.startsWith(prefix))) {
         throw new Error(

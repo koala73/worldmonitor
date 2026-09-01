@@ -5,7 +5,8 @@ import { fetchYahooJson } from './_yahoo-fetch.mjs';
 import { buildCountryStockIndexSnapshot, countryStockIndexKey } from './_country-stock-index.mjs';
 import { loadCountryStockIndexes } from './_country-stock-index-registry.mjs';
 import { getUsEquitySession, isMultiMarketEquityTradingDay } from './shared/market-hours.cjs';
-import { mergeLastGoodQuotes } from './shared/market-quote-refresh.cjs';
+import { mergeLastGoodQuotes, resolveMergedQuotesAsOf } from './shared/market-quote-refresh.cjs';
+import { countCatalogFreshQuotes, loadMarketSeedUniverse } from './shared/market-seed-universe.cjs';
 import {
   authorizedProvidersMissingReason,
   fetchAuthorizedEquityQuotes,
@@ -27,14 +28,14 @@ const FRESH_QUOTE_COUNT = Symbol('freshQuoteCount');
 const COUNTRY_STOCK_INDEXES = loadCountryStockIndexes();
 const COUNTRY_STOCK_INDEX_KEYS = COUNTRY_STOCK_INDEXES.map(index => countryStockIndexKey(index.code));
 
-const MARKET_SYMBOLS = stocksConfig.symbols.map(s => s.symbol);
+const {
+  allSymbols: MARKET_SYMBOLS,
+  catalogSymbols: MARKET_CATALOG_SYMBOLS,
+  metaBySymbol: META_BY_SYMBOL,
+} = loadMarketSeedUniverse(stocksConfig);
 const RPC_KEY = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
 
 const YAHOO_ONLY = new Set(stocksConfig.yahooOnly);
-
-const META_BY_SYMBOL = new Map(
-  stocksConfig.symbols.map((s) => [s.symbol, { name: s.name, display: s.display }]),
-);
 
 async function fetchYahooQuote(symbol) {
   try {
@@ -79,22 +80,25 @@ async function fetchMarketQuotes() {
   if (providersUsed.length > 0) {
     console.log(`  [providers] ${providersUsed.join(' → ')}`);
   }
+  const fetchedAt = Date.now();
 
   return {
     quotes: mergedQuotes,
     finnhubSkipped: !finnhubKey && !avKey,
     skipReason: (!finnhubKey && !avKey) ? authorizedProvidersMissingReason() : '',
     rateLimited: false,
-    // Symbols are deliberately omitted by JSON.stringify, so this proof is
+    asOf: resolveMergedQuotesAsOf(quotes, mergedQuotes, previousPayload?.asOf, fetchedAt),
+    // Catalog-only fresh count: auxiliary misses must not fail an otherwise
+    // healthy seed. Symbols are omitted by JSON.stringify, so this proof is
     // available to validateFn at the publication boundary but never changes
     // the public cache contract.
-    [FRESH_QUOTE_COUNT]: quotes.length,
+    [FRESH_QUOTE_COUNT]: countCatalogFreshQuotes(quotes, MARKET_CATALOG_SYMBOLS),
   };
 }
 
 function validate(data) {
   return Array.isArray(data?.quotes)
-    && hasSufficientFreshQuoteCoverage(data[FRESH_QUOTE_COUNT], MARKET_SYMBOLS.length);
+    && hasSufficientFreshQuoteCoverage(data[FRESH_QUOTE_COUNT], MARKET_CATALOG_SYMBOLS.length);
 }
 
 export function declareRecords(data) {

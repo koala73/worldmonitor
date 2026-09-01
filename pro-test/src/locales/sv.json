@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor live underrättelseinstrumentpanel — global karta med konflikt-, sjöfarts- och marknadslager",
       "plateNote": "Fångad från live-kartan — klicka för att öppna den",
       "trustBuild": "Bygg på den:",
-      "positioningLink": "WorldMonitor är inte en öppen källkod Palantir"
+      "positioningLink": "WorldMonitor är inte en öppen källkod Palantir",
+      "asOf": "Per den 31 augusti 2026"
     },
     "live": {
       "eyebrow": "Live just nu",

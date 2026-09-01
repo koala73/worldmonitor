@@ -7,6 +7,7 @@ import {
   tagRegions,
   parseYesPrice,
   parseKalshiYesPrice,
+  parsePredictionMarketVolume,
   selectPricedKalshiMarket,
   shouldInclude,
   scoreMarket,
@@ -121,6 +122,18 @@ describe('parseYesPrice', () => {
 
   it('rounds to one decimal place', () => {
     assert.equal(parseYesPrice({ outcomePrices: '["0.333"]' }), 33.3);
+  });
+});
+
+describe('parsePredictionMarketVolume', () => {
+  it('prefers contract volumeNum over the alternate volume field', () => {
+    assert.equal(parsePredictionMarketVolume({ volumeNum: 12_345, volume: '99999' }), 12_345);
+  });
+
+  it('parses contract volume strings and rejects missing or invalid values', () => {
+    assert.equal(parsePredictionMarketVolume({ volume: '6789.5' }), 6789.5);
+    assert.equal(parsePredictionMarketVolume({}), 0);
+    assert.equal(parsePredictionMarketVolume({ volumeNum: Number.NaN }), 0);
   });
 });
 

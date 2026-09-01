@@ -481,7 +481,8 @@
       "screenshotAlt": "Żywa mapa inteligencji World Monitor — globalna mapa z warstwami konfliktów, transportu i rynków",
       "plateNote": "Przechwycone z żywej mapy — kliknij, aby ją otworzyć",
       "trustBuild": "Buduj na jej podstawie:",
-      "positioningLink": "WorldMonitor nie jest open-source'owym Palantir"
+      "positioningLink": "WorldMonitor nie jest open-source'owym Palantir",
+      "asOf": "Stan na dzień 31 sierpnia 2026"
     },
     "live": {
       "eyebrow": "Na żywo teraz",

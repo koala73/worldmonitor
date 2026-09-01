@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor élő hírszerzési irányítópult — globális térkép konfliktus, szállítás és piaci rétegekkel",
       "plateNote": "Az élő térképről rögzítve — kattints a megnyitásához",
       "trustBuild": "Építs rá:",
-      "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir"
+      "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir",
+      "asOf": "2026. augusztus 31-i állapot szerint"
     },
     "live": {
       "eyebrow": "Most élő",

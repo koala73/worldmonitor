@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor Live-Intelligenz-Dashboard — globale Karte mit Konflikt-, Schifffahrts- und Markt-Ebenen",
       "plateNote": "Erfasst von der Live-Karte — klicken Sie zum Öffnen",
       "trustBuild": "Darauf aufbauen:",
-      "positioningLink": "WorldMonitor ist kein Open-Source-Palantir"
+      "positioningLink": "WorldMonitor ist kein Open-Source-Palantir",
+      "asOf": "Stand: 31. August 2026"
     },
     "live": {
       "eyebrow": "Live jetzt",

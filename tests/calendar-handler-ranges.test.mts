@@ -17,9 +17,11 @@ describe('calendar handler ranges', () => {
       toDate: '2026-08-22',
       total: 3,
       unavailable: false,
+      asOf: '2026-08-21T12:00:00.000Z',
     }, { fromDate: '2026-08-21', toDate: '2026-08-22' });
 
     assert.deepEqual(response.events.map((event) => event.event), ['first', 'last']);
+    assert.equal(response.asOf, '2026-08-21T12:00:00.000Z');
     assert.deepEqual(
       { fromDate: response.fromDate, toDate: response.toDate, total: response.total, unavailable: response.unavailable },
       { fromDate: '2026-08-21', toDate: '2026-08-22', total: 2, unavailable: false },

@@ -10,7 +10,7 @@ import { join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 
-import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
+import { buildCorpus, loadCorpusData } from '../scripts/build-crawlable-corpus.mjs';
 import {
   assertNoUnresolvedTokens,
   computeReportMetrics,
@@ -43,9 +43,11 @@ describe('research report corpus (#5668)', () => {
   let hubHtml;
   let csv;
   let dataJson;
+  let corpusData;
 
   before(async () => {
     outDir = mkdtempSync(join(tmpdir(), 'wm-research-corpus-'));
+    corpusData = await loadCorpusData({ rootDir: repoRoot });
     await buildCorpus({ rootDir: repoRoot, outDir, baseUrl: 'https://www.worldmonitor.app' });
     html = readFileSync(join(outDir, 'research', report.slug, 'index.html'), 'utf8');
     hubHtml = readFileSync(join(outDir, 'research', 'index.html'), 'utf8');
@@ -93,7 +95,7 @@ describe('research report corpus (#5668)', () => {
       focus.observationEnd <= String(snapshot.capturedAt).slice(0, 10),
       'observation period must end on or before the retrieval date',
     );
-    assert.match(html, /<meta name="lastmod" content="2026-08-31">/);
+    assert.match(html, /<meta name="lastmod" content="2026-07-27">/);
     assert.match(
       html,
       new RegExp(`published <time datetime="${report.datePublished}">`),

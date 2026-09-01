@@ -8,17 +8,26 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { randomUUID } from 'node:crypto';
-import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
+import { mkdirSync, readFileSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
+import { OWID_SOURCE_VERSION } from '../scripts/seed-owid-energy-mix.mjs';
 import {
   SUPERSEDED_KEY_TTL_SECONDS,
   atomicSwitch,
   backfillSeedMetaFromActiveVersion,
 } from '../scripts/seed-military-bases.mjs';
+import {
+  countSectionAnchors,
+  countSectionScriptKeys,
+  extractBundleSections,
+  extractRunBundleSectionSource,
+  hasNamedImportBinding,
+  stripLineComments,
+} from './helpers/bundle-section-parser.mjs';
 
 const SCRIPTS_DIR = fileURLToPath(new URL('../scripts/', import.meta.url));
 const FIXTURES_DIR = join(SCRIPTS_DIR, 'fixtures');
@@ -44,7 +53,7 @@ test('a fresh legacy marker cannot suppress a required source-version migration'
   const fetchedAt = Date.now();
   const freshness = await readSectionFreshness({
     seedMetaKey: 'economic:owid-energy-mix',
-    expectedSourceVersion: 'owid-energy-mix-v2',
+    expectedSourceVersion: 'owid-energy-mix-v3',
   }, async () => ({
     fetchedAt,
     recordCount: 214,
@@ -57,11 +66,11 @@ test('a matching source version preserves the normal freshness clock', async () 
   const fetchedAt = Date.now();
   const freshness = await readSectionFreshness({
     seedMetaKey: 'economic:owid-energy-mix',
-    expectedSourceVersion: 'owid-energy-mix-v2',
+    expectedSourceVersion: 'owid-energy-mix-v3',
   }, async () => ({
     fetchedAt,
     recordCount: 214,
-    sourceVersion: 'owid-energy-mix-v2',
+    sourceVersion: 'owid-energy-mix-v3',
   }));
   assert.deepEqual(freshness, { fetchedAt });
 });
@@ -69,14 +78,67 @@ test('a matching source version preserves the normal freshness clock', async () 
 test('an error seed marker never makes a failed migration look fresh', async () => {
   const freshness = await readSectionFreshness({
     seedMetaKey: 'economic:owid-energy-mix',
-    expectedSourceVersion: 'owid-energy-mix-v2',
+    expectedSourceVersion: 'owid-energy-mix-v3',
   }, async () => ({
     fetchedAt: Date.now(),
     recordCount: 0,
-    sourceVersion: 'owid-energy-mix-v2',
+    sourceVersion: 'owid-energy-mix-v3',
     status: 'error',
   }));
   assert.equal(freshness, null);
+});
+
+test('an error canonical envelope never makes a failed migration look fresh', async () => {
+  const fetchedAt = Date.now();
+  const freshness = await readSectionFreshness({
+    canonicalKey: 'economic:owid-energy-mix:v2',
+    expectedSourceVersion: OWID_SOURCE_VERSION,
+  }, async () => ({
+    _seed: {
+      fetchedAt,
+      sourceVersion: OWID_SOURCE_VERSION,
+      state: 'ERROR',
+    },
+    data: {},
+  }));
+  assert.equal(freshness, null);
+});
+
+test('energy-sources wires the OWID freshness gate to the producer version', () => {
+  const bundlePath = join(SCRIPTS_DIR, 'seed-bundle-energy-sources.mjs');
+  const rawSource = readFileSync(bundlePath, 'utf8');
+  const sectionSource = extractRunBundleSectionSource(rawSource, 'energy-sources');
+  assert.notEqual(
+    sectionSource,
+    null,
+    'energy-sources must pass a literal section array to one runBundle call',
+  );
+  const source = stripLineComments(sectionSource);
+  const sections = extractBundleSections(source);
+  const owidSections = sections.filter((section) => section.label === 'OWID-Energy-Mix');
+
+  assert.equal(sections.length, countSectionAnchors(source));
+  assert.equal(sections.length, countSectionScriptKeys(source));
+  assert.equal(
+    owidSections.length,
+    1,
+    'seed-bundle-energy-sources.mjs must declare exactly one OWID-Energy-Mix section',
+  );
+  const [owidSection] = owidSections;
+  assert.equal(owidSection.script, 'seed-owid-energy-mix.mjs');
+  assert.equal(
+    owidSection.expectedSourceVersionExpr,
+    'OWID_SOURCE_VERSION',
+    'OWID-Energy-Mix must reference the producer source-version constant',
+  );
+  assert.equal(
+    hasNamedImportBinding(rawSource, {
+      moduleSpecifier: './seed-owid-energy-mix.mjs',
+      importedName: 'OWID_SOURCE_VERSION',
+    }),
+    true,
+    'OWID_SOURCE_VERSION must be imported from the OWID energy-mix producer',
+  );
 });
 
 // The version gate is opt-in. A section that never asked for it must keep the

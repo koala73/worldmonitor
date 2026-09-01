@@ -43,6 +43,7 @@ export const AGENT_NOT_FOUND_PASSTHROUGH_PREFIXES = [
   '/changelog',
   '/chokepoints',
   '/contact',
+  '/country-instability-index',
   '/countries',
   '/crises',
   '/dashboard',

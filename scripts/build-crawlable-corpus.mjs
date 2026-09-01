@@ -37,12 +37,15 @@ import {
   CHANGELOG_PAGINATION_ROBOTS_CONTENT,
   INDEXABLE_ROBOTS_CONTENT,
 } from '../shared/seo-robots.mjs';
+import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // Single source with the browser copy: crawlable-live-tools.mjs is what gets
 // written verbatim to public/tools/live-tools.js, and importing it here is
 // side-effect-free in Node (its only module-scope statement is a
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
+  instabilityBand,
+  parseCiiMovement,
   publishedTransitCountLabel,
   withheldTransitCountSentence,
 } from './crawlable-live-tools.mjs';
@@ -101,8 +104,11 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
-export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-31';
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
+const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
+const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
+const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
 // Public ranking / confidence gates. Keep aligned with
 // server/worldmonitor/resilience/v1/_shared.ts and
 // docs/methodology/country-resilience-index.mdx.
@@ -227,6 +233,7 @@ function displayCountryName(code, fallbackName) {
 // deleted and rewritten on each build, so one missing an ignore rule shows up
 // as permanent untracked noise and can be committed by a stray `git add -A`.
 export const GENERATED_DIRS = [
+  'country-instability-index',
   'countries',
   'chokepoints',
   'crises',
@@ -340,6 +347,64 @@ function pulseDateOnly(asOf, fallback) {
   return fallback;
 }
 
+export function buildCiiRankingEntries(countries, livePulse) {
+  const countryByCode = new Map(countries.map((country) => [country.code, country]));
+  const methodologyVersions = new Set();
+  const entries = [];
+
+  for (const [code, pulse] of Object.entries(livePulse?.countries || {})) {
+    if (pulse?.partial === true || pulse?.score == null || pulse.score === '') continue;
+    const country = countryByCode.get(code);
+    if (!country) throw new Error(`CII pulse contains unknown country ${code}`);
+    const score = Number(pulse.score);
+    const band = instabilityBand(score);
+    if (!Number.isFinite(score) || band === null || band !== pulse.band) {
+      throw new Error(`CII pulse score or band is invalid for ${code}`);
+    }
+    const asOf = String(pulse.asOf || '').trim();
+    if (!Number.isFinite(Date.parse(asOf))) {
+      throw new Error(`CII pulse timestamp is invalid for ${code}`);
+    }
+    const methodologyVersion = String(pulse.methodologyVersion || '').trim();
+    if (!methodologyVersion) throw new Error(`CII pulse methodology is unavailable for ${code}`);
+    methodologyVersions.add(methodologyVersion);
+    entries.push({
+      country,
+      code,
+      score,
+      band,
+      trend: String(pulse.trend || '').trim(),
+      asOf,
+      methodologyVersion,
+      ...parseCiiMovement(pulse.trend),
+    });
+  }
+
+  entries.sort((left, right) => right.score - left.score || left.country.name.localeCompare(right.country.name));
+  const entryCodes = new Set(entries.map((entry) => entry.code));
+  const expectedCodes = new Set(CII_COUNTRY_CODES);
+  const missingCodes = CII_COUNTRY_CODES.filter((code) => !entryCodes.has(code));
+  const unexpectedCodes = [...entryCodes].filter((code) => !expectedCodes.has(code));
+  if (missingCodes.length > 0 || unexpectedCodes.length > 0) {
+    throw new Error(
+      `CII ranking country set is invalid: missing ${missingCodes.join(', ') || 'none'}; `
+      + `unexpected ${unexpectedCodes.join(', ') || 'none'}`,
+    );
+  }
+  if (methodologyVersions.size !== 1) {
+    throw new Error('CII ranking mixes methodology versions');
+  }
+  return {
+    entries,
+    byCode: new Map(entries.map((entry) => [entry.code, entry])),
+    methodologyVersion: entries[0].methodologyVersion,
+    updatedAt: entries.reduce(
+      (latest, entry) => Date.parse(entry.asOf) > Date.parse(latest) ? entry.asOf : latest,
+      entries[0].asOf,
+    ),
+  };
+}
+
 function liveUpdatedMarkup({ asOf, fallbackLabel, prefix = 'Published pulse' }) {
   if (asOf) {
     return `<time data-live-updated datetime="${escapeHtml(asOf)}">${escapeHtml(prefix)} ${escapeHtml(formatStaticDateTime(asOf))}</time>`;
@@ -425,7 +490,7 @@ function dataCatalogLd(baseUrl) {
     '@id': dataCatalogId(baseUrl),
     name: 'World Monitor open data catalog',
     description:
-      'Crawlable World Monitor datasets for country resilience, maritime chokepoint reference, bounded crisis trackers, and research snapshots, with static JSON downloads generated from committed data.',
+      'Crawlable World Monitor datasets for country instability, country resilience, maritime chokepoint reference, bounded crisis trackers, and research snapshots, with static downloads generated from committed data.',
     url: `${normalizeBaseUrl(baseUrl)}/`,
     publisher: { ...WORLD_MONITOR_ORG },
     creator: { ...WORLD_MONITOR_ORG },
@@ -766,7 +831,39 @@ function selectMetaDescription(candidates, fallbackCandidates) {
   );
 }
 
-export function countryMetaDescription({ name, rank, rankedCount, lowConfidence = false }) {
+export function countryMetaDescription({
+  name,
+  rank,
+  rankedCount,
+  lowConfidence = false,
+  ciiEntry = null,
+}) {
+  if (ciiEntry) {
+    const movementFact = ciiEntry.change24h == null
+      ? 'with 24-hour movement stable or unavailable'
+      : `and is ${ciiEntry.movementText}`;
+    const subjects = [
+      `${name} Country Instability Index`,
+      `${name} instability index`,
+    ];
+    const facts = [
+      `is ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
+      `scores ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
+    ];
+    const contexts = [
+      'with World Monitor country-risk, resilience, advisory, and sanctions context.',
+      'with World Monitor risk, resilience, advisory, and sanctions context.',
+      'with World Monitor country-risk, resilience, and security context.',
+      'with World Monitor country-risk and resilience context.',
+      'alongside World Monitor risk, resilience, advisory, and sanctions context.',
+      'alongside World Monitor country-risk and resilience context.',
+    ];
+    const candidates = subjects.flatMap((subject) => facts.flatMap(
+      (fact) => contexts.map((context) => `${subject} ${fact}, ${context}`),
+    ));
+    return selectMetaDescription(candidates);
+  }
+
   const subjects = [
     `${name} country risk and resilience`,
     `${name} country risk`,
@@ -1279,6 +1376,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     regionsByCode,
     crises,
   );
+  const ciiRanking = buildCiiRankingEntries(countries, livePulse);
   const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
   const tradeRoutesById = new Map(
@@ -1291,17 +1389,30 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   );
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
+  // Family lastmods are change-dates, not build-dates (#7463). Do not fold
+  // CORPUS_GENERATOR_CONTENT_VERSION into any family. All country pages include
+  // the pulse date, while CII-targeted pages use a separate content clock.
   const countriesLastmod = laterDate(
     resilience.capturedAt,
     livePulse.capturedAt,
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
-    CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
+  );
+  const ciiCountriesLastmod = laterDate(
+    countriesLastmod,
+    CII_COUNTRY_PAGE_CONTENT_VERSION,
+  );
+  const countriesIndexLastmod = laterDate(
+    countriesLastmod,
+    COUNTRIES_INDEX_CONTENT_VERSION,
+  );
+  const countryInstabilityIndexLastmod = laterDate(
+    countriesLastmod,
+    CII_RANKING_PAGE_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
     latestDatedChangelogRelease(changelog),
-    CORPUS_GENERATOR_CONTENT_VERSION,
   );
   const { capturedAt: chokepointCapturedAt, volumeObservedAt: chokepointVolumeObservedAt } =
     resolveChokepointObservation({
@@ -1311,28 +1422,22 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const chokepointsLastmod = laterDate(
     ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
   const toolsLastmod = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
-    livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     TOOLS_PAGE_CONTENT_VERSION,
   );
   const crisesLastmod = laterDate(
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     CRISIS_PAGE_CONTENT_VERSION,
   );
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
-    CORPUS_GENERATOR_CONTENT_VERSION,
   );
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
   );
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
@@ -1384,7 +1489,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     },
     livePulse,
     lastmod: {
+      countryInstabilityIndex: countryInstabilityIndexLastmod,
+      countriesIndex: countriesIndexLastmod,
       countries: countriesLastmod,
+      ciiCountries: ciiCountriesLastmod,
       changelog: changelogLastmod,
       chokepoints: chokepointsLastmod,
       tools: toolsLastmod,
@@ -1396,6 +1504,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     sourceStats,
     sourceCatalog,
     resilience,
+    ciiRanking,
     countries,
     countryBounds,
     countryBboxByCode,
@@ -1648,9 +1757,139 @@ ${body}
 `;
 }
 
-function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod, snapshotPath }) {
+function ciiMovementProperties(change24h) {
+  return change24h == null ? [] : [{
+    '@type': 'PropertyValue',
+    name: 'Approximate 24-hour movement',
+    value: change24h,
+    unitText: 'index points',
+  }];
+}
+
+function renderCountryInstabilityIndexPage({
+  ciiRanking,
+  baseUrl,
+  capturedAt,
+  lastmod,
+  snapshotPath,
+}) {
+  const path = '/country-instability-index/';
+  const description = `See World Monitor's live Country Instability Index rankings, with current scores, available 24-hour movement, severity levels, and update times for ${ciiRanking.entries.length} Tier-1 countries.`;
+  const datasetId = `${absoluteUrl(baseUrl, path)}#dataset`;
+  const rankingId = `${absoluteUrl(baseUrl, path)}#ranking`;
+  const versionLabel = `CII ${ciiRanking.methodologyVersion}`;
+  const itemList = ciiRanking.entries.map((entry, index) => {
+    const url = absoluteUrl(baseUrl, `/countries/${entry.country.slug}/`);
+    return {
+      '@type': 'ListItem',
+      position: index + 1,
+      name: entry.country.name,
+      url,
+      item: {
+        '@type': 'Country',
+        name: entry.country.name,
+        url,
+        additionalProperty: [
+          { '@type': 'PropertyValue', name: 'Country Instability Index score', value: entry.score, minValue: 0, maxValue: 100 },
+          ...ciiMovementProperties(entry.change24h),
+          { '@type': 'PropertyValue', name: 'Instability level', value: entry.band },
+        ],
+      },
+    };
+  });
+  const body = `      <p class="eyebrow">Current country stress</p>
+      <h1>Country Instability Index</h1>
+      <p class="lede">The World Monitor Country Instability Index (CII) measures current country-level stress on a 0-100 scale using conflict, unrest, security and information signals. ${escapeHtml(versionLabel)} currently monitors ${ciiRanking.entries.length} countries and reports approximate 24-hour movement when available.</p>
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="${escapeHtml(ciiRanking.methodologyVersion)}" data-state="ready" data-published-pulse>
+        <div class="tool-head">
+          <div>
+            <p class="eyebrow">Live rankings</p>
+            <h2>Current CII scores</h2>
+          </div>
+          <span class="live-status" data-live-status role="status" aria-live="polite">Published rankings</span>
+        </div>
+        <div class="table-scroll" data-live-grid aria-busy="false"><table data-cii-ranking>
+          <caption>Published ${escapeHtml(formatStaticDateTime(ciiRanking.updatedAt))} from the committed crawlable pulse. The table refreshes from the current API after load.</caption>
+          <thead><tr><th scope="col">Country</th><th scope="col">CII</th><th scope="col">24h</th><th scope="col">Level</th><th scope="col">Updated</th></tr></thead>
+          <tbody data-cii-ranking-body>
+${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(entry.score)}</data></td><td data-cii-trend>${escapeHtml(entry.change24h == null ? 'Stable or unavailable' : entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
+          </tbody>
+        </table></div>
+        <div class="tool-meta">
+          <time data-cii-ranking-updated datetime="${escapeHtml(ciiRanking.updatedAt)}">Latest published score ${escapeHtml(formatStaticDateTime(ciiRanking.updatedAt))}</time>
+          <button class="refresh" type="button" data-live-refresh disabled>Refresh live scores</button>
+        </div>
+        <noscript><p>The published rankings remain available without JavaScript. Enable JavaScript to request the current API result.</p></noscript>
+      </section>
+      <h2>What the CII measures</h2>
+      <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII ${escapeHtml(ciiRanking.methodologyVersion)} methodology</a> before using a score in an analysis.</p>
+      <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity across 196 countries. Do not combine the scores.</p>
+      <a class="cta" href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/dashboard'), 'seo-cii'))}">Open the live CII panel in World Monitor →</a>
+      <p class="source">Source: ${escapeHtml(snapshotPath)}. Published ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
+  return pageDocument({
+    baseUrl,
+    path,
+    title: 'Country Instability Index: Live Rankings | World Monitor',
+    description,
+    lastmod,
+    jsonLd: [
+      {
+        '@context': SCHEMA_ORG_CONTEXT_URL,
+        '@type': 'CollectionPage',
+        name: 'Country Instability Index',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        mainEntity: { '@id': datasetId },
+      },
+      {
+        '@context': SCHEMA_ORG_CONTEXT_URL,
+        '@type': 'Dataset',
+        '@id': datasetId,
+        name: `World Monitor Country Instability Index (CII) ${ciiRanking.methodologyVersion}`,
+        description: `Current 0-100 instability scores, available approximate 24-hour movement, and instability levels for ${ciiRanking.entries.length} monitored countries.`,
+        url: absoluteUrl(baseUrl, path),
+        identifier: `world-monitor-cii-${ciiRanking.methodologyVersion}-${capturedAt}`,
+        creator: { ...WORLD_MONITOR_ORG },
+        license: DATASET_LICENSE,
+        datePublished: capturedAt,
+        dateModified: ciiRanking.updatedAt,
+        temporalCoverage: datasetTemporalCoverage(capturedAt),
+        spatialCoverage: 'Worldwide',
+        isAccessibleForFree: true,
+        includedInDataCatalog: includedInDataCatalog(baseUrl),
+        measurementTechnique: `World Monitor CII ${ciiRanking.methodologyVersion}`,
+        variableMeasured: [
+          { '@type': 'PropertyValue', name: 'Instability score', minValue: 0, maxValue: 100, unitText: 'index points' },
+          { '@type': 'PropertyValue', name: 'Approximate 24-hour movement', unitText: 'index points' },
+          { '@type': 'PropertyValue', name: 'Instability level' },
+        ],
+        distribution: [dataDownload(absoluteUrl(baseUrl, path), 'text/html')],
+        mainEntity: { '@id': rankingId },
+      },
+      {
+        '@context': SCHEMA_ORG_CONTEXT_URL,
+        '@type': 'ItemList',
+        '@id': rankingId,
+        name: 'Country Instability Index ranking',
+        numberOfItems: ciiRanking.entries.length,
+        itemListOrder: 'https://schema.org/ItemListOrderDescending',
+        itemListElement: itemList,
+      },
+      dataCatalogLd(baseUrl),
+    ],
+    breadcrumbs: breadcrumbLd(baseUrl, [
+      { name: 'Home', path: '/' },
+      { name: 'Country Instability Index', path },
+    ]),
+    body,
+    scriptSrcs: ['/tools/live-tools.js'],
+  });
+}
+
+function renderCountriesIndex({ countries, ciiRanking, baseUrl, capturedAt, lastmod, snapshotPath }) {
   const path = '/countries/';
-  const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
+  const description = `Browse World Monitor country risk pages with structural resilience across ${countries.length} countries and high-frequency instability scores for ${ciiRanking.entries.length} Tier-1 countries.`;
   const rankedCountries = countries
     .filter((country) => Number.isInteger(country.rank))
     .sort((a, b) => a.rank - b.rank);
@@ -1694,12 +1933,13 @@ function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod, snapsho
     };
   });
   const body = `      <p class="eyebrow">Country corpus</p>
-      <h1>Country risk and resilience</h1>
+      <h1>Country risk, instability and resilience by country</h1>
       <p class="lede">${escapeHtml(description)}</p>
+      <p><a href="/country-instability-index/">Live Country Instability Index rankings</a> · <a href="#country-resilience-ranking">Country Resilience Index ranking</a></p>
       <p>For the evergreen monitoring procedure that uses these pages as evidence, see <a href="/use-cases/monitor-country-risk/">Monitor country risk</a>.</p>
 ${hubFaqs.map((faq) => `      <h2>${escapeHtml(faq.question)}</h2>
       <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
-      <div class="table-scroll"><table data-country-ranking>
+      <div class="table-scroll" id="country-resilience-ranking"><table data-country-ranking>
         <caption>${escapeHtml(prettyDate(capturedAt))} Country Resilience Index snapshot</caption>
         <thead><tr><th scope="col">Rank</th><th scope="col">Country</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Confidence</th></tr></thead>
         <tbody>
@@ -1716,14 +1956,14 @@ ${countries.map((country) => {
   return pageDocument({
     baseUrl,
     path,
-    title: 'Country Risk and Resilience | World Monitor',
+    title: 'Country Risk by Country: Instability & Resilience | World Monitor',
     description,
     lastmod,
     jsonLd: [
       {
         '@context': 'https://schema.org',
         '@type': 'CollectionPage',
-        name: 'Country risk and resilience',
+        name: 'Country risk, instability and resilience by country',
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
@@ -2028,10 +2268,17 @@ function formatSignedScore(value) {
   return `${numeric > 0 ? '+' : ''}${formatScore(numeric)}`;
 }
 
-function countryFaqs(country, capturedAt, rankedCount) {
+function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
+  const ciiFaq = ciiEntry
+    ? [{
+      question: `What is ${country.name}'s Country Instability Index?`,
+      answer: `${country.name}'s Country Instability Index is ${ciiEntry.score}/100 (${ciiEntry.band}), ${ciiEntry.movementText}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
+    }]
+    : [];
   const scorePublished = country.headlineEligible !== false;
   if (!scorePublished) {
     return [
+      ...ciiFaq,
       {
         question: `What is ${country.name}'s resilience score?`,
         answer: `No resilience score or rank is published for ${country.name}. ${country.name}'s published rank would require coverage of at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%, no low-confidence flag, and either a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%. Low confidence for ${country.name} means coverage falls below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% or imputation share exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%.`,
@@ -2053,6 +2300,7 @@ function countryFaqs(country, capturedAt, rankedCount) {
     ? 'outside the headline ranking because the snapshot labels its evidence low-confidence'
     : `#${country.rank} of ${rankedCount} ranked countries`;
   return [
+    ...ciiFaq,
     {
       question: `What is ${country.name}'s resilience score?`,
       answer: `${country.name} scores ${formatScore(country.overallScore)} out of 100 in the ${prettyDate(capturedAt)} structural snapshot and sits ${rankText}. This is a comparative index, not a crisis probability.`,
@@ -2068,7 +2316,7 @@ function countryFaqs(country, capturedAt, rankedCount) {
   ];
 }
 
-function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount }) {
+function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
   const scorePublished = country.headlineEligible !== false;
   if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
@@ -2082,7 +2330,7 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
   const crisisText = country.crisisMemberships.length > 0
     ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
     : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
-  const faqs = countryFaqs(country, capturedAt, rankedCount);
+  const faqs = countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
     const inventory = selectUnrankedInventory(country);
     const inventoryItems = inventory.length > 0
@@ -2191,6 +2439,7 @@ function renderCountryPage({
   snapshotPath,
   bbox = null,
   livePulse = null,
+  ciiEntry = null,
 }) {
   const path = `/countries/${country.slug}/`;
   const description = countryMetaDescription({
@@ -2198,6 +2447,7 @@ function renderCountryPage({
     rank: country.rank,
     rankedCount,
     lowConfidence: country.lowConfidence === true,
+    ciiEntry,
   });
   const mapUrl = withUtmSource(
     absoluteUrl(baseUrl, `/?country=${encodeURIComponent(country.code)}&expanded=1`),
@@ -2208,6 +2458,7 @@ function renderCountryPage({
     capturedAt,
     methodologyFormula,
     rankedCount,
+    ciiEntry,
   });
   const officialNameNote = country.identity.officialName !== country.identity.commonName
     ? `      <p><strong>Official name:</strong> ${escapeHtml(country.identity.officialName)}. <a href="${escapeHtml(country.identity.sameAs)}">Wikidata identity record</a>.</p>\n`
@@ -2229,7 +2480,7 @@ function renderCountryPage({
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current country instability metrics" aria-busy="false">
           <div class="metric"><span>Instability score</span><strong><span data-live-score>${pulse.partial ? '—' : escapeHtml(pulse.score)}</span><small data-live-band>${pulse.partial ? 'No current score' : escapeHtml(pulse.band)}</small></strong></div>
-          <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : pulse.trend)}</strong></div>
+          <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : ciiEntry?.change24h === null ? 'Stable or unavailable' : pulse.trend)}</strong></div>
           <div class="metric"><span>Travel advisory input</span><strong data-live-advisory>${escapeHtml(pulse.advisory)}</strong></div>
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions>${escapeHtml(pulse.sanctions)}</strong></div>
         </div>`
@@ -2240,9 +2491,13 @@ function renderCountryPage({
           <div class="metric"><span>Travel advisory input</span><strong data-live-advisory></strong></div>
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions></strong></div>
         </div>`;
+  const ciiAnswer = ciiEntry
+    ? `${escapeHtml(country.name)}'s Country Instability Index is <strong>${escapeHtml(ciiEntry.score)}/100 &middot; ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>.`
+    : null;
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
-      <h1>${escapeHtml(country.name)} country risk and resilience</h1>
-      <p class="lede">${escapeHtml(description)} The structural snapshot is dated and source-labelled; the live monitor loads separately.</p>
+      <h1>${escapeHtml(country.name)} ${ciiEntry ? 'Country Instability Index' : 'country risk and resilience'}</h1>
+      <p class="lede">${ciiAnswer || `${escapeHtml(description)} The structural snapshot is dated and source-labelled; the live monitor loads separately.`}</p>
+${ciiEntry ? `      <p>CII measures current stress. World Monitor's separate Country Resilience Index measures ${escapeHtml(country.name)}'s longer-term structural capacity.</p>\n` : ''}
 ${officialNameNote}      <section class="live-tool" data-live-country-risk data-country-code="${escapeHtml(country.code)}" data-country-name="${escapeHtml(country.name)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
         <div class="tool-head">
           <div>
@@ -2275,12 +2530,15 @@ ${liveGrid}
       </section>${scoreDisclosure}
 ${analysis.html}
       <h2>How to read this page</h2>
-      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules.</p>
+      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals.</p>
       <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${escapeHtml(snapshotPath)}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
-  const coreTitle = `${country.name} Country Risk and Resilience`;
-  const datasetId = `${absoluteUrl(baseUrl, path)}#resilience-dataset`;
+  const coreTitle = ciiEntry
+    ? `${country.name} Instability Index & Country Risk`
+    : `${country.name} Country Risk and Resilience`;
+  const resilienceDatasetId = `${absoluteUrl(baseUrl, path)}#resilience-dataset`;
+  const ciiDatasetId = `${absoluteUrl(baseUrl, path)}#cii-dataset`;
   const resilienceDownload = absoluteUrl(baseUrl, datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD));
   const spatialCoverage = {
     ...countrySpatialCoverage(country, bbox),
@@ -2303,9 +2561,9 @@ ${analysis.html}
       })),
     ] : []),
   ];
-  const dataset = {
+  const resilienceDataset = {
     '@type': 'Dataset',
-    '@id': datasetId,
+    '@id': resilienceDatasetId,
     name: `World Monitor Country Resilience snapshot for ${country.name}`,
     description: datasetDescription,
     url: absoluteUrl(baseUrl, path),
@@ -2322,6 +2580,29 @@ ${analysis.html}
     measurementTechnique: methodologyFormula,
     variableMeasured,
   };
+  const ciiDataset = ciiEntry ? {
+    '@type': 'Dataset',
+    '@id': ciiDatasetId,
+    name: `World Monitor Country Instability Index: ${country.name}`,
+    description: `The current World Monitor Country Instability Index score, available approximate 24-hour movement, instability level, and methodology version for ${country.name}.`,
+    url: absoluteUrl(baseUrl, path),
+    identifier: `${country.code}-cii-${ciiEntry.methodologyVersion}`,
+    creator: { ...WORLD_MONITOR_ORG },
+    license: DATASET_LICENSE,
+    datePublished: pulseDateOnly(ciiEntry.asOf, capturedAt),
+    dateModified: ciiEntry.asOf,
+    temporalCoverage: datasetTemporalCoverage(pulseDateOnly(ciiEntry.asOf, capturedAt)),
+    spatialCoverage,
+    isAccessibleForFree: true,
+    includedInDataCatalog: includedInDataCatalog(baseUrl),
+    distribution: [dataDownload(absoluteUrl(baseUrl, path), 'text/html')],
+    measurementTechnique: `World Monitor CII ${ciiEntry.methodologyVersion}`,
+    variableMeasured: [
+      { '@type': 'PropertyValue', name: 'Instability score', value: ciiEntry.score, minValue: 0, maxValue: 100 },
+      ...ciiMovementProperties(ciiEntry.change24h),
+      { '@type': 'PropertyValue', name: 'Instability level', value: ciiEntry.band },
+    ],
+  } : null;
   return pageDocument({
     baseUrl,
     path,
@@ -2335,7 +2616,9 @@ ${analysis.html}
       {
         '@context': 'https://schema.org',
         '@type': 'WebPage',
-        name: `${country.name} country risk and resilience`,
+        name: ciiEntry
+          ? `${country.name} Country Instability Index and Country Risk`
+          : `${country.name} country risk and resilience`,
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
@@ -2346,8 +2629,9 @@ ${analysis.html}
           identifier: country.code,
           sameAs: country.identity.sameAs,
         },
-        mainEntity: dataset,
+        mainEntity: ciiEntry ? { '@id': ciiDatasetId } : resilienceDataset,
       },
+      ...(ciiEntry ? [ciiDataset, resilienceDataset] : []),
       {
         '@context': 'https://schema.org',
         '@type': 'FAQPage',
@@ -3305,6 +3589,12 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
     generatorContentVersion: data.generatorContentVersion,
     sources: data.sources,
     sections: {
+      countryInstabilityIndex: {
+        count: 1,
+        index: '/country-instability-index/',
+        routes: [],
+        sourceCapturedAt: data.livePulse.capturedAt,
+      },
       countries: {
         count: countryRoutes.length,
         index: '/countries/',
@@ -3394,12 +3684,25 @@ export async function buildCorpus({
 
   writeGeneratedFile(
     outDir,
+    'country-instability-index/index.html',
+    renderCountryInstabilityIndexPage({
+      ciiRanking: data.ciiRanking,
+      baseUrl,
+      capturedAt: data.livePulse.capturedAt,
+      lastmod: data.lastmod.countryInstabilityIndex,
+      snapshotPath: data.sources.livePulseSnapshot,
+    }),
+  );
+
+  writeGeneratedFile(
+    outDir,
     'countries/index.html',
     renderCountriesIndex({
       countries: data.countries,
+      ciiRanking: data.ciiRanking,
       baseUrl,
       capturedAt: data.resilience.capturedAt,
-      lastmod: data.lastmod.countries,
+      lastmod: data.lastmod.countriesIndex,
       snapshotPath: data.sources.resilienceSnapshot,
     }),
   );
@@ -3413,13 +3716,16 @@ export async function buildCorpus({
         country,
         baseUrl,
         capturedAt: data.resilience.capturedAt,
-        lastmod: data.lastmod.countries,
+        lastmod: data.ciiRanking.byCode.has(country.code)
+          ? data.lastmod.ciiCountries
+          : data.lastmod.countries,
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
         rankedCount,
         snapshotNote: data.resilience.snapshotNote,
         snapshotPath: data.sources.resilienceSnapshot,
         bbox: data.countryBboxByCode.get(country.code) || null,
         livePulse: data.livePulse,
+        ciiEntry: data.ciiRanking.byCode.get(country.code) || null,
       }),
     );
     writeGeneratedFile(
@@ -3625,6 +3931,7 @@ async function main() {
   const manifest = await buildCorpus(options);
   process.stdout.write(
     `Wrote crawlable corpus: ${manifest.sections.countries.count} countries, `
+    + `${manifest.sections.countryInstabilityIndex.count} CII ranking page, `
     + `${manifest.sections.chokepoints.count} chokepoints, `
     + `${manifest.sections.crises.count} crisis trackers, `
     + `${manifest.sections.tools.count} live tools, `

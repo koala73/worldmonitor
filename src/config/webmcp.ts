@@ -157,6 +157,6 @@ export const WEBMCP_TOOL_BUDGETS = Object.freeze({
   descriptionChars: 500,
   propertyDescriptionChars: 150,
   inputSchemaJsonChars: 2_048,
-  outputJsonChars: 1_500,
+  outputJsonChars: 2_200,
   errorMessageChars: 320,
 });
