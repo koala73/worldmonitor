@@ -20,13 +20,10 @@ import iso3ToIso2Raw from '../shared/iso3-to-iso2.json' with { type: 'json' };
 /** @type {Record<string, string>} */
 const ISO3_TO_ISO2 = iso3ToIso2Raw;
 
-// 1.1.0: balance vector now consumes the cross-source-signals, forecasts,
-// national-debt, and transit-summaries inputs that were silently dropped while
-// they were stored as { _seed, data } envelopes but read flat (coercive_pressure
-// scored 0 for every region → flat 'calm'). Fixed at the loader via
-// unwrapEnvelope; bumped so the scoring_version in snapshot meta makes the
-// resulting score shift traceable.
-const SCORING_VERSION = '1.1.0';
+// 1.2.0: the OWID energy-mix seed no longer supplies the unaudited import-share
+// proxy. Energy vulnerability now renormalizes the remaining storage and SPR
+// components instead of scoring the missing 50%-weighted component as zero.
+const SCORING_VERSION = '1.2.0';
 
 export { SCORING_VERSION };
 
@@ -48,7 +45,7 @@ export function computeBalanceVector(regionId, sources) {
   const coercive = computeCoercivePressure(region, sources, pressuresOut);
   const fragility = computeDomesticFragility(countries, sources, pressuresOut);
   const capital = computeCapitalStress(countries, sources, pressuresOut);
-  const energyVuln = computeEnergyVulnerability(countries, sources, pressuresOut);
+  const energyVuln = computeEnergyVulnerability(sources);
 
   // ── Buffers ──────────────────────────────────────────────────────────────
   const alliance = computeAllianceCohesion(regionId, sources, buffersOut);
@@ -244,30 +241,7 @@ function computeCapitalStress(countries, sources, drivers) {
   return clip(score, 0, 1);
 }
 
-function computeEnergyVulnerability(countries, sources, drivers) {
-  // energy:mix:v1:_all shape: Record<ISO2, {
-  //   year, coalShare, gasShare, oilShare, nuclearShare, renewShare,
-  //   windShare, solarShare, hydroShare, importShare: number|null
-  // }>
-  // Values are OWID PERCENTAGES (0-100), not 0-1 fractions. Field is
-  // `importShare`, not `imported`. Countries with null importShare are
-  // excluded from the average (not treated as zero).
-  const mix = sources['energy:mix:v1:_all'];
-  if (!mix || typeof mix !== 'object') return 0;
-  const entries = Object.entries(mix).filter(([iso]) => countries.has(iso));
-  if (!entries.length) return 0;
-
-  // Vulnerability = 0.5 * import share + 0.25 * (1 - storage proxy) + 0.25 * (1 - SPR proxy)
-  // Phase 0: only import share is reliably present per-country.
-  let totalImport = 0;
-  let validCount = 0;
-  for (const [, m] of entries) {
-    if (m == null || m.importShare == null) continue;
-    totalImport += clip(num(m.importShare) / 100, 0, 1);
-    validCount += 1;
-  }
-  const avgImport = validCount > 0 ? totalImport / validCount : 0;
-
+function computeEnergyVulnerability(sources) {
   // Storage proxy from EU gas storage (single number for EU region)
   const euGas = sources['economic:eu-gas-storage:v1'];
   const months = Array.isArray(euGas?.months) ? euGas.months : [];
@@ -279,17 +253,11 @@ function computeEnergyVulnerability(countries, sources, drivers) {
   const sprDays = num(spr?.daysOfCover, 90);
   const cSpr = 1 - clip(sprDays / 90, 0, 1);
 
-  const score = 0.5 * avgImport + 0.25 * cStorage + 0.25 * cSpr;
-
-  if (avgImport > 0.4 && validCount > 0) {
-    drivers.push({
-      axis: 'energy_vulnerability',
-      description: `Average import dependency ${(avgImport * 100).toFixed(0)}% across ${validCount} countries`,
-      magnitude: round(avgImport),
-      evidence_ids: ['energy:mix'],
-      orientation: 'pressure',
-    });
-  }
+  // The former import-dependency component had weight 0.50, but its OWID
+  // source was not a valid primary-energy dependency measure. Redis now omits
+  // it. Renormalize the two available 0.25 components to preserve a [0, 1]
+  // score without treating unavailable dependency data as favorable zero.
+  const score = 0.5 * cStorage + 0.5 * cSpr;
 
   return clip(score, 0, 1);
 }

@@ -240,13 +240,6 @@ const baseSources = () => ({
     ],
   },
   'economic:macro-signals:v1': { verdict: 'NEUTRAL' },
-  'energy:mix:v1:_all': {
-    IR: { imported: 0.1 },
-    SA: { imported: 0.05 },
-    AE: { imported: 0.2 },
-    EG: { imported: 0.4 },
-    IL: { imported: 0.85 },
-  },
 });
 
 describe('computeBalanceVector', () => {
@@ -690,19 +683,18 @@ describe('snapshot meta', () => {
     );
   });
 
-  // #3781 follow-on: 5 upstream feeds whose payloads carry no timestamp
+  // #3781 follow-on: upstream feeds whose payloads carry no timestamp
   // `extractTimestamp` recognises would have flipped to STALE on first
   // deploy under #3728's stricter logic. Each is now wired to an existing
   // seed-meta:* companion key so the classifier can prove freshness
   // without the data payload needing a top-level timestamp.
   //
-  // Parameterized across all 5 wired keys: any one of them losing its
+  // Parameterized across all wired keys: any one of them losing its
   // metaKey hint (or the companion key going missing) would re-introduce
   // the on-deploy STALE noise this PR removes.
   for (const [inputKey, metaKey] of [
     [CII_RISK_SCORE_CACHE_KEYS.stale,        'seed-meta:intelligence:risk-scores'],
     ['intelligence:cross-source-signals:v1', 'seed-meta:intelligence:cross-source-signals'],
-    ['energy:mix:v1:_all',                   'seed-meta:economic:owid-energy-mix'],
     ['supply_chain:transit-summaries:v1',    'seed-meta:supply_chain:transit-summaries'],
     ['relay:oref:history:v1',                'seed-meta:relay:oref:history'],
   ]) {
@@ -726,7 +718,7 @@ describe('snapshot meta', () => {
     });
   }
 
-  it('5 #3781 upstream feeds declare metaKey to avoid on-deploy STALE noise', () => {
+  it('#3781 upstream feeds declare metaKey to avoid on-deploy STALE noise', () => {
     // Pre-empt: each of these keys serves a payload without a top-level
     // timestamp field. Under the post-#3728 classifier they would all be
     // classified STALE on first deploy unless their freshness registry
@@ -735,7 +727,6 @@ describe('snapshot meta', () => {
     const expected = {
       [CII_RISK_SCORE_CACHE_KEYS.stale]:      'seed-meta:intelligence:risk-scores',
       'intelligence:cross-source-signals:v1': 'seed-meta:intelligence:cross-source-signals',
-      'energy:mix:v1:_all':                   'seed-meta:economic:owid-energy-mix',
       'supply_chain:transit-summaries:v1':    'seed-meta:supply_chain:transit-summaries',
       'relay:oref:history:v1':                'seed-meta:relay:oref:history',
     };
