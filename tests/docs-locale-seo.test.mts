@@ -190,6 +190,10 @@ describe('docs entity-graph rewrite (#7459d)', () => {
     assert.equal(website.url, undefined);
     const webPage = graph.find((node) => node['@type'] === 'WebPage');
     assert.deepEqual(webPage?.isPartOf, { '@id': CANONICAL_WEBSITE });
+    assert.deepEqual(webPage?.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1'],
+    });
   });
 });
 

@@ -168,7 +168,7 @@ service IntelligenceService {
     };
   }
 
-  // GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.
+  // GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
   rpc GetCountryFacts(GetCountryFactsRequest) returns (GetCountryFactsResponse) {
     option (sebuf.http.config) = {path: "/get-country-facts", method: HTTP_METHOD_GET};
   }
