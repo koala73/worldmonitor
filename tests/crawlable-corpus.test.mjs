@@ -1347,7 +1347,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="alternate" hreflang="x-default" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
-      assert.match(norway, /<meta name="lastmod" content="2026-08-31">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-09-01">/);
       assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
       assert.match(
         norway,
@@ -1412,22 +1412,13 @@ describe('crawlable corpus generator', () => {
         'only country pages with a published CII score may target Country Instability Index',
       );
       assert.equal(
-        manifest.sections.countries.routes.filter((route) => (
-          /<meta name="lastmod" content="2026-08-31">/.test(
-            read(outDir, `${route.slice(1)}index.html`),
-          )
-        )).length,
-        165,
-        'the 165 generic country pages must retain the generic content clock',
-      );
-      assert.equal(
-        ciiTargetedCountryPages.every((route) => (
+        manifest.sections.countries.routes.every((route) => (
           /<meta name="lastmod" content="2026-09-01">/.test(
             read(outDir, `${route.slice(1)}index.html`),
           )
         )),
         true,
-        'only the 31 CII-targeted country pages use the CII content clock',
+        'all country pages must use the current country content clock',
       );
 
       const ciiIndex = read(outDir, 'country-instability-index/index.html');
@@ -1953,7 +1944,8 @@ describe('crawlable corpus generator', () => {
           const evidenceFaq = [...document.querySelectorAll('[data-country-faq]')]
             .find((node) => node.querySelector('summary')?.textContent === evidenceQuestion);
           assert.ok(evidenceFaq, `${route} must show a microstate evidence FAQ`);
-          assert.match(evidenceFaq.textContent || '', /observed dimension readings, including/);
+          assert.match(evidenceFaq.textContent || '', /supported dimension readings with observed inputs, including/);
+          assert.doesNotMatch(evidenceFaq.textContent || '', /Observed feeds/);
           const faqLabel = {
             TV: 'State continuity',
             SM: 'Liquid-reserve adequacy',
@@ -1963,7 +1955,8 @@ describe('crawlable corpus generator', () => {
           assert.doesNotMatch(evidenceFaq.textContent || '', /overall score[^.]*\d|country rank[^.]*\d/i);
           const faqPage = jsonLdObjects(html).find((entry) => entry['@type'] === 'FAQPage');
           const faqAnswer = faqPage?.mainEntity?.find((entry) => entry.name === evidenceQuestion);
-          assert.match(faqAnswer?.acceptedAnswer?.text || '', /observed dimension readings, including/);
+          assert.match(faqAnswer?.acceptedAnswer?.text || '', /supported dimension readings with observed inputs, including/);
+          assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /Observed feeds/);
           assert.match(faqAnswer?.acceptedAnswer?.text || '', new RegExp(faqLabel));
           assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /overall score[^.]*\d|country rank[^.]*\d/i);
         }
@@ -1999,10 +1992,11 @@ describe('crawlable corpus generator', () => {
         assert.ok(dimension, `${code} fixture must retain ${expected.id}`);
         const expectedReading = `${expected.label} ${Number(dimension.score).toFixed(1).replace(/\.0$/, '')} (${Math.round(Number(dimension.coverage) * 100)}%)`;
         assert.ok(evidence.includes(expectedReading), `${code} must publish ${expectedReading}`);
-        assert.match(evidence, /observed dimension readings:/);
+        assert.match(evidence, /supported dimension readings with observed inputs:/);
         assert.match(evidence, /Scores use a 0-100 scale; percentages show coverage/);
-        assert.match(evidence, /Observed feeds:/);
-        assert.match(evidence, new RegExp(`Observed feeds:.*${expected.source}`));
+        assert.match(evidence, new RegExp(`Possible dimension inputs for ${country.name}:`));
+        assert.match(evidence, new RegExp(`Possible dimension inputs for ${country.name}:.*${expected.source}`));
+        assert.doesNotMatch(evidence, /Observed feeds/);
         assert.match(evidence, /not a published overall score or a country rank/);
       }
       const andorra = read(outDir, 'countries/andorra/index.html');
@@ -2892,7 +2886,7 @@ describe('crawlable corpus generator', () => {
     // Family lastmods use material + page versions + pulse where the HTML
     // publishes pulse values. CORPUS_GENERATOR_CONTENT_VERSION stays out
     // (#7463). Research lastmod is the report dateModified, not a rebuild stamp.
-    assert.equal(data.lastmod.countries, '2026-08-31');
+    assert.equal(data.lastmod.countries, '2026-09-01');
     assert.equal(data.lastmod.research, '2026-07-27');
     assert.equal(data.lastmod.chokepoints, '2026-09-01');
     assert.equal(

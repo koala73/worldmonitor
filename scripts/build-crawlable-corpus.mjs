@@ -106,7 +106,7 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
+const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
 const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
 const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
 const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
@@ -2258,7 +2258,7 @@ export function describeAvailableEvidence(country) {
 
 function buildMicrostateEvidenceProfile(country) {
   const dimensions = activeCountryDimensions(country);
-  const observed = dimensions
+  const supportedDimensions = dimensions
     .filter((dimension) => (
       !isCoverageGap(dimension)
       && String(dimension.imputationClass || '') === ''
@@ -2267,13 +2267,13 @@ function buildMicrostateEvidenceProfile(country) {
       && Number.isFinite(dimension.score)
     ));
   const gaps = dimensions.filter(isCoverageGap).sort(compareDimensionsByCoverageAsc);
-  const observedSources = [...new Set(observed.flatMap(dimensionSources))];
-  const gapSources = [...new Set(gaps.flatMap(dimensionSources))];
+  const supportedSourceFamilies = [...new Set(supportedDimensions.flatMap(dimensionSources))];
+  const gapSourceFamilies = [...new Set(gaps.flatMap(dimensionSources))];
   return {
-    observed,
-    observedSources,
-    gapOnlySources: gapSources.filter((source) => !observedSources.includes(source)),
-    overlappingSources: gapSources.filter((source) => observedSources.includes(source)),
+    supportedDimensions,
+    supportedSourceFamilies,
+    gapOnlySourceFamilies: gapSourceFamilies.filter((source) => !supportedSourceFamilies.includes(source)),
+    overlappingSourceFamilies: gapSourceFamilies.filter((source) => supportedSourceFamilies.includes(source)),
   };
 }
 
@@ -2289,38 +2289,38 @@ function selectMicrostateSourceExamples(sources) {
 export function describeMicrostateEvidence(country) {
   if (country.microstateTerritory !== true) return '';
   const profile = buildMicrostateEvidenceProfile(country);
-  if (profile.observed.length === 0) {
+  if (profile.supportedDimensions.length === 0) {
     return `${country.name} is in the microstate and territory cohort, but this snapshot has no observed dimension reading that can support a country-specific evidence interpretation. No overall resilience score or country rank is published.`;
   }
-  const readings = profile.observed
+  const readings = profile.supportedDimensions
     .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score)} (${formatPercent(dimension.coverage)})`);
-  const readingClause = `${country.name} has ${readings.length} observed dimension readings: ${readings.join('; ')}. Scores use a 0-100 scale; percentages show coverage.`;
-  const sourceExamples = selectMicrostateSourceExamples(profile.observedSources);
-  const observedSourceClause = sourceExamples.length > 0
-    ? ` Observed feeds: ${formatProseList(sourceExamples)}.`
+  const readingClause = `${country.name} has ${readings.length} supported dimension readings with observed inputs: ${readings.join('; ')}. Scores use a 0-100 scale; percentages show coverage.`;
+  const sourceExamples = selectMicrostateSourceExamples(profile.supportedSourceFamilies);
+  const supportedSourceClause = sourceExamples.length > 0
+    ? ` Possible dimension inputs for ${country.name}: ${formatProseList(sourceExamples)}.`
     : '';
-  const gapOnlyClause = profile.gapOnlySources.length > 0
-    ? ` Missing or unmonitored feeds: ${formatProseList(profile.gapOnlySources)}.`
+  const gapOnlyClause = profile.gapOnlySourceFamilies.length > 0
+    ? ` Inputs tied only to missing or unmonitored dimensions in ${country.name}: ${formatProseList(profile.gapOnlySourceFamilies)}.`
     : '';
-  const overlapClause = profile.overlappingSources.length > 0
-    ? ` Overlapping feeds also supply observed dimensions: ${formatProseList(profile.overlappingSources)}.`
+  const overlapClause = profile.overlappingSourceFamilies.length > 0
+    ? ` For ${country.name}, some feed families span supported and missing dimensions: ${formatProseList(profile.overlappingSourceFamilies)}.`
     : '';
-  return `This is a partial evidence snapshot. ${readingClause}${observedSourceClause}${gapOnlyClause}${overlapClause} These readings are partial evidence, not a published overall score or a country rank.`;
+  return `This is a partial evidence snapshot. ${readingClause}${supportedSourceClause}${gapOnlyClause}${overlapClause} These readings are partial evidence, not a published overall score or a country rank.`;
 }
 
 export function describeMicrostateEvidenceSummary(country) {
   const profile = buildMicrostateEvidenceProfile(country);
-  if (profile.observed.length === 0) {
+  if (profile.supportedDimensions.length === 0) {
     return `${country.name} has no observed dimension reading that can support a country-specific evidence interpretation. No overall resilience score or country rank is published.`;
   }
-  const highlightedDimensions = profile.observed
+  const highlightedDimensions = profile.supportedDimensions
     .slice(-3)
     .map(dimensionLabel);
-  const sourceExamples = profile.observedSources.slice(-3);
+  const sourceExamples = profile.supportedSourceFamilies.slice(-3);
   const feedClause = sourceExamples.length > 0
-    ? ` Observed feeds include ${formatProseList(sourceExamples)}.`
+    ? ` Possible inputs for ${country.name} include ${formatProseList(sourceExamples)}.`
     : '';
-  return `${country.name} has ${profile.observed.length} observed dimension readings, including ${formatProseList(highlightedDimensions)}.${feedClause} These readings are partial evidence, not a published overall score or a country rank.`;
+  return `${country.name} has ${profile.supportedDimensions.length} supported dimension readings with observed inputs, including ${formatProseList(highlightedDimensions)}.${feedClause} These readings are partial evidence, not a published overall score or a country rank.`;
 }
 
 export function dimensionInventoryNote(country, dimension) {

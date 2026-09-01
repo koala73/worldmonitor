@@ -159,6 +159,8 @@ describe('unranked country copy', () => {
     assert.match(evidence, /Education capacity[^.]*34/);
     assert.match(evidence, /UCDP/);
     assert.match(evidence, /World Bank/);
+    assert.match(evidence, /Possible dimension inputs for Tuvalu/);
+    assert.doesNotMatch(evidence, /Observed feeds/);
     assert.match(evidence, /not a published overall score|not a country rank/i);
   });
 
@@ -173,8 +175,9 @@ describe('unranked country copy', () => {
       dimension('healthPublicService', 0, 'unmonitored'),
     ]);
     const evidence = describeMicrostateEvidence(country);
-    assert.match(evidence, /Overlapping feeds also supply observed dimensions: UCDP/);
-    assert.match(evidence, /Missing or unmonitored feeds: WHO/);
+    assert.match(evidence, /For Overlap Isles, some feed families span supported and missing dimensions: UCDP/);
+    assert.match(evidence, /Inputs tied only to missing or unmonitored dimensions in Overlap Isles: WHO/);
+    assert.doesNotMatch(evidence, /Observed feeds/);
     assert.doesNotMatch(evidence, /UCDP does not cover Overlap Isles|UCDP is absent/);
   });
 
