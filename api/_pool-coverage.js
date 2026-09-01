@@ -47,7 +47,8 @@ export function hasPoolCoverageShortfall(counts, minimums) {
  * passing cohort or a stale one, never a shortfall. The useful signal — "how
  * close is this to blocking?" — is only readable while the cohort still passes.
  *
- * `low` marks a pool at or under `marginThreshold` from its floor. A breached
+ * `low` marks a pool under `marginThreshold` from its floor — a pool exactly at
+ * the threshold still has the full margin and is not low. A breached
  * floor (negative margin) is reported low too rather than being filtered out,
  * so this can never read healthier than the shortfall check on the same counts.
  *
