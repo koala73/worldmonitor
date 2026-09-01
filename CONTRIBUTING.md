@@ -302,7 +302,17 @@ The pinned sebuf version is set by `SEBUF_VERSION` in the `Makefile` (currently 
 
 For pull requests created from branches in this repository, a read-only job runs the pinned generator against the exact PR head. A fresh writer job applies only the validated generated-artifact patch; it does not execute repository-controlled code with a write token. When generated files drift, CI appends a `chore(proto): update generated artifacts` commit to the same branch. GitHub creates fresh PR runs for the automated update in an approval-required state; a maintainer must approve them in the merge box. `proto-generated-followup` remains pending until that new head produces no further drift. CI also regenerates against the synthetic merge result so concurrent proto changes on `main` cannot leave an internally consistent branch stale after merge. The required Deploy Gate includes all proto jobs and the aggregate `proto-freshness` result.
 
-For pull requests created from forks, CI does not execute the fork's `Makefile`, `buf.gen.yaml`, generator configuration, package scripts, or generated code, and it does not certify fork-generated artifacts. Codegen input or output changes stay blocked until a maintainer moves the commit to a trusted internal branch. Dependabot codegen changes use the same read-only rule.
+For a fork pull request with codegen changes, keep the original fork branch when maintainer edits are enabled. The proto check stays red until the repository owner creates a trusted head:
+
+1. The repository owner reviews the exact current head and its generator inputs.
+2. In a clean isolated worktree with no linked environment files or credentials, check out that head and run the pinned `make generate` command.
+3. Review the result. Push only the reviewed source changes and required generated artifacts to the original fork branch.
+
+The repository owner's push must create a `pull_request` `synchronize` event. CI validates the exact head and merge result but does not write to the fork. Trust applies only to that head. A later contributor push revokes that trust, and an owner rerun or reopen does not restore it.
+
+If `make generate` produces no diff, create an owner-pushed empty commit on the original fork branch. The empty commit creates the required `synchronize` event.
+
+If maintainer edits are disabled, move the commit to a trusted internal branch. Dependabot codegen changes remain blocked and use the internal branch process.
 
 ### OpenAPI Output
 

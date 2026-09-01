@@ -12,6 +12,7 @@ const workflowPath = resolve(root, '.github/workflows/proto-check.yml');
 const workflowSource = readFileSync(workflowPath, 'utf8');
 const deployGateSource = readFileSync(resolve(root, '.github/workflows/deploy-gate.yml'), 'utf8');
 const contributing = readFileSync(resolve(root, 'CONTRIBUTING.md'), 'utf8');
+const agentInstructions = readFileSync(resolve(root, 'AGENTS.md'), 'utf8');
 const scorecardMirrorSource = readFileSync(
   resolve(root, 'scripts/generate-scorecard-edge-mirrors.mjs'),
   'utf8',
@@ -858,10 +859,26 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.equal(leaseFailure.ghLog, '');
   });
 
-  it('documents the internal and fork contributor contracts', () => {
+  it('documents the internal and owner-reviewed fork contributor contracts', () => {
     assert.match(contributing, /### Generated Artifacts in Pull Requests/);
     assert.match(contributing, /approval-required state/);
     assert.match(contributing, /`proto-generated-followup` remains pending/);
-    assert.match(contributing, /CI does not execute the fork's `Makefile`/);
+    assert.match(contributing, /original fork branch/);
+    assert.match(contributing, /maintainer edits are enabled/);
+    assert.match(contributing, /repository owner reviews the exact current head/);
+    assert.match(contributing, /clean isolated worktree/);
+    assert.match(contributing, /no linked environment files or credentials/);
+    assert.match(contributing, /only the reviewed source changes and required generated artifacts/);
+    assert.match(contributing, /CI validates the exact head and merge result but does not write to the fork/);
+    assert.match(contributing, /later contributor push revokes that trust/);
+    assert.match(contributing, /owner-pushed empty commit/);
+    assert.match(contributing, /maintainer edits are disabled.*trusted internal branch/s);
+    assert.match(contributing, /Dependabot codegen changes remain blocked/);
+
+    assert.match(agentInstructions, /Never run repository scripts from an unreviewed third-party PR checkout/);
+    assert.match(agentInstructions, /reviewed the exact fork head/);
+    assert.match(agentInstructions, /clean isolated worktree with no linked environment files or credentials/);
+    assert.match(agentInstructions, /owner push is the CI trust event for that exact head/);
+    assert.match(agentInstructions, /later contributor push revokes that trust/);
   });
 });
