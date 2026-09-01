@@ -63,12 +63,14 @@ function quote(symbol, price) {
   };
 }
 
-function marketResponse(quotes) {
+function marketResponse(quotes, asOf = '') {
   return {
     quotes,
     finnhubSkipped: false,
     skipReason: '',
     rateLimited: false,
+    unavailableSymbols: [],
+    asOf,
   };
 }
 
@@ -181,6 +183,50 @@ describe('market service symbol casing', () => {
       assert.equal(result.data[0]?.name, 'Lower BTC');
       assert.equal(result.data[0]?.display, 'btc lower');
     } finally {
+      globalThis.fetch = originalFetch;
+      clearAllCircuitBreakers();
+      restoreBrowserEnv();
+    }
+  });
+
+  it('retains the original quote and asOf when a later same-symbol response is empty', async () => {
+    const restoreBrowserEnv = installBrowserEnv();
+    const { clearAllCircuitBreakers } = await import(freshImportUrl(CIRCUIT_BREAKER_URL));
+    clearAllCircuitBreakers();
+
+    const originalFetch = globalThis.fetch;
+    const originalDateNow = Date.now;
+    const firstAsOf = '2026-08-31T18:00:00.000Z';
+    let fetchCount = 0;
+    let nowMs = Date.parse(firstAsOf);
+    Date.now = () => nowMs;
+    globalThis.fetch = async () => {
+      fetchCount += 1;
+      const body = fetchCount === 1
+        ? marketResponse([quote('WM-RETENTION-TEST', 123)], firstAsOf)
+        : marketResponse([], '');
+      return new Response(JSON.stringify(body), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      const { fetchMultipleStocks } = await import(freshImportUrl(MARKET_SERVICE_URL));
+      const symbols = [{ symbol: 'WM-RETENTION-TEST', name: 'Retention', display: 'RET' }];
+      const first = await fetchMultipleStocks(symbols);
+      nowMs += 5 * 60 * 1000 + 1;
+      const retained = await fetchMultipleStocks(symbols);
+      for (let attempt = 0; attempt < 20 && fetchCount < 2; attempt += 1) {
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+      }
+
+      assert.equal(fetchCount, 2, 'the stale second read must start a live refresh');
+      assert.equal(first.data[0]?.price, 123);
+      assert.equal(retained.data[0]?.price, 123);
+      assert.equal(retained.asOf, firstAsOf);
+    } finally {
+      Date.now = originalDateNow;
       globalThis.fetch = originalFetch;
       clearAllCircuitBreakers();
       restoreBrowserEnv();

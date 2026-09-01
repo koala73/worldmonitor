@@ -128,6 +128,8 @@ test('seedMarketQuotes: envelope fetchedAt matches seed-meta fetchedAt for one p
 
   globalThis.MARKET_SYMBOLS = ['AAPL', 'MSFT'];
   globalThis.YAHOO_ONLY = new Set(globalThis.MARKET_SYMBOLS); // route everything through the Yahoo-only path
+  globalThis.AUXILIARY_YAHOO_SYMBOLS = [];
+  globalThis.AUXILIARY_YAHOO_SET = new Set();
   globalThis.MARKET_META = new Map([
     ['AAPL', { name: 'Apple', display: 'Apple' }],
     ['MSFT', { name: 'Microsoft', display: 'Microsoft' }],

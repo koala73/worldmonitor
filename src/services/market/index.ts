@@ -95,8 +95,8 @@ function symbolSetKey(symbols: string[]): string {
 }
 
 export async function fetchMultipleStocks(
-  symbols: Array<{ symbol: string; name: string; display: string }>,
-  options: { onBatch?: (results: MarketData[]) => void } = {},
+  symbols: readonly { symbol: string; name: string; display: string }[],
+  options: { onBatch?: (results: MarketData[]) => void; signal?: AbortSignal } = {},
 ): Promise<MarketFetchResult> {
   // Preserve exact requested symbols for cache keys and request payloads so
   // case-distinct instruments do not collapse into one cache entry.
@@ -119,11 +119,16 @@ export async function fetchMultipleStocks(
   const allSymbolStrings = [...symbolMetaMap.keys()];
   const setKey = symbolSetKey(allSymbolStrings);
 
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = options.signal
+    ? combineAbortSignals([options.signal, timeoutSignal])
+    : timeoutSignal;
   const resp = await stockBreaker.execute(async () => {
-    return client.listMarketQuotes({ symbols: allSymbolStrings });
+    return client.listMarketQuotes({ symbols: allSymbolStrings }, { signal: requestSignal });
   }, emptyStockFallback, {
     cacheKey: setKey,
     shouldCache: (r) => r.quotes.length > 0,
+    ignoreError: () => options.signal?.aborted === true,
   });
 
   const results = resp.quotes.map((q) => {

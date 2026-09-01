@@ -6,12 +6,14 @@ import { fileURLToPath } from 'node:url';
 
 import {
   composeNqCatalystsHtml,
+  calendarFreshnessLabelForAsOf,
   filterNqEarnings,
   filterNqMacroEvents,
   NQ_EARNINGS_EMPTY,
   NQ_MACRO_EMPTY,
   NQ_SECTION_UNAVAILABLE,
 } from '../src/components/nq-catalysts-content.ts';
+import { nqCalendarWindow } from '../src/components/nq-calendar-window.ts';
 import { NQ_PULSE_DISCLOSURE } from '../src/config/nq-context.ts';
 import {
   enabledNewsCategoryKeys,
@@ -46,6 +48,23 @@ after(() => {
 });
 
 describe('NQ Catalysts filters', () => {
+  it('uses inclusive windows with exactly seven and fourteen local calendar dates', () => {
+    assert.deepEqual(nqCalendarWindow(now, 7), { from: '2026-08-31', to: '2026-09-06' });
+    assert.deepEqual(nqCalendarWindow(now, 14), { from: '2026-08-31', to: '2026-09-13' });
+
+    const macro = filterNqMacroEvents([
+      { event: 'Day seven', country: 'US', date: '2026-09-06', impact: 'High' },
+      { event: 'Day eight', country: 'US', date: '2026-09-07', impact: 'High' },
+    ], now);
+    assert.deepEqual(macro.map((event) => event.event), ['Day seven']);
+
+    const earnings = filterNqEarnings([
+      { symbol: 'AAPL', company: 'Apple', date: '2026-09-13' },
+      { symbol: 'MSFT', company: 'Microsoft', date: '2026-09-14' },
+    ], now);
+    assert.deepEqual(earnings.map((entry) => entry.symbol), ['AAPL']);
+  });
+
   it('keeps only high-impact US macro events in the next seven days', () => {
     const filtered = filterNqMacroEvents([
       { event: 'CPI', country: 'US', date: '2026-09-02', impact: 'High' },
@@ -116,6 +135,15 @@ describe('NQ Catalysts filters', () => {
     assert.match(html, /Time unknown/);
     assert.match(html, />amc</);
     assert.doesNotMatch(html, /08:30|14:00 ET|release at/);
+  });
+
+  it('uses the 12-hour and 24-hour calendar freshness boundaries', () => {
+    const nowMs = Date.parse('2026-08-31T18:00:00.000Z');
+    assert.equal(calendarFreshnessLabelForAsOf('2026-08-31T06:00:00.000Z', nowMs), 'Current');
+    assert.equal(calendarFreshnessLabelForAsOf('2026-08-31T05:59:59.999Z', nowMs), 'Delayed');
+    assert.equal(calendarFreshnessLabelForAsOf('2026-08-30T18:00:00.000Z', nowMs), 'Delayed');
+    assert.equal(calendarFreshnessLabelForAsOf('2026-08-30T17:59:59.999Z', nowMs), 'Stale');
+    assert.equal(calendarFreshnessLabelForAsOf(undefined, nowMs), 'Freshness unavailable');
   });
 
   it('carries seed asOf through calendar handlers', () => {

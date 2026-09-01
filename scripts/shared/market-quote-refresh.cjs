@@ -46,6 +46,7 @@ function resolveMergedQuotesAsOf(freshQuotes, mergedQuotes, previousAsOf, fetche
 function planYahooRefresh({
   mandatoryYahooSymbols,
   missedPrimarySymbols,
+  alwaysRefreshYahooSymbols,
   nowMs,
   lastRefreshAt,
   refreshIntervalMs,
@@ -58,9 +59,11 @@ function planYahooRefresh({
 
   return {
     due,
-    symbols: due
-      ? [...new Set([...(mandatoryYahooSymbols || []), ...(missedPrimarySymbols || [])])]
-      : [],
+    symbols: [...new Set([
+      ...(due ? (mandatoryYahooSymbols || []) : []),
+      ...(due ? (missedPrimarySymbols || []) : []),
+      ...(alwaysRefreshYahooSymbols || []),
+    ])],
   };
 }
 

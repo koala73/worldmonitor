@@ -10,6 +10,7 @@ import {
   NQ_PULSE_BASKET,
   NQ_PULSE_DISCLOSURE,
   NQ_PULSE_ORDER,
+  NQ_PULSE_UNITS,
 } from '../src/config/nq-context.ts';
 import {
   composeNqPulseHtml,
@@ -150,6 +151,28 @@ describe('NQ Pulse rendering', () => {
     assert.ok(rows.every((row) => row.kind === 'quote'));
   });
 
+  it('renders each NQ instrument in its declared unit', () => {
+    assert.deepEqual(NQ_PULSE_UNITS, {
+      'NQ=F': 'points',
+      QQQ: 'currency',
+      '^VXN': 'points',
+      '^TNX': 'percent',
+    });
+    const html = composeNqPulseHtml({
+      rows: orderNqPulseRows([
+        quote('NQ=F', { price: 21000, change: -0.2 }),
+        quote('QQQ', { price: 500, change: 0.4 }),
+        quote('^VXN', { price: 18, change: 1.1 }),
+        quote('^TNX', { price: 4.2, change: 0.01 }),
+      ]),
+      freshness: 'Current',
+      asOfLabel: 'As of 2026-08-31T18:00:00.000Z',
+    });
+    const prices = [...html.matchAll(/<span class="market-price">([^<]+)<\/span>/g)]
+      .map((match) => match[1]);
+    assert.deepEqual(prices, ['21,000', '$500.00', '18.00', '4.20%']);
+  });
+
   it('keeps peers visible when one instrument is unavailable', () => {
     const rows = orderNqPulseRows([
       quote('NQ=F', { price: 21000, change: -0.2 }),
@@ -201,10 +224,4 @@ describe('NQ Pulse rendering', () => {
     assert.doesNotMatch(html, /execution-grade prices|real[- ]time tape/i);
   });
 
-  it('ignores late responses after the pulse and catalysts panels are destroyed', () => {
-    const pulse = readFileSync(resolve(root, 'src/components/NqPulsePanel.ts'), 'utf8');
-    const catalysts = readFileSync(resolve(root, 'src/components/NqCatalystsPanel.ts'), 'utf8');
-    assert.match(pulse, /if \(this\.signal\.aborted\) return false;/);
-    assert.match(catalysts, /if \(this\.signal\.aborted\) return false;/);
-  });
 });

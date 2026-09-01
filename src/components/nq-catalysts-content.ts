@@ -1,12 +1,14 @@
-import { addLocalDays, localYmd } from '@/utils/local-date';
 import { escapeHtml } from '@/utils/sanitize';
 import {
+  NQ_CALENDAR_CURRENT_MAX_MS,
+  NQ_CALENDAR_DELAYED_MAX_MS,
   NQ_EARNINGS_WINDOW_DAYS,
   NQ_INFLUENCE_SYMBOLS,
   NQ_MACRO_WINDOW_DAYS,
   NQ_PULSE_DISCLOSURE,
 } from '@/config/nq-context';
-import { freshnessLabelForAsOf, nqPulseAsOfLabel, type NqFreshnessLabel } from './nq-pulse-content';
+import { nqPulseAsOfLabel, type NqFreshnessLabel } from './nq-pulse-content';
+import { nqCalendarWindow } from './nq-calendar-window';
 
 export const NQ_EARNINGS_EMPTY = 'No tracked NQ earnings in this window';
 export const NQ_MACRO_EMPTY = 'No high-impact US releases in this window';
@@ -40,8 +42,7 @@ export function filterNqMacroEvents(
   events: readonly NqMacroEvent[],
   now: Date = new Date(),
 ): NqMacroEvent[] {
-  const from = localYmd(now);
-  const to = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS));
+  const { from, to } = nqCalendarWindow(now, NQ_MACRO_WINDOW_DAYS);
   return events
     .filter((event) => (
       event.country === 'US'
@@ -55,11 +56,24 @@ export function filterNqEarnings(
   earnings: readonly NqEarningsEntry[],
   now: Date = new Date(),
 ): NqEarningsEntry[] {
-  const from = localYmd(now);
-  const to = localYmd(addLocalDays(now, NQ_EARNINGS_WINDOW_DAYS));
+  const { from, to } = nqCalendarWindow(now, NQ_EARNINGS_WINDOW_DAYS);
   return earnings
     .filter((entry) => INFLUENCE_SET.has(entry.symbol) && inLocalWindow(entry.date, from, to))
     .sort((a, b) => a.date.localeCompare(b.date) || a.symbol.localeCompare(b.symbol));
+}
+
+export function calendarFreshnessLabelForAsOf(
+  asOf: string | null | undefined,
+  nowMs: number,
+): NqFreshnessLabel {
+  if (!asOf) return 'Freshness unavailable';
+  const ts = Date.parse(asOf);
+  if (!Number.isFinite(ts)) return 'Freshness unavailable';
+  const age = nowMs - ts;
+  if (!Number.isFinite(age) || age < 0) return 'Freshness unavailable';
+  if (age <= NQ_CALENDAR_CURRENT_MAX_MS) return 'Current';
+  if (age <= NQ_CALENDAR_DELAYED_MAX_MS) return 'Delayed';
+  return 'Stale';
 }
 
 function formatHour(hour: string | undefined): string {
@@ -79,10 +93,10 @@ export function composeNqCatalystsHtml(input: {
   const nowMs = input.nowMs ?? Date.now();
   const macroFreshness = input.macroUnavailable
     ? 'Freshness unavailable'
-    : freshnessLabelForAsOf(input.macroAsOf, nowMs);
+    : calendarFreshnessLabelForAsOf(input.macroAsOf, nowMs);
   const earningsFreshness = input.earningsUnavailable
     ? 'Freshness unavailable'
-    : freshnessLabelForAsOf(input.earningsAsOf, nowMs);
+    : calendarFreshnessLabelForAsOf(input.earningsAsOf, nowMs);
 
   return `
     <section class="nq-catalysts-section">

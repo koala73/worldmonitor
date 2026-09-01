@@ -3124,6 +3124,8 @@ const YAHOO_ONLY = new Set([
   // Spot gold and forex pairs (=X suffix) — not on Finnhub
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=X')),
 ]);
+const AUXILIARY_YAHOO_SYMBOLS = _stockUniverse.auxiliarySymbols.filter((symbol) => YAHOO_ONLY.has(symbol));
+const AUXILIARY_YAHOO_SET = new Set(AUXILIARY_YAHOO_SYMBOLS);
 
 function _parseYahooChartJson(body) {
   try {
@@ -3318,7 +3320,7 @@ async function seedMarketQuotes() {
   const previousPayloadPromise = envelopeRead('market:stocks-bootstrap:v1');
   const freshQuotes = [];
   const finnhubSymbols = MARKET_SYMBOLS.filter((s) => !YAHOO_ONLY.has(s));
-  const yahooSymbols = MARKET_SYMBOLS.filter((s) => YAHOO_ONLY.has(s));
+  const yahooSymbols = MARKET_SYMBOLS.filter((s) => YAHOO_ONLY.has(s) && !AUXILIARY_YAHOO_SET.has(s));
 
   if (FINNHUB_API_KEY && finnhubSymbols.length > 0) {
     const results = await Promise.all(finnhubSymbols.map((s) => fetchFinnhubQuoteDirect(s, FINNHUB_API_KEY)));
@@ -3336,6 +3338,7 @@ async function seedMarketQuotes() {
   const yahooPlan = planYahooRefresh({
     mandatoryYahooSymbols: yahooSymbols,
     missedPrimarySymbols: missedFinnhub,
+    alwaysRefreshYahooSymbols: AUXILIARY_YAHOO_SYMBOLS,
     nowMs: Date.now(),
     lastRefreshAt: _lastYahooMarketRefreshAt,
     refreshIntervalMs: MARKET_YAHOO_REFRESH_INTERVAL_MS,

@@ -1,14 +1,16 @@
-import { formatChange, formatPrice, getChangeClass } from '@/utils/market-format';
+import { formatChange, getChangeClass } from '@/utils/market-format';
 import { escapeHtml } from '@/utils/sanitize';
 import { miniSparkline } from '@/utils/sparkline';
-import type { MarketData, MarketSymbol } from '@/types';
+import type { MarketData } from '@/types';
 import {
   NQ_CURRENT_MAX_MS,
   NQ_DELAYED_MAX_MS,
   NQ_PULSE_BASKET,
   NQ_PULSE_DISCLOSURE,
   NQ_PULSE_ORDER,
+  type NqPulseMarketSymbol,
   type NqPulseSymbol,
+  type NqPulseUnit,
 } from '@/config/nq-context';
 
 export type NqFreshnessLabel = 'Current' | 'Delayed' | 'Stale' | 'Freshness unavailable';
@@ -19,6 +21,7 @@ export type NqPulseRow =
     symbol: NqPulseSymbol;
     name: string;
     display: string;
+    unit: NqPulseUnit;
     price: number;
     change: number;
     sparkline?: number[];
@@ -46,7 +49,7 @@ export function freshnessLabelForAsOf(
 
 export function orderNqPulseRows(
   quotes: readonly MarketData[],
-  basket: readonly MarketSymbol[] = NQ_PULSE_BASKET,
+  basket: readonly NqPulseMarketSymbol[] = NQ_PULSE_BASKET,
 ): NqPulseRow[] {
   const bySymbol = new Map(quotes.map((quote) => [quote.symbol, quote]));
   return basket.map((meta) => {
@@ -64,6 +67,7 @@ export function orderNqPulseRows(
         symbol,
         name: meta.name,
         display: meta.display,
+        unit: meta.unit,
         price: quote.price,
         change: quote.change,
         sparkline: quote.sparkline,
@@ -76,6 +80,26 @@ export function orderNqPulseRows(
       display: meta.display,
     };
   });
+}
+
+function formatNqPulsePrice(price: number, unit: NqPulseUnit): string {
+  switch (unit) {
+    case 'currency':
+      return `$${price.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}`;
+    case 'percent':
+      return `${price.toLocaleString('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      })}%`;
+    case 'points':
+      return price.toLocaleString('en-US', {
+        minimumFractionDigits: price >= 1_000 ? 0 : 2,
+        maximumFractionDigits: price >= 1_000 ? 0 : 2,
+      });
+  }
 }
 
 export function composeNqPulseHtml(input: {
@@ -105,7 +129,7 @@ export function composeNqPulseHtml(input: {
         </div>
         <div class="market-data">
           ${miniSparkline(row.sparkline, row.change)}
-          <span class="market-price">${formatPrice(row.price)}</span>
+          <span class="market-price">${formatNqPulsePrice(row.price, row.unit)}</span>
           <span class="market-change ${getChangeClass(row.change)}">${formatChange(row.change)}</span>
         </div>
       </div>`;
