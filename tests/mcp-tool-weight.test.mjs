@@ -36,6 +36,7 @@ function isPositiveInt(value) {
 describe('fan-out matcher', () => {
   it('counts each fetch in a function that also signs', () => {
     async function twoFetches() {
+      const buildAuthHeaders = async () => ({});
       await buildAuthHeaders();
       await fetch('https://example.test/a');
       await fetch('https://example.test/b');
