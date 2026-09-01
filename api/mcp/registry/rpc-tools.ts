@@ -1922,16 +1922,19 @@ export const RPC_TOOLS: ToolDef[] = [
               hasEndingStocks: { type: 'boolean', description: 'False when endingStocksTmt is a placeholder rather than a measurement.' },
               totalUseTmt: {
                 type: 'number',
-                description: 'Denominator of stocksToUse. For a country this is consumption + exports; for WORLD it is consumption only, because world exports are internal transfers already counted in the importer\'s consumption.',
+                description: 'PSD country: consumption + exports. WORLD: consumption. FAOSTAT: Food Balances domestic-supply quantity.',
               },
               productionTmt: { type: 'number' },
-              consumptionTmt: { type: 'number' },
+              consumptionTmt: {
+                type: 'number',
+                description: 'PSD domestic consumption or FAOSTAT Food Balances domestic-supply quantity.',
+              },
               importsTmt: { type: 'number' },
               exportsTmt: { type: 'number' },
               unit: { type: 'string', description: 'Always "1000 MT" (thousand metric tons).' },
               source: {
                 type: 'string',
-                description: '"psd" = USDA full balance sheet (stocks are real). "faostat" = production-only gap fill; every stocks field on that row is a 0 placeholder, not a measurement.',
+                description: '"psd" = USDA. "faostat" = FAOSTAT Food Balances production and domestic-supply gap fill. FAOSTAT stock fields are placeholder 0 values when presence flags are false.',
               },
             },
           },

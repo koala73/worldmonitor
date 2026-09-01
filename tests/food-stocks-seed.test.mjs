@@ -266,7 +266,6 @@ describe('fetchFoodStocks stages', () => {
     );
     assert.equal(
       validateFoodStocks({
-        // FAOSTAT balance fill: no endingStocks anywhere but _world.
         ...countriesWith(200, { stocksToUseRatio: null, endingStocks: null, source: 'faostat' }),
         _world: worldWith(SLUGS),
       }),

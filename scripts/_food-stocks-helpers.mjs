@@ -243,13 +243,14 @@ export function applyFaostatFoodBalanceFill(psdRecords, faostatRecords, opts) {
   if (!fill) return base;
 
   const commodity = opts?.commodity;
-  const completePsd = new Set(
+  const protectedPsd = new Set(
     base
       .filter((rec) => rec.commodity === commodity
-        && Number.isFinite(rec.production)
-        && rec.production >= 0
-        && Number.isFinite(rec.consumption)
-        && rec.consumption > 0)
+        && ((Number.isFinite(rec.production)
+          && rec.production >= 0
+          && Number.isFinite(rec.consumption)
+          && rec.consumption > 0)
+          || Number.isFinite(rec.stocksToUseRatio)))
       .map((rec) => rec.countryCode),
   );
 
@@ -259,7 +260,7 @@ export function applyFaostatFoodBalanceFill(psdRecords, faostatRecords, opts) {
     const countryCode = normalizePsdCountryCode(row?.countryCode);
     const rowCommodity = row?.commodity || commodity;
     if (!countryCode || rowCommodity !== commodity) continue;
-    if (completePsd.has(countryCode)) continue;
+    if (protectedPsd.has(countryCode)) continue;
     const production = finiteOrNull(row?.production);
     const consumption = finiteOrNull(row?.consumption);
     const marketingYear = formatMarketingYear(row?.calendarYear);

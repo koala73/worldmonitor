@@ -99,6 +99,28 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.deepEqual(failures, [], `tools missing outputSchema:\n  ${failures.join('\n  ')}`);
   });
 
+  it('get_food_stocks publishes the FAOSTAT domestic-supply contract on MCP and REST', () => {
+    const tool = mod.__testing__.TOOL_REGISTRY.find((entry) => entry.name === 'get_food_stocks');
+    assert.ok(tool, 'get_food_stocks tool not found in registry');
+    const mcpRecord = tool.outputSchema.properties.records.items.properties;
+    assert.match(mcpRecord.totalUseTmt.description, /FAOSTAT.*domestic-supply/is);
+    assert.match(mcpRecord.consumptionTmt.description, /FAOSTAT.*domestic-supply/is);
+    assert.match(mcpRecord.source.description, /FAOSTAT\s+Food\s+Balances.*production.*domestic-supply/is);
+
+    const specPath = path.join(
+      path.dirname(fileURLToPath(import.meta.url)),
+      '..',
+      'docs',
+      'api',
+      'ResilienceService.openapi.json',
+    );
+    const openApi = JSON.parse(readFileSync(specPath, 'utf8'));
+    const restRecord = openApi.components.schemas.FoodStockRecord.properties;
+    assert.match(restRecord.totalUseTmt.description, /FAOSTAT.*domestic-supply/is);
+    assert.match(restRecord.consumptionTmt.description, /FAOSTAT.*domestic-supply/is);
+    assert.match(restRecord.source.description, /FAOSTAT\s+Food\s+Balances.*production.*domestic-supply/is);
+  });
+
   // --------------------------------------------------------------------
   // Test 2 — every captured fixture validates against its tool's schema
   // --------------------------------------------------------------------

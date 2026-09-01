@@ -26,11 +26,13 @@ message FoodStockRecord {
   double ending_stocks_tmt = 5;
   // False when ending_stocks_tmt is a placeholder rather than a measurement.
   bool has_ending_stocks = 14;
-  // Total use (consumption + exports) in thousand metric tons.
+  // 1000 MT. PSD country: consumption + exports. WORLD: consumption.
+  // FAOSTAT: domestic-supply quantity.
   double total_use_tmt = 6;
   // Production in thousand metric tons. Zero when unknown.
   double production_tmt = 7;
-  // Domestic consumption in thousand metric tons. Zero when unknown.
+  // 1000 MT. PSD: domestic consumption. FAOSTAT: domestic-supply quantity.
+  // Zero when unknown.
   double consumption_tmt = 8;
   // Imports in thousand metric tons. Zero when unknown.
   double imports_tmt = 9;
@@ -38,7 +40,8 @@ message FoodStockRecord {
   double exports_tmt = 10;
   // Unit the raw quantities are stored in, typically "1000 MT".
   string unit = 11;
-  // Provenance: "psd" or "faostat". FAOSTAT rows never carry stocks.
+  // "psd" or "faostat". FAOSTAT Food Balances supplies production and
+  // domestic-supply, but no stocks.
   string source = 12;
 }
 

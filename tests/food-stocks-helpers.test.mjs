@@ -221,6 +221,33 @@ describe('FAOSTAT Food Balances fill', () => {
     assert.equal(filled[0].countryCode, 'US');
   });
 
+  test('does not replace usable PSD stock evidence when production is missing', () => {
+    const psd = [{
+      countryCode: 'AR',
+      commodity: 'wheat',
+      marketingYear: '2024/25',
+      production: null,
+      consumption: 30,
+      imports: 2,
+      exports: 20,
+      endingStocks: 10,
+      stocksToUseRatio: 0.2,
+      totalUse: 50,
+      unit: '1000 MT',
+      source: 'psd',
+    }];
+
+    const filled = applyFaostatFoodBalanceFill(psd, [{
+      countryCode: 'AR',
+      commodity: 'wheat',
+      production: 45,
+      consumption: 40,
+      calendarYear: 2023,
+    }], { commodity: 'wheat' });
+
+    assert.deepEqual(filled, psd, 'FAOSTAT must not erase a valid PSD stocks-to-use row');
+  });
+
   test('a failed FAOSTAT stage leaves the PSD rows untouched', () => {
     const psd = [
       {
