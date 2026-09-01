@@ -292,6 +292,32 @@ describe('canonical schema graph', () => {
     assert.ok(WORLD_MONITOR_ORG.name, 'role filler must carry a name so the reference resolves');
   });
 
+  it('disambiguates the Organization from the live name collisions (#7373)', () => {
+    // Four live confusables share the name: worldmonitor.io, world-monitor.app,
+    // an impersonating "World Monitor Pro" GitHub repo, and three App Store
+    // apps. `alternateName` alone cannot separate them -- it only adds a second
+    // string that all four also match. `disambiguatingDescription` is the
+    // property schema.org defines for exactly this, and it must state the
+    // canonical domain rather than repeat the marketing description.
+    const organization = blocksOfType(jsonLdBlocks(read('pro-test/welcome.html')), 'Organization')[0];
+    const disambiguation = organization.disambiguatingDescription;
+
+    assert.equal(typeof disambiguation, 'string', 'the canonical Organization must carry disambiguatingDescription');
+    assert.ok(
+      disambiguation.includes('www.worldmonitor.app'),
+      'disambiguation must name the canonical domain, since the collision is on the name',
+    );
+    assert.ok(
+      disambiguation !== organization.description,
+      'disambiguatingDescription must distinguish, not restate description',
+    );
+    assert.ok(
+      /worldmonitor\.io/.test(disambiguation) && /world-monitor\.app/.test(disambiguation),
+      'disambiguation must name the domains it is disclaiming',
+    );
+    assert.equal(organization.alternateName, 'WorldMonitor');
+  });
+
   it('grounds the source Organization with founder and foundingDate (#7459e)', () => {
     const welcome = blocksOfType(jsonLdBlocks(read('pro-test/welcome.html')), 'Organization')[0];
     assert.deepEqual(welcome.founder, PERSON_ROLE);

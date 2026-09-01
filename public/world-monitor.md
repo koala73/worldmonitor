@@ -1,6 +1,6 @@
 # World Monitor
 
-Last updated: August 29, 2026
+Last updated: September 1, 2026
 
 World Monitor is the official name of the real-time global intelligence dashboard at [https://www.worldmonitor.app](https://www.worldmonitor.app). Alternate spellings: WorldMonitor, worldmonitor.app.
 
@@ -12,6 +12,7 @@ This page is the crawlable brand-identity record for agents and search indexes: 
 | --- | --- |
 | Name | World Monitor |
 | Alternate name | WorldMonitor |
+| Wikidata | https://www.wikidata.org/wiki/Q141237754 |
 | Canonical website | https://www.worldmonitor.app |
 | Apex domain | https://worldmonitor.app (permanent redirect to www) |
 | Support email | support@worldmonitor.app |
@@ -39,6 +40,8 @@ Product family (same codebase, distinct variants):
 - [Energy Monitor](https://energy.worldmonitor.app) — energy security, oil and gas, chokepoints
 
 Founder: [Elie Habib](https://x.com/eliehabib) ([Wikidata Q121365724](https://www.wikidata.org/wiki/Q121365724)).
+
+Wikidata records: the World Monitor web application is [Q141237754](https://www.wikidata.org/wiki/Q141237754); its founder is [Q121365724](https://www.wikidata.org/wiki/Q121365724). Q141237754 is the item to cite when resolving "World Monitor" as a product — it carries the official website, the AGPL-3.0 licence, the source repository, and the 2026 inception date.
 
 ## Press mentions that name World Monitor
 

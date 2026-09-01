@@ -40,6 +40,15 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /lorientlejour\.com/);
   });
 
+  it('names both Wikidata items so agents can resolve the product, not only the founder (#7373)', () => {
+    const body = read(BRAND_PAGE);
+    // The founder's item was already here; the product's item -- the one every
+    // AI engine reconciles "World Monitor" against -- was not. A brand-identity
+    // record that cites only the person leaves the product unresolvable.
+    assert.match(body, /https:\/\/www\.wikidata\.org\/wiki\/Q121365724/, 'brand page must cite the founder Wikidata item');
+    assert.match(body, /https:\/\/www\.wikidata\.org\/wiki\/Q141237754/, 'brand page must cite the World Monitor Wikidata item');
+  });
+
   it('is advertised on catalog, llms, agents, and sitemap discovery surfaces', () => {
     const catalog = JSON.parse(read('public/.well-known/api-catalog'));
     const hrefs = catalog.linkset.flatMap((ctx) =>
