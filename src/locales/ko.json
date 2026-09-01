@@ -2815,7 +2815,7 @@
       "title": "GPS/GNSS 간섭",
       "navPerformance": "영향을 받은 항공기",
       "samples": "영향을 받은 항공기 수",
-      "aircraft": "관측된 항공기 수",
+      "aircraft": "관측된 항공기 총수",
       "h3Hex": "H3 Hex"
     },
     "flight": {

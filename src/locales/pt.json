@@ -2470,7 +2470,7 @@
       "title": "Interferência GPS/GNSS",
       "navPerformance": "Aeronaves afetadas",
       "samples": "Número de aeronaves afetadas",
-      "aircraft": "Aeronaves observadas",
+      "aircraft": "Total de aeronaves observadas",
       "h3Hex": "H3 Hex"
     },
     "flight": {

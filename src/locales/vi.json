@@ -2815,7 +2815,7 @@
       "title": "Nhiễu GPS/GNSS",
       "navPerformance": "Máy bay bị ảnh hưởng",
       "samples": "Số máy bay bị ảnh hưởng",
-      "aircraft": "Số máy bay quan sát được",
+      "aircraft": "Tổng số máy bay quan sát được",
       "h3Hex": "H3 Hex"
     },
     "flight": {

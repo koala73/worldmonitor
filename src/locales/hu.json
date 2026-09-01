@@ -2900,10 +2900,10 @@
       "highSeverity": "Magas súlyosság"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS zavar",
-      "navPerformance": "Érintett repülőgépek",
-      "samples": "Érintett repülőgépek száma",
-      "aircraft": "Észlelt repülőgépek",
+      "title": "GPS/GNSS-interferencia",
+      "navPerformance": "Érintett légijárművek",
+      "samples": "Érintett légijárművek száma",
+      "aircraft": "Az észlelt légijárművek teljes száma",
       "h3Hex": "H3 Hex"
     },
     "flight": {

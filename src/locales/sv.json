@@ -2450,10 +2450,10 @@
       "highSeverity": "Hög allvarlighet"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS-störning",
-      "navPerformance": "Påverkade flygplan",
-      "samples": "Antal påverkade flygplan",
-      "aircraft": "Observerade flygplan",
+      "title": "GPS/GNSS-störningar",
+      "navPerformance": "Påverkade luftfartyg",
+      "samples": "Antal påverkade luftfartyg",
+      "aircraft": "Totalt antal observerade luftfartyg",
       "h3Hex": "H3 Hex"
     },
     "flight": {

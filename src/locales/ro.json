@@ -2853,7 +2853,7 @@
       "title": "Interferență GPS/GNSS",
       "navPerformance": "Aeronave afectate",
       "samples": "Număr de aeronave afectate",
-      "aircraft": "Aeronave observate",
+      "aircraft": "Număr total de aeronave observate",
       "h3Hex": "H3 Hex"
     },
     "flight": {

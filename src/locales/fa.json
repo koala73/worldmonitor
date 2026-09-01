@@ -2900,10 +2900,10 @@
       "highSeverity": "High Severity"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS Interference",
-      "navPerformance": "هواپیماهای تحت تأثیر",
-      "samples": "تعداد هواپیماهای تحت تأثیر",
-      "aircraft": "هواپیماهای مشاهده‌شده",
+      "title": "تداخل GPS/GNSS",
+      "navPerformance": "هواگردهای تحت تأثیر",
+      "samples": "تعداد هواگردهای تحت تأثیر",
+      "aircraft": "تعداد کل هواگردهای مشاهده‌شده",
       "h3Hex": "H3 Hex"
     },
     "flight": {

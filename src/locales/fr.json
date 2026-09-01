@@ -2849,10 +2849,10 @@
       "highSeverity": "Sévérité Élevée"
     },
     "gpsJamming": {
-      "title": "Interférence GPS/GNSS",
+      "title": "Interférences GPS/GNSS",
       "navPerformance": "Aéronefs affectés",
-      "samples": "Nombre d'aéronefs affectés",
-      "aircraft": "Aéronefs observés",
+      "samples": "Nombre d’aéronefs affectés",
+      "aircraft": "Nombre total d’aéronefs observés",
       "h3Hex": "H3 Hex"
     },
     "flight": {

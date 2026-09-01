@@ -2815,7 +2815,7 @@
       "title": "GPS/GNSS干渉",
       "navPerformance": "影響を受けた航空機",
       "samples": "影響を受けた航空機数",
-      "aircraft": "観測航空機数",
+      "aircraft": "観測された航空機の総数",
       "h3Hex": "H3 Hex"
     },
     "flight": {
