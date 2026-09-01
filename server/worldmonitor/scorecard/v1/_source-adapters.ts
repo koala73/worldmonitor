@@ -88,17 +88,6 @@ function invalidValue(inputId: ScorecardInputId, source: string): ScorecardEvide
   };
 }
 
-function redistributionBlocked(inputId: ScorecardInputId, source: string, detail: string): ScorecardEvidence {
-  return {
-    availability: 'unavailable',
-    inputId,
-    reason: 'redistribution-blocked',
-    source,
-    sourceKey: SCORECARD_INPUT_REGISTRY[inputId].sourceKey,
-    detail,
-  };
-}
-
 function available(
   inputId: ScorecardInputId,
   value: unknown,
@@ -253,6 +242,23 @@ function foodEvidence(countryCode: string, source: unknown): Pick<CountryScoreca
   };
 }
 
+type EnergyImportDependencyProvenance =
+  | { source: 'World Bank'; indicatorCode: 'EG.IMP.CONS.ZS' }
+  | { source: 'Eurostat'; indicatorCode: 'nrg_ind_id' };
+
+function parseEnergyImportDependencyProvenance(
+  outerSource: unknown,
+  innerSource: unknown,
+): EnergyImportDependencyProvenance | null {
+  if (outerSource === 'worldbank-energy-imports' && innerSource === 'worldbank') {
+    return { source: 'World Bank', indicatorCode: 'EG.IMP.CONS.ZS' };
+  }
+  if (outerSource === 'eurostat-nrg_ind_id' && innerSource === 'eurostat') {
+    return { source: 'Eurostat', indicatorCode: 'nrg_ind_id' };
+  }
+  return null;
+}
+
 function energyBalance(
   countryCode: string,
   source: unknown,
@@ -274,39 +280,32 @@ function energyBalance(
     || importDependency?.value == null || importDependency.year == null) {
     return countryUnavailable('energy.productionBalance', 'OWID and World Bank or Eurostat');
   }
+  const importProvenance = parseEnergyImportDependencyProvenance(iea?.source, importDependency.source);
+  if (!importProvenance) {
+    return {
+      availability: 'unavailable',
+      inputId: 'energy.productionBalance',
+      reason: 'redistribution-blocked',
+      source: 'OWID and World Bank or Eurostat',
+      sourceKey: SCORECARD_INPUT_REGISTRY['energy.productionBalance'].sourceKey,
+    };
+  }
   if (consumption == null || !(consumption > 0) || consumptionYear == null
     || netImports == null || importsYear == null) {
     return invalidValue('energy.productionBalance', 'OWID and World Bank or Eurostat');
   }
   const production = consumption * (1 - netImports / 100);
   if (!(production >= 0)) return invalidValue('energy.productionBalance', 'OWID and World Bank or Eurostat');
-  const importSourceTag = String(importDependency.source || iea?.source || '').toLowerCase();
-  const importSource = importSourceTag.includes('eurostat') ? 'Eurostat' : 'World Bank';
-  const importIndicatorCode = importSource === 'Eurostat' ? 'nrg_ind_id' : 'EG.IMP.CONS.ZS';
-  // Eurostat's nrg_ind_id observation is audit-incomplete for raw
-  // redistribution (ENERGY_IMPORT_CONDITIONAL: "Allow only the exact World
-  // Bank EG.IMP.CONS.ZS observation"), and the resilience API already
-  // withholds it. Publishing the derived ratio here would leak it anyway:
-  // production = consumption * (1 - netImports / 100) is emitted alongside
-  // consumption, so the raw percentage is recoverable by arithmetic. Block the
-  // whole input for that provenance, matching defense.supplierDiversity.
-  if (importSource === 'Eurostat') {
-    return redistributionBlocked(
-      'energy.productionBalance',
-      'OWID and Eurostat',
-      'Eurostat energy import dependency is not audited for raw redistribution.',
-    );
-  }
   const observationYear = Math.min(consumptionYear, importsYear);
   return available(
     'energy.productionBalance',
     production / consumption,
     observationYear,
-    `OWID and ${importSource}`,
+    `OWID and ${importProvenance.source}`,
     [
       { name: 'primaryEnergyConsumptionTwh', value: consumption, year: consumptionYear, unit: 'TWh', source: 'Our World in Data', indicatorCode: 'primary_energy_consumption' },
-      { name: 'netEnergyImportsPercent', value: netImports, year: importsYear, unit: 'percent of energy use', source: importSource, indicatorCode: importIndicatorCode },
-      { name: 'primaryEnergyProductionTwh', value: production, year: observationYear, unit: 'TWh', source: `Derived from OWID and ${importSource}` },
+      { name: 'netEnergyImportsPercent', value: netImports, year: importsYear, unit: 'percent of energy use', ...importProvenance },
+      { name: 'primaryEnergyProductionTwh', value: production, year: observationYear, unit: 'TWh', source: `Derived from OWID and ${importProvenance.source}` },
     ],
     { quality: 'derived', aggregation: { numerator: production, denominator: consumption, unit: 'TWh' } },
   );

@@ -257,7 +257,28 @@ function pruneWebSites(value: unknown): unknown | null {
 }
 
 function rewriteDocsJsonLdValue(value: unknown): unknown | null {
-  return pruneWebSites(rewriteDocsWebsiteIds(value));
+  const pruned = pruneWebSites(rewriteDocsWebsiteIds(value));
+  if (pruned === null) return null;
+  return withDocsSpeakable(pruned);
+}
+
+const DEFAULT_DOCS_SPEAKABLE = Object.freeze({
+  '@type': 'SpeakableSpecification',
+  cssSelector: ['h1'],
+});
+
+function withDocsSpeakable(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withDocsSpeakable);
+  if (!value || typeof value !== 'object') return value;
+  const node = value as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(node)) {
+    next[key] = withDocsSpeakable(nested);
+  }
+  if (hasJsonLdType(next, 'WebPage') && next.speakable == null) {
+    next.speakable = DEFAULT_DOCS_SPEAKABLE;
+  }
+  return next;
 }
 
 /**

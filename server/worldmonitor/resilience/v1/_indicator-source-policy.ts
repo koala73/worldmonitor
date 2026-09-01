@@ -63,6 +63,8 @@ export interface IndicatorSourcePolicy {
   attributionUrl: string | null;
   allowedRawSources: readonly AuditedRawSource[];
   requiredRawSources: readonly AuditedRawSource[];
+  /** At least one of these must have contributed, for a constituent two providers may supply. */
+  requiredOneOfRawSources?: readonly AuditedRawSource[];
   note: string;
 }
 
@@ -185,6 +187,18 @@ const STATCAN_WDS_SOURCE: AuditedRawSource = {
   sourceUrlPrefixes: ['https://www150.statcan.gc.ca/t1/wds/rest/'],
 };
 
+const EUROSTAT_ENERGY_SOURCE: AuditedRawSource = {
+  providerName: 'Eurostat',
+  sourceUrl: 'https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_id/default/table?lang=en',
+  licenseLabel: 'Reuse authorised with source acknowledgement (Commission Decision 2011/833/EU)',
+  licenseUrl: 'https://ec.europa.eu/eurostat/help/copyright-notice',
+  attribution: 'Eurostat, energy import dependency (nrg_ind_id); include the dataset URL and extraction date.',
+  attributionUrl: 'https://ec.europa.eu/eurostat/help/copyright-notice',
+  providerAliases: ['eurostat'],
+  sourceUrlPrefixes: ['https://ec.europa.eu/eurostat/'],
+  sourcePathSuffixes: ['/databrowser/view/nrg_ind_id/default/table'],
+};
+
 const DISPLAY_ONLY_SOURCES = [STATCAN_WDS_SOURCE] as const;
 
 function allowPolicy(
@@ -305,17 +319,34 @@ const COMTRADE = incompletePolicy('UN Comtrade', 'https://comtradeplus.un.org/',
 const FUEL_STOCKS = incompletePolicy('IEA / EIA', null, 'Credit the exact IEA or EIA fuel-stock series.');
 const NATIONAL_DEBT = incompletePolicy('IMF / United States Treasury national-debt sources', null, 'Credit the exact national-debt provider used for the observation.');
 
-const ENERGY_IMPORT_CONDITIONAL: IndicatorSourcePolicy = {
-  ...worldBankPolicy(['EG.IMP.CONS.ZS']),
-  status: 'conditional',
+const WORLD_BANK_ENERGY_IMPORT_SOURCE = worldBankSource('EG.IMP.CONS.ZS');
+const WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE = worldBankSource('EG.ELC.FOSL.ZS');
+
+const ENERGY_IMPORT_DEPENDENCY: IndicatorSourcePolicy = {
+  status: 'allow',
   providerName: 'World Bank Open Data or Eurostat',
-  note: 'Allow only the exact World Bank EG.IMP.CONS.ZS observation. Eurostat-backed observations remain audit-incomplete.',
+  sourceUrl: null,
+  licenseLabel: 'CC BY 4.0 for World Bank, Commission Decision 2011/833/EU reuse for Eurostat',
+  licenseUrl: null,
+  attribution: 'Credit the exact provider of the selected observation and include its dataset URL and extraction date.',
+  attributionUrl: null,
+  allowedRawSources: [WORLD_BANK_ENERGY_IMPORT_SOURCE, EUROSTAT_ENERGY_SOURCE],
+  requiredRawSources: [],
+  requiredOneOfRawSources: [WORLD_BANK_ENERGY_IMPORT_SOURCE, EUROSTAT_ENERGY_SOURCE],
+  note: 'Raw redistribution was reviewed for the World Bank EG.IMP.CONS.ZS path and the Eurostat nrg_ind_id dataset. Either provider alone satisfies the observation; a provider-root URL still fails closed.',
 };
 const IMPORTED_FOSSIL_CONDITIONAL: IndicatorSourcePolicy = {
-  ...worldBankPolicy(['EG.ELC.FOSL.ZS', 'EG.IMP.CONS.ZS']),
   status: 'conditional',
-  providerName: 'World Bank Open Data, with a possible Eurostat net-import override',
-  note: 'Allow only when both exact World Bank indicator paths contributed. An Eurostat constituent denies raw redistribution.',
+  providerName: 'World Bank Open Data, with a World Bank or Eurostat net-import constituent',
+  sourceUrl: null,
+  licenseLabel: 'CC BY 4.0 for World Bank, Commission Decision 2011/833/EU reuse for Eurostat',
+  licenseUrl: null,
+  attribution: 'Credit World Bank Open Data for the fossil-electricity share and the exact net-import provider, with both dataset URLs and the extraction date.',
+  attributionUrl: null,
+  allowedRawSources: [WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE, WORLD_BANK_ENERGY_IMPORT_SOURCE, EUROSTAT_ENERGY_SOURCE],
+  requiredRawSources: [WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE],
+  requiredOneOfRawSources: [WORLD_BANK_ENERGY_IMPORT_SOURCE, EUROSTAT_ENERGY_SOURCE],
+  note: 'Allow only when the exact World Bank EG.ELC.FOSL.ZS path contributed together with an audited net-import observation from World Bank EG.IMP.CONS.ZS or Eurostat nrg_ind_id.',
 };
 const LIQUID_RESERVE_CONDITIONAL: IndicatorSourcePolicy = {
   ...worldBankPolicy(['FI.RES.TOTL.MO']),
@@ -367,7 +398,7 @@ export const INDICATOR_SOURCE_POLICIES = {
   roadsPavedInfra: worldBankPolicy(['IS.ROD.PAVE.ZS']),
   infraOutages: CLOUDFLARE,
   broadband: worldBankPolicy(['IT.NET.BBND.P2']),
-  energyImportDependency: ENERGY_IMPORT_CONDITIONAL,
+  energyImportDependency: ENERGY_IMPORT_DEPENDENCY,
   gasShare: OWID,
   coalShare: OWID,
   renewShare: OWID,
@@ -553,6 +584,10 @@ export function decideIndicatorRawRedistribution(
 
   const auditedSources = [...new Set(matched.filter((source): source is AuditedRawSource => source != null))];
   if (policy.requiredRawSources.some((required) => !auditedSources.includes(required))) {
+    return deniedDecision(policy, 'conditional', 'required-provider-provenance-missing');
+  }
+  const requiredOneOf = policy.requiredOneOfRawSources ?? [];
+  if (requiredOneOf.length > 0 && !requiredOneOf.some((required) => auditedSources.includes(required))) {
     return deniedDecision(policy, 'conditional', 'required-provider-provenance-missing');
   }
   return {

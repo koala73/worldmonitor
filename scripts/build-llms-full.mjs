@@ -16,10 +16,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { GLOSSARY_TERMS } from '../blog-site/src/data/glossary.ts';
-import {
-  CHOKEPOINT_CONTENT,
-  resolveLatestResilienceSnapshotPath,
-} from './build-crawlable-corpus.mjs';
+import { resolveLatestResilienceSnapshotPath } from './build-crawlable-corpus.mjs';
+import { CHOKEPOINT_CONTENT } from './chokepoint-page-content.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT_PATH = 'public/llms-full.txt';

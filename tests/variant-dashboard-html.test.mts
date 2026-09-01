@@ -158,7 +158,9 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.equal(webPage['@id'], `${finance.url}#webpage`);
     assert.deepEqual(webPage.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
     assert.equal(webPage.speakable['@type'], 'SpeakableSpecification');
+    assert.deepEqual(webPage.breadcrumb, { '@id': `${finance.url}#breadcrumb` });
     const crumbs = blocks.find((b) => b['@type'] === 'BreadcrumbList');
+    assert.equal(crumbs['@id'], `${finance.url}#breadcrumb`);
     assert.equal(crumbs.itemListElement[1].name, 'Finance Monitor');
     const injected = [...html.matchAll(/<script\b([^>]*\btype=["']application\/ld\+json["'][^>]*)>/gi)]
       .map((match) => match[1]);
