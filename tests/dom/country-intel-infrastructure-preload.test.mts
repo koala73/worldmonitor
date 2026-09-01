@@ -1,26 +1,40 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const preloadMocks = vi.hoisted(() => ({
-  centroid: null as { lat: number; lon: number } | null,
-  geometry: vi.fn<() => Promise<void>>(),
-  militaryBases: vi.fn<() => Promise<unknown[]>>(),
-  infrastructureTables: vi.fn<() => Promise<void>>(),
+import type { AppContext } from '@/app/app-context';
+import type { CountryBriefSignals } from '@/types';
+
+const geometryMocks = vi.hoisted(() => ({
+  preloadCountryGeometry: vi.fn(),
+}));
+
+const infraMocks = vi.hoisted(() => ({
+  preloadInfrastructureTables: vi.fn(),
+}));
+
+const militaryMocks = vi.hoisted(() => ({
+  preloadMilitaryBases: vi.fn(async () => []),
 }));
 
 vi.mock('@/services/country-geometry', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/country-geometry')>(),
-  getCountryCentroid: () => preloadMocks.centroid,
-  preloadCountryGeometry: preloadMocks.geometry,
-}));
-
-vi.mock('@/services/military-base-config', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/services/military-base-config')>(),
-  preloadMilitaryBases: preloadMocks.militaryBases,
+  preloadCountryGeometry: () => geometryMocks.preloadCountryGeometry(),
 }));
 
 vi.mock('@/services/related-assets', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/related-assets')>(),
-  preloadInfrastructureTables: preloadMocks.infrastructureTables,
+  preloadInfrastructureTables: () => infraMocks.preloadInfrastructureTables(),
+  getNearbyInfrastructure: () => [],
+}));
+
+vi.mock('@/services/military-base-config', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/military-base-config')>(),
+  preloadMilitaryBases: () => militaryMocks.preloadMilitaryBases(),
+  getCachedMilitaryBases: () => [],
+}));
+
+vi.mock('@/utils/after-paint', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/utils/after-paint')>(),
+  yieldToMain: async () => {},
 }));
 
 vi.mock('@/app/lazy-services', () => ({
@@ -30,110 +44,118 @@ vi.mock('@/app/lazy-services', () => ({
   }),
 }));
 
-vi.mock('@/services/generated-rpc-clients', () => ({
-  EconomicServiceClient: class {},
-  IntelligenceServiceClient: class {
-    getCountryFacts = () => Promise.reject(new Error('not used'));
-    getCountryEnergyProfile = () => Promise.reject(new Error('not used'));
-    getCountryPortActivity = () => Promise.reject(new Error('not used'));
-  },
-  MarketServiceClient: class {
-    getCountryStockIndex = () => Promise.resolve({ available: false });
-  },
-  MilitaryServiceClient: class {},
-  TradeServiceClient: class {},
+vi.mock('@/services/imf-country-data', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/imf-country-data')>(),
+  getImfCountryBundle: async () => ({
+    macro: null,
+    growth: null,
+    labor: null,
+    external: null,
+    fetchedAt: 0,
+  }),
 }));
 
-vi.mock('@/services/panel-gating', () => ({ hasPremiumAccess: () => false }));
-vi.mock('@/services/prediction', () => ({ fetchCountryMarkets: async () => [] }));
-vi.mock('@/services/imf-country-data', () => ({
-  getImfCountryBundle: async () => null,
-  buildImfEconomicIndicators: () => [],
+vi.mock('@/services/prediction', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/prediction')>(),
+  fetchCountryMarkets: async () => [],
 }));
-vi.mock('@/services/supply-chain', () => ({
+
+vi.mock('@/services/supply-chain', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/supply-chain')>(),
   fetchMultiSectorExposure: async () => [],
-  fetchCountryProducts: async () => ({ products: [] }),
+  fetchCountryProducts: async () => [],
   fetchMultiSectorCostShock: async () => null,
   fetchCountryVulnerabilities: async () => null,
 }));
 
-import type { AppContext } from '@/app/app-context';
+vi.mock('@/services/panel-gating', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/panel-gating')>(),
+  hasPremiumAccess: () => false,
+}));
+
+vi.mock('@/services/analysis-framework-store', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/analysis-framework-store')>(),
+  subscribeFrameworkChange: () => () => {},
+  getActiveFrameworkForPanel: () => null,
+}));
+
 import { CountryIntelManager } from '@/app/country-intel';
 
-function deferred<T>() {
+function deferred<T = void>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((settle) => { resolve = settle; });
   return { promise, resolve };
 }
 
-type PreloadReadiness = {
-  geometry: boolean;
-  militaryBases: boolean;
-  infrastructureTables: boolean;
+const EMPTY_SIGNALS: CountryBriefSignals = {
+  criticalNews: 0,
+  protests: 0,
+  militaryFlights: 0,
+  militaryVessels: 0,
+  militaryFlightsInCountry: 0,
+  militaryVesselsInCountry: 0,
+  outages: 0,
+  aisDisruptions: 0,
+  satelliteFires: 0,
+  radiationAnomalies: 0,
+  temporalAnomalies: 0,
+  cyberThreats: 0,
+  earthquakes: 0,
+  displacementOutflow: 0,
+  climateStress: 0,
+  conflictEvents: 0,
+  activeStrikes: 0,
+  orefSirens: 0,
+  orefHistory24h: 0,
+  aviationDisruptions: 0,
+  travelAdvisories: 0,
+  travelAdvisoryMaxLevel: null,
+  gpsJammingHexes: 0,
+  isTier1: false,
+  thermalEscalations: 0,
+  sanctionsDesignations: 0,
+  sanctionsNewDesignations: 0,
 };
 
-type InfrastructureEvents = {
-  readiness: PreloadReadiness;
-  updateInfrastructureCalls: Array<{
-    code: string;
-    readiness: PreloadReadiness;
-  }>;
-};
-
-function startCountryBrief(warmCentroid: boolean) {
-  const geometry = deferred<void>();
-  const militaryBases = deferred<unknown[]>();
-  const infrastructureTables = deferred<void>();
-  const events: InfrastructureEvents = {
-    readiness: {
-      geometry: false,
-      militaryBases: false,
-      infrastructureTables: false,
-    },
-    updateInfrastructureCalls: [],
-  };
-
-  preloadMocks.centroid = warmCentroid ? { lat: 24.3, lon: 54.4 } : null;
-  preloadMocks.geometry.mockImplementation(() => geometry.promise.then(() => {
-    events.readiness.geometry = true;
-  }));
-  preloadMocks.militaryBases.mockImplementation(() => militaryBases.promise.then((bases) => {
-    events.readiness.militaryBases = true;
-    return bases;
-  }));
-  preloadMocks.infrastructureTables.mockImplementation(() => infrastructureTables.promise.then(() => {
-    events.readiness.infrastructureTables = true;
-  }));
-
-  let activeCode = '';
+function createBriefHarness(code: string) {
   let visible = false;
+  let activeCode = '';
+  const infrastructureUpdates: string[] = [];
+  const newsUpdates: string[] = [];
   const page = {
     getCode: () => activeCode,
-    getName: () => 'United Arab Emirates',
     isVisible: () => visible,
+    hide: () => {
+      visible = false;
+      activeCode = '';
+    },
+    show: (_country: string, nextCode: string) => {
+      visible = true;
+      activeCode = nextCode;
+    },
     showLoading: () => {
+      visible = true;
       activeCode = '__loading__';
-      visible = true;
     },
-    show: (_country: string, code: string) => {
-      activeCode = code;
-      visible = true;
+    updateInfrastructure: (nextCode: string) => {
+      infrastructureUpdates.push(nextCode);
     },
-    updateNews: () => {},
-    updateMarkets: () => {},
+    updateNews: () => {
+      newsUpdates.push(activeCode);
+    },
+    updateMilitaryActivity: () => {},
+    updateEconomicIndicators: () => {},
     updateStock: () => {},
-    updateInfrastructure: (code: string) => {
-      events.updateInfrastructureCalls.push({
-        code,
-        readiness: { ...events.readiness },
-      });
-    },
+    updateMarkets: () => {},
+    updateBrief: () => {},
+    getTimelineMount: () => undefined,
   };
   const ctx = {
     countryBriefPage: page,
     isDestroyed: false,
     allNews: [],
-    intelligenceCache: { advisories: [] },
+    latestClusters: [],
+    intelligenceCache: {},
     map: {
       setRenderPaused: () => {},
       highlightCountry: () => {},
@@ -142,91 +164,76 @@ function startCountryBrief(warmCentroid: boolean) {
   } as unknown as AppContext;
   const manager = new CountryIntelManager(ctx);
   Reflect.set(manager, 'ensureCountryBriefPage', async () => true);
-  Reflect.set(manager, 'getCountrySignals', async () => ({}));
-  Reflect.set(manager, 'buildSignalDetails', async () => ({}));
-  Reflect.set(manager, 'buildMilitarySummary', () => ({}));
-  Reflect.set(manager, 'buildEconomicIndicators', () => []);
+  Reflect.set(manager, 'getCountrySignals', async () => EMPTY_SIGNALS);
+  Reflect.set(manager, 'buildSignalDetails', async () => ({
+    critical: 0,
+    high: 0,
+    medium: 0,
+    low: 0,
+    recentHigh: [],
+  }));
+  Reflect.set(manager, 'fetchCountryIntelBrief', async () => ({ brief: '', sources: [] }));
   Reflect.set(manager, 'fetchDefenseIndustrialBase', () => {});
+  Reflect.set(manager, 'fetchProSections', () => {});
   Reflect.set(manager, 'fetchCommodityVulnerability', () => {});
   Reflect.set(manager, 'mountCountryTimeline', () => {});
-  Reflect.set(manager, 'buildBriefContextSnapshot', () => '');
-  Reflect.set(manager, 'fetchCountryIntelBrief', async () => ({ brief: '', sources: [] }));
-
-  const open = manager.openCountryBriefByCode('AE', 'United Arab Emirates', {
-    trackAnalytics: false,
-  });
-
   return {
-    events,
-    open,
-    settleBarrier: () => {
-      geometry.resolve();
-      militaryBases.resolve([]);
-      infrastructureTables.resolve();
-    },
+    infrastructureUpdates,
+    newsUpdates,
+    open: () => manager.openCountryBriefByCode(code, code, { trackAnalytics: false }),
   };
 }
 
 describe('CountryIntelManager infrastructure preload barrier', () => {
   beforeEach(() => {
-    preloadMocks.geometry.mockReset();
-    preloadMocks.militaryBases.mockReset();
-    preloadMocks.infrastructureTables.mockReset();
+    geometryMocks.preloadCountryGeometry.mockReset();
+    infraMocks.preloadInfrastructureTables.mockReset();
+    militaryMocks.preloadMilitaryBases.mockReset();
+    militaryMocks.preloadMilitaryBases.mockResolvedValue([]);
+    vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
   });
 
-  it('waits for cold geometry and asset tables before the first infrastructure render', async () => {
-    const run = startCountryBrief(false);
+  it('does not render a cold brief until geometry and infrastructure tables settle, then refreshes once', async () => {
+    const geometry = deferred();
+    const infrastructure = deferred();
+    geometryMocks.preloadCountryGeometry.mockReturnValue(geometry.promise);
+    infraMocks.preloadInfrastructureTables.mockReturnValue(infrastructure.promise);
 
-    await vi.waitFor(() => expect(preloadMocks.infrastructureTables).toHaveBeenCalledOnce());
-    expect(preloadMocks.geometry).toHaveBeenCalledOnce();
-    expect(preloadMocks.militaryBases).toHaveBeenCalledOnce();
-    expect(run.events).toEqual({
-      readiness: {
-        geometry: false,
-        militaryBases: false,
-        infrastructureTables: false,
-      },
-      updateInfrastructureCalls: [],
-    });
+    const { infrastructureUpdates, newsUpdates, open } = createBriefHarness('FR');
+    const pendingOpen = open();
+    await vi.waitFor(() => expect(newsUpdates).toEqual(['FR']));
 
-    run.settleBarrier();
-    await vi.waitFor(() => expect(run.events.updateInfrastructureCalls).toHaveLength(1));
-    expect(run.events.updateInfrastructureCalls).toEqual([{
-      code: 'AE',
-      readiness: {
-        geometry: true,
-        militaryBases: true,
-        infrastructureTables: true,
-      },
-    }]);
-    await run.open;
+    expect(infrastructureUpdates).toEqual([]);
+
+    geometry.resolve();
+    await Promise.resolve();
+    expect(infrastructureUpdates).toEqual([]);
+
+    infrastructure.resolve();
+    await vi.waitFor(() => expect(infrastructureUpdates).toEqual(['FR']));
+    await pendingOpen;
+    expect(infrastructureUpdates).toEqual(['FR']);
   });
 
-  it('keeps the warm-centroid render before the preload refresh', async () => {
-    const run = startCountryBrief(true);
+  it('keeps the immediate infrastructure render when a warm centroid is already known', async () => {
+    const geometry = deferred();
+    const infrastructure = deferred();
+    geometryMocks.preloadCountryGeometry.mockReturnValue(geometry.promise);
+    infraMocks.preloadInfrastructureTables.mockReturnValue(infrastructure.promise);
 
-    await vi.waitFor(() => expect(preloadMocks.infrastructureTables).toHaveBeenCalledOnce());
-    expect(preloadMocks.geometry).toHaveBeenCalledOnce();
-    expect(preloadMocks.militaryBases).toHaveBeenCalledOnce();
-    expect(run.events.updateInfrastructureCalls).toEqual([{
-      code: 'AE',
-      readiness: {
-        geometry: false,
-        militaryBases: false,
-        infrastructureTables: false,
-      },
-    }]);
+    const { infrastructureUpdates, newsUpdates, open } = createBriefHarness('AE');
+    const pendingOpen = open();
+    await vi.waitFor(() => expect(newsUpdates).toEqual(['AE']));
 
-    run.settleBarrier();
-    await vi.waitFor(() => expect(run.events.updateInfrastructureCalls).toHaveLength(2));
-    expect(run.events.updateInfrastructureCalls[1]).toEqual({
-      code: 'AE',
-      readiness: {
-        geometry: true,
-        militaryBases: true,
-        infrastructureTables: true,
-      },
-    });
-    await run.open;
+    expect(infrastructureUpdates).toEqual(['AE']);
+
+    infrastructure.resolve();
+    await Promise.resolve();
+    expect(infrastructureUpdates).toEqual(['AE']);
+
+    geometry.resolve();
+    await vi.waitFor(() => expect(infrastructureUpdates).toEqual(['AE', 'AE']));
+    await pendingOpen;
+    expect(infrastructureUpdates).toEqual(['AE', 'AE']);
   });
 });
