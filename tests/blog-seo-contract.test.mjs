@@ -98,6 +98,7 @@ describe('blog SEO and GEO corpus contract', () => {
   it('keeps crawl, entity, and citation signals in the shared templates', () => {
     const base = readFileSync(resolve(root, 'blog-site/src/layouts/Base.astro'), 'utf8');
     const post = readFileSync(resolve(root, 'blog-site/src/layouts/BlogPost.astro'), 'utf8');
+    const index = readFileSync(resolve(root, 'blog-site/src/pages/index.astro'), 'utf8');
     assert.match(base, /max-image-preview:large/);
     assert.match(base, /max-snippet:-1/);
     assert.match(base, /og:image:type/);
@@ -105,6 +106,10 @@ describe('blog SEO and GEO corpus contract', () => {
     assert.match(post, /"@type": "Audience"/);
     assert.match(post, /"citation": citations/);
     assert.match(post, /\/blog\/authors\/elie-habib\//);
+    assert.match(post, /"@type": "SpeakableSpecification"/);
+    assert.match(index, /"@type": "CollectionPage"/);
+    assert.match(index, /"@type": "BreadcrumbList"/);
+    assert.match(index, /"@type": "SpeakableSpecification"/);
   });
 
   it('keeps author archives and blog JSON-LD attribution accurate', () => {
