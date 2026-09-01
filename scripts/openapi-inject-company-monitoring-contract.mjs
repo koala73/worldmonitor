@@ -28,7 +28,6 @@ const monitoredLifecycleItem = {
 const coverageItem = {
   type: 'string',
   pattern: '^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$',
-  description: 'identity_unresolved is not quiet.',
 };
 const impactDirectionItem = {
   type: 'string',
