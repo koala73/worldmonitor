@@ -21,14 +21,11 @@ import {
 } from '../scripts/build-use-cases.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-// Same laterDate() inputs as loadCorpusData(): content versions plus the
-// source-file git date. Pinning only the version constants fails when the
-// calendar (or a same-day source commit) advances git lastmod.
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
   CORPUS_GENERATOR_CONTENT_VERSION,
   gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
-].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
+].filter(Boolean).sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
