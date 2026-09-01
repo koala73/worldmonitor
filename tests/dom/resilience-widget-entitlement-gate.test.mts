@@ -24,11 +24,14 @@ type Session = import('@/services/auth-state').AuthSession;
 
 let session: Session = { user: null, isPending: true };
 let entitlementTier: number | null = null;
+let verificationStatus: 'idle' | 'pending' | 'ready' | 'unavailable' = 'idle';
 const authListeners: Array<(state: Session) => void> = [];
 const entitlementListeners: Array<(state: unknown) => void> = [];
 const subscriptionListeners: Array<(state: unknown) => void> = [];
+const verificationListeners: Array<(status: string) => void> = [];
 let entitlementUnsubscribed = 0;
 let subscriptionUnsubscribed = 0;
+let verificationUnsubscribed = 0;
 
 vi.mock('@/services/auth-state', () => ({
   getAuthState: () => session,
@@ -67,6 +70,17 @@ vi.mock('@/services/entitlements', () => ({
       entitlementUnsubscribed++;
       const index = entitlementListeners.indexOf(listener);
       if (index >= 0) entitlementListeners.splice(index, 1);
+    };
+  },
+  getEntitlementVerificationStatus: () => verificationStatus,
+  onEntitlementVerificationChange: (listener: (status: string) => void) => {
+    verificationListeners.push(listener);
+    // The real implementation replays the current status on subscribe.
+    listener(verificationStatus);
+    return () => {
+      verificationUnsubscribed++;
+      const index = verificationListeners.indexOf(listener);
+      if (index >= 0) verificationListeners.splice(index, 1);
     };
   },
 }));
@@ -126,11 +140,14 @@ const PAYING_USER: Session = {
 beforeEach(() => {
   session = { user: null, isPending: true };
   entitlementTier = null;
+  verificationStatus = 'idle';
   authListeners.length = 0;
   entitlementListeners.length = 0;
   subscriptionListeners.length = 0;
+  verificationListeners.length = 0;
   entitlementUnsubscribed = 0;
   subscriptionUnsubscribed = 0;
+  verificationUnsubscribed = 0;
   getResilienceScore.mockClear();
   document.body.replaceChildren();
 });
@@ -142,7 +159,18 @@ function emitAuth(next: Session): void {
 
 function emitEntitlement(tier: number | null): void {
   entitlementTier = tier;
+  verificationStatus = 'ready';
   for (const listener of [...entitlementListeners]) listener(undefined);
+}
+
+/**
+ * A terminal verification outcome. Mirrors `markEntitlementVerificationUnavailable`
+ * in src/services/entitlements.ts: it moves ONLY the verification status and
+ * leaves `currentState` null, so `onEntitlementChange` never fires.
+ */
+function emitVerificationUnavailable(): void {
+  verificationStatus = 'unavailable';
+  for (const listener of [...verificationListeners]) listener(verificationStatus);
 }
 
 function upgradeCta(root: HTMLElement): HTMLElement | null {
@@ -220,5 +248,67 @@ describe('ResilienceWidget entitlement gate (WORLDMONITOR-NY)', () => {
 
     expect(entitlementUnsubscribed).toBe(1);
     expect(subscriptionUnsubscribed).toBe(1);
+    expect(verificationUnsubscribed).toBe(1);
+  });
+
+  // A snapshot that never arrives is NOT the same as one that is still coming.
+  // `markEntitlementVerificationUnavailable` (entitlements.ts) publishes the
+  // terminal outcome on the verification channel ONLY — `currentState` stays
+  // null and `onEntitlementChange` never fires — so waiting on
+  // `isProTierResolved()` alone parks the widget on "Checking access…" forever
+  // and denies the panel to free and paying users alike. UnifiedSettings.ts
+  // pairs the same wait with an idle/pending check for exactly this reason.
+  describe('terminal entitlement failure', () => {
+    it('stops waiting when verification ends without a snapshot', () => {
+      const widget = new ResilienceWidget('US');
+      document.body.appendChild(widget.getElement());
+      emitAuth(PAYING_USER);
+      expect(isCheckingAccess(widget.getElement())).toBe(true);
+
+      emitVerificationUnavailable();
+
+      expect(isCheckingAccess(widget.getElement())).toBe(false);
+      widget.destroy();
+    });
+
+    it('falls back to the gate verdict rather than a dead panel', () => {
+      const widget = new ResilienceWidget('US');
+      document.body.appendChild(widget.getElement());
+      emitAuth(PAYING_USER);
+      emitVerificationUnavailable();
+
+      // Same verdict main shows in this state — the terminal case is left no
+      // worse than before this PR, while the common pending→ready case is fixed.
+      const cta = upgradeCta(widget.getElement());
+      expect(cta).not.toBeNull();
+      expect(cta?.textContent).toBe('Upgrade to Pro');
+      widget.destroy();
+    });
+
+    it('keeps waiting while verification is merely pending', () => {
+      const widget = new ResilienceWidget('US');
+      document.body.appendChild(widget.getElement());
+      verificationStatus = 'pending';
+      emitAuth(PAYING_USER);
+
+      // The bounded Clerk/Convex retries are still running; converting that
+      // into a verdict is what the pending gate exists to prevent.
+      expect(isCheckingAccess(widget.getElement())).toBe(true);
+      expect(upgradeCta(widget.getElement())).toBeNull();
+      widget.destroy();
+    });
+
+    it('still unlocks a Pro user whose verification later recovers', async () => {
+      const widget = new ResilienceWidget('US');
+      document.body.appendChild(widget.getElement());
+      emitAuth(PAYING_USER);
+      emitVerificationUnavailable();
+      emitEntitlement(1);
+      await vi.waitFor(() => expect(getResilienceScore).toHaveBeenCalledWith('US'));
+
+      expect(upgradeCta(widget.getElement())).toBeNull();
+      expect(isCheckingAccess(widget.getElement())).toBe(false);
+      widget.destroy();
+    });
   });
 });

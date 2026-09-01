@@ -1,6 +1,10 @@
 import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { onSubscriptionChange } from '@/services/billing';
-import { onEntitlementChange } from '@/services/entitlements';
+import {
+  getEntitlementVerificationStatus,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+} from '@/services/entitlements';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
 import { isProTierResolved } from '@/services/widget-store';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
@@ -53,6 +57,7 @@ export class ResilienceWidget {
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
+  private unsubscribeVerification: (() => void) | null = null;
   private currentCountryCode: string | null = null;
   private currentData: ResilienceScoreResponse | null = null;
   private loading = false;
@@ -77,6 +82,10 @@ export class ResilienceWidget {
     // surface that did not.
     this.unsubscribeEntitlement = onEntitlementChange(() => this.reactToAccessChange());
     this.unsubscribeSubscription = onSubscriptionChange(() => this.reactToAccessChange());
+    // The terminal "no snapshot is coming" outcome arrives ONLY here — see
+    // isAccessStillResolving. Without this subscription the widget would still
+    // hang on the waiting state until some unrelated event forced a re-render.
+    this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
 
     this.setCountryCode(countryCode ?? null);
   }
@@ -149,6 +158,8 @@ export class ResilienceWidget {
     this.unsubscribeEntitlement = null;
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
+    this.unsubscribeVerification?.();
+    this.unsubscribeVerification = null;
   }
 
   /**
@@ -165,6 +176,31 @@ export class ResilienceWidget {
       return;
     }
     this.render();
+  }
+
+  /**
+   * Whether the account's plan is still genuinely in flight, as opposed to
+   * unknown for good.
+   *
+   * `isProTierResolved()` answers "do we have a settled tier", and for a
+   * signed-in user that stays false for as long as the entitlement snapshot is
+   * missing — including when it is never coming. The terminal outcome is
+   * published on a DIFFERENT channel: `markEntitlementVerificationUnavailable`
+   * moves only the verification status and leaves the snapshot null, so
+   * `onEntitlementChange` never fires and a wait keyed on the tier alone hangs
+   * forever, denying the panel to free and paying users alike.
+   *
+   * So the wait is bounded by the verification lifecycle: keep waiting only
+   * while the bounded Clerk/Convex retries are actually running (`idle` /
+   * `pending`), and on a terminal `unavailable` fall through to the ordinary
+   * gate verdict — the same pairing `UnifiedSettings.renderPlanCheckingState`
+   * uses on the sibling surface. That leaves the terminal case exactly as it
+   * behaves today while still fixing the common one.
+   */
+  private isAccessStillResolving(): boolean {
+    if (isProTierResolved()) return false;
+    const status = getEntitlementVerificationStatus();
+    return status === 'idle' || status === 'pending';
   }
 
   private getGateReason(): PanelGateReason {
@@ -213,7 +249,7 @@ export class ResilienceWidget {
     // Same class as the 2026-04-17/18 panel-overlay incident fixed in
     // panel-gating.ts and the renderPlanCheckingState guard in
     // UnifiedSettings.ts; this is the third surface.
-    if (this.authState.isPending || !isProTierResolved()) {
+    if (this.authState.isPending || this.isAccessStillResolving()) {
       return h('div', { className: 'cdp-card-body' }, this.makeLoading('Checking access…'));
     }
 
