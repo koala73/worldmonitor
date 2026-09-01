@@ -2705,6 +2705,18 @@ function chokepointHubStatusForScore(score) {
 }
 
 export function buildChokepointHubRows(chokepoints, livePulse) {
+  const registryIds = chokepoints.map((chokepoint) => chokepoint.id);
+  const registryIdSet = new Set(registryIds);
+  const pulseIds = Object.keys(livePulse?.chokepoints || {});
+  const pulseIdSet = new Set(pulseIds);
+  const missingIds = registryIds.filter((id) => !pulseIdSet.has(id));
+  const unexpectedIds = pulseIds.filter((id) => !registryIdSet.has(id));
+  if (missingIds.length > 0 || unexpectedIds.length > 0) {
+    throw new Error(
+      `Chokepoint hub pulse set is invalid: missing ${missingIds.join(', ') || 'none'}; `
+      + `unexpected ${unexpectedIds.join(', ') || 'none'}`,
+    );
+  }
   return chokepoints.map((chokepoint) => {
     const pulse = livePulse?.chokepoints?.[chokepoint.id];
     const rawScore = pulse?.disruptionScore;
