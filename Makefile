@@ -8,7 +8,10 @@ GEN_SERVER_DIR := src/generated/server
 DOCS_API_DIR := docs/api
 
 # Go install settings
-GO_PROXY := GOPROXY=direct
+# GOPRIVATE keeps sebuf on GitHub. Public transitive modules (sigs.k8s.io,
+# buf.build/gen) must use the module proxy — GOPROXY=direct 403s their
+# go-get HTML and fails `make install-plugins` (internal-merge-freshness).
+GO_PROXY := GOPROXY=https://proxy.golang.org,direct
 GO_PRIVATE := GOPRIVATE=github.com/SebastienMelki
 GO_INSTALL := $(GO_PROXY) $(GO_PRIVATE) go install
 
