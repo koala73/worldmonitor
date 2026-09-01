@@ -3289,6 +3289,9 @@
           "path": "scripts/seed-resilience-static.mjs"
         },
         {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        },
+        {
           "path": "src/config/feeds.ts"
         }
       ]
@@ -7921,6 +7924,9 @@
         },
         {
           "path": "scripts/build-crawlable-corpus.mjs"
+        },
+        {
+          "path": "scripts/build-use-cases.mjs"
         }
       ]
     },
