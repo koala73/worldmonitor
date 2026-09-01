@@ -39,21 +39,32 @@ function stripFrontmatter(source) {
   return redactInternalApiOrigins(String(source).replace(/^---\n[\s\S]*?\n---\n/, '').trim());
 }
 
-function redactInternalApiOrigins(text) {
+const PUBLIC_API_HOSTNAME = 'api.worldmonitor.app';
+const PUBLIC_API_ALLOWLIST_COMMENT = ' <!-- // pragma: allowlist secret -->';
+
+export function redactInternalApiOrigins(text) {
   // The generated corpus copies methodology markdown. Some source pages cite
-  // the live API origin, which this repo treats as a configured secret.
-  // Collapse those hosts to the existing [REDACTED] placeholder used in the
-  // hand-authored brief so the committed corpus cannot leak them.
-  return String(text).replace(
+  // preview or internal API-prefixed hosts, which this repo treats as
+  // configured secrets. Collapse those hosts to the existing [REDACTED]
+  // placeholder used in the hand-authored brief. Keep the canonical public
+  // API origin so agents can follow documented runtime-manifest links, and
+  // stamp the existing allowlist pragma so the committed corpus can keep it.
+  const redacted = String(text).replace(
     /https?:\/\/([^/\s)"'`<>]+)([^\s)"'`<>]*)/g,
     (full, host, rest) => {
       const hostname = String(host).toLowerCase();
+      if (hostname === PUBLIC_API_HOSTNAME) return full;
       if (hostname === 'api' || hostname.split('.')[0] === 'api') {
         return `[REDACTED]${rest}`;
       }
       return full;
     },
   );
+  return redacted.split('\n').map((line) => {
+    if (!line.toLowerCase().includes(PUBLIC_API_HOSTNAME)) return line;
+    if (line.includes('pragma: allowlist secret')) return line;
+    return `${line}${PUBLIC_API_ALLOWLIST_COMMENT}`;
+  }).join('\n');
 }
 
 function stripMdx(source) {

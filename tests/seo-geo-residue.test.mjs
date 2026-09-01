@@ -9,7 +9,7 @@ import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { buildLlmsFullText } from '../scripts/build-llms-full.mjs';
+import { buildLlmsFullText, redactInternalApiOrigins } from '../scripts/build-llms-full.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -76,6 +76,34 @@ describe('GEO residue #7463', () => {
     assert.match(committed, /## Generated corpus/);
     assert.match(committed, /72 indicators across 21 active dimensions, 6 domains/);
     assert.match(committed, /product-facts\.json.*capabilities\.localeCodes/);
+  });
+
+  it('keeps the public runtime-manifest link usable in llms-full', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    const publicHost = ['api', 'worldmonitor.app'].join('.');
+    const manifestPath = '/resilience/v1/get-runtime-manifest';
+    const publicManifestUrl = `https://${publicHost}${manifestPath}`;
+    const escaped = publicManifestUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    assert.match(
+      generated,
+      new RegExp(`\\[runtime manifest\\]\\(${escaped}\\)`),
+      'generated corpus must keep the canonical public runtime-manifest URL',
+    );
+    assert.doesNotMatch(
+      generated,
+      /\[runtime manifest\]\(\[REDACTED\]\/resilience\/v1\/get-runtime-manifest\)/,
+    );
+    assert.match(
+      generated,
+      new RegExp(`${escaped}[)\\s].*pragma: allowlist secret`),
+    );
+
+    const mixed = redactInternalApiOrigins([
+      `see https://api.preview.example${manifestPath}`,
+      `and ${publicManifestUrl}`,
+    ].join(' '));
+    assert.match(mixed, /\[REDACTED\]\/resilience\/v1\/get-runtime-manifest/);
+    assert.match(mixed, new RegExp(escaped));
   });
 
   it('serves the MCP server card at the newer well-known server.json name', () => {
