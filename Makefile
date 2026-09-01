@@ -91,6 +91,7 @@ generate: clean ## Generate code from proto definitions
 	@# this recipe resolves `buf` via its own PATH before building the
 	@# plugin PATH.
 	@command -v go  >/dev/null 2>&1 || { echo 'go not found on PATH — make generate needs `go` to resolve the sebuf plugin install dir. Install Go, then run: make install-plugins' >&2; exit 1; }
+	@command -v buf >/dev/null 2>&1 || { echo 'buf not found on PATH — run: make install-buf' >&2; exit 1; }
 	@# All plugin-resolution, plugin-presence, and invocation in a single
 	@# shell line chained with `&&` so any failed guard aborts the recipe
 	@# BEFORE `buf generate` runs. `$$(go env GOBIN)` without -n guard
@@ -104,20 +105,15 @@ generate: clean ## Generate code from proto definitions
 	@# others on PATH, recreating the mixed-version failure mode. Keep
 	@# this list in sync with proto/buf.gen.yaml.
 	@#
-	@# `buf` itself is resolved from PATH first (Homebrew / caller install),
-	@# then from the same Go install dir `make install-buf` writes to.
-	@# CI's `setup-go` does not always put GOPATH/bin on PATH for the next
-	@# step, so requiring `command -v buf` alone fails after a successful
-	@# `go install` (internal-generate on this branch).
+	@# `buf` stays on the caller's PATH (never PLUGIN_DIR). CI must put
+	@# GOPATH/bin on PATH after `make install-buf` — see proto-check.yml.
 	cd $(PROTO_DIR) && \
 		PLUGIN_DIR=$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi) && \
 		[ -n "$$PLUGIN_DIR" ] || { echo 'Could not resolve Go install dir from GOBIN/GOPATH — refusing to run buf generate without a pinned plugin location.' >&2; exit 1; } && \
 		for p in protoc-gen-ts-client protoc-gen-ts-server protoc-gen-openapiv3; do \
 			[ -x "$$PLUGIN_DIR/$$p" ] || { echo "$$p not found at $$PLUGIN_DIR/. Run: make install-plugins" >&2; exit 1; }; \
 		done && \
-		BUF_BIN=$$(command -v buf || true) && \
-		if [ -z "$$BUF_BIN" ] && [ -x "$$PLUGIN_DIR/buf" ]; then BUF_BIN="$$PLUGIN_DIR/buf"; fi && \
-		[ -n "$$BUF_BIN" ] || { echo 'buf not found on PATH — run: make install-buf' >&2; exit 1; } && \
+		BUF_BIN=$$(command -v buf) && \
 		PATH="$$PLUGIN_DIR:$$PATH" "$$BUF_BIN" generate
 	@node scripts/generate-request-validation.mjs
 	@# protoc-gen-openapiv3 still misses WorldMonitor-specific contract details:
