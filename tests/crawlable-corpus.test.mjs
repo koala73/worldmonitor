@@ -25,11 +25,11 @@ import {
   sourcePageLastmod,
   withSchemaContext,
 } from '../scripts/build-crawlable-corpus.mjs';
-import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import {
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
 } from '../scripts/crawlable-live-tools.mjs';
+import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
@@ -3053,6 +3053,7 @@ describe('crawlable corpus generator', () => {
     const [firstChokepoint] = corpusData.chokepoints;
     const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];
     const capturedAtMs = corpusData.livePulse.capturedAtMs;
+    const isoFromCapture = (offsetMs) => new Date(capturedAtMs + offsetMs).toISOString();
     const withAsOf = (asOf) => ({
       ...corpusData.livePulse,
       chokepoints: {
@@ -3068,20 +3069,17 @@ describe('crawlable corpus generator', () => {
       );
     };
 
-    invalidFor(
-      new Date(capturedAtMs - MAX_LIVE_SNAPSHOT_AGE_MS - 1).toISOString(),
-      'an asOf older than the producer freshness window must fail',
-    );
-    invalidFor(
-      new Date(capturedAtMs + MAX_FUTURE_SKEW_MS + 1).toISOString(),
-      'an asOf beyond the producer future-skew window must fail',
-    );
     assert.doesNotThrow(
-      () => buildChokepointHubRows(
-        corpusData.chokepoints,
-        withAsOf(new Date(capturedAtMs - 47 * 60 * 60 * 1_000).toISOString()),
-      ),
-      'a row inside the producer freshness window must remain accepted',
+      () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(isoFromCapture(-47 * 60 * 60 * 1000))),
+      'a fetchedAt 47 hours before capturedAtMs must remain accepted',
+    );
+    invalidFor(
+      isoFromCapture(-MAX_LIVE_SNAPSHOT_AGE_MS - 1),
+      'a fetchedAt older than 48 hours before capturedAtMs must fail',
+    );
+    invalidFor(
+      isoFromCapture(MAX_FUTURE_SKEW_MS + 1),
+      'a fetchedAt beyond the 5-minute future-skew limit must fail',
     );
     assert.doesNotThrow(
       () => buildChokepointHubRows(corpusData.chokepoints, corpusData.livePulse),
