@@ -874,6 +874,7 @@ ${justification}
 
   const jsonLd = {
     '@context': 'https://schema.org',
+    '@id': `${canonical}#report`,
     '@type': 'Report',
     headline: report.title,
     name: report.title,
