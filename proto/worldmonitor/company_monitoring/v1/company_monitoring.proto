@@ -80,6 +80,8 @@ enum MaterialImpactLifecycle {
 }
 
 // CompanyCoverageState reports source and assessment readiness, not event count.
+// IDENTITY_UNRESOLVED means no independent identity binding exists, so the
+// company cannot be scanned safely and must not be reported as quiet.
 enum CompanyCoverageState {
   COMPANY_COVERAGE_STATE_UNSPECIFIED = 0;
   COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN = 1;
