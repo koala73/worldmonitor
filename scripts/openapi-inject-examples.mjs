@@ -555,7 +555,7 @@ function patternString(pattern, key) {
   }
   const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
   if (simpleAlternation) return simpleAlternation[1].split('|')[0];
-  const nonCapturingAlternation = pattern.match(/^\^\(\?:(.+)\)$/);
+  const nonCapturingAlternation = pattern.match(/^\^\(\?:(.+)\)\$$/);
   if (nonCapturingAlternation) {
     let depth = 0;
     let first = '';

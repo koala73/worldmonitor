@@ -762,7 +762,7 @@ paths:
                     items:
                         type: "string"
                         pattern: "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
-                        description: "Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation. identity_unresolved is not a quiet result."
+                        description: "identity_unresolved is not quiet."
                 - name: page_size
                   in: query
                   description: Maximum rows to return, from 1 through 100; zero requests the server default.
@@ -2087,7 +2087,7 @@ components:
                     items:
                         type: "string"
                         pattern: "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
-                        description: "Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation. identity_unresolved is not a quiet result."
+                        description: "identity_unresolved is not quiet."
                     maxItems: 7
                 pageSize:
                     type: integer
