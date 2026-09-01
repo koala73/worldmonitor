@@ -17,6 +17,8 @@ const PREDICTION_COUNTRY_KEYWORDS = Object.freeze({
   SA: ['saudi'],
   CD: ['democratic republic of congo', 'democratic republic of the congo'],
   GE: ['georgian'],
+  JO: ['jordanian'],
+  TD: ['chadian', 'n djamena'],
 });
 
 const AMBIGUOUS_COUNTRY_KEYWORDS = Object.freeze({
@@ -26,6 +28,8 @@ const AMBIGUOUS_COUNTRY_KEYWORDS = Object.freeze({
 
 const REQUIRED_COUNTRY_CONTEXT = Object.freeze({
   GE: ['tbilisi', 'georgian', 'abkhazia', 'ossetia', 'caucasus', 'saakashvili', 'ivanishvili', 'batumi', 'kutaisi'],
+  JO: ['jordanian', 'amman'],
+  TD: ['chadian', 'n djamena', 'ndjamena'],
 });
 
 function normalizeSearchText(value) {
@@ -73,9 +77,11 @@ function termOccurrences(normalizedTitle, term, matchStrength, countryCode) {
 function countryMatches(normalizedTitle, matchers) {
   const rawMatches = [];
   for (const matcher of matchers) {
-    if (matcher.requiredContext.length > 0
-      && !matcher.requiredContext.some((term) => normalizedTitle.includes(term))) continue;
-    if (matcher.name) rawMatches.push(...termOccurrences(normalizedTitle, matcher.name, 2, matcher.countryCode));
+    const hasCountryContext = matcher.requiredContext.length === 0
+      || matcher.requiredContext.some((term) => normalizedTitle.includes(term));
+    if (matcher.name && hasCountryContext) {
+      rawMatches.push(...termOccurrences(normalizedTitle, matcher.name, 2, matcher.countryCode));
+    }
     for (const keyword of matcher.keywords) {
       rawMatches.push(...termOccurrences(normalizedTitle, keyword, 1, matcher.countryCode));
     }
