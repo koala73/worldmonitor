@@ -744,9 +744,9 @@ describe('deploy/cache configuration guardrails', () => {
     // path-to-regexp source-pattern parser rejects `(?:...)` in `source` fields
     // (deploy-fail PR #3646 round-2 review).
     //
-    // The header uses `public, max-age=0, must-revalidate` for HTML entry
-    // routes (issue #7382): CDN-cacheable with always-revalidate, which cuts
-    // shared-cache TTFB vs `private` while still revalidating on navigation.
+    // The header uses `public, max-age=0, s-maxage=600,
+    // stale-while-revalidate=60` for static HTML entry routes: browsers still
+    // revalidate while shared caches can serve the immutable shell quickly.
     // `no-store` remains forbidden — it disables Chrome bfcache (#3993/#4004).
     const spaNoCache = getCacheHeaderValue(SPA_HTML_CACHE_SOURCE);
     assert.equal(spaNoCache, 'private, no-cache, must-revalidate');
@@ -754,7 +754,7 @@ describe('deploy/cache configuration guardrails', () => {
     for (const route of ['/', '/dashboard', '/dashboard.html']) {
       assert.equal(
         effectiveCacheControl(route),
-        'public, max-age=0, must-revalidate',
+        'public, max-age=0, s-maxage=600, stale-while-revalidate=60',
         `${route} must keep the public revalidation policy after all matching rules apply`,
       );
     }
@@ -1154,19 +1154,19 @@ describe('welcome landing page routing', () => {
 
   it('requires revalidation for /dashboard HTML without disabling bfcache', () => {
     const dashboardCache = getCacheHeaderValue('/dashboard');
-    assert.equal(dashboardCache, 'public, max-age=0, must-revalidate');
+    assert.equal(dashboardCache, 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
     assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
   });
 
   it('requires revalidation for root welcome HTML without disabling bfcache', () => {
     const welcomeCache = getCacheHeaderValue('/');
-    assert.equal(welcomeCache, 'public, max-age=0, must-revalidate');
+    assert.equal(welcomeCache, 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
     assert.ok(!welcomeCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
   });
 
   it('requires revalidation for direct dashboard.html without disabling bfcache', () => {
     const dashboardCache = getCacheHeaderValue('/dashboard.html');
-    assert.equal(dashboardCache, 'public, max-age=0, must-revalidate');
+    assert.equal(dashboardCache, 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
     assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
   });
 
@@ -4583,7 +4583,7 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
     // Explicit /dashboard entry uses public revalidate (#7382); other SPA
     // pretty-URLs still inherit the catch-all private policy.
-    assert.equal(effectiveCacheControl('/dashboard'), 'public, max-age=0, must-revalidate');
+    assert.equal(effectiveCacheControl('/dashboard'), 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
     for (const path of ['/stocks', '/stocks/AAPL', '/story']) {
       assert.equal(effectiveCacheControl(path), 'private, no-cache, must-revalidate', path + ' must stay no-cache');
     }

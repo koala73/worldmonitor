@@ -1599,6 +1599,10 @@ describe('crawlable corpus generator', () => {
       assert.equal(macau.slug, 'macau');
       assert.ok(existsSync(join(outDir, 'countries/macau/index.html')));
       assert.ok(!existsSync(join(outDir, 'countries/macao-s-a-r/index.html')));
+      const macauPage = jsonLdObjects(read(outDir, 'countries/macau/index.html'))
+        .find((entry) => entry['@type'] === 'WebPage');
+      assert.deepEqual(macauPage?.about?.alternateName, ['Macao SAR']);
+      assert.doesNotMatch(JSON.stringify(macauPage), /Macao S A R/);
 
       const countriesIndex = read(outDir, 'countries/index.html');
       const countriesDocument = htmlDocument(countriesIndex, 'https://www.worldmonitor.app/countries/');
@@ -1616,6 +1620,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(countryCollection?.name, 'Country risk, instability and resilience by country');
       assert.equal(countryCollection?.['@id'], 'https://www.worldmonitor.app/countries/#webpage');
       assertDefaultSpeakable(countryCollection, 'countries hub CollectionPage');
+      assert.equal(countryDataset?.['@id'], 'https://www.worldmonitor.app/countries/#dataset');
       assert.deepEqual(countryCollection?.breadcrumb, {
         '@id': 'https://www.worldmonitor.app/countries/#breadcrumb',
       });
@@ -2620,19 +2625,19 @@ describe('crawlable corpus generator', () => {
       });
       assert.equal(
         redSeaDataset.dateModified,
-        '2026-08-31',
+        '2026-09-01',
         'changed crisis Dataset schema must advance only the crisis family stamp',
       );
       assert.equal(
         pageLastmod(redSea),
-        '2026-08-31',
+        '2026-09-01',
         'crisis page lastmod must advance with its changed Dataset schema',
       );
       assert.equal(
         sitemapEntries.find((entry) => (
           new URL(entry.loc).pathname === '/crises/red-sea-security/'
         ))?.lastmod,
-        '2026-08-31',
+        '2026-09-01',
         'crisis sitemap lastmod must advance with its changed Dataset schema',
       );
       assert.equal(redSeaDataset.isAccessibleForFree, true);
@@ -2664,13 +2669,18 @@ describe('crawlable corpus generator', () => {
         'maintainedPulse.eventsTotal must equal the sum of its published rows',
       );
       assert.deepEqual(redSeaDataset.variableMeasured, [
-        'Tracker scope',
-        'Covered countries',
-        'Recorded conflict events',
-        'Recorded fatalities',
-        'Political violence events',
-        'Humanitarian reference period',
+        { '@type': 'PropertyValue', name: 'Tracker scope', value: 'Red Sea security' },
+        { '@type': 'PropertyValue', name: 'Covered countries', value: 4, unitText: 'countries' },
+        { '@type': 'PropertyValue', name: 'Recorded conflict events', value: redSeaReference.maintainedPulse.eventsTotal, unitText: 'events' },
+        { '@type': 'PropertyValue', name: 'Recorded fatalities', value: redSeaReference.maintainedPulse.fatalities, unitText: 'fatalities' },
+        { '@type': 'PropertyValue', name: 'Political violence events', value: redSeaReference.maintainedPulse.politicalViolenceEvents, unitText: 'events' },
+        { '@type': 'PropertyValue', name: 'Humanitarian reference period', value: redSeaReference.maintainedPulse.referencePeriod },
       ]);
+      assert.equal(redSeaDataset['@id'], 'https://www.worldmonitor.app/crises/red-sea-security/#crisis-dataset');
+      assert.equal(redSeaDataset.url, 'https://www.worldmonitor.app/crises/red-sea-security/');
+      assert.equal(redSeaDataset.identifier, 'crisis-tracker-red-sea-security');
+      assert.equal(redSeaDataset.datePublished, redSeaReference.maintainedPulse.referencePeriod);
+      assert.match(redSeaDataset.measurementTechnique, /HAPI\/HDX/);
       assertDataCatalogPresent(redSea, '/crises/red-sea-security/');
 
       const toolsIndex = read(outDir, 'tools/index.html');
@@ -2705,6 +2715,15 @@ describe('crawlable corpus generator', () => {
       assert.match(convergence, /<strong>87<\/strong>/);
       assert.match(convergence, /href="\/docs\/geographic-convergence"/);
       assert.doesNotMatch(convergence, /id="app"/);
+      const convergencePage = jsonLdObjects(convergence).find((entry) => entry['@type'] === 'WebPage');
+      const convergenceDataset = collectDatasets(convergencePage)[0];
+      assert.equal(convergenceDataset['@id'], 'https://www.worldmonitor.app/tools/signal-convergence/#signal-convergence-dataset');
+      assert.equal(convergenceDataset.url, 'https://www.worldmonitor.app/tools/signal-convergence/');
+      assert.equal(convergenceDataset.identifier, 'signal-convergence-2026-08-30');
+      assert.equal(convergenceDataset.datePublished, '2026-08-30');
+      assert.equal(convergenceDataset.spatialCoverage, 'Worldwide');
+      assert.equal(convergenceDataset.variableMeasured[1].value, 3);
+      assert.equal(convergenceDataset.variableMeasured[2].value, 3);
 
       const hazard = read(outDir, 'tools/natural-hazard-pulse/index.html');
       assert.match(hazard, /data-natural-hazard-tool/);

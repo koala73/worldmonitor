@@ -21,6 +21,10 @@ const jsonLd = {
       name: 'Elie Habib — World Monitor',
       description,
       mainEntity: { '@id': personId },
+      speakable: {
+        '@type': 'SpeakableSpecification',
+        cssSelector: ['h1', '.author-page-bio'],
+      },
     },
     {
       '@type': 'Person',
