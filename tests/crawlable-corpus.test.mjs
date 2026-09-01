@@ -36,7 +36,10 @@ function read(outDir, path) {
 }
 
 function jsonLdObjects(html) {
-  return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
+  // Tolerate attributes on the open tag (`nonce`, `id`). The corpus emits none
+  // today, but a bare-literal match would silently skip an attributed block
+  // rather than fail -- and skipping blocks is the #7502 defect class.
+  return [...html.matchAll(/<script type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
     .map(([, raw]) => JSON.parse(raw));
 }
 
@@ -693,6 +696,14 @@ function assertJsonLdContexts(html, route) {
       jsonLdContextIsResolvable(block['@context']),
       `${route} JSON-LD block ${index + 1} (${label}) must declare a schema.org @context; without one @type binds to no vocabulary and consumers discard the block silently`,
     );
+    // A context binds a vocabulary; a type is what binds an entity. Now that
+    // the context is stamped unconditionally, a typeless node (a bare `@id`
+    // reference, or an array flattened into an object) would sail through the
+    // check above while still describing nothing.
+    assert.ok(
+      typeof type === 'string' && type.length > 0,
+      `${route} JSON-LD block ${index + 1} (${label}) must declare an @type; a context without one binds a vocabulary but no entity`,
+    );
   }
   // Returned so the caller can prove the sweep actually ran: a loop that never
   // executes is indistinguishable from one where every page passed.
@@ -802,6 +813,20 @@ describe('JSON-LD @context guard', () => {
 
   it('rejects a top-level block whose @context resolves to a non-schema.org vocabulary', () => {
     const html = ldBlock({ '@context': 'https://example.invalid/vocab', '@type': 'Dataset' });
+    assert.throws(() => assertJsonLdContexts(html, route), /must declare a schema\.org @context/);
+  });
+
+  it('rejects a block that binds a vocabulary but no entity', () => {
+    const html = ldBlock({ '@context': 'https://schema.org', '@id': 'https://www.worldmonitor.app/countries/taiwan/#cii-dataset' });
+    assert.throws(() => assertJsonLdContexts(html, route), /must declare an @type/);
+  });
+
+  it('sees a block whose open tag carries attributes', () => {
+    // A bare-literal tag match would return zero blocks here and pass by
+    // vacuity if the "at least one block" floor were ever relaxed.
+    const html = '<script type="application/ld+json" nonce="wm-static-bootstrap">'
+      + JSON.stringify({ '@type': 'Dataset' })
+      + '</script>';
     assert.throws(() => assertJsonLdContexts(html, route), /must declare a schema\.org @context/);
   });
 
@@ -1195,9 +1220,14 @@ describe('crawlable corpus generator', () => {
       // #7502: sweep every page the build wrote, including the paginated
       // changelog pages the manifest's route list omits.
       const writtenRoutes = generatedPageRoutes(outDir);
-      assert.ok(
-        writtenRoutes.length >= generatedRoutes.size,
-        `the @context sweep must cover at least every manifest route (wrote ${writtenRoutes.length}, manifest lists ${generatedRoutes.size})`,
+      // Membership, not count: a walk that returned the right NUMBER of wrong
+      // pages would satisfy a `>=` comparison while leaving real routes unswept.
+      const sweptRoutes = new Set(writtenRoutes);
+      const missedRoutes = [...generatedRoutes].filter((route) => !sweptRoutes.has(route));
+      assert.deepEqual(
+        missedRoutes,
+        [],
+        `the @context sweep skipped manifest routes: ${missedRoutes.join(', ')}`,
       );
       let sweptPages = 0;
       let sweptBlocks = 0;
