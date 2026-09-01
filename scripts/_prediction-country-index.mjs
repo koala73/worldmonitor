@@ -19,6 +19,60 @@ const PREDICTION_COUNTRY_KEYWORDS = Object.freeze({
   GE: ['georgian'],
 });
 
+// Verified demonyms from the shared brief table (`DEMONYM_TO_NATION`).
+// Bare "korean" is omitted — it is not a specific ISO-2 country.
+const PREDICTION_COUNTRY_DEMONYMS = Object.freeze({
+  AF: ['afghan', 'afghans'],
+  AR: ['argentine', 'argentinian', 'argentinians'],
+  AT: ['austrian', 'austrians'],
+  AU: ['australian', 'australians'],
+  BE: ['belgian', 'belgians'],
+  BR: ['brazilian', 'brazilians'],
+  CA: ['canadian', 'canadians'],
+  CH: ['swiss'],
+  CN: ['chinese'],
+  CU: ['cuban', 'cubans'],
+  DE: ['german', 'germans'],
+  DK: ['danish', 'danes'],
+  EG: ['egyptian', 'egyptians'],
+  ES: ['spanish'],
+  ET: ['ethiopian', 'ethiopians'],
+  FI: ['finnish', 'finns'],
+  FR: ['french'],
+  GB: ['british', 'briton', 'britons'],
+  GR: ['greek', 'greeks'],
+  ID: ['indonesian', 'indonesians'],
+  IL: ['israeli', 'israelis'],
+  IN: ['indian', 'indians'],
+  IQ: ['iraqi', 'iraqis'],
+  IR: ['iranian', 'iranians'],
+  IT: ['italian', 'italians'],
+  JP: ['japanese'],
+  KE: ['kenyan', 'kenyans'],
+  KP: ['north korean', 'north koreans'],
+  KR: ['south korean', 'south koreans'],
+  LB: ['lebanese'],
+  MX: ['mexican', 'mexicans'],
+  NG: ['nigerian', 'nigerians'],
+  NL: ['dutch'],
+  NO: ['norwegian', 'norwegians'],
+  PH: ['filipino', 'filipinos'],
+  PK: ['pakistani', 'pakistanis'],
+  PL: ['polish'],
+  PT: ['portuguese'],
+  RU: ['russian', 'russians'],
+  SA: ['saudi', 'saudis'],
+  SE: ['swedish', 'swedes'],
+  SY: ['syrian', 'syrians'],
+  TH: ['thai', 'thais'],
+  TR: ['turkish', 'turks'],
+  UA: ['ukrainian', 'ukrainians'],
+  US: ['american', 'americans'],
+  VE: ['venezuelan', 'venezuelans'],
+  VN: ['vietnamese'],
+  YE: ['yemeni', 'yemenis'],
+});
+
 const AMBIGUOUS_COUNTRY_KEYWORDS = Object.freeze({
   US: new Set(['america', 'washington']),
   CD: new Set(['congo']),
@@ -46,7 +100,11 @@ function compileCountryMatchers(countries) {
   return Object.entries(countries).map(([countryCode, country]) => {
     const name = String(country?.name ?? '').trim();
     const ambiguous = AMBIGUOUS_COUNTRY_KEYWORDS[countryCode] ?? new Set();
-    const keywords = [...new Set([...(country?.keywords ?? []), ...(PREDICTION_COUNTRY_KEYWORDS[countryCode] ?? [])]
+    const keywords = [...new Set([
+      ...(country?.keywords ?? []),
+      ...(PREDICTION_COUNTRY_KEYWORDS[countryCode] ?? []),
+      ...(PREDICTION_COUNTRY_DEMONYMS[countryCode] ?? []),
+    ]
       .map((keyword) => String(keyword).trim())
       .filter((keyword) => keyword
         && keyword.toLowerCase() !== name.toLowerCase()
