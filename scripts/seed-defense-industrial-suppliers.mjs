@@ -6,7 +6,6 @@ import {
   buildSipriSupplierSnapshot,
   DEFENSE_INDUSTRIAL_TTL_SECONDS,
   fetchSipriSupplierDependencies,
-  selectSweepImporters,
   SIPRI_SWEEP_CHUNK,
 } from './_defense-industrial-source.mjs';
 
@@ -31,7 +30,7 @@ export function supplierContentMeta(data) {
 }
 
 async function fetchSupplierSnapshot() {
-  const previousSnapshot = await readCanonicalValue(ARMS_SUPPLIERS_KEY).catch(() => null);
+  const previousSnapshot = await readCanonicalValue(ARMS_SUPPLIERS_KEY);
   const previous = previousSnapshot || {};
   return buildSipriSupplierSnapshot({
     previousSnapshot: previous,
@@ -40,11 +39,8 @@ async function fetchSupplierSnapshot() {
     // whole-catalog pass cannot be made to fit at any deadline.
     fetchSipri: (options) => fetchSipriSupplierDependencies({
       ...options,
-      selectImporters: (candidates, windowEndYear) => selectSweepImporters(
-        candidates,
-        previous,
-        windowEndYear,
-      ).slice(0, SIPRI_SWEEP_CHUNK),
+      previousSnapshot: previous,
+      maxSweepImporters: SIPRI_SWEEP_CHUNK,
     }),
   });
 }
@@ -77,6 +73,7 @@ await runSeed('military', 'arms-suppliers', ARMS_SUPPLIERS_KEY, fetchSupplierSna
       transform: buildArmsSupplierCompletion,
       declareRecords: (data) => data.completedAt ? 1 : 0,
       skipWhenEmpty: true,
+      allowMissingOnSkip: true,
       metaKey: 'seed-meta:military:arms-suppliers-complete',
       metaTtlSeconds: DEFENSE_INDUSTRIAL_TTL_SECONDS,
       metaExtra: (data) => ({

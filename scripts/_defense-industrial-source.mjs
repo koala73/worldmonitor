@@ -301,12 +301,20 @@ export async function fetchSipriSupplierDependencies({
   concurrency = 8,
   delayMs = 150,
   logger = console,
-  // The slice this tick is allowed to refresh. Undefined = every mapped
-  // importer, which is the shape the unit tests and any one-shot manual run use.
-  selectImporters = null,
+  previousSnapshot,
+  maxSweepImporters,
   softBudgetMs = SIPRI_SWEEP_SOFT_BUDGET_MS,
   now = () => Date.now(),
 } = {}) {
+  const hasPreviousSnapshot = previousSnapshot !== undefined;
+  const hasMaxSweepImporters = maxSweepImporters !== undefined;
+  if (hasPreviousSnapshot !== hasMaxSweepImporters) {
+    throw new Error('previousSnapshot and maxSweepImporters must be provided together');
+  }
+  if (hasMaxSweepImporters && (!Number.isSafeInteger(maxSweepImporters) || maxSweepImporters < 1)) {
+    throw new Error('maxSweepImporters must be a positive safe integer');
+  }
+
   const [maxYearValue, catalog] = await Promise.all([
     fetchJson(`${baseUrl}/trades/getMaxYear`, undefined, fetchFn),
     fetchJson(`${baseUrl}/countries/getAllCountriesTrimmed`, undefined, fetchFn),
@@ -337,29 +345,32 @@ export async function fetchSipriSupplierDependencies({
     importerByIso2.set(importer.iso2, importer);
   }
   const catalogImporters = [...importerByIso2.values()];
-  // selectImporters returns the slice owed a refresh; everything it leaves out
-  // keeps its previously published row via buildSipriSupplierSnapshot.
-  const uniqueImporters = typeof selectImporters === 'function'
-    ? selectImporters(catalogImporters, maxYear)
+  const staleImporters = hasPreviousSnapshot
+    ? selectSweepImporters(catalogImporters, previousSnapshot, maxYear, now())
     : catalogImporters;
-  const sweepPending = catalogImporters.length - uniqueImporters.length;
+  const selectedImporters = hasPreviousSnapshot
+    ? staleImporters.slice(0, maxSweepImporters)
+    : staleImporters;
+  const deferredByCap = staleImporters.length - selectedImporters.length;
   const output = {};
   const unmapped = new Map();
   const failedImporters = [];
   let cursor = 0;
+  let attempted = 0;
 
   const fetchStartedAt = now();
   let budgetStoppedAt = 0;
   async function worker() {
-    while (cursor < uniqueImporters.length) {
+    while (cursor < selectedImporters.length) {
       // Check BEFORE taking work, not after: the outer fetchPhaseTimeoutMs
       // aborts and discards the entire phase, so a worker that starts a 37s
       // request it cannot finish costs every row this tick already paid for.
       if (softBudgetMs > 0 && now() - fetchStartedAt > softBudgetMs) {
-        budgetStoppedAt = uniqueImporters.length - cursor;
+        budgetStoppedAt = selectedImporters.length - cursor;
         return;
       }
-      const importer = uniqueImporters[cursor++];
+      const importer = selectedImporters[cursor++];
+      attempted += 1;
       try {
         const body = sipriFilters(importer.EntityId, startYear, maxYear);
         const json = await fetchJson(`${baseUrl}/trades/import-export-csv/`, {
@@ -399,7 +410,7 @@ export async function fetchSipriSupplierDependencies({
       .join(', ');
     logger.warn(`  SIPRI importer requests failed (${failedImporters.length}): ${preview}`);
   }
-  const unfetched = budgetStoppedAt + sweepPending;
+  const unfetched = budgetStoppedAt + deferredByCap;
   if (budgetStoppedAt > 0) {
     logger.warn(
       `  SIPRI soft budget reached after ${Math.round((now() - fetchStartedAt) / 1000)}s — `
@@ -412,7 +423,7 @@ export async function fetchSipriSupplierDependencies({
     windowEndYear: maxYear,
     sweep: {
       catalogCount: catalogImporters.length,
-      attempted: uniqueImporters.length,
+      attempted,
       fetched: Object.keys(output).length,
       // Sections this tick did not even attempt: deliberately deferred by the
       // slice, plus any the soft budget cut off.

@@ -1131,8 +1131,11 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
 // keys so callers that publish per-key health can distinguish a confirmed
 // EXPIRE no-op from a successful extension and from a pipeline result that
 // could not be confirmed at all.
-export async function extendExistingTtlDetailed(keys, ttlSeconds = 600) {
+export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, options = {}) {
   const requestedKeys = Array.isArray(keys) ? keys : [];
+  const allowMissingKeys = new Set(
+    Array.isArray(options?.allowMissingKeys) ? options.allowMissingKeys : [],
+  );
   if (requestedKeys.length === 0) {
     return {
       allExtended: true,
@@ -1192,7 +1195,8 @@ export async function extendExistingTtlDetailed(keys, ttlSeconds = 600) {
       }
     }
     if (extendedKeys.length > 0) console.log(`  Extended TTL on ${extendedKeys.length} key(s) (${ttlSeconds}s)`);
-    if (missingKeys.length > 0) console.warn(`  WARNING: ${missingKeys.length} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
+    const strictMissingKeys = missingKeys.filter((key) => !allowMissingKeys.has(key));
+    if (strictMissingKeys.length > 0) console.warn(`  WARNING: ${strictMissingKeys.length} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
     if (unconfirmedKeys.length > 0) console.warn(`  WARNING: TTL extension result was unconfirmed for ${unconfirmedKeys.length} key(s)`);
     return {
       allExtended: extendedKeys.length === requestedKeys.length,
@@ -2666,11 +2670,18 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // whose IDs the upstream dropped this cycle). Preserve last-good by
           // extending the existing key's TTL instead.
           if (shouldSkipEmptyExtraKey(ek, ekCount)) {
-            await preserveExistingKeys([{
-              key: ek.key,
-              ttlSeconds: ek.ttl || ttlSeconds || 600,
-            }]);
-            console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
+            const preservation = await extendExistingTtlDetailed(
+              [ek.key],
+              ek.ttl || ttlSeconds || 600,
+              { allowMissingKeys: ek.allowMissingOnSkip ? [ek.key] : [] },
+            );
+            if (preservation.allExtended) {
+              console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
+            } else if (ek.allowMissingOnSkip && preservation.missingKeys.includes(ek.key)) {
+              console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, optional last-good key was absent`);
+            } else {
+              console.warn(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, TTL preservation failed or was unconfirmed`);
+            }
             continue;
           }
           ekEnvelope = {

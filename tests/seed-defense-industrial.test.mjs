@@ -324,13 +324,19 @@ describe('SIPRI chunked sweep (#6806)', () => {
       Name: importerCodes[index % count],
     }),
   );
-  const makeSipriFetch = ({ importerCount = importerCodes.length, onImporter = () => {} } = {}) => async (url) => {
+  const makeSipriFetch = ({
+    importerCount = importerCodes.length,
+    onImporter = () => {},
+    importerResponse = () => new Response(JSON.stringify({
+      bytes: Buffer.from(sipriFixture).toString('base64'),
+    })),
+  } = {}) => async (url) => {
     if (String(url).includes('getMaxYear')) return new Response('2025');
     if (String(url).includes('getAllCountriesTrimmed')) {
       return new Response(JSON.stringify(importerCatalog(importerCount)));
     }
     onImporter();
-    return new Response(JSON.stringify({ bytes: Buffer.from(sipriFixture).toString('base64') }));
+    return importerResponse();
   };
   const previousSnapshot = (staleCount) => ({
     importers: Object.fromEntries(importerCodes.map((iso2, index) => [iso2, {
@@ -515,6 +521,53 @@ describe('SIPRI chunked sweep (#6806)', () => {
     });
   });
 
+  it('a fully current production sweep starts no requests and completes', async () => {
+    let served = 0;
+    const previous = previousSnapshot(0);
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({ onImporter: () => { served += 1; } }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      served,
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      served: 0,
+      attempted: 0,
+      unfetched: 0,
+      completion: { completedAt: iso(NOW), windowEndYear: 2025 },
+    });
+  });
+
+  it('selects exactly the cap without reporting a deferred importer', async () => {
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch(),
+      previousSnapshot: previousSnapshot(56),
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+
+    assert.deepEqual({
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+    }, {
+      attempted: 56,
+      unfetched: 0,
+    });
+  });
+
   it('reports stale importers deferred above the sweep limit', async () => {
     const result = await fetchSipriSupplierDependencies({
       fetchFn: makeSipriFetch(),
@@ -551,9 +604,22 @@ describe('SIPRI chunked sweep (#6806)', () => {
     });
   }
 
-  it('counts only importer requests started before the soft budget', async () => {
+  for (const maxSweepImporters of [-1, 0, 1.5, Number.POSITIVE_INFINITY]) {
+    it(`rejects an invalid sweep cap of ${maxSweepImporters}`, async () => {
+      await assert.rejects(
+        () => fetchSipriSupplierDependencies({
+          fetchFn: makeSipriFetch(),
+          previousSnapshot: {},
+          maxSweepImporters,
+        }),
+        /maxSweepImporters must be a positive safe integer/,
+      );
+    });
+  }
+
+  it('counts cap deferrals and only requests started before the soft budget', async () => {
     let served = 0;
-    let clock = 0;
+    let clock = NOW;
     const result = await fetchSipriSupplierDependencies({
       fetchFn: makeSipriFetch({
         onImporter: () => {
@@ -561,6 +627,8 @@ describe('SIPRI chunked sweep (#6806)', () => {
           clock += 10_000;
         },
       }),
+      previousSnapshot: previousSnapshot(importerCodes.length),
+      maxSweepImporters: 56,
       concurrency: 1,
       delayMs: 0,
       softBudgetMs: 15_000,
@@ -576,6 +644,39 @@ describe('SIPRI chunked sweep (#6806)', () => {
       attempted: 2,
       unfetched: 58,
     });
+  });
+
+  it('keeps a started request failure separate from unfetched and eligible for retry', async () => {
+    const previous = previousSnapshot(1);
+    const malformedCsv = 'Supplier,2021-2025\n"United States,10';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(malformedCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.equal(result.sweep.attempted, 1);
+    assert.equal(result.sweep.unfetched, 0);
+    assert.equal(result.failedImporters.length, 1);
+    assert.equal(snapshot.stage.status, 'partial');
+    assert.deepEqual(buildArmsSupplierCompletion(snapshot), {});
+    assert.deepEqual(
+      selectSweepImporters([{ iso2: importerCodes[0] }], snapshot, 2025, NOW)
+        .map((importer) => importer.iso2),
+      [importerCodes[0]],
+    );
   });
 
   it('the soft budget returns partial progress instead of losing the tick', async () => {
