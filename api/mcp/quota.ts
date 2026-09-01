@@ -1,3 +1,4 @@
+import { apiKeyDailyKey } from '../../server/_shared/api-key-rate-limit';
 import {
   dailyCounterKey,
   dailyQuotaFloorKey,
@@ -41,38 +42,61 @@ export function resolveDailyLimit(planDailyLimit?: number | null): number | null
   return PRO_DAILY_QUOTA_LIMIT;
 }
 
-/**
- * Plans whose catalog `mcpCallsPerDay` must NOT drive the daily cap on the
- * pro (OAuth) MCP context. The KTD6 boundary is a PLAN boundary, not a
- * credential boundary: API-tier subscribers can mint pro OAuth tokens too
- * (tier>=1 + mcpAccess), and without this gate their catalog allowance
- * (1000/10000) would leak through the OAuth door while their `user_key`
- * stays hardcoded at 50. Raising API-tier MCP allowances is a deliberate
- * follow-up; until then both credential classes must agree on the cap.
- */
-const API_TIER_MCP_CAPPED_PLAN_KEYS = new Set([
-  'api_starter',
-  'api_starter_annual',
-  'api_business',
-  'api_business_annual',
-]);
+/** Catalog marker for a plan whose MCP calls charge its REST budget. Duplicated
+ *  from `convex/config/productCatalog.ts` rather than imported: the MCP edge
+ *  bundle must not pull the Convex config graph in. The parity test asserts the
+ *  two literals stay equal. */
+export const SHARED_API_BUDGET = 'shared-api-budget';
 
 /**
- * Gate a plan-resolved MCP allowance on plan family: API-tier plans report
- * `undefined` (→ the 50/day default via `resolveDailyLimit`); every other
- * plan's allowance passes through verbatim — pro/pro_business plan-driven
- * numbers, enterprise's `null` (unlimited), free's `0`.
+ * Which daily counter a caller's MCP calls charge, and the ceiling on it.
  *
- * Shared by the enforcement path (`checkMcpEntitlementGate`) and the
- * settings display (`api/user/mcp-quota.ts`) so the number a user reads is
- * the number the reservation applies.
+ * `scope: 'api'` is the API tiers: MCP and REST draw one budget
+ * (`rl:apikey:day:…`) at a per-tool weight, so a unit of work costs the same
+ * whichever door it arrives through. This replaces the KTD6 plan-key exception
+ * list, which existed only because the catalog published an MCP number the edge
+ * refused to honour — leaving OAuth and `user_key` free to disagree about the
+ * cap. One budget behind one marker makes that disagreement unrepresentable.
+ *
+ * `scope: 'mcp'` is Pro and Pro Business: `apiAccess: false` with a zero REST
+ * budget, so they keep their own counter (`mcp:pro-usage:…`) at 50 and 250.
  */
-export function resolvePlanDrivenMcpAllowance(
-  planKey: string | undefined,
-  mcpCallsPerDay: number | null | undefined,
-): number | null | undefined {
-  if (planKey && API_TIER_MCP_CAPPED_PLAN_KEYS.has(planKey)) return undefined;
-  return mcpCallsPerDay;
+export interface McpBudget {
+  scope: 'api' | 'mcp';
+  /** Enforced ceiling; `null` is unlimited (still metered, never rejected). */
+  limit: number | null;
+}
+
+/**
+ * Resolve which budget a plan's MCP calls charge.
+ *
+ * Shared by enforcement (`checkMcpEntitlementGate`), the settings display
+ * (`api/user/mcp-quota.ts`), and the `account/mcp-allowance` resource so the
+ * number a user reads is the number the reservation applies. An unreadable
+ * entitlement resolves to the dedicated Pro default, never to a shared budget:
+ * a missing limit must never buy a caller a HIGHER cap than the plan default.
+ */
+export function resolveMcpBudget(
+  mcpCallsPerDay: number | null | string | undefined,
+  apiRequestsPerDay?: number | null,
+): McpBudget {
+  if (mcpCallsPerDay === SHARED_API_BUDGET) {
+    return { scope: 'api', limit: resolveDailyLimit(apiRequestsPerDay) };
+  }
+  return {
+    scope: 'mcp',
+    limit: resolveDailyLimit(typeof mcpCallsPerDay === 'string' ? undefined : mcpCallsPerDay),
+  };
+}
+
+/**
+ * The daily counter a budget charges. Exported because the settings reader
+ * (`api/user/mcp-quota.ts`) and the `account/mcp-allowance` resource must READ
+ * the counter this module WRITES; a second copy of this choice would be exactly
+ * the drift those surfaces exist to prevent.
+ */
+export function budgetCounterKey(budget: McpBudget | undefined, userId: string, date?: Date): string {
+  return budget?.scope === 'api' ? apiKeyDailyKey(userId, date) : dailyCounterKey(userId, date);
 }
 
 function asFiniteNumber(raw: unknown): number | null {
@@ -85,12 +109,20 @@ function asFiniteNumber(raw: unknown): number | null {
 export async function reserveQuota(
   userId: string,
   pipeline: PipelineFn,
-  planDailyLimit?: number | null,
+  budget?: McpBudget,
+  weight = 1,
 ): Promise<QuotaReserved | QuotaRejected> {
   // `null` = unlimited: the counter still moves (metering is not optional) but
   // the rejection branch below is skipped entirely.
-  const limit = resolveDailyLimit(planDailyLimit);
-  const key = dailyCounterKey(userId);
+  // Normalise even a caller-supplied budget: `resolveMcpBudget` already does
+  // this, but a hand-built budget carrying a garbage limit must still land on
+  // the plan default rather than skipping the check and enforcing `undefined`.
+  const limit = budget ? resolveDailyLimit(budget.limit) : PRO_DAILY_QUOTA_LIMIT;
+  // A shared-budget plan charges the REST meter, so an MCP call and a REST call
+  // draw down the same number the customer was sold. `apiKeyDailyKey` is the
+  // key `server/_shared/api-key-rate-limit.ts` increments, and its floor key is
+  // namespaced separately so the clamp logic cannot collide with the REST path.
+  const key = budgetCounterKey(budget, userId);
   const floorKey = dailyQuotaFloorKey(userId);
   if (!key || !floorKey) return { ok: false, reason: 'redis-unavailable' };
 
@@ -104,6 +136,7 @@ export async function reserveQuota(
       floorKey,
       limit === null ? '' : limit,
       PRO_DAILY_QUOTA_TTL_SECONDS,
+      weight,
     ]]);
   } catch {
     pipeResult = null;
@@ -136,14 +169,14 @@ export async function reserveQuota(
     if (rolledBack) return;
     rolledBack = true;
     try {
-      await pipeline([['DECR', key]]);
+      await pipeline([['DECRBY', key, weight]]);
     } catch {
       // Best-effort: a transient Redis failure means the counter overshoots
       // by 1, which is the cost-protection-correct direction.
     }
   };
 
-  if (status === 1 && newCount >= 1) {
+  if (status === 1 && newCount >= weight) {
     return { ok: true, newCount, rollback };
   }
 

@@ -13,10 +13,10 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { reserveQuota } from './quota';
+import { reserveQuota, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
-import { isQuotaExemptMetadataTool, TOOL_REGISTRY } from './registry/index';
+import { isQuotaExemptMetadataTool, TOOL_REGISTRY, toolWeight } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import {
@@ -258,11 +258,11 @@ export async function dispatchToolsCall(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
-  // Daily allowance resolved by the context pre-check (api/mcp/auth.ts) from
-  // the entitlement it already fetched. Omitted → `PRO_DAILY_QUOTA_LIMIT`;
-  // null → unlimited. Only the `pro` context ever supplies one (KTD6), so a
-  // caller that skips the pre-check simply inherits the plan default.
-  mcpDailyLimit?: number | null,
+  // Budget resolved by the context pre-check (api/mcp/auth.ts) from the
+  // entitlement it already fetched: which counter to charge and its ceiling.
+  // Omitted → the dedicated Pro counter at `PRO_DAILY_QUOTA_LIMIT`, so a caller
+  // that skips the pre-check inherits the plan default rather than a wider cap.
+  budget?: McpBudget,
   // Free-account paid-funnel path (#6716). When set, meters via the idle-gap
   // + call counters instead of reserveQuota.
   freeAccountAllowance?: boolean,
@@ -347,12 +347,12 @@ export async function dispatchToolsCall(
     return mcpDenialResponse('upgrade-required', -32002, 403, id, corsHeaders);
   }
 
-  // user_key (#4859) consumes the same per-user daily quota as pro: cache
+  // user_key (#4859) consumes the same per-user daily budget as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
   // unquota'd user_key would be an unmetered data loophole bounded only by
-  // the 60/min limiter. Raising API-plan MCP allowances above the Pro cap is
-  // a deliberate follow-up, not a default — which is why `mcpDailyLimit`
-  // arrives unset for that kind (api/mcp/auth.ts::runUserKeyPreChecks).
+  // the 60/min limiter. Both credential classes resolve their budget through
+  // the same `resolveMcpBudget`, so an API-tier caller charges its REST budget
+  // whichever door it arrives through.
   if (
     (context.kind === 'pro' || context.kind === 'user_key')
     && tool._freeTier !== true
@@ -379,7 +379,7 @@ export async function dispatchToolsCall(
       // Slot charged for good once dispatch begins (same GHSA-hcq5 posture as
       // reserveQuota). No caller-side rollback after this point.
     } else {
-      const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
+      const reservation = await reserveQuota(context.userId, deps.redisPipeline, budget, toolWeight(tool));
       if (!reservation.ok) {
         if (reservation.reason === 'cap-exceeded') {
           // `floor` is the limit the reservation actually enforced, so the copy

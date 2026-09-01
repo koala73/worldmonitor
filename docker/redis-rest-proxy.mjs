@@ -160,7 +160,9 @@ const STORY_ALIAS_PUBLISH_SCRIPT = [
 // same-day allowance.
 const MCP_QUOTA_RESERVE_SCRIPT = [
   'local ttl = tonumber(ARGV[2])',
-  "local n = redis.call('INCR', KEYS[1])",
+  'local weight = tonumber(ARGV[3])',
+  'if weight == nil or weight < 1 then weight = 1 end',
+  "local n = redis.call('INCRBY', KEYS[1], weight)",
   'if ttl ~= nil and ttl > 0 then',
   "  redis.call('EXPIRE', KEYS[1], ttl)",
   'end',
@@ -194,7 +196,7 @@ const MCP_QUOTA_RESERVE_SCRIPT = [
   '',
   'local limit = tonumber(limit_raw)',
   'if limit == nil or limit < 0 then',
-  "  redis.call('DECR', KEYS[1])",
+  "  redis.call('DECRBY', KEYS[1], weight)",
   '  return {-1, 0}',
   'end',
   '',
@@ -203,7 +205,7 @@ const MCP_QUOTA_RESERVE_SCRIPT = [
   '  return {1, n}',
   'end',
   '',
-  "n = redis.call('DECR', KEYS[1])",
+  "n = redis.call('DECRBY', KEYS[1], weight)",
   'local seen = read_floor()',
   'if seen ~= -1 then',
   '  local clamp_to = limit',

@@ -11,7 +11,7 @@ import { getClientIp, hasCloudflareTransitProof } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
-import { resolvePlanDrivenMcpAllowance } from './quota';
+import { resolveMcpBudget } from './quota';
 import {
   getBillingVerificationDenial,
   getEntitlements,
@@ -555,14 +555,13 @@ export async function validateProMcpAuthorization(
  * Authentication failures remain 401; terminal entitlement failures are 403;
  * unverifiable entitlement reads are retryable 503 responses.
  *
- * A passing result also reports `mcpDailyLimit`, read straight off the
- * entitlement this call already fetched — but only for plan-driven plan
- * families (`resolvePlanDrivenMcpAllowance`): API-tier subscribers reach this
- * gate through the same OAuth door, and their catalog allowance must not
- * out-rank the 50/day their `user_key` is capped at. A row with no
- * `planLimits` (legacy shape) or a non-plan-driven plan reports `undefined`,
- * which the quota layer resolves to the plan default — the entitlement is
- * NOT re-fetched to fill the gap.
+ * A passing result also reports `budget` — which counter this caller's MCP
+ * calls charge and its ceiling — resolved off the entitlement this call already
+ * fetched. API-tier subscribers reach this gate through the same OAuth door as
+ * `user_key` callers and resolve the same shared REST budget, so the two
+ * credential classes cannot disagree about the cap. A row with no `planLimits`
+ * (legacy shape) resolves to the dedicated Pro default; the entitlement is NOT
+ * re-fetched to fill the gap.
  *
  * Only `free_account` is admitted to the metered allowance. Other insufficient
  * entitlement states remain auth denials; thrown or unverifiable reads remain
@@ -604,7 +603,10 @@ async function checkMcpEntitlementGate(
   }
   const passed = (): McpPreCheckResult => ({
     ok: true,
-    mcpDailyLimit: resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay),
+    budget: resolveMcpBudget(
+      ent?.features?.planLimits?.mcpCallsPerDay,
+      ent?.features?.planLimits?.apiRequestsPerDay,
+    ),
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
@@ -637,7 +639,7 @@ async function checkMcpEntitlementGate(
     // live in dispatch.
     return {
       ok: true,
-      mcpDailyLimit: FREE_ACCOUNT_CALLS_PER_DAY,
+      budget: { scope: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
       freeAccountAllowance: true,
     };
   }
@@ -670,19 +672,12 @@ export async function runUserKeyPreChecks(
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
   const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
-  // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT —
-  // except the free-account paid-funnel ceiling (#6716), which is not a plan
-  // catalog allowance. user_key callers otherwise stay on the hardcoded daily
-  // cap whatever their API plan advertises.
-  if (!gate.ok) return gate;
-  if (gate.freeAccountAllowance) {
-    return {
-      ok: true,
-      mcpDailyLimit: gate.mcpDailyLimit,
-      freeAccountAllowance: true,
-    };
-  }
-  return { ok: true };
+  // The budget now passes through verbatim. KTD6 dropped it here so a `user_key`
+  // caller fell back to the hardcoded 50/day while the same subscriber's OAuth
+  // token would have resolved the catalog's 1,000 — the asymmetry the exception
+  // list existed to paper over. Both doors resolve one shared REST budget, so
+  // there is nothing left to withhold.
+  return gate;
 }
 
 /**

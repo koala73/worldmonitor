@@ -45,6 +45,13 @@ export const COMPANY_MONITORING_ROLLOUT_FLAGS = {
   alerts: false,
 } as const;
 
+/**
+ * `mcpCallsPerDay` marker for plans whose MCP calls consume the plan's REST
+ * budget rather than a separate allowance. Declared here rather than as a bare
+ * string literal so every reader imports the same token.
+ */
+export const SHARED_API_BUDGET = "shared-api-budget";
+
 export type PlanLimits = {
   /**
    * Daily REST/gateway request allowance. `null` means unlimited for plans
@@ -57,10 +64,17 @@ export type PlanLimits = {
    */
   apiBurstRequestsPerMinute: number | null;
   /**
-   * Daily MCP tool/resource call allowance. Current runtime enforcement only
-   * has a Pro daily counter; API-tier counters need scanner/source support.
+   * Daily MCP tool/resource call allowance.
+   *
+   * `SHARED_API_BUDGET` means the plan has no separate MCP allowance: its MCP
+   * calls charge `apiRequestsPerDay` at a per-tool weight (`api/mcp/quota.ts`).
+   * Only plans that own a real REST budget may declare it — Pro and Pro
+   * Business are `apiAccess: false` with `apiRequestsPerDay: 0`, so they must
+   * keep a number of their own.
+   *
+   * A number is a dedicated MCP counter; `null` is unlimited.
    */
-  mcpCallsPerDay: number | null;
+  mcpCallsPerDay: number | null | typeof SHARED_API_BUDGET;
   /**
    * Daily dashboard-AI/REST LLM allowance. This is deliberately separate from
    * `mcpCallsPerDay`: MCP clients and dashboard/API callers have different
@@ -254,7 +268,7 @@ const API_STARTER_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 1_000,
     apiBurstRequestsPerMinute: 60,
-    mcpCallsPerDay: 1_000,
+    mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 1_000,
     mcpBurstRequestsPerMinute: 60,
   },
@@ -273,7 +287,7 @@ const API_BUSINESS_FEATURES: PlanFeatures = {
   planLimits: {
     apiRequestsPerDay: 10_000,
     apiBurstRequestsPerMinute: 300,
-    mcpCallsPerDay: 10_000,
+    mcpCallsPerDay: SHARED_API_BUDGET,
     dashboardAiCallsPerDay: 10_000,
     mcpBurstRequestsPerMinute: 300,
   },
@@ -625,7 +639,13 @@ export function getPlanLimit(
     case "api_minute_burst":
       return limits.apiBurstRequestsPerMinute;
     case "mcp_daily_calls":
-      return limits.mcpCallsPerDay;
+      // A shared-budget plan has no MCP ceiling of its own: its MCP calls are
+      // charged to the REST budget, so that IS the limit a notice must warn
+      // against. Returning the marker (or a stale second number) here is what
+      // let the API tiers advertise 1,000 MCP calls/day that never existed.
+      return limits.mcpCallsPerDay === SHARED_API_BUDGET
+        ? limits.apiRequestsPerDay
+        : limits.mcpCallsPerDay;
     case "mcp_minute_burst":
       return limits.mcpBurstRequestsPerMinute;
   }

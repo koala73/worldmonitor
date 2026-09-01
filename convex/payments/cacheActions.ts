@@ -48,7 +48,9 @@ export const syncEntitlementCache = internalAction({
       planLimits: v.optional(v.object({
         apiRequestsPerDay: v.union(v.number(), v.null()),
         apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
-        mcpCallsPerDay: v.union(v.number(), v.null()),
+        // `"shared-api-budget"` = the plan has no MCP allowance of its own; its
+        // MCP calls charge `apiRequestsPerDay` (see productCatalog.SHARED_API_BUDGET).
+        mcpCallsPerDay: v.union(v.number(), v.null(), v.literal("shared-api-budget")),
         // Optional so cache sync remains compatible with legacy rows/jobs that
         // predate the dashboard-AI dimension.
         dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),

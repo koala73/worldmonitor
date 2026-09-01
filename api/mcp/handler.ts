@@ -45,6 +45,7 @@ import { emitTelemetry, principalIdForLog } from './telemetry';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
 import { utf8ByteLength } from './utils';
 import type { McpAuthContext, McpHandlerDeps } from './types';
+import type { McpBudget } from './quota';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
 // discovery surface an agent (or an agent-readiness scanner) needs to learn
@@ -801,7 +802,7 @@ async function mcpHandlerInner(
   let context: McpAuthContext | null = null;
   // Set alongside `context` by the gated branch's pre-check. Stays undefined on
   // the public/anon branch — which never reaches a metered dispatch anyway.
-  let mcpDailyLimit: number | null | undefined;
+  let budget: McpBudget | undefined;
   let freeAccountAllowance = false;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
@@ -874,7 +875,7 @@ async function mcpHandlerInner(
     // Plan-driven daily allowance, resolved from the entitlement the pre-check
     // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
     // dispatch sites below; unset for every caller class but `pro`.
-    mcpDailyLimit = preCheck.mcpDailyLimit;
+    budget = preCheck.budget;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     const limited = await applyPerMinuteLimit(context, corsHeaders);
     if (limited) {
@@ -954,7 +955,7 @@ async function mcpHandlerInner(
         body,
         corsHeaders,
         ctx,
-        mcpDailyLimit,
+        budget,
         freeAccountAllowance,
         resourceMetadataUrl,
       );
@@ -1047,7 +1048,7 @@ async function mcpHandlerInner(
           deps,
           body,
           corsHeaders,
-          mcpDailyLimit,
+          budget,
           freeAccountAllowance,
         ));
       }
@@ -1071,7 +1072,7 @@ async function mcpHandlerInner(
           body,
           corsHeaders,
           ctx,
-          mcpDailyLimit,
+          budget,
           freeAccountAllowance,
           resourceMetadataUrl,
         );

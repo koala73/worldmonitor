@@ -18,14 +18,22 @@
 // KEYS[2] = max successful limit today (`-1` = unlimited seen)
 // ARGV[1] = finite limit, or empty for unlimited (meter only)
 // ARGV[2] = TTL seconds
+// ARGV[3] = weight — units this call charges (absent/invalid → 1)
+//
+// The weight is why a shared REST/MCP budget can be one counter: a cache-read
+// tool charges 1 like a REST request, and a tool that fans out downstream
+// charges what it actually costs. A weighted call is all-or-nothing — 999 used
+// against a 1000 limit rejects a weight-2 call rather than half-serving it.
 //
 // Returns {status, count}:
 //   1, n  reserved at n
 //   0, n  rejected; n is the post-recovery count
-//  -1, 0  unreadable limit (fail closed after rolling back this INCR)
+//  -1, 0  unreadable limit (fail closed after rolling back this INCRBY)
 export const MCP_QUOTA_RESERVE_SCRIPT = [
   'local ttl = tonumber(ARGV[2])',
-  "local n = redis.call('INCR', KEYS[1])",
+  'local weight = tonumber(ARGV[3])',
+  'if weight == nil or weight < 1 then weight = 1 end',
+  "local n = redis.call('INCRBY', KEYS[1], weight)",
   'if ttl ~= nil and ttl > 0 then',
   "  redis.call('EXPIRE', KEYS[1], ttl)",
   'end',
@@ -59,7 +67,7 @@ export const MCP_QUOTA_RESERVE_SCRIPT = [
   '',
   'local limit = tonumber(limit_raw)',
   'if limit == nil or limit < 0 then',
-  "  redis.call('DECR', KEYS[1])",
+  "  redis.call('DECRBY', KEYS[1], weight)",
   '  return {-1, 0}',
   'end',
   '',
@@ -68,7 +76,7 @@ export const MCP_QUOTA_RESERVE_SCRIPT = [
   '  return {1, n}',
   'end',
   '',
-  "n = redis.call('DECR', KEYS[1])",
+  "n = redis.call('DECRBY', KEYS[1], weight)",
   'local seen = read_floor()',
   'if seen ~= -1 then',
   '  local clamp_to = limit',

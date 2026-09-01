@@ -3,6 +3,7 @@
 // from anywhere without creating evaluation-order surprises or cycles.
 
 import type { BillingVerificationStatus } from '../../server/_shared/entitlement-check';
+import type { McpBudget } from './quota';
 
 // ---------------------------------------------------------------------------
 // Auth-context shape passed into tool _execute. U7 widened the previous
@@ -79,6 +80,12 @@ export interface BaseToolDef {
   // throws rather than signing. In practice that means `_apiPaths: []` and a
   // committed-registry or cache read. Enforced by test, not by convention.
   _freeTier?: true;
+  // Budget units this tool charges, overriding the class default in
+  // `registry/index.ts::toolWeight`. Set it only when the tool's downstream
+  // fan-out differs from its class — the two tools that fetch twice. A tool
+  // that grows a second fetch and forgets this is undercharging, which
+  // `tests/mcp-tool-weight.test.mjs` catches by re-deriving fan-out from source.
+  _weight?: number;
   // Spec-defined `Tool.outputSchema` (MCP 2025-06-18+). JSON Schema fragment
   // describing the tool's normal (non-envelope) response shape so a compliant
   // client can validate `tools/call` results AND so the LLM can write a
@@ -424,18 +431,19 @@ export interface AuthResolutionRejected {
 export interface McpPreCheckPassed {
   ok: true;
   /**
-   * Daily `tools/call` allowance for this caller, three-way:
-   *   omitted → unknown; the quota layer applies `PRO_DAILY_QUOTA_LIMIT`
-   *   null    → unlimited (no cap, counter still incremented for metering)
-   *   number  → enforced verbatim
-   * Set for the `pro` context only. `user_key` and `env_key` omit it — raising
-   * API-plan MCP allowances is a deliberate follow-up, not a default (KTD6).
+   * Which daily counter this caller's `tools/call`s charge, and its ceiling.
+   * Omitted → the quota layer falls back to the dedicated Pro counter at
+   * `PRO_DAILY_QUOTA_LIMIT`, so an unresolved budget can never widen a cap.
+   * `limit: null` is unlimited (still metered, never rejected).
+   *
+   * Set for both the `pro` and `user_key` contexts: an API-tier subscriber
+   * resolves the same shared REST budget through either door.
    *
    * Free-account paid-funnel (#6716): when `freeAccountAllowance` is set, this
-   * is the free call ceiling and dispatch meters via
+   * carries the free call ceiling and dispatch meters via
    * `reserveFreeAccountAllowance` instead of `reserveQuota`.
    */
-  mcpDailyLimit?: number | null;
+  budget?: McpBudget;
   /**
    * Authenticated free / insufficient-tier caller admitted at the MCP call
    * site only (#6716). Must never be set by relaxing `checkProMcpAccess`.

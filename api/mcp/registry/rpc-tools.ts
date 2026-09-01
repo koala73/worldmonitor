@@ -1514,6 +1514,8 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_brief',
+    // Two downstream fetches (brief + news digest for grounding).
+    _weight: 3,
     _outputBudgetBytes: 65536,
     description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
     inputSchema: {
@@ -2349,6 +2351,8 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_airspace',
+    // Two downstream fetches (civilian ADS-B + military aircraft providers).
+    _weight: 3,
     _outputBudgetBytes: 262144,
     description: 'Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and identified military aircraft from redistributable providers, with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"',
     inputSchema: {

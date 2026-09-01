@@ -293,16 +293,22 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
     assert.equal(body.used, 0);
   });
 
-  it('displays 50 for an API-tier plan, not its catalog MCP allowance (display == enforcement)', async () => {
-    // Enforcement caps API-tier entitlements at the 50/day default on BOTH
-    // credential paths (resolvePlanDrivenMcpAllowance); showing api_starter's
-    // 1000 here would advertise a limit the meter never applies.
+  it('displays the shared REST budget for an API-tier plan (display == enforcement)', async () => {
+    // An API-tier plan has no MCP allowance of its own: its calls charge
+    // `apiRequestsPerDay`, so that is the number the meter applies and the only
+    // honest one to display. Showing a separate MCP figure here is what told a
+    // customer they had 1,000 MCP calls that were never provisioned.
     const deps = makeDeps({
-      getEntitlements: async () => entitlement('api_starter', limits(1000)),
+      getEntitlements: async () => entitlement('api_starter', {
+        apiRequestsPerDay: 1000,
+        apiBurstRequestsPerMinute: 60,
+        mcpCallsPerDay: 'shared-api-budget',
+        mcpBurstRequestsPerMinute: 60,
+      }),
       redisGet: async () => '48',
     });
     const body = await (await quotaHandler(makeReq(), deps)).json();
-    assert.equal(body.limit, 50, 'API-tier catalog allowance must not leak into the display');
+    assert.equal(body.limit, 1000, 'the displayed limit is the budget enforcement charges');
     assert.equal(body.used, 48);
   });
 
