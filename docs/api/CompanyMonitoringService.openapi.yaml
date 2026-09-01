@@ -756,13 +756,13 @@ paths:
                   style: form
                   explode: true
                   example:
-                      - "awaiting_first_scan"
+                      - "example"
                   schema:
                     type: array
                     items:
                         type: "string"
                         pattern: "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
-                        description: "Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation. identity_unresolved means no independent identity binding exists so the company cannot be scanned — it is not a quiet result."
+                        description: "identity_unresolved is not quiet."
                 - name: page_size
                   in: query
                   description: Maximum rows to return, from 1 through 100; zero requests the server default.
@@ -1848,10 +1848,7 @@ components:
                         - COMPANY_COVERAGE_STATE_UNAVAILABLE
                         - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
                         - COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED
-                    description: |-
-                        CompanyCoverageState reports source and assessment readiness, not event count.
-                         IDENTITY_UNRESOLVED means no independent identity binding exists, so the
-                         company cannot be scanned safely and must not be reported as quiet.
+                    description: IDENTITY_UNRESOLVED must not be reported as quiet.
                 observation:
                     type: string
                     enum:
@@ -2090,7 +2087,7 @@ components:
                     items:
                         type: "string"
                         pattern: "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
-                        description: "Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation. identity_unresolved means no independent identity binding exists so the company cannot be scanned — it is not a quiet result."
+                        description: "identity_unresolved is not quiet."
                     maxItems: 7
                 pageSize:
                     type: integer
@@ -2436,10 +2433,7 @@ components:
                         - COMPANY_COVERAGE_STATE_UNAVAILABLE
                         - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
                         - COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED
-                    description: |-
-                        CompanyCoverageState reports source and assessment readiness, not event count.
-                         IDENTITY_UNRESOLVED means no independent identity binding exists, so the
-                         company cannot be scanned safely and must not be reported as quiet.
+                    description: IDENTITY_UNRESOLVED must not be reported as quiet.
                 observation:
                     type: string
                     enum:
