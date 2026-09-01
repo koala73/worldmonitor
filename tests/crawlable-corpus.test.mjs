@@ -2039,7 +2039,7 @@ describe('crawlable corpus generator', () => {
         );
         assert.doesNotMatch(
           analysis.textContent,
-          /in the same (trade-route )?table/i,
+          /(already in the|in the same) (trade-route )?table/i,
           `${route} must not claim off-page alternatives live in this page’s table`,
         );
         const articleWordCount = words(analysis.textContent).length;

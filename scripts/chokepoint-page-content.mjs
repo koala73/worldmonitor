@@ -129,7 +129,7 @@ export const CHOKEPOINT_CONTENT = {
       'Only two modelled corridors use this waypoint: China → US East Coast (Panama) at 8M+ TEU/year, and Panama Transit at 14K+ transits/year between Colon and Balboa. The competing Asia–US East Coast product is China → US East Coast (Suez), waypointed on the Suez page rather than in this canal’s table. When Panama slots tighten, that Suez (or Cape) option is the documented substitute, not a second Central American canal.',
     ],
     alternative:
-      'Ships that miss a Panama slot go around Cape Horn, use the US intermodal landbridge, or take the Suez/Cape eastbound product already in the trade-route table. None of those recreate the freshwater lock system. Drought rationing therefore shows up first as fewer daily transits and shallower permitted draft, which is why the live pulse on this page can publish a calm disruption score while still withholding an unsupplied AIS day-count.',
+      'Ships that miss a Panama slot go around Cape Horn, use the US intermodal landbridge, or take the Suez/Cape eastbound product waypointed on the Suez page, not in this canal’s two-row table. None of those recreate the freshwater lock system. Drought rationing therefore shows up first as fewer daily transits and shallower permitted draft, which is why the live pulse on this page can publish a calm disruption score while still withholding an unsupplied AIS day-count.',
     faqs: [
       {
         question: 'Is Panama an energy chokepoint like Hormuz?',

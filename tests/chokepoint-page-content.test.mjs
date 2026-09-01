@@ -70,7 +70,7 @@ describe('chokepoint page content (#7461)', () => {
       );
       assert.doesNotMatch(
         visible,
-        /in the same (trade-route )?table/i,
+        /(already in the|in the same) (trade-route )?table/i,
         `${id} must not place off-page alternatives inside this page’s table`,
       );
       if (emptyRouteIds.has(id)) {
