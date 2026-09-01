@@ -123,4 +123,25 @@ describe('buildCountryMarketIndex', () => {
 
     assert.deepEqual(index.GE.map((entry) => entry.title), [country.title]);
   });
+
+  it('requires country context before assigning bare Jordan or Chad names', () => {
+    const jordanPerson = market('Will Jordan Bardella win the election?', 'kalshi', 90_000);
+    const chadPerson = market('Will Chad Bianco become governor?', 'polymarket', 80_000);
+    const jordanian = market('Will Jordanian GDP grow in 2027?', 'kalshi', 40_000);
+    const amman = market('Will Amman host the summit?', 'polymarket', 35_000);
+    const chadian = market('Will Chadian forces hold the border?', 'kalshi', 30_000);
+    const nDjamena = market("Will N'Djamena hold a local election?", 'polymarket', 25_000);
+
+    const personOnly = buildCountryMarketIndex([jordanPerson, chadPerson], { now: NOW });
+    assert.equal(personOnly.JO, undefined);
+    assert.equal(personOnly.TD, undefined);
+
+    const index = buildCountryMarketIndex(
+      [jordanPerson, chadPerson, jordanian, amman, chadian, nDjamena],
+      { now: NOW },
+    );
+
+    assert.deepEqual(index.JO.map((entry) => entry.title), [jordanian.title, amman.title]);
+    assert.deepEqual(index.TD.map((entry) => entry.title), [chadian.title, nDjamena.title]);
+  });
 });
