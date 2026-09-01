@@ -12,6 +12,8 @@ export interface CountryCoverageEvent {
   lane: 'protest' | 'conflict' | 'natural' | 'military';
   label: string;
   severity: 'low' | 'medium' | 'high' | 'critical';
+  source: string;
+  link: string;
 }
 
 export interface CountryCoverage {
@@ -55,10 +57,18 @@ function normalizeGoogleNewsItem(item: NewsItem): NewsItem {
   };
 }
 
-export async function fetchCountryCoverage(
-  country: string,
-  searchTerms: string[] = [],
-): Promise<CountryCoverage> {
+export interface CountryCoverageRequest {
+  country: string;
+  searchTerms: string[];
+  signal: AbortSignal;
+}
+
+export async function fetchCountryCoverage({
+  country,
+  searchTerms,
+  signal,
+}: CountryCoverageRequest): Promise<CountryCoverage> {
+  signal.throwIfAborted();
   const uniqueTerms = new Map<string, string>();
   for (const rawTerm of [country, ...searchTerms]) {
     const term = rawTerm.trim();
@@ -75,12 +85,13 @@ export async function fetchCountryCoverage(
     fetchFeed({
       name: `Country coverage: ${country}`,
       url: googleNewsFeedUrl(`"${country}" when:7d`),
-    }),
+    }, { mode: 'isolated', signal }),
     fetchFeed({
       name: `Country events: ${country}`,
       url: googleNewsFeedUrl(`(${eventTerms}) (${EVENT_QUERY}) when:7d`),
-    }),
+    }, { mode: 'isolated', signal }),
   ]);
+  signal.throwIfAborted();
   const cutoff = Date.now() - SEVEN_DAYS_MS;
   const headlines = headlineItems
     .filter(item => effectivePubDateMs(item) >= cutoff)
@@ -96,6 +107,8 @@ export async function fetchCountryCoverage(
         lane,
         label: item.title,
         severity: timelineSeverity(item.threat?.level),
+        source: item.source,
+        link: item.link,
       }];
     });
 

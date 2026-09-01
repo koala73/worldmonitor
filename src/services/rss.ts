@@ -222,19 +222,28 @@ function extractImageUrl(item: Element): string | undefined {
   return undefined;
 }
 
-export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
-  if (feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
+export interface IsolatedFeedOptions {
+  mode: 'isolated';
+  signal: AbortSignal;
+}
+
+export async function fetchFeed(feed: Feed, options?: IsolatedFeedOptions): Promise<NewsItem[]> {
+  const isolated = options?.mode === 'isolated';
+  const signal = options?.signal;
+  signal?.throwIfAborted();
+
+  if (!isolated && feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
   const currentLang = getCurrentLanguage();
   const feedScope = getFeedScope(feed.name, currentLang);
 
-  if (isFeedOnCooldown(feedScope)) {
+  if (!isolated && isFeedOnCooldown(feedScope)) {
     const cached = feedCache.get(feedScope);
     if (cached) return cached.items;
     return (await loadPersistentFeed(feedScope)) || [];
   }
 
-  const cached = feedCache.get(feedScope);
-  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  const cached = isolated ? undefined : feedCache.get(feedScope);
+  if (!isolated && cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.items;
   }
 
@@ -246,22 +255,29 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     if (!url) throw new Error(`No URL found for feed ${feed.name}`);
 
-    const response = await fetchWithProxy(url);
+    const response = isolated
+      ? await fetchWithProxy(url, { signal: signal!, responseCache: 'bypass' })
+      : await fetchWithProxy(url);
+    signal?.throwIfAborted();
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const noStoreResponse = hasNoStoreCacheDirective(response.headers);
     const text = await response.text();
+    signal?.throwIfAborted();
     const isMobile = isMobileDevice();
     const doc = await parseFeedXml(text, isMobile);
+    signal?.throwIfAborted();
 
     // XML parsing is synchronous. It is serialized behind a yield so several
     // completed mobile feed requests cannot parse back-to-back in one
     // post-hydration task; yield again before querying and mapping entries.
     // (#5165)
     if (isMobile) await yieldToMain();
+    signal?.throwIfAborted();
 
     const parseError = doc.querySelector('parsererror');
     if (parseError) {
       console.warn(`Parse error for ${feed.name}`);
+      if (isolated) return [];
       recordFeedFailure(feedScope);
       const persistent = await loadPersistentFeed(feedScope);
       return cached?.items || persistent || [];
@@ -321,12 +337,16 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       // and geo inference. Let paint/input run before the next item instead
       // of concatenating all five into the same task on mobile. (#5165)
       if (isMobile && index < itemNodes.length - 1) await yieldToMain();
+      signal?.throwIfAborted();
     }
+
+    if (isolated) return parsed;
 
     if (!noStoreResponse) {
       feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
       void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
     }
+
     recordFeedSuccess(feedScope);
     ingestHeadlines(parsed.map(item => ({
       title: item.title,
@@ -363,7 +383,11 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     return parsed;
   } catch (e) {
+    if (isolated && (signal?.aborted || (e && typeof e === 'object' && 'name' in e && e.name === 'AbortError'))) {
+      throw e;
+    }
     console.error(`Failed to fetch ${feed.name}:`, e);
+    if (isolated) return [];
     recordFeedFailure(feedScope);
     const persistent = await loadPersistentFeed(feedScope);
     return cached?.items || persistent || [];
@@ -412,7 +436,7 @@ export async function fetchCategoryFeeds(
   };
 
   for (const batch of batches) {
-    const results = await Promise.all(batch.map(fetchFeed));
+    const results = await Promise.all(batch.map(feed => fetchFeed(feed)));
     results.flat().forEach(insertTopItem);
     options.onBatch?.(ensureSortedDescending());
   }

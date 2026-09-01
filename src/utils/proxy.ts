@@ -145,8 +145,14 @@ function isPersistedResponseFresh(
     && ageMs < persistedResponseMaxAgeMs(cached.data);
 }
 
-async function fetchAndPersist(url: string): Promise<Response> {
-  const response = await fetch(proxyUrl(url), proxyFetchInit(url, { cache: 'no-store' }));
+export interface FetchWithProxyOptions {
+  signal?: AbortSignal;
+  responseCache?: 'bypass';
+}
+
+async function fetchAndPersist(url: string, signal?: AbortSignal): Promise<Response> {
+  const init: RequestInit = signal ? { cache: 'no-store', signal } : { cache: 'no-store' };
+  const response = await fetch(proxyUrl(url), proxyFetchInit(url, init));
   if (response.ok && shouldPersistResponse(url) && !hasNoStoreCacheDirective(response.headers)) {
     try {
       const body = await response.clone().text();
@@ -158,20 +164,32 @@ async function fetchAndPersist(url: string): Promise<Response> {
   return response;
 }
 
-export async function fetchWithProxy(url: string): Promise<Response> {
+export async function fetchWithProxy(
+  url: string,
+  options: FetchWithProxyOptions = {},
+): Promise<Response> {
+  if (options.responseCache === 'bypass') {
+    const init: RequestInit = options.signal
+      ? { cache: 'no-store', signal: options.signal }
+      : { cache: 'no-store' };
+    return fetch(proxyUrl(url), proxyFetchInit(url, init));
+  }
+
   if (!shouldPersistResponse(url)) {
-    return fetch(proxyUrl(url), proxyFetchInit(url));
+    return options.signal
+      ? fetch(proxyUrl(url), proxyFetchInit(url, { signal: options.signal }))
+      : fetch(proxyUrl(url), proxyFetchInit(url));
   }
 
   const cacheKey = buildResponseCacheKey(url);
   const cached = await getPersistentCache<CachedResponsePayload>(cacheKey);
 
   if (cached?.data && isPersistedResponseFresh(cached)) {
-    void fetchAndPersist(url).catch((error) => {
+    void fetchAndPersist(url, options.signal).catch((error) => {
       console.warn('[proxy] Background refresh failed for cached API response', error);
     });
     return toResponse(cached.data);
   }
 
-  return fetchAndPersist(url);
+  return fetchAndPersist(url, options.signal);
 }

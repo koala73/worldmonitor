@@ -35,7 +35,10 @@ declare global {
 }
 
 async function loadProxyModule(): Promise<{
-  fetchWithProxy(url: string): Promise<Response>;
+  fetchWithProxy(
+    url: string,
+    options?: { signal?: AbortSignal; responseCache?: 'bypass' },
+  ): Promise<Response>;
 }> {
   const entryPath = resolve(root, 'src/utils/proxy.ts');
   const stubs = new Map([
@@ -304,5 +307,24 @@ describe('fetchWithProxy persistent response freshness', () => {
 
     assert.equal(await response.text(), '<rss>live-stale</rss>');
     assert.equal(state.writes.length, 0, 'no-store responses must not enter the API response cache');
+  });
+
+  it('bypasses persisted responses and forwards the abort signal', async () => {
+    const state = globalThis.__wmProxyPersistentResponseCacheTestState!;
+    state.cached = cachedResponse('<rss>cached</rss>', 60_000);
+    state.networkOutcomes.push(new Response('<rss>isolated</rss>', { status: 200 }));
+    const controller = new AbortController();
+
+    const response = await proxyModule.fetchWithProxy(API_PATH, {
+      signal: controller.signal,
+      responseCache: 'bypass',
+    });
+
+    assert.equal(await response.text(), '<rss>isolated</rss>');
+    assert.deepEqual(state.fetchCalls, [{
+      input: `https://api.test${API_PATH}`,
+      init: { cache: 'no-store', signal: controller.signal },
+    }]);
+    assert.equal(state.writes.length, 0);
   });
 });

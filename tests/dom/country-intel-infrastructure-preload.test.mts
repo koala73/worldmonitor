@@ -15,6 +15,10 @@ const militaryMocks = vi.hoisted(() => ({
   preloadMilitaryBases: vi.fn(async () => []),
 }));
 
+const coverageMocks = vi.hoisted(() => ({
+  fetchCountryCoverage: vi.fn(),
+}));
+
 vi.mock('@/services/country-geometry', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/country-geometry')>(),
   preloadCountryGeometry: () => geometryMocks.preloadCountryGeometry(),
@@ -30,6 +34,10 @@ vi.mock('@/services/military-base-config', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/military-base-config')>(),
   preloadMilitaryBases: () => militaryMocks.preloadMilitaryBases(),
   getCachedMilitaryBases: () => [],
+}));
+
+vi.mock('@/services/country-coverage', () => ({
+  fetchCountryCoverage: coverageMocks.fetchCountryCoverage,
 }));
 
 vi.mock('@/utils/after-paint', async (importOriginal) => ({
@@ -117,11 +125,11 @@ const EMPTY_SIGNALS: CountryBriefSignals = {
   sanctionsNewDesignations: 0,
 };
 
-function createBriefHarness(code: string) {
+function createBriefHarness(code: string, allNews: AppContext['allNews'] = []) {
   let visible = false;
   let activeCode = '';
   const infrastructureUpdates: string[] = [];
-  const newsUpdates: string[] = [];
+  const newsUpdates: AppContext['allNews'][] = [];
   const page = {
     getCode: () => activeCode,
     isVisible: () => visible,
@@ -137,11 +145,12 @@ function createBriefHarness(code: string) {
       visible = true;
       activeCode = '__loading__';
     },
+    signal: new AbortController().signal,
     updateInfrastructure: (nextCode: string) => {
       infrastructureUpdates.push(nextCode);
     },
-    updateNews: () => {
-      newsUpdates.push(activeCode);
+    updateNews: (items: AppContext['allNews']) => {
+      newsUpdates.push(items);
     },
     updateMilitaryActivity: () => {},
     updateEconomicIndicators: () => {},
@@ -153,7 +162,7 @@ function createBriefHarness(code: string) {
   const ctx = {
     countryBriefPage: page,
     isDestroyed: false,
-    allNews: [],
+    allNews,
     latestClusters: [],
     intelligenceCache: {},
     map: {
@@ -190,6 +199,8 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     infraMocks.preloadInfrastructureTables.mockReset();
     militaryMocks.preloadMilitaryBases.mockReset();
     militaryMocks.preloadMilitaryBases.mockResolvedValue([]);
+    coverageMocks.fetchCountryCoverage.mockReset();
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({ headlines: [], timelineEvents: [] });
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
   });
 
@@ -201,7 +212,7 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
 
     const { infrastructureUpdates, newsUpdates, open } = createBriefHarness('FR');
     const pendingOpen = open();
-    await vi.waitFor(() => expect(newsUpdates).toEqual(['FR']));
+    await vi.waitFor(() => expect(newsUpdates).toHaveLength(1));
 
     expect(infrastructureUpdates).toEqual([]);
 
@@ -223,7 +234,7 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
 
     const { infrastructureUpdates, newsUpdates, open } = createBriefHarness('AE');
     const pendingOpen = open();
-    await vi.waitFor(() => expect(newsUpdates).toEqual(['AE']));
+    await vi.waitFor(() => expect(newsUpdates).toHaveLength(1));
 
     expect(infrastructureUpdates).toEqual(['AE']);
 
@@ -235,5 +246,34 @@ describe('CountryIntelManager infrastructure preload barrier', () => {
     await vi.waitFor(() => expect(infrastructureUpdates).toEqual(['AE', 'AE']));
     await pendingOpen;
     expect(infrastructureUpdates).toEqual(['AE', 'AE']);
+  });
+
+  it('does not replace eager country news with lazy headlines led by another country', async () => {
+    geometryMocks.preloadCountryGeometry.mockResolvedValue(undefined);
+    infraMocks.preloadInfrastructureTables.mockResolvedValue(undefined);
+    const eagerFranceHeadline = {
+      title: 'France announces new energy measures',
+      source: 'Reuters',
+      link: 'https://example.com/france-energy',
+      pubDate: new Date('2026-09-01T10:00:00Z'),
+      isAlert: false,
+    };
+    coverageMocks.fetchCountryCoverage.mockResolvedValue({
+      headlines: [{
+        title: 'Iran considers latest French proposal',
+        source: 'Reuters',
+        link: 'https://example.com/iran-france',
+        pubDate: new Date('2026-09-01T11:00:00Z'),
+        isAlert: false,
+      }],
+      timelineEvents: [],
+    });
+
+    const { newsUpdates, open } = createBriefHarness('FR', [eagerFranceHeadline]);
+    await open();
+
+    await vi.waitFor(() => expect(coverageMocks.fetchCountryCoverage).toHaveBeenCalledTimes(1));
+    await Promise.resolve();
+    expect(newsUpdates).toEqual([[eagerFranceHeadline]]);
   });
 });

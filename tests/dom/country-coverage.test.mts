@@ -51,6 +51,7 @@ describe('country coverage', () => {
 
   it('loads recent country headlines and maps only timeline event categories', async () => {
     vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
+    const signal = new AbortController().signal;
     const recentMilitary = newsItem(
       'France deploys military units after security alert',
       'military',
@@ -77,10 +78,15 @@ describe('country coverage', () => {
         : [recentEconomic, staleConflict]
     ));
 
-    const coverage = await fetchCountryCoverage('France', ['france', 'french', 'paris']);
+    const coverage = await fetchCountryCoverage({
+      country: 'France',
+      searchTerms: ['france', 'french', 'paris'],
+      signal,
+    });
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
-    const queries = rssMocks.fetchFeed.mock.calls.map(([feed]) => {
+    const queries = rssMocks.fetchFeed.mock.calls.map(([feed, options]) => {
+      expect(options).toEqual({ mode: 'isolated', signal });
       const proxyUrl = new URL(feed.url, 'https://worldmonitor.test');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
       const feedUrl = new URL(proxyUrl.searchParams.get('url') ?? '');
@@ -102,12 +108,16 @@ describe('country coverage', () => {
         lane: 'military',
         label: recentMilitary.title,
         severity: 'high',
+        source: recentMilitary.source,
+        link: recentMilitary.link,
       },
       {
         timestamp: recentProtest.pubDate.getTime(),
         lane: 'protest',
         label: recentProtest.title,
         severity: 'medium',
+        source: recentProtest.source,
+        link: recentProtest.link,
       },
     ]);
   });
@@ -115,14 +125,28 @@ describe('country coverage', () => {
   it('routes desktop country feeds through the local RSS proxy', async () => {
     runtimeMocks.isDesktopRuntime.mockReturnValue(true);
     rssMocks.fetchFeed.mockResolvedValue([]);
+    const signal = new AbortController().signal;
 
-    await fetchCountryCoverage('France');
+    await fetchCountryCoverage({ country: 'France', searchTerms: [], signal });
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
-    for (const [feed] of rssMocks.fetchFeed.mock.calls) {
+    for (const [feed, options] of rssMocks.fetchFeed.mock.calls) {
+      expect(options).toEqual({ mode: 'isolated', signal });
       const proxyUrl = new URL(feed.url, 'https://desktop.local');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
       expect(new URL(proxyUrl.searchParams.get('url') ?? '').hostname).toBe('news.google.com');
     }
+  });
+
+  it('rejects before starting either feed when the request is already aborted', async () => {
+    const controller = new AbortController();
+    controller.abort();
+
+    await expect(fetchCountryCoverage({
+      country: 'France',
+      searchTerms: [],
+      signal: controller.signal,
+    })).rejects.toMatchObject({ name: 'AbortError' });
+    expect(rssMocks.fetchFeed).not.toHaveBeenCalled();
   });
 });
