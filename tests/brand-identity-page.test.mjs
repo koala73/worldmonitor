@@ -22,6 +22,16 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /\|\s*Name\s*\|\s*World Monitor\s*\|/);
     assert.match(body, /https:\/\/www\.worldmonitor\.app/);
     assert.match(body, /https:\/\/worldmonitor\.app \(permanent redirect to www\)/);
+    assert.match(
+      body,
+      /^\|\s*Wikidata \(product\)\s*\|\s*https:\/\/www\.wikidata\.org\/wiki\/Q141237754\s*\|$/m,
+      'the NAP table must identify the World Monitor product Wikidata item',
+    );
+    assert.match(
+      body,
+      /^Founder:.*https:\/\/www\.wikidata\.org\/wiki\/Q121365724.*$/m,
+      'the brand page must identify the founder Wikidata item on the founder line',
+    );
     assert.match(body, /support@worldmonitor\.app/);
     assert.match(body, /enterprise@worldmonitor\.app/);
     assert.match(body, /\|\s*Locality\s*\|\s*Dubai\s*\|/);
