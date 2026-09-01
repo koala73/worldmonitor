@@ -908,6 +908,7 @@ async function xSubjectsForClaim(
       const independentDomainClaims = claimPage.filter((claim) =>
         claimHasIndependentDomainAuthority(claim, now)
       );
+      const xHandleClaims = claimPage.filter((claim) => claim.type === "x_handle");
       let currentIdentity = storedIdentity;
       const boundDomainClaim = storedIdentity
         ? claimPage.find((claim) => claim.claimId === storedIdentity.domainClaimId)
@@ -950,7 +951,7 @@ async function xSubjectsForClaim(
         });
       }
       if (
-        (demotionReason || independentDomainClaims.length === 0) &&
+        (demotionReason || independentDomainClaims.length === 0 || xHandleClaims.length === 0) &&
         company.coverageState !== "identity_unresolved"
       ) {
         await ctx.db.patch(company._id, {
@@ -968,7 +969,7 @@ async function xSubjectsForClaim(
         name: company.name,
         domicileCountry: company.domicileCountry,
         domains: independentDomainClaims.map(claimValue),
-        xHandles: claimPage.filter((claim) => claim.type === "x_handle").map(claimValue),
+        xHandles: xHandleClaims.map(claimValue),
         trackedPosts: reconciliationEvidence
           .map((evidence) => ({
             postId: evidence.postId,

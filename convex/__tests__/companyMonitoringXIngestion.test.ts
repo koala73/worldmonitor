@@ -27,10 +27,12 @@ async function seedXWork(
     companies?: 1 | 2;
     checkpoint?: string;
     domainTrust?: "verified" | "unverified";
+    includeXHandle?: boolean;
   } = {},
 ) {
   const companies = options.companies ?? 1;
   const domainTrust = options.domainTrust ?? "verified";
+  const includeXHandle = options.includeXHandle ?? true;
   await t.run(async (ctx) => {
     await ctx.db.insert("companyMonitoringAccounts", {
       logicalAccountId: OWNER_ACCOUNT_ID,
@@ -101,17 +103,19 @@ async function seedXWork(
         createdAt: NOW,
         updatedAt: NOW,
       });
-      await ctx.db.insert("companyMonitoringClaims", {
-        ownerAccountId: OWNER_ACCOUNT_ID,
-        companyId: row.companyId,
-        claimId: row.handleClaimId,
-        type: "x_handle",
-        value: row.handle,
-        provenance: "customer",
-        trustState: "unverified",
-        createdAt: NOW,
-        updatedAt: NOW,
-      });
+      if (includeXHandle) {
+        await ctx.db.insert("companyMonitoringClaims", {
+          ownerAccountId: OWNER_ACCOUNT_ID,
+          companyId: row.companyId,
+          claimId: row.handleClaimId,
+          type: "x_handle",
+          value: row.handle,
+          provenance: "customer",
+          trustState: "unverified",
+          createdAt: NOW,
+          updatedAt: NOW,
+        });
+      }
     }
   });
 
@@ -260,6 +264,26 @@ describe("Company Monitoring compliant X ingestion", () => {
     expect(state.identities).toEqual([]);
     expect(state.evidence).toEqual([]);
     expect(state.obligation?.checkpoint).toBeUndefined();
+  });
+
+  test("marks a company without an X handle identity_unresolved (#7044)", async () => {
+    const t = convexTest(schema, modules);
+    const claim = await seedXWork(t, { includeXHandle: false });
+    expect(claim.work.subjects[0]).toMatchObject({
+      domains: [{ claimId: DOMAIN_CLAIM_A, value: "stripe.com" }],
+      xHandles: [],
+    });
+
+    const company = await t.run(async (ctx) => ctx.db
+      .query("companyMonitoringCompanies")
+      .withIndex("by_account_companyId", (q) =>
+        q.eq("ownerAccountId", OWNER_ACCOUNT_ID).eq("companyId", COMPANY_A),
+      )
+      .unique());
+    expect(company).toMatchObject({
+      coverageState: "identity_unresolved",
+      snapshotGeneration: 2,
+    });
   });
 
   test("claims exact company evidence and persists authoritative identity, posts, and audit receipt", async () => {
