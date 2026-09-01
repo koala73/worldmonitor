@@ -35,7 +35,7 @@ declare global {
 }
 
 async function loadProxyModule(): Promise<{
-  fetchWithProxy(url: string): Promise<Response>;
+  fetchWithProxy(url: string, init?: RequestInit): Promise<Response>;
 }> {
   const entryPath = resolve(root, 'src/utils/proxy.ts');
   const stubs = new Map([

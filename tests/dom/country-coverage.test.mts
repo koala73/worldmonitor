@@ -9,7 +9,8 @@ const runtimeMocks = vi.hoisted(() => ({
   isDesktopRuntime: vi.fn(() => false),
 }));
 
-vi.mock('@/services/rss', () => ({
+vi.mock('@/services/rss', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/rss')>(),
   fetchFeed: rssMocks.fetchFeed,
 }));
 vi.mock('@/services/runtime', async (importOriginal) => ({
@@ -24,6 +25,7 @@ import {
   reconcileCountryTimelineIncidents,
   type CountryTimelineIncident,
 } from '@/services/country-timeline-events';
+import { BRIEF_ONLY_RSS_FETCH_POLICY } from '@/services/rss';
 
 function newsItem(
   title: string,
@@ -86,6 +88,12 @@ describe('country coverage', () => {
     const coverage = await fetchCountryCoverage('France', ['france', 'french', 'paris']);
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
+    for (const [, options] of rssMocks.fetchFeed.mock.calls) {
+      expect(options).toEqual({
+        policy: BRIEF_ONLY_RSS_FETCH_POLICY,
+        signal: undefined,
+      });
+    }
     const queries = rssMocks.fetchFeed.mock.calls.map(([feed]) => {
       const proxyUrl = new URL(feed.url, 'https://worldmonitor.test');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
@@ -241,10 +249,36 @@ describe('country coverage', () => {
     await fetchCountryCoverage('France');
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
-    for (const [feed] of rssMocks.fetchFeed.mock.calls) {
+    for (const [feed, options] of rssMocks.fetchFeed.mock.calls) {
+      expect(options.policy).toBe(BRIEF_ONLY_RSS_FETCH_POLICY);
       const proxyUrl = new URL(feed.url, 'https://desktop.local');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
       expect(new URL(proxyUrl.searchParams.get('url') ?? '').hostname).toBe('news.google.com');
     }
+  });
+
+  it('forwards an abort signal and rejects a superseded country request', async () => {
+    const controller = new AbortController();
+    let releaseFirst!: () => void;
+    const firstHold = new Promise<NewsItem[]>(resolve => {
+      releaseFirst = () => resolve([]);
+    });
+    rssMocks.fetchFeed.mockImplementation((_feed, options) => {
+      if (options?.signal?.aborted) {
+        return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+      }
+      return firstHold;
+    });
+
+    const pending = fetchCountryCoverage('France', [], { signal: controller.signal });
+    await vi.waitFor(() => expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2));
+    for (const [, options] of rssMocks.fetchFeed.mock.calls) {
+      expect(options.signal).toBe(controller.signal);
+      expect(options.policy).toBe(BRIEF_ONLY_RSS_FETCH_POLICY);
+    }
+
+    controller.abort();
+    releaseFirst();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 });
