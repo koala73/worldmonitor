@@ -9,6 +9,7 @@ import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from
 import { getLanguageCoverageFactor } from './_language-coverage';
 import { MACRO_FISCAL_INDICATOR_WEIGHTS } from './_macro-fiscal-weights';
 import { isInRankableUniverse } from './_rankable-universe';
+import { getEnergyImportDependencyObservedSources } from './_energy-import-dependency-source';
 import {
   failedDimensionsFromDatasets,
   readFailedDatasets,
@@ -59,21 +60,6 @@ const WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE = [{
   providerName: 'World Bank Open Data',
   sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/EG.ELC.FOSL.ZS',
 }] as const;
-
-function energyDependencyObservedSources(source: unknown): readonly IndicatorObservedSource[] {
-  if (typeof source !== 'string') return [];
-  const normalized = source.toLowerCase();
-  if (normalized.includes('eurostat')) {
-    return [{ providerName: 'Eurostat', sourceUrl: 'https://ec.europa.eu/eurostat/databrowser/view/nrg_ind_id/default/table?lang=en' }];
-  }
-  if (normalized.includes('world bank') || normalized.includes('worldbank')) {
-    return [{
-      providerName: 'World Bank Open Data',
-      sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/EG.IMP.CONS.ZS',
-    }];
-  }
-  return [];
-}
 
 function oldestSourceYear(...years: readonly (number | null | undefined)[]): number | null {
   const observed = years.filter((year): year is number => Number.isFinite(year));
@@ -3044,7 +3030,7 @@ async function scoreEnergyLegacy(
   const dependencyRecord = staticRecord?.iea?.energyImportDependency;
   const mixYear = safeNum(mix?.year);
   return tracedBlend('energy', [
-    tracedMetric('energyImportDependency', { score: dependency == null ? null : normalizeLowerBetter(dependency, 0, 100), weight: 0.25, rawValue: dependency, rawUnit: 'percent_consumption', sourceYear: dependencyRecord?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'iea'), observedSources: energyDependencyObservedSources(dependencyRecord?.source), provenanceHint: dependencyRecord?.source ?? '' }),
+    tracedMetric('energyImportDependency', { score: dependency == null ? null : normalizeLowerBetter(dependency, 0, 100), weight: 0.25, rawValue: dependency, rawUnit: 'percent_consumption', sourceYear: dependencyRecord?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'iea'), observedSources: getEnergyImportDependencyObservedSources(dependencyRecord?.source), provenanceHint: dependencyRecord?.source ?? '' }),
     tracedMetric('gasShare', { score: gasShare == null ? null : normalizeLowerBetter(gasShare, 0, 100), weight: 0.12, rawValue: gasShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
     tracedMetric('coalShare', { score: coalShare == null ? null : normalizeLowerBetter(coalShare, 0, 100), weight: 0.08, rawValue: coalShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
     tracedMetric('renewShare', { score: renewShare == null ? null : normalizeHigherBetter(renewShare, 0, 100), weight: 0.05, rawValue: renewShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
@@ -3152,7 +3138,7 @@ async function scoreEnergyV2(
     : energyStressScore * exposure + 100 * (1 - exposure);
 
   const dependencyRecord = staticRecord?.iea?.energyImportDependency;
-  const dependencySources = energyDependencyObservedSources(dependencyRecord?.source);
+  const dependencySources = getEnergyImportDependencyObservedSources(dependencyRecord?.source);
   return tracedBlend('energy', [
     tracedMetric('importedFossilDependence', { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35, rawValue: importedFossilDependence, rawUnit: 'percent_weighted_dependency', sourceYear: oldestSourceYear(fossilEntry?.year, dependencyRecord?.year), observedSources: importedFossilDependence == null ? [] : [...WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE, ...dependencySources], provenanceHint: dependencyRecord?.source ?? '' }),
     tracedMetric('lowCarbonGenerationShare', { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80), weight: 0.20, rawValue: lowCarbonGenerationShare, rawUnit: 'percent_generation', sourceYear: lowCarbonEntry?.year ?? null, observedSources: OWID_LOW_CARBON_SOURCE }),

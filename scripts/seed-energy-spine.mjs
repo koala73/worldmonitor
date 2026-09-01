@@ -190,7 +190,7 @@ function buildGasFields(jodiGas) {
 }
 
 function buildMixFields(mix) {
-  if (!mix) return { coalShare: 0, gasShare: 0, oilShare: 0, nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0, importShare: 0 };
+  if (!mix) return { coalShare: 0, gasShare: 0, oilShare: 0, nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0 };
   return {
     coalShare: mix.coalShare ?? 0,
     gasShare: mix.gasShare ?? 0,
@@ -200,7 +200,6 @@ function buildMixFields(mix) {
     windShare: mix.windShare ?? 0,
     solarShare: mix.solarShare ?? 0,
     hydroShare: mix.hydroShare ?? 0,
-    importShare: mix.importShare ?? 0,
   };
 }
 

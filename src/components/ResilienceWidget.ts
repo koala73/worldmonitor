@@ -428,14 +428,19 @@ export class ResilienceWidget {
 
     const attrs: Record<string, string> = { className: 'resilience-widget__domain-row' };
 
-    if (!preview && domain.id === 'energy' && this.energyMixData?.mixAvailable) {
+    if (!preview && domain.id === 'energy' && this.energyMixData
+      && (this.energyMixData.mixAvailable || this.energyMixData.importShareAvailable || this.energyMixData.gasStorageAvailable)) {
       const d = this.energyMixData;
-      const parts = [
-        `Import dep: ${d.importShare.toFixed(1)}%`,
-        `Gas: ${d.gasShare.toFixed(1)}%`,
-        `Coal: ${d.coalShare.toFixed(1)}%`,
-        `Renew: ${d.renewShare.toFixed(1)}%`,
-      ];
+      const parts = [d.importShareAvailable
+        ? `Import dep: ${d.importShare.toFixed(1)}%`
+        : 'Import dep: unavailable'];
+      if (d.mixAvailable) {
+        parts.push(
+          `Gas: ${d.gasShare.toFixed(1)}%`,
+          `Coal: ${d.coalShare.toFixed(1)}%`,
+          `Renew: ${d.renewShare.toFixed(1)}%`,
+        );
+      }
       if (d.gasStorageAvailable) parts.push(`EU storage: ${d.gasStorageFillPct.toFixed(1)}%`);
       attrs['title'] = parts.join(' | ');
     }

@@ -91,4 +91,10 @@ message GetCountryEnergyProfileResponse {
   repeated string jodi_oil_observed_measurements = 60;
   // Same presence contract for JODI gas source paths.
   repeated string jodi_gas_observed_measurements = 61;
+
+  // Primary-energy import dependency comes from the audited resilience-static
+  // source. It is independent from the OWID electricity-generation mix.
+  bool   import_share_available = 62;
+  int32  import_share_year      = 63;
+  string import_share_source    = 64;
 }
