@@ -110,9 +110,12 @@ describe('published resilience snapshot freshness', () => {
     assert.match(workflow, /node scripts\/freeze-resilience-ranking\.mjs/);
     assert.match(workflow, /npm run build:crawlable-corpus/);
     assert.match(workflow, /npm run build:sitemap/);
+    assert.match(workflow, /npm run build:llms-full/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/llms-full\.txt/);
     assert.match(workflow, /gh pr list --state all/);
     assert.match(workflow, /gh pr create/);
     assert.doesNotMatch(workflow, /push --force/);
+    assert.match(workflow, /tests\/seo-geo-residue\.test\.mjs/);
 
     const parsed = YAML.parse(workflow);
     const checkout = parsed.jobs.refresh.steps.find((step) => step.uses?.startsWith('actions/checkout@'));

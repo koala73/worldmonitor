@@ -115,23 +115,24 @@ describe('GEO residue #7463', () => {
     assert.match(zh, /计划外/);
   });
 
-  it('country lastmod ignores livePulse and the shared corpus generator stamp', () => {
+  it('country lastmod includes livePulse and ignores the shared corpus generator stamp', () => {
     const source = read('scripts/build-crawlable-corpus.mjs');
     const match = source.match(/const countriesLastmod = laterDate\(([\s\S]*?)\);/);
     assert.ok(match, 'countriesLastmod assignment must exist');
-    assert.doesNotMatch(match[1], /livePulse/);
+    assert.match(match[1], /livePulse\.capturedAt/);
     assert.doesNotMatch(match[1], /CORPUS_GENERATOR_CONTENT_VERSION/);
     assert.match(match[1], /resilience\.capturedAt/);
     assert.match(match[1], /COUNTRY_PAGE_CONTENT_VERSION/);
 
     const chokepoints = source.match(/const chokepointsLastmod = laterDate\(([\s\S]*?)\);/);
     assert.ok(chokepoints);
-    assert.doesNotMatch(chokepoints[1], /livePulse/);
+    assert.match(chokepoints[1], /livePulse\.capturedAt/);
     assert.doesNotMatch(chokepoints[1], /CORPUS_GENERATOR_CONTENT_VERSION/);
 
     const research = source.match(/const researchLastmod = laterDate\(([\s\S]*?)\);/);
     assert.ok(research);
     assert.doesNotMatch(research[1], /CORPUS_GENERATOR_CONTENT_VERSION/);
+    assert.doesNotMatch(research[1], /livePulse/);
 
     const useCases = source.match(/const useCasesLastmod = laterDate\(([\s\S]*?)\);/);
     assert.ok(useCases);
@@ -160,6 +161,12 @@ describe('GEO residue #7463', () => {
       /public\/\.well-known\/mcp\/server\.json/,
       'well-known server.json is a discovery alias, not a registry publish input',
     );
+  });
+
+  it('regenerates llms-full when the monthly resilience snapshot refreshes', () => {
+    const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
+    assert.match(workflow, /npm run build:llms-full/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/llms-full\.txt/);
   });
 });
 

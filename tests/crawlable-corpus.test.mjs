@@ -2206,8 +2206,9 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
     assert.equal(data.resilience.capturedAt, '2026-08-29');
     assert.ok(data.sources.resilienceSnapshot.includes(data.resilience.capturedAt));
-    // Family lastmods use material + page/generator versions only — not the
-    // Dataset schema stamp that previously forced a shared build date (#7382).
+    // Family lastmods use material + page versions + pulse where the HTML
+    // publishes pulse values. CORPUS_GENERATOR_CONTENT_VERSION stays out
+    // (#7463). Research lastmod is the report dateModified, not a rebuild stamp.
     assert.equal(data.lastmod.countries, '2026-08-31');
     assert.equal(data.lastmod.research, '2026-07-27');
     assert.equal(data.lastmod.chokepoints, '2026-08-31');

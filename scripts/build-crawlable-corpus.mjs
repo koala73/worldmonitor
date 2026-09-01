@@ -1303,12 +1303,14 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
   // Family lastmods are change-dates, not build-dates (#7463). Do not fold
-  // livePulse or CORPUS_GENERATOR_CONTENT_VERSION into families whose
-  // crawlable body is not that pulse/stamp — that collapsed ~90% of sitemap
-  // URLs onto one freeze day. Crisis pages keep livePulse because the pulse
-  // is the primary published content on those pages.
+  // CORPUS_GENERATOR_CONTENT_VERSION into any family — that stamp is the
+  // generator rebuild, not page-body change. Country and chokepoint pages
+  // publish livePulse scores/labels in the crawlable HTML, so their lastmod
+  // includes the pulse date. Research, use-cases, tools, and changelog do
+  // not get the pulse stamp: most of those bodies are not the pulse.
   const countriesLastmod = laterDate(
     resilience.capturedAt,
+    livePulse.capturedAt,
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     COUNTRY_PAGE_CONTENT_VERSION,
   );
@@ -1318,6 +1320,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   );
   const chokepointsLastmod = laterDate(
     gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
+    livePulse.capturedAt,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
   const toolsLastmod = laterDate(
