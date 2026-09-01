@@ -49,6 +49,23 @@ describe('buildCountryMarketIndex', () => {
     assert.deepEqual(index.US.map((entry) => entry.title), [trump.title]);
   });
 
+  it('matches standalone UK terms without matching them inside other words', () => {
+    const ukMarkets = [
+      market('Next UK parliamentary by-election called by...?', 'polymarket', 20_000),
+      market('What will Mike Johnson say during his address to the UK Parliament?', 'kalshi', 10_000),
+    ];
+    const embeddedTerms = [
+      market('Will luck decide the 2027 Nobel Peace Prize?', 'polymarket', 30_000),
+      market('Will Duke Energy name a new CEO in 2027?', 'kalshi', 25_000),
+    ];
+
+    const embeddedIndex = buildCountryMarketIndex(embeddedTerms, { now: NOW });
+    assert.equal(embeddedIndex.GB, undefined);
+
+    const index = buildCountryMarketIndex(ukMarkets, { now: NOW });
+    assert.deepEqual(index.GB?.map((entry) => entry.title), ukMarkets.map((entry) => entry.title));
+  });
+
   it('ranks a nearer country alias ahead of an exact-name 2045 contract', () => {
     const distant = market(
       'Will Nick Fuentes become President of the United States before 2045?',
