@@ -1671,11 +1671,15 @@ ${body}
 function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod, snapshotPath }) {
   const path = '/countries/';
   const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
+  const rankedCountries = countries
+    .filter((country) => Number.isInteger(country.rank))
+    .sort((a, b) => a.rank - b.rank);
+  const topRankedNames = rankedCountries.slice(0, 3).map((country) => country.name);
+  const rankingYear = capturedAt.slice(0, 4);
   const hubFaqs = [
     {
-      question: 'Which countries are most resilient in 2026?',
-      answer:
-        'The Country Resilience Index ranks 196 countries by how well they can absorb a shock and recover. Rank 1 on this dated snapshot is the most resilient today. A high score is not wealth or calm: it is fiscal room, institutions, infrastructure, and supplies. Countries below the headline cutoff stay unranked rather than guessed.',
+      question: `Which countries are most resilient in ${rankingYear}?`,
+      answer: `The ${prettyDate(capturedAt)} Country Resilience Index snapshot ranks ${rankedCountries.length} of ${countries.length} countries. Its top three are ${topRankedNames.join(', ')}, with ${topRankedNames[0]} at rank 1. The index measures capacity to absorb shocks and recover; high scores reflect fiscal room, institutions, infrastructure, and supplies, while countries below the headline cutoff remain unranked instead of being guessed.`,
     },
     {
       question: 'How is the Country Resilience Index calculated?',

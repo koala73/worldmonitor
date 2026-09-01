@@ -1268,7 +1268,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(countryDataset?.variableMeasured?.name, 'Country resilience score');
       const hubHeadings = [...countriesDocument.querySelectorAll('h2')].map((node) => node.textContent.trim());
       assert.deepEqual(hubHeadings, [
-        'Which countries are most resilient in 2026?',
+        `Which countries are most resilient in ${corpusData.resilience.capturedAt.slice(0, 4)}?`,
         'How is the Country Resilience Index calculated?',
       ]);
       assert.equal(countryFaq?.mainEntity?.length, 2);
@@ -1286,6 +1286,24 @@ describe('crawlable corpus generator', () => {
           `countries hub FAQ answer for ${question} must match visible copy`,
         );
       }
+      const rankedCountries = corpusData.countries
+        .filter((country) => Number.isInteger(country.rank))
+        .sort((a, b) => a.rank - b.rank);
+      const resilienceAnswer = countryFaq.mainEntity[0].acceptedAnswer.text;
+      const snapshotDateLabel = countriesDocument
+        .querySelector('table[data-country-ranking] caption')
+        ?.textContent.trim()
+        .replace(/ Country Resilience Index snapshot$/, '');
+      assert.ok(snapshotDateLabel, 'countries hub ranking caption needs a snapshot date');
+      assert.ok(
+        resilienceAnswer.includes(
+          `${snapshotDateLabel} Country Resilience Index snapshot ranks ${rankedCountries.length} of ${corpusData.countries.length} countries`,
+        ),
+      );
+      for (const country of rankedCountries.slice(0, 3)) {
+        assert.match(resilienceAnswer, new RegExp(`\\b${country.name}\\b`));
+      }
+      assert.doesNotMatch(resilienceAnswer, /\btoday\b/i);
       const rankedListItem = countryItemList.itemListElement.find((entry) => entry.item?.additionalProperty);
       assert.ok(rankedListItem, 'ranked hub ItemList entries need a Country node with a score PropertyValue');
       assert.equal(rankedListItem.item['@type'], 'Country');
