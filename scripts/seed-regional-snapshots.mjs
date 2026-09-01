@@ -125,8 +125,8 @@ async function readRedisKeys(keys) {
     try {
       out[keys[i]] = unwrapEnvelope(JSON.parse(raw));
     } catch {
-      // Malformed country payloads stay absent so the import component
-      // renormalizes rather than scoring garbage.
+      // The aggregate hydrator requires every indexed country payload.
+      // Omitting a malformed row makes the whole read fail closed.
     }
   }
   return out;
@@ -261,12 +261,11 @@ async function main() {
   // Step 1: read all inputs once (shared across regions), plus seed-meta
   // companions for inputs whose payloads lack top-level timestamps.
   const { sources, metaSources } = await readAllInputs();
-  try {
-    await hydrateEnergyImportAggregate(sources, readRedisKeys);
-  } catch (hydrateErr) {
-    const hydrateMsg = /** @type {any} */ (hydrateErr)?.message ?? hydrateErr;
-    console.warn(`[regional-snapshots] energy-import hydrate failed: ${hydrateMsg}`);
-  }
+  await hydrateEnergyImportAggregate(
+    sources,
+    readRedisKeys,
+    metaSources['seed-meta:resilience:static'],
+  );
   const presentKeys = Object.entries(sources).filter(([, v]) => v !== null).length;
   const presentMetaKeys = Object.entries(metaSources).filter(([, v]) => v !== null).length;
   console.log(`[regional-snapshots] Read inputs: ${presentKeys}/${ALL_INPUT_KEYS.length} keys present, ${presentMetaKeys}/${ALL_META_KEYS.length} meta keys present`);

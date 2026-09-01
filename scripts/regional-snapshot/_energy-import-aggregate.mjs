@@ -126,23 +126,45 @@ export function listStaticCountryKeys(indexPayload) {
 }
 
 /**
+ * @param {unknown} payload
+ * @param {string} dataset
+ * @returns {boolean}
+ */
+function reportsFailedDataset(payload, dataset) {
+  if (payload === null || typeof payload !== 'object') return false;
+  const failedDatasets = /** @type {Record<string, unknown>} */ (payload).failedDatasets;
+  return Array.isArray(failedDatasets) && failedDatasets.includes(dataset);
+}
+
+/**
  * Attach ENERGY_IMPORT_SOURCE_KEY from already-fetched static country records.
  * Leaves a caller-supplied aggregate in place so unit tests can inject one.
  *
  * @param {Record<string, any>} sources
  * @param {(keys: string[]) => Promise<Record<string, unknown>>} readKeys
+ * @param {unknown} [sourceMeta]
  * @returns {Promise<Record<string, any>>}
  */
-export async function hydrateEnergyImportAggregate(sources, readKeys) {
+export async function hydrateEnergyImportAggregate(sources, readKeys, sourceMeta = null) {
   if (sources[ENERGY_IMPORT_SOURCE_KEY] && typeof sources[ENERGY_IMPORT_SOURCE_KEY] === 'object') {
     return sources;
   }
   const index = sources[RESILIENCE_STATIC_INDEX_KEY];
+  if (reportsFailedDataset(index, 'iea') || reportsFailedDataset(sourceMeta, 'iea')) {
+    throw new Error('Energy-import hydration rejected failed resilience-static IEA dataset');
+  }
   const keys = listStaticCountryKeys(index);
   const payloads = keys.length ? await readKeys(keys) : {};
   /** @type {Record<string, unknown>} */
   const countryRecords = {};
-  for (const [key, payload] of Object.entries(payloads)) {
+  for (const key of keys) {
+    if (!Object.prototype.hasOwnProperty.call(payloads, key)) {
+      throw new Error(`Energy-import hydration missing Redis payload: ${key}`);
+    }
+    const payload = payloads[key];
+    if (payload === null || typeof payload !== 'object' || Array.isArray(payload)) {
+      throw new Error(`Energy-import hydration received invalid Redis payload: ${key}`);
+    }
     const iso2 = key.startsWith(RESILIENCE_STATIC_PREFIX)
       ? key.slice(RESILIENCE_STATIC_PREFIX.length)
       : key;
