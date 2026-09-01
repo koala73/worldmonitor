@@ -1,5 +1,11 @@
 import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/auth-state';
+import {
+  getEntitlementVerificationStatus,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+} from '@/services/entitlements';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
+import { isProTierResolved } from '@/services/widget-store';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { createCheckoutConsentElement } from '@/utils/legal-links';
@@ -48,6 +54,8 @@ export class ResilienceWidget {
   private readonly element: HTMLElement;
   private authState: AuthSession = getAuthState();
   private unsubscribeAuth: (() => void) | null = null;
+  private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeVerification: (() => void) | null = null;
   private currentCountryCode: string | null = null;
   private currentData: ResilienceScoreResponse | null = null;
   private loading = false;
@@ -60,15 +68,21 @@ export class ResilienceWidget {
     this.element.className = 'cdp-card resilience-widget';
     this.unsubscribeAuth = subscribeAuthState((state) => {
       this.authState = state;
-      const gateReason = this.getGateReason();
-      const loadedCountryCode = normalizeCountryCode(this.currentData?.countryCode);
-      const needsRefresh = !this.currentData || (loadedCountryCode !== null && loadedCountryCode !== this.currentCountryCode);
-      if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && needsRefresh) {
-        void this.refresh();
-        return;
-      }
-      this.render();
+      this.reactToAccessChange();
     });
+
+    // The entitlement snapshot lands on its own channel — production fires no
+    // auth event when it arrives. Subscribing to auth alone meant the access
+    // verdict computed during the pre-snapshot window was never revisited, so
+    // a paying user did not merely see the wrong CTA for a moment, they kept
+    // it (WORLDMONITOR-NY). Billing/subscription is not a gate input here;
+    // this widget still uses getPanelGateReason, not the billing-aware
+    // refinement panel-layout.ts applies.
+    this.unsubscribeEntitlement = onEntitlementChange(() => this.reactToAccessChange());
+    // The terminal "no snapshot is coming" outcome arrives ONLY here — see
+    // isAccessStillResolving. Without this subscription the widget would still
+    // hang on the waiting state until some unrelated event forced a re-render.
+    this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
 
     this.setCountryCode(countryCode ?? null);
   }
@@ -137,6 +151,52 @@ export class ResilienceWidget {
     this.requestVersion += 1;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
+    this.unsubscribeEntitlement?.();
+    this.unsubscribeEntitlement = null;
+    this.unsubscribeVerification?.();
+    this.unsubscribeVerification = null;
+  }
+
+  /**
+   * Re-evaluate access after any of the signals that feed the gate moved,
+   * fetching the score once the verdict first becomes NONE. Shared by the
+   * auth, entitlement, and verification subscriptions so those paths cannot
+   * drift.
+   */
+  private reactToAccessChange(): void {
+    const gateReason = this.getGateReason();
+    const loadedCountryCode = normalizeCountryCode(this.currentData?.countryCode);
+    const needsRefresh = !this.currentData || (loadedCountryCode !== null && loadedCountryCode !== this.currentCountryCode);
+    if (gateReason === PanelGateReason.NONE && this.currentCountryCode && !this.loading && needsRefresh) {
+      void this.refresh();
+      return;
+    }
+    this.render();
+  }
+
+  /**
+   * Whether the account's plan is still genuinely in flight, as opposed to
+   * unknown for good.
+   *
+   * `isProTierResolved()` answers "do we have a settled tier", and for a
+   * signed-in user that stays false for as long as the entitlement snapshot is
+   * missing — including when it is never coming. The terminal outcome is
+   * published on a DIFFERENT channel: `markEntitlementVerificationUnavailable`
+   * moves only the verification status and leaves the snapshot null, so
+   * `onEntitlementChange` never fires and a wait keyed on the tier alone hangs
+   * forever, denying the panel to free and paying users alike.
+   *
+   * So the wait is bounded by the verification lifecycle: keep waiting only
+   * while the bounded Clerk/Convex retries are actually running (`idle` /
+   * `pending`), and on a terminal `unavailable` fall through to the ordinary
+   * gate verdict — the same pairing `UnifiedSettings.renderPlanCheckingState`
+   * uses on the sibling surface. That leaves the terminal case exactly as it
+   * behaves today while still fixing the common one.
+   */
+  private isAccessStillResolving(): boolean {
+    if (isProTierResolved()) return false;
+    const status = getEntitlementVerificationStatus();
+    return status === 'idle' || status === 'pending';
   }
 
   private getGateReason(): PanelGateReason {
@@ -172,7 +232,20 @@ export class ResilienceWidget {
       return h('div', { className: 'cdp-card-body' }, this.makeEmpty('Resilience data loads when a country is selected.'));
     }
 
-    if (this.authState.isPending) {
+    // `authState.isPending` covers only the Clerk half of "do we know this
+    // account's plan yet". For a signed-in user the Convex entitlement snapshot
+    // lands seconds AFTER Clerk resolves, and `getPanelGateReason` reads
+    // FREE_TIER for a paying subscriber for that whole window — so rendering the
+    // gate on auth alone showed "Upgrade to Pro" to Pro customers, who clicked
+    // it into a 409 ACTIVE_SUBSCRIPTION_EXISTS from /api/create-checkout
+    // (WORLDMONITOR-NY: 28 events / 15 accounts since April, breadcrumb
+    // `button.panel-locked-cta.resilience-widget__cta`). `isProTierResolved`
+    // is the repo's existing answer to exactly this ambiguity — it treats any
+    // "Pro" signal as definitive and only a *settled* absence as free.
+    // Same class as the 2026-04-17/18 panel-overlay incident fixed in
+    // panel-gating.ts and the renderPlanCheckingState guard in
+    // UnifiedSettings.ts; this is the third surface.
+    if (this.authState.isPending || this.isAccessStillResolving()) {
       return h('div', { className: 'cdp-card-body' }, this.makeLoading('Checking access…'));
     }
 

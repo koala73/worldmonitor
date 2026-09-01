@@ -129,10 +129,11 @@ jobs:
 
       - name: Install buf
         run: |
-          make install-buf
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
 
       - name: Check for breaking proto changes
         run: make breaking
@@ -195,10 +196,11 @@ jobs:
 
       - name: Install buf and protoc plugins
         run: |
-          make install-buf install-plugins
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf install-plugins
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
 
       - name: Run proto generation
@@ -392,10 +394,11 @@ jobs:
 
       - name: Install buf and protoc plugins
         run: |
-          make install-buf install-plugins
           echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf install-plugins
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
 
       - name: Run proto generation against merge commit
