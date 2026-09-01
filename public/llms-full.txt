@@ -2020,7 +2020,7 @@ The subsection on [Pillar-combined score activation](#pillar-combined-score-acti
 
 ### Runtime manifest
 
-For the live deployment state, use the [runtime manifest](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, and safe derived construct versions: `constructVersions.energy` (`legacy` or `v2`) and `constructVersions.education` (`active` or `rollback`). It also reports `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production.
+For the live deployment state, use the [runtime manifest](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, and safe derived construct versions: `constructVersions.energy` (`legacy` or `v2`) and `constructVersions.education` (`active` or `rollback`). It also reports `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production. <!-- // pragma: allowlist secret -->
 
 ### Cache versioning
 
