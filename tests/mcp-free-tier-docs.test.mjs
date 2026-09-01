@@ -6,6 +6,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { PRODUCT_CATALOG, SHARED_API_BUDGET } from '../convex/config/productCatalog.ts';
 
 describe('MCP free-tier discovery parity', () => {
   it('keeps the static server-card free-access marker in parity with the registry', () => {
@@ -56,10 +57,25 @@ describe('MCP free-tier discovery parity', () => {
       'utf8',
     );
 
-    assert.equal(card.rateLimits.dailyByPlan.apiStarter, 50);
-    assert.equal(card.rateLimits.dailyByPlan.apiBusiness, 50);
-    assert.match(card.rateLimits.notes, /Dashboard-issued wm_ API keys use the 50\/day default/i);
+    // The published daily allowance must equal the catalog budget enforcement
+    // charges. Publishing 50 for the API tiers while the meter applied their
+    // REST budget is what told an API Starter customer they had 1,000 MCP
+    // calls/day; pin both halves so the card cannot drift from the catalog again.
+    const starter = PRODUCT_CATALOG.api_starter.features.planLimits;
+    const business = PRODUCT_CATALOG.api_business.features.planLimits;
+    assert.equal(starter.mcpCallsPerDay, SHARED_API_BUDGET, 'API Starter shares its REST budget');
+    assert.equal(business.mcpCallsPerDay, SHARED_API_BUDGET, 'API Business shares its REST budget');
+    assert.equal(card.rateLimits.dailyByPlan.apiStarter, starter.apiRequestsPerDay);
+    assert.equal(card.rateLimits.dailyByPlan.apiBusiness, business.apiRequestsPerDay);
+    assert.equal(card.rateLimits.dailyByPlan.pro, PRODUCT_CATALOG.pro_monthly.features.planLimits.mcpCallsPerDay);
+    assert.deepEqual(
+      card.rateLimits.dailyBudgetSharedWithRestByPlan,
+      ['apiStarter', 'apiBusiness'],
+      'the card must say WHICH plans share, or 1000 reads as a separate MCP allowance',
+    );
     assert.doesNotMatch(overview, /wm_….*no MCP daily reservation/i);
-    assert.match(overview, /Dashboard-issued.*wm_….*50\/day default/i);
+    // Both credential doors resolve one budget — the property KTD6 protected
+    // with a hardcoded 50 and the shared budget now gives by construction.
+    assert.match(overview, /Both the OAuth and `wm_…` doors resolve the same budget/i);
   });
 });

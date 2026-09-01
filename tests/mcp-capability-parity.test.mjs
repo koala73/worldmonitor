@@ -245,20 +245,27 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       card.rateLimits?.dailyByPlan,
       {
         pro: 50,
-        apiStarter: 50,
-        apiBusiness: 50,
+        proBusiness: 250,
+        apiStarter: 1000,
+        apiBusiness: 10000,
         enterprise: null,
       },
       'server-card must mirror the MCP daily caps enforced by the handler',
     );
     const notes = card.rateLimits?.notes;
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
-    assert.match(notes, /Dashboard-issued wm_ API keys use the 50\/day default/i,
-      'notes must disclose the dashboard-key daily reservation');
+    assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
+      'notes must disclose that both credential doors resolve the same budget');
     assert.match(notes, /Legacy operator keys[\s\S]*outside this daily reservation path/i,
       'notes must keep operator keys outside the daily reservation path');
-    assert.doesNotMatch(notes, /1,000|1000|10,000|10000/,
-      'notes must not publish API Starter/Business MCP daily caps that are not enforced');
+    // This assertion used to be `doesNotMatch(/1,000|10,000/)`, banning those
+    // numbers because the API tiers advertised MCP caps the meter never applied.
+    // They are enforced now, so the ban inverts: an agent planning a workload
+    // needs the real budget AND the weight, or it cannot predict its own spend.
+    assert.match(notes, /API Starter \(1000\/day\) and API Business \(10000\/day\)/,
+      'notes must publish the API-tier budgets now that they are enforced');
+    assert.match(notes, /per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data/i,
+      'notes must publish the weight, or the shared budget is unpredictable');
     for (const method of [
       'initialize',
       'tools/list',
@@ -301,11 +308,17 @@ describe('docs/mcp-overview.mdx — API-key quota contract', () => {
       'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
     assert.match(docs, /OAuth bearer requests re-check[\s\S]*entitlement[\s\S]*before dispatch/i,
       'docs must describe the OAuth entitlement re-check path');
-    assert.match(docs, /Dashboard-issued `X-WorldMonitor-Key: wm_…` requests[\s\S]*active entitlement[\s\S]*same per-user minute bucket and 50\/day default/i,
+    assert.match(docs, /Dashboard-issued `X-WorldMonitor-Key: wm_…` requests[\s\S]*active entitlement[\s\S]*same per-user minute bucket and the same plan-resolved budget/i,
       'docs must describe dashboard-key entitlement, minute, and daily enforcement');
     assert.match(docs, /Legacy deployment-allowlisted operator keys[\s\S]*per-key minute bucket[\s\S]*skip the daily reservation/i,
       'docs must keep operator-key limiting separate from dashboard-key metering');
-    assert.match(docs, /higher REST\/API plan allowances[\s\S]*MCP calls still use the 50\/day default/i,
-      'docs must keep REST/API allowances separate from the current MCP daily cap');
+    // The API tiers no longer have a separate MCP number to keep apart from
+    // their REST allowance: one budget covers both. What must stay documented is
+    // that they are SHARED and at what weight, or a reader plans against a
+    // second allowance that does not exist.
+    assert.match(docs, /their MCP calls and REST requests share/i,
+      'docs must state that API-tier MCP calls and REST requests share one budget');
+    assert.match(docs, /cached MCP read costs 1 unit and a live downstream fetch costs 2/i,
+      'docs must publish the per-tool weight, or the shared budget is unpredictable');
   });
 });

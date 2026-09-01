@@ -94,7 +94,7 @@
       "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
-      "1,000 requests/day included",
+      "1,000 requests/day included (REST + MCP combined)",
       "Webhook notifications"
     ],
     "highlightFeatures": [
@@ -103,7 +103,7 @@
     "planLimits": {
       "apiRequestsPerDay": 1000,
       "apiBurstRequestsPerMinute": 60,
-      "mcpCallsPerDay": 1000,
+      "mcpCallsPerDay": "shared-api-budget",
       "dashboardAiCallsPerDay": 1000,
       "mcpBurstRequestsPerMinute": 60
     },
@@ -121,7 +121,7 @@
       "Everything in API Starter",
       "Redistribution rights — embed our data in what you sell",
       "300 requests/minute",
-      "10,000 requests/day included",
+      "10,000 requests/day included (REST + MCP combined)",
       "5 Pro licenses — invite users at any corporate email domain",
       "Priority support"
     ],
@@ -131,7 +131,7 @@
     "planLimits": {
       "apiRequestsPerDay": 10000,
       "apiBurstRequestsPerMinute": 300,
-      "mcpCallsPerDay": 10000,
+      "mcpCallsPerDay": "shared-api-budget",
       "dashboardAiCallsPerDay": 10000,
       "mcpBurstRequestsPerMinute": 300
     },
