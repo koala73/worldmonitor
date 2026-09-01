@@ -77,6 +77,14 @@ function inventoryStatsFromAttributionFixture(fixtureRoot, warnings) {
 
 const registryToolNames = () => TOOL_REGISTRY.map((tool) => tool.name);
 const registryToolCount = () => TOOL_REGISTRY.length;
+const advertisedAgentCardToolCount = () => {
+  const routingSkill = readJson('public/.well-known/agent-card.json').skills
+    ?.find((skill) => skill.id === 'route-to-tool');
+  assert.ok(routingSkill?.description, 'A2A routing skill must have a description');
+  const count = routingSkill.description.match(/\b(\d+)-tool catalog\b/);
+  assert.ok(count, 'A2A routing skill must advertise an N-tool catalog');
+  return Number.parseInt(count[1], 10);
+};
 const displayPrice = (price) => (Number.isInteger(price) ? String(price) : price.toFixed(2));
 
 const REQUIRED_ACQUISITION_CLAIM_ROOTS = [
@@ -456,6 +464,10 @@ describe('public product facts generation contract', () => {
       assert.equal(plan.availability, 'https://schema.org/InStock');
       assert.equal(plan.url, stableFacts.product.pricingUrl);
     }
+  });
+
+  it('keeps the A2A routing card tool count aligned with the live registry', () => {
+    assert.equal(advertisedAgentCardToolCount(), registryToolCount());
   });
 
   it('removes stale waitlist lifecycle terms from current acquisition surfaces', () => {

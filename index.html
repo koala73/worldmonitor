@@ -12,7 +12,7 @@
     <meta name="keywords" content="AI intelligence, AI-powered dashboard, global intelligence, geopolitical dashboard, world news, market data, military bases, nuclear facilities, undersea cables, conflict zones, real-time monitoring, situation awareness, OSINT, flight tracking, AIS ships, earthquake monitor, protest tracker, power outages, oil prices, government spending, polymarket predictions" />
     <meta name="author" content="Elie Habib" />
     <meta name="theme-color" content="#0a0f0a" />
-    <meta name="robots" content="index, follow" />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <link rel="canonical" href="https://www.worldmonitor.app/dashboard" />
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/dashboard" />
     <link rel="alternate" hreflang="en" href="https://www.worldmonitor.app/dashboard" />
@@ -51,6 +51,7 @@
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
+      "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
       "alternateName": [
         "WorldMonitor",
@@ -61,6 +62,15 @@
       "description": "Open-source real-time global intelligence dashboard aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries. Featured in WIRED.",
       "applicationCategory": "SecurityApplication",
       "operatingSystem": "Web, Windows, macOS, Linux",
+      "publisher": {
+        "@id": "https://www.worldmonitor.app/#organization"
+      },
+      "isPartOf": {
+        "@id": "https://www.worldmonitor.app/#website"
+      },
+      "isBasedOn": {
+        "@id": "https://www.worldmonitor.app/#source"
+      },
       "offers": [
         {
           "@type": "Offer",
@@ -78,7 +88,7 @@
           "priceCurrency": "USD",
           "availability": "https://schema.org/InStock",
           "url": "https://www.worldmonitor.app/pro#pricing",
-          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license, 1 named user",
+          "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Personal license, 1 named user",
           "priceSpecification": {
             "@type": "UnitPriceSpecification",
             "price": "39.99",
@@ -103,17 +113,9 @@
         }
       ],
       "author": {
+        "@id": "https://www.worldmonitor.app/blog/authors/elie-habib/#person",
         "@type": "Person",
-        "name": "Elie Habib",
-        "url": "https://x.com/eliehabib",
-        "jobTitle": "CEO",
-        "sameAs": [
-          "https://x.com/eliehabib",
-          "https://github.com/koala73",
-          "https://www.linkedin.com/in/elie-habib-7047b931",
-          "https://www.wikidata.org/wiki/Q121365724",
-          "https://www.crunchbase.com/person/elie-habib-2"
-        ]
+        "name": "Elie Habib"
       },
       "featureList": [
         "Real-time conflict tracking (ACLED, UCDP)",
@@ -136,6 +138,7 @@
       "sameAs": [
         "https://github.com/koala73/worldmonitor",
         "https://www.npmjs.com/package/worldmonitor",
+        "https://www.wikidata.org/wiki/Q141237754",
         "https://x.com/worldmonitorai",
         "https://x.com/eliehabib",
         "https://www.wired.com/story/world-monitor-elie-habib/"
@@ -147,46 +150,14 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
-      "name": "World Monitor",
-      "alternateName": "WorldMonitor",
-      "url": "https://www.worldmonitor.app/",
-      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
-      "description": "Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data. Used by 2M+ people across 190+ countries.",
-      "founder": {
-        "@type": "Person",
-        "name": "Elie Habib",
-        "url": "https://x.com/eliehabib",
-        "sameAs": ["https://x.com/eliehabib", "https://github.com/koala73", "https://www.linkedin.com/in/elie-habib-7047b931", "https://www.wikidata.org/wiki/Q121365724", "https://www.crunchbase.com/person/elie-habib-2"]
-      },
-      "sameAs": [
-        "https://github.com/koala73/worldmonitor",
-        "https://www.npmjs.com/package/worldmonitor",
-        "https://x.com/worldmonitorai",
-        "https://discord.gg/re63kWKxaz",
-        "https://www.wired.com/story/world-monitor-elie-habib/"
-      ],
-      "contactPoint": {
-        "@type": "ContactPoint",
-        "contactType": "customer support",
-        "email": "support@worldmonitor.app",
-        "url": "https://www.worldmonitor.app/pro"
-      }
-    }
-    </script>
-
-    <script type="application/ld+json">
-    {
-      "@context": "https://schema.org",
       "@type": "WebSite",
+      "@id": "https://www.worldmonitor.app/#website",
       "name": "World Monitor",
       "alternateName": "WorldMonitor",
       "url": "https://www.worldmonitor.app/",
       "description": "Real-time global intelligence dashboard — live news, markets, military tracking, infrastructure monitoring, and geopolitical data.",
       "publisher": {
-        "@type": "Organization",
-        "name": "World Monitor",
-        "url": "https://www.worldmonitor.app/"
+        "@id": "https://www.worldmonitor.app/#organization"
       },
       "potentialAction": {
         "@type": "SearchAction",
@@ -233,7 +204,8 @@
       [data-variant="happy"][data-theme="dark"].wm-pro-banner-reserved #app::before{background:#222E3E;border-bottom-color:#344050}
       html:not(.js),html:not(.js) body{height:auto;min-height:100%;overflow:auto}
       html:not(.js) #app .skeleton-shell{display:none}
-      .app-heading{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+      .app-heading,.app-seo-summary{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);clip-path:inset(50%);white-space:nowrap;border:0}
+      .app-seo-summary p{margin:0}
       .dashboard-noscript{max-width:760px;margin:0 auto;padding:48px 24px;color:#e5e7eb;background:#0a0a0a;font:16px/1.6 system-ui,sans-serif}
       .dashboard-noscript h2{margin:0 0 12px;color:#f9fafb;font-size:28px;line-height:1.2}
       .dashboard-noscript p{margin:0 0 18px;color:#d1d5db}
@@ -374,7 +346,7 @@
       [data-variant="happy"][data-theme="dark"] .skeleton-line{background:linear-gradient(90deg,rgba(139,175,122,.05) 25%,rgba(139,175,122,.10) 50%,rgba(139,175,122,.05) 75%);background-size:200% 100%;animation:skel-shimmer 1.5s infinite}
 
       @media (max-width:768px){
-        .skeleton-header{height:40px;padding:6px 10px;gap:8px}
+        .skeleton-header{height:45px;padding:6px 10px;gap:8px}
         .skeleton-header-left,.skeleton-header-right{gap:8px;min-width:0}
         .skeleton-kicker,.skeleton-section-note{display:none}
         .skeleton-chip{padding:0 6px;font-size:10px}
@@ -422,10 +394,22 @@
   </head>
   <body>
     <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
+    <section class="app-seo-summary" aria-hidden="true">
+      <p>World Monitor is the full-spectrum real-time global intelligence dashboard: one browser workspace that combines geopolitical conflict tracking, military and civil aviation, maritime AIS, undersea cable and infrastructure maps, markets, climate hazards, cyber signals, and open-source news into a single live situation picture. Analysts, journalists, researchers, and operators use it to see how distant events connect before they harden into headlines.</p>
+      <p>On the map you can follow conflict zones and protest activity alongside earthquake and wildfire alerts, power-outage clusters, and strategic infrastructure such as military bases, nuclear facilities, and subsea cables. Aviation layers surface military and commercial flights; maritime layers track ships through chokepoints and high-risk waters. Country deep-dives open resilience, risk, and source-backed context for more than 190 states without leaving the dashboard.</p>
+      <p>Market and prediction panels sit beside the geospatial view so price moves, central-bank signals, commodities, and prediction-market odds can be read against the same map context that shows tankers, jets, and crisis corridors. Government-spending and macro indicators help separate noise from policy-relevant shifts. The goal is not another news feed — it is a continuously updating OSINT workbench with auditable upstream sources.</p>
+      <p>Reference surfaces outside the live map keep the same evidence standard: country intelligence pages, maritime chokepoint briefs, crisis trackers, live tools, research reports, and an audited source catalog. Agents and developers can also use the MCP server and REST API documented on the site. World Monitor is open source and free to start; Pro unlocks deeper analysis without hiding the core map. Specialized sibling monitors focus on tech, finance, commodities, energy infrastructure, and constructive global progress; this full dashboard remains the canonical geopolitics and multi-domain intelligence surface at www.worldmonitor.app/dashboard for humans and crawlers alike.</p>
+      <p>If you need a single citeable URL for multi-domain situation awareness — conflicts, markets, flights, ships, infrastructure, and climate hazards together — use this full dashboard rather than a specialized sibling. That separation is intentional: tech, finance, commodity, energy, and happy monitors carry their own summaries so crawlers do not treat six shells as near-duplicates.</p>
+    </section>
     <noscript>
       <main id="dashboard-noscript" class="dashboard-noscript">
-        <h2>The live dashboard requires JavaScript</h2>
-        <p>World Monitor’s interactive map, panels, alerts, and live analysis run in the browser. Visit the <a href="/">World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
+        <h2>World Monitor requires JavaScript for the live map</h2>
+        <p>World Monitor is the full-spectrum real-time global intelligence dashboard: one browser workspace that combines geopolitical conflict tracking, military and civil aviation, maritime AIS, undersea cable and infrastructure maps, markets, climate hazards, cyber signals, and open-source news into a single live situation picture. Analysts, journalists, researchers, and operators use it to see how distant events connect before they harden into headlines.</p>
+        <p>On the map you can follow conflict zones and protest activity alongside earthquake and wildfire alerts, power-outage clusters, and strategic infrastructure such as military bases, nuclear facilities, and subsea cables. Aviation layers surface military and commercial flights; maritime layers track ships through chokepoints and high-risk waters. Country deep-dives open resilience, risk, and source-backed context for more than 190 states without leaving the dashboard.</p>
+        <p>Market and prediction panels sit beside the geospatial view so price moves, central-bank signals, commodities, and prediction-market odds can be read against the same map context that shows tankers, jets, and crisis corridors. Government-spending and macro indicators help separate noise from policy-relevant shifts. The goal is not another news feed — it is a continuously updating OSINT workbench with auditable upstream sources.</p>
+        <p>Reference surfaces outside the live map keep the same evidence standard: country intelligence pages, maritime chokepoint briefs, crisis trackers, live tools, research reports, and an audited source catalog. Agents and developers can also use the MCP server and REST API documented on the site. World Monitor is open source and free to start; Pro unlocks deeper analysis without hiding the core map. Specialized sibling monitors focus on tech, finance, commodities, energy infrastructure, and constructive global progress; this full dashboard remains the canonical geopolitics and multi-domain intelligence surface at www.worldmonitor.app/dashboard for humans and crawlers alike.</p>
+        <p>If you need a single citeable URL for multi-domain situation awareness — conflicts, markets, flights, ships, infrastructure, and climate hazards together — use this full dashboard rather than a specialized sibling. That separation is intentional: tech, finance, commodity, energy, and happy monitors carry their own summaries so crawlers do not treat six shells as near-duplicates.</p>
+        <p>Visit the <a href="/" >World Monitor homepage</a> for the platform overview, or use the indexable reference pages below without enabling JavaScript.</p>
         <nav aria-label="World Monitor references">
           <ul>
             <li><a href="/countries/">Country intelligence</a></li>
@@ -502,7 +486,7 @@
       var attempted=false;
       try{if(sessionStorage.getItem(key))return}catch(e){}
       window.addEventListener('error',function(e){
-        var u=e.target&&(e.target.src||e.target.href)||'';
+        var t=e.target;var u=t&&(t.tagName==="SCRIPT"||t.tagName==="LINK")&&(t.src||t.href)||'';
         if(u&&/\/assets\//.test(u)){
           try{sessionStorage.setItem(key,'1')}catch(err){if(attempted)return;attempted=true}
           navigator.serviceWorker.getRegistrations().then(function(regs){

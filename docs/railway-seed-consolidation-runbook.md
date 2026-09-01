@@ -244,13 +244,33 @@ publisher, while still auditing their watch paths and required environment.
 Run the audit after adding or replacing a standalone seeder, changing a bundle
 dependency, or changing a production cron.
 
+**Editing `watchPatterns` is not complete until the apply runs.** Widening a
+service's closure in the registry does not touch Railway: until an operator
+applies it, Railway keeps filtering pushes against the old list and answers a
+matching commit with `No changes to watched files`, so the service silently
+keeps running older code. #6928 widened `ais-relay` without syncing, and
+Railway refused `6821a584e` (#7196) for it a day before anyone noticed (#7256).
+
+The `Railway Registry Sync` workflow
+(`.github/workflows/railway-registry-sync.yml`) is the reminder. It runs the
+deployment-only audit on every push to `main` that touches
+`scripts/railway-services.json` and fails within minutes, naming the drifted
+services and the apply command. It is read-only — the Viewer token cannot
+apply — so it reports the gap and leaves the sync to the operator. It runs the
+configuration audit only: the deployment-history check is legitimately red for
+the first minutes after a merge, so including it there would alarm on ordinary
+build lag. Drift that no registry edit caused, such as a hand edit in the
+Railway dashboard, stays the six-hourly monitor's job.
+
 The audit only proves the trigger config matches the registry. Proving a merge
 actually reached production is the separate
 [deploy-drift check](#deploy-drift-check) below.
 
 The six-hourly `Railway Native Deploy Health` workflow performs this audit in
 deployment-only mode and runs the deployment-history check from the same
-Viewer projection. `Seed Freshness Monitor` owns ingestion acceptance only.
+Viewer projection. `Railway Registry Sync` reuses the same environment and
+Viewer token for its push-triggered configuration audit. `Seed Freshness
+Monitor` owns ingestion acceptance only.
 Create the dedicated GitHub Actions environment
 `ingestion-acceptance-production`, restrict its deployment branch policy to
 `main`, and configure:
@@ -1022,10 +1042,10 @@ detects old source material.
 
 ### Bundle 3 heavy: seed-bundle-static-ref-heavy (live, #6806)
 
-Arms-Suppliers (460s worst case) and Military-Bases (410s) cannot share a 570s
+Arms-Suppliers (380s reservation) and Military-Bases (410s) cannot share a 570s
 tick — Railway kills a cron container at 10 minutes, so that ceiling is not
 negotiable. They CAN share a bundle: the runner defers whichever loses the tick
-to the next daily fire, and at 10-day and 30-day cadences a one-day deferral
+to the next daily fire, and at 14-day and 30-day cadences a one-day deferral
 costs nothing. One service carries all three heavy members instead of three
 1-section services, because Railway caps a project at 100 and the fleet is at 82.
 
@@ -1035,22 +1055,35 @@ costs nothing. One service carries all three heavy members instead of three
 | **Start command** | `node scripts/seed-bundle-static-ref-heavy.mjs` |
 | **Cron schedule** | `0 4 * * *` (daily 04:00 UTC, staggered off leftover's 03:00) |
 | **Lifecycle** | active — service `6285c37b-1327-46f1-bfd0-7454612764fb`, provisioned 2026-08-19, first tick published `bundle:heartbeat:static-ref-heavy` at 2026-08-20T04:01:04Z |
-| **Members** | Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), Military-Bases (400s / 30d) |
+| **Members** | Supply-Vulnerability (160s / daily), Mineral-Production (180s / 60d), Arms-Suppliers (370s / 14d), and Military-Bases (400s / 30d), ordered by the durable turn policy below |
 | **Wall-time budget** | `maxBundleMs: 570_000` |
 | **Required variable** | `UPSTASH_REDIS_REST_URL`, `UPSTASH_REDIS_REST_TOKEN`, `CLOUDFLARE_R2_ACCOUNT_ID` and one of `CLOUDFLARE_R2_TOKEN` / `CLOUDFLARE_API_TOKEN`. `USPTO_API_KEY` stays on leftover. The R2 pair is NOT optional here: `scripts/data/military-bases-final.json` is gitignored and the service has no volume, so without it Military-Bases falls back to the published version and exits non-zero once that is past its 30-day interval (#6845). |
 | **Heartbeat** | `bundle:heartbeat:static-ref-heavy` |
 
-**The lead slot rotates by day and that is load-bearing.** A member that never
-publishes never stops being due, so a fixed order hands it the first slot every
-single tick. That is not hypothetical: Arms-Suppliers has never written
+Supply-Vulnerability is a Redis-only projection with a 170s reservation,
+including kill grace. It does not always run first: Supply-Vulnerability leads
+even durable turns, while the rotated heavy list leads odd turns. This split is
+load-bearing because Supply-Vulnerability and Military-Bases reserve 580s
+together, more than the 570s bundle budget. The admission contract guarantees
+that each cadence class gets a slot within any two consecutive claimed turns.
+
+The scheduler claims the current value of `bundle:turn:static-ref-heavy` under
+a 15-minute lease. It acknowledges and advances that turn after every fully
+completed tick, including a non-zero tick, so a failing lead cannot monopolize
+the next invocation. A process killed or aborted before its terminal summary
+does not acknowledge; after lease expiry, the same unexecuted turn is safe to
+retry. This avoids the missed-day and repeated-parity failures of calendar
+rotation.
+
+Within the heavy list, `turn % 3` rotates Mineral-Production, Arms-Suppliers,
+and Military-Bases. A member that never publishes never stops being due, so a
+fixed order would hand it the first heavy slot every single tick. That is not
+hypothetical: Arms-Suppliers has never written
 `seed-meta:military:arms-suppliers-complete`, and on 2026-08-18 it took 371s of
 leftover's budget, leaving 177s against Mineral-Production's 190s reservation —
-deferring it by 13 seconds on the tick its acknowledgement expired. The bundle
-rotates `dayIndex % 3` (days since epoch, not `getUTCDay()`, which stutters
-across the week boundary and would give one member two consecutive lead days),
-so each member leads every third tick and a permanently failing member can
-consume at most one lead slot in three. `seed-bundle-macro.mjs` uses the same
-device for the same reason.
+deferring it by 13 seconds on the tick its acknowledgement expired. Durable
+turn rotation means each heavy member leads every third claimed turn and a
+permanently failing member can consume at most one heavy lead slot in three.
 
 Start commands in this table keep the `scripts/` prefix so they match the other
 bundle rows and the registry-coverage grep. Railway's actual start command is
@@ -1079,8 +1112,9 @@ any red check anywhere strands this service's builds.
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 2 services |
 | **Net savings** | 1 slot |
-| **Members** | Resilience Scores (6h), Resilience Static (annual window Oct 1-3, skips most runs), Food Stocks (monthly USDA PSD + FAOSTAT fill; needs `USDA_FAS_PSD_API_KEY`) |
-| **Wall budget** | 570 seconds, below Railway's 10-minute container kill. Section timeouts are 240s / 420s / 480s, so each fits the budget once the runner's 10s kill grace is added. Resilience Scores stays first in the array: it is the member that keeps `resilience:ranking:v27` and `resilience:intervals:v10:*` alive between cron fires, so it must be offered the budget before the heavier annual and monthly members. |
+| **Members** | Resilience Scores (2h admission interval), Resilience Static (90d, skips most runs), Food Stocks (monthly USDA PSD + FAOSTAT fill; needs `USDA_FAS_PSD_API_KEY`), Five-Factor Scorecard (daily Redis-only scoring) |
+| **Wall budget** | 570 seconds, below Railway's 10-minute container kill. Section timeouts are 240s / 280s / 480s / 180s, so every member fits alone once the runner's 10s kill grace is added. Resilience Scores stays first because it keeps the ranking and interval caches alive. Five-Factor Scorecard stays last: if a long-cadence section consumes its reservation, the runner defers scorecard before start; it fits on the next normal tick when Static and Food skip. The 180s scorecard reservation contains the 25s source-read deadline, Redis retry ceiling, atomic publication, and process-cleanup headroom. |
+| **Scorecard measurement** | Read-only production-source `--dry-run` on 2026-08-29: 196 countries, 3,716,740 serialized bytes, 1.82s wall time, and 220,577,792-byte maximum RSS. Validation passed and Redis was not modified. This is placement and payload-size evidence, not deployment or production-acceptance evidence. |
 | **Do not** | raise any section timeout above `maxBundleMs - 10_000`. A section whose timeout plus kill grace exceeds the budget is deferred on **every** tick while the bundle still exits 0 — #6556 ran this service dead for six hours behind a green badge. `tests/bundle-budget-admission.test.mjs` fails the PR, and `runBundle` refuses to start, but the arithmetic is worth knowing before you edit. |
 
 ### Bundle 5: seed-bundle-derived-signals

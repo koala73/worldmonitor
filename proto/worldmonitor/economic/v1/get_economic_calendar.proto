@@ -5,10 +5,10 @@ package worldmonitor.economic.v1;
 import "sebuf/http/annotations.proto";
 
 message GetEconomicCalendarRequest {
-  // Accepted but currently ignored; no-op until this handler supports the parameter.
-  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}, (sebuf.http.unimplemented) = true];
-  // Accepted but currently ignored; no-op until this handler supports the parameter.
-  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}, (sebuf.http.unimplemented) = true];
+  // Inclusive lower date bound in YYYY-MM-DD format.
+  string from_date = 1 [(sebuf.http.query) = {name: "fromDate"}];
+  // Inclusive upper date bound in YYYY-MM-DD format.
+  string to_date = 2 [(sebuf.http.query) = {name: "toDate"}];
 }
 
 message EconomicEvent {
@@ -30,4 +30,6 @@ message GetEconomicCalendarResponse {
   // True when the upstream or seed-backed variant is unavailable; empty payload fields
   // are graceful degradation, not confirmed zero data.
   bool unavailable = 5;
+
+  string as_of = 6;
 }

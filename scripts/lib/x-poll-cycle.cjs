@@ -102,6 +102,7 @@ function createXPollCycle(deps = {}) {
     xState.cursorByAccountId = hydrated.cursorByAccountId;
     xState.accountIdByHandle = hydrated.accountIdByHandle;
     xState.catchupByAccountId = hydrated.catchupByAccountId;
+    xState.lastPolledAtByHandle = hydrated.lastPolledAtByHandle;
     xState.items = hydrated.items;
     xState.lookupOffset = hydrated.lookupOffset;
     xState.accountOffset = hydrated.accountOffset;
@@ -114,8 +115,13 @@ function createXPollCycle(deps = {}) {
     // it matters most: hydrate also runs mid-poll, so a 429 backoff this
     // process recorded seconds ago would otherwise be cleared by an older Redis
     // copy and the next tick would go straight back at a rate-limited upstream.
-    xState.rateLimitedUntil = Math.max(xState.rateLimitedUntil || 0, hydrated.rateLimitedUntil);
-    xState.rateLimitAttempt = Math.max(xState.rateLimitAttempt || 0, hydrated.rateLimitAttempt);
+    const mergedBackoff = xNewsAccounts.mergeRefreshedPollState(xState, hydrated);
+    xState.rateLimitedUntil = mergedBackoff.rateLimitedUntil;
+    xState.rateLimitAttempt = mergedBackoff.rateLimitAttempt;
+    xState.backoffCause = mergedBackoff.backoffCause;
+    if (xState.rateLimitedUntil && now() < xState.rateLimitedUntil) {
+      xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
+    }
     log(`[Relay] X snapshot hydrated: generation ${xState.generation}, ${xState.items.length} items`);
     return true;
   }
@@ -153,7 +159,10 @@ function createXPollCycle(deps = {}) {
 
   async function pollOnce({ generation, signal, retryAfterLeaseConflict = false } = {}) {
     if (!X_ENABLED) return;
-    if (xState.rateLimitedUntil && now() < xState.rateLimitedUntil) return;
+    if (xState.rateLimitedUntil && now() < xState.rateLimitedUntil) {
+      xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
+      return;
+    }
 
     const lockOwner = `ais-relay:${pid}:${generation}:${now()}:${randomId()}`;
     const lockResult = await upstashSetNx(X_FEED_POLL_LOCK_KEY, lockOwner, X_FEED_POLL_LOCK_TTL_SECONDS);
@@ -248,7 +257,7 @@ function createXPollCycle(deps = {}) {
       // 429 we already know about. The pre-lock check above only saw this
       // process's own state.
       if (xState.rateLimitedUntil && now() < xState.rateLimitedUntil) {
-        xState.lastError = 'shared X rate-limit window still open; deferring poll';
+        xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
         return;
       }
 
@@ -274,6 +283,7 @@ function createXPollCycle(deps = {}) {
       // upstream.
       xState.rateLimitedUntil = next.rateLimitedUntil || 0;
       xState.rateLimitAttempt = next.rateLimitAttempt || 0;
+      xState.backoffCause = next.backoffCause || null;
       xState.lastError = next.lastError;
 
       const pollCompletedAt = now();
@@ -288,6 +298,7 @@ function createXPollCycle(deps = {}) {
         cursorByAccountId: next.cursorByAccountId,
         accountIdByHandle: next.accountIdByHandle,
         catchupByAccountId: next.catchupByAccountId,
+        lastPolledAtByHandle: next.lastPolledAtByHandle,
         items: next.items,
         lookupOffset: next.lookupOffset || 0,
         accountOffset: next.accountOffset || 0,

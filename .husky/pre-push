@@ -40,6 +40,32 @@ if [ -z "${WM_ALLOW_FOREIGN_HOOKS:-}" ] && [ -n "${BASH_SOURCE[0]:-}" ]; then
   fi
 fi
 
+# --- Git-env hygiene + identity gate (the "Fixture author" incident class) ---
+# During a push git exports GIT_DIR/GIT_WORK_TREE/GIT_INDEX_FILE to this hook,
+# and those OVERRIDE cwd for every child process. A test fixture run below that
+# shells out to `git config user.name` without stripping them writes its fake
+# identity into the SHARED .git/config — poisoning every worktree's future
+# commits (2026-08-30 "Fixture <fixture@example.invalid>" incident; also
+# "test@example.com", "WorldMonitor Test", "e@e.co" before it). The hook needs
+# none of these vars: cwd-based discovery works in every worktree. Capture the
+# push stdin first (the gate consumes it), then strip the list git publishes.
+WM_PUSH_STDIN=$(cat || true)
+printf '%s\n' "$WM_PUSH_STDIN" | bash scripts/prepush-identity-gate.sh || exit 1
+for _git_env in $(git rev-parse --local-env-vars 2>/dev/null); do
+  unset "$_git_env" 2>/dev/null || true
+done
+unset _git_env
+
+# Absolute worktree root, captured while cwd-based discovery still works.
+# Later gates must not re-discover from cwd: the pro-test block symlinks
+# `pro-test/node_modules/.vite` into `$common/wm-vite-cache/`, and a git
+# invocation whose cwd resolves through that link is physically inside .git
+# (`fatal: this operation must be run in a work tree`, exit 128). #7445.
+WM_PREPUSH_ROOT=$(git rev-parse --show-toplevel) || {
+  echo "ERROR: could not resolve the work tree for pre-push."
+  exit 1
+}
+
 echo "Checking for local environment dumps..."
 node scripts/check-local-secret-dumps.mjs --pre-push "${1:-}" || exit 1
 
@@ -80,19 +106,35 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
     BASE_REF="$PR_BASE_REF"
   fi
   BASE_REF="${BASE_REF:-main}"
-  # Refresh the remote-tracking ref before trusting it. A stacked branch's
-  # base may not be fetched locally at all yet, and even origin/main can be
-  # stale in a long-lived worktree — either way, counting against a stale
-  # ref reintroduces the exact false-positive this guard is meant to avoid.
-  # A failed fetch (offline, network hiccup) is not fatal: fall through to
-  # whatever's already cached locally, same as before this change.
-  git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
-  if ! git rev-parse --verify -q "origin/$BASE_REF" >/dev/null; then
-    echo "  Base ref 'origin/$BASE_REF' not resolvable, falling back to origin/main."
-    BASE_REF="main"
-    git fetch origin "$BASE_REF" --quiet 2>/dev/null || true
+  # Lazy ahead-count (#6764): count against the CACHED remote-tracking ref
+  # and fetch only to disprove a suspected violation or resolve a base that
+  # was never fetched — a fetch can only shrink the count, so a cached pass
+  # is a real pass. Decision + fixtures live in scripts/prepush-attest.sh
+  # (`base-guard`), where tests/prepush-attest.test.mjs executes them against
+  # real git fixtures instead of grepping this hook.
+  GUARD_STATUS=0
+  GUARD_OUT=$(bash scripts/prepush-attest.sh base-guard "$BASE_REF" 20) || GUARD_STATUS=$?
+  case "$GUARD_STATUS" in
+    0 | 3) ;;
+    *)
+      echo "ERROR: branch-contamination guard failed (status $GUARD_STATUS); refusing to push."
+      exit 1
+      ;;
+  esac
+  if ! printf '%s' "$GUARD_OUT" | awk -F '\t' '
+    NR != 1 { exit 1 }
+    NF != 2 || $1 == "" || $2 !~ /^[0-9]+$/ { exit 1 }
+    END { if (NR != 1) exit 1 }
+  ' >/dev/null; then
+    echo "ERROR: branch-contamination guard returned malformed output; refusing to push."
+    exit 1
   fi
-  COMMIT_COUNT=$(git rev-list --count "origin/$BASE_REF..HEAD" 2>/dev/null || echo 0)
+  BASE_REF=$(printf '%s' "$GUARD_OUT" | cut -f1)
+  COMMIT_COUNT=$(printf '%s' "$GUARD_OUT" | cut -f2)
+  if [ "$GUARD_STATUS" -eq 3 ] && ! [ "$COMMIT_COUNT" -gt 20 ] 2>/dev/null; then
+    echo "ERROR: branch-contamination guard returned an inconsistent result; refusing to push."
+    exit 1
+  fi
   if [ "$COMMIT_COUNT" -gt 20 ]; then
     echo ""
     echo "============================================================"
@@ -106,8 +148,23 @@ if [ -n "$BRANCH" ] && [ "$BRANCH" != "main" ] && [ "$BRANCH" != "master" ]; the
 fi
 
 echo "Checking scripts/package-lock.json sync..."
-if git diff --name-only origin/main -- scripts/package.json | grep -q .; then
-  if ! git diff --name-only origin/main -- scripts/package-lock.json | grep -q .; then
+# The package.json probe is "did this path change vs origin/main?". When
+# origin/main is missing the old `git diff | grep -q` pipeline treated git
+# 128 as "no names" and skipped — that skip is the RUN_ALL fallback. Keep
+# it. The inner `if ! git diff ... lockfile | grep -q .` is the actual
+# conflation: git 128 looked like "lock was not committed". Once we know
+# package.json changed, any git failure here is distinct from a missing lock.
+_pkg_status=0
+_pkg_changed=$(git -C "$WM_PREPUSH_ROOT" diff --name-only origin/main -- scripts/package.json) || _pkg_status=$?
+if [ "$_pkg_status" -eq 0 ] && [ -n "$_pkg_changed" ]; then
+  _lock_status=0
+  _lock_changed=$(git -C "$WM_PREPUSH_ROOT" diff --name-only origin/main -- scripts/package-lock.json) || _lock_status=$?
+  if [ "$_lock_status" -ne 0 ]; then
+    echo "ERROR: could not check scripts/package-lock.json (git exited $_lock_status)."
+    echo "This is a gate failure, not a missing lockfile commit."
+    exit 1
+  fi
+  if [ -z "$_lock_changed" ]; then
     echo ""
     echo "============================================================"
     echo "ERROR: scripts/package.json was modified but scripts/package-lock.json was not committed."
@@ -337,6 +394,46 @@ PREPUSH_COMMON_DIR=$(git rev-parse --path-format=absolute --git-common-dir 2>/de
 }
 PREPUSH_ADMISSION_LEASE=$(node scripts/prepush-admission.mjs acquire "$PREPUSH_COMMON_DIR" "$$") || exit 1
 
+# Per-gate green cache (#6765). The whole-tree cache above is all-or-nothing —
+# any byte anywhere in the tree invalidates every gate, so it never hits in a
+# merge/amend/re-push loop. Each expensive gate below is ALSO keyed on the
+# worktree bytes of its own declared inputs: a docs-only amend re-pays the
+# markdown lint and nothing else. Read/write decisions live in
+# scripts/prepush-attest.sh (gate-read / gate-write), where
+# tests/prepush-attest.test.mjs executes them against real git fixtures;
+# writes are refused unless the branch diff resolved AND the worktree is
+# byte-identical to HEAD — the same attestation rules as the whole-tree cache.
+# Stored under the COMMON git dir so worktrees with identical inputs share hits.
+GATE_INPUT_CACHE="$PREPUSH_COMMON_DIR/wm-prepush-gate-cache"
+
+gate_cached() {
+  local gate="$1"; shift
+  bash "$ATTEST" gate-read "$GATE_INPUT_CACHE" "$gate" "$DIFF_RESOLVED" -- "$@"
+}
+
+# Never fails the push: a refused write only means the next run re-pays.
+gate_mark_green() {
+  local gate="$1"; shift
+  bash "$ATTEST" gate-write "$GATE_INPUT_CACHE" "$gate" "$DIFF_RESOLVED" "$ATTESTABLE" -- "$@" >/dev/null || true
+}
+
+# Declared inputs per gate, as git pathspecs. SUPERSETS of what a gate reads
+# are sound (worst case a spurious re-run); subsets are not (a false skip) —
+# when in doubt, widen. Only side-effect-free gates are cacheable; the proto
+# and pro-test gates regenerate their own CHECKED outputs in place (byte-
+# identical on a green run), so those outputs are part of their keys — a
+# hand-edit to src/generated must change the key and re-run the gate.
+TYPECHECK_INPUTS=(src shared tests e2e types scripts middleware.ts index.html vite.config.ts 'tsconfig*.json' package.json package-lock.json)
+TYPECHECK_API_INPUTS=(api server shared src/generated scripts middleware.ts 'tsconfig*.json' package.json package-lock.json)
+LINT_MD_INPUTS=(':(glob)**/*.md' '.markdownlint*' package.json)
+# `make generate` also runs every OpenAPI injector, and those injectors
+# read shared and gateway-adjacent generation contracts. Listing only
+# scripts/generate-request-validation.mjs made an injector-only amend
+# keep the previous key and skip regeneration (#7236). These are sound
+# supersets of the generator inputs (worst case a spurious re-run).
+PROTO_INPUTS=(proto Makefile scripts src/generated docs/api shared server src/shared)
+PRO_TEST_INPUTS=(pro-test convex/config/productCatalog.ts scripts/generate-product-config.mjs src/config/products.generated.ts src/config/product-ids.generated.ts)
+
 # A fresh worktree's install is part of the expensive phase too. Keep it under
 # the shared lease so several new worktrees cannot all run npm ci at once.
 # Symlinking node_modules is known-broken here: a later cleanup can delete
@@ -345,14 +442,26 @@ if [ -L node_modules ]; then
   echo "ERROR: node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
   exit 1
 fi
-if [ ! -d node_modules ]; then
-  echo "node_modules missing, running npm ci..."
+# Test the install MARKER, not the directory. `-d` is satisfied by an empty
+# node_modules/ — which a half-finished install, an interrupted npm ci, or a
+# `mkdir node_modules` leaves behind — so the gate would skip the install and
+# then die later on a missing binary (`sh: tsc: command not found`), pointing
+# at the wrong thing. npm writes .package-lock.json only on a completed install,
+# which is exactly the check shouldInstallDependencies() in
+# scripts/bootstrap-worktree.mjs already uses. Keep the two in agreement.
+if [ ! -f node_modules/.package-lock.json ]; then
+  echo "node_modules missing or incomplete, running npm ci..."
   npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
 fi
 
 if changed '^(src/|tests/|e2e/|middleware|index\.html|vite\.config|scripts/|types/)'; then
-  echo "Running type check..."
-  npm run typecheck || exit 1
+  if gate_cached typecheck "${TYPECHECK_INPUTS[@]}"; then
+    echo "Type check skipped (these exact inputs already passed; rm $GATE_INPUT_CACHE/typecheck to force)."
+  else
+    echo "Running type check..."
+    npm run typecheck || exit 1
+    gate_mark_green typecheck "${TYPECHECK_INPUTS[@]}"
+  fi
 else
   echo "Type check skipped (no frontend-surface changes)."
 fi
@@ -360,8 +469,13 @@ fi
 if changed '^(api/|server/|scripts/|middleware|src/generated/)'; then
   # tsconfig.api.json includes api, src/generated, AND server — a generated
   # client/contract change alone can break API compilation.
-  echo "Running API type check..."
-  npm run typecheck:api || exit 1
+  if gate_cached typecheck-api "${TYPECHECK_API_INPUTS[@]}"; then
+    echo "API type check skipped (these exact inputs already passed; rm $GATE_INPUT_CACHE/typecheck-api to force)."
+  else
+    echo "Running API type check..."
+    npm run typecheck:api || exit 1
+    gate_mark_green typecheck-api "${TYPECHECK_API_INPUTS[@]}"
+  fi
 else
   echo "API type check skipped (no api/server/scripts/src-generated changes)."
 fi
@@ -506,7 +620,7 @@ DOM_TESTS_CHANGED=("${_collected[@]}")
 # Same convention as the invariant lints above, which each fire on their own
 # implementation script.
 if path_matches '^(\.husky/pre-push|scripts/prepush-admission\.mjs|scripts/prepush-changed-tests\.sh|scripts/prepush-attest\.sh|vitest\.dom\.config\.mts|package\.json)$'; then
-  for contract_test in tests/prepush-admission.test.mjs tests/prepush-changed-tests.test.mjs tests/prepush-attest.test.mjs; do
+  for contract_test in tests/prepush-admission.test.mjs tests/prepush-changed-tests.test.mjs tests/prepush-attest.test.mjs tests/prepush-proto-freshness-inputs.test.mjs; do
     [ -f "$contract_test" ] || continue
     already_listed=false
     for listed in "${TESTS_CHANGED[@]}"; do
@@ -629,7 +743,8 @@ if [ -n "$PRO_BUILT_OUTPUT_TEST" ]; then
     echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
     exit 1
   fi
-  if [ ! -d pro-test/node_modules ]; then
+  # Marker, not directory — see the root node_modules check above.
+  if [ ! -f pro-test/node_modules/.package-lock.json ]; then
     (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
   fi
   (cd pro-test && npm run build >/dev/null) || {
@@ -655,7 +770,12 @@ fi
 
 echo "Running markdown lint..."
 if path_matches '\.(md|mdx)$' || [ "$RUN_ALL" = true ]; then
-  npm run lint:md || exit 1
+  if gate_cached lint-md "${LINT_MD_INPUTS[@]}"; then
+    echo "  Skipped (markdown inputs unchanged since last green run)."
+  else
+    npm run lint:md || exit 1
+    gate_mark_green lint-md "${LINT_MD_INPUTS[@]}"
+  fi
 else
   echo "  Skipped (no markdown changes)."
 fi
@@ -668,7 +788,7 @@ else
 fi
 
 echo "Running proto freshness check..."
-if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ scripts/generate-request-validation.mjs Makefile | grep -q .; then
+if git diff --name-only origin/main -- "${PROTO_INPUTS[@]}" | grep -q .; then
   # Only prepend $HOME/go/bin when buf is NOT already resolvable on the
   # caller's PATH. An unconditional prepend would shadow a developer's
   # preferred `buf` (e.g. Homebrew) with a potentially stale
@@ -689,26 +809,44 @@ if git diff --name-only origin/main -- proto/ src/generated/ docs/api/ scripts/g
   # not on PATH) still runs `make generate` cleanly because the
   # Makefile's own plugin-executable guard fires there.
   if command -v buf &>/dev/null && { command -v protoc-gen-ts-client &>/dev/null || [ -x "$HOME/go/bin/protoc-gen-ts-client" ]; }; then
-    make generate
-    if ! git diff --exit-code src/generated/ docs/api/; then
-      echo ""
-      echo "============================================================"
-      echo "ERROR: Proto-generated code is out of date."
-      echo "Run 'make generate' locally and commit the updated files."
-      echo "============================================================"
-      exit 1
+    if gate_cached proto-freshness "${PROTO_INPUTS[@]}"; then
+      echo "Proto-generated code is up to date (inputs unchanged since last green run)."
+    else
+      make generate
+      _diff_status=0
+      bash "$ATTEST" worktree-diff "$WM_PREPUSH_ROOT" -- src/generated/ docs/api/ || _diff_status=$?
+      case "$_diff_status" in
+        0) ;;
+        3)
+          echo ""
+          echo "============================================================"
+          echo "ERROR: Proto-generated code is out of date."
+          echo "Run 'make generate' locally and commit the updated files."
+          echo "============================================================"
+          exit 1
+          ;;
+        *)
+          echo ""
+          echo "============================================================"
+          echo "ERROR: proto freshness check could not run (status $_diff_status)."
+          echo "This is a gate failure, not out-of-date generated code — do not run make generate to 'fix' it."
+          echo "============================================================"
+          exit 1
+          ;;
+      esac
+      UNTRACKED=$(git ls-files --others --exclude-standard src/generated/ docs/api/)
+      if [ -n "$UNTRACKED" ]; then
+        echo ""
+        echo "============================================================"
+        echo "ERROR: Untracked generated files found:"
+        echo "$UNTRACKED"
+        echo "Run 'make generate' locally and commit the new files."
+        echo "============================================================"
+        exit 1
+      fi
+      echo "Proto-generated code is up to date."
+      gate_mark_green proto-freshness "${PROTO_INPUTS[@]}"
     fi
-    UNTRACKED=$(git ls-files --others --exclude-standard src/generated/ docs/api/)
-    if [ -n "$UNTRACKED" ]; then
-      echo ""
-      echo "============================================================"
-      echo "ERROR: Untracked generated files found:"
-      echo "$UNTRACKED"
-      echo "Run 'make generate' locally and commit the new files."
-      echo "============================================================"
-      exit 1
-    fi
-    echo "Proto-generated code is up to date."
   else
     echo "WARNING: buf or protoc plugins not installed, skipping proto freshness check."
     echo "  Install with: make install-buf install-plugins"
@@ -735,63 +873,90 @@ echo "Running pro-test build + generated config freshness check..."
 # pro-test/src/generated/tiers.json. public/pro/ is gitignored since #6898 and
 # can never appear in a branch delta, so it is no longer a trigger path.
 if [ "$RUN_ALL" = true ] || path_matches '^pro-test/|^convex/config/productCatalog\.ts$|^scripts/generate-product-config\.mjs$'; then
-  npx tsx scripts/generate-product-config.mjs >/dev/null || {
-    echo "ERROR: product config generation failed"
-    exit 1
-  }
-  if [ -L pro-test/node_modules ]; then
-    echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
-    exit 1
-  fi
-  if [ ! -d pro-test/node_modules ]; then
-    echo "  Installing pro-test deps..."
-    (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
-  fi
-  # Point Vite's default cacheDir (pro-test/node_modules/.vite) at a
-  # lockfile-sharded directory under the shared git-common-dir. Do not
-  # edit pro-test/vite.config.ts here: that path trips this gate. The
-  # .vite link is a cache dir, not a node_modules symlink. Serialize
-  # concurrent writes with flock.
-  if [ -n "$PREPUSH_COMMON_DIR" ]; then
-    _lock_hash=$(sha256sum < pro-test/package-lock.json 2>/dev/null | cut -c1-12)
-    [ -n "$_lock_hash" ] || _lock_hash=nolock
-    _vite_cache="$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test-${_lock_hash}"
-    mkdir -p "$_vite_cache"
-    if [ -d pro-test/node_modules ] && [ ! -e pro-test/node_modules/.vite ]; then
-      ln -s "$_vite_cache" pro-test/node_modules/.vite
+  if gate_cached pro-test-build "${PRO_TEST_INPUTS[@]}"; then
+    echo "  Skipped (pro-test inputs unchanged since last green run; rm $GATE_INPUT_CACHE/pro-test-build to force)."
+  else
+    npx tsx scripts/generate-product-config.mjs >/dev/null || {
+      echo "ERROR: product config generation failed"
+      exit 1
+    }
+    if [ -L pro-test/node_modules ]; then
+      echo "ERROR: pro-test/node_modules is a symlink. Copy, hardlink, or npm ci — never symlink."
+      exit 1
     fi
-    if command -v flock >/dev/null 2>&1; then
-      exec 9>"$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test.build.lock"
-      if ! flock -w 180 9; then
-        echo "ERROR: could not lock shared pro-test vite cache"
-        exit 1
+    # Marker, not directory — see the root node_modules check above.
+    if [ ! -f pro-test/node_modules/.package-lock.json ]; then
+      echo "  Installing pro-test deps..."
+      (cd pro-test && npm ci --cache "$npm_config_cache" --prefer-offline) || exit 1
+    fi
+    # Point Vite's default cacheDir (pro-test/node_modules/.vite) at a
+    # lockfile-sharded directory under the shared git-common-dir. Do not
+    # edit pro-test/vite.config.ts here: that path trips this gate. The
+    # .vite link is a cache dir, not a node_modules symlink. Serialize
+    # concurrent writes with flock.
+    if [ -n "$PREPUSH_COMMON_DIR" ]; then
+      _lock_hash=$(sha256sum < pro-test/package-lock.json 2>/dev/null | cut -c1-12)
+      [ -n "$_lock_hash" ] || _lock_hash=nolock
+      _vite_cache="$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test-${_lock_hash}"
+      mkdir -p "$_vite_cache"
+      if [ -d pro-test/node_modules ] && [ ! -e pro-test/node_modules/.vite ]; then
+        ln -s "$_vite_cache" pro-test/node_modules/.vite
+      fi
+      if command -v flock >/dev/null 2>&1; then
+        exec 9>"$PREPUSH_COMMON_DIR/wm-vite-cache/pro-test.build.lock"
+        if ! flock -w 180 9; then
+          echo "ERROR: could not lock shared pro-test vite cache"
+          exit 1
+        fi
       fi
     fi
+    (cd pro-test && npm run build >/dev/null) || {
+      echo "ERROR: pro-test build failed"
+      exit 1
+    }
+    # `git diff --exit-code` is three-valued: 0 clean, 1 real diff, anything
+    # else (typically 128) could not run. `if !` used to collapse 1 and 128,
+    # so a work-tree-resolution failure was printed as a stale catalog and
+    # the regenerate-config recipe was a no-op (#7445). worktree-diff maps
+    # those onto 0 / 3 / 1. Paths must still all exist: an unknown path is
+    # 128, which is now a distinct error rather than "always stale". #5672
+    # removed `api/_product-fallback-prices.js` and left it listed here.
+    # Keep this list in step with what scripts/generate-product-config.mjs
+    # actually writes. Pin the worktree captured at hook start: the vite
+    # cache symlink below lives inside the git common dir.
+    _diff_status=0
+    bash "$ATTEST" worktree-diff "$WM_PREPUSH_ROOT" -- \
+      src/config/products.generated.ts \
+      src/config/product-ids.generated.ts \
+      pro-test/src/generated/tiers.json \
+      pro-test/src/locales/ || _diff_status=$?
+    case "$_diff_status" in
+      0) ;;
+      3)
+        echo ""
+        echo "============================================================"
+        echo "ERROR: product catalog, generated config, or pro locales is stale."
+        echo "public/pro/ itself is built on deploy (#6898) and is not checked here,"
+        echo "but the generated config it compiles against is still committed."
+        echo "Fix:"
+        echo "  npx tsx scripts/generate-product-config.mjs"
+        echo "  git add src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/"
+        echo "  git commit --amend --no-edit"
+        echo "============================================================"
+        exit 1
+        ;;
+      *)
+        echo ""
+        echo "============================================================"
+        echo "ERROR: freshness check could not run (status $_diff_status)."
+        echo "This is a gate failure, not a stale catalog — do not run the regenerate steps."
+        echo "============================================================"
+        exit 1
+        ;;
+    esac
+    echo "  pro-test builds and its generated config is up to date."
+    gate_mark_green pro-test-build "${PRO_TEST_INPUTS[@]}"
   fi
-  (cd pro-test && npm run build >/dev/null) || {
-    echo "ERROR: pro-test build failed"
-    exit 1
-  }
-  # Paths must all exist: `git diff` exits 128 on an unknown path, which this
-  # check cannot tell apart from a real diff, so a generated file that is later
-  # deleted silently converts the gate into "always fails". #5672 removed
-  # api/_product-fallback-prices.js and left it listed here, which blocked every
-  # push touching pro-test/ or public/pro/ until it was noticed. Keep this list
-  # in step with what scripts/generate-product-config.mjs actually writes.
-  if ! git diff --exit-code src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/; then
-    echo ""
-    echo "============================================================"
-    echo "ERROR: product catalog, generated config, or pro locales is stale."
-    echo "public/pro/ itself is built on deploy (#6898) and is not checked here,"
-    echo "but the generated config it compiles against is still committed."
-    echo "Fix:"
-    echo "  npx tsx scripts/generate-product-config.mjs"
-    echo "  git add src/config/products.generated.ts src/config/product-ids.generated.ts pro-test/src/generated/tiers.json pro-test/src/locales/"
-    echo "  git commit --amend --no-edit"
-    echo "============================================================"
-    exit 1
-  fi
-  echo "  pro-test builds and its generated config is up to date."
 else
   echo "  Skipped (no pro-test/, product catalog, or product-config generator changes in branch)."
 fi

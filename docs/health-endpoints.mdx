@@ -15,7 +15,8 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 
 | Parameter | Values | Description |
 |-----------|--------|-------------|
-| `compact` | `1` | Omit per-key details; only return keys with problems |
+| `compact` | `1` | Omit per-key details; only return keys with problems. Public — no key required. |
+| `history` | `1` | Operator history view of past health snapshots. Requires an operator/enterprise API key. |
 
 ### Response Status Codes
 
@@ -36,8 +37,8 @@ Primary health endpoint. Checks all Redis-backed data keys and seed freshness me
 {
   "status": "HEALTHY | WARNING | DEGRADED | UNHEALTHY | REDIS_DOWN",
   "summary": {
-    "total": 284,
-    "ok": 284,
+    "total": 290,
+    "ok": 290,
     "warn": 0,
     "onDemandWarn": 0,
     "staleContent": 0,
@@ -604,6 +605,8 @@ Focused endpoint for seed loop freshness. Checks only `seed-meta:*` keys without
 ### Staleness Logic
 
 A seed is considered stale when its age exceeds **2x the configured interval**. This accounts for normal jitter in cron/relay timing. Seeds below an aggregate `minRecordCount` report `coverage_partial` and `stale: true`. Seeds below a subgroup floor such as prediction-market `minPoolCounts` also report `coverage_partial`, but retain `stale: false` while their producer heartbeat remains fresh so freshness and coverage stay distinct.
+
+The commodity-vulnerability cohort is stricter than a non-empty check. The authoritative cohort pointer read by every vulnerability RPC must exist. Its country projection must meet the configured country floor, every covered country must carry all reviewed mapping rows, and the run must observe the full reviewed commodity, HS4, and transit-HS2 input sets. Registry constants alone do not satisfy these measured coverage checks. The inverse projection must meet its configured chokepoint floor. Any shortfall reports `COVERAGE_PARTIAL`; before the first atomic cohort activation, both checks remain rollout-pending.
 
 **Consumers:** treat `status` and `overall` as authoritative for coverage. Do not rely on `stale` alone — pool shortfalls keep `stale: false` by design. When either coverage floor fails, the entry also sets `coveragePartial: true` so clients that only inspect booleans still see the shortfall.
 

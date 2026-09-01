@@ -5,6 +5,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { getRelayBaseUrl, getRelayHeaders } from '../../../_shared/relay';
 import { parseStringArray } from '../../../_shared/parse-string-array';
+import { normalizePassengerCount } from '../../../_shared/passenger-count';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 // Medium-cache tier (10 min) — use cachedFetchJson for stampede protection.
@@ -28,7 +29,7 @@ export async function searchGoogleDates(
     return { dates: [], degraded: true, error: 'relay unavailable' };
   }
 
-  const passengers = Math.max(1, Math.min(req.passengers ?? 1, 9));
+  const passengers = normalizePassengerCount(req.passengers);
   const airlines = parseStringArray(req.airlines).sort();
   const params = new URLSearchParams({
     origin,

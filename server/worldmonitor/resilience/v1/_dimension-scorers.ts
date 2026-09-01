@@ -1,13 +1,15 @@
 import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
+import { wgiObservationSource } from '../../../../shared/wgi-source-provenance.js';
 import { normalizeCountryToken } from '../../../_shared/country-token';
-import { getCachedEnvelopeJson, getCachedJson, readCachedJson } from '../../../_shared/redis';
+import { getCachedEnvelopeJson, getCachedJson, readCachedEnvelopeJson, readCachedJson } from '../../../_shared/redis';
 import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
 import { MACRO_FISCAL_INDICATOR_WEIGHTS } from './_macro-fiscal-weights';
 import { isInRankableUniverse } from './_rankable-universe';
+import { getEnergyImportDependencyObservedSources } from './_energy-import-dependency-source';
 import {
   failedDimensionsFromDatasets,
   readFailedDatasets,
@@ -18,8 +20,73 @@ import {
   applyCanadaNationalOverlay,
   RESILIENCE_BOC_VALET_KEY,
   RESILIENCE_STATCAN_WDS_KEY,
+  STATCAN_SCORE_PROVIDER,
+  STATCAN_WDS_SOURCE_URL,
   statcanOverlayUsed,
 } from './_canada-national-overlay';
+import type {
+  IndicatorObservedSource,
+  IndicatorTraceMetric,
+  ResilienceScoreOptions,
+} from './_indicator-trace';
+import type { ResilienceIndicatorId } from './_indicator-registry';
+
+function worldBankSources(...indicatorIds: readonly string[]): readonly IndicatorObservedSource[] {
+  return indicatorIds.map((indicatorId) => ({
+    providerName: 'World Bank Open Data',
+    sourceUrl: `https://api.worldbank.org/v2/country/all/indicator/${indicatorId}`,
+  }));
+}
+
+const WORLD_BANK_FX_RESERVES_SOURCE = worldBankSources('FI.RES.TOTL.MO');
+const WORLD_BANK_TARIFF_SOURCE = worldBankSources('TM.TAX.MRCH.WM.AR.ZS');
+const WORLD_BANK_SHORT_TERM_DEBT_GNI_SOURCES = worldBankSources('DT.DOD.DSTC.CD', 'NY.GNP.MKTP.CD');
+const WORLD_BANK_ROADS_PAVED_SOURCE = worldBankSources('IS.ROD.PAVE.ZS');
+const WORLD_BANK_ELECTRICITY_ACCESS_SOURCE = worldBankSources('EG.ELC.ACCS.ZS');
+const WORLD_BANK_BROADBAND_SOURCE = worldBankSources('IT.NET.BBND.P2');
+const WORLD_BANK_ELECTRICITY_CONSUMPTION_SOURCE = worldBankSources('EG.USE.ELEC.KH.PC');
+const WORLD_BANK_POWER_LOSSES_SOURCE = worldBankSources('EG.ELC.LOSS.ZS');
+const WORLD_BANK_WATER_STRESS_SOURCE = worldBankSources('ER.H2O.FWST.ZS');
+const WORLD_BANK_RECOVERY_DEBT_RESERVE_SOURCES = worldBankSources('DT.DOD.DSTC.CD', 'FI.RES.TOTL.CD');
+const UNESCO_VIA_WORLD_BANK_SOURCES = [
+  { providerName: 'UNESCO Institute for Statistics via World Bank WDI', sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/SE.SEC.CUAT.UP.FE.ZS' },
+] as const;
+const OWID_ENERGY_SOURCE = [{ providerName: 'Our World in Data', sourceUrl: 'https://ourworldindata.org/energy' }] as const;
+const OWID_LOW_CARBON_SOURCE = [{
+  providerName: 'Our World in Data',
+  sourceUrl: 'https://ourworldindata.org/grapher/share-electricity-low-carbon',
+}] as const;
+const WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE = [{
+  providerName: 'World Bank Open Data',
+  sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/EG.ELC.FOSL.ZS',
+}] as const;
+
+function oldestSourceYear(...years: readonly (number | null | undefined)[]): number | null {
+  const observed = years.filter((year): year is number => Number.isFinite(year));
+  return observed.length > 0 ? Math.min(...observed) : null;
+}
+
+function statcanSourceYear(observedAt: string | null | undefined): number | null {
+  if (typeof observedAt !== 'string') return null;
+  const match = /^(\d{4})/.exec(observedAt);
+  return match ? Number(match[1]) : null;
+}
+
+function statcanObservedAtMs(observedAt: string | null | undefined): number | null {
+  if (typeof observedAt !== 'string') return null;
+  const parsed = Date.parse(observedAt);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function statcanObservedSources(used: boolean): readonly IndicatorObservedSource[] {
+  return used
+    ? [{
+        sourceKey: RESILIENCE_STATCAN_WDS_KEY,
+        providerName: STATCAN_SCORE_PROVIDER,
+        sourceUrl: STATCAN_WDS_SOURCE_URL,
+      }]
+    : [];
+}
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -102,6 +169,15 @@ export interface WeightedMetric {
   // countries — the inverse of the intended semantic. Omit when `weight` is
   // already the nominal design-time value (default = weight).
   nominalWeight?: number;
+}
+
+export type TracedWeightedMetric = WeightedMetric & IndicatorTraceMetric;
+
+function tracedMetric(
+  indicatorId: ResilienceIndicatorId,
+  metric: Omit<TracedWeightedMetric, 'indicatorId'>,
+): TracedWeightedMetric {
+  return Object.assign(metric, { indicatorId });
 }
 
 function hasFiniteMetricScore(metric: WeightedMetric): metric is WeightedMetric & { score: number } {
@@ -222,6 +298,7 @@ interface StaticIndicatorValue {
 }
 
 interface ResilienceStaticCountryRecord {
+  seededAt?: string;
   wgi?: { indicators?: Record<string, StaticIndicatorValue> } | null;
   infrastructure?: { indicators?: Record<string, StaticIndicatorValue> } | null;
   gpi?: { score?: number; rank?: number; year?: number | null } | null;
@@ -233,6 +310,19 @@ interface ResilienceStaticCountryRecord {
   tradeToGdp?: { tradeToGdpPct?: number; year?: number | null; source?: string } | null;
   fxReservesMonths?: { months?: number; year?: number | null; source?: string } | null;
   appliedTariffRate?: { value?: number; year?: number | null; source?: string } | null;
+}
+
+type ResilienceStaticDatasetField = Exclude<keyof ResilienceStaticCountryRecord, 'seededAt'>;
+
+function staticDatasetRetrievedAt(
+  record: ResilienceStaticCountryRecord | null,
+  datasetField: ResilienceStaticDatasetField,
+): string {
+  const dataset = record?.[datasetField] as { _recovered?: { seededAt?: unknown } } | null | undefined;
+  const recovered = dataset != null && Object.prototype.hasOwnProperty.call(dataset, '_recovered');
+  const value = recovered ? dataset?._recovered?.seededAt : record?.seededAt;
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return '';
+  return new Date(Date.parse(value)).toISOString();
 }
 
 interface ImfMacroEntry {
@@ -633,6 +723,10 @@ function safeNum(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function optionalNum(value: unknown): number | null {
+  return value == null || value === '' ? null : safeNum(value);
+}
+
 export function sqrtCount(value: number): number {
   return Math.sqrt(Math.max(0, Number.isFinite(value) ? value : 0));
 }
@@ -880,7 +974,23 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
 const MINUTE_MS = 60 * 1000;
 const WGI_INDICATOR_KEYS: readonly string[] = wgiIndicatorKeys;
 
-export function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
+export interface WeightedBlendTraceOptions {
+  dimensionId: ResilienceDimensionId;
+  trace?: ResilienceScoreOptions['trace'];
+}
+
+export function weightedBlend(
+  metrics: readonly TracedWeightedMetric[],
+  traceOptions: WeightedBlendTraceOptions,
+): ResilienceDimensionScore;
+export function weightedBlend(
+  metrics: readonly WeightedMetric[],
+  traceOptions?: WeightedBlendTraceOptions,
+): ResilienceDimensionScore;
+export function weightedBlend(
+  metrics: readonly WeightedMetric[],
+  traceOptions?: WeightedBlendTraceOptions,
+): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
   const available = metrics.filter(hasFiniteMetricScore);
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
@@ -889,7 +999,15 @@ export function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionSco
   const scoringWeight = availableWeight + fallbackWeight;
 
   if (!scoringWeight || !totalWeight) {
-    return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
+    const empty = { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } } as const;
+    if (traceOptions?.trace) {
+      traceOptions.trace.recordBlend(
+        traceOptions.dimensionId,
+        empty.score,
+        metrics as readonly IndicatorTraceMetric[],
+      );
+    }
+    return empty;
   }
 
   // A malformed slot with an explicit fallback keeps its weight in the
@@ -957,7 +1075,7 @@ export function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionSco
     imputationClass = bestClass;
   }
 
-  return {
+  const result: ResilienceDimensionScore = {
     score: roundScore(weightedScore),
     coverage: roundCoverage(weightedCertainty),
     observedWeight: Number(observedWeight.toFixed(4)),
@@ -965,6 +1083,24 @@ export function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionSco
     imputationClass,
     freshness: { lastObservedAtMs: 0, staleness: '' },
   };
+  if (traceOptions?.trace) {
+    traceOptions.trace.recordBlend(
+      traceOptions.dimensionId,
+      result.score,
+      metrics as readonly IndicatorTraceMetric[],
+    );
+  }
+  return result;
+}
+
+function tracedBlend(
+  dimensionId: ResilienceDimensionId,
+  metrics: readonly TracedWeightedMetric[],
+  options?: ResilienceScoreOptions,
+): ResilienceDimensionScore {
+  return options?.trace
+    ? weightedBlend(metrics, { dimensionId, trace: options.trace })
+    : weightedBlend(metrics);
 }
 
 function isSeedMetaPreflightUnhealthy(sourceKey: string, meta: unknown, nowMs = Date.now()): boolean {
@@ -1128,6 +1264,18 @@ async function defaultSeedReader(key: string): Promise<unknown | null> {
     : getCachedJson(key, true);
 }
 
+/** Strict reader for diagnostic surfaces that must distinguish a miss from an outage. */
+export async function strictResilienceSeedReader(key: string): Promise<unknown | null> {
+  const read = key === RESILIENCE_WB_EXTERNAL_DEBT_KEY
+    ? await readCachedEnvelopeJson(key, true)
+    : await readCachedJson(key, true);
+  if (read.status === 'hit') return read.value;
+  if (read.status === 'miss') return null;
+  const error = new Error(`Resilience diagnostic seed read failed for ${key}`) as Error & { cause?: unknown };
+  error.cause = read.error;
+  throw error;
+}
+
 interface MemoizedSeedReaderOptions {
   retryJoinedSeedMetaNull?: boolean;
 }
@@ -1194,25 +1342,40 @@ function getStaticIndicatorValue(
   indicatorKey: string,
 ): number | null {
   const dataset = record?.[datasetField];
-  const value = safeNum(dataset?.indicators?.[indicatorKey]?.value);
+  const value = optionalNum(dataset?.indicators?.[indicatorKey]?.value);
   return value == null ? null : value;
 }
 
 function getStaticWgiValues(record: ResilienceStaticCountryRecord | null): number[] {
   const indicators = record?.wgi?.indicators ?? {};
   return WGI_INDICATOR_KEYS
-    .map((key) => safeNum(indicators[key]?.value))
+    .map((key) => optionalNum(indicators[key]?.value))
     .filter((value): value is number => value != null);
 }
 
-function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): WeightedMetric[] {
+const WGI_TRACE_ROWS = [
+  ['VA.EST', 'wgiVoiceAccountability'],
+  ['PV.EST', 'wgiPoliticalStability'],
+  ['GE.EST', 'wgiGovernmentEffectiveness'],
+  ['RQ.EST', 'wgiRegulatoryQuality'],
+  ['RL.EST', 'wgiRuleOfLaw'],
+  ['CC.EST', 'wgiControlOfCorruption'],
+] as const satisfies readonly (readonly [string, ResilienceIndicatorId])[];
+
+function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): TracedWeightedMetric[] {
   const indicators = record?.wgi?.indicators ?? {};
-  return WGI_INDICATOR_KEYS.map((key) => {
-    const value = safeNum(indicators[key]?.value);
-    return {
+  return WGI_TRACE_ROWS.map(([key, indicatorId]) => {
+    const value = optionalNum(indicators[key]?.value);
+    return tracedMetric(indicatorId, {
       score: value == null ? null : normalizeHigherBetter(value, -2.5, 2.5),
       weight: 1,
-    };
+      rawValue: value,
+      rawUnit: 'wgi_estimate',
+      sourceYear: indicators[key]?.year ?? null,
+      retrievedAt: staticDatasetRetrievedAt(record, 'wgi'),
+      observedSources: [wgiObservationSource(key)],
+      provenanceHint: key,
+    });
   });
 }
 
@@ -1573,6 +1736,7 @@ function getBisDsrEntry(
 export async function scoreMacroFiscal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_NATIONAL_DEBT_KEY),
@@ -1593,42 +1757,67 @@ export async function scoreMacroFiscal(
   const laborEntry = overlay.laborEntry;
   const dsrEntry = getBisDsrEntry(bisDsrRaw, countryCode);
 
-  return weightedBlend([
+  return tracedBlend('macroFiscal', [
     // Government revenue/GDP: fiscal capacity — how much the state can actually mobilise.
     // Replaces raw debt/GDP which HIPC debt relief and credit exclusion invert for fragile
     // states (Somalia 5% debt ≠ fiscal prudence; it reflects that no one will lend to them).
     // Anchor: 5% (Somalia, war-torn states) → 0, 45% (OECD median) → 100.
-    imfMacroRaw == null
+    tracedMetric('govRevenuePct', imfMacroRaw == null
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct }
       : {
           score: imfEntry?.govRevenuePct == null ? null : normalizeHigherBetter(imfEntry.govRevenuePct, 5, 45),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct,
-        },
+          rawValue: imfEntry?.govRevenuePct ?? null,
+          rawUnit: 'percent_gdp',
+          sourceYear: imfEntry?.year ?? null,
+          provenanceHint: overlay.usedStatcanInflation ? 'canada-national-overlay' : '',
+        }),
     // Debt growth rate: rapid debt accumulation = fiscal stress even at moderate levels.
-    {
+    tracedMetric('debtGrowthRate', {
       score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)),
       weight: MACRO_FISCAL_INDICATOR_WEIGHTS.debtGrowthRate,
-    },
+      rawValue: safeNum(debtEntry?.annualGrowth),
+      rawUnit: 'percent_per_year',
+    }),
     // Current account balance: external position — deficit = more vulnerable to FX shocks.
-    imfMacroRaw == null
+    tracedMetric('currentAccountPct', imfMacroRaw == null
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct }
       : {
           score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
-        },
-    imfLaborRaw == null && !overlay.usedStatcanUnemployment
+          rawValue: imfEntry?.currentAccountPct ?? null,
+          rawUnit: 'percent_gdp',
+          sourceYear: imfEntry?.year ?? null,
+        }),
+    tracedMetric('unemploymentPct', imfLaborRaw == null && !overlay.usedStatcanUnemployment
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct }
       : {
           score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct,
-        },
-    bisDsrRaw == null || dsrEntry == null
+          rawValue: laborEntry?.unemploymentPct ?? null,
+          rawUnit: 'percent_labor_force',
+          sourceYear: overlay.usedStatcanUnemployment
+            ? statcanSourceYear(overlay.unemploymentFreshness?.observedAt)
+            : laborEntry?.year ?? null,
+          retrievedAt: overlay.usedStatcanUnemployment
+            ? overlay.unemploymentFreshness?.retrievedAt ?? undefined
+            : undefined,
+          observedAtMs: overlay.usedStatcanUnemployment
+            ? statcanObservedAtMs(overlay.unemploymentFreshness?.observedAt)
+            : null,
+          observedSources: statcanObservedSources(overlay.usedStatcanUnemployment),
+          provenanceHint: overlay.usedStatcanUnemployment ? 'statcan-wds' : 'imf-weo',
+        }),
+    tracedMetric('householdDebtService', bisDsrRaw == null || dsrEntry == null
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.householdDebtService }
       : {
           score: normalizeLowerBetter(Math.max(0, Math.min(dsrEntry.dsrPct, 20)), 0, 20),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.householdDebtService,
-        },
-  ]);
+          rawValue: dsrEntry.dsrPct,
+          rawUnit: 'percent_income',
+          provenanceHint: dsrEntry.date,
+        }),
+  ], options);
 }
 
 function getFxReservesMonths(staticRecord: ResilienceStaticCountryRecord | null): number | null {
@@ -1659,6 +1848,7 @@ function scoreFxReserves(months: number): number {
 export async function scoreCurrencyExternal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [imfMacroRaw, staticRecord, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_IMF_MACRO_KEY),
@@ -1683,10 +1873,45 @@ export async function scoreCurrencyExternal(
 
   const reservesMonths = getFxReservesMonths(staticRecord);
   const reservesScore = reservesMonths != null ? scoreFxReserves(reservesMonths) : null;
+  const currencyMetrics: TracedWeightedMetric[] = [
+    tracedMetric('inflationStability', {
+      score: inflationScore,
+      weight: 0.6,
+      rawValue: inflationPct,
+      rawUnit: 'percent_year_over_year',
+      sourceYear: overlay.usedStatcanInflation
+        ? statcanSourceYear(overlay.inflationFreshness?.observedAt)
+        : imfEntry?.year ?? null,
+      retrievedAt: overlay.usedStatcanInflation
+        ? overlay.inflationFreshness?.retrievedAt ?? undefined
+        : undefined,
+      observedAtMs: overlay.usedStatcanInflation
+        ? statcanObservedAtMs(overlay.inflationFreshness?.observedAt)
+        : null,
+      observedSources: statcanObservedSources(overlay.usedStatcanInflation),
+      provenanceHint: overlay.usedStatcanInflation ? 'statcan-wds' : 'imf-weo',
+    }),
+    tracedMetric('fxReservesAdequacy', {
+      score: reservesScore,
+      weight: 0.4,
+      rawValue: reservesMonths,
+      rawUnit: 'months_of_imports',
+      sourceYear: staticRecord?.fxReservesMonths?.year ?? null,
+      retrievedAt: staticDatasetRetrievedAt(staticRecord, 'fxReservesMonths'),
+      observedSources: WORLD_BANK_FX_RESERVES_SOURCE,
+    }),
+  ];
+  const returnWithCurrencyTrace = (
+    result: ResilienceDimensionScore,
+    metrics: readonly TracedWeightedMetric[] = currencyMetrics,
+  ): ResilienceDimensionScore => {
+    options?.trace?.recordManual('currencyExternal', result.score, metrics);
+    return result;
+  };
 
   if (hasInflation && reservesScore != null) {
     const blended = inflationScore! * 0.6 + reservesScore * 0.4;
-    return {
+    const result: ResilienceDimensionScore = {
       score: roundScore(blended),
       coverage: 0.85,
       observedWeight: 1,
@@ -1694,9 +1919,10 @@ export async function scoreCurrencyExternal(
       imputationClass: null,
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    return returnWithCurrencyTrace(result);
   }
   if (hasInflation) {
-    return {
+    const result: ResilienceDimensionScore = {
       score: inflationScore!,
       coverage: 0.55,
       observedWeight: 1,
@@ -1704,9 +1930,10 @@ export async function scoreCurrencyExternal(
       imputationClass: null,
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    return returnWithCurrencyTrace(result);
   }
   if (reservesScore != null) {
-    return {
+    const result: ResilienceDimensionScore = {
       score: reservesScore,
       coverage: 0.4,
       observedWeight: 1,
@@ -1714,6 +1941,7 @@ export async function scoreCurrencyExternal(
       imputationClass: null,
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    return returnWithCurrencyTrace(result);
   }
 
   // Neither global-coverage source present. True structural absence;
@@ -1722,7 +1950,7 @@ export async function scoreCurrencyExternal(
   // outage. (IMPUTE.bisEer is the existing entry; we keep its
   // identity/name for snapshot continuity but the semantics now read
   // as "no IMF + no WB reserves" rather than "no BIS".)
-  return {
+  const result: ResilienceDimensionScore = {
     score: IMPUTE.bisEer.score,
     coverage: IMPUTE.bisEer.certaintyCoverage,
     observedWeight: 0,
@@ -1730,6 +1958,13 @@ export async function scoreCurrencyExternal(
     imputationClass: IMPUTE.bisEer.imputationClass,
     freshness: { lastObservedAtMs: 0, staleness: '' },
   };
+  return returnWithCurrencyTrace(result, currencyMetrics.map((metric) => ({
+    ...metric,
+    score: IMPUTE.bisEer.score,
+    certaintyCoverage: IMPUTE.bisEer.certaintyCoverage,
+    imputed: true,
+    imputationClass: IMPUTE.bisEer.imputationClass,
+  })));
 }
 
 // Renamed from scoreTradeSanctions in plan 2026-04-25-004 Phase 1 (Ship 1).
@@ -1751,6 +1986,7 @@ export async function scoreCurrencyExternal(
 export async function scoreTradePolicy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [restrictionsRaw, barriersRaw, staticRecord] = await Promise.all([
     reader(RESILIENCE_TRADE_RESTRICTIONS_KEY),
@@ -1768,19 +2004,27 @@ export async function scoreTradePolicy(
   // 0% = perfect free trade (score 100), 20%+ = heavily restricted (score 0).
   const tariffRate = safeNum(staticRecord?.appliedTariffRate?.value);
 
-  return weightedBlend([
-    restrictionsRaw == null
+  return tracedBlend('tradePolicy', [
+    tracedMetric('tradeRestrictions', restrictionsRaw == null
       ? { score: null, weight: 0.30 }
       : !inRestrictionsReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(restrictionCount, 0, 2), weight: 0.30 },
-    barriersRaw == null
+        : { score: normalizeLowerBetter(restrictionCount, 0, 2), weight: 0.30, rawValue: restrictionCount, rawUnit: 'severity_count' }),
+    tracedMetric('tradeBarriers', barriersRaw == null
       ? { score: null, weight: 0.30 }
       : !inBarriersReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(barrierCount, 0, 2), weight: 0.30 },
-    { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.40 },
-  ]);
+        : { score: normalizeLowerBetter(barrierCount, 0, 2), weight: 0.30, rawValue: barrierCount, rawUnit: 'severity_count' }),
+    tracedMetric('appliedTariffRate', {
+      score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20),
+      weight: 0.40,
+      rawValue: tariffRate,
+      rawUnit: 'percent',
+      sourceYear: staticRecord?.appliedTariffRate?.year ?? null,
+      retrievedAt: staticDatasetRetrievedAt(staticRecord, 'appliedTariffRate'),
+      observedSources: WORLD_BANK_TARIFF_SOURCE,
+    }),
+  ], options);
 }
 
 // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via 4
@@ -1882,12 +2126,14 @@ export function educationObservationCertainty(observationYear: number, nowYear: 
 export async function scoreEducation(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   if (!isEducationEnabled()) {
     // Flag off — empty-data shape, contributes zero weight to the domain mean.
     // imputationClass stays null: a dark dimension is a deliberate construct
     // state, not an outage, and tagging it `source-failure` would render a
     // false "Source down" badge on every country in the widget.
+    options?.trace?.recordInactiveDimension('education', 'education-feature-disabled');
     return {
       score: 0,
       coverage: 0,
@@ -1972,28 +2218,32 @@ export async function scoreEducation(
     // `stable-absence`: the World Bank does not survey everywhere, so absence
     // means "not measured", not "the phenomenon is not happening". Treating it
     // as stable-absence would hand DPRK and Syria a score near 85.
-    return weightedBlend([
-      {
+    return tracedBlend('education', [
+      tracedMetric('femaleUpperSecondaryAttainment', {
         score: IMPUTATION.curated_list_absent.score,
         weight: 1.0,
         certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
         imputed: true,
         imputationClass: IMPUTATION.curated_list_absent.imputationClass,
-      },
-    ]);
+      }),
+    ], options);
   }
 
   const nowYear = new Date().getUTCFullYear();
-  return weightedBlend([
-    {
+  return tracedBlend('education', [
+    tracedMetric('femaleUpperSecondaryAttainment', {
       score: normalizeEducationAttainment(record.value),
       weight: 1.0,
       // Observed data at reduced certainty when the survey is old. NOT
       // `imputed` — this is a real reading, just an aging one, and flagging it
       // imputed would misreport the dimension's provenance.
       certaintyCoverage: educationObservationCertainty(record.year, nowYear),
-    },
-  ]);
+      rawValue: record.value,
+      rawUnit: 'percent_population_25_plus',
+      sourceYear: record.year,
+      observedSources: UNESCO_VIA_WORLD_BANK_SOURCES,
+    }),
+  ], options);
 }
 
 // Payload accessor. Shape: { countries: { [iso2]: { value, year } } }.
@@ -2094,9 +2344,11 @@ export const FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP = 15;
 export async function scoreFinancialSystemExposure(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   if (!isFinSysExposureEnabledLocal()) {
     // Flag off — emit empty-data shape. Matches `weightedBlend([])` semantics.
+    options?.trace?.recordInactiveDimension('financialSystemExposure', 'financial-system-exposure-feature-disabled');
     return {
       score: 0,
       coverage: 0,
@@ -2126,9 +2378,10 @@ export async function scoreFinancialSystemExposure(
     RESILIENCE_FATF_LISTING_KEY,
   ] as const;
   const unhealthy: string[] = [];
-  for (const key of requiredSeedKeys) {
-    const meta = await reader(resolveSeedMetaKey(key));
-    if (isSeedMetaPreflightUnhealthy(key, meta)) unhealthy.push(key);
+  // Independent keys — read concurrently instead of serially (saves ~2 Redis RTTs of latency).
+  const metas = await Promise.all(requiredSeedKeys.map((key) => reader(resolveSeedMetaKey(key))));
+  for (const [i, key] of requiredSeedKeys.entries()) {
+    if (isSeedMetaPreflightUnhealthy(key, metas[i])) unhealthy.push(key);
   }
   if (unhealthy.length > 0) {
     throw new ResilienceConfigurationError(
@@ -2168,6 +2421,7 @@ export async function scoreFinancialSystemExposure(
   // Payload shape: { countries: { [iso2]: { value, year } },
   //   nonDrsCountryCodes: string[] }.
   const debtPct = readWbExternalDebtPct(debtEnvelope, countryCode);
+  const debtYear = readWbExternalDebtYear(debtEnvelope, countryCode);
 
   // Component 2 + 4 share the retained economic:bis-lbs payload, sourced
   // from BIS CBS (WS_CBS_PUB). Component 2: sum of by-parent foreign
@@ -2219,8 +2473,8 @@ export async function scoreFinancialSystemExposure(
     // executable sanctions anchor from passing vacuously at zero coverage.
     && !isComprehensiveEmbargo;
 
-  const blended = weightedBlend([
-    {
+  const blended = tracedBlend('financialSystemExposure', [
+    tracedMetric('shortTermExternalDebtPctGni', {
       score: debtPct != null
         ? normalizeLowerBetter(debtPct, 0, 15)
         : (nonDrsDebtImputation?.score ?? null),
@@ -2239,8 +2493,12 @@ export async function scoreFinancialSystemExposure(
         : nonDrsDebtImputation?.certaintyCoverage,
       imputed: nonDrsDebtImputation != null ? true : undefined,
       imputationClass: nonDrsDebtImputation?.imputationClass,
-    },
-    {
+      rawValue: debtPct,
+      rawUnit: 'percent_gni',
+      sourceYear: debtYear,
+      observedSources: debtPct == null ? [] : WORLD_BANK_SHORT_TERM_DEBT_GNI_SOURCES,
+    }),
+    tracedMetric('bisLbsXborderPctGdp', {
       // Diversity-conditioned: the sweet-spot premium is earned only in
       // proportion to demonstrated parent breadth (see
       // `normalizeDiversityConditionedBand`). Passing `parentCount` from the
@@ -2264,14 +2522,26 @@ export async function scoreFinancialSystemExposure(
       weight: FIN_SYS_BAND_WEIGHT,
       fallbackScore: bisCountry?.totalXborderPctGdpMalformed ? 0 : undefined,
       certaintyCoverage: resolveFinSysBandCertainty(bisCountry),
-    },
-    {
+      rawValue: bisCountry?.totalXborderPctGdp ?? null,
+      rawUnit: 'percent_gdp',
+      observedSources: bisCountry?.totalXborderPctGdp == null
+        ? []
+        : [{ providerName: 'Bank for International Settlements', sourceUrl: 'https://data.bis.org/' }],
+      provenanceHint: 'diversity-conditioned-by-parent-count',
+    }),
+    tracedMetric('fatfListingStatus', {
       score: fatfObservation == null || dropFatfCompliantByAbsence
         ? null
         : fatfStatusToScore(fatfObservation.status),
       weight: FIN_SYS_FATF_WEIGHT,
-    },
-    {
+      rawValue: fatfObservation == null || dropFatfCompliantByAbsence ? null : fatfObservation.status,
+      rawUnit: 'fatf_status',
+      observedSources: fatfObservation == null || dropFatfCompliantByAbsence
+        ? []
+        : [{ providerName: 'Financial Action Task Force', sourceUrl: 'https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html' }],
+      provenanceHint: fatfObservation?.assignedByAbsence ? 'assigned-by-list-absence' : 'explicit-listing',
+    }),
+    tracedMetric('financialCenterRedundancy', {
       score: bisCountry?.parentCount == null
         ? null
         : normalizeHigherBetter(bisCountry.parentCount, 1, 10),
@@ -2282,8 +2552,13 @@ export async function scoreFinancialSystemExposure(
       certaintyCoverage: bisCountry != null && !bisCountry.parentSetComplete
         ? FIN_SYS_BIS_DEGRADED_PARENT_SET_CERTAINTY
         : undefined,
-    },
-  ]);
+      rawValue: bisCountry?.parentCount ?? null,
+      rawUnit: 'reporting_parent_count',
+      observedSources: bisCountry?.parentCount == null
+        ? []
+        : [{ providerName: 'Bank for International Settlements', sourceUrl: 'https://data.bis.org/' }],
+    }),
+  ], options);
 
   // #6459 comprehensive-embargo cap. Applied POST-blend so it constrains the
   // published score without distorting the component provenance: coverage,
@@ -2294,6 +2569,12 @@ export async function scoreFinancialSystemExposure(
     isComprehensiveEmbargo
     && blended.score > FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP
   ) {
+    options?.trace?.recordPolicyCap(
+      'financialSystemExposure',
+      'comprehensive-embargo-cap',
+      blended.score,
+      FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
+    );
     return { ...blended, score: FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP };
   }
   return blended;
@@ -2373,6 +2654,13 @@ function readWbExternalDebtPct(envelope: WbExternalDebtEnvelope, countryCode: st
   const entry = envelope.countries[countryCode];
   if (!entry || typeof entry !== 'object') return null;
   return safeNum((entry as { value?: unknown }).value);
+}
+
+function readWbExternalDebtYear(envelope: WbExternalDebtEnvelope, countryCode: string): number | null {
+  const entry = envelope.countries[countryCode];
+  if (!entry || typeof entry !== 'object') return null;
+  const year = (entry as { year?: unknown }).year;
+  return Number.isSafeInteger(year) ? Number(year) : null;
 }
 
 interface BisLbsCountry {
@@ -2613,7 +2901,7 @@ export function fatfStatusToScore(status: FatfStatus): number {
 export async function scoreCyberDigital(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
-  options?: CyberDiscoveryOptions,
+  options?: CyberDiscoveryOptions & ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [cyberRaw, outagesRaw, gpsRaw] = await Promise.all([
     reader(RESILIENCE_CYBER_KEY),
@@ -2626,16 +2914,17 @@ export async function scoreCyberDigital(
   const outagePenalty = outages.total * 4 + outages.major * 2 + outages.partial;
   const gpsPenalty = gps.high * 3 + gps.medium;
 
-  return weightedBlend([
-    { score: hasNonEmptyArrayField(cyberRaw, 'threats') ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
-    { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
-    { score: hasNonEmptyArrayField(gpsRaw, 'hexes') ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
-  ]);
+  return tracedBlend('cyberDigital', [
+    tracedMetric('cyberThreats', { score: hasNonEmptyArrayField(cyberRaw, 'threats') ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45, rawValue: cyber.weightedCount, rawUnit: 'decayed_severity_weight' }),
+    tracedMetric('internetOutages', { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35, rawValue: outagePenalty, rawUnit: 'weighted_outage_penalty' }),
+    tracedMetric('gpsJamming', { score: hasNonEmptyArrayField(gpsRaw, 'hexes') ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2, rawValue: gpsPenalty, rawUnit: 'weighted_hex_penalty' }),
+  ], options);
 }
 
 export async function scoreLogisticsSupply(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, shippingStressRaw, transitSummariesRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -2661,16 +2950,17 @@ export async function scoreLogisticsSupply(
   const shippingScore = shippingStress == null ? null : normalizeLowerBetter(shippingStress, 0, 100);
   const transitScore = transitStress == null ? null : normalizeLowerBetter(transitStress, 0, 30);
 
-  return weightedBlend([
-    { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5 },
-    { score: shippingScore == null || tradeExposure == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
-    { score: transitScore == null || tradeExposure == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
-  ]);
+  return tracedBlend('logisticsSupply', [
+    tracedMetric('roadsPavedLogistics', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ROADS_PAVED_SOURCE }),
+    tracedMetric('shippingStress', { score: shippingScore == null || tradeExposure == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25, rawValue: shippingStress, rawUnit: 'global_stress_score', provenanceHint: tradeExposure == null ? '' : `trade-exposure=${tradeExposure}` }),
+    tracedMetric('transitDisruption', { score: transitScore == null || tradeExposure == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25, rawValue: transitStress, rawUnit: 'global_disruption_score', provenanceHint: tradeExposure == null ? '' : `trade-exposure=${tradeExposure}` }),
+  ], options);
 }
 
 export async function scoreInfrastructure(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, outagesRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -2682,12 +2972,12 @@ export async function scoreInfrastructure(
   const outages = summarizeOutages(outagesRaw, countryCode);
   const outagePenalty = outages.total * 4 + outages.major * 2 + outages.partial;
 
-  return weightedBlend([
-    { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3 },
-    { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3 },
-    { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25 },
-    { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15 },
-  ]);
+  return tracedBlend('infrastructure', [
+    tracedMetric('electricityAccess', { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3, rawValue: electricityAccess, rawUnit: 'percent_population', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.ELC.ACCS.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ELECTRICITY_ACCESS_SOURCE }),
+    tracedMetric('roadsPavedInfra', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ROADS_PAVED_SOURCE }),
+    tracedMetric('infraOutages', { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25, rawValue: outagePenalty, rawUnit: 'weighted_outage_penalty' }),
+    tracedMetric('broadband', { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15, rawValue: broadband, rawUnit: 'subscriptions_per_100', sourceYear: staticRecord?.infrastructure?.indicators?.['IT.NET.BBND.P2']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_BROADBAND_SOURCE }),
+  ], options);
 }
 
 // Legacy energy scorer. Default path. Kept intact for one release
@@ -2697,6 +2987,7 @@ export async function scoreInfrastructure(
 async function scoreEnergyLegacy(
   countryCode: string,
   reader: ResilienceSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, energyPricesRaw, energyMixRaw, storageRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -2736,15 +3027,17 @@ async function scoreEnergyLegacy(
     ? null
     : energyStressScore * energyExposure + 100 * (1 - energyExposure);
 
-  return weightedBlend([
-    { score: dependency             == null ? null : normalizeLowerBetter(dependency, 0, 100),              weight: 0.25 },
-    { score: gasShare               == null ? null : normalizeLowerBetter(gasShare, 0, 100),                weight: 0.12 },
-    { score: coalShare              == null ? null : normalizeLowerBetter(coalShare, 0, 100),               weight: 0.08 },
-    { score: renewShare             == null ? null : normalizeHigherBetter(renewShare, 0, 100),             weight: 0.05 },
-    { score: storageStress          == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100),     weight: 0.10 },
-    { score: exposedEnergyStress,                                                                           weight: 0.10 },
-    { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30 },
-  ]);
+  const dependencyRecord = staticRecord?.iea?.energyImportDependency;
+  const mixYear = safeNum(mix?.year);
+  return tracedBlend('energy', [
+    tracedMetric('energyImportDependency', { score: dependency == null ? null : normalizeLowerBetter(dependency, 0, 100), weight: 0.25, rawValue: dependency, rawUnit: 'percent_consumption', sourceYear: dependencyRecord?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'iea'), observedSources: getEnergyImportDependencyObservedSources(dependencyRecord?.source), provenanceHint: dependencyRecord?.source ?? '' }),
+    tracedMetric('gasShare', { score: gasShare == null ? null : normalizeLowerBetter(gasShare, 0, 100), weight: 0.12, rawValue: gasShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
+    tracedMetric('coalShare', { score: coalShare == null ? null : normalizeLowerBetter(coalShare, 0, 100), weight: 0.08, rawValue: coalShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
+    tracedMetric('renewShare', { score: renewShare == null ? null : normalizeHigherBetter(renewShare, 0, 100), weight: 0.05, rawValue: renewShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
+    tracedMetric('euGasStorageStress', { score: storageStress == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100), weight: 0.10, rawValue: storageFillPct, rawUnit: 'percent_fill' }),
+    tracedMetric('energyPriceStress', { score: exposedEnergyStress, weight: 0.10, rawValue: energyStress, rawUnit: 'mean_absolute_percent_change', provenanceHint: energyExposure == null ? '' : `energy-exposure=${energyExposure}` }),
+    tracedMetric('electricityConsumption', { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30, rawValue: electricityConsumption, rawUnit: 'kwh_per_capita', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.USE.ELEC.KH.PC']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ELECTRICITY_CONSUMPTION_SOURCE }),
+  ], options);
 }
 
 // PR 1 v2 energy scorer under Option B (power-system security framing).
@@ -2770,6 +3063,7 @@ async function scoreEnergyLegacy(
 async function scoreEnergyV2(
   countryCode: string,
   reader: ResilienceSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   // reserveMarginPct is DEFERRED per plan §3.1 (IEA coverage too sparse;
   // open-question whether the indicator ships at all). Its 0.10 weight
@@ -2792,15 +3086,20 @@ async function scoreEnergyV2(
 
   // Per-country value lookup on the bulk-payload shape emitted by the
   // three PR 1 seeders: { countries: { [ISO2]: { value, year } } }.
-  const bulkValue = (raw: unknown): number | null => {
-    const entry = (raw as { countries?: Record<string, { value?: number }> } | null)
+  const bulkEntry = (raw: unknown): { value: number; year: number | null } | null => {
+    const entry = (raw as { countries?: Record<string, { value?: number; year?: number }> } | null)
       ?.countries?.[countryCode];
-    return typeof entry?.value === 'number' ? entry.value : null;
+    return typeof entry?.value === 'number'
+      ? { value: entry.value, year: Number.isFinite(entry.year) ? Number(entry.year) : null }
+      : null;
   };
 
-  const fossilElectricityShare = bulkValue(fossilShareRaw);
-  const lowCarbonGenerationShare = bulkValue(lowCarbonRaw);
-  const powerLosses = bulkValue(powerLossesRaw);
+  const fossilEntry = bulkEntry(fossilShareRaw);
+  const lowCarbonEntry = bulkEntry(lowCarbonRaw);
+  const powerLossesEntry = bulkEntry(powerLossesRaw);
+  const fossilElectricityShare = fossilEntry?.value ?? null;
+  const lowCarbonGenerationShare = lowCarbonEntry?.value ?? null;
+  const powerLosses = powerLossesEntry?.value ?? null;
   const netImports = safeNum(staticRecord?.iea?.energyImportDependency?.value);
 
   // importedFossilDependence composite. `max(netImports, 0)` collapses
@@ -2838,22 +3137,35 @@ async function scoreEnergyV2(
     ? null
     : energyStressScore * exposure + 100 * (1 - exposure);
 
-  return weightedBlend([
-    { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35 },
-    { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80),  weight: 0.20 },
-    { score: powerLosses              == null ? null : normalizeLowerBetter(powerLosses, 3, 25),                weight: 0.20 },
-    { score: euStorageStress          == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100),     weight: 0.10 },
-    { score: exposedEnergyStress,                                                                                weight: 0.15 },
-  ]);
+  const dependencyRecord = staticRecord?.iea?.energyImportDependency;
+  const dependencySources = getEnergyImportDependencyObservedSources(dependencyRecord?.source);
+  return tracedBlend('energy', [
+    tracedMetric('importedFossilDependence', { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35, rawValue: importedFossilDependence, rawUnit: 'percent_weighted_dependency', sourceYear: oldestSourceYear(fossilEntry?.year, dependencyRecord?.year), observedSources: importedFossilDependence == null ? [] : [...WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE, ...dependencySources], provenanceHint: dependencyRecord?.source ?? '' }),
+    tracedMetric('lowCarbonGenerationShare', { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80), weight: 0.20, rawValue: lowCarbonGenerationShare, rawUnit: 'percent_generation', sourceYear: lowCarbonEntry?.year ?? null, observedSources: OWID_LOW_CARBON_SOURCE }),
+    tracedMetric('powerLossesPct', { score: powerLosses == null ? null : normalizeLowerBetter(powerLosses, 3, 25), weight: 0.20, rawValue: powerLosses, rawUnit: 'percent_output', sourceYear: powerLossesEntry?.year ?? null, observedSources: WORLD_BANK_POWER_LOSSES_SOURCE }),
+    tracedMetric('euGasStorageStress', { score: euStorageStress == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100), weight: 0.10, rawValue: storageFillPct, rawUnit: 'percent_fill' }),
+    tracedMetric('energyPriceStress', { score: exposedEnergyStress, weight: 0.15, rawValue: energyStress, rawUnit: 'mean_absolute_percent_change', provenanceHint: `fossil-exposure=${exposure}` }),
+  ], options);
 }
+
+const ENERGY_V2_TRACE_INDICATOR_IDS = [
+  'importedFossilDependence',
+  'lowCarbonGenerationShare',
+  'powerLossesPct',
+  'euGasStorageStress',
+  'energyPriceStress',
+] as const satisfies readonly ResilienceIndicatorId[];
 
 export async function scoreEnergy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   if (!isEnergyV2EnabledLocal()) {
-    return scoreEnergyLegacy(countryCode, reader);
+    return scoreEnergyLegacy(countryCode, reader, options);
   }
+
+  options?.trace?.recordSelectedIndicators('energy', ENERGY_V2_TRACE_INDICATOR_IDS);
 
   // Flag is ON — preflight the required seeds before routing to v2.
   // A null from any of these would let scoreEnergyV2 score every country
@@ -2880,20 +3192,22 @@ export async function scoreEnergy(
     );
   }
 
-  return scoreEnergyV2(countryCode, reader);
+  return scoreEnergyV2(countryCode, reader, options);
 }
 
 export async function scoreGovernanceInstitutional(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
-  return weightedBlend(getStaticWgiRows(staticRecord));
+  return tracedBlend('governanceInstitutional', getStaticWgiRows(staticRecord), options);
 }
 
 export async function scoreSocialCohesion(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, displacementRaw, unrestRaw, imfLaborRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -2921,10 +3235,13 @@ export async function scoreSocialCohesion(
   // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
   // above observed max) so the worst-peace countries score near 0, not 20.
   // The old anchor of 4.0 gave Yemen (3.4) a score of 20 instead of ~8.
-  const gpiRow: WeightedMetric = {
+  const gpiRow: TracedWeightedMetric = tracedMetric('gpiScore', {
     score: gpiScore == null ? null : normalizeLowerBetter(gpiScore, 1.0, 3.6),
     weight: 0.55,
-  };
+    rawValue: gpiScore,
+    rawUnit: 'gpi_score',
+    sourceYear: staticRecord?.gpi?.year ?? null,
+  });
 
   // Plan 2026-04-26-001 §U2: gated impute logic for displacement and unrest.
   //
@@ -2945,33 +3262,35 @@ export async function scoreSocialCohesion(
   // GPI-only mode pull the blend down. Countries WITH observed displacement
   // and zero unrest events keep the historical "stable-absence ≈ 85" anchor
   // so Iceland/Norway don't regress.
-  let displacementRow: WeightedMetric;
-  let unrestRow: WeightedMetric;
+  let displacementRow: TracedWeightedMetric;
+  let unrestRow: TracedWeightedMetric;
 
   if (displacementRaw == null) {
     // Seed outage — drop displacement weight (NOT imputed).
-    displacementRow = { score: null, weight: 0.25 };
+    displacementRow = tracedMetric('displacementTotal', { score: null, weight: 0.25 });
   } else if (displacementMetric == null) {
     // Country not in registry → GPI-only mode. Impute at lower-than-GPI
     // value to pull the blend down for tiny peaceful states.
-    displacementRow = {
+    displacementRow = tracedMetric('displacementTotal', {
       score: IMPUTE.socialCohesionGpiOnlyDisplacement.score,
       weight: 0.25,
       certaintyCoverage: IMPUTE.socialCohesionGpiOnlyDisplacement.certaintyCoverage,
       imputed: true,
       imputationClass: IMPUTE.socialCohesionGpiOnlyDisplacement.imputationClass,
-    };
+    });
   } else {
     // Happy path: country observed in displacement registry.
-    displacementRow = {
+    displacementRow = tracedMetric('displacementTotal', {
       score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7),
       weight: 0.25,
-    };
+      rawValue: displacementMetric,
+      rawUnit: 'people',
+    });
   }
 
   if (unrestRaw == null) {
     // Seed outage — drop unrest weight (NOT imputed).
-    unrestRow = { score: null, weight: 0.2 };
+    unrestRow = tracedMetric('unrestEvents', { score: null, weight: 0.2 });
   } else if (unrest.unrestCount === 0 && unrest.fatalities === 0) {
     // Zero unrest events. Three sub-cases — distinguished by displacement state:
     //   (a) Displacement OUTAGE (displacementRaw == null) → impute at 85
@@ -3008,33 +3327,35 @@ export async function scoreSocialCohesion(
       // wrapping in `isIndicatorComprehensive('unrestEvents') ? ...`)
       // keeps the code path active and tested instead of relying on a
       // dead-by-construction conditional.
-      unrestRow = {
+      unrestRow = tracedMetric('unrestEvents', {
         score: IMPUTATION.curated_list_absent.score,
         weight: 0.2,
         certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
         imputed: true,
         imputationClass: IMPUTATION.curated_list_absent.imputationClass,
-      };
+      });
     } else {
-      unrestRow = {
+      unrestRow = tracedMetric('unrestEvents', {
         score: IMPUTE.unhcrDisplacement.score,
         weight: 0.2,
         certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage,
         imputed: true,
         imputationClass: IMPUTE.unhcrDisplacement.imputationClass,
-      };
+      });
     }
   } else {
     // Observed unrest events — score directly. Plan §U6 per-capita
     // anchor: 10 events/M = "worst" (Lebanon-class), 0 events/M = "best"
     // (Iceland). Was 0..20 in raw event-count units before §U6.
-    unrestRow = {
+    unrestRow = tracedMetric('unrestEvents', {
       score: normalizeLowerBetter(unrestMetric, 0, 10),
       weight: 0.2,
-    };
+      rawValue: unrestMetric,
+      rawUnit: 'events_per_million_weighted',
+    });
   }
 
-  return weightedBlend([gpiRow, displacementRow, unrestRow]);
+  return tracedBlend('socialCohesion', [gpiRow, displacementRow, unrestRow], options);
 }
 
 // #3737 — despite the legacy `scoreBorderSecurity` / `borderSecurity` name,
@@ -3054,6 +3375,7 @@ export async function scoreSocialCohesion(
 export async function scoreBorderSecurity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [ucdpRaw, displacementRaw, imfLaborRaw] = await Promise.all([
     reader(RESILIENCE_UCDP_KEY),
@@ -3078,22 +3400,23 @@ export async function scoreBorderSecurity(
   const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + sqrtCount(ucdp.deaths)) / popDenominator;
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
-  return weightedBlend([
-    { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 15) : null, weight: 0.65 },
+  return tracedBlend('borderSecurity', [
+    tracedMetric('ucdpConflict', { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 15) : null, weight: 0.65, rawValue: ucdpRaw == null ? null : conflictMetric, rawUnit: 'events_per_million_weighted' }),
     // Not in UNHCR displacement registry → crisis_monitoring_absent (country is not a
     // significant refugee source or host). Only impute if source was loaded; null source
     // means seed outage, not country absence.
     displacementRaw == null
-      ? { score: null, weight: 0.35 }
+      ? tracedMetric('displacementHosted', { score: null, weight: 0.35 })
       : displacementMetric == null
-        ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage, imputed: true, imputationClass: IMPUTE.unhcrDisplacement.imputationClass }
-        : { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35 },
-  ]);
+        ? tracedMetric('displacementHosted', { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage, imputed: true, imputationClass: IMPUTE.unhcrDisplacement.imputationClass })
+        : tracedMetric('displacementHosted', { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35, rawValue: displacementMetric, rawUnit: 'people' }),
+  ], options);
 }
 
 export async function scoreInformationCognitive(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, socialVelocityRaw, threatSummaryRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -3130,16 +3453,17 @@ export async function scoreInformationCognitive(
   // independent of the confidence-weighting applied to the score.
   const langFactor = getLanguageCoverageFactor(countryCode);
 
-  return weightedBlend([
-    { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55 },
-    { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 * langFactor, nominalWeight: 0.15 },
-    { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.30 * langFactor, nominalWeight: 0.30 },
-  ]);
+  return tracedBlend('informationCognitive', [
+    tracedMetric('rsfPressFreedom', { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55, rawValue: rsfScore, rawUnit: 'rsf_score', sourceYear: staticRecord?.rsf?.year ?? null }),
+    tracedMetric('socialVelocity', { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 * langFactor, nominalWeight: 0.15, rawValue: velocity, rawUnit: 'velocity_sum', provenanceHint: `language-coverage-factor=${langFactor}` }),
+    tracedMetric('newsThreatScore', { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.30 * langFactor, nominalWeight: 0.30, rawValue: threatScore, rawUnit: 'weighted_threat_count', provenanceHint: `language-coverage-factor=${langFactor}` }),
+  ], options);
 }
 
 export async function scoreHealthPublicService(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
   const hospitalBeds = getStaticIndicatorValue(staticRecord, 'who', 'hospitalBeds');
@@ -3148,18 +3472,20 @@ export async function scoreHealthPublicService(
   const physiciansPer1k = getStaticIndicatorValue(staticRecord, 'who', 'physiciansPer1k');
   const healthExpPerCapitaUsd = getStaticIndicatorValue(staticRecord, 'who', 'healthExpPerCapitaUsd');
 
-  return weightedBlend([
-    { score: uhcIndex == null ? null : normalizeHigherBetter(uhcIndex, 40, 90), weight: 0.35 },
-    { score: measlesCoverage == null ? null : normalizeHigherBetter(measlesCoverage, 50, 99), weight: 0.25 },
-    { score: hospitalBeds == null ? null : normalizeHigherBetter(hospitalBeds, 0, 8), weight: 0.10 },
-    { score: physiciansPer1k == null ? null : normalizeHigherBetter(physiciansPer1k, 0, 5), weight: 0.15 },
-    { score: healthExpPerCapitaUsd == null ? null : normalizeHigherBetter(healthExpPerCapitaUsd, 20, 3000), weight: 0.15 },
-  ]);
+  const who = staticRecord?.who?.indicators ?? {};
+  return tracedBlend('healthPublicService', [
+    tracedMetric('uhcIndex', { score: uhcIndex == null ? null : normalizeHigherBetter(uhcIndex, 40, 90), weight: 0.35, rawValue: uhcIndex, rawUnit: 'index', sourceYear: who.uhcIndex?.year ?? null }),
+    tracedMetric('measlesCoverage', { score: measlesCoverage == null ? null : normalizeHigherBetter(measlesCoverage, 50, 99), weight: 0.25, rawValue: measlesCoverage, rawUnit: 'percent', sourceYear: who.measlesCoverage?.year ?? null }),
+    tracedMetric('hospitalBeds', { score: hospitalBeds == null ? null : normalizeHigherBetter(hospitalBeds, 0, 8), weight: 0.10, rawValue: hospitalBeds, rawUnit: 'per_1000', sourceYear: who.hospitalBeds?.year ?? null }),
+    tracedMetric('physiciansPer1k', { score: physiciansPer1k == null ? null : normalizeHigherBetter(physiciansPer1k, 0, 5), weight: 0.15, rawValue: physiciansPer1k, rawUnit: 'per_1000', sourceYear: who.physiciansPer1k?.year ?? null }),
+    tracedMetric('healthExpPerCapitaUsd', { score: healthExpPerCapitaUsd == null ? null : normalizeHigherBetter(healthExpPerCapitaUsd, 20, 3000), weight: 0.15, rawValue: healthExpPerCapitaUsd, rawUnit: 'usd_per_capita', sourceYear: who.healthExpPerCapitaUsd?.year ?? null }),
+  ], options);
 }
 
 export async function scoreFoodWater(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
   const fao = staticRecord?.fao ?? null;
@@ -3170,27 +3496,30 @@ export async function scoreFoodWater(
   // But only impute if the static bundle was loaded (seeder wrote fao: null explicitly).
   // A missing resilience:static:{ISO2} key means the seeder never ran — not crisis-free.
   if (fao == null) {
-    return weightedBlend([
+    return tracedBlend('foodWater', [
       staticRecord == null
-        ? { score: null, weight: 0.6 }
-        : { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true, imputationClass: IMPUTE.ipcFood.imputationClass },
-      { score: aquastatScore, weight: 0.4 },
-    ]);
+        ? tracedMetric('ipcPeopleInCrisis', { score: null, weight: 0.6 })
+        : tracedMetric('ipcPeopleInCrisis', { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true, imputationClass: IMPUTE.ipcFood.imputationClass }),
+      tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'aquastat'), observedSources: WORLD_BANK_WATER_STRESS_SOURCE }),
+    ], options);
   }
 
   const peopleInCrisis = safeNum(fao.peopleInCrisis);
   const phase = safeNum(String(fao.phase || '').match(/\d+/)?.[0]);
 
-  return weightedBlend([
-    {
+  return tracedBlend('foodWater', [
+    tracedMetric('ipcPeopleInCrisis', {
       score: peopleInCrisis == null
         ? null
         : normalizeLowerBetter(Math.log10(Math.max(1, peopleInCrisis)), 0, 7),
       weight: 0.45,
-    },
-    { score: phase == null ? null : normalizeLowerBetter(phase, 1, 5), weight: 0.15 },
-    { score: aquastatScore, weight: 0.4 },
-  ]);
+      rawValue: peopleInCrisis,
+      rawUnit: 'people',
+      sourceYear: fao.year ?? null,
+    }),
+    tracedMetric('ipcPhase', { score: phase == null ? null : normalizeLowerBetter(phase, 1, 5), weight: 0.15, rawValue: phase, rawUnit: 'ipc_phase', sourceYear: fao.year ?? null }),
+    tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'aquastat'), observedSources: WORLD_BANK_WATER_STRESS_SOURCE }),
+  ], options);
 }
 
 interface RecoveryFiscalSpaceCountry {
@@ -3257,18 +3586,14 @@ function getRecoveryCountryEntry<T>(raw: unknown, countryCode: string): T | null
 export async function scoreFiscalSpace(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_FISCAL_SPACE_KEY);
   const entry = getRecoveryCountryEntry<RecoveryFiscalSpaceCountry>(raw, countryCode);
   if (!entry) {
-    return {
-      score: IMPUTE.recoveryFiscalSpace.score,
-      coverage: IMPUTE.recoveryFiscalSpace.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryFiscalSpace.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('fiscalSpace', [
+      tracedMetric('recoveryGovRevenue', { score: IMPUTE.recoveryFiscalSpace.score, weight: 1, certaintyCoverage: IMPUTE.recoveryFiscalSpace.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryFiscalSpace.imputationClass }),
+    ], options);
   }
 
   // Weight rebalance + new indicator (debtSustainabilityGap) per
@@ -3277,12 +3602,12 @@ export async function scoreFiscalSpace(
   // g, and d with their interaction term — and earns the largest slice.
   // The other three are co-signals confirming the direction.
   //   sum = 0.25 + 0.20 + 0.20 + 0.35 = 1.0
-  return weightedBlend([
-    { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.25 },
-    { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.20 },
-    { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.20 },
-    { score: entry.debtSustainabilityGapPct == null ? null : normalizeHigherBetter(entry.debtSustainabilityGapPct, -5, 3), weight: 0.35 },
-  ]);
+  return tracedBlend('fiscalSpace', [
+    tracedMetric('recoveryGovRevenue', { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.25, rawValue: entry.govRevenuePct ?? null, rawUnit: 'percent_gdp', sourceYear: entry.year ?? null }),
+    tracedMetric('recoveryFiscalBalance', { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.20, rawValue: entry.fiscalBalancePct ?? null, rawUnit: 'percent_gdp', sourceYear: entry.year ?? null }),
+    tracedMetric('recoveryDebtToGdp', { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.20, rawValue: entry.debtToGdpPct ?? null, rawUnit: 'percent_gdp', sourceYear: entry.year ?? null }),
+    tracedMetric('debtSustainabilityGap', { score: entry.debtSustainabilityGapPct == null ? null : normalizeHigherBetter(entry.debtSustainabilityGapPct, -5, 3), weight: 0.35, rawValue: entry.debtSustainabilityGapPct ?? null, rawUnit: 'percentage_points', sourceYear: entry.gapYear ?? null }),
+  ], options);
 }
 
 // RETIRED in PR 2 §3.4. Superseded by `scoreLiquidReserveAdequacy` +
@@ -3301,7 +3626,9 @@ export async function scoreFiscalSpace(
 export async function scoreReserveAdequacy(
   _countryCode: string,
   _reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
+  options?.trace?.recordRetiredDimension('reserveAdequacy', 'split-into-liquid-reserve-and-sovereign-fiscal-buffer');
   return {
     score: 50,
     coverage: 0,
@@ -3335,38 +3662,35 @@ export async function scoreReserveAdequacy(
 async function readReexportShareForCountry(
   countryCode: string,
   reader: ResilienceSeedReader,
-): Promise<number | null> {
+): Promise<{ share: number; year: number | null } | null> {
   const raw = await reader(RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY);
-  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null } | undefined> } | null | undefined;
-  const share = payload?.countries?.[countryCode]?.reexportShareOfImports;
+  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null; year?: number | null } | undefined> } | null | undefined;
+  const entry = payload?.countries?.[countryCode];
+  const share = entry?.reexportShareOfImports;
   if (typeof share !== 'number' || !Number.isFinite(share)) return null;
   if (share < 0 || share >= 1) return null;
-  return share;
+  return { share, year: Number.isFinite(entry?.year) ? Number(entry?.year) : null };
 }
 
 export async function scoreLiquidReserveAdequacy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY);
   const entry = getRecoveryCountryEntry<RecoveryReserveAdequacyCountry>(raw, countryCode);
   if (!entry || entry.reserveMonths == null) {
-    return {
-      score: IMPUTE.recoveryLiquidReserveAdequacy.score,
-      coverage: IMPUTE.recoveryLiquidReserveAdequacy.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryLiquidReserveAdequacy.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('liquidReserveAdequacy', [
+      tracedMetric('recoveryLiquidReserveMonths', { score: IMPUTE.recoveryLiquidReserveAdequacy.score, weight: 1, certaintyCoverage: IMPUTE.recoveryLiquidReserveAdequacy.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryLiquidReserveAdequacy.imputationClass }),
+    ], options);
   }
   const reexportShare = await readReexportShareForCountry(countryCode, reader);
   const adjustedMonths = reexportShare !== null
-    ? entry.reserveMonths / (1 - reexportShare)
+    ? entry.reserveMonths / (1 - reexportShare.share)
     : entry.reserveMonths;
-  return weightedBlend([
-    { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0 },
-  ]);
+  return tracedBlend('liquidReserveAdequacy', [
+    tracedMetric('recoveryLiquidReserveMonths', { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0, rawValue: adjustedMonths, rawUnit: 'adjusted_months_of_imports', sourceYear: oldestSourceYear(entry.year, reexportShare?.year), observedSources: reexportShare == null ? WORLD_BANK_FX_RESERVES_SOURCE : [...WORLD_BANK_FX_RESERVES_SOURCE, { providerName: 'United Nations Comtrade', sourceUrl: 'https://comtradeplus.un.org/' }], provenanceHint: reexportShare == null ? '' : `reexport-share=${reexportShare.share}` }),
+  ], options);
 }
 
 // PR 2 §3.4 — new SWF haircut dimension. Reads per-country SWF records
@@ -3413,19 +3737,15 @@ interface RecoverySovereignWealthPayload {
 export async function scoreSovereignFiscalBuffer(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_SOVEREIGN_WEALTH_KEY);
   const payload = raw as RecoverySovereignWealthPayload | null | undefined;
   // Path 1 — seed key absent entirely. IMPUTE.
   if (!payload || typeof payload !== 'object' || !payload.countries || typeof payload.countries !== 'object') {
-    return {
-      score: IMPUTE.recoverySovereignFiscalBuffer.score,
-      coverage: IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoverySovereignFiscalBuffer.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('sovereignFiscalBuffer', [
+      tracedMetric('recoverySovereignWealthEffectiveMonths', { score: IMPUTE.recoverySovereignFiscalBuffer.score, weight: 1, certaintyCoverage: IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoverySovereignFiscalBuffer.imputationClass }),
+    ], options);
   }
   const entry = payload.countries[countryCode.toUpperCase()] ?? null;
   // Path 3 — seed present, country not in manifest → no SWF.
@@ -3447,7 +3767,7 @@ export async function scoreSovereignFiscalBuffer(
   // not applicable to this country" sentinel and is what allows
   // client surfaces to mirror the server's exclusion symmetrically.
   if (!entry) {
-    return {
+    const result: ResilienceDimensionScore = {
       score: 0,
       coverage: 0,
       observedWeight: 0,
@@ -3455,6 +3775,10 @@ export async function scoreSovereignFiscalBuffer(
       imputationClass: 'not-applicable',
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    options?.trace?.recordManual('sovereignFiscalBuffer', 0, [
+      { indicatorId: 'recoverySovereignWealthEffectiveMonths', score: null, weight: 1, state: 'not-applicable' },
+    ]);
+    return result;
   }
   // Path 2 — country has SWF(s). Saturating transform on totalEffectiveMonths.
   const em = typeof entry.totalEffectiveMonths === 'number' && Number.isFinite(entry.totalEffectiveMonths)
@@ -3464,56 +3788,48 @@ export async function scoreSovereignFiscalBuffer(
   const completeness = typeof entry.completeness === 'number' && Number.isFinite(entry.completeness)
     ? Math.max(0, Math.min(1, entry.completeness))
     : 1.0;
-  return weightedBlend([
+  return tracedBlend('sovereignFiscalBuffer', [
     // certaintyCoverage = completeness so partial-scrapes derate confidence
     // without zeroing the observed weight. The country is still a real
     // observation — just with fewer of its manifest funds resolved.
-    { score, weight: 1.0, certaintyCoverage: completeness },
-  ]);
+    tracedMetric('recoverySovereignWealthEffectiveMonths', { score, weight: 1.0, certaintyCoverage: completeness, rawValue: em, rawUnit: 'effective_months' }),
+  ], options);
 }
 
 export async function scoreExternalDebtCoverage(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY);
   const entry = getRecoveryCountryEntry<RecoveryExternalDebtCountry>(raw, countryCode);
   if (!entry || entry.debtToReservesRatio == null) {
-    return {
-      score: IMPUTE.recoveryExternalDebt.score,
-      coverage: IMPUTE.recoveryExternalDebt.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryExternalDebt.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('externalDebtCoverage', [
+      tracedMetric('recoveryDebtToReserves', { score: IMPUTE.recoveryExternalDebt.score, weight: 1, certaintyCoverage: IMPUTE.recoveryExternalDebt.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryExternalDebt.imputationClass }),
+    ], options);
   }
   // PR 3 §3.5 point 3: goalpost re-anchored on Greenspan-Guidotti.
   // Ratio 1.0 (short-term debt matches reserves) = score 50; ratio 2.0
   // = score 0 (acute rollover-shock exposure). See registry entry
   // recoveryDebtToReserves for the construct rationale.
-  return weightedBlend([
-    { score: normalizeLowerBetter(entry.debtToReservesRatio, 0, 2), weight: 1.0 },
-  ]);
+  return tracedBlend('externalDebtCoverage', [
+    tracedMetric('recoveryDebtToReserves', { score: normalizeLowerBetter(entry.debtToReservesRatio, 0, 2), weight: 1.0, rawValue: entry.debtToReservesRatio, rawUnit: 'ratio', sourceYear: entry.year ?? null, observedSources: WORLD_BANK_RECOVERY_DEBT_RESERVE_SOURCES }),
+  ], options);
 }
 
 export async function scoreImportConcentration(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_IMPORT_HHI_KEY);
   const entry = getRecoveryCountryEntry<RecoveryImportHhiCountry>(raw, countryCode);
   if (!entry || entry.hhi == null) {
-    return {
-      score: IMPUTE.recoveryImportHhi.score,
-      coverage: IMPUTE.recoveryImportHhi.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryImportHhi.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('importConcentration', [
+      tracedMetric('recoveryImportHhi', { score: IMPUTE.recoveryImportHhi.score, weight: 1, certaintyCoverage: IMPUTE.recoveryImportHhi.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryImportHhi.imputationClass }),
+    ], options);
   }
-  return weightedBlend([
+  return tracedBlend('importConcentration', [
     // HHI is on a 0..1 scale (0 = perfectly diversified, 1 = single partner).
     // Multiply by 10000 to convert to the traditional 0..10000 HHI scale,
     // then normalize against the 0..5000 goalpost range (where 5000+ = max concentration).
@@ -3522,17 +3838,21 @@ export async function scoreImportConcentration(
     // many late reporters publish 1-3 years behind. Older fallback vintages
     // still carry a real HHI signal, but coverage is derated so stale source
     // years reduce certainty instead of looking equivalent to current data.
-    {
+    tracedMetric('recoveryImportHhi', {
       score: normalizeLowerBetter(entry.hhi * 10000, 0, 5000),
       weight: 1.0,
       certaintyCoverage: computeImportHhiCertaintyCoverage(entry.year),
-    },
-  ]);
+      rawValue: entry.hhi,
+      rawUnit: 'hhi_0_to_1',
+      sourceYear: entry.year ?? null,
+    }),
+  ], options);
 }
 
 export async function scoreStateContinuity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, ucdpRaw, displacementRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -3542,34 +3862,49 @@ export async function scoreStateContinuity(
 
   const wgiValues = getStaticWgiValues(staticRecord);
   const wgiMean = mean(wgiValues);
+  const wgiIndicators = staticRecord?.wgi?.indicators ?? {};
+  const contributingWgiKeys = WGI_INDICATOR_KEYS.filter(
+    (key) => optionalNum(wgiIndicators[key]?.value) != null,
+  );
+  const wgiSourceYear = oldestSourceYear(...contributingWgiKeys.map(
+    (key) => optionalNum(wgiIndicators[key]?.year),
+  ));
+  const contributingWgiKeySet = new Set(contributingWgiKeys);
+  const wgiObservedSources = WGI_TRACE_ROWS
+    .filter(([key]) => contributingWgiKeySet.has(key))
+    .map(([key]) => wgiObservationSource(key));
 
   const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
+  const ucdpObservationAvailable = Array.isArray((ucdpRaw as { events?: unknown[] } | null)?.events);
   const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + sqrtCount(ucdpSummary.deaths);
 
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
   const totalDisplaced = safeNum(displacement?.totalDisplaced);
 
   if (wgiMean == null && ucdpSummary.eventCount === 0 && totalDisplaced == null) {
-    return {
-      score: IMPUTE.recoveryStateContinuity.score,
-      coverage: IMPUTE.recoveryStateContinuity.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryStateContinuity.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('stateContinuity', [
+      tracedMetric('recoveryWgiContinuity', { score: IMPUTE.recoveryStateContinuity.score, weight: 1, certaintyCoverage: IMPUTE.recoveryStateContinuity.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryStateContinuity.imputationClass }),
+    ], options);
   }
 
-  return weightedBlend([
-    { score: wgiMean == null ? null : normalizeHigherBetter(wgiMean, -2.5, 2.5), weight: 0.5 },
-    { score: normalizeLowerBetter(ucdpRawScore, 0, 30), weight: 0.3 },
-    {
+  return tracedBlend('stateContinuity', [
+    tracedMetric('recoveryWgiContinuity', { score: wgiMean == null ? null : normalizeHigherBetter(wgiMean, -2.5, 2.5), weight: 0.5, rawValue: wgiMean, rawUnit: 'mean_wgi_estimate', sourceYear: wgiSourceYear, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'wgi'), observedSources: wgiObservedSources }),
+    tracedMetric('recoveryConflictPressure', {
+      score: normalizeLowerBetter(ucdpRawScore, 0, 30),
+      weight: 0.3,
+      state: ucdpObservationAvailable ? undefined : 'fallback',
+      rawValue: ucdpObservationAvailable ? ucdpRawScore : null,
+      rawUnit: 'weighted_event_score',
+    }),
+    tracedMetric('recoveryDisplacementVelocity', {
       score: totalDisplaced == null
         ? null
         : normalizeLowerBetter(Math.log10(Math.max(1, totalDisplaced)), 0, 7),
       weight: 0.2,
-    },
-  ]);
+      rawValue: totalDisplaced,
+      rawUnit: 'people',
+    }),
+  ], options);
 }
 
 // PR 3 §3.5 point 1: retired permanently from the core score. IEA
@@ -3727,6 +4062,7 @@ export function isExcludedFromConfidenceMean(
 export async function scoreFuelStockDays(
   _countryCode: string,
   _reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   // imputationClass is `null` (not 'source-failure') because the dimension
   // is retired by design, not failing at runtime. 'source-failure' renders
@@ -3739,6 +4075,7 @@ export async function scoreFuelStockDays(
   // the widget's `formatResilienceConfidence`. The filter is registry-keyed
   // (not `coverage === 0`) so genuinely sparse-data countries still surface
   // as low-confidence from non-retired coverage=0 dims.
+  options?.trace?.recordRetiredDimension('fuelStockDays', 'globally-incomparable-net-importer-construct');
   return {
     score: 50,
     coverage: 0,
@@ -3751,7 +4088,7 @@ export async function scoreFuelStockDays(
 
 export const RESILIENCE_DIMENSION_SCORERS: Record<
 ResilienceDimensionId,
-(countryCode: string, reader?: ResilienceSeedReader) => Promise<ResilienceDimensionScore>
+(countryCode: string, reader?: ResilienceSeedReader, options?: ResilienceScoreOptions) => Promise<ResilienceDimensionScore>
 > = {
   macroFiscal: scoreMacroFiscal,
   currencyExternal: scoreCurrencyExternal,
@@ -3781,6 +4118,7 @@ ResilienceDimensionId,
 export async function scoreAllDimensions(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<Record<ResilienceDimensionId, ResilienceDimensionScore>> {
   const memoizedReader = createMemoizedSeedReader(reader);
   const statcanUsed = countryCode === 'CA'
@@ -3790,7 +4128,7 @@ export async function scoreAllDimensions(
     Promise.all(
       RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => {
         try {
-          const score = await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader);
+          const score = await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader, options);
           return [dimensionId, score] as const;
         } catch (err) {
           // ResilienceConfigurationError (e.g. v2 energy flag flipped without
@@ -3800,6 +4138,7 @@ export async function scoreAllDimensions(
           // consumer sees the gap explicitly. The T1.7 decoration pass below
           // reads this shape and leaves it alone; no double-tagging.
           if (err instanceof ResilienceConfigurationError) {
+            options?.trace?.recordSourceFailure(dimensionId);
             console.warn(
               `[Resilience] configuration-error dim=${dimensionId} country=${countryCode} missing=${err.missingKeys.join(',')} — routing to source-failure`,
             );
@@ -3880,6 +4219,7 @@ export async function scoreAllDimensions(
         && current.imputedWeight > 0
       ) {
         scores[dimId] = { ...current, imputationClass: 'source-failure' };
+        options?.trace?.recordSourceFailure(dimId);
       }
     }
   }

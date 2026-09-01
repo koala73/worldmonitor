@@ -8,7 +8,11 @@ import { fileURLToPath } from 'node:url';
 import { after, before, describe, it } from 'node:test';
 import { runInNewContext } from 'node:vm';
 
-import { buildCorpus } from '../scripts/build-crawlable-corpus.mjs';
+import {
+  buildCorpus,
+  gitFileLastmod,
+  WORLD_MONITOR_ORG,
+} from '../scripts/build-crawlable-corpus.mjs';
 import {
   HANDOFF_PRESERVE_SCRIPT,
   USE_CASE_PAGES,
@@ -16,11 +20,121 @@ import {
 } from '../scripts/build-use-cases.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+// Same inputs as useCasesLastmod in scripts/build-crawlable-corpus.mjs: version
+// stamps plus the UTC git lastmod of the use-cases builder. A pinned calendar
+// date fails when that file is committed on a later UTC day.
+const EXPECTED_USE_CASES_LASTMOD = [
+  USE_CASES_CONTENT_VERSION,
+  gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
+].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
     .map(([, raw]) => JSON.parse(raw));
 }
+
+function faqQuestion(name, text) {
+  return {
+    '@type': 'Question',
+    name,
+    acceptedAnswer: { '@type': 'Answer', text },
+  };
+}
+
+function stepSlug(name) {
+  return `step-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+}
+
+/** Visible <ol> step titles from the workflow / checklist sections. */
+function visibleWorkflowStepNames(html) {
+  return [
+    ...html.matchAll(
+      /<h2>(?:End-to-end workflow|Routine monitoring checklist|Incident-response checklist)<\/h2>\s*<ol>([\s\S]*?)<\/ol>/g,
+    ),
+  ].flatMap(([, ol]) =>
+    [...ol.matchAll(/<li[^>]*><strong>([^<]+)<\/strong>/g)].map(([, name]) => name.replace(/\.$/, '').trim()),
+  );
+}
+
+const USE_CASE_STRUCTURED_DATA = {
+  'country-risk': {
+    faq: [
+      faqQuestion(
+        'How do you monitor country risk with World Monitor?',
+        'Establish a baseline with the Country Instability Index and Country Resilience Index, review live instability and forecasts, check corroborating economic and security signals, record uncertainty, then set the follow-up or escalation into an exact product state.',
+      ),
+      faqQuestion(
+        'Who is the country-risk workflow for?',
+        'Risk analysts, corporate security, procurement, investors, and NGO security officers who need a repeatable monitoring decision for a defined country set — not emergency dispatch, legal certification, or military targeting.',
+      ),
+      faqQuestion(
+        'What is the expected output of a country-risk watch?',
+        'A dated monitoring note with baseline, live pressure, corroboration, uncertainty, and the next action, continuing into an exact World Monitor country brief rather than a generic homepage.',
+      ),
+    ],
+    itemListName: 'Country-risk end-to-end workflow',
+    steps: [
+      'Establish a baseline',
+      'Review current instability and forecasts',
+      'Check corroborating economic and security signals',
+      'Record uncertainty',
+      'Set the follow-up or escalation',
+    ],
+  },
+  'breaking-news': {
+    faq: [
+      faqQuestion(
+        'How do you verify breaking news with World Monitor?',
+        'Treat a viral claim as a hypothesis: capture the exact claim and window, assess the source chain, test only the World Monitor signal families that can support or contradict it, record contradictions and coverage gaps, then assign a qualified outcome before you brief anyone.',
+      ),
+      faqQuestion(
+        'Who is the breaking-news verification workflow for?',
+        'Newsroom researchers, OSINT analysts, duty-of-care officers, and desk editors who need a bounded verification record in minutes — not a rewritten article and not a generic homepage tour.',
+      ),
+      faqQuestion(
+        'What can World Monitor not prove about a breaking claim?',
+        'That a quiet map means nothing happened, or that repeated headlines are independent confirmations. Correlated sensors are evidence, not certainty, and this workflow does not certify that an event is true.',
+      ),
+    ],
+    itemListName: 'Breaking-news verification workflow',
+    steps: [
+      'Capture the claim precisely',
+      'Assess the original source',
+      'Check news velocity without equating repetition to proof',
+      'Test only relevant independent signals',
+      'Record freshness, fit, and contradictions',
+      'Assign a qualified outcome',
+    ],
+  },
+  'supply-chain': {
+    faq: [
+      faqQuestion(
+        'How do you monitor supply-chain disruptions with World Monitor?',
+        'Define the exposure first, keep a routine baseline, then switch to incident mode only when a signal can touch that exposure. Separate observed evidence, forecasts, and analyst inference before you escalate.',
+      ),
+      faqQuestion(
+        'What is the difference between routine monitoring and incident response?',
+        'Routine monitoring defines exposure, establishes a baseline, runs the daily scan, and sets watch thresholds. Incident response identifies the first-order constraint, tests exposure fit, maps transmission paths, separates evidence classes, and records stale or contradictory sources before escalating.',
+      ),
+      faqQuestion(
+        'What can World Monitor not prove about a disruption?',
+        'That an event will cause a specific price, shortage, delay, or customer impact. Market moves are confirmation signals, not causal proof.',
+      ),
+    ],
+    itemListName: 'Supply-chain disruption monitoring steps',
+    steps: [
+      'Define the exposure',
+      'Establish a baseline',
+      'Run the daily scan',
+      'Set watch thresholds',
+      'Identify the first-order constraint',
+      'Test exposure fit',
+      'Map transmission paths',
+      'Separate evidence classes',
+      'Record stale, missing, or contradictory sources',
+    ],
+  },
+};
 
 function htmlAttributes(source) {
   return Object.fromEntries(
@@ -155,16 +269,82 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
         html,
         new RegExp(`rel="canonical" href="https://www\\.worldmonitor\\.app${canonical.replaceAll('/', '\\/')}"`),
       );
-      assert.match(html, /name="robots" content="index, follow"/);
+      assert.match(html, /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/);
       const [ld] = jsonLdObjects(html);
       assert.notEqual(ld['@type'], 'BlogPosting');
-      assert.match(html, new RegExp(`<meta name="lastmod" content="${USE_CASES_CONTENT_VERSION}">`));
+      assert.match(html, new RegExp(`<meta name="lastmod" content="${EXPECTED_USE_CASES_LASTMOD}">`));
     }
 
     const [hubLd] = jsonLdObjects(hubHtml);
     const [pageLd] = jsonLdObjects(supplyChainHtml);
     assert.equal(hubLd['@type'], 'CollectionPage');
+    assert.equal(hubLd['@id'], 'https://www.worldmonitor.app/use-cases/#webpage');
+    assert.deepEqual(hubLd.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.lede'],
+    });
     assert.equal(pageLd['@type'], 'WebPage');
+
+    for (const [label, html, canonical] of [
+      ['country-risk', countryRiskHtml, '/use-cases/monitor-country-risk/'],
+      ['breaking-news', breakingNewsHtml, '/use-cases/verify-breaking-news/'],
+      ['supply-chain', supplyChainHtml, '/use-cases/monitor-supply-chain-disruptions/'],
+    ]) {
+      const expected = USE_CASE_STRUCTURED_DATA[label];
+      const pageUrl = `https://www.worldmonitor.app${canonical}`;
+      const objects = jsonLdObjects(html);
+      const types = new Set(objects.map((ld) => ld['@type']));
+      assert.ok(types.has('WebPage'), `${label} missing WebPage JSON-LD`);
+      assert.ok(types.has('FAQPage'), `${label} missing FAQPage JSON-LD for AI extraction (#7381)`);
+      assert.ok(types.has('ItemList'), `${label} missing ItemList JSON-LD for AI extraction (#7381)`);
+      assert.ok(types.has('HowTo'), `${label} missing HowTo JSON-LD for AI extraction (#7462)`);
+      const faq = objects.find((ld) => ld['@type'] === 'FAQPage');
+      assert.deepEqual(faq.mainEntity, expected.faq, `${label} FAQPage questions`);
+      const webPage = objects.find((ld) => ld['@type'] === 'WebPage');
+      assert.equal(webPage['@id'], `${pageUrl}#webpage`, `${label} WebPage @id`);
+      assert.deepEqual(webPage.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+      assert.deepEqual(webPage.publisher, WORLD_MONITOR_ORG);
+      assert.deepEqual(webPage.breadcrumb, { '@id': `${pageUrl}#breadcrumb` });
+      assert.deepEqual(webPage.speakable, {
+        '@type': 'SpeakableSpecification',
+        cssSelector: ['h1', '.lede'],
+      });
+      assert.deepEqual(webPage.mainEntity, { '@id': `${pageUrl}#howto` });
+      const howto = objects.find((ld) => ld['@type'] === 'HowTo');
+      assert.equal(howto['@id'], `${pageUrl}#howto`);
+      assert.equal(howto.name, expected.itemListName);
+      assert.equal(howto.step.length, expected.steps.length);
+      const list = objects.find((ld) => ld['@type'] === 'ItemList');
+      assert.equal(list.name, expected.itemListName, `${label} ItemList name`);
+      assert.equal(list.numberOfItems, expected.steps.length, `${label} ItemList numberOfItems`);
+      assert.equal(list.itemListElement.length, expected.steps.length);
+      assert.deepEqual(
+        visibleWorkflowStepNames(html),
+        expected.steps,
+        `${label} visible workflow steps must match ItemList names`,
+      );
+      for (const [index, name] of expected.steps.entries()) {
+        const url = `${pageUrl}#${stepSlug(name)}`;
+        const el = list.itemListElement[index];
+        const step = howto.step[index];
+        assert.equal(el['@type'], 'ListItem');
+        assert.equal(el.position, index + 1);
+        assert.equal(el.name, name);
+        assert.equal(el.url, url);
+        assert.match(el.description, /\S/, `${label} ItemList ${name} needs a description`);
+        assert.ok(html.includes(el.description), `${label} ItemList ${name} description must match visible copy`);
+        assert.equal(el.item['@type'], 'HowToStep');
+        assert.equal(el.item.name, name);
+        assert.equal(el.item.url, url);
+        assert.equal(el.item.text, el.description);
+        assert.equal(step['@type'], 'HowToStep');
+        assert.equal(step.position, index + 1);
+        assert.equal(step.name, name);
+        assert.equal(step.url, url);
+        assert.equal(step.text, el.description);
+        assert.ok(html.includes(`id="${stepSlug(name)}"`), `${label} missing visible step id ${stepSlug(name)}`);
+      }
+    }
   });
 
   it('emits bounded URL and Umami attribution for every product handoff', () => {

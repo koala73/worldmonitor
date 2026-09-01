@@ -92,6 +92,12 @@ const publisherMetadataFeed = (provider) => ({
  * become a provider rename or regroup.
  */
 export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
+  bgs: Object.freeze({
+    provider: 'British Geological Survey World Mineral Statistics',
+    memberHosts: Object.freeze(['ogcapi.bgs.ac.uk', 'www.bgs.ac.uk']),
+    reason: 'The BGS OGC API supplies the observations and the BGS statistics page supplies the required public attribution link.',
+    reviewReference: 'Issue #6449 commodity-vulnerability provenance review',
+  }),
   bbc: Object.freeze({
     provider: 'BBC',
     memberHosts: Object.freeze(['feeds.bbci.co.uk', 'www.bbc.com']),
@@ -103,6 +109,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     memberHosts: Object.freeze(['catalogue.data.gov.bc.ca', 'services6.arcgis.com']),
     reason: 'The B.C. catalogue record supplies the licence for the ArcGIS evacuation dataset.',
     reviewReference: 'Issue #6659 source-rights probe',
+  }),
+  imd: Object.freeze({
+    provider: 'India Meteorological Department',
+    memberHosts: Object.freeze(['api.imd.gov.in', 'rsmcnewdelhi.imd.gov.in', 'mausam.imd.gov.in']),
+    reason: 'The API gateway, RSMC New Delhi visualization, and Mausam marine bulletin pages belong to one IMD identity.',
+    reviewReference: 'Issue #7005 source-rights probe',
   }),
   interfax: Object.freeze({
     provider: 'Interfax',
@@ -145,6 +157,27 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
 const PROVIDER_OVERRIDES = {
   'api.adsb.lol': { provider: 'adsb.lol' },
   'api.airplanes.live': { provider: 'airplanes.live' },
+  'api.imd.gov.in': {
+    provider: 'India Meteorological Department',
+    identityGroup: 'imd',
+    license: 'IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. World Monitor public-display and redistribution rights are validated.',
+    attribution: 'Data source: India Meteorological Department. Link https://api.imd.gov.in/public/api_reference.html and the official product page.',
+    status: 'reviewed',
+  },
+  'mausam.imd.gov.in': {
+    provider: 'India Meteorological Department',
+    identityGroup: 'imd',
+    license: 'Official IMD visualization pages cited for attribution and source links, not scraped.',
+    attribution: 'Data source: India Meteorological Department. Link the official marine/coastal bulletin page.',
+    status: 'reviewed',
+  },
+  'rsmcnewdelhi.imd.gov.in': {
+    provider: 'India Meteorological Department',
+    identityGroup: 'imd',
+    license: 'Official RSMC New Delhi visualization pages cited for attribution and source links, not scraped.',
+    attribution: 'Data source: India Meteorological Department / RSMC New Delhi. Link https://rsmcnewdelhi.imd.gov.in/.',
+    status: 'reviewed',
+  },
   'api.worldbank.org': {
     provider: 'World Bank Open Data',
     license: 'World Development Indicators are licensed under CC BY 4.0. UNESCO UIS indicators mirrored through WDI also require the UIS attribution stated in the public source documentation.',
@@ -154,6 +187,12 @@ const PROVIDER_OVERRIDES = {
   'api.x.com': { provider: 'X API' },
   'atbackend.sipri.org': { provider: 'SIPRI Arms Transfers Database' },
   'opendata.adsb.fi': { provider: 'adsb.fi Open Data' },
+  'query.wikidata.org': {
+    provider: 'Wikidata',
+    license: 'Creative Commons CC0 1.0 Universal',
+    attribution: 'Wikidata structured data is CC0. Credit Wikidata and link each reused entity identifier as a best practice.',
+    status: 'reviewed',
+  },
   'population.un.org': {
     provider: 'United Nations Population Division',
     license: 'UN World Population Prospects 2024 is licensed under CC BY 3.0 IGO.',
@@ -362,6 +401,14 @@ const PROVIDER_OVERRIDES = {
   },
   'ogcapi.bgs.ac.uk': {
     provider: 'British Geological Survey World Mineral Statistics',
+    identityGroup: 'bgs',
+    license: 'BGS mineral statistics terms; attribution required; redistribution restricted',
+    attribution: 'British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.',
+    status: 'reviewed',
+  },
+  'www.bgs.ac.uk': {
+    provider: 'British Geological Survey World Mineral Statistics',
+    identityGroup: 'bgs',
     license: 'BGS mineral statistics terms; attribution required; redistribution restricted',
     attribution: 'British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.',
     status: 'reviewed',
@@ -820,13 +867,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: 'a7ab631b0e17d681791f6978832fb0a8c4f8567bfa1c90d9e79a747b5a7dfbfe',
-  reason: 'Keep Toronto Police Service C4S live-dispatch on services.arcgis.com distinct from Toronto Police Service Open Data on data.tps.ca and www.tps.ca, so live CAD is not catalogued as Open Data / geopolitics.',
+  sha256: '77fe5d378bb92d98998a2ec5ce74cea31e4bdaf58f50dfe3228bba39f83059f8',
+  reason: 'Group the BGS observation API and required attribution page under one reviewed, redistribution-restricted provider identity for issue #6449.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {
@@ -849,13 +896,13 @@ const LOGICAL_ENTRIES = [
   },
 ];
 
-// A few seeders build a URL from a classification/configuration document and
-// therefore do not contain the provider host beside the eventual fetch call.
-// Keep those dynamic hosts explicit so the lexical pass still provides a
-// reviewable reference and the CI gate cannot silently drop them.  The file is
-// pinned but the line deliberately is not: a line pin hard-fails the whole scan
-// the moment an unrelated edit shifts it.
+// A few runtime paths build a URL from configuration or live outside the
+// scanner's ordinary source roots. Keep those hosts explicit so the lexical
+// pass still provides a reviewable reference and the CI gate cannot silently
+// drop them. The file is pinned but the line deliberately is not: a line pin
+// hard-fails the whole scan the moment an unrelated edit shifts it.
 const DYNAMIC_HOSTS = [
+  { host: 'api.groq.com', kind: 'structured', path: 'shared/llm-health-providers.js' },
   { host: 'www.swfinstitute.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
   { host: 'www.ifswf.org', kind: 'structured', path: 'scripts/seed-sovereign-wealth.mjs' },
   { host: 'www.visionofhumanity.org', kind: 'structured', path: 'scripts/seed-resilience-static.mjs' },
@@ -910,6 +957,7 @@ const EXCLUDED_HOSTS = new Set([
   // Release links, documentation links, and repository links are control/UI
   // surfaces; GitHub API and raw-content hosts remain tracked separately.
   'github.com',
+  'registry.modelcontextprotocol.io',
   // Provider landing-page link in MapPopup; the ingested Wingbits endpoints
   // are tracked as customer-api.wingbits.com and ecs-api.wingbits.com.
   'wingbits.com',
@@ -931,6 +979,23 @@ function readdirPresentSync(absoluteDir) {
   }
 }
 
+function isGeneratedSourcePath(rootDir, relativePath) {
+  const base = relativePath.split('/').pop() ?? relativePath;
+  // Inventory facts and other generator outputs use `*.generated.*` and are
+  // gitignored. Scanning them after a Docker/local generate step invents
+  // references the committed manifest was never built against (#7435).
+  if (/\.generated\./.test(base)) return true;
+  // docker/build-handlers.mjs emits a .js sibling next to each api/**/*.ts
+  // handler. The TypeScript source is the authority; the bundle just repeats
+  // its URLs (and any inlined deps). Restrict the sibling skip to api/:
+  // authored JS under scripts/, server/, or src/ stays in the inventory even
+  // when a same-stem .ts/.tsx sibling exists.
+  if (extname(base) !== '.js') return false;
+  if (!relativePath.startsWith('api/')) return false;
+  const stem = relativePath.slice(0, -'.js'.length);
+  return existsSync(join(rootDir, `${stem}.ts`)) || existsSync(join(rootDir, `${stem}.tsx`));
+}
+
 function walkSourceFiles(rootDir) {
   const files = [];
   const visit = (relativeDir) => {
@@ -940,7 +1005,11 @@ function walkSourceFiles(rootDir) {
       if (entry.isDirectory()) {
         if (['node_modules', '.git', 'generated', 'e2e', 'fixtures', '__fixtures__', 'test', 'tests'].includes(entry.name)) continue;
         visit(relativePath);
-      } else if (SOURCE_EXTENSIONS.has(extname(entry.name)) && !/\.(test|spec)\./.test(entry.name)) {
+      } else if (
+        SOURCE_EXTENSIONS.has(extname(entry.name))
+        && !/\.(test|spec)\./.test(entry.name)
+        && !isGeneratedSourcePath(rootDir, relativePath)
+      ) {
         files.push(relativePath);
       }
     }

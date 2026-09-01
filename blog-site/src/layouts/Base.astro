@@ -103,13 +103,12 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
   <body>
     <header class="site-header">
       <nav>
-        <a href="/blog/" class="logo">
-          <img src="/favico/favicon-32x32.png" alt="World Monitor" width="28" height="28" class="logo-icon-img" />
-          <div class="logo-text">
-            <span class="logo-name">WORLD MONITOR</span>
-            <span class="logo-sub">by Someone.ceo</span>
-          </div>
-        </a>
+        <div class="logo">
+          <a href="/blog/" class="logo-mark" aria-label="World Monitor Blog — Home">
+            <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="logo-icon-img" />
+          </a>
+          <a href="/blog/" class="logo-name">WORLD MONITOR</a>
+        </div>
         <ul class="nav-links">
           <li><a href="/blog/">Blog</a></li>
           <li><a href="/blog/glossary/">Glossary</a></li>
@@ -146,10 +145,7 @@ function stringifyJsonLd(value: Record<string, unknown>): string {
       <div class="footer-inner">
         <div class="footer-brand">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" class="footer-icon-img" />
-          <div class="footer-brand-text">
-            <span class="footer-name">WORLD MONITOR</span>
-            <span class="footer-sub">by Someone.ceo</span>
-          </div>
+          <span class="footer-name">WORLD MONITOR</span>
         </div>
         <div class="footer-links">
           <a href="/blog/authors/elie-habib/">About</a>

@@ -13,6 +13,8 @@ import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { roundGeoCoordinate } from './_seed-utils.mjs';
+
 const ISO3_TO_ISO2 = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'shared/iso3-to-iso2.json'), 'utf8'),
 );
@@ -80,14 +82,22 @@ export function requireAlertFeatures(data) {
   return data.features;
 }
 
+// NWS ships 6-7 decimal coordinates. Five decimals retain metre-level detail
+// while reducing the FAST-tier weather-alert payload. Shared with the earthquake
+// seeder via _seed-utils.mjs (both files, and _seed-utils.mjs itself, are COPY'd
+// into the relay image — see Dockerfile.relay and tests/dockerfile-relay-imports.test.mjs).
+function roundPosition(position) {
+  return [roundGeoCoordinate(position[0]), roundGeoCoordinate(position[1])];
+}
+
 export function extractCoordinates(geometry) {
   if (!geometry) return [];
   try {
     if (geometry.type === 'Polygon') {
-      return geometry.coordinates[0]?.map(c => [c[0], c[1]]) || [];
+      return geometry.coordinates[0]?.map(roundPosition) || [];
     }
     if (geometry.type === 'MultiPolygon') {
-      return geometry.coordinates[0]?.[0]?.map(c => [c[0], c[1]]) || [];
+      return geometry.coordinates[0]?.[0]?.map(roundPosition) || [];
     }
   } catch { /* ignore */ }
   return [];
@@ -103,12 +113,12 @@ export function extractRings(geometry) {
   if (!geometry) return [];
   try {
     if (geometry.type === 'Polygon') {
-      const ring = geometry.coordinates[0]?.map(c => [c[0], c[1]]);
+      const ring = geometry.coordinates[0]?.map(roundPosition);
       return ring ? [ring] : [];
     }
     if (geometry.type === 'MultiPolygon') {
       return (geometry.coordinates || [])
-        .map(poly => poly?.[0]?.map(c => [c[0], c[1]]))
+        .map(poly => poly?.[0]?.map(roundPosition))
         .filter(Array.isArray);
     }
   } catch { /* ignore */ }
@@ -126,8 +136,18 @@ function isClosedLinearRing(ring) {
   if (!Array.isArray(ring) || ring.length < 4) return false;
   const first = ring[0];
   const last = ring[ring.length - 1];
-  return Array.isArray(first) && Array.isArray(last)
-    && first[0] === last[0] && first[1] === last[1];
+  if (!Array.isArray(first) || !Array.isArray(last)) return false;
+  if (first[0] !== last[0] || first[1] !== last[1]) return false;
+  // Position count and endpoint equality are not sufficient once coordinates are
+  // rounded: sub-metre-adjacent vertices collapse onto each other, so a ring can
+  // keep 4+ positions and matching endpoints while enclosing zero area. PostGIS
+  // accepts that as "closed" and it reaches third-party webhooks as a degenerate
+  // Polygon. A real ring has at least 3 distinct vertices.
+  const distinct = new Set();
+  for (const position of ring) {
+    if (Array.isArray(position)) distinct.add(`${position[0]},${position[1]}`);
+  }
+  return distinct.size >= 3;
 }
 
 export function calculateCentroid(coords) {
@@ -372,6 +392,153 @@ export function mergeAlertSources(parts = {}, { totalLimit = MAX_ALERTS, perSour
   const remaining = Math.max(0, totalLimit - kept.length);
   kept.push(...leftover.slice(0, remaining));
   return sortBySeverityThenStable(kept).slice(0, totalLimit);
+}
+
+/**
+ * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
+ *
+ * NWS VTEC format (https://www.weather.gov/vtec/):
+ *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
+ *    │  │   │   │  │  │
+ *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
+ *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
+ *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
+ *    │  │   └──────────── forecast office (4-letter ICAO)
+ *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
+ *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
+ *
+ * The (office, phenomenon, significance, eventID) tuple identifies one logical
+ * event across adjacent zones — exactly what we want to coalesce. We drop the
+ * action so NEW + CON + CAN bulletins for the same event also collapse.
+ *
+ * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
+ * VTEC string is missing or malformed.
+ *
+ * Lives here rather than in ais-relay.cjs so the notification selection below
+ * (and its tests) can call the REAL parser instead of a copy.
+ */
+export function deriveWeatherCoalesceKey(vtec) {
+  if (typeof vtec !== 'string') return undefined;
+  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
+  if (!m) return undefined;
+  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
+}
+
+/**
+ * Notification family identity for one alert — the single notion of "family"
+ * shared by the selection below and by the publisher's SET NX dedup key. When
+ * the two disagree, the selector's per-country guarantee is silently undone by
+ * publisher dedup, which is exactly how #7243 survived its first fix.
+ *
+ * NWS publishes VTEC, so its family is the VTEC tuple (adjacent-zone bulletins
+ * for one storm collapse). VTEC-less sources fall back to
+ * `source:country:title`:
+ *
+ *  - `country` is required. SWIC titles are generic WMO event names — the live
+ *    2026-08-28 payload carries "Forestfire", "Heavy rain", and one alert
+ *    titled literally "CAP Alert" — so without it two countries share a dedup
+ *    key and only the first SET NX wins.
+ *  - `title`, NOT the id. SWIC and ECCC ids embed a timestamp and a message
+ *    sequence (`2.49.0.0.398.0-20260828-101702-0470417-00-EN`), so the same
+ *    logical alert arrives with a new id on every CAP update; an id-keyed
+ *    family would re-notify each tick instead of coalescing. Titles are also
+ *    what the pre-#7243 publisher hashed, so cross-tick behaviour is unchanged
+ *    apart from the added country partition.
+ *  - `source` keeps a VTEC-less ECCC id from colliding with an NWS one on the
+ *    shared weather:alerts:v1 path.
+ *
+ * The trade-off is deliberate: 19 identically-titled Kazakh wildfires are ONE
+ * family, which is both what a subscriber wants and what frees that country's
+ * remaining slots for a genuinely different hazard.
+ */
+export function weatherAlertFamilyKey(alert) {
+  const vtecKey = deriveWeatherCoalesceKey(alert?.vtec);
+  if (vtecKey) return vtecKey;
+  const source = alert?.source || 'weather';
+  const country = weatherAlertNotifyCountryCode(alert) ?? '';
+  return `${source}:${country}:${alert?.headline || alert?.event || alert?.id || ''}`;
+}
+
+export const WEATHER_NOTIFY_HIGH_SEVERITIES = Object.freeze(['Extreme', 'Severe']);
+
+// Notification slots are PER COUNTRY, not global. The original cap was 3 and
+// global, which was the same thing when NWS was the only source: "top 3 by
+// severity" and "top 3 for the only audience" coincided. They stopped
+// coinciding at the second source. 3 is kept as the per-audience budget, so a
+// subscriber scoped to any one country sees the same volume as before.
+export const WEATHER_NOTIFY_SLOTS_PER_COUNTRY = 3;
+// Hard ceiling on one tick's publishes, so the fan-out below cannot become
+// unbounded as sources are added under #6271. Pinned to MAX_ALERTS because that
+// is already the arithmetic maximum — the payload holds at most MAX_ALERTS
+// alerts and each publishes at most once — so this bound holds no matter how
+// many countries or sources appear, and never re-breaks the per-country
+// guarantee by biting before every country has been served. Round-robin fill
+// (below) spends it breadth-first, so if it ever did bite it would only cost
+// depth slots, never a country's first slot (#7243).
+export const WEATHER_NOTIFY_MAX_PER_TICK = MAX_ALERTS;
+
+// Alerts whose countryCode is missing/unusable reach only rules with no
+// country scope (see isPermissiveUnattributedEvent in notification-relay.cjs),
+// so they are a distinct audience and get their own bucket rather than
+// competing for a real country's slots.
+const UNATTRIBUTED_NOTIFY_BUCKET = Symbol('unattributed');
+
+/**
+ * Pick the alerts one weather seed tick publishes as weather_alert
+ * notifications.
+ *
+ * Two rules, both about not silently dropping an audience:
+ *
+ * 1. Distinct FAMILIES only. A naive `slice(0, N)` over the raw list loses
+ *    events, because three adjacent-zone bulletins for one VTEC family
+ *    collapse to a single notification at the publisher while a fourth
+ *    genuinely distinct family at index 3+ is never considered (PR #3467
+ *    review, Slot B).
+ *
+ * 2. Slots are partitioned PER COUNTRY, then filled round-robin. A globally
+ *    severity-sorted budget can be spent entirely inside one country — on
+ *    2026-08-28 nine VTEC-less SWIC Swiss thunderstorms (nine distinct
+ *    families) led the sort and took every slot, and
+ *    `eventMatchesCountryScope` then dropped the tick for every CA- and
+ *    US-scoped rule despite 15 active alerts each in the same payload. This
+ *    is the notification-layer counterpart of the PER_SOURCE_FLOOR that
+ *    mergeAlertSources applies to the payload (#6627, #7243).
+ *
+ * Round-robin — every country's slot 1 before any country's slot 2 — rather
+ * than "one per country, then fill the remainder by severity": a severity fill
+ * would hand the surplus straight back to the country that already leads the
+ * sort, which is both the original starvation and nine notifications for one
+ * Swiss subscriber.
+ */
+export function selectWeatherNotificationAlerts(alerts, {
+  slotsPerCountry = WEATHER_NOTIFY_SLOTS_PER_COUNTRY,
+  maxPerTick = WEATHER_NOTIFY_MAX_PER_TICK,
+} = {}) {
+  const highSeverity = (Array.isArray(alerts) ? alerts : [])
+    .filter((a) => WEATHER_NOTIFY_HIGH_SEVERITIES.includes(a?.severity));
+
+  // Insertion order of the Map is severity order, so round-robin visits the
+  // most severe country first on every pass — deterministic and stable.
+  const byCountry = new Map();
+  const seenFamilyKeys = new Set();
+  for (const alert of sortBySeverityThenStable(highSeverity)) {
+    const familyKey = weatherAlertFamilyKey(alert);
+    if (seenFamilyKeys.has(familyKey)) continue;
+    seenFamilyKeys.add(familyKey);
+    const bucket = weatherAlertNotifyCountryCode(alert) ?? UNATTRIBUTED_NOTIFY_BUCKET;
+    const existing = byCountry.get(bucket);
+    if (existing) existing.push(alert);
+    else byCountry.set(bucket, [alert]);
+  }
+
+  const selected = [];
+  for (let slot = 0; slot < slotsPerCountry && selected.length < maxPerTick; slot += 1) {
+    for (const queue of byCountry.values()) {
+      if (selected.length >= maxPerTick) break;
+      if (slot < queue.length) selected.push(queue[slot]);
+    }
+  }
+  return sortBySeverityThenStable(selected);
 }
 
 export function carryFailedWeatherAlertSources(previousAlerts, failedSources = []) {

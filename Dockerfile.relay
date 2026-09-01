@@ -36,9 +36,13 @@ RUN npm ci --prefix scripts --omit=dev --omit=optional --ignore-scripts
 
 # Relay script and shared helpers
 COPY scripts/ais-relay.cjs ./scripts/ais-relay.cjs
+COPY scripts/_opensky-account-cooldown.cjs ./scripts/_opensky-account-cooldown.cjs
 # Shared ingestion outcome/cooldown helpers imported by ais-relay.cjs.
 COPY scripts/_ingestion-coverage.cjs ./scripts/_ingestion-coverage.cjs
 COPY scripts/_proxy-utils.cjs ./scripts/_proxy-utils.cjs
+# Source-preserving World Bank technology observations are assembled in the
+# relay and imported at startup by ais-relay.cjs.
+COPY scripts/_wb-tech-readiness-projection.cjs ./scripts/_wb-tech-readiness-projection.cjs
 # Authenticated Yahoo sector valuation client required at relay startup.
 COPY scripts/_yahoo-sector-valuations.cjs ./scripts/_yahoo-sector-valuations.cjs
 COPY scripts/lib/usni-fleet-parser.cjs ./scripts/lib/usni-fleet-parser.cjs
@@ -51,6 +55,10 @@ COPY scripts/lib/llm-model-policy.cjs ./scripts/lib/llm-model-policy.cjs
 COPY scripts/lib/x-news-accounts.cjs ./scripts/lib/x-news-accounts.cjs
 COPY scripts/lib/poll-generation-guard.cjs ./scripts/lib/poll-generation-guard.cjs
 COPY scripts/lib/x-poll-cycle.cjs ./scripts/lib/x-poll-cycle.cjs
+# Stale-digest alert gate required by ais-relay.cjs (#7084).
+COPY scripts/lib/digest-stale-gate.cjs ./scripts/lib/digest-stale-gate.cjs
+# Classify digest URL/auth/transport helper required by ais-relay.cjs (#7437).
+COPY scripts/lib/classify-digest-request.cjs ./scripts/lib/classify-digest-request.cjs
 COPY scripts/shared/country-name-to-iso2.cjs ./scripts/shared/country-name-to-iso2.cjs
 # country-names.json backs the full name→ISO2 map (#5359 uniform country
 # scoping); required by country-name-to-iso2.cjs at startup.
@@ -72,6 +80,9 @@ COPY scripts/shared/market-hours.cjs ./scripts/shared/market-hours.cjs
 # market-quote-refresh.cjs prevents partial upstream success from shrinking the
 # bootstrap basket and bounds Yahoo fallback cadence.
 COPY scripts/shared/market-quote-refresh.cjs ./scripts/shared/market-quote-refresh.cjs
+# market-seed-universe.cjs is the catalog + auxiliary quote basket shared by
+# seed-market-quotes.mjs and the relay market loop. Missing it = startup crash.
+COPY scripts/shared/market-seed-universe.cjs ./scripts/shared/market-seed-universe.cjs
 # closed-market-equity-maintenance.cjs keeps the closed-market TTL refresh
 # logic importable/testable for ais-relay.cjs. Missing it = startup crash.
 COPY scripts/shared/closed-market-equity-maintenance.cjs ./scripts/shared/closed-market-equity-maintenance.cjs

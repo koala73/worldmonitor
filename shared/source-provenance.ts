@@ -14,6 +14,7 @@ export type SourceType = 'wire' | 'gov' | 'intel' | 'mainstream' | 'market' | 't
 export const SOURCE_TYPES: Record<string, SourceType> = {
   // Wire services - fastest, most authoritative
   'Reuters': 'wire', 'Reuters World': 'wire', 'Reuters Business': 'wire',
+  'Reuters Nasdaq Futures': 'wire',
   'AP News': 'wire', 'AFP': 'wire', 'Bloomberg': 'wire',
 
   // Government & International Org sources

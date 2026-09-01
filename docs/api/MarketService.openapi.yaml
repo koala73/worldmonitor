@@ -42,6 +42,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "asOf": "example"
                                 "finnhubSkipped": true
                                 "quotes":
                                     - "change": 1.5
@@ -53,9 +54,6 @@ paths:
                                       "symbol": "AAPL"
                                 "rateLimited": true
                                 "skipReason": "example"
-                                "unavailableSymbols":
-                                    - "reason": "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND"
-                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/ListMarketQuotesResponse'
                 "400":
@@ -415,8 +413,12 @@ paths:
             summary: GetPhysicalPremiums
             description: |-
                 GetPhysicalPremiums compares SGE gold/silver benchmark prints with the
-                 existing COMEX futures snapshot and returns every conversion input.
+                 existing COMEX futures snapshot and returns every conversion input. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetPhysicalPremiums
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
             parameters:
                 - name: metals
                   in: query
@@ -482,7 +484,152 @@ paths:
                             schema:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
-                    description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/market/v1/get-physical-divergence-index:
+        get:
+            tags:
+                - MarketService
+            summary: GetPhysicalDivergenceIndex
+            description: |-
+                GetPhysicalDivergenceIndex classifies current physical premiums against
+                 their bounded trailing histories and returns an all-metal stress composite. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetPhysicalDivergenceIndex
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: metals
+                  in: query
+                  description: Accepted values are "gold" and "silver". Empty returns both metals.
+                  required: false
+                  style: form
+                  explode: true
+                  example:
+                      - "gold"
+                  schema:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^(?:gold|silver)$
+                    maxItems: 2
+                    uniqueItems: true
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "composite":
+                                    "index": 1.5
+                                    "methodologyVersion": "example"
+                                    "reason": ""
+                                    "state": "PHYSICAL_DIVERGENCE_STATE_OK"
+                                    "weights":
+                                        - "metal": "example"
+                                          "methodologyVersion": "example"
+                                          "weight": 1.5
+                                "evaluatedAt": 1717200000000
+                                "methodologyVersion": "example"
+                                "readings":
+                                    - "delta20d": 1.5
+                                      "delta5d": 1.5
+                                      "historyKey": "example"
+                                      "historyPoints": 1
+                                      "historyWindowEnd": "example"
+                            schema:
+                                $ref: '#/components/schemas/GetPhysicalDivergenceIndexResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
                     headers:
                         X-Billing-Verification:
                             description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
@@ -2371,14 +2518,14 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive lower date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive upper date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
@@ -2397,6 +2544,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "asOf": "example"
                                 "earnings":
                                     - "company": "example"
                                       "date": "2026-01-15"
@@ -2406,7 +2554,6 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/ListEarningsCalendarResponse'
                 "400":
@@ -3294,6 +3441,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/MarketQuoteUnavailable'
+                asOf:
+                    type: string
             description: ListMarketQuotesResponse contains stock and index quotes.
         MarketQuote:
             type: object
@@ -3536,6 +3685,218 @@ components:
                 asOf:
                     type: string
             description: FxSnapshot records the conversion input shared by both metals.
+        GetPhysicalDivergenceIndexRequest:
+            type: object
+            properties:
+                metals:
+                    type: array
+                    items:
+                        type: string
+                        pattern: ^(?:gold|silver)$
+                    maxItems: 2
+                    uniqueItems: true
+                    description: Accepted values are "gold" and "silver". Empty returns both metals.
+            description: GetPhysicalDivergenceIndexRequest selects zero or more supported metals.
+        GetPhysicalDivergenceIndexResponse:
+            type: object
+            properties:
+                readings:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PhysicalDivergenceReading'
+                composite:
+                    $ref: '#/components/schemas/PhysicalStressComposite'
+                evaluatedAt:
+                    type: integer
+                    format: int64
+                    description: 'Evaluation time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                methodologyVersion:
+                    type: string
+                    description: Methodology identifier for the complete response.
+            description: GetPhysicalDivergenceIndexResponse returns metal readings and the composite.
+        PhysicalDivergenceReading:
+            type: object
+            properties:
+                metal:
+                    type: string
+                    description: 'Supported metal name: gold or silver.'
+                state:
+                    type: string
+                    enum:
+                        - PHYSICAL_DIVERGENCE_STATE_UNSPECIFIED
+                        - PHYSICAL_DIVERGENCE_STATE_OK
+                        - PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY
+                        - PHYSICAL_DIVERGENCE_STATE_STALE_INPUT
+                        - PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT
+                    description: PhysicalDivergenceState is exhaustive for every divergence consumer.
+                reason:
+                    type: string
+                    pattern: ^(?:|history_points_below_60|physical_print_older_than_12_calendar_days|paper_snapshot_older_than_36_hours|fx_snapshot_older_than_60_hours|current_premium_missing|evaluation_clock_invalid|physical_print_invalid|paper_snapshot_invalid|fx_snapshot_invalid|physical_print_in_future|paper_snapshot_in_future|fx_snapshot_in_future|history_window_not_aligned|history_values_invalid|divergence_snapshot_unavailable|divergence_methodology_unsupported)$
+                    description: Machine-readable explanation for the state.
+                regime:
+                    type: string
+                    enum:
+                        - PHYSICAL_PREMIUM_REGIME_UNSPECIFIED
+                        - PHYSICAL_PREMIUM_REGIME_NORMAL
+                        - PHYSICAL_PREMIUM_REGIME_ELEVATED
+                        - PHYSICAL_PREMIUM_REGIME_STRESSED
+                        - PHYSICAL_PREMIUM_REGIME_EXTREME
+                    description: PhysicalPremiumRegime classifies the normalized premium distribution.
+                index:
+                    type: number
+                    format: double
+                    description: Normalized divergence index from 0 to 100.
+                premiumPct:
+                    type: number
+                    format: double
+                    description: Current physical premium as a percentage.
+                premiumUsdPerOz:
+                    type: number
+                    format: double
+                    description: Current physical premium in USD per troy ounce.
+                percentile:
+                    type: number
+                    format: double
+                    description: Current premium's empirical percentile from 0 to 100.
+                robustZ:
+                    type: number
+                    format: double
+                    description: Median-absolute-deviation robust z-score.
+                delta5d:
+                    type: number
+                    format: double
+                    description: Premium change versus five observations earlier.
+                delta20d:
+                    type: number
+                    format: double
+                    description: Premium change versus twenty observations earlier.
+                trend5d:
+                    type: string
+                    enum:
+                        - PHYSICAL_PREMIUM_TREND_UNSPECIFIED
+                        - PHYSICAL_PREMIUM_TREND_WIDENING
+                        - PHYSICAL_PREMIUM_TREND_STABLE
+                        - PHYSICAL_PREMIUM_TREND_NARROWING
+                    description: PhysicalPremiumTrend describes a trailing premium direction.
+                trend20d:
+                    type: string
+                    enum:
+                        - PHYSICAL_PREMIUM_TREND_UNSPECIFIED
+                        - PHYSICAL_PREMIUM_TREND_WIDENING
+                        - PHYSICAL_PREMIUM_TREND_STABLE
+                        - PHYSICAL_PREMIUM_TREND_NARROWING
+                    description: PhysicalPremiumTrend describes a trailing premium direction.
+                historyPoints:
+                    type: integer
+                    format: int32
+                    description: Number of valid observations available to the classifier.
+                historyWindowStart:
+                    type: string
+                    description: Oldest observation date in the evaluated window, or empty when unavailable.
+                historyWindowEnd:
+                    type: string
+                    description: Newest observation date in the evaluated window, or empty when unavailable.
+                physicalAsOf:
+                    type: string
+                    description: Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
+                paperAsOf:
+                    type: integer
+                    format: int64
+                    description: 'Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                historyKey:
+                    type: string
+                    description: Redis history key used by the calculation.
+                methodologyVersion:
+                    type: string
+                    description: Methodology identifier used by this reading.
+                provenance:
+                    $ref: '#/components/schemas/PhysicalDivergenceProvenance'
+            description: PhysicalDivergenceReading is one metal's normalized divergence result.
+        PhysicalDivergenceProvenance:
+            type: object
+            properties:
+                physicalSource:
+                    type: string
+                    description: Human-readable physical benchmark provider.
+                physicalSymbol:
+                    type: string
+                    description: Physical benchmark contract symbol.
+                physicalAsOf:
+                    type: string
+                    description: Physical benchmark trading date in YYYY-MM-DD form, or empty when unavailable.
+                paperSource:
+                    type: string
+                    description: Human-readable paper benchmark provider, or empty when unavailable.
+                paperSymbol:
+                    type: string
+                    description: Paper benchmark contract symbol.
+                paperAsOf:
+                    type: integer
+                    format: int64
+                    description: 'Paper snapshot time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                fxSource:
+                    type: string
+                    description: Human-readable FX provider, or empty when unavailable.
+                fxPair:
+                    type: string
+                    description: FX conversion pair.
+                fxAsOf:
+                    type: integer
+                    format: int64
+                    description: 'FX snapshot time as Unix epoch milliseconds, or zero when unavailable.. Warning: Values > 2^53 may lose precision in JavaScript'
+                historyKey:
+                    type: string
+                    description: Redis history key used by the calculation.
+                historyWindowPoints:
+                    type: integer
+                    format: int32
+                    description: Maximum number of observations retained in history.
+                methodologyVersion:
+                    type: string
+                    description: Methodology identifier used by this provenance record.
+            description: PhysicalDivergenceProvenance preserves the exact inputs used for one reading.
+        PhysicalStressComposite:
+            type: object
+            properties:
+                state:
+                    type: string
+                    enum:
+                        - PHYSICAL_DIVERGENCE_STATE_UNSPECIFIED
+                        - PHYSICAL_DIVERGENCE_STATE_OK
+                        - PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY
+                        - PHYSICAL_DIVERGENCE_STATE_STALE_INPUT
+                        - PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT
+                    description: PhysicalDivergenceState is exhaustive for every divergence consumer.
+                reason:
+                    type: string
+                    pattern: ^(?:|divergence_snapshot_unavailable|divergence_methodology_unsupported|member_not_ok:gold:missing_input|member_not_ok:silver:missing_input|member_not_ok:gold:stale_input|member_not_ok:silver:stale_input|member_not_ok:gold:insufficient_history|member_not_ok:silver:insufficient_history)$
+                    description: Machine-readable explanation for the aggregate state.
+                index:
+                    type: number
+                    format: double
+                    description: Weighted aggregate index from 0 to 100 when state is OK.
+                weights:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/PhysicalStressWeight'
+                methodologyVersion:
+                    type: string
+                    description: Methodology identifier used by the composite.
+            description: PhysicalStressComposite combines the supported metals into one index.
+        PhysicalStressWeight:
+            type: object
+            properties:
+                metal:
+                    type: string
+                    description: 'Supported metal name: gold or silver.'
+                weight:
+                    type: number
+                    format: double
+                    description: Composite weight from zero to one.
+                methodologyVersion:
+                    type: string
+                    description: Methodology identifier used by this weight.
+            description: PhysicalStressWeight records one metal's composite contribution.
         GetSectorSummaryRequest:
             type: object
             properties:
@@ -4651,10 +5012,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive lower date bound in YYYY-MM-DD format.
                 toDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive upper date bound in YYYY-MM-DD format.
         ListEarningsCalendarResponse:
             type: object
             properties:
@@ -4674,6 +5035,8 @@ components:
                     description: |-
                         True when the upstream or seed-backed variant is unavailable; empty payload fields
                          are graceful degradation, not confirmed zero data.
+                asOf:
+                    type: string
         EarningsEntry:
             type: object
             properties:

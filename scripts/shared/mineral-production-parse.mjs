@@ -349,6 +349,7 @@ export function aggregateMineralProduction(rows, { preferredYear = null, vocab =
       stages[stage] = {
         year,
         unit,
+        sources: [...new Set(yearRows.map((row) => row.source).filter(Boolean))].sort(),
         countries,
         hhi,
         worldTotal: worldTotalRow?.output ?? quantified,

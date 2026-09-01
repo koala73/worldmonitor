@@ -900,6 +900,128 @@
   border-top: 1px solid var(--border-subtle);
 }
 
+.cdp-five-factor-scorecard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cdp-scorecard-pillar {
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+  overflow: hidden;
+}
+
+.cdp-scorecard-pillar.is-insufficient {
+  border-color: color-mix(in srgb, var(--semantic-high, #f59e0b) 35%, var(--border-subtle));
+}
+
+.cdp-scorecard-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  cursor: pointer;
+  list-style-position: inside;
+}
+
+.cdp-scorecard-pillar-name {
+  color: var(--text-secondary);
+  font-size: calc(12px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+}
+
+.cdp-scorecard-score {
+  color: var(--text);
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-variant-numeric: tabular-nums;
+}
+
+.is-insufficient .cdp-scorecard-score,
+.cdp-scorecard-unavailable-reason {
+  color: var(--semantic-high, #f59e0b);
+}
+
+.cdp-scorecard-coverage,
+.cdp-scorecard-unavailable-reason,
+.cdp-scorecard-footer {
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
+.cdp-scorecard-coverage,
+.cdp-scorecard-footer {
+  color: var(--text-faint);
+}
+
+.cdp-scorecard-reasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 0 8px 8px;
+}
+
+.cdp-scorecard-reason {
+  padding: 2px 6px;
+  border-radius: 999px;
+  color: var(--semantic-high, #f59e0b);
+  background: color-mix(in srgb, var(--semantic-high, #f59e0b) 12%, transparent);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+}
+
+.cdp-scorecard-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 0 8px 8px;
+}
+
+.cdp-scorecard-input {
+  padding-top: 6px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.cdp-scorecard-input-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+}
+
+.cdp-scorecard-input-label {
+  color: var(--text-muted);
+}
+
+.cdp-scorecard-input-value {
+  color: var(--text-secondary);
+  text-align: end;
+  font-variant-numeric: tabular-nums;
+}
+
+.cdp-scorecard-input.is-unavailable .cdp-scorecard-input-value {
+  color: var(--text-faint);
+}
+
+.cdp-scorecard-footer {
+  padding-top: 4px;
+}
+
+.cdp-scorecard-footer a {
+  color: var(--accent, #60a5fa);
+}
+
+@media (max-width: 520px) {
+  .cdp-scorecard-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+  }
+
+  .cdp-scorecard-coverage {
+    grid-column: 1 / -1;
+    padding-inline-start: 18px;
+  }
+}
+
 .cdp-base-item {
   display: flex;
   justify-content: space-between;
@@ -1413,6 +1535,26 @@
 .cdp-dep-critical { background: rgba(220,38,38,0.12); color: #f87171; }
 .cdp-dep-compound { background: rgba(220,38,38,0.18); color: #ef4444; }
 .cdp-dep-ok { background: rgba(34,197,94,0.12); color: #4ade80; }
+
+.cdp-vulnerability-list { display: grid; gap: 6px; }
+.cdp-vulnerability-row { border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; background: rgba(255,255,255,0.02); }
+.cdp-vulnerability-summary { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px; cursor: pointer; }
+.cdp-vulnerability-commodity { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 600; color: var(--text-primary); }
+.cdp-vulnerability-score { min-width: 38px; padding: 2px 6px; border-radius: 10px; text-align: center; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-weight: 700; background: rgba(148,163,184,0.14); color: #cbd5e1; }
+.cdp-vulnerability-state { margin-left: auto; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.04em; }
+.cdp-vulnerability-state[data-state="stale_input"] { color: #fde047; }
+.cdp-vulnerability-state[data-state="insufficient_data"] { color: var(--text-muted); }
+.cdp-vulnerability-critical .cdp-vulnerability-score { background: rgba(220,38,38,0.2); color: #fca5a5; }
+.cdp-vulnerability-high .cdp-vulnerability-score { background: rgba(234,88,12,0.2); color: #fdba74; }
+.cdp-vulnerability-moderate .cdp-vulnerability-score { background: rgba(202,138,4,0.2); color: #fde047; }
+.cdp-vulnerability-low .cdp-vulnerability-score { background: rgba(22,163,74,0.16); color: #86efac; }
+.cdp-vulnerability-components { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; padding: 0 8px 8px; }
+.cdp-vulnerability-component { display: grid; gap: 2px; padding: 6px; border-radius: 4px; background: rgba(0,0,0,0.16); }
+.cdp-vulnerability-component-label, .cdp-vulnerability-component-detail, .cdp-vulnerability-reasons, .cdp-vulnerability-sources { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim); }
+.cdp-vulnerability-component-value { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-primary); }
+.cdp-vulnerability-reasons, .cdp-vulnerability-sources { padding: 0 8px 8px; overflow-wrap: anywhere; }
+.cdp-vulnerability-source, .cdp-vulnerability-methodology { color: var(--accent-color); text-decoration: underline; }
+@media (max-width: 520px) { .cdp-vulnerability-components { grid-template-columns: 1fr; } }
 .cdp-card-footer { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: #475569; margin-top: 6px; }
 
 .cdp-pro-locked {

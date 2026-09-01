@@ -301,6 +301,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "पाँच-कारक लचीलाता स्कोरकार्ड",
+      "help": "खान-पान, ऊर्जा, जनसांख्यिकी, प्रौद्योगिकी और रक्षा के लिए फ्रोज़न v1 प्रमाण स्कोर। इनपुट, स्रोत प्रामाणिकता और डेटा-अनुपलब्धता के कारणों की जाँच करने के लिए एक पंक्ति का विस्तार करें।",
+      "loading": "पाँच-कारक स्कोरकार्ड लोड हो रहा है…",
+      "unavailable": "पाँच-कारक स्कोरकार्ड अनुपलब्ध है।",
+      "proLocked": "पाँच-कारक लचीलाता स्कोरकार्ड के लिए PRO में अपग्रेड करें",
+      "insufficient": "अपर्याप्त डेटा",
+      "notAvailable": "अनुपलब्ध",
+      "noEvidence": "इस स्तंभ के लिए कोई प्रमाण उपलब्ध नहीं है।",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% कवरेज",
+      "methodologyVersion": "पद्धति v{{version}}",
+      "methodologyLink": "पद्धति देखें",
+      "pillars": {
+        "food": "खान-पान",
+        "energy": "ऊर्जा",
+        "demographics": "जनसांख्यिकी",
+        "technology": "प्रौद्योगिकी",
+        "defense": "रक्षा"
+      },
+      "reasons": {
+        "source-unavailable": "स्रोत अनुपलब्ध",
+        "country-unavailable": "देश अनुपलब्ध",
+        "invalid-value": "अमान्य स्रोत मान",
+        "stale": "सूचना पुरानी है",
+        "coverage-below-floor": "स्कोरिंग फ्लोर से कम कवरेज",
+        "required-group-missing": "आवश्यक प्रमाण समूह अनुपलब्ध",
+        "missing-population": "जनसंख्या अनुपलब्ध",
+        "redistribution-blocked": "स्रोत पुनर्वितरण की अनुमति नहीं है",
+        "pillar-unavailable": "स्तंभ अनुपलब्ध"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "उत्पादन संतुलन",
+        "food_stocksToUse": "उपयोग हेतु स्टॉक",
+        "food_waterSecurity": "जल सुरक्षा",
+        "food_importDiversity": "आयात विविधता",
+        "energy_productionBalance": "उत्पादन संतुलन",
+        "energy_lowCarbonShare": "कम-कार्बन ऊर्जा हिस्सा",
+        "energy_gridEfficiency": "ग्रिड दक्षता",
+        "demographics_totalDependency": "कुल निर्भरता",
+        "demographics_oldAgeDependency": "वृद्धावस्था निर्भरता",
+        "demographics_workingAgeProjection": "कार्यक्षम आयु वर्ग पूर्वानुमान",
+        "demographics_tertiaryEnrollment": "उच्च शिक्षा प्रवेश",
+        "demographics_researchersPerMillion": "प्रति मिलियन शोधकर्ता",
+        "demographics_stemGraduateShare": "STEM स्नातकों का हिस्सा",
+        "demographics_trainedIndustrialShare": "प्रशिक्षित औद्योगिक श्रम बल का हिस्सा",
+        "demographics_manufacturingEmploymentShare": "निर्माण रोजगार का हिस्सा",
+        "technology_internetUse": "इंटरनेट उपयोग",
+        "technology_mobileSubscriptions": "मोबाइल सब्सक्रिप्शन",
+        "technology_fixedBroadband": "फिक्स्ड ब्रॉडबैंड",
+        "technology_rdSpend": "शोध और विकास खर्च",
+        "technology_researchersPerMillion": "प्रति मिलियन शोधकर्ता",
+        "technology_stemGraduateShare": "STEM स्नातकों का हिस्सा",
+        "technology_electricityAccess": "बिजली की सुविधा",
+        "defense_expenditureUsd": "सैन्य व्यय",
+        "defense_expenditurePctGdp": "सैन्य बोझ",
+        "defense_personnel": "सशस्त्र बलों का जनशक्ति",
+        "defense_industrialBalance": "रक्षा औद्योगिक संतुलन",
+        "defense_supplierDiversity": "हथियार आपूर्तिकर्ता विविधता"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "हथियार आपूर्तिकर्ता निर्भरता और सैन्य क्षमता के लिए PRO में अपग्रेड करें"
     }
   },
   "header": {
@@ -599,6 +664,8 @@
       "recent": "हाल की खोजें",
       "empty": "डेटा खोजें या कमांड चलाएं",
       "noResults": "कोई परिणाम नहीं",
+      "resultAnnouncement_one": "{{query}} के लिए {{count}} परिणाम",
+      "resultAnnouncement_other": "{{query}} के लिए {{count}} परिणाम",
       "commands": "कमांड्स",
       "results": "परिणाम",
       "addPanel": "जोड़ें",
@@ -1016,7 +1083,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "खान और रिफाइनरी देश शेयर के लिए PRO में अपग्रेड करें, चरण के अनुसार सांद्रता (HHI) के साथ।"
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",
@@ -1892,6 +1960,16 @@
       "loading": "टेलीग्राम रिले से जुड़ रहे हैं...",
       "empty": "कोई संदेश उपलब्ध नहीं",
       "disabled": "टेलीग्राम रिले सक्रिय नहीं है",
+      "watchlistPlaceholder": "@username से सार्वजनिक चैनल जोड़ें",
+      "resolving": "चैनल खोजा जा रहा है...",
+      "invalidUsername": "सार्वजनिक टेलीग्राम @username का उपयोग करें",
+      "resolveFailed": "चैनल नहीं मिला",
+      "watchlistLimit": "आप अधिकतम {{count}} कस्टम चैनल फ़ॉलो कर सकते हैं",
+      "previewMembers": "{{count}} सदस्य",
+      "addChannel": "चैनल जोड़ें",
+      "added": "जोड़ा गया",
+      "remove": "हटाएँ",
+      "custom": "कस्टम",
       "filterAll": "सभी",
       "filterBreaking": "ब्रेकिंग",
       "filterConflict": "संघर्ष",
@@ -2039,6 +2117,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "भौतिक तनाव सूचकांक: {{value}} / 100",
+        "fiveDayTrend": "पाँच-कारोबारी-दिन प्रीमियम प्रवृत्ति",
+        "regimes": {
+          "normal": "सामान्य",
+          "elevated": "उन्नत",
+          "stressed": "दबाव में",
+          "extreme": "अत्यंत"
+        },
+        "states": {
+          "insufficientHistory": "तैयारी में: {{count}} / {{required}} कारोबारी बिंदु",
+          "staleInput": "भौतिक बेंचमार्क पुराना है",
+          "missingInput": "विचलन संकेत उपलब्ध नहीं"
+        },
+        "twentyDayTrend": "बीस कारोबारी दिन का प्रीमियम प्रवृत्ति"
       }
     },
     "crypto": {
@@ -2325,6 +2419,26 @@
         "unavailable": "FSI डेटा उपलब्ध नहीं",
         "failedToLoad": "लोड करने में विफल"
       }
+    },
+    "supplyVulnerability": {
+      "title": "वस्तु संवेदनशीलता",
+      "help": "आपूर्तिकर्ता संकेंद्रण, समुद्री पारगमन और उपलब्ध रणनीतिक भंडार के आधार पर वस्तु-वार देश का जोखिम।",
+      "loading": "वस्तु संवेदनशीलता लोड हो रही है…",
+      "unavailable": "वस्तु संवेदनशीलता डेटा उपलब्ध नहीं है",
+      "noCoverage": "इस देश के लिए पर्याप्त साक्ष्य नहीं हैं",
+      "unknown": "अज्ञात",
+      "concentration": "संकेंद्रण",
+      "transit": "पारगमन",
+      "buffer": "भंडार",
+      "sources": "स्रोत",
+      "methodology": "कार्यप्रणाली",
+      "hormuzTitle": "वस्तु निर्भरताएँ",
+      "dependentCountries": "निर्भर देश",
+      "dependentCommodities": "निर्भर वस्तुएँ",
+      "stateOk": "वर्तमान",
+      "stateStale": "पुराना इनपुट",
+      "stateInsufficient": "अपर्याप्त डेटा",
+      "proLocked": "वस्तु कमजोरी स्कोरिंग के लिए PRO में अपग्रेड करें"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>हर्मुज व्यापार ट्रैकर</strong> हर्मुज स्ट्रेट के माध्यम से लाइव AIS जहाज ट्रैकिंग, विश्व का सबसे महत्वपूर्ण तेल चोकपॉइंट। टैंकर गिनती, व्यवधान घटनाएं, और साप्ताहिक प्रवाह परिवर्तन मॉनिटर करता है। लगभग 20% वैश्विक तेल दैनिक यहां से गुजरता है।",
@@ -2732,6 +2846,18 @@
       "rubBase": "बैंक ऑफ रूस — प्रति 1 इकाई रूबल",
       "rubPerUnit": "प्रति इकाई रूबल",
       "sourceCbr": "स्रोत: बैंक ऑफ रूस"
+    },
+    "passkeyOffer": {
+      "title": "एक पासकी सेव करें?",
+      "body": "अगली बार अपने फिंगरप्रिंट, चेहरे या डिवाइस PIN से साइन इन करें — याद रखने के लिए कोई पासवर्ड नहीं।",
+      "accept": "पासकी सेव करें",
+      "dismiss": "अभी नहीं",
+      "close": "बंद करें",
+      "announce": "अगली बार तेजी से साइन इन करने के लिए एक पासकी सेव करें।",
+      "busy": "आपके डिवाइस की प्रतीक्षा की जा रही है…",
+      "succeeded": "पासकी सेव हो गई। आप इसे अगली बार साइन इन करते समय उपयोग कर सकते हैं।",
+      "retryable": "वह पूरी नहीं हुई। आप फिर से कोशिश कर सकते हैं।",
+      "failed": "हम इस डिवाइस पर एक पासकी सेव नहीं कर सके।"
     }
   },
   "popups": {
@@ -3073,7 +3199,11 @@
       "heading": "दिशा",
       "hexCode": "हेक्स कोड",
       "squawk": "स्क्वॉक",
-      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "चढ़ाई की दर",
+      "manufacturer": "निर्माता",
+      "owner": "मालिक",
+      "builtYear": "निर्माण वर्ष"
     },
     "militaryVessel": {
       "aisDark": "AIS डार्क",
@@ -3118,7 +3248,8 @@
       "moreVessels": "+{{count}} और जहाज",
       "vesselsCount": "{{count}} जहाज",
       "vessels": "जहाज",
-      "trackedVessels": "ट्रैक किए गए जहाज"
+      "trackedVessels": "ट्रैक किए गए जहाज",
+      "showLess": "कम दिखाएँ"
     },
     "naturalEvent": {
       "closed": "बंद",
@@ -3412,7 +3543,9 @@
     "fontFamily": "फॉन्ट परिवार",
     "fontFamilyDesc": "तकनीकी लुक के लिए मोनोस्पेस, आसानी से पढ़ने के लिए सिस्टम डिफ़ॉल्ट।",
     "fontMono": "मोनोस्पेस",
-    "fontSystem": "सिस्टम डिफ़ॉल्ट"
+    "fontSystem": "सिस्टम डिफ़ॉल्ट",
+    "panelFontScale": "पाठ आकार",
+    "followGlobalFontScale": "वैश्विक सेटिंग का उपयोग करें"
   },
   "premium": {
     "pro": "PRO",
@@ -3437,7 +3570,8 @@
   "auth": {
     "signIn": "साइन इन करें",
     "createAccount": "खाता बनाएं",
-    "settings": "सेटिंग्स"
+    "settings": "सेटिंग्स",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP से जुड़ें",

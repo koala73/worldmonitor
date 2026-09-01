@@ -1,0 +1,73 @@
+---
+title: "Demographics & Workforce Capability"
+description: "How WorldMonitor assembles age structure, education pipeline, and industrial workforce observations per country from UN WPP, UNESCO UIS, World Bank WDI, and ILOSTAT."
+---
+
+## Start here
+
+This answers a question that sounds simple and usually is not: **does this
+country have the people to do the work?**
+
+"The people" breaks into three separate things, and a country can be strong in
+one and hollow in another:
+
+1. **Enough working-age people** — now, and still in ten years' time.
+2. **A pipeline producing skills** — universities, STEM graduates, researchers.
+3. **A workforce that can actually build things** — trained industrial trades,
+   machine operators, manufacturing employment.
+
+A country with a young population and no engineers is not the same as one with
+world-class universities and a workforce retiring faster than it can be
+replaced. Both look mediocre in a single blended number, which is exactly why
+this is not published as one.
+
+<Warning>
+**Do not average the three groups together.** They come from different sources
+on different clocks. A country whose industrial-workforce figure is eight years
+old and whose age structure is current does not have an eight-year-old
+demographic profile — it has two observations that must be read separately. The
+response keeps them apart on purpose.
+</Warning>
+
+<Info>
+**Access.** Served from `GET /api/resilience/v1/get-demographics-capability?countryCode=<ISO2>` and MCP `get_demographics_capability`. Both require a Pro subscription.
+</Info>
+
+## Three independent groups
+
+The response is deliberately not a single blended index. Each group resolves on its own, from its own source, on its own clock.
+
+### Age structure — UN World Population Prospects
+
+`medianAgeYears`, `workingAgePopulationPeople`, `oldAgeDependencyRatioPercent`, `totalDependencyRatioPercent`, and a forward `workingAgePopulationProjected10yPeople`. WPP publishes revisions every two years; between revisions the projection is the same series, not a fresh estimate.
+
+### Education pipeline — UNESCO UIS and World Bank WDI
+
+`tertiaryEnrollmentGrossPercent`, `stemGraduatesSharePercent`, and `researchersPerMillion`. UIS is primary; WDI fills where UIS coverage lapses. Reporting lag is long — three to five years is ordinary, not a fault.
+
+### Industrial workforce — ILOSTAT
+
+`manufacturingEmploymentSharePercent`, `trainedIndustrialWorkforcePeople`, `craftTradesEmploymentPeople`, and `plantMachineOperatorsEmploymentPeople`. ILOSTAT coverage is the thinnest of the three: a country can have current WPP age structure and no usable ILOSTAT observation at all.
+
+## Reading the response
+
+Every metric carries four things: the value, its `year`, its `source`, its `unit`, and an explicit `available` flag.
+
+**Read `available` before the value.** These are proto3 messages — an absent number serializes as `0`, and a zero median age or a zero manufacturing share is never a real observation. The flag is the only thing separating "measured" from "missing".
+
+**Do not average across groups.** They have different vintages and different coverage. A country whose ILOSTAT row is eight years old and whose WPP row is current does not have an eight-year-old demographic profile; it has two observations that must be read separately. The response keeps them apart for that reason.
+
+**Retention lives on `stages[].status`, not on each value.** A stage is `fresh`, `retained`, or `unavailable`. `retained` means that source group was carried forward from a previous fetch because the current upstream request failed. Individual observations have no `retained` field.
+
+The top-level `available: false` means no group resolved at all — the country has no usable observation in any of the three, which is different from a country whose groups each carry their own partial availability.
+
+## Cadence
+
+The seeder refreshes on the slowest useful cycle for the set. Upstream publication is the binding constraint: WPP every two years, UIS and WDI annually with multi-year lag, ILOSTAT irregularly by country.
+
+## Related
+
+- [Pro Intelligence Suite](/pro-intelligence-suite)
+- [Five-factor scorecard](/methodology/five-factor-scorecard) — consumes these observations as its demographics pillar
+- [Country resilience index](/methodology/country-resilience-index)
+- [Data sources](/data-sources)

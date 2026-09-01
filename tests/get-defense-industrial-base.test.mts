@@ -76,9 +76,14 @@ describe('get-defense-industrial-base response mapping', () => {
     assert.equal(validateGeneratedRequest('getDefenseIndustrialBase', { countryCode: 'UA' }), undefined);
   });
 
-  it('exposes only the bounded uppercase per-country public cache shape', () => {
+  it('exposes NO anonymous public cache shape now that the route is Pro (#6438)', () => {
+    // Inverted from the original assertion, which pinned `?country_code=UA&
+    // public=1` as a valid public shape. The gateway consults
+    // isPublicSharedRpcRequest BEFORE the tier gate, so any shape still
+    // returning true here would serve arms-supplier data to an anonymous
+    // caller regardless of ENDPOINT_ENTITLEMENTS.
     const path = 'https://worldmonitor.app/api/military/v1/get-defense-industrial-base';
-    assert.equal(isPublicSharedRpcRequest(`${path}?country_code=UA&public=1`), true);
+    assert.equal(isPublicSharedRpcRequest(`${path}?country_code=UA&public=1`), false);
     assert.equal(isPublicSharedRpcRequest(`${path}?country_code=ua&public=1`), false);
     assert.equal(isPublicSharedRpcRequest(`${path}?country_code=UA`), false);
     assert.equal(isPublicSharedRpcRequest(`${path}?country_code=UA&public=1&extra=1`), false);

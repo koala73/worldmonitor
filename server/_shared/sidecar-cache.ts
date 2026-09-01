@@ -74,6 +74,13 @@ export function sidecarCacheGet(key: string): unknown | null {
   return JSON.parse(entry.value);
 }
 
+export function sidecarCacheSetIfAbsent(key: string, value: unknown, ttlSeconds: number): boolean {
+  const existing = store.get(key);
+  if (existing && existing.expiresAt > Date.now()) return false;
+  sidecarCacheSet(key, value, ttlSeconds);
+  return true;
+}
+
 export function sidecarCacheSet(key: string, value: unknown, ttlSeconds: number): void {
   const clamped = Math.max(MIN_TTL_S, Math.min(MAX_TTL_S, ttlSeconds));
   const json = JSON.stringify(value);

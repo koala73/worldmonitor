@@ -26,7 +26,24 @@ const v8 = require('v8');
 const { WebSocketServer, WebSocket } = require('ws');
 const { parseProxyConfig, resolveProxyString, resolveProxyStringForAttempt } = require('./_proxy-utils.cjs');
 const {
+  cooldownKeyForAccount,
+  OPENSKY_LEGACY_COOLDOWN_KEY,
+  OPENSKY_MAX_COOLDOWN_MS,
+  OPENSKY_SHARED_FALLBACK_COOLDOWN_MS,
+  OPENSKY_MAX_DEADLINE_SET_LUA,
+  accountFingerprint: openSkyAccountFingerprint,
+  clampCooldownMs,
+  ttlSecondsForCooldown,
+  inspectCooldownRecord,
+  buildCooldownRecord,
+  maxDeadlineSetCommand,
+  legacyCooldownCompatibilityEnabled,
+} = require('./_opensky-account-cooldown.cjs');
+const OPENSKY_ACCOUNT_FINGERPRINT = openSkyAccountFingerprint(process.env.OPENSKY_CLIENT_ID);
+const OPENSKY_COOLDOWN_KEY = cooldownKeyForAccount(OPENSKY_ACCOUNT_FINGERPRINT);
+const {
   GROQ_DEFAULT_MODEL,
+  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,
@@ -34,6 +51,16 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
+const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
+const {
+  buildClassifyDigestUrl,
+  classifyDigestTransport,
+  buildClassifyDigestHeaders,
+  formatClassifyDigestFetchFailure,
+  shouldWriteClassifySeedMeta,
+  CLASSIFY_DIGEST_RETRY_DELAYS_MS,
+  classifyDigestRetryDecision,
+} = require('./lib/classify-digest-request.cjs');
 const {
   YahooQuoteSummaryClient,
   buildSectorSeedMeta,
@@ -56,7 +83,7 @@ const {
 } = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
-const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
+const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
@@ -285,7 +312,7 @@ if (UPSTASH_ENABLED) {
   console.log(`[Relay] Upstash Redis enabled (key: ${OREF_REDIS_KEY}${UPSTASH_REDIS_REST_URL.startsWith('http://') ? ', insecure-http opt-in' : ''})`);
 }
 
-function upstashGet(key, onFailure) {
+function upstashGet(key, onFailure, timeoutMs = 5000) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(null);
     let settled = false;
@@ -300,11 +327,12 @@ function upstashGet(key, onFailure) {
       if (onFailure) onFailure(reason);
       resolve(null);
     };
+    const requestTimeoutMs = Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : 5000;
     const url = new URL(`/get/${encodeURIComponent(key)}`, UPSTASH_REDIS_REST_URL);
     const req = UPSTASH_HTTP_MODULE.request(url, {
       method: 'GET',
       headers: { Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}` },
-      timeout: 5000,
+      timeout: requestTimeoutMs,
     }, (resp) => {
       if (resp.statusCode < 200 || resp.statusCode >= 300) {
         resp.resume();
@@ -589,6 +617,31 @@ function upstashDel(key) {
   });
 }
 
+function upstashEval(script, keys, args) {
+  return new Promise((resolve) => {
+    if (!UPSTASH_ENABLED) return resolve(null);
+    const url = new URL('/', UPSTASH_REDIS_REST_URL);
+    const body = JSON.stringify(['EVAL', script, String(keys.length), ...keys, ...args.map((arg) => String(arg))]);
+    const req = UPSTASH_HTTP_MODULE.request(url, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${UPSTASH_REDIS_REST_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      timeout: 5000,
+    }, (resp) => {
+      let data = '';
+      resp.on('data', (chunk) => { data += chunk; });
+      resp.on('end', () => {
+        try { resolve(JSON.parse(data)?.result); } catch { resolve(null); }
+      });
+    });
+    req.on('error', () => resolve(null));
+    req.on('timeout', () => { req.destroy(); resolve(null); });
+    req.end(body);
+  });
+}
+
 function upstashReleaseLockIfOwner(key, owner) {
   return new Promise((resolve) => {
     if (!UPSTASH_ENABLED) return resolve(false);
@@ -710,33 +763,6 @@ function normalizeNotificationCountryCode(raw) {
 function marketAlertCoalesceKey(assetClass, identifier, direction, severity) {
   const stableIdentifier = String(identifier || 'unknown').trim().toLowerCase();
   return `market:${assetClass}:${stableIdentifier}:${direction}:${severity}`;
-}
-
-/**
- * Slot B helper: derive a coalesce-family key from an NWS VTEC string.
- *
- * NWS VTEC format (https://www.weather.gov/vtec/):
- *   /O.NEW.KSGF.SV.W.0034.250427T1257Z-250427T1330Z/
- *    │  │   │   │  │  │
- *    │  │   │   │  │  └── event tracking number (per-office, per-phenomenon, per-significance)
- *    │  │   │   │  └───── significance: W=warning, A=watch, Y=advisory, etc.
- *    │  │   │   └──────── phenomenon: SV=severe thunderstorm, TO=tornado, FF=flash flood, etc.
- *    │  │   └──────────── forecast office (4-letter ICAO)
- *    │  └──────────────── action: NEW, CON (continued), CAN (cancel), EXP (expired), etc.
- *    └─────────────────── product status: O=operational, T=test, E=exercise, X=experimental
- *
- * The (office, phenomenon, significance, eventID) tuple identifies one logical
- * event across adjacent zones — exactly what we want to coalesce. We drop the
- * action so NEW + CON + CAN bulletins for the same event also collapse.
- *
- * Returns a stable family key like "nws:KSGF.SV.W.0034" or undefined if the
- * VTEC string is missing or malformed.
- */
-function deriveWeatherCoalesceKey(vtec) {
-  if (typeof vtec !== 'string') return undefined;
-  const m = vtec.match(/\/[OTEX]\.[A-Z]+\.([A-Z]{4})\.([A-Z]{2})\.([A-Z])\.(\d{4})\./);
-  if (!m) return undefined;
-  return `nws:${m[1]}.${m[2]}.${m[3]}.${m[4]}`;
 }
 
 function nwsVtec(p) {
@@ -870,7 +896,7 @@ function safeEnd(res, statusCode, headers, body) {
     res.end(body);
     return true;
   } catch {
-    return false;
+    return;
   }
 }
 
@@ -957,13 +983,28 @@ function sendPreGzipped(req, res, statusCode, headers, rawBody, gzippedBody, bro
 // - TELEGRAM_API_HASH
 // - TELEGRAM_SESSION (StringSession)
 // ─────────────────────────────────────────────────────────────
+function readTelegramNumberEnv(name, fallback, min = 0, max = Number.POSITIVE_INFINITY) {
+  const raw = process.env[name];
+  const parsed = raw == null || raw === '' ? fallback : Number(raw);
+  const finite = Number.isFinite(parsed) ? parsed : fallback;
+  return Math.min(max, Math.max(min, finite));
+}
+
 const TELEGRAM_ENABLED = Boolean(process.env.TELEGRAM_API_ID && process.env.TELEGRAM_API_HASH && process.env.TELEGRAM_SESSION);
-const TELEGRAM_POLL_INTERVAL_MS = Math.max(15_000, Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 60_000));
+const TELEGRAM_POLL_INTERVAL_FLOOR_MS = RELAY_TEST_MODE ? 10 : 15_000;
+const TELEGRAM_POLL_INTERVAL_MS = Math.max(
+  TELEGRAM_POLL_INTERVAL_FLOOR_MS,
+  Number(process.env.TELEGRAM_POLL_INTERVAL_MS || 60_000),
+);
 const TELEGRAM_MAX_FEED_ITEMS = Math.max(50, Number(process.env.TELEGRAM_MAX_FEED_ITEMS || 200));
 const TELEGRAM_MAX_TEXT_CHARS = Math.max(200, Number(process.env.TELEGRAM_MAX_TEXT_CHARS || 800));
+const TELEGRAM_STARTUP_DELAY_MS = readTelegramNumberEnv('TELEGRAM_STARTUP_DELAY_MS', 120_000);
+const TELEGRAM_CONNECT_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_CONNECT_TIMEOUT_MS', 30_000, 10);
 
 const telegramState = {
   client: null,
+  api: null,
+  initPromise: null,
   channels: [],
   cursorByHandle: Object.create(null),
   items: [],
@@ -971,6 +1012,54 @@ const telegramState = {
   lastError: null,
   startedAt: Date.now(),
 };
+
+const TELEGRAM_RESOLVE_CACHE_TTL_MS = 60 * 60 * 1000;
+const TELEGRAM_CHANNEL_CACHE_TTL_MS = 30_000;
+const TELEGRAM_LOOKUP_CACHE_MAX_ENTRIES = 512;
+const TELEGRAM_NEGATIVE_CACHE_TTL_MS = readTelegramNumberEnv('TELEGRAM_NEGATIVE_CACHE_TTL_MS', 300_000, 1_000);
+const TELEGRAM_RPC_MAX_CONCURRENCY = Math.floor(readTelegramNumberEnv('TELEGRAM_RPC_MAX_CONCURRENCY', 2, 1, 4));
+const TELEGRAM_RPC_MAX_QUEUE = Math.floor(readTelegramNumberEnv('TELEGRAM_RPC_MAX_QUEUE', 32, 1, 128));
+const TELEGRAM_RPC_QUEUE_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_RPC_QUEUE_TIMEOUT_MS', 5_000, 10);
+// The 300ms floor is load-bearing and predates the RPC queue: it used to live in
+// the poll loop as Math.max(300, TELEGRAM_RATE_LIMIT_MS). Reusing that env var
+// without the floor silently re-pointed an existing production value at a burst
+// posture the old code forbade, so keep the floor here. Tests need sub-floor
+// spacing to stay fast, and RELAY_TEST_MODE is already this file's test seam.
+const TELEGRAM_RPC_MIN_INTERVAL_FLOOR_MS = RELAY_TEST_MODE ? 0 : 300;
+const TELEGRAM_RPC_MIN_INTERVAL_MS = readTelegramNumberEnv(
+  'TELEGRAM_RPC_MIN_INTERVAL_MS',
+  readTelegramNumberEnv('TELEGRAM_RATE_LIMIT_MS', 800, TELEGRAM_RPC_MIN_INTERVAL_FLOOR_MS),
+  TELEGRAM_RPC_MIN_INTERVAL_FLOOR_MS,
+);
+// Backstop for a hostile or absurd upstream FLOOD_WAIT value. The cooldown is
+// process-wide and only ever raised, so an uncapped value is an outage.
+const TELEGRAM_MAX_FLOOD_WAIT_MS = readTelegramNumberEnv('TELEGRAM_MAX_FLOOD_WAIT_MS', 15 * 60 * 1000, 1_000);
+// gramjs disconnect() can hang; the shutdown path already races it against a
+// timer. The reconnect path must too, because initTelegramClientIfNeeded awaits
+// this promise before anything else.
+const TELEGRAM_DISCONNECT_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_DISCONNECT_TIMEOUT_MS', 10_000, 10);
+// Whole-lookup budget. Individual RPC timeouts compose (queue wait + exec, x3
+// for a channel read), so only an outer deadline keeps the relay's worst case
+// under the Edge runtime's 25s begin-response ceiling.
+const TELEGRAM_LOOKUP_DEADLINE_MS = readTelegramNumberEnv('TELEGRAM_LOOKUP_DEADLINE_MS', 18_000, 100);
+// One slow channel is not a dead socket. Only a run of timeouts justifies
+// resetting the client that every other caller (and the curated poll) shares.
+const TELEGRAM_MAX_CONSECUTIVE_RPC_TIMEOUTS = Math.floor(
+  readTelegramNumberEnv('TELEGRAM_MAX_CONSECUTIVE_RPC_TIMEOUTS', 3, 1, 20),
+);
+const TELEGRAM_USERNAME_RE = /^[a-zA-Z][a-zA-Z0-9_]{4,31}$/;
+const telegramResolveCache = new Map();
+const telegramChannelCache = new Map();
+const telegramNegativeCache = new Map();
+const telegramLookupInflight = new Map();
+const telegramRpcQueue = [];
+const telegramRpcActiveEntries = new Set();
+let telegramRpcNextStartAt = 0;
+let telegramRpcDrainTimer = null;
+let telegramFloodWaitUntil = 0;
+let telegramDisconnectPromise = null;
+let telegramConsecutiveRpcTimeouts = 0;
+let telegramTestConnectAttempts = 0;
 
 const orefState = {
   lastAlerts: [],
@@ -1009,7 +1098,17 @@ function loadTelegramChannels() {
         enabled: c.enabled !== false,
         maxMessages: c.maxMessages != null ? Number(c.maxMessages) : undefined,
       }))
-      .filter(c => c.enabled);
+      .filter(c => c.enabled)
+      // normalizeTelegramMessage runs every handle through
+      // sanitizeTelegramUsername, which THROWS on anything outside the strict
+      // username grammar. That throw lands after getEntity and getMessages have
+      // already been spent, so an unusable handle would burn 2 RPCs per cycle
+      // forever and never advance its cursor. Reject it loudly, once, at load.
+      .filter(c => {
+        if (TELEGRAM_USERNAME_RE.test(c.handle)) return true;
+        console.warn(`[Relay] Ignoring Telegram channel with invalid handle: ${JSON.stringify(c.handle)}`);
+        return false;
+      });
 
     if (!telegramState.channels.length) {
       console.warn(`[Relay] Telegram channel set "${set}" is empty — no channels to poll`);
@@ -1024,15 +1123,16 @@ function loadTelegramChannels() {
 }
 
 function normalizeTelegramMessage(msg, channel) {
+  const handle = sanitizeTelegramUsername(channel.handle);
   const textRaw = String(msg?.message || '');
   const text = textRaw.slice(0, TELEGRAM_MAX_TEXT_CHARS);
   const ts = msg?.date ? new Date(msg.date * 1000).toISOString() : new Date().toISOString();
   return {
-    id: `${channel.handle}:${msg.id}`,
+    id: `${handle}:${msg.id}`,
     source: 'telegram',
-    channel: channel.handle,
-    channelTitle: channel.label || channel.handle,
-    url: `https://t.me/${channel.handle}/${msg.id}`,
+    channel: handle,
+    channelTitle: channel.label || handle,
+    url: `https://t.me/${handle}/${msg.id}`,
     ts,
     text,
     topic: channel.topic || 'other',
@@ -1041,13 +1141,461 @@ function normalizeTelegramMessage(msg, channel) {
   };
 }
 
+function sanitizeTelegramUsername(raw) {
+  const value = String(raw || '')
+    .trim()
+    .replace(/^https?:\/\/t\.me\//i, '')
+    .replace(/^@+/, '')
+    .replace(/[?#].*$/, '')
+    .replace(/\/+$/, '')
+    .trim();
+
+  if (!TELEGRAM_USERNAME_RE.test(value)) {
+    throw new Error('Invalid Telegram username');
+  }
+
+  return value.toLowerCase();
+}
+
+function getCachedTelegramValue(cache, key) {
+  const cached = cache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    cache.delete(key);
+    return null;
+  }
+  return cached.value;
+}
+
+function setCachedTelegramValue(cache, key, value, ttlMs) {
+  const now = Date.now();
+  for (const [cachedKey, cached] of cache) {
+    if (cached.expiresAt <= now) cache.delete(cachedKey);
+  }
+  while (cache.size >= TELEGRAM_LOOKUP_CACHE_MAX_ENTRIES) {
+    const oldestKey = cache.keys().next().value;
+    if (oldestKey == null) break;
+    cache.delete(oldestKey);
+  }
+  cache.set(key, { value, expiresAt: Date.now() + ttlMs });
+}
+
+function getTelegramErrorStatus(error) {
+  if (Number.isInteger(error?.statusCode)) return error.statusCode;
+  // Structured first: a genuine flood carries `seconds` / `errorMessage`. The
+  // message text is attacker-influenced (it embeds the requested username), so
+  // it must never be what promotes an error to 429 — see parseTelegramFloodWaitMs.
+  if (parseTelegramFloodWaitMs(error) > 0) return 429;
+  const message = String(error?.message || error || '');
+  if (/^TIMEOUT after \d+ms:/.test(message)) return 504;
+  if (/invalid telegram username/i.test(message)) return 400;
+  if (/USERNAME_NOT_OCCUPIED|No user has|No channel has|Cannot find any entity/i.test(message)) return 404;
+  if (/not active|not installed|invalidated/i.test(message)) return 503;
+  return 502;
+}
+
+// Public-facing copy. The relay's own error strings describe internal state
+// ('session invalidated (AUTH_KEY_DUPLICATED)', 'Telegram RPC queue is full',
+// raw MTProto/transport text) and used to be returned verbatim to any browser
+// holding a free session token. Map to status-shaped copy instead.
+//
+// 400-for-not-a-public-channel is deliberately folded into 404: distinguishing
+// "no such username" from "exists, but is a user account" turned the endpoint
+// into a Telegram username-existence oracle, with each probe also spending the
+// shared account's tightly-limited resolve budget.
+const TELEGRAM_PUBLIC_ERROR_MESSAGES = {
+  400: 'Invalid Telegram username',
+  404: 'Public Telegram channel not found',
+  429: 'Telegram lookup is rate limited',
+  502: 'Telegram lookup failed',
+  503: 'Telegram lookup is temporarily unavailable',
+  504: 'Telegram lookup timed out',
+};
+
+function getTelegramPublicErrorMessage(statusCode) {
+  return TELEGRAM_PUBLIC_ERROR_MESSAGES[statusCode] || 'Telegram lookup failed';
+}
+
+function createTelegramStatusError(message, statusCode, retryAfterMs = 0) {
+  const error = new Error(message);
+  error.statusCode = statusCode;
+  if (retryAfterMs > 0) error.retryAfterMs = retryAfterMs;
+  return error;
+}
+
+function getTelegramErrorHeaders(error) {
+  const headers = { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' };
+  if (Number(error?.retryAfterMs) > 0) {
+    headers['Retry-After'] = String(Math.max(1, Math.ceil(error.retryAfterMs / 1000)));
+  }
+  return headers;
+}
+
+function getCachedTelegramNegative(key) {
+  const cached = getCachedTelegramValue(telegramNegativeCache, key);
+  if (!cached) return null;
+  const retryAfterMs = cached.retryAfterUntil
+    ? Math.max(1, cached.retryAfterUntil - Date.now())
+    : 0;
+  return createTelegramStatusError(cached.message, cached.statusCode, retryAfterMs);
+}
+
+function setCachedTelegramNegative(key, error) {
+  const statusCode = getTelegramErrorStatus(error);
+  // 504 is included so a chronically slow channel backs itself off instead of
+  // being retried on every 60s panel refresh. 503 stays out: it means "client
+  // reset / starting up", which is transient relay state, not a bad username.
+  if (![400, 404, 429, 504].includes(statusCode)) return;
+  const retryAfterMs = Number(error?.retryAfterMs) || 0;
+  const ttlMs = statusCode === 429 && retryAfterMs > 0
+    ? retryAfterMs
+    : TELEGRAM_NEGATIVE_CACHE_TTL_MS;
+  setCachedTelegramValue(telegramNegativeCache, key, {
+    message: String(error?.message || error || 'Telegram lookup failed'),
+    statusCode,
+    retryAfterUntil: retryAfterMs > 0 ? Date.now() + retryAfterMs : 0,
+  }, ttlMs);
+}
+
+// Derive the flood wait ONLY from structured error fields.
+//
+// Never parse error.message: GramJS builds its lookup errors by interpolating
+// the caller-supplied username verbatim — `No user has "${username}" as
+// username` (telegram/client/users.js) — and the username grammar allows
+// underscores and digits. A watchlist entry of `flood_wait_99999999` therefore
+// used to be read back as a flood duration, and because telegramFloodWaitUntil
+// is process-wide and only ever raised, one request could park the whole
+// Telegram subsystem (curated poll included) effectively forever.
+//
+// `seconds` is set by GramJS on FloodWaitError; `errorMessage` is the MTProto
+// error CODE (e.g. 'FLOOD_WAIT_42'), never free text, so an anchored match on
+// it cannot be spoofed. The cap is the backstop: no single upstream value may
+// wedge the process for longer than an operator would tolerate unattended.
+function parseTelegramFloodWaitMs(error) {
+  const seconds = Number(error?.seconds);
+  let waitMs = Number.isFinite(seconds) && seconds > 0 ? seconds * 1000 : 0;
+
+  if (waitMs <= 0) {
+    const code = typeof error?.errorMessage === 'string' ? error.errorMessage : '';
+    const match = code.match(/^FLOOD_WAIT_(\d+)$/);
+    if (match) {
+      const parsed = Number(match[1]);
+      if (Number.isFinite(parsed) && parsed > 0) waitMs = parsed * 1000;
+    }
+  }
+
+  if (!Number.isFinite(waitMs) || waitMs <= 0) return 0;
+  return Math.min(waitMs, TELEGRAM_MAX_FLOOD_WAIT_MS);
+}
+
+function getTelegramFloodWaitRemainingMs(now = Date.now()) {
+  return Math.max(0, telegramFloodWaitUntil - now);
+}
+
+function assertTelegramRpcAllowed() {
+  const retryAfterMs = getTelegramFloodWaitRemainingMs();
+  if (retryAfterMs > 0) {
+    throw createTelegramStatusError('Telegram FLOOD_WAIT cooldown active', 429, retryAfterMs);
+  }
+}
+
+function normalizeTelegramRpcError(error) {
+  const retryAfterMs = parseTelegramFloodWaitMs(error);
+  if (retryAfterMs <= 0) return error;
+  telegramFloodWaitUntil = Math.max(telegramFloodWaitUntil, Date.now() + retryAfterMs);
+  return createTelegramStatusError(String(error?.message || error), 429, retryAfterMs);
+}
+
+function rejectTelegramRpcQueue(error) {
+  while (telegramRpcQueue.length) {
+    const entry = telegramRpcQueue.shift();
+    clearTimeout(entry.waitTimer);
+    entry.reject(error);
+  }
+}
+
+function drainTelegramRpcQueue() {
+  if (telegramRpcDrainTimer) return;
+
+  const cooldownMs = getTelegramFloodWaitRemainingMs();
+  if (cooldownMs > 0) {
+    const error = createTelegramStatusError('Telegram FLOOD_WAIT cooldown active', 429, cooldownMs);
+    rejectTelegramRpcQueue(error);
+    return;
+  }
+
+  while (telegramRpcActiveEntries.size < TELEGRAM_RPC_MAX_CONCURRENCY && telegramRpcQueue.length) {
+    const delayMs = Math.max(0, telegramRpcNextStartAt - Date.now());
+    if (delayMs > 0) {
+      telegramRpcDrainTimer = setTimeout(() => {
+        telegramRpcDrainTimer = null;
+        drainTelegramRpcQueue();
+      }, delayMs);
+      telegramRpcDrainTimer.unref?.();
+      return;
+    }
+
+    const entry = telegramRpcQueue.shift();
+    clearTimeout(entry.waitTimer);
+    telegramRpcActiveEntries.add(entry);
+    telegramRpcNextStartAt = Date.now() + TELEGRAM_RPC_MIN_INTERVAL_MS;
+    const operation = Promise.resolve().then(entry.operation);
+    let completed = false;
+    let released = false;
+    let timeout = null;
+    const release = () => {
+      if (released) return;
+      released = true;
+      telegramRpcActiveEntries.delete(entry);
+      drainTelegramRpcQueue();
+    };
+    const settle = (callback, value) => {
+      if (completed) return;
+      completed = true;
+      if (timeout) clearTimeout(timeout);
+      callback(value);
+      release();
+    };
+    entry.cancel = error => settle(entry.reject, error);
+    const entryTimeoutMs = entry.timeoutMs || TELEGRAM_CHANNEL_TIMEOUT_MS;
+    timeout = setTimeout(() => {
+      // One slow channel is not a dead socket. Tearing the client down here
+      // meant an arbitrary user-supplied channel could clear both lookup
+      // caches, reject every queued RPC and abort the curated poll mid-cycle,
+      // every 60s. Fail just this entry; only a RUN of timeouts (which implies
+      // the transport, not the channel) justifies resetting shared state.
+      const timeoutError = createTelegramStatusError(
+        `TIMEOUT after ${entryTimeoutMs}ms: ${entry.label}`,
+        504,
+      );
+      telegramConsecutiveRpcTimeouts++;
+      if (telegramConsecutiveRpcTimeouts >= TELEGRAM_MAX_CONSECUTIVE_RPC_TIMEOUTS) {
+        console.warn(`[Relay] Telegram RPC timed out ${telegramConsecutiveRpcTimeouts}x consecutively — resetting client`);
+        destroyTelegramClient(timeoutError, entry);
+        return;
+      }
+      settle(entry.reject, timeoutError);
+    }, entryTimeoutMs);
+    timeout.unref?.();
+    operation.then(
+      value => {
+        telegramConsecutiveRpcTimeouts = 0;
+        settle(entry.resolve, value);
+      },
+      error => settle(entry.reject, normalizeTelegramRpcError(error)),
+    );
+  }
+}
+
+// `priority` reserves the curated poll's place ahead of on-demand user lookups.
+// Both share one MTProto session and one global start interval, so without a
+// lane the product-managed feed competes on equal FIFO terms with arbitrary
+// user traffic and gets pushed past its own queue-wait timeout.
+function runTelegramRpc(label, operation, { priority = false, timeoutMs = 0 } = {}) {
+  assertTelegramRpcAllowed();
+  if (!priority && telegramRpcQueue.length >= TELEGRAM_RPC_MAX_QUEUE) {
+    throw createTelegramStatusError('Telegram RPC queue is full', 429, TELEGRAM_RPC_MIN_INTERVAL_MS);
+  }
+  return new Promise((resolve, reject) => {
+    const entry = { label, operation, resolve, reject, waitTimer: null, priority, timeoutMs };
+    if (priority) {
+      // No wait timer: the poll must not be evicted from its own queue by
+      // user-driven congestion. Its work is bounded by the cycle timeout.
+      const firstNonPriority = telegramRpcQueue.findIndex(queued => !queued.priority);
+      if (firstNonPriority < 0) telegramRpcQueue.push(entry);
+      else telegramRpcQueue.splice(firstNonPriority, 0, entry);
+    } else {
+      entry.waitTimer = setTimeout(() => {
+        const index = telegramRpcQueue.indexOf(entry);
+        if (index < 0) return;
+        telegramRpcQueue.splice(index, 1);
+        reject(createTelegramStatusError('Telegram RPC queue wait timed out', 429, TELEGRAM_RPC_MIN_INTERVAL_MS));
+      }, TELEGRAM_RPC_QUEUE_TIMEOUT_MS);
+      entry.waitTimer.unref?.();
+      telegramRpcQueue.push(entry);
+    }
+    drainTelegramRpcQueue();
+  });
+}
+
+async function withTelegramLookupSingleFlight(key, operation) {
+  const cachedError = getCachedTelegramNegative(key);
+  if (cachedError) throw cachedError;
+
+  const inflight = telegramLookupInflight.get(key);
+  if (inflight) return inflight;
+
+  const request = Promise.resolve()
+    .then(operation)
+    .catch(error => {
+      setCachedTelegramNegative(key, error);
+      throw error;
+    });
+  telegramLookupInflight.set(key, request);
+  try {
+    return await request;
+  } finally {
+    if (telegramLookupInflight.get(key) === request) telegramLookupInflight.delete(key);
+  }
+}
+
+function buildTelegramChannelPreview(entity, fallbackUsername, memberCount = null) {
+  const username = sanitizeTelegramUsername(entity?.username || fallbackUsername);
+  const title = String(entity?.title || entity?.firstName || username);
+  return {
+    username,
+    title,
+    memberCount: Number.isFinite(memberCount) ? memberCount : null,
+    url: `https://t.me/${username}`,
+  };
+}
+
+function assertTelegramConnectionCurrent(connection) {
+  if (telegramState.client !== connection.client || telegramState.api !== connection.Api) {
+    throw createTelegramStatusError('Telegram client reset during request', 503);
+  }
+}
+
+async function resolveTelegramChannelWithConnection(normalized, connection) {
+  assertTelegramConnectionCurrent(connection);
+  const cached = getCachedTelegramValue(telegramResolveCache, normalized);
+  if (cached) return cached;
+
+  return withTelegramLookupSingleFlight(`resolve:${normalized}`, async () => {
+    assertTelegramConnectionCurrent(connection);
+    const freshCached = getCachedTelegramValue(telegramResolveCache, normalized);
+    if (freshCached) return freshCached;
+
+    const entity = await runTelegramRpc(
+      `getEntity(${normalized})`,
+      () => connection.client.getEntity(normalized),
+    );
+
+    const TelegramChannel = connection.Api?.Channel;
+    if (!TelegramChannel || !(entity instanceof TelegramChannel) || !entity.username) {
+      // 404, not 400: a distinct status here told the caller that a username
+      // exists but belongs to a user/basic group, which is a username-existence
+      // oracle over Telegram paid for out of our own resolve budget.
+      throw createTelegramStatusError('Only public Telegram channels are supported', 404);
+    }
+
+    let memberCount = null;
+    if (connection.Api?.channels?.GetFullChannel) {
+      try {
+        const full = await runTelegramRpc(
+          `getFullChannel(${normalized})`,
+          () => connection.client.invoke(new connection.Api.channels.GetFullChannel({ channel: entity })),
+        );
+        const ChannelFull = connection.Api?.ChannelFull;
+        if (ChannelFull && full?.fullChat instanceof ChannelFull) {
+          memberCount = full?.fullChat?.participantsCount ?? null;
+        }
+      } catch (error) {
+        console.warn('[Relay] Telegram resolve participants count failed:', error?.message || error);
+      }
+    }
+
+    assertTelegramConnectionCurrent(connection);
+    const value = {
+      preview: buildTelegramChannelPreview(entity, normalized, memberCount),
+      entity,
+    };
+    setCachedTelegramValue(telegramResolveCache, normalized, value, TELEGRAM_RESOLVE_CACHE_TTL_MS);
+    return value;
+  });
+}
+
+async function resolveTelegramChannel(username) {
+  const normalized = sanitizeTelegramUsername(username);
+  const cached = getCachedTelegramValue(telegramResolveCache, normalized);
+  if (cached) return cached;
+  const cachedError = getCachedTelegramNegative(`resolve:${normalized}`);
+  if (cachedError) throw cachedError;
+  const connection = await initTelegramClientIfNeeded();
+  return resolveTelegramChannelWithConnection(normalized, connection);
+}
+
+async function fetchTelegramChannelFeed(username, limit = 20) {
+  const normalized = sanitizeTelegramUsername(username);
+  const safeLimit = Math.max(1, Math.min(50, Number(limit) || 20));
+  const cacheKey = `${normalized}:${safeLimit}`;
+  const cached = getCachedTelegramValue(telegramChannelCache, cacheKey);
+  if (cached) return cached;
+
+  return withTelegramLookupSingleFlight(`channel:${cacheKey}`, async () => {
+    const freshCached = getCachedTelegramValue(telegramChannelCache, cacheKey);
+    if (freshCached) return freshCached;
+
+    const connection = await initTelegramClientIfNeeded();
+    const { preview, entity } = await resolveTelegramChannelWithConnection(normalized, connection);
+    assertTelegramConnectionCurrent(connection);
+    const msgs = await runTelegramRpc(
+      `getMessages(${normalized})`,
+      () => connection.client.getMessages(entity, { limit: safeLimit }),
+    );
+    assertTelegramConnectionCurrent(connection);
+
+    const items = [];
+    const channel = { handle: preview.username, label: preview.title, topic: 'osint', region: 'watchlist' };
+    for (const msg of msgs || []) {
+      if (!msg || !msg.id || !msg.message) continue;
+      items.push(normalizeTelegramMessage(msg, channel));
+    }
+
+    items.sort((a, b) => (b.ts || '').localeCompare(a.ts || ''));
+
+    const value = {
+      source: 'telegram',
+      earlySignal: true,
+      enabled: TELEGRAM_ENABLED,
+      count: items.length,
+      updatedAt: new Date().toISOString(),
+      items,
+    };
+    setCachedTelegramValue(telegramChannelCache, cacheKey, value, TELEGRAM_CHANNEL_CACHE_TTL_MS);
+    return value;
+  });
+}
+
 let telegramPermanentlyDisabled = false;
 
-function destroyTelegramClient() {
+function destroyTelegramClient(
+  activeError = createTelegramStatusError('Telegram client not active', 503),
+  errorEntry = null,
+) {
   const client = telegramState.client;
   telegramState.client = null;
-  if (!client) return;
-  try { client.disconnect(); } catch {}
+  telegramState.api = null;
+  telegramResolveCache.clear();
+  telegramChannelCache.clear();
+  telegramLookupInflight.clear();
+  if (telegramRpcDrainTimer) clearTimeout(telegramRpcDrainTimer);
+  telegramRpcDrainTimer = null;
+  telegramRpcNextStartAt = 0;
+  telegramConsecutiveRpcTimeouts = 0;
+  const resetError = createTelegramStatusError('Telegram client reset after RPC timeout', 503);
+  rejectTelegramRpcQueue(resetError);
+  for (const entry of [...telegramRpcActiveEntries]) {
+    entry.cancel(entry === errorEntry ? activeError : resetError);
+  }
+  if (!client) return telegramDisconnectPromise;
+  try {
+    // Must be bounded: initTelegramClientIfNeeded awaits this promise before
+    // any other work, so a gramjs disconnect() that never settles would wedge
+    // every future lookup AND the poll loop permanently (and leak one pending
+    // poll per cycle once guardedTelegramPoll force-clears its in-flight flag).
+    // The shutdown path at the bottom of this file already races disconnect
+    // against a timer for the same reason; the socket is force-destroyed just
+    // below regardless, so abandoning a hung disconnect is safe.
+    telegramDisconnectPromise = withTimeout(
+      Promise.resolve(client.disconnect()),
+      TELEGRAM_DISCONNECT_TIMEOUT_MS,
+      'disconnectTelegramClient',
+    );
+  } catch (error) {
+    telegramDisconnectPromise = Promise.reject(error);
+  }
+  telegramDisconnectPromise.catch(() => {});
   try {
     if (client._sender) {
       client._sender._reconnecting = false;
@@ -1058,40 +1606,231 @@ function destroyTelegramClient() {
       }
     }
   } catch {}
+  return telegramDisconnectPromise;
 }
 
 async function initTelegramClientIfNeeded() {
-  if (!TELEGRAM_ENABLED) return false;
-  if (telegramState.client) return true;
-  if (telegramPermanentlyDisabled) return false;
+  if (!TELEGRAM_ENABLED) {
+    throw createTelegramStatusError('Telegram relay not configured', 503);
+  }
+  assertTelegramRpcAllowed();
+  if (telegramState.client && telegramState.api) {
+    return { client: telegramState.client, Api: telegramState.api };
+  }
+  if (telegramPermanentlyDisabled) {
+    throw createTelegramStatusError(telegramState.lastError || 'Telegram relay not active', 503);
+  }
 
+  if (telegramDisconnectPromise) {
+    const pendingDisconnect = telegramDisconnectPromise;
+    try {
+      await pendingDisconnect;
+    } catch (error) {
+      telegramState.lastError = `telegram disconnect failed: ${error?.message || error}`;
+      console.warn('[Relay] Telegram disconnect failed after forced socket teardown:', telegramState.lastError);
+    } finally {
+      // Clear in `finally` so a rejected/abandoned disconnect can never latch
+      // the variable and block every subsequent reconnect.
+      if (telegramDisconnectPromise === pendingDisconnect) telegramDisconnectPromise = null;
+    }
+  }
+
+  const retryAfterMs = (telegramState.startedAt + TELEGRAM_STARTUP_DELAY_MS) - Date.now();
+  if (retryAfterMs > 0) {
+    throw createTelegramStatusError('Telegram client startup delay active', 503, retryAfterMs);
+  }
+
+  if (telegramState.initPromise) return telegramState.initPromise;
+
+  const initPromise = connectTelegramClient();
+  telegramState.initPromise = initPromise;
+  try {
+    return await initPromise;
+  } finally {
+    if (telegramState.initPromise === initPromise) telegramState.initPromise = null;
+  }
+}
+
+async function connectTelegramClient() {
   const apiId = parseInt(String(process.env.TELEGRAM_API_ID || ''), 10);
   const apiHash = String(process.env.TELEGRAM_API_HASH || '');
   const sessionStr = String(process.env.TELEGRAM_SESSION || '');
 
-  if (!apiId || !apiHash || !sessionStr) return false;
+  if (!apiId || !apiHash || !sessionStr) {
+    throw createTelegramStatusError('Telegram relay not configured', 503);
+  }
 
   let client;
   try {
-    const { TelegramClient } = await import('telegram');
-    const { StringSession } = await import('telegram/sessions/index.js');
+    let Api;
+    if (RELAY_TEST_MODE && process.env.RELAY_TEST_TELEGRAM === 'true') {
+      class TestTelegramChannel {
+        constructor(username) {
+          this.username = username;
+          this.title = `Test ${username}`;
+        }
+      }
+      class TestTelegramChannelFull {
+        constructor(participantsCount) {
+          this.participantsCount = participantsCount;
+        }
+      }
+      class TestGetFullChannel {
+        constructor({ channel }) {
+          this.channel = channel;
+        }
+      }
+      const rpcDelay = async () => {
+        const delayMs = readTelegramNumberEnv('RELAY_TEST_TELEGRAM_RPC_DELAY_MS', 0);
+        if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+      };
+      const pendingLookupRejects = new Set();
+      const maybeFailLookup = username => {
+        const floodUsername = String(process.env.RELAY_TEST_TELEGRAM_FLOOD_USERNAME || '').toLowerCase();
+        if (floodUsername && username === floodUsername) {
+          const seconds = Math.max(1, Number(process.env.RELAY_TEST_TELEGRAM_FLOOD_SECONDS || 3));
+          // Shaped like a real gramjs FloodWaitError: the duration lives in the
+          // structured `seconds` / `errorMessage` fields, NOT in free-text
+          // message. A fake that only set `message` meant every flood test
+          // exercised a parse branch production never takes.
+          const error = new Error(`A wait of ${seconds} seconds is required (caused by ResolveUsername)`);
+          error.seconds = seconds;
+          error.errorMessage = `FLOOD_WAIT_${seconds}`;
+          throw error;
+        }
+        const invalid = String(process.env.RELAY_TEST_TELEGRAM_INVALID_USERNAMES || '')
+          .split(',')
+          .map(value => value.trim().toLowerCase())
+          .filter(Boolean);
+        // Real gramjs interpolates the requested username into this message.
+        // Reproducing that verbatim is what lets a test prove a username like
+        // `flood_wait_99999999` cannot be read back as a flood duration.
+        if (invalid.includes(username)) throw new Error(`No user has "${username}" as username`);
+      };
+      Api = {
+        Channel: TestTelegramChannel,
+        ChannelFull: TestTelegramChannelFull,
+        ...(process.env.RELAY_TEST_TELEGRAM_SKIP_FULL_CHANNEL === 'true'
+          ? {}
+          : { channels: { GetFullChannel: TestGetFullChannel } }),
+      };
+      client = {
+        connect: async () => {
+          telegramTestConnectAttempts++;
+          console.log(`[Relay][TestTelegram] connect ${telegramTestConnectAttempts}`);
+          const hangAttempts = Math.max(0, Number(process.env.RELAY_TEST_TELEGRAM_CONNECT_HANG_ATTEMPTS || 0));
+          if (
+            process.env.RELAY_TEST_TELEGRAM_CONNECT_NEVER === 'true'
+            || telegramTestConnectAttempts <= hangAttempts
+          ) {
+            await new Promise(() => {});
+          }
+          const delayMs = Math.max(0, Number(process.env.RELAY_TEST_TELEGRAM_CONNECT_DELAY_MS || 0));
+          if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+        },
+        disconnect: async () => {
+          for (const reject of pendingLookupRejects) reject(new Error('TEST_TELEGRAM_DISCONNECTED'));
+          pendingLookupRejects.clear();
+          // Models a gramjs disconnect that never settles, which used to wedge
+          // every later reconnect on an unbounded await.
+          if (process.env.RELAY_TEST_TELEGRAM_DISCONNECT_NEVER === 'true') {
+            await new Promise(() => {});
+          }
+          const delayMs = readTelegramNumberEnv('RELAY_TEST_TELEGRAM_DISCONNECT_DELAY_MS', 0);
+          if (delayMs > 0) await new Promise(resolve => setTimeout(resolve, delayMs));
+          if (process.env.RELAY_TEST_TELEGRAM_DISCONNECT_REJECT === 'true') {
+            throw new Error('TEST_TELEGRAM_DISCONNECT_FAILED');
+          }
+        },
+        getEntity: async username => {
+          console.log(`[Relay][TestTelegram] getEntity ${username}`);
+          maybeFailLookup(username);
+          const never = String(process.env.RELAY_TEST_TELEGRAM_RPC_NEVER_USERNAMES || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          if (never.includes(username)) {
+            return new Promise((_, reject) => pendingLookupRejects.add(reject));
+          }
+          await rpcDelay();
+          const delayedRejects = String(process.env.RELAY_TEST_TELEGRAM_RPC_REJECT_USERNAMES || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          if (delayedRejects.includes('*') || delayedRejects.includes(String(username).toLowerCase())) {
+            throw new Error('TEST_TELEGRAM_RPC_FAILED');
+          }
+          const csvEnv = name => String(process.env[name] || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          // Without these two hooks the fake could only ever produce a public
+          // channel, so the `instanceof Api.Channel` / `!entity.username` gate
+          // — the only thing rejecting user accounts and private channels —
+          // was unreachable from the suite and could be deleted while green.
+          if (csvEnv('RELAY_TEST_TELEGRAM_USER_USERNAMES').includes(username)) {
+            return { className: 'User', username, firstName: `Test ${username}` };
+          }
+          if (csvEnv('RELAY_TEST_TELEGRAM_PRIVATE_USERNAMES').includes(username)) {
+            const channel = new TestTelegramChannel(username);
+            channel.username = undefined;
+            return channel;
+          }
+          return new TestTelegramChannel(username);
+        },
+        invoke: async request => {
+          console.log(`[Relay][TestTelegram] getFullChannel ${request.channel.username}`);
+          const never = String(process.env.RELAY_TEST_TELEGRAM_FULL_NEVER_USERNAMES || '')
+            .split(',')
+            .map(value => value.trim().toLowerCase())
+            .filter(Boolean);
+          if (never.includes(request.channel.username)) {
+            return new Promise((_, reject) => pendingLookupRejects.add(reject));
+          }
+          await rpcDelay();
+          return {
+            fullChat: new TestTelegramChannelFull(
+              Math.max(0, Number(process.env.RELAY_TEST_TELEGRAM_MEMBER_COUNT || 1234)),
+            ),
+          };
+        },
+        getMessages: async (entity, { limit }) => {
+          console.log(`[Relay][TestTelegram] getMessages ${limit} ${entity.username}`);
+          await rpcDelay();
+          const messages = JSON.parse(process.env.RELAY_TEST_TELEGRAM_MESSAGES || '[]');
+          return Array.isArray(messages) ? messages.slice(0, limit) : [];
+        },
+      };
+    } else {
+      const telegram = await import('telegram');
+      const sessions = await import('telegram/sessions/index.js');
+      Api = telegram.Api;
+      client = new telegram.TelegramClient(new sessions.StringSession(sessionStr), apiId, apiHash, {
+        connectionRetries: 3,
+        // gramjs defaults this to 60 and SWALLOWS any flood shorter than the
+        // threshold by sleeping inside _call (telegram/client/users.js) before
+        // retrying. That sleep outlives TELEGRAM_CHANNEL_TIMEOUT_MS, so a
+        // routine sub-60s flood surfaced to us as an RPC timeout — bypassing
+        // the cooldown machinery below entirely and resetting the client
+        // instead. 0 makes every flood propagate immediately, which is what
+        // normalizeTelegramRpcError and telegramFloodWaitUntil expect.
+        floodSleepThreshold: 0,
+      });
+    }
 
-    client = new TelegramClient(new StringSession(sessionStr), apiId, apiHash, {
-      connectionRetries: 3,
-    });
-
-    await client.connect();
+    await withTimeout(client.connect(), TELEGRAM_CONNECT_TIMEOUT_MS, 'connectTelegramClient');
     telegramState.client = client;
+    telegramState.api = Api;
     telegramState.lastError = null;
     console.log('[Relay] Telegram client connected');
-    return true;
+    return { client, Api };
   } catch (e) {
     const em = e?.message || String(e);
     if (e?.code === 'ERR_MODULE_NOT_FOUND' || /Cannot find package|Directory import/.test(em)) {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'telegram package not installed';
       console.warn('[Relay] Telegram package not installed — disabling permanently for this session');
-      return false;
+      throw createTelegramStatusError(telegramState.lastError, 503);
     }
     // Destroy the locally-created client directly — telegramState.client
     // is still null because connect() failed before the assignment. Without
@@ -1104,16 +1843,23 @@ async function initTelegramClientIfNeeded() {
       telegramPermanentlyDisabled = true;
       telegramState.lastError = 'session invalidated (AUTH_KEY_DUPLICATED) — generate a new TELEGRAM_SESSION';
       console.error('[Relay] Telegram session permanently invalidated (AUTH_KEY_DUPLICATED). Generate a new session with: node scripts/telegram/session-auth.mjs');
-      return false;
+      throw createTelegramStatusError(telegramState.lastError, 503);
     }
     telegramState.lastError = `telegram init failed: ${em}`;
     console.warn('[Relay] Telegram init failed:', telegramState.lastError);
-    return false;
+    throw e instanceof Error ? e : new Error(em);
   }
 }
 
-const TELEGRAM_CHANNEL_TIMEOUT_MS = 15_000; // 15s timeout per channel (getEntity + getMessages)
+const TELEGRAM_CHANNEL_TIMEOUT_MS = readTelegramNumberEnv('TELEGRAM_CHANNEL_TIMEOUT_MS', 15_000, 10);
 const TELEGRAM_POLL_CYCLE_TIMEOUT_MS = 180_000; // 3min max for entire poll cycle
+const TELEGRAM_POLL_STUCK_AFTER_MS = RELAY_TEST_MODE
+  ? readTelegramNumberEnv(
+    'RELAY_TEST_TELEGRAM_POLL_STUCK_AFTER_MS',
+    TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000,
+    10,
+  )
+  : TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000;
 
 function withTimeout(promise, ms, label) {
   return new Promise((resolve, reject) => {
@@ -1126,13 +1872,18 @@ function withTimeout(promise, ms, label) {
 }
 
 async function pollTelegramOnce() {
-  const ok = await initTelegramClientIfNeeded();
-  if (!ok) return;
+  let connection;
+  try {
+    connection = await initTelegramClientIfNeeded();
+  } catch (error) {
+    if (!telegramState.lastError) telegramState.lastError = error?.message || String(error);
+    return;
+  }
 
   const channels = telegramState.channels.length ? telegramState.channels : loadTelegramChannels();
   if (!channels.length) return;
 
-  const client = telegramState.client;
+  const client = connection.client;
   const newItems = [];
   const pollStart = Date.now();
   let channelsPolled = 0;
@@ -1140,6 +1891,7 @@ async function pollTelegramOnce() {
   let mediaSkipped = 0;
 
   for (const channel of channels) {
+    if (telegramState.client !== client || telegramState.api !== connection.Api) break;
     if (Date.now() - pollStart > TELEGRAM_POLL_CYCLE_TIMEOUT_MS) {
       console.warn(`[Relay] Telegram poll cycle timeout (${Math.round(TELEGRAM_POLL_CYCLE_TIMEOUT_MS / 1000)}s), polled ${channelsPolled}/${channels.length} channels`);
       break;
@@ -1149,15 +1901,25 @@ async function pollTelegramOnce() {
     const minId = telegramState.cursorByHandle[handle] || 0;
 
     try {
-      const entity = await withTimeout(client.getEntity(handle), TELEGRAM_CHANNEL_TIMEOUT_MS, `getEntity(${handle})`);
-      const msgs = await withTimeout(
-        client.getMessages(entity, {
-          limit: Math.max(1, Math.min(50, channel.maxMessages || 25)),
-          minId,
-        }),
-        TELEGRAM_CHANNEL_TIMEOUT_MS,
-        `getMessages(${handle})`
+      // One queue entry per CHANNEL, not per RPC. The global start interval is
+      // applied per dequeue, so enqueueing getEntity and getMessages separately
+      // doubled the pacing cost of a cycle (56 channels x 2 x 800ms = ~90s,
+      // against a 60s poll interval and a 180s cycle timeout) versus the single
+      // per-channel sleep this replaced. Priority keeps user lookups from
+      // interleaving into the middle of the poll's own pacing budget.
+      const msgs = await runTelegramRpc(
+        `poll(${handle})`,
+        async () => {
+          const entity = await client.getEntity(handle);
+          assertTelegramConnectionCurrent(connection);
+          return client.getMessages(entity, {
+            limit: Math.max(1, Math.min(50, channel.maxMessages || 25)),
+            minId,
+          });
+        },
+        { priority: true, timeoutMs: TELEGRAM_CHANNEL_TIMEOUT_MS * 2 },
       );
+      assertTelegramConnectionCurrent(connection);
 
       for (const msg of msgs) {
         if (!msg || !msg.id) continue;
@@ -1170,7 +1932,6 @@ async function pollTelegramOnce() {
       }
 
       channelsPolled++;
-      await new Promise(r => setTimeout(r, Math.max(300, Number(process.env.TELEGRAM_RATE_LIMIT_MS || 800))));
     } catch (e) {
       const em = e?.message || String(e);
       channelsFailed++;
@@ -1189,6 +1950,14 @@ async function pollTelegramOnce() {
         break;
       }
     }
+
+    // Rest AFTER the channel, not merely between RPC dispatches. The queue
+    // paces start-to-start, so leaning on it alone would make this loop's
+    // effective spacing `max(interval, pair latency)` instead of the
+    // `pair latency + interval` that main ships — roughly 1.75x the request
+    // rate against a shared account whose FLOOD_WAIT takes the curated feed
+    // down with it. Outside the try so a failing channel rests too.
+    await new Promise(resolve => setTimeout(resolve, TELEGRAM_RPC_MIN_INTERVAL_MS));
   }
 
   if (newItems.length) {
@@ -1226,27 +1995,26 @@ async function pollTelegramOnce() {
   }
 }
 
-let telegramPollInFlight = false;
-let telegramPollStartedAt = 0;
+let telegramPollRun = null;
 
 function guardedTelegramPoll() {
-  if (telegramPollInFlight) {
-    const stuck = Date.now() - telegramPollStartedAt;
-    if (stuck > TELEGRAM_POLL_CYCLE_TIMEOUT_MS + 30_000) {
-      console.warn(`[Relay] Telegram poll stuck for ${Math.round(stuck / 1000)}s — force-clearing in-flight flag`);
-      telegramPollInFlight = false;
-    } else {
-      return;
+  if (telegramPollRun) {
+    const stuck = Date.now() - telegramPollRun.startedAt;
+    if (stuck > TELEGRAM_POLL_STUCK_AFTER_MS && !telegramPollRun.warned) {
+      console.warn(`[Relay] Telegram poll stuck for ${Math.round(stuck / 1000)}s, waiting for the current poll to settle`);
+      telegramPollRun.warned = true;
     }
+    return false;
   }
-  telegramPollInFlight = true;
-  telegramPollStartedAt = Date.now();
+
+  const run = { startedAt: Date.now(), warned: false };
+  telegramPollRun = run;
   pollTelegramOnce()
     .catch(e => console.warn('[Relay] Telegram poll error:', e?.message || e))
-    .finally(() => { telegramPollInFlight = false; });
+    .finally(() => {
+      if (telegramPollRun === run) telegramPollRun = null;
+    });
 }
-
-const TELEGRAM_STARTUP_DELAY_MS = Math.max(0, Number(process.env.TELEGRAM_STARTUP_DELAY_MS || 120_000));
 
 function startTelegramPollLoop() {
   if (!TELEGRAM_ENABLED) return;
@@ -1317,6 +2085,7 @@ const xState = {
   lastError: null,
   rateLimitedUntil: 0,
   rateLimitAttempt: 0,
+  backoffCause: null,
   // True when a Redis read failed, so last-good state is present but unreadable.
   // Blocks polling/publishing until a clean read (see the cycle's hydrate()).
   hydrationFailed: false,
@@ -2334,9 +3103,12 @@ const MARKET_YAHOO_REFRESH_INTERVAL_MS = Math.max(
     : 900_000,
 );
 
+const { loadMarketSeedUniverse } = require('./shared/market-seed-universe.cjs');
 const _stockCfg = requireShared('stocks.json');
-const MARKET_SYMBOLS = _stockCfg.symbols.map((s) => s.symbol);
-const MARKET_META = new Map(_stockCfg.symbols.map((s) => [s.symbol, { name: s.name, display: s.display }]));
+const _stockUniverse = loadMarketSeedUniverse(_stockCfg);
+const MARKET_SYMBOLS = _stockUniverse.allSymbols;
+const MARKET_AUXILIARY_SYMBOLS = _stockUniverse.auxiliarySymbols;
+const MARKET_META = _stockUniverse.metaBySymbol;
 
 const _commodityCfg = requireShared('commodities.json');
 const COMMODITY_SYMBOLS = _commodityCfg.commodities.map(c => c.symbol);
@@ -2363,8 +3135,25 @@ function _parseYahooChartJson(body) {
     const price = meta.regularMarketPrice;
     const prevClose = meta.chartPreviousClose || meta.previousClose || price;
     const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
+    // Round to 7 significant digits like the cron seeders' roundSparkline
+    // (_seed-utils.mjs). Raw float64 noise made these FAST-tier keys ~2x the
+    // rounded size, and whichever writer wins the relay/cron race decides
+    // what every visitor downloads on cold load.
+    //
+    // The guard below MIRRORS toSignificantDigits in _seed-utils.mjs exactly:
+    // non-numbers, non-finite values and 0 pass through untouched so a malformed
+    // upstream degrades identically on both writers. Without it a string close
+    // ("N/A") becomes NaN and serialises to null, denting the curve on the relay
+    // path only. CJS cannot import the ESM helper, so the copy is deliberate and
+    // tests/ais-relay-sparkline-precision.test.mjs pins the two in lockstep.
     const closes = result.indicators?.quote?.[0]?.close;
-    const sparkline = Array.isArray(closes) ? closes.filter((v) => v != null) : [];
+    const sparkline = Array.isArray(closes)
+      ? closes.filter((v) => v != null).map((v) => (
+        typeof v === 'number' && Number.isFinite(v) && v !== 0
+          ? Number(v.toPrecision(7))
+          : v
+      ))
+      : [];
     return { price, change, sparkline };
   } catch { return null; }
 }
@@ -2547,6 +3336,7 @@ async function seedMarketQuotes() {
     : finnhubSymbols;
   const yahooPlan = planYahooRefresh({
     mandatoryYahooSymbols: yahooSymbols,
+    everyCycleSymbols: MARKET_AUXILIARY_SYMBOLS.filter((s) => YAHOO_ONLY.has(s)),
     missedPrimarySymbols: missedFinnhub,
     nowMs: Date.now(),
     lastRefreshAt: _lastYahooMarketRefreshAt,
@@ -2576,12 +3366,18 @@ async function seedMarketQuotes() {
   const yahooSuccessCount = freshQuotes.length - freshCountBeforeYahoo;
   const coveredByYahoo = finnhubSymbols.every((s) => quotes.some((q) => q.symbol === s));
   const skipped = !FINNHUB_API_KEY && !coveredByYahoo;
-  const payload = { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
   const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
   // Compute once and thread through every write below so the envelopes'
   // _seed.fetchedAt and seed-meta.fetchedAt agree for this one publish,
   // instead of each awaited round-trip sampling Date.now() independently.
   const fetchedAt = Date.now();
+  const payload = {
+    quotes,
+    finnhubSkipped: skipped,
+    skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '',
+    rateLimited: false,
+    asOf: resolveMergedQuotesAsOf(freshQuotes, quotes, previousPayload?.asOf, fetchedAt),
+  };
   const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
@@ -3972,6 +4768,7 @@ const CLASSIFY_LLM_PROVIDERS = [
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
     model: GROQ_DEFAULT_MODEL,
+    extraBody: GROQ_REASONING_EXTRA_BODY,
     headers: (key) => ({ Authorization: `Bearer ${key}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA }),
     timeout: 30000,
   },
@@ -4043,58 +4840,76 @@ async function classifyFetchLlm(titles) {
 let classifyInFlight = false;
 
 async function seedClassifyForVariant(variant, seenTitles) {
-  const digestUrl = `https://api.worldmonitor.app/api/news/v1/list-feed-digest?variant=${variant}&lang=en`;
+  const digestUrl = buildClassifyDigestUrl(variant);
+  const transport = classifyDigestTransport(digestUrl) === 'http' ? http : https;
   let digest;
-  try {
-    const resp = await new Promise((resolve, reject) => {
-      const req = https.get(digestUrl, {
-        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-        timeout: 15000,
-      }, resolve);
-      req.on('error', reject);
-      req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
-    });
-    if (resp.statusCode !== 200) { resp.resume(); return { total: 0, classified: 0, skipped: 0 }; }
-    const body = await new Promise((resolve) => {
-      let d = '';
-      resp.on('data', (c) => { d += c; });
-      resp.on('end', () => resolve(d));
-    });
-    digest = JSON.parse(body);
-  } catch {
-    return { total: 0, classified: 0, skipped: 0 };
+  const maxDigestAttempts = CLASSIFY_DIGEST_RETRY_DELAYS_MS.length + 1;
+  for (let attempt = 0; attempt < maxDigestAttempts; attempt++) {
+    try {
+      const resp = await new Promise((resolve, reject) => {
+        const req = transport.get(digestUrl, {
+          headers: buildClassifyDigestHeaders({
+            userAgent: CHROME_UA,
+            relayKey: RELAY_API_KEY,
+          }),
+          timeout: 15000,
+        }, resolve);
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('timeout')); });
+      });
+      if (resp.statusCode !== 200) {
+        resp.resume();
+        const retry = classifyDigestRetryDecision({ attempt, status: resp.statusCode });
+        if (retry.retry) {
+          console.warn(`[Classify] digest fetch HTTP ${resp.statusCode}; retrying in ${retry.delayMs}ms`);
+          await new Promise((r) => setTimeout(r, retry.delayMs));
+          continue;
+        }
+        console.warn(formatClassifyDigestFetchFailure(resp.statusCode, RELAY_API_KEY));
+        return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
+      }
+      const body = await new Promise((resolve) => {
+        let d = '';
+        resp.on('data', (c) => { d += c; });
+        resp.on('end', () => resolve(d));
+      });
+      digest = JSON.parse(body);
+      break;
+    } catch (e) {
+      const retry = classifyDigestRetryDecision({ attempt, error: e });
+      if (retry.retry) {
+        console.warn(`[Classify] digest fetch error: ${e?.message || e}; retrying in ${retry.delayMs}ms`);
+        await new Promise((r) => setTimeout(r, retry.delayMs));
+        continue;
+      }
+      console.warn('[Classify] digest fetch error:', e?.message || e);
+      return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
+    }
+  }
+  if (!digest) {
+    console.warn('[Classify] digest fetch error: exhausted retries');
+    return { total: 0, classified: 0, skipped: 0, fetchFailed: true };
   }
 
-  // Map of title → item metadata; recency gate: skip articles older than 6h
+  // #7084: stale RSS titles already had their alert pass when served fresh.
+  // Exclude only those digest-derived candidates; fresh X candidates remain
+  // eligible because they are an independent input to the combined pass.
+  if (isStaleDigestReplay(digest)) {
+    console.log(`[Classify] digest is a stale replay (${digest.coverage.staleReason || 'unknown'}, ${digest.coverage.staleAgeSeconds ?? 0}s) — skipping digest-derived candidates for ${variant}`);
+  }
+
+  // Map of title → item metadata; recency gate: skip articles older than 6h.
+  // The pure helper keeps the stale-RSS plus fresh-X behavior executable in
+  // tests without importing this boot-on-require relay.
   const RECENCY_GATE_MS = 6 * 60 * 60 * 1000;
-  const now6h = Date.now() - RECENCY_GATE_MS;
-  const allTitles = new Map();
-  if (digest?.categories) {
-    for (const bucket of Object.values(digest.categories)) {
-      for (const item of bucket?.items ?? []) {
-        if (!item?.title) continue;
-        if (item.publishedAt && item.publishedAt < now6h) continue; // stale item
-        if (!allTitles.has(item.title)) {
-          allTitles.set(item.title, {
-            source: item.source ?? variant,
-            publishedAt: item.publishedAt ?? Date.now(),
-            corroborationCount: item.corroborationCount ?? 1,
-            link: item.link ?? '',
-          });
-        }
-      }
-    }
-  }
-  for (const candidate of xNewsAccounts.collectXAlertCandidates(xState.items, RELAY_SOURCE_TIERS, Date.now(), RECENCY_GATE_MS)) {
-    if (!allTitles.has(candidate.title)) {
-      allTitles.set(candidate.title, {
-        source: candidate.source,
-        publishedAt: candidate.publishedAt,
-        corroborationCount: candidate.corroborationCount,
-        link: candidate.link,
-      });
-    }
-  }
+  const classifyNow = Date.now();
+  const xCandidates = xNewsAccounts.collectXAlertCandidates(
+    xState.items,
+    RELAY_SOURCE_TIERS,
+    classifyNow,
+    RECENCY_GATE_MS,
+  );
+  const allTitles = buildClassifyCandidateMap(digest, xCandidates, variant, classifyNow, RECENCY_GATE_MS);
   if (allTitles.size === 0) return { total: 0, classified: 0, skipped: 0 };
 
   const titleArr = [...allTitles.keys()];
@@ -4239,12 +5054,16 @@ async function seedClassify() {
 
     let totalClassified = 0;
     let totalSkipped = 0;
+    let fetchOk = 0;
+    let fetchFailed = 0;
     const mergedByCountry = {};
     const seenTitles = new Set();
     for (let v = 0; v < CLASSIFY_VARIANTS.length; v++) {
       if (v > 0) await new Promise((r) => setTimeout(r, CLASSIFY_VARIANT_STAGGER_MS));
       try {
         const stats = await seedClassifyForVariant(CLASSIFY_VARIANTS[v], seenTitles);
+        if (stats.fetchFailed) fetchFailed += 1;
+        else fetchOk += 1;
         totalClassified += stats.classified;
         totalSkipped += stats.skipped;
         console.log(`[Classify] ${CLASSIFY_VARIANTS[v]}: ${stats.total} titles, ${stats.classified} classified, ${stats.skipped} skipped`);
@@ -4257,6 +5076,11 @@ async function seedClassify() {
       } catch (e) {
         console.warn(`[Classify] ${CLASSIFY_VARIANTS[v]} error:`, e?.message || e);
       }
+    }
+
+    if (!shouldWriteClassifySeedMeta({ fetchOk, fetchFailed })) {
+      console.warn('[Classify] Digest fetch failed for every variant — not writing seed-meta:classify');
+      return;
     }
 
     await upstashSet('seed-meta:news:threat-summary', { fetchedAt: Date.now(), recordCount: Object.keys(mergedByCountry).length }, 604800);
@@ -5174,6 +5998,8 @@ async function seedWeatherAlerts() {
       requireAlertFeatures,
       selectEcccAlerts,
       selectSwicAlerts,
+      selectWeatherNotificationAlerts,
+      weatherAlertFamilyKey,
       weatherAlertNotifyCountryCode,
       weatherAlertNotifyLocation,
       weatherAlertNotifySource,
@@ -5312,34 +6138,19 @@ async function seedWeatherAlerts() {
         : { sourceState: 'ok' }),
     }, 604800);
     console.log(`[Weather] Seeded ${alerts.length} alerts (nws=${nwsAlerts.length} eccc=${ecccAlerts.length} swic=${swicAlerts.length}, redis: ${ok1 && ok2 ? 'OK' : 'PARTIAL'}) in ${((Date.now() - t0) / 1000).toFixed(1)}s`);
-    const highSeverityAlerts = alerts.filter(a => a.severity === 'Extreme' || a.severity === 'Severe');
-    // Pick up to 3 DISTINCT event families before publishing. The naive
-    // `slice(0, 3)` would silently lose distinct families: if the first 3 raw
-    // alerts are adjacent-zone duplicates for one VTEC family (one storm
-    // crossing 3 counties), the publisher-side dedup collapses them to 1
-    // notification and a 4th genuinely-distinct family (tornado / flood /
-    // different storm) sitting at index 3+ would NEVER be considered.
-    // Dedupe by coalesceKey FIRST, then take the top 3 distinct families.
-    // Slot B regression fix from PR #3467 review.
-    const seenFamilyKeys = new Set();
-    const distinctFamilyAlerts = [];
-    for (const a of highSeverityAlerts) {
-      // Family key: prefer VTEC-derived coalesce key; fall back to a stable
-      // identity from the alert so VTEC-less / ECCC alerts still deduplicate
-      // against themselves.
-      const familyKey = deriveWeatherCoalesceKey(a.vtec)
-        ?? `${a.source || 'weather'}:${a.id || a.headline || a.event || ''}`;
-      if (seenFamilyKeys.has(familyKey)) continue;
-      seenFamilyKeys.add(familyKey);
-      distinctFamilyAlerts.push(a);
-      if (distinctFamilyAlerts.length >= 3) break;
-    }
+    // Which high-severity alerts this tick notifies on. Distinct families,
+    // partitioned per country so a single-country burst cannot spend every
+    // slot (#7243). Selection rules live in _weather-alert-select.mjs so they
+    // are unit-testable without booting the relay.
+    const distinctFamilyAlerts = selectWeatherNotificationAlerts(alerts);
     for (const a of distinctFamilyAlerts) {
-      // Slot B: derive a coalesceKey from the NWS VTEC string (when present)
-      // so adjacent-zone bulletins for the same logical event collapse to one
-      // notification per user. Falls back to title-based dedup when VTEC is
-      // absent (ECCC, rare advisory types, or missing parameters).
-      const coalesceKey = deriveWeatherCoalesceKey(a.vtec);
+      // The SAME family key the selector partitioned by. Publishing a narrower
+      // key (VTEC only) let publishNotificationEvent fall back to its global
+      // `weather_alert:<title>` dedup hash for every VTEC-less SWIC/ECCC
+      // alert, so two countries sharing a generic WMO title ("Heavy rain",
+      // "Forestfire") collided on SET NX and only the first survived —
+      // recreating the #7243 starvation one layer below the selector.
+      const coalesceKey = weatherAlertFamilyKey(a);
       const countryCode = weatherAlertNotifyCountryCode(a);
       publishNotificationEvent({
         eventType: 'weather_alert',
@@ -5791,6 +6602,7 @@ const WB_TTL_SECONDS = 7 * 24 * 3600; // 7 days
 const WB_BOOTSTRAP_KEY = 'economic:worldbank-techreadiness:v1';
 const WB_PROGRESS_KEY = 'economic:worldbank-progress:v1';
 const WB_RENEWABLE_KEY = 'economic:worldbank-renewable:v1';
+const { buildWorldBankTechObservations } = require('./_wb-tech-readiness-projection.cjs');
 
 const WB_WEIGHTS = { internet: 30, mobile: 15, broadband: 20, rdSpend: 35 };
 const WB_NORMALIZE_MAX = { internet: 100, mobile: 150, broadband: 50, rdSpend: 5 };
@@ -5889,7 +6701,13 @@ function wbComputeRankings(indicatorData) {
     }
     const score = totalWeight > 0 ? weightedSum / totalWeight : 0;
     const name = indicatorData.internet[cc]?.name || indicatorData.mobile[cc]?.name || cc;
-    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components });
+    const observations = buildWorldBankTechObservations({
+      internet: indicatorData.internet[cc],
+      mobile: indicatorData.mobile[cc],
+      broadband: indicatorData.broadband[cc],
+      rdSpend: indicatorData.rdSpend[cc],
+    });
+    scores.push({ country: cc, countryName: name, score: Math.round(score * 10) / 10, rank: 0, components, observations });
   }
   scores.sort((a, b) => b.score - a.score);
   scores.forEach((s, i) => { s.rank = i + 1; });
@@ -8609,11 +9427,19 @@ async function seedChokepointTransits() {
     const crossings = chokepointCrossings.get(cp.name) || [];
     const recent = crossings.filter(c => now - c.ts < TRANSIT_WINDOW_MS);
     chokepointCrossings.set(cp.name, recent);
+    // `available` is the same signal seedTransitSummaries encodes by leaving
+    // todayTotal null. Both writers read this one in-memory map and both ship
+    // in a single get-chokepoint-status bundle, so without it one response
+    // carried summaries.suez.todayTotal === null next to
+    // transits["Suez Canal"].total === 0 and an agent's answer depended on
+    // which half it read. The counts stay numeric here because the documented
+    // shape of this key is {tanker, cargo, other, total}.
     transits[cp.name] = {
       tanker: recent.filter(c => c.type === 'tanker').length,
       cargo: recent.filter(c => c.type === 'cargo').length,
       other: recent.filter(c => c.type === 'other').length,
       total: recent.length,
+      available: recent.length > 0,
     };
   }
   const payload = { transits, fetchedAt: now };
@@ -8681,10 +9507,17 @@ async function seedTransitSummaries() {
   // coverage shortfall surfaces via the `pwCovered/N` log + recordCount only.
   const CANONICAL_IDS = Object.keys(CHOKEPOINT_THREAT_LEVELS);
   let pwCovered = 0;
+  // WHICH ids are missing, not just how many. A bare `11/13` cannot be acted on
+  // after the fact: portwatch dropped exactly two chokepoints for ~4.5h on
+  // 2026-08-25 and by the time anyone read the alarm the upstream had recovered,
+  // so the shortfall was unattributable — the count was identical every cycle
+  // and named nothing.
+  const pwMissing = [];
 
   for (const cpId of CANONICAL_IDS) {
     const cpData = pw[cpId];
     if (cpData) pwCovered++;
+    else pwMissing.push(cpId);
     const threatLevel = CHOKEPOINT_THREAT_LEVELS[cpId] || 'normal';
     const history = cpData?.history ?? [];
     const anomaly = detectTrafficAnomaly(history, threatLevel);
@@ -8711,15 +9544,15 @@ async function seedTransitSummaries() {
 
     // Compact summary: no history field. Consumed by get-chokepoint-status on
     // every request, so keep it small.
-    // dataAvailable distinguishes genuine zero-traffic (cpData present, 0
-    // crossings) from zero-state fill (upstream missing this cycle). False
-    // here makes the RPC response explicit and lets the client render a
-    // "data unavailable" indicator instead of silently-empty stat rows.
+    // dataAvailable is PortWatch history presence, not AIS today-counts.
+    // todayTotal comes from the in-memory 24h AIS window; an empty window is
+    // unsupplied, not a published zero-traffic measurement (#7457). Leave the
+    // count absent so PortWatch WoW cannot sit next to a fake 0.
     summaries[cpId] = {
-      todayTotal: relayTransit?.total ?? 0,
-      todayTanker: relayTransit?.tanker ?? 0,
-      todayCargo: relayTransit?.cargo ?? 0,
-      todayOther: relayTransit?.other ?? 0,
+      todayTotal: relayTransit?.total ?? null,
+      todayTanker: relayTransit?.tanker ?? null,
+      todayCargo: relayTransit?.cargo ?? null,
+      todayOther: relayTransit?.other ?? null,
       wowChangePct: cpData?.wowChangePct ?? 0,
       riskLevel: cr?.riskLevel ?? '',
       incidentCount7d: cr?.incidentCount7d ?? 0,
@@ -8745,7 +9578,7 @@ async function seedTransitSummaries() {
   }
 
   if (pwCovered < CANONICAL_IDS.length) {
-    console.warn(`[TransitSummary] portwatch coverage shortfall: ${pwCovered}/${CANONICAL_IDS.length} — missing chokepoints will publish zero-state until next upstream success`);
+    console.warn(`[TransitSummary] portwatch coverage shortfall: ${pwCovered}/${CANONICAL_IDS.length} (missing: ${pwMissing.join(', ')}) — missing chokepoints will publish zero-state until next upstream success`);
   }
 
   const ok = await envelopeWrite(TRANSIT_SUMMARY_REDIS_KEY, { summaries, fetchedAt: now }, TRANSIT_SUMMARY_TTL, { recordCount: pwCovered, sourceVersion: 'transit-summaries' });
@@ -9078,13 +9911,153 @@ const OPENSKY_AUTH_COOLDOWN_MS = 60000; // 1 min cooldown after auth failure
 // Global OpenSky rate limiter — serializes upstream requests and enforces 429 cooldown
 let openskyGlobal429Until = 0; // timestamp: block ALL upstream requests until this time
 const OPENSKY_429_COOLDOWN_MS = Number(process.env.OPENSKY_429_COOLDOWN_MS) || 90 * 1000; // 90s cooldown after any 429
-const OPENSKY_MAX_429_COOLDOWN_MS = 24 * 60 * 60 * 1000;
+const OPENSKY_MAX_429_COOLDOWN_MS = OPENSKY_MAX_COOLDOWN_MS;
 const OPENSKY_REQUEST_SPACING_MS = Number(process.env.OPENSKY_REQUEST_SPACING_MS) || 2000; // 2s minimum between consecutive upstream requests
 let openskyLastUpstreamTime = 0;
 let openskyUpstreamQueue = Promise.resolve(); // serial chain — only 1 upstream request at a time
 let openskyRateLimitRemaining = null;
 let openskyLastSuccessAt = 0;
 let openskyLast429At = 0;
+
+function mergeLocalOpenSkyCooldown(untilMs) {
+  if (!Number.isFinite(untilMs) || untilMs <= Date.now()) return;
+  openskyGlobal429Until = Math.max(openskyGlobal429Until, untilMs);
+}
+
+// Aviation bbox callers abort this relay hop after 6s
+// (track-aircraft BBOX_RELAY_TIMEOUT_MS). Bound the shared Redis GET so a
+// slow read still fails open with enough time for OpenSky. Deduplicate only
+// while the read is in flight: a completed zero must not hide a cooldown that
+// the seeder writes before the queued upstream boundary (#6253).
+const OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS = 1_000;
+let sharedOpenSkyCooldownReadPromise = null;
+
+async function readLegacySharedOpenSkyCooldownMs() {
+  const record = await upstashGet(OPENSKY_LEGACY_COOLDOWN_KEY, (reason) => {
+    console.warn('[Relay] OpenSky legacy cooldown read failed, proceeding without it: ' + reason);
+  }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
+  const inspected = inspectCooldownRecord(record, {
+    account: OPENSKY_ACCOUNT_FINGERPRINT,
+  });
+  if (inspected.ignoreReason === 'account-mismatch') {
+    console.warn('[Relay] OpenSky legacy cooldown ignored — recorded for a different account');
+  } else if (inspected.ignoreReason === 'implausible-deadline') {
+    console.warn('[Relay] OpenSky legacy cooldown ignored — implausible deadline ' + inspected.until);
+  }
+  if (inspected.remainingMs <= 0) return 0;
+
+  // Copy, never delete: a rolling deploy can still have v1 writers. The
+  // account-scoped max-deadline EVAL protects a concurrent v2 writer.
+  try {
+    const command = maxDeadlineSetCommand(
+      OPENSKY_COOLDOWN_KEY,
+      record,
+      ttlSecondsForCooldown(inspected.remainingMs),
+    );
+    const written = await upstashEval(
+      OPENSKY_MAX_DEADLINE_SET_LUA,
+      [OPENSKY_COOLDOWN_KEY],
+      command.slice(4),
+    );
+    if (written == null && UPSTASH_ENABLED) {
+      console.warn('[Relay] OpenSky legacy cooldown migration returned non-OK');
+    }
+  } catch (err) {
+    console.warn('[Relay] OpenSky legacy cooldown migration failed, proceeding with the observed cooldown: ' + (err.message || err));
+  }
+  return inspected.remainingMs;
+}
+
+// Shared Redis record written by this relay and by seed-military-flights.
+// Fails OPEN on every error path: a Redis problem must never disable the
+// data tier, and the in-process cooldown still works when Redis is down (#6253).
+async function remainingSharedOpenSkyCooldownMs() {
+  if (sharedOpenSkyCooldownReadPromise) return sharedOpenSkyCooldownReadPromise;
+
+  const pending = readSharedOpenSkyCooldownMs();
+  sharedOpenSkyCooldownReadPromise = pending;
+  try {
+    return await pending;
+  } finally {
+    if (sharedOpenSkyCooldownReadPromise === pending) {
+      sharedOpenSkyCooldownReadPromise = null;
+    }
+  }
+}
+
+async function readSharedOpenSkyCooldownMs() {
+  try {
+    let v2ReadFailed = false;
+    const record = await upstashGet(OPENSKY_COOLDOWN_KEY, (reason) => {
+      v2ReadFailed = true;
+      console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${reason}`);
+    }, OPENSKY_SHARED_COOLDOWN_READ_TIMEOUT_MS);
+    const inspected = inspectCooldownRecord(record, {
+      account: OPENSKY_ACCOUNT_FINGERPRINT,
+    });
+    if (inspected.ignoreReason === 'account-mismatch') {
+      console.warn('[Relay] OpenSky shared cooldown ignored — recorded for a different account');
+    } else if (inspected.ignoreReason === 'implausible-deadline') {
+      console.warn(`[Relay] OpenSky shared cooldown ignored — implausible deadline ${inspected.until}`);
+    }
+    if (inspected.remainingMs > 0) {
+      mergeLocalOpenSkyCooldown(Date.now() + inspected.remainingMs);
+      return inspected.remainingMs;
+    }
+    // A v2 transport or parse failure must remain fail-open. Only a clean
+    // empty, expired, or mismatched v2 read may consult the legacy key.
+    if (v2ReadFailed) return 0;
+    if (!legacyCooldownCompatibilityEnabled()) return 0;
+    const legacyRemainingMs = await readLegacySharedOpenSkyCooldownMs();
+    if (legacyRemainingMs > 0) {
+      mergeLocalOpenSkyCooldown(Date.now() + legacyRemainingMs);
+    }
+    return legacyRemainingMs;
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown read failed, proceeding without it: ${err.message || err}`);
+    return 0;
+  }
+}
+
+async function persistSharedOpenSkyCooldown(retryAfterSeconds, completedAt = Date.now()) {
+  const localCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_429_COOLDOWN_MS);
+  mergeLocalOpenSkyCooldown(completedAt + localCooldownMs);
+  // The in-process limiter can stay short (90s). The shared record must
+  // outlive the seeder's */5 tick, so header-less 429s use the 10-minute
+  // persist fallback instead of the relay's local default (#6253).
+  const persistCooldownMs = clampCooldownMs(retryAfterSeconds, OPENSKY_SHARED_FALLBACK_COOLDOWN_MS);
+  const record = buildCooldownRecord({
+    now: completedAt,
+    cooldownMs: persistCooldownMs,
+    retryAfterSeconds,
+    account: OPENSKY_ACCOUNT_FINGERPRINT,
+    recordedBy: 'ais-relay',
+  });
+  try {
+    // During the bounded rollout bridge, one EVAL updates the account-scoped
+    // key and v1 atomically so an old process cannot miss a new lockout.
+    // After the cutoff, only v2 remains on the hot path.
+    const keys = legacyCooldownCompatibilityEnabled({ now: completedAt })
+      ? [OPENSKY_COOLDOWN_KEY, OPENSKY_LEGACY_COOLDOWN_KEY]
+      : [OPENSKY_COOLDOWN_KEY];
+    const command = maxDeadlineSetCommand(
+      keys,
+      record,
+      ttlSecondsForCooldown(persistCooldownMs),
+    );
+    const written = await upstashEval(
+      OPENSKY_MAX_DEADLINE_SET_LUA,
+      keys,
+      command.slice(3 + keys.length),
+    );
+    if (written == null && UPSTASH_ENABLED) {
+      console.warn('[Relay] OpenSky shared cooldown persist returned non-OK');
+    }
+  } catch (err) {
+    console.warn(`[Relay] OpenSky shared cooldown persist failed: ${err.message || err}`);
+  }
+  return localCooldownMs;
+}
 
 async function getOpenSkyToken() {
   const clientId = process.env.OPENSKY_CLIENT_ID;
@@ -9336,6 +10309,11 @@ function openskyQueuedFetch(url, token) {
     if (Date.now() < openskyGlobal429Until) {
       return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
     }
+    // Cross-process arming: a seeder 429 parked the shared Redis key while this
+    // process still had a zero in-process deadline (#6253). Fail-open on Redis.
+    if (await remainingSharedOpenSkyCooldownMs() > 0) {
+      return { status: 429, data: JSON.stringify({ states: [], time: Date.now() }), rateLimited: true };
+    }
     openskyLastUpstreamTime = Date.now();
     incrementRelayMetric('openskyUpstreamFetches');
     const result = await _openskyRawFetch(url, token);
@@ -9347,14 +10325,7 @@ function openskyQueuedFetch(url, token) {
       openskyLastSuccessAt = completedAt;
     }
     if (result.status === 429) {
-      const providerCooldownMs = result.retryAfterSeconds == null
-        ? OPENSKY_429_COOLDOWN_MS
-        : result.retryAfterSeconds * 1000;
-      const cooldownMs = Math.min(
-        OPENSKY_MAX_429_COOLDOWN_MS,
-        Math.max(OPENSKY_429_COOLDOWN_MS, providerCooldownMs),
-      );
-      openskyGlobal429Until = Math.max(openskyGlobal429Until, completedAt + cooldownMs);
+      const cooldownMs = await persistSharedOpenSkyCooldown(result.retryAfterSeconds, completedAt);
       openskyLast429At = completedAt;
       console.warn(`[Relay] OpenSky 429 — global cooldown ${Math.ceil(cooldownMs / 1000)}s (all bbox queries blocked)`);
     }
@@ -9413,6 +10384,11 @@ async function handleOpenSkyRequest(req, res, PORT) {
     // 2b. Global 429 cooldown — blocks ALL bbox queries when OpenSky is rate-limiting.
     //     Without this, 5 unique bbox keys all fire simultaneously when neg cache expires,
     //     ALL get 429'd, and the cycle repeats forever with zero data flowing.
+    //     Also honor a seeder-written Redis deadline so this process does not
+    //     spend a doomed auth+data round-trip to rediscover the same lockout.
+    if (Date.now() >= openskyGlobal429Until) {
+      await remainingSharedOpenSkyCooldownMs();
+    }
     if (Date.now() < openskyGlobal429Until) {
       incrementRelayMetric('openskyNegativeHit');
       recordRelayOutcome('opensky', 'throttle');
@@ -10690,8 +11666,8 @@ const server = http.createServer(async (req, res) => {
         lastPollAt: telegramState.lastPollAt ? new Date(telegramState.lastPollAt).toISOString() : null,
         hasError: !!telegramState.lastError,
         lastError: telegramState.lastError || null,
-        pollInFlight: telegramPollInFlight,
-        pollInFlightSince: telegramPollInFlight && telegramPollStartedAt ? new Date(telegramPollStartedAt).toISOString() : null,
+        pollInFlight: telegramPollRun !== null,
+        pollInFlightSince: telegramPollRun ? new Date(telegramPollRun.startedAt).toISOString() : null,
       },
       xFeed: {
         enabled: X_ENABLED,
@@ -10709,6 +11685,7 @@ const server = http.createServer(async (req, res) => {
         pollInFlight: xPollGuard.isInFlight(),
         pollInFlightSince: xPollGuard.startedAt() ? new Date(xPollGuard.startedAt()).toISOString() : null,
         rateLimitedUntil: xState.rateLimitedUntil ? new Date(xState.rateLimitedUntil).toISOString() : null,
+        backoffCause: xState.backoffCause || null,
       },
       oref: {
         enabled: SIREN_ALERTS_ENABLED,
@@ -10891,8 +11868,48 @@ const server = http.createServer(async (req, res) => {
 
     res.writeHead(200, { 'Content-Type': 'application/json', 'Cache-Control': 'no-store' });
     res.end(JSON.stringify(diag, null, 2));
-  } else if (pathname === '/telegram' || pathname.startsWith('/telegram/')) {
-    // Telegram Early Signals feed (public channels)
+  } else if (pathname === '/telegram/resolve') {
+    try {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const username = url.searchParams.get('username') || '';
+      const { preview } = await withTimeout(
+        resolveTelegramChannel(username),
+        TELEGRAM_LOOKUP_DEADLINE_MS,
+        `resolveTelegramChannel(${username})`,
+      );
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
+      }, JSON.stringify(preview));
+    } catch (e) {
+      const status = getTelegramErrorStatus(e);
+      res.writeHead(status, getTelegramErrorHeaders(e));
+      res.end(JSON.stringify({ error: getTelegramPublicErrorMessage(status) }));
+    }
+  } else if (pathname === '/telegram/channel') {
+    try {
+      const url = new URL(req.url, `http://localhost:${PORT}`);
+      const username = url.searchParams.get('username') || '';
+      const limit = Math.max(1, Math.min(50, Number(url.searchParams.get('limit') || 20)));
+      const payload = await withTimeout(
+        fetchTelegramChannelFeed(username, limit),
+        TELEGRAM_LOOKUP_DEADLINE_MS,
+        `fetchTelegramChannelFeed(${username})`,
+      );
+      sendCompressed(req, res, 200, {
+        'Content-Type': 'application/json',
+        // Post bodies are R4. The relay's bounded in-memory cache absorbs
+        // repeated lookups; shared HTTP caches must not bypass relay auth.
+        'Cache-Control': 'no-store',
+        'CDN-Cache-Control': 'no-store',
+      }, JSON.stringify(payload));
+    } catch (e) {
+      const status = getTelegramErrorStatus(e);
+      res.writeHead(status, getTelegramErrorHeaders(e));
+      res.end(JSON.stringify({ error: getTelegramPublicErrorMessage(status) }));
+    }
+  } else if (pathname === '/telegram' || pathname === '/telegram/feed') {
     try {
       const url = new URL(req.url, `http://localhost:${PORT}`);
       const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 50)));
@@ -12996,6 +14013,15 @@ server.listen(PORT, () => {
         shipType: 35,
         timestamp: Date.now(),
       });
+    }
+    // Opt-in seam: background loops stay off by default in test mode, but the
+    // curated Telegram poll had no coverage at all as a result — including its
+    // pacing, which is the property that keeps a shared MTProto account below
+    // Telegram's flood threshold. Gated behind RELAY_TEST_MODE *and* an
+    // explicit flag, so it cannot start outside the test harness.
+    if (process.env.RELAY_TEST_TELEGRAM_POLL === 'true') {
+      console.log('[Relay] Test mode: starting the Telegram poll loop on request');
+      startTelegramPollLoop();
     }
     console.log('[Relay] Test mode enabled — background seed loops are disabled');
     return;

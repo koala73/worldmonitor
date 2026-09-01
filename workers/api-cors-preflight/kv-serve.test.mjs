@@ -1,23 +1,31 @@
 // Tests for KV serving added to the api-cors-preflight Worker (U-K4, #5338).
 //
-// The load-bearing invariant: serving is STRICTLY ADDITIVE. With the flag off (the deployed
-// default) behaviour is byte-identical to the origin pass-through, and every KV failure mode
+// The load-bearing invariant: serving is STRICTLY ADDITIVE. With the flag off (the kill-switch)
+// behaviour is byte-identical to the origin pass-through, and every KV failure mode
 // (miss/invalid/stale/error/timeout) falls through to origin — never a served 5xx. When serving is
 // on, the body is the tier envelope's payload and the CORS headers match what the Worker stamps on
-// the pass-through (it remains the CORS source of truth).
+// the pass-through (it remains the CORS source of truth). Production is BOOTSTRAP_KV_SERVE="all".
 
+import { readFileSync } from 'node:fs';
 import { strict as assert } from 'node:assert';
 import test from 'node:test';
 
 import worker from './src/index.js';
-import { TIER_MAX_AGE_MS } from './src/kv-shadow.js';
+import { BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION, TIER_MAX_AGE_MS } from './src/kv-shadow.js';
+// Shared with the origin-handler and deployed-URL guards — see index.test.mjs.
+import { assertPublicBootstrapCorsHeaders } from '../../tests/helpers/public-bootstrap-contract.mjs';
 
 const FAST_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=fast&public=1';
 const SLOW_URL = 'https://api.worldmonitor.app/api/bootstrap?tier=slow&public=1';
 
 const payloadFor = (tier) => ({ data: { [`${tier}-key`]: { v: 1 } }, missing: [`${tier}-missing`] });
 const envelopeFor = (tier, ageMs = 0) =>
-  JSON.stringify({ tier, generatedAt: Date.now() - ageMs, payload: payloadFor(tier) });
+  JSON.stringify({
+    schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION,
+    tier,
+    generatedAt: Date.now() - ageMs,
+    payload: payloadFor(tier),
+  });
 
 // Route global fetch: Axiom POSTs captured; everything else is a canned "origin" response tagged
 // X-Origin: vercel so a test can tell served-from-KV (source marker) from origin pass-through.
@@ -78,16 +86,128 @@ test('served CORS headers are identical to the origin pass-through the Worker wo
     assert.equal(served.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
     assert.equal(passthru.headers.get('X-Origin'), 'vercel');
     assert.deepEqual(corsOf(served), corsOf(passthru), 'CORS/Vary identical served vs pass-through');
-    assert.equal(served.headers.get('Access-Control-Allow-Credentials'), 'true');
   } finally { restore(); }
 });
 
-test('serve=off (the deployed default): public-tier GET falls through to origin unchanged', async () => {
+// #7308: the served bytes must carry api/bootstrap.js's PUBLIC header shape
+// (getPublicBootstrapHeaders: ACAO:*, no Allow-Credentials, no Vary: Origin),
+// not the Worker's credentialed bag. The origin handler reaches that shape only
+// for public auth kinds, and `?tier=<t>&public=1` is exactly one of them; the
+// edge previously made no such distinction, so an unauthenticated seed payload
+// went out with Allow-Credentials: true alongside Timing-Allow-Origin: *.
+test('KV-served public bootstrap carries the same deprecation policy Link as origin', async () => {
+  // maybeServeBootstrapFromKv returns serveFromKv() and never enters
+  // passThroughToOrigin, which is where the origin path appends the policy
+  // Link. Production BOOTSTRAP_KV_SERVE="all" would otherwise omit it on the
+  // bytes clients actually receive.
+  const restore = installFetch();
+  try {
+    const passthru = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'off', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    const served = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(served.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assert.match(served.headers.get('link') ?? '', /rel="deprecation"/);
+    assert.match(served.headers.get('link') ?? '', /https:\/\/www\.worldmonitor\.app\/api-versioning\.md/);
+    assert.equal(
+      served.headers.get('link'),
+      passthru.headers.get('link'),
+      'KV and origin pass-through must advertise the same policy Link',
+    );
+  } finally { restore(); }
+});
+
+test('the KV-served public tier carries the origin public header shape (#7308)', async () => {
+  const restore = installFetch();
+  try {
+    const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assertPublicBootstrapCorsHeaders({ assert, resp: res, label: 'KV-served fast tier' });
+    assert.equal(res.headers.get('Vary'), null, 'a caller-invariant payload must not be keyed by Origin');
+  } finally { restore(); }
+});
+
+test('a disallowed Origin is still KV-served, but under the credentialed fallback bag', async () => {
+  // The header denial and the routing decision are separate. A disallowed Origin
+  // must not get ACAO:* — but it must still be answered from KV, or one bogus
+  // header on every request becomes a free lever for forcing Vercel/Redis load
+  // that the same caller could avoid entirely by omitting the header.
+  const restore = installFetch();
+  try {
+    const evil = new Request(FAST_URL, { method: 'GET', headers: { Origin: 'https://evil.example' } });
+    const res = await worker.fetch(evil, makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv', 'still served from KV');
+    assert.equal(res.headers.get('X-Origin'), null, 'origin was not enlisted');
+    assert.equal(
+      res.headers.get('Access-Control-Allow-Origin'), 'https://worldmonitor.app',
+      'the canonical fallback echo is what denies the browser read',
+    );
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), 'true');
+    assert.match(res.headers.get('link') ?? '', /rel="deprecation"/);
+  } finally { restore(); }
+});
+
+test('the KV path never receives a status function it would spread into nothing', async () => {
+  // serveFromKv spreads its corsHeaders argument directly, so a status-function
+  // reaching it would produce a 200 with zero CORS headers — a silent fail-open
+  // into an unreadable cross-origin response. Pinned for whoever widens the
+  // predicate next: every KV-served response carries a real ACAO, allowed Origin
+  // or not.
+  const restore = installFetch();
+  try {
+    const env = makeEnv({ serve: 'all', get: async (tier) => envelopeFor(tier) });
+    for (const [label, request] of [
+      ['allowed Origin', req(FAST_URL)],
+      ['no Origin', new Request(FAST_URL, { method: 'GET' })],
+      ['disallowed Origin', new Request(FAST_URL, { method: 'GET', headers: { Origin: 'https://evil.example' } })],
+      ['allowed Origin, slow tier', req(SLOW_URL)],
+    ]) {
+      const res = await worker.fetch(request, env, makeCtx().ctx);
+      assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv', `${label}: served from KV`);
+      assert.ok(res.headers.get('Access-Control-Allow-Origin'), `${label}: has an ACAO`);
+    }
+  } finally { restore(); }
+});
+
+test('the KV-served slow tier carries the same public shape as fast', async () => {
+  const restore = installFetch();
+  try {
+    const res = await worker.fetch(req(SLOW_URL), makeEnv({ serve: 'all', get: async (tier) => envelopeFor(tier) }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assertPublicBootstrapCorsHeaders({ assert, resp: res, label: 'KV-served slow tier' });
+    assert.equal(res.headers.get('Vary'), null);
+  } finally { restore(); }
+});
+
+test('no-Origin callers (curl, server-side, RUM beacons) are served the public shape from KV', async () => {
+  const restore = installFetch();
+  try {
+    const anon = new Request(FAST_URL, { method: 'GET' });
+    const res = await worker.fetch(anon, makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), 'kv');
+    assertPublicBootstrapCorsHeaders({ assert, resp: res, label: 'no-Origin KV serve' });
+    assert.equal(res.headers.get('Vary'), null);
+  } finally { restore(); }
+});
+
+test('the KV-served tier stays browser-no-store — the POP-local KV read is the cache', async () => {
+  // Pinned so it reads as a decision rather than an omission. Rationale:
+  // src/kv-serve.js#serveFromKv.
+  const restore = installFetch();
+  try {
+    const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'all', kvValue: envelopeFor('fast') }), makeCtx().ctx);
+    assert.equal(res.headers.get('Cache-Control'), 'no-store');
+    assert.equal(res.headers.get('CDN-Cache-Control'), null);
+  } finally { restore(); }
+});
+
+test('serve=off (kill-switch): public-tier GET falls through to origin unchanged', async () => {
   const restore = installFetch();
   try {
     const res = await worker.fetch(req(FAST_URL), makeEnv({ serve: 'off', kvValue: envelopeFor('fast') }), makeCtx().ctx);
     assert.equal(res.headers.get('X-Origin'), 'vercel', 'reached origin');
     assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null);
+    // The kill-switch changes which path answers, never the contract it answers with.
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null);
   } finally { restore(); }
 });
 
@@ -108,7 +228,8 @@ test('every KV failure mode falls through to origin (never a served 5xx)', async
   const cases = [
     ['miss', async () => null],
     ['invalid', async () => '{not json'],
-    ['wrong-tier', async () => JSON.stringify({ tier: 'slow', generatedAt: Date.now(), payload: payloadFor('slow') })],
+    ['wrong-tier', async () => JSON.stringify({ schemaVersion: BOOTSTRAP_TIER_ENVELOPE_SCHEMA_VERSION, tier: 'slow', generatedAt: Date.now(), payload: payloadFor('slow') })],
+    ['legacy-unversioned', async () => JSON.stringify({ tier: 'fast', generatedAt: Date.now(), payload: payloadFor('fast') })],
     ['stale', async (tier) => envelopeFor(tier, TIER_MAX_AGE_MS.fast + 60_000)],
     ['read-error', async () => { throw new Error('kv down'); }],
   ];
@@ -119,6 +240,9 @@ test('every KV failure mode falls through to origin (never a served 5xx)', async
       assert.equal(res.status, 200, `${name}: still 200`);
       assert.equal(res.headers.get('X-Origin'), 'vercel', `${name}: reached origin`);
       assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, `${name}: not served from KV`);
+      // Absolute, not a same-shape comparison: which path answered must not change the contract.
+      assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*', `${name}: public shape`);
+      assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null, `${name}: no credentials`);
     } finally { restore(); }
   }
 });
@@ -207,6 +331,9 @@ test('a hung KV read hedges to origin after the delay and records reason=hedged'
     assert.equal(res.headers.get('X-Origin'), 'vercel', 'hedge falls back to origin');
     assert.equal(res.headers.get('X-WorldMonitor-Bootstrap-Source'), null, 'not served from the hung KV');
     assert.equal(originCalls, 1, 'origin enlisted exactly once, at the hedge boundary');
+    // The header shape must not depend on which side won the race (#7308).
+    assert.equal(res.headers.get('Access-Control-Allow-Origin'), '*');
+    assert.equal(res.headers.get('Access-Control-Allow-Credentials'), null);
     await Promise.all(waits);
     assert.equal(event.kv_outcome, 'fallback');
     assert.equal(event.kv_reason, 'hedged');
@@ -255,6 +382,12 @@ test('a served tier skips the redundant shadow read during cutover', async () =>
     assert.equal(reads, 1, 'serve telemetry replaces the same-tier shadow read');
     assert.deepEqual(events.map((event) => event.event_type), ['bootstrap_kv_serve']);
   } finally { restore(); }
+});
+
+test('wrangler.toml stage 2 serves both public tiers from KV', () => {
+  const toml = readFileSync(new URL('./wrangler.toml', import.meta.url), 'utf8');
+  assert.match(toml, /^BOOTSTRAP_KV_SERVE = "all"$/m, 'fast-tier cutover (#7291) must stay deployed');
+  assert.match(toml, /^BOOTSTRAP_KV_SHADOW = "1"$/m, 'keep the shadow baseline until stage 3');
 });
 
 test('serve=slow keeps the unserved fast tier on the shadow path', async () => {

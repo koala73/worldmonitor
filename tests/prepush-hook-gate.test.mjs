@@ -91,6 +91,7 @@ function makeFixture({
   branchFiles = {},
   scriptsCjs = true,
   failAttestMode = null,
+  baseGuardResponse = null,
   proTestNodeModules = true,
 } = {}) {
   const id = fixtureCount++;
@@ -99,27 +100,47 @@ function makeFixture({
   const env = hookEnv(bin);
   const git = (args) => execFileSync('git', args, { cwd: root, env, encoding: 'utf8' });
 
-  for (const dir of ['.husky', 'scripts', 'tests', 'node_modules']) {
+  for (const dir of ['.husky', 'scripts', 'scripts/lib', 'tests', 'node_modules']) {
     mkdirSync(join(root, dir), { recursive: true });
   }
+  // Simulate a COMPLETED install, not merely a present directory. npm writes
+  // .package-lock.json only when an install finishes, and the gate keys on that
+  // marker — an empty node_modules/ is the half-installed state it must catch.
+  // node_modules/ is gitignored above so this stays invisible to `dirty`.
+  writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}\n');
   copyFileSync(HOOK, join(root, '.husky', 'pre-push'));
-  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh']) {
+  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh', 'prepush-identity-gate.sh']) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(root, 'scripts', script));
   }
+  copyFileSync(
+    join(REPO_ROOT, 'scripts', 'lib', 'main-module.mjs'),
+    join(root, 'scripts', 'lib', 'main-module.mjs'),
+  );
   // Fault injection: make one attest mode fail while its siblings still work,
   // so the hook's handling of a broken enumeration can be executed rather than
-  // reasoned about.
-  if (failAttestMode) {
+  // reasoned about. The base-guard response injection exercises the hook
+  // boundary separately: helper status and output are both untrusted inputs.
+  if (failAttestMode || baseGuardResponse) {
+    const injectedBaseGuard = baseGuardResponse
+      ? `if [ "$1" = base-guard ]; then\n` +
+        (baseGuardResponse.stdout
+          ? `  printf '%b\\n' ${JSON.stringify(baseGuardResponse.stdout)}\n`
+          : '') +
+        `  exit ${baseGuardResponse.status};\nfi\n`
+      : '';
     writeFileSync(
       join(root, 'scripts', 'prepush-attest.sh'),
       `#!/usr/bin/env bash\n` +
-        `if [ "$1" = ${JSON.stringify(failAttestMode)} ]; then exit 1; fi\n` +
+        injectedBaseGuard +
+        (failAttestMode
+          ? `if [ "$1" = ${JSON.stringify(failAttestMode)} ]; then exit 1; fi\n`
+          : '') +
         `exec bash ${JSON.stringify(join(REPO_ROOT, 'scripts', 'prepush-attest.sh'))} "$@"\n`,
     );
   }
   writeFileSync(join(root, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(root, 'README.md'), 'base\n');
-  writeFileSync(join(root, '.gitignore'), 'public/pro/\n');
+  writeFileSync(join(root, '.gitignore'), 'public/pro/\nnode_modules/\n');
   // RUN_ALL fires the CJS syntax check, which iterates `scripts/*.cjs`.
   if (scriptsCjs) writeFileSync(join(root, 'scripts', 'noop.cjs'), 'module.exports = {};\n');
 
@@ -132,6 +153,7 @@ function makeFixture({
   // invisible to `dirty`).
   if (proTestNodeModules) {
     mkdirSync(join(root, 'pro-test', 'node_modules'), { recursive: true });
+    writeFileSync(join(root, 'pro-test', 'node_modules', '.package-lock.json'), '{}\n');
   }
   for (const [path, contents] of Object.entries({
     'src/config/products.generated.ts': 'export const PRODUCTS = [];\n',
@@ -144,7 +166,7 @@ function makeFixture({
   }
 
   git(['init', '--quiet', '--initial-branch=main', '.']);
-  git(['config', 'user.email', 'prepush-hook@example.invalid']);
+  git(['config', 'user.email', 'prepush-hook@wm-fixture.localhost']);
   git(['config', 'user.name', 'Prepush Hook Fixture']);
   git(['add', '-A']);
   git(['commit', '--quiet', '-m', 'base']);
@@ -158,6 +180,7 @@ function makeFixture({
     git(['add', '-A']);
     git(['commit', '--quiet', '-m', 'branch work']);
   }
+  if (baseGuardResponse) git(['switch', '--quiet', '-c', 'feature']);
 
   const run = (extraEnv = {}) => {
     let status = 0;
@@ -222,11 +245,11 @@ function pushWithPoisonedSharedHooksPath() {
   mkdirSync(main, { recursive: true });
   execFileSync('git', ['init', '--quiet', '--bare', remote], { env });
   git(main, ['init', '--quiet', '--initial-branch=main', '.']);
-  git(main, ['config', 'user.email', 'prepush-hook@example.invalid']);
+  git(main, ['config', 'user.email', 'prepush-hook@wm-fixture.localhost']);
   git(main, ['config', 'user.name', 'Prepush Hook Fixture']);
   git(main, ['remote', 'add', 'origin', remote]);
 
-  for (const dir of ['.husky', 'scripts', 'node_modules']) {
+  for (const dir of ['.husky', 'scripts', 'scripts/lib', 'node_modules']) {
     mkdirSync(join(main, dir), { recursive: true });
   }
   copyFileSync(HOOK, join(main, '.husky', 'pre-push'));
@@ -236,9 +259,14 @@ function pushWithPoisonedSharedHooksPath() {
     'prepush-admission.mjs',
     'prepush-attest.sh',
     'prepush-changed-tests.sh',
+    'prepush-identity-gate.sh',
   ]) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(main, 'scripts', script));
   }
+  copyFileSync(
+    join(REPO_ROOT, 'scripts', 'lib', 'main-module.mjs'),
+    join(main, 'scripts', 'lib', 'main-module.mjs'),
+  );
   writeFileSync(join(main, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(main, 'README.md'), 'base\n');
   git(main, ['add', '-A']);
@@ -246,6 +274,7 @@ function pushWithPoisonedSharedHooksPath() {
   git(main, ['push', '--quiet', '--set-upstream', 'origin', 'main']);
   git(main, ['worktree', 'add', '--quiet', '-b', 'feature', worktree]);
   mkdirSync(join(worktree, 'node_modules'), { recursive: true });
+  writeFileSync(join(worktree, 'node_modules', '.package-lock.json'), '{}\n');
   writeFileSync(join(worktree, 'README.md'), 'feature\n');
   git(worktree, ['add', 'README.md']);
   git(worktree, ['commit', '--quiet', '-m', 'feature']);
@@ -537,6 +566,45 @@ describe('a broken enumeration blocks the push, it does not empty the list', () 
   }
 });
 
+describe('a broken base guard blocks the push, it does not default to zero', () => {
+  const cases = [
+    ['status 1', { status: 1, stdout: '' }],
+    ['status 2', { status: 2, stdout: '' }],
+    ['empty output', { status: 0, stdout: '' }],
+    ['missing tab field', { status: 0, stdout: 'main' }],
+    ['multiple records', { status: 0, stdout: 'main\t0\nmain\t0' }],
+    ['non-numeric count', { status: 0, stdout: 'main\tnot-a-count' }],
+  ];
+
+  for (const [label, baseGuardResponse] of cases) {
+    test(`${label} refuses the push and does not cache`, () => {
+      const fixture = makeFixture({
+        branchFiles: { 'tests/base-guard.test.mjs': 'x\n' },
+        baseGuardResponse,
+      });
+
+      const { status, stdout, invocations } = fixture.run();
+      assert.equal(status, 1, stdout);
+      assert.match(stdout, /branch-contamination guard/);
+      assert.deepEqual(tsxRuns(invocations), []);
+      assert.equal(fixture.cached(), null, 'a failed guard must not mint an attestation');
+    });
+  }
+
+  test('status 3 with a valid record preserves the contamination verdict', () => {
+    const fixture = makeFixture({
+      branchFiles: { 'tests/base-guard.test.mjs': 'x\n' },
+      baseGuardResponse: { status: 3, stdout: 'main\t21' },
+    });
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /21 commits ahead of origin\/main/);
+    assert.deepEqual(tsxRuns(invocations), []);
+    assert.equal(fixture.cached(), null);
+  });
+});
+
 function npmRuns(invocations) {
   const lines = invocations.split('\n');
   const runs = [];
@@ -616,6 +684,24 @@ describe('pro-test freshness install prefers the shared npm cache (#6766)', () =
     const { status, stdout } = fixture.run();
     assert.equal(status, 1, stdout);
     assert.match(stdout, /product catalog, generated config, or pro locales is stale/);
+  });
+
+  test('git diff 128 is not reported as a stale catalog (#7445)', () => {
+    // `git diff --exit-code` exits 128 on an unknown path — the same status
+    // as "fatal: this operation must be run in a work tree". Drop a listed
+    // freshness path from the index and the worktree so the command cannot
+    // run, then assert the hook does not print the regenerate-config recipe.
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    fixture.git(['rm', '--cached', '--quiet', 'src/config/products.generated.ts']);
+    rmSync(join(fixture.root, 'src/config/products.generated.ts'));
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /freshness check could not run/);
+    assert.doesNotMatch(stdout, /product catalog, generated config, or pro locales is stale/);
+    assert.doesNotMatch(stdout, /npx tsx scripts\/generate-product-config/);
   });
 
   test('refuses a pro-test/node_modules symlink instead of installing through it', (t) => {

@@ -289,6 +289,31 @@ async function callEnsureRecord(c: ConvexClient): Promise<void> {
 }
 
 /**
+ * Timer seam for the auth-wait and retry paths (#5841).
+ *
+ * The bounded auth wait and the transient-rebind retry delay used to run on
+ * real timers only, so their unit tests could only be driven by elapsed wall
+ * time — 1 ms retry hops and 5 ms bounded waits racing setImmediate flushes
+ * and a 1 s polling deadline, which is exactly the profile that reds the
+ * merge-blocking `unit` job under CI scheduling stalls. Production keeps real
+ * timers; tests install a manual scheduler and fire these deterministically.
+ */
+export type ConvexAuthTimers = {
+  setTimeout: (fn: () => void, ms: number) => unknown;
+  clearTimeout: (id: unknown) => void;
+};
+const REAL_AUTH_TIMERS: ConvexAuthTimers = {
+  setTimeout: (fn, ms) => setTimeout(fn, ms),
+  clearTimeout: (id) => clearTimeout(id as ReturnType<typeof setTimeout>),
+};
+let authTimers: ConvexAuthTimers = REAL_AUTH_TIMERS;
+
+/** Test-only: install a manual scheduler; pass null to restore real timers. */
+export function __setConvexAuthTimersForTests(timers: ConvexAuthTimers | null): void {
+  authTimers = timers ?? REAL_AUTH_TIMERS;
+}
+
+/**
  * Wait for ConvexClient auth to be established.
  * Resolves when the server confirms the client is authenticated.
  * Times out after 10s to prevent indefinite hangs for unauthenticated users.
@@ -334,12 +359,12 @@ async function waitForAuthBarrier(
   barrier: ConvexAuthBarrier,
   timeoutMs: number,
 ): Promise<boolean> {
-  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let timeoutId: unknown = null;
   const timeout = new Promise<boolean>((resolve) => {
-    timeoutId = setTimeout(() => resolve(false), timeoutMs);
+    timeoutId = authTimers.setTimeout(() => resolve(false), timeoutMs);
   });
   const ready = await Promise.race([barrier.promise, timeout]);
-  if (timeoutId !== null) clearTimeout(timeoutId);
+  if (timeoutId !== null) authTimers.clearTimeout(timeoutId);
   return (
     ready &&
     barrier.generation === authGeneration &&
@@ -431,7 +456,7 @@ export async function rebindConvexAuthForWatchHandoff(
     const retryDelayMs = retryDelaysMs[attempt];
     if (retryDelayMs === undefined) return false;
     await new Promise<void>((resolve) => {
-      setTimeout(resolve, retryDelayMs);
+      authTimers.setTimeout(resolve, retryDelayMs);
     });
     if (attached) return true;
   }

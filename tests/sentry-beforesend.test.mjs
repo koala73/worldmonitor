@@ -104,6 +104,15 @@ function extensionFrame(filename = 'blob:https://example.com/ext-1234', fn = 'in
   return { filename, lineno: 1, function: fn };
 }
 
+/** Every .ts/.mts/.tsx file under `dir`, recursively, skipping node_modules. */
+function walkTsFiles(dir) {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((e) => {
+    const full = join(dir, e.name);
+    if (e.isDirectory()) return e.name === 'node_modules' ? [] : walkTsFiles(full);
+    return /\.(?:m?ts|tsx)$/.test(e.name) ? [full] : [];
+  });
+}
+
 // ─── ignoreErrors message matches ────────────────────────────────────────
 
 describe('ignoreErrors filters', () => {
@@ -439,6 +448,17 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     ["Failed to execute 'appendChild' on 'Node': Unexpected identifier 'x'", 'SyntaxError'],
     ["Failed to execute 'appendChild' on 'Node': Unexpected token '}'", 'SyntaxError'],
     ["SyntaxError: Failed to execute 'appendChild' on 'Node': Unexpected end of input", 'SyntaxError'],
+    // Chromium's WebAuthn / Credential Management bridge wording when the
+    // OS-side credential service is unavailable (WORLDMONITOR-11B: Android 10 /
+    // Chrome Mobile 150, /pro). It arrives as an unhandled rejection out of
+    // Clerk's sign-in passkey autofill (`navigator.credentials.get`), which runs
+    // wholly inside the Clerk bundle — zero captured frames. Our only passkey
+    // call site, `createPasskey()` in src/services/passkeys.ts, try/catches
+    // `user.createPasskey()` and returns a classified outcome, and
+    // `navigator.credentials` appears nowhere else in src/ or api/ — so a
+    // first-party frame here would mean a NEW call site, which the "lets
+    // through" arm of this loop keeps visible.
+    ['NotReadableError: An unknown error occurred while talking to the credential manager.', 'Error'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
@@ -1757,5 +1777,178 @@ describe('beforeSend — Firefox bare-primitive throw (WORLDMONITOR-106)', () =>
       + 'this control no longer proves comment-stripping is load-bearing');
     assert.ok(!BARE_PRIMITIVE_THROW.test(stripComments(raw)),
       'stripping comments must clear it');
+  });
+});
+
+// ─── WORLDMONITOR-ZG grouping: host-attributed fetch failures must not share ──
+// ─── one issue with third-party beacons ───────────────────────────────────────
+//
+// `fetch-failure-attribution.ts` put the host in the MESSAGE, and the allowlist
+// block above uses it to decide suppression. Grouping was never updated, and
+// Sentry groups these on the stack — which the attribution module's own
+// docstring establishes is identical for every fetch failure (all frames are
+// `window.fetch` wrappers; the async boundary drops the caller).
+//
+// Measured consequence (2026-08-27 triage of WORLDMONITOR-ZG, 32 events):
+//   21 x bare `Failed to fetch`         (pre-attribution builds)
+//    8 x `api.worldmonitor.app`         (a real ~90s origin blip, 2026-08-16)
+//    3 x `motramby.com`                 (injected adware beacon, 2026-08-27)
+// all in ONE issue, titled after whichever host arrived last. The eight
+// first-party origin failures — the exact population the whole attribution
+// effort existed to surface — were invisible under an adware title.
+//
+// The split is by OWNERSHIP, not by raw host: every foreign host collapses into
+// a single `third-party` bucket so a rotating adware domain cannot explode
+// issue cardinality, while each of our own hosts keeps its own issue.
+describe('host-attributed fetch failures are fingerprinted by host (WORLDMONITOR-ZG)', () => {
+  const zgStack = [
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: null },
+    { filename: '/lpMwA9KpC6pf.js', lineno: 0, function: 't' },
+    { filename: '/assets/widget-store-DbqgxtxV.js', lineno: 0, function: 'Pn.window.fetch' },
+    { filename: '/assets/analytics-DdK2NArM.js', lineno: 0, function: 'c' },
+  ];
+
+  it('gives a first-party origin failure its own fingerprint', () => {
+    const event = beforeSend(makeEvent('Failed to fetch (api.worldmonitor.app)', 'TypeError', zgStack));
+    assert.ok(event !== null, 'an origin outage must never be suppressed');
+    assert.deepEqual(event.fingerprint, ['fetch-failure', 'api.worldmonitor.app']);
+  });
+
+  it('gives the self-hosted PMTiles bucket its own fingerprint', () => {
+    // Deliberately absent from the suppression allowlist (WORLDMONITOR-NE/NF),
+    // so a basemap regression must also be readable on its own. The exact
+    // bucket, per docs/maps-and-geocoding.mdx.
+    const event = beforeSend(makeEvent('Failed to fetch (pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev)', 'TypeError', zgStack));
+    assert.ok(event !== null);
+    assert.deepEqual(event.fingerprint, ['fetch-failure', 'pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev']);
+  });
+
+  it('does not hand every Cloudflare R2 tenant a first-party group', () => {
+    // `r2.dev` is a SHARED suffix — any Cloudflare account gets a `pub-<id>.r2.dev`
+    // bucket. Matching it by suffix would give each foreign tenant its own raw-host
+    // fingerprint, reopening the unbounded cardinality the third-party bucket
+    // exists to close, and dressing an unrelated bucket up as our incident
+    // (greptile review, PR #7228).
+    const foreign = beforeSend(makeEvent('Failed to fetch (pub-0000000000000000000000000000000.r2.dev)', 'TypeError', zgStack));
+    assert.ok(foreign !== null);
+    assert.deepEqual(foreign.fingerprint, ['fetch-failure', 'third-party']);
+  });
+
+  it('collapses every foreign host into one bounded bucket', () => {
+    // Adware/tracker domains rotate. Bucketing them keeps cardinality at
+    // (our hosts + 1) instead of unbounded.
+    const adware = beforeSend(makeEvent('Failed to fetch (motramby.com)', 'TypeError', zgStack));
+    const other = beforeSend(makeEvent('Failed to fetch (a8f3c1e9.example-tracker.net)', 'TypeError', zgStack));
+    assert.ok(adware !== null && other !== null);
+    assert.deepEqual(adware.fingerprint, ['fetch-failure', 'third-party']);
+    assert.deepEqual(other.fingerprint, adware.fingerprint,
+      'two rotating foreign hosts must land in the SAME issue');
+  });
+
+  it('does not separate the first-party bucket from the third-party one by accident', () => {
+    // Positive control for the ownership predicate: a host that merely CONTAINS
+    // our domain is not ours.
+    const spoof = beforeSend(makeEvent('Failed to fetch (worldmonitor.app.evil.example)', 'TypeError', zgStack));
+    assert.ok(spoof !== null);
+    assert.deepEqual(spoof.fingerprint, ['fetch-failure', 'third-party']);
+  });
+
+  it('leaves suppression verdicts unchanged', () => {
+    assert.equal(beforeSend(makeEvent('Failed to fetch (abacus.worldmonitor.app)', 'TypeError', zgStack)), null);
+    assert.equal(beforeSend(makeEvent('Failed to fetch (data.debugbear.com)', 'TypeError', zgStack)), null);
+  });
+
+  it('leaves events that are not host-attributed fetch failures ungrouped', () => {
+    // A still-bare `Failed to fetch` carries no host, so there is nothing
+    // honest to fingerprint on — it must keep Sentry's default grouping.
+    const bare = beforeSend(makeEvent('Failed to fetch', 'TypeError', zgStack));
+    assert.ok(bare !== null);
+    assert.equal(bare.fingerprint, undefined);
+
+    const unrelated = beforeSend(makeEvent('Something else broke', 'Error', zgStack));
+    assert.ok(unrelated !== null);
+    assert.equal(unrelated.fingerprint, undefined);
+  });
+});
+
+// ─── WORLDMONITOR-117 / -YN: Android WebView Java-bridge envelope ─────────
+//
+// Chromium's `android_webview` wraps a failed `@JavascriptInterface` call as
+// `Error invoking <method>: <GinJavaBridgeError>`. The two bare substring
+// entries this replaced (`/Java object is gone/`, `/Java bridge method
+// invocation error/`) matched the reason ANYWHERE in a message, and
+// `ignoreErrors` is frame-blind — so a first-party error merely containing the
+// phrase was dropped with an `/assets/*.js` frame on the stack.
+describe('ignoreErrors — Android WebView Java bridge (WORLDMONITOR-117, -YN)', () => {
+  const JAVA_BRIDGE_PATTERN = ignoreErrors.find(
+    (p) => p instanceof RegExp && p.source.includes('Error invoking'));
+
+  it('the anchored envelope entry exists', () => {
+    assert.ok(JAVA_BRIDGE_PATTERN, 'an anchored `Error invoking …` pattern must exist');
+  });
+
+  it('drops both verbatim production values', () => {
+    // WORLDMONITOR-117 — Instagram 415 / Android 13, marketing document.
+    assert.ok(isIgnored('Error invoking enableButtonsClickedMetaDataLogging: Java object is gone'));
+    // WORLDMONITOR-YN — Chrome Mobile 150 / Android 10, dashboard bundle.
+    assert.ok(isIgnored('Error invoking process: Java bridge method invocation error'));
+  });
+
+  it('drops the envelope with any host-app bridge method name', () => {
+    // The method is whichever `@JavascriptInterface` the host called, so the
+    // slot is matched by shape rather than pinned to the two observed names.
+    assert.ok(isIgnored('Error invoking getDeviceInfo: Java object is gone'));
+    assert.ok(isIgnored('Error invoking $handler_2: Java object is gone'));
+  });
+
+  it('drops the envelope with a non-ASCII bridge method name', () => {
+    // Java identifiers are not ASCII-only — `@JavascriptInterface
+    // obtenirDonnées()` is legal and Chromium emits the same sentence for it.
+    // An `[\w$]+` slot silently misses these because JavaScript's `\w` is
+    // ASCII-only, which is what this control exists to catch (PR #7356 review).
+    assert.ok(isIgnored('Error invoking obtenirDonnées: Java object is gone'));
+    assert.ok(isIgnored('Error invoking 获取设备信息: Java object is gone'));
+    assert.ok(isIgnored('Error invoking процесс: Java bridge method invocation error'));
+  });
+
+  // THE control that matters, and the one the superseded substring entries
+  // could not fail. A control that changes a word the pattern REQUIRES
+  // (`gateway` for `object`) passes against the broken pattern too, so it can
+  // never go red — these all go red against the bare substring entries.
+  it('keeps a first-party message that merely CONTAINS the reason', () => {
+    assert.ok(!isIgnored('Our Java object is gone'));
+    assert.ok(!isIgnored('Session expired: Java object is gone'));
+    assert.ok(!isIgnored('Retry failed: Java bridge method invocation error'));
+    assert.ok(!isIgnored('Error invoking foo: Java object is gone (retrying)'));
+  });
+
+  it('keeps a non-Chromium reason inside the envelope so it surfaces once', () => {
+    // Under-suppression announces itself as a new Sentry issue and gets added
+    // deliberately; over-suppression is silent. Deliberate failure direction.
+    assert.ok(!isIgnored('Error invoking process: Method not found'));
+  });
+
+  // The source-level invariant the whole entry rests on. A message-level
+  // suppression is only safe while our own bundle cannot mint the sentence.
+  it('keeps the licence true: no `Error invoking` call site in our own source', () => {
+    const offenders = [];
+    for (const rel of ['../src', '../pro-test/src', '../api']) {
+      for (const file of walkTsFiles(resolve(__dirname, rel))) {
+        // sentry-init.ts and sentry-filter-policy.ts hold the suppressors
+        // themselves; every other textual hit would be a real call site.
+        if (/sentry-init\.ts$|sentry-filter-policy\.ts$/.test(file)) continue;
+        if (/Error invoking /.test(readFileSync(file, 'utf-8'))) offenders.push(file);
+      }
+    }
+    assert.deepEqual(offenders, [],
+      `\`Error invoking\` now appears in our own source — the suppression is no longer safe:\n${offenders.join('\n')}`);
+  });
+
+  it('the licence scan actually reaches our source', () => {
+    // A source scan that matches nothing is indistinguishable from one that is
+    // silently broken (wrong path, wrong extension filter).
+    const files = walkTsFiles(resolve(__dirname, '../src'));
+    assert.ok(files.length > 100, `sanity: expected to scan src/, got ${files.length} files`);
+    assert.ok(files.some((f) => f.endsWith('sentry-init.ts')), 'scan must reach sentry-init.ts');
   });
 });

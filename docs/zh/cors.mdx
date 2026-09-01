@@ -21,7 +21,7 @@ description: "World Monitor 跨域请求保护机制的完整技术说明，以�
 | 模式 | 匹配 |
 | --- | --- |
 | `(*.)?worldmonitor.app` | 生产环境 + 子域名（`tech.`、`finance.` 等） |
-| `worldmonitor-*-elie-*.vercel.app` | Vercel 预览部署 |
+| `worldmonitor-*-eliewm.vercel.app` | Vercel 预览部署（字面 `-eliewm` 后缀） |
 | `localhost:*` / `127.0.0.1:*` | 仅在 `NODE_ENV !== "production"` 时用于本地开发 |
 | `tauri.localhost:*` / `*.tauri.localhost:*` | 桌面应用（Tauri v2） |
 | `tauri://localhost` / `asset://localhost` | 桌面应用（Tauri v2 资源协议） |
@@ -94,7 +94,7 @@ export default async function handler(req) {
 
 要允许额外的头，请更新两个文件中的 `Access-Control-Allow-Headers`。
 
-通过 `Access-Control-Expose-Headers`，浏览器可见的响应头包含 `Mcp-Session-Id`、`WWW-Authenticate`、`Retry-After` 与 `X-Billing-Verification`，以便 MCP 客户端可以继续会话、重新认证、遵循退避提示，并在无需解析响应体的情况下区分「可重试的计费校验故障」与「终态的订阅失效」。参见[错误处理](/zh/usage-errors)。
+通过 `Access-Control-Expose-Headers`，浏览器可见的响应头包含 `Mcp-Session-Id`、`WWW-Authenticate`、`Retry-After`、`X-Billing-Verification`，以及限流相关头（IETF `RateLimit*` 与遗留 `X-RateLimit-Limit` / `X-RateLimit-Remaining` / `X-RateLimit-Reset` / 失败开放降级时的 `X-RateLimit-Mode`），以便 MCP 客户端可以继续会话、重新认证、遵循退避提示，并在无需解析响应体的情况下区分「可重试的计费校验故障」与「终态的订阅失效」，以及区分健康限流放行与降级放行。参见[错误处理](/zh/usage-errors) 与[速率限制](/zh/usage-rate-limits)。
 
 ## Railway Relay CORS
 

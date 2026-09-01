@@ -9,7 +9,7 @@ import {
   Bell, Brain, Key, Plug, PanelTop, ExternalLink,
   BarChart3, Clock, Radio, Ship, Plane, Flame,
   Cable, Wifi, MapPin, TrendingUp,
-  Filter, Lightbulb, SlidersHorizontal, Telescope,
+  Boxes, Filter, Lightbulb, SlidersHorizontal, Telescope,
   LineChart, Search, Shield, Building2,
   Landmark, Fuel
 } from 'lucide-react';
@@ -18,9 +18,9 @@ import { ensureClerk, tryResumeCheckoutFromUrl } from './services/checkout';
 import { scheduleClerkLoad, subscribeClerkLoaded } from './services/clerk';
 import { startClerkUserStateSync, type ClerkUserState } from './services/clerk-user-state';
 import { hasLiveClientSession } from './services/clerk-session';
-import { createTimeoutSignal } from './services/timeout-signal';
+import { createTimeoutSignal, isTimeoutOrAbortError } from './services/timeout-signal';
 import { PricingSection } from './components/PricingSection';
-import { SoonBadge } from './components/SoonBadge';
+import { WhatsNew } from './components/WhatsNew';
 import { Logo } from './components/Logo';
 import { WiredBadge } from './components/WiredBadge';
 import { Footer } from './components/Footer';
@@ -40,6 +40,8 @@ import { appendStoredContentAttributionToUrl } from '../../shared/content-attrib
 import { isInternalSourceTag } from '../../shared/referral-namespaces';
 import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
+import { PressFooterNav } from './components/PressFooterNav';
+import { ABOUT_DOCS_PATH } from '../../shared/press';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -234,7 +236,11 @@ function ProEntitlementProvider({ children }: { children: ReactNode }): ReactEle
         if (!cancelled) setState({ isPro: data.isPro === true, isChecked: true });
       } catch (err) {
         console.error('[auth] Failed to check pro entitlement:', err);
-        Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        // WORLDMONITOR-10F: 8s createTimeoutSignal / page teardown aborts are
+        // expected (Safari: AbortError "Fetch is aborted"). Do not page Sentry.
+        if (!isTimeoutOrAbortError(err)) {
+          Sentry.captureException(err, { tags: { surface: 'pro-marketing', action: 'check-entitlement' } });
+        }
         if (!cancelled) setState({ isPro: false, isChecked: true });
       }
     })();
@@ -528,7 +534,7 @@ const TwoPathSplit = () => (
         <h3 className="font-display text-2xl font-bold mb-2">{t('twoPath.proTitle')}</h3>
         <p className="text-sm text-wm-muted mb-6">{t('twoPath.proDesc')}</p>
         <ul className="space-y-3 mb-8">
-          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9')].map((f, i) => (
+          {[t('twoPath.proF1'), t('twoPath.proF2'), t('twoPath.proF3'), t('twoPath.proF4'), t('twoPath.proF5'), t('twoPath.proF6'), t('twoPath.proF7'), t('twoPath.proF8'), t('twoPath.proF9'), t('twoPath.proF10')].map((f, i) => (
             <li key={i} className="flex items-start gap-3 text-sm">
               <Check className="w-4 h-4 shrink-0 mt-0.5 text-wm-green" aria-hidden="true" />
               <span className="text-wm-muted">{f}</span>
@@ -770,13 +776,10 @@ const ProShowcase = () => (
             </div>
           </div>
           <div className="flex gap-4">
-            <Telescope className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
+            <Boxes className="w-6 h-6 text-wm-green shrink-0" aria-hidden="true" />
             <div>
-              <h4 className="font-bold mb-1">
-                {t('proShowcase.orbitalSurveillance')}
-                <SoonBadge />
-              </h4>
-              <p className="text-sm text-wm-muted">{t('proShowcase.orbitalSurveillanceDesc').replace(/^\(Soon\)\s*/, '')}</p>
+              <h4 className="font-bold mb-1">{t('proShowcase.supplyChainLab')}</h4>
+              <p className="text-sm text-wm-muted">{t('proShowcase.supplyChainLabDesc')}</p>
             </div>
           </div>
           <div className="flex gap-4">
@@ -794,6 +797,8 @@ const ProShowcase = () => (
             </div>
           </div>
         </div>
+
+        <p className="mt-6 text-xs text-wm-muted">{t('proShowcase.roadmapNote')}</p>
 
         <div className="mt-10 pt-8 border-t border-wm-border">
           <p className="font-mono text-xs text-wm-muted uppercase tracking-widest mb-4">{t('proShowcase.deliveryLabel')}</p>
@@ -1060,13 +1065,16 @@ const EnterpriseShowcase = () => (
 /* ─── 11. Comparison Table (simplified columns, kept technical rows) ─── */
 const PricingTable = () => {
   const rows = [
-    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.f5_15min'), pro: t('pricingTable.fLt60s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
-    { feature: t('pricingTable.dashboard'), free: t('pricingTable.f50panels'), pro: t('pricingTable.f50panels'), api: "\u2014", ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.dataRefresh'), free: t('pricingTable.fStandardCadence'), pro: t('pricingTable.fQuotes30s'), api: t('pricingTable.fPerRequest'), ent: t('pricingTable.fLiveEdge') },
+    { feature: t('pricingTable.panelsRow'), free: t('pricingTable.f40'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fWhiteLabel') },
+    { feature: t('pricingTable.tabsRow'), free: t('pricingTable.f3'), pro: t('pricingTable.f10'), api: t('pricingTable.f25'), ent: t('pricingTable.fUnlimited') },
+    { feature: t('pricingTable.sourcesRow'), free: t('pricingTable.f80'), pro: t('pricingTable.fAll'), api: t('pricingTable.fAll'), ent: t('pricingTable.fAll') },
+    { feature: t('pricingTable.followedRow'), free: t('pricingTable.f3'), pro: t('pricingTable.fUnlimited'), api: t('pricingTable.fUnlimited'), ent: t('pricingTable.fUnlimited') },
     { feature: t('pricingTable.ai'), free: t('pricingTable.fBYOK'), pro: t('pricingTable.fIncluded'), api: "\u2014", ent: t('pricingTable.fAgentsPersonas') },
     { feature: t('pricingTable.briefsAlerts'), free: "\u2014", pro: t('pricingTable.fDailyFlash'), api: "\u2014", ent: t('pricingTable.fTeamDist') },
     { feature: t('pricingTable.delivery'), free: "\u2014", pro: t('pricingTable.fSlackTgWa'), api: t('pricingTable.fWebhook'), ent: t('pricingTable.fSiemMcp') },
     { feature: t('pricingTable.apiRow'), free: "\u2014", pro: "\u2014", api: t('pricingTable.fRestWebhook'), ent: t('pricingTable.fMcpBulk') },
-    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.f50plus'), pro: t('pricingTable.f50plus'), api: "\u2014", ent: t('pricingTable.fTensOfThousands') },
+    { feature: t('pricingTable.infraLayers'), free: t('pricingTable.fLayersNoResilience'), pro: t('pricingTable.fAllLayers'), api: t('pricingTable.fAllLayers'), ent: t('pricingTable.fTensOfThousands') },
     { feature: t('pricingTable.satellite'), free: t('pricingTable.fLiveTracking'), pro: t('pricingTable.fPassAlerts'), api: "\u2014", ent: t('pricingTable.fImagerySar') },
     { feature: t('pricingTable.connectorsRow'), free: "\u2014", pro: "\u2014", api: "\u2014", ent: t('pricingTable.f100plus') },
     { feature: t('pricingTable.deployment'), free: t('pricingTable.fCloud'), pro: t('pricingTable.fCloud'), api: t('pricingTable.fCloud'), ent: t('pricingTable.fCloudOnPrem') },
@@ -1159,7 +1167,7 @@ const EnterprisePage = () => (
   <div className="min-h-screen selection:bg-wm-green/30 selection:text-wm-green">
     <nav data-wm-nav="primary" className="fixed top-0 left-0 right-0 z-50 glass-panel border-b-0 border-x-0 rounded-none" aria-label="Main navigation">
       <div className="max-w-7xl mx-auto px-6 h-16 flex items-center justify-between">
-        <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }}><Logo /></a>
+        <Logo href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} />
         <div className="hidden md:flex items-center gap-8 text-sm font-mono text-wm-muted">
           <a href="#" onClick={(e) => { e.preventDefault(); window.location.hash = ''; }} className="hover:text-wm-text transition-colors">{t('nav.pro')}</a>
           <a href="#enterprise" onClick={(e) => { e.preventDefault(); document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' }); }} className="hover:text-wm-text transition-colors">{t('nav.enterprise')}</a>
@@ -1348,13 +1356,11 @@ const EnterprisePage = () => (
       <div className="flex flex-col md:flex-row items-center justify-between max-w-7xl mx-auto text-xs text-wm-muted font-mono">
         <div className="flex items-center gap-3 mb-4 md:mb-0">
           <img src="/favico/favicon-32x32.png" alt="" width="28" height="28" loading="lazy" className="rounded-full" />
-          <div className="flex flex-col">
-            <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
-            <span className="text-[9px] uppercase tracking-[2px] opacity-60 mt-0.5">by Someone.ceo</span>
-          </div>
+          <span className="font-display font-bold text-sm leading-none tracking-tight text-wm-text">WORLD MONITOR</span>
         </div>
         <div className="flex items-center gap-6">
           <a href={DASHBOARD_PATH} className="hover:text-wm-text transition-colors">Dashboard</a>
+          <a href={ABOUT_DOCS_PATH} className="hover:text-wm-text transition-colors">About</a>
           <a href="https://www.worldmonitor.app/blog/" className="hover:text-wm-text transition-colors">Blog</a>
           <a href="https://www.worldmonitor.app/docs" className="hover:text-wm-text transition-colors">Docs</a>
           <a href="https://status.worldmonitor.app/" target="_blank" rel="noreferrer" className="hover:text-wm-text transition-colors">Status</a>
@@ -1364,6 +1370,7 @@ const EnterprisePage = () => (
         </div>
         <span className="text-[10px] opacity-40 mt-4 md:mt-0">&copy; {new Date().getFullYear()} WorldMonitor</span>
       </div>
+      <PressFooterNav />
       {/* This is the pricing page — the footer a buyer sees on the way to
           checkout — so the documents they are agreeing to have to be one click
           from here, not one FAQ answer deep (#6976). */}
@@ -1376,27 +1383,17 @@ const EnterprisePage = () => (
 export default function App() {
   const [page, setPage] = useState(() => window.location.hash.startsWith('#enterprise') ? 'enterprise' : 'home');
 
-  // Initialize Dodo checkout overlay with success handler.
+  // Resume a checkout the buyer started before signing in.
   //
-  // On overlay success, the buyer needs to be bridged from /pro to the
-  // main dashboard where their newly-minted entitlement actually
-  // unlocks panels. Two changes vs the original 3-second blind reload:
-  //
-  //   1. Explicit "Go to dashboard now →" button so engaged buyers
-  //      don't wait out the auto-redirect timer.
-  //   2. Auto-redirect is 1500ms (down from 3000ms) — fast enough to
-  //      feel responsive without clipping the confirmation reading time.
-  //   3. Redirect target carries `?wm_checkout=success` so the dashboard
-  //      side (handleCheckoutReturn in src/services/checkout-return.ts)
-  //      recognizes this as a post-purchase landing and triggers the
-  //      extended-unlock banner from PR-4, instead of rendering a
-  //      default dashboard with no context.
+  // This mount hook used to also call `initOverlay()`, which dynamically
+  // imported the heavy Dodo overlay SDK on every /pro mount and registered an
+  // overlay-success handler that bridged the buyer to the dashboard. #4449
+  // moved checkout to a top-level redirect to Dodo's hosted page (see
+  // startCheckout), which made that handler unreachable — after payment the
+  // buyer lands on the dashboard, not /pro, and handleCheckoutReturn owns that
+  // UX via the guarded `?wm_checkout=return` contract. #7222 deleted the
+  // function and dropped `dodopayments-checkout` from this bundle.
   useEffect(() => {
-    // #4449: the Dodo overlay is no longer used — checkout redirects top-level
-    // to the hosted page (see startCheckout). We no longer call initOverlay(),
-    // which dynamically imported the heavy Dodo overlay SDK on /pro mount and
-    // registered a success banner that can never fire (after payment the buyer
-    // lands on the dashboard, not /pro — handleCheckoutReturn owns that UX).
     // Consume checkout intent from URL (set by afterSignInUrl on the
     // checkout-initiated sign-in). No-op for any other /pro entry
     // point; strips params before any await so a reload can't re-fire.
@@ -1445,6 +1442,7 @@ export default function App() {
           <AudiencePersonas />
           <SocialProof />
           <LivePreview />
+          <WhatsNew />
           <PricingSection refCode={getRefCode()} attributionSource={getMcpAttributionSource()} />
           <PricingTable />
           <ApiSection />

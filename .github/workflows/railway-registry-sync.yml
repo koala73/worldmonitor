@@ -1,0 +1,138 @@
+name: Railway Registry Sync
+
+# Alarms within minutes of a merge that edits scripts/railway-services.json when
+# the live Railway configuration does not yet match it (#7256).
+#
+# Widening a service's watchPatterns in the registry does not touch Railway.
+# Until an operator runs the apply, Railway keeps filtering pushes against the
+# OLD list and answers a matching commit with "No changes to watched files" —
+# the service silently keeps running older code. That is not hypothetical:
+# Railway refused 6821a584e (#7196) for ais-relay because #6928 had widened the
+# registry months earlier without syncing live watch paths.
+#
+# The six-hourly `Railway Native Deploy Health` monitor does detect this, but
+# only as a recurring red that then normalizes. It failed 31 consecutive
+# scheduled runs between 2026-08-20 and 2026-08-28 on a stale watch-path set,
+# and while it was permanently red any NEW drift was invisible — it is the
+# fleet's only drift alarm and it was crying wolf 4x/day.
+#
+# This workflow is the fast complement, not a replacement. It fires only on the
+# push that changes the registry, so the author still holds the context, and it
+# names the exact command. The six-hourly monitor keeps covering drift that no
+# registry edit caused, such as a hand edit in the Railway dashboard.
+#
+# It deliberately runs ONLY the configuration audit. check-railway-deploy-drift
+# also asks whether every service is running head, which is legitimately false
+# for the first minutes after a merge; including it here would red on ordinary
+# build lag rather than on drift.
+#
+# Read-only by construction: the Viewer token cannot apply. Syncing live Railway
+# stays an operator step run from a linked CLI. This workflow only refuses to
+# let the gap go unnoticed until the next scheduled sweep.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - scripts/railway-services.json
+      # The fleet identity contract is the audit's other input, and its guard
+      # aborts BEFORE the config audit runs — one unenrolled service hid
+      # watch-path drift fleet-wide (#7256 predecessor). Provisioning is
+      # therefore exactly when this check becomes newly meaningful.
+      - scripts/railway-native-autodeploy-fleet.json
+  workflow_dispatch:
+
+concurrency:
+  group: railway-registry-sync-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    name: Registry-to-live configuration sync
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
+    steps:
+      - name: Start config-audit run budget
+        run: echo "RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - name: Audit live Railway configuration against the registry
+        id: audit
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_VIEWER_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: |
+          # A drift verdict and an observation failure BOTH exit 1 — the audit
+          # sets exitCode 1 for drift and its top-level catch does the same for
+          # an unreadable Railway. So the exit code alone cannot gate the apply
+          # guidance below, and an unqualified failure() would tell an operator
+          # to run a production --apply because npm install or a token failed.
+          # The audit's own "found N drifted service(s)" line is the only
+          # positive evidence of drift, so capture stderr and look for it.
+          set +e
+          node scripts/audit-railway-watch-paths.mjs --deployment-only --concurrency 2 \
+            2>"$RUNNER_TEMP/audit-stderr.log"
+          status=$?
+          set -e
+          cat "$RUNNER_TEMP/audit-stderr.log" >&2
+          if grep -qE 'Railway operational-config audit found [0-9]+ drifted service' \
+            "$RUNNER_TEMP/audit-stderr.log"; then
+            echo 'drift_detected=true' >> "$GITHUB_OUTPUT"
+          fi
+          exit "$status"
+
+      - name: Name the operator sync command
+        if: failure() && steps.audit.outputs.drift_detected == 'true'
+        run: |
+          {
+            echo '### Live Railway configuration trails `scripts/railway-services.json`'
+            echo
+            echo 'Link the Railway CLI to the `world-monitor` production environment, then run:'
+            echo
+            echo '```bash'
+            echo 'node scripts/audit-railway-watch-paths.mjs --apply'
+            echo '```'
+            echo
+            echo 'It changes only drifted `build.watchPatterns`, `build.dockerfilePath` and'
+            echo '`deploy.cronSchedule`, and verifies the read-back before reporting success.'
+            echo
+            echo 'Until it runs, Railway keeps filtering pushes against the old list and answers'
+            echo 'a commit the registry says reaches these services with'
+            echo '`No changes to watched files`, leaving them on older code.'
+            echo
+            echo 'This audit also reports `source branch` and `source checkSuites` drift, which'
+            echo '`--apply` does NOT touch. Fix those on the service source in the Railway'
+            echo 'dashboard; see the runbook before changing a deployment trigger.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo '::error::Live Railway configuration trails scripts/railway-services.json; run node scripts/audit-railway-watch-paths.mjs --apply'
+
+      - name: Report that the audit could not observe Railway
+        if: failure() && steps.audit.outputs.drift_detected != 'true'
+        run: |
+          {
+            echo '### The Railway configuration audit did not complete'
+            echo
+            echo 'This run failed **without** reaching a drift verdict — a failed checkout,'
+            echo 'Node setup, CLI install, Viewer credential, Railway API call, or the audit'
+            echo 'deadline. Live configuration was never fully observed.'
+            echo
+            echo 'No drift is implied and `--apply` is NOT the remedy. Read the step log above'
+            echo 'for the original error and fix that, then re-run to get a verdict.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo '::error::Railway configuration audit did not complete; no drift verdict was reached'

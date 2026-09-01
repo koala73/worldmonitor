@@ -22,6 +22,19 @@ vi.mock('@/services/panel-gating', async (importOriginal) => ({
   hasPremiumAccess: () => true,
 }));
 
+// #6677: the first test in this file used to pay for the data-loader module
+// graph's transform (data-loader.ts plus the i18n locale glob and generated
+// clients) inside its testTimeout, because every case reaches the graph through
+// an `await import()` in the test body and the first one to run bears the cost.
+// Measured on a quiet machine that first case took 1637ms against the other
+// three at 1-3ms; under load it scales past the budget and fails while the rest
+// stay instant. Importing the graph at module scope moves the transform into
+// the file's import phase, which vitest does not bill to any testTimeout, and
+// leaves the in-test imports as cache hits. Same treatment as
+// firms-timeout-lock-recovery, global-procurement-data-loader and
+// data-loader-digest-coverage.
+await import('@/app/data-loader');
+
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((onResolve) => { resolve = onResolve; });

@@ -1,0 +1,86 @@
+---
+title: "Food Stocks & Stocks-to-Use"
+description: "How WorldMonitor serves USDA PSD cereal ending stocks, production, use, and the stocks-to-use ratio per commodity and country, and why marketing years are not comparable across countries."
+---
+
+## Start here
+
+**Stocks-to-use is the pantry question.** If a country ate nothing new for a
+year, how much of that year could it cover from what is already in store?
+
+A stocks-to-use ratio of `0.20` means 20% of a marketing year's consumption —
+about two and a half months of it — is already sitting in store. It is the
+standard buffer measure for a cereal balance, and a falling ratio is the
+earliest widely-published warning that a commodity's slack is gone.
+
+### How to read it
+
+WorldMonitor publishes no "safe" threshold, because the level that counts as
+comfortable differs by commodity, by country, and by who else is willing to
+sell. Read the ratio as a **direction and a comparison against that same
+country and commodity's own recent history**, not against a universal line.
+
+What generalizes is the mechanism: buffers absorb shocks, and thin buffers
+transmit them. Prices turn jumpy well before anything physically runs out.
+
+Two habits matter more than the number itself:
+
+**Look at which side of the ratio moved.** Every row serves ending stocks,
+production, and total use next to the derived ratio, because a ratio that fell
+because consumption rose is a completely different story from one that fell
+because the harvest failed. The ratio alone cannot tell them apart.
+
+**Never sum country rows into a world total.** Ask for `countryCode=WORLD`
+instead. And never compare two countries just because their year labels match —
+see [Marketing years are not calendar years](#marketing-years-are-not-calendar-years),
+which is the single most common way this dataset gets misread.
+
+<Info>
+**Access.** Served from `GET /api/resilience/v1/get-food-stocks?countryCode=<ISO2|WORLD>` and MCP `get_food_stocks`. Both require a Pro subscription.
+</Info>
+
+## Source
+
+USDA Production, Supply and Distribution (PSD) is the source for balances and stocks. Public domain, monthly release cycle, global coverage by commodity and country.
+
+FAOSTAT is applied after PSD as a production-only gap fill for commodity-country pairs the balance sheet missed. Those rows expose `source: "faostat"`; every stocks field on them is a placeholder, not a USDA/PSD measurement, and they do not carry a stocks-to-use ratio.
+
+## Commodities
+
+`wheat`, `corn`, `rice`, `soybeans`, `barley`, `palmOil`. Pass `commodity` to narrow; omit it for every commodity the country reports.
+
+`countryCode=WORLD` returns the global balance, which is the aggregate PSD publishes — not a sum computed here over the country rows.
+
+## The ratio
+
+```text
+stocks-to-use = ending stocks / total use
+```
+
+Each row serves `endingStocksTmt`, `productionTmt`, `totalUseTmt` and the derived `stocksToUse` together, so a caller can see which side of the ratio moved. A ratio that fell because use rose is a different situation from one that fell because production failed, and the ratio alone cannot distinguish them.
+
+## Marketing years are not calendar years
+
+This is the trap that matters, and it is why every row states its own `marketingYear`.
+
+A marketing year runs from harvest, so it differs by both commodity and country. Brazilian soybeans and US corn labelled "2025/26" cover different months. Northern and southern hemisphere wheat labelled the same year barely overlap.
+
+Consequences:
+
+- **Never compare two countries' figures because their year labels match.** The label is not a period.
+- **Never build a global total by summing country rows.** Use `countryCode=WORLD`.
+- **A country's year can advance while its neighbour's has not.** That is the calendar, not a stale row.
+
+## Availability
+
+Rows use explicit presence flags rather than numeric fields alone. `hasEndingStocks` and `hasStocksToUse` say whether `endingStocksTmt` and `stocksToUse` are measured values. FAOSTAT production-only fill rows can carry placeholder zeroes for `endingStocksTmt`, `totalUseTmt`, and `stocksToUse` while those stock flags are false. A commodity a country does not report is absent from the response. Zero stocks and no coverage are opposite readings, and callers must not infer one from the other.
+
+## Cadence
+
+Monthly, following the PSD release. The seeder writes `resilience:food-stocks:v1` and the accompanying `seed-meta:resilience:food-stocks` freshness key.
+
+## Related
+
+- [Pro Intelligence Suite](/pro-intelligence-suite)
+- [Five-factor scorecard](/methodology/five-factor-scorecard) — consumes stocks-to-use as its food pillar
+- [Data sources](/data-sources)

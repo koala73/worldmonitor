@@ -21,43 +21,77 @@ const DEFAULT_AUTHOR_ID = `${DEFAULT_AUTHOR_URL}#person`;
 
 const jsonLd = {
   "@context": "https://schema.org",
-  "@type": "Blog",
-  "@id": "https://www.worldmonitor.app/blog/#blog",
+  "@type": "CollectionPage",
+  "@id": "https://www.worldmonitor.app/blog/#webpage",
+  "url": "https://www.worldmonitor.app/blog/",
   "name": "World Monitor Blog",
   "description": "Evidence-led analysis and practical guides on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor.",
-  "url": "https://www.worldmonitor.app/blog/",
   "inLanguage": "en-US",
-  "publisher": {
-    "@type": "Organization",
-    "@id": "https://www.worldmonitor.app/#organization",
-    "name": "World Monitor",
-    "url": "https://www.worldmonitor.app",
-    "logo": {
-      "@type": "ImageObject",
-      "url": "https://www.worldmonitor.app/favico/apple-touch-icon.png"
-    }
+  "isPartOf": {
+    "@id": "https://www.worldmonitor.app/#website"
   },
-  "blogPost": posts.map(post => {
-    const authorName = post.data.author || DEFAULT_AUTHOR;
-    const authorUrl = post.data.authorUrl || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_URL : undefined);
+  "publisher": {
+    "@id": "https://www.worldmonitor.app/#organization"
+  },
+  "speakable": {
+    "@type": "SpeakableSpecification",
+    "cssSelector": ["h1", ".subtitle"]
+  },
+  "breadcrumb": {
+    "@id": "https://www.worldmonitor.app/blog/#breadcrumb"
+  },
+  "mainEntity": {
+    "@type": "Blog",
+    "@id": "https://www.worldmonitor.app/blog/#blog",
+    "name": "World Monitor Blog",
+    "description": "Evidence-led analysis and practical guides on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor.",
+    "url": "https://www.worldmonitor.app/blog/",
+    "inLanguage": "en-US",
+    "publisher": {
+      "@id": "https://www.worldmonitor.app/#organization"
+    },
+    "blogPost": posts.map(post => {
+      const authorName = post.data.author || DEFAULT_AUTHOR;
+      const authorUrl = post.data.authorUrl || (authorName === DEFAULT_AUTHOR ? DEFAULT_AUTHOR_URL : undefined);
 
-    return {
-      "@type": "BlogPosting",
-      "@id": `https://www.worldmonitor.app/blog/posts/${post.id}/#article`,
-      "headline": post.data.title,
-      "description": post.data.description,
-      "datePublished": post.data.pubDate.toISOString(),
-      ...(post.data.modifiedDate ? { "dateModified": post.data.modifiedDate.toISOString() } : {}),
-      "author": {
-        "@type": "Person",
-        "name": authorName,
-        ...(authorUrl ? { "url": authorUrl } : {}),
-        ...(authorName === DEFAULT_AUTHOR ? { "@id": DEFAULT_AUTHOR_ID } : {})
-      },
-      "url": `https://www.worldmonitor.app/blog/posts/${post.id}/`,
-      "image": post.data.heroImage ? `https://www.worldmonitor.app${post.data.heroImage}` : "https://www.worldmonitor.app/favico/og-image.png"
-    };
-  })
+      return {
+        "@type": "BlogPosting",
+        "@id": `https://www.worldmonitor.app/blog/posts/${post.id}/#article`,
+        "headline": post.data.title,
+        "description": post.data.description,
+        "datePublished": post.data.pubDate.toISOString(),
+        ...(post.data.modifiedDate ? { "dateModified": post.data.modifiedDate.toISOString() } : {}),
+        "author": {
+          "@type": "Person",
+          "name": authorName,
+          ...(authorUrl ? { "url": authorUrl } : {}),
+          ...(authorName === DEFAULT_AUTHOR ? { "@id": DEFAULT_AUTHOR_ID } : {})
+        },
+        "url": `https://www.worldmonitor.app/blog/posts/${post.id}/`,
+        "image": post.data.heroImage ? `https://www.worldmonitor.app${post.data.heroImage}` : "https://www.worldmonitor.app/favico/og-image.png"
+      };
+    })
+  }
+};
+
+const breadcrumbLd = {
+  "@context": "https://schema.org",
+  "@type": "BreadcrumbList",
+  "@id": "https://www.worldmonitor.app/blog/#breadcrumb",
+  "itemListElement": [
+    {
+      "@type": "ListItem",
+      "position": 1,
+      "name": "Home",
+      "item": "https://www.worldmonitor.app/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
+      "name": "Blog",
+      "item": "https://www.worldmonitor.app/blog/"
+    }
+  ]
 };
 ---
 
@@ -66,6 +100,7 @@ const jsonLd = {
   description="Evidence-led analysis and practical guides on real-time global intelligence, OSINT, geopolitics, markets, and the open-source tools behind World Monitor."
   metaTitle="World Monitor Blog | Intelligence & OSINT"
   jsonLd={jsonLd}
+  breadcrumbLd={breadcrumbLd}
 >
   <div class="blog-hero">
     <div class="badge">
@@ -102,10 +137,11 @@ const jsonLd = {
               />
             </picture>
           )}
-          <div class="tag">
-            {post.data.pinned && <span class="pin">Pinned</span>}
-            {post.data.audience}
-          </div>
+          {post.data.pinned && (
+            <div class="tag">
+              <span class="pin">Pinned</span>
+            </div>
+          )}
           <h2>{post.data.title}</h2>
           <p>{post.data.description}</p>
           <div class="meta">

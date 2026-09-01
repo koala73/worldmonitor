@@ -5,6 +5,8 @@ import { loadEnvFile, runSeed, getRedisCredentials } from './_seed-utils.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.mjs';
 import { regionForCountry } from './shared/geography.js';
+import { physicalDivergenceStaleReason } from './shared/physical-divergence-staleness.js';
+import { METHODOLOGY_VERSION as PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION } from './lib/physical-divergence.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -38,6 +40,7 @@ const SOURCE_KEYS = [
   'weather:alerts:v1',
   CII_RISK_SCORE_CACHE_KEYS.stale,
   'regulatory:actions:v1',
+  'market:physical-divergence:v1',
 ];
 
 // Reject preserved contract envelopes after the same age budgets used by
@@ -58,6 +61,7 @@ const SOURCE_MAX_AGE_MIN = Object.freeze({
   'wildfire:fires:v1': 360,
   'forecast:predictions:v2': 90,
   'weather:alerts:v1': 45,
+  'market:physical-divergence:v1': 2160,
 });
 
 // ── Theater classification helpers ────────────────────────────────────────────
@@ -157,6 +161,7 @@ const TYPE_CATEGORY = {
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 'information',
   CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE: 'intelligence',
   CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 'policy',
+  CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION: 'financial',
 };
 
 // Base severity weights for each signal type
@@ -188,6 +193,7 @@ const BASE_WEIGHT = {
   CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME: 1.5,        // environmental — regional
   CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION: 1.5, // sentiment — lagging
   CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION: 2.0,      // policy action — direct market impact
+  CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION: 2.0,
 };
 
 function scoreTier(score) {
@@ -950,6 +956,71 @@ function extractRegulatoryAction(d) {
   });
 }
 
+function extractPhysicalPremiumRegimeTransition(d) {
+  const payload = d['market:physical-divergence:v1'];
+  const nowMs = Date.now();
+  const readings = Array.isArray(payload?.readings) ? payload.readings : [];
+  const knownStates = new Set(['ok', 'insufficient_history', 'stale_input', 'missing_input']);
+  for (const reading of readings) {
+    if (!knownStates.has(reading?.state)) {
+      throw new TypeError(`Unknown physical divergence state: ${String(reading?.state)}`);
+    }
+  }
+  // SOURCE_MAX_AGE_MIN is enforced against a `_seed` envelope, and this key is written by a
+  // raw Lua SET that carries none — so its budget is inert unless applied here, against the
+  // snapshot's own clock. `evaluatedAt` is already published and already validated
+  // server-side.
+  // Applied only when the snapshot actually carries the clock: a legacy bare payload without
+  // `evaluatedAt` still falls through to the per-reading freshness checks below, which are
+  // what has been doing this work all along.
+  const maxAgeMs = SOURCE_MAX_AGE_MIN['market:physical-divergence:v1'] * 60_000;
+  const evaluatedAt = Date.parse(payload?.evaluatedAt ?? '');
+  if (Number.isFinite(evaluatedAt) && nowMs - evaluatedAt > maxAgeMs) return [];
+  const readingsByMetal = new Map(readings.map((reading) => [reading?.metal, reading]));
+  const transitions = Array.isArray(payload?.transitions) ? payload.transitions : [];
+  const targetMultiplier = { normal: 0.75, elevated: 1, stressed: 1.5, extreme: 2 };
+  const cutoff = nowMs - 48 * 3600 * 1000;
+  return transitions.flatMap((transition) => {
+    if (
+      !['gold', 'silver'].includes(transition?.metal)
+      || !Object.hasOwn(targetMultiplier, transition?.toRegime)
+      || !Object.hasOwn(targetMultiplier, transition?.fromRegime)
+      || transition.fromRegime === transition.toRegime
+      || !Number.isFinite(transition?.detectedAt)
+      || transition.detectedAt <= cutoff
+      || transition.detectedAt > nowMs
+      || typeof transition?.id !== 'string'
+      || transition.id !== `physical-premium:${transition.metal}:${transition.fromRegime}-${transition.toRegime}:${transition.detectedAt}`
+      || transition.methodologyVersion !== PHYSICAL_DIVERGENCE_METHODOLOGY_VERSION
+    ) return [];
+    // Freshness is per transitioning metal — the other metal may still be
+    // ramping (insufficient_history) or independently stale without suppressing
+    // a valid transition. The composite's all-or-nothing rule is separate.
+    const reading = readingsByMetal.get(transition.metal);
+    if (
+      reading?.state !== 'ok'
+      || physicalDivergenceStaleReason({
+        physicalAsOf: reading.physicalAsOf,
+        paperAsOf: reading.paperAsOf,
+        fxAsOf: reading.provenance?.fxAsOf,
+      }, nowMs) != null
+    ) return [];
+    const score = BASE_WEIGHT.CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION
+      * targetMultiplier[transition.toRegime];
+    return [{
+      id: transition.id,
+      type: 'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
+      theater: 'Global Markets',
+      summary: `${transition.metal === 'gold' ? 'Gold' : 'Silver'} physical premium regime changed from ${transition.fromRegime} to ${transition.toRegime}`,
+      severity: scoreTier(score),
+      severityScore: score,
+      detectedAt: transition.detectedAt,
+      contributingTypes: [],
+      signalCount: 0,
+    }];
+  });
+}
+
 // ── Extractor registry ────────────────────────────────────────────────────────
 // Module scope (rather than inline in the aggregator) so the envelope-regression
 // suite can drive every extractor from one list: an extractor added without a
@@ -977,6 +1048,7 @@ const EXTRACTORS = Object.freeze([
   extractMediaToneDeterioration,
   extractRiskScoreSpike,
   extractRegulatoryAction,
+  extractPhysicalPremiumRegimeTransition,
 ]);
 
 // ── Composite escalation detector ─────────────────────────────────────────────
@@ -1022,9 +1094,9 @@ function detectCompositeEscalation(signals) {
 }
 
 // ── Main aggregator ───────────────────────────────────────────────────────────
-async function aggregateCrossSourceSignals() {
+async function aggregateCrossSourceSignals({ readSourceData = readAllSourceKeys } = {}) {
   console.log('  Reading source keys...');
-  const sourceData = await readAllSourceKeys();
+  const sourceData = await readSourceData();
   const foundKeys = Object.keys(sourceData);
   const missingKeys = SOURCE_KEYS.filter(k => !foundKeys.includes(k));
   console.log(`  Found ${foundKeys.length}/${SOURCE_KEYS.length} source keys populated`);
@@ -1039,6 +1111,14 @@ async function aggregateCrossSourceSignals() {
       const extracted = extractor(sourceData);
       allSignals.push(...extracted);
     } catch (err) {
+      // One flaky extractor must not sink the whole aggregate — except for a state this
+      // build does not implement. #6448: "an unknown/unhandled state must surface as an
+      // error, never silently map to 'normal'." Warning past it would publish a signal set
+      // that silently omits a source the producer believes is reporting, which is
+      // indistinguishable from "that source had nothing to say".
+      if (typeof err?.message === 'string' && err.message.startsWith('Unknown physical divergence state:')) {
+        throw err;
+      }
       console.warn(`  Extractor ${extractor.name} failed: ${err.message}`);
     }
   }
@@ -1125,6 +1205,7 @@ export {
   extractOrefAlertCluster,
   extractRadiationAnomaly,
   extractRegulatoryAction,
+  extractPhysicalPremiumRegimeTransition,
   extractRiskScoreSpike,
   extractSanctionsSurge,
   extractShippingDisruption,

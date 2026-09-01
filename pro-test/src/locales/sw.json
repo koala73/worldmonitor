@@ -6,7 +6,7 @@
     "suffixPerYear": "/kila mwaka",
     "amountCustom": "Kadhaa",
     "opening": "Inafungua…",
-    "headerTitle": "Chagua Mpango Wako",
+    "headerTitle": "World Monitor inagharimu kiasi gani?",
     "headerSubtitle": "Kutoka kwa ufuatiliaji halisi wa wakati hadi mahitaji kamili ya ujumbe. Chagua kiwango kinachofaa jukumu lako.",
     "billingMonthly": "Kila Mwezi",
     "billingAnnual": "Kila Mwaka",
@@ -36,14 +36,14 @@
       "pro": {
         "description": "Dashibodi kamili ya ujumbe",
         "features": [
-          "Kila kitu katika Bure",
-          "Uchambuzi wa hisa wa AI na kujaribu nyuma",
-          "Kumbukumbu za soko kwa kila siku",
-          "Ufuatiliaji wa kijeshi na simu za dunia",
-          "Kujenga kwa ajili ya zana za kadhaa",
-          "Dashibodi 10 za kadhaa (vs 3)",
+          "Kila kitu katika Bure — paneli, vyanzo & nchi zilizosomwa bila kikomo",
+          "Mazungumzo ya WM Analyst + uchambuzi wa stoku wa AI & ubadilisho wa nyuma",
+          "Kuunda mfano wa mshtuko wa gharama & majaribio ya matatizo ya mlangalanga wa ugavi",
+          "Akili ya juu — utafutaji wa kihistoria, mstari wa wakati & matukio yanayofanana",
+          "Tofauti ya metali ya kimwili, mkusanyo wa madini & data ya deni la serikali",
+          "Muhtasari wa AI uliopangiliwa + kinjini cha sheria ya neno la onyo",
           "Upatikanaji wa MCP + SDK kwa Claude Desktop & wateja wengine wa AI (mahitaji 50 kwa siku)",
-          "Muonyajaji wa data wa haraka"
+          "Vidget maalum & mdashboard 10 (dhidi ya 3)"
         ],
         "highlightFeatures": [
           "Leseni ya binafsi",
@@ -86,7 +86,7 @@
           "Haki za kusambaza tena — kubadilisha data yetu katika kile unachouza",
           "Ombi 300 kwa dakika",
           "Ombi 10,000 kwa siku linalojumuishwa",
-          "Leseni 5 za Pro zilizojumuishwa",
+          "Leseni 5 za Pro — waalike watumiaji wenye kikoa chochote cha barua pepe cha shirika",
           "Msaada wa kipaumbele"
         ],
         "highlightFeatures": [
@@ -101,7 +101,12 @@
           "Msaada unaozingatiwa",
           "Ujumuishaji wa kawaida",
           "Dhamana ya SLA",
-          "Chaguo la mahali mwenyewe"
+          "Chaguo la mahali mwenyewe",
+          "Makubaliano ya Uchakataji wa Data (DPA)",
+          "Bili ya Agizo la Ununuzi",
+          "SAML SSO, SCIM",
+          "Mipango ya Usalama na Faragha Inayolingana",
+          "Inayofikiwa kabisa kwa chapa yako — bila au pamoja na mgawanyiko wa mapato"
         ],
         "cta": "Wasiliana na Bora"
       }
@@ -146,7 +151,7 @@
     "proF6": "Utafutaji wa ndege & kulinganisha bei",
     "proF7": "Injini ya sheria za onyo — vigezo maalum, saa za utulivu, salikhani zilizochorwa AES-256",
     "proF8": "Orodha ya kuzingatia soko, kufuatilia mambo makuu na benki ya kati",
-    "proF9": "Machafuko ya Soko ya AI & Habari za Kikanda (Ndani ya karibuni: ufuatiliaji wa satellite, tabaka la ramani la kiwango cha juu, historia ndefu)",
+    "proF9": "Athari za Soko la AI & Akili ya Kanda",
     "choosePlan": "Chagua Mpango Wako",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Kwa timu zinazohitaji ufuatiliaji wa pamoja, upatikanaji wa API, chaguzi za uongezaji, programu za TV, na msaada wa moja kwa moja.",
@@ -162,10 +167,11 @@
     "entF10": "Uongezaji wa juu ya wingu, ndani ya matangazo, au uhaba wa hewa",
     "entF11": "Kuandaa kwa mkakati na msaada mahususi",
     "entCta": "Ongea na Mauzo",
-    "freeF2": "Milo iliyoteuliwa, vyanzo vilivyohesabiwa, na tabaka za ramani"
+    "freeF2": "Milo iliyoteuliwa, vyanzo vilivyohesabiwa, na tabaka za ramani",
+    "proF10": "Akili ya juu — utafutaji wa kihistoria, mstari wa wakati & utafutaji wa matukio yanayofanana"
   },
   "whyUpgrade": {
-    "title": "Kwa nini kuboreshwa",
+    "title": "Kwa nini kubadilisha kwenda World Monitor Pro?",
     "noiseTitle": "Jua kwanza",
     "noiseDesc": "AIS utata → Brent picha → Slack yako ndani ya dakika chini ya moja. Ishara, si manukuu.",
     "fasterTitle": "Uliza chochote",
@@ -185,7 +191,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "MEZA YA UTOAJI",
-    "title": "Meza yako ya kibinafsi ya ujumbe wa siri",
+    "title": "Meza ya akili binafsi ni nini?",
     "body": "Hadi 50 vipengee vilivyoainishwa kwa kila kutuma, vilivyokataliwa katika vyanzo, vilivyokadiriwa dhidi ya orodha yako ya ufuatiliaji. Chagua matangatanga yako — kila siku, mara mbili kwa siku, au kila wiki — na Tathmini ya AI na Ishara za ufuatiliaji zilitumwa kwa Slack, Discord, Telegram, Barua pepe, au webhook.",
     "closer": "Sio chapisho la habari. Mtahlili.",
     "channels": "Slack · Discord · Telegram · Barua pepe · Webhook · AES-256 iliyofungwa · Saa nyingine"
@@ -207,7 +213,7 @@
     "asToldTo": "kama ilivyoelezwa kwa"
   },
   "audience": {
-    "title": "Iliyojengwa kwa watu wanaohitaji ishara haraka",
+    "title": "World Monitor imejengwa kwa nani?",
     "investorsTitle": "Wawekezaji & wasimamizi wa kwingingi",
     "investorsDesc": "Fuatilia sehemu za ulimwengu, shabaha za mtahlili, viashiria vya uthamini, na viashiria vya makro pamoja na ishara za hatari za kisiasa.",
     "tradersTitle": "Wafanya biashara wa nishati na bidhaa",
@@ -222,7 +228,7 @@
     "teamsDesc": "Hama kutoka kwa matumizi ya mtu binafsi hadi mtiririko wa kazi ulioshirikiwa, API access, programu za TV, na imani iliyodhibitwa."
   },
   "dataCoverage": {
-    "title": "Kile Kinachofuatiliwa na World Monitor",
+    "title": "World Monitor inafuatilia nini?",
     "subtitle": "Vikoa vya huduma vinavyoingizwa kwa wakati mmoja. Soko, macro, geopolitiki, nishati, miundombinu — kila kitu kinachokadiriwa na kuonyeshwa kwenye globo ya WebGL.",
     "markets": "Masoko ya Fedha na Hisa",
     "marketsDesc": "Uchambuzi wa hisa duniani, bidhaa, crypto, mtiririko wa ETF, malengo ya wachanganuzi, na data ya makro ya FRED",
@@ -259,7 +265,7 @@
   },
   "proShowcase": {
     "proTier": "KIWANGO CHA PRO",
-    "title": "Mchanganuzi Wako wa AI Asiyezimi",
+    "title": "Mchambuzi wa AI wa World Monitor hufanya nini?",
     "subtitle": "Dashibodi bure inakuonyesha ulimwengu. Pro inakupatia mchanganuzi kuuliza, muhtasari unayojibu, na msingi wa kujenga. Hisa, makro, hatari ya kisiasa — na uhusiano kati yao.",
     "equityResearch": "Utafiti wa Hisa",
     "equityResearchDesc": "Uchambuzi wa hisa duniani wenye uonyaji wa fedha, malengo ya bei ya wachanganuzi, na vipimo vya thamani. Fuatilia kile kinachosogeza masoko.",
@@ -269,13 +275,14 @@
     "economyAnalyticsDesc": "GDP, mgawanyiko wa bei, kiwango cha riba, na mizunguko ya ukuaji. Data ya macroeconomics iliyounganishwa na miazo ya soko na matukio ya kijiyeolojia.",
     "riskMonitoring": "Ufuatiliaji wa Hatari & Mifumo",
     "riskMonitoringDesc": "Alama za hatari ya ulimwengu, uchambuzi wa mifumo, na tathmini ya hatari ya kijiyeolojia. Kugundua muunganisho katika miazo ya soko na simu za kisiasa.",
-    "orbitalSurveillance": "Ufuatiliaji wa Orbital",
-    "orbitalSurveillanceDesc": "(Yakumkuja) Utabiri wa kupita juu, uchambuzi wa mzunguko wa kuzunguka, na onyo za dirisha la picha. Jua wakati satelaiti za akili zinakuwa na macho juu ya maeneo yako ya maslahi.",
     "morningBriefs": "Meza ya Akili za Kibinafsi",
     "morningBriefsDesc": "Hadi 50 hadithi iliyoainishwa kwa kila muhtasari, ikaduliwe katika vyanzo. Chagua matangatanga ya kila siku, mara mbili kwa siku, au kila wiki — au onyo za moja kwa moja kwa matukio muhimu. Tathmini ya AI na Ishara za ufuatiliaji zilitumwa kwa Slack, Discord, Telegram, Barua pepe, au webhook. Sio jarida — mchambuzi.",
     "oneKey": "Huduma za Moja kwa Moja, Ufunguo 1",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky, na zaidi — zote amilifu, bila kazi za kujiandikisha tofauti.",
-    "deliveryLabel": "Chagua jinsi akili inakukamatia"
+    "deliveryLabel": "Chagua jinsi akili inakukamatia",
+    "supplyChainLab": "Kiwanda cha Matatizo ya Mlangalanga wa Ugavi",
+    "supplyChainLabDesc": "Unda mfano wa mshtuko wa gharama katika nchi na sekta. Weka cheo cha ukubwa wa haba ya bidhaa kulingana na utegemezi wa njia nyingi. Fuatilia mkusanyo wa konsentresheni kutoka kwa migodi hadi kwa rafinery na tofauti ya bhabharimu ya SGE–COMEX — safu inayobadilika kabla ya maneno makuu yanajitokeza.",
+    "roadmapNote": "Kwenye ramani ya njia: ufuatiliaji wa angani, historia ndefu zaidi, tabaka la ramani za beza."
   },
   "slackMock": {
     "morningBrief": "Muhtasari wa Asubuhi",
@@ -288,7 +295,7 @@
   },
   "apiSection": {
     "apiTier": "NGAZI YA API",
-    "title": "Akili ya Programmatic",
+    "title": "API na wakili wanatumia World Monitor vipi?",
     "subtitle": "Kwa waendelezaji, wachambuzi, na timu zinazojengwa kwenye data ya World Monitor. Tofauti na Pro — tumia zote au moja yoyote.",
     "restApi": "REST API katika vikoa vya huduma — SDKs rasmi kwa JavaScript, Python, Ruby, Go",
     "authenticated": "Inathibitishwa kwa ufunguo, kiwango cha mabadiliko kwa ngazi",
@@ -304,7 +311,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "NGAZI YA BIASHARA",
-    "title": "Miundombinu ya Akili",
+    "title": "World Monitor Enterprise inajumuisha nini?",
     "subtitle": "Kwa serikali, taasisi, meza za biashara, na taasisi zinazoihitaji jukwaa kamili na usalama wa juu zaidi, wakaili wa AI, programu za TV, na kina cha data.",
     "security": "Usalama wa Kiwango cha Serikali",
     "securityDesc": "Kuweka kwa njia tofauti, Docker ya mahali pa kukamatia, mjumbe wa wingu unaofaa, njia ya SOC 2 Aina II, SSO/MFA, na wimbo kamili wa ukaguzi.",
@@ -341,7 +348,7 @@
     "contactFailed": "Kutofaulu kutuma. Tafadhali tuma barua pepe kwa enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Linganisha Safu",
+    "title": "Mipango ya World Monitor inalinganishwa vipi?",
     "feature": "Kipengele",
     "freeHeader": "Bure ($0)",
     "proHeader": "Pro ($39.99)",
@@ -385,10 +392,25 @@
     "fKeyAuth": "Uthibitisho wa ufunguo",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Jukwaa la msingi linabaki libre. Mipango ya kulipwa inafungua utafiti wa hisa, uchambuzi wa uchumi mkuu, na arifa za AI, na matumizi ya shirikishi.",
-    "f50plus": "Inapatikana"
+    "f50plus": "Inapatikana",
+    "sourcesRow": "Vyanzo",
+    "followedRow": "Nchi zilizofuatiliwa",
+    "tabsRow": "Kichupo cha dashboard",
+    "fUnlimited": "Bila kikomo",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Safu zote",
+    "fLayersNoResilience": "Zote isipokuwa Upinzani",
+    "fStandardCadence": "Kawaida",
+    "fQuotes30s": "Nukuu za soko: 30s",
+    "panelsRow": "Paneli zilizowezeshwa",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Zote"
   },
   "faq": {
-    "title": "Maswali Yanayoulizwa Mara Kwa Mara",
+    "title": "Maswali yanayoulizwa sana kuhusu World Monitor Pro",
     "q1": "Je, World Monitor bado ni libre?",
     "a1": "Ndiyo. Jukwaa la msingi linabaki libre. Pro inaongeza utafiti wa hisa, uchambuzi wa uchumi mkuu, na arifa za AI. Pro Business inaongeza leseni ya kibiashara na kuhamisha data. Enterprise inaongeza upangaji wa timu na programu za TV.",
     "q2": "Kwa nini kulipa kwa Pro?",
@@ -412,12 +434,12 @@
     "q11": "Je, hazina inajifanya jinsi gani?",
     "a11": "Chagua matangatanga yako — kila siku, mara mbili kwa siku, au kila wiki. Tunapima upya kila hadithi iliyofuatiliwa dhidi ya sheria yako za onyo na orodha ya ufuatiliaji, kuduliwa katika vyanzo, na kutuma hadi vipengee 50 vilivyoainishwa na Tathmini ya AI na Ishara za ufuatiliaji zilizoandikwa katika muktadha wako. Onyo za moja kwa moja pia zinapatikana kwa matukio muhimu.",
     "q12": "Kasi ya kuonyesha upya ni nini?",
-    "a12": "Karibu wakati halisi kwa Pro. 5–15 dakika kwa Free.",
+    "a12": "Pro husasisha nukuu za soko kila sekunde 30. Data nyingine hufuata mdundo wa chanzo chake. Free inabaki kwenye mdundo wa kawaida wa chanzo.",
     "q13": "Data yangu inaenda wapi?",
     "a13": "Mitandao ya arifa inakamatia AES-256 iliyobanwa wakati wa kupumzika. Hazina hazijapita kwenye mzigo wetu bila kukataliwa."
   },
   "finalCta": {
-    "title": "Anza na Pro. Kupanua hadi Enterprise.",
+    "title": "Ninaanzia vipi na Pro au kuzungumza na mauzo?",
     "subtitle": "Endelea kutumia World Monitor bila malipo, au boreshwa kwa utafiti wa hisa, uchambuzi wa uchumi mkuu, na arifa za AI. Ikiwa shirikishi lako linahitaji ufikaji wa timu, programu za TV, au msaada wa API, salimiana nasi.",
     "talkToSales": "Salimiana na Mauzo"
   },
@@ -459,11 +481,12 @@
       "screenshotAlt": "World Monitor dashibodi ya akili za moja kwa moja — ramani ya kimataifa yenye safu ya mgogoro, mitambo ya baharini na soko",
       "plateNote": "Inayoshikwa kutoka kwenye ramani ya moja kwa moja — bofya kufungua",
       "trustBuild": "Tengeneza juu yake:",
-      "positioningLink": "WorldMonitor si Palantir ya chanzo wazi"
+      "positioningLink": "WorldMonitor si Palantir ya chanzo wazi",
+      "asOf": "Kwa tarehe 31 Agosti 2026"
     },
     "live": {
       "eyebrow": "Moja kwa moja sasa sasa",
-      "title": "Ukurasa huu unaunganishwa kwenye API zinazofanana na dashibodi.",
+      "title": "Ni data gani halisi inayoonyeshwa kwenye ukurasa huu sasa?",
       "subtitle": "Nne kati ya ishara zaidi ya mia — World Monitor inayofuatilia saa kote.",
       "liveBadge": "Moja kwa moja",
       "sampleBadge": "Sampuli",
@@ -482,7 +505,7 @@
     },
     "moments": {
       "eyebrow": "Injini ya uunganisho",
-      "title": "Ukingo ni kuona ishara zinakotembea pamoja.",
+      "title": "World Monitor inahusisha mawingu vipi?",
       "sub": "Unaweza kupata malia kwenye maeneo mia. Ukingo ni uso mmoja ambapo simu za kijiografia, mitambo ya baharini, chakula, macro, soko, tabia nchi, miundombinu, cyber, habari na hatari ya nchi zinaweza kueleza kila mmoja.",
       "signalStack": "Ishara zilizounganishwa",
       "correlation": "Mahusiano",
@@ -546,7 +569,7 @@
     },
     "firstFive": {
       "eyebrow": "Kutoka sifuri kuelekea kupangilia",
-      "title": "Dakika zako za kwanza tano kwenye ramani halisi.",
+      "title": "Nini kinatokea dakika tano za kwanza kwenye ramani?",
       "sub": "Hakuna sherehe, hakuna hali tupu, hakuna kuta ya kuandikisha. Hii ndio inayofanyika halisi.",
       "f1Title": "Ramani tayari inakwenda",
       "f1Desc": "Mgogoro, meli, ndege, moto na kusimama hutolewa kadri ukurasa unavyopakia. Hakuna kitu cha kusanidi kwanza.",
@@ -562,7 +585,7 @@
     },
     "depth": {
       "eyebrow": "Chini ya kaputi",
-      "title": "Kina ndilo bidhaa.",
+      "title": "Kina ki World Monitor data model kiaje?",
       "sub": "Kila nambari hapa chini iko karibu katika dashboard leo — sio ramani ya njia.",
       "s1v": "Iliyoshirikiwa",
       "s1l": "Tabaka la ramani",
@@ -612,7 +635,7 @@
     },
     "agents": {
       "eyebrow": "Kwa wajenzi & wakalishi wa AI",
-      "title": "Jenga juu ya ujumbe hai wa ulimwengu — kutoka kwa stack yoyote.",
+      "title": "Ninajenga vipi kwenye World Monitor kutoka kwenye stack yangu?",
       "sub": "Kila kitu kwenye ramani pia ni API. Innunuze ndani ya Claude kupitia MCP, piga simu endpoints za REST kutoka mahali popote, au sakinisha mteja asili kwa Python, Ruby, Go, au JavaScript — nambari yako inasoma na data hai badala ya kumbukumbu za data ya mafunzo.",
       "b1": "Zana za MCP — alama za hatari, alama kali, migogoro, soko, muhtasari",
       "b2": "REST API iliyoandaliwa — kielezo kimoja cha OpenAPI 3.1, ufunguo mmoja",
@@ -655,7 +678,7 @@
     },
     "faq": {
       "eyebrow": "Hakuna utamu",
-      "title": "Maswali ya busara.",
+      "title": "Maswali yapi ya kawaida kuhusu World Monitor?",
       "q1": "Je, World Monitor ni halisi bure?",
       "a1": "Ndiyo. Ramani ya moja kwa moja — kila tabaka isipokuwa Endurance, milo iliyoteuliwa, muhtasari wa nchi, onyo za kuvunja, na uso wa ufuatiliaji — ni bure bila kusajili na bila saa ya jaribio. Pro hulipa milo: inaongeza WM Analyst, injini ya hali, Route Explorer, muhtasari uliowekwa ratiba, upatikanaji wa MCP kwa wateja wa AI na tabaka la ramani la Endurance. Hakuna matangazo, na hakuna akaunti inamaanisha hakuna data ya mtumiaji kuuza.",
       "q2": "KDashboard ya ujumbe wa ulimwengu ni nini?",
@@ -680,7 +703,7 @@
       "a11": "Chagua kulingana na nani atakayetumia matokeo. Leseni ya Personal ya Pro ni kwa mtu mmoja anayetumia World Monitor kwa utafiti na maamuzi yao. Pro Business inaruhusu mtumiaji mmoja aliyepewa leseni kuutumia kwa kazi ya kampuni au mteja, zana za ndani, na ripoti. API Starter inakamatia matumizi ya API ndani ya taasisi moja, bila kusambaza mteja. API Business inaruhusu taasisi hiyo kuingeza data ya World Monitor katika bidhaa na huduma kwa wateja wake. Enterprise inakamatia viti vya kaida, kuweka lebo, na usambazaji. Leseni hizi za usomaji wa sukari ni tofauti na leseni za nambari ya AGPL/MIT. Masharti kamili: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "Ramani ya dunia haisubi kwa ajili yako.",
+      "title": "Ninaanzia vipi kuangalia ramani ya dunia?",
       "subtitle": "Wakati unasoma ukurasa huu uliendelea kusonga — pweza, pointi kali, soko, zana zilizochaguliwa. Moja yao ni ukurasa wa mbele wa kesho. Ipate kwanza — bila malipo, hakuna akaunti.",
       "button": "Itafuta kwanza",
       "note": "Bure · Hakuna kuweka akaunti · Inapakia kwa sekunde",
@@ -698,5 +721,19 @@
       "countryRiskDesc": "Fuatilia maaashimiano ya kisiasa, usalama, kiuchumi, na upinzani nyuma ya mabadiliko ya nchi.",
       "open": "Fungua ushahidi"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Nchi ya kuokolea",
+    "title": "Habari mpya katika World Monitor",
+    "subtitle": "Sifa mpya kutoka siku 30 zilizopita — marekebisho na mabomba hayajajumuishwa.",
+    "proTag": "PRO",
+    "m1": "Faharasa ya tofauti ya bhabharimu ya kimwili — SGE dhidi ya COMEX, na historia",
+    "m2": "Cheo cha ukubwa wa bidhaa — tegemezi la njia nyingi yenye matawi",
+    "m3": "Mkusanyo wa uzalishaji wa madini & msingi wa sekta ya ulinzi",
+    "m4": "Karata za uweza wa upinga wenye sababu tano na alama za kiwango cha kila kielelezo",
+    "m5": "Orodha za ufuatiliaji wa chaneli maalum ya Telegram",
+    "m6": "Kuingia kwa Passkey",
+    "m7": "Mawakala ya AI yanaweza kueneza dashboard — paneli, tabaka & hadithi",
+    "m8": "Ukurasa wa upinga wa nchi wenye habari zaidi"
   }
 }

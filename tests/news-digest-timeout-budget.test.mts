@@ -16,6 +16,7 @@ const {
   DIGEST_RESPONSE_TIMEOUT_MS,
   POST_FETCH_HEADROOM_MS,
   RESPONSE_GUARD_BAND_MS,
+  RESPONSE_DEADLINE_MS,
   OVERALL_DEADLINE_MS,
 } = __testing__;
 
@@ -60,6 +61,7 @@ function isRedisSet(init: RequestInit | undefined): boolean {
 describe('news digest timeout budget', () => {
   it('keeps cold cache misses below Vercel initial-response timeout', () => {
     assert.equal(VERCEL_INITIAL_RESPONSE_LIMIT_MS, 25_000);
+    assert.equal(RESPONSE_DEADLINE_MS, VERCEL_INITIAL_RESPONSE_LIMIT_MS - RESPONSE_GUARD_BAND_MS);
     assert.ok(
       RESPONSE_GUARD_BAND_MS >= 3_000,
       'fallback path must reserve several seconds for edge runtime overhead and response jitter',
@@ -81,9 +83,12 @@ describe('news digest timeout budget', () => {
   });
 
   it('passes the digest-specific timeout to cachedFetchJson', () => {
+    // Matches either wrapper: #7084 switched to cachedFetchJsonWithMeta so the
+    // handler can tell a real build from a cache hit. Pinning the exact name
+    // made this fail on the rename while the timeout argument was unchanged.
     assert.match(
       DIGEST_SRC,
-      /cachedFetchJson<ListFeedDigestResponse>\([\s\S]*\{\s*timeoutMs:\s*DIGEST_RESPONSE_TIMEOUT_MS\s*\}\s*,\s*\)/,
+      /cachedFetchJson(?:WithMeta)?<ListFeedDigestResponse>\([\s\S]*timeoutMs:\s*DIGEST_RESPONSE_TIMEOUT_MS,[\s\S]*cacheFailures:\s*false,[\s\S]*\}\s*,\s*\)/,
       'listFeedDigest must not rely on cachedFetchJson default timeout for cold builds',
     );
   });

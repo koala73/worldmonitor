@@ -542,7 +542,7 @@ interface CountrySignals {
   sanctionsNewEntryCount: number;
   temporalAnomalyCount: number;
   temporalAnomalyCriticalCount: number;
-  // Phase 2 (CII unification) — military activity, gathered, not yet scored.
+  // Phase 2 (CII unification) — gathered here and scored in the security component below.
   militaryOwnFlights: number;
   militaryForeignFlights: number;
   militaryOwnVessels: number;

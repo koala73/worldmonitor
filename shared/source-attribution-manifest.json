@@ -571,6 +571,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/user/passkey-offer.ts"
+        },
+        {
           "path": "server/auth-session.ts"
         }
       ]
@@ -827,7 +830,7 @@
       "status": "excluded",
       "references": [
         {
-          "path": "server/_shared/llm-health.ts"
+          "path": "shared/llm-health-providers.js"
         }
       ]
     },
@@ -856,6 +859,23 @@
       "references": [
         {
           "path": "scripts/seed-iea-oil-stocks.mjs"
+        }
+      ]
+    },
+    {
+      "host": "api.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "IMD public API is account- and key-gated. RTI IMETD/R/E/25/00381 states APIs are without charges for non-commercial use only. World Monitor public-display and redistribution rights are validated.",
+      "attribution": "Data source: India Meteorological Department. Link https://api.imd.gov.in/public/api_reference.html and the official product page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
+        },
+        {
+          "path": "src/app/data-loader.ts"
         }
       ]
     },
@@ -1308,6 +1328,12 @@
         },
         {
           "path": "server/worldmonitor/economic/v1/list-world-bank-indicators.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_dimension-scorers.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -1328,6 +1354,9 @@
         },
         {
           "path": "api/mcp/downstream.ts"
+        },
+        {
+          "path": "api/mcp/skill-extension/generated.ts"
         },
         {
           "path": "scripts/ais-relay.cjs"
@@ -2480,6 +2509,9 @@
           "path": "scripts/seed-recovery-reexport-share.mjs"
         },
         {
+          "path": "scripts/seed-supply-vulnerability.mjs"
+        },
+        {
           "path": "scripts/seed-trade-flows.mjs"
         },
         {
@@ -2917,15 +2949,10 @@
       "host": "defense.gov",
       "provider": "defense.gov",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit defense.gov and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "dev.events",
@@ -3233,6 +3260,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/seed-earthquakes.mjs"
         }
       ]
@@ -3257,6 +3287,9 @@
         },
         {
           "path": "scripts/seed-resilience-static.mjs"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         },
         {
           "path": "src/config/feeds.ts"
@@ -5001,15 +5034,10 @@
       "host": "insideclimatenews.org",
       "provider": "insideclimatenews.org",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit insideclimatenews.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "scripts/seed-climate-news.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "insightcrime.org",
@@ -5732,6 +5760,9 @@
           "path": "src/components/LiveNewsPanel.ts"
         },
         {
+          "path": "src/services/desktop-runtime.ts"
+        },
+        {
           "path": "src/services/wm-session.ts"
         }
       ]
@@ -5843,6 +5874,20 @@
         },
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "mausam.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official IMD visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department. Link the official marine/coastal bulletin page.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
         }
       ]
     },
@@ -6075,6 +6120,9 @@
       "attribution": "Credit moxie.foxnews.com and link to the original feed publisher.",
       "status": "terms-review",
       "references": [
+        {
+          "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
         {
           "path": "src/config/feeds.ts"
         }
@@ -6811,6 +6859,12 @@
       "references": [
         {
           "path": "scripts/seed-low-carbon-generation.mjs"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_dimension-scorers.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -7004,6 +7058,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "scripts/_bet-templates-markets.mjs"
         },
         {
@@ -7053,9 +7110,6 @@
       "references": [
         {
           "path": "scripts/build-chokepoint-transit-snapshot.mjs"
-        },
-        {
-          "path": "scripts/build-research-reports.mjs"
         }
       ]
     },
@@ -7272,13 +7326,16 @@
     },
     {
       "host": "query.wikidata.org",
-      "provider": "query.wikidata.org",
+      "provider": "Wikidata",
       "kind": "structured",
       "observed": true,
-      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
-      "attribution": "Credit query.wikidata.org and link to the original upstream API/dataset.",
-      "status": "terms-review",
+      "license": "Creative Commons CC0 1.0 Universal",
+      "attribution": "Wikidata structured data is CC0. Credit Wikidata and link each reused entity identifier as a best practice.",
+      "status": "reviewed",
       "references": [
+        {
+          "path": "scripts/freeze-resilience-ranking.mjs"
+        },
         {
           "path": "server/worldmonitor/intelligence/v1/get-country-facts.ts"
         }
@@ -7337,6 +7394,20 @@
         },
         {
           "path": "server/worldmonitor/market/v1/get-country-stock-index.ts"
+        }
+      ]
+    },
+    {
+      "host": "radar.cloudflare.com",
+      "provider": "radar.cloudflare.com",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit radar.cloudflare.com and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -7463,6 +7534,20 @@
       ]
     },
     {
+      "host": "registry.modelcontextprotocol.io",
+      "provider": "registry.modelcontextprotocol.io",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: first-party, control-plane, UI, or rendering transport",
+      "attribution": "Excluded from the external-provider count: not an ingested upstream dataset.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "scripts/publish-mcp-registry.mjs"
+        }
+      ]
+    },
+    {
       "host": "reliefweb.int",
       "provider": "reliefweb.int",
       "kind": "structured",
@@ -7508,15 +7593,10 @@
       "host": "restcountries.com",
       "provider": "restcountries.com",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit restcountries.com and link to the original upstream API/dataset.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "server/worldmonitor/intelligence/v1/get-country-facts.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "reuters-reutersnow-1-eu.rakuten.wurl.tv",
@@ -7611,6 +7691,20 @@
       "references": [
         {
           "path": "scripts/seed-resilience-static.mjs"
+        }
+      ]
+    },
+    {
+      "host": "rsmcnewdelhi.imd.gov.in",
+      "provider": "India Meteorological Department",
+      "kind": "structured",
+      "observed": true,
+      "license": "Official RSMC New Delhi visualization pages cited for attribution and source links, not scraped.",
+      "attribution": "Data source: India Meteorological Department / RSMC New Delhi. Link https://rsmcnewdelhi.imd.gov.in/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/lib/imd-cyclone-marine.mjs"
         }
       ]
     },
@@ -7825,6 +7919,9 @@
         },
         {
           "path": "scripts/build-crawlable-corpus.mjs"
+        },
+        {
+          "path": "scripts/build-use-cases.mjs"
         }
       ]
     },
@@ -8605,6 +8702,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/telegram-feed.js"
+        },
+        {
           "path": "scripts/ais-relay.cjs"
         },
         {
@@ -8612,6 +8712,9 @@
         },
         {
           "path": "src/services/story-share.ts"
+        },
+        {
+          "path": "src/services/telegram-intel.ts"
         }
       ]
     },
@@ -9467,6 +9570,20 @@
       ]
     },
     {
+      "host": "uis.unesco.org",
+      "provider": "uis.unesco.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit uis.unesco.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        }
+      ]
+    },
+    {
       "host": "ukrinform.net",
       "provider": "ukrinform.net",
       "kind": "feed",
@@ -9829,15 +9946,10 @@
       "host": "whitehouse.gov",
       "provider": "whitehouse.gov",
       "kind": "feed",
-      "observed": true,
+      "observed": false,
       "license": "Provider terms for this feed publisher; verify before redistribution",
       "attribution": "Credit whitehouse.gov and link to the original feed publisher.",
-      "status": "terms-review",
-      "references": [
-        {
-          "path": "src/config/feeds.ts"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "wiadomosci.onet.pl",
@@ -9920,6 +10032,9 @@
           "path": "api/fwdstart.js"
         },
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "api/not-found.ts"
         },
         {
@@ -9983,7 +10098,13 @@
           "path": "scripts/notification-relay.cjs"
         },
         {
+          "path": "scripts/publish-mcp-registry.mjs"
+        },
+        {
           "path": "scripts/seed-digest-notifications.mjs"
+        },
+        {
+          "path": "scripts/seed-five-factor-scorecard.mjs"
         },
         {
           "path": "scripts/seed-hyperliquid-flow.mjs"
@@ -10066,6 +10187,9 @@
       "references": [
         {
           "path": "api/docs-mcp.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
         }
       ]
     },
@@ -10524,6 +10648,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.bgs.ac.uk",
+      "provider": "British Geological Survey World Mineral Statistics",
+      "kind": "structured",
+      "observed": true,
+      "license": "BGS mineral statistics terms; attribution required; redistribution restricted",
+      "attribution": "British Geological Survey (BGS) World Mineral Production; credit BGS and link to https://www.bgs.ac.uk/mineralsuk/statistics/world-mineral-statistics/.",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-supply-vulnerability.mjs"
         }
       ]
     },
@@ -13022,6 +13160,9 @@
       "references": [
         {
           "path": "scripts/seed-mineral-production.mjs"
+        },
+        {
+          "path": "scripts/seed-supply-vulnerability.mjs"
         }
       ]
     },
@@ -13206,6 +13347,20 @@
       "references": [
         {
           "path": "src/config/feeds.ts"
+        }
+      ]
+    },
+    {
+      "host": "www.statcan.gc.ca",
+      "provider": "www.statcan.gc.ca",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.statcan.gc.ca and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },
@@ -13845,6 +14000,9 @@
       "references": [
         {
           "path": "server/worldmonitor/news/v1/_feeds.ts"
+        },
+        {
+          "path": "src/config/feeds.ts"
         }
       ]
     },
@@ -13929,6 +14087,9 @@
       "status": "terms-review",
       "references": [
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "server/worldmonitor/webcam/v1/get-webcam-image.ts"
         },
         {
@@ -13971,6 +14132,20 @@
       ]
     },
     {
+      "host": "www.worldbank.org",
+      "provider": "www.worldbank.org",
+      "kind": "structured",
+      "observed": true,
+      "license": "Provider terms for this upstream API/dataset; verify before redistribution",
+      "attribution": "Credit www.worldbank.org and link to the original upstream API/dataset.",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
+        }
+      ]
+    },
+    {
       "host": "www.worldmonitor.app",
       "provider": "World Monitor web app",
       "kind": "structured",
@@ -13980,16 +14155,25 @@
       "status": "excluded",
       "references": [
         {
+          "path": "api/_cors.js"
+        },
+        {
           "path": "api/a2a.ts"
         },
         {
           "path": "api/ask.ts"
         },
         {
+          "path": "api/mcp/skill-extension/generated.ts"
+        },
+        {
           "path": "api/not-found.ts"
         },
         {
           "path": "scripts/build-crawlable-corpus.mjs"
+        },
+        {
+          "path": "scripts/build-openapi-json.mjs"
         },
         {
           "path": "scripts/build-research-reports.mjs"
@@ -14005,6 +14189,12 @@
         },
         {
           "path": "scripts/discover-content-corpus-pages.mjs"
+        },
+        {
+          "path": "scripts/freeze-crawlable-live-pulse.mjs"
+        },
+        {
+          "path": "scripts/freeze-resilience-ranking.mjs"
         },
         {
           "path": "scripts/generate-sandbox-fixtures.mjs"
@@ -14028,7 +14218,16 @@
           "path": "scripts/verify-sitemaps.mjs"
         },
         {
+          "path": "server/_shared/deprecation-policy.ts"
+        },
+        {
           "path": "src/components/RuntimeConfigPanel.ts"
+        },
+        {
+          "path": "src/config/docs-locale-seo.ts"
+        },
+        {
+          "path": "src/config/schema-graph-ids.ts"
         },
         {
           "path": "src/config/variant-meta.ts"
@@ -14197,6 +14396,12 @@
       "references": [
         {
           "path": "scripts/lib/statcan-wds.mjs"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_canada-national-overlay.ts"
+        },
+        {
+          "path": "server/worldmonitor/resilience/v1/_indicator-source-policy.ts"
         }
       ]
     },

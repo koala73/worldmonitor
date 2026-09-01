@@ -43,14 +43,16 @@ const VALID_KEY = 'wm_test_key_capability_parity';
 //     `logging/setLevel` but the stateless edge transport can't push
 //     `notifications/message` (same reason `listChanged: false` on
 //     prompts/resources).
-//   - `extensions`: the MCP-Apps negotiation key
-//     (`extensions['io.modelcontextprotocol/ui']`, spec 2026-01-26). It is a
-//     handshake declaration, not a listable collection — the extension's
-//     CONTENT (ui:// app-shell resources, tool `_meta.ui.resourceUri`) is
-//     enumerated via resources/list + tools/list under the existing
-//     `resources`/`tools` capabilities, and is asserted directly in
-//     tests/mcp-resources.test.mjs. Non-emptiness of `extensions` itself is
-//     guarded below (the declared value must name the ui extension).
+//   - `extensions`: the MCP Apps / skills negotiation key
+//     (`extensions['io.modelcontextprotocol/ui']` and
+//     `extensions['io.modelcontextprotocol/skills']`, spec 2026-01-26). It is
+//     a handshake declaration, not a listable collection — the ui:// app-shell
+//     resources and tool `_meta.ui.resourceUri` are enumerated via
+//     resources/list + tools/list under the existing `resources`/`tools`
+//     capabilities, while skills/list + skills/get are asserted directly in
+//     tests/mcp-skills-extension.test.mts. Non-emptiness of `extensions`
+//     itself is guarded below (the declared value must name the ui and skills
+//     extensions).
 // Future passive/declaration-only additions require an explicit edit to this
 // allowlist AND a positive assertion in the "structurally exempt" tests below.
 const REGISTRYLESS_CAPABILITIES = new Set(['logging', 'extensions']);
@@ -207,7 +209,7 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     );
   });
 
-  it('extensions capability (MCP Apps) is advertised, structurally exempt, AND names the ui extension on the wire', async () => {
+  it('extensions capability (MCP Apps + skills) is advertised, structurally exempt, AND names both extension keys on the wire', async () => {
     const advertised = advertisedFromCard(cardCaps);
     assert.ok(advertised.has('extensions'),
       `'extensions' must remain advertised on the server-card — the MCP-Apps ` +
@@ -220,9 +222,9 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     );
 
     // Advertised-but-empty guard, extensions edition: the initialize wire must
-    // declare the ui extension key, not just an empty `extensions: {}` object.
-    // An empty extensions map reads (to a scanner) as "no MCP Apps support",
-    // the exact failure this capability exists to prevent.
+    // declare both extension keys, not just an empty `extensions: {}` object.
+    // An empty extensions map reads (to a scanner) as "no MCP Apps/skills
+    // support", the exact failure this capability exists to prevent.
     const res = await handler(makeReq({
       jsonrpc: '2.0', id: 3, method: 'initialize',
       params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
@@ -231,11 +233,8 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     const extensions = body.result?.capabilities?.extensions;
     assert.ok(extensions && typeof extensions === 'object',
       'initialize.result.capabilities.extensions must be an object');
-    assert.ok(
-      Object.prototype.hasOwnProperty.call(extensions, 'io.modelcontextprotocol/ui'),
-      `initialize must declare the MCP Apps extension key 'io.modelcontextprotocol/ui'; ` +
-      `got extensions=${JSON.stringify(extensions)}`,
-    );
+    assert.deepEqual(extensions['io.modelcontextprotocol/ui'], {});
+    assert.deepEqual(extensions['io.modelcontextprotocol/skills'], {});
   });
 
   it('server-card daily-quota notes mirror metadata exemptions', () => {
@@ -271,6 +270,8 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       'notifications/initialized',
       'ping',
       'describe_tool',
+      'skills/list',
+      'skills/get',
     ]) {
       assert.ok(notes.includes(method), `${method} must be named in daily-quota notes`);
     }
@@ -298,7 +299,7 @@ describe('docs/mcp-overview.mdx — API-key quota contract', () => {
     const docs = readFileSync(new URL('../docs/mcp-overview.mdx', import.meta.url), 'utf8');
     assert.doesNotMatch(docs, /Both modes check the same PRO entitlement/i,
       'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
-    assert.match(docs, /OAuth bearer requests re-check[\s\S]*active entitlement[\s\S]*before dispatch/i,
+    assert.match(docs, /OAuth bearer requests re-check[\s\S]*entitlement[\s\S]*before dispatch/i,
       'docs must describe the OAuth entitlement re-check path');
     assert.match(docs, /Dashboard-issued `X-WorldMonitor-Key: wm_…` requests[\s\S]*active entitlement[\s\S]*same per-user minute bucket and 50\/day default/i,
       'docs must describe dashboard-key entitlement, minute, and daily enforcement');

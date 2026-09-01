@@ -79,7 +79,42 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /^TypeError: Load failed( \(.*\))?$/,
       /^TypeError: (?:cancelled|avbruten)$/,
       /runtime\.sendMessage\(\)/,
-      /Java object is gone/,
+      // Chromium's Android WebView Java bridge. `android_webview` wraps every
+      // failed `@JavascriptInterface` call as
+      // `Error invoking <method>: <GinJavaBridgeError>`, and an in-app browser's
+      // own chrome script hits it when the Java object behind the bridge has
+      // been collected or detached. Both production values this project has
+      // ever recorded carry that envelope:
+      //   WORLDMONITOR-117 `Error invoking enableButtonsClickedMetaDataLogging: Java object is gone`
+      //   WORLDMONITOR-YN  `Error invoking process: Java bridge method invocation error`
+      //
+      // Anchored to the whole sentence, replacing the two bare substring
+      // entries (`/Java object is gone/` and `/Java bridge method invocation
+      // error/`) this supersedes. `ignoreErrors` is frame-blind, so a substring
+      // pattern also dropped any first-party message CONTAINING the phrase —
+      // `Our Java object is gone` was suppressed even with an `/assets/*.js`
+      // frame on the stack, which is the observability blind spot this array is
+      // supposed to avoid. That gate cannot be delegated to `beforeSend`
+      // either: WORLDMONITOR-YN's own stack carries `/assets/main-*.js`, so
+      // `hasFirstParty` is true and a `!hasFirstParty` rule would never fire.
+      //
+      // The method slot is matched as "anything but whitespace or a colon",
+      // not as `[\w$]+`, because it is whichever bridge the host app called and
+      // Java identifiers are NOT ASCII-only — `@JavascriptInterface
+      // obtenirDonnées()` is legal, and JavaScript's `\w` would miss it (PR
+      // #7356 review). Widening the slot cannot loosen the rule: the envelope
+      // is anchored at both ends and the reason is enumerated, so a message
+      // only matches if our own bundle emits the whole Chromium sentence, which
+      // the source scan below forbids. Java method names contain no colon, so
+      // excluding one keeps the slot from swallowing the reason separator. The
+      // reasons ARE enumerated: a Chromium reason we have not seen should
+      // surface as a new issue and be added deliberately, which is the safe
+      // failure direction — under-suppression announces itself, over-suppression
+      // does not. `Error invoking` appears nowhere in `src/`, `pro-test/src/`,
+      // `api/` or `index.html`, which is what licenses matching it at all;
+      // tests/sentry-beforesend.test.mjs pins that so the licence cannot rot.
+      // Marketing-surface copy of the first reason is PR #7356.
+      /^Error invoking [^\s:]+: (?:Java object is gone|Java bridge method invocation error)$/,
       /^Object captured as promise rejection with keys:/,
       /Unable to load image/,
       /Non-Error promise rejection captured with value:/,
@@ -100,7 +135,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Program failed to link/,
       /too much recursion/,
       /zaloJSV2/,
-      /Java bridge method invocation error/,
       /Could not compile fragment shader/,
       /can't redefine non-configurable property/,
       /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage|UTItemActionController|DarkReader|Readability|onPageLoaded|Game|frappe|getPercent|ucConfig|\$a)/,
@@ -129,6 +163,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // WKScriptMessageHandler ourselves; this is browser-native and unactionable
       // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
       /WKWebView API client did not respond to this postMessage/,
+      // Apple's native WKWebView find-on-page bridge: the host app evaluates
+      // `WKWebView_RemoveAllHighlights()` in the page when the user dismisses
+      // the in-app find bar, and it is undefined in web content the host never
+      // instrumented. `WKWebView_` is Apple's native-bridge prefix and appears
+      // nowhere in src/, api/, public/ or index.html, so it can never come from
+      // our bundle, minified or not — same class as the two `WKWebView` entries
+      // around it. The existing `^(?:LIDNotify…|removeHighlight|…) is not
+      // defined$` entry covers other host-injected names but is anchored to the
+      // Chrome phrasing and an exact alternation, so it missed the Safari
+      // `Can't find variable:` wording (WORLDMONITOR-10W — Mobile Safari 26.6 /
+      // iOS 18.7, single frame on the /dashboard document).
+      /\bWKWebView_[A-Za-z]\w*/,
       /Unexpected end of(?: JSON)? input/,
       /window\.android\.\w+ is not a function/,
       /Attempted to assign to readonly property/,
@@ -416,10 +462,45 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // bucket, `api.worldmonitor.app`) are intentionally NOT in the set so a
       // real basemap / API regression is never silently dropped
       // (WORLDMONITOR-NE/NF, WORLDMONITOR-QG).
+      //
+      // Surviving events are additionally FINGERPRINTED by host. Suppression
+      // already read the host; grouping did not, and Sentry groups these on the
+      // stack — which `fetch-failure-attribution.ts` establishes is identical
+      // for every fetch failure (all frames are `window.fetch` wrappers; the
+      // async boundary drops the calling frame). So every host that survives the
+      // allowlist landed in ONE issue, titled after whichever host arrived last.
+      // WORLDMONITOR-ZG held all three populations at once (2026-08-27 triage,
+      // 32 events): 21 bare pre-attribution `Failed to fetch`, 8
+      // `api.worldmonitor.app` from a real ~90s origin blip on 2026-08-16, and 3
+      // `motramby.com` adware-beacon failures on 2026-08-27. The origin failures
+      // — the exact population the attribution work existed to surface — were
+      // unreadable under an adware title.
+      //
+      // The split is by OWNERSHIP, not by raw host: each of our own hosts keeps
+      // its own issue, while every foreign host collapses into a single
+      // `third-party` bucket. Adware and tracker domains rotate, so bucketing
+      // them bounds cardinality at (our hosts + 1) instead of leaving it open to
+      // one new issue per injected domain.
       if (isHostScopedFetchFailure) {
         const hostMatch = msg.match(/^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \(([^)]+)\)$/);
         const host = hostMatch?.[1];
         if (host && THIRD_PARTY_FETCH_HOST_ALLOWLIST.has(host)) return null;
+        if (host) {
+          // Anchored at the end so a lookalike (`worldmonitor.app.evil.example`)
+          // is foreign. The R2 bucket is matched EXACTLY, not by `.r2.dev`
+          // suffix: `r2.dev` is Cloudflare's shared public-bucket domain, so
+          // every account gets a `pub-<id>.r2.dev` host. A suffix match would
+          // hand each foreign tenant its own raw-host fingerprint — reopening
+          // the unbounded cardinality this bucket exists to close, and dressing
+          // an unrelated bucket up as a first-party incident. Our own bucket
+          // still needs naming here because it is deliberately absent from the
+          // suppression allowlist (WORLDMONITOR-NE/NF) so a basemap regression
+          // surfaces, and it must surface as itself rather than in the
+          // third-party bin. Kept in step with `docs/maps-and-geocoding.mdx`.
+          const isOwnHost = /(?:^|\.)worldmonitor\.app$/.test(host)
+            || host === 'pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev';
+          event.fingerprint = ['fetch-failure', isOwnHost ? host : 'third-party'];
+        }
       }
       // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
       // __globeObjType is exclusively set by three-globe on its own objects and we have no user onClick/onHover handler, so it is always globe.gl internal even when the stack shows the bundled main chunk (WORLDMONITOR-ME).
@@ -855,6 +936,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
           // every engine's token/identifier/keyword/EOF wording is covered.
           || /appendChild.*Unexpected /.test(msg)
+          // Platform-authenticator failure raised by the browser's WebAuthn /
+          // Credential Management layer — `NotReadableError: An unknown error
+          // occurred while talking to the credential manager.` The phrasing is
+          // Chromium's own CredMan bridge wording, emitted when the OS-side
+          // credential service is unavailable or wedged (observed on Android 10
+          // / Chrome Mobile). It reaches us as an unhandled rejection out of
+          // Clerk's sign-in passkey autofill (`navigator.credentials.get`),
+          // which runs entirely inside the Clerk bundle — the event carries zero
+          // captured frames. Our own passkey path never leaks: `createPasskey()`
+          // in src/services/passkeys.ts wraps `user.createPasskey()` in
+          // try/catch and returns a classified outcome, and `navigator.
+          // credentials` appears nowhere else in src/ or api/. So a
+          // no-first-party occurrence is third-party SDK / OS noise, while a
+          // future first-party WebAuthn call site would keep a source-mapped
+          // .ts frame and still surface (WORLDMONITOR-11B).
+          || /An unknown error occurred while talking to the credential manager/.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (

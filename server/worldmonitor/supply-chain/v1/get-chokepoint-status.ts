@@ -20,6 +20,7 @@ import { getVesselSnapshot } from '../../maritime/v1/get-vessel-snapshot';
 import { computeDisruptionScore, scoreToStatus, SEVERITY_SCORE, THREAT_LEVEL } from './_scoring.mjs';
 import { type ThreatLevel, threatLevelToWarRiskTier } from './_insurance-tier';
 import { CHOKEPOINT_STATUS_KEY as REDIS_CACHE_KEY } from '../../../_shared/cache-keys';
+import { narrowFlowSource } from '../../../_shared/flow-source';
 const TRANSIT_SUMMARIES_KEY = 'supply_chain:transit-summaries:v1';
 const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 // NOTE: historical fallback via supply_chain:portwatch:v1 / corridorrisk / chokepoint_transits
@@ -30,9 +31,82 @@ const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 // NEG_SENTINEL (120s) instead of caching a fake 5-min healthy-but-empty response.
 // See docs/plans/chokepoint-rpc-payload-split.md.
 const REDIS_CACHE_TTL = 300; // 5 min
+const CHOKEPOINT_SEED_META_KEY = 'seed-meta:supply_chain:chokepoints';
+/** 7-day retain window for last-shortfall diagnostics on seed-meta. */
+const CHOKEPOINT_SEED_META_TTL_SECONDS = 604800;
 const THREAT_CONFIG_MAX_AGE_DAYS = 120;
 const NEARBY_CHOKEPOINT_RADIUS_KM = 300;
 const THREAT_CONFIG_STALE_NOTE = `Threat baseline last reviewed > ${THREAT_CONFIG_MAX_AGE_DAYS} days ago — review recommended`;
+
+export type ChokepointSeedMeta = {
+  fetchedAt: number;
+  recordCount: number;
+  /** Last PortWatch shortfall ids — live or carried after recovery. */
+  uncoveredChokepoints?: string[];
+  /** Epoch ms when that shortfall was first recorded (not refreshed on carry). */
+  uncoveredAt?: number;
+};
+
+/**
+ * Build the chokepoint seed-meta payload.
+ *
+ * A healthy refresh produces an empty `uncoveredIds` list. Because
+ * `setCachedJson` does a full Redis SET, omitting the shortfall fields would
+ * erase the diagnostic the moment PortWatch recovers — defeating delayed
+ * investigation. Carry the previous shortfall (and its `uncoveredAt`) forward
+ * while it remains inside the seed-meta TTL window.
+ */
+export function buildChokepointSeedMeta(
+  coveredCount: number,
+  uncoveredIds: readonly string[],
+  previous: unknown,
+  nowMs: number,
+  retainMs: number = CHOKEPOINT_SEED_META_TTL_SECONDS * 1000,
+): ChokepointSeedMeta {
+  const meta: ChokepointSeedMeta = {
+    fetchedAt: nowMs,
+    recordCount: coveredCount,
+  };
+
+  if (uncoveredIds.length > 0) {
+    meta.uncoveredChokepoints = [...uncoveredIds];
+    meta.uncoveredAt = nowMs;
+    return meta;
+  }
+
+  const carried = readCarriedShortfall(previous, nowMs, retainMs);
+  if (!carried) return meta;
+
+  meta.uncoveredChokepoints = carried.uncoveredChokepoints;
+  meta.uncoveredAt = carried.uncoveredAt;
+  return meta;
+}
+
+function readCarriedShortfall(
+  previous: unknown,
+  nowMs: number,
+  retainMs: number,
+): { uncoveredChokepoints: string[]; uncoveredAt: number } | null {
+  if (!previous || typeof previous !== 'object') return null;
+  const raw = previous as Record<string, unknown>;
+  const ids = raw.uncoveredChokepoints;
+  if (!Array.isArray(ids) || ids.length === 0) return null;
+  if (!ids.every((id): id is string => typeof id === 'string' && id.length > 0)) return null;
+
+  let uncoveredAt: number | null = null;
+  if (typeof raw.uncoveredAt === 'number' && Number.isFinite(raw.uncoveredAt) && raw.uncoveredAt > 0) {
+    uncoveredAt = raw.uncoveredAt;
+  } else if (typeof raw.fetchedAt === 'number' && Number.isFinite(raw.fetchedAt) && raw.fetchedAt > 0) {
+    // Writers before uncoveredAt existed stamped fetchedAt while the shortfall
+    // was live — use that as the retain clock rather than re-dating to now.
+    uncoveredAt = raw.fetchedAt;
+  }
+  if (uncoveredAt === null) return null;
+  if (nowMs - uncoveredAt >= retainMs) return null;
+
+  // Canonical set is 13; never let a corrupt previous meta grow past that.
+  return { uncoveredChokepoints: ids.slice(0, 13), uncoveredAt };
+}
 
 type GeoCoordinates = { latitude: number; longitude: number };
 
@@ -74,10 +148,14 @@ type DirectionLabel = 'eastbound' | 'westbound' | 'northbound' | 'southbound';
 // lives in `supply_chain:transit-summaries:history:v1:{id}` and is served by
 // GetChokepointHistory on card expand.
 interface PreBuiltTransitSummary {
-  todayTotal: number;
-  todayTanker: number;
-  todayCargo: number;
-  todayOther: number;
+  // null when the relay's 24h AIS window held no crossings. That is unsupplied,
+  // not a measured zero: seedTransitSummaries only builds relayTransit when
+  // `recent.length > 0`, so the two are indistinguishable at the source and the
+  // count must not be published either way (#7457). Older writers emit 0 here.
+  todayTotal: number | null;
+  todayTanker: number | null;
+  todayCargo: number | null;
+  todayOther: number | null;
   wowChangePct: number;
   riskLevel: string;
   incidentCount7d: number;
@@ -250,20 +328,9 @@ interface ChokepointFetchResult {
 
 interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null }
 
-/**
- * The coverage bases seed-chokepoint-flows.mjs can emit. Declared as an
- * EXHAUSTIVE record over the non-UNSPECIFIED FlowSource members so that adding
- * a member to the proto is a compile error here. A plain `Set<FlowSource>`
- * caught a typo but not an omission — the new member would simply be absent,
- * and this handler would silently strip the very value the proto had just
- * declared legal.
- */
-const FLOW_SOURCE_MEMBERS: Record<Exclude<FlowSource, 'FLOW_SOURCE_UNSPECIFIED'>, true> = {
-  'portwatch-dwt': true,
-  'portwatch-counts': true,
-};
-
-const FLOW_SOURCES: ReadonlySet<string> = new Set(Object.keys(FLOW_SOURCE_MEMBERS));
+// The taxonomy record lives in server/_shared/flow-source.ts (#6113) so this
+// handler and the MCP cache tool narrow and declare from one source of truth;
+// the exhaustive-record compile check moved with it.
 
 /**
  * Narrow the seeder's `source` onto the FlowSource taxonomy the proto declares
@@ -287,7 +354,12 @@ const FLOW_SOURCES: ReadonlySet<string> = new Set(Object.keys(FLOW_SOURCE_MEMBER
 const warnedFlowSources = new Set<string>();
 
 function toFlowSource(value: unknown): FlowSource {
-  if (typeof value === 'string' && FLOW_SOURCES.has(value)) return value as FlowSource;
+  // Delegate the DECISION, not just the member set: a second copy of the
+  // predicate here would let REST and the MCP cache tool answer differently for
+  // the same Redis blob the moment either side learned to trim or case-fold.
+  // This wrapper adds only the REST-side warn (#6113).
+  const narrowed = narrowFlowSource(value);
+  if (narrowed !== 'FLOW_SOURCE_UNSPECIFIED') return narrowed;
   if (value !== undefined && value !== null && value !== '') {
     const seen = String(value);
     if (!warnedFlowSources.has(seen)) {
@@ -414,11 +486,17 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       description: descriptions.join('; '),
       directions: cp.directions,
       directionalDwt: [],
+      // today_* are non-nullable int32 in the proto and integers in the
+      // published OpenAPI schema, so the relay's null (an empty AIS window,
+      // the common case) must not reach the wire. Hold the contract here and
+      // carry absence in todayCountsAvailable instead; clients withhold on
+      // that flag rather than inferring it from a 0 they cannot interpret.
       transitSummary: ts ? {
-        todayTotal: ts.todayTotal,
-        todayTanker: ts.todayTanker,
-        todayCargo: ts.todayCargo,
-        todayOther: ts.todayOther,
+        todayTotal: ts.todayTotal ?? 0,
+        todayTanker: ts.todayTanker ?? 0,
+        todayCargo: ts.todayCargo ?? 0,
+        todayOther: ts.todayOther ?? 0,
+        todayCountsAvailable: ts.todayTotal != null,
         wowChangePct: ts.wowChangePct,
         // History is served separately by GetChokepointHistory (lazy-loaded on
         // card expand) — field stays declared for proto compat but is empty
@@ -432,7 +510,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         // Default true for pre-fix writers (absence = covered). New writers
         // explicitly emit false for canonical zero-state fills.
         dataAvailable: ts.dataAvailable ?? true,
-      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
+      } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, todayCountsAvailable: false, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
       flowEstimate: flowsData?.[cp.id] ? {
         currentMbd: flowsData[cp.id]!.currentMbd,
         baselineMbd: flowsData[cp.id]!.baselineMbd,
@@ -466,6 +544,14 @@ export async function getChokepointStatus(
         // minRecordCount threshold. Before this, a partial portwatch failure
         // showed as OK despite the UI rendering 3 zero-state rows.
         const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable !== false).length;
+        // Persist WHICH ones are uncovered alongside the count. recordCount=11
+        // says two are missing and never which two, and the upstream usually
+        // recovers before anyone looks — on 2026-08-25 the partial ran ~4.5h and
+        // was already healthy by the time it was investigated. Bounded by the
+        // canonical set, so this cannot grow past 13 short ids.
+        const uncoveredIds = chokepoints
+          .filter((c) => c.transitSummary?.dataAvailable === false)
+          .map((c) => c.id);
         // Response-level signal: if any canonical chokepoint lost upstream,
         // flip upstreamUnavailable so clients can show a partial-coverage
         // banner without breaking the cached response (data still useful).
@@ -475,7 +561,24 @@ export async function getChokepointStatus(
           fetchedAt: new Date().toISOString(),
           upstreamUnavailable: upstreamUnavailable || partialCoverage,
         };
-        setCachedJson('seed-meta:supply_chain:chokepoints', { fetchedAt: Date.now(), recordCount: coveredCount }, 604800).catch(() => {});
+        // Operator-facing only: api/health.js classifies this probe from
+        // minRecordCount and is deliberately left alone. Routing it through
+        // projectFailedDatasets would have surfaced it in the payload but also
+        // forced seedError, turning an upstream COVERAGE_PARTIAL into a
+        // SEED_ERROR — the wrong severity for a partial that self-heals.
+        // Healthy refreshes must still preserve the last shortfall — a full
+        // Redis SET that omits uncoveredChokepoints would erase the diagnostic
+        // the moment PortWatch recovers.
+        void (async () => {
+          const previous = uncoveredIds.length === 0
+            ? await getCachedJson(CHOKEPOINT_SEED_META_KEY)
+            : null;
+          await setCachedJson(
+            CHOKEPOINT_SEED_META_KEY,
+            buildChokepointSeedMeta(coveredCount, uncoveredIds, previous, Date.now()),
+            CHOKEPOINT_SEED_META_TTL_SECONDS,
+          );
+        })().catch(() => {});
         return response;
       },
     );

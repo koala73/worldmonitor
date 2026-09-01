@@ -1,16 +1,22 @@
 import assert from 'node:assert/strict';
 import { afterEach, beforeEach, describe, it } from 'node:test';
+import { Window } from 'happy-dom';
 
 import {
   airportDisruptionViewModel,
   chokepointStatusViewModel,
   crisisTrackerViewModel,
+  hasPublishedLivePulse,
   hazardPulseViewModel,
+  loadChokepoint,
+  loadCountryRisk,
   loadHazards,
   militaryFlightsViewModel,
   pointInBounds,
+  publishedTransitCountLabel,
   requestLiveJson,
   runLatestToolRequest,
+  withheldTransitCountSentence,
 } from '../scripts/crawlable-live-tools.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
@@ -104,6 +110,170 @@ describe('crawlable live intelligence view models', () => {
       ),
       /stale/i,
     );
+  });
+
+  it('does not publish a numeric 0 transit count when the AIS window is empty', () => {
+    const payload = {
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [
+        {
+          id: 'hormuz_strait',
+          disruptionScore: 70,
+          status: 'red',
+          congestionLevel: 'normal',
+          activeWarnings: 0,
+          aisDisruptions: 0,
+          description: 'Active conflict.',
+          transitSummary: {
+            // PortWatch history is present (dataAvailable true + non-zero WoW),
+            // but today's AIS-window count was zero-filled. Publishing that 0
+            // as "Today's transits" is the #7457 GEO failure.
+            dataAvailable: true,
+            todayTotal: 0,
+            wowChangePct: 12.9,
+          },
+        },
+      ],
+    };
+
+    const view = chokepointStatusViewModel(payload, 'hormuz_strait', NOW);
+    assert.equal(view.todayTransits, null);
+    assert.equal(view.weekMovement, '+12.9% vs prior week');
+    assert.equal(view.partial, true);
+    assert.notEqual(view.todayTransits, '0');
+  });
+
+  it('hydrates withheld transits instead of a numeric 0 when AIS is empty and WoW is present', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid>
+          <div class="metric"><strong><span data-chokepoint-score>70</span><small data-chokepoint-band>Red</small></strong></div>
+          <div class="metric"><strong data-chokepoint-congestion>Normal</strong></div>
+          <div class="metric"><strong data-chokepoint-warnings>0 warnings</strong></div>
+          <div class="metric"><strong data-chokepoint-transits>0</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>+12.9% vs prior week</strong></div>
+        </div>
+        <p data-chokepoint-description>Active conflict.</p>
+        <p data-chokepoint-transits-note hidden></p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+      </section>
+    `;
+
+    const tool = document.querySelector('[data-live-chokepoint]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-chokepoint-status')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+            upstreamUnavailable: false,
+            chokepoints: [{
+              id: 'hormuz_strait',
+              disruptionScore: 70,
+              status: 'red',
+              congestionLevel: 'normal',
+              activeWarnings: 0,
+              aisDisruptions: 0,
+              description: 'Active conflict.',
+              transitSummary: {
+                dataAvailable: true,
+                todayTotal: 0,
+                wowChangePct: 12.9,
+              },
+            }],
+          }),
+        };
+      }
+      return anonymousSessionResponse();
+    };
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '—');
+    assert.notEqual(tool.querySelector('[data-chokepoint-transits]').textContent, '0');
+    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+12.9% vs prior week');
+    assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, false);
+    assert.match(
+      tool.querySelector('[data-chokepoint-transits-note]').textContent,
+      /not currently publishing a transit count for Strait of Hormuz for this period/,
+    );
+  });
+
+  // The mirror-parity test this replaces could not do its job: of its ten
+  // values only `11` reached a formatter, and it renders identically under
+  // every variant, so deleting the formatter outright still passed. The mirror
+  // is gone (one source now), and these are the cases that actually bite.
+  it('publishes a supplied transit count and withholds every unsupplied shape', () => {
+    // Positive control. The corpus suite derives this from whichever
+    // chokepoints have AIS traffic on the freeze date, which the monthly
+    // refresh can take to zero; this one is synthetic and always runs.
+    assert.equal(publishedTransitCountLabel(7), '7');
+    assert.equal(publishedTransitCountLabel('7'), '7');
+    assert.equal(publishedTransitCountLabel(1), '1', 'a single crossing is a real measurement');
+    assert.equal(publishedTransitCountLabel(1234), '1,234', 'counts are thousands-separated');
+    assert.equal(publishedTransitCountLabel('1,234'), '1,234', 'an already-formatted string round-trips');
+    assert.equal(publishedTransitCountLabel(1234567), '1,234,567');
+
+    // Withheld: absent, empty, and the zero-fill this exists to stop.
+    for (const value of [null, undefined, '', '0', 0, -1, '-3', 'Unavailable', NaN, Infinity]) {
+      assert.equal(publishedTransitCountLabel(value), null, `${String(value)} must withhold`);
+    }
+
+    // A fraction clears a bare `> 0` gate and then formats to the literal "0".
+    assert.equal(publishedTransitCountLabel(0.4), null, 'a sub-1 fraction must not render as "0"');
+    assert.equal(publishedTransitCountLabel(0.6), null);
+
+    // Strings are re-formatted from the parsed number, never echoed, so a
+    // malformed upstream value cannot reach the page verbatim.
+    assert.equal(publishedTransitCountLabel('1e3'), '1,000');
+    assert.equal(publishedTransitCountLabel('12abc'), null);
+  });
+
+  it('publishes a real AIS count even when PortWatch dropped the chokepoint', () => {
+    // dataAvailable is PortWatch history presence; today's count is the relay's
+    // AIS window. Gating the count on dataAvailable discarded live measurements
+    // whenever PortWatch went partial -- it dropped two chokepoints for ~4.5h
+    // on 2026-08-25 -- and then rendered the withhold note over real data.
+    const payload = {
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [{
+        id: 'suez',
+        disruptionScore: 30,
+        status: 'yellow',
+        congestionLevel: 'normal',
+        activeWarnings: 0,
+        aisDisruptions: 0,
+        description: 'Normal.',
+        transitSummary: { dataAvailable: false, todayTotal: 9, wowChangePct: 0 },
+      }],
+    };
+
+    const view = chokepointStatusViewModel(payload, 'suez', NOW);
+    assert.equal(view.todayTransits, '9', 'a measured AIS count must publish without PortWatch history');
+    assert.equal(view.weekMovement, null, 'week movement still needs PortWatch and must stay withheld');
+    assert.equal(view.partial, true, 'missing PortWatch history is still a partial pulse');
+  });
+
+  it('withholds without blaming the AIS feed', () => {
+    // dataAvailable is PortWatch history presence and the AIS window is a
+    // separate source, so the note must not name either one.
+    const note = withheldTransitCountSentence('Strait of Hormuz');
+    assert.equal(
+      note,
+      'World Monitor is not currently publishing a transit count for Strait of Hormuz for this period.',
+    );
+    assert.doesNotMatch(note, /AIS/, 'the note must not attribute the gap to a specific feed');
+    assert.match(withheldTransitCountSentence(''), /for this chokepoint for this period/);
   });
 
   it('aggregates same-period crisis summaries and names missing coverage', () => {
@@ -694,6 +864,230 @@ describe('crawlable live intelligence view models', () => {
       globalThis.fetch = originalFetch;
       if (originalWindow === undefined) delete globalThis.window;
       else globalThis.window = originalWindow;
+    }
+  });
+
+  it('preserves SSR country and chokepoint pulse values when live refresh fails', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/ukraine/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="UA" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>71.4</span><small data-live-band>Elevated</small></strong></div>
+          <div class="metric"><strong data-live-trend>+1.2</strong></div>
+          <div class="metric"><strong data-live-advisory>Level 4</strong></div>
+          <div class="metric"><strong data-live-sanctions>12</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-chokepoint-score>72</span><small data-chokepoint-band>Red</small></strong></div>
+          <div class="metric"><strong data-chokepoint-congestion>High</strong></div>
+          <div class="metric"><strong data-chokepoint-warnings>3 warnings</strong></div>
+          <div class="metric"><strong data-chokepoint-transits>11</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>+2.5%</strong></div>
+        </div>
+        <p data-chokepoint-description>Elevated shipping warnings.</p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+
+    const country = document.querySelector('[data-live-country-risk]');
+    const chokepoint = document.querySelector('[data-live-chokepoint]');
+    assert.equal(hasPublishedLivePulse(country), true);
+    assert.equal(hasPublishedLivePulse(chokepoint), true);
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      throw new Error('offline');
+    };
+    try {
+      await loadCountryRisk(country);
+      await loadChokepoint(chokepoint);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(country.querySelector('[data-live-score]').textContent, '71.4');
+    assert.equal(country.querySelector('[data-live-band]').textContent, 'Elevated');
+    assert.equal(country.querySelector('[data-live-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
+    assert.match(country.querySelector('[data-live-status]').textContent, /published pulse/i);
+    assert.equal(country.dataset.state, 'error');
+
+    assert.equal(chokepoint.querySelector('[data-chokepoint-score]').textContent, '72');
+    assert.equal(chokepoint.querySelector('[data-chokepoint-band]').textContent, 'Red');
+    assert.equal(chokepoint.querySelector('[data-live-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
+    assert.match(chokepoint.querySelector('[data-live-status]').textContent, /published pulse/i);
+    assert.equal(chokepoint.dataset.state, 'error');
+  });
+
+  it('keeps SSR datetime after an undated partial country hydrate so later soft failures preserve sub-signals', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/andorra/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="AD" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>—</span><small data-live-band>No current score</small></strong></div>
+          <div class="metric"><strong data-live-trend>Unavailable</strong></div>
+          <div class="metric"><strong data-live-advisory>Exercise Normal Precautions</strong></div>
+          <div class="metric"><strong data-live-sanctions>None in feed</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-country-risk]');
+    const originalFetch = globalThis.fetch;
+    let phase = 'partial';
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      if (phase === 'partial') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            upstreamUnavailable: false,
+            advisoryLevel: 'Exercise Increased Caution',
+            sanctionsCount: 2,
+            fetchedAt: 0,
+            cii: undefined,
+          }),
+        };
+      }
+      throw new Error('offline');
+    };
+    try {
+      await loadCountryRisk(tool);
+      assert.equal(
+        tool.querySelector('[data-live-updated]').getAttribute('datetime'),
+        '2026-08-30T12:00:00.000Z',
+        'undated partial must retain the SSR datetime marker',
+      );
+      assert.equal(tool.querySelector('[data-live-advisory]').textContent, 'Exercise Increased Caution');
+      assert.equal(hasPublishedLivePulse(tool), true);
+
+      phase = 'fail';
+      await loadCountryRisk(tool);
+      assert.equal(tool.querySelector('[data-live-advisory]').textContent, 'Exercise Increased Caution');
+      assert.equal(tool.querySelector('[data-live-sanctions]').textContent, '2 designated entities');
+      // This tile has no numeric score on screen (it SSR'd partial), so the
+      // status must not claim the published pulse is being shown.
+      assert.equal(
+        tool.querySelector('[data-live-status]').textContent,
+        'Live refresh unavailable — advisory and sanctions only',
+      );
+      assert.equal(tool.dataset.state, 'error');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('does not claim a published pulse is shown after a partial hydrate wiped the score', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/ukraine/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="UA" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>62</span><small data-live-band>Elevated</small></strong></div>
+          <div class="metric"><strong data-live-trend>+1.2</strong></div>
+          <div class="metric"><strong data-live-advisory>Do Not Travel</strong></div>
+          <div class="metric"><strong data-live-sanctions>12 designated entities</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-country-risk]');
+    const originalFetch = globalThis.fetch;
+    let phase = 'ready';
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      if (phase === 'ready') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            upstreamUnavailable: false,
+            advisoryLevel: 'Do Not Travel',
+            sanctionsCount: 12,
+            fetchedAt: Date.now(),
+            cii: undefined,
+          }),
+        };
+      }
+      throw new Error('offline');
+    };
+    try {
+      // Positive control: while the published score is still on screen, the
+      // preserve path may legitimately claim it.
+      assert.match(tool.querySelector('[data-live-score]').textContent, /\d/);
+
+      // A partial hydrate replaces the published score with an em-dash...
+      await loadCountryRisk(tool);
+      assert.equal(tool.querySelector('[data-live-score]').textContent, '—');
+
+      // ...so a later soft failure must not assert the published pulse is visible.
+      phase = 'fail';
+      await loadCountryRisk(tool);
+      assert.equal(
+        tool.querySelector('[data-live-status]').textContent,
+        'Live refresh unavailable — advisory and sanctions only',
+        'must not claim "showing published pulse" once the score has been wiped',
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('labels a retained SSR stamp as the published pulse, not a live retrieval', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/countries/andorra/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-country-risk data-country-code="AD" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid aria-busy="false">
+          <div class="metric"><strong><span data-live-score>—</span><small data-live-band>No current score</small></strong></div>
+          <div class="metric"><strong data-live-trend>Unavailable</strong></div>
+          <div class="metric"><strong data-live-advisory>Exercise Normal Precautions</strong></div>
+          <div class="metric"><strong data-live-sanctions>None in feed</strong></div>
+        </div>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+        <button type="button" data-live-refresh>Refresh</button>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-country-risk]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          upstreamUnavailable: false,
+          advisoryLevel: 'Exercise Increased Caution',
+          sanctionsCount: 2,
+          fetchedAt: 0,
+          cii: undefined,
+        }),
+      };
+    };
+    try {
+      await loadCountryRisk(tool);
+      const updated = tool.querySelector('[data-live-updated]').textContent;
+      // The advisory below was fetched just now; the retained stamp belongs to
+      // the published pulse, so it must not be labelled "Retrieved".
+      assert.doesNotMatch(updated, /^Retrieved/, `stale stamp labelled as a live retrieval: ${updated}`);
+      assert.match(updated, /^Published pulse /);
+      assert.match(updated, /refreshed live/);
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

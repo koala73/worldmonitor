@@ -87,6 +87,9 @@
     "foodStocksMarketingYear": "Marketing year",
     "foodStocksRatio": "Stocks-to-use",
     "foodStocksWorld": "World",
+    "defenseIndustrialBase": {
+      "proLocked": "Upgrade to PRO for arms-supplier dependency and military capacity"
+    },
     "demographicsCapability": {
       "title": "Demographics & Workforce",
       "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
@@ -111,6 +114,68 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Five-Factor Resilience Scorecard",
+      "help": "Frozen v1 evidence scores for food, energy, demographics, technology, and defense. Expand a row to inspect inputs, source provenance, and missing-data reasons.",
+      "loading": "Loading the five-factor scorecard…",
+      "unavailable": "Five-factor scorecard unavailable.",
+      "proLocked": "Upgrade to PRO for the five-factor resilience scorecard",
+      "insufficient": "Insufficient data",
+      "notAvailable": "Not available",
+      "noEvidence": "No evidence is available for this pillar.",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% coverage",
+      "methodologyVersion": "Methodology v{{version}}",
+      "methodologyLink": "View methodology",
+      "pillars": {
+        "food": "Food",
+        "energy": "Energy",
+        "demographics": "Demographics",
+        "technology": "Technology",
+        "defense": "Defense"
+      },
+      "reasons": {
+        "source-unavailable": "Source unavailable",
+        "country-unavailable": "Country unavailable",
+        "invalid-value": "Invalid source value",
+        "stale": "Evidence is stale",
+        "coverage-below-floor": "Coverage below the scoring floor",
+        "required-group-missing": "Required evidence group missing",
+        "missing-population": "Population unavailable",
+        "redistribution-blocked": "Source redistribution is not permitted",
+        "pillar-unavailable": "Pillar unavailable"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "Production balance",
+        "food_stocksToUse": "Stocks to use",
+        "food_waterSecurity": "Water security",
+        "food_importDiversity": "Import diversity",
+        "energy_productionBalance": "Production balance",
+        "energy_lowCarbonShare": "Low-carbon energy share",
+        "energy_gridEfficiency": "Grid efficiency",
+        "demographics_totalDependency": "Total dependency",
+        "demographics_oldAgeDependency": "Old-age dependency",
+        "demographics_workingAgeProjection": "Working-age projection",
+        "demographics_tertiaryEnrollment": "Tertiary enrollment",
+        "demographics_researchersPerMillion": "Researchers per million",
+        "demographics_stemGraduateShare": "STEM graduate share",
+        "demographics_trainedIndustrialShare": "Trained industrial workforce share",
+        "demographics_manufacturingEmploymentShare": "Manufacturing employment share",
+        "technology_internetUse": "Internet use",
+        "technology_mobileSubscriptions": "Mobile subscriptions",
+        "technology_fixedBroadband": "Fixed broadband",
+        "technology_rdSpend": "Research and development spending",
+        "technology_researchersPerMillion": "Researchers per million",
+        "technology_stemGraduateShare": "STEM graduate share",
+        "technology_electricityAccess": "Electricity access",
+        "defense_expenditureUsd": "Military expenditure",
+        "defense_expenditurePctGdp": "Military burden",
+        "defense_personnel": "Armed forces personnel",
+        "defense_industrialBalance": "Defense industrial balance",
+        "defense_supplierDiversity": "Arms supplier diversity"
+      }
     },
     "commodities": {
       "wheat": "Wheat",
@@ -599,6 +664,8 @@
       "recent": "Recent Searches",
       "empty": "Search data or run commands",
       "noResults": "No results",
+      "resultAnnouncement_one": "{{count}} result for {{query}}",
+      "resultAnnouncement_other": "{{count}} results for {{query}}",
       "commands": "Commands",
       "results": "Results",
       "addPanel": "Add",
@@ -1015,6 +1082,7 @@
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
       "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Upgrade to PRO for mine and refinery country shares with concentration (HHI) by stage.",
       "risk": "Risk",
       "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart."
     },
@@ -1895,6 +1963,16 @@
       "loading": "Connecting to Telegram relay...",
       "empty": "No messages available",
       "disabled": "Telegram relay not active",
+      "watchlistPlaceholder": "Add public channel by @username",
+      "resolving": "Resolving channel...",
+      "invalidUsername": "Use a public Telegram @username",
+      "resolveFailed": "Unable to resolve channel",
+      "watchlistLimit": "You can follow up to {{count}} custom channels",
+      "previewMembers": "{{count}} members",
+      "addChannel": "Add channel",
+      "added": "Added",
+      "remove": "Remove",
+      "custom": "Custom",
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
@@ -2039,6 +2117,22 @@
       "paper": "Paper",
       "premium": "Premium",
       "asOf": "As of {{date}}",
+      "divergence": {
+        "compositeValue": "Physical stress index: {{value}} / 100",
+        "fiveDayTrend": "Five-trading-day premium trend",
+        "twentyDayTrend": "Twenty-trading-day premium trend",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Elevated",
+          "stressed": "Stressed",
+          "extreme": "Extreme"
+        },
+        "states": {
+          "insufficientHistory": "Warming up: {{count}} / {{required}} trading points",
+          "staleInput": "Physical benchmark is stale",
+          "missingInput": "Divergence signal unavailable"
+        }
+      },
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
@@ -2328,6 +2422,26 @@
         "unavailable": "FSI data unavailable",
         "failedToLoad": "Failed to load"
       }
+    },
+    "supplyVulnerability": {
+      "title": "Commodity Vulnerability",
+      "help": "Country exposure by commodity from supplier concentration, maritime transit, and available strategic buffers.",
+      "loading": "Loading commodity vulnerability…",
+      "unavailable": "Commodity vulnerability data unavailable",
+      "noCoverage": "Insufficient evidence for this country",
+      "unknown": "Unknown",
+      "concentration": "Concentration",
+      "transit": "Transit",
+      "buffer": "Buffer",
+      "sources": "Sources",
+      "methodology": "Methodology",
+      "hormuzTitle": "Commodity dependencies",
+      "dependentCountries": "Dependent countries",
+      "dependentCommodities": "Dependent commodities",
+      "stateOk": "Current",
+      "stateStale": "Stale input",
+      "stateInsufficient": "Insufficient data",
+      "proLocked": "Upgrade to PRO for commodity vulnerability scoring"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
@@ -2732,6 +2846,18 @@
       "rubBase": "Bank of Russia — RUB per 1 unit",
       "rubPerUnit": "RUB per unit",
       "sourceCbr": "Source: Bank of Russia"
+    },
+    "passkeyOffer": {
+      "title": "Save a passkey?",
+      "body": "Sign in next time with your fingerprint, face, or device PIN — no password to remember.",
+      "accept": "Save passkey",
+      "dismiss": "Not now",
+      "close": "Close",
+      "announce": "Save a passkey to sign in faster next time.",
+      "busy": "Waiting for your device…",
+      "succeeded": "Passkey saved. You can use it next time you sign in.",
+      "retryable": "That didn't finish. You can try again.",
+      "failed": "We couldn't save a passkey on this device."
     }
   },
   "popups": {
@@ -3073,6 +3199,10 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
+      "climbRate": "CLIMB RATE",
+      "manufacturer": "MANUFACTURER",
+      "owner": "OWNER",
+      "builtYear": "YEAR BUILT",
       "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
     },
     "militaryVessel": {
@@ -3108,6 +3238,7 @@
       "activity": "ACTIVITY",
       "primary": "PRIMARY",
       "trackedAircraft": "TRACKED AIRCRAFT",
+      "showLess": "Show less",
       "vesselActivity": {
         "exercise": "Naval Exercise",
         "deployment": "Naval Deployment",
@@ -3420,6 +3551,8 @@
   },
   "preferences": {
     "display": "Display",
+    "panelFontScale": "Text size",
+    "followGlobalFontScale": "Use global",
     "intelligence": "Intelligence",
     "media": "Media",
     "panels": "Panels",

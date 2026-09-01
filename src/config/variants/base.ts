@@ -82,6 +82,8 @@ export const REFRESH_INTERVALS = {
   economicCalendar: 60 * 60 * 1000,
   cotPositioning: 60 * 60 * 1000,
   goldIntelligence: 5 * 60 * 1000,
+  nqPulse: 5 * 60 * 1000,
+  nqCatalysts: 5 * 60 * 1000,
   aaiiSentiment: 60 * 60 * 1000, // weekly data; hourly refresh is sufficient
   marketBreadth: 60 * 60 * 1000, // seeded daily; hourly refresh is sufficient
   newsMarketCorrelation: 15 * 60 * 1000, // matches the timestamped market-series seed cadence

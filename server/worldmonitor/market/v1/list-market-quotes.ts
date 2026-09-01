@@ -361,7 +361,15 @@ function seedUnavailableResponse(symbols: string[]): ListMarketQuotesResponse {
     skipReason: '',
     rateLimited: false,
     unavailableSymbols: symbols.map((symbol) => ({ symbol, reason: REASON.seedUnavailable })),
+    asOf: '',
   };
+}
+
+function withQuoteAsOf(
+  response: Omit<ListMarketQuotesResponse, 'asOf'> & { asOf?: string },
+  asOf: string | undefined,
+): ListMarketQuotesResponse {
+  return { ...response, asOf: asOf ?? '' };
 }
 
 export async function listMarketQuotes(
@@ -388,7 +396,12 @@ export async function listMarketQuotes(
   }
 
   // No symbol filter: the caller wants the seed universe as-is.
-  if (accepted.length === 0) return { ...bootstrap, unavailableSymbols: bootstrap.unavailableSymbols ?? [] };
+  if (accepted.length === 0) {
+    return withQuoteAsOf(
+      { ...bootstrap, unavailableSymbols: bootstrap.unavailableSymbols ?? [] },
+      bootstrap.asOf,
+    );
+  }
 
   const seeded = filterMarketQuotes(bootstrap, accepted);
   const seededBySymbol = new Map(seeded.quotes.map((quote) => [quote.symbol, quote]));
@@ -401,13 +414,13 @@ export async function listMarketQuotes(
 
   // Every requested symbol is seeded — the whole point of the seed-first order.
   if (missing.length === 0) {
-    return {
+    return withQuoteAsOf({
       quotes: seeded.quotes,
       finnhubSkipped: false,
       skipReason: '',
       rateLimited: false,
       unavailableSymbols: overflow,
-    };
+    }, bootstrap.asOf);
   }
 
   const resolved = await resolveMissingSymbols(missing);
@@ -438,11 +451,11 @@ export async function listMarketQuotes(
   }
 
   const skipped = !resolved.providerConfigured;
-  return {
+  return withQuoteAsOf({
     quotes,
     finnhubSkipped: skipped,
     skipReason: skipped ? providerNotConfiguredReason() : '',
     rateLimited: resolved.rateLimited,
     unavailableSymbols: [...unavailable, ...overflow],
-  };
+  }, bootstrap.asOf);
 }

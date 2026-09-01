@@ -165,9 +165,7 @@
       "energyMix": "전원 구성",
       "coal": "석탄",
       "noMajorDisruptions": "보고된 주요 중단 없음",
-      "activeDisruptions_one": "활성 중단 {{count}}건",
       "activeDisruptions_other": "활성 중단 {{count}}건",
-      "activeSignals_one": "활성 신호 {{count}}건",
       "activeSignals_other": "활성 신호 {{count}}건",
       "aviationSource": "항공 모니터링",
       "hazardSource": "국가 인텔리전스 신호",
@@ -232,6 +230,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "5요인 회복력 스코어카드",
+      "help": "식품, 에너지, 인구, 기술, 방위 분야의 v1 고정 증거 점수입니다. 행을 확장하여 입력값, 출처 정보, 데이터 누락 이유를 확인하세요.",
+      "loading": "5요인 스코어카드 로딩 중…",
+      "unavailable": "5요인 스코어카드를 사용할 수 없습니다.",
+      "proLocked": "5요인 회복력 스코어카드를 사용하려면 PRO로 업그레이드하세요",
+      "insufficient": "데이터 부족",
+      "notAvailable": "사용 불가",
+      "noEvidence": "이 항목에 대한 증거가 없습니다.",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% 커버리지",
+      "methodologyVersion": "방법론 v{{version}}",
+      "methodologyLink": "방법론 보기",
+      "pillars": {
+        "food": "식품",
+        "energy": "에너지",
+        "demographics": "인구 통계",
+        "technology": "기술",
+        "defense": "국방"
+      },
+      "reasons": {
+        "source-unavailable": "출처 없음",
+        "country-unavailable": "국가 정보 없음",
+        "invalid-value": "유효하지 않은 출처 값",
+        "stale": "증거가 오래됨",
+        "coverage-below-floor": "점수 산정 기준 미달",
+        "required-group-missing": "필수 증거 그룹 누락",
+        "missing-population": "인구 데이터 없음",
+        "redistribution-blocked": "출처 재배포 불가",
+        "pillar-unavailable": "지표 항목 사용 불가"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "생산 균형",
+        "food_stocksToUse": "사용 가능 재고",
+        "food_waterSecurity": "물 안보",
+        "food_importDiversity": "수입 다양성",
+        "energy_productionBalance": "생산 균형",
+        "energy_lowCarbonShare": "저탄소 에너지 비중",
+        "energy_gridEfficiency": "전력망 효율",
+        "demographics_totalDependency": "총 부양비",
+        "demographics_oldAgeDependency": "고령 부양비",
+        "demographics_workingAgeProjection": "생산가능인구 전망",
+        "demographics_tertiaryEnrollment": "고등교육 진학률",
+        "demographics_researchersPerMillion": "100만 명당 연구자 수",
+        "demographics_stemGraduateShare": "STEM 졸업생 비중",
+        "demographics_trainedIndustrialShare": "훈련된 산업 인력 비중",
+        "demographics_manufacturingEmploymentShare": "제조업 고용 비중",
+        "technology_internetUse": "인터넷 사용",
+        "technology_mobileSubscriptions": "모바일 가입자",
+        "technology_fixedBroadband": "유선 광대역",
+        "technology_rdSpend": "연구개발 지출",
+        "technology_researchersPerMillion": "100만 명당 연구자 수",
+        "technology_stemGraduateShare": "STEM 졸업생 비율",
+        "technology_electricityAccess": "전기 접근성",
+        "defense_expenditureUsd": "군사 지출",
+        "defense_expenditurePctGdp": "군사 부담",
+        "defense_personnel": "무장군대 인원",
+        "defense_industrialBalance": "방위 산업 균형",
+        "defense_supplierDiversity": "무기 공급처 다양성"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "PRO로 업그레이드하여 무기 공급업체 의존성 및 군사 역량 확인"
     }
   },
   "header": {
@@ -530,6 +593,7 @@
       "recent": "최근 검색",
       "empty": "데이터를 검색하거나 명령어를 실행하세요",
       "noResults": "결과 없음",
+      "resultAnnouncement_other": "'{{query}}' 검색 결과 {{count}}개",
       "commands": "명령어",
       "results": "결과",
       "seeAllCommands": "모든 명령 보기",
@@ -915,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "PRO로 업그레이드하여 채광 및 제련소 국가별 점유율을 단계별 집중도(HHI)로 확인"
     },
     "tradePolicy": {
       "tariffs": "관세",
@@ -1404,7 +1469,6 @@
       "clusters": "클러스터",
       "alertsLabel": "알림",
       "alert": "알림",
-      "sources_one": "{{count}}개 출처",
       "sources_other": "{{count}}개 출처",
       "briefTech": "기술 브리프",
       "briefCommodity": "상품 브리프",
@@ -1751,6 +1815,16 @@
       "loading": "Telegram 릴레이에 연결 중...",
       "empty": "사용 가능한 메시지 없음",
       "disabled": "Telegram 릴레이가 비활성 상태입니다",
+      "watchlistPlaceholder": "@username으로 공개 채널 추가",
+      "resolving": "채널 검색 중...",
+      "invalidUsername": "공개 Telegram @username을 사용하세요",
+      "resolveFailed": "채널을 찾을 수 없습니다",
+      "watchlistLimit": "맞춤 채널은 최대 {{count}}개까지 팔로우할 수 있습니다",
+      "previewMembers": "멤버 {{count}}명",
+      "addChannel": "채널 추가",
+      "added": "추가됨",
+      "remove": "삭제",
+      "custom": "맞춤",
       "filterAll": "전체",
       "filterBreaking": "속보",
       "filterConflict": "분쟁",
@@ -1962,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "물리적 스트레스 지수: {{value}} / 100",
+        "fiveDayTrend": "5거래일 프리미엄 추세",
+        "regimes": {
+          "normal": "정상",
+          "elevated": "상승",
+          "stressed": "스트레스",
+          "extreme": "극심"
+        },
+        "states": {
+          "insufficientHistory": "워밍업 중: {{count}} / {{required}} 거래 데이터 포인트",
+          "staleInput": "물리적 벤치마크 만료됨",
+          "missingInput": "발산 신호 불가능"
+        },
+        "twentyDayTrend": "20거래일 프리미엄 추세"
       }
     },
     "crypto": {
@@ -2036,17 +2126,12 @@
       },
       "time": {
         "justNow": "방금",
-        "hoursAgo_one": "{{count}}시간 전",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_one": "{{count}}일 전",
         "daysAgo_other": "{{count}}일 전"
       },
       "filters": {
-        "alert_one": "{{count}} 알림",
         "alert_other": "{{count}} 알림",
-        "warning_one": "{{count}} 경고",
         "warning_other": "{{count}} 경고",
-        "watch_one": "{{count}} 감시",
         "watch_other": "{{count}} 감시"
       },
       "errors": {
@@ -2118,6 +2203,26 @@
         "failedToLoad": "로드 실패"
       },
       "cissStale": "ECB가 더 최신 값을 발표하지 않았습니다 — 이 수치가 최신이 아닐 수 있습니다."
+    },
+    "supplyVulnerability": {
+      "title": "원자재 취약성",
+      "help": "공급자 집중도, 해상 운송 및 이용 가능한 전략 비축량을 바탕으로 한 국가별 원자재 노출도입니다.",
+      "loading": "원자재 취약성을 불러오는 중…",
+      "unavailable": "원자재 취약성 데이터를 사용할 수 없습니다",
+      "noCoverage": "이 국가에 대한 근거가 부족합니다",
+      "unknown": "알 수 없음",
+      "concentration": "집중도",
+      "transit": "운송",
+      "buffer": "비축량",
+      "sources": "출처",
+      "methodology": "방법론",
+      "hormuzTitle": "원자재 의존도",
+      "dependentCountries": "의존 국가",
+      "dependentCommodities": "의존 원자재",
+      "stateOk": "현재",
+      "stateStale": "오래된 입력",
+      "stateInsufficient": "데이터 부족",
+      "proLocked": "PRO로 업그레이드하여 원자재 취약성 점수 확인"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>호르무즈 무역 추적기</strong> 세계에서 가장 중요한 석유 병목지점인 호르무즈 해협을 통과하는 AIS 선박 실시간 추적. 유조선 수, 중단 이벤트, 주간 흐름 변화를 모니터링. 전 세계 석유 공급의 약 20%가 매일 이곳을 통과.",
@@ -2209,7 +2314,6 @@
       "rationale": "근거:",
       "driver": "동인:",
       "appliesToNext": "다음 AI 재생성에 적용",
-      "signals_one": "{{count}}개 신호",
       "signals_other": "{{count}}개 신호",
       "disclaimer": "AI 생성 거래 신호는 정보 제공 목적입니다. 투자 조언이 아닙니다. 항상 자신의 조사를 수행하세요.",
       "unavailable": "AI 시장 영향은 각 예측 실행 후 생성됩니다. 잠시 후 다시 확인하세요."
@@ -2440,7 +2544,6 @@
         "new": "신규",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}}개 지정",
       "designations_other": "{{count}}개 지정",
       "fallbacks": {
         "unattributed": "미귀속",
@@ -2478,9 +2581,7 @@
         "updated": "{{time}}에 업데이트됨"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}시간 전",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_one": "{{count}}일 전",
         "daysAgo_other": "{{count}}일 전"
       },
       "confidence": {
@@ -2510,7 +2611,6 @@
     "correlation": {
       "loading": "데이터를 기다리는 중입니다...",
       "empty": "검출된 활성 수렴이 없습니다.",
-      "signals_one": "{{count}}개 신호",
       "signals_other": "{{count}}개 신호",
       "analyzing": "분석 중입니다...",
       "viewOnMap": "지도에서 보기"
@@ -2537,16 +2637,11 @@
         "industrial": "industrial",
         "strategic": "strategic"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
       "sources_other": "{{count}} src",
       "age": {
-        "minutesAgo_one": "{{count}}분 전",
         "minutesAgo_other": "{{count}}분 전",
-        "hoursAgo_one": "{{count}}시간 전",
         "hoursAgo_other": "{{count}}시간 전",
-        "daysAgo_one": "{{count}}일 전",
         "daysAgo_other": "{{count}}일 전"
       }
     },
@@ -2663,6 +2758,18 @@
       "rubBase": "러시아 중앙은행 — 단위당 루블",
       "rubPerUnit": "단위당 루블",
       "sourceCbr": "출처: 러시아 중앙은행"
+    },
+    "passkeyOffer": {
+      "title": "패스키를 저장하시겠어요?",
+      "body": "다음에는 지문, 얼굴, 또는 기기 PIN으로 로그인하세요 — 기억할 비밀번호가 없습니다.",
+      "accept": "패스키 저장",
+      "dismiss": "나중에",
+      "close": "닫기",
+      "announce": "다음에 더 빠르게 로그인하려면 패스키를 저장하세요.",
+      "busy": "기기 대기 중…",
+      "succeeded": "패스키가 저장되었습니다. 다음에 로그인할 때 사용할 수 있습니다.",
+      "retryable": "완료되지 않았습니다. 다시 시도할 수 있습니다.",
+      "failed": "이 기기에서 패스키를 저장할 수 없었습니다."
     }
   },
   "popups": {
@@ -3004,7 +3111,11 @@
       "heading": "방위",
       "hexCode": "HEX 코드",
       "squawk": "스쿼크",
-      "attribution": "출처: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "출처: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "상승률",
+      "manufacturer": "제조사",
+      "owner": "운영사",
+      "builtYear": "제조년도"
     },
     "militaryVessel": {
       "aisDark": "AIS 소실",
@@ -3049,7 +3160,8 @@
       "moreVessels": "+{{count}}척 추가 함정",
       "vesselsCount": "{{count}}척 함정",
       "vessels": "함정",
-      "trackedVessels": "추적 중인 함정"
+      "trackedVessels": "추적 중인 함정",
+      "showLess": "축소"
     },
     "naturalEvent": {
       "closed": "종료",
@@ -3338,7 +3450,9 @@
     "fontFamily": "글꼴 패밀리",
     "fontFamilyDesc": "기술적 모양을 위해 모노스페이스, 더 쉬운 읽기를 위해 시스템 기본값.",
     "fontMono": "모노스페이스",
-    "fontSystem": "시스템 기본값"
+    "fontSystem": "시스템 기본값",
+    "panelFontScale": "텍스트 크기",
+    "followGlobalFontScale": "전역 설정 사용"
   },
   "contextMenu": {
     "openCountryBrief": "국가 개요 열기",
@@ -3437,7 +3551,8 @@
   "auth": {
     "signIn": "로그인",
     "createAccount": "계정 만들기",
-    "settings": "설정"
+    "settings": "설정",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP 연결",

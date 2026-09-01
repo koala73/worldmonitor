@@ -32,7 +32,7 @@
     "proF6": "Recherche de vols et comparaison de prix",
     "proF7": "Moteur de règles d'alerte — déclencheurs personnalisés, heures de silence, canaux chiffrés AES-256",
     "proF8": "Watchlist de marché, macro et banques centrales",
-    "proF9": "AI Market Implications et Regional Intelligence (Bientôt : surveillance orbitale, couches de carte premium, historique étendu)",
+    "proF9": "Implications de marché IA et renseignement régional",
     "choosePlan": "Choisissez votre offre",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Pour les équipes qui ont besoin d'un monitoring partagé, d'un accès API, d'options de déploiement, d'applications TV et d'un support direct.",
@@ -48,10 +48,11 @@
     "entF10": "Déploiement cloud, on-premises ou air-gapped",
     "entF11": "Onboarding et support dédiés",
     "entCta": "Contacter les ventes",
-    "freeF2": "Flux organisés, sources attribuées et couches cartographiques"
+    "freeF2": "Flux organisés, sources attribuées et couches cartographiques",
+    "proF10": "Mémoire Intel — recherche historique, chronologies et recherche d'événements similaires"
   },
   "whyUpgrade": {
-    "title": "Pourquoi passer Pro",
+    "title": "Pourquoi passer à World Monitor Pro ?",
     "noiseTitle": "Sachez en premier",
     "noiseDesc": "Anomalie AIS → flambée du Brent → votre Slack en moins d'une minute. Du signal, pas des titres.",
     "fasterTitle": "Demandez n'importe quoi",
@@ -71,7 +72,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "BUREAU DE LIVRAISON",
-    "title": "Votre bureau de renseignement personnel",
+    "title": "Qu'est-ce que le bureau d'intelligence personnalisé ?",
     "body": "Jusqu'à 30 éléments classés par envoi, dédupliqués entre les sources, notés selon votre liste de surveillance. Choisissez votre cadence — quotidienne, bi-quotidienne ou hebdomadaire — avec une Évaluation IA et des Signaux à surveiller livrés à Slack, Discord, Telegram, Email ou webhook.",
     "closer": "Pas une newsletter. Un analyste.",
     "channels": "Slack · Discord · Telegram · Email · Webhook · Chiffrement AES-256 · Heures de silence"
@@ -93,7 +94,7 @@
     "asToldTo": "rapporté à"
   },
   "audience": {
-    "title": "Fait pour ceux qui ont besoin de signal vite",
+    "title": "Pour qui World Monitor est-il conçu ?",
     "investorsTitle": "Investisseurs et gestionnaires de portefeuille",
     "investorsDesc": "Suivez actions globales, objectifs d'analystes, métriques de valorisation et indicateurs macro aux côtés des signaux de risque géopolitique.",
     "tradersTitle": "Traders énergie et matières premières",
@@ -108,7 +109,7 @@
     "teamsDesc": "Passez de l'usage individuel à des workflows partagés, accès API, apps TV et déploiements gérés."
   },
   "dataCoverage": {
-    "title": "Ce que World Monitor suit",
+    "title": "Que surveille World Monitor ?",
     "subtitle": "Domaines de service ingérés simultanément. Marchés, macroéconomie, géopolitique, énergie, infrastructure — tout normalisé et rendu sur un globe WebGL.",
     "markets": "Marchés financiers et actions",
     "marketsDesc": "Analyse boursière globale, matières premières, crypto, flux ETF, objectifs d'analystes et données macro FRED",
@@ -145,7 +146,7 @@
   },
   "proShowcase": {
     "proTier": "NIVEAU PRO",
-    "title": "Votre analyste IA qui ne dort jamais",
+    "title": "Que fait l'analyste IA de World Monitor ?",
     "subtitle": "Le tableau de bord gratuit vous montre le monde. Pro vous donne un analyste à interroger, un digest auquel s'abonner et des primitives sur lesquelles construire. Actions, macro, risque géopolitique — et les connexions entre eux.",
     "equityResearch": "Recherche actions",
     "equityResearchDesc": "Analyse boursière globale avec visualisation des états financiers, objectifs de prix d'analystes et métriques de valorisation. Suivez ce qui fait bouger les marchés.",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "PIB, inflation, taux d'intérêt et cycles de croissance. Données macro corrélées avec signaux de marché et événements géopolitiques.",
     "riskMonitoring": "Monitoring de risque et scénarios",
     "riskMonitoringDesc": "Scoring de risque global, analyse de scénarios et évaluation de risque géopolitique. Détection de convergences entre signaux de marché et politiques.",
-    "orbitalSurveillance": "Surveillance orbitale",
-    "orbitalSurveillanceDesc": "(Bientôt) Prédictions de passages orbitaux, analyse de fréquence de revisite et alertes de fenêtre de prise. Sachez quand les satellites de renseignement observent vos zones d'intérêt.",
     "morningBriefs": "Bureau de renseignement personnel",
     "morningBriefsDesc": "Jusqu'à 30 histoires classées par digest, dédupliquées entre les sources. Choisissez une cadence quotidienne, bi-quotidienne ou hebdomadaire — ou des alertes en temps réel pour les événements critiques. Évaluation IA et Signaux à surveiller livrés à Slack, Discord, Telegram, Email ou webhook. Ce n'est pas une infolettre — c'est un analyste.",
     "oneKey": "Services en direct, 1 Clé",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky et plus — tous actifs, sans inscriptions séparées.",
-    "deliveryLabel": "Choisissez comment le renseignement vous trouve"
+    "deliveryLabel": "Choisissez comment le renseignement vous trouve",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Modélisez un choc de coût entre pays et secteurs. Classez la vulnérabilité des matières premières selon la dépendance aux points d'étranglement. Suivez la concentration mine-raffinerie et la divergence prime physique SGE–COMEX — la série qui bouge avant le gros titre.",
+    "roadmapNote": "En préparation : surveillance orbitale, historique plus long, couches de carte premium."
   },
   "slackMock": {
     "morningBrief": "Brief matinal",
@@ -174,7 +176,7 @@
   },
   "apiSection": {
     "apiTier": "NIVEAU API",
-    "title": "Renseignement programmatique",
+    "title": "Comment les API et les agents utilisent-ils World Monitor ?",
     "subtitle": "Pour développeurs, analystes et équipes qui construisent sur les données World Monitor. Séparé de Pro — utilisez les deux ou l'un des deux.",
     "restApi": "API REST dans les domaines de service — SDKs officiels pour JavaScript, Python, Ruby, Go",
     "authenticated": "Authentifié par clé, rate-limité par niveau",
@@ -190,7 +192,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "NIVEAU ENTERPRISE",
-    "title": "Infrastructure de renseignement",
+    "title": "Qu'inclut World Monitor Enterprise ?",
     "subtitle": "Pour gouvernements, institutions, salles de marché et organisations qui ont besoin de la plateforme complète avec sécurité maximale, agents IA, apps TV et profondeur de données.",
     "security": "Sécurité de niveau gouvernemental",
     "securityDesc": "Déploiement air-gapped, Docker on-premises, tenant cloud dédié, parcours SOC 2 Type II, SSO/MFA et audit complet.",
@@ -227,7 +229,7 @@
     "contactFailed": "Échec de l'envoi. Écrivez à enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Comparer les niveaux",
+    "title": "Comment les plans de World Monitor se comparent-ils ?",
     "feature": "Fonctionnalité",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -271,10 +273,25 @@
     "fKeyAuth": "Auth par clé",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "La plateforme de base reste gratuite. Les offres payantes débloquent recherche actions, analytique macro, briefings IA et usage organisationnel.",
-    "f50plus": "Disponible"
+    "f50plus": "Disponible",
+    "sourcesRow": "Sources",
+    "followedRow": "Pays suivis",
+    "tabsRow": "Onglets du tableau de bord",
+    "fUnlimited": "Illimité",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Toutes les couches",
+    "fLayersNoResilience": "Toutes sauf Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Cotations de marché : 30s",
+    "panelsRow": "Panneaux activés",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tous"
   },
   "faq": {
-    "title": "Questions fréquentes",
+    "title": "Questions fréquemment posées sur World Monitor Pro",
     "q1": "World Monitor est-il toujours gratuit ?",
     "a1": "Oui. La plateforme principale reste gratuite. Pro ajoute la recherche actions, l'analyse macro et les briefings IA. Pro Business ajoute la licence commerciale et l'export de données. Enterprise ajoute les déploiements d'équipe et les applications TV.",
     "q2": "Pourquoi payer pour Pro ?",
@@ -298,12 +315,12 @@
     "q11": "Quel est le degré de personnalisation du digest ?",
     "a11": "Choisissez votre cadence — quotidienne, bi-quotidienne ou hebdomadaire. Nous re-notons chaque histoire surveillée selon vos règles d'alerte et votre liste de surveillance, dédupliquons entre les sources et envoyons jusqu'à 30 éléments classés avec une Évaluation IA et des Signaux à surveiller écrits dans votre contexte. Des alertes en temps réel sont aussi disponibles pour les événements critiques.",
     "q12": "Quel est le taux de rafraîchissement ?",
-    "a12": "Quasi temps réel pour Pro. 5–15 minutes sur Free.",
+    "a12": "Pro actualise les cotations de marché toutes les 30 secondes. Les autres jeux de données suivent la cadence de leur source. Free reste sur la cadence source standard.",
     "q13": "Où vont mes données ?",
     "a13": "Les canaux de notification sont chiffrés AES-256 au repos. Les digests ne quittent jamais notre pipeline non rédigés."
   },
   "finalCta": {
-    "title": "Commencez avec Pro. Passez à Enterprise.",
+    "title": "Comment démarrer avec Pro ou parler à notre équipe commerciale ?",
     "subtitle": "Continuez à utiliser World Monitor gratuitement, ou passez à la recherche actions, l'analytique macro et les briefings IA. Si votre organisation a besoin d'accès d'équipe, d'apps TV ou de support API, parlons-en.",
     "talkToSales": "Contacter les ventes"
   },
@@ -326,7 +343,7 @@
     "suffixPerYear": "/an",
     "amountCustom": "Personnalisé",
     "opening": "Ouverture…",
-    "headerTitle": "Choisissez Votre Plan",
+    "headerTitle": "Combien coûte World Monitor ?",
     "headerSubtitle": "Du suivi en temps réel à une infrastructure de renseignement complète. Sélectionnez le niveau adapté à votre mission.",
     "billingMonthly": "Mensuel",
     "billingAnnual": "Annuel",
@@ -348,14 +365,14 @@
       "pro": {
         "description": "Tableau de bord de renseignement complet",
         "features": [
-          "Tout ce qui est dans Gratuit",
-          "Analyse boursière IA et backtesting",
-          "Synthèses de marché quotidiennes",
-          "Suivi militaire et géopolitique",
-          "Générateur de widgets personnalisés",
-          "10 tableaux de bord personnalisés (contre 3)",
+          "Tout ce qui est dans Gratuit — panneaux, sources et pays suivis sans limite",
+          "Chat WM Analyst + analyse boursière et backtesting IA",
+          "Modélisation de choc de coût et tests de stress supply-chain",
+          "Mémoire Intel — recherche historique, chronologies et événements similaires",
+          "Données de divergence métaux physiques, concentration minérale et dette souveraine",
+          "Digest IA planifié + moteur de règles d'alertes",
           "Accès MCP + SDK pour Claude Desktop et autres clients IA (50 appels/jour)",
-          "Actualisation des données prioritaire"
+          "Widgets personnalisés et 10 dashboards (vs 3)"
         ],
         "highlightFeatures": [
           "Licence personnelle",
@@ -384,7 +401,12 @@
           "Support dédié",
           "Intégrations personnalisées",
           "Garantie de contrat de service",
-          "Option sur site"
+          "Option sur site",
+          "Accord de traitement des données (DPA)",
+          "Facturation par bon de commande",
+          "SAML SSO, SCIM",
+          "Paramètres de sécurité et confidentialité personnalisés",
+          "Entièrement white-label — avec ou sans partage de revenus"
         ],
         "cta": "Contacter les ventes"
       },
@@ -395,7 +417,7 @@
           "Droits de redistribution — intégrez nos données dans ce que vous vendez",
           "300 requêtes/minute",
           "10 000 requêtes/jour incluses",
-          "5 licences Pro incluses",
+          "5 licences Pro — invitez des utilisateurs avec n’importe quel domaine de messagerie d’entreprise",
           "Support prioritaire"
         ],
         "highlightFeatures": [
@@ -459,11 +481,12 @@
       "screenshotAlt": "Tableau de bord d'intelligence en direct World Monitor — carte mondiale avec couches de conflits, de navigation et de marchés",
       "plateNote": "Capturé depuis la carte en direct — cliquez pour l'ouvrir",
       "trustBuild": "Construisez dessus :",
-      "positioningLink": "WorldMonitor n'est pas un Palantir open-source"
+      "positioningLink": "WorldMonitor n'est pas un Palantir open-source",
+      "asOf": "Au 31 août 2026"
     },
     "live": {
       "eyebrow": "En direct maintenant",
-      "title": "Cette page est connectée aux mêmes API que le tableau de bord.",
+      "title": "Quelles données en direct cette page affiche-t-elle en ce moment ?",
       "subtitle": "Quatre des plus de cent signaux que World Monitor surveille 24h/24.",
       "liveBadge": "En direct",
       "sampleBadge": "Exemple",
@@ -482,7 +505,7 @@
     },
     "moments": {
       "eyebrow": "Moteur de corrélation",
-      "title": "L'edge détecte les signaux qui bougent ensemble.",
+      "title": "Comment World Monitor corrèle-t-il les signaux ?",
       "sub": "Vous pouvez trouver les flux cent partout. L'edge est une surface unique où la géopolitique, le transport maritime, les matières premières, la macro, les marchés, la météo, l'infrastructure, la cybersécurité, l'actualité et le risque pays peuvent s'expliquer mutuellement.",
       "signalStack": "Signaux fusionnés",
       "correlation": "Corrélation",
@@ -546,7 +569,7 @@
     },
     "firstFive": {
       "eyebrow": "Zéro à orienté",
-      "title": "Vos cinq premières minutes sur la carte en direct.",
+      "title": "Que se passe-t-il pendant vos cinq premières minutes sur la carte ?",
       "sub": "Pas de visite, pas d'états vides, pas de mur d'inscription. C'est ce qui se passe réellement.",
       "f1Title": "La carte se déplace déjà",
       "f1Desc": "Les conflits, les navires, les vols, les incendies et les pannes s'affichent au chargement de la page. Rien à configurer d'abord.",
@@ -562,7 +585,7 @@
     },
     "depth": {
       "eyebrow": "Sous le capot",
-      "title": "La profondeur est le produit.",
+      "title": "Quel est le niveau de profondeur du modèle de données World Monitor ?",
       "sub": "Chaque nombre ci-dessous est en direct dans le tableau de bord aujourd'hui — pas une feuille de route.",
       "s1v": "Partagé",
       "s1l": "Couches cartographiques",
@@ -612,7 +635,7 @@
     },
     "agents": {
       "eyebrow": "Pour les créateurs et agents IA",
-      "title": "Créez sur l'intelligence du monde en direct — à partir de n'importe quel stack.",
+      "title": "Comment construire sur World Monitor à partir de ma propre pile technologique ?",
       "sub": "Tout ce qui est sur la carte est aussi une API. Intégrez-la à Claude via MCP, appelez les endpoints REST depuis n'importe où, ou installez un client natif pour Python, Ruby, Go ou JavaScript — votre code recherche avec des données en direct au lieu de souvenirs de données d'entraînement.",
       "b1": "Outils MCP — scores de risque, points critiques, conflits, marchés, briefings",
       "b2": "API REST documentée — une spec OpenAPI 3.1, une clé",
@@ -655,7 +678,7 @@
     },
     "faq": {
       "eyebrow": "Aucun piège",
-      "title": "Bonnes questions.",
+      "title": "Quelles sont les questions courantes sur World Monitor ?",
       "q1": "World Monitor est-il vraiment gratuit ?",
       "a1": "Oui. La carte en direct — chaque couche sauf Résilience, flux organisés, briefings par pays, alertes critiques et surfaces de monitoring — est gratuite sans inscription et sans compte à rebours. Pro paie pour les flux : il ajoute WM Analyst, le moteur de scénarios, Route Explorer, digests programmés, accès MCP pour les clients IA et la couche cartographique Résilience. Pas de pubs, et pas de compte signifie qu'il n'y a pas de données utilisateur à vendre.",
       "q2": "Qu'est-ce qu'un tableau de bord d'intelligence mondiale ?",
@@ -680,7 +703,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "La carte du monde ne vous attend pas.",
+      "title": "Comment commencer à surveiller la carte mondiale ?",
       "subtitle": "Pendant que vous lisiez cette page, elle continuait d'évoluer — détroits, points chauds, marchés, flux sélectionnés. L'un d'eux sera la une de demain. Trouvez-le en premier — gratuit, sans compte.",
       "button": "Trouvez-le en premier",
       "note": "Gratuit · Pas d'inscription · Se charge en secondes",
@@ -698,5 +721,19 @@
       "countryRiskDesc": "Retracer les signaux politiques, de sécurité, économiques et de résilience derrière le changement d'un pays.",
       "open": "Ouvrir les preuves"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Journal d'expéditions",
+    "title": "Quoi de neuf dans WorldMonitor",
+    "subtitle": "Nouvelles fonctionnalités des 30 derniers jours — correctifs et maintenance exclus.",
+    "proTag": "PRO",
+    "m1": "Indice de divergence prime physique — SGE vs COMEX, avec historique",
+    "m2": "Classements de vulnérabilité d'approvisionnement en matières premières — ventilation de dépendance aux points d'étranglement",
+    "m3": "Concentration de la production minérale et la base industrielle de défense",
+    "m4": "Fiches de résilience à cinq facteurs avec scores au niveau des indicateurs",
+    "m5": "Listes de surveillance sur canal Telegram personnalisé",
+    "m6": "Connexion par clé d'accès",
+    "m7": "Les agents IA peuvent piloter le dashboard — panneaux, onglets, couches de carte et missions",
+    "m8": "Pages de résilience pays enrichies"
   }
 }

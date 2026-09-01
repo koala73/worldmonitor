@@ -22,6 +22,58 @@ message ListFeedDigestResponse {
   map<string, string> feed_statuses = 2;
   // ISO 8601 timestamp of when this digest was generated
   string generated_at = 3;
+  // Compact coverage summary of the content served and the latest build
+  // attempt (#7085). Counts only — no raw errors, URLs, or host timings.
+  DigestCoverage coverage = 4;
+}
+
+// Content vs attempt state for one digest response (#7085). generated_at
+// keeps the CONTENT identity (when the served items were produced);
+// attempted_at keeps the latest BUILD identity — the two diverge when
+// stale content is served after a failed attempt (#7084).
+message DigestCoverage {
+  // complete | partial | stale | unavailable.
+  // complete: every configured category had at least one completed eligible
+  //   feed and the build did not hit the global deadline.
+  // partial: content exists, but a category had no completed feed or the
+  //   build hit the global deadline.
+  // stale: accepted older content is served after a failed latest attempt
+  //   (durable last-good serving, #7084).
+  // unavailable: no eligible content could be served.
+  string state = 1;
+  // ISO 8601 time of the latest build attempt (attempt identity).
+  string attempted_at = 2;
+  // Items served in this response, after every gate.
+  int32 items_served = 3;
+  // Distinct publishers among the served items (normalized source labels,
+  // current cycle only — not feed-label counts, not historical sets).
+  int32 publisher_count = 4;
+  // Eligible feeds configured for this variant+language, and how many
+  // completed (with or without items).
+  int32 feed_total = 5;
+  int32 feed_completed = 6;
+  // Configured categories, and how many had at least one completed feed.
+  int32 category_total = 7;
+  int32 category_completed = 8;
+  // Per-category state: ok (a feed completed) | missing (none did).
+  map<string, string> category_states = 9;
+  // Per-gate drop counts, named by gate position in the pipeline:
+  // feed cap, undated-item, freshness floor, category cap.
+  int32 dropped_feed_cap = 10;
+  int32 dropped_undated = 11;
+  int32 dropped_freshness = 12;
+  int32 dropped_category_cap = 13;
+  // Durable last-good serving (#7084): true exactly when accepted older
+  // content is replayed after a failed latest attempt. The content counts
+  // above still describe the served body; attempted_at names the FAILED
+  // attempt, so it and generated_at diverge on a replay.
+  bool served_stale = 14;
+  // Age of the served content since acceptance, in seconds (0 when fresh).
+  // Bounded at 21600 (six hours): past that window the service reports
+  // state=unavailable rather than serving older content.
+  int32 stale_age_seconds = 15;
+  // Closed stale reason: empty-rebuild | build-error (empty when fresh).
+  string stale_reason = 16;
 }
 
 message CategoryBucket {

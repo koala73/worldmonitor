@@ -16,6 +16,13 @@ on:
     paths:
       - 'workers/api-cors-preflight/**'
       - 'api/_bootstrap-public-tier.js'
+      - 'api/_bootstrap-tier-keys.js'
+      # The deployed-URL guard and the contract it asserts. Without these, a change
+      # to the shared contract helper alone deploys nothing and runs no live smoke —
+      # so the half of "one definition, both sides" that runs against production
+      # would silently never be re-checked.
+      - 'tests/cors-preflight-live.test.mjs'
+      - 'tests/helpers/public-bootstrap-contract.mjs'
       - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 

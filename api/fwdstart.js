@@ -1,5 +1,5 @@
 // Non-sebuf: returns XML/HTML, stays as standalone Vercel function
-import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { captureSilentError } from './_sentry-edge.js';
 import { readRawJsonFromUpstash, setCachedData } from './_upstash-json.js';
@@ -10,6 +10,20 @@ export const config = { runtime: 'edge' };
 // current — for the same window the response already advertises.
 const CACHE_KEY = 'fwdstart:archive-items:v1';
 const CACHE_TTL_SECONDS = 1800;
+
+// XML 1.0 disallows most C0 controls; keep tab/LF/CR. Also drop DEL.
+const ILLEGAL_XML_CHARS = /[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g;
+
+/**
+ * Wrap scraped text in a CDATA section. Split on `]]>` so an upstream
+ * terminator cannot close the section early (#7206).
+ */
+export function cdata(s) {
+  const cleaned = String(s ?? '').replace(ILLEGAL_XML_CHARS, '');
+  // `]]>` → `]]]]><![CDATA[>` so the terminator is split across sections
+  // and the literal `]]>` survives when CDATA bodies are concatenated.
+  return `<![CDATA[${cleaned.split(']]>').join(']]]]><![CDATA[>')}]]>`;
+}
 
 /** Fetch the archive page and extract post items. Throws on upstream failure. */
 async function scrapeArchiveItems() {
@@ -76,6 +90,7 @@ export default async function handler(req, ctx) {
   if (isDisallowedOrigin(req)) {
     return jsonResponse({ error: 'Origin not allowed' }, 403, cors);
   }
+  const publicCors = getPublicCorsHeaders();
   try {
     // Redis is a load shield, not a dependency: a cache outage must still
     // serve the feed, so every failure here falls through to the live scrape.
@@ -104,11 +119,11 @@ export default async function handler(req, ctx) {
     // Build RSS XML
     const rssItems = items.slice(0, 30).map(item => `
     <item>
-      <title><![CDATA[${item.title}]]></title>
+      <title>${cdata(item.title)}</title>
       <link>${item.link}</link>
       <guid>${item.link}</guid>
       <pubDate>${new Date(item.date).toUTCString()}</pubDate>
-      <description><![CDATA[${item.description}]]></description>
+      <description>${cdata(item.description)}</description>
       <source url="https://www.fwdstart.me">FwdStart Newsletter</source>
     </item>`).join('');
 
@@ -128,7 +143,7 @@ export default async function handler(req, ctx) {
     return new Response(rss, {
       headers: {
         'Content-Type': 'application/xml; charset=utf-8',
-        ...cors,
+        ...publicCors,
         'Cache-Control': 'public, max-age=1800, s-maxage=1800, stale-while-revalidate=300',
       },
     });

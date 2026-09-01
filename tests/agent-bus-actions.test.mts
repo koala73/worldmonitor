@@ -7,6 +7,8 @@ import {
 } from '../shared/agent-bus-actions.ts';
 import {
   DASHBOARD_MAP_MAX_LATITUDE,
+  DASHBOARD_MAP_MODES,
+  DASHBOARD_TIME_RANGES,
   DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
   MAX_LAYER_ACTION_TARGET_ID_LENGTH,
   MAX_LAYER_ACTION_TARGETS,
@@ -19,6 +21,9 @@ describe('agent bus action schema', () => {
       'open_panel',
       'set_view',
       'set_layers',
+      'set_time_range',
+      'focus_country',
+      'set_map_mode',
     ]);
 
     const openPanel = parseAgentBusAction({
@@ -75,6 +80,11 @@ describe('agent bus action schema', () => {
       panelId: '../forecast',
     });
     assert.equal(badPanelId.ok, false);
+
+    for (const panelId of ['regionalStartups', 'gccNews']) {
+      const mixedCase = parseAgentBusAction({ type: 'open_panel', panelId });
+      assert.equal(mixedCase.ok, true, panelId);
+    }
   });
 
   it('bounds map view targets', () => {
@@ -135,7 +145,26 @@ describe('agent bus action schema', () => {
       assert.equal(parseAgentBusAction({
         type: 'set_layers',
         layers: { [unsafeLayerId]: true },
-      }).ok, false, JSON.stringify(unsafeLayerId));
+      }).ok, false,       JSON.stringify(unsafeLayerId));
     }
+  });
+
+  it('accepts every dashboard time range and map mode and rejects unknown values', () => {
+    for (const timeRange of DASHBOARD_TIME_RANGES) {
+      assert.equal(parseAgentBusAction({ type: 'set_time_range', timeRange }).ok, true, timeRange);
+    }
+    assert.equal(parseAgentBusAction({ type: 'set_time_range', timeRange: '12h' }).ok, false);
+    assert.equal(parseAgentBusAction({ type: 'set_time_range', timeRange: 'all', extra: true }).ok, false);
+
+    for (const mode of DASHBOARD_MAP_MODES) {
+      assert.equal(parseAgentBusAction({ type: 'set_map_mode', mode }).ok, true, mode);
+    }
+    assert.equal(parseAgentBusAction({ type: 'set_map_mode', mode: 'globe' }).ok, false);
+    assert.equal(parseAgentBusAction({ type: 'set_map_mode', mode: 'flat' }).ok, false);
+
+    assert.equal(parseAgentBusAction({ type: 'focus_country', iso2: 'DE' }).ok, true);
+    assert.equal(parseAgentBusAction({ type: 'focus_country', iso2: 'de' }).ok, false);
+    assert.equal(parseAgentBusAction({ type: 'focus_country', iso2: 'USA' }).ok, false);
+    assert.equal(parseAgentBusAction({ type: 'focus_country', iso2: 'XX' }).ok, true);
   });
 });

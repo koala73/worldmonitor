@@ -337,6 +337,21 @@ describe('content clock survives a refetch that returns unchanged upstream data'
     );
   });
 
+  it('carries the prior content clock forward when a fallback refresh cannot observe max(date)', () => {
+    const frozenSince = NOW - 120 * HOUR_MS;
+    for (const bad of [null, undefined, '', 'not-a-date', 42]) {
+      assert.equal(
+        contentClockFor(
+          { asof: '2026-07-24', contentAsOfChangedAt: frozenSince },
+          bad,
+          NOW,
+        ),
+        frozenSince,
+        'upstreamMaxDate=' + String(bad),
+      );
+    }
+  });
+
   it('resets the clock when the upstream date actually advances', () => {
     assert.equal(
       contentClockFor(

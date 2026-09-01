@@ -10,6 +10,7 @@ import { readFile } from 'node:fs/promises';
 import { afterEach, describe, it } from 'node:test';
 
 import {
+  __setConvexAuthTimersForTests,
   __setConvexClientFactoryForTests,
   __setConvexClientForTests,
   getConvexClient,
@@ -129,6 +130,42 @@ function deferred<T>(): {
   return { promise, resolve: resolvePromise, reject: rejectPromise };
 }
 
+/**
+ * Manual scheduler for convex-client's auth timers (#5841). The bounded auth
+ * wait and the transient-rebind retry delay fire ONLY when a test fires them,
+ * so these paths are driven deterministically instead of by elapsed wall time
+ * — the two timing-shaped cases below used to red the merge-blocking `unit`
+ * job whenever CI scheduling latency starved a real 1 ms retry hop, a real
+ * 5 ms bounded wait, or the 1 s polling deadline that watched them.
+ */
+function installManualAuthTimers(): {
+  pending: () => Array<{ ms: number }>;
+  fireNext: () => void;
+} {
+  type ManualTimer = { fn: () => void; ms: number; cancelled: boolean; fired: boolean };
+  const timers: ManualTimer[] = [];
+  __setConvexAuthTimersForTests({
+    setTimeout: (fn, ms) => {
+      const timer: ManualTimer = { fn, ms, cancelled: false, fired: false };
+      timers.push(timer);
+      return timer;
+    },
+    clearTimeout: (id) => {
+      const timer = id as ManualTimer | null;
+      if (timer) timer.cancelled = true;
+    },
+  });
+  return {
+    pending: () => timers.filter((t) => !t.cancelled && !t.fired).map((t) => ({ ms: t.ms })),
+    fireNext: () => {
+      const timer = timers.find((t) => !t.cancelled && !t.fired);
+      assert.ok(timer, 'expected a live auth timer to fire');
+      timer.fired = true;
+      timer.fn();
+    },
+  };
+}
+
 function installFakeClient(): FakeConvexClient {
   const fake = new FakeConvexClient();
   __setConvexClientForTests(fake);
@@ -142,6 +179,7 @@ afterEach(() => {
   __setConvexClientFactoryForTests(null);
   __setConvexClientForTests(null);
   __setClerkInstanceForTests(null);
+  __setConvexAuthTimersForTests(null);
 });
 
 describe('generation-scoped Convex auth handoff', () => {
@@ -244,6 +282,7 @@ describe('generation-scoped Convex auth handoff', () => {
 
   it('retries a transient terminal token failure for the current identity', async () => {
     const fake = installFakeClient();
+    const timers = installManualAuthTimers();
     const attached: string[] = [];
     let current = true;
     const handoff = rebindConvexAuthForWatchHandoff(
@@ -256,11 +295,15 @@ describe('generation-scoped Convex auth handoff', () => {
       await flushMicrotasks();
 
       fake.authConfigs[1].onChange(false);
-      await waitForCondition(
-        () => fake.authConfigs.length === 3,
-        'current B should install one bounded retry config',
-      );
+      await flushMicrotasks();
 
+      // The terminal failure settles the barrier, so the bounded wait resolves
+      // without its timeout; what remains live is exactly the retry delay.
+      assert.deepEqual(timers.pending(), [{ ms: 1 }], 'one live retry-delay timer');
+      timers.fireNext();
+      await flushMicrotasks();
+
+      assert.equal(fake.authConfigs.length, 3, 'current B installs one bounded retry config');
       fake.authConfigs[2].onChange(true);
       assert.equal(await handoff, true);
       assert.deepEqual(attached, ['B']);
@@ -273,6 +316,7 @@ describe('generation-scoped Convex auth handoff', () => {
 
   it('recovers current-user watches after a bounded wait times out', async () => {
     const fake = installFakeClient();
+    const timers = installManualAuthTimers();
     const attached: string[] = [];
     const handoff = rebindConvexAuthForWatchHandoff(
       () => true,
@@ -281,6 +325,11 @@ describe('generation-scoped Convex auth handoff', () => {
       [],
     );
     await flushMicrotasks();
+
+    // The bounded wait expires only when the TEST fires it — never by
+    // elapsed wall time.
+    assert.deepEqual(timers.pending(), [{ ms: 5 }], 'one live bounded-wait timer');
+    timers.fireNext();
 
     assert.equal(await handoff, false);
     assert.deepEqual(attached, []);

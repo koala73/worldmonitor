@@ -57,6 +57,46 @@ const DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT = 2;
 // reports degraded). Only the binary verdict softens — the real
 // polled/failed/attempted counts stay in coverage for the operator.
 const MAX_TOLERATED_FAILED_ACCOUNTS = 3;
+
+// Poll cadence by editorial tier. Every enabled account used to be polled every
+// cycle: 64 accounts x 96 cycles/day = 6,240 reads/day, which billed ~$50 per
+// four days. Breaking news only needs the 15-minute cadence on the handles that
+// actually break it; a tier-3 regional feed re-read 96 times a day is spend, not
+// coverage.
+//
+// Registry tiers today: 10 tier-1, 43 tier-2, 11 tier-3. Tier 1 keeps the
+// baseline cycle (10 x 96 = 960/day), tier 2 goes hourly (43 x 24 = 1,032/day),
+// tier 3 every four hours (11 x 6 = 66/day): ~2,058 reads/day against 6,240, a
+// 67% cut that never touches a tier-1 handle.
+// Only tiers SLOWER than the poll cycle appear here. Tier 1 is the baseline: it
+// polls every cycle exactly as the whole registry did before, so the accounts
+// that actually break news are untouched by this change.
+const TIER_POLL_INTERVAL_MS = Object.freeze({
+  2: 60 * 60 * 1000,
+  3: 4 * 60 * 60 * 1000,
+});
+// An untiered account polls at the baseline cadence, like tier 1. Absent
+// metadata must not silently downgrade a feed's freshness — a missing tier is an
+// unannotated registry row, not an editorial judgement that it matters less.
+const UNTIERED_POLL_INTERVAL_MS = 0;
+
+function pollIntervalForTier(tier) {
+  const key = Number(tier);
+  return TIER_POLL_INTERVAL_MS[key] ?? UNTIERED_POLL_INTERVAL_MS;
+}
+
+// Due when the account has no throttle, has never been polled, or its tier's
+// interval has elapsed. A clock that moves backwards (host clock skew, a
+// restored snapshot) must not park an account forever, so a future-dated stamp
+// reads as due.
+function isAccountDueForPoll(account, lastPolledAt, nowMs) {
+  const interval = pollIntervalForTier(account?.tier);
+  if (interval <= 0) return true;
+  const last = Number(lastPolledAt);
+  if (!Number.isFinite(last) || last <= 0) return true;
+  if (last > nowMs) return true;
+  return (nowMs - last) >= interval;
+}
 const TOLERATED_FAILED_ACCOUNT_FRACTION = 0.05;
 // 401/403 is not a transient upstream hiccup and does not heal on API time: an
 // absent, wrong-scope or revoked bearer rejects EVERY account until an operator
@@ -64,6 +104,23 @@ const TOLERATED_FAILED_ACCOUNT_FRACTION = 0.05;
 // one whole cycle is skipped even at the slowest cadence, while keeping recovery
 // automatic within 30 minutes of the token landing.
 const AUTH_FAILURE_BACKOFF_MS = 2 * MAX_POLL_INTERVAL_MS;
+// 402 is the same CLASS as 401/403 — it does not heal on API time — but it is a
+// different remediation. Observed 2026-08-25: the plan ran out of credits and
+// every call answered
+//   {"title":"Payment Required","detail":"credits depleted","status":402}
+// with rate-limit headers untouched (remaining 1999/2000), so neither the 429
+// backoff nor the auth breaker engaged and all 64 accounts were rejected every
+// cycle — the same ~6.1k/day the auth breaker exists to prevent.
+//
+// It gets the auth backoff (recovery stays automatic within one deferral of a
+// top-up) but its OWN message: the bearer is valid here, and telling an operator
+// to "check X_BEARER_TOKEN" would cost a credential rotation that fixes nothing.
+const CREDITS_EXHAUSTED_STATUS = 402;
+const X_BACKOFF_CAUSES = Object.freeze({
+  RATE_LIMIT: 'rate-limit',
+  AUTH: 'auth',
+  CREDITS: 'credits',
+});
 const X_FEED_SNAPSHOT_VERSION = 1;
 const USER_AGENT = 'WorldMonitor/1.0 (curated news-account monitoring; +https://worldmonitor.app)';
 
@@ -282,6 +339,17 @@ function copyAccountIdMap(value) {
   return result;
 }
 
+function copyPolledAtMap(value) {
+  const result = Object.create(null);
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
+  for (const [handle, at] of Object.entries(value)) {
+    const normalizedHandle = normalizeHandle(handle);
+    const ms = Math.max(0, Number(at) || 0);
+    if (normalizedHandle && ms > 0) result[normalizedHandle] = ms;
+  }
+  return result;
+}
+
 function copyCatchupMap(value) {
   const result = Object.create(null);
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
@@ -312,20 +380,27 @@ function normalizeCoverage(value, expectedAccounts = 0) {
   };
 }
 
+function normalizeBackoffCause(value) {
+  return Object.values(X_BACKOFF_CAUSES).includes(value) ? value : null;
+}
+
 function buildXPollState(state, { expectedAccounts = 0 } = {}) {
   const lastPollAt = Number(state?.lastPollAt) || 0;
+  const rateLimitedUntil = Math.max(0, Number(state?.rateLimitedUntil) || 0);
   const coverage = normalizeCoverage(state?.lastCoverage, expectedAccounts);
   return {
     generation: Math.max(0, Math.floor(Number(state?.generation) || 0)),
     cursorByAccountId: copyCursorMap(state?.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(state?.accountIdByHandle),
     catchupByAccountId: copyCatchupMap(state?.catchupByAccountId),
+    lastPolledAtByHandle: copyPolledAtMap(state?.lastPolledAtByHandle),
     lookupOffset: Math.max(0, Math.floor(Number(state?.lookupOffset) || 0)),
     accountOffset: Math.max(0, Math.floor(Number(state?.accountOffset) || 0)),
     lastPollAt,
     lastHealthyAt: Math.max(0, Number(state?.lastHealthyAt) || 0),
-    rateLimitedUntil: Math.max(0, Number(state?.rateLimitedUntil) || 0),
+    rateLimitedUntil,
     rateLimitAttempt: Math.max(0, Math.floor(Number(state?.rateLimitAttempt) || 0)),
+    backoffCause: rateLimitedUntil ? normalizeBackoffCause(state?.backoffCause) : null,
     coverage,
   };
 }
@@ -357,18 +432,21 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
     ? pollStateOverride
     : (inherited && typeof inherited === 'object' && !Array.isArray(inherited) ? inherited : {});
   const itemLimit = Math.max(1, Math.floor(Number(maxItems) || DEFAULT_MAX_FEED_ITEMS));
+  const rateLimitedUntil = Math.max(0, Number(pollState.rateLimitedUntil) || 0);
   return {
     generation: Math.max(0, Math.floor(Number(validSnapshot ? snapshot.generation : pollState.generation) || 0)),
     cursorByAccountId: copyCursorMap(pollState.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(pollState.accountIdByHandle),
     catchupByAccountId: copyCatchupMap(pollState.catchupByAccountId),
+    lastPolledAtByHandle: copyPolledAtMap(pollState.lastPolledAtByHandle),
     items: validSnapshot ? snapshot.items.filter((item) => item && typeof item === 'object').slice(0, itemLimit) : [],
     lookupOffset: Math.max(0, Math.floor(Number(pollState.lookupOffset) || 0)),
     accountOffset: Math.max(0, Math.floor(Number(pollState.accountOffset) || 0)),
     lastPollAt: Math.max(0, Number(pollState.lastPollAt) || 0),
     lastHealthyAt: Math.max(0, Number(pollState.lastHealthyAt) || 0),
-    rateLimitedUntil: Math.max(0, Number(pollState.rateLimitedUntil) || 0),
+    rateLimitedUntil,
     rateLimitAttempt: Math.max(0, Math.floor(Number(pollState.rateLimitAttempt) || 0)),
+    backoffCause: rateLimitedUntil ? normalizeBackoffCause(pollState.backoffCause) : null,
     lastCoverage: normalizeCoverage(pollState.coverage ?? (validSnapshot ? snapshot.coverage : null)),
   };
 }
@@ -389,7 +467,8 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
  *   process just recorded must not be cleared by an older Redis copy. Plain
  *   assignment in either direction loses one of those. The attempt counter takes
  *   the max for the same reason — escalation must not reset when a peer with a
- *   lower count publishes.
+ *   lower count publishes. The typed cause follows the winning deadline so a
+ *   peer keeps the correct operator action for credits, auth, or rate limiting.
  *
  * Returns only the fields to apply, so the caller cannot accidentally clobber
  * serving state (items, coverage) with poll bookkeeping.
@@ -397,25 +476,46 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
 function mergeRefreshedPollState(current, refreshed) {
   const toMs = (value) => Math.max(0, Number(value) || 0);
   const toCount = (value) => Math.max(0, Math.floor(Number(value) || 0));
+  const currentDeadline = toMs(current?.rateLimitedUntil);
+  const currentCause = normalizeBackoffCause(current?.backoffCause);
   if (!refreshed || typeof refreshed !== 'object') {
     return {
       cursorByAccountId: { ...(current?.cursorByAccountId || {}) },
       accountIdByHandle: { ...(current?.accountIdByHandle || {}) },
       catchupByAccountId: { ...(current?.catchupByAccountId || {}) },
+      lastPolledAtByHandle: { ...(current?.lastPolledAtByHandle || {}) },
       lookupOffset: toCount(current?.lookupOffset),
       accountOffset: toCount(current?.accountOffset),
-      rateLimitedUntil: toMs(current?.rateLimitedUntil),
+      rateLimitedUntil: currentDeadline,
       rateLimitAttempt: toCount(current?.rateLimitAttempt),
+      backoffCause: currentCause,
     };
   }
+  const refreshedDeadline = toMs(refreshed.rateLimitedUntil);
+  const refreshedCause = normalizeBackoffCause(refreshed.backoffCause);
+  const rateLimitedUntil = Math.max(currentDeadline, refreshedDeadline);
+  const backoffCause = rateLimitedUntil
+    ? (currentDeadline === refreshedDeadline
+        ? (refreshedCause || currentCause)
+        : (currentDeadline > refreshedDeadline ? currentCause : refreshedCause))
+    : null;
   return {
     cursorByAccountId: copyCursorMap(refreshed.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(refreshed.accountIdByHandle),
     catchupByAccountId: copyCatchupMap(refreshed.catchupByAccountId),
+    // Merge, never replace: a cycle only stamps the accounts it actually
+    // attempted, so a bare copy of the refreshed map would forget every handle
+    // this cycle skipped and make them all due again next tick — reinstating the
+    // poll-everything-every-cycle bill this change exists to remove.
+    lastPolledAtByHandle: copyPolledAtMap({
+      ...(current?.lastPolledAtByHandle || {}),
+      ...(refreshed.lastPolledAtByHandle || {}),
+    }),
     lookupOffset: toCount(refreshed.lookupOffset),
     accountOffset: toCount(refreshed.accountOffset),
-    rateLimitedUntil: Math.max(toMs(current?.rateLimitedUntil), toMs(refreshed.rateLimitedUntil)),
+    rateLimitedUntil,
     rateLimitAttempt: Math.max(toCount(current?.rateLimitAttempt), toCount(refreshed.rateLimitAttempt)),
+    backoffCause,
   };
 }
 
@@ -501,6 +601,7 @@ function recordRateLimit(nextState, headers, now) {
   // Must allow the attempt counter to reach MAX_429_BACKOFF_EXPONENT; the old
   // cap of 7 held the exponential at 128s no matter how long the 429s lasted.
   nextState.rateLimitAttempt = Math.min(MAX_429_BACKOFF_EXPONENT, attempt + 1);
+  nextState.backoffCause = X_BACKOFF_CAUSES.RATE_LIMIT;
 }
 
 function isAuthFailureStatus(status) {
@@ -522,7 +623,28 @@ function isAuthFailureStatus(status) {
  */
 function recordAuthFailure(nextState, status, context, now) {
   nextState.rateLimitedUntil = now() + AUTH_FAILURE_BACKOFF_MS;
+  nextState.backoffCause = X_BACKOFF_CAUSES.AUTH;
   nextState.lastError = `X auth failed (HTTP ${status}) ${context}: check X_BEARER_TOKEN — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
+}
+
+function isCreditsExhaustedStatus(status) {
+  return status === CREDITS_EXHAUSTED_STATUS;
+}
+
+function recordCreditsExhausted(nextState, context, now) {
+  nextState.rateLimitedUntil = now() + AUTH_FAILURE_BACKOFF_MS;
+  nextState.backoffCause = X_BACKOFF_CAUSES.CREDITS;
+  nextState.lastError = `X credits depleted (HTTP ${CREDITS_EXHAUSTED_STATUS}) ${context}: the bearer is valid — top up the X API plan — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
+}
+
+function sharedBackoffMessage(cause) {
+  if (cause === X_BACKOFF_CAUSES.CREDITS) {
+    return 'X credits depleted: top up the X API plan; shared backoff window still open; deferring poll';
+  }
+  if (cause === X_BACKOFF_CAUSES.AUTH) {
+    return 'X auth failed: check X_BEARER_TOKEN; shared backoff window still open; deferring poll';
+  }
+  return 'shared X rate-limit window still open; deferring poll';
 }
 
 /**
@@ -615,16 +737,21 @@ async function pollXFeed({
   maxFailedAccounts = null,
   signal,
 } = {}) {
+  const activeBackoffDeadline = Number(state?.rateLimitedUntil) > now()
+    ? Number(state.rateLimitedUntil)
+    : 0;
   const nextState = {
     cursorByAccountId: { ...(state?.cursorByAccountId || {}) },
     accountIdByHandle: { ...(state?.accountIdByHandle || {}) },
     catchupByAccountId: copyCatchupMap(state?.catchupByAccountId),
+    lastPolledAtByHandle: copyPolledAtMap(state?.lastPolledAtByHandle),
     items: Array.isArray(state?.items) ? [...state.items] : [],
     lookupOffset: Number(state?.lookupOffset) || 0,
     accountOffset: Number(state?.accountOffset) || 0,
     lastError: null,
-    rateLimitedUntil: Number(state?.rateLimitedUntil) > now() ? Number(state.rateLimitedUntil) : 0,
+    rateLimitedUntil: activeBackoffDeadline,
     rateLimitAttempt: Math.max(0, Math.floor(Number(state?.rateLimitAttempt) || 0)),
+    backoffCause: activeBackoffDeadline ? normalizeBackoffCause(state?.backoffCause) : null,
     accountsPolled: 0,
     accountsFailed: 0,
     newCount: 0,
@@ -644,6 +771,13 @@ async function pollXFeed({
   const orderedAccounts = configuredAccounts.length
     ? [...configuredAccounts.slice(startingOffset), ...configuredAccounts.slice(0, startingOffset)]
     : [];
+  // Tier cadence is applied INSIDE the loop, never by filtering this list.
+  // accountOffset advances by accountsAttempted through the full registry, and
+  // cycleComplete requires accountsAttempted === configuredAccounts.length — so a
+  // filtered list would corrupt rotation fairness AND make every cadence-limited
+  // cycle permanently incomplete, holding the feed at partial coverage forever.
+  // A not-due account is walked past, counted, and costs no request.
+  const pollCycleNow = now();
   const pageLimit = Math.max(1, Math.floor(Number(maxTimelinePages) || DEFAULT_MAX_TIMELINE_PAGES));
   // Never exceed an explicitly-requested page limit, even for a cold start.
   const coldStartPageLimit = Math.min(
@@ -684,7 +818,22 @@ async function pollXFeed({
       nextState.lastError = `cycle request budget ${cycleRequestBudget} exhausted; deferred ${orderedAccounts.length - nextState.accountsAttempted} accounts to the next cycle`;
       break;
     }
+    const attemptedHandle = normalizeHandle(account?.handle);
+    // Not due yet on its tier's cadence: walk past it without spending a request.
+    // Counted as attempted AND polled on purpose — it is deliberately up to date
+    // on its own schedule, not a coverage gap, and both counters feed rotation
+    // and the completeness verdict rather than any freshness claim.
+    if (!isAccountDueForPoll(account, nextState.lastPolledAtByHandle[attemptedHandle], pollCycleNow)) {
+      nextState.accountsAttempted += 1;
+      nextState.accountsPolled += 1;
+      continue;
+    }
     nextState.accountsAttempted += 1;
+    // Stamp on ATTEMPT, not on success. A handle that fails every cycle would
+    // otherwise stay permanently due and be retried 96 times a day — exactly the
+    // spend this change removes, concentrated on the accounts least able to repay
+    // it. Its own failure handling and the cycle failure budget still apply.
+    if (attemptedHandle) nextState.lastPolledAtByHandle[attemptedHandle] = pollCycleNow;
     let accountId = normalizeAccountId(account.accountId) || nextState.accountIdByHandle[account.handle];
     try {
       if (!accountId) {
@@ -696,6 +845,10 @@ async function pollXFeed({
         }
         if (isAuthFailureStatus(response.status)) {
           recordAuthFailure(nextState, response.status, `resolving @${account.handle}`, now);
+          break;
+        }
+        if (isCreditsExhaustedStatus(response.status)) {
+          recordCreditsExhausted(nextState, `resolving @${account.handle}`, now);
           break;
         }
         if (!response.ok || !body?.data?.id) {
@@ -750,6 +903,15 @@ async function pollXFeed({
         }
         if (isAuthFailureStatus(response.status)) {
           recordAuthFailure(nextState, response.status, `polling @${account.handle}`, now);
+          break;
+        }
+        // Accounts with a pinned id skip the lookup entirely, so a breaker on
+        // only that leg would leave this one burning the whole roster.
+        if (isCreditsExhaustedStatus(response.status)) {
+          // recordCreditsExhausted sets rateLimitedUntil, which the check after
+          // this page loop already uses to stop admitting accounts — no separate
+          // flag, and the catch-up hand-off is shared with the rate-limit path.
+          recordCreditsExhausted(nextState, `polling @${account.handle}`, now);
           break;
         }
         if (!response.ok) {
@@ -874,6 +1036,9 @@ async function pollXFeed({
         } else if (isAuthFailureStatus(response.status)) {
           recordAuthFailure(nextState, response.status, 'during deletion lookup', now);
           nextState.cycleComplete = false;
+        } else if (isCreditsExhaustedStatus(response.status)) {
+          recordCreditsExhausted(nextState, 'during deletion lookup', now);
+          nextState.cycleComplete = false;
         } else if (response.status === 200) {
           const missing = collectDeletedTweetIds(body, ids);
           if (missing.length) nextState.items = tombstonePosts(nextState.items, missing, now());
@@ -889,7 +1054,10 @@ async function pollXFeed({
     }
   }
 
-  if (nextState.cycleComplete) nextState.rateLimitAttempt = 0;
+  if (nextState.cycleComplete) {
+    nextState.rateLimitAttempt = 0;
+    nextState.backoffCause = null;
+  }
   nextState.requestsUsed = requestsUsed;
   nextState.items = purgeExpiredTombstones(nextState.items, now(), TOMBSTONE_TTL_MS);
   return nextState;
@@ -908,7 +1076,12 @@ module.exports = {
   DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT,
   MAX_TOLERATED_FAILED_ACCOUNTS,
   TOLERATED_FAILED_ACCOUNT_FRACTION,
+  TIER_POLL_INTERVAL_MS,
+  UNTIERED_POLL_INTERVAL_MS,
+  pollIntervalForTier,
+  isAccountDueForPoll,
   AUTH_FAILURE_BACKOFF_MS,
+  X_BACKOFF_CAUSES,
   X_FEED_SNAPSHOT_VERSION,
   loadXAccounts,
   countEnabledAccounts,
@@ -930,6 +1103,7 @@ module.exports = {
   parseRateLimitResetMs,
   compute429BackoffMs,
   isAuthFailureStatus,
+  sharedBackoffMessage,
   MAX_429_BACKOFF_MS,
   MAX_429_BACKOFF_EXPONENT,
   buildUserByUsernameUrl,

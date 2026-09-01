@@ -1,0 +1,124 @@
+---
+title: "Maintain and release WebMCP"
+description: "Change, verify, and release WorldMonitor's WebMCP contract without drifting its inventory, UI behavior, security boundary, or bilingual documentation."
+---
+
+Use this guide when you change WorldMonitor's WebMCP implementation. For host setup, tool schemas, browser-agent workflows, and user-facing limits, see the [WebMCP reference](/webmcp).
+
+Treat each WebMCP change as a public UI contract change. Tool names, descriptions, schemas, annotations, outputs, visible effects, cancellation policy, security headers, tests, evals, and both language guides must stay aligned.
+
+## Change checklist
+
+1. Add or change the canonical name and inventory in `src/config/webmcp.ts`. Do not create a second name registry.
+2. Define each imperative descriptor and bounded execution path in `src/services/webmcp.ts`. Reuse an existing human UI path. Do not add a privileged backend shortcut.
+3. Classify the tool as `read-only`, `view-state`, `cancellation-required`, or `result-dependent`. TypeScript must reject a new imperative tool that has no cancellation policy.
+4. Set accurate `readOnlyHint` and `untrustedContentHint` annotations. Keep names, descriptions, parameter descriptions, schemas, outputs, and errors within `WEBMCP_TOOL_BUDGETS`.
+5. Recheck authentication, entitlement, variant, renderer, mounted state, and capability state at invocation time. Discovery must not grant durable authority.
+6. For a declarative tool, expose attributes only while the real form is connected and usable. Remove them while the form is pending, hidden, resetting, destroyed, or ineligible.
+7. Declare every stable denial reason in one exported runtime list and derive its TypeScript union from that list. Do not hand-maintain a second copy of the reason names.
+8. Update `docs/webmcp.mdx` and `docs/zh/webmcp.mdx` together, naming every new reason in both. The guide contract test fails when a declared reason is missing from either language. Update both maintenance guides when ownership, verification, or release steps change.
+9. Extend deterministic lifecycle and UI tests. Add direct, ambiguous, wrong-tool, alternate-order, and mid-chain-failure eval cases when tool selection or chaining changes.
+10. If an enrolled route or origin changes, update and test the Vercel, Docker, local Vite, origin-trial, same-origin, and embed-denial headers as one security boundary.
+11. Run the local same-SHA proof, then the production same-SHA smoke. Unit tests and deployment status do not prove production acceptance.
+
+## Source map
+
+| Source | Owns |
+|---|---|
+| `src/config/webmcp.ts` | Canonical homepage, dashboard, declarative, and per-variant inventories; shared schema and output budgets. |
+| `src/services/webmcp.ts` | Imperative descriptors, schemas, registration lifecycle, bounded results and errors, telemetry, and cancellation policy. |
+| `src/services/webmcp-map-layer-catalog.ts`, `src/services/webmcp-panel-catalog.ts`, and `src/services/webmcp-mission-preset-catalog.ts` | Paginated layer and panel catalogs plus the bundled mission-preset catalog, filters, entitlement overlays, and stable availability reasons. |
+| `src/App.ts`, `src/app/webmcp-dashboard.ts`, and `src/app/dashboard-action-binding.ts` | Startup ordering, UI readiness, teardown, dashboard context, catalog snapshots, and binding to the human action path. |
+| `shared/agent-bus-actions.ts`, `shared/agent-bus-contract.ts`, and `src/app/agent-bus-applier.ts` | Typed dashboard action protocol and application through existing UI state. |
+| `src/app/country-map-focus.ts` and `src/app/map-dimension-control.ts` | Country bounding-box focus and the shared 2D or 3D control path. |
+| `src/config/panel-enablement.ts` and `src/app/panel-enablement.ts` | Panel enablement policy and the settings persist and apply path used by `set_panel_enabled`. |
+| `src/app/webmcp-access.ts`, `src/services/webmcp-access-snapshot.ts`, and `src/services/clerk.ts` | Live access context, the PII-free snapshot, and the existing Clerk sign-in dialog. |
+| `src/app/webmcp-search-controller.ts`, `src/app/webmcp-search-effects.ts`, and `src/app/search-selection-dispatcher.ts` | Opaque search capabilities, bound effect classes, invalidation, live-state revalidation, and visible result selection. |
+| `src/services/panel-layout-actions.ts`, `src/app/panel-layout.ts`, `src/components/PanelTabBar.ts`, `src/services/tab-store.ts`, and `src/services/dashboard-tab-actions.ts` | Panel layout snapshot/collapse/move/fullscreen policy, dashboard-tab UI, persistence, name and ID limits, and list, select, create, rename, and delete actions. |
+| `src/components/GlobalProcurementPanel.ts` | Conditional declarative `search_procurement` form, visible pending state, reset, cancellation, and bounded result. |
+| `pro-test/welcome.html` | Zero-import homepage registration for `launchWorldMonitor` and `getWorldMonitorMcpEndpoint`. |
+| `vercel.json`, `docker/nginx-security-headers.conf`, `docker/nginx-embed-security-headers.conf`, `vite.config.ts`, and `pro-test/vite.config.ts` | Trial enrollment, origin isolation, same-origin permission, local testing parity, and explicit embed denial. |
+| `tests/webmcp*.test.*`, `tests/dom/*webmcp*.test.*`, and `tests/deploy-config.test.mjs` | Deterministic inventory, schema, lifecycle, UI, telemetry, documentation, and deployment-boundary contracts. |
+| `tests/fixtures/webmcp/evals.v1.json` and `scripts/evaluate-webmcp-evals.mjs` | Offline tool-selection and multi-step journey evaluation contract. |
+| `e2e/webmcp.spec.ts`, `e2e/webmcp-cancellation.spec.ts`, and `e2e/embed.spec.ts` | Browser discovery, invocation, visible UI effects, cancellation, production matrix, and cross-origin denial evidence. |
+
+## Verification ladder
+
+Use Node.js 24. Run focused checks sequentially:
+
+```bash
+npm run docs:check
+./node_modules/.bin/tsx --test --test-concurrency=1 \
+  tests/docs-i18n-parity.test.mjs \
+  tests/webmcp-inventory.test.mts \
+  tests/webmcp.test.mjs \
+  tests/webmcp-map-layer-catalog.test.mts \
+  tests/webmcp-search-effects.test.mts \
+  tests/webmcp-dashboard.test.mts \
+  tests/dashboard-tab-actions.test.mts \
+  tests/panel-layout-actions.test.mts \
+  tests/webmcp-panel-catalog.test.mts \
+  tests/webmcp-mission-presets.test.mts \
+  tests/agent-bus-actions.test.mts \
+  tests/agent-bus-applier.test.mts \
+  tests/country-map-focus.test.mts \
+  tests/webmcp-runtime.test.mjs \
+  tests/webmcp-analytics-policy.test.mjs \
+  tests/webmcp-evals.test.mjs \
+  tests/webmcp-access.test.mts \
+  tests/webmcp-panel-enablement.test.mts \
+  tests/deploy-config.test.mjs
+npm run typecheck
+```
+
+For a browser-visible contract change, also run `npm run test:dom` and `npm run test:e2e:webmcp`. A missing browser, origin-trial token, credential, or deployed SHA is a named verification gate. Do not weaken a check to work around it.
+
+## Release smoke checklist
+
+### Local, same SHA
+
+Test the exact commit that will ship. This command records its 40-character Git SHA and fails when the checkout is dirty:
+
+```bash
+(
+  set -euo pipefail
+  WEBMCP_SHA="$(git rev-parse --verify HEAD)"
+  test "${#WEBMCP_SHA}" -eq 40
+  test -z "$(git status --porcelain --untracked-files=normal)"
+  printf 'Testing WebMCP at %s\n' "$WEBMCP_SHA"
+  WM_WEBMCP_DEPLOYED_SHA="$WEBMCP_SHA" npm run test:e2e:webmcp
+)
+```
+
+The local suite enables Chrome's WebMCP testing feature and records the SHA in its evidence. It does not prove that a deployment serves that SHA. If the change affects the homepage, run `npm run build:pro` and inspect `/pro/welcome.html`. If the change affects conditional registration, inspect every dashboard variant and both eligible and ineligible `search_procurement` states.
+
+### Production, same SHA
+
+First confirm in the deployment control plane that the target URL serves the intended SHA. The runner also reads `/build-hash.txt` from every enrolled dashboard origin.
+
+```bash
+WM_WEBMCP_PRODUCTION_URL=https://www.worldmonitor.app \
+WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
+npm run test:e2e:webmcp:production
+```
+
+The headed production suite tests the real origin trial. It verifies the served SHA, security headers, thirty-one-tool inventory and schemas, cold-start invocation, bounded access and sign-in results, read-only catalogs, cancellation behavior, all six dashboard origins, specialized-root redirects, and cross-origin embed denial. Mutation tests that would alter production state remain local.
+
+Preserve `webmcp-smoke.json`, `webmcp-cancellation.json`, and `webmcp-production-matrix.json` from `test-results/` with the release evidence. Also verify that `/embed` and `/embed.html` return `tools=()`, and that `/?mode=agent`, preview deployments, documentation, and embed pages do not gain the top-level inventory.
+
+Treat the deployment SHA, response headers, inventory, UI behavior, and terminal outcomes as separate assertions. A successful deployment or registration log does not prove acceptance.
+
+## Compatibility and removal policy
+
+WorldMonitor targets `document.modelContext.registerTool()` and feature-detects it. It does not ship `navigator.modelContext`, `provideContext`, or a draft compatibility shim.
+
+If a future browser transition requires a temporary fallback:
+
+1. Name the exact browser and API gap. Keep the current API as the preferred path.
+2. Preserve same-origin policy, visible UI behavior, authentication and entitlement checks, bounded outputs, privacy rules, and cancellation.
+3. Add contract tests for both paths. Name the removal owner and the Chrome milestone or production verification condition.
+4. Remove the fallback when production verifies the supported current API. Do not leave an undocumented permanent path.
+
+The hosted MCP server remains the supported alternative when WebMCP is unavailable. It is a separate product interface, not a browser fallback.
+
+Chrome documents that Chrome 153 can unregister a tool without cancelling in-flight executions. That lifecycle change does not prove that a released browser passes the invocation's `AbortSignal` to the page. WorldMonitor's one-argument callback note is based on recorded Chrome 149–151 evidence. Re-run the production smoke on each browser milestone and update the [WebMCP reference](/webmcp) from observed results.

@@ -6,10 +6,8 @@
 
 import { escapeHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
-import { getAuthState } from '@/services/auth-state';
 import { showToast } from '@/utils/toast';
 import {
-  getSubscription,
   listBusinessSeats,
   inviteBusinessSeats,
   removeBusinessSeat,
@@ -20,11 +18,21 @@ export class BusinessSeatsSection {
   private seats: BusinessSeat[] = [];
   private loading = false;
   private error = '';
-  private ownerDomain: string | null = null;
   // Optimistic default (true) so the invite form doesn't flash a "must be
   // corporate" rejection during the async listBusinessSeats() round-trip —
   // the server call is the authoritative gate at submit time regardless.
   private ownerIsCorporateDomain = true;
+  // The SERVER's verdict on whether this account owns a covering Business
+  // subscription — `listSeats` returns it non-null exactly when
+  // getCoveringBusinessSubscription found one. `undefined` means "not asked
+  // yet", which is deliberately distinct from `null` ("asked; not an owner").
+  //
+  // The client cannot derive this itself: getSubscription() exposes one
+  // DISPLAY row picked by a sort that ranks active < on_hold < ended
+  // (convex/payments/billing.ts), so an owner holding an active pro_monthly
+  // alongside an on_hold or paid-through-cancelled api_business row never sees
+  // the Business row at all. Asking the server is the only sound gate.
+  private businessSubscriptionId: string | null | undefined;
   private accountGeneration = 0;
   // grantIds with a removeSeat mutation currently in flight — lets two
   // DIFFERENT seats be removed concurrently while still preventing a
@@ -39,8 +47,8 @@ export class BusinessSeatsSection {
     this.seats = [];
     this.loading = false;
     this.error = '';
-    this.ownerDomain = null;
     this.ownerIsCorporateDomain = true;
+    this.businessSubscriptionId = undefined;
     this.removingGrantIds.clear();
     this.renderInPlace();
   }
@@ -54,10 +62,15 @@ export class BusinessSeatsSection {
       const result = await listBusinessSeats();
       if (generation !== this.accountGeneration) return;
       this.seats = result.seats;
-      this.ownerDomain = result.ownerDomain;
       this.ownerIsCorporateDomain = result.ownerIsCorporateDomain;
+      this.businessSubscriptionId = result.businessSubscriptionId;
     } catch (err) {
       if (generation !== this.accountGeneration) return;
+      // Deliberately does NOT clear businessSubscriptionId: a transient failure
+      // on a refresh must not strip a confirmed owner's seat surface out from
+      // under them — the error renders inside the section instead. A first load
+      // that fails leaves it `undefined`, so an unconfirmed account still shows
+      // nothing rather than a guessed surface.
       this.error = err instanceof Error ? err.message : 'Failed to load seats';
     } finally {
       if (generation === this.accountGeneration) {
@@ -75,18 +88,10 @@ export class BusinessSeatsSection {
   }
 
   renderContent(): string {
-    const sub = getSubscription();
-    const authUser = getAuthState().user;
-    const ownerEmail = authUser?.email ?? '';
-    // Server-computed corporate-domain check (matches the same isCorporateDomain()
-    // the invite/accept mutations enforce, via listBusinessSeats' response) is
-    // authoritative once loaded; the locally-parsed domain string is only a
-    // display fallback for the brief window before that response arrives.
-    const ownerDomain = this.ownerDomain ?? ownerEmail.split('@')[1]?.toLowerCase() ?? '';
-    const isBusinessOwner = sub?.planKey === 'api_business' && sub?.status === 'active';
     const isCorporateDomain = this.ownerIsCorporateDomain;
 
-    if (!isBusinessOwner) return '';
+    // The server's verdict, never a status-string reading of the display row.
+    if (typeof this.businessSubscriptionId !== 'string') return '';
 
     const seats = this.seats;
     const activeSeats = seats.filter((s) => s.status === 'accepted');
@@ -115,7 +120,7 @@ export class BusinessSeatsSection {
     };
 
     const inviteHint = isCorporateDomain
-      ? `Invite teammates on your company domain (@${escapeHtml(ownerDomain)}).`
+      ? 'Invite teammates at any corporate email domain.'
       : 'Add a company email to invite teammates.';
 
     return `
@@ -128,7 +133,7 @@ export class BusinessSeatsSection {
         ${!isCorporateDomain ? `<div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:#ef4444;margin-bottom:12px;">Free or disposable email domains cannot invite teammates. Add a company email to use this feature.</div>` : ''}
         ${isCorporateDomain ? `
           <div class="business-seats-invite-form" style="display:flex;gap:8px;margin-bottom:12px;">
-            <input type="email" class="business-seats-email-input" placeholder="teammate@${escapeHtml(ownerDomain)}" style="flex:1;padding:8px 10px;background:#111;border:1px solid #1a1a1a;border-radius:4px;color:#fff;font-size:calc(13px * var(--wm-panel-effective-scale, 1));" ${seatCount >= 4 ? 'disabled' : ''} />
+            <input type="email" class="business-seats-email-input" placeholder="teammate@company.com" style="flex:1;padding:8px 10px;background:#111;border:1px solid #1a1a1a;border-radius:4px;color:#fff;font-size:calc(13px * var(--wm-panel-effective-scale, 1));" ${seatCount >= 4 ? 'disabled' : ''} />
             <button class="btn btn-primary business-seats-invite-btn" ${seatCount >= 4 ? 'disabled' : ''}>Invite</button>
           </div>
         ` : ''}
@@ -164,8 +169,6 @@ export class BusinessSeatsSection {
       const msg = err instanceof Error ? err.message : 'Failed to send invite';
       if (msg.includes('SEAT_CAP_REACHED')) {
         this.error = 'All 4 seats are used. Remove a seat first.';
-      } else if (msg.includes('INVITEE_DOMAIN_MISMATCH')) {
-        this.error = 'Invitee must share your company email domain.';
       } else if (msg.includes('OWNER_DOMAIN_NOT_CORPORATE')) {
         this.error = 'Your account email must be a company domain to invite teammates.';
       } else if (msg.includes('CANNOT_INVITE_SELF')) {

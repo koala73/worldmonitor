@@ -1,82 +1,14 @@
 import { expect, test, type Page } from '@playwright/test';
 
-const ENERGY_KEYS = ['pipelinesGas', 'pipelinesOil', 'storageFacilities'] as const;
+import {
+  ENERGY_BOOTSTRAP_DATA,
+  ENERGY_KEYS,
+  requestedKeys,
+  seedAnonymousDashboard,
+  waitForStartup,
+} from './bootstrap-request-budget-fixtures';
+
 const DEMOTED_ON_DEMAND_KEYS = ['flightDelays', 'wsbTickers'] as const;
-
-const PIPELINE_EVIDENCE = {
-  physicalState: 'flowing',
-  physicalStateSource: 'operator',
-  commercialState: 'active',
-  sanctionRefs: [],
-  lastEvidenceUpdate: '2026-08-20T12:00:00Z',
-  classifierVersion: 'v2',
-  classifierConfidence: 0.98,
-};
-
-const ENERGY_BOOTSTRAP_DATA: Record<(typeof ENERGY_KEYS)[number], unknown> = {
-  pipelinesGas: {
-    pipelines: {
-      'browser-gas': {
-        id: 'browser-gas',
-        name: 'Browser Gas Link',
-        operator: 'Gas Operator',
-        commodityType: 'gas',
-        fromCountry: 'NO',
-        toCountry: 'DE',
-        capacityBcmYr: 55,
-        startPoint: { lat: 58, lon: 6 },
-        endPoint: { lat: 53, lon: 8 },
-        evidence: PIPELINE_EVIDENCE,
-      },
-    },
-    classifierVersion: 'v2',
-    updatedAt: '2026-08-20T12:00:00Z',
-  },
-  pipelinesOil: {
-    pipelines: {
-      'browser-oil': {
-        id: 'browser-oil',
-        name: 'Browser Oil Link',
-        operator: 'Oil Operator',
-        commodityType: 'oil',
-        fromCountry: 'PL',
-        toCountry: 'DE',
-        capacityMbd: 1.4,
-        startPoint: { lat: 52, lon: 19 },
-        endPoint: { lat: 52, lon: 13 },
-        evidence: PIPELINE_EVIDENCE,
-      },
-    },
-    classifierVersion: 'v2',
-    updatedAt: '2026-08-20T12:00:00Z',
-  },
-  storageFacilities: {
-    facilities: {
-      'browser-storage': {
-        id: 'browser-storage',
-        name: 'Browser Storage Hub',
-        operator: 'Storage Operator',
-        facilityType: 'ugs',
-        country: 'DE',
-        location: { lat: 52.6, lon: 8.4 },
-        capacityTwh: 42.5,
-        evidence: {
-          physicalState: 'operational',
-          physicalStateSource: 'operator',
-          commercialState: 'active',
-          sanctionRefs: [],
-          fillDisclosed: true,
-          fillSource: 'operator',
-          lastEvidenceUpdate: '2026-08-20T12:00:00Z',
-          classifierVersion: 'v2',
-          classifierConfidence: 0.98,
-        },
-      },
-    },
-    classifierVersion: 'v2',
-    updatedAt: '2026-08-20T12:00:00Z',
-  },
-};
 
 type BootstrapRequestLog = {
   tier: string[];
@@ -88,15 +20,11 @@ type EnergyMapHarnessWindow = Window & {
   __mapHarness?: {
     ready: boolean;
     variant: string;
+    seedAllDynamicData: () => void;
+    setLayersForSnapshot: (enabledLayers: string[]) => void;
     getLayerDataCount: (layerId: string) => number;
   };
 };
-
-function requestedKeys(url: string): string[] {
-  const parsed = new URL(url);
-  const keys = parsed.searchParams.get('keys');
-  return keys ? keys.split(',').filter(Boolean) : [];
-}
 
 async function installBootstrapAccounting(page: Page): Promise<BootstrapRequestLog> {
   const log: BootstrapRequestLog = { tier: [], keys: [], counts: {} };
@@ -133,28 +61,6 @@ async function installBootstrapAccounting(page: Page): Promise<BootstrapRequestL
   return log;
 }
 
-async function seedAnonymousDashboard(
-  page: Page,
-  variant: 'full' | 'happy' | 'energy',
-): Promise<void> {
-  await page.addInitScript((selectedVariant) => {
-    localStorage.setItem('wm-layer-warning-dismissed', 'true');
-    localStorage.setItem('wm-pro-banner-launched-dismissed', String(Date.now()));
-    localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
-    localStorage.setItem('worldmonitor-variant', selectedVariant);
-  }, variant);
-}
-
-async function waitForStartup(page: Page): Promise<void> {
-  await page.goto('/');
-  await expect(page.locator('html')).toHaveAttribute('data-wm-event-handlers-ready', 'true', {
-    timeout: 45_000,
-  });
-  await expect(page.locator('html')).toHaveAttribute('data-wm-initial-data-ready', 'true', {
-    timeout: 45_000,
-  });
-}
-
 async function expectPopulatedEnergyMapLayers(page: Page): Promise<void> {
   await page.goto('/tests/map-harness.html');
   await expect(page.locator('.deckgl-map-wrapper')).toBeVisible();
@@ -162,13 +68,28 @@ async function expectPopulatedEnergyMapLayers(page: Page): Promise<void> {
     const harness = (window as EnergyMapHarnessWindow).__mapHarness;
     return harness?.ready && harness.variant === 'energy';
   }), { timeout: 45_000 }).toBe(true);
-  await expect.poll(() => page.evaluate(() => {
+
+  // Energy harness boots with nearly every map layer on. getLayerDataCount()
+  // rebuilds the full DeckGL stack on each poll (~60 layers). Under
+  // variant-smoke-full CI load that single evaluate can take most of a 20s
+  // expect.poll budget (or hang the Playwright protocol) even when counts
+  // are already correct — see issue #7249 traces. Narrow to the two layers
+  // under contract, matching e2e/map-harness.spec.ts's snapshot pattern.
+  await page.evaluate(() => {
     const harness = (window as EnergyMapHarnessWindow).__mapHarness;
-    return {
-      pipelines: harness?.getLayerDataCount('pipelines-layer') ?? 0,
-      storage: harness?.getLayerDataCount('storage-facilities-layer') ?? 0,
-    };
-  }), { timeout: 20_000 }).toEqual({ pipelines: 2, storage: 1 });
+    harness?.seedAllDynamicData();
+    harness?.setLayersForSnapshot(['pipelines', 'storageFacilities']);
+  });
+
+  await expect.poll(async () => {
+    return page.evaluate(() => {
+      const harness = (window as EnergyMapHarnessWindow).__mapHarness;
+      return {
+        pipelines: harness?.getLayerDataCount('pipelines-layer') ?? 0,
+        storage: harness?.getLayerDataCount('storage-facilities-layer') ?? 0,
+      };
+    });
+  }, { timeout: 30_000 }).toEqual({ pipelines: 2, storage: 1 });
 }
 
 test.describe('bootstrap request budget (#7046)', () => {

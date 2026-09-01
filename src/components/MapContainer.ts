@@ -124,6 +124,12 @@ export type ViewportTransitionFailureReason =
   | 'renderer_changed'
   | 'viewport_interrupted';
 
+export interface MapRendererSwitchResult {
+  renderer: 'globe' | 'deck' | 'svg';
+  mode: 'globe' | 'flat';
+  fallback: boolean;
+}
+
 export class ViewportTransitionError extends Error {
   public constructor(public readonly reason: ViewportTransitionFailureReason) {
     super(reason === 'viewport_superseded'
@@ -175,6 +181,10 @@ export class MapContainer {
   private globeInitToken = 0;
   private rendererInitToken = 0;
   private viewportActionToken = 0;
+  private humanViewportInteractionToken = 0;
+  private readonly invalidateViewportAuthority = (): void => {
+    this.markHumanViewportInteraction();
+  };
   private rendererReady = false;
   private rendererReadyWaiters = new Set<{
     resolve: () => void;
@@ -266,6 +276,14 @@ export class MapContainer {
     this.useGlobe = preferGlobe && this.hasGlobeSupport();
 
     this.useDeckGL = !this.useGlobe && this.shouldUseDeckGL();
+
+    // A WebMCP viewport action can wait for the UI and renderer to become
+    // ready. Any direct map interaction during that wait owns the newer user
+    // intent and must make the queued agent action stale before it can apply.
+    this.container.addEventListener('pointerdown', this.invalidateViewportAuthority, { passive: true });
+    this.container.addEventListener('wheel', this.invalidateViewportAuthority, { passive: true });
+    this.container.addEventListener('touchstart', this.invalidateViewportAuthority, { passive: true });
+    this.container.addEventListener('keydown', this.invalidateViewportAuthority);
 
     if (!this.useDeckGL && this.initialState.layers?.resilienceScore) {
       this.initialState = { ...this.initialState, layers: { ...this.initialState.layers, resilienceScore: false } };
@@ -666,18 +684,20 @@ export class MapContainer {
   }
 
   /** Switch to 3D globe mode at runtime (called from Settings). */
-  public switchToGlobe(): void {
-    if (this.useGlobe) return;
-    const snapshot = this.getState();
-    const center = this.getCenter();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.destroyFlatMap();
-    this.useGlobe = true;
-    this.useDeckGL = false;
-    this.initialState = snapshot;
-    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
-    void this.init();
+  public switchToGlobe(): Promise<MapRendererSwitchResult> {
+    if (!this.useGlobe) {
+      const snapshot = this.getState();
+      const center = this.getCenter();
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = null;
+      this.destroyFlatMap();
+      this.useGlobe = true;
+      this.useDeckGL = false;
+      this.initialState = snapshot;
+      this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+      void this.init();
+    }
+    return this.waitForRendererSwitch('globe');
   }
 
   /** Reload basemap style (called when map provider changes in Settings). */
@@ -686,27 +706,29 @@ export class MapContainer {
   }
 
   /** Switch back to flat map at runtime (called from Settings). */
-  public switchToFlat(): void {
-    if (!this.useGlobe) return;
-    const snapshot = this.getState();
-    const center = this.getCenter();
-    this.resizeObserver?.disconnect();
-    this.resizeObserver = null;
-    this.globeInitToken++;
-    this.globeMap?.destroy();
-    this.globeMap = null;
-    this.useGlobe = false;
-    this.useDeckGL = this.shouldUseDeckGL();
-    this.initialState = !this.useDeckGL && snapshot.layers.resilienceScore
-      ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
-      : snapshot;
-    this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
-    // Cancel any pending deck demand gate from a prior flat init before
-    // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
-    // the new init during the afterFirstPaint() window.
-    this.rendererDemandCleanup?.();
-    this.rendererDemandCleanup = null;
-    void this.init();
+  public switchToFlat(): Promise<MapRendererSwitchResult> {
+    if (this.useGlobe) {
+      const snapshot = this.getState();
+      const center = this.getCenter();
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = null;
+      this.globeInitToken++;
+      this.globeMap?.destroy();
+      this.globeMap = null;
+      this.useGlobe = false;
+      this.useDeckGL = this.shouldUseDeckGL();
+      this.initialState = !this.useDeckGL && snapshot.layers.resilienceScore
+        ? { ...snapshot, layers: { ...snapshot.layers, resilienceScore: false } }
+        : snapshot;
+      this.pendingCenter = center ? { ...center, zoom: snapshot.zoom } : null;
+      // Cancel any pending deck demand gate from a prior flat init before
+      // re-initializing, mirroring destroyFlatMap(), so a stale gate can't abort
+      // the new init during the afterFirstPaint() window.
+      this.rendererDemandCleanup?.();
+      this.rendererDemandCleanup = null;
+      void this.init();
+    }
+    return this.waitForRendererSwitch('flat');
   }
 
   private rehydrateActiveMap(): void {
@@ -780,6 +802,20 @@ export class MapContainer {
     for (const layer of this.hiddenLayerToggles) this.hideLayerToggle(layer);
   }
 
+  private currentRendererSwitchResult(requested: 'globe' | 'flat'): MapRendererSwitchResult {
+    const renderer = this.useGlobe ? 'globe' : this.useDeckGL ? 'deck' : 'svg';
+    return {
+      renderer,
+      mode: this.useGlobe ? 'globe' : 'flat',
+      fallback: requested === 'globe' ? !this.useGlobe : this.useGlobe,
+    };
+  }
+
+  private async waitForRendererSwitch(requested: 'globe' | 'flat'): Promise<MapRendererSwitchResult> {
+    await this.whenRendererReady();
+    return this.currentRendererSwitchResult(requested);
+  }
+
   public isGlobeMode(): boolean {
     return this.useGlobe;
   }
@@ -797,6 +833,15 @@ export class MapContainer {
     return new Promise((resolve, reject) => {
       this.rendererReadyWaiters.add({ resolve, reject });
     });
+  }
+
+  /** Snapshot direct user interaction so delayed agent work cannot overwrite it. */
+  public getViewportAuthorityToken(): number {
+    return this.humanViewportInteractionToken;
+  }
+
+  private markHumanViewportInteraction(): void {
+    this.humanViewportInteractionToken += 1;
   }
 
   /** Resolves after the current programmatic viewport transition is visible. */
@@ -1671,6 +1716,10 @@ export class MapContainer {
 
   public destroy(): void {
     this.destroyed = true;
+    this.container.removeEventListener('pointerdown', this.invalidateViewportAuthority);
+    this.container.removeEventListener('wheel', this.invalidateViewportAuthority);
+    this.container.removeEventListener('touchstart', this.invalidateViewportAuthority);
+    this.container.removeEventListener('keydown', this.invalidateViewportAuthority);
     this.rendererReady = false;
     const rendererReadyWaiters = Array.from(this.rendererReadyWaiters);
     this.rendererReadyWaiters.clear();

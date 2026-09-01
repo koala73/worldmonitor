@@ -199,6 +199,52 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
     );
   });
 
+  it('docker-compose.yml points ais-relay Classify at the in-network app (#7437)', async () => {
+    const compose = await read('docker-compose.yml');
+    const relay = serviceBlock(compose, 'ais-relay');
+    const worldmonitor = serviceBlock(compose, 'worldmonitor');
+
+    assert.match(
+      relay,
+      /API_BASE_URL:\s*"\$\{API_BASE_URL:-http:\/\/worldmonitor:8080\}"/,
+      'ais-relay must default API_BASE_URL to the compose-network worldmonitor service',
+    );
+    assert.match(
+      relay,
+      /WORLDMONITOR_RELAY_KEY:\s*"\$\{WORLDMONITOR_RELAY_KEY:-\}"/,
+      'ais-relay must receive WORLDMONITOR_RELAY_KEY so Classify can send X-WorldMonitor-Key',
+    );
+    assert.match(
+      worldmonitor,
+      /WORLDMONITOR_RELAY_KEY:\s*"\$\{WORLDMONITOR_RELAY_KEY:-\}"/,
+      'worldmonitor must receive the same WORLDMONITOR_RELAY_KEY so the gateway can accept the Classify digest fetch',
+    );
+    assert.doesNotMatch(
+      relay,
+      /depends_on:[\s\S]*worldmonitor/,
+      'ais-relay must not depend_on worldmonitor — that would cycle with the app depends_on',
+    );
+  });
+
+  it('docker-compose.yml bounds redis-rest memory against its per-request body buffer (#7099)', async () => {
+    const compose = await read('docker-compose.yml');
+    const redisRest = serviceBlock(compose, 'redis-rest');
+
+    // The proxy buffers each accepted body in full (SRH_MAX_BODY_BYTES, 16MB
+    // default), and those Buffers are off-heap so a Node heap flag cannot cap
+    // them. Measured: 64 concurrent 16MB POSTs reached ~933MB RSS. Without a
+    // container limit an unbounded proxy sits next to a Redis capped at 256mb
+    // and can starve the whole stack.
+    const limit = redisRest.match(/mem_limit:\s*(\d+)([mg])/i);
+    assert.ok(limit, 'redis-rest must declare a mem_limit');
+
+    const megabytes = limit[2].toLowerCase() === 'g' ? Number(limit[1]) * 1024 : Number(limit[1]);
+    // One max-size publish costs ~64MB transient (16MB body + concat + UTF-16
+    // string). Too low turns a legitimate 16MB seeder publish into an OOM kill.
+    assert.ok(megabytes >= 256, `mem_limit ${limit[0]} is too low to serve one max-size publish`);
+    assert.ok(megabytes <= 2048, `mem_limit ${limit[0]} is high enough to defeat the point of bounding it`);
+  });
+
   it('docker-compose.yml passes one fail-closed relay secret to both consumers (#6537)', async () => {
     const compose = await read('docker-compose.yml');
     assertRequiredRelaySecretWiring(compose);

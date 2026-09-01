@@ -128,6 +128,7 @@
     <script async defer src="https://abacus.worldmonitor.app/script.js" data-website-id="e8800335-c853-46a8-8497-c993ed2f58bc" data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" nonce="wm-static-bootstrap"></script>
     <title>World Monitor — Free Real-Time Global Intelligence Dashboard</title>
     <meta name="description" content="By the time it's news, you already knew. Conflicts, shipping chokepoints, military flights, markets and cyber on one free live world map, with AI analysis. No signup." />
+    <meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" />
     <meta name="keywords" content="global intelligence dashboard, real-time world map, geopolitical monitoring, conflict tracking, OSINT dashboard, market monitoring, shipping chokepoints, satellite tracking, situational awareness, free intelligence platform, world news dashboard, AI news analysis" />
     <link rel="canonical" href="https://www.worldmonitor.app/" />
     <link rel="alternate" hreflang="x-default" href="https://www.worldmonitor.app/" />
@@ -149,37 +150,102 @@
     <meta name="twitter:description" content="Curated live feeds, conflict tracking, markets, chokepoints, satellites and AI analysis in one free real-time dashboard. No signup." />
     <link rel="icon" type="image/png" href="https://www.worldmonitor.app/favico/favicon-32x32.png" />
     <link rel="alternate" type="application/json" href="https://www.worldmonitor.app/?mode=agent" title="World Monitor agent-mode view (machine-readable)" />
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="World Monitor LLM briefing" />
+    <link rel="alternate" type="text/markdown" href="/index.md" title="World Monitor homepage in Markdown" />
+    <link rel="alternate" type="text/markdown" href="/world-monitor.md" title="World Monitor brand identity (NAP)" />
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "Organization",
+      "@id": "https://www.worldmonitor.app/#organization",
+      "name": "World Monitor",
+      "alternateName": "WorldMonitor",
+      "url": "https://www.worldmonitor.app/",
+      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+      "description": "Open-source real-time global intelligence platform aggregating conflicts, military movements, markets, infrastructure, and geopolitical data.",
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://www.npmjs.com/package/worldmonitor",
+        "https://x.com/worldmonitorai",
+        "https://x.com/eliehabib",
+        "https://discord.gg/re63kWKxaz",
+        "https://www.wired.com/story/world-monitor-elie-habib/"
+      ],
+      "contactPoint": {
+        "@type": "ContactPoint",
+        "contactType": "customer support",
+        "email": "support@worldmonitor.app",
+        "url": "https://www.worldmonitor.app/support.md",
+        "availableLanguage": "English"
+      },
+      "founder": {
+        "@id": "https://www.worldmonitor.app/blog/authors/elie-habib/#person",
+        "@type": "Person",
+        "name": "Elie Habib"
+      },
+      "foundingDate": "2026-01",
+      "address": {
+        "@type": "PostalAddress",
+        "addressLocality": "Dubai",
+        "addressCountry": "AE"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebSite",
+      "@id": "https://www.worldmonitor.app/#website",
+      "name": "World Monitor",
+      "alternateName": "WorldMonitor",
+      "url": "https://www.worldmonitor.app/",
+      "description": "By the time it's news, you already knew. Conflicts, shipping chokepoints, military flights, markets and cyber on one free live world map, with AI analysis. No signup.",
+      "publisher": {
+        "@id": "https://www.worldmonitor.app/#organization"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": {
+          "@type": "EntryPoint",
+          "urlTemplate": "https://www.worldmonitor.app/dashboard?q={search_term_string}"
+        },
+        "query-input": "required name=search_term_string"
+      },
+      "inLanguage": "en"
+    }
+    </script>
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "SoftwareApplication",
+      "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
       "applicationCategory": "FinanceApplication",
       "operatingSystem": "Web, Windows, macOS, Linux, Android TV",
-      "url": "https://worldmonitor.app",
+      "url": "https://www.worldmonitor.app/",
       "description": "Free real-time global intelligence dashboard. Curated news feeds, conflict tracking, market data, shipping chokepoints, satellite passes and cyber signals fused into one live map of the world, with AI analysis layered on top.",
+      "publisher": {
+        "@id": "https://www.worldmonitor.app/#organization"
+      },
+      "isBasedOn": {
+        "@id": "https://www.worldmonitor.app/#source"
+      },
       "sameAs": [
         "https://github.com/koala73/worldmonitor",
         "https://www.npmjs.com/package/worldmonitor",
+        "https://www.wikidata.org/wiki/Q141237754",
         "https://x.com/worldmonitorai",
         "https://discord.gg/re63kWKxaz",
         "https://www.wired.com/story/world-monitor-elie-habib/"
       ],
       "author": {
+        "@id": "https://www.worldmonitor.app/blog/authors/elie-habib/#person",
         "@type": "Person",
-        "name": "Elie Habib",
-        "url": "https://x.com/eliehabib",
-        "jobTitle": "CEO",
-        "sameAs": [
-          "https://x.com/eliehabib",
-          "https://github.com/koala73",
-          "https://www.linkedin.com/in/elie-habib-7047b931",
-          "https://www.wikidata.org/wiki/Q121365724",
-          "https://www.crunchbase.com/person/elie-habib-2"
-        ]
+        "name": "Elie Habib"
       },
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
       "datePublished": "2026-01",
+      "dateModified": "2026-08-31",
       "offers": [
         {
           "@type": "Offer",
@@ -197,7 +263,7 @@
           "priceCurrency": "USD",
           "availability": "https://schema.org/InStock",
           "url": "https://www.worldmonitor.app/pro#pricing",
-          "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license, 1 named user",
+          "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Personal license, 1 named user",
           "priceSpecification": {
             "@type": "UnitPriceSpecification",
             "price": "39.99",
@@ -227,10 +293,36 @@
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
+      "@type": "SoftwareSourceCode",
+      "@id": "https://www.worldmonitor.app/#source",
+      "name": "World Monitor source code",
+      "description": "Source code for the World Monitor real-time global intelligence platform.",
+      "codeRepository": "https://github.com/koala73/worldmonitor",
+      "license": "https://www.gnu.org/licenses/agpl-3.0.html",
+      "programmingLanguage": ["TypeScript", "JavaScript", "Rust"],
+      "runtimePlatform": ["Web", "Windows", "macOS", "Linux"],
+      "targetProduct": {
+        "@id": "https://www.worldmonitor.app/#software"
+      }
+    }
+    </script>
+    <script type="application/ld+json">
+    {
+      "@context": "https://schema.org",
       "@type": "WebPage",
-      "@id": "https://www.worldmonitor.app/",
+      "@id": "https://www.worldmonitor.app/#webpage",
       "url": "https://www.worldmonitor.app/",
       "name": "World Monitor — By the time it's news, you already knew.",
+      "description": "By the time it's news, you already knew. Conflicts, shipping chokepoints, military flights, markets and cyber on one free live world map, with AI analysis. No signup.",
+      "isPartOf": {
+        "@id": "https://www.worldmonitor.app/#website"
+      },
+      "mainEntity": {
+        "@id": "https://www.worldmonitor.app/#software"
+      },
+      "breadcrumb": {
+        "@id": "https://www.worldmonitor.app/#breadcrumb"
+      },
       "speakable": {
         "@type": "SpeakableSpecification",
         "cssSelector": ["h1", "h1 + p"]
@@ -241,6 +333,7 @@
     {
       "@context": "https://schema.org",
       "@type": "BreadcrumbList",
+      "@id": "https://www.worldmonitor.app/#breadcrumb",
       "itemListElement": [
         { "@type": "ListItem", "position": 1, "name": "World Monitor", "item": "https://www.worldmonitor.app/" }
       ]

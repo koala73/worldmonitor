@@ -445,9 +445,13 @@ export function runClerkSurfaceOpen(
   }
 }
 
+function openLoadedClerkSignIn(): void {
+  clerkInstance?.openSignIn({ appearance: getAppearance() });
+}
+
 function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
   const open = action === 'open-sign-in'
-    ? () => clerkInstance?.openSignIn({ appearance: getAppearance() })
+    ? openLoadedClerkSignIn
     : () => clerkInstance?.openSignUp({ appearance: getAppearance() });
   // Distinct reasons so Sentry can tell the "components not attached" race
   // (the surface open threw) apart from a "Clerk bundle never loaded" failure
@@ -472,6 +476,170 @@ function openClerkSurface(action: 'open-sign-in' | 'open-sign-up'): void {
 /** Open the Clerk sign-in modal. */
 export function openSignIn(): void {
   openClerkSurface('open-sign-in');
+}
+
+export function isClerkReady(): boolean {
+  return clerkInstance !== null;
+}
+
+/** True when Clerk's sign-in (or other auth) modal is already on screen. */
+export function isClerkSignInOpen(): boolean {
+  if (!clerkInstance || typeof document === 'undefined') return false;
+  try {
+    return Boolean(document.querySelector(
+      '.cl-modalBackdrop, .cl-modal, [data-clerk-component="SignIn"]',
+    ));
+  } catch {
+    return false;
+  }
+}
+
+const CLERK_SIGN_IN_OPEN_WAIT_MS = 2000;
+const CLERK_SURFACE_RETRY_TIMEOUT_MS = 50;
+
+/**
+ * Schedule a one-shot retry on the next animation frame when available, and
+ * always on a timeout so a background tab that never paints still retries.
+ */
+function scheduleClerkSurfaceRetry(cb: () => void): void {
+  let ran = false;
+  const run = (): void => {
+    if (ran) return;
+    ran = true;
+    cb();
+  };
+  if (typeof requestAnimationFrame === 'function') requestAnimationFrame(run);
+  setTimeout(run, CLERK_SURFACE_RETRY_TIMEOUT_MS);
+}
+
+export interface WaitForClerkSurfaceOpenOptions {
+  /** When set, success means this predicate is true, not merely that open() did not throw. */
+  isOpen?: () => boolean;
+  signal?: AbortSignal;
+}
+
+function abortClerkSurfaceWait(signal?: AbortSignal): never {
+  signal?.throwIfAborted();
+  throw new DOMException('The operation was aborted.', 'AbortError');
+}
+
+/**
+ * Wait until a Clerk surface open succeeds, persistently fails, or the wait
+ * cap elapses. Settlement must not depend on rAF-only scheduling. Exported
+ * so tests can drive the dual scheduler and wait cap without a Clerk instance.
+ *
+ * When `isOpen` is provided, a non-throwing `open()` is not enough: the
+ * waiter keeps polling until the surface is actually present or the cap
+ * elapses. An abort signal rejects without treating the surface as opened.
+ */
+export function waitForClerkSurfaceOpen(
+  open: () => void,
+  waitCapMs = CLERK_SIGN_IN_OPEN_WAIT_MS,
+  scheduleRetry: (cb: () => void) => void = scheduleClerkSurfaceRetry,
+  options?: WaitForClerkSurfaceOpenOptions,
+): Promise<boolean> {
+  return new Promise<boolean>((resolve, reject) => {
+    let settled = false;
+    let waitCap: ReturnType<typeof setTimeout> | undefined;
+    let presencePoll: ReturnType<typeof setTimeout> | undefined;
+    const signal = options?.signal;
+    const isOpen = options?.isOpen;
+
+    const cleanup = (): void => {
+      if (waitCap !== undefined) clearTimeout(waitCap);
+      if (presencePoll !== undefined) clearTimeout(presencePoll);
+      signal?.removeEventListener('abort', onAbort);
+    };
+    const finish = (ok: boolean): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(ok);
+    };
+    const failAbort = (): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      try {
+        abortClerkSurfaceWait(signal);
+      } catch (error) {
+        reject(error);
+      }
+    };
+    const onAbort = (): void => {
+      failAbort();
+    };
+
+    if (signal?.aborted) {
+      failAbort();
+      return;
+    }
+    signal?.addEventListener('abort', onAbort, { once: true });
+
+    const surfaceReady = (): boolean => !isOpen || isOpen();
+    let opened = false;
+    const tryFinishOpened = (): void => {
+      if (settled || !opened) return;
+      if (surfaceReady()) finish(true);
+    };
+    const pollForPresence = (): void => {
+      if (settled || !isOpen || presencePoll !== undefined) return;
+      presencePoll = setTimeout(() => {
+        presencePoll = undefined;
+        if (settled) return;
+        if (signal?.aborted) {
+          failAbort();
+          return;
+        }
+        tryFinishOpened();
+        if (!settled && opened) pollForPresence();
+      }, CLERK_SURFACE_RETRY_TIMEOUT_MS);
+    };
+
+    waitCap = setTimeout(() => finish(false), waitCapMs);
+    runClerkSurfaceOpen(
+      () => {
+        open();
+        opened = true;
+      },
+      () => finish(false),
+      (retryOpen) => {
+        scheduleRetry(() => {
+          if (settled) return;
+          if (signal?.aborted) {
+            failAbort();
+            return;
+          }
+          retryOpen();
+          tryFinishOpened();
+          if (!settled && opened && isOpen) pollForPresence();
+        });
+      },
+    );
+    tryFinishOpened();
+    if (!settled && opened && isOpen) pollForPresence();
+  });
+}
+
+/**
+ * Returns false when Clerk is disabled, failed to load, or the UI surface
+ * could not attach.
+ */
+export async function openSignInAndWait(signal?: AbortSignal): Promise<boolean> {
+  if (!isClerkAuthEnabled()) return false;
+  try {
+    await initClerk();
+  } catch {
+    return false;
+  }
+  if (signal?.aborted) abortClerkSurfaceWait(signal);
+  if (!clerkInstance || typeof clerkInstance.openSignIn !== 'function') return false;
+  return waitForClerkSurfaceOpen(
+    openLoadedClerkSignIn,
+    CLERK_SIGN_IN_OPEN_WAIT_MS,
+    scheduleClerkSurfaceRetry,
+    { isOpen: isClerkSignInOpen, signal },
+  );
 }
 
 /**
@@ -638,12 +806,19 @@ function shouldReuseCachedClerkTokenWithExpiry(
 /**
  * Whether the cached token can still sign a request. Both bounds must hold.
  *
- * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ): Clerk's `getToken()`
- * is stale-while-revalidate — within 15s of expiry it returns the CACHED token
- * immediately and refreshes in the background — so the premise this cache was
- * built on ("Clerk tokens expire at 60s", i.e. every token arrives fresh) does
- * not hold. Stamping a token that had 12s left with a flat 50s TTL left ~38s in
- * which every request it signed came back 401, healing only when the TTL lapsed.
+ * The TTL alone was the bug (Sentry WORLDMONITOR-XR/XQ, and the May–July 2026
+ * WORLDMONITOR-QK ramp): Clerk's `getToken()` is stale-while-revalidate —
+ * within 15s of expiry it returns the CACHED token immediately and refreshes
+ * in the background — so the premise this cache was built on ("Clerk tokens
+ * expire at 60s", i.e. every token arrives fresh) does not hold. Stamping a
+ * token that had 12s left with a flat 50s TTL left ~38s in which every request
+ * it signed came back 401, healing only when the TTL lapsed. Which Sentry
+ * bucket a leftover lands in depends on how dead it is by the time the edge
+ * sees it — three outcomes, not two; see Two-Verifier Seam in CONCEPTS.md.
+ * Still inside `exp` and rejected by Convex is QK; past `exp` but inside the
+ * edge's `clockTolerance` also reaches Convex, and is kept out of QK by the
+ * capture skip rather than by any edge 401; only past `exp` AND past that
+ * tolerance is refused at the edge (XR/XQ).
  *
  * The TTL is still enforced on top: it is what bounds how long a session that
  * was revoked but not yet expired keeps working.

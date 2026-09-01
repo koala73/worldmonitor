@@ -12,6 +12,7 @@ All developer surfaces share one tool inventory and one subscription auth model 
 - [CLI](https://www.npmjs.com/package/worldmonitor): `npx worldmonitor tools` lists every tool with no key; `npm install -g worldmonitor` installs the command
 - [SDKs](https://worldmonitor.app/sdks.md): Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript (npm `worldmonitor`)
 - [Agent Skills](https://worldmonitor.app/.well-known/agent-skills/index.json): installable skills manifest — `npx skills add koala73/worldmonitor`
+- [Agent Plugin metadata](https://worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files)
 
 ## Test Without a Key
 
@@ -30,3 +31,4 @@ All developer surfaces share one tool inventory and one subscription auth model 
 
 - [Site-wide llms.txt](https://worldmonitor.app/llms.txt) · [API section](https://worldmonitor.app/api/llms.txt) · [Docs section](https://www.worldmonitor.app/docs/llms.txt) · [Blog section](https://www.worldmonitor.app/blog/llms.txt)
 - [Developer portal (human)](https://worldmonitor.app/developers.md) · [agents.md](https://worldmonitor.app/agents.md)
+- [World Monitor brand identity](https://worldmonitor.app/world-monitor.md) · [REST versioning and deprecation](https://worldmonitor.app/api-versioning.md)

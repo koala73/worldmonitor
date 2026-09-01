@@ -27,6 +27,12 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+
+import {
+  acknowledgeStaticRefHeavyTurn,
+  claimStaticRefHeavyTurn,
+  orderStaticRefHeavySections,
+} from '../scripts/_static-ref-heavy-order.mjs';
 import {
   ADMISSION_HEADROOM_MS,
   BUNDLE_PREFLIGHT_HEADROOM_MS,
@@ -228,7 +234,7 @@ test('seed-bundle-resilience admits Resilience-Scores on a cron tick (#6556 regr
   );
 });
 
-test('#6806: static-ref splits light from heavy, and neither half has an ordering question', () => {
+test('#6806: static-ref light fits together and heavy ordering stays starvation-safe', () => {
   // The bug this shape exists to kill: leftover ran Arms-Suppliers (371s
   // measured) first on every tick because a member that never publishes never
   // stops being due, and the 199s remaining could not admit Mineral-Production's
@@ -252,7 +258,7 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
 
   assert.deepEqual(
     heavy.sections.map((s) => s.label).sort(),
-    ['Arms-Suppliers', 'Military-Bases', 'Mineral-Production'],
+    ['Arms-Suppliers', 'Military-Bases', 'Mineral-Production', 'Supply-Vulnerability'],
   );
 
   // THE property that makes the light half unstarvable: every member fits
@@ -298,9 +304,144 @@ test('#6806: static-ref splits light from heavy, and neither half has an orderin
   // A fixed order would hand the permanently-due member the lead slot forever,
   // which is exactly the starvation this split undoes.
   const heavySrc = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
+  const military = heavy.sections.find((section) => section.label === 'Military-Bases');
+  const daily = heavy.sections.find((section) => section.label === 'Supply-Vulnerability');
+  assert.ok(
+    military.timeoutMs + daily.timeoutMs + (2 * KILL_GRACE_MS) > heavy.maxBundleMs,
+    'the ordering proof must stay necessary: these two worst cases cannot share one tick',
+  );
   assert.match(
     heavySrc,
-    /SECTIONS\.slice\(offset\)/,
+    /claimStaticRefHeavyTurn\(\)[\s\S]*orderStaticRefHeavySections\(SECTIONS, DAILY_SECTIONS, turnClaim\.turn\)/,
     'seed-bundle-static-ref-heavy.mjs must rotate its lead slot; a fixed order restarves the others',
   );
+
+  const worstCaseAdmissions = (orderedSections, dueLabels) => {
+    let reservedMs = 0;
+    const admitted = [];
+    for (const section of orderedSections) {
+      if (!dueLabels.has(section.label)) continue;
+      const reservationMs = section.timeoutMs + KILL_GRACE_MS;
+      if (reservedMs + reservationMs > heavy.maxBundleMs) continue;
+      admitted.push(section.label);
+      reservedMs += reservationMs;
+    }
+    return admitted;
+  };
+  const dueLabels = new Set(['Military-Bases', 'Supply-Vulnerability']);
+  for (let firstTurn = 0; firstTurn < 6; firstTurn += 1) {
+    const admissions = [firstTurn, firstTurn + 1].map((turn) => worstCaseAdmissions(
+      orderStaticRefHeavySections(
+        heavy.sections.filter((section) => section.label !== 'Supply-Vulnerability'),
+        [daily],
+        turn,
+      ),
+      dueLabels,
+    ));
+    assert.ok(
+      admissions.some((labels) => labels.includes('Supply-Vulnerability')),
+      `daily projection must be admitted within two claimed turns from ${firstTurn}, even while Military-Bases remains due`,
+    );
+    assert.ok(
+      admissions.some((labels) => labels.includes('Military-Bases')),
+      `Military-Bases must retain a worst-case slot within two claimed turns from ${firstTurn}`,
+    );
+  }
+});
+
+test('#6449: static-ref-heavy claims durable turns per invocation, not calendar-day parity', async () => {
+  const commands = [];
+  const claimResults = [[1, '0'], [1, '1']];
+  const fetchImpl = async (_url, init) => {
+    commands.push(JSON.parse(init.body));
+    return { ok: true, json: async () => ({ result: claimResults.shift() }) };
+  };
+  const options = {
+    credentials: { restUrl: 'https://redis.example', token: 'secret' },
+    fetchImpl,
+  };
+
+  const firstClaim = await claimStaticRefHeavyTurn({ ...options, token: 'claim-a' });
+  const secondClaim = await claimStaticRefHeavyTurn({ ...options, token: 'claim-b' });
+  assert.deepEqual(firstClaim, { turn: 0, token: 'claim-a' });
+  assert.deepEqual(secondClaim, { turn: 1, token: 'claim-b' });
+  assert.equal(commands.length, 2);
+  for (const command of commands) {
+    assert.equal(command[0], 'EVAL');
+    assert.equal(command[2], '2');
+    assert.equal(command[3], 'bundle:turn:static-ref-heavy');
+    assert.equal(command[4], 'bundle:turn:static-ref-heavy:lease');
+  }
+
+  let called = false;
+  assert.equal(await claimStaticRefHeavyTurn({
+    fetchImpl: async () => { called = true; },
+    credentials: null,
+  }), null);
+  assert.equal(called, false, 'missing Redis credentials must fail safe without a network request');
+
+  for (const failingFetch of [
+    async () => ({ ok: false, status: 503, headers: new Headers() }),
+    async () => ({ ok: true, json: async () => ({ unexpected: true }) }),
+    async () => { throw new Error('network unavailable'); },
+  ]) {
+    assert.equal(await claimStaticRefHeavyTurn({
+      credentials: { restUrl: 'https://redis.example', token: 'secret' },
+      fetchImpl: failingFetch,
+    }), null, 'failed turn claims must not invent a scheduler turn');
+  }
+
+  const ackCommands = [];
+  assert.equal(await acknowledgeStaticRefHeavyTurn(firstClaim, {
+    credentials: options.credentials,
+    fetchImpl: async (_url, init) => {
+      ackCommands.push(JSON.parse(init.body));
+      return { ok: true, json: async () => ({ result: 1 }) };
+    },
+  }), true);
+  assert.equal(ackCommands[0][0], 'EVAL');
+  assert.deepEqual(ackCommands[0].slice(-2), ['claim-a', '0']);
+
+  let durableTurn = 0;
+  let lease = null;
+  let loseFirstResponse = true;
+  const ambiguousFetch = async (_url, init) => {
+    const command = JSON.parse(init.body);
+    const token = command.at(-2);
+    if (lease != null) return { ok: true, json: async () => ({ result: [0, ''] }) };
+    lease = `${token}:${durableTurn}`;
+    if (loseFirstResponse) {
+      loseFirstResponse = false;
+      throw new Error('response lost after Redis committed the lease');
+    }
+    return { ok: true, json: async () => ({ result: [1, String(durableTurn)] }) };
+  };
+  assert.equal(await claimStaticRefHeavyTurn({ ...options, fetchImpl: ambiguousFetch, token: 'lost' }), null);
+  lease = null; // lease expiry before the next scheduled invocation
+  assert.deepEqual(
+    await claimStaticRefHeavyTurn({ ...options, fetchImpl: ambiguousFetch, token: 'retry' }),
+    { turn: 0, token: 'retry' },
+    'a lost claim response must repeat the unexecuted turn after lease expiry, never skip it',
+  );
+
+  // A failed claim must not bias either cadence class. That property comes from
+  // NOT advancing the turn (the next invocation claims the same turn, asserted
+  // above), not from crashing: claimStaticRefHeavyTurn returns the same null for
+  // genuine lease contention, absent credentials, and any transient Upstash
+  // failure, so throwing cost all four members a full daily tick on a momentary
+  // blip. Assert the anti-bias goal plus a graceful defer.
+  const bundleSource = readFileSync(join(SCRIPTS_DIR, 'seed-bundle-static-ref-heavy.mjs'), 'utf-8');
+  assert.match(
+    bundleSource,
+    /if \(turnClaim == null\) \{[\s\S]*process\.exit\(0\)[\s\S]*onTerminalComplete:[\s\S]*acknowledgeStaticRefHeavyTurn/,
+    'a failed durable claim must defer to the next tick, not skip all four members',
+  );
+  assert.doesNotMatch(
+    bundleSource,
+    /if \(turnClaim == null\) \{[\s\S]{0,400}throw new Error/,
+    'a transient Redis failure is indistinguishable from contention and must not crash the bundle',
+  );
+  // The turn is only ever advanced by the acknowledgement hook, which a deferred
+  // tick never reaches — that is what preserves rotation fairness.
+  assert.match(bundleSource, /onTerminalComplete: async \(\) => \{[\s\S]*acknowledgeStaticRefHeavyTurn\(turnClaim\)/);
 });

@@ -360,6 +360,7 @@ describe("webhook processWebhookEvent", () => {
     );
 
     const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
 
     // Full refund on the now-active sub. Before the fix the leftover
     // cancelledAt short-circuited classifyRefundAlert to `already-cancelled`
@@ -374,10 +375,19 @@ describe("webhook processWebhookEvent", () => {
         payload_type: "Refund",
         payment_id: "pay_refund_001",
         subscription_id: "sub_test_001",
-        total_amount: 1999,
+        total_amount: "not-an-amount",
+        amount: "1999",
       }),
       BASE_TIMESTAMP + 300000,
     );
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(1999);
+    const amountWarnings = warnSpy.mock.calls
+      .map((call) => String(call[0]))
+      .filter((message) => message.includes("[coerceAmount] non-numeric amount"));
+    expect(amountWarnings).toHaveLength(1);
 
     const refundAlerts = errorSpy.mock.calls
       .map((call) => String(call[0]))
@@ -527,6 +537,50 @@ describe("webhook processWebhookEvent", () => {
     await processEvent(
       t,
       "wh_new_subscription_reactivation",
+      "subscription.active",
+      makeSubscriptionPayload({ subscription_id: "sub_new_reactivated" }),
+      BASE_TIMESTAMP,
+    );
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+
+    const sends = fetchMock.mock.calls
+      .filter(([url]) => String(url).includes("api.resend.com"))
+      .map(([, init]) => JSON.parse(String((init as RequestInit).body)) as {
+        to: string[];
+        subject: string;
+      });
+
+    expect(sends).toHaveLength(1);
+    expect(sends[0]?.to).toEqual(["test@example.com"]);
+    expect(sends[0]?.subject).toContain("Welcome back");
+  });
+
+  test("new-checkout reactivation uses prior expired on-hold history instead of a new-subscriber alert", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = vi
+      .spyOn(globalThis, "fetch")
+      .mockResolvedValue(new Response("{}", { status: 200 }));
+    const t = convexTest(schema, modules);
+
+    await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
+    await t.run(async (ctx) => {
+      await ctx.db.insert("subscriptions", {
+        userId: "test-user-001",
+        dodoSubscriptionId: "sub_old_on_hold",
+        dodoProductId: "pdt_test_pro",
+        planKey: "pro_monthly",
+        status: "on_hold",
+        currentPeriodStart: BASE_TIMESTAMP - 31 * 86400000,
+        currentPeriodEnd: BASE_TIMESTAMP - 86400000,
+        rawPayload: {},
+        updatedAt: BASE_TIMESTAMP - 86400000,
+      });
+    });
+
+    await processEvent(
+      t,
+      "wh_new_subscription_reactivation_from_hold",
       "subscription.active",
       makeSubscriptionPayload({ subscription_id: "sub_new_reactivated" }),
       BASE_TIMESTAMP,
@@ -1970,9 +2024,10 @@ describe("webhook processWebhookEvent", () => {
   });
 
   test.each([
-    ["on_hold", BASE_TIMESTAMP + 7 * 86400000],
-    ["cancelled", BASE_TIMESTAMP],
-  ] as const)("subscription.active from non-lapsed %s remains email-silent", async (status, currentPeriodEnd) => {
+    ["on_hold before paid-through end", "on_hold", BASE_TIMESTAMP + 7 * 86400000],
+    ["on_hold at paid-through end", "on_hold", BASE_TIMESTAMP],
+    ["cancelled at paid-through end", "cancelled", BASE_TIMESTAMP],
+  ] as const)("subscription.active from %s remains email-silent", async (_scenario, status, currentPeriodEnd) => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
     const fetchMock = vi
@@ -2057,6 +2112,8 @@ describe("webhook processWebhookEvent", () => {
   });
 
   test("subscription.on_hold marks subscription at-risk without revoking entitlements", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(BASE_TIMESTAMP);
     const t = convexTest(schema, modules);
 
     await seedProductPlan(t, "pdt_test_pro", "pro_monthly", "Pro Monthly");
@@ -2764,6 +2821,86 @@ describe("webhook processWebhookEvent", () => {
     const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
     expect(events).toHaveLength(1);
     expect(events[0].status).toBe(expectedStatus);
+  });
+
+  // WORLDMONITOR-114 — Dodo dispute payloads type `amount` as a string.
+  // A malformed `total_amount` must fall through to it before paymentEvents
+  // validates its numeric amount field.
+  test("dispute.opened falls back to a string amount when total_amount is invalid", async () => {
+    const t = convexTest(schema, modules);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const payload = {
+      type: "dispute.opened",
+      business_id: "biz_test",
+      timestamp: "2026-03-21T10:00:00Z",
+      data: {
+        payload_type: "Dispute",
+        dispute_id: "dp_string_amount",
+        payment_id: "pay_string_amount",
+        currency: "USD",
+        total_amount: "not-an-amount",
+        amount: "9999",
+        customer: {
+          customer_id: "cust_test_001",
+          email: "test@example.com",
+          name: "Test User",
+        },
+        metadata: { wm_user_id: "test-user-001" },
+      },
+    };
+    await processEvent(t, "wh_dispute_string_amount", "dispute.opened", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(9999);
+    expect(events[0].status).toBe("dispute_opened");
+    expect(events[0].dodoPaymentId).toBe("pay_string_amount");
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[coerceAmount] non-numeric amount"));
+  });
+
+  test("payment.succeeded with string total_amount persists a numeric amount", async () => {
+    const t = convexTest(schema, modules);
+
+    const payload = makePaymentPayload("payment.succeeded", { total_amount: "1999" });
+    await processEvent(t, "wh_payment_string_amount", "payment.succeeded", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(1999);
+    expect(events[0].status).toBe("succeeded");
+  });
+
+  test("payment.succeeded falls back to a valid amount when total_amount is non-numeric", async () => {
+    const t = convexTest(schema, modules);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const payload = makePaymentPayload("payment.succeeded", {
+      total_amount: "not-an-amount",
+      amount: "1999",
+    });
+    await processEvent(t, "wh_payment_invalid_amount", "payment.succeeded", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(1999);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[coerceAmount] non-numeric amount"));
+  });
+
+  test("payment.succeeded with no usable amount persists 0 and warns", async () => {
+    const t = convexTest(schema, modules);
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const payload = makePaymentPayload("payment.succeeded", {
+      total_amount: "not-an-amount",
+      amount: "also-not-an-amount",
+    });
+    await processEvent(t, "wh_payment_no_usable_amount", "payment.succeeded", payload, BASE_TIMESTAMP);
+
+    const events = await t.run(async (ctx) => ctx.db.query("paymentEvents").collect());
+    expect(events).toHaveLength(1);
+    expect(events[0].amount).toBe(0);
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[coerceAmount] non-numeric amount"));
   });
 
   test("out-of-order events are rejected", async () => {

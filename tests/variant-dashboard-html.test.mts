@@ -37,10 +37,11 @@ const fixture = `<!doctype html>
     <meta name="twitter:title" content="${FULL.title}" />
     <meta name="twitter:description" content="${FULL.description}" />
     <meta name="twitter:image" content="https://www.worldmonitor.app/favico/og-image.png" />
-    <script type="application/ld+json">
+    <script type="application/ld+json" nonce="wm-static-bootstrap">
     {
       "@context": "https://schema.org",
       "@type": "WebApplication",
+      "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
       "alternateName": ["WorldMonitor", "World Monitor App", "WM Intelligence"],
       "url": "${FULL.url}",
@@ -48,21 +49,38 @@ const fixture = `<!doctype html>
       "featureList": [
         "Real-time news aggregation",
         "Stock market tracking"
-      ]
+      ],
+      "publisher": { "@id": "https://www.worldmonitor.app/#organization" },
+      "isPartOf": { "@id": "https://www.worldmonitor.app/#website" }
     }
     </script>
-    <script type="application/ld+json">
+    <script type="application/ld+json" nonce="wm-static-bootstrap">
     {
       "@context": "https://schema.org",
-      "@type": "Organization",
+      "@type": "WebSite",
+      "@id": "https://www.worldmonitor.app/#website",
       "name": "World Monitor",
-      "alternateName": "WorldMonitor",
-      "url": "https://www.worldmonitor.app/"
+      "url": "https://www.worldmonitor.app/",
+      "publisher": { "@id": "https://www.worldmonitor.app/#organization" }
     }
     </script>
   </head>
   <body>
     <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
+    <section class="app-seo-summary" aria-hidden="true">
+      <p>Full dashboard SEO summary placeholder for transform tests.</p>
+    </section>
+    <noscript>
+      <main id="dashboard-noscript" class="dashboard-noscript">
+        <h2>The live dashboard requires JavaScript</h2>
+        <p>Full dashboard noscript placeholder.</p>
+        <nav aria-label="World Monitor references">
+          <ul>
+            <li><a href="/countries/">Country intelligence</a></li>
+          </ul>
+        </nav>
+      </main>
+    </noscript>
     <p>Link to <a href="${FULL.url}">the main dashboard</a> stays untouched.</p>
   </body>
 </html>`;
@@ -118,21 +136,48 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.ok(html.includes(`<h1 class="app-heading">${escHtml(tech.title)}</h1>`), 'h1');
   });
 
-  it('rewrites the WebApplication JSON-LD block but leaves the Organization block as World Monitor', () => {
+  it('rewrites WebApplication and attaches WebPage plus breadcrumbs instead of claiming the site', () => {
     const html = renderVariantDashboardHtml(fixture, 'finance');
     const finance = VARIANT_META.finance;
-    const blocks = [...html.matchAll(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/g)].map(
+    const blocks = [...html.matchAll(/<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>/gi)].map(
       (m) => JSON.parse(m[1]),
     );
-    assert.equal(blocks.length, 2, 'both JSON-LD blocks stay parseable');
+    assert.deepEqual(
+      blocks.map((b) => b['@type']).sort(),
+      ['BreadcrumbList', 'WebApplication', 'WebPage'],
+    );
     const webApp = blocks.find((b) => b['@type'] === 'WebApplication');
-    const org = blocks.find((b) => b['@type'] === 'Organization');
+    assert.equal(webApp['@id'], `${finance.url}#software`);
     assert.equal(webApp.name, 'Finance Monitor');
     assert.equal(webApp.url, finance.url);
     assert.equal(webApp.screenshot, 'https://finance.worldmonitor.app/favico/finance/og-image.png');
     assert.deepEqual(webApp.featureList, finance.features);
-    assert.equal(org.name, 'World Monitor', 'variant isPartOf World Monitor — org identity stays');
-    assert.equal(org.url, 'https://www.worldmonitor.app/');
+    assert.deepEqual(webApp.publisher, { '@id': 'https://www.worldmonitor.app/#organization' });
+    assert.deepEqual(webApp.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+    const webPage = blocks.find((b) => b['@type'] === 'WebPage');
+    assert.equal(webPage['@id'], `${finance.url}#webpage`);
+    assert.deepEqual(webPage.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+    assert.equal(webPage.speakable['@type'], 'SpeakableSpecification');
+    assert.deepEqual(webPage.breadcrumb, { '@id': `${finance.url}#breadcrumb` });
+    const crumbs = blocks.find((b) => b['@type'] === 'BreadcrumbList');
+    assert.equal(crumbs['@id'], `${finance.url}#breadcrumb`);
+    assert.equal(crumbs.itemListElement[1].name, 'Finance Monitor');
+    const injected = [...html.matchAll(/<script\b([^>]*\btype=["']application\/ld\+json["'][^>]*)>/gi)]
+      .map((match) => match[1]);
+    assert.equal(injected.length, 3);
+    for (const attrs of injected) {
+      assert.match(attrs, /nonce="wm-static-bootstrap"/, 'variant JSON-LD must keep the header CSP nonce');
+    }
+  });
+
+  it('injects variant-specific SEO summary and noscript differentiation copy', () => {
+    const html = renderVariantDashboardHtml(fixture, 'tech');
+    assert.match(html, /<section class="app-seo-summary" aria-hidden="true">/);
+    assert.match(html, /Tech Monitor is the World Monitor variant/);
+    assert.match(html, /<main id="dashboard-noscript"/);
+    assert.match(html, /Tech Monitor requires JavaScript for the live map/);
+    assert.doesNotMatch(html, /Full dashboard SEO summary placeholder/);
+    assert.doesNotMatch(html, /Full dashboard noscript placeholder/);
   });
 
   it('leaves body links to the main dashboard untouched', () => {

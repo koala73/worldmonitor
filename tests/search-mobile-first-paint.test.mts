@@ -47,6 +47,8 @@ const harnessSource = `
       this.showingAllCommands = false;
       this.lastSearchedQuery = '';
       this.isMobile = true;
+      this.humanInteractionCalls = 0;
+      this.onHumanInteraction = () => { this.humanInteractionCalls++; };
       this.createModalCalls = 0;
       this.focusCalls = 0;
       this.recentOrEmptyCalls = 0;
@@ -69,6 +71,8 @@ const harnessSource = `
 
     ${extractMethod('public open(replaceOverlayId?: OverlayId): void {')}
     ${extractMethod("public close(origin: OverlayCloseOrigin = 'control'): void {")}
+    ${extractMethod('private closeInternal(origin: OverlayCloseOrigin): void {')}
+    ${extractMethod('public closeForProgrammaticSelection(): void {')}
     ${extractMethod('public refreshSearch(): void {')}
     ${extractMethod('private scheduleMobileReveal(overlay: HTMLElement): void {')}
     ${extractMethod('private scheduleMobileInitialPopulation(): void {')}
@@ -83,12 +87,14 @@ const harnessJs = ts.transpileModule(harnessSource, {
 interface SearchModalHarness {
   open(): void;
   close(): void;
+  closeForProgrammaticSelection(): void;
   refreshSearch(): void;
   input: { value: string };
   createModalCalls: number;
   focusCalls: number;
   recentOrEmptyCalls: number;
   chipRenderCalls: number;
+  humanInteractionCalls: number;
 }
 // This suite covers #5158 scheduling, and its harness overlay is a plain object
 // with no querySelectorAll, so the real trap cannot run against it. The stub
@@ -134,6 +140,20 @@ function runNextFrame(frames: FrameRequestCallback[]): void {
   assert.ok(frame, 'expected a scheduled animation frame');
   frame(0);
 }
+
+test('programmatic selection closes the mobile palette without claiming human authority', () => {
+  withAnimationFrames(() => {
+    const modal = new Harness();
+    modal.open();
+    modal.closeForProgrammaticSelection();
+    assert.equal(modal.humanInteractionCalls, 0);
+
+    const humanModal = new Harness();
+    humanModal.open();
+    humanModal.close();
+    assert.equal(humanModal.humanInteractionCalls, 1);
+  });
+});
 
 test('mobile search renders only its shell in the tap task, then populates after the reveal frame (#5158)', () => {
   withAnimationFrames((frames) => {

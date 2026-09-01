@@ -1,0 +1,62 @@
+---
+title: "韧性指标"
+description: "国家韧性评分之下的指标级可解释层——归一化数值、运行时权重、按维度对账的贡献值、观测时效与来源出处。"
+---
+
+## 从这里开始
+
+**这是那张收据。**
+
+[国家韧性指数](/zh/methodology/country-resilience-index)给一个国家一个数字。这里给你的是那个数字背后全部 72 种配料：每项指标得了多少分、占了多少权重、由哪个机构发布。
+
+当你需要回答"这个国家*为什么*变动了"时就用它——因为答案永远是某一项具体指标，而这里正是指名道姓的地方。它也是这个指数之所以可被质疑的前提：只有先看得见某项指标的贡献，你才谈得上不同意它。
+
+### 相信任何一行之前，先看两件事
+
+**先读 `state`，再读任何数字。** 一项指标可能是 `observed`、`imputed`、`missing`、`fallback`、`not-applicable`、`source-failure`、`inactive` 或 `retired`。推算值或回退值仍然可以是评分的正当组成部分——但那是推断，不是测量，而这个字段会告诉你是哪一种。
+
+**空白的原始值通常是许可问题，而不是数据缺口。** 当上游发布方禁止再分发时，该行仍会给出 WorldMonitor 的归一化评分与来源署名，但会隐去底层数字。引擎拥有并使用了该数值，只是无权再发布它。参见[原始数值与许可](#原始数值与许可)。
+
+### 为什么权重和公布的默认值不一样
+
+这里给出的权重是**本次运行中实际生效的**权重，而不是注册表默认值。当某项指标对某个国家不可用时，引擎会把它的权重重新分配给其余指标。读默认值只会导致归因错误。
+
+<Info>
+**访问方式。** 由 `GET /api/resilience/v1/get-resilience-indicators?countryCode=<ISO2>` 与 MCP `get_resilience_indicators` 提供。两者均需 Pro 订阅。此路由没有仪表盘界面——它是面向 API 与智能体的端点。
+</Info>
+
+## 每项指标
+
+72 行中的每一行携带：
+
+| 字段 | 含义 |
+| --- | --- |
+| 归一化得分 | 该指标在引擎通用标度上的取值 |
+| 状态 | `observed`、`imputed`、`missing`、`fallback`、`not-applicable`、`source-failure`、`inactive` 或 `retired` |
+| 运行时权重 | 本次运行实际应用的权重，而非注册表默认值 |
+| 贡献值 | 该指标在其维度中的占比，经对账后维度内贡献值可正确求和 |
+| 可用性标志 | `normalizedScoreAvailable`、`runtimeWeightAvailable` 与 `scoringWeightShareAvailable` 决定对应数值字段是否适用 |
+| 观测时效 | 底层观测值的年龄 |
+| 来源出处 | 由哪个上游发布 |
+
+权重按实际应用值提供而非按配置值，因为当某指标对某国不可用时引擎会重新归一化。读取注册表默认值会错误归因该评分。
+
+## 指标状态
+
+`observed` 与 `imputed` 只是两种可能状态。`missing` 表示没有解析出可用观测，`fallback` 表示使用了低置信度替代值，`not-applicable` 是结构性不适用，`source-failure` 是上游或种子失败，`inactive` 或 `retired` 表示该指标不在当前评分路径中。插补或回退指标仍可能是评分的真实组成部分，但它不是测量值。读取任何数值字段前，请先读 `state` 与可用性标志。
+
+## 原始数值与许可
+
+原始来源数值**仅在上游许可允许再分发时**包含在内。其他情况下提供归一化得分与出处，但不含底层数字。
+
+该缺失是许可边界，而非数据缺失——引擎拥有该数值并已使用它；WorldMonitor 不得再次发布它。各来源的条款记录于[韧性指标许可](/zh/methodology/resilience-indicator-licensing)。
+
+## 对账
+
+贡献值按维度对账后报告，而非以原始乘积形式呈现。调用方可以在一个维度内累加贡献值得到该维度的得分；跨维度按维度权重求和则得到国家得分。未能对账的数值不会被悄悄四舍五入凑合——该指标转而报告其状态。
+
+## 相关
+
+- [Pro 情报套件](/zh/pro-intelligence-suite)
+- [国家韧性指数](/zh/methodology/country-resilience-index)——本页所解释的评分
+- [韧性指标许可](/zh/methodology/resilience-indicator-licensing)

@@ -141,6 +141,7 @@ export class RouteExplorer {
   public close(): void {
     if (!this.isOpen || !this.root) return;
     this.generationId++;
+    this.isLoading = false;
     if (this.debounceTimer) { clearTimeout(this.debounceTimer); this.debounceTimer = null; }
     document.removeEventListener('keydown', this.handleGlobalKeydown, { capture: true });
     this.helpOverlay?.element.remove();

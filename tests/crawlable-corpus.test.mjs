@@ -10,11 +10,15 @@ import { Window } from 'happy-dom';
 
 import {
   buildCorpus,
+  CHOKEPOINT_PAGE_LASTMOD_PATHS,
   chokepointMetaDescription,
   countryMetaDescription,
+  datasetTemporalCoverage,
+  describeHeadlineIneligibilityReason,
   GENERATED_DIRS,
   gitFileLastmod,
   loadCorpusData,
+  resolveChokepointObservation,
   SOURCE_CATALOG_LASTMOD_PATHS,
   sourcePageLastmod,
 } from '../scripts/build-crawlable-corpus.mjs';
@@ -32,6 +36,60 @@ function read(outDir, path) {
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
     .map(([, raw]) => JSON.parse(raw));
+}
+
+function proseWordCount(value) {
+  return String(value || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function assertDefaultSpeakable(node, label) {
+  assert.deepEqual(
+    node?.speakable,
+    { '@type': 'SpeakableSpecification', cssSelector: ['h1', '.lede'] },
+    `${label} must carry SpeakableSpecification`,
+  );
+}
+
+function htmlDocument(html, url) {
+  const window = new Window({ url });
+  window.document.write(html);
+  return window.document;
+}
+
+function words(value) {
+  return String(value || '')
+    .toLocaleLowerCase('en-US')
+    .match(/[\p{L}\p{N}]+(?:[’'][\p{L}\p{N}]+)*/gu) || [];
+}
+
+function wordShingles(value, width = 5) {
+  const tokens = words(value);
+  const shingles = new Set();
+  for (let index = 0; index <= tokens.length - width; index += 1) {
+    shingles.add(tokens.slice(index, index + width).join(' '));
+  }
+  return shingles;
+}
+
+function pairwiseUniqueShare(left, right) {
+  const leftShingles = wordShingles(left);
+  const rightShingles = wordShingles(right);
+  const shared = [...leftShingles].filter((shingle) => rightShingles.has(shingle)).length;
+  return 1 - (shared / Math.max(leftShingles.size, rightShingles.size));
+}
+
+function decodeBasicHtml(value) {
+  return String(value || '')
+    .replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
+    .replace(/&lt;/g, '<')
+    .replace(/&amp;/g, '&');
+}
+
+function unpublishedHeadingParagraph(html, headingRe) {
+  const match = html.match(new RegExp(`<h3>${headingRe}</h3>\\s*<p>([\\s\\S]*?)</p>`));
+  return decodeBasicHtml(match?.[1] || '');
 }
 
 const DATASET_DESCRIPTION_MIN_LENGTH = 50;
@@ -386,7 +444,37 @@ function isAbsoluteHttpUrl(value) {
   }
 }
 
-function assertDatasetGoogleProperties(html, route, { requireDataset = false } = {}) {
+function assertDatasetDownloadsAreGenerated(html, outDir, route, baseUrl = 'https://www.worldmonitor.app') {
+  const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+  const downloads = datasets.flatMap((dataset) => {
+    const distributions = Array.isArray(dataset.distribution)
+      ? dataset.distribution
+      : dataset.distribution == null
+        ? []
+        : [dataset.distribution];
+    return distributions.filter((item) => isJsonLdType(item, 'DataDownload'));
+  });
+  if (datasets.length === 0) return;
+  assert.ok(downloads.length > 0, `${route} Dataset must expose at least one DataDownload`);
+  const origin = new URL(baseUrl).origin;
+  for (const item of downloads) {
+    assert.ok(isAbsoluteHttpUrl(item.contentUrl), `${route} DataDownload contentUrl must be absolute`);
+    const url = new URL(item.contentUrl);
+    assert.equal(url.origin, origin, `${route} DataDownload must stay on ${origin}`);
+    assert.doesNotMatch(
+      url.pathname,
+      /^\/api\//,
+      `${route} DataDownload must not point at an authenticated API route: ${item.contentUrl}`,
+    );
+    const relativePath = url.pathname.replace(/^\/+/, '');
+    assert.ok(
+      existsSync(join(outDir, relativePath)),
+      `${route} DataDownload ${item.contentUrl} must map to generated file ${relativePath}`,
+    );
+  }
+}
+
+function assertDatasetGoogleProperties(html, route, { requireDataset = false, requireCatalogLinkage = false } = {}) {
   const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
   if (requireDataset) {
     assert.ok(datasets.length > 0, `${route} must contain a Dataset JSON-LD object`);
@@ -403,15 +491,20 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false } =
       `${route} Dataset ${index + 1} description must be at most ${DATASET_DESCRIPTION_MAX_LENGTH} characters`,
     );
 
+    // A creator must be BOTH anchored on the canonical @id and self-describing.
+    // An @id alone would reference a node no generated page declares, so a
+    // per-page parser resolves it to nothing (#7459b); a name alone would mint a
+    // competing anonymous Organization. Require both together.
     const creators = Array.isArray(dataset.creator) ? dataset.creator : [dataset.creator];
     assert.ok(
       creators.some((creator) => (
         creator
+        && creator['@id'] === 'https://www.worldmonitor.app/#organization'
         && (creator['@type'] === 'Person' || creator['@type'] === 'Organization')
         && typeof creator.name === 'string'
         && creator.name.trim().length > 0
       )),
-      `${route} Dataset ${index + 1} must identify a Person or Organization creator`,
+      `${route} Dataset ${index + 1} creator must be the canonical Organization AND carry @type + name so the reference resolves in-page`,
     );
 
     const licenses = Array.isArray(dataset.license) ? dataset.license : [dataset.license];
@@ -427,9 +520,147 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false } =
       )),
       `${route} Dataset ${index + 1} must link to a specific license URL`,
     );
+
+    if (requireCatalogLinkage) {
+      assert.equal(
+        dataset.isAccessibleForFree,
+        true,
+        `${route} Dataset ${index + 1} must declare isAccessibleForFree`,
+      );
+      assert.ok(
+        dataset.includedInDataCatalog
+          && (
+            isJsonLdType(dataset.includedInDataCatalog, 'DataCatalog')
+            || typeof dataset.includedInDataCatalog['@id'] === 'string'
+          ),
+        `${route} Dataset ${index + 1} must link includedInDataCatalog`,
+      );
+      const measured = Array.isArray(dataset.variableMeasured)
+        ? dataset.variableMeasured
+        : dataset.variableMeasured == null
+          ? []
+          : [dataset.variableMeasured];
+      assert.ok(
+        measured.length > 0,
+        `${route} Dataset ${index + 1} must declare variableMeasured`,
+      );
+      const distributions = Array.isArray(dataset.distribution)
+        ? dataset.distribution
+        : dataset.distribution == null
+          ? []
+          : [dataset.distribution];
+      assert.ok(
+        distributions.some((item) => (
+          isJsonLdType(item, 'DataDownload')
+          && isAbsoluteHttpUrl(item.contentUrl)
+        )),
+        `${route} Dataset ${index + 1} must expose a DataDownload distribution`,
+      );
+      if (dataset.temporalCoverage) {
+        assert.equal(
+          dataset.temporalCoverage,
+          datasetTemporalCoverage(dataset.temporalCoverage),
+          `${route} Dataset ${index + 1} temporalCoverage must be an observation date or closed interval`,
+        );
+      }
+    }
+
+    if (requireCatalogLinkage) {
+      assert.ok(
+        dataset.spatialCoverage,
+        `${route} Dataset ${index + 1} must declare spatialCoverage`,
+      );
+    }
+    if (dataset.spatialCoverage != null) {
+      // Google's Dataset parser uses an exact allowlist here: non-empty Text or
+      // a literal Place. It rejects Place subtypes such as Country.
+      const coverages = Array.isArray(dataset.spatialCoverage)
+        ? dataset.spatialCoverage
+        : [dataset.spatialCoverage];
+      assert.ok(
+        coverages.length > 0,
+        `${route} Dataset ${index + 1} spatialCoverage must be Text or exact @type Place, got []`,
+      );
+      for (const coverage of coverages) {
+        assert.ok(
+          typeof coverage === 'string'
+            ? coverage.trim().length > 0
+            : coverage?.['@type'] === 'Place',
+          `${route} Dataset ${index + 1} spatialCoverage must be Text or exact @type Place, got ${JSON.stringify(coverage?.['@type'] ?? coverage)}`,
+        );
+      }
+    }
   }
 
   return datasets;
+}
+
+describe('Dataset spatialCoverage Google contract', () => {
+  function datasetHtml(spatialCoverage) {
+    return `<script type="application/ld+json">${JSON.stringify({
+      '@type': 'Dataset',
+      name: 'Contract test dataset',
+      description: 'A focused contract fixture with enough detail for the Google Dataset description requirement.',
+      creator: {
+        '@id': 'https://www.worldmonitor.app/#organization',
+        '@type': 'Organization',
+        name: 'World Monitor',
+      },
+      license: 'https://www.worldmonitor.app/docs/terms',
+      spatialCoverage,
+    })}</script>`;
+  }
+
+  it('accepts only non-empty Text or exact Place values on every Dataset route', () => {
+    assert.doesNotThrow(() => assertDatasetGoogleProperties(
+      datasetHtml('Worldwide'),
+      '/tools/signal-convergence/',
+    ));
+    assert.doesNotThrow(() => assertDatasetGoogleProperties(
+      datasetHtml({ '@type': 'Place', name: 'Norway' }),
+      '/countries/',
+    ));
+
+    for (const invalidCoverage of [
+      { '@type': 'Country', name: 'Norway' },
+      { '@type': ['Place', 'Country'], name: 'Norway' },
+      [],
+    ]) {
+      assert.throws(
+        () => assertDatasetGoogleProperties(
+          datasetHtml(invalidCoverage),
+          '/countries/',
+        ),
+        /spatialCoverage must be Text or exact @type Place/,
+      );
+    }
+  });
+});
+
+function assertDataCatalogPresent(html, route) {
+  const catalogs = jsonLdObjects(html).filter((entry) => isJsonLdType(entry, 'DataCatalog'));
+  assert.ok(catalogs.length > 0, `${route} must emit a DataCatalog JSON-LD node`);
+  const catalog = catalogs[0];
+  assert.ok(typeof catalog['@id'] === 'string' && catalog['@id'].includes('#data-catalog'), `${route} DataCatalog must use a stable @id`);
+  assert.equal(catalog.isAccessibleForFree, true, `${route} DataCatalog must be free`);
+  assert.ok(typeof catalog.name === 'string' && catalog.name.trim().length > 0, `${route} DataCatalog must have a name`);
+  const CANONICAL_ORG_ROLE = {
+    '@id': 'https://www.worldmonitor.app/#organization',
+    '@type': 'Organization',
+    name: 'World Monitor',
+    url: 'https://www.worldmonitor.app/',
+  };
+  assert.deepEqual(
+    catalog.publisher,
+    CANONICAL_ORG_ROLE,
+    `${route} DataCatalog.publisher must reference the canonical Organization`,
+  );
+  assert.deepEqual(
+    catalog.creator,
+    CANONICAL_ORG_ROLE,
+    `${route} DataCatalog.creator must reference the canonical Organization`,
+  );
+  return catalog;
 }
 
 function decodeHtmlAttribute(value) {
@@ -447,6 +678,49 @@ function pageMetaDescription(html, route) {
   return decodeHtmlAttribute(raw);
 }
 
+function pageLastmod(html) {
+  return html.match(/<meta name="lastmod" content="([^"]+)">/)?.[1] ?? null;
+}
+
+function assertSourceDerivedTemporalCoverage(dataset, {
+  route,
+  observationInterval,
+  lastmod,
+  index = 1,
+} = {}) {
+  const expected = datasetTemporalCoverage(observationInterval);
+  assert.equal(
+    dataset.temporalCoverage,
+    expected,
+    `${route} Dataset ${index} temporalCoverage must come from the artifact observation interval`,
+  );
+  // Equality alone is a tautology: both sides derive from the same value through
+  // the same normalizer, so a malformed interval makes both undefined and the
+  // assertion passes over a Dataset with no temporalCoverage at all. When the
+  // artifact declared an interval, require the Dataset to actually carry it.
+  if (observationInterval) {
+    assert.match(
+      String(dataset.temporalCoverage ?? ''),
+      /^\d{4}-\d{2}(-\d{2})?(\/\d{4}-\d{2}(-\d{2})?)?$/,
+      `${route} Dataset ${index} declared observation interval ${observationInterval} but published temporalCoverage ${JSON.stringify(dataset.temporalCoverage)}`,
+    );
+  }
+  if (expected && lastmod && expected !== lastmod) {
+    assert.notEqual(
+      dataset.temporalCoverage,
+      lastmod,
+      `${route} Dataset ${index} temporalCoverage must not reuse page lastmod`,
+    );
+  }
+  if (dataset.datePublished) {
+    assert.equal(
+      dataset.datePublished,
+      expected,
+      `${route} Dataset ${index} datePublished must match the same observation interval`,
+    );
+  }
+}
+
 function productionScriptNonce() {
   const config = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
   const csp = config.headers
@@ -458,6 +732,35 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  it('emits temporalCoverage only from a committed observation interval', () => {
+    assert.equal(datasetTemporalCoverage('2026-05-28'), '2026-05-28');
+    assert.equal(datasetTemporalCoverage('2026-01-01/2026-01-31'), '2026-01-01/2026-01-31');
+    assert.equal(datasetTemporalCoverage(undefined), undefined);
+    assert.equal(datasetTemporalCoverage(''), undefined);
+    assert.equal(datasetTemporalCoverage('2026-08-29T00:00:00Z'), undefined);
+    assert.equal(datasetTemporalCoverage('schema-edit'), undefined);
+  });
+
+  it('dates chokepoint observations without git history', () => {
+    const gitless = resolveChokepointObservation();
+    assert.equal(gitless.capturedAt, '2026-04-09');
+    assert.equal(gitless.volumeObservedAt, '2026-03-14');
+    const newerRegistry = resolveChokepointObservation({
+      registryGitLastmod: '2026-05-01',
+    });
+    assert.equal(newerRegistry.capturedAt, '2026-05-01');
+    assert.equal(newerRegistry.volumeObservedAt, '2026-03-14');
+  });
+
+  it('tracks every material chokepoint page input in its lastmod clock', () => {
+    assert.deepEqual(CHOKEPOINT_PAGE_LASTMOD_PATHS, [
+      'src/config/chokepoint-registry.ts',
+      'src/config/trade-routes.ts',
+      'scripts/chokepoint-page-content.mjs',
+      'scripts/chokepoint-eia-baselines.mjs',
+    ]);
+  });
+
   it('advances the sources lastmod when the shared page template changes', () => {
     const baseline = sourcePageLastmod({
       manifestLastmod: '2026-08-10',
@@ -542,6 +845,16 @@ describe('crawlable corpus generator', () => {
             name: 'B'.repeat(length),
             rank: null,
             rankedCount: 999_999,
+            lowConfidence: true,
+          }),
+        },
+        {
+          name: 'D'.repeat(length),
+          description: countryMetaDescription({
+            name: 'D'.repeat(length),
+            rank: null,
+            rankedCount: 999_999,
+            lowConfidence: false,
           }),
         },
         {
@@ -634,11 +947,11 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.countries.count, 196);
       assert.equal(manifest.sections.chokepoints.count, 13);
       assert.equal(manifest.sections.crises.count, 4);
-      assert.equal(manifest.sections.tools.count, 2);
+      assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.sources.count, 1);
-      assert.equal(manifest.generatorContentVersion, '2026-08-12');
+      assert.equal(manifest.generatorContentVersion, '2026-08-31');
       const sitemapEntries = buildSitemapEntries({
         repoRoot,
         publicDir: outDir,
@@ -676,6 +989,15 @@ describe('crawlable corpus generator', () => {
       assert.deepEqual(corpusLocations, manifestLocations);
       const liveScriptTag = `<script type="module" nonce="${productionScriptNonce()}" src="/tools/live-tools.js"></script>`;
       assert.ok(manifest.sections.changelog.count >= 2, `expected paginated changelog pages, got ${manifest.sections.changelog.count}`);
+      assert.equal(
+        manifest.sections.changelog.routes.length,
+        1,
+        'sitemap changelog inventory must only include the index',
+      );
+      assert.ok(
+        manifest.sections.changelog.paginationRoutes.length >= 1,
+        'generator must still emit changelog pagination routes',
+      );
       assert.ok(manifest.sections.glossary.count >= 15, `expected existing glossary manifest entries, got ${manifest.sections.glossary.count}`);
 
       const searchLandingRoutes = [
@@ -704,6 +1026,20 @@ describe('crawlable corpus generator', () => {
         descriptions.set(description, route);
       }
 
+      for (const route of manifest.sections.countries.routes) {
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        assert.match(
+          html,
+          /href="\/docs\/corrections"/,
+          `${route} must link the corrections log`,
+        );
+        assert.doesNotMatch(
+          html,
+          /Post-P1-1/,
+          `${route} must not publish ticket jargon`,
+        );
+      }
+
       // Google requires Dataset descriptions to be 50-5000 characters and
       // recommends creator and license. Walk every generated JSON-LD object
       // recursively so this catches both the country snapshot Dataset and
@@ -717,27 +1053,90 @@ describe('crawlable corpus generator', () => {
       );
       const datasetRequiredRoutes = new Set([
         ...manifest.sections.countries.routes,
+        ...manifest.sections.chokepoints.routes,
+        ...manifest.sections.crises.routes,
         ...manifest.sections.research.routes,
       ]);
+      const catalogLinkedRoutes = new Set([
+        ...manifest.sections.countries.routes,
+        ...manifest.sections.chokepoints.routes,
+        ...manifest.sections.crises.routes,
+        ...manifest.sections.research.routes,
+      ]);
+      const countryObservationRoutes = new Set(manifest.sections.countries.routes);
+      const liveObservationRoutes = new Set(manifest.sections.chokepoints.routes);
+      const crisisObservationRoutes = new Set(manifest.sections.crises.routes);
       for (const route of generatedRoutes) {
+        const html = read(outDir, `${route.slice(1)}index.html`);
         assertDatasetGoogleProperties(
-          read(outDir, `${route.slice(1)}index.html`),
+          html,
           route,
-          { requireDataset: datasetRequiredRoutes.has(route) },
+          {
+            requireDataset: datasetRequiredRoutes.has(route),
+            requireCatalogLinkage: catalogLinkedRoutes.has(route),
+          },
         );
+        if (catalogLinkedRoutes.has(route)) {
+          assertDataCatalogPresent(html, route);
+        }
+        if (countryObservationRoutes.has(route)) {
+          const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+          for (const [index, dataset] of datasets.entries()) {
+            assertSourceDerivedTemporalCoverage(dataset, {
+              route,
+              observationInterval: manifest.sections.countries.sourceCapturedAt,
+              lastmod: pageLastmod(html),
+              index: index + 1,
+            });
+          }
+        }
+        if (liveObservationRoutes.has(route)) {
+          const reference = JSON.parse(read(outDir, `${route.slice(1)}reference.json`));
+          const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+          for (const [index, dataset] of datasets.entries()) {
+            assertSourceDerivedTemporalCoverage(dataset, {
+              route,
+              observationInterval: reference.capturedAt,
+              lastmod: pageLastmod(html),
+              index: index + 1,
+            });
+          }
+        }
+        if (crisisObservationRoutes.has(route)) {
+          const tracker = JSON.parse(read(outDir, `${route.slice(1)}tracker.json`));
+          const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
+          for (const [index, dataset] of datasets.entries()) {
+            assertSourceDerivedTemporalCoverage(dataset, {
+              route,
+              observationInterval: tracker.maintainedPulse?.referencePeriod,
+              lastmod: pageLastmod(html),
+              index: index + 1,
+            });
+          }
+        }
+        assertDatasetDownloadsAreGenerated(html, outDir, route);
       }
+      assertDataCatalogPresent(read(outDir, 'countries/index.html'), '/countries/');
+      assertDataCatalogPresent(read(outDir, 'chokepoints/index.html'), '/chokepoints/');
+      assertDataCatalogPresent(read(outDir, 'crises/index.html'), '/crises/');
+      assertDataCatalogPresent(read(outDir, 'research/index.html'), '/research/');
 
       for (const path of [
         'countries/index.html',
         'countries/norway/index.html',
+        'countries/norway/resilience.json',
         'chokepoints/index.html',
         'chokepoints/strait-of-hormuz/index.html',
+        'chokepoints/strait-of-hormuz/reference.json',
         'crises/index.html',
         'crises/red-sea-security/index.html',
+        'crises/red-sea-security/tracker.json',
         'tools/index.html',
         'tools/live-tools.js',
         'tools/natural-hazard-pulse/index.html',
         'tools/airspace-disruption-checker/index.html',
+        'tools/signal-convergence/index.html',
+        'tools/signal-convergence/reference.json',
         'reference/changelog/index.html',
         'reference/changelog/page/2/index.html',
         'sources/index.html',
@@ -753,12 +1152,55 @@ describe('crawlable corpus generator', () => {
       const norway = read(outDir, 'countries/norway/index.html');
       assert.match(norway, /<h1>Norway country risk and resilience<\/h1>/);
       assert.match(norway, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
-      assert.match(norway, /<meta name="lastmod" content="2026-08-12">/);
-      assert.match(norway, /Source: docs\/snapshots\/resilience-ranking-2026-05-28\.json/);
+      assert.match(norway, /<link rel="alternate" hreflang="x-default" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
+      assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
+      assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
+      assert.match(norway, /<meta name="lastmod" content="2026-08-31">/);
+      assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
+      assert.match(
+        norway,
+        /<span>Overall score<\/span><strong>75\.4<\/strong>/,
+        'headline-eligible countries must retain their published score',
+      );
       assert.doesNotMatch(norway, /id="app"/, 'country page must be raw static HTML, not the SPA shell');
       assert.match(norway, /data-live-country-risk data-country-code="NO" data-country-name="Norway"/);
-      assert.match(norway, /Instability is a fast-moving composite/);
-      assert.match(norway, /the two scores should not be combined/);
+      assert.match(norway, /data-published-pulse/);
+      assert.match(norway, /Instability combines current information/);
+      assert.match(norway, /do not combine the scores/);
+      // #7376: no-JS HTML ships published pulse values, never Connecting…/Loading placeholders.
+      assert.doesNotMatch(norway, /Connecting…/);
+      assert.doesNotMatch(norway, /data-live-band>Loading/);
+      assert.doesNotMatch(norway, /Requesting the latest available result/);
+      assert.match(norway, /data-live-advisory>[^<]+/);
+      assert.match(norway, /data-live-sanctions>[^<]+/);
+      // Norway is a partial record: advisory and sanctions publish, but the
+      // upstream supplied no computedAt, so the tile must carry an UNDATED
+      // <span> rather than a <time datetime> fabricated from the freeze clock.
+      assert.match(norway, /<span data-live-updated>/);
+      assert.doesNotMatch(
+        norway,
+        /<time data-live-updated/,
+        'a partial country pulse must not publish a machine-readable retrieval timestamp',
+      );
+      assert.match(norway, /data-live-score>—/);
+      assert.match(norway, /data-live-band>No current score/);
+      assert.match(norway, /data-live-trend>Unavailable/);
+      const ukraine = read(outDir, 'countries/ukraine/index.html');
+      assert.match(ukraine, /data-live-score>\d/);
+      assert.doesNotMatch(ukraine, /data-live-score>—/);
+      assert.doesNotMatch(ukraine, /Connecting…/);
+      // A scored country carries a real upstream timestamp, so it does get <time>.
+      assert.match(ukraine, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
+      // Ukraine and Norway are individually asserted above, but neither would
+      // notice a freeze that degraded published scores across the corpus. Pin a
+      // floor on how many country pages actually ship a numeric score.
+      const scoredCountryPages = manifest.sections.countries.routes.filter((route) => (
+        /data-live-score>\d/.test(read(outDir, `${route.slice(1)}index.html`))
+      )).length;
+      assert.ok(
+        scoredCountryPages >= 25,
+        `expected at least 25 country pages to publish a numeric instability score, got ${scoredCountryPages}`,
+      );
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
       // Carries utm_source (NOT ref= — that would be captured as an affiliate referral code).
@@ -768,13 +1210,435 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<meta property="og:image" content="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png">/);
       assert.match(norway, /<meta name="twitter:card" content="summary_large_image">/);
       assert.match(norway, /href="\/docs\/methodology\/country-resilience-index"/);
+      assert.match(
+        norway,
+        /<img src="https:\/\/www\.worldmonitor\.app\/favico\/og-image\.png" alt="[^"]+" width="120" height="63"/,
+        'corpus pages must expose a real image for multimodal retrieval (#7382)',
+      );
 
-      // Search-friendly display aliases: slug stays stable, reader-facing name is aliased.
-      const uk = read(outDir, 'countries/uk/index.html');
+      const corpusData = await loadCorpusData({ rootDir: repoRoot });
+      const countryByCode = new Map(corpusData.countries.map((country) => [country.code, country]));
+      const vercelConfig = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
+      const redirectPairs = new Set(
+        vercelConfig.redirects.map((redirect) => `${redirect.source} -> ${redirect.destination}`),
+      );
+
+      for (const country of corpusData.countries) {
+        assert.equal(country.name, country.identity.commonName, `${country.code} must use its common name`);
+        assert.match(country.identity.sameAs, /^https:\/\/www\.wikidata\.org\/wiki\/Q\d+$/);
+        assert.ok(country.identity.officialName, `${country.code} must retain an official name`);
+        for (const legacySlug of country.legacySlugs) {
+          assert.ok(
+            redirectPairs.has(`/countries/${legacySlug} -> /countries/${country.slug}/`),
+            `${legacySlug} must permanently redirect to ${country.slug}`,
+          );
+          assert.ok(
+            redirectPairs.has(`/countries/${legacySlug}/ -> /countries/${country.slug}/`),
+            `${legacySlug}/ must permanently redirect to ${country.slug}/`,
+          );
+        }
+        const route = `/countries/${country.slug}/`;
+        const countryHtml = read(outDir, `${route.slice(1)}index.html`);
+        const countryDocument = htmlDocument(countryHtml, `https://www.worldmonitor.app${route}`);
+        if (country.rank == null) {
+          assert.match(countryHtml, /Nearest ranked comparators:/);
+          assert.doesNotMatch(
+            countryHtml,
+            /\b[A-Z]{2} · /,
+            `${route} must not prefix unpublished copy with ISO scaffolding`,
+          );
+          const comparisonHeading = [...countryDocument.querySelectorAll('[data-country-analysis] h3')]
+            .find((heading) => heading.textContent === 'Nearest ranked comparators');
+          const comparisonText = comparisonHeading?.nextElementSibling?.textContent ?? '';
+          assert.ok(country.peers.length > 0, `${route} must name ranked comparators`);
+          for (const peer of country.peers) {
+            assert.notEqual(peer.rank, null, `${route} comparator ${peer.name} must be ranked`);
+            assert.ok(comparisonText.includes(peer.name), `${route} must include ${peer.name} as a ranked comparator`);
+            assert.ok(
+              !comparisonText.includes(`${peer.name} (`),
+              `${route} must not reveal ${peer.name}'s score in an ineligible comparison set`,
+            );
+          }
+        } else {
+          const peerDistances = country.peers.map((peer) => Math.abs(peer.rank - country.rank));
+          assert.deepEqual(
+            peerDistances,
+            [...peerDistances].sort((left, right) => left - right),
+            `${route} must order its comparison peers by rank distance`,
+          );
+          assert.match(countryHtml, /Nearest ranked peers:/);
+        }
+        const articleWordCount = words(
+          countryDocument.querySelector('[data-country-analysis]')?.textContent,
+        ).length;
+        assert.ok(
+          articleWordCount >= 400,
+          `${route} analysis must contain at least 400 country-specific words, got ${articleWordCount}`,
+        );
+        const pageWordCount = words(countryDocument.querySelector('main')?.textContent).length;
+        // Upper bound leaves room for the published live-pulse tiles (#7376)
+        // on top of the #7371 country-analysis prose target.
+        assert.ok(
+          pageWordCount >= 600 && pageWordCount <= 900,
+          `${route} main content must contain 600-900 words, got ${pageWordCount}`,
+        );
+      }
+
+      const macau = countryByCode.get('MO');
+      assert.equal(macau.name, 'Macau');
+      assert.equal(macau.slug, 'macau');
+      assert.ok(existsSync(join(outDir, 'countries/macau/index.html')));
+      assert.ok(!existsSync(join(outDir, 'countries/macao-s-a-r/index.html')));
+
+      const countriesIndex = read(outDir, 'countries/index.html');
+      const countriesDocument = htmlDocument(countriesIndex, 'https://www.worldmonitor.app/countries/');
+      const rankingRows = countriesDocument.querySelectorAll('table[data-country-ranking] tbody tr');
+      assert.equal(rankingRows.length, corpusData.countries.length);
+      assert.equal(
+        countriesDocument.querySelector('table[data-country-ranking] thead')?.textContent.includes('Score'),
+        true,
+      );
+      const countriesLd = jsonLdObjects(countriesIndex);
+      const countryCollection = countriesLd.find((entry) => entry['@type'] === 'CollectionPage');
+      const countryItemList = countriesLd.find((entry) => entry['@type'] === 'ItemList');
+      const countryDataset = countriesLd.find((entry) => entry['@type'] === 'Dataset');
+      const countryFaq = countriesLd.find((entry) => entry['@type'] === 'FAQPage');
+      assert.equal(countryCollection?.name, 'Country risk and resilience');
+      assert.equal(countryCollection?.['@id'], 'https://www.worldmonitor.app/countries/#webpage');
+      assertDefaultSpeakable(countryCollection, 'countries hub CollectionPage');
+      assert.deepEqual(countryCollection?.breadcrumb, {
+        '@id': 'https://www.worldmonitor.app/countries/#breadcrumb',
+      });
+      assert.equal(countryItemList?.numberOfItems, corpusData.countries.length);
+      assert.equal(countryItemList?.itemListElement?.length, corpusData.countries.length);
+      assert.equal(countryDataset?.variableMeasured?.name, 'Country resilience score');
+      const hubHeadings = [...countriesDocument.querySelectorAll('h2')].map((node) => node.textContent.trim());
+      assert.deepEqual(hubHeadings, [
+        `Which countries are most resilient in ${corpusData.resilience.capturedAt.slice(0, 4)}?`,
+        'How is the Country Resilience Index calculated?',
+      ]);
+      assert.equal(countryFaq?.mainEntity?.length, 2);
+      for (const question of hubHeadings) {
+        const qa = countryFaq.mainEntity.find((entity) => entity.name === question);
+        assert.ok(qa, `countries hub FAQPage is missing ${question}`);
+        const answer = qa.acceptedAnswer.text;
+        const answerWords = proseWordCount(answer);
+        assert.ok(
+          answerWords >= 40 && answerWords <= 60,
+          `${question} answer is ${answerWords} words, need 40-60`,
+        );
+        assert.ok(
+          countriesIndex.includes(answer),
+          `countries hub FAQ answer for ${question} must match visible copy`,
+        );
+      }
+      const rankedCountries = corpusData.countries
+        .filter((country) => Number.isInteger(country.rank))
+        .sort((a, b) => a.rank - b.rank);
+      const resilienceAnswer = countryFaq.mainEntity[0].acceptedAnswer.text;
+      const snapshotDateLabel = countriesDocument
+        .querySelector('table[data-country-ranking] caption')
+        ?.textContent.trim()
+        .replace(/ Country Resilience Index snapshot$/, '');
+      assert.ok(snapshotDateLabel, 'countries hub ranking caption needs a snapshot date');
+      assert.ok(
+        resilienceAnswer.includes(
+          `${snapshotDateLabel} Country Resilience Index snapshot ranks ${rankedCountries.length} of ${corpusData.countries.length} countries`,
+        ),
+      );
+      for (const country of rankedCountries.slice(0, 3)) {
+        assert.match(resilienceAnswer, new RegExp(`\\b${country.name}\\b`));
+      }
+      assert.doesNotMatch(resilienceAnswer, /\btoday\b/i);
+      const rankedListItem = countryItemList.itemListElement.find((entry) => entry.item?.additionalProperty);
+      assert.ok(rankedListItem, 'ranked hub ItemList entries need a Country node with a score PropertyValue');
+      assert.equal(rankedListItem.item['@type'], 'Country');
+      assert.equal(rankedListItem.item.additionalProperty['@type'], 'PropertyValue');
+      assert.equal(rankedListItem.item.additionalProperty.name, 'Country Resilience Index score');
+      assert.equal(typeof rankedListItem.item.additionalProperty.value, 'number');
+      const unpublishedListItem = countryItemList.itemListElement.find((entry, index) => (
+        corpusData.countries[index]?.headlineEligible === false
+      ));
+      assert.ok(unpublishedListItem, 'unpublished countries must remain in the hub ItemList');
+      assert.equal(unpublishedListItem.item?.additionalProperty, undefined);
+
+      const sampleCodes = ['AD', 'CD', 'IR', 'JP', 'KP', 'MO', 'NO', 'NR', 'UA', 'US'];
+      const sampleArticles = [];
+      for (const code of sampleCodes) {
+        const country = countryByCode.get(code);
+        assert.ok(country, `missing corpus country ${code}`);
+        const route = `/countries/${country.slug}/`;
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        const article = document.querySelector('[data-country-analysis]');
+        assert.ok(article, `${route} must render a country analysis block`);
+        const mainText = document.querySelector('main')?.textContent || '';
+        sampleArticles.push({ route, text: mainText });
+
+        const faqEntries = [...document.querySelectorAll('[data-country-faq]')];
+        assert.ok(faqEntries.length >= 2 && faqEntries.length <= 3, `${route} must show 2-3 FAQs`);
+        const pageLd = jsonLdObjects(html);
+        const faqPage = pageLd.find((entry) => entry['@type'] === 'FAQPage');
+        assert.equal(faqPage?.mainEntity?.length, faqEntries.length);
+        const dataset = pageLd.flatMap((entry) => collectDatasets(entry))[0];
+        const measurements = new Map(
+          dataset.variableMeasured.map((measurement) => [measurement.name, measurement.value]),
+        );
+        if (country.headlineEligible === false) {
+          assert.equal(measurements.has('Overall resilience score'), false);
+          assert.equal(measurements.has('Rank'), false);
+          assert.equal(measurements.has('30-day score change'), false);
+          assert.equal(
+            [...measurements.keys()].some((name) => /pillar|score/i.test(name)),
+            false,
+          );
+        } else {
+          assert.equal(measurements.get('Overall resilience score'), country.overallScore);
+        }
+        assert.equal(measurements.get('Dimension coverage'), country.dimensionCoverage);
+        assert.equal(dataset.identifier, code);
+        assert.equal(dataset.url, `https://www.worldmonitor.app${route}`);
+      }
+
+      for (let left = 0; left < sampleArticles.length; left += 1) {
+        for (let right = left + 1; right < sampleArticles.length; right += 1) {
+          const share = pairwiseUniqueShare(sampleArticles[left].text, sampleArticles[right].text);
+          assert.ok(
+            share >= 0.4,
+            `${sampleArticles[left].route} and ${sampleArticles[right].route} must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
+          );
+        }
+      }
+
+      const uk = read(outDir, 'countries/united-kingdom/index.html');
       assert.match(uk, /<h1>United Kingdom country risk and resilience<\/h1>/);
       assert.doesNotMatch(uk, /<h1>Uk /);
-      const dprk = read(outDir, 'countries/democratic-peoples-republic-of-korea/index.html');
+      const dprk = read(outDir, 'countries/north-korea/index.html');
       assert.match(dprk, /<title>North Korea Country Risk and Resilience \| World Monitor<\/title>/);
+
+      const taiwan = read(outDir, 'countries/taiwan/index.html');
+      assert.match(
+        taiwan,
+        /<span>Overall score<\/span><strong>—<\/strong>/,
+        'headline-ineligible countries must not render a numeric score',
+      );
+      const taiwanDataset = JSON.parse(read(outDir, 'countries/taiwan/resilience.json'));
+      assert.equal(taiwanDataset.rank, null);
+      assert.equal(taiwanDataset.overallScore, null);
+      assert.equal(taiwanDataset.level, 'unpublished');
+      assert.equal(taiwanDataset.sourceStatus, 'low-confidence');
+      assert.equal(taiwanDataset.confidence, 'low');
+      assert.match(taiwan, /does not meet the published ranking eligibility criteria/);
+      assert.match(taiwan, /Ranking requires coverage of at least 65%/);
+      assert.match(taiwan, /population of at least 200,000/);
+      assert.match(taiwan, /coverage falls below 55%/);
+      assert.match(taiwan, /imputation share exceeds 40%/);
+      const taiwanWhy = unpublishedHeadingParagraph(taiwan, 'Why Taiwan is unpublished');
+      assert.match(taiwanWhy, /coverage is 38%/);
+      assert.match(taiwanWhy, /imputation share is 42%/);
+      assert.doesNotMatch(
+        taiwanWhy,
+        /Ranking requires coverage of at least 65%/,
+        'eligibility thresholds in FAQ/JSON-LD must not be the Why-unpublished analysis reason',
+      );
+      const taiwanCovered = unpublishedHeadingParagraph(taiwan, 'What the snapshot does cover');
+      assert.match(
+        taiwanCovered,
+        /Cyber and digital capacity \(100%\)|Macro-fiscal position \(95%\)/,
+        'available-evidence copy must name a strongest observed dimension, not only weak usable rows',
+      );
+      assert.match(taiwan, /coverage is 38%/);
+      assert.match(taiwan, /imputation share is 42%/);
+      assert.match(taiwan, /World Bank/);
+      assert.match(taiwan, /WHO/);
+      assert.match(taiwan, /Nearest ranked comparators:/);
+      assert.match(taiwan, /Taiwan is included separately in the rankable universe/);
+      assert.doesNotMatch(taiwan, /special administrative region/);
+      assert.match(taiwan, /a low-confidence listing/);
+      assert.doesNotMatch(taiwan, /\bTW · /);
+      assert.doesNotMatch(
+        taiwan,
+        /below the threshold/,
+        'ineligible country copy must not blame ranking exclusion on coverage alone',
+      );
+      const taiwanWebPage = jsonLdObjects(taiwan)
+        .find((entry) => entry['@type'] === 'WebPage');
+      assertDefaultSpeakable(taiwanWebPage, 'taiwan country WebPage');
+      assert.equal(taiwanWebPage?.mainEntity?.value, undefined);
+      assert.equal(taiwanWebPage?.mainEntity?.overallScore, undefined);
+      assert.match(
+        taiwanWebPage?.mainEntity?.description ?? '',
+        /does not meet the published ranking eligibility criteria/,
+      );
+      assert.doesNotMatch(
+        taiwanWebPage?.mainEntity?.description ?? '',
+        /below the ranking threshold|input coverage is below/i,
+      );
+
+      for (const slug of ['taiwan', 'palau', 'san-marino']) {
+        const html = read(outDir, `countries/${slug}/index.html`);
+        const sourceGaps = unpublishedHeadingParagraph(html, 'Source inventory gaps');
+        assert.match(
+          sourceGaps,
+          /marked source unavailable in this snapshot/,
+          `${slug} must describe upstream unavailability in the current snapshot`,
+        );
+        assert.doesNotMatch(
+          sourceGaps,
+          /source-universe limit/,
+          `${slug} must not explain an upstream outage as structural exclusion`,
+        );
+      }
+
+      const headlineIneligible = corpusData.countries
+        .filter((country) => country.headlineEligible === false);
+      assert.equal(headlineIneligible.length, corpusData.resilience.totals.greyedOutCount);
+      for (const country of headlineIneligible) {
+        const html = read(outDir, `countries/${country.slug}/index.html`);
+        assert.doesNotMatch(
+          html,
+          /<span>Overall score<\/span><strong>\d/,
+          `${country.name} must not render a numeric resilience score`,
+        );
+        assert.doesNotMatch(
+          html,
+          /below the threshold/,
+          `${country.name} must not explain ranking exclusion as low coverage`,
+        );
+      }
+      const coveredIneligible = headlineIneligible.find((country) => (
+        Number(country.dimensionCoverage) >= 0.65
+      ));
+      assert.ok(
+        coveredIneligible,
+        'snapshot must include an ineligible country with coverage at or above 65%',
+      );
+      const coveredHtml = read(outDir, `countries/${coveredIneligible.slug}/index.html`);
+      const coveredCoverage = `${Math.round(Number(coveredIneligible.dimensionCoverage) * 100)}%`;
+      const coveredWhy = unpublishedHeadingParagraph(
+        coveredHtml,
+        `Why ${coveredIneligible.name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')} is unpublished`,
+      );
+      assert.equal(
+        coveredWhy,
+        describeHeadlineIneligibilityReason(coveredIneligible),
+        `${coveredIneligible.name} Why-unpublished paragraph must be the eligibility reason, not gap copy`,
+      );
+      assert.match(
+        coveredHtml,
+        /does not meet the published ranking eligibility criteria/,
+      );
+      assert.match(
+        coveredHtml,
+        new RegExp(`coverage is ${coveredCoverage}`),
+        `${coveredIneligible.name} must keep coverage as a separate fact`,
+      );
+      assert.match(
+        coveredHtml,
+        /population of at least 200,000/,
+        `${coveredIneligible.name} must quote the population-or-high-coverage ranking rule`,
+      );
+      assert.doesNotMatch(
+        coveredHtml,
+        /below the 65% ranking floor/,
+        `${coveredIneligible.name} must not explain ranking exclusion as low coverage`,
+      );
+      assert.match(
+        coveredHtml,
+        /<h3>Source inventory gaps<\/h3>/,
+        `${coveredIneligible.name} must keep source-gap copy on a separate heading`,
+      );
+      if (coveredIneligible.lowConfidence !== true) {
+        assert.doesNotMatch(
+          coveredHtml,
+          /flagged low-confidence/,
+          `${coveredIneligible.name} must not be described as low-confidence when the snapshot is not`,
+        );
+      }
+      const coveredWebPage = jsonLdObjects(coveredHtml)
+        .find((entry) => entry['@type'] === 'WebPage');
+      assert.match(
+        coveredWebPage?.mainEntity?.description ?? '',
+        /does not meet the published ranking eligibility criteria/,
+      );
+      assert.match(
+        coveredWebPage?.mainEntity?.description ?? '',
+        /Ranking requires coverage of at least 65%/,
+      );
+      assert.doesNotMatch(
+        coveredWebPage?.mainEntity?.description ?? '',
+        /below the ranking threshold|input coverage is below/i,
+      );
+
+      const unrankedSampleCodes = ['AD', 'SM', 'SY', 'TV', 'TW'];
+      const unrankedArticles = [];
+      const rankedNames = new Set(
+        corpusData.countries.filter((country) => country.rank != null).map((country) => country.name),
+      );
+      for (const code of unrankedSampleCodes) {
+        const country = countryByCode.get(code);
+        assert.ok(country, `missing unranked corpus country ${code}`);
+        const route = `/countries/${country.slug}/`;
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        const analysis = document.querySelector('[data-country-analysis]');
+        assert.ok(analysis, `${route} must render unpublished analysis`);
+        analysis.querySelectorAll('[data-country-faq]').forEach((node) => node.remove());
+        unrankedArticles.push({ route, text: analysis.textContent || '' });
+        assert.match(html, /Nearest ranked comparators:/);
+        assert.doesNotMatch(html, new RegExp(`\\b${code} · `));
+        for (const peer of country.peers) {
+          assert.ok(rankedNames.has(peer.name), `${route} peer ${peer.name} must be ranked`);
+        }
+      }
+      const syria = read(outDir, 'countries/syria/index.html');
+      assert.match(syria, /Macro-fiscal position/);
+      assert.match(syria, /IMF/);
+      const andorra = read(outDir, 'countries/andorra/index.html');
+      assert.equal(countryByCode.get('AD')?.lowConfidence, false);
+      const andorraDataset = JSON.parse(read(outDir, 'countries/andorra/resilience.json'));
+      assert.equal(andorraDataset.confidence, 'standard');
+      assert.equal(andorraDataset.sourceStatus, 'unpublished');
+      assert.match(andorra, /coverage is 69%/);
+      assert.match(andorra, /recorded population of at least 200,000/);
+      assert.match(andorra, /<span>Confidence<\/span><strong>Standard<\/strong>/);
+      assert.doesNotMatch(andorra, /flagged low-confidence/);
+      assert.doesNotMatch(
+        andorra,
+        /a low-confidence listing/,
+        'covered-ineligible meta description must not call a standard-confidence snapshot low-confidence',
+      );
+      assert.match(andorra, /an unpublished listing/);
+      assert.match(andorra, /in the rankable universe as a UN member/);
+      assert.match(
+        andorra,
+        /Sovereign fiscal buffer<\/strong>: 0% coverage; not applicable/,
+      );
+      assert.doesNotMatch(
+        andorra,
+        /sovereign-wealth records does not contribute/,
+      );
+      const iraq = countryByCode.get('IQ');
+      assert.ok(iraq, 'snapshot must include unpublished Iraq');
+      const iraqHtml = read(outDir, 'countries/iraq/index.html');
+      const iraqWhy = unpublishedHeadingParagraph(iraqHtml, 'Why Iraq is unpublished');
+      assert.equal(iraqWhy, describeHeadlineIneligibilityReason(iraq));
+      assert.match(iraqWhy, /recorded population of at least 200,000/);
+      assert.doesNotMatch(iraqWhy, /below the 65% ranking floor/);
+      assert.doesNotMatch(
+        iraqHtml,
+        /Iraq.{0,120}(fewer than 200,000|microstate)|microstate.{0,80}Iraq/,
+        'Iraq copy must not imply the country is below the 200,000 population gate',
+      );
+      for (let left = 0; left < unrankedArticles.length; left += 1) {
+        for (let right = left + 1; right < unrankedArticles.length; right += 1) {
+          const share = pairwiseUniqueShare(unrankedArticles[left].text, unrankedArticles[right].text);
+          assert.ok(
+            share >= 0.4,
+            `${unrankedArticles[left].route} and ${unrankedArticles[right].route} unranked pair must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
+          );
+        }
+      }
 
       const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);
@@ -787,13 +1651,65 @@ describe('crawlable corpus generator', () => {
       const norwayLd = jsonLdObjects(norway);
       const norwayWebPage = norwayLd.find((entry) => entry['@type'] === 'WebPage');
       assert.ok(norwayWebPage?.about?.['@type'] === 'Country' && norwayWebPage.about?.name === 'Norway');
+      assert.equal(norwayWebPage?.primaryImageOfPage?.['@type'], 'ImageObject');
+      assert.equal(
+        norwayWebPage?.primaryImageOfPage?.contentUrl,
+        'https://www.worldmonitor.app/favico/og-image.png',
+      );
       assert.ok(norwayLd.some((entry) => entry['@type'] === 'BreadcrumbList'));
+      const switzerland = read(outDir, 'countries/switzerland/index.html');
+      assert.match(switzerland, /<strong>Official name:<\/strong> Swiss Confederation/);
+      const switzerlandWebPage = jsonLdObjects(switzerland).find((entry) => entry['@type'] === 'WebPage');
+      assert.ok(switzerlandWebPage?.about?.alternateName?.includes('Swiss Confederation'));
+      assert.equal(switzerlandWebPage?.about?.sameAs, 'https://www.wikidata.org/wiki/Q39');
+      const norwayDataset = collectDatasets(norwayWebPage)[0];
+      assert.ok(norwayDataset, 'country page must expose a Dataset mainEntity');
+      assert.equal(
+        norwayDataset.dateModified,
+        '2026-08-29',
+        'country Dataset dateModified must stay pinned to the published snapshot',
+      );
+      assertSourceDerivedTemporalCoverage(norwayDataset, {
+        route: '/countries/norway/',
+        observationInterval: manifest.sections.countries.sourceCapturedAt,
+        lastmod: pageLastmod(norway),
+      });
+      assert.equal(norwayDataset.isAccessibleForFree, true);
+      assert.ok(norwayDataset.includedInDataCatalog?.['@id']?.includes('#data-catalog'));
+      assert.match(
+        JSON.stringify(norwayDataset.distribution),
+        /\/countries\/norway\/resilience\.json/,
+      );
+      assert.doesNotMatch(
+        JSON.stringify(norwayDataset.distribution),
+        /\/api\//,
+        'country Dataset downloads must be static artifacts, not API routes',
+      );
+      const norwaySnapshot = JSON.parse(read(outDir, 'countries/norway/resilience.json'));
+      assert.equal(norwaySnapshot.countryCode, 'NO');
+      assert.equal(norwaySnapshot.dataset, 'country-resilience-snapshot');
+      assert.match(norway, /href="\/countries\/norway\/resilience\.json"/);
+      assert.equal(
+        norwayDataset.spatialCoverage?.identifier,
+        'NO',
+        'country Dataset spatialCoverage must identify the country by code',
+      );
+      assert.equal(
+        norwayDataset.spatialCoverage?.geo?.['@type'],
+        'GeoShape',
+        'country Dataset spatialCoverage must carry the bbox as a GeoShape',
+      );
+      assertDataCatalogPresent(norway, '/countries/norway/');
 
       const chokepointsIndex = read(outDir, 'chokepoints/index.html');
       // The "N routes" / raw-id card subtitles are gone; cards now describe what each waterway connects.
       assert.doesNotMatch(chokepointsIndex, /\d+ routes?<\/span>/, 'chokepoint index must not expose raw "N routes" counts');
       assert.doesNotMatch(chokepointsIndex, /hormuz_strait &middot;/, 'chokepoint index must not expose raw canonical ids');
       assert.match(chokepointsIndex, /Persian Gulf ↔ Gulf of Oman/, 'chokepoint cards should show the human region');
+      assertDefaultSpeakable(
+        jsonLdObjects(chokepointsIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'chokepoints hub CollectionPage',
+      );
 
       const sourcesPage = read(outDir, 'sources/index.html');
       assert.match(sourcesPage, /<h1>See every source behind World Monitor\.<\/h1>/);
@@ -1045,6 +1961,8 @@ describe('crawlable corpus generator', () => {
       const hormuz = read(outDir, 'chokepoints/strait-of-hormuz/index.html');
       assert.match(hormuz, /<h1>Strait of Hormuz<\/h1>/);
       assert.match(hormuz, /<link rel="canonical" href="https:\/\/www\.worldmonitor\.app\/chokepoints\/strait-of-hormuz\/">/);
+      assert.match(hormuz, /about 20% of the world.s seaborne crude oil/);
+      assert.doesNotMatch(hormuz, /a very large share of the world.s seaborne crude oil/);
       // Deep-link CTA into the live map (pans to + opens the waterway popup).
       assert.match(hormuz, /<a class="cta" href="https:\/\/www\.worldmonitor\.app\/\?chokepoint=hormuz_strait&amp;utm_source=seo-chokepoint">Open Strait of Hormuz on the live map/);
       assert.match(hormuz, /href="\/docs\/methodology\/chokepoints"/);
@@ -1054,21 +1972,273 @@ describe('crawlable corpus generator', () => {
       // Cross-link to the matching glossary term.
       assert.match(hormuz, /href="\/blog\/glossary\/strait-of-hormuz\/"/);
       assert.match(hormuz, /data-live-chokepoint data-chokepoint-id="hormuz_strait"/);
+      assert.match(hormuz, /data-published-pulse/);
       assert.match(hormuz, /traffic-light badge is a disruption score, not an operational closure declaration/i);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
       assert.doesNotMatch(hormuz, /id="app"/, 'chokepoint page must be raw static HTML, not the SPA shell');
+      assert.doesNotMatch(hormuz, /Connecting…/);
+      assert.doesNotMatch(hormuz, /data-chokepoint-score>—/);
+      assert.doesNotMatch(hormuz, /data-chokepoint-band>Loading/);
+      assert.match(hormuz, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
+      assert.match(hormuz, /data-chokepoint-score>\d/);
+      // #7457: the frozen pulse stores todayTransits "0" with a non-zero WoW
+      // for Hormuz. That 0 is an AIS-window zero-fill, not a measurement.
+      assert.match(hormuz, /data-chokepoint-transits>—/);
+      assert.doesNotMatch(
+        hormuz,
+        /data-chokepoint-transits>0</,
+        'absent-feed chokepoint must not render a numeric 0 transit count',
+      );
+      assert.match(
+        hormuz,
+        /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
+      );
+      assert.doesNotMatch(
+        hormuz,
+        /AIS-derived feed has no data/,
+        'the withhold note must not name AIS -- dataAvailable is PortWatch presence, so the count can be withheld while AIS is healthy',
+      );
+      assert.doesNotMatch(
+        hormuz,
+        /data-chokepoint-transits>0[\s\S]{0,400}data-chokepoint-movement>\+12\.9%/,
+        'a page cannot show 0 transits and a non-zero WoW change together',
+      );
+      // Operator-facing review-hygiene text must never reach crawlable HTML.
+      assert.doesNotMatch(
+        hormuz,
+        /review recommended/i,
+        'internal threat-baseline review notes must not be published to crawlers',
+      );
 
       const hormuzLd = jsonLdObjects(hormuz);
-      assert.ok(hormuzLd.some((entry) => entry['@type'] === 'WebPage' && entry.about?.['@type'] === 'Place' && entry.about?.name === 'Strait of Hormuz'));
+      const hormuzPage = hormuzLd.find((entry) => entry['@type'] === 'WebPage');
+      assertDefaultSpeakable(hormuzPage, 'hormuz chokepoint WebPage');
+      assert.ok(hormuzPage?.about?.['@type'] === 'Place' && hormuzPage.about?.name === 'Strait of Hormuz');
+      const hormuzGeos = Array.isArray(hormuzPage.about.geo)
+        ? hormuzPage.about.geo
+        : [hormuzPage.about.geo].filter(Boolean);
+      assert.ok(
+        hormuzGeos.some((geo) => geo?.['@type'] === 'GeoCoordinates'),
+        'chokepoint Place must keep GeoCoordinates',
+      );
+      const hormuzDataset = collectDatasets(hormuzPage)[0];
+      assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
+      assert.equal(
+        hormuzDataset.dateModified,
+        '2026-09-01',
+        'chokepoint page template change must advance Dataset dateModified with page lastmod',
+      );
+      assert.equal(
+        pageLastmod(hormuz),
+        '2026-09-01',
+        'chokepoint transit-withhold template change must advance page lastmod',
+      );
+      assertSourceDerivedTemporalCoverage(hormuzDataset, {
+        route: '/chokepoints/strait-of-hormuz/',
+        observationInterval: JSON.parse(read(outDir, 'chokepoints/strait-of-hormuz/reference.json')).capturedAt,
+        lastmod: pageLastmod(hormuz),
+      });
+      const hormuzShapes = [
+        ...hormuzGeos,
+        hormuzDataset?.spatialCoverage?.geo,
+      ].filter((geo) => geo?.['@type'] === 'GeoShape');
+      assert.ok(hormuzShapes.length > 0, 'chokepoint Place/Dataset must include GeoShape corridor extent');
+      assert.ok(
+        typeof hormuzShapes[0].box === 'string' || typeof hormuzShapes[0].line === 'string',
+        'chokepoint GeoShape must declare box or line coordinates',
+      );
+      assert.match(
+        JSON.stringify(hormuzDataset.distribution),
+        /\/chokepoints\/strait-of-hormuz\/reference\.json/,
+      );
+      assert.doesNotMatch(
+        JSON.stringify(hormuzDataset.distribution),
+        /\/api\//,
+        'chokepoint Dataset downloads must be static artifacts, not API routes',
+      );
+      const hormuzReference = JSON.parse(read(outDir, 'chokepoints/strait-of-hormuz/reference.json'));
+      assert.equal(hormuzReference.dataset, 'chokepoint-reference');
+      assert.equal(hormuzReference.id, 'hormuz_strait');
+      assert.ok(hormuzReference.capturedAt);
+      assert.ok(hormuzReference.modelledTradeRoutes.length > 0);
+      assert.equal(hormuzDataset.url, 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/');
+      assert.equal(hormuzDataset.identifier, 'hormuz_strait');
+      assert.equal(hormuzDataset.temporalCoverage, hormuzReference.capturedAt);
+      const hormuzMeasurements = new Map(
+        hormuzDataset.variableMeasured.map((measurement) => [measurement.name, measurement.value]),
+      );
+      assert.equal(hormuzMeasurements.get('Geographic coordinates'), '26.5°N, 56.5°E');
+      assert.equal(hormuzMeasurements.get('Connected waters'), 'Persian Gulf ↔ Gulf of Oman');
+      assert.equal(hormuzMeasurements.get('Energy shock model support'), 'Yes');
+      assert.equal(hormuzMeasurements.get('Modelled trade routes'), hormuzReference.modelledTradeRoutes.length);
+      assert.ok(
+        hormuzDataset.variableMeasured.every((measurement) => measurement['@type'] === 'PropertyValue' && measurement.value != null && measurement.value !== ''),
+        'chokepoint variableMeasured must be valued PropertyValue entries',
+      );
+      assert.doesNotMatch(
+        JSON.stringify(hormuzDataset),
+        /Disruption score|Congestion|AIS disruptions|Daily vessel transits/,
+        'chokepoint Dataset metadata must describe the generated reference artifact, not live API fields',
+      );
+      // The deepEqual above already pins variableMeasured exactly, so an
+      // object-shaped `{name: 'Transit count', value: 0}` entry cannot slip in.
+      // This adds the case-insensitive bare-string form the alternation above
+      // misses (it only names "Daily vessel transits").
+      assert.doesNotMatch(
+        JSON.stringify(hormuzDataset),
+        /transit/i,
+        'chokepoint Dataset must not carry a transit count in any casing -- the AIS window is not part of this reference artifact',
+      );
+      const additionalProps = Array.isArray(hormuzPage.about.additionalProperty)
+        ? hormuzPage.about.additionalProperty
+        : [hormuzPage.about.additionalProperty].filter(Boolean);
+      assert.ok(
+        additionalProps.some((prop) => prop.name === 'Connects'),
+        'chokepoint Place must expose connects/routes as additionalProperty',
+      );
+      assertDataCatalogPresent(hormuz, '/chokepoints/strait-of-hormuz/');
 
       // A chokepoint with no modelled trade routes must degrade gracefully — never "0 routes".
       const dover = read(outDir, 'chokepoints/dover-strait/index.html');
       assert.doesNotMatch(dover, /0 routes?|none configured/);
       assert.match(dover, /tracked as a strategic waterway reference/);
+      assert.match(dover, /<table data-chokepoint-routes>/);
+
+      const corpus = await loadCorpusData({ rootDir: repoRoot });
+      const chokepointArticles = [];
+      for (const cp of corpus.chokepoints) {
+        const route = `/chokepoints/${cp.slug}/`;
+        const html = read(outDir, `chokepoints/${cp.slug}/index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        const analysis = document.querySelector('[data-chokepoint-analysis]');
+        assert.ok(analysis, `${route} must render a chokepoint analysis block`);
+        const faqEntries = [...document.querySelectorAll('[data-chokepoint-faq]')];
+        assert.ok(
+          faqEntries.length >= 2 && faqEntries.length <= 3,
+          `${route} must show 2-3 FAQs`,
+        );
+        const pageLd = jsonLdObjects(html);
+        const faqPage = pageLd.find((entry) => entry['@type'] === 'FAQPage');
+        assert.equal(faqPage?.mainEntity?.length, faqEntries.length, `${route} FAQPage must match visible FAQs`);
+        assert.match(
+          analysis.querySelector('h2')?.textContent ?? '',
+          /\?$/,
+          `${route} analysis heading must be question-shaped`,
+        );
+        const table = document.querySelector('table[data-chokepoint-routes]');
+        assert.ok(table, `${route} must publish a trade-route table`);
+        assert.ok(
+          table.querySelector('time[datetime]'),
+          `${route} trade-route table must stamp figures with time datetime`,
+        );
+        assert.doesNotMatch(
+          analysis.textContent,
+          /no (corridor|trade-route) table/i,
+          `${route} must not say the rendered corridor table is absent`,
+        );
+        assert.doesNotMatch(
+          analysis.textContent,
+          /(already in the|in the same) (trade-route )?table/i,
+          `${route} must not claim off-page alternatives live in this page’s table`,
+        );
+        const articleWordCount = words(analysis.textContent).length;
+        assert.ok(
+          articleWordCount >= 400,
+          `${route} analysis must contain at least 400 waterway-specific words, got ${articleWordCount}`,
+        );
+        const pageWordCount = words(document.querySelector('main')?.textContent).length;
+        assert.ok(
+          pageWordCount >= 600 && pageWordCount <= 1400,
+          `${route} main content must contain 600-1400 words, got ${pageWordCount}`,
+        );
+        const dataset = pageLd.flatMap((entry) => collectDatasets(entry))[0];
+        const reference = JSON.parse(read(outDir, `chokepoints/${cp.slug}/reference.json`));
+        assert.equal(dataset.url, `https://www.worldmonitor.app${route}`);
+        assert.equal(dataset.identifier, cp.id);
+        assert.equal(dataset.temporalCoverage, reference.capturedAt);
+        assert.ok(
+          Array.isArray(dataset.variableMeasured)
+            && dataset.variableMeasured.every((measurement) => (
+              measurement['@type'] === 'PropertyValue'
+              && measurement.value != null
+              && measurement.value !== ''
+            )),
+          `${route} Dataset variableMeasured must be valued PropertyValue entries`,
+        );
+        const pageGeo = pageLd.find((entry) => entry['@type'] === 'WebPage')?.about?.geo;
+        const geos = [pageGeo, dataset.spatialCoverage?.geo].flat().filter(Boolean);
+        assert.ok(
+          geos.some((geo) => geo?.['@type'] === 'GeoShape'),
+          `${route} Place/Dataset must include GeoShape`,
+        );
+        chokepointArticles.push({ route, text: analysis.textContent });
+      }
+      const uniquenessSample = chokepointArticles.filter((entry) => (
+        /strait-of-hormuz|suez-canal|panama-canal|dover-strait|taiwan-strait/.test(entry.route)
+      ));
+      assert.equal(uniquenessSample.length, 5, 'country-standard uniqueness sample must resolve five chokepoints');
+      for (let left = 0; left < uniquenessSample.length; left += 1) {
+        for (let right = left + 1; right < uniquenessSample.length; right += 1) {
+          const share = pairwiseUniqueShare(uniquenessSample[left].text, uniquenessSample[right].text);
+          assert.ok(
+            share >= 0.4,
+            `${uniquenessSample[left].route} and ${uniquenessSample[right].route} must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
+          );
+        }
+      }
+
+      // Drive the withhold expectation off the SNAPSHOT rather than off whichever
+      // chokepoint happened to have AIS traffic on the freeze date.
+      const pulseSnapshot = JSON.parse(
+        readFileSync(resolve(repoRoot, corpus.sources.livePulseSnapshot), 'utf8'),
+      );
+      const chokepointSlugs = new Map(
+        corpus.chokepoints.map((cp) => [cp.id, { slug: cp.slug, name: cp.displayName }]),
+      );
+      let publishedCounts = 0;
+      let withheldCounts = 0;
+      for (const [cpId, pulse] of Object.entries(pulseSnapshot.chokepoints ?? {})) {
+        const meta = chokepointSlugs.get(cpId);
+        if (!meta) continue;
+        const page = read(outDir, `chokepoints/${meta.slug}/index.html`);
+        const raw = Number(String(pulse.todayTransits ?? '').replace(/,/g, ''));
+        const noteRe = new RegExp(
+          `World Monitor is not currently publishing a transit count for ${meta.name} for this period`,
+        );
+        if (Number.isFinite(raw) && raw >= 1) {
+          publishedCounts++;
+          assert.match(
+            page,
+            new RegExp(`data-chokepoint-transits>${pulse.todayTransits}<`),
+            `${meta.name} has a supplied count of ${pulse.todayTransits} and must publish it`,
+          );
+          assert.doesNotMatch(page, noteRe, `${meta.name} publishes a count and must not carry the withhold note`);
+        } else {
+          withheldCounts++;
+          assert.match(page, /data-chokepoint-transits>—/);
+          assert.doesNotMatch(
+            page,
+            /data-chokepoint-transits>0</,
+            `${meta.name} must not render a numeric 0 for an unsupplied transit count`,
+          );
+          assert.match(page, noteRe);
+        }
+      }
+      assert.equal(
+        publishedCounts + withheldCounts,
+        Object.keys(pulseSnapshot.chokepoints ?? {}).length,
+        'every frozen chokepoint pulse must map to a generated page',
+      );
+      assert.ok(withheldCounts > 0, 'the freeze must exercise the withhold path');
 
       const crisesIndex = read(outDir, 'crises/index.html');
       assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
       assert.match(crisesIndex, /href="\/crises\/red-sea-security\/"/);
+      assertDataCatalogPresent(crisesIndex, '/crises/');
+      assertDefaultSpeakable(
+        jsonLdObjects(crisesIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'crises hub CollectionPage',
+      );
 
       const redSea = read(outDir, 'crises/red-sea-security/index.html');
       assert.match(redSea, /data-live-crisis/);
@@ -1077,11 +2247,110 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /HAPI\/HDX humanitarian conflict summaries/);
       assert.ok(redSea.includes(liveScriptTag), 'crisis live script must match the production CSP nonce');
       assert.doesNotMatch(redSea, /id="app"/);
+      assert.doesNotMatch(redSea, /Connecting…/);
+      assert.doesNotMatch(redSea, /data-crisis-events>—/);
+      assert.doesNotMatch(redSea, /data-crisis-period>Loading/);
+      assert.match(redSea, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
+      assert.match(redSea, /Maintained month snapshot/);
+      assert.match(redSea, /data-crisis-period>20\d{2}-\d{2}-\d{2}/);
+      const redSeaLd = jsonLdObjects(redSea);
+      const redSeaPage = redSeaLd.find((entry) => entry['@type'] === 'WebPage');
+      assertDefaultSpeakable(redSeaPage, 'red-sea crisis WebPage');
+      const redSeaDataset = collectDatasets(redSeaPage)[0];
+      assert.ok(redSeaDataset, 'crisis page must expose a Dataset mainEntity');
+      const redSeaReference = JSON.parse(read(outDir, 'crises/red-sea-security/tracker.json'));
+      assertSourceDerivedTemporalCoverage(redSeaDataset, {
+        route: '/crises/red-sea-security/',
+        observationInterval: redSeaReference.maintainedPulse?.referencePeriod,
+        lastmod: pageLastmod(redSea),
+      });
+      assert.equal(
+        redSeaDataset.dateModified,
+        '2026-08-31',
+        'changed crisis Dataset schema must advance only the crisis family stamp',
+      );
+      assert.equal(
+        pageLastmod(redSea),
+        '2026-08-31',
+        'crisis page lastmod must advance with its changed Dataset schema',
+      );
+      assert.equal(
+        sitemapEntries.find((entry) => (
+          new URL(entry.loc).pathname === '/crises/red-sea-security/'
+        ))?.lastmod,
+        '2026-08-31',
+        'crisis sitemap lastmod must advance with its changed Dataset schema',
+      );
+      assert.equal(redSeaDataset.isAccessibleForFree, true);
+      assert.match(
+        JSON.stringify(redSeaDataset.distribution),
+        /\/crises\/red-sea-security\/tracker\.json/,
+      );
+      assert.doesNotMatch(
+        JSON.stringify(redSeaDataset.distribution),
+        /\/api\//,
+        'crisis Dataset downloads must be static artifacts, not API routes',
+      );
+      assert.equal(redSeaReference.dataset, 'crisis-tracker');
+      assert.ok(redSeaReference.coverage.some((country) => country.code === 'YE'));
+      assert.ok(redSeaReference.maintainedPulse?.referencePeriod);
+      // The download is a machine-readable artifact: totals must be numbers, not
+      // Intl-formatted display strings like "9,824".
+      for (const key of ['eventsTotal', 'fatalities', 'politicalViolenceEvents']) {
+        const value = redSeaReference.maintainedPulse[key];
+        assert.equal(
+          typeof value,
+          'number',
+          `maintainedPulse.${key} must be a raw number, got ${JSON.stringify(value)}`,
+        );
+      }
+      assert.equal(
+        redSeaReference.maintainedPulse.eventsTotal,
+        redSeaReference.maintainedPulse.rows.reduce((total, row) => total + row.events, 0),
+        'maintainedPulse.eventsTotal must equal the sum of its published rows',
+      );
+      assert.deepEqual(redSeaDataset.variableMeasured, [
+        'Tracker scope',
+        'Covered countries',
+        'Recorded conflict events',
+        'Recorded fatalities',
+        'Political violence events',
+        'Humanitarian reference period',
+      ]);
+      assertDataCatalogPresent(redSea, '/crises/red-sea-security/');
 
       const toolsIndex = read(outDir, 'tools/index.html');
       assert.match(toolsIndex, /<h1>Check a current operational signal<\/h1>/);
+      assertDefaultSpeakable(
+        jsonLdObjects(toolsIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'tools hub CollectionPage',
+      );
+      const useCasesIndex = read(outDir, 'use-cases/index.html');
+      assertDefaultSpeakable(
+        jsonLdObjects(useCasesIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'use-cases hub CollectionPage',
+      );
+      const breakingNews = read(outDir, 'use-cases/verify-breaking-news/index.html');
+      const breakingNewsLd = jsonLdObjects(breakingNews);
+      assertDefaultSpeakable(
+        breakingNewsLd.find((entry) => entry['@type'] === 'WebPage'),
+        'breaking-news WebPage',
+      );
+      assert.ok(
+        breakingNewsLd.some((entry) => entry['@type'] === 'HowTo'),
+        'HowTo-shaped use-case pages must emit HowTo JSON-LD (#7462)',
+      );
       assert.match(toolsIndex, /href="\/tools\/natural-hazard-pulse\/"/);
       assert.match(toolsIndex, /href="\/tools\/airspace-disruption-checker\/"/);
+      assert.match(toolsIndex, /href="\/tools\/signal-convergence\/"/);
+
+      const convergence = read(outDir, 'tools/signal-convergence/index.html');
+      assert.match(convergence, /Geographic Convergence Score/);
+      assert.match(convergence, /type_score = event_types × 25/);
+      assert.match(convergence, /Taiwan Strait Buildup/);
+      assert.match(convergence, /<strong>87<\/strong>/);
+      assert.match(convergence, /href="\/docs\/geographic-convergence"/);
+      assert.doesNotMatch(convergence, /id="app"/);
 
       const hazard = read(outDir, 'tools/natural-hazard-pulse/index.html');
       assert.match(hazard, /data-natural-hazard-tool/);
@@ -1123,7 +2392,12 @@ describe('crawlable corpus generator', () => {
       assert.match(changelogIndex, /<link rel="next" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/page\/2\/">/);
       assert.match(changelogIndex, /server scorer read non-existent/);
       assert.match(changelogIndex, /methodology_version is now v8/);
+      assert.match(
+        changelogIndex,
+        /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/,
+      );
       assert.match(changelogPage2, /<link rel="prev" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/">/);
+      assert.match(changelogPage2, /name="robots" content="noindex, follow"/);
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
@@ -1131,7 +2405,14 @@ describe('crawlable corpus generator', () => {
 
   it('loads deterministic source data without network access', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
-    assert.equal(data.sources.resilienceSnapshot, 'docs/snapshots/resilience-ranking-2026-05-28.json');
+    assert.match(
+      data.sources.resilienceSnapshot,
+      /^docs\/snapshots\/resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/,
+    );
+    assert.match(
+      data.sources.livePulseSnapshot,
+      /^docs\/snapshots\/crawlable-live-pulse-\d{4}-\d{2}-\d{2}\.json$/,
+    );
     assert.equal(data.sources.liveToolsScript, 'scripts/crawlable-live-tools.mjs');
     assert.equal(data.sources.countryBboxes, 'shared/country-bboxes.js');
     assert.equal(data.sources.crisisRegistry, 'shared/crawlable-crises.json');
@@ -1139,9 +2420,14 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.sourceOrigin, 'scripts/source-origin.mjs');
     assert.deepEqual(data.sources.sourceCatalogInputs, SOURCE_CATALOG_LASTMOD_PATHS);
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
-    assert.equal(data.resilience.capturedAt, '2026-05-28');
-    assert.equal(data.lastmod.countries, '2026-08-12');
-    assert.equal(data.lastmod.research, '2026-08-12');
+    assert.equal(data.resilience.capturedAt, '2026-08-29');
+    assert.ok(data.sources.resilienceSnapshot.includes(data.resilience.capturedAt));
+    // Family lastmods use material + page versions + pulse where the HTML
+    // publishes pulse values. CORPUS_GENERATOR_CONTENT_VERSION stays out
+    // (#7463). Research lastmod is the report dateModified, not a rebuild stamp.
+    assert.equal(data.lastmod.countries, '2026-08-31');
+    assert.equal(data.lastmod.research, '2026-07-27');
+    assert.equal(data.lastmod.chokepoints, '2026-09-01');
     assert.equal(
       data.lastmod.sources,
       sourcePageLastmod({
@@ -1160,7 +2446,7 @@ describe('crawlable corpus generator', () => {
     assert.ok(data.countryBounds.every(({ bounds: [south, west, north, east] }) => (
       north - south <= 45 && east - west <= 60
     )));
-    assert.ok(data.countries.some((country) => country.slug === 'norway' && country.rank === 1));
+    assert.ok(data.countries.some((country) => country.slug === 'norway' && Number.isInteger(country.rank)));
     assert.ok(data.chokepoints.some((chokepoint) => chokepoint.slug === 'strait-of-hormuz' && chokepoint.id === 'hormuz_strait'));
     assert.ok(data.glossaryTerms.some((term) => term.slug === 'country-resilience-index'));
     // Position-independent: the parser must carry full bullet prose through,

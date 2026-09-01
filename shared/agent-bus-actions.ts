@@ -1,8 +1,12 @@
 import { z } from 'zod';
 import {
+  DASHBOARD_COUNTRY_CODE_PATTERN,
   DASHBOARD_MAP_MAX_LATITUDE,
+  DASHBOARD_MAP_MODES,
   DASHBOARD_MAP_VIEWS,
+  DASHBOARD_TIME_RANGES,
   DASHBOARD_LAYER_ACTION_TARGET_ID_PATTERN,
+  DASHBOARD_PANEL_ACTION_ID_PATTERN,
   MAX_LAYER_ACTION_TARGET_ID_LENGTH,
   MAX_LAYER_ACTION_TARGETS,
 } from './agent-bus-contract';
@@ -12,6 +16,9 @@ export const AGENT_BUS_ACTION_TYPES = [
   'open_panel',
   'set_view',
   'set_layers',
+  'set_time_range',
+  'focus_country',
+  'set_map_mode',
 ] as const;
 
 const labelSchema = z.string().trim().min(1).max(96).optional();
@@ -31,7 +38,7 @@ export const suggestWidgetActionSchema = z.object({
 export const openPanelActionSchema = z.object({
   type: z.literal('open_panel'),
   label: labelSchema,
-  panelId: z.string().trim().min(1).max(96).regex(/^[a-z0-9][a-z0-9@_-]*$/),
+  panelId: z.string().trim().min(1).max(96).regex(new RegExp(DASHBOARD_PANEL_ACTION_ID_PATTERN)),
   reason: reasonSchema,
 }).strict();
 
@@ -89,17 +96,44 @@ export const setLayersActionSchema = z.object({
   reason: reasonSchema,
 }).strict();
 
+export const setTimeRangeActionSchema = z.object({
+  type: z.literal('set_time_range'),
+  label: labelSchema,
+  timeRange: z.enum(DASHBOARD_TIME_RANGES),
+  reason: reasonSchema,
+}).strict();
+
+export const focusCountryActionSchema = z.object({
+  type: z.literal('focus_country'),
+  label: labelSchema,
+  iso2: z.string().regex(new RegExp(DASHBOARD_COUNTRY_CODE_PATTERN)),
+  reason: reasonSchema,
+}).strict();
+
+export const setMapModeActionSchema = z.object({
+  type: z.literal('set_map_mode'),
+  label: labelSchema,
+  mode: z.enum(DASHBOARD_MAP_MODES),
+  reason: reasonSchema,
+}).strict();
+
 export const agentBusActionSchema = z.discriminatedUnion('type', [
   suggestWidgetActionSchema,
   openPanelActionSchema,
   setViewActionSchema,
   setLayersActionSchema,
+  setTimeRangeActionSchema,
+  focusCountryActionSchema,
+  setMapModeActionSchema,
 ]);
 
 export type SuggestWidgetAction = z.infer<typeof suggestWidgetActionSchema>;
 export type OpenPanelAction = z.infer<typeof openPanelActionSchema>;
 export type SetViewAction = z.infer<typeof setViewActionSchema>;
 export type SetLayersAction = z.infer<typeof setLayersActionSchema>;
+export type SetTimeRangeAction = z.infer<typeof setTimeRangeActionSchema>;
+export type FocusCountryAction = z.infer<typeof focusCountryActionSchema>;
+export type SetMapModeAction = z.infer<typeof setMapModeActionSchema>;
 export type AgentBusAction = z.infer<typeof agentBusActionSchema>;
 export type DashboardControlAction = Exclude<AgentBusAction, SuggestWidgetAction>;
 export type DashboardControlActionType = DashboardControlAction['type'];

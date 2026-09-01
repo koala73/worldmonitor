@@ -10,7 +10,9 @@ import {
   validateProMcpAuthorization,
   wwwAuthHeader,
 } from './auth';
+import { readBoundedRequestBody, RequestBodyTooLargeError } from './bounded-body';
 import {
+  MAX_JSON_RPC_BODY_BYTES,
   MCP_LOG_LEVELS,
   negotiateProtocolVersion,
   SERVER_INSTRUCTIONS,
@@ -31,9 +33,17 @@ import {
   RESOURCE_TEMPLATE_LIST_RESPONSE,
 } from './resources/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
+import {
+  buildSkillResourceRead,
+  buildSkillsGetResponse,
+  buildSkillsListResponse,
+  isSkillUri,
+  isSkillResourceUri,
+} from './skill-extension/index';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
+import { utf8ByteLength } from './utils';
 import type { McpAuthContext, McpHandlerDeps } from './types';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
@@ -84,6 +94,8 @@ const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
   'prompts/get',
   'resources/list',
   'resources/templates/list',
+  'skills/list',
+  'skills/get',
   'logging/setLevel',
 ]);
 
@@ -94,6 +106,19 @@ const PUBLIC_MCP_METHODS: ReadonlySet<string> = new Set([
 function hasCredentials(req: Request): boolean {
   if ((req.headers.get('Authorization') ?? '').startsWith('Bearer ')) return true;
   return (req.headers.get('X-WorldMonitor-Key') ?? '') !== '';
+}
+
+type JsonRpcRequest = {
+  jsonrpc?: string;
+  id?: unknown;
+  method?: string;
+  params?: unknown;
+};
+
+function validJsonRpcId(id: unknown): id is string | number | null | undefined {
+  if (id === null || id === undefined) return true;
+  if (typeof id === 'number') return Number.isFinite(id);
+  return typeof id === 'string' && utf8ByteLength(id) <= MAX_JSON_RPC_ID_BYTES;
 }
 
 // Spec-correct 401 for the fail-closed guards on data methods. These guards are
@@ -115,14 +140,30 @@ type StoredSseEvent = {
   data: string;
 };
 
+type StoredSseStream = {
+  events: StoredSseEvent[];
+  bytes: number;
+};
+
 const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
 // no-store forbids storage outright; no-cache is vacuous alongside it (RFC 9111
 // §5.2) so it is omitted. no-transform is load-bearing for SSE framing. This also
 // matches the sibling no-store work in api/mcp/rpc.ts (#4502).
 const MCP_CACHE_CONTROL = 'no-store, no-transform';
+// JSON-RPC IDs are client-controlled and get echoed in every success/error
+// envelope. Keep ordinary scalar IDs correlatable, but reject IDs that could
+// turn an error path (and its optional SSE replay) into an amplification sink.
+const MAX_JSON_RPC_ID_BYTES = 256;
+// Replay is a best-effort convenience for a stateless edge route. A large
+// response still reaches the current SSE client; it is not retained for a
+// later Last-Event-ID replay.
+const MAX_SSE_REPLAY_RESPONSE_BYTES = 128 * 1024;
+const MAX_SSE_REPLAY_SESSION_BYTES = 256 * 1024;
+const MAX_SSE_REPLAY_TOTAL_BYTES = 4 * 1024 * 1024;
 const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
-const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseEvent[]>>();
+const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseStream>>();
+let mcpSseReplayBytes = 0;
 
 function getMcpCorsHeaders(methods = 'POST, GET, HEAD, OPTIONS'): Record<string, string> {
   return {
@@ -178,27 +219,68 @@ function createSseStream(events: StoredSseEvent[]): ReadableStream<Uint8Array> {
   });
 }
 
-function sessionStreamsForWrite(sessionId: string): Map<string, StoredSseEvent[]> {
+function deleteSseSession(sessionId: string): void {
+  const streams = mcpSseStreamsBySession.get(sessionId);
+  if (!streams) return;
+  for (const stream of streams.values()) mcpSseReplayBytes -= stream.bytes;
+  mcpSseStreamsBySession.delete(sessionId);
+}
+
+function sessionReplayBytes(streams: Map<string, StoredSseStream>): number {
+  let bytes = 0;
+  for (const stream of streams.values()) bytes += stream.bytes;
+  return bytes;
+}
+
+function evictOldestSseStream(exceptSessionId?: string): boolean {
+  for (const [sessionId, streams] of mcpSseStreamsBySession) {
+    if (sessionId === exceptSessionId) continue;
+    const streamId = streams.keys().next().value;
+    if (!streamId) continue;
+    const stream = streams.get(streamId);
+    if (!stream) continue;
+    streams.delete(streamId);
+    mcpSseReplayBytes -= stream.bytes;
+    if (streams.size === 0) mcpSseStreamsBySession.delete(sessionId);
+    return true;
+  }
+  return false;
+}
+
+function sessionStreamsForWrite(sessionId: string): Map<string, StoredSseStream> {
   let streams = mcpSseStreamsBySession.get(sessionId);
   if (!streams) {
     streams = new Map();
     mcpSseStreamsBySession.set(sessionId, streams);
     if (mcpSseStreamsBySession.size > MAX_SSE_SESSIONS) {
       const oldestSessionId = mcpSseStreamsBySession.keys().next().value;
-      if (oldestSessionId) mcpSseStreamsBySession.delete(oldestSessionId);
+      if (oldestSessionId) deleteSseSession(oldestSessionId);
     }
   }
   return streams;
 }
 
-function storeSseStream(sessionId: string, streamId: string, events: StoredSseEvent[]) {
+function storeSseStream(sessionId: string, streamId: string, events: StoredSseEvent[]): boolean {
+  const bytes = events.reduce((total, event) => total + utf8ByteLength(formatSseEvent(event)), 0);
+  if (bytes > MAX_SSE_REPLAY_RESPONSE_BYTES) return false;
+
   const streams = sessionStreamsForWrite(sessionId);
-  streams.set(streamId, events);
-  while (streams.size > MAX_SSE_STREAMS_PER_SESSION) {
+  while (
+    streams.size >= MAX_SSE_STREAMS_PER_SESSION
+    || sessionReplayBytes(streams) + bytes > MAX_SSE_REPLAY_SESSION_BYTES
+  ) {
     const oldestStreamId = streams.keys().next().value;
     if (!oldestStreamId) break;
+    const oldest = streams.get(oldestStreamId);
     streams.delete(oldestStreamId);
+    if (oldest) mcpSseReplayBytes -= oldest.bytes;
   }
+  while (mcpSseReplayBytes + bytes > MAX_SSE_REPLAY_TOTAL_BYTES && evictOldestSseStream(sessionId)) {
+    // Evict least-recently-stored entries until this bounded replay fits.
+  }
+  streams.set(streamId, { events, bytes });
+  mcpSseReplayBytes += bytes;
+  return true;
 }
 
 function parseEventCursor(eventId: string): { streamId: string; sequence: number } | null {
@@ -212,9 +294,31 @@ function parseEventCursor(eventId: string): { streamId: string; sequence: number
 function replayEventsAfter(sessionId: string, lastEventId: string): StoredSseEvent[] | null {
   const cursor = parseEventCursor(lastEventId);
   if (!cursor) return null;
-  const events = mcpSseStreamsBySession.get(sessionId)?.get(cursor.streamId);
-  if (!events) return null;
-  return events.slice(cursor.sequence + 1);
+  const stream = mcpSseStreamsBySession.get(sessionId)?.get(cursor.streamId);
+  if (!stream) return null;
+  return stream.events.slice(cursor.sequence + 1);
+}
+
+// Mid-call billing denials (dispatch's BillingDenialError re-emit) must
+// classify like the pre-check sites: 'billing' -> billing_verification_503
+// / tier_403, not rate_limit_degraded (503) or an ordinary precheck (403).
+// Shared by tools/call and template resources/read so the two surfaces
+// cannot drift (#7269).
+function classifyDispatchedUsage(usage: McpUsage, response: Response): void {
+  if (response.headers.get('X-Billing-Verification')) {
+    usage.phase = 'billing';
+  } else if (response.status === 429 || response.status === 503) {
+    usage.phase = 'dispatch';
+  } else if (response.status === 401 || response.status === 403) {
+    // #6716 F4: dispatch can now emit a tier denial of its own (the
+    // free-tier fail-closed guard at 401, and the gateway-backed
+    // upgrade-required at 403). Without this arm both fall past every
+    // branch, keep usage.phase's 'ok' default, and get recorded as
+    // SERVED — deleting from the dataset exactly the denial events this
+    // funnel exists to measure. 'precheck' maps a non-503 status to
+    // tier_403, matching how the pre-check sites classify the same verdict.
+    usage.phase = 'precheck';
+  }
 }
 
 function sseHeadersFrom(headers: Headers): Headers {
@@ -612,18 +716,45 @@ async function mcpHandlerInner(
   // Parse body BEFORE auth: the method decides whether credentials are required
   // (public discovery methods are servable anonymously). Malformed/missing-method
   // POSTs are a client error regardless of auth, so returning -32600 here (rather
-  // than 401-then-32600) leaks nothing.
-  let body: { jsonrpc?: string; id?: unknown; method?: string; params?: unknown };
+  // than 401-then-32600) leaks nothing. The byte cap (#7406) sits ahead of
+  // JSON.parse so an oversized body never reaches method dispatch — matching
+  // api/docs-mcp.ts (HTTP 413 + JSON-RPC -32600).
+  let body: JsonRpcRequest;
   try {
-    body = await req.json();
-  } catch {
+    const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
+    const parsed: unknown = JSON.parse(new TextDecoder().decode(bodyBytes));
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      usage.phase = 'malformed';
+      return rpcError(null, -32600, 'Invalid request: expected object', corsHeaders);
+    }
+    body = parsed as JsonRpcRequest;
+  } catch (err) {
     usage.phase = 'malformed';
+    if (err instanceof RequestBodyTooLargeError) {
+      // Structured `data` so an agent can self-correct without parsing the
+      // message string — same contract as the -32001/-32002 denials and the
+      // _jmespath_error envelope. `id` is null because the body was rejected
+      // before parsing, so the caller's id was never read.
+      return rpcError(
+        null,
+        -32600,
+        err.message,
+        corsHeaders,
+        { reason: 'body-too-large', maxBytes: err.maxBytes, nextStep: 'Shrink the request body below maxBytes and retry.' },
+        413,
+      );
+    }
     return rpcError(null, -32600, 'Invalid request: malformed JSON', corsHeaders);
   }
 
-  if (!body || typeof body.method !== 'string') {
+  if (!validJsonRpcId(body.id)) {
     usage.phase = 'malformed';
-    return rpcError(body?.id ?? null, -32600, 'Invalid request: missing method', corsHeaders);
+    return rpcError(null, -32600, 'Invalid request: invalid id', corsHeaders);
+  }
+
+  if (typeof body.method !== 'string') {
+    usage.phase = 'malformed';
+    return rpcError(body.id ?? null, -32600, 'Invalid request: missing method', corsHeaders);
   }
 
   const { id, method } = body;
@@ -648,7 +779,11 @@ async function mcpHandlerInner(
     : null;
   const isPublicResourceRead = typeof resourceReadUri === 'string' && isPublicResourceUri(resourceReadUri);
   const isAccountResourceRead = typeof resourceReadUri === 'string' && isAccountResourceUri(resourceReadUri);
-  const isAnonResourceRead = uiResourceReadUri !== null || isPublicResourceRead;
+  const isSkillResourceRead = isSkillUri(resourceReadUri);
+  const skillResourceReadUri = isSkillResourceUri(resourceReadUri) ? resourceReadUri : null;
+  const isAnonResourceRead = uiResourceReadUri !== null
+    || isPublicResourceRead
+    || isSkillResourceRead;
 
   // U7 (R7, R9): a `tools/call` naming a tool in the always-free subset is
   // promoted to the anonymous path per-request, the same shape
@@ -788,7 +923,10 @@ async function mcpHandlerInner(
           logging: {},
           prompts: { listChanged: false },
           resources: { subscribe: false, listChanged: false },
-          extensions: { 'io.modelcontextprotocol/ui': {} },
+          extensions: {
+            'io.modelcontextprotocol/ui': {},
+            'io.modelcontextprotocol/skills': {},
+          },
         },
         serverInfo: { name: SERVER_NAME, version: SERVER_VERSION },
         instructions: SERVER_INSTRUCTIONS,
@@ -820,23 +958,7 @@ async function mcpHandlerInner(
         freeAccountAllowance,
         resourceMetadataUrl,
       );
-      // Mid-call billing denials (dispatch's BillingDenialError re-emit) must
-      // classify like the pre-check sites: 'billing' -> billing_verification_503
-      // / tier_403, not rate_limit_degraded (503) or 'ok' (403).
-      if (dispatched.headers.get('X-Billing-Verification')) {
-        usage.phase = 'billing';
-      } else if (dispatched.status === 429 || dispatched.status === 503) {
-        usage.phase = 'dispatch';
-      } else if (dispatched.status === 401 || dispatched.status === 403) {
-        // #6716 F4: dispatch can now emit a tier denial of its own (the
-        // free-tier fail-closed guard at 401, and the gateway-backed
-        // upgrade-required at 403). Without this arm both fall past every
-        // branch, keep usage.phase's 'ok' default, and get recorded as
-        // SERVED — deleting from the dataset exactly the denial events this
-        // funnel exists to measure. 'precheck' maps a non-503 status to
-        // tier_403, matching how the pre-check sites classify the same verdict.
-        usage.phase = 'precheck';
-      }
+      classifyDispatchedUsage(usage, dispatched);
       return maybeStreamJsonRpcResponse(req, dispatched);
     }
     // Prompts are metadata-class — they ship a workflow template, not data.
@@ -855,6 +977,10 @@ async function mcpHandlerInner(
       if (!built.ok) return maybeStreamJsonRpcResponse(req, rpcError(id, built.code, built.message, corsHeaders));
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
+    case 'skills/list':
+      return maybeStreamJsonRpcResponse(req, buildSkillsListResponse(id, body.params, corsHeaders));
+    case 'skills/get':
+      return maybeStreamJsonRpcResponse(req, buildSkillsGetResponse(id, body.params, corsHeaders));
     // Resources split by data sensitivity. resources/list + the new
     // resources/templates/list are metadata-class — public catalog-enumeration
     // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
@@ -883,6 +1009,17 @@ async function mcpHandlerInner(
     case 'resources/templates/list':
       return maybeStreamJsonRpcResponse(req, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
+      if (isSkillResourceRead) {
+        if (!skillResourceReadUri) {
+          return maybeStreamJsonRpcResponse(req, rpcError(
+            id,
+            -32602,
+            `Unknown skill resource uri "${resourceReadUri}".`,
+            corsHeaders,
+          ));
+        }
+        return maybeStreamJsonRpcResponse(req, buildSkillResourceRead(id, skillResourceReadUri, corsHeaders));
+      }
       // MCP Apps `ui://` read: a static, data-free HTML app shell served on the
       // public path (no context, no quota, no dispatch). Resolved above into
       // `uiResourceReadUri`.
@@ -938,14 +1075,7 @@ async function mcpHandlerInner(
           freeAccountAllowance,
           resourceMetadataUrl,
         );
-        if (resourceRes.status === 429 || resourceRes.status === 503) {
-          usage.phase = 'dispatch';
-        } else if (resourceRes.status === 401 || resourceRes.status === 403) {
-          // Mirror of the tools/call classification above (#6716 F4) — a
-          // resources/read routes through the same dispatcher and can emit the
-          // same tier denials.
-          usage.phase = 'precheck';
-        }
+        classifyDispatchedUsage(usage, resourceRes);
         return maybeStreamJsonRpcResponse(req, resourceRes);
       }
     case 'logging/setLevel': {
@@ -959,7 +1089,10 @@ async function mcpHandlerInner(
       return maybeStreamJsonRpcResponse(req, rpcOk(id, {}, corsHeaders));
     }
     default:
-      return maybeStreamJsonRpcResponse(req, rpcError(id, -32601, `Method not found: ${method}`, corsHeaders));
+      // Cap the echoed method name — an arbitrarily long one would otherwise
+      // be reflected verbatim into the pre-auth error body (bandwidth
+      // amplification). Mirrors the a2a.ts cap (Greptile #4824).
+      return maybeStreamJsonRpcResponse(req, rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders));
   }
 }
 

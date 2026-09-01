@@ -165,9 +165,7 @@
       "energyMix": "電源構成",
       "coal": "石炭",
       "noMajorDisruptions": "重大な障害は報告されていません",
-      "activeDisruptions_one": "{{count}}件のアクティブな障害",
       "activeDisruptions_other": "{{count}}件のアクティブな障害",
-      "activeSignals_one": "{{count}}件のアクティブなシグナル",
       "activeSignals_other": "{{count}}件のアクティブなシグナル",
       "aviationSource": "航空モニタリング",
       "hazardSource": "国別インテリジェンスシグナル",
@@ -232,6 +230,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "5要素レジリエンススコアカード",
+      "help": "食料、エネルギー、人口動態、技術、防衛のv1凍結エビデンススコア。行を展開して入力値、ソースの出典、欠損データの理由を確認できます。",
+      "loading": "5要素スコアカードを読み込み中…",
+      "unavailable": "5要素スコアカードは利用できません。",
+      "proLocked": "5要素レジリエンススコアカードにはPROへのアップグレードが必要です",
+      "insufficient": "データ不足",
+      "notAvailable": "利用不可",
+      "noEvidence": "このピラーのエビデンスは利用できません。",
+      "score": "{{score}}/5",
+      "coverage": "カバレッジ {{coverage}}%",
+      "methodologyVersion": "方法論 v{{version}}",
+      "methodologyLink": "方法論を表示",
+      "pillars": {
+        "food": "食料",
+        "energy": "エネルギー",
+        "demographics": "人口動態",
+        "technology": "技術",
+        "defense": "防衛"
+      },
+      "reasons": {
+        "source-unavailable": "ソース利用不可",
+        "country-unavailable": "国データ利用不可",
+        "invalid-value": "ソース値が無効",
+        "stale": "証拠が古い",
+        "coverage-below-floor": "スコアリング下限を下回るカバレッジ",
+        "required-group-missing": "必須のエビデンスグループが欠落",
+        "missing-population": "人口データが利用不可",
+        "redistribution-blocked": "ソースの再配布が許可されていません",
+        "pillar-unavailable": "ピラーが利用不可"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "生産バランス",
+        "food_stocksToUse": "使用可能な在庫",
+        "food_waterSecurity": "水安全保障",
+        "food_importDiversity": "輸入多様性",
+        "energy_productionBalance": "生産バランス",
+        "energy_lowCarbonShare": "低炭素エネルギー比率",
+        "energy_gridEfficiency": "送電網効率",
+        "demographics_totalDependency": "総扶養比率",
+        "demographics_oldAgeDependency": "高齢者扶養比率",
+        "demographics_workingAgeProjection": "労働年齢人口予測",
+        "demographics_tertiaryEnrollment": "高等教育進学率",
+        "demographics_researchersPerMillion": "人口100万人あたりの研究者数",
+        "demographics_stemGraduateShare": "STEM分野卒業生比率",
+        "demographics_trainedIndustrialShare": "訓練済み産業労働力比率",
+        "demographics_manufacturingEmploymentShare": "製造業雇用比率",
+        "technology_internetUse": "インターネット利用",
+        "technology_mobileSubscriptions": "モバイル契約数",
+        "technology_fixedBroadband": "固定ブロードバンド",
+        "technology_rdSpend": "研究開発費",
+        "technology_researchersPerMillion": "人口100万人あたりの研究者数",
+        "technology_stemGraduateShare": "STEM分野の卒業生比率",
+        "technology_electricityAccess": "電力アクセス",
+        "defense_expenditureUsd": "軍事支出",
+        "defense_expenditurePctGdp": "軍事負担",
+        "defense_personnel": "自衛隊人員",
+        "defense_industrialBalance": "防衛産業バランス",
+        "defense_supplierDiversity": "兵器サプライヤーの多様性"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "PRO にアップグレードして武器供給業者の依存関係と軍事能力を表示"
     }
   },
   "header": {
@@ -530,6 +593,7 @@
       "recent": "最近の検索",
       "empty": "データ検索またはコマンド実行",
       "noResults": "結果なし",
+      "resultAnnouncement_other": "「{{query}}」の検索結果は{{count}}件です",
       "commands": "コマンド",
       "results": "結果",
       "seeAllCommands": "コマンド一覧を見る",
@@ -915,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "PRO にアップグレードして鉱山・精製所の国別シェアと段階別集中度(HHI)を表示"
     },
     "tradePolicy": {
       "tariffs": "関税",
@@ -1404,7 +1469,6 @@
       "clusters": "クラスター",
       "alertsLabel": "アラート",
       "alert": "アラート",
-      "sources_one": "{{count}} ソース",
       "sources_other": "{{count}} ソース",
       "briefTech": "テック速報",
       "briefCommodity": "商品速報",
@@ -1751,6 +1815,16 @@
       "loading": "Telegramリレーに接続中...",
       "empty": "メッセージはありません",
       "disabled": "Telegramリレーが無効です",
+      "watchlistPlaceholder": "@usernameで公開チャンネルを追加",
+      "resolving": "チャンネルを検索中...",
+      "invalidUsername": "公開されているTelegramの@usernameを使用してください",
+      "resolveFailed": "チャンネルが見つかりませんでした",
+      "watchlistLimit": "カスタムチャンネルは最大{{count}}件までフォローできます",
+      "previewMembers": "メンバー{{count}}人",
+      "addChannel": "チャンネルを追加",
+      "added": "追加済み",
+      "remove": "削除",
+      "custom": "カスタム",
       "filterAll": "すべて",
       "filterBreaking": "速報",
       "filterConflict": "紛争",
@@ -1962,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "物理的ストレス指数：{{value}} / 100",
+        "fiveDayTrend": "5営業日プレミアムトレンド",
+        "regimes": {
+          "normal": "通常",
+          "elevated": "上昇",
+          "stressed": "逼迫",
+          "extreme": "極度"
+        },
+        "states": {
+          "insufficientHistory": "ウォームアップ中：{{count}} / {{required}} 営業日ポイント",
+          "staleInput": "物理的ベンチマークが古い",
+          "missingInput": "ダイバージェンスシグナル利用不可"
+        },
+        "twentyDayTrend": "20営業日プレミアムトレンド"
       }
     },
     "crypto": {
@@ -2036,17 +2126,12 @@
       },
       "time": {
         "justNow": "たった今",
-        "hoursAgo_one": "{{count}}時間前",
         "hoursAgo_other": "{{count}}時間前",
-        "daysAgo_one": "{{count}}日前",
         "daysAgo_other": "{{count}}日前"
       },
       "filters": {
-        "alert_one": "{{count}} アラート",
         "alert_other": "{{count}} アラート",
-        "warning_one": "{{count}} 警告",
         "warning_other": "{{count}} 警告",
-        "watch_one": "{{count}} 監視",
         "watch_other": "{{count}} 監視"
       },
       "errors": {
@@ -2118,6 +2203,26 @@
         "failedToLoad": "読み込みに失敗しました"
       },
       "cissStale": "ECB がより新しい値を公開していません — このデータは古い可能性があります。"
+    },
+    "supplyVulnerability": {
+      "title": "商品脆弱性",
+      "help": "供給元の集中度、海上輸送、利用可能な戦略備蓄に基づく国別・商品別のエクスポージャー。",
+      "loading": "商品脆弱性を読み込み中…",
+      "unavailable": "商品脆弱性データを利用できません",
+      "noCoverage": "この国を評価する証拠が不足しています",
+      "unknown": "不明",
+      "concentration": "集中度",
+      "transit": "輸送",
+      "buffer": "備蓄",
+      "sources": "出典",
+      "methodology": "手法",
+      "hormuzTitle": "商品依存関係",
+      "dependentCountries": "依存国",
+      "dependentCommodities": "依存商品",
+      "stateOk": "最新",
+      "stateStale": "古い入力",
+      "stateInsufficient": "データ不足",
+      "proLocked": "PRO にアップグレードして商品脆弱性スコアを表示"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>ホルムズ海峡貿易トラッカー</strong> 世界最重要の石油チョークポイントであるホルムズ海峡を通過するAIS船舶のライブ追跡。タンカー数、混乱イベント、週次フロー変化を監視。世界の石油供給量の約20%が毎日ここを通過。",
@@ -2209,7 +2314,6 @@
       "rationale": "根拠:",
       "driver": "ドライバー:",
       "appliesToNext": "次のAI再生成に適用",
-      "signals_one": "{{count}}シグナル",
       "signals_other": "{{count}}シグナル",
       "disclaimer": "AI生成トレードシグナルは情報提供のみを目的としています。投資助言ではありません。常に独自の調査を行ってください。",
       "unavailable": "AI市場への影響は各予測実行後に生成されます。しばらくしてからご確認ください。"
@@ -2440,7 +2544,6 @@
         "new": "新規",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}}件の指定",
       "designations_other": "{{count}}件の指定",
       "fallbacks": {
         "unattributed": "未帰属",
@@ -2478,9 +2581,7 @@
         "updated": "更新 {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}時間前",
         "hoursAgo_other": "{{count}}時間前",
-        "daysAgo_one": "{{count}}日前",
         "daysAgo_other": "{{count}}日前"
       },
       "confidence": {
@@ -2510,7 +2611,6 @@
     "correlation": {
       "loading": "データを待機中...",
       "empty": "アクティブな収束は検出されていません",
-      "signals_one": "{{count}} シグナル",
       "signals_other": "{{count}} シグナル",
       "analyzing": "分析中...",
       "viewOnMap": "地図で表示"
@@ -2537,16 +2637,11 @@
         "industrial": "産業",
         "strategic": "戦略的"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
       "sources_other": "{{count}} src",
       "age": {
-        "minutesAgo_one": "{{count}}m前",
         "minutesAgo_other": "{{count}}m前",
-        "hoursAgo_one": "{{count}}h前",
         "hoursAgo_other": "{{count}}h前",
-        "daysAgo_one": "{{count}}d前",
         "daysAgo_other": "{{count}}d前"
       }
     },
@@ -2663,6 +2758,18 @@
       "rubBase": "ロシア中央銀行 — 1単位あたりのルーブル",
       "rubPerUnit": "単位あたりルーブル",
       "sourceCbr": "出典: ロシア中央銀行"
+    },
+    "passkeyOffer": {
+      "title": "パスキーを保存しますか?",
+      "body": "次回は指紋、顔、またはデバイスPINで簡単にサインインできます。覚えておくべきパスワードはありません。",
+      "accept": "パスキーを保存",
+      "dismiss": "後で",
+      "close": "閉じる",
+      "announce": "次回のサインインを高速化するためにパスキーを保存してください。",
+      "busy": "デバイスの処理を待機中…",
+      "succeeded": "パスキーが保存されました。次回のサインイン時に使用できます。",
+      "retryable": "完了しませんでした。もう一度試すことができます。",
+      "failed": "このデバイスにパスキーを保存できませんでした。"
     }
   },
   "popups": {
@@ -3004,7 +3111,11 @@
       "heading": "方位",
       "hexCode": "HEXコード",
       "squawk": "スコーク",
-      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "ソース: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "上昇率",
+      "manufacturer": "製造元",
+      "owner": "所有者",
+      "builtYear": "製造年"
     },
     "militaryVessel": {
       "aisDark": "AIS消失",
@@ -3049,7 +3160,8 @@
       "moreVessels": "+{{count}}隻の追加艦艇",
       "vesselsCount": "{{count}}隻",
       "vessels": "艦艇",
-      "trackedVessels": "追跡中の艦艇"
+      "trackedVessels": "追跡中の艦艇",
+      "showLess": "表示を減らす"
     },
     "naturalEvent": {
       "closed": "終了",
@@ -3338,7 +3450,9 @@
     "fontFamily": "フォントファミリー",
     "fontFamilyDesc": "テクニカルな見た目にはモノスペース、より読みやすくするにはシステムデフォルトを選択できます。",
     "fontMono": "モノスペース",
-    "fontSystem": "システムデフォルト"
+    "fontSystem": "システムデフォルト",
+    "panelFontScale": "テキストサイズ",
+    "followGlobalFontScale": "グローバル設定を使用"
   },
   "contextMenu": {
     "openCountryBrief": "国の概要を開く",
@@ -3437,7 +3551,8 @@
   "auth": {
     "signIn": "サインイン",
     "createAccount": "アカウントを作成",
-    "settings": "設定"
+    "settings": "設定",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCPを接続",

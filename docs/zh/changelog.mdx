@@ -10,6 +10,7 @@ World Monitor 的所有重要变更均记录于此。通过 [RSS](https://www.wo
 
 ### 新增
 
+- **Pro 情报套件——九个衍生数据集**（#6436、#6437、#6438、#6439、#6440、#6441、#6448、#6449、#6507）。每个数据集都提供每日或年度的种子快照、一条 REST 路由，以及（除脆弱性排名列表外）一个 MCP 工具：实物与纸面贵金属——SGE/COMEX 溢价序列及基于其有界历史计算的背离指数；按国家与阶段划分的矿产生产与加工集中度及 HHI，数据来自 USGS MCS 并以 BGS 补充；国防工业基础——世界银行 `MS.MIL.*` 能力指标加上源自 SIPRI 的五年武器供应国份额与集中度；人口结构能力，涵盖联合国 WPP 年龄结构、UNESCO UIS / 世界银行 WDI 教育管道以及 ILOSTAT 工业劳动力；按商品-国家划分的粮食库存与库存消费比，来自 USDA PSD 并以 FAOSTAT 仅产量数据补充；覆盖全部 72 项注册指标的指标级韧性可解释性，含运行时权重与已对账的贡献值；各国商品供应脆弱性及咽喉要道依赖扇出；以及涵盖粮食、能源、人口、技术与国防的五因子国家与集团记分卡。每个响应都通过明确的标志（`available`、`hasScore`、`hasValue`、`state`）区分"测得为零"与"无数据"，因此仅凭数值零永远不足以作出判断。完整用法、各数据集的陷阱与方法论页面汇总于 [Pro 情报套件](/zh/pro-intelligence-suite)。
 - **路线浏览器**：独立的全屏模态框（CMD+K），用于规划任意两个国家之间的货物运输。包含当前/备选/陆路/影响标签页，支持键盘优先导航、URL 状态分享、战略产品贸易数据、依赖标识，以及免费版模糊处理与公开路线高亮（#2980, #2982, #2994, #2996, #2997, #2998）
 - 贸易政策面板新增 **美国海关关税收入**，包含月度数据、财年至今（FYTD）同比对比，以及收入峰值高亮（#1663）
 - **安全旅行提醒金标准迁移**：Railway 定时任务种子每小时抓取 24 个政府 RSS 源，Vercel 仅读取 Redis（#1637）
@@ -23,6 +24,7 @@ World Monitor 的所有重要变更均记录于此。通过 [RSS](https://www.wo
 
 ### 变更
 
+- **七条情报套件路由现在需要 Pro**（#7433；#6436、#6438、#6439、#6448、#6449）。**这移除了此前可用的免费访问。** `GET /api/market/v1/get-physical-premiums`、`/api/market/v1/get-physical-divergence-index`、`/api/supply-chain/v1/get-mineral-production`、`/api/military/v1/get-defense-industrial-base`、`/api/supply-chain/v1/get-country-vulnerabilities`、`/api/supply-chain/v1/get-chokepoint-dependencies` 与 `/api/supply-chain/v1/list-vulnerability-rankings` 此前未设门禁，向匿名调用方提供完整负载；这七条现已列为权限 tier 1。匿名调用方收到 `401`；已登录的免费账户收到 `403`，其中 `error.data.reason = "upgrade-required"` 并附 `upgradeUrl`。**两者都不可重试**——只有携带 `X-Billing-Verification` 的 `503` 可以重试。在仪表盘中，免费用户现在会在国家深度页的国防工业与商品脆弱性卡片处、以及霍尔木兹追踪器的依赖区块处看到升级卡片；供应链矿产标签页回退到免费矿藏表格并附说明；商品面板的**实物**标签页则完全不再出现，因为该标签页仅在存在 Pro 数据时才构建。`/api/military/v1/get-defense-industrial-base` 另外移除了其匿名 `public=1` 共享缓存形态——该形态此前完全绕过权限检查——因此它不再拥有 CDN 共享响应。有一条路径刻意保持不变：`get_market_data` MCP 工具是基于缓存的数据包，其数据集包含 `physical-premium` 与 `physical-divergence`，已登录的免费账户仍可在其每日配额内调用。访问约定详见 [Pro 情报套件](/zh/pro-intelligence-suite)。
 - **MCP 缓存工具默认上限**：`get_country_macro`、`get_eu_housing_cycle`、`get_eu_quarterly_gov_debt` 与 `get_eu_industrial_production` 现在省略 `limit` 时将返回的国家映射上限设为 30 条。这使这些工具与文档中其他缓存工具使用的 MCP `DEFAULT_LIST_LIMIT` 行为一致，但这是一项面向消费者的默认值变更：需要完整国家集合的集成必须显式传入 `limit: 0`。
 - **CII 公式 `v8`**：修复了失效的 UCDP 冲突下限归属。服务器评分器从缓存的 `conflict:ucdp-events:v1` feed 读取了不存在的 `intensity_level` / `type_of_violence` 字段（该 feed 的行实际携带 `violenceType`、`deathsBest` 与 `dateStart`），因此 UCDP 从未应用其战争（下限 70）/ 轻度冲突（下限 50）评分下限，也从未计入 `riskScores` 实时健康/缓存信号覆盖率。UCDP 现按国家在 2 年滚动窗口内分类（总死亡大于 1000 或事件数大于 100 时为战争；事件数大于 10 时为轻度冲突），与前端 `deriveUcdpClassifications` 启发式一致。分类器为该 2 年窗口配置，但 Redis 写入器目前抓取最新的 6 个 UCDP 页面，并保留来自 365 天滚动事件切片的至多 2,000 条映射事件；中继 `/ucdp-events` 读取器最多可抓取 12 个页面，但应用相同的 365 天过滤。在 UCDP 保留范围随生产 API 体量与 Redis 负载保障扩大之前，实时评分受种子输入约束。健康覆盖率指标的冲突族现由 ACLED API 路径或 UCDP 任一满足，因此当 UCDP 健康时，稀薄/空白的 ACLED 窗口不再将健康状态翻转为 `COVERAGE_PARTIAL`。活跃 UCDP 冲突国家（如 UA/PK/MX 获得战争下限）的 `combinedScore` 值上升；风险评分缓存键族迁移至 `risk:scores:sebuf:v8`，发出的 `methodology_version` 现为 `v8`；客户端应重新建立基线。
 - **CII 公式 `v7`**：第二批差距闭合的得分归属逻辑现已变更。坐标归属在成对边界规则之前先解决三方边界框重叠，因此 Punggye-ri 归属朝鲜（KP）而非中国（CN），Lublin 归属波兰（PL）而非乌克兰（UA）；种子镜像使用相同的解析器。定向探测还覆盖拉萨、加济安泰普、克尔曼沙阿、奎达/伊斯兰堡、达曼、塔布克、瑞丽、别洛戈尔斯克、北海道北部以及安曼。气候异常加成现已覆盖生产者发出的 `Europe`、`East Asia` 和 `Latin America` 区域，恢复了 KP/KR/JP/PL/DE/FR/GB/VE 的覆盖；未来未知区域可在可用时通过异常坐标进行回退。受影响记录的 `combinedScore` 值可能发生偏移，风险评分缓存键族迁移至 `risk:scores:sebuf:v7`，发出的 `methodology_version` 现为 `v7`；客户端应重新建立基线。剩余的坐标归属仍为矩形近似，并非完整的点在多边形内边界几何判定。
@@ -52,6 +54,7 @@ World Monitor 的所有重要变更均记录于此。通过 [RSS](https://www.wo
 
 ### 修复
 
+- **网关 POST→GET 兼容路径不再静默丢弃嵌套请求体字段**（#7276）。此前未匹配的 POST 回退只会把标量与标量数组元素复制为查询参数并忽略其余字段，过期客户端可能在对象过滤器未被应用的情况下收到成功的未过滤 GET。混合、嵌套或非对象 JSON 请求体现返回 HTTP 400，且不会部分转换。畸形 JSON 也返回 400（`Invalid JSON body for POST compatibility`）。空或仅空白的请求体仍转换为无额外查询参数的 GET。现有的 1 MB 请求体上限与每键 200 个数组值上限保持不变。
 - 贸易政策面板的 WTO 门控从面板级改为按标签页级，使收入标签页在桌面端无 WTO API 密钥时也能工作（#1663）
 - 冲突情报种子在无 ACLED 凭证时，当人道主义/PizzINT 数据可用时接受空事件从而成功运行（#1651）
 - 因顶层 `@aws-sdk/client-s3` 导入导致 seed-forecasts 崩溃的问题，通过惰性动态导入解决（#1654）

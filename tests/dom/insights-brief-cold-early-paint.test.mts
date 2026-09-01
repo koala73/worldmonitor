@@ -1,0 +1,553 @@
+/**
+ * #7118: cold visitors must get the World Brief from the bootstrap payload.
+ *
+ * The World Brief is the field LCP element on ~38% of /dashboard desktop views
+ * and paints at p75 ~3.5s, against ~0.8s for the bootstrap skeleton copy it
+ * displaces — two thirds of the field LCP regression diagnosed in #7113
+ * (docs/perf/field-lcp-dashboard-2026-08-24.md).
+ *
+ * #4890 added an early paint, but it reads ONLY the IndexedDB persistent
+ * cache, so it helps repeat visitors and does nothing for cold ones — even
+ * though `insights` rides the FAST bootstrap tier
+ * (api/_bootstrap-tier-keys.js:61,180) and `getServerInsights()` already has
+ * `worldBrief` in hand.
+ *
+ * These are behavioural tests, not source greps: they construct the panel and
+ * assert on rendered DOM. Lives under tests/dom/ because `Panel` needs a DOM
+ * and `@/services/i18n`'s `import.meta.glob` graph, both unreachable from the
+ * `tsx --test` profile.
+ */
+
+import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { initTestI18n } from './helpers/i18n.mts';
+
+const {
+  mockGetPersistentCache,
+  mockSetPersistentCache,
+  mockDeletePersistentCache,
+  mockGetServerInsights,
+  mockFetchServerInsights,
+  mockClassifySentiment,
+  mockGenerateSummary,
+  mockAnalyzeHeadlines,
+  mlWorkerStub,
+} = vi.hoisted(() => {
+  const mockClassifySentiment = vi.fn();
+  return {
+    mockGetPersistentCache: vi.fn(),
+    mockSetPersistentCache: vi.fn(),
+    mockDeletePersistentCache: vi.fn(),
+    mockGetServerInsights: vi.fn(),
+    mockFetchServerInsights: vi.fn(),
+    mockClassifySentiment,
+    mockGenerateSummary: vi.fn(),
+    mockAnalyzeHeadlines: vi.fn(),
+    mlWorkerStub: { isAvailable: true, classifySentiment: mockClassifySentiment },
+  };
+});
+
+vi.mock('@/services/persistent-cache', () => ({
+  getPersistentCache: mockGetPersistentCache,
+  setPersistentCache: mockSetPersistentCache,
+  deletePersistentCache: mockDeletePersistentCache,
+  deletePersistentCacheByPrefix: vi.fn(),
+}));
+
+vi.mock('@/services/insights-loader', () => ({
+  getServerInsights: mockGetServerInsights,
+  fetchServerInsights: mockFetchServerInsights,
+  MAX_AGE_MS: 3_600_000,
+}));
+
+vi.mock('@/services/ml-worker', () => ({ mlWorker: mlWorkerStub }));
+
+vi.mock('@/services/summarization', () => ({
+  generateSummary: mockGenerateSummary,
+}));
+
+vi.mock('@/services/parallel-analysis', () => ({
+  parallelAnalysis: { analyzeHeadlines: mockAnalyzeHeadlines },
+}));
+
+import { InsightsPanel } from '@/components/InsightsPanel';
+import type { ClusteredEvent } from '@/types';
+import type { ServerInsights } from '@/services/insights-loader';
+import type { AnalysisReport, AnalyzedHeadline } from '@/services/parallel-analysis';
+
+const CONTENT_DEBOUNCE_MS = 150;
+
+const BRIEF = 'SITUATION NOW\nRussian strikes on Kyiv continued for a third night [1].';
+const BRIEF_WITH_SOURCE_GAP = 'SITUATION NOW\nReuters reported the second source event [2].';
+
+function serverInsights(overrides: Partial<ServerInsights> = {}): ServerInsights {
+  return {
+    worldBrief: BRIEF,
+    worldBriefSources: [{ title: 'Reuters report', source: 'Reuters', url: 'https://example.com/a' }],
+    briefProvider: 'test',
+    status: 'ok',
+    topStories: [],
+    generatedAt: new Date().toISOString(),
+    clusterCount: 3,
+    multiSourceCount: 2,
+    fastMovingCount: 1,
+    ...overrides,
+  } as ServerInsights;
+}
+
+function missedStory(id: string, title: string): AnalyzedHeadline {
+  return {
+    id,
+    title,
+    sourceCount: 1,
+    perspectives: [{
+      name: 'entities',
+      score: 0.9,
+      confidence: 0.9,
+      reasoning: 'test fixture',
+    }],
+    finalScore: 0.9,
+    confidence: 0.9,
+    disagreement: 0,
+    flagged: true,
+  };
+}
+
+function analysisReport(missedByKeywords: AnalyzedHeadline[] = []): AnalysisReport {
+  return {
+    timestamp: Date.now(),
+    totalHeadlines: missedByKeywords.length,
+    analyzed: missedByKeywords,
+    topByConsensus: [],
+    topByDisagreement: [],
+    missedByKeywords,
+    perspectiveCorrelations: {},
+  };
+}
+
+function contentOf(panel: object): HTMLElement {
+  return (panel as unknown as { content: HTMLElement }).content;
+}
+
+/** Let the constructor's floating early-paint promise settle, then commit the debounce. */
+async function flushEarlyPaint(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) await Promise.resolve();
+  vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+}
+
+beforeAll(async () => {
+  await initTestI18n();
+});
+
+beforeEach(() => {
+  vi.useFakeTimers();
+  mockGetPersistentCache.mockReset();
+  mockSetPersistentCache.mockReset().mockResolvedValue(undefined);
+  mockDeletePersistentCache.mockReset().mockResolvedValue(undefined);
+  mockGetServerInsights.mockReset();
+  mockFetchServerInsights.mockReset().mockResolvedValue(null);
+  mockClassifySentiment.mockReset().mockResolvedValue(null);
+  mockGenerateSummary.mockReset();
+  mockAnalyzeHeadlines.mockReset().mockResolvedValue(analysisReport());
+  mlWorkerStub.isAvailable = true;
+  localStorage.removeItem('wm:debug-ml');
+});
+
+afterEach(() => {
+  document.body.innerHTML = '';
+  vi.useRealTimers();
+});
+
+describe('cold-visitor early brief paint (#7118)', () => {
+  it('paints the bootstrap world brief when the persistent cache is empty', async () => {
+    // A cold visitor: nothing in IndexedDB, but the FAST bootstrap tier landed.
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(serverInsights());
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the cold visitor must get the bootstrap brief at construction time').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+    panel.destroy();
+  });
+
+  it('preserves source positions for citations when an earlier source has no URL', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(serverInsights({
+      worldBrief: BRIEF_WITH_SOURCE_GAP,
+      worldBriefSources: [
+        { title: 'Missing-link source', source: 'Unknown', url: '' },
+        { title: 'Reuters report', source: 'Reuters', url: 'https://example.com/second' },
+      ],
+    }));
+    mockClassifySentiment.mockResolvedValue(null);
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    const earlyCitation = contentOf(panel).querySelector<HTMLAnchorElement>('.cb-citation');
+    expect(earlyCitation?.textContent).toBe('[2]');
+    expect(earlyCitation?.href).toBe('https://example.com/second');
+
+    await panel.updateInsights([]);
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    const fullCitation = contentOf(panel).querySelector<HTMLAnchorElement>('.cb-citation');
+    expect(fullCitation?.textContent).toBe('[2]');
+    expect(fullCitation?.href).toBe('https://example.com/second');
+    panel.destroy();
+  });
+
+  it('still prefers the persistent cache when one exists', async () => {
+    mockGetPersistentCache.mockResolvedValue({
+      data: { summary: 'CACHED BRIEF from the previous visit.', sources: [] },
+      updatedAt: Date.now(),
+    });
+    mockGetServerInsights.mockReturnValue(serverInsights());
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    const text = contentOf(panel).querySelector('.insights-brief-text')?.textContent ?? '';
+    expect(text, 'the cache read must win — it is the cheaper path and #4890 owns it').toContain('CACHED BRIEF');
+    expect(mockGetServerInsights, 'no bootstrap read is needed once the cache hits').not.toHaveBeenCalled();
+    panel.destroy();
+  });
+
+  it('paints nothing when the cache misses and neither bootstrap nor on-demand fetch has a brief', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    expect(contentOf(panel).querySelector('.insights-brief-text')).toBeNull();
+    panel.destroy();
+  });
+
+  it('does not clobber a real update that started during the async cache read', async () => {
+    let releaseCache!: (value: null) => void;
+    mockGetPersistentCache.mockReturnValue(new Promise<null>((res) => { releaseCache = res; }));
+    mockGetServerInsights.mockReturnValue(serverInsights());
+
+    const panel = new InsightsPanel();
+    // A real update pass starts while the early paint is awaiting the cache.
+    void panel.updateInsights([]);
+    releaseCache(null);
+    await flushEarlyPaint();
+
+    // The early paint must have bailed on the post-await generation re-check
+    // rather than landing stale brief-only content over the real pass.
+    const badge = (panel as unknown as { element: HTMLElement }).element
+      .querySelector('.panel-data-badge')?.textContent ?? '';
+    expect(badge.toLowerCase()).not.toContain('cached');
+    panel.destroy();
+  });
+});
+
+describe('server render does not hold the brief behind sentiment (#7118)', () => {
+  it('paints the brief before ML sentiment classification resolves', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    // The bootstrap payload lands BETWEEN panel construction and the first
+    // update — a real cold sequence, and the only one that isolates this
+    // paint from the constructor's early paint (#7118 U1). Keep
+    // getServerInsights() null through the constructor retry (sync miss +
+    // on-demand fetch miss + post-fetch re-sample); flipping it after
+    // flushEarlyPaint is what this test is measuring.
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
+
+    let releaseSentiment!: (value: null) => void;
+    mockClassifySentiment.mockReturnValue(new Promise<null>((res) => { releaseSentiment = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    expect(
+      contentOf(panel).querySelector('.insights-brief-text'),
+      'guard: the constructor must NOT have painted, or this test proves nothing',
+    ).toBeNull();
+
+    mockGetServerInsights.mockReturnValue(serverInsights());
+
+    // updateInsights → updateFromServer, which awaits classifySentiment.
+    const pending = panel.updateInsights([]);
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the brief is already in hand — it must not wait on the sentiment worker').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+
+    releaseSentiment(null);
+    await pending;
+    panel.destroy();
+  });
+
+  it('shows the brief, not a progress bar, while a REFRESH waits on sentiment', async () => {
+    // updateFromServer already calls setProgress() twice before the sentiment
+    // await, so a refresh replaces live content with a progress bar no matter
+    // what this test does. The pre-sentiment paint therefore never costs the
+    // user rendered content — it upgrades that window from a progress bar to
+    // the brief. Pin that, so a future change cannot turn this into the
+    // content-clobbering refetch bug tests/dom/china-panel-refetch.test.mts
+    // guards the China panels against.
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(serverInsights());
+    mockClassifySentiment.mockResolvedValue(null);
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    // First pass renders fully.
+    await panel.updateInsights([]);
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+    expect(contentOf(panel).querySelector('.insights-stats')).not.toBeNull();
+
+    // Refresh, with sentiment now hanging.
+    let releaseSentiment!: (value: null) => void;
+    mockClassifySentiment.mockReturnValue(new Promise<null>((res) => { releaseSentiment = res; }));
+    const pending = panel.updateInsights([]);
+    for (let i = 0; i < 20; i += 1) await Promise.resolve();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(
+      contentOf(panel).querySelector('.insights-brief-text'),
+      'the refresh window must show the brief',
+    ).not.toBeNull();
+    expect(
+      contentOf(panel).querySelector('.insights-progress'),
+      'the brief must have superseded the progress bar, not landed beside it',
+    ).toBeNull();
+
+    releaseSentiment(null);
+    await pending;
+    panel.destroy();
+  });
+});
+
+const CLIENT_BRIEF = 'SITUATION NOW\nClient-path brief painted before parallel analysis [1].';
+
+function clientCluster(): ClusteredEvent {
+  const lastUpdated = new Date();
+  return {
+    id: 'cluster-client',
+    primaryTitle: 'Missile strikes reported across multiple cities overnight',
+    primarySource: 'Reuters',
+    primaryLink: 'https://example.com/strikes',
+    sourceCount: 4,
+    uniquePublisherCount: 3,
+    topSources: [],
+    allItems: [],
+    firstSeen: lastUpdated,
+    lastUpdated,
+    isAlert: true,
+  } as unknown as ClusteredEvent;
+}
+
+describe('early paint awaits insights hydration (#7464)', () => {
+  it('paints the on-demand fetch brief when construction loses the bootstrap race', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+
+    let releaseFetch!: (value: ServerInsights) => void;
+    mockFetchServerInsights.mockReturnValue(new Promise<ServerInsights>((res) => { releaseFetch = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    expect(
+      contentOf(panel).querySelector('.insights-brief-text'),
+      'guard: must not paint before the delayed hydration arrives',
+    ).toBeNull();
+
+    releaseFetch(serverInsights());
+    await flushEarlyPaint();
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the early paint must retry when insights land after the first sync miss').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+    expect(mockFetchServerInsights.mock.calls[0] ?? []).toEqual([]);
+    panel.destroy();
+  });
+
+  it('re-samples hydrated insights after the paint budget without shortening the fetch', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValueOnce(null).mockReturnValue(serverInsights());
+    mockFetchServerInsights.mockReturnValue(new Promise(() => { /* hang */ }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    expect(contentOf(panel).querySelector('.insights-brief-text')).toBeNull();
+
+    vi.advanceTimersByTime(2500);
+    await flushEarlyPaint();
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the TimeoutError path must re-sample hydration that landed during the wait').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+    expect(mockFetchServerInsights).toHaveBeenCalled();
+    expect(
+      mockFetchServerInsights.mock.calls[0] ?? [],
+      'the shared fetch must keep the 5s default abort so updateInsights can still coalesce',
+    ).toEqual([]);
+    panel.destroy();
+  });
+
+  it('paints a bootstrap snapshot that lands after the on-demand fetch misses', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValueOnce(null).mockReturnValue(serverInsights());
+    mockFetchServerInsights.mockResolvedValue(null);
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'a second sync read must pick up hydration that landed during the fetch').not.toBeNull();
+    expect(brief?.textContent).toContain('Russian strikes on Kyiv');
+    panel.destroy();
+  });
+
+  it('does not paint a cached brief onto a panel destroyed during the fetch', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+
+    let releaseFetch!: (value: ServerInsights) => void;
+    mockFetchServerInsights.mockReturnValue(new Promise<ServerInsights>((res) => { releaseFetch = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    panel.destroy();
+    releaseFetch(serverInsights());
+    await flushEarlyPaint();
+
+    expect(contentOf(panel).querySelector('.insights-brief-text')).toBeNull();
+  });
+
+  it('does not clobber a real update that started during the hydration fetch', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+
+    let releaseFetch!: (value: ServerInsights) => void;
+    mockFetchServerInsights.mockReturnValue(new Promise<ServerInsights>((res) => { releaseFetch = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    void panel.updateInsights([]);
+    releaseFetch(serverInsights());
+    await flushEarlyPaint();
+
+    const badge = (panel as unknown as { element: HTMLElement }).element
+      .querySelector('.panel-data-badge')?.textContent ?? '';
+    expect(badge.toLowerCase()).not.toContain('cached');
+    panel.destroy();
+  });
+});
+
+describe('client render does not hold the brief behind parallel analysis (#7464)', () => {
+  it('paints the brief before analyzeHeadlines resolves', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
+    mockGenerateSummary.mockResolvedValue({
+      summary: CLIENT_BRIEF,
+      provider: 'test',
+      model: 'test',
+      cached: false,
+    });
+    localStorage.setItem('wm:debug-ml', '1');
+
+    let releaseAnalysis!: (value: AnalysisReport) => void;
+    mockAnalyzeHeadlines.mockReturnValue(new Promise((res) => { releaseAnalysis = res; }));
+
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+    expect(
+      contentOf(panel).querySelector('.insights-brief-text'),
+      'guard: constructor must not have painted, or this test proves nothing about updateFromClient',
+    ).toBeNull();
+
+    const pending = panel.updateInsights([clientCluster(), {
+      ...clientCluster(),
+      id: 'cluster-client-2',
+      primaryTitle: 'Second corroborated report of overnight strikes',
+    }]);
+    for (let i = 0; i < 40; i += 1) await Promise.resolve();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    const brief = contentOf(panel).querySelector('.insights-brief-text');
+    expect(brief, 'the brief is already in hand — it must not wait on parallel analysis').not.toBeNull();
+    expect(brief?.textContent).toContain('Client-path brief painted before parallel analysis');
+    expect(
+      contentOf(panel).querySelector('.insights-progress'),
+      'the brief must have superseded any step-4 progress bar',
+    ).toBeNull();
+    expect(
+      contentOf(panel).querySelector('.insights-missed'),
+      'the first render must not invent current analysis results before they resolve',
+    ).toBeNull();
+
+    releaseAnalysis(analysisReport([
+      missedStory('current-missed', 'Current analysis found this missed story'),
+    ]));
+    await pending;
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(contentOf(panel).querySelector('.insights-missed')?.textContent)
+      .toContain('Current analysis found this missed story');
+    panel.destroy();
+  });
+
+  it('does not show a previous cycle missed story while current analysis is pending', async () => {
+    mockGetPersistentCache.mockResolvedValue(null);
+    mockGetServerInsights.mockReturnValue(null);
+    mockFetchServerInsights.mockResolvedValue(null);
+    mockGenerateSummary.mockResolvedValue({
+      summary: CLIENT_BRIEF,
+      provider: 'test',
+      model: 'test',
+      cached: false,
+    });
+    localStorage.setItem('wm:debug-ml', '1');
+
+    let releaseCurrentAnalysis!: (value: AnalysisReport) => void;
+    mockAnalyzeHeadlines
+      .mockResolvedValueOnce(analysisReport([
+        missedStory('previous-missed', 'Previous cycle missed story'),
+      ]))
+      .mockReturnValueOnce(new Promise((res) => { releaseCurrentAnalysis = res; }));
+
+    const clusters = [clientCluster(), {
+      ...clientCluster(),
+      id: 'cluster-client-2',
+      primaryTitle: 'Second corroborated report of overnight strikes',
+    }];
+    const panel = new InsightsPanel();
+    await flushEarlyPaint();
+
+    await panel.updateInsights(clusters);
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+    expect(contentOf(panel).querySelector('.insights-missed')?.textContent)
+      .toContain('Previous cycle missed story');
+
+    const pending = panel.updateInsights(clusters);
+    for (let i = 0; i < 40; i += 1) await Promise.resolve();
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(
+      contentOf(panel).querySelector('.insights-missed'),
+      'the current early render must not reuse missed stories from the previous generation',
+    ).toBeNull();
+
+    releaseCurrentAnalysis(analysisReport([
+      missedStory('current-missed', 'Current cycle missed story'),
+    ]));
+    await pending;
+    vi.advanceTimersByTime(CONTENT_DEBOUNCE_MS);
+
+    expect(contentOf(panel).querySelector('.insights-missed')?.textContent)
+      .toContain('Current cycle missed story');
+    panel.destroy();
+  });
+});

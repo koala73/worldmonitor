@@ -52,6 +52,7 @@ function makeState(overrides = {}) {
     lastError: null,
     rateLimitedUntil: 0,
     rateLimitAttempt: 0,
+    backoffCause: null,
     hydrationFailed: false,
     startedAt: NOW,
     ...overrides,
@@ -74,6 +75,7 @@ function pollResult(overrides = {}) {
     newCount: 1,
     rateLimitedUntil: 0,
     rateLimitAttempt: 0,
+    backoffCause: null,
     lastError: null,
     ...overrides,
   };
@@ -207,6 +209,28 @@ describe('createXPollCycle — baseline cycle (positive control)', () => {
     await harness.cycle.pollOnce({ generation: 1 });
     assert.equal(harness.calls.setNx.length, 0);
     assert.equal(harness.calls.publish.length, 0);
+  });
+
+  it('preserves per-account poll stamps through publication and hydration', async () => {
+    const stamp = NOW - 1;
+    const redis = new Map();
+    const persist = ({ snapshot, pollState }) => {
+      redis.set(CACHE_KEY, snapshot);
+      redis.set(POLL_STATE_KEY, pollState);
+      return true;
+    };
+    const first = createHarness({
+      redis,
+      pollXFeed: async () => pollResult({ lastPolledAtByHandle: { slower: stamp } }),
+      publishResult: persist,
+    });
+
+    await first.cycle.pollOnce({ generation: 1 });
+    assert.deepEqual({ ...first.calls.publish[0].pollState.lastPolledAtByHandle }, { slower: stamp });
+
+    const restarted = createHarness({ redis, publishResult: persist });
+    assert.equal(await restarted.cycle.hydrate(), true);
+    assert.deepEqual({ ...restarted.state.lastPolledAtByHandle }, { slower: stamp });
   });
 });
 
@@ -489,7 +513,12 @@ describe('createXPollCycle — 429 backoff preservation', () => {
   it('defers the poll while a shared backoff window read under the lock is still open', async () => {
     const harness = createHarness();
     harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      { generation: 7, rateLimitedUntil: NOW + 300_000, rateLimitAttempt: 4 },
+      {
+        generation: 7,
+        rateLimitedUntil: NOW + 300_000,
+        rateLimitAttempt: 4,
+        backoffCause: xNewsAccounts.X_BACKOFF_CAUSES.RATE_LIMIT,
+      },
       { expectedAccounts: 1 },
     ));
 
@@ -498,6 +527,43 @@ describe('createXPollCycle — 429 backoff preservation', () => {
     assert.equal(harness.calls.poll.length, 0, 'the pre-lock check only saw our own state');
     assert.equal(harness.calls.publish.length, 0);
     assert.equal(harness.state.lastError, 'shared X rate-limit window still open; deferring poll');
+  });
+
+  it('propagates a peer credits diagnosis and clears it after a healthy recovery', async () => {
+    let clock = NOW;
+    const harness = createHarness({ now: () => clock });
+    harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
+      {
+        generation: 7,
+        rateLimitedUntil: NOW + 1_000,
+        rateLimitAttempt: 0,
+        backoffCause: xNewsAccounts.X_BACKOFF_CAUSES.CREDITS,
+      },
+      { expectedAccounts: 1 },
+    ));
+
+    assert.equal(await harness.cycle.hydrate(), true);
+    assert.equal(harness.state.backoffCause, xNewsAccounts.X_BACKOFF_CAUSES.CREDITS);
+    assert.match(harness.state.lastError, /top up the X API plan/i,
+      'startup hydration must preserve the peer billing diagnosis');
+
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(harness.calls.poll.length, 0, 'the peer deadline must defer this replica');
+    assert.equal(harness.calls.setNx.length, 0, 'an already-hydrated deadline must avoid the lease request');
+    assert.equal(harness.state.backoffCause, xNewsAccounts.X_BACKOFF_CAUSES.CREDITS);
+    assert.match(harness.state.lastError, /top up the X API plan/i);
+    assert.doesNotMatch(harness.state.lastError, /X_BEARER_TOKEN/);
+
+    clock = NOW + 1_001;
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(harness.calls.poll.length, 1, 'polling must resume automatically after expiry');
+    assert.equal(harness.state.rateLimitedUntil, 0);
+    assert.equal(harness.state.backoffCause, null);
+    assert.equal(harness.state.lastError, null);
+    assert.equal(harness.calls.publish.at(-1).pollState.backoffCause, null,
+      'the recovered replica must clear the shared cause');
   });
 
   it('returns before taking the lease while our own backoff is open', async () => {

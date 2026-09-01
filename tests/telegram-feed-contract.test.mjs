@@ -46,6 +46,7 @@ describe('api/telegram-feed contract normalization', () => {
     globalThis.fetch = async (url, options) => {
       assert.match(String(url), /\/telegram\/feed\?limit=50$/);
       assert.equal(options?.headers?.Authorization, 'Bearer test-secret');
+      assert.equal(options?.headers?.['User-Agent'], 'WorldMonitor/1.0');
       return new Response(JSON.stringify({
         enabled: true,
         source: 'relay',
@@ -93,6 +94,39 @@ describe('api/telegram-feed contract normalization', () => {
     assert.deepEqual(data.items[0].mediaUrls, ['https://cdn.example.com/image.jpg']);
   });
 
+  it('synthesises distinct ids for same-second messages sharing a 32-char prefix (#7210)', async () => {
+    const sharedPrefix = 'BREAKING: air raid alert issued for';
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      enabled: true,
+      messages: [
+        // No upstream id, same channel, same whole-second timestamp, first 32
+        // chars identical — the exact collision triple. Bot/templated feeds
+        // produce this shape routinely.
+        { channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Kharkiv oblast` },
+        { channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Odesa oblast` },
+        // Byte-identical duplicate of the first — a REAL duplicate that must
+        // still collapse to the same id.
+        { channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Kharkiv oblast` },
+        // Upstream-supplied id must pass through untouched.
+        { id: 'relay-42', channelName: 'warintel', timestamp: 1_744_000_000, text: `${sharedPrefix} Kherson oblast` },
+      ],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest());
+    assert.equal(res.status, 200);
+    const data = await res.json();
+    const [kharkiv, odesa, duplicate, withId] = data.items;
+
+    assert.notEqual(
+      kharkiv.id,
+      odesa.id,
+      'messages differing past the 32nd character must not collide',
+    );
+    assert.equal(kharkiv.id, duplicate.id, 'byte-identical messages still collapse');
+    assert.equal(withId.id, 'relay-42', 'an upstream id is never synthesised over');
+  });
+
   it('uses private max-age=0 when the normalized feed is empty', async () => {
     globalThis.fetch = async () => new Response(JSON.stringify({
       enabled: true,
@@ -128,7 +162,10 @@ describe('api/telegram-feed contract normalization', () => {
     const res = await handler(await makeRequest());
     assert.equal(res.status, 200);
     const cacheControl = res.headers.get('cache-control') || '';
-    assert.equal(cacheControl, 'private, max-age=30');
+    // no-store, not max-age=30: reaching this branch means the handler already
+    // reported the body to Sentry as un-normalizable, so caching it would keep
+    // serving a payload we just flagged as invalid.
+    assert.equal(cacheControl, 'no-store');
     assert.doesNotMatch(cacheControl, /public|s-maxage/);
     // Assert the FULL Vary value, not just one member: a substring check on
     // X-WorldMonitor-Key alone stays green if Origin is dropped, which would make
@@ -188,13 +225,14 @@ describe('api/telegram-feed contract normalization', () => {
       retryAfter: 30,
     }), {
       status: 429,
-      headers: { 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json', 'Retry-After': '30' },
     });
 
     const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
     const res = await handler(await makeRequest());
     assert.equal(res.status, 429);
     assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(res.headers.get('retry-after'), '30');
 
     const data = await res.json();
     assert.deepEqual(data, {
@@ -219,6 +257,145 @@ describe('api/telegram-feed contract normalization', () => {
       error: 'Upstream error: HTTP 503',
       status: 503,
     });
+  });
+
+  it('resolves a public channel through the existing credentialed feed route', async () => {
+    let requestedUrl = '';
+    globalThis.fetch = async (url) => {
+      requestedUrl = String(url);
+      return new Response(JSON.stringify({
+        username: 'Ukraine_News',
+        title: 'Ukraine News',
+        memberCount: null,
+        url: 'javascript:alert(1)',
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest('/api/telegram-feed?mode=resolve&username=%40Ukraine_News'));
+    const data = await res.json();
+
+    assert.equal(requestedUrl, 'https://relay.example.com/telegram/resolve?username=ukraine_news');
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('cache-control'), 'private, max-age=3600');
+    assert.match(res.headers.get('vary') || '', /X-WorldMonitor-Key/);
+    assert.deepEqual(data, {
+      username: 'ukraine_news',
+      title: 'Ukraine News',
+      memberCount: null,
+      url: 'https://t.me/ukraine_news',
+    });
+  });
+
+  it('fetches a custom channel through the same normalized feed contract and cache posture', async () => {
+    let requestedUrl = '';
+    globalThis.fetch = async (url) => {
+      requestedUrl = String(url);
+      return new Response(JSON.stringify({
+        enabled: true,
+        items: [{
+          id: 'ukraine_news:1',
+          channel: 'ukraine_news',
+          channelTitle: 'Ukraine News',
+          url: 'https://t.me/ukraine_news/1',
+          ts: '2026-08-29T12:00:00.000Z',
+          text: 'Update',
+          topic: 'osint',
+          tags: [],
+          earlySignal: true,
+        }],
+      }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest('/api/telegram-feed?mode=channel&username=ukraine_news&limit=500'));
+    const data = await res.json();
+
+    assert.equal(requestedUrl, 'https://relay.example.com/telegram/channel?username=ukraine_news&limit=50');
+    assert.equal(res.status, 200);
+    assert.equal(res.headers.get('cache-control'), 'private, max-age=30');
+    assert.equal(data.count, 1);
+    assert.equal(data.items[0].id, 'ukraine_news:1');
+  });
+
+  it('rejects an invalid custom-channel username before contacting the relay', async () => {
+    let called = false;
+    globalThis.fetch = async () => {
+      called = true;
+      throw new Error('should not be called');
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest('/api/telegram-feed?mode=resolve&username=bad%20handle'));
+
+    assert.equal(res.status, 400);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.equal(called, false);
+  });
+
+  it('rejects an unsupported mode before contacting the relay', async () => {
+    let called = false;
+    globalThis.fetch = async () => {
+      called = true;
+      throw new Error('should not be called');
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest('/api/telegram-feed?mode=private&username=warintel'));
+
+    assert.equal(res.status, 400);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await res.json(), { error: 'Invalid Telegram feed mode' });
+    assert.equal(called, false);
+  });
+
+  it('fails closed when the relay returns an invalid channel preview', async () => {
+    globalThis.fetch = async () => new Response(JSON.stringify({
+      username: 'bad handle',
+      title: 'Untrusted shape',
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest('/api/telegram-feed?mode=resolve&username=warintel'));
+
+    assert.equal(res.status, 502);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(await res.json(), { error: 'Invalid Telegram channel response' });
+  });
+
+  it('maps a relay AbortError to 504 Relay timeout (WORLDMONITOR-11G)', async () => {
+    // fetchWithTimeout aborts on TELEGRAM_RELAY_TIMEOUT_MS; AbortError is the
+    // expected timeout signal. This asserts only the 504 mapping:
+    // captureSilentError is a no-op under NODE_TEST_CONTEXT, so the capture
+    // policy (warning level, `mode` tag, `timeout_ms`) is pinned separately in
+    // tests/telegram-feed-relay-timeout-canary.test.mts, which clears that var.
+    globalThis.fetch = async () => {
+      const err = new Error('The operation was aborted');
+      err.name = 'AbortError';
+      throw err;
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest());
+    const body = await res.json();
+
+    assert.equal(res.status, 504);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(body, { error: 'Relay timeout' });
+  });
+
+  it('maps a non-timeout relay failure to 502 Relay request failed', async () => {
+    globalThis.fetch = async () => {
+      throw new Error('relay ECONNREFUSED');
+    };
+
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(await makeRequest());
+    const body = await res.json();
+
+    assert.equal(res.status, 502);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
+    assert.deepEqual(body, { error: 'Relay request failed' });
   });
 });
 
@@ -285,6 +462,18 @@ describe('api/telegram-feed first-party boundary', () => {
     // the wire level, so an Origin-only fix costs an attacker one curl -H.
     const res = await get({ origin: 'https://worldmonitor.app' });
     assert.equal(res.status, 401);
+    assert.doesNotMatch(await res.text(), /SECRET BODY/);
+  });
+
+  it('applies the same credential boundary to custom-channel reads', async () => {
+    const handler = (await import(`../api/telegram-feed.js?t=${Date.now()}`)).default;
+    const res = await handler(new Request(
+      'https://worldmonitor.app/api/telegram-feed?mode=channel&username=warintel',
+      { headers: { origin: 'https://worldmonitor.app' } },
+    ));
+
+    assert.equal(res.status, 401);
+    assert.equal(res.headers.get('cache-control'), 'no-store');
     assert.doesNotMatch(await res.text(), /SECRET BODY/);
   });
 

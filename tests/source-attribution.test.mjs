@@ -537,6 +537,85 @@ test('scanUpstreamHosts does not crash on empty leftover api/[domain]/v1 trees',
   }
 });
 
+function writeUrlModule(path, host) {
+  mkdirSync(dirname(path), { recursive: true });
+  writeFileSync(path, `const SOURCE_URL = 'https://${host}/v1/data';\nexport const url = SOURCE_URL;\n`);
+}
+
+test('the source walk ignores generated inventory modules and compiled handler siblings', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    writeUrlModule(join(fixture.dir, 'api/_inventory-facts.generated.js'), 'pollution-generated.example');
+    writeUrlModule(join(fixture.dir, 'api/worldmonitor/probe/v1/list-probe.ts'), 'authored-ts.example');
+    writeUrlModule(join(fixture.dir, 'api/worldmonitor/probe/v1/list-probe.js'), 'pollution-compiled.example');
+    writeUrlModule(join(fixture.dir, 'api/authored-handler.js'), 'authored-js.example');
+    writeUrlModule(join(fixture.dir, 'scripts/legacy-probe.js'), 'scripts-js.example');
+    writeUrlModule(join(fixture.dir, 'scripts/legacy-probe.ts'), 'scripts-ts.example');
+
+    const inventory = scanUpstreamHosts(fixture.dir);
+    const hosts = inventory.map((entry) => entry.host).sort();
+    assert.deepEqual(
+      hosts,
+      ['authored-js.example', 'authored-ts.example', 'fixture.example', 'scripts-js.example', 'scripts-ts.example'],
+      'generated *.generated.* files and compiled api/ .js siblings of .ts handlers must not enter the inventory',
+    );
+    assert.equal(
+      inventory.find((entry) => entry.host === 'authored-ts.example')?.references[0]?.path,
+      'api/worldmonitor/probe/v1/list-probe.ts',
+    );
+    assert.equal(
+      inventory.find((entry) => entry.host === 'authored-js.example')?.references[0]?.path,
+      'api/authored-handler.js',
+    );
+    assert.equal(
+      inventory.find((entry) => entry.host === 'scripts-js.example')?.references[0]?.path,
+      'scripts/legacy-probe.js',
+    );
+    assert.equal(
+      inventory.find((entry) => entry.host === 'scripts-ts.example')?.references[0]?.path,
+      'scripts/legacy-probe.ts',
+    );
+
+    const { errors } = checkSourceAttribution(fixture.dir);
+    assert.ok(
+      errors.some((error) => error.includes('missing manifest entry for authored-js.example')),
+      `authored JS without a sibling .ts must remain visible: ${JSON.stringify(errors)}`,
+    );
+    assert.ok(
+      errors.some((error) => error.includes('missing manifest entry for scripts-js.example')),
+      `authored scripts/ JS with a sibling .ts must remain visible: ${JSON.stringify(errors)}`,
+    );
+    assert.equal(
+      errors.some((error) => /pollution-(?:generated|compiled)\.example/.test(error)),
+      false,
+      `generated pollution must not create attribution drift: ${JSON.stringify(errors)}`,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
+test('the check gate stays green when Docker generators write untracked JS into scanned roots', () => {
+  const fixture = makeFixtureCheckout();
+  try {
+    // Same pollution the self-host Dockerfile creates: inventory-facts plus a
+    // compiled handler sibling that re-embeds the authored URL. Today the
+    // walk treats those as new references and the gate reports stale kinds.
+    writeUrlModule(join(fixture.dir, 'api/_inventory-facts.generated.js'), 'fixture.example');
+    writeFileSync(join(fixture.dir, 'api/probe.ts'), 'export const ready = true;\n');
+    writeUrlModule(join(fixture.dir, 'api/probe.js'), 'fixture.example');
+
+    const { errors } = checkSourceAttribution(fixture.dir);
+    assert.deepEqual(
+      errors,
+      [],
+      `untracked generator output must not fail the attribution gate: ${JSON.stringify(errors)}`,
+    );
+  } finally {
+    fixture.cleanup();
+  }
+});
+
 test('ledger stats match validated stats when the committed manifest is current', () => {
   const inventory = scanUpstreamHosts(rootDir);
   const manifest = loadManifest(rootDir);

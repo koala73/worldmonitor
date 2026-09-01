@@ -203,7 +203,7 @@ This hybrid approach means the UI is never blocked waiting for AI — users see 
 | Surface | Endpoint | Notes |
 |---|---|---|
 | Event classification | `GET /api/intelligence/v1/classify-event` | Direct REST RPC used by the generated client; server results are cached by headline hash. |
-| Country factual context | `GET /api/intelligence/v1/get-country-facts` | RestCountries / Wikipedia context for country-brief and dossier workflows. |
+| Country factual context | `GET /api/intelligence/v1/get-country-facts` | Wikidata / Wikipedia context for country-brief and dossier workflows. |
 | Summary cache lookup | `GET /api/news/v1/summarize-article-cache` | CDN-cacheable lookup for deterministic summary keys; generation remains `POST /api/news/v1/summarize-article`. |
 
 ## Alerts

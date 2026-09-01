@@ -98,6 +98,7 @@ describe('blog SEO and GEO corpus contract', () => {
   it('keeps crawl, entity, and citation signals in the shared templates', () => {
     const base = readFileSync(resolve(root, 'blog-site/src/layouts/Base.astro'), 'utf8');
     const post = readFileSync(resolve(root, 'blog-site/src/layouts/BlogPost.astro'), 'utf8');
+    const index = readFileSync(resolve(root, 'blog-site/src/pages/index.astro'), 'utf8');
     assert.match(base, /max-image-preview:large/);
     assert.match(base, /max-snippet:-1/);
     assert.match(base, /og:image:type/);
@@ -105,6 +106,10 @@ describe('blog SEO and GEO corpus contract', () => {
     assert.match(post, /"@type": "Audience"/);
     assert.match(post, /"citation": citations/);
     assert.match(post, /\/blog\/authors\/elie-habib\//);
+    assert.match(post, /"@type": "SpeakableSpecification"/);
+    assert.match(index, /"@type": "CollectionPage"/);
+    assert.match(index, /"@type": "BreadcrumbList"/);
+    assert.match(index, /"@type": "SpeakableSpecification"/);
   });
 
   it('keeps author archives and blog JSON-LD attribution accurate', () => {
@@ -129,5 +134,21 @@ describe('blog SEO and GEO corpus contract', () => {
       blogIndex.includes('...(authorName === DEFAULT_AUTHOR ? { "@id": DEFAULT_AUTHOR_ID } : {})'),
       'blog JSON-LD must assign Elie’s stable Person ID only to the default author',
     );
+  });
+
+  it('stamps glossary and author sitemap URLs with lastmod (#7382)', async () => {
+    const { buildPostDateMap } = await import('../blog-site/astro.config.mjs');
+    const dates = buildPostDateMap();
+    const iso = /^\d{4}-\d{2}-\d{2}$/;
+    for (const key of [
+      '/blog/glossary/',
+      'https://www.worldmonitor.app/blog/glossary/',
+      '/blog/glossary/strait-of-hormuz/',
+      'https://www.worldmonitor.app/blog/glossary/strait-of-hormuz/',
+      '/blog/authors/elie-habib/',
+      'https://www.worldmonitor.app/blog/authors/elie-habib/',
+    ]) {
+      assert.match(dates.get(key) ?? '', iso, `${key} must receive a YYYY-MM-DD lastmod`);
+    }
   });
 });

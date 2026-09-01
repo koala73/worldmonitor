@@ -1,0 +1,203 @@
+---
+title: "Pro Intelligence Suite"
+description: "The Pro-only derived datasets — physical metals premiums and divergence, mineral concentration, defense industrial base, demographics, food stocks, resilience indicators, supply vulnerability, and the five-factor scorecard — with each dataset's REST route, seed cadence, and MCP surface where one exists."
+---
+
+A family of derived datasets ships behind the Pro tier. Each one answers a question the raw feeds cannot: not *what is the gold price* but *is the physical premium abnormal for gold right now*; not *where is cobalt* but *who refines it, and how concentrated is that*.
+
+They share a read-only contract, not one pipeline. Seed cadence and surfaces differ by dataset: physical premiums refresh daily and feed the divergence index; mineral production every 60 days; the defense-industrial World Bank snapshot every 10 days and SIPRI supplier shares every 14; demographics every 20 days; food stocks every 30 days; supply-vulnerability and the five-factor scorecard project daily derived snapshots; resilience indicators are built from the score trace on demand. A sebuf RPC serves each read. Most routes also have an MCP wrapper, but not all — `list-vulnerability-rankings` is REST-only. None of them accept a write. All of them carry explicit provenance and explicit missing-data signals, so an absent number never has to be read as a zero.
+
+## Access
+
+Every route below requires **tier 1 (Pro) or higher**. There is no anonymous or free-account read.
+
+| Caller | How to authenticate |
+| --- | --- |
+| Browser (signed-in Pro) | Automatic — the client attaches your Clerk session |
+| REST / SDK | `Authorization: Bearer <token>`, or `X-WorldMonitor-Key: <api key>` |
+| MCP | Connect with a Pro account; every tool below reports `_meta["worldmonitor/access"]: "subscription"` |
+
+REST and SDK callers use the HTTP envelope. An unauthenticated call returns `401` with `{"error":"Pro authentication required"}`. A signed-in free account returns `403` with a top-level payload such as `{"error":"Upgrade required","requiredTier":1,"currentTier":0,"planKey":"pro"}`. MCP callers use the JSON-RPC envelope instead: the same entitlement denial appears under `error.data.reason = "upgrade-required"` and can include an `upgradeUrl`. Both denial types are final answers, not transient failures — do not retry them. A `503` carrying `X-Billing-Verification` *is* retryable; honor `Retry-After`. See [Usage errors](/usage-errors).
+
+<Note>
+One narrow exception, deliberate: the `get_market_data` MCP tool is a cache-backed bundle available to signed-in free accounts within their small daily allowance, and two of its datasets (`physical-premium`, `physical-divergence`) overlap the metals routes below. The dedicated REST routes and every tool in this page's tables stay Pro-only.
+</Note>
+
+## Physical vs paper precious metals
+
+One seeder feeds a pair of routes. The first publishes the measurement; the second decides whether the measurement is unusual.
+
+### Premium series
+
+`GET /api/market/v1/get-physical-premiums`
+
+Compares the Shanghai Gold Exchange physical benchmark print against the COMEX futures snapshot for gold and silver, and returns every conversion input rather than only the result — the physical leg in its native currency and unit, the paper leg, the FX rate used, and both source clocks.
+
+```bash
+curl -H "Authorization: Bearer $WM_TOKEN" \
+  "https://www.worldmonitor.app/api/market/v1/get-physical-premiums"
+```
+
+```json
+{
+  "premiums": [
+    {
+      "metal": "gold",
+      "physical": { "price": 995.35, "currency": "CNY", "unit": "gram",
+                    "source": "Shanghai Gold Exchange SHAU PM benchmark", "asOf": "2026-08-28" },
+      "paper": { "price": 4529.9, "currency": "USD", "unit": "troy ounce" },
+      "premiumUsdPerOz": 76.78,
+      "premiumPct": 1.69
+    }
+  ],
+  "fx": { "asOf": "2026-08-28" }
+}
+```
+
+The two legs can carry different `asOf` dates. Compare them before treating a premium as same-day.
+
+### Divergence index
+
+`GET /api/market/v1/get-physical-divergence-index`
+
+Classifies the current premium against its own trailing history — a robust z-score (median/MAD, not mean/stddev, because the series has fat tails), a percentile rank, a regime, and an all-metal composite.
+
+The state field is load-bearing. Below 60 valid history points the classifier refuses to rate: `state` becomes `PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY`, `reason` names the shortfall, and `index` is omitted rather than returned as `null`. Clients should check field presence plus `state`/`reason`, not `=== null`. Read `state` before any numeric field.
+
+```json
+{
+  "readings": [
+    {
+      "metal": "gold",
+      "state": "PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY",
+      "reason": "history_points_below_60",
+      "regime": "PHYSICAL_PREMIUM_REGIME_UNSPECIFIED",
+      "premiumPct": 1.69,
+      "premiumUsdPerOz": 76.78
+    }
+  ]
+}
+```
+
+Bands, window sizes, composite weights and the versioning changelog live in [Physical divergence index methodology](/methodology/physical-divergence-index).
+
+## Mineral production and processing
+
+`GET /api/supply-chain/v1/get-mineral-production` · MCP `get_mineral_production`
+
+Who mines a commodity and who refines it, as country shares with an HHI concentration score per stage. The existing critical-minerals layer shows where deposits *sit*; this shows where production actually *happens*, which is a different and usually more concentrated map.
+
+```bash
+curl -H "Authorization: Bearer $WM_TOKEN" \
+  "https://www.worldmonitor.app/api/supply-chain/v1/get-mineral-production?commodity=cobalt&stage=refinery"
+```
+
+All three filters are optional: `commodity`, `iso2`, `stage` (`mine` or `refinery`). Omit them for the full snapshot.
+
+Two fields decide whether a row is usable. `withheld` marks a country whose figure the source suppressed — its share is unknown, not zero. `residual` marks the USGS "Other countries" aggregate, which is not a producer and must be excluded before ranking; leaving it in makes it outrank real countries. Each commodity-stage also picks its own `year`, which can trail the snapshot's `dataYear`.
+
+See [Mineral production methodology](/methodology/mineral-production).
+
+## Defense industrial base
+
+`GET /api/military/v1/get-defense-industrial-base?country_code=UA` · MCP `get_defense_industrial_base`
+
+One country's World Bank military-capacity indicators (`MS.MIL.*` — expenditure as a share of GDP, expenditure in USD, personnel, arms exports and imports) alongside SIPRI-derived five-year arms-supplier shares and a supplier HHI.
+
+TIV is a transfer-volume indicator, not money. Do not render it with a currency symbol.
+
+```json
+{
+  "countryCode": "UA",
+  "available": true,
+  "expenditurePctGdp": { "available": true, "value": 34.48, "year": 2024,
+                         "previousValue": 36.53, "previousYear": 2023, "source": "World Bank" },
+  "suppliers": [{ "supplierIso2": "US", "tivShare": 0.41 }],
+  "supplierHhi": 0.23,
+  "supplierMappingCoverage": 0.97
+}
+```
+
+`supplierHhi` is computed over the full TIV denominator while `suppliers` lists only rows that mapped to an ISO-2 country. `supplierMappingCoverage` is the share that mapped — read it before treating the listed suppliers as the whole picture. `supplierRetained: true` means this importer's previously published row was not refreshed in this tick. Retention is normally chunk carry-forward; a failed importer request is only one possible reason.
+
+SIPRI's license permits derived aggregates, not redistribution of the full database, which is why per-country supplier shares are served and the trade register is not. See [Defense industrial base methodology](/methodology/defense-industrial-base).
+
+## Demographics and workforce capability
+
+`GET /api/resilience/v1/get-demographics-capability?countryCode=DE` · MCP `get_demographics_capability`
+
+Three independent groups for one country: age structure (UN World Population Prospects), the education pipeline (UNESCO UIS and World Bank WDI), and industrial workforce composition (ILOSTAT).
+
+Every metric carries its own observation year, source, unit and `available` flag, and the three groups are resolved independently — a country can have current age structure and no ILOSTAT coverage at all. Read each metric's `available` before its value; the groups do not share a clock.
+
+See [Demographics capability methodology](/methodology/demographics-capability).
+
+## Food stocks
+
+`GET /api/resilience/v1/get-food-stocks?countryCode=WORLD` · MCP `get_food_stocks`
+
+USDA PSD cereal ending stocks, production, use, and the stocks-to-use ratio, per country and commodity. `countryCode=WORLD` returns the global balance. `commodity` accepts `wheat`, `corn`, `rice`, `soybeans`, `barley`, `palmOil`. FAOSTAT production-only rows use placeholder stock fields, so read `hasEndingStocks` and `hasStocksToUse` before treating stock numbers as measurements.
+
+Marketing years are not calendar years, and they differ by country and commodity. Two countries' figures for "2025/26" can cover different months — never compare them as if the label meant one period. Each row states its own marketing year for exactly this reason.
+
+See [Food stocks methodology](/methodology/food-stocks).
+
+## Resilience indicators
+
+`GET /api/resilience/v1/get-resilience-indicators?countryCode=DE` · MCP `get_resilience_indicators`
+
+The explainability layer under the country resilience score: all 72 registered indicators with their normalized score, full state taxonomy, runtime weight, contribution reconciled to its dimension, observation age, and source provenance. States include `observed`, `imputed`, `missing`, `fallback`, `not-applicable`, `source-failure`, `inactive`, and `retired`; read the matching availability flags before numeric values.
+
+Raw source values appear only where the upstream license permits redistribution; elsewhere the normalized score is served without the underlying number. That is a licensing boundary, not missing data — see [Resilience indicator licensing](/methodology/resilience-indicator-licensing).
+
+This route has no dashboard surface. It exists for API and MCP callers who need to audit a score rather than read it. See [Resilience indicators methodology](/methodology/resilience-indicators) and the [Country resilience index](/methodology/country-resilience-index).
+
+## Commodity supply vulnerability
+
+A per-country read, a per-chokepoint read, and a ranking list — all over one snapshot.
+
+| Route | MCP tool | Returns |
+| --- | --- | --- |
+| `GET /api/supply-chain/v1/get-country-vulnerabilities?iso2=JP` | `get_supply_vulnerabilities` | One country's commodity portfolio |
+| `GET /api/supply-chain/v1/get-chokepoint-dependencies?chokepointId=hormuz_strait` | `get_chokepoint_dependencies` | Countries and commodities most dependent on one chokepoint |
+| `GET /api/supply-chain/v1/list-vulnerability-rankings` | — | Cross-country ranking, filterable by `commodityId`, `band`, `state` |
+
+Each score combines supplier concentration, maritime transit exposure, and available strategic buffers into an absolute 0–100 band.
+
+**An absent score means insufficient evidence, never zero risk.** Read `state` and `reasons` first; a country with thin coverage returns no score and says why. `list-vulnerability-rankings` has no MCP tool — agents should use the per-country or per-chokepoint tool, which carry the same snapshot.
+
+See [Supply vulnerability methodology](/methodology/supply-vulnerability).
+
+## Five-factor country scorecard
+
+A per-country read, a bloc read, and a cohort list. The first two share one MCP tool.
+
+| Route | MCP tool | Returns |
+| --- | --- | --- |
+| `GET /api/scorecard/v1/get-five-factor-scorecard?countryCode=DE` | `get_five_factor_scorecard` | One country, full evidence ledger |
+| `GET /api/scorecard/v1/get-bloc-scorecard?preset=NATO` | `get_five_factor_scorecard` | One bloc — preset or custom `members` |
+| `GET /api/scorecard/v1/list-five-factor-scorecards` | `list_five_factor_scorecards` | Compact scorecards for the cohort |
+
+Five pillar scores — food, energy, demographics, technology, defense — projected over the resilience engine and served with per-pillar sub-scores, bands, input coverage, and machine-readable insufficient-data reasons.
+
+The single rule that matters when parsing these: **read `hasScore`, `available` and `hasValue` before any numeric field.** These are proto3 messages, so an absent number serializes as `0`. A pillar with `hasScore: false` and `subScore: 0` has insufficient data — it is not a country scoring zero on defense. `get_five_factor_scorecard` carries source provenance and raw observations; `list_five_factor_scorecards` drops the evidence ledger for a compact cohort read.
+
+A degraded snapshot returns `unavailable: true` with `unavailableReason: "scorecard-snapshot-unavailable"` rather than a stale or partial scorecard.
+
+See [Five-factor scorecard methodology](/methodology/five-factor-scorecard).
+
+## Reading these responses
+
+Four habits carry across the whole suite.
+
+1. **Check the availability flag before the number.** Every dataset here distinguishes "we measured zero" from "we have nothing" — through `available`, `hasScore`, `hasValue`, `state`, or `unavailable`. Only the flag separates them; the numeric field cannot.
+2. **Read the clock on the row, not the response.** Sources publish on their own schedules. A per-row `year`, `asOf` or marketing year overrides whatever the envelope says.
+3. **Treat an absent score as absent, not safe.** Insufficient coverage and low risk produce very different `reasons` and the same empty space.
+4. **Do not retry a 401 or 403.** Those are entitlement answers. Only a `503` with `Retry-After` is worth repeating.
+
+## Related
+
+- [MCP tools reference](/mcp-tools-reference) — full schemas for every tool named here
+- [Authentication](/authentication) — how to obtain and send a token
+- [Usage errors](/usage-errors) — the structured error envelope
+- [Pricing](/pricing) — what each plan includes

@@ -1,4 +1,5 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
@@ -10,11 +11,73 @@ import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
+
+test('bundles the shared LLM health provider registry with the sidecar (#7126)', () => {
+  const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+  assert.ok(config.bundle.resources.includes('../shared/llm-health-providers.js'));
+  assert.match(
+    dockerfile,
+    /COPY --from=builder \/app\/shared\/llm-health-providers\.js \.\/shared\/llm-health-providers\.js/,
+  );
+  assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
+});
 
 test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
   assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
   assert.equal(__testing__.isCloudPreferred('/api/military/v1/get-defense-industrial-base'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/get-five-factor-scorecard'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/get-bloc-scorecard'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/list-five-factor-scorecards'), true);
+});
+
+test('keeps seed-owned commodity vulnerability snapshots cloud-preferred', async () => {
+  const endpoints = [
+    '/api/supply-chain/v1/get-country-vulnerabilities',
+    '/api/supply-chain/v1/get-chokepoint-dependencies',
+    '/api/supply-chain/v1/list-vulnerability-rankings',
+  ];
+  for (const endpoint of endpoints) {
+    assert.equal(__testing__.isCloudPreferred(endpoint), true);
+  }
+
+  const remote = await setupRemoteServer();
+  const unavailableHandler = `
+    export default async function handler() {
+      return new Response(JSON.stringify({ source: 'local-empty', upstreamUnavailable: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
+  `;
+  const localApi = await setupApiDir(Object.fromEntries(
+    endpoints.map((endpoint) => [`${endpoint.slice('/api/'.length)}.js`, unavailableHandler]),
+  ));
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
+    allowPrivateRemoteBase: true,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    for (const endpoint of endpoints) {
+      const response = await authFetch(`http://127.0.0.1:${port}${endpoint}`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.source, 'remote');
+    }
+    assert.deepEqual(remote.hits, endpoints);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+  }
 });
 
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
@@ -54,6 +117,94 @@ async function listen(server, host = '127.0.0.1', port = 0) {
   }
   return address.port;
 }
+
+function executeYoutubeEmbedHtml(html) {
+  const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
+  assert.ok(script, 'youtube embed response must contain an executable script');
+  const posted = [];
+  const appendedScripts = [];
+  let playerEvents = null;
+  const parent = {};
+  Object.defineProperty(parent, 'postMessage', {
+    configurable: false,
+    get: () => (message, targetOrigin) => posted.push({ message, targetOrigin }),
+    set: () => {
+      throw new Error('child attempted to replace parent.postMessage');
+    },
+  });
+  const sandbox = {
+    console: { log() {}, warn() {}, error() {} },
+    window: { parent, addEventListener() {} },
+    document: {
+      createElement: () => ({}),
+      head: { appendChild: (node) => appendedScripts.push(node) },
+      getElementById: () => ({ classList: { add() {}, remove() {} } }),
+    },
+    MutationObserver: class {
+      observe() {}
+      disconnect() {}
+    },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    setInterval: () => 0,
+    clearInterval() {},
+    YT: {
+      Player: class {
+        constructor(_elementId, options) {
+          playerEvents = options.events;
+        }
+
+        mute() {}
+        playVideo() {}
+        isMuted() { return true; }
+        getVolume() { return 0; }
+      },
+    },
+  };
+
+  runInNewContext(script, sandbox);
+  assert.equal(typeof sandbox.onYouTubeIframeAPIReady, 'function');
+  sandbox.onYouTubeIframeAPIReady();
+  playerEvents.onReady();
+  return { posted, appendedScripts };
+}
+
+test('youtube embed bridge accepts exact Tauri origin and no-ops rejected parents', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const allowedResponse = await fetch(
+      `http://127.0.0.1:${port}/api/youtube-embed?videoId=e34xb-Fbl0U&parentOrigin=${encodeURIComponent('https://tauri.localhost')}`,
+    );
+    assert.equal(allowedResponse.status, 200);
+    const allowed = executeYoutubeEmbedHtml(await allowedResponse.text());
+    assert.equal(allowed.appendedScripts.length, 1, 'the YouTube API must still initialize');
+    assert.ok(
+      allowed.posted.some(({ message, targetOrigin }) => message?.type === 'yt-ready' && targetOrigin === 'https://tauri.localhost'),
+      'supported Tauri parent must receive yt-ready at its exact origin',
+    );
+
+    for (const parentOrigin of ['', 'https://evil.example']) {
+      const query = parentOrigin ? `&parentOrigin=${encodeURIComponent(parentOrigin)}` : '';
+      const response = await fetch(
+        `http://127.0.0.1:${port}/api/youtube-embed?videoId=e34xb-Fbl0U${query}`,
+      );
+      assert.equal(response.status, 200);
+      const rejected = executeYoutubeEmbedHtml(await response.text());
+      assert.equal(rejected.appendedScripts.length, 1, 'rejected parents must not abort player setup');
+      assert.deepEqual(rejected.posted, [], 'rejected parents must receive no bridge messages');
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
 
 async function postJsonViaHttp(url, payload, headers = {}) {
   const target = new URL(url);
@@ -1243,6 +1394,50 @@ test('uses IPv4 sidecar fetch for allowed private-network LLM probes (#3549)', a
   }
 });
 
+test('reports Groq health for configured keys without a gsk_ prefix (#7126)', async () => {
+  const envSnapshot = {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    LLM_API_URL: process.env.LLM_API_URL,
+  };
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 404,
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+
+  process.env.GROQ_API_KEY = 'groq-test-key';
+  delete process.env.OPENROUTER_API_KEY;
+  delete process.env.OLLAMA_API_URL;
+  delete process.env.LLM_API_URL;
+
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await getJsonViaHttp(`http://127.0.0.1:${port}/api/llm-health`);
+    assert.equal(response.status, 200);
+    assert.equal(response.json.available, true);
+    assert.deepEqual(response.json.providers, [
+      { name: 'groq', url: 'https://api.groq.com', available: true },
+    ]);
+  } finally {
+    restoreHttps();
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('uses canonical app origin when proxying to cloud fallback (cloudFallback enabled)', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({});
@@ -1969,6 +2164,32 @@ test('uses gzip compression when Brotli is unavailable but gzip is accepted', as
     await remote.close();
   }
 });
+
+test('skips gzip/br for already-compressed raster image payloads (#7382)', () => {
+  const jpegBody = Buffer.alloc(2048, 0xff);
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/jpeg' }, jpegBody),
+    false,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/png' }, jpegBody),
+    false,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/webp' }, jpegBody),
+    false,
+  );
+  // SVG is text — still worth compressing (e.g. /api/og-story).
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/svg+xml' }, Buffer.from('x'.repeat(2048))),
+    true,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'application/json' }, Buffer.from('x'.repeat(2048))),
+    true,
+  );
+});
+
 
 // ── Security hardening tests ────────────────────────────────────────────
 

@@ -1,6 +1,6 @@
 # World Monitor Developer Portal
 
-Last updated: August 19, 2026
+Last updated: August 30, 2026
 
 The World Monitor Developer Portal is the single entry point for building on World Monitor — the real-time global-intelligence platform that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather, and live news as source-attributed structured JSON. The hosted MCP, REST, CLI, and SDK surfaces share the platform authentication model and underlying data contracts, so you can start with the MCP server and drop down to the REST API or an SDK without relearning the platform. WebMCP is different: it reuses the current browser session and exposes a smaller, page-local inventory for the visible website UI.
 
@@ -15,6 +15,7 @@ This page names and links every developer resource type. For the machine-readabl
 - **[World Monitor SDKs](https://worldmonitor.app/sdks.md):** official zero-dependency client libraries for Python, Ruby, Go, and JavaScript. Details: [sdks.md](https://worldmonitor.app/sdks.md) · [SDK guide](https://www.worldmonitor.app/docs/sdks)
 - **World Monitor CLI:** `npx worldmonitor tools` scripts every tool from a shell — [npm `worldmonitor`](https://www.npmjs.com/package/worldmonitor) · [CLI guide](https://www.worldmonitor.app/docs/cli)
 - **World Monitor Agent Skills:** installable skills for agent frameworks — discovery index at https://worldmonitor.app/.well-known/agent-skills/index.json · `npx skills add koala73/worldmonitor`
+- **World Monitor Agent Plugin metadata:** public metadata at https://worldmonitor.app/plugin.json for the Agent Plugins 1.0.0 repository package. Install from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files)
 - **World Monitor API documentation:** the full developer documentation site at [/docs](https://www.worldmonitor.app/docs/documentation), including the [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart), [tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference), and [JMESPath projection guide](https://www.worldmonitor.app/docs/mcp-jmespath).
 - **World Monitor authentication:** the agent auth walkthrough at [auth.md](https://worldmonitor.app/auth.md) — API keys (`X-WorldMonitor-Key: wm_<40-hex>`) and OAuth 2.1 (`scope=mcp`) with dynamic client registration.
 - **World Monitor sandbox:** deterministic, schema-valid sample responses for representative REST operations — no key, no quota, safe for CI. Index: https://www.worldmonitor.app/sandbox/index.json · [Sandbox guide](https://www.worldmonitor.app/docs/sandbox) · scoped context: [developers/llms.txt](https://worldmonitor.app/developers/llms.txt)

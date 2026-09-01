@@ -1,0 +1,124 @@
+---
+title: "维护与发布 WebMCP"
+description: "更改、验证并发布 WorldMonitor WebMCP 契约，同时避免工具清单、UI 行为、安全边界与双语文档发生偏移。"
+---
+
+更改 WorldMonitor WebMCP 实现时，请使用本指南。宿主设置、工具 schema、浏览器智能体流程与用户可见限制见 [WebMCP 参考](/zh/webmcp)。
+
+每次 WebMCP 变更都是公开 UI 契约变更。工具名称、描述、schema、annotation、输出、可见效果、取消策略、安全响应头、测试、eval 与两种语言的指南必须保持一致。
+
+## 变更清单
+
+1. 在 `src/config/webmcp.ts` 中添加或更改规范名称与清单。不要创建第二套名称注册表。
+2. 在 `src/services/webmcp.ts` 中定义每个命令式描述符与受限执行路径。复用现有人工 UI 路径，不要添加具有额外权限的后端捷径。
+3. 将工具归类为 `read-only`、`view-state`、`cancellation-required` 或 `result-dependent`。TypeScript 必须拒绝没有取消策略的新命令式工具。
+4. 正确设置 `readOnlyHint` 与 `untrustedContentHint`。名称、描述、参数描述、schema、输出和错误必须符合 `WEBMCP_TOOL_BUDGETS`。
+5. 在每次调用时重新检查认证、权益、变体、渲染器、挂载状态和能力状态。工具发现不能授予持久权限。
+6. 对于声明式工具，只在真实表单已连接且可用时暴露属性。表单等待、隐藏、重置、销毁或不符合条件时，移除这些属性。
+7. 在一个导出的运行时列表中声明每个稳定的拒绝原因，并由该列表推导其 TypeScript 联合类型。不要手工维护第二份原因名称副本。
+8. 同时更新 `docs/webmcp.mdx` 与 `docs/zh/webmcp.mdx`，并在两份文档中写明每个新增原因。若某个已声明的原因在任一语言中缺失，指南契约测试将失败。所有权、验证或发布步骤改变时，也要同时更新两份维护指南。
+9. 扩展确定性生命周期与 UI 测试。如果工具选择或链式调用改变，请添加直接、模糊、错误工具、替代顺序和链中失败的 eval 用例。
+10. 如果注册路由或源发生变化，请把 Vercel、Docker、本地 Vite、Origin Trial、同源策略和 embed 拒绝响应头作为一个安全边界一起更新并测试。
+11. 先运行本地同 SHA 证明，再运行生产同 SHA 冒烟测试。单元测试和部署状态不能证明生产验收。
+
+## 源文件图
+
+| 源文件 | 负责 |
+|---|---|
+| `src/config/webmcp.ts` | 规范的首页、仪表板、声明式和逐变体清单，以及共享 schema 与输出预算。 |
+| `src/services/webmcp.ts` | 命令式描述符、schema、注册生命周期、受限结果与错误、遥测和取消策略。 |
+| `src/services/webmcp-map-layer-catalog.ts`、`src/services/webmcp-panel-catalog.ts` 和 `src/services/webmcp-mission-preset-catalog.ts` | 分页图层与面板目录、捆绑任务预设目录、筛选、权益叠加和稳定可用性原因。 |
+| `src/App.ts`、`src/app/webmcp-dashboard.ts` 和 `src/app/dashboard-action-binding.ts` | 启动顺序、UI 就绪、销毁、仪表板上下文、目录快照和人工操作路径绑定。 |
+| `shared/agent-bus-actions.ts`、`shared/agent-bus-contract.ts` 和 `src/app/agent-bus-applier.ts` | 类型化仪表板动作协议，以及通过现有 UI 状态应用动作。 |
+| `src/app/country-map-focus.ts` 和 `src/app/map-dimension-control.ts` | 国家边界框聚焦，以及共享 2D 或 3D 控件路径。 |
+| `src/config/panel-enablement.ts` 和 `src/app/panel-enablement.ts` | 面板启用策略，以及 `set_panel_enabled` 使用的设置持久化与应用路径。 |
+| `src/app/webmcp-access.ts`、`src/services/webmcp-access-snapshot.ts` 和 `src/services/clerk.ts` | 实时访问上下文、无个人身份信息的快照，以及现有 Clerk 登录对话框。 |
+| `src/app/webmcp-search-controller.ts`、`src/app/webmcp-search-effects.ts` 和 `src/app/search-selection-dispatcher.ts` | 不透明搜索能力、绑定效果类别、失效、实时状态复核和可见结果选择。 |
+| `src/services/panel-layout-actions.ts`、`src/app/panel-layout.ts`、`src/components/PanelTabBar.ts`、`src/services/tab-store.ts` 和 `src/services/dashboard-tab-actions.ts` | 面板布局快照/折叠/移动/全屏策略，以及仪表板标签页 UI、持久化、名称与 ID 限制，和列出、选择、创建、重命名、删除操作。 |
+| `src/components/GlobalProcurementPanel.ts` | 条件式声明工具 `search_procurement` 的表单、可见等待状态、重置、取消和受限结果。 |
+| `pro-test/welcome.html` | `launchWorldMonitor` 和 `getWorldMonitorMcpEndpoint` 的零导入首页注册。 |
+| `vercel.json`、`docker/nginx-security-headers.conf`、`docker/nginx-embed-security-headers.conf`、`vite.config.ts` 和 `pro-test/vite.config.ts` | Trial 注册、源隔离、同源许可、本地测试一致性和明确的 embed 拒绝。 |
+| `tests/webmcp*.test.*`、`tests/dom/*webmcp*.test.*` 和 `tests/deploy-config.test.mjs` | 确定性清单、schema、生命周期、UI、遥测、文档和部署边界契约。 |
+| `tests/fixtures/webmcp/evals.v1.json` 和 `scripts/evaluate-webmcp-evals.mjs` | 离线工具选择和多步流程评估契约。 |
+| `e2e/webmcp.spec.ts`、`e2e/webmcp-cancellation.spec.ts` 和 `e2e/embed.spec.ts` | 浏览器发现、调用、可见 UI 效果、取消、生产矩阵和跨源拒绝证据。 |
+
+## 验证阶梯
+
+使用 Node.js 24，并依次运行聚焦检查：
+
+```bash
+npm run docs:check
+./node_modules/.bin/tsx --test --test-concurrency=1 \
+  tests/docs-i18n-parity.test.mjs \
+  tests/webmcp-inventory.test.mts \
+  tests/webmcp.test.mjs \
+  tests/webmcp-map-layer-catalog.test.mts \
+  tests/webmcp-search-effects.test.mts \
+  tests/webmcp-dashboard.test.mts \
+  tests/dashboard-tab-actions.test.mts \
+  tests/panel-layout-actions.test.mts \
+  tests/webmcp-panel-catalog.test.mts \
+  tests/webmcp-mission-presets.test.mts \
+  tests/agent-bus-actions.test.mts \
+  tests/agent-bus-applier.test.mts \
+  tests/country-map-focus.test.mts \
+  tests/webmcp-runtime.test.mjs \
+  tests/webmcp-analytics-policy.test.mjs \
+  tests/webmcp-evals.test.mjs \
+  tests/webmcp-access.test.mts \
+  tests/webmcp-panel-enablement.test.mts \
+  tests/deploy-config.test.mjs
+npm run typecheck
+```
+
+如果改动浏览器可见契约，还要运行 `npm run test:dom` 与 `npm run test:e2e:webmcp`。缺少浏览器、Origin Trial token、凭据或已部署 SHA 是明确的验证门禁。不要为绕过门禁而削弱检查。
+
+## 发布冒烟检查清单
+
+### 本地，相同 SHA
+
+测试将要发布的精确提交。以下命令会记录 40 字符 Git SHA，并在 checkout 不干净时失败：
+
+```bash
+(
+  set -euo pipefail
+  WEBMCP_SHA="$(git rev-parse --verify HEAD)"
+  test "${#WEBMCP_SHA}" -eq 40
+  test -z "$(git status --porcelain --untracked-files=normal)"
+  printf 'Testing WebMCP at %s\n' "$WEBMCP_SHA"
+  WM_WEBMCP_DEPLOYED_SHA="$WEBMCP_SHA" npm run test:e2e:webmcp
+)
+```
+
+本地套件会启用 Chrome WebMCP 测试特性，并在证据中记录 SHA。它无法证明部署实际提供该 SHA。如果改动首页，请运行 `npm run build:pro` 并检查 `/pro/welcome.html`。如果改动条件式注册，请检查每个仪表板变体，以及 `search_procurement` 符合和不符合条件的两种状态。
+
+### 生产，相同 SHA
+
+首先在部署控制平面确认目标 URL 确实提供预期 SHA。运行器还会读取每个已注册仪表板源的 `/build-hash.txt`。
+
+```bash
+WM_WEBMCP_PRODUCTION_URL=https://www.worldmonitor.app \
+WM_WEBMCP_DEPLOYED_SHA='<40-character-git-sha>' \
+npm run test:e2e:webmcp:production
+```
+
+有头生产套件会测试真实 Origin Trial。它验证线上 SHA、安全响应头、三十一个工具的清单与 schema、冷启动调用、受限访问与登录结果、只读目录、取消行为、全部六个仪表板源、专用源根路由重定向和跨源 embed 拒绝。会修改生产状态的测试只在本地运行。
+
+请把 `test-results/` 下的 `webmcp-smoke.json`、`webmcp-cancellation.json` 与 `webmcp-production-matrix.json` 保存为发布证据。还要确认 `/embed` 和 `/embed.html` 返回 `tools=()`，且 `/?mode=agent`、预览部署、文档与 embed 页面没有获得顶层清单。
+
+部署 SHA、响应头、清单、UI 行为和终态结果是独立断言。部署成功或注册日志不能证明验收完成。
+
+## 兼容与移除策略
+
+WorldMonitor 以 `document.modelContext.registerTool()` 为目标并进行特性检测。它不提供 `navigator.modelContext`、`provideContext` 或草案兼容 shim。
+
+如果未来浏览器迁移需要临时 fallback：
+
+1. 明确具体浏览器与 API 缺口，并保持当前 API 为首选路径。
+2. 保持同源策略、可见 UI 行为、认证与权益检查、受限输出、隐私规则和取消能力。
+3. 为两条路径添加契约测试。指定移除负责人，以及 Chrome 里程碑或生产验证条件。
+4. 生产环境验证当前支持 API 后，立即移除 fallback。不得保留未记录的永久路径。
+
+WebMCP 不可用时，托管 MCP 服务器仍是受支持的替代接口。它是一套独立产品接口，不是浏览器 fallback。
+
+Chrome 文档说明，从 Chrome 153 开始，注销工具不会取消正在执行的调用。该生命周期变化不能证明已发布浏览器会把调用的 `AbortSignal` 传给页面。WorldMonitor 的单参数回调说明基于已记录的 Chrome 149–151 证据。每个浏览器里程碑都必须重新运行生产冒烟测试，并根据观察结果更新 [WebMCP 参考](/zh/webmcp)。

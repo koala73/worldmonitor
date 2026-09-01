@@ -236,6 +236,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Pětifaktorová rezilienční tabulka",
+      "help": "Frozen v1 důkazy pro potraviny, energii, demografii, technologii a obranu. Rozbalte řádek pro zobrazení vstupů, původu zdroje a důvodů chybějících dat.",
+      "loading": "Nahrávání pětifaktorové tabulky…",
+      "unavailable": "Pětifaktorová tabulka není k dispozici.",
+      "proLocked": "Upgradujte na PRO pro pětifaktorovou rezilienční tabulku",
+      "insufficient": "Nedostatečná data",
+      "notAvailable": "Nedostupné",
+      "noEvidence": "Pro tento pilíř nejsou k dispozici žádné důkazy.",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% pokrytí",
+      "methodologyVersion": "Methodologie v{{version}}",
+      "methodologyLink": "Zobrazit metodologii",
+      "pillars": {
+        "food": "Potraviny",
+        "energy": "Energie",
+        "demographics": "Demografie",
+        "technology": "Technologie",
+        "defense": "Obrana"
+      },
+      "reasons": {
+        "source-unavailable": "Zdroje nejsou k dispozici",
+        "country-unavailable": "Země není k dispozici",
+        "invalid-value": "Neplatná hodnota zdroje",
+        "stale": "Důkazy jsou zastaralé",
+        "coverage-below-floor": "Pokrytí je pod minimálním limitem pro hodnocení",
+        "required-group-missing": "Chybí povinná skupina důkazů",
+        "missing-population": "Populace není k dispozici",
+        "redistribution-blocked": "Znovudistribuce zdroje není povolena",
+        "pillar-unavailable": "Pilíř není k dispozici"
+      },
+      "inputs": {
+        "population": "Populace",
+        "food_productionBalance": "Produkční bilance",
+        "food_stocksToUse": "Zásoby k využití",
+        "food_waterSecurity": "Dostupnost vody",
+        "food_importDiversity": "Rozmanitost dovozu",
+        "energy_productionBalance": "Produkční bilance",
+        "energy_lowCarbonShare": "Díl podíl nízkouhlíkových zdrojů",
+        "energy_gridEfficiency": "Efektivita sítě",
+        "demographics_totalDependency": "Celková závislost",
+        "demographics_oldAgeDependency": "Závislost na starších",
+        "demographics_workingAgeProjection": "Předpokládaný počet pracovníků",
+        "demographics_tertiaryEnrollment": "Vstup do terciárního vzdělání",
+        "demographics_researchersPerMillion": "Vědci na milion obyvatel",
+        "demographics_stemGraduateShare": "Díl absolventů STEM",
+        "demographics_trainedIndustrialShare": "Díl vycvičené průmyslové pracovní síly",
+        "demographics_manufacturingEmploymentShare": "Díl zaměstnanosti v průmyslu",
+        "technology_internetUse": "Používání internetu",
+        "technology_mobileSubscriptions": "Přihlášky k mobilnímu internetu",
+        "technology_fixedBroadband": "Připojení k pevné širokopásmové síti",
+        "technology_rdSpend": "Výdaje na výzkum a vývoj",
+        "technology_researchersPerMillion": "Vědci na milion obyvatel",
+        "technology_stemGraduateShare": "Díl absolventů STEM",
+        "technology_electricityAccess": "Přístup k elektřině",
+        "defense_expenditureUsd": "Výdaje na obranu (USD)",
+        "defense_expenditurePctGdp": "Výdaje na obranu (% HDP)",
+        "defense_personnel": "Personal ozbrojených sil",
+        "defense_industrialBalance": "Bilance průmyslu obrany",
+        "defense_supplierDiversity": "Rozmanitost dodavatelů zbraní"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Upgradujte na PRO pro závislosti dodavatelů zbraní a vojenskou kapacitu"
     }
   },
   "header": {
@@ -534,6 +599,10 @@
       "recent": "Nedávná hledání",
       "empty": "Hledejte data nebo spouštějte příkazy",
       "noResults": "Žádné výsledky",
+      "resultAnnouncement_one": "{{count}} výsledek pro {{query}}",
+      "resultAnnouncement_few": "{{count}} výsledky pro {{query}}",
+      "resultAnnouncement_many": "{{count}} výsledku pro {{query}}",
+      "resultAnnouncement_other": "{{count}} výsledků pro {{query}}",
       "navigate": "přejít",
       "select": "vybrat",
       "close": "zavřít",
@@ -907,7 +976,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Upgradujte na PRO pro podíly zemí dolů a rafinerií s koncentrací (HHI) podle fáze"
     },
     "tradePolicy": {
       "tariffs": "Cla",
@@ -1736,6 +1806,16 @@
       "loading": "Připojování k relé Telegramu...",
       "empty": "Nejsou k dispozici žádné zprávy",
       "disabled": "Relé Telegramu není aktivní",
+      "watchlistPlaceholder": "Přidat veřejný kanál pomocí @username",
+      "resolving": "Ověřování kanálu...",
+      "invalidUsername": "Použijte veřejné @username na Telegramu",
+      "resolveFailed": "Kanál se nepodařilo najít",
+      "watchlistLimit": "Můžete sledovat až {{count}} vlastních kanálů",
+      "previewMembers": "Počet členů: {{count}}",
+      "addChannel": "Přidat kanál",
+      "added": "Přidáno",
+      "remove": "Odebrat",
+      "custom": "Vlastní",
       "filterAll": "Vše",
       "filterBreaking": "Bleskové zprávy",
       "filterConflict": "Konflikt",
@@ -1968,6 +2048,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Index fyzického tlaku: {{value}} / 100",
+        "fiveDayTrend": "Trend prémie za pět obchodních dní",
+        "regimes": {
+          "normal": "Normální",
+          "elevated": "Zvýšený",
+          "stressed": "Napjatý",
+          "extreme": "Extrémní"
+        },
+        "states": {
+          "insufficientHistory": "Zahřívání: {{count}} / {{required}} obchodních bodů",
+          "staleInput": "Fyzická reference je zastaralá",
+          "missingInput": "Signál divergence není k dispozici"
+        },
+        "twentyDayTrend": "Trend prémie za dvacet obchodních dní"
       }
     },
     "crypto": {
@@ -2134,6 +2230,26 @@
         "failedToLoad": "Načtení se nezdařilo"
       },
       "cissStale": "ECB nezveřejnila novější hodnotu — toto čtení může být zastaralé."
+    },
+    "supplyVulnerability": {
+      "title": "Zranitelnost komodit",
+      "help": "Expozice země podle komodit z koncentrace dodavatelů, námořního tranzitu a dostupných strategických zásob.",
+      "loading": "Načítání zranitelnosti komodit…",
+      "unavailable": "Data o zranitelnosti komodit nejsou dostupná",
+      "noCoverage": "Pro tuto zemi nejsou dostatečné důkazy",
+      "unknown": "Neznámé",
+      "concentration": "Koncentrace",
+      "transit": "Tranzit",
+      "buffer": "Rezerva",
+      "sources": "Zdroje",
+      "methodology": "Metodika",
+      "hormuzTitle": "Závislosti na komoditách",
+      "dependentCountries": "Závislé země",
+      "dependentCommodities": "Závislé komodity",
+      "stateOk": "Aktuální",
+      "stateStale": "Zastaralý vstup",
+      "stateInsufficient": "Nedostatečná data",
+      "proLocked": "Upgradujte na PRO pro skórování zranitelnosti komodit"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Sledování obchodu v Hormuzu</strong> Sledování AIS plavidel v reálném čase přes Hormuzský průliv, nejkritičtější ropný úzký profil na světě. Monitoruje počty tankerů, narušení a týdenní změny toků. Přibližně 20 % světových dodávek ropy tudy denně prochází.",
@@ -2699,6 +2815,18 @@
       "rubBase": "Ruská centrální banka — rubly za 1 jednotku",
       "rubPerUnit": "Rublů za jednotku",
       "sourceCbr": "Zdroj: Ruská centrální banka"
+    },
+    "passkeyOffer": {
+      "title": "Uložit přístupový klíč?",
+      "body": "Při příštím přihlášení se použijte otisk prstu, obličej nebo PIN zařízení – žádné heslo k zapamatování.",
+      "accept": "Uložit přístupový klíč",
+      "dismiss": "Nyní ne",
+      "close": "Zavřít",
+      "announce": "Uložte přístupový klíč pro rychlejší přihlášení příště.",
+      "busy": "Čekání na vaše zařízení…",
+      "succeeded": "Přístupový klíč uložen. Můžete jej použít při příštím přihlášení.",
+      "retryable": "To se nedokončilo. Můžete to zkusit znovu.",
+      "failed": "Na tomto zařízení se nám nepodařilo uložit přístupový klíč."
     }
   },
   "popups": {
@@ -3032,7 +3160,11 @@
       "heading": "SMĚR",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Zdroj: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Zdroj: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "RYCHLOST STOUPÁNÍ",
+      "manufacturer": "VÝROBCE",
+      "owner": "MAJITEL",
+      "builtYear": "ROK VÝROBY"
     },
     "militaryVessel": {
       "aisDark": "AIS VYP",
@@ -3077,7 +3209,8 @@
       "moreVessels": "+{{count}} dalších plavidel",
       "vesselsCount": "{{count}} PLAVIDEL",
       "vessels": "PLAVIDLA",
-      "trackedVessels": "SLEDOVANÁ PLAVIDLA"
+      "trackedVessels": "SLEDOVANÁ PLAVIDLA",
+      "showLess": "Zobrazit méně"
     },
     "naturalEvent": {
       "closed": "ZAVŘENO",
@@ -3374,7 +3507,9 @@
     "fontFamily": "Typ písma",
     "fontFamilyDesc": "Monospace pro technický vzhled, systémové výchozí pro snazší čtení.",
     "fontMono": "Monospace",
-    "fontSystem": "Systémové výchozí"
+    "fontSystem": "Systémové výchozí",
+    "panelFontScale": "Velikost textu",
+    "followGlobalFontScale": "Použít globální"
   },
   "contextMenu": {
     "openCountryBrief": "Otevřít přehled země",
@@ -3473,7 +3608,8 @@
   "auth": {
     "signIn": "Přihlášení",
     "createAccount": "Vytvořit účet",
-    "settings": "Nastavení"
+    "settings": "Nastavení",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Připojit MCP",

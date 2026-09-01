@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
 import {
   existsSync,
-  mkdtempSync,
+  
   mkdirSync,
   readFileSync,
   readlinkSync,
@@ -24,8 +24,9 @@ import {
   parseArgs,
   shouldInstallDependencies,
 } from '../scripts/bootstrap-worktree.mjs';
+import { createTempDir } from './helpers/temp-dir.mjs';
 
-const makeTempDir = (prefix = 'wm-worktree-bootstrap-') => mkdtempSync(join(tmpdir(), prefix));
+const makeTempDir = (prefix = 'wm-worktree-bootstrap-') => createTempDir(prefix);
 const quiet = () => {};
 
 describe('worktree bootstrap helper', () => {

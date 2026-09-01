@@ -301,6 +301,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Öt tényezős ellenállóképesség-pontszám",
+      "help": "Fagyasztott v1 bizonyítékpontszámok élelmiszer, energia, demográfia, technológia és védelem terén. Bontsa ki a sort a bemenetek, az adatforrás eredete és a hiányzó adatok okainak megtekintéséhez.",
+      "loading": "Öt tényezős pontszám betöltése…",
+      "unavailable": "Öt tényezős pontszám nem érhető el.",
+      "proLocked": "Frissítsen PRO-ra az öt tényezős ellenállóképesség-pontszámért",
+      "insufficient": "Nem elegendő adat",
+      "notAvailable": "Nem érhető el",
+      "noEvidence": "Nincs elérhető bizonyíték erre a pillérre.",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% lefedettség",
+      "methodologyVersion": "Módszertan v{{version}}",
+      "methodologyLink": "Metodológia megtekintése",
+      "pillars": {
+        "food": "Élelmiszer",
+        "energy": "Energia",
+        "demographics": "Demográfia",
+        "technology": "Teknoloógia",
+        "defense": "Védelem"
+      },
+      "reasons": {
+        "source-unavailable": "Forrás nem érhető el",
+        "country-unavailable": "Ország nem érhető el",
+        "invalid-value": "Érvénytelen forrásérték",
+        "stale": "A bizonyíték elavult",
+        "coverage-below-floor": "A lefedettség a pontozási alsó határ alatt van",
+        "required-group-missing": "Kötelező bizonyítékcsoport hiányzik",
+        "missing-population": "Népesség nem érhető el",
+        "redistribution-blocked": "A forrás újraelosztása nem engedélyezett",
+        "pillar-unavailable": "Tartóoszlop nem érhető el"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "Előállítási egyensúly",
+        "food_stocksToUse": "Felhasználható készletek",
+        "food_waterSecurity": "Vízbiztonság",
+        "food_importDiversity": "Import diverzitás",
+        "energy_productionBalance": "Előállítási egyensúly",
+        "energy_lowCarbonShare": "Alacsony szén-dioxid-kibocsátású energia aránya",
+        "energy_gridEfficiency": "Hálózati hatékonyság",
+        "demographics_totalDependency": "Össz függőség",
+        "demographics_oldAgeDependency": "Öregségi függőség",
+        "demographics_workingAgeProjection": "Munkaképes korúak előrejelzése",
+        "demographics_tertiaryEnrollment": "Felsőfokú képzésben résztvevők aránya",
+        "demographics_researchersPerMillion": "Kutatók száma millió lakosra",
+        "demographics_stemGraduateShare": "STEM végzettségűek aránya",
+        "demographics_trainedIndustrialShare": "Képzett ipari munkatermelők aránya",
+        "demographics_manufacturingEmploymentShare": "Gyártási foglalkoztatottság aránya",
+        "technology_internetUse": "Internet-használat",
+        "technology_mobileSubscriptions": "Mobil-előfizetések",
+        "technology_fixedBroadband": "Rögzített szélessáv",
+        "technology_rdSpend": "Kutatási és fejlesztési kiadások",
+        "technology_researchersPerMillion": "Kutatók száma millió lakosra",
+        "technology_stemGraduateShare": "STEM végzettségűek aránya",
+        "technology_electricityAccess": "Áramellátás hozzáférhetősége",
+        "defense_expenditureUsd": "Katonai kiadások",
+        "defense_expenditurePctGdp": "Katonai teher",
+        "defense_personnel": "Fegyveres erők létszáma",
+        "defense_industrialBalance": "Védelmi ipari egyensúly",
+        "defense_supplierDiversity": "Fegyverbeszállítók sokszínűsége"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Frissítsen PRO verzióra a fegyverszállító függőségek és katonai kapacitások megtekintéséhez"
     }
   },
   "header": {
@@ -599,6 +664,8 @@
       "recent": "Legutóbbi keresések",
       "empty": "Adatok keresése vagy parancsok futtatása",
       "noResults": "Nincs találat",
+      "resultAnnouncement_one": "{{count}} találat erre: {{query}}",
+      "resultAnnouncement_other": "{{count}} találat erre: {{query}}",
       "commands": "Parancsok",
       "results": "Eredmények",
       "seeAllCommands": "Összes parancs megtekintése",
@@ -1016,7 +1083,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Frissítsen PRO verzióra a bányák és finomítók országonkénti részesedésének és koncentrációjának (HHI) megtekintéséhez szakaszonként"
     },
     "tradePolicy": {
       "overview": "Áttekintés",
@@ -1892,6 +1960,16 @@
       "loading": "Csatlakozás a Telegram relé-hez...",
       "empty": "Nincsenek elérhető üzenetek",
       "disabled": "A Telegram relé nem aktív",
+      "watchlistPlaceholder": "Nyilvános csatorna hozzáadása @username alapján",
+      "resolving": "Csatorna keresése...",
+      "invalidUsername": "Nyilvános Telegram-@username szükséges",
+      "resolveFailed": "A csatorna nem található",
+      "watchlistLimit": "Legfeljebb {{count}} egyéni csatornát követhetsz",
+      "previewMembers": "{{count}} tag",
+      "addChannel": "Csatorna hozzáadása",
+      "added": "Hozzáadva",
+      "remove": "Eltávolítás",
+      "custom": "Egyéni",
       "filterAll": "Összes",
       "filterBreaking": "Friss hír",
       "filterConflict": "Konfliktus",
@@ -2039,6 +2117,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fizikai stresszindex: {{value}} / 100",
+        "fiveDayTrend": "Öt kereskedési napos prémium trend",
+        "regimes": {
+          "normal": "Normál",
+          "elevated": "Emelt",
+          "stressed": "Stresszos",
+          "extreme": "Szélsőséges"
+        },
+        "states": {
+          "insufficientHistory": "Melegítés: {{count}} / {{required}} kereskedési pont",
+          "staleInput": "Fizikai benchmark elavult",
+          "missingInput": "Divergencia jel nem elérhető"
+        },
+        "twentyDayTrend": "Húsz kereskedési napos prémium trend"
       }
     },
     "crypto": {
@@ -2325,6 +2419,26 @@
         "unavailable": "FSI adatok nem érhetőek el",
         "failedToLoad": "Betöltés sikertelen"
       }
+    },
+    "supplyVulnerability": {
+      "title": "Árupiaci sebezhetőség",
+      "help": "Az ország árunkénti kitettsége a beszállítói koncentráció, a tengeri tranzit és az elérhető stratégiai tartalékok alapján.",
+      "loading": "Árupiaci sebezhetőség betöltése…",
+      "unavailable": "Az árupiaci sebezhetőségi adatok nem érhetők el",
+      "noCoverage": "Nincs elegendő bizonyíték ehhez az országhoz",
+      "unknown": "Ismeretlen",
+      "concentration": "Koncentráció",
+      "transit": "Tranzit",
+      "buffer": "Tartalék",
+      "sources": "Források",
+      "methodology": "Módszertan",
+      "hormuzTitle": "Árufüggőségek",
+      "dependentCountries": "Függő országok",
+      "dependentCommodities": "Függő áruk",
+      "stateOk": "Aktuális",
+      "stateStale": "Elavult bemenet",
+      "stateInsufficient": "Elégtelen adat",
+      "proLocked": "Frissítsen PRO verzióra az árucikk-sebezhetőségi pontszám megtekintéséhez"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Élő AIS hajófigyelés a Hormuzi-szoroson keresztül, a világ legkritikusabb olajszűk keresztén. Figyelemmel kíséri a tartályhajó számát, szétszóródási eseményeket és heti áramlásváltozásokat. A globális olajkínálat hozzávetőleg 20%-a napi szinten érkezik itt.",
@@ -2732,6 +2846,18 @@
       "rubBase": "Orosz jegybank — rubel 1 egységenként",
       "rubPerUnit": "Rubel egységenként",
       "sourceCbr": "Forrás: Orosz jegybank"
+    },
+    "passkeyOffer": {
+      "title": "Passkey mentése?",
+      "body": "Következő alkalommal ujjlenyomatoddal, arcod felismerésével vagy eszközöd PIN-kódjával jelentkezz be — nincs szükség jelszóra.",
+      "accept": "Passkey mentése",
+      "dismiss": "Később",
+      "close": "Bezárás",
+      "announce": "Mentsen egy passkey-t a gyorsabb bejelentkezéshez.",
+      "busy": "Az eszköz válaszára várakozás…",
+      "succeeded": "Passkey mentve. Használhatod a következő bejelentkezéskor.",
+      "retryable": "Ez nem fejeződött be. Megpróbálhatod újra.",
+      "failed": "Erre az eszközre nem sikerült passkey-t menteni."
     }
   },
   "popups": {
@@ -3073,7 +3199,11 @@
       "heading": "IRÁNY",
       "hexCode": "HEX KÓD",
       "squawk": "SQUAWK",
-      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Forrás: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "EMELKEDÉSI SEBESSÉG",
+      "manufacturer": "GYÁRTÓ",
+      "owner": "TULAJDONOS",
+      "builtYear": "ÉPÍTÉSI ÉV"
     },
     "militaryVessel": {
       "aisDark": "AIS SÖTÉT",
@@ -3118,7 +3248,8 @@
       "moreVessels": "+{{count}} további hajó",
       "vesselsCount": "{{count}} HAJÓ",
       "vessels": "HAJÓK",
-      "trackedVessels": "KÖVETETT HAJÓK"
+      "trackedVessels": "KÖVETETT HAJÓK",
+      "showLess": "Kevesebb megjelenítése"
     },
     "naturalEvent": {
       "closed": "LEZÁRVA",
@@ -3412,7 +3543,9 @@
     "fontFamily": "Betűtípus család",
     "fontFamilyDesc": "Monospace a technikai megjelenéshez, rendszer alapértelmezés az olvashatóság kedvéért.",
     "fontMono": "Monospace",
-    "fontSystem": "Rendszer alapértelmezés"
+    "fontSystem": "Rendszer alapértelmezés",
+    "panelFontScale": "Szövegméret",
+    "followGlobalFontScale": "Globális beállítás használata"
   },
   "premium": {
     "pro": "PRO",
@@ -3437,7 +3570,8 @@
   "auth": {
     "signIn": "Bejelentkezés",
     "createAccount": "Fiók létrehozása",
-    "settings": "Beállítások"
+    "settings": "Beállítások",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP csatlakoztatása",

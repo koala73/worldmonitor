@@ -15,6 +15,8 @@ import {
   getBillingBannerVariant,
   getBillingGateOverride,
   getReactivationHref,
+  getSubscriptionStatusTone,
+  isSubscriptionCoveringAt,
   type BillingSubscriptionSnapshot,
   type BillingEntitlementSnapshot,
 } from '@/services/billing-state';
@@ -67,14 +69,42 @@ describe('deriveBillingUxState', () => {
     assert.equal(deriveBillingUxState(sub(), null, NOW), 'active');
   });
 
-  it('on_hold wins even while the retry-window entitlement is still valid', () => {
+  it('paid-through on_hold surfaces while the retry-window entitlement is still valid', () => {
     assert.equal(deriveBillingUxState(sub({ status: 'on_hold' }), ent(), NOW), 'on_hold');
   });
 
-  it('on_hold with expired entitlement stays on_hold (not free, not pending)', () => {
+  it('paid-through on_hold surfaces with a missing or expired entitlement snapshot', () => {
+    assert.equal(deriveBillingUxState(sub({ status: 'on_hold' }), null, NOW), 'on_hold');
     assert.equal(
       deriveBillingUxState(sub({ status: 'on_hold' }), ent({ validUntil: NOW - 1 }), NOW),
       'on_hold',
+    );
+  });
+
+  it('on_hold at the exact paid-through boundary remains on_hold', () => {
+    assert.equal(
+      deriveBillingUxState(sub({ status: 'on_hold', currentPeriodEnd: NOW }), null, NOW),
+      'on_hold',
+    );
+  });
+
+  it('expired on_hold is lapsed without separate paid coverage', () => {
+    const expiredHold = sub({ status: 'on_hold', currentPeriodEnd: NOW - 1 });
+    assert.equal(deriveBillingUxState(expiredHold, null, NOW), 'lapsed');
+    assert.equal(
+      deriveBillingUxState(expiredHold, ent({ validUntil: NOW - 1 }), NOW),
+      'lapsed',
+    );
+  });
+
+  it('expired on_hold is active when a separate paid entitlement still covers', () => {
+    assert.equal(
+      deriveBillingUxState(
+        sub({ status: 'on_hold', currentPeriodEnd: NOW - 1 }),
+        ent({ validUntil: NOW + DAY }),
+        NOW,
+      ),
+      'active',
     );
   });
 
@@ -284,5 +314,95 @@ describe('getReactivationHref', () => {
     assert.equal(getReactivationHref('pro_annual'), '/pro?wm_reactivate_plan=pro_annual#pricing');
     assert.equal(getReactivationHref('pro_monthly'), '/pro?wm_reactivate_plan=pro_monthly#pricing');
     assert.equal(getReactivationHref(null), '/pro#pricing');
+  });
+});
+
+describe('isSubscriptionCoveringAt (#7315)', () => {
+  it('is the single predicate behind both the UX state and the status tone', () => {
+    // deriveBillingUxState and getSubscriptionStatusTone must not drift: the
+    // same cancelled row that keeps coverage here cannot be `lapsed` there.
+    const paidThrough = sub({ status: 'cancelled' });
+    assert.equal(isSubscriptionCoveringAt(paidThrough, NOW), true);
+    assert.equal(deriveBillingUxState(paidThrough, null, NOW), 'active');
+    assert.equal(getSubscriptionStatusTone(paidThrough, NOW), 'ending');
+
+    const lapsedRow = sub({ status: 'cancelled', currentPeriodEnd: NOW - DAY });
+    assert.equal(isSubscriptionCoveringAt(lapsedRow, NOW), false);
+    assert.equal(deriveBillingUxState(lapsedRow, null, NOW), 'lapsed');
+    assert.equal(getSubscriptionStatusTone(lapsedRow, NOW), 'ended');
+  });
+
+  it('active stays unbounded while on_hold is bounded by its inclusive paid-through end', () => {
+    assert.equal(isSubscriptionCoveringAt(sub({ currentPeriodEnd: NOW - DAY }), NOW), true);
+    assert.equal(
+      isSubscriptionCoveringAt(sub({ status: 'on_hold', currentPeriodEnd: NOW + 1 }), NOW),
+      true,
+    );
+    assert.equal(
+      isSubscriptionCoveringAt(sub({ status: 'on_hold', currentPeriodEnd: NOW }), NOW),
+      true,
+    );
+    assert.equal(
+      isSubscriptionCoveringAt(sub({ status: 'on_hold', currentPeriodEnd: NOW - 1 }), NOW),
+      false,
+    );
+  });
+
+  it('expired never covers, even with a future period end', () => {
+    assert.equal(
+      isSubscriptionCoveringAt(sub({ status: 'expired', currentPeriodEnd: NOW + DAY }), NOW),
+      false,
+    );
+  });
+
+  it('an unrecognised runtime status does not cover (fail closed)', () => {
+    const bogus = sub({ status: 'paused' as unknown as 'active' });
+    assert.equal(isSubscriptionCoveringAt(bogus, NOW), false);
+  });
+});
+
+describe('getSubscriptionStatusTone (#7315)', () => {
+  it('a renewing subscription is the active tone', () => {
+    assert.equal(getSubscriptionStatusTone(sub(), NOW), 'active');
+  });
+
+  it('on_hold is the attention tone, even inside the paid period', () => {
+    assert.equal(getSubscriptionStatusTone(sub({ status: 'on_hold' }), NOW), 'attention');
+  });
+
+  it('cancelled-but-paid-through is `ending`, NOT the tone expired gets (#7315)', () => {
+    // The bug this test locks: the panel painted both in the same red, so a
+    // subscriber with a month of Pro left read their plan as already dead.
+    const tone = getSubscriptionStatusTone(sub({ status: 'cancelled' }), NOW);
+    assert.equal(tone, 'ending');
+    assert.notEqual(tone, getSubscriptionStatusTone(sub({ status: 'expired' }), NOW));
+  });
+
+  it('cancelled past the paid period is the ended tone', () => {
+    assert.equal(
+      getSubscriptionStatusTone(sub({ status: 'cancelled', currentPeriodEnd: NOW - DAY }), NOW),
+      'ended',
+    );
+  });
+
+  it('expired is the ended tone even with a future period end (mirrors isCoveringAt)', () => {
+    assert.equal(
+      getSubscriptionStatusTone(sub({ status: 'expired', currentPeriodEnd: NOW + DAY }), NOW),
+      'ended',
+    );
+  });
+
+  it('boundary: cancelled with currentPeriodEnd exactly now is still covering', () => {
+    assert.equal(
+      getSubscriptionStatusTone(sub({ status: 'cancelled', currentPeriodEnd: NOW }), NOW),
+      'ending',
+    );
+  });
+
+  it('an unrecognised runtime status is an explicit `unknown`, never silently ended', () => {
+    // A new provider status must not be asserted as a dead plan to a user the
+    // entitlement engine still considers entitled.
+    const bogus = sub({ status: 'paused' as unknown as 'active' });
+    assert.equal(getSubscriptionStatusTone(bogus, NOW), 'unknown');
   });
 });

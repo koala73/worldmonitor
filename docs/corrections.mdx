@@ -1,24 +1,29 @@
 ---
-title: "Revision Log (Planned)"
-description: "Planned public revision log for Energy Atlas registries, tracking every evidence change and public-badge transition — spec-only, not yet live."
+title: "Revision and Corrections Log"
+description: "Published methodology revisions and the planned automated Energy Atlas asset-change log."
 ---
 
 <Note>
-**Status — v1 launch:** This page documents the planned
-revision-log surface. **The public log itself is not yet live.**
-What ships today on the Energy Atlas: the evidence bundles inside each
+This public log records material revisions to WorldMonitor datasets and
+methods. The automated Energy Atlas asset-change writer remains planned.
+What ships today on the Energy Atlas includes the evidence bundles inside each
 RPC response (`ListPipelines`, `ListStorageFacilities`,
 `ListFuelShortages`, `ListEnergyDisruptions`), and the methodology pages
-that describe how public badges are derived from those bundles. The
-classifier that writes revision-log entries as a byproduct of normal
-operation ships in a post-launch release. Until then:
+that describe how public badges are derived from those bundles. Until the
+asset-change writer ships:
 `GetPipelineDetail.revisions` and `GetStorageFacilityDetail.revisions`
 return empty arrays, and there is no automated correction-intake path.
-This page exists so the data contract and submission policy are
-documented **before** the surface goes live — not after.
 </Note>
 
-## What the revision log will be (when it ships)
+## Published revisions
+
+| Effective date | Product | Revision | Published effect |
+| --- | --- | --- | --- |
+| 2026-06-01 | Country Resilience Index | **P1-1 pillar aggregation correction.** Pillar scores now apply each domain's design weight inside pillar aggregation. The 2026-05-28 snapshot used the earlier coverage-only member aggregation and remains a labelled historical capture. | Live score, ranking, history, and interval cache generations changed together. The 2026-08-29 full-universe capture is the first published country snapshot after this correction. See [PR #4021](https://github.com/koala73/worldmonitor/pull/4021). |
+
+The crawlable CRI snapshot workflow is scheduled for the first day of each month (`17 5 1 * *` UTC). It captures the credentialed full-universe ranking, rebuilds the crawlable corpus and sitemap, and opens a pull request for review. Off-cycle captures also ship when a methodology correction needs a new full-universe artifact. The current published snapshot is `resilience-ranking-2026-08-29.json` (captured 2026-08-29, after the P1-1 pillar-aggregation correction), not a first-of-month run.
+
+## Energy Atlas automated revision log (planned)
 
 WorldMonitor's Energy Atlas publishes evidence bundles — not opinions —
 for pipelines, storage facilities, fuel shortages, and disruption
@@ -32,9 +37,9 @@ new classifier version re-derived an old asset, or because an
 operator/regulator-submitted correction was applied — it will write an
 append-only entry here.
 
-This is the designed audit surface. The evidence registries themselves
-are forward-looking snapshots; this log, once live, will be the history
-of how each status arrived at where it is today.
+This is the designed asset-level audit record. The evidence registries
+are forward-looking snapshots. The automated log will record how each
+status changed.
 
 ## Planned data shape
 
@@ -75,8 +80,10 @@ rather than pretending the surface is live.
   Overrides will carry the same `sourcesUsed` discipline as classifier
   entries.
 
-## What IS live today (v1 launch)
+## What is live today
 
+- **Published methodology revisions.** The table on this page records
+  changes that affect public datasets and their interpretation.
 - **Evidence bundles on every asset.** Click any pipeline, storage
   facility, or shortage pin on the [Energy Atlas](https://energy.worldmonitor.app)
   and you see its full evidence bundle: physical state, commercial
@@ -96,10 +103,10 @@ rather than pretending the surface is live.
   version today even though the revision-log history-of-versions
   surface isn't yet published.
 
-## What is NOT live today
+## What is not live today
 
-- The revision-log entries themselves (this page will list real rows
-  once the classifier ships).
+- Automated Energy Atlas asset-level entries. This page will list those
+  rows after the classifier ships.
 - An automated correction-intake pipeline. If you spot something
   wrong, use the feedback channels at
   [worldmonitor.app](https://worldmonitor.app) or open a GitHub issue
@@ -141,7 +148,6 @@ Two reasons to publish the spec before the writer lands:
    internal implementation detail. Publishing the planned shape and
    submission policy ahead of the writer is the commitment.
 
-Neither reason justifies overstating the current state. When live
-entries start appearing on this page, the `Status` callout at the top
-will be replaced with a "last updated" timestamp and the "NOT live"
-section will be removed.
+Neither reason justifies overstating the current state. When automated
+asset-level entries start appearing, this page will replace the status
+callout with the last update time.

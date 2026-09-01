@@ -10,11 +10,15 @@ import {
   validateInsightsPayload,
 } from '../scripts/seed-insights.mjs';
 import {
+  INSIGHTS_BREAKER_MIN_CONSECUTIVE,
   INSIGHTS_COMPOSER_THREW,
   INSIGHTS_SYNTHESIS_FAILURE_CODES,
   classifyInsightsSynthesisFailure,
   composeInsightsSynthesis,
+  formatInsightsBreakerOpenWarning,
+  insightsSynthesisSignature,
   resolveInsightsSynthesis,
+  shouldSkipInsightsSynthesis,
 } from '../scripts/_insights-synthesis-diagnostics.mjs';
 import { BRIEF_REJECTIONS } from '../scripts/_insights-brief.mjs';
 import { __testing__ as healthTesting } from '../api/health.js';
@@ -410,14 +414,51 @@ test('the composer rejection reason reaches the failure code through the real se
     resolve('Prices rose sharply in Chile by 42 percent last quarter [1].').failureCode,
     INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_NUMERIC_FACT,
   );
+  // Repair policy (2026-08-28): one uncited sentence beside a cited one is
+  // dropped, not fatal — the seam reports success with the drop surfaced on the
+  // composed brief. The failure CODE path for uncited leads is pinned by the
+  // all-sentences-fail case below.
+  const repaired = resolve('Prices rose sharply in Chile last quarter [1]. Analysts expect more ahead.');
+  assert.equal(repaired.failureCode, null, 'a repairable lead is not a failure');
+  assert.ok(repaired.composed);
+  assert.ok(!repaired.composed.lead.includes('Analysts expect'));
+  assert.equal(repaired.composed.droppedLeadSentences, 1);
   assert.equal(
-    resolve('Prices rose sharply in Chile last quarter [1]. Analysts expect more ahead.').failureCode,
+    resolve('Analysts expect more ahead. Markets may move next week.').failureCode,
     INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED,
   );
   assert.equal(
     resolve('Growers reported a sharp rise in seasonal fruit costs across the region last quarter [1].').failureCode,
     INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_GROUNDING,
   );
+});
+
+test('the real seam scopes grounding to prompt-rendered member titles', () => {
+  const story = {
+    ...SEAM_STORY,
+    memberTitles: [
+      SEAM_STORY.primaryTitle,
+      'Growers blame drought for the Chile price surge',
+      'Retailers warn of pass-through to consumers',
+      'Bolivia mulls emergency fruit imports amid the squeeze',
+    ],
+  };
+  const hiddenMemberLead = 'Bolivia weighed emergency imports as Chile prices rose sharply [1].';
+  const resolve = (promptScopedMembers) => resolveInsightsSynthesis({
+    synthesisResult: { text: seamText(hiddenMemberLead), provider: 'openrouter', model: 'test' },
+    topStories: [story],
+    briefCluster: story,
+    validatorMode: 'enforce',
+    promptScopedMembers,
+  });
+
+  const scoped = resolve(true);
+  assert.equal(scoped.composed, null);
+  assert.equal(scoped.failureCode, INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN);
+
+  const legacy = resolve(false);
+  assert.equal(legacy.failureCode, null);
+  assert.ok(legacy.composed, 'legacy grounding still sees every cluster member title');
 });
 
 test('the seam classifies an unparseable response as PARSE, not as a gate', () => {
@@ -555,4 +596,200 @@ test('a rejected synthesized brief keeps a successful legacy fallback degraded',
     resolveInsightsFallbackStatus({ synthesisFailureCode: null, legacyStatus: 'ok' }),
     'ok',
   );
+});
+
+
+// ---------------------------------------------------------------- breaker ---
+// 2026-08-28: 25 consecutive identical gate rejections, one paid call every
+// cycle for four hours, against a story set that never changed. The breaker is
+// the backstop behind the resample-feedback and lead-repair changes.
+//
+// #7255 review hardened both halves: the signature hashes the RENDERED prompts
+// (titles alone missed outlet labels, publisher counts, and the date), and the
+// threshold reads a PER-SIGNATURE repeat counter (the producer-wide
+// consecutiveFailures let provider noise arm the breaker for a single gate
+// failure).
+
+const SYS = 'system prompt for 2026-08-28';
+const USER = 'Stories:\n1. Nepal floods kill hundreds (Reuters, 3 sources)\n\nCompile the world brief JSON.';
+
+test('insightsSynthesisSignature hashes the rendered prompts, so ANY prompt change re-arms', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
+  assert.match(sig, /^[0-9a-f]{12}$/);
+  assert.equal(insightsSynthesisSignature(SYS, USER), sig, 'same prompts, same signature');
+  // The three inputs the title-only signature missed (#7255 review):
+  assert.notEqual(insightsSynthesisSignature('system prompt for 2026-08-29', USER), sig, 'the date is in the system prompt — UTC midnight re-arms');
+  assert.notEqual(insightsSynthesisSignature(SYS, USER.replace('Reuters', 'AP News')), sig, 'an outlet change is a prompt change');
+  assert.notEqual(insightsSynthesisSignature(SYS, USER.replace('3 sources', '4 sources')), sig, 'a publisher-count change is a prompt change');
+  assert.equal(insightsSynthesisSignature('', ''), null);
+});
+
+test('the breaker opens on the per-signature counter, never the producer-wide one', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
+  const meta = (over = {}) => ({
+    consecutiveFailures: 10,
+    sameSignatureFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE,
+    lastSynthesisFailureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failedStoriesSignature: sig,
+    ...over,
+  });
+
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), synthesisSignature: sig }), true);
+
+  // Provider noise inflating the WIDE counter must not arm the breaker for a
+  // single matching gate failure — the exact defect the review found.
+  assert.equal(
+    shouldSkipInsightsSynthesis({
+      previousMeta: meta({ consecutiveFailures: 10, sameSignatureFailures: 1 }),
+      synthesisSignature: sig,
+    }),
+    false,
+    'one matching failure after unrelated noise must not open the breaker',
+  );
+
+  assert.equal(
+    shouldSkipInsightsSynthesis({
+      previousMeta: meta(),
+      synthesisSignature: insightsSynthesisSignature(SYS, `${USER} changed`),
+    }),
+    false,
+    'a changed prompt re-arms synthesis',
+  );
+
+  for (const code of [
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.MISSING_CLUSTER,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.PARSE,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.GATE,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.COMPOSER_ERROR,
+  ]) {
+    assert.equal(
+      shouldSkipInsightsSynthesis({
+        previousMeta: meta({ lastSynthesisFailureCode: code }),
+        synthesisSignature: sig,
+      }),
+      false,
+      `${code} must never open the breaker`,
+    );
+  }
+
+  for (const code of [
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_EMPTY,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_UNCITED,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_NUMERIC_FACT,
+    INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_GROUNDING,
+  ]) {
+    assert.equal(
+      shouldSkipInsightsSynthesis({
+        previousMeta: meta({ lastSynthesisFailureCode: code }),
+        synthesisSignature: sig,
+      }),
+      true,
+      `${code} can open the breaker after repeated identical gate failures`,
+    );
+  }
+
+  // Pre-rollout metas lack the per-signature counter; absent evidence must
+  // not skip spend.
+  assert.equal(
+    shouldSkipInsightsSynthesis({
+      previousMeta: meta({ sameSignatureFailures: undefined }),
+      synthesisSignature: sig,
+    }),
+    false,
+  );
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: null, synthesisSignature: sig }), false);
+  assert.equal(shouldSkipInsightsSynthesis({ previousMeta: meta(), synthesisSignature: null }), false);
+
+  // Inflated wide counter: operator-facing log must report the three matching
+  // repeats that armed the breaker, not consecutiveFailures after provider noise.
+  const warning = formatInsightsBreakerOpenWarning(meta({
+    consecutiveFailures: 10,
+    sameSignatureFailures: INSIGHTS_BREAKER_MIN_CONSECUTIVE,
+  }));
+  assert.match(warning, /INSIGHTS_SYNTHESIS_LEAD_PROPER_NOUN x3 /);
+  assert.equal(
+    warning.includes('x10'),
+    false,
+    'an open breaker must not report the noise-inflated wide counter',
+  );
+});
+
+test('the per-signature counter increments only on an EXACT repeat and resets on any change', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
+  const fail = (previousMeta, over = {}) => buildInsightsFreshnessMetaPatch({
+    previousMeta,
+    outcome: 'degraded',
+    failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failureDetail: 'strait of hormuz',
+    storiesSignature: sig,
+    ...over,
+  });
+
+  // Identical triple: 1 -> 2 -> 3.
+  let meta = fail({});
+  assert.equal(meta.sameSignatureFailures, 1);
+  meta = fail(meta);
+  assert.equal(meta.sameSignatureFailures, 2);
+  meta = fail(meta);
+  assert.equal(meta.sameSignatureFailures, 3);
+
+  // Provider noise in between: wide counter keeps climbing, per-signature
+  // counter RESETS — three noise failures then one gate failure reads 1.
+  let noisy = buildInsightsFreshnessMetaPatch({ previousMeta: {}, outcome: 'degraded', failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER });
+  noisy = buildInsightsFreshnessMetaPatch({ previousMeta: noisy, outcome: 'degraded', failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER });
+  noisy = buildInsightsFreshnessMetaPatch({ previousMeta: noisy, outcome: 'degraded', failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.PROVIDER });
+  assert.ok(noisy.consecutiveFailures >= 3, 'the wide counter sees the noise');
+  const afterNoise = fail(noisy);
+  assert.equal(afterNoise.sameSignatureFailures, 1, 'a first gate failure after noise starts at 1');
+
+  // A changed rejection DETAIL is a different (converging) failure: reset.
+  const changedDetail = fail(meta, { failureDetail: 'some other phrase' });
+  assert.equal(changedDetail.sameSignatureFailures, 1, 'a model producing a different wrong draft is converging — retry has value');
+
+  // A changed signature resets too.
+  const changedSig = fail(meta, { storiesSignature: insightsSynthesisSignature(SYS, `${USER}!`) });
+  assert.equal(changedSig.sameSignatureFailures, 1);
+
+  // A publish clears everything.
+  const published = buildInsightsFreshnessMetaPatch({ previousMeta: meta, outcome: 'published', storiesSignature: sig });
+  assert.equal(published.sameSignatureFailures, 0);
+  assert.equal(published.failedStoriesSignature, null);
+});
+
+test('a failed run persists the breaker pair; a publish clears it', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
+  const failed = buildInsightsFreshnessMetaPatch({
+    previousMeta: { consecutiveFailures: 2 },
+    outcome: 'degraded',
+    failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failureDetail: '  strait   of\nhormuz  ',
+    storiesSignature: sig,
+  });
+  assert.equal(failed.failedStoriesSignature, sig);
+  assert.equal(failed.lastSynthesisFailureDetail, 'strait of hormuz', 'detail is flattened and bounded');
+  assert.equal(failed.consecutiveFailures, 3);
+
+  const published = buildInsightsFreshnessMetaPatch({
+    previousMeta: failed,
+    outcome: 'published',
+    storiesSignature: sig,
+  });
+  assert.equal(published.failedStoriesSignature, null, 'a publish clears the pair');
+  assert.equal(published.lastSynthesisFailureDetail, null);
+  assert.equal(published.consecutiveFailures, 0);
+});
+
+test('the run-meta seam projects detail and signature into the patch args', () => {
+  const sig = insightsSynthesisSignature(SYS, USER);
+  const decorated = decorateInsightsRun({ generatedAt: '2026-08-28T10:00:00.000Z' }, {
+    outcome: 'degraded',
+    failureCode: INSIGHTS_SYNTHESIS_FAILURE_CODES.LEAD_PROPER_NOUN,
+    failureDetail: 'strait of hormuz',
+    storiesSignature: sig,
+  });
+  const args = insightsFreshnessPatchArgs(decorated, 'degraded', {});
+  assert.equal(args.failureDetail, 'strait of hormuz');
+  assert.equal(args.storiesSignature, sig);
 });

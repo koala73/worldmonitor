@@ -13,6 +13,7 @@ import modelPolicy from './lib/llm-model-policy.cjs';
 export const DEEPSEEK_V4_FLASH_MODEL_PREFIX = 'deepseek/deepseek-v4-flash';
 export const {
   GROQ_DEFAULT_MODEL,
+  GROQ_REASONING_EXTRA_BODY,
   OPENROUTER_FREE_BACKUP_MODEL,
   OPENROUTER_FREE_PRIMARY_MODEL,
   OPENROUTER_PROVIDER_ROUTING,

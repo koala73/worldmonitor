@@ -15,8 +15,12 @@ interface MapContainerHarness {
     map: {
       setView: (view: string, zoom?: number) => number;
       setCenter: (lat: number, lon: number, zoom?: number) => number;
+      getViewportAuthorityToken: () => number;
       whenRendererReady: () => Promise<void>;
       whenViewportSettled: (viewportActionToken?: number) => Promise<void>;
+      switchToGlobe: () => Promise<{ renderer: 'globe' | 'deck' | 'svg'; mode: 'globe' | 'flat'; fallback: boolean }>;
+      isGlobeMode: () => boolean;
+      isDeckGLActive: () => boolean;
       destroy: () => void;
     };
     internals: Record<string, unknown>;
@@ -78,12 +82,14 @@ before(async () => {
         export function createMapContainerHarness() {
           const map = Object.create(MapContainer.prototype);
           const internals = {
+            container: { removeEventListener() {} },
             rendererReady: false,
             rendererReadyWaiters: new Set(),
             rendererDemandRequested: false,
             releaseRendererDemand: null,
             rendererInitToken: 7,
             viewportActionToken: 0,
+            humanViewportInteractionToken: 0,
             destroyed: false,
             pendingViewportActions: [],
             pendingCenter: null,
@@ -128,6 +134,14 @@ before(async () => {
 });
 
 describe('map viewport runtime lifecycle', () => {
+  it('invalidates delayed agent authority when direct map interaction starts', () => {
+    const { map, internals } = harness.createMapContainerHarness();
+
+    assert.equal(map.getViewportAuthorityToken(), 0);
+    (internals.markHumanViewportInteraction as () => void).call(map);
+    assert.equal(map.getViewportAuthorityToken(), 1);
+  });
+
   it('replays pre-ready viewport work before waking readiness callers', async () => {
     const { map, internals } = harness.createMapContainerHarness();
     const calls: unknown[][] = [];
@@ -282,6 +296,65 @@ describe('map viewport runtime lifecycle', () => {
         && error.name === 'ViewportTransitionError'
         && (error as Error & { reason?: string }).reason === 'renderer_changed',
     );
+  });
+
+  it('denies set_map_mode 3d after handleGlobeInitFailure falls back to SVG', async () => {
+    const { map, internals } = harness.createMapContainerHarness();
+    internals.destroyFlatMap = () => {
+      internals.deckGLMap = null;
+      internals.svgMap = null;
+    };
+    internals.showRendererShell = () => {};
+    internals.init = async () => {
+      internals.rendererReady = false;
+    };
+    internals.initSvgMap = async (_log: string, token: number) => {
+      internals.svgMap = { destroy() {} };
+      (internals.markRendererReady as (token: number) => void).call(map, token);
+    };
+
+    const ctx = {
+      isDestroyed: false,
+      panels: {},
+      panelSettings: {},
+      mapLayers: {} as MapLayers,
+      map,
+    } as unknown as AppContext;
+
+    const pending = runDashboardActionBinding(
+      ctx,
+      { type: 'set_map_mode', mode: '3d' },
+      {
+        waitForUiReady: () => Promise.resolve(),
+        waitForMapReady: () => Promise.resolve(),
+        applierOptions: {
+          getPanelConfig: (panelId: string): PanelConfig => ({ name: panelId, enabled: true }),
+          isPanelAllowed: () => true,
+          hasPremiumAccess: () => false,
+          applyLayerChange: () => {},
+        },
+        syncUrlStateNow: () => {},
+      },
+    );
+
+    for (let attempt = 0; internals.useGlobe !== true && attempt < 20; attempt += 1) {
+      await new Promise<void>((resolve) => setImmediate(resolve));
+    }
+    assert.equal(internals.useGlobe, true, 'switchToGlobe must start before the failure path');
+    (internals.handleGlobeInitFailure as (token: number, error: unknown) => void).call(
+      map,
+      internals.globeInitToken as number,
+      new Error('globe failed'),
+    );
+
+    const result = await pending;
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'denied');
+    assert.equal(result.reason, 'globe_unavailable');
+    assert.deepEqual(result.requested, { mode: '3d' });
+    assert.deepEqual(result.effective, { mode: '2d', renderer: 'svg' });
+    assert.equal(internals.useGlobe, false);
+    assert.equal(map.isGlobeMode(), false);
   });
 
 });

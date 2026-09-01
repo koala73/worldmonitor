@@ -165,9 +165,7 @@
       "energyMix": "Cơ cấu nguồn điện",
       "coal": "than đá",
       "noMajorDisruptions": "Không có gián đoạn lớn nào được báo cáo",
-      "activeDisruptions_one": "{{count}} gián đoạn đang hoạt động",
       "activeDisruptions_other": "{{count}} gián đoạn đang hoạt động",
-      "activeSignals_one": "{{count}} tín hiệu đang hoạt động",
       "activeSignals_other": "{{count}} tín hiệu đang hoạt động",
       "aviationSource": "Giám sát hàng không",
       "hazardSource": "Tín hiệu tình báo quốc gia",
@@ -232,6 +230,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Bảng điểm khả năng phục hồi 5 yếu tố",
+      "help": "Điểm bằng chứng v1 cố định cho thực phẩm, năng lượng, nhân khẩu học, công nghệ và quốc phòng. Mở rộng một dòng để kiểm tra đầu vào, nguồn gốc dữ liệu và lý do thiếu dữ liệu.",
+      "loading": "Đang tải bảng điểm 5 yếu tố…",
+      "unavailable": "Bảng điểm 5 yếu tố không khả dụng.",
+      "proLocked": "Nâng cấp lên PRO để xem bảng điểm khả năng phục hồi 5 yếu tố",
+      "insufficient": "Dữ liệu không đủ",
+      "notAvailable": "Không khả dụng",
+      "noEvidence": "Không có bằng chứng nào cho trụ cột này.",
+      "score": "{{score}}/5",
+      "coverage": "Phủ {{coverage}}%",
+      "methodologyVersion": "Phương pháp v{{version}}",
+      "methodologyLink": "Xem phương pháp luận",
+      "pillars": {
+        "food": "Thực phẩm",
+        "energy": "Năng lượng",
+        "demographics": "Dân số",
+        "technology": "Công nghệ",
+        "defense": "Quốc phòng"
+      },
+      "reasons": {
+        "source-unavailable": "Nguồn không khả dụng",
+        "country-unavailable": "Quốc gia không khả dụng",
+        "invalid-value": "Giá trị nguồn không hợp lệ",
+        "stale": "Bằng chứng đã cũ",
+        "coverage-below-floor": "Phạm vi bao phủ dưới ngưỡng chấm điểm",
+        "required-group-missing": "Thiếu nhóm bằng chứng bắt buộc",
+        "missing-population": "Không có dữ liệu dân số",
+        "redistribution-blocked": "Không được phép phân phối lại nguồn",
+        "pillar-unavailable": "Cột trụ không khả dụng"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "Cân bằng sản xuất",
+        "food_stocksToUse": "Kho dự trữ sử dụng",
+        "food_waterSecurity": "An ninh nguồn nước",
+        "food_importDiversity": "Đa dạng hóa nhập khẩu",
+        "energy_productionBalance": "Cân bằng sản xuất",
+        "energy_lowCarbonShare": "Tỷ trọng năng lượng carbon thấp",
+        "energy_gridEfficiency": "Hiệu quả lưới điện",
+        "demographics_totalDependency": "Tỷ lệ phụ thuộc tổng",
+        "demographics_oldAgeDependency": "Tỷ lệ phụ thuộc người cao tuổi",
+        "demographics_workingAgeProjection": "Dự báo lực lượng lao động",
+        "demographics_tertiaryEnrollment": "Tỷ lệ nhập học bậc cao đẳng, đại học",
+        "demographics_researchersPerMillion": "Nhà nghiên cứu trên một triệu dân",
+        "demographics_stemGraduateShare": "Tỷ trọng cử nhân STEM",
+        "demographics_trainedIndustrialShare": "Tỷ trọng lực lượng lao động công nghiệp được đào tạo",
+        "demographics_manufacturingEmploymentShare": "Tỷ trọng việc làm trong ngành sản xuất",
+        "technology_internetUse": "Sử dụng Internet",
+        "technology_mobileSubscriptions": "Đăng ký di động",
+        "technology_fixedBroadband": "Cáp quang cố định",
+        "technology_rdSpend": "Chi tiêu nghiên cứu và phát triển",
+        "technology_researchersPerMillion": "Nhà nghiên cứu trên một triệu dân",
+        "technology_stemGraduateShare": "Tỷ lệ tốt nghiệp STEM",
+        "technology_electricityAccess": "Truy cập điện",
+        "defense_expenditureUsd": "Chi tiêu quân sự",
+        "defense_expenditurePctGdp": "Gánh nặng quân sự",
+        "defense_personnel": "Cán bộ lực lượng vũ trang",
+        "defense_industrialBalance": "Cân bằng công nghiệp quốc phòng",
+        "defense_supplierDiversity": "Đa dạng nhà cung cấp vũ khí"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Nâng cấp lên PRO để xem phụ thuộc nhà cung cấp vũ khí và năng lực quân sự"
     }
   },
   "header": {
@@ -530,6 +593,7 @@
       "recent": "Tìm kiếm Gần đây",
       "empty": "Tìm dữ liệu hoặc chạy lệnh",
       "noResults": "Không có kết quả",
+      "resultAnnouncement_other": "{{count}} kết quả cho {{query}}",
       "commands": "Lệnh",
       "results": "Kết quả",
       "seeAllCommands": "Xem tất cả lệnh",
@@ -915,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Nâng cấp lên PRO để xem thị phần quốc gia của mỏ và nhà máy lọc dầu với độ tập trung (HHI) theo giai đoạn"
     },
     "tradePolicy": {
       "tariffs": "Thuế quan",
@@ -1404,7 +1469,6 @@
       "clusters": "Cụm dữ liệu",
       "alertsLabel": "Cảnh báo",
       "alert": "CẢNH BÁO",
-      "sources_one": "{{count}} nguồn",
       "sources_other": "{{count}} nguồn",
       "briefTech": "TÓM TẮT CÔNG NGHỆ",
       "briefCommodity": "TÓM TẮT HÀNG HÓA",
@@ -1751,6 +1815,16 @@
       "loading": "Đang kết nối đến relay Telegram...",
       "empty": "Không có tin nhắn",
       "disabled": "Relay Telegram không hoạt động",
+      "watchlistPlaceholder": "Thêm kênh công khai bằng @username",
+      "resolving": "Đang tìm kênh...",
+      "invalidUsername": "Hãy dùng @username Telegram công khai",
+      "resolveFailed": "Không tìm thấy kênh",
+      "watchlistLimit": "Bạn có thể theo dõi tối đa {{count}} kênh tùy chỉnh",
+      "previewMembers": "{{count}} thành viên",
+      "addChannel": "Thêm kênh",
+      "added": "Đã thêm",
+      "remove": "Xóa",
+      "custom": "Tùy chỉnh",
       "filterAll": "Tất cả",
       "filterBreaking": "Nóng",
       "filterConflict": "Xung đột",
@@ -1962,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Chỉ số áp lực vật lý: {{value}} / 100",
+        "fiveDayTrend": "Xu hướng phí năm ngày giao dịch",
+        "regimes": {
+          "normal": "Bình thường",
+          "elevated": "Nâng cao",
+          "stressed": "Căng thẳng",
+          "extreme": "Cực đoan"
+        },
+        "states": {
+          "insufficientHistory": "Khởi động: {{count}} / {{required}} điểm giao dịch",
+          "staleInput": "Điểm chuẩn vật lý đã cũ",
+          "missingInput": "Tín hiệu phân kỳ không có sẵn"
+        },
+        "twentyDayTrend": "Xu hướng phí bảo hiểm trong 20 ngày giao dịch"
       }
     },
     "crypto": {
@@ -2036,17 +2126,12 @@
       },
       "time": {
         "justNow": "vừa xong",
-        "hoursAgo_one": "{{count}}h trước",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_one": "{{count}}d trước",
         "daysAgo_other": "{{count}}d trước"
       },
       "filters": {
-        "alert_one": "{{count}} Cảnh báo",
         "alert_other": "{{count}} Cảnh báo",
-        "warning_one": "{{count}} Cảnh cáo",
         "warning_other": "{{count}} Cảnh cáo",
-        "watch_one": "{{count}} Theo dõi",
         "watch_other": "{{count}} Theo dõi"
       },
       "errors": {
@@ -2118,6 +2203,26 @@
         "failedToLoad": "Không tải được"
       },
       "cissStale": "ECB chưa công bố giá trị mới — phép đo này có thể không còn hiện tại."
+    },
+    "supplyVulnerability": {
+      "title": "Mức dễ tổn thương hàng hóa",
+      "help": "Mức phơi nhiễm của quốc gia theo từng hàng hóa dựa trên độ tập trung nhà cung cấp, vận tải biển và vùng đệm chiến lược hiện có.",
+      "loading": "Đang tải mức dễ tổn thương hàng hóa…",
+      "unavailable": "Không có dữ liệu về mức dễ tổn thương hàng hóa",
+      "noCoverage": "Không đủ bằng chứng cho quốc gia này",
+      "unknown": "Không xác định",
+      "concentration": "Mức tập trung",
+      "transit": "Vận chuyển",
+      "buffer": "Dự trữ",
+      "sources": "Nguồn",
+      "methodology": "Phương pháp",
+      "hormuzTitle": "Mức phụ thuộc hàng hóa",
+      "dependentCountries": "Quốc gia phụ thuộc",
+      "dependentCommodities": "Hàng hóa phụ thuộc",
+      "stateOk": "Hiện tại",
+      "stateStale": "Đầu vào cũ",
+      "stateInsufficient": "Không đủ dữ liệu",
+      "proLocked": "Nâng cấp lên PRO để xem điểm số lỗ hổng hàng hóa"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Bộ theo dõi thương mại Hormuz</strong> Theo dõi tàu AIS trực tiếp qua eo biển Hormuz, điểm nghẽn dầu quan trọng nhất thế giới. Giám sát số lượng tàu chở dầu, sự kiện gián đoạn và thay đổi dòng chảy hàng tuần. Khoảng 20% nguồn cung dầu toàn cầu đi qua đây hàng ngày.",
@@ -2209,7 +2314,6 @@
       "rationale": "Lý do:",
       "driver": "Động lực:",
       "appliesToNext": "Áp dụng cho lần tạo lại AI tiếp theo",
-      "signals_one": "{{count}} tín hiệu",
       "signals_other": "{{count}} tín hiệu",
       "disclaimer": "Tín hiệu giao dịch do AI tạo ra cho mục đích thông tin. Không phải lời khuyên đầu tư. Luôn tự nghiên cứu của riêng bạn.",
       "unavailable": "Ý nghĩa thị trường AI được tạo sau mỗi lần chạy dự báo. Vui lòng kiểm tra lại sớm."
@@ -2440,7 +2544,6 @@
         "new": "mới",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}} chỉ định",
       "designations_other": "{{count}} chỉ định",
       "fallbacks": {
         "unattributed": "Không xác định",
@@ -2478,9 +2581,7 @@
         "updated": "Cập nhật {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h trước",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_one": "{{count}}d trước",
         "daysAgo_other": "{{count}}d trước"
       },
       "confidence": {
@@ -2510,7 +2611,6 @@
     "correlation": {
       "loading": "Đang chờ dữ liệu...",
       "empty": "Không phát hiện sự hội tụ hoạt động",
-      "signals_one": "{{count}} tín hiệu",
       "signals_other": "{{count}} tín hiệu",
       "analyzing": "Đang phân tích...",
       "viewOnMap": "Xem trên bản đồ"
@@ -2537,16 +2637,11 @@
         "industrial": "công nghiệp",
         "strategic": "chiến lược"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} nguồn",
       "sources_other": "{{count}} nguồn",
       "age": {
-        "minutesAgo_one": "{{count}}m trước",
         "minutesAgo_other": "{{count}}m trước",
-        "hoursAgo_one": "{{count}}h trước",
         "hoursAgo_other": "{{count}}h trước",
-        "daysAgo_one": "{{count}}d trước",
         "daysAgo_other": "{{count}}d trước"
       }
     },
@@ -2663,6 +2758,18 @@
       "rubBase": "Ngân hàng Trung ương Nga — rúp cho 1 đơn vị",
       "rubPerUnit": "Rúp trên mỗi đơn vị",
       "sourceCbr": "Nguồn: Ngân hàng Trung ương Nga"
+    },
+    "passkeyOffer": {
+      "title": "Lưu khóa truy cập?",
+      "body": "Lần tới hãy đăng nhập bằng vân tay, khuôn mặt hoặc mã PIN của thiết bị — không cần nhớ mật khẩu.",
+      "accept": "Lưu khóa truy cập",
+      "dismiss": "Để sau",
+      "close": "Đóng",
+      "announce": "Lưu khóa truy cập để đăng nhập nhanh hơn lần tới.",
+      "busy": "Đang chờ thiết bị của bạn…",
+      "succeeded": "Khóa truy cập đã lưu. Bạn có thể sử dụng nó lần tới khi đăng nhập.",
+      "retryable": "Quá trình chưa hoàn tất. Bạn có thể thử lại.",
+      "failed": "Chúng tôi không thể lưu khóa truy cập trên thiết bị này."
     }
   },
   "popups": {
@@ -3004,7 +3111,11 @@
       "heading": "HƯỚNG BAY",
       "hexCode": "MÃ HEX",
       "squawk": "SQUAWK",
-      "attribution": "Nguồn: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Nguồn: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "TỐC ĐỘ LÊN",
+      "manufacturer": "NHÀ SẢN XUẤT",
+      "owner": "CHỦ SỬ DỤNG",
+      "builtYear": "NĂM SẢN XUẤT"
     },
     "militaryVessel": {
       "aisDark": "MẤT TÍN HIỆU AIS",
@@ -3049,7 +3160,8 @@
       "moreVessels": "+{{count}} tàu khác",
       "vesselsCount": "{{count}} TÀU",
       "vessels": "TÀU",
-      "trackedVessels": "TÀU ĐƯỢC THEO DÕI"
+      "trackedVessels": "TÀU ĐƯỢC THEO DÕI",
+      "showLess": "Hiển thị ít hơn"
     },
     "naturalEvent": {
       "closed": "ĐÃ KẾT THÚC",
@@ -3338,7 +3450,9 @@
     "fontFamily": "Họ phông chữ",
     "fontFamilyDesc": "Monospace cho giao diện kỹ thuật, phông chữ hệ thống mặc định để dễ đọc hơn.",
     "fontMono": "Monospace",
-    "fontSystem": "Phông chữ hệ thống"
+    "fontSystem": "Phông chữ hệ thống",
+    "panelFontScale": "Kích thước chữ",
+    "followGlobalFontScale": "Sử dụng cài đặt toàn cục"
   },
   "contextMenu": {
     "openCountryBrief": "Mở tổng quan quốc gia",
@@ -3437,7 +3551,8 @@
   "auth": {
     "signIn": "Đăng nhập",
     "createAccount": "Tạo tài khoản",
-    "settings": "Cài đặt"
+    "settings": "Cài đặt",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Kết nối MCP",

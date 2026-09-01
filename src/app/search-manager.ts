@@ -1,6 +1,9 @@
 import type { AppContext, AppModule } from '@/app/app-context';
-import type { SearchResult } from '@/components/search-types';
-import type { SearchMatch } from '@/components/search-types';
+import {
+  searchMatchIdentity,
+  type SearchMatch,
+  type SearchResult,
+} from '@/components/search-types';
 import type { NewsItem, MapLayers, MilitaryBase, MilitaryFlight } from '@/types';
 import type { Command } from '@/config/commands';
 import { SearchModal } from '@/components/SearchModal';
@@ -86,7 +89,7 @@ export interface SearchManagerCallbacks {
   openCountryBriefByCode: (
     code: string,
     country: string,
-    options?: { trackDetailedAnalytics?: boolean },
+    options?: { trackDetailedAnalytics?: boolean; signal?: AbortSignal },
   ) => boolean | Promise<boolean>;
   /** Enables a currently-disabled panel (CMD+K "Add"). Returns false if blocked (unknown / free-tier cap). */
   enablePanel: (panelId: string, options?: { trackDetailedAnalytics?: boolean }) => boolean;
@@ -229,23 +232,29 @@ export class SearchManager implements AppModule {
       refreshIndex: () => this.updateSearchIndex({ updateVisibleMetrics: false }),
       getModal: () => this.ctx.searchModal,
       hasPremiumAccess: () => hasPremiumAccess(getAuthState()),
-      fetchLiveFlight: async (callsign) => {
+      fetchLiveFlight: async (callsign, signal) => {
         const generation = this.liveFlightLookupGeneration;
         const completed = await SearchManager.waitWithTimeout(
-          this.fetchAndPublishLiveFlight(callsign, generation),
+          this.fetchAndPublishLiveFlight(callsign, generation, signal),
           SearchManager.SEARCH_INDEX_READY_TIMEOUT_MS,
           'live-flight-search',
         );
+        signal?.throwIfAborted();
         if (!completed) this.liveFlightLookupGeneration += 1;
       },
-      cancelPendingSelection: () => this.searchSelection.destroy(),
+      cancelPendingSelection: () => this.searchSelection.cancelPendingProgrammaticSelection(),
       getAuthContext: () => {
         const auth = getAuthState();
         return `${auth.user ? 'signed-in' : 'anonymous'}:${auth.isPending ? 'pending' : 'settled'}:${hasPremiumAccess(auth) ? 'premium' : 'free'}`;
       },
       getVariant: () => SITE_VARIANT,
       isMatchExecutable: (match) => this.isSearchMatchExecutable(match),
-      selectMatch: (match) => this.searchSelection.selectProgrammaticMatch(match),
+      isPanelCurrentlyEnabled: (panelId) => this.ctx.panelSettings[panelId]?.enabled === true,
+      selectMatch: (match, signal) => this.searchSelection.selectProgrammaticMatch(
+        match,
+        () => this.resolveProgrammaticMatchForCommit(match),
+        signal,
+      ),
       subscribeAuth: subscribeAuthState,
       subscribeEntitlement: onEntitlementChange,
       subscribeRuntimeConfig,
@@ -276,6 +285,11 @@ export class SearchManager implements AppModule {
 
   public whenSearchIndexReady(): Promise<void> {
     return this.searchIndexReady;
+  }
+
+  /** Supersedes only an agent-driven result presentation; palette work remains intact. */
+  public cancelPendingProgrammaticSelection(): void {
+    this.webMcpSearch.cancelPendingOpen();
   }
 
   destroy(): void {
@@ -473,6 +487,7 @@ export class SearchManager implements AppModule {
     });
     this.ctx.searchModal.setCommandVisibleFn((command) => this.isModalCommandVisible(command));
     this.ctx.searchModal.setResultVisibleFn((result) => this.isSearchResultVisible(result));
+    this.ctx.searchModal.setOnHumanInteraction(() => this.cancelPendingProgrammaticSelection());
     this.ctx.searchModal.setOnSelect((result) => this.searchSelection.handleSearchResult(result));
     this.ctx.searchModal.setOnCommand((cmd) => this.searchSelection.handleCommand(cmd));
     // Always wire flight search; check pro status reactively inside the callback
@@ -517,8 +532,10 @@ export class SearchManager implements AppModule {
   private async fetchAndPublishLiveFlight(
     callsign: string,
     generation = this.liveFlightLookupGeneration,
+    signal?: AbortSignal,
   ): Promise<void> {
-    const positions = await fetchAircraftPositions({ callsign });
+    const positions = await fetchAircraftPositions({ callsign }, signal);
+    signal?.throwIfAborted();
     if (this.destroyed || generation !== this.liveFlightLookupGeneration) return;
     // Deduplicate by callsign: keep the most recently observed entry per callsign.
     const seen = new Map<string, PositionSample>();
@@ -605,15 +622,17 @@ export class SearchManager implements AppModule {
     query: string,
     scope: DashboardSearchScope,
     limit: number,
+    signal?: AbortSignal,
   ): Promise<DashboardSearchResponse> {
-    return this.webMcpSearch.search(query, scope, limit);
+    return this.webMcpSearch.search(query, scope, limit, signal);
   }
 
   public async openSearchResult(
     resultKey: string,
     waitForMapReady?: () => Promise<void>,
+    signal?: AbortSignal,
   ): Promise<DashboardSearchOpenResult> {
-    return this.webMcpSearch.open(resultKey, waitForMapReady);
+    return this.webMcpSearch.open(resultKey, waitForMapReady, signal);
   }
 
   private observeSecurityContext(): void {
@@ -623,6 +642,15 @@ export class SearchManager implements AppModule {
   private isSearchMatchExecutable(match: SearchMatch): boolean {
     if (match.kind === 'command') return this.isCommandExecutable(match.command);
     return this.isSearchResultExecutable(match.result);
+  }
+
+  private resolveProgrammaticMatchForCommit(match: SearchMatch): SearchMatch | undefined {
+    const liveMatch = this.ctx.searchModal?.resolveMatchByIdentity(searchMatchIdentity(match));
+    if (!liveMatch) return undefined;
+    if (liveMatch.kind === 'command') {
+      return this.isCommandExecutable(liveMatch.command, true) ? liveMatch : undefined;
+    }
+    return this.isSearchResultExecutable(liveMatch.result) ? liveMatch : undefined;
   }
 
   /** Human CMD+K keeps its complete command deck; agent issuance is narrower. */
@@ -649,7 +677,10 @@ export class SearchManager implements AppModule {
     return ['nav', 'country', 'time', 'view'].includes(category);
   }
 
-  private isCommandExecutable(command: Command): boolean {
+  private isCommandExecutable(
+    command: Command,
+    allowPendingPanelTarget = false,
+  ): boolean {
     const [category, action = ''] = command.id.split(':', 2);
     switch (category) {
       case 'panel': {
@@ -662,7 +693,9 @@ export class SearchManager implements AppModule {
           : undefined;
         const premium = hasPremiumAccess(getAuthState());
         if (!effective || !isPanelEntitled(panelId, effective, premium)) return false;
-        if (config.enabled) return this.hasLivePanelTarget(panelId);
+        if (config.enabled) {
+          return allowPendingPanelTarget || this.hasLivePanelTarget(panelId);
+        }
         if (premium) return true;
         return !isFreePanelCapCounted(panelId)
           || countFreePanelCapUsage(this.ctx.panelSettings) < FREE_MAX_PANELS;

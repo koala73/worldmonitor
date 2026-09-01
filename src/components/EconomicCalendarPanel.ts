@@ -1,5 +1,6 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { addLocalDays, localYmd } from '@/utils/local-date';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
@@ -107,8 +108,10 @@ export class EconomicCalendarPanel extends Panel {
     try {
       const client = await getEconomicClient();
       const today = new Date();
-      const fromDate = today.toISOString().slice(0, 10);
-      const toDate = new Date(today.getTime() + 30 * 86400_000).toISOString().slice(0, 10);
+      // Local-time day keys: toISOString() is UTC-based and shifted the
+      // window a day for users far from UTC, dropping their local "today".
+      const fromDate = localYmd(today);
+      const toDate = localYmd(addLocalDays(today, 30));
       const resp = await client.getEconomicCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.events || resp.events.length === 0) {

@@ -27,6 +27,10 @@ const apiDir = resolve(root, 'docs/api');
 
 const HTTP_METHODS = new Set(['get', 'post', 'put', 'delete', 'patch', 'options', 'head']);
 const GET_METHOD = new Set(['get']);
+// Imported rather than restated: a third hand-maintained copy of this set is
+// how an attribution-bound operation ends up documented as projection-safe
+// while the gateway refuses the projection.
+import { PROJECTION_DISABLED_OPERATION_IDS } from '../scripts/openapi-inject-jmespath.mjs';
 const serviceJsonSpecs = readdirSync(apiDir)
   .filter((f) => /Service\.openapi\.json$/.test(f))
   .sort();
@@ -85,6 +89,16 @@ function assertJmespathContract(spec, label) {
       const matches = findJmespathParam(op);
       if (method === 'get') {
         getOps++;
+        if (PROJECTION_DISABLED_OPERATION_IDS.has(op.operationId)) {
+          assert.equal(matches.length, 0, `${label}: GET ${path} must not advertise jmespath`);
+          const badRequestSchema = op.responses?.['400']?.content?.['application/json']?.schema;
+          assert.equal(
+            schemaIncludesRef(badRequestSchema, '#/components/schemas/JmespathProjectionError'),
+            false,
+            `${label}: GET ${path} must not advertise a JMESPath projection error`,
+          );
+          continue;
+        }
         assert.equal(matches.length, 1, `${label}: GET ${path} must carry exactly one jmespath param`);
         const param = matches[0];
         assert.equal(param.in, 'query', `${label}: GET ${path} jmespath must be a query param`);
@@ -139,17 +153,17 @@ describe('OpenAPI jmespath projection parameter contract', () => {
     );
   });
 
-  it('per-service JSON specs advertise jmespath on every discovered GET', () => {
+  it('per-service JSON specs advertise jmespath on every eligible discovered GET', () => {
     for (const file of serviceJsonSpecs) assertJmespathContract(jsonSpecsByFile.get(file), file);
     assert.ok(jsonServiceGetIds.length > 0, 'GET-operation discovery must not be empty');
   });
 
-  it('per-service YAML specs advertise jmespath on every discovered GET', () => {
+  it('per-service YAML specs advertise jmespath on every eligible discovered GET', () => {
     for (const file of serviceYamlSpecs) assertJmespathContract(yamlSpecsByFile.get(file), file);
     assertExactOperationParity(yamlServiceGetIds, jsonServiceGetIds, 'YAML and JSON service specs must expose the same service/method/path set');
   });
 
-  it('the unified bundle advertises jmespath on every discovered GET', () => {
+  it('the unified bundle advertises jmespath on every eligible discovered GET', () => {
     const bundle = loadUnifiedOpenApiSpec();
     assertJmespathContract(bundle, 'worldmonitor.openapi.yaml');
     const bundleGetIds = openApiOperationIds(bundle, { methods: GET_METHOD });

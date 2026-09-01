@@ -62,7 +62,7 @@ for (const tool of TOOL_REGISTRY) {
 // Always recursively deep-clones property schemas AND the injected
 // SUMMARY_SCHEMA / JMESPATH_SCHEMA consts via `structuredClone`. Without
 // this, mutating any returned property (including nested `enum` / `items.enum`
-// arrays, e.g. `get_market_data.asset_classes.items.enum`) would corrupt
+// arrays, e.g. `get_market_data.asset_class.items.enum`) would corrupt
 // the registry or the module-level schema consts. Codex Round 2 explicitly
 // flagged shallow `{ ...prop }` as insufficient for these shapes.
 //
@@ -96,7 +96,9 @@ export function buildPublicTool(
   if (isCacheTool) {
     clonedProperties.summary = structuredClone(SUMMARY_SCHEMA);
   }
-  clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  if (tool._jmespathDisabled !== true) {
+    clonedProperties.jmespath = structuredClone(JMESPATH_SCHEMA);
+  }
 
   const description = opts.compressDescriptions
     ? compressDescription(tool.description, TOOL_DESCRIPTION_MAX_BYTES)
@@ -109,6 +111,7 @@ export function buildPublicTool(
       type: tool.inputSchema.type,
       properties: clonedProperties,
       required: [...tool.inputSchema.required],
+      ...(tool.inputSchema.oneOf ? { oneOf: structuredClone(tool.inputSchema.oneOf) } : {}),
     },
     // Deep-clone for the same reason as inputSchema.properties — mutating the
     // returned object must not corrupt the module-level outputSchema literal.

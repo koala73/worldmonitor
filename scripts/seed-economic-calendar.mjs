@@ -214,10 +214,15 @@ async function fetchEurostatRelease(datasetId, today, toDate) {
 }
 
 async function fetchFredReleaseDates(releaseId, apiKey, today, toDate) {
+  // FRED returns release dates oldest-first under sort_order=asc, so
+  // asc + limit=1000 captures only the OLDEST 1000 dates (decades of
+  // history) and the upcoming-30d filter below sees nothing for
+  // long-history releases. desc puts scheduled future releases (included
+  // via include_release_dates_with_no_data=true) at the front of the page.
   const url =
     `https://api.stlouisfed.org/fred/release/dates` +
     `?release_id=${releaseId}` +
-    `&sort_order=asc` +
+    `&sort_order=desc` +
     `&limit=1000` +
     `&include_release_dates_with_no_data=true` +
     `&api_key=${apiKey}` +
@@ -231,8 +236,14 @@ async function fetchFredReleaseDates(releaseId, apiKey, today, toDate) {
 
 async function fetchEconomicCalendar() {
   const apiKey = process.env.FRED_API_KEY;
-  const today = new Date().toISOString().slice(0, 10);
-  const toDate = new Date(Date.now() + 30 * 86400_000).toISOString().slice(0, 10);
+  const now = new Date();
+  const today = now.toISOString().slice(0, 10);
+  const from = new Date(now);
+  from.setUTCDate(from.getUTCDate() - 1);
+  const to = new Date(now);
+  to.setUTCDate(to.getUTCDate() + 31);
+  const fromDate = from.toISOString().slice(0, 10);
+  const toDate = to.toISOString().slice(0, 10);
 
   // Fetch FOMC and ECB dates dynamically; fall back to hardcoded if unavailable
   console.log('  Fetching FOMC and ECB Governing Council dates...');
@@ -242,11 +253,11 @@ async function fetchEconomicCalendar() {
   ]);
 
   const fomcEvents = fomcAllDates
-    .filter((d) => d >= today && d <= toDate)
+    .filter((d) => d >= fromDate && d <= toDate)
     .map((date) => ({ event: 'FOMC Rate Decision', country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '' }));
 
   const ecbEvents = ecbAllDates
-    .filter((d) => d >= today && d <= toDate)
+    .filter((d) => d >= fromDate && d <= toDate)
     .map((date) => ({ event: 'ECB Rate Decision', country: 'EU', date, impact: 'high', actual: '', estimate: '', previous: '', unit: '' }));
 
   if (fomcEvents.length === 0) {
@@ -259,11 +270,11 @@ async function fetchEconomicCalendar() {
   const events = [...fomcEvents, ...ecbEvents];
 
   // Fetch Eurostat EU macro release dates (no API key required)
-  console.log(`  Fetching Eurostat EU release dates ${today} → ${toDate}`);
+  console.log(`  Fetching Eurostat EU release dates ${fromDate} → ${toDate}`);
   await Promise.all(
     EUROSTAT_DATASETS.map(async ({ id, event, country, impact, unit }) => {
       try {
-        const dates = await fetchEurostatRelease(id, today, toDate);
+        const dates = await fetchEurostatRelease(id, fromDate, toDate);
         console.log(`  ${event} (eurostat=${id}): ${dates.length} upcoming date(s)`);
         for (const date of dates) {
           events.push({ event, country, date, impact, actual: '', estimate: '', previous: '', unit });
@@ -277,15 +288,15 @@ async function fetchEconomicCalendar() {
   if (!apiKey) {
     console.warn('  FRED_API_KEY missing — returning FOMC + ECB + Eurostat dates only');
     events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    return { events, fromDate: today, toDate, total: events.length };
+    return { events, fromDate, toDate, total: events.length, asOf: now.toISOString() };
   }
 
-  console.log(`  Fetching FRED economic release calendar ${today} → ${toDate}`);
+  console.log(`  Fetching FRED economic release calendar ${fromDate} → ${toDate}`);
 
   await Promise.all(
     FRED_RELEASES.map(async ({ id, event, unit }) => {
       try {
-        const dates = await fetchFredReleaseDates(id, apiKey, today, toDate);
+        const dates = await fetchFredReleaseDates(id, apiKey, fromDate, toDate);
         console.log(`  ${event} (release_id=${id}): ${dates.length} upcoming date(s)`);
         for (const date of dates) {
           events.push({ event, country: 'US', date, impact: 'high', actual: '', estimate: '', previous: '', unit });
@@ -331,7 +342,7 @@ async function fetchEconomicCalendar() {
 
   console.log(`  Total events: ${events.length}`);
 
-  return { events, recentPrints, fromDate: today, toDate, total: events.length };
+  return { events, recentPrints, fromDate, toDate, total: events.length, asOf: now.toISOString() };
 }
 
 function validate(data) {

@@ -31,6 +31,9 @@ import type {
   McpToolExecutionContext,
 } from './types';
 import { utf8ByteLength } from './utils';
+// Currently the only stored-contract violation a post-filter can raise; add to this seam
+// rather than widening the catch below if another dataset grows one.
+import { isPhysicalDivergenceContractError as isMcpStoredContractError } from '../../server/_shared/physical-divergence-snapshot';
 
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
@@ -39,6 +42,15 @@ import { utf8ByteLength } from './utils';
 // throw/fall-back path can be exercised directly — it can't be triggered
 // through the public handler because every registry `_postFilter` is
 // defensively written and won't throw on JSON-RPC input.
+// Tools whose payloads carry attribution-bound provider evidence. A JMESPath
+// projection could detach the values from the source/licence/retrieval fields
+// that make their redistribution permissible, so projection is refused outright.
+const ATTRIBUTION_BOUND_TOOLS: ReadonlySet<string> = new Set([
+  'get_resilience_indicators',
+  'get_supply_vulnerabilities',
+  'get_chokepoint_dependencies',
+]);
+
 export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
@@ -157,6 +169,11 @@ export async function executeTool(
     try {
       result = tool._postFilter(structuredClone(data), params);
     } catch (err) {
+      // A stored-contract violation must NOT fall through to `data`: that path serves the
+      // raw, unvalidated blob the filter just refused, which is the opposite of failing
+      // closed (#6448 — an unknown state "must surface as an error, never silently map to
+      // normal"). Let it out so the tool call errors instead.
+      if (isMcpStoredContractError(err)) throw err;
       // Same minified-frame over-grouping guard as the tool-execution catch
       // below — key on step + tool + error type so a post-filter bug in one
       // tool doesn't merge into the shared api/mcp catch-all (WORLDMONITOR-T8).
@@ -261,7 +278,28 @@ export async function dispatchToolsCall(
   }
   const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
   if (!tool) {
-    return rpcError(id, -32602, `Unknown tool: ${p.name}`, corsHeaders);
+    // Cap the echoed tool name — same reflection-amplification class as the
+    // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
+    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
+  }
+
+  // Raw resilience values are redistribution-safe only when they remain
+  // attached to their source, licence, retrieval time, and provenance fields.
+  // Reject projection before quota reservation and execution so a caller
+  // cannot use the universal JMESPath facility to separate those fields.
+  // The supply-vulnerability tools carry BGS mineral evidence under the same
+  // "attribution required; redistribution restricted" licence.
+  if (
+    ATTRIBUTION_BOUND_TOOLS.has(tool.name)
+    && typeof p.arguments?.jmespath === 'string'
+    && p.arguments.jmespath.length > 0
+  ) {
+    return rpcError(
+      id,
+      -32602,
+      'JMESPath projection is not available for this attribution-bound response',
+      corsHeaders,
+    );
   }
 
   // U7 fail-closed guard (defence in depth). A `free` principal is minted in

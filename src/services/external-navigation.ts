@@ -123,7 +123,19 @@ async function invokeOpenUrlBounded(url: string): Promise<void> {
  * (`strict-origin-when-cross-origin`) for cross-origin targets.
  */
 function openWindowWithHandle(url: string): Window | null {
-  const win = window.open(url, '_blank');
+  // `window.open` does not always merely RETURN null when refused: Chrome
+  // Mobile iOS / WebKit can throw SecurityError (DOMException 18) instead —
+  // notably once the user-gesture window is spent, which is exactly the state
+  // this module reaches after awaiting a portal-session round-trip. A throw
+  // here escapes every caller, including the fresh-open fallback the reserved
+  // tab drops into, so normalize refusal to the null this function already
+  // documents as its "did it open?" answer.
+  let win: Window | null;
+  try {
+    win = window.open(url, '_blank');
+  } catch {
+    return null;
+  }
   if (win) {
     try {
       win.opener = null;
@@ -133,6 +145,32 @@ function openWindowWithHandle(url: string): Window | null {
     }
   }
   return win;
+}
+
+/**
+ * `Window.closed` can itself throw SecurityError on Chrome Mobile iOS /
+ * WKWebView after `window.open('', '_blank')`. Treat that as "unusable".
+ */
+function isWindowStillOpen(win: Window): boolean {
+  try {
+    return !win.closed;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Close a reserved blank tab without letting SecurityError escape. Used when
+ * the handle cannot be navigated (scheme reject, desktop handoff, or a
+ * thrown `location.href` assignment — WORLDMONITOR-11C).
+ */
+function closeWindowQuietly(win: Window | null | undefined): void {
+  if (!win) return;
+  try {
+    win.close();
+  } catch {
+    // Blank-tab close can throw the same SecurityError as navigating it.
+  }
 }
 
 /**
@@ -178,7 +216,7 @@ export async function openExternalUrl(
   const targetUrl = typeof url === 'string' ? url : url.toString();
   if (!isOpenableExternalUrl(targetUrl)) {
     reportOpenFailure(targetUrl, 'rejected-scheme');
-    if (preopened && !preopened.closed) preopened.close();
+    closeWindowQuietly(preopened);
     return 'failed';
   }
 
@@ -186,7 +224,7 @@ export async function openExternalUrl(
     // A pre-reserved tab is a web-only workaround. Close any handle a caller
     // reserved before it knew the runtime, so the OS browser doesn't come
     // forward over an orphaned blank WebView window.
-    if (preopened && !preopened.closed) preopened.close();
+    closeWindowQuietly(preopened);
     try {
       await invokeOpenUrlBounded(targetUrl);
       return 'native';
@@ -209,9 +247,23 @@ export async function openExternalUrl(
     }
   }
 
-  if (preopened && !preopened.closed) {
-    preopened.location.href = targetUrl;
-    return 'popup';
+  if (preopened) {
+    try {
+      if (isWindowStillOpen(preopened)) {
+        preopened.location.href = targetUrl;
+        return 'popup';
+      }
+    } catch {
+      // Chrome Mobile iOS / WKWebView: assigning href on a blank tab reserved
+      // via window.open('') throws SecurityError (DOMException 18). Fall
+      // through to a fresh open / same-tab assign so a normal https portal
+      // URL never rejects (WORLDMONITOR-11C).
+    }
+    // Close whenever we did not navigate the reserved handle — including
+    // when `.closed` itself threw (isWindowStillOpen returns false and the
+    // try above does not catch). An orphaned blank tab plus same-tab
+    // fallback is the WORLDMONITOR-11C user-visible failure mode.
+    closeWindowQuietly(preopened);
   }
   const fresh = openWindowWithHandle(targetUrl);
   if (fresh) return 'popup';
@@ -222,6 +274,11 @@ export async function openExternalUrl(
     reportOpenFailure(targetUrl, 'popup-blocked');
     return 'failed';
   }
-  window.location.assign(targetUrl);
-  return 'same-tab';
+  try {
+    window.location.assign(targetUrl);
+    return 'same-tab';
+  } catch {
+    reportOpenFailure(targetUrl, 'same-tab-assign-failed');
+    return 'failed';
+  }
 }

@@ -4,6 +4,7 @@ import type {
   UnifiedSettingsController,
   UnifiedSettingsTabId,
 } from '@/app/app-context';
+import { applyVisibleMapDimension } from '@/app/map-dimension-control';
 import type { UnifiedSettingsConfig } from '@/components/UnifiedSettings';
 import type { AirlineIntelPanel } from '@/components/AirlineIntelPanel';
 import type { CustomWidgetPanel } from '@/components/CustomWidgetPanel';
@@ -18,8 +19,11 @@ import {
   FREE_MAX_SOURCES,
   countFreePanelCapUsage,
   isFreePanelCapCounted,
+  isPanelEntitled,
   userSetPanelEnabled,
 } from '@/config/panels';
+import { applySetPanelEnabled } from '@/app/panel-enablement';
+import type { SetPanelEnabledResult } from '@/config/panel-enablement';
 import type { McpDataPanel } from '@/components/McpDataPanel';
 import { deleteMcpPanel, getMcpPanel, saveMcpPanel } from '@/services/mcp-store';
 import type { PanelConfig, MapLayers, MilitaryFlight } from '@/types';
@@ -55,7 +59,7 @@ import { resolveNewsCategories, enabledNewsCategoryKeys } from '@/config/feed-re
 import { VARIANT_META } from '@/config/variant-meta';
 import { isDesktopRuntime } from '@/services/runtime';
 import {
-  MISSION_PRESETS,
+  getMissionPresetsForVariant,
   applyMissionPresetToState,
   clearMissionPreset,
   dismissMissionPresetPrompt,
@@ -75,6 +79,9 @@ import {
 } from '@/services';
 import {
   track,
+  trackMissionPickerShown,
+  type MissionPickerTrigger,
+  trackMissionSelected,
   trackPanelView,
   trackVariantSwitch,
   trackMapViewChange,
@@ -107,12 +114,28 @@ import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import {
   isAgentAnalyticsSuppressed,
   isAgentPanelViewSuppressed,
+  suppressNextAgentPanelView,
 } from '@/services/agent-analytics-privacy';
 import { escapeHtml } from '@/utils/sanitize';
 import { buildEmbedIframeSnippet, buildEmbedMapUrl, type EmbedVariant } from '@/embed/embed-url';
 import { createSettingsButton } from '@/components/settings-button';
 import { overlayHistory, type OverlayId } from '@/utils/overlay-history';
 import { MobilePrimaryNav } from '@/app/mobile-primary-nav';
+import {
+  SPLIT_LAYOUT_MIN_WIDTH,
+  LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH,
+  MAP_COL_DEFAULT_PERCENT,
+  clampMapColWidthPercent,
+  getVisualMapSide,
+  getMapColWidthBounds,
+  mapRightClassForVisualSide,
+  type MapVisualSide,
+} from '@/app/split-layout';
+import {
+  addResponsiveZoneListener,
+  removeResponsiveZoneListener,
+  type ResponsiveZoneListener,
+} from '@/app/responsive-zone-listener';
 import { stageVariantSelection } from '@/services/variant-panel-ownership';
 import { transferSourceGateOwnershipToUser as releaseSourceGateOwnership } from '@/services/source-cap';
 
@@ -159,26 +182,32 @@ class LazyUnifiedSettings implements UnifiedSettingsController {
     return this.button;
   }
 
-  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending = false): void {
+  open(
+    tab?: UnifiedSettingsTabId,
+    replaceOverlayId?: OverlayId,
+    historyPending = false,
+  ): Promise<boolean> {
     const epoch = ++this.openEpoch;
     const pendingId: OverlayId = 'settings-pending';
     const pendingGate = historyPending
       ? overlayHistory.beginPending(pendingId, replaceOverlayId, () => { this.openEpoch += 1; })
       : null;
-    void this.load().then((settings) => {
-      if (this.destroyed || this.openEpoch !== epoch) return;
-      if (pendingGate && !pendingGate.isCurrent()) return;
+    return this.load().then((settings) => {
+      if (this.destroyed || this.openEpoch !== epoch) return false;
+      if (pendingGate && !pendingGate.isCurrent()) return false;
       settings.open(tab, pendingGate ? pendingId : replaceOverlayId);
+      return true;
     }).catch((error) => {
       // A rejection because the controller was torn down mid-load is a
       // deliberate unmount, not a failure the user should be toasted about.
       // Back can cancel the pending history transition before the lazy chunk
       // rejects; that cancellation is also an expected teardown path.
       const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
-      if (this.destroyed || actionWasCancelled) return;
+      if (this.destroyed || actionWasCancelled) return false;
       console.warn('[settings] Failed to load settings window:', error);
       pendingGate?.cancel();
       showToast(t('common.error'));
+      return false;
     });
   }
 
@@ -273,7 +302,13 @@ export class EventHandlerManager implements AppModule {
   private boundMapEndResizeHandler: (() => void) | null = null;
   private boundMapResizeVisChangeHandler: (() => void) | null = null;
   private boundMapWidthResizeMoveHandler: ((e: MouseEvent) => void) | null = null;
+  private boundMapWidthTouchMoveHandler: ((e: TouchEvent) => void) | null = null;
+  private boundMapWidthTouchEndHandler: ((e: TouchEvent) => void) | null = null;
+  private boundMapWidthMouseUpHandler: (() => void) | null = null;
+  private boundMapWidthVisChangeHandler: (() => void) | null = null;
+  private boundMapWidthWindowResizeHandler: (() => void) & { cancel(): void } | null = null;
   private boundMapWidthEndResizeHandler: (() => void) | null = null;
+  private mapSplitZoneListener: ResponsiveZoneListener | null = null;
   private boundMapFullscreenEscHandler: ((e: KeyboardEvent) => void) | null = null;
   private readonly registeredSearchButtons = new Set<string>();
   private boundSearchKeyHandler: ((e: KeyboardEvent) => void) | null = null;
@@ -317,7 +352,9 @@ export class EventHandlerManager implements AppModule {
     this.callbacks = callbacks;
     this.mobilePrimaryNav = new MobilePrimaryNav(ctx, {
       openSearch: (options) => this.callbacks.openSearch(options),
-      navigateToVariant: (variant, options) => this.navigateToVariant(variant, options),
+      navigateToVariant: async (variant, options) => {
+        await this.navigateToVariant(variant, options);
+      },
       openMission: (anchor) => this.openMissionPresetPopover(anchor, true),
     });
   }
@@ -339,8 +376,10 @@ export class EventHandlerManager implements AppModule {
   /**
    * Enables a registered panel (undo-restore, CMD+K "Add", etc.). Returns
    * false when the panel is unknown or the free-tier cap blocks it. Already
-   * enabled → true (no-op). Single source of truth for runtime panel-enable
-   * so search-add and undo-restore stay in lockstep.
+   * enabled → true (no-op). Search-add and undo-restore stay in lockstep
+   * here so closing an unentitled or cross-monitor panel can still restore it.
+   * WebMCP catalog toggles use `applySetPanelEnabled`, which also enforces
+   * monitor compatibility and entitlements on enable.
    */
   enablePanelById(panelId: string, options?: { trackAnalytics?: boolean }): boolean {
     const config = this.ctx.panelSettings[panelId];
@@ -368,6 +407,35 @@ export class EventHandlerManager implements AppModule {
       (panel as { fetchData: () => void }).fetchData();
     }
     return true;
+  }
+
+  /**
+   * Enable or disable a catalog panel through the same persist/apply path as
+   * settings and search-add. Runtime widgets (`cw-*` / `mcp-*`) are refused;
+   * closing those panels still uses the dedicated confirm-and-delete handlers.
+   */
+  setPanelEnabledById(panelId: unknown, enabled: unknown): SetPanelEnabledResult {
+    const isPro = hasPremiumAccess(getAuthState());
+    return applySetPanelEnabled(
+      {
+        panelSettings: this.ctx.panelSettings,
+        panels: this.ctx.panels,
+        unifiedSettings: this.ctx.unifiedSettings,
+      },
+      panelId,
+      enabled,
+      {
+        variant: SITE_VARIANT,
+        isPro,
+        persist: (settings) => saveToStorage(STORAGE_KEYS.panels, settings),
+        applyPanelSettings: () => this.applyPanelSettings(),
+        trackToggle: trackPanelToggled,
+        showCapToast: () => showToast(
+          t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }),
+        ),
+        isPanelAllowed: (id, config) => isPanelEntitled(id, config, hasPremiumAccess(getAuthState())),
+      },
+    );
   }
 
   private setupTvMode(): void {
@@ -483,11 +551,34 @@ export class EventHandlerManager implements AppModule {
       document.removeEventListener('mousemove', this.boundMapWidthResizeMoveHandler);
       this.boundMapWidthResizeMoveHandler = null;
     }
+    if (this.boundMapWidthTouchMoveHandler) {
+      document.removeEventListener('touchmove', this.boundMapWidthTouchMoveHandler);
+      this.boundMapWidthTouchMoveHandler = null;
+    }
+    if (this.boundMapWidthTouchEndHandler) {
+      document.removeEventListener('touchend', this.boundMapWidthTouchEndHandler);
+      document.removeEventListener('touchcancel', this.boundMapWidthTouchEndHandler);
+      this.boundMapWidthTouchEndHandler = null;
+    }
+    if (this.boundMapWidthMouseUpHandler) {
+      document.removeEventListener('mouseup', this.boundMapWidthMouseUpHandler);
+      this.boundMapWidthMouseUpHandler = null;
+    }
+    if (this.boundMapWidthVisChangeHandler) {
+      document.removeEventListener('visibilitychange', this.boundMapWidthVisChangeHandler);
+      this.boundMapWidthVisChangeHandler = null;
+    }
+    if (this.boundMapWidthWindowResizeHandler) {
+      this.boundMapWidthWindowResizeHandler.cancel();
+      window.removeEventListener('resize', this.boundMapWidthWindowResizeHandler);
+      this.boundMapWidthWindowResizeHandler = null;
+    }
     if (this.boundMapWidthEndResizeHandler) {
-      document.removeEventListener('mouseup', this.boundMapWidthEndResizeHandler);
       window.removeEventListener('blur', this.boundMapWidthEndResizeHandler);
       this.boundMapWidthEndResizeHandler = null;
     }
+    removeResponsiveZoneListener(this.mapSplitZoneListener);
+    this.mapSplitZoneListener = null;
     if (this.boundMapResizeVisChangeHandler) {
       document.removeEventListener('visibilitychange', this.boundMapResizeVisChangeHandler);
       this.boundMapResizeVisChangeHandler = null;
@@ -742,6 +833,7 @@ export class EventHandlerManager implements AppModule {
 
     this.setupMapResize();
     this.setupMapWidthResize();
+    this.setupMapSideToggle();
     this.setupMapPin();
 
     this.boundVisibilityHandler = () => {
@@ -817,8 +909,8 @@ export class EventHandlerManager implements AppModule {
       // the idle wait can outlast an early user choice.
       scheduleAfterFirstPaint(() => {
         if (this.ctx.isDestroyed) return;
-        if (loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
-        this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false);
+        if (this.missionPresetPopover || loadStoredMissionPreset() || isMissionPresetPromptDismissed()) return;
+        this.openMissionPresetPopover(document.getElementById('missionPresetBtn'), false, 'auto');
       });
     }
   }
@@ -868,8 +960,16 @@ export class EventHandlerManager implements AppModule {
     this.openMissionPresetPopover(anchor, mobile);
   }
 
-  private openMissionPresetPopover(anchor: HTMLElement | null, mobile: boolean): void {
+  private openMissionPresetPopover(
+    anchor: HTMLElement | null,
+    mobile: boolean,
+    trigger: MissionPickerTrigger = 'manual',
+  ): void {
     this.closeMissionPresetPopover();
+    // One emission site covers every path onto the picker: the desktop button,
+    // the mobile menu item, the deferred auto-open, and the WebMCP entry
+    // (tagged 'agent' so the human funnel reads clean).
+    trackMissionPickerShown(trigger, mobile ? 'mobile' : 'desktop');
     // The desktop trigger (#missionPresetBtn) is display:none on mobile, where the
     // popover opens from the menu item instead, so remember the real opener.
     this.missionPresetReturnFocus = anchor ?? document.getElementById('missionPresetBtn');
@@ -881,7 +981,7 @@ export class EventHandlerManager implements AppModule {
     popover.setAttribute('aria-label', 'Mission presets');
     popover.tabIndex = -1;
 
-    const cards = MISSION_PRESETS.map((preset) => {
+    const cards = getMissionPresetsForVariant(SITE_VARIANT).map((preset) => {
       const selected = active?.id === preset.id;
       return `
         <button
@@ -1025,14 +1125,32 @@ export class EventHandlerManager implements AppModule {
     return layers;
   }
 
-  private persistMissionPanelOrder(panelOrder: string[]): void {
+  private persistMissionPanelOrder(panelOrder: string[], bottomPanelIds: string[] = []): void {
     saveToStorage(this.ctx.PANEL_ORDER_KEY, panelOrder);
-    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', []);
+    saveToStorage(this.ctx.PANEL_ORDER_KEY + '-bottom-set', bottomPanelIds);
     try {
       localStorage.removeItem(this.ctx.PANEL_ORDER_KEY + '-bottom');
     } catch {
       // Storage can be unavailable; the current session still applies the in-memory order.
     }
+  }
+
+  private readStoredPanelIds(key: string): string[] | null {
+    try {
+      const raw = localStorage.getItem(key);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw) as unknown;
+      if (!Array.isArray(parsed)) return null;
+      return parsed.filter((value): value is string => typeof value === 'string');
+    } catch {
+      return null;
+    }
+  }
+
+  private snapshotEffectiveBottomPanelIds(): string[] {
+    const bottomSet = this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
+    if (bottomSet) return bottomSet;
+    return this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY + '-bottom') ?? [];
   }
 
   private scheduleMissionDataRefresh(): void {
@@ -1090,13 +1208,19 @@ export class EventHandlerManager implements AppModule {
     }
   }
 
-  private applyMissionPreset(presetId: MissionPresetId): void {
-    const applied = applyMissionPresetToState(
-      presetId,
-      this.ctx.panelSettings,
-      this.getMissionDefaultLayers(),
-      SITE_VARIANT,
-    );
+  private applyMissionPreset(presetId: MissionPresetId, source: 'user' | 'agent' = 'user'): void {
+    let applied: ReturnType<typeof applyMissionPresetToState>;
+    try {
+      applied = applyMissionPresetToState(
+        presetId,
+        this.ctx.panelSettings,
+        this.getMissionDefaultLayers(),
+        SITE_VARIANT,
+      );
+    } catch {
+      showToast('This mission is not available on this dashboard.');
+      return;
+    }
     const mapLayers = this.filterMissionLayersForCurrentRenderer(applied.mapLayers);
     const previousMapLayers = { ...this.ctx.mapLayers };
 
@@ -1106,6 +1230,16 @@ export class EventHandlerManager implements AppModule {
     saveToStorage(STORAGE_KEYS.mapLayers, mapLayers);
     this.persistMissionPanelOrder(applied.panelOrder);
     saveMissionPreset(applied.preset.id);
+    trackMissionSelected(applied.preset.id, source);
+    if (source === 'agent') {
+      // An agent-applied preset mounts panels the user never asked to see.
+      // Suppress the panel-view records those mounts trigger (same rule the
+      // WebMCP search flows apply via search-selection-dispatcher) so the
+      // funnel's denominator stays human.
+      for (const [key, cfg] of Object.entries(applied.panelSettings)) {
+        if (cfg?.enabled) suppressNextAgentPanelView(key);
+      }
+    }
 
     this.applyPanelSettings();
     this.callbacks.applySavedPanelOrder?.(applied.panelOrder);
@@ -1121,6 +1255,110 @@ export class EventHandlerManager implements AppModule {
     showToast(`Mission preset applied: ${applied.preset.label}`);
     this.renderMissionPresetControl();
     this.closeMissionPresetPopover();
+  }
+
+  /**
+   * WebMCP entry: open the mission picker without applying a preset.
+   * Anchors to the visible trigger for the current viewport.
+   */
+  openMissionPresetPickerForWebMcp(): boolean {
+    if (this.ctx.isDestroyed) return false;
+    const mobile = this.ctx.isMobile;
+    const anchor = document.getElementById(mobile ? 'mobileMenuMission' : 'missionPresetBtn');
+    this.openMissionPresetPopover(anchor, mobile, 'agent');
+    return this.missionPresetPopover !== null;
+  }
+
+  /**
+   * WebMCP entry: apply a bundled mission preset through the same path as the
+   * visible mission control. Snapshots prior dashboard state and restores it
+   * if the commit throws before completion.
+   */
+  applyMissionPresetForWebMcp(presetId: MissionPresetId): {
+    changed: boolean;
+    priorPresetId: string | null;
+  } {
+    if (this.ctx.isDestroyed) {
+      throw new Error('Dashboard is no longer available.');
+    }
+
+    const snapshot = this.snapshotMissionDashboardState();
+    try {
+      this.applyMissionPreset(presetId, 'agent');
+      const nextPresetId = loadStoredMissionPreset()?.id ?? null;
+      const mapState = this.ctx.map?.getState();
+      const changed = snapshot.presetId !== nextPresetId
+        || JSON.stringify(snapshot.panelSettings) !== JSON.stringify(this.ctx.panelSettings)
+        || JSON.stringify(snapshot.mapLayers) !== JSON.stringify(this.ctx.mapLayers)
+        || snapshot.mapView !== (mapState?.view ?? snapshot.mapView)
+        || snapshot.mapZoom !== (mapState?.zoom ?? snapshot.mapZoom)
+        || snapshot.timeRange !== (mapState?.timeRange ?? snapshot.timeRange);
+      return { changed, priorPresetId: snapshot.presetId };
+    } catch (error) {
+      this.restoreMissionDashboardState(snapshot);
+      throw error;
+    }
+  }
+
+  private snapshotMissionDashboardState(): {
+    panelSettings: Record<string, PanelConfig>;
+    mapLayers: MapLayers;
+    panelOrder: string[];
+    bottomPanelIds: string[];
+    presetId: string | null;
+    mapView: MapView;
+    mapZoom: number;
+    timeRange: string;
+  } {
+    const mapState = this.ctx.map?.getState();
+    return {
+      panelSettings: structuredClone(this.ctx.panelSettings),
+      mapLayers: { ...this.ctx.mapLayers },
+      panelOrder: this.readStoredPanelIds(this.ctx.PANEL_ORDER_KEY) ?? [],
+      bottomPanelIds: this.snapshotEffectiveBottomPanelIds(),
+      presetId: loadStoredMissionPreset()?.id ?? null,
+      mapView: (mapState?.view ?? 'global') as MapView,
+      mapZoom: mapState?.zoom ?? 2,
+      timeRange: mapState?.timeRange ?? '7d',
+    };
+  }
+
+  private restoreMissionDashboardState(snapshot: {
+    panelSettings: Record<string, PanelConfig>;
+    mapLayers: MapLayers;
+    panelOrder: string[];
+    bottomPanelIds: string[];
+    presetId: string | null;
+    mapView: MapView;
+    mapZoom: number;
+    timeRange: string;
+  }): void {
+    if (this.missionDataRefreshTimer) {
+      window.clearTimeout(this.missionDataRefreshTimer);
+      this.missionDataRefreshTimer = null;
+    }
+    const previousMapLayers = { ...this.ctx.mapLayers };
+    this.ctx.panelSettings = structuredClone(snapshot.panelSettings);
+    this.ctx.mapLayers = { ...snapshot.mapLayers };
+    saveToStorage(STORAGE_KEYS.panels, this.ctx.panelSettings);
+    saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
+    this.persistMissionPanelOrder(snapshot.panelOrder, snapshot.bottomPanelIds);
+    if (snapshot.presetId) {
+      saveMissionPreset(snapshot.presetId as MissionPresetId);
+    } else {
+      clearMissionPreset();
+    }
+    this.applyPanelSettings();
+    this.callbacks.applySavedPanelOrder?.();
+    this.ctx.unifiedSettings?.refreshPanelToggles();
+    this.ctx.map?.setLayers(this.ctx.mapLayers);
+    this.applyMissionMapLayerTransitions(previousMapLayers, this.ctx.mapLayers);
+    this.ctx.map?.setView(snapshot.mapView, snapshot.mapZoom);
+    this.ctx.map?.setTimeRange(snapshot.timeRange as '1h' | '6h' | '24h' | '48h' | '7d' | 'all');
+    this.callbacks.mountLiveNewsIfReady?.();
+    this.callbacks.syncDataFreshnessWithLayers();
+    this.syncUrlState();
+    this.renderMissionPresetControl();
   }
 
   private resetMissionPreset(): void {
@@ -1561,26 +1799,43 @@ export class EventHandlerManager implements AppModule {
   private async navigateToVariant(
     variant: string,
     options: { href?: string; isLocalDev: boolean },
-  ): Promise<void> {
+  ): Promise<'reload' | 'assign' | 'blocked'> {
     trackVariantSwitch(SITE_VARIANT, variant);
     await this.exitFullscreenForNavigation();
 
     if (this.ctx.isDesktopApp || options.isLocalDev) {
       if (stageVariantSelection(SITE_VARIANT, variant, writeStorageValue)) {
         window.location.reload();
+        return 'reload';
       }
-      return;
+      return 'blocked';
     }
 
     const target = options.href || VARIANT_META[variant]?.url;
-    if (!target) return;
+    if (!target) return 'blocked';
     try {
       const parsed = new URL(target, window.location.href);
-      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return;
+      if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') return 'blocked';
       window.location.href = parsed.toString();
+      return 'assign';
     } catch {
-      return;
+      return 'blocked';
     }
+  }
+
+  public async navigateToVisibleVariant(
+    variant: string,
+  ): Promise<'none' | 'reload' | 'assign' | 'blocked' | 'unavailable'> {
+    if (variant === SITE_VARIANT) return 'none';
+    const link = this.ctx.container.querySelector<HTMLAnchorElement>(
+      `.variant-option[data-variant="${variant}"]`,
+    );
+    if (!link) return 'unavailable';
+    const isLocalDev = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+    return this.navigateToVariant(variant, {
+      href: link.href,
+      isLocalDev,
+    });
   }
 
   toggleFullscreen(): void {
@@ -1844,7 +2099,7 @@ export class EventHandlerManager implements AppModule {
           const allSources = this.getAllSourceNames();
           const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
           if (currentlyEnabled + 1 > FREE_MAX_SOURCES) {
-            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }), 3000);
             return;
           }
         }
@@ -1863,7 +2118,7 @@ export class EventHandlerManager implements AppModule {
           const currentlyEnabled = allSources.filter(n => !this.ctx.disabledSources.has(n)).length;
           const wouldEnable = names.filter(n => this.ctx.disabledSources.has(n) && allSources.includes(n)).length;
           if (currentlyEnabled + wouldEnable > FREE_MAX_SOURCES) {
-            this.showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }));
+            showToast(t('modals.settingsWindow.freeSourceLimit', { max: String(FREE_MAX_SOURCES) }), 3000);
             return;
           }
         }
@@ -1900,6 +2155,9 @@ export class EventHandlerManager implements AppModule {
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom');
         removeStorageValue(this.ctx.PANEL_ORDER_KEY + '-bottom-set');
         removeStorageValue('map-height');
+        removeStorageValue('map-split-height');
+        removeStorageValue('map-col-width');
+        removeStorageValue('map-side');
         window.location.reload();
       },
       isDesktopApp: this.ctx.isDesktopApp,
@@ -2092,22 +2350,20 @@ export class EventHandlerManager implements AppModule {
 
     const grid = document.getElementById('panelsGrid');
     if (grid) {
-      for (const child of Array.from(grid.children)) {
-        if ((child as HTMLElement).dataset.panel) {
-          observer.observe(child);
+      const observeGridPanels = () => {
+        for (const child of Array.from(grid.children)) {
+          if ((child as HTMLElement).dataset.panel) {
+            observer.observe(child);
+          }
         }
-      }
+      };
+      observeGridPanels();
+      // Panels mounted after boot (mission apply, add-panel, tab switch) must
+      // join the funnel denominator too; observe() is idempotent, so a bulk
+      // re-scan per childList change is cheap and cannot double-count.
+      const lateMounts = new MutationObserver(() => observeGridPanels());
+      lateMounts.observe(grid, { childList: true });
     }
-  }
-
-  showToast(msg: string): void {
-    document.querySelector('.toast-notification')?.remove();
-    const el = document.createElement('div');
-    el.className = 'toast-notification';
-    el.textContent = msg;
-    document.body.appendChild(el);
-    requestAnimationFrame(() => el.classList.add('visible'));
-    setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 3000);
   }
 
   shouldShowIntelligenceNotifications(): boolean {
@@ -2120,9 +2376,26 @@ export class EventHandlerManager implements AppModule {
     const resizeHandle = document.getElementById('mapResizeHandle');
     if (!mapSection || !resizeHandle || !mapContainer) return;
 
-    const getMinHeight = () => (window.innerWidth >= 1600 ? 280 : 350);
+    const isSplit = () => window.innerWidth >= SPLIT_LAYOUT_MIN_WIDTH;
+    // Split mode sizes #mapContainer, stacked mode sizes #mapSection — two
+    // different elements, so each mode keeps its own storage key (#6417).
+    const getHeightKey = () => (isSplit() ? 'map-split-height' : 'map-height');
+    const readSavedHeight = (): { value: string | null; sourceKey: string } => {
+      const key = getHeightKey();
+      const value = readStorageValue(key);
+      // Before the keys were mode-scoped both modes overwrote 'map-height';
+      // fall back to it so existing split-mode users keep their height. The
+      // restore below completes the migration by writing the split key.
+      const canUseLegacySplitHeight = this.ctx.isDesktopApp
+        || window.innerWidth >= LEGACY_WEB_SPLIT_LAYOUT_MIN_WIDTH;
+      if (value === null && isSplit() && canUseLegacySplitHeight) {
+        return { value: readStorageValue('map-height'), sourceKey: 'map-height' };
+      }
+      return { value, sourceKey: key };
+    };
+    const getMinHeight = () => (isSplit() ? 280 : 350);
     const getMaxHeight = () => {
-      if (window.innerWidth < 1600) return Math.max(getMinHeight(), window.innerHeight - 150);
+      if (!isSplit()) return Math.max(getMinHeight(), window.innerHeight - 150);
 
       const bottomGrid = document.getElementById('mapBottomGrid');
       const isEmpty = !bottomGrid || bottomGrid.children.length === 0;
@@ -2136,7 +2409,7 @@ export class EventHandlerManager implements AppModule {
       }
     };
 
-    const getTarget = () => (window.innerWidth >= 1600 ? mapContainer : mapSection);
+    const getTarget = () => (isSplit() ? mapContainer : mapSection);
     const getCurrentHeight = () => {
       const target = getTarget();
       const inlineHeight = Number.parseFloat(target.style.height);
@@ -2159,29 +2432,38 @@ export class EventHandlerManager implements AppModule {
     resizeHandle.setAttribute('aria-orientation', 'horizontal');
     resizeHandle.setAttribute('aria-label', t('components.panel.dragToResize'));
 
-    const savedHeight = readStorageValue('map-height');
-    if (savedHeight) {
+    const applySavedHeight = () => {
+      const { value: savedHeight, sourceKey } = readSavedHeight();
+      if (!savedHeight) return;
       const numeric = Number.parseInt(savedHeight, 10);
       if (Number.isFinite(numeric)) {
         const clamped = Math.max(getMinHeight(), Math.min(numeric, getMaxHeight()));
-        if (window.innerWidth >= 1600) {
+        if (isSplit()) {
           mapContainer.style.flex = 'none';
           mapContainer.style.height = `${clamped}px`;
         } else {
           mapSection.style.height = `${clamped}px`;
         }
-        if (clamped !== numeric) {
-          writeStorageValue('map-height', `${clamped}px`);
+        // Persist when the value was clamped, or when it came from the
+        // legacy shared key — writing the mode key completes the migration
+        // so stacked-mode edits stop steering split restores.
+        if (clamped !== numeric || sourceKey !== getHeightKey()) {
+          writeStorageValue(getHeightKey(), `${clamped}px`);
         }
       } else {
-        removeStorageValue('map-height');
+        removeStorageValue(sourceKey);
       }
-    }
+    };
+    applySavedHeight();
     syncHeightSeparatorAria();
 
     let isResizing = false;
     let startY = 0;
     let startHeight = 0;
+    // Captured at mousedown so a viewport crossing 900px mid-drag cannot
+    // switch the resized element or the storage key under the drag.
+    let dragTarget: HTMLElement | null = null;
+    let dragKey = 'map-height';
 
     this.boundMapEndResizeHandler = () => {
       if (!isResizing) return;
@@ -2190,16 +2472,35 @@ export class EventHandlerManager implements AppModule {
       this.ctx.map?.resize();
       mapSection.classList.remove('resizing');
       document.body.style.cursor = '';
-      writeStorageValue('map-height', getTarget().style.height);
+      writeStorageValue(dragKey, (dragTarget ?? getTarget()).style.height);
+      dragTarget = null;
       syncHeightSeparatorAria();
     };
     const endResize = this.boundMapEndResizeHandler;
 
+    // Crossing the split threshold moves the height target between
+    // #mapContainer (split) and #mapSection (stacked). Finish an active drag
+    // before clearing the departing element so its captured key receives the
+    // last numeric height, then restore the arriving mode's preference.
+    this.mapSplitZoneListener = addResponsiveZoneListener(window, SPLIT_LAYOUT_MIN_WIDTH, () => {
+      endResize();
+      if (isSplit()) {
+        mapSection.style.height = '';
+      } else {
+        mapContainer.style.height = '';
+        mapContainer.style.flex = '';
+      }
+      applySavedHeight();
+      syncHeightSeparatorAria();
+      this.ctx.map?.resize();
+    });
+
     resizeHandle.addEventListener('mousedown', (e) => {
       isResizing = true;
       startY = e.clientY;
-      const target = getTarget();
-      startHeight = target.offsetHeight;
+      dragTarget = getTarget();
+      dragKey = getHeightKey();
+      startHeight = dragTarget.offsetHeight;
       this.ctx.map?.setIsResizing(true);
       mapSection.classList.add('resizing');
       document.body.style.cursor = 'ns-resize';
@@ -2207,8 +2508,9 @@ export class EventHandlerManager implements AppModule {
     });
 
     resizeHandle.addEventListener('dblclick', () => {
-      const isWide = window.innerWidth >= 1600;
+      const isWide = isSplit();
       const target = isWide ? mapContainer : mapSection;
+      const heightKey = getHeightKey();
 
       const targetHeight = window.innerHeight * 0.5;
       const finalHeight = Math.max(getMinHeight(), Math.min(targetHeight, getMaxHeight()));
@@ -2227,7 +2529,7 @@ export class EventHandlerManager implements AppModule {
 
         target.classList.remove('map-section-smooth');
         target.removeEventListener('transitionend', onEnd);
-        writeStorageValue('map-height', `${finalHeight}px`);
+        writeStorageValue(heightKey, `${finalHeight}px`);
         this.ctx.map?.setIsResizing(false);
         this.ctx.map?.resize();
         syncHeightSeparatorAria();
@@ -2246,22 +2548,21 @@ export class EventHandlerManager implements AppModule {
       e.preventDefault();
       const target = getTarget();
       const newHeight = Math.max(getMinHeight(), Math.min(target.offsetHeight + step, getMaxHeight()));
-      if (window.innerWidth >= 1600) target.style.flex = 'none';
+      if (isSplit()) target.style.flex = 'none';
       target.style.height = `${newHeight}px`;
       this.ctx.map?.resize();
-      writeStorageValue('map-height', `${newHeight}px`);
+      writeStorageValue(getHeightKey(), `${newHeight}px`);
       syncHeightSeparatorAria();
     });
 
     this.boundMapResizeMoveHandler = (e: MouseEvent) => {
       if (!isResizing) return;
-      const isWide = window.innerWidth >= 1600;
-      const target = isWide ? mapContainer : mapSection;
+      const target = dragTarget ?? getTarget();
 
       const deltaY = e.clientY - startY;
       const newHeight = Math.max(getMinHeight(), Math.min(startHeight + deltaY, getMaxHeight()));
 
-      if (isWide) target.style.flex = 'none';
+      if (target === mapContainer) target.style.flex = 'none';
       target.style.height = `${newHeight}px`;
 
       this.ctx.map?.resize();
@@ -2282,36 +2583,72 @@ export class EventHandlerManager implements AppModule {
     const widthHandle = document.getElementById('mapWidthResizeHandle');
     if (!mainContent || !widthHandle) return;
 
+    const isMapRight = () => mainContent.classList.contains('map-right');
+    const isRtl = () => getComputedStyle(mainContent).direction === 'rtl';
+    // Under RTL the grid mirrors, so grid column 1 sits on the visual right:
+    // drag and arrow-key directions must follow the VISUAL side, not the class.
+    const isMapVisuallyRight = () => getVisualMapSide(isMapRight(), isRtl()) === 'right';
     const getCurrentWidthPercent = () => {
-      const raw = mainContent.style.getPropertyValue('--map-col-width') || '60%';
-      const parsed = Number.parseFloat(raw);
-      return Number.isFinite(parsed) ? Math.max(25, Math.min(75, parsed)) : 60;
+      const raw = mainContent.style.getPropertyValue('--map-col-width') || `${MAP_COL_DEFAULT_PERCENT}%`;
+      return clampMapColWidthPercent(Number.parseFloat(raw), mainContent.offsetWidth);
+    };
+    // The centered header clock overlaps the action buttons in a narrow map
+    // column; .map-col-narrow hides it (styles/main.css).
+    const syncMapColNarrowState = () => {
+      const mapSection = document.getElementById('mapSection');
+      if (!mapSection) return;
+      const sectionWidth = mapSection.offsetWidth;
+      mapSection.classList.toggle('map-col-narrow', sectionWidth > 0 && sectionWidth < 360);
     };
     const syncWidthSeparatorAria = () => {
       const current = getCurrentWidthPercent();
+      const { minPct, maxPct } = getMapColWidthBounds(mainContent.offsetWidth);
       const mapSection = document.getElementById('mapSection');
       if (mapSection) widthHandle.setAttribute('aria-controls', mapSection.id);
-      widthHandle.setAttribute('aria-valuemin', '25');
-      widthHandle.setAttribute('aria-valuemax', '75');
-      widthHandle.setAttribute('aria-valuenow', String(current));
-      widthHandle.setAttribute('aria-valuetext', `${current}%`);
+      widthHandle.setAttribute('aria-valuemin', String(Math.round(minPct)));
+      widthHandle.setAttribute('aria-valuemax', String(Math.round(maxPct)));
+      widthHandle.setAttribute('aria-valuenow', String(Math.round(current)));
+      widthHandle.setAttribute('aria-valuetext', `${Math.round(current)}%`);
     };
 
     widthHandle.tabIndex = 0;
     widthHandle.setAttribute('role', 'separator');
     widthHandle.setAttribute('aria-orientation', 'vertical');
     widthHandle.setAttribute('aria-label', t('components.panel.dragToResize'));
+    widthHandle.title = t('components.panel.dragToResize');
 
-    const saved = readStorageValue('map-col-width');
-    if (saved) mainContent.style.setProperty('--map-col-width', saved);
-    syncWidthSeparatorAria();
+    // Re-derive the applied width from storage, clamped for the CURRENT
+    // container: a 75% saved on an ultrawide would otherwise crush the
+    // panels below their pixel floor in a narrow window. Storage keeps the
+    // user's raw preference — only the applied CSS var is clamped — so the
+    // wide value comes back when the window grows again.
+    const applyStoredWidth = () => {
+      const stored = readStorageValue('map-col-width') || mainContent.style.getPropertyValue('--map-col-width');
+      if (stored) {
+        const clamped = clampMapColWidthPercent(Number.parseFloat(stored), mainContent.offsetWidth);
+        mainContent.style.setProperty('--map-col-width', `${clamped.toFixed(1)}%`);
+      }
+      syncMapColNarrowState();
+      syncWidthSeparatorAria();
+    };
+    applyStoredWidth();
 
     let isResizing = false;
     let startX = 0;
     let startTotalWidth = 0;
     let startColPx = 0;
+    // Captured at drag start so a mid-gesture side toggle cannot invert the
+    // direction, and so a second input (mouse vs touch) cannot steal the drag.
+    let dragSign = 1;
+    let activeTouchId: number | null = null;
+    let activeDragSource: 'mouse' | 'touch' | null = null;
+    // Set only by applyDrag: a zero-movement press/tap must not persist the
+    // container-clamped application back over the raw stored preference.
+    let dragMoved = false;
 
     this.boundMapWidthEndResizeHandler = () => {
+      activeTouchId = null;
+      activeDragSource = null;
       if (!isResizing) return;
       isResizing = false;
       this.ctx.map?.setIsResizing(false);
@@ -2319,48 +2656,138 @@ export class EventHandlerManager implements AppModule {
       document.body.classList.remove('map-width-resizing');
       widthHandle.classList.remove('resizing');
       const current = mainContent.style.getPropertyValue('--map-col-width');
-      if (current) writeStorageValue('map-col-width', current);
+      if (current && dragMoved) writeStorageValue('map-col-width', current);
+      dragMoved = false;
+      syncMapColNarrowState();
+      syncWidthSeparatorAria();
+    };
+
+    const beginDrag = (clientX: number, source: 'mouse' | 'touch'): boolean => {
+      if (isResizing) return false;
+      isResizing = true;
+      dragMoved = false;
+      activeDragSource = source;
+      startX = clientX;
+      startTotalWidth = mainContent.offsetWidth;
+      startColPx = startTotalWidth * (getCurrentWidthPercent() / 100);
+      dragSign = isMapVisuallyRight() ? -1 : 1;
+      this.ctx.map?.setIsResizing(true);
+      document.body.classList.add('map-width-resizing');
+      widthHandle.classList.add('resizing');
+      return true;
+    };
+    // With the map visually on the right, moving the divider left grows it.
+    const applyDrag = (clientX: number) => {
+      const delta = (clientX - startX) * dragSign;
+      const newPct = clampMapColWidthPercent(((startColPx + delta) / startTotalWidth) * 100, startTotalWidth);
+      mainContent.style.setProperty('--map-col-width', `${newPct.toFixed(1)}%`);
+      dragMoved = true;
+      this.ctx.map?.resize();
+      syncMapColNarrowState();
       syncWidthSeparatorAria();
     };
 
     widthHandle.addEventListener('mousedown', (e) => {
-      isResizing = true;
-      startX = e.clientX;
-      startTotalWidth = mainContent.offsetWidth;
-      const raw = mainContent.style.getPropertyValue('--map-col-width') || '60%';
-      startColPx = startTotalWidth * (parseFloat(raw) / 100);
-      this.ctx.map?.setIsResizing(true);
-      document.body.classList.add('map-width-resizing');
-      widthHandle.classList.add('resizing');
-      e.preventDefault();
+      if (beginDrag(e.clientX, 'mouse')) e.preventDefault();
     });
 
-    // Keyboard path, mirroring the height handle above.
-    widthHandle.addEventListener('keydown', (e: KeyboardEvent) => {
-      const step = e.key === 'ArrowLeft' ? -5 : e.key === 'ArrowRight' ? 5 : 0;
-      if (step === 0) return;
+    widthHandle.addEventListener('touchstart', (e: TouchEvent) => {
+      const touch = e.changedTouches[0];
+      if (!touch || !beginDrag(touch.clientX, 'touch')) return;
+      activeTouchId = touch.identifier;
       e.preventDefault();
-      const raw = mainContent.style.getPropertyValue('--map-col-width') || '60%';
-      const newPct = Math.max(25, Math.min(75, parseFloat(raw) + step));
+    }, { passive: false });
+
+    // Keyboard path, mirroring the height handle above. Arrows move the
+    // DIVIDER, so ArrowRight shrinks a visually-right map.
+    widthHandle.addEventListener('keydown', (e: KeyboardEvent) => {
+      const arrow = e.key === 'ArrowLeft' ? -5 : e.key === 'ArrowRight' ? 5 : 0;
+      if (arrow === 0) return;
+      e.preventDefault();
+      const step = isMapVisuallyRight() ? -arrow : arrow;
+      const newPct = clampMapColWidthPercent(getCurrentWidthPercent() + step, mainContent.offsetWidth);
       const value = `${newPct.toFixed(1)}%`;
       mainContent.style.setProperty('--map-col-width', value);
       this.ctx.map?.resize();
       writeStorageValue('map-col-width', value);
+      syncMapColNarrowState();
       syncWidthSeparatorAria();
     });
 
     this.boundMapWidthResizeMoveHandler = (e: MouseEvent) => {
-      if (!isResizing) return;
-      const delta = e.clientX - startX;
-      const newPct = Math.max(25, Math.min(75, ((startColPx + delta) / startTotalWidth) * 100));
-      mainContent.style.setProperty('--map-col-width', `${newPct.toFixed(1)}%`);
-      this.ctx.map?.resize();
-      syncWidthSeparatorAria();
+      if (!isResizing || activeDragSource !== 'mouse') return;
+      applyDrag(e.clientX);
     };
+    this.boundMapWidthTouchMoveHandler = (e: TouchEvent) => {
+      if (!isResizing || activeDragSource !== 'touch' || activeTouchId === null) return;
+      const touch = Array.from(e.touches).find(t => t.identifier === activeTouchId);
+      if (!touch) return;
+      applyDrag(touch.clientX);
+    };
+    // Only the tracked finger ends a touch drag — another finger lifting
+    // elsewhere on the page must not cut the resize short.
+    this.boundMapWidthTouchEndHandler = (e: TouchEvent) => {
+      if (activeDragSource !== 'touch' || activeTouchId === null) return;
+      if (!Array.from(e.changedTouches).some(t => t.identifier === activeTouchId)) return;
+      this.boundMapWidthEndResizeHandler?.();
+    };
+    this.boundMapWidthMouseUpHandler = () => {
+      if (activeDragSource === 'mouse') this.boundMapWidthEndResizeHandler?.();
+    };
+    // Mirror the height handle: a hidden tab must not leave a drag latched.
+    this.boundMapWidthVisChangeHandler = () => {
+      if (document.hidden) this.boundMapWidthEndResizeHandler?.();
+    };
+    // Window resizes change the container the stored percentage resolves
+    // against: re-clamp the applied width and refresh the narrow state.
+    this.boundMapWidthWindowResizeHandler = debounce(() => {
+      if (isResizing) return;
+      applyStoredWidth();
+    }, 150);
 
     document.addEventListener('mousemove', this.boundMapWidthResizeMoveHandler);
-    document.addEventListener('mouseup', this.boundMapWidthEndResizeHandler);
+    document.addEventListener('mouseup', this.boundMapWidthMouseUpHandler);
+    document.addEventListener('touchmove', this.boundMapWidthTouchMoveHandler);
+    document.addEventListener('touchend', this.boundMapWidthTouchEndHandler);
+    document.addEventListener('touchcancel', this.boundMapWidthTouchEndHandler);
+    document.addEventListener('visibilitychange', this.boundMapWidthVisChangeHandler);
+    window.addEventListener('resize', this.boundMapWidthWindowResizeHandler);
     window.addEventListener('blur', this.boundMapWidthEndResizeHandler);
+  }
+
+  setupMapSideToggle(): void {
+    const mainContent = document.querySelector<HTMLElement>('.main-content');
+    const sideBtn = document.getElementById('mapSideBtn');
+    if (!mainContent || !sideBtn) return;
+
+    const isRtl = () => getComputedStyle(mainContent).direction === 'rtl';
+    const getVisualSide = () => getVisualMapSide(
+      mainContent.classList.contains('map-right'),
+      isRtl(),
+    );
+    const syncSideButton = () => {
+      const visualSide = getVisualSide();
+      const label = visualSide === 'right' ? 'Move map to the left side' : 'Move map to the right side';
+      sideBtn.title = label;
+      sideBtn.setAttribute('aria-label', label);
+      sideBtn.classList.toggle('active', visualSide === 'right');
+    };
+
+    const storedSide = readStorageValue('map-side');
+    if (storedSide === 'left' || storedSide === 'right') {
+      mainContent.classList.toggle(
+        'map-right',
+        mapRightClassForVisualSide(storedSide as MapVisualSide, isRtl()),
+      );
+    }
+    syncSideButton();
+
+    sideBtn.addEventListener('click', () => {
+      mainContent.classList.toggle('map-right');
+      writeStorageValue('map-side', getVisualSide());
+      syncSideButton();
+      this.ctx.map?.resize();
+    });
   }
 
   setupMapPin(): void {
@@ -2394,18 +2821,7 @@ export class EventHandlerManager implements AppModule {
         const isGlobe = mode === 'globe';
         const alreadyGlobe = this.ctx.map?.isGlobeMode() ?? false;
         if (isGlobe === alreadyGlobe) return;
-        toggle.querySelectorAll('.map-dim-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        saveToStorage(STORAGE_KEYS.mapMode, isGlobe ? 'globe' : 'flat');
-        if (isGlobe) {
-          this.ctx.map?.switchToGlobe();
-        } else {
-          this.ctx.map?.switchToFlat();
-        }
-        if (this.ctx.mapLayers.resilienceScore && !this.ctx.map?.isDeckGLActive?.()) {
-          this.ctx.mapLayers = { ...this.ctx.mapLayers, resilienceScore: false };
-          saveToStorage(STORAGE_KEYS.mapLayers, this.ctx.mapLayers);
-        }
+        void applyVisibleMapDimension(this.ctx, isGlobe ? '3d' : '2d');
       });
     });
   }

@@ -129,9 +129,13 @@ describe('aviation budget: call sites are wired to the cap', () => {
     assert.match(src, /reserveAviationStackCalls\(1, 'request'\)/);
     assert.match(src, /aviationStackBudgetCycle\(\)/);
     // Cache key must NOT vary by limit (was the spend-multiplying explosion).
-    assert.doesNotMatch(src, /aviation:flights:\$\{airport\}:\$\{direction\}:\$\{limit\}/);
-    assert.match(src, /aviation:flights:\$\{airport\}:\$\{direction\}:v2:\$\{aviationStackBudgetCycle\(\)\}/);
-    // Upstream always fetches a fixed page, then slices in memory.
+    assert.doesNotMatch(src, /aviation:flights:\$\{airport\}:\$\{[^}]*\}:\$\{limit\}/);
+    // Keyed by LEG, not by the caller's requested direction: three of the four
+    // directions issue the same dep_iata query, so keying on direction stored
+    // duplicate departure payloads under two extra paid keys.
+    assert.match(src, /aviation:flights:\$\{airport\}:\$\{leg\}:v3:\$\{aviationStackBudgetCycle\(\)\}/);
+    assert.doesNotMatch(src, /aviation:flights:\$\{airport\}:\$\{direction\}/);
+    // Upstream always fetches a fixed page per leg, then slices in memory.
     assert.match(src, /limit:\s*String\(UPSTREAM_PAGE\)/);
     assert.match(src, /flights\.slice\(0, limit\)/);
   });

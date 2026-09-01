@@ -2,6 +2,10 @@ import { strict as assert } from 'node:assert';
 import test from 'node:test';
 import handler from './bootstrap.js';
 import { issueSessionToken } from './_session.js';
+import {
+  assertPublicBootstrapCorsHeaders,
+  assertPublicBootstrapSharedCacheHeaders,
+} from '../tests/helpers/public-bootstrap-contract.mjs';
 
 const ENTERPRISE_KEY = 'enterprise-bootstrap-test-key';
 const USER_KEY = 'wm_0123456789abcdef0123456789abcdef01234567';
@@ -198,21 +202,20 @@ function makePublicTierBootstrapRequest(tier = 'fast', headers = {}) {
   });
 }
 
+// Both delegate to tests/helpers/public-bootstrap-contract.mjs, which
+// tests/cors-preflight-live.test.mjs runs against a DEPLOYED URL. Keeping one
+// definition is the point: #7308 shipped because these assertions passed against
+// handler() while the edge served a different shape to real browsers.
 function assertSharedCacheHeaders(resp) {
-  // Tier responses intentionally avoid public/s-maxage in Cache-Control (CF in
-  // front of api.worldmonitor.app would mispin ACAO) and shield via Vercel's
-  // CDN-Cache-Control instead.
-  assert.ok(resp.headers.get('cdn-cache-control'));
-  assert.match(resp.headers.get('cdn-cache-control') || '', /\b(public|s-maxage)\b/i);
+  assertPublicBootstrapSharedCacheHeaders({ assert, resp });
 }
 
 function assertPublicCorsHeaders(resp) {
-  // Public seed payload → ACAO:* with no Vary: Origin and no credentials, so the
-  // shared CDN stores one entry per URL and no origin can pin an echoed ACAO.
-  assert.equal(resp.headers.get('access-control-allow-origin'), '*');
-  assert.equal(resp.headers.get('access-control-allow-credentials'), null);
+  assertPublicBootstrapCorsHeaders({ assert, resp });
+  // Tighter than the shared contract can be: this response is the handler's own
+  // output, with no platform-appended `Vary: accept-encoding` yet, so no Vary
+  // at all is the correct expectation here.
   assert.equal(resp.headers.get('vary'), null);
-  assert.equal(resp.headers.get('timing-allow-origin'), '*');
 }
 
 function assertNonSharedCacheHeaders(resp) {

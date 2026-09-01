@@ -18,6 +18,7 @@ import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { dirname, join } from 'node:path';
 import { buildSourceAttributionStats } from './source-attribution.mjs';
+import { extractAssignedObjectBlock } from './lib/js-source-structure.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 // #6702: tests that stage probe trees redirect the module at a throwaway
@@ -354,19 +355,18 @@ function parseMcpAppsInventory({
 // some later block's closing brace and parsed that instead. Counting braces
 // bounds the body to the object actually declared. Safe here because these
 // blocks hold only header strings, which contain no braces.
+// Skip wrappers (`Object.freeze(`, `Object.seal(`, JSDoc `/** @type … */ (`)
+// between `=` and `{`; JSDoc braces are comments, not the literal (#7115).
+// Any other callee is a parse failure so a helper that transforms the object
+// cannot silently pass against the argument literal.
+const OBJECT_WRAPPER_IDENTIFIERS = new Set(['Object.freeze', 'Object.seal']);
+
 function parseObjectBlockBody(source, declaration, label) {
-  const start = source.search(new RegExp(`${declaration}\\s*=\\s*\\{`));
-  if (start === -1) throw new Error(`docs-stats: could not parse ${label}`);
-  const open = source.indexOf('{', start);
-  let depth = 0;
-  for (let i = open; i < source.length; i += 1) {
-    if (source[i] === '{') depth += 1;
-    else if (source[i] === '}') {
-      depth -= 1;
-      if (depth === 0) return source.slice(open + 1, i);
-    }
+  const body = extractAssignedObjectBlock(source, declaration, OBJECT_WRAPPER_IDENTIFIERS);
+  if (body === null) {
+    throw new Error(`docs-stats: could not parse ${label}`);
   }
-  throw new Error(`docs-stats: could not parse ${label} (unbalanced braces)`);
+  return body;
 }
 
 function parseCacheHeaderMap(source, name) {
@@ -1364,7 +1364,14 @@ export function validateVolatileInventoryClaims() {
   const failures = [];
   const observedRetainedContracts = new Set();
   const visit = (path) => {
-    for (const [index, line] of read(path).split('\n').entries()) {
+    const source = read(path);
+    // Generated llms-full corpus republishes methodology already scanned at
+    // its source paths (#7463). Keep the hand-authored brief in this scan.
+    const generatedCorpusAt = path === 'public/llms-full.txt'
+      ? source.indexOf('\n## Generated corpus\n')
+      : -1;
+    const scannable = generatedCorpusAt === -1 ? source : source.slice(0, generatedCorpusAt);
+    for (const [index, line] of scannable.split('\n').entries()) {
       if (/\btool errors\b/i.test(line)) continue;
       if (/\bTier \d+(?:[–-]\d+)? sources\b/i.test(line)) continue;
       const retained = retainedExactContracts.filter((entry) => entry.path === path && entry.text.test(line));

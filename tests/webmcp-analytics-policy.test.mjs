@@ -4,9 +4,10 @@ import { afterEach, describe, it } from 'node:test';
 import { CONTENT_ATTRIBUTION_STORAGE_KEY } from '../shared/content-attribution.ts';
 import { FakeWebMcpModelContext } from './helpers/fake-webmcp-model-context.mjs';
 import { resetAnalyticsForTesting } from '../src/services/analytics.ts';
+import { WEBMCP_SPA_TOOL_NAMES } from '../src/config/webmcp.ts';
 import {
   DashboardBindingError,
-  buildWebMcpTools,
+  buildWebMcpTools as buildProductionWebMcpTools,
   registerWebMcpTools,
 } from '../src/services/webmcp.ts';
 
@@ -24,11 +25,20 @@ const settlePromises = async () => {
   await new Promise((resolve) => setImmediate(resolve));
 };
 
+function buildWebMcpTools(app, track) {
+  return buildProductionWebMcpTools(app, track).map((tool) => ({
+    ...tool,
+    execute(input, context = { signal: new AbortController().signal }) {
+      return tool.execute(input, context);
+    },
+  }));
+}
+
 function createBindings(overrides = {}) {
   return {
-    openCountryBriefByCode: async () => {},
+    openCountryBriefByCode: async () => true,
     resolveCountryName: (code) => `Country ${code}`,
-    openSearch: async () => {},
+    openSearch: async () => true,
     getDashboardContext: async () => ({
       variant: 'full',
       map: {
@@ -39,6 +49,86 @@ function createBindings(overrides = {}) {
         enabledLayers: [],
       },
       panels: { mounted: ['map'], enabled: ['map'] },
+    }),
+    listMapLayerCatalog: async () => ({
+      variant: 'full',
+      rendererKind: 'deck',
+      enabledLayers: [],
+      liveLayerKeys: ['conflicts', 'weather'],
+      hasPremium: false,
+      deckGlActive: true,
+    }),
+    listDashboardPanels: async () => ({
+      variant: 'full',
+      total: 1,
+      hasMore: false,
+      nextCursor: null,
+      panels: [{
+        id: 'map',
+        label: 'Map',
+        category: 'core',
+        variants: ['full'],
+        enabled: true,
+        mounted: true,
+        entitled: true,
+        available: true,
+      }],
+    }),
+    switchMonitor: async (monitor) => ({
+      ok: true,
+      status: 'applied',
+      destination: monitor,
+      navigation: 'none',
+      message: 'Already on that monitor.',
+      context: {
+        variant: monitor,
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openSettings: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'settings',
+      overlay: 'open',
+      tab: 'settings',
+      message: 'Opened settings.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+    openAlerts: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'alerts',
+      overlay: 'open',
+      tab: 'notifications',
+      message: 'Opened alerts.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
     }),
     applyDashboardAction: async (action) => ({
       ok: true,
@@ -54,6 +144,106 @@ function createBindings(overrides = {}) {
       truncated: false,
     }),
     openSearchResult: async () => ({ ok: true, status: 'opened' }),
+    listMissionPresets: async () => ({
+      ok: true,
+      variant: 'full',
+      activePresetId: null,
+      presets: [],
+      count: 0,
+    }),
+    applyMissionPreset: async () => ({
+      ok: true,
+      status: 'applied',
+      presetId: 'supply-chain-risk',
+      label: 'Supply-Chain Risk',
+      changed: false,
+      monitor: 'full',
+      message: 'Unused mission preset binding.',
+    }),
+    openMissionPicker: async () => ({
+      ok: true,
+      status: 'applied',
+      destination: 'mission_picker',
+      overlay: 'open',
+      message: 'Opened mission presets.',
+      context: {
+        variant: 'full',
+        map: {
+          view: 'global',
+          center: { lat: 0, lon: 0 },
+          zoom: 2,
+          timeRange: '7d',
+          enabledLayers: [],
+        },
+        panels: { mounted: ['map'], enabled: ['map'] },
+      },
+    }),
+
+    getPanelLayout: async () => ({
+      regions: {
+        sidebar: { available: true, panelCount: 1 },
+        bottom: { available: false, panelCount: 0 },
+      },
+      panels: [{
+        id: 'giving',
+        region: 'sidebar',
+        index: 0,
+        collapsed: false,
+        fullscreen: false,
+        collapsible: false,
+        fullscreenCapable: false,
+        fixed: false,
+      }],
+      panelCount: 1,
+    }),
+    setPanelCollapsed: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_collapsed',
+      panelId: 'live-news',
+      requestedCollapsed: true,
+      effectiveCollapsed: true,
+      changed: true,
+      message: 'Panel collapsed.',
+      persisted: true,
+    }),
+    movePanel: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'move',
+      panelId: 'giving',
+      region: 'sidebar',
+      index: 0,
+      changed: true,
+      message: 'Moved panel.',
+      persisted: true,
+    }),
+    setPanelFullscreen: async () => ({
+      ok: true,
+      status: 'applied',
+      actionType: 'set_fullscreen',
+      panelId: 'live-news',
+      requestedFullscreen: true,
+      effectiveFullscreen: true,
+      changed: true,
+      message: 'Panel entered fullscreen.',
+    }),
+    getAccessContext: async () => ({
+      accountState: 'signed_out',
+      clerk: 'unavailable',
+      productTier: 'anonymous',
+      capabilities: {
+        premiumAccess: false,
+        apiAccess: false,
+        mcpAccess: false,
+        dataExport: false,
+      },
+      limits: {
+        enabledPanels: { used: 1, cap: 40 },
+        dashboardTabs: { used: 1, cap: 3, canCreate: true },
+      },
+    }),
+    openSignIn: async () => ({ ok: false, status: 'denied', reason: 'clerk_unavailable' }),
     ...overrides,
   };
 }
@@ -103,6 +293,7 @@ describe('WebMCP analytics privacy policy', () => {
 
     resetAnalyticsForTesting();
     const provider = new FakeWebMcpModelContext({
+      supportsTargetExecutionSignal: true,
       registrationFailure: new Map([
         ['set_map_view', new DOMException('PRIVATE_HOST_FAILURE', 'AbortError')],
       ]),
@@ -130,6 +321,7 @@ describe('WebMCP analytics privacy policy', () => {
     await settlePromises();
 
     await executeRegistered(provider, 'openSearch');
+    await executeRegistered(provider, 'list_dashboard_panels', JSON.stringify({ limit: 1 }));
     await executeRegistered(provider, 'search_dashboard', JSON.stringify({
       query: 'PRIVATE_QUERY_TEXT',
       scope: 'all',
@@ -143,7 +335,7 @@ describe('WebMCP analytics privacy policy', () => {
       'webmcp-registered': new Set(['toolCount', 'pageSurface', 'api']),
       'webmcp-registration-failed': new Set(['tool', 'reason']),
       'webmcp-tool-invoked': new Set([
-        'tool', 'outcome', 'reason', 'queryLength', 'resultCount', 'resultTypes',
+        'tool', 'outcome', 'reason', 'queryLength', 'resultCount', 'resultTypes', 'hasMore',
       ]),
     };
     for (const call of collected) {
@@ -158,7 +350,7 @@ describe('WebMCP analytics privacy policy', () => {
       collected.find(({ event }) => event === 'webmcp-registered'),
       {
         event: 'webmcp-registered',
-        data: { toolCount: 7, pageSurface: 'dashboard', api: 'document-current' },
+        data: { toolCount: 30, pageSurface: 'dashboard', api: 'document-current' },
       },
     );
     assert.deepEqual(
@@ -166,6 +358,19 @@ describe('WebMCP analytics privacy policy', () => {
       {
         event: 'webmcp-registration-failed',
         data: { tool: 'set_map_view', reason: 'aborted' },
+      },
+    );
+    assert.deepEqual(
+      collected.find(({ data }) => data?.tool === 'list_dashboard_panels'),
+      {
+        event: 'webmcp-tool-invoked',
+        data: {
+          tool: 'list_dashboard_panels',
+          outcome: 'success',
+          reason: 'completed',
+          resultCount: 1,
+          hasMore: false,
+        },
       },
     );
     assert.deepEqual(
@@ -232,6 +437,12 @@ describe('WebMCP analytics privacy policy', () => {
         status: 'denied',
         reason: 'search_state_changed',
       }),
+      applyMissionPreset: async () => ({
+        ok: false,
+        status: 'denied',
+        reason: 'preset_not_entitled',
+        message: 'That mission preset requires a higher plan.',
+      }),
       searchDashboard: async () => { throw new Error('private internal failure'); },
     }), (event, data) => events.push({ event, data }));
 
@@ -252,6 +463,8 @@ describe('WebMCP analytics privacy policy', () => {
       .execute({ resultKey: `sr_${'b'.repeat(32)}` });
     await tools.find(({ name }) => name === 'open_search_result')
       .execute({ resultKey: `sr_${'c'.repeat(32)}`, extra: true });
+    await tools.find(({ name }) => name === 'apply_mission_preset')
+      .execute({ presetId: 'supply-chain-risk' });
     await assert.rejects(
       tools.find(({ name }) => name === 'search_dashboard').execute({ query: 'safe' }),
     );
@@ -265,6 +478,7 @@ describe('WebMCP analytics privacy policy', () => {
       ['denied', 'unavailable'],
       ['denied', 'stale'],
       ['denied', 'validation'],
+      ['denied', 'entitlement'],
       ['failure', 'internal'],
     ]);
     assert.deepEqual(

@@ -126,6 +126,12 @@ The dashboard's demand-driven data pass: on boot, and again on every scroll and 
 
 Refresh triggers divide into three classes that must not be conflated: input-driven passes (scroll, resize — arbitrarily frequent, carrying no information about data staleness), the staleness clock (each panel's scheduled refresh cadence), and explicit user requests (a retry affordance). Only the latter two justify refetching data a panel already shows; an input-driven pass exists to fill empty panels, never to refresh full ones. See also: Deferred Tier, Immediate Tier.
 
+### Detached Data Sink
+
+A component that keeps the shape of a view — it builds an element, exposes an accessor for it, accepts state updates — while nothing in the app ever mounts that element or reads the component back, so every update it absorbs is invisible by construction. The shape arises by erosion rather than design: a rendering component loses its consumers over time but keeps its element-building constructor, and the surviving write-only wiring reads as a working feature to anyone adding UI onto it.
+
+The defining hazard is that a detached element is fully functional — queries, attributes, and text content behave identically whether or not the tree is rooted in the document — so component-scoped tests cannot distinguish mounted from detached; only an assertion whose query starts at the document can. Accessibility attributes on such a node are a false claim, since the accessibility tree derives from the rendered document. Two compounding factors keep the failure silent: callers that write through optional chaining make an absent component and a detached one byte-identical at every call site, and a subclass that replaces its base class's element after construction opts itself out of every base-class mounting path. The three-grep reachability check — does anything read the element accessor, does the root class name occur beyond its creation site, does anything call the component's read API — proves detachment without a browser. See also: Late-Mount Window, Vacuous Guard.
+
 ### Shift Victim
 
 An element that browser and RUM layout-shift attribution names because its *position* changed — it was pushed by something else. Both Chrome's largest-shift-target and RUM per-selector rankings report victims; neither reports causes. A fix aimed at a top-ranked victim is a hypothesis about the pusher, not a confirmed target: prominent above-the-fold elements rank as victims whenever anything above them changes the layout. See also: Shift Mover.
@@ -133,6 +139,14 @@ An element that browser and RUM layout-shift attribution names because its *posi
 ### Shift Mover
 
 The element that *causes* a layout shift by changing its own footprint — growing, shrinking, materializing (insertion), or disappearing (removal). Movers are not reported by shift-attribution APIs; naming one requires diffing element geometry across the shift itself (a cached top/height baseline compared at shift delivery). The victim/mover distinction is load-bearing for all layout-stability work in this project: two shipped fixes aimed at victims had null field effect before mover instrumentation named the true mechanism. See also: Shift Victim, Deferred-Shell Contract.
+
+### Split Layout
+
+The dashboard mode where the map becomes a resizable column beside the panel grid, replacing the **stacked layout** (a full-width map band above the grid). One shared threshold, defined once in code and mirrored by CSS media queries whose literals are pinned by an alignment test, gates the switch for web and desktop alike — the two platforms previously used different thresholds, and their drift shipped a panel-loss bug. Mode-conditional state (which element owns the dashboard scroll, which storage key holds the saved map height) flips with the mode, so anything encoding a viewport-to-behavior expectation — e2e viewport tables included — is part of the threshold's blast radius. *Avoid: ultrawide (the legacy name that survives in code identifiers predating the unified threshold).* See also: Bottom Zone.
+
+### Bottom Zone
+
+The drop zone under the map, available only in the split layout, where a user can dock panels out of the main grid. Its membership is remembered separately from the main panel order, and zone reconciliation moves the remembered panels in or out when the layout mode changes — which is why the zone's CSS visibility and the reconciliation logic must agree on the same threshold: hiding the container while reconciliation still moves panels into it makes those panels vanish. See also: Split Layout.
 
 ## Payments Provider Calls
 
@@ -149,6 +163,10 @@ The typed value a provider-rate-limited operation returns *instead of throwing*,
 ### Trampoline Frame
 
 A stack frame contributed by a monkeypatched global — most often a third-party script's `window.fetch` wrapper — that appears in a trace as though it were a caller but merely passes the call through. Trampoline frames make third-party failures look first-party, which is why suppression gates must classify them; the trap is that their *names* are minifier output, renamed at will across builds and eventually omitted entirely, so any gate that recognizes a trampoline by name shape is on a treadmill. Identity comes instead from build-stable structural facts: which first-party chunk the frame is attributed to, and whether the wrapping script's own frame is present in the same trace. A gate that admits trampoline frames from a chunk is safe only under an *enforced* invariant that the chunk's backing modules perform no network work of their own — enforced meaning a test fails when it stops being true, not a comment asserting it. See also: Vacuous Guard.
+
+### Two-Verifier Seam
+
+The Clerk bearer is checked twice on `/api/user-prefs`: first by the edge (`jose` + cached JWKS in `validateBearerToken`), then again by Convex's OIDC verifier after `client.setAuth`. A token can pass the first check and fail the second. That gap is usually remaining lifetime versus round-trip and clock skew, not JWKS/audience/issuer drift — the edge already accepted the signature. `convex_auth_drift` (WORLDMONITOR-QK) is the Sentry name for the Convex-side rejection; it is the near-expiry face of a leftover token. A token's fate at the seam has three outcomes, not two: still inside `exp` and rejected downstream lands in QK; already past `exp` but inside the edge's bounded `clockTolerance` also reaches Convex and is rejected there, but is deliberately kept out of QK by the `acceptedWithinClockTolerance` capture skip rather than by any edge 401; only a token past `exp` *and* past that tolerance is refused at the edge, which is the XR/XQ face. Because QK's boundary is a capture skip, widening the tolerance moves events out of the bucket without changing what Convex does. Event volume here is failure rate times write volume, so QK also climbs when `CLOUD_SYNC_KEYS` grows, with no auth regression at all. See also: Anonymous Session.
 
 ## Timestamps & Hot-Document Writes
 
@@ -196,13 +214,17 @@ Two properties are routinely misread. An entry is a *record*, not a permission s
 
 ### Feed Digest
 
-The server-side pre-aggregation of a variant's news categories into one response, so a client can render headlines without fetching any feed itself. It is per-variant and per-language, and the categories it carries are the ones that variant's preset declares — which makes "is this category in the digest?" the same question as "is this category in the active variant's preset?". Distinct from the brief's digest *cadence*, which is a delivery schedule and shares only the word. Its failure modes are asymmetric: a refused request is obvious, but a successful response carrying no categories is a degraded answer that still looks like data, so any consumer testing the digest for presence rather than for coverage will read an outage as a completed load — and coverage governs not only whether a load landed but whether the response is fit to become the Last-Good Digest. See also: Custom Category, Last-Good Digest, Variant Host.
+The server-side pre-aggregation of a variant's news categories into one response, so a client can render headlines without fetching any feed itself. It is per-variant and per-language, and the categories it carries are the ones that variant's preset declares — which makes "is this category in the digest?" the same question as "is this category in the active variant's preset?". Distinct from the brief's digest *cadence*, which is a delivery schedule and shares only the word. Its failure modes are asymmetric: a refused request is obvious, but a successful response carrying no categories is a degraded answer that still looks like data, so any consumer testing the digest for presence rather than for coverage will read an outage as a completed load — and coverage governs not only whether a load landed but whether the response is fit to become the Last-Good Digest. See also: Custom Category, Digest Coverage, Last-Good Digest, Variant Host.
 
 ### Last-Good Digest
 
 The most recent Feed Digest a client retains locally so it can still render news when the live digest is unreachable. It is the fallback that exists to survive degradation, which makes what may *enter* it a stricter question than what may be rendered from it, and it is scoped to the variant and language it was built for — an entry from another scope describes a different category set and is not a substitute for one.
 
-Three rules follow, each easy to get wrong in the permissive direction. Eligibility is decided by coverage rather than by a response merely being well-formed, so a degraded answer carrying no categories must not enter however successful it looks. *Using* a response and *retaining* it are separate decisions: one covering fewer categories than the retained entry is still real data for the categories it names and may be rendered, but replacing a wider entry with it trades the fallback down for every later session — so it is used without being retained, a veto that holds only while the retained entry is itself still servable, letting a genuinely narrowed digest take over within one retention window rather than being locked out forever. And because retention is conditional on the entry already there, writing one is a compare-and-swap: concurrent writers that each read the pre-write state will otherwise let the loser land last. See also: Feed Digest, Variant Host.
+Three rules follow, each easy to get wrong in the permissive direction. Eligibility is decided by coverage rather than by a response merely being well-formed, so a degraded answer carrying no categories must not enter however successful it looks. *Using* a response and *retaining* it are separate decisions: one covering fewer categories than the retained entry is still real data for the categories it names and may be rendered, but replacing a wider entry with it trades the fallback down for every later session — so it is used without being retained, a veto that holds only while the retained entry is itself still servable, letting a genuinely narrowed digest take over within one retention window rather than being locked out forever. And because retention is conditional on the entry already there, writing one is a compare-and-swap: concurrent writers that each read the pre-write state will otherwise let the loser land last. See also: Feed Digest, Digest Coverage, Variant Host.
+
+### Digest Coverage
+
+The Feed Digest's self-description of how complete it is, carried as two distinguishable identities: the content state (what body is being served, when it was generated, which categories it covers) and the attempt state (what the latest build attempt achieved, whether it hit its deadline, which categories completed). A closed overall vocabulary — complete, partial, stale, unavailable — is decided from those identities, and the two are kept separate because a served body and the latest attempt can disagree: when older accepted content is served after a failed rebuild, attaching the current attempt's counts to the old body without naming the difference misdescribes both. Coverage gates entry into the Last-Good Digest and is what consumers — dashboard, agents — must condition on before treating a digest as fit for summaries or alerts; its public form carries counts, category states, and closed reasons only, never raw errors or host detail. See also: Feed Digest, Last-Good Digest.
 
 ### Custom Category
 
@@ -306,7 +328,11 @@ Two rules follow. Plan-to-capability mappings drift while the destination's own 
 
 ### Covering Subscription
 
-A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition. See also: Cancelled-But-Paid-Through, Billing UX State.
+A subscription that currently grants paid coverage. Coverage is decided per status, not by the status name's plain-English reading: an active subscription covers; an on-hold subscription (payment failed, provider retrying) still covers through its retry window; a cancelled subscription covers until the end of the period already paid for; an expired subscription never covers regardless of its recorded period end. The server owns these rules; any client-side derivation must mirror them rather than re-deriving from status-string intuition.
+
+The mirror is exact except at one boundary, and the exception is deliberate: the server treats the paid window as open while `currentPeriodEnd > at`, the client while `currentPeriodEnd >= at`. The client is the more permissive of the two for the single instant they differ, which is safe precisely because a Billing UX State changes copy and actions only and never grants access the server would deny — while the reverse rounding would blink a covered plan into looking lapsed between snapshots. Anything that later deduplicates the two implementations must preserve each side's boundary rather than picking one, since the comparison is load-bearing in opposite directions.
+
+Answering "does this row cover?" is also not the same as answering "does this user have access". An `active` row reports covering on its fields alone whatever its period end, so a row whose renewal webhook was missed still looks covering; `on_hold` and `cancelled` rows cover only through their paid-through end. Only the full Billing UX State derivation combines that row evidence with the current entitlement and renewal-verification verdict. Coverage predicates are therefore safe for choosing copy and never safe as an entitlement gate. See also: Cancelled-But-Paid-Through, Billing UX State, Renewal Verification.
 
 ### Cancelled-But-Paid-Through
 
@@ -361,6 +387,12 @@ The tiered gate's attestation that an exact source tree already passed the full 
 A gate failure caused by an external service being unavailable or answering unusably, rather than by anything in the tree under test — the failure class no author of the change can fix. The project's rule is that a gate must split its exit code by *who can fix the failure*: actor-fixable defects hard-fail, while third-party rot warns loudly and passes, with an opt-in flag to restore strict behaviour where a skipped check costs more than a blocked pipeline.
 
 Two properties keep the soft path from becoming a hole. It may fire only when the external system produced no usable result at all, never when a result exists and reports a genuine problem; and the skip must be annotated with what went unchecked, because an unannounced skip is indistinguishable from a pass. The diagnostic corollary matters as much as the split: because the tree is not the variable, the same commit can pass and then fail with nothing changed, so a gate that reddens repo-wide is diagnosed by comparing *when* each run executed rather than by reading pass/fail — sibling branches showing green are often stale runs from before the outage. See also: Tiered Gate, Vacuous Guard.
+
+### Identity Gate
+
+The state-dependent pre-push check that refuses to publish commits whose author or committer email matches a known test-fixture pattern, and fails a push outright while the shared repository configuration itself still carries such an identity. It exists because git hands its repository-location environment down to hook children, overriding their working directory — so an un-isolated test fixture run by the hook writes its fake identity into configuration that every linked worktree inherits.
+
+The gate checks the state that will actually be published rather than trusting upstream hardening: outgoing commits and the shared configuration are examined at push time, so a leak produced by a stale worktree running an old hook is still caught at the boundary even when the current tree is fully isolated. On failure it prints the repair recipe rather than only refusing, because the pusher is usually not the party that poisoned the configuration. See also: Tiered Gate.
 
 ### Baselined Advisory
 
@@ -623,6 +655,46 @@ having fetched nothing. See also: Section Deferral, Bundle Wall Budget.
 ### Tape Claim
 
 The label a market surface is allowed to show for a quote, bar, or stream: unconfigured, delayed, end-of-day, historical, stale, or — only after a separate commercial display/rebroadcast confirmation — licensed live. A configured provider key is not a Tape Claim. `Panel.setDataBadge('live')` means a fresh fetch versus a cache hit, not a licensed tape. Yahoo and seeded Finnhub quotes in this product stay delayed or end-of-day even when their keys exist. See also: Entitlement.
+
+## Forecast Resolution
+
+### Judged Resolution
+
+A published forecast whose outcome is decided by language models reading a news-evidence archive, as opposed to a hard resolution, which is decided by comparing a metric against a threshold in the same feed the forecast was scored from. Both carry a hard deadline; only the judged kind requires evidence retrieval and adjudication after that deadline passes.
+
+Sealing a judged forecast to YES or NO requires two independent judges to agree *and* each to cite an archive item by its identifier with a quote that appears in that item's own text. Both halves are load-bearing: agreement alone admits a shared hallucination, and an uncited outcome admits one manufactured from model text or from instructions planted in the archive, which is untrusted third-party content. A judgment failing either half is downgraded to VOID rather than being trusted — so VOID means *not established*, never *established false*. See also: Archive Horizon, Attempt Class.
+
+### Archive Horizon
+
+The instant past which a judged forecast can never again be resolved, because the evidence window it requires reaches further back than the evidence archive is able to serve.
+
+The horizon exists because two spans are anchored to different clocks: required evidence is measured backward from the forecast's own deadline, while the archive's reach is measured backward from the present. As the present advances, the archive's reach slides forward while the requirement stays pinned — so coverage is lost at a computable instant and is never regained. That monotonicity is what makes crossing it a terminal state rather than a retry: an entry past its horizon is not waiting on anything. Crossing it is counted as a cost-control failure, never as a resolution, and the operational goal is to alert while entries are still short of it. A read that is merely unavailable proves nothing about the horizon and must not be treated as crossing it. See also: Judged Resolution.
+
+### Attempt Class
+
+The named reason a single judge attempt failed, recorded per attempt alongside the stage it failed at — evidence retrieval, either judge call, response normalization, agreement, or the terminal transition.
+
+The vocabulary is closed so attempts aggregate into counts that name a dominant failure rather than an undifferentiated backlog; an instrumented failure is still a failure and never counts as progress. The classes separate distinctions that look alike but demand opposite responses: an archive that could not be read versus one that was read but does not cover the required window, a judge that returned nothing versus one whose answer could not be parsed, and a citation naming an item the judge was never shown versus a real item quoted with invented text. Recorded attempt detail is drawn from a fixed vocabulary rather than from provider error text, which can carry credentials and prompt echoes into durable receipts. See also: Judged Resolution.
+
+## Physical Divergence
+
+### Physical Premium
+
+The gap between what a metal costs as deliverable metal in one market and what the same metal costs as a paper futures contract in another, expressed per troy ounce and as a percentage. The two legs come from different venues on different clocks — a once-daily physical print with a content date, a futures snapshot with an instant, and a currency rate with its own instant — so the premium is only as fresh as its stalest leg, and the three must be carried and aged separately rather than collapsed into one timestamp. A negative premium is an ordinary state, not an error: the physical market trades at a discount for long stretches.
+
+### Physical Premium Regime
+
+The interpretation layer over a Physical Premium: an ordered classification from normal through progressively more stressed bands. It is deliberately **hybrid**, and both halves are load-bearing. An absolute floor per metal decides the band on size alone, so the label survives a period where the entire reference window is stressed. A rolling historical percentile can then refine the verdict *within* the floors, so an unusual-but-small premium is not dismissed.
+
+Percentile alone must never decide the band. The current observation belongs to its own reference window and the percentile is inclusive, so any new window high scores the maximum regardless of size — a relative rule without a magnitude condition therefore promotes trivia to the top band whenever the window is calm, and demotes a real crisis to normal whenever the window is itself a stress period. The two failures look opposite and share one cause. See also: Regime Transition, Insufficient History.
+
+### Regime Transition
+
+A change in a Physical Premium Regime between one published reading and the next, and the only thing that enters the cross-source signal stream — a *level* never emits, only a *change*. Suppression of repeated transitions is keyed on the regime last **emitted**, not on elapsed time alone, because the published reading advances even on a run whose transition was suppressed: a purely time-based gate would compare against a baseline that has already moved on, turning suppression of a genuine escalation into permanent deletion rather than a deferral. A move to a band more severe than the last one announced is therefore never withheld. See also: Physical Premium Regime.
+
+### Insufficient History
+
+The explicit state a derived reading reports when its reference window has not yet accumulated enough points to say anything — distinct from missing input and from stale input, and distinct again from a confident verdict of normal. It is the correct and expected state for the whole warm-up period after a derived series is first published, which is why it cannot on its own be treated as unhealthy. The trap is the mirror case: a series that reaches a working state and later falls back to insufficient history because its accumulated window was lost looks identical to one that never warmed up, unless something records the depth actually reached. See also: Activation Marker, Physical Premium Regime.
 
 ## Flagged ambiguities
 

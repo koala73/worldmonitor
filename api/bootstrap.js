@@ -2,7 +2,12 @@ import { waitUntil as vercelWaitUntil } from '@vercel/functions';
 
 import {
   PUBLIC_BOOTSTRAP_TIERS,
+  classifyPublicBootstrapRequest,
+} from './_bootstrap-public-tier.js';
+export {
+  isPublicOnDemandBootstrapRequest,
   isPublicTierBootstrapRequest,
+  isPublicWeatherBootstrapRequest,
 } from './_bootstrap-public-tier.js';
 import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import {
@@ -25,8 +30,12 @@ import {
   bootstrapTierKeyNames,
   resolveBootstrapRegistry,
 } from './_bootstrap-tier-keys.js';
+import { compactNaturalEventsDashboardPayload } from './_natural-events-dashboard.js';
 import { compactWildfireDashboardPayload } from './_wildfire-dashboard.js';
-import { CANADA_ALERTS_CUTOVER_FALLBACK_KEYS } from './_canada-alerts-cutover.js';
+import {
+  canadaAlertsCutoverFallbackValue,
+  extraCanadaAlertsCutoverReadKeys,
+} from './_canada-alerts-cutover.js';
 import {
   BOOTSTRAP_R2_PROBE_CEILING_MS,
   readBootstrapTierObject,
@@ -44,7 +53,6 @@ const { cacheKeys: BOOTSTRAP_CACHE_KEYS } = resolveBootstrapRegistry({
 });
 const SLOW_KEYS = new Set(bootstrapTierKeyNames('slow', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
 const FAST_KEYS = new Set(bootstrapTierKeyNames('fast', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
-const ON_DEMAND_KEYS = new Set(bootstrapTierKeyNames('on-demand', { iranEventsEnabled: IRAN_EVENTS_ENABLED }));
 
 // Temporary #6659 cutover fallback. Keep the new multi-province aggregate
 // authoritative, but let bootstrap clients use the Alberta sibling first and
@@ -70,17 +78,8 @@ export function stripXFeedRestrictedFields(value) {
 }
 
 function bootstrapRedisReadKeys(keys) {
-  if (!keys.includes(BOOTSTRAP_CACHE_KEYS.canadaAlerts)) return keys;
-  const extra = CANADA_ALERTS_CUTOVER_FALLBACK_KEYS.filter((key) => !keys.includes(key));
+  const extra = extraCanadaAlertsCutoverReadKeys(keys, BOOTSTRAP_CACHE_KEYS.canadaAlerts);
   return extra.length > 0 ? [...keys, ...extra] : keys;
-}
-
-function canadaAlertsCutoverFallbackValue(cached) {
-  for (const key of CANADA_ALERTS_CUTOVER_FALLBACK_KEYS) {
-    const fallback = cached.get(key);
-    if (fallback !== undefined) return fallback;
-  }
-  return undefined;
 }
 
 // No public/s-maxage: CF (in front of api.worldmonitor.app) ignores Vary: Origin and would
@@ -154,6 +153,13 @@ const ON_DEMAND_CACHE_PROFILES = {
     browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
     cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
   },
+  // Planned IMD cyclone/port/coastal/marine seeder on a 15min interval against
+  // a 45min health budget (#7005). The public on-demand URL would otherwise
+  // inherit the 2h slow shield and outlive health's stale declaration.
+  imdCycloneMarine: {
+    browser: 'max-age=60, stale-while-revalidate=120, stale-if-error=900',
+    cdn: 'public, s-maxage=900, stale-while-revalidate=120, stale-if-error=900',
+  },
   // seed-aviation aggregate, 90min health budget. Default 2h on-demand
   // shield would outlive the budget after #7046 moved this key off FAST.
   flightDelays: {
@@ -161,44 +167,6 @@ const ON_DEMAND_CACHE_PROFILES = {
     cdn: 'public, s-maxage=1800, stale-while-revalidate=300, stale-if-error=1800',
   },
 };
-
-// The URL SHAPE shared by every marked single-key public read:
-// `GET /api/bootstrap?keys=<one>&public=1`, no other params, each appearing once.
-// Returns the requested key name, or null when the request is not that shape.
-//
-// GET only: a HEAD has no body to serve and must not mint a cacheable entry.
-//
-// The MEMBERSHIP test deliberately stays with each caller below. Which keys may
-// be served without credentials is the whole semantic difference between them,
-// and folding both allowlists into one here would silently widen each to the
-// other's keys — the shape is shared, the authorization is not.
-function publicSingleKeyBootstrapRequestKey(req) {
-  if (req.method !== 'GET') return null;
-
-  const url = new URL(req.url);
-  const pathname = url.pathname.length > 1 ? url.pathname.replace(/\/+$/, '') : url.pathname;
-  if (pathname !== '/api/bootstrap') return null;
-
-  const params = Array.from(url.searchParams.keys());
-  if (params.some((key) => key !== 'keys' && key !== 'public')) return null;
-
-  const keyParams = url.searchParams.getAll('keys');
-  const publicParams = url.searchParams.getAll('public');
-  if (keyParams.length !== 1 || publicParams.length !== 1 || publicParams[0] !== '1') return null;
-
-  return keyParams[0];
-}
-
-// The explicitly-marked public weather URL: `?keys=weatherAlerts&public=1`.
-//
-// Same contract as its `?tier=fast|slow&public=1` and `?keys=<onDemand>&public=1`
-// siblings below: the payload is the shared production seed value, identical for
-// every caller, so the marker gives it its own CDN entry and the response is
-// public REGARDLESS of attached credentials — a CDN hit precedes handler auth,
-// so a credential-dependent answer at this URL could never be honored.
-export function isPublicWeatherBootstrapRequest(req) {
-  return publicSingleKeyBootstrapRequestKey(req) === PUBLIC_WEATHER_BOOTSTRAP_KEY;
-}
 
 // The legacy unmarked weather URL: `?keys=weatherAlerts` with no credentials.
 // Still anonymous and still serves the public payload — it is a documented
@@ -212,11 +180,10 @@ export function isPublicWeatherBootstrapRequest(req) {
 // response on this URL no-store means the edge never holds an entry that can
 // answer for the origin, so an invalid key always reaches validateApiKey.
 //
-// Deliberately NOT built on publicSingleKeyBootstrapRequestKey above: this
-// predicate is the pre-#5386 one, kept verbatim. It accepts HEAD and tolerates
-// `?keys=weatherAlerts,` / whitespace forms that the marked shape rejects.
-// Reusing the stricter helper here would narrow which requests still reach the
-// documented anonymous path — a behavior change this fix does not intend.
+// Deliberately NOT built on the marked public classifier: this predicate is the
+// pre-#5386 one, kept verbatim. It accepts HEAD and tolerates whitespace forms
+// that the marked shape rejects. Reusing the strict classifier here would narrow
+// which requests still reach the documented anonymous path.
 export function isAnonymousWeatherBootstrapRequest(req) {
   if (req.method !== 'GET' && req.method !== 'HEAD') return false;
 
@@ -303,43 +270,6 @@ function finishBootstrapR2ShadowResponse(req, ctx, tier, response, redisDuration
   return response;
 }
 
-// An explicit public tier bootstrap read (?tier=fast|slow&public=1, no other
-// params) returns the shared
-// production seed payload — identical for every caller (see PR #4499 non-goals:
-// only static transforms like wildfire compaction / enrichmentMeta strip apply,
-// never per-user variance). The explicit marker gives the shared response its
-// own CDN cache key; the legacy ?tier=fast|slow URLs remain credentialed and
-// no-store, so a warmed public response cannot bypass their auth/CORS contract.
-// The public URL is public regardless of request credentials because a CDN hit
-// occurs before handler auth. Callers that need credential processing must use
-// the legacy URL. Scoped to the two fixed public shapes so the CDN key space
-// stays tiny and hit rate high.
-//
-// GET only: a HEAD here would still run the full registry Redis read to build a
-// body it must not return — the exact unshielded egress this path exists to
-// avoid. HEAD tier reads have no client and fall through to the no-store path.
-export { isPublicTierBootstrapRequest } from './_bootstrap-public-tier.js';
-
-// The on-demand counterpart to the tier URL above: `?keys=<name>&public=1` for a
-// SINGLE on-demand key. Same reasoning — the payload is the shared production
-// seed value, identical for every caller — so it gets its own CDN entry and the
-// same public contract regardless of attached credentials (a cache hit precedes
-// handler auth).
-//
-// Restricted to ONE key drawn from ON_DEMAND_KEYS, deliberately: an arbitrary
-// `?keys=a,b,c` would make the CDN key space combinatorial, and every distinct
-// combination is a cache MISS that re-reads the registry from Redis — the exact
-// amplification #5259/#5287 exist to prevent. One key per URL keeps the space at
-// |ON_DEMAND_KEYS| entries, each independently cached and each fetched only by
-// the clients that actually render it.
-//
-// The legacy multi-key `?keys=a,b` URL keeps working and stays credentialed +
-// no-store, so nothing that relies on it changes.
-export function isPublicOnDemandBootstrapRequest(req) {
-  const key = publicSingleKeyBootstrapRequestKey(req);
-  return key !== null && ON_DEMAND_KEYS.has(key);
-}
-
 const BOOTSTRAP_CREDENTIAL_COOKIES = new Set(['wm-session', 'wm-pro-key', 'wm-widget-key']);
 
 function hasBootstrapCredentialCookie(req) {
@@ -355,6 +285,7 @@ function hasBootstrapCredentialCookie(req) {
 
 const NEG_SENTINEL = '__WM_NEG__';
 export const compactWildfireBootstrapPayload = compactWildfireDashboardPayload;
+export { compactNaturalEventsDashboardPayload };
 
 async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
   const result = new Map();
@@ -414,14 +345,9 @@ async function validateBootstrapAuth(req, cors) {
   const headerKey = getHeaderApiKey(req);
   // The explicit public URL must have one response contract for every request:
   // Vercel may serve it from cache before cookie/header auth reaches this code.
-  if (isPublicTierBootstrapRequest(req)) {
-    return { ok: true, kind: 'public-tier' };
-  }
-  if (isPublicOnDemandBootstrapRequest(req)) {
-    return { ok: true, kind: 'public-on-demand' };
-  }
-  if (isPublicWeatherBootstrapRequest(req)) {
-    return { ok: true, kind: 'public-weather' };
+  const publicBootstrap = classifyPublicBootstrapRequest(req);
+  if (publicBootstrap) {
+    return { ok: true, kind: publicBootstrap.authKind };
   }
   if (!headerKey && !hasBootstrapCredentialCookie(req)) {
     if (isAnonymousWeatherBootstrapRequest(req)) {
@@ -668,6 +594,7 @@ export default async function handler(req, ctx) {
         responseValue = stripXFeedRestrictedFields(val);
       }
       if (names[i] === 'wildfires') responseValue = compactWildfireBootstrapPayload(responseValue);
+      if (names[i] === 'naturalEvents') responseValue = compactNaturalEventsDashboardPayload(responseValue);
       data[names[i]] = responseValue;
     } else {
       missing.push(names[i]);

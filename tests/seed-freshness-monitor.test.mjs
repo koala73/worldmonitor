@@ -1032,6 +1032,33 @@ describe('scheduled seed freshness monitor', () => {
           /node --import tsx scripts\/check-health-probe-cutovers\.mts origin\/main/,
         );
       });
+
+      // #7021 — the pre-push hook above compares against origin/main, but CI
+      // compared against `github.event.pull_request.base.sha`. GitHub PINS that
+      // SHA when the PR is opened and never advances it as main moves, while
+      // actions/checkout builds refs/pull/N/merge — the PR merged onto main's
+      // CURRENT tip. So the gate diffs today's tree against a base that can be
+      // weeks old: every probe added to main after the PR opened reads as
+      // brand-new on every run, re-litigating a cutover the PR never touched.
+      // That is latent until the probe's acknowledgement is legitimately pruned,
+      // at which point the PR fails outright demanding an entry nobody should
+      // restore. #7021 died exactly this way on tpsMci (#7035) once #7120
+      // retired the acknowledgement, naming a closed issue as its owner.
+      //
+      // The merge ref's FIRST parent is the base tip the tree was merged onto,
+      // so it cannot drift away from what is actually being tested.
+      it('bases the cutover diff on the merged tree, not the pinned base.sha', () => {
+        const workflow = readFileSync(TEST_WORKFLOW_URL, 'utf8');
+
+        // Matches the interpolation, not the prose: the step's own comment names
+        // the rejected expression to explain why it is rejected.
+        assert.doesNotMatch(
+          workflow,
+          /\$\{\{\s*github\.event\.pull_request\.base\.sha/,
+          'pull_request.base.sha is pinned at PR creation, so it re-litigates every probe added after the PR opened',
+        );
+        assert.match(workflow, /git rev-parse HEAD\^1/);
+      });
     });
   });
 

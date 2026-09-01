@@ -22,6 +22,7 @@ These tables are the human-facing route map for finance, market, macro, energy, 
 | Crypto quotes | `GET /api/market/v1/list-crypto-quotes` | Crypto panel defaults; bootstrap-first via `cryptoQuotes`. |
 | Commodity quotes | `GET /api/market/v1/list-commodity-quotes` | Commodities, Energy Risk Brent tile, gold / crude watchlists; bootstrap-first via `commodityQuotes`. Empty `symbols` returns the configured seed set; only seed-set symbols are supported. |
 | Physical premiums | `GET /api/market/v1/get-physical-premiums` | SGE SHAU/SHAG benchmark prices compared with seeded COMEX `GC=F`/`SI=F` snapshots; optional `metals=gold` or `metals=silver` filter. |
+| Physical divergence | `GET /api/market/v1/get-physical-divergence-index` | Bounded gold and silver premium history, robust normalization, hybrid regimes, 5-day and 20-day trends, explicit data states, and a 70/30 composite. |
 | Sector summary | `GET /api/market/v1/get-sector-summary` | Sector heatmap and valuation context; bootstrap-first via `sectors`. |
 | Stablecoin markets | `GET /api/market/v1/list-stablecoin-markets` | Stablecoin peg-health panel; bootstrap-first via `stablecoinMarkets`. |
 | ETF flows | `GET /api/market/v1/list-etf-flows` | BTC spot ETF tracker; bootstrap-first via `etfFlows`. |
@@ -99,6 +100,7 @@ and seeder path must use a provider whose terms permit that commercial use
 | Custom watchlist equities | Seed-first, then bounded Redis-cached gap via `server/.../_quote-provider.ts` (Finnhub → Alpha Vantage) | 5 min positive cache; 15 min negative for definitive not-found | Provider errors are never cached |
 | Commodity futures (configured set) | Seed `shared/commodities.json` / AV physical + residual | Seed cadence | RPC is seed-set only (#6307); no FMP |
 | Physical precious-metals premiums | Daily SGE SHAU/SHAG PM benchmark + existing COMEX and shared CNY/USD snapshots | Daily; 72h run freshness, 10d content-age ceiling | Enabled by default; the seeder does not refetch COMEX or FX |
+| Physical divergence index | Derived from the daily physical-premium snapshot and bounded per-metal Redis history | Daily; explicit 12-calendar-day content-age state | The composite is published only when both metals are `ok`; see the [methodology](/methodology/physical-divergence-index) |
 | FX (Gulf / macro) | Seeders using AV `FX_DAILY` where wired | Seed cadence | Not part of equity watchlist gap fetch |
 | Crypto | CoinGecko → CoinPaprika (+ relay) | Seed + bounded gap (#6306) | Separate from equity adapter |
 | Historical series | Seeder-side AV daily commodity / FX series; premium analysis paths | Daily | Request-time gap fetch does **not** pull history (would double the budget) |
@@ -140,6 +142,30 @@ source and content date, the COMEX snapshot with its independent snapshot time,
 the shared CNY/USD rate and snapshot time, and the derived USD-per-troy-ounce
 premium. SHAU is quoted in CNY per gram. SHAG is quoted in CNY per kilogram.
 The conversion uses exactly `31.1034768` grams per troy ounce.
+
+Both routes require a Pro subscription (tier 1); an anonymous or free-account
+call is refused before the handler runs. See
+[Pro Intelligence Suite](/pro-intelligence-suite). The Physical tab in the
+commodities panel is hidden for callers without that entitlement rather than
+rendered against a refusal.
+
+Both `get-physical-premiums` and `get-physical-divergence-index` are served
+`no-store` and are not held in any shared or CDN cache. The premium route was
+previously cached on the daily tier; it was moved to `no-store` when the
+divergence RPC shipped because the two responses form one cohort. The panel
+compares the physical, paper, and FX clocks of the two payloads for strict
+equality and hides the derived reading when they disagree, so independently
+evicted cache entries would have surfaced as a spurious unavailable state. The
+client keeps the last successful premium response in memory so a single failed
+poll does not blank the panel.
+
+The divergence RPC adds a bounded statistical view without hiding input quality.
+It keeps at most 750 print-date points per metal, uses a trailing 250-point
+window, and needs 60 points before it returns an `ok` index. Each metal is
+classified as `ok`, `insufficient_history`, `stale_input`, or `missing_input`.
+For the exact absolute thresholds, robust z-score, percentile rules, composite
+weights, trend calculation, and transition cooldown, see the
+[Physical Precious-Metals Divergence Index methodology](/methodology/physical-divergence-index).
 
 ### Macro Signal Analysis (Market Radar)
 

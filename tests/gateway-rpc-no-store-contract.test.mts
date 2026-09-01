@@ -69,6 +69,29 @@ function assertCacheable(res: Response): void {
 }
 
 describe('gateway RPC no-store contract', () => {
+  it('keeps paired physical-premium cohorts out of shared caches', async () => {
+    const premiumPath = '/api/market/v1/get-physical-premiums';
+    const divergencePath = '/api/market/v1/get-physical-divergence-index';
+    const handler = createDomainGateway([
+      jsonRoute(premiumPath, {
+        premiums: [],
+        asOf: '2026-08-30T00:00:00.000Z',
+      }),
+      jsonRoute(divergencePath, {
+        readings: [],
+        composite: { state: 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT' },
+        evaluatedAt: '2026-08-30T00:00:00.000Z',
+        methodologyVersion: 'physical-divergence-v2',
+      }),
+    ]);
+
+    for (const path of [premiumPath, divergencePath]) {
+      const res = await handler(request(path));
+      assert.equal(res.status, 200, path);
+      assertNoStore(res);
+    }
+  });
+
   it('forces no-store for degraded, unavailable, nonterminal, and error-shaped 200 payloads', async () => {
     const handler = createDomainGateway([
       jsonRoute('/api/scenario/v1/get-scenario-status', { status: 'pending', error: '' }),

@@ -3,6 +3,39 @@ title: "Energy Disruption Event Log Methodology"
 description: "How World Monitor curates the energy disruption event log surfaced on pipeline and storage asset drawers across the Energy Atlas map layer."
 ---
 
+## Start here
+
+When you click a pipeline or a storage facility on the map, this is the log of
+**what has happened to it** — the sabotage, sanctions, maintenance windows,
+storms, strikes, and contract milestones that took it offline or brought it back.
+
+It exists because a status badge on its own is nearly useless. "Offline" means
+one thing for a pipeline shut for scheduled maintenance and something completely
+different for one shut by an explosion. The history is what supplies that
+difference.
+
+### Each event answers four questions
+
+- **What happened**, sorted into a fixed set of causes — sabotage, sanction,
+  maintenance, mechanical, weather, commercial, war.
+- **When it started, and whether it has ended.** An open-ended event is still
+  running.
+- **How much capacity went offline**, in the units that asset is measured in.
+- **Who says so** — every event carries its sources.
+
+Events also record a **cause chain** rather than a single label, because these
+things are rarely simple: sanctions lead to a contract lapse, which leads to a
+shutdown. Listing the chain keeps the sequence visible instead of collapsing it
+into whichever cause is easiest to name.
+
+<Warning>
+**This log is curated by hand, not detected automatically.** It covers notable
+events on the assets in the registry — it is not a complete record of everything
+that has ever happened to world energy infrastructure. An automated
+state-transition classifier was scoped but has not shipped. Absence from this log
+is not evidence that nothing happened.
+</Warning>
+
 ## Scope
 
 The disruption event log (`energy:disruptions:v1`) is a state-machine history of outages, sanctions, maintenance windows, weather events, and commercial milestones tied to the curated assets in `energy:pipelines:gas:v1`, `energy:pipelines:oil:v1`, and `energy:storage-facilities:v1`.

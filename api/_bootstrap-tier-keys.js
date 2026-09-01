@@ -72,6 +72,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   ucdpEvents: 'conflict:ucdp-events-bootstrap:v1',
   temporalAnomalies: 'temporal:anomalies:v1',
   weatherAlerts: 'weather:alerts:v1',
+  imdCycloneMarine: 'weather:imd-cyclone-marine:v1',
   canadaRoads: 'infra:ontario-511:v1',
   albertaRoads: 'infra:alberta-511:v1',
   manitobaRoads: 'infra:manitoba-511:v1',
@@ -239,6 +240,10 @@ const ON_DEMAND_KEY_NAMES = new Set([
   'canadaRoads',
   'albertaRoads',
   'manitobaRoads',
+  // IMD cyclone/port/coastal/marine products (#7005). On-demand: the weather
+  // and natural layers fetch this key only when those layers are on, so it
+  // never rides a payload every visitor downloads.
+  'imdCycloneMarine',
 ]);
 
 /**

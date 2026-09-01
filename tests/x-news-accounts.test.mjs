@@ -255,6 +255,94 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.equal(xNews.compute429BackoffMs(new Headers(), 99), xNews.MAX_429_BACKOFF_MS);
   });
 
+  it('polls tier 1 every cycle but throttles tier 2 and tier 3', async () => {
+    // 64 accounts x 96 cycles/day = 6,240 X reads/day, billed ~$50 per four days.
+    // Tier 1 keeps the baseline cadence; the slower tiers carry the saving.
+    const accounts = [
+      { handle: 'Reuters', accountId: '1', tier: 1 },
+      { handle: 'Slower', accountId: '2', tier: 2 },
+      { handle: 'Slowest', accountId: '3', tier: 3 },
+      { handle: 'Untiered', accountId: '4' },
+    ];
+    const polled = [];
+    const fetchImpl = async (url) => {
+      const match = String(url).match(/users\/(\d+)\/tweets/);
+      if (match) polled.push(match[1]);
+      return new Response(JSON.stringify({ data: [], meta: {} }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      });
+    };
+    const poll = (state, nowMs) => xNews.pollXFeed({
+      accounts, state, bearerToken: 'test-token', fetchImpl,
+      now: () => nowMs, wait: async () => {}, lookupDeletions: false,
+    });
+
+    const T0 = 1_000_000;
+    let state = await poll({ items: [], accountOffset: 0 }, T0);
+    assert.deepEqual(polled.sort(), ['1', '2', '3', '4'], 'first cycle polls everything');
+
+    // +15 min: one baseline cycle. Tier 1 and untiered are due; 2 and 3 are not.
+    polled.length = 0;
+    state = await poll(state, T0 + 15 * 60_000);
+    assert.deepEqual(polled.sort(), ['1', '4'], 'only baseline accounts poll at +15m');
+
+    // +60 min: tier 2 comes due, tier 3 still throttled.
+    polled.length = 0;
+    state = await poll(state, T0 + 60 * 60_000);
+    assert.deepEqual(polled.sort(), ['1', '2', '4'], 'tier 2 rejoins at its hour');
+
+    // +4h: everything is due again.
+    polled.length = 0;
+    await poll(state, T0 + 4 * 60 * 60_000);
+    assert.deepEqual(polled.sort(), ['1', '2', '3', '4'], 'tier 3 rejoins at four hours');
+  });
+
+  it('a throttled cycle still completes and keeps rotation honest', async () => {
+    // accountOffset advances by accountsAttempted through the FULL registry and
+    // cycleComplete requires attempted === configured. Filtering the account list
+    // instead of skipping in-loop corrupts both: rotation drifts, and every
+    // cadence-limited cycle reports incomplete, holding the feed at partial
+    // coverage forever. A skipped account must still be counted.
+    const accounts = [
+      { handle: 'Fast', accountId: '1', tier: 1 },
+      { handle: 'Slow', accountId: '2', tier: 3 },
+    ];
+    const fetchImpl = async () => new Response(JSON.stringify({ data: [], meta: {} }), {
+      status: 200, headers: { 'content-type': 'application/json' },
+    });
+    const poll = (state, nowMs) => xNews.pollXFeed({
+      accounts, state, bearerToken: 'test-token', fetchImpl,
+      now: () => nowMs, wait: async () => {}, lookupDeletions: false,
+    });
+    const T0 = 2_000_000;
+    let state = await poll({ items: [], accountOffset: 0 }, T0);
+    assert.equal(state.cycleComplete, true);
+
+    state = await poll(state, T0 + 15 * 60_000);
+    assert.equal(state.accountsAttempted, 2, 'a skipped account is still attempted');
+    assert.equal(state.cycleComplete, true, 'throttling must not read as partial coverage');
+  });
+
+  it('never throttles an account whose tier is missing or unknown', () => {
+    // A missing tier is an unannotated registry row, not an editorial judgement
+    // that the feed matters less; absent metadata must not downgrade freshness.
+    const now = 5_000_000;
+    for (const tier of [undefined, null, 1, 0, 99, 'weird']) {
+      assert.equal(
+        xNews.isAccountDueForPoll({ tier }, now, now),
+        true,
+        `tier ${String(tier)} must poll at the baseline cadence`,
+      );
+    }
+    // A slower tier just polled is not due; the same tier an interval later is.
+    assert.equal(xNews.isAccountDueForPoll({ tier: 2 }, now, now), false);
+    assert.equal(xNews.isAccountDueForPoll({ tier: 2 }, now, now + 60 * 60_000), true);
+    // A backwards clock must never park an account forever.
+    assert.equal(xNews.isAccountDueForPoll({ tier: 3 }, now + 60_000, now), true);
+    // Never polled reads as due.
+    assert.equal(xNews.isAccountDueForPoll({ tier: 3 }, 0, now), true);
+  });
+
   it('lets the attempt counter climb far enough to reach that ceiling', async () => {
     // The counter was capped at 7 (128s), which held the exponential below the
     // ceiling no matter how long the rate limiting lasted.
@@ -898,6 +986,137 @@ describe('per-cycle request budget (#6654)', () => {
   });
 });
 
+describe('402 credits-depleted circuit breaker', () => {
+  const accounts = Array.from({ length: 64 }, (_, i) => ({
+    handle: `News${i}`,
+    accountId: i < 17 ? String(1000 + i) : '',
+  }));
+  const now = () => Date.parse('2026-08-25T12:00:00.000Z');
+  const creditsDepleted = () => new Response(
+    JSON.stringify({
+      title: 'Payment Required',
+      detail: 'credits depleted',
+      status: 402,
+      type: 'https://api.x.com/2/problems/credits-depleted',
+    }),
+    { status: 402, headers: { 'content-type': 'application/json' } },
+  );
+
+  it('stops the whole cycle on the first HTTP 402 and backs off', async () => {
+    // Observed in production 2026-08-25: the plan ran out of credits and every
+    // call answered 402. Only 429 and 401/403 broke the loop, so 402 fell to the
+    // per-account failure path — all 64 accounts rejected, every cycle, with no
+    // backoff, exactly the ~6.1k/day the 401/403 breaker exists to prevent.
+    // Rate-limit headers were untouched (remaining 1999/2000), so nothing else
+    // would have slowed it down either.
+    let requests = 0;
+    const state = await xNews.pollXFeed({
+      accounts,
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => { requests += 1; return creditsDepleted(); },
+      now,
+      wait: async () => {},
+    });
+
+    assert.equal(requests, 1, 'the breaker must trip on the first 402');
+    assert.equal(state.accountsAttempted, 1);
+    assert.equal(state.cycleComplete, false);
+    assert.equal(state.rateLimitedUntil, now() + xNews.AUTH_FAILURE_BACKOFF_MS);
+    assert.equal(state.rateLimitAttempt, 0, '402 is not the 429 exponential');
+    assert.equal(state.backoffCause, xNews.X_BACKOFF_CAUSES.CREDITS);
+  });
+
+  it('names billing, not the token, so the operator is not sent to rotate a working bearer', async () => {
+    // The whole point of separating this from 401/403: the bearer is VALID and
+    // rotating it fixes nothing. A message saying "check X_BEARER_TOKEN" would
+    // cost an operator a credential rotation before they found the real cause.
+    const state = await xNews.pollXFeed({
+      accounts,
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => creditsDepleted(),
+      now,
+      wait: async () => {},
+    });
+
+    assert.match(state.lastError, /credits/i, 'the cause must be named');
+    assert.doesNotMatch(state.lastError, /X_BEARER_TOKEN/,
+      'a valid bearer must not be implicated');
+    assert.doesNotMatch(state.lastError, /auth failed/i);
+    assert.doesNotMatch(state.lastError, /rate limited/i);
+  });
+
+  it('trips during username resolution when the account id is not cached', async () => {
+    let requests = 0;
+    const state = await xNews.pollXFeed({
+      accounts: [{ ...accounts[0], accountId: '' }],
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => { requests += 1; return creditsDepleted(); },
+      now,
+      wait: async () => {},
+    });
+
+    assert.equal(requests, 1, 'the username lookup must be the only billed request');
+    assert.equal(state.accountsFailed, 0, 'billing failure is a cycle fault, not an account fault');
+    assert.match(state.lastError, /resolving @News0/);
+    assert.match(state.lastError, /top up the X API plan/i);
+    assert.doesNotMatch(state.lastError, /X_BEARER_TOKEN/);
+    assert.equal(state.rateLimitedUntil, now() + xNews.AUTH_FAILURE_BACKOFF_MS);
+    assert.equal(state.rateLimitAttempt, 0);
+    assert.equal(state.backoffCause, xNews.X_BACKOFF_CAUSES.CREDITS);
+  });
+
+  it('trips on the timeline leg too, not only the username lookup', async () => {
+    // Accounts with a pinned id skip the lookup entirely and go straight to the
+    // timeline call, so a breaker on only one leg leaves the other burning.
+    let requests = 0;
+    const state = await xNews.pollXFeed({
+      accounts: accounts.map((account, i) => ({ ...account, accountId: String(2000 + i) })),
+      state: { cursorByAccountId: {}, accountIdByHandle: {}, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => { requests += 1; return creditsDepleted(); },
+      now,
+      wait: async () => {},
+    });
+
+    assert.equal(requests, 1, 'the timeline leg must trip on the first 402 too');
+    assert.equal(state.rateLimitedUntil, now() + xNews.AUTH_FAILURE_BACKOFF_MS);
+    assert.match(state.lastError, /credits/i);
+  });
+
+  it('trips during the deletion lookup after a successful timeline request', async () => {
+    const account = { ...accounts[0], label: 'News 0', sourceName: 'News 0' };
+    const existing = xNews.normalizeXPost({
+      id: '99', text: 'existing post', created_at: '2026-08-25T11:00:00.000Z',
+    }, account);
+    let requests = 0;
+    const state = await xNews.pollXFeed({
+      accounts: [account],
+      state: { cursorByAccountId: { [account.accountId]: '99' }, items: [existing] },
+      bearerToken: 'test-token',
+      fetchImpl: async (url) => {
+        requests += 1;
+        return new URL(url).pathname === '/2/tweets'
+          ? creditsDepleted()
+          : new Response(JSON.stringify({ data: [] }), { status: 200 });
+      },
+      now,
+      wait: async () => {},
+    });
+
+    assert.equal(requests, 2, 'one timeline and one deletion request must bound the cycle');
+    assert.equal(state.accountsPolled, 1);
+    assert.equal(state.cycleComplete, false);
+    assert.equal(state.rateLimitedUntil, now() + xNews.AUTH_FAILURE_BACKOFF_MS);
+    assert.equal(state.rateLimitAttempt, 0, '402 must not advance the 429 exponential');
+    assert.equal(state.backoffCause, xNews.X_BACKOFF_CAUSES.CREDITS);
+    assert.match(state.lastError, /during deletion lookup/);
+    assert.match(state.lastError, /top up the X API plan/i);
+  });
+});
+
 describe('401/403 circuit breaker (#6654)', () => {
   const accounts = Array.from({ length: 64 }, (_, i) => ({
     handle: `News${i}`,
@@ -1071,10 +1290,16 @@ describe('under-lock poll-state merge (multi-replica)', () => {
   it('adopts a peer’s active rate-limit backoff — the X bearer is shared', () => {
     const merged = xNews.mergeRefreshedPollState(
       { ...redisState, rateLimitedUntil: 0, rateLimitAttempt: 0 },
-      { ...redisState, rateLimitedUntil: 5_000_000, rateLimitAttempt: 4 },
+      {
+        ...redisState,
+        rateLimitedUntil: 5_000_000,
+        rateLimitAttempt: 4,
+        backoffCause: xNews.X_BACKOFF_CAUSES.CREDITS,
+      },
     );
     assert.equal(merged.rateLimitedUntil, 5_000_000);
     assert.equal(merged.rateLimitAttempt, 4);
+    assert.equal(merged.backoffCause, xNews.X_BACKOFF_CAUSES.CREDITS);
   });
 
   it('does not let an older Redis copy clear a backoff this process just recorded', () => {
@@ -1125,6 +1350,7 @@ describe('versioned X feed snapshot', () => {
       catchupByAccountId: { '1652541': { sinceId: '100', paginationToken: 'page-3', newestPostId: '101' } },
       rateLimitedUntil: 1_755_521_260_000,
       rateLimitAttempt: 3,
+      backoffCause: xNews.X_BACKOFF_CAUSES.CREDITS,
       lastPollAt: 1_755_521_200_000,
       lastHealthyAt: 1_755_521_200_000,
       lastCoverage: { expected: 64, polled: 64, failed: 0, attempted: 64, complete: true },
@@ -1141,6 +1367,7 @@ describe('versioned X feed snapshot', () => {
     assert.equal(hydrated.catchupByAccountId['1652541'].paginationToken, 'page-3');
     assert.equal(hydrated.rateLimitedUntil, 1_755_521_260_000);
     assert.equal(hydrated.rateLimitAttempt, 3);
+    assert.equal(hydrated.backoffCause, xNews.X_BACKOFF_CAUSES.CREDITS);
     assert.equal(hydrated.items[0].text, 'body');
     assert.equal(hydrated.lastCoverage.complete, true);
     const legacy = xNews.hydrateXFeedSnapshot({ ...snapshot, pollState });
@@ -1152,6 +1379,14 @@ describe('versioned X feed snapshot', () => {
     const pollStateOnly = xNews.hydrateXFeedSnapshot(null, { pollState });
     assert.equal(pollStateOnly.cursorByAccountId['1652541'], '101');
     assert.equal(pollStateOnly.items.length, 0);
+  });
+
+  it('hydrates legacy poll state without a backoff cause', () => {
+    const hydrated = xNews.hydrateXFeedSnapshot(null, {
+      pollState: { rateLimitedUntil: 1_755_521_260_000, rateLimitAttempt: 3 },
+    });
+    assert.equal(hydrated.rateLimitedUntil, 1_755_521_260_000);
+    assert.equal(hydrated.backoffCause, null);
   });
 
   it('rejects an unversioned or malformed snapshot', () => {

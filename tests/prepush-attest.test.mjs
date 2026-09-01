@@ -24,7 +24,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,7 +71,7 @@ function makeRepo({ baseFiles = { 'README.md': 'base\n' }, branchFiles = {} } = 
   const root = mkdtempSync(join(tmpdir(), 'wm-prepush-attest-'));
   fixtures.push(root);
   git(root, ['init', '--quiet', '--initial-branch=main', '.']);
-  git(root, ['config', 'user.email', 'prepush-attest@example.invalid']);
+  git(root, ['config', 'user.email', 'prepush-attest@wm-fixture.localhost']);
   git(root, ['config', 'user.name', 'Prepush Attest Fixture']);
   for (const [path, contents] of Object.entries(baseFiles)) write(root, path, contents);
   git(root, ['add', '-A']);
@@ -86,20 +86,22 @@ function makeRepo({ baseFiles = { 'README.md': 'base\n' }, branchFiles = {} } = 
 }
 
 /** Runs a mode and returns its exit status plus the NUL-delimited stdout, split. */
-function attest(cwd, args) {
+function attest(cwd, args, extraEnv = {}) {
   let status = 0;
   let stdout = '';
+  let stderr = '';
   try {
     stdout = execFileSync('bash', [SCRIPT, ...args], {
       cwd,
-      env: isolatedGitEnv(),
+      env: { ...isolatedGitEnv(), ...extraEnv },
       encoding: 'utf8',
     });
   } catch (err) {
     status = err.status;
     stdout = err.stdout ?? '';
+    stderr = err.stderr ?? '';
   }
-  return { status, paths: stdout.split('\0').filter(Boolean), stdout };
+  return { status, paths: stdout.split('\0').filter(Boolean), stdout, stderr };
 }
 
 describe('changed-path enumeration survives every legal git path', () => {
@@ -452,6 +454,21 @@ describe('pre-push wiring: the hook must consume these decisions', () => {
     has(/^ATTEST="scripts\/prepush-attest\.sh"$/m);
   });
 
+  test('routes both --exit-code freshness diffs through worktree-diff', () => {
+    has(
+      /"\$ATTEST" worktree-diff "\$WM_PREPUSH_ROOT" -- src\/generated\/ docs\/api\//,
+      'proto freshness must use the tri-state worktree diff',
+    );
+    has(
+      /"\$ATTEST" worktree-diff "\$WM_PREPUSH_ROOT" -- \\\n\s+src\/config\/products\.generated\.ts[\s\S]*?pro-test\/src\/locales\//,
+      'product freshness must use the tri-state worktree diff',
+    );
+    lacks(
+      /if ! git diff --exit-code/,
+      '`if ! git diff --exit-code` collapses git 1 (stale) and 128 (could not run)',
+    );
+  });
+
   test('routes the changed-path enumeration through prepush-attest.sh', () => {
     has(/"\$ATTEST" changed origin\/main/, 'scoping list must come from the NUL-safe enumeration');
     has(/"\$ATTEST" changed-live /, 'the runner list must exclude pushed deletions');
@@ -488,5 +505,342 @@ describe('pre-push wiring: the hook must consume these decisions', () => {
       'pre-push must use the shared checker with its worktree-aware caller profile',
     );
     lacks(/find api\/ -name "\*\.js"/, 'working-tree globs rediscover ignored sidecar bundles');
+  });
+});
+
+describe('base-guard fetches lazily and only to disprove a violation (#6764)', () => {
+  // The old hook fetched origin on EVERY push (2s warm, 72s cold) to protect
+  // a guard that almost never fires. base-guard keeps the zero-fetch shortcut
+  // for protected main, but refreshes mutable stacked bases before accepting a
+  // cached pass. A suspected violation (or missing ref) is fetched and
+  // recounted as well.
+  //
+  // Every case runs the real script with a stub `git` first on PATH that logs
+  // fetch invocations before delegating to the real binary, so "no fetch
+  // happened" is an executed fact, not a source grep.
+  const REAL_GIT = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const REAL_NODE = process.execPath;
+
+  function makeCloneWithOrigin({ aheadCommits = 1 } = {}) {
+    const root = mkdtempSync(join(tmpdir(), 'wm-base-guard-'));
+    fixtures.push(root);
+    const origin = join(root, 'origin.git');
+    const clone = join(root, 'clone');
+    execFileSync('git', ['init', '--quiet', '--bare', '--initial-branch=main', origin], { env: isolatedGitEnv(), encoding: 'utf8' });
+    execFileSync('git', ['clone', '--quiet', origin, clone], { env: isolatedGitEnv(), encoding: 'utf8' });
+    git(clone, ['config', 'user.email', 'base-guard@wm-fixture.localhost']);
+    git(clone, ['config', 'user.name', 'Base Guard Fixture']);
+    write(clone, 'README.md', 'base\n');
+    git(clone, ['add', '-A']);
+    git(clone, ['commit', '--quiet', '-m', 'base']);
+    git(clone, ['push', '--quiet', 'origin', 'main']);
+    git(clone, ['checkout', '--quiet', '-b', 'feature']);
+    for (let i = 0; i < aheadCommits; i += 1) {
+      write(clone, 'work.txt', `work ${i}\n`);
+      git(clone, ['add', '-A']);
+      git(clone, ['commit', '--quiet', '-m', `work ${i}`]);
+    }
+    // A fetch-logging git shim, first on PATH for the script under test only.
+    const stubDir = join(root, 'stub-bin');
+    const fetchLog = join(root, 'fetch.log');
+    mkdirSync(stubDir, { recursive: true });
+    writeFileSync(
+      join(stubDir, 'git'),
+      `#!/bin/sh\nif [ "$1" = fetch ]; then echo fetch >> "${fetchLog}"; fi\nexec "${REAL_GIT}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    return { root, clone, stubDir, fetchLog };
+  }
+
+  function baseGuard({ clone, stubDir }, args, { path = `${stubDir}:${process.env.PATH}`, ...extraEnv } = {}) {
+    let status = 0;
+    let stdout = '';
+    try {
+      stdout = execFileSync('/bin/bash', [SCRIPT, 'base-guard', ...args], {
+        cwd: clone,
+        env: isolatedGitEnv({ PATH: path, ...extraEnv }),
+        encoding: 'utf8',
+      });
+    } catch (err) {
+      status = err.status;
+      stdout = err.stdout ?? '';
+    }
+    const [base, count] = stdout.trim().split('\t');
+    return { status, base, count: Number(count) };
+  }
+
+  function fetchCount(fixture) {
+    try {
+      return readFileSync(fixture.fetchLog, 'utf8').split('\n').filter(Boolean).length;
+    } catch {
+      return 0;
+    }
+  }
+
+  function makeTimeoutlessPath({ root, fetchLog }) {
+    const stubDir = join(root, 'timeoutless-bin');
+    mkdirSync(stubDir, { recursive: true });
+    writeFileSync(
+      join(stubDir, 'git'),
+      `#!/bin/sh\n` +
+        `if [ "$1" = fetch ]; then echo fetch >> "${fetchLog}"; exec /bin/sleep 1000; fi\n` +
+        `exec "${REAL_GIT}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    writeFileSync(
+      join(stubDir, 'node'),
+      `#!/bin/sh\nexec "${REAL_NODE}" "$@"\n`,
+      { mode: 0o755 },
+    );
+    return stubDir;
+  }
+
+  test('a cached ahead-count within the limit performs NO fetch', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 1 });
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 0);
+    assert.equal(result.base, 'main');
+    assert.equal(result.count, 1);
+    assert.equal(fetchCount(fixture), 0, 'the common path must pay no network');
+  });
+
+  test('a force-rewritten stacked base refreshes a cached pass before accepting it', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 25 });
+    const { clone } = fixture;
+    git(clone, ['push', '--quiet', 'origin', 'feature:stacked']);
+    const cachedBase = git(clone, ['rev-parse', 'feature~1']).trim();
+    git(clone, ['update-ref', 'refs/remotes/origin/stacked', cachedBase]);
+
+    const rewrittenBase = git(clone, ['rev-parse', 'feature~25']).trim();
+    git(clone, ['push', '--quiet', '--force', 'origin', `${rewrittenBase}:stacked`]);
+
+    const result = baseGuard(fixture, ['stacked', '20']);
+    assert.equal(result.status, 3, 'a mutable base must be checked against its live ref');
+    assert.equal(result.count, 25);
+    assert.ok(fetchCount(fixture) >= 1, 'stacked bases must refresh even when the cached count passes');
+  });
+
+  test('a genuine violation still fails, after a corrective fetch confirmed it', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 25 });
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 3, 'exit 3 = violation, distinct from pass and from usage error');
+    assert.equal(result.count, 25);
+    assert.ok(fetchCount(fixture) >= 1, 'a suspected violation must be re-checked against a fresh ref');
+  });
+
+  test('a stale-ref false positive passes after the corrective fetch (the case the old unconditional fetch existed for)', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 25 });
+    const { clone } = fixture;
+    // Land the 25 commits on origin/main (they ARE main now), then branch one
+    // commit past them — but rewind the local remote-tracking ref so the
+    // cached count reads 26 while the true count is 1.
+    git(clone, ['push', '--quiet', 'origin', 'feature:main']);
+    write(clone, 'tip.txt', 'tip\n');
+    git(clone, ['add', '-A']);
+    git(clone, ['commit', '--quiet', '-m', 'tip']);
+    const staleBase = git(clone, ['rev-list', '--max-parents=0', 'HEAD']).trim();
+    git(clone, ['update-ref', 'refs/remotes/origin/main', staleBase]);
+
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 0, 'must not false-positive against the stale ref');
+    assert.equal(result.count, 1);
+    assert.ok(fetchCount(fixture) >= 1);
+  });
+
+  test('a base with no local remote-tracking ref fetches and resolves', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 1 });
+    git(fixture.clone, ['update-ref', '-d', 'refs/remotes/origin/main']);
+    const result = baseGuard(fixture, ['main', '20']);
+    assert.equal(result.status, 0);
+    assert.equal(result.count, 1);
+    assert.ok(fetchCount(fixture) >= 1);
+  });
+
+  test('fetches stay bounded when neither timeout nor gtimeout is on PATH', () => {
+    for (const [label, aheadCommits, removeRef] of [
+      ['cached violation', 25, false],
+      ['missing remote-tracking ref', 1, true],
+    ]) {
+      const fixture = makeCloneWithOrigin({ aheadCommits });
+      if (removeRef) git(fixture.clone, ['update-ref', '-d', 'refs/remotes/origin/main']);
+      const path = makeTimeoutlessPath(fixture);
+      const started = Date.now();
+      const result = baseGuard(fixture, ['main', '20'], {
+        path,
+        WM_PREPUSH_FETCH_TIMEOUT_MS: '200',
+      });
+
+      const elapsed = Date.now() - started;
+      assert.ok(elapsed < 3000, `${label} must return after the portable deadline`);
+      assert.ok(fetchCount(fixture) >= 1, `${label} must exercise the corrective fetch (result=${JSON.stringify(result)})`);
+      if (removeRef) {
+        assert.equal(result.status, 0);
+        assert.equal(result.base, 'main');
+      } else {
+        assert.equal(result.status, 3);
+        assert.equal(result.count, 25);
+      }
+    }
+  });
+
+  test('an unresolvable base falls back to origin/main, like the hook always did', () => {
+    const fixture = makeCloneWithOrigin({ aheadCommits: 1 });
+    const result = baseGuard(fixture, ['no-such-base', '20']);
+    assert.equal(result.status, 0);
+    assert.equal(result.base, 'main', 'the resolved base is reported so the hook can use it');
+    assert.equal(result.count, 1);
+  });
+});
+
+describe('per-gate cache keys one gate on its own worktree inputs (#6765)', () => {
+  // The whole-tree cache never hits in a merge/amend loop — any byte anywhere
+  // invalidates every gate. gate-read/gate-write key ONE gate on the worktree
+  // bytes of its declared inputs. Every case executes the real script against
+  // a real repo; the refusal rules mirror cache-read/cache-write.
+  function makeGateRepo() {
+    const root = makeRepo({
+      baseFiles: {
+        'docs/readme.md': 'docs\n',
+        'docs/café notes.md': 'unicode path\n',
+        'src/app.ts': 'code\n',
+      },
+    });
+    return { root, cache: join(root, '.git', 'wm-prepush-gate-cache') };
+  }
+
+  const gateRead = (fx, gate, diffResolved, specs) =>
+    attest(fx.root, ['gate-read', fx.cache, gate, diffResolved, '--', ...specs]).status;
+  const gateWrite = (fx, gate, diffResolved, attestable, specs) =>
+    attest(fx.root, ['gate-write', fx.cache, gate, diffResolved, attestable, '--', ...specs]).status;
+
+  test('hit: an unchanged input set read back after a green write', () => {
+    const fx = makeGateRepo();
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 3, 'no entry yet -> miss');
+    assert.equal(gateWrite(fx, 'lint-md', 'true', 'true', ['docs']), 0);
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 0, 'identical inputs -> hit');
+  });
+
+  test('miss: changing a declared input (including a unicode-named one) invalidates the gate', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    write(fx.root, 'docs/café notes.md', 'edited\n');
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 3, 'a C-quotable path must still be part of the key');
+  });
+
+  test('no cross-gate invalidation: changing gate B inputs leaves gate A green', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'typecheck', 'true', 'true', ['src']);
+    write(fx.root, 'docs/readme.md', 'changed\n');
+    assert.equal(gateRead(fx, 'typecheck', 'true', ['src']), 0, 'docs edits must not re-pay the typecheck');
+    assert.equal(gateRead(fx, 'typecheck', 'true', ['docs']), 3, 'same gate, different input set -> different key');
+  });
+
+  test('untracked-but-unignored files are inputs; gitignored output is not', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    write(fx.root, 'docs/new-page.md', 'brand new\n');
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 3, 'a NEW file is an input change');
+    rmSync(join(fx.root, 'docs/new-page.md'));
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 0, 'removing it restores the key');
+    write(fx.root, '.gitignore', 'docs/generated/\n');
+    git(fx.root, ['add', '.gitignore']);
+    git(fx.root, ['commit', '--quiet', '-m', 'ignore output']);
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    write(fx.root, 'docs/generated/out.md', 'build output\n');
+    assert.equal(gateRead(fx, 'lint-md', 'true', ['docs']), 0, 'ignored build output must not churn the key');
+  });
+
+  test('refusals mirror the whole-tree cache: dirty worktree cannot write, unresolved diff can neither write nor read', () => {
+    const fx = makeGateRepo();
+    const refused = attest(fx.root, ['gate-write', fx.cache, 'lint-md', 'true', 'false', '--', 'docs']);
+    assert.equal(refused.status, 3);
+    assert.match(refused.stdout, /not byte-identical/);
+    assert.equal(existsSync(join(fx.cache, 'lint-md')), false, 'a refused write must leave no entry');
+
+    assert.equal(gateWrite(fx, 'lint-md', 'false', 'true', ['docs']), 3, 'RUN_ALL runs must not mint entries');
+    gateWrite(fx, 'lint-md', 'true', 'true', ['docs']);
+    assert.equal(gateRead(fx, 'lint-md', 'false', ['docs']), 3, 'a blind run must not trust entries either');
+  });
+
+  test('a second worktree with identical bytes shares the hit through the common cache dir', () => {
+    const fx = makeGateRepo();
+    gateWrite(fx, 'typecheck', 'true', 'true', ['src']);
+    const second = join(fx.root, '..', `${fx.root.split('/').pop()}-wt2`);
+    git(fx.root, ['worktree', 'add', '--detach', '--quiet', second, 'main']);
+    fixtures.push(second);
+    // The hook derives the cache dir from --git-common-dir, which resolves to
+    // the SAME location from both worktrees; here that dir is passed
+    // explicitly, so assert the resolution too.
+    const commonFromSecond = execFileSync('git', ['rev-parse', '--path-format=absolute', '--git-common-dir'], {
+      cwd: second, env: isolatedGitEnv(), encoding: 'utf8',
+    }).trim();
+    // realpath both sides: macOS reports /var as /private/var.
+    assert.equal(realpathSync(commonFromSecond), realpathSync(join(fx.root, '.git')));
+    const status = attest(second, ['gate-read', fx.cache, 'typecheck', 'true', '--', 'src']).status;
+    assert.equal(status, 0, 'identical input bytes in a sibling worktree must hit');
+  });
+
+  test('a gate name that could escape the cache dir is a usage error', () => {
+    const fx = makeGateRepo();
+    assert.equal(gateWrite(fx, '../evil', 'true', 'true', ['docs']), 2);
+    assert.equal(existsSync(join(fx.root, '.git', 'evil')), false);
+  });
+});
+
+describe('worktree-diff distinguishes clean, stale, and could-not-run (#7445)', () => {
+  // `git diff --exit-code` uses 0 = clean, 1 = real diff, anything else
+  // (typically 128) = could not run. The pre-push freshness gates used to
+  // collapse 1 and 128 via `if !`, so a work-tree-resolution failure was
+  // printed as a stale catalog. This mode is the three-valued wrapper those
+  // gates now call: 0 clean, 3 dirty, 1 could-not-run.
+
+  test('a clean path is 0', () => {
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    assert.equal(attest(root, ['worktree-diff', '--', 'src/config/products.generated.ts']).status, 0);
+  });
+
+  test('a real diff is 3, not 1', () => {
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    write(root, 'src/config/products.generated.ts', 'export const PRODUCTS = ["stale"];\n');
+    assert.equal(attest(root, ['worktree-diff', '--', 'src/config/products.generated.ts']).status, 3);
+  });
+
+  test('git diff 128 on an unknown path is 1, not 3', () => {
+    const root = makeRepo();
+    const result = attest(root, ['worktree-diff', '--', 'src/config/products.generated.ts']);
+    assert.equal(result.status, 1, result.stderr);
+    assert.notEqual(result.status, 3, '128 must not be classified as a stale catalog');
+  });
+
+  test('cwd inside the git dir is could-not-run unless an explicit root is passed', () => {
+    // The hook's pro-test gate symlinks pro-test/node_modules/.vite into
+    // $common/wm-vite-cache/. A git invocation whose cwd resolves through
+    // that link is physically inside .git, where show-toplevel dies with
+    // "fatal: this operation must be run in a work tree" (exit 128).
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    const cache = join(root, '.git', 'wm-vite-cache', 'pro-test-abc');
+    mkdirSync(cache, { recursive: true });
+
+    const lost = attest(cache, ['worktree-diff', '--', 'src/config/products.generated.ts']);
+    assert.equal(lost.status, 1, lost.stderr);
+    assert.match(lost.stderr, /this operation must be run in a work tree|not a git repository|unknown revision or path/);
+
+    const pinned = attest(cache, ['worktree-diff', root, '--', 'src/config/products.generated.ts']);
+    assert.equal(pinned.status, 0, pinned.stderr);
+  });
+
+  test('GIT_DIR pointing at the git dir does not override an explicit root after the strip', () => {
+    const root = makeRepo({ baseFiles: { 'src/config/products.generated.ts': 'export const PRODUCTS = [];\n' } });
+    const result = attest(
+      '/tmp',
+      ['worktree-diff', root, '--', 'src/config/products.generated.ts'],
+      { GIT_DIR: join(root, '.git') },
+    );
+    assert.equal(result.status, 0, result.stderr);
+  });
+
+  test('a missing -- pathspec is a usage error', () => {
+    const root = makeRepo();
+    assert.equal(attest(root, ['worktree-diff']).status, 2);
   });
 });

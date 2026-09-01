@@ -39,6 +39,7 @@ Action-dispatched writer. The body's `action` field selects the mutation:
 | `set-alert-rules` | Replace the caller's alert-rules set in one shot. |
 | `set-quiet-hours` | Set do-not-disturb windows. |
 | `set-digest-settings` | Configure digest cadence and channel routing. |
+| `set-notification-config` | Per-variant notification config: `variant` (required), `enabled`, `eventTypes`, `sensitivity` (`all`/`high`/`critical`), `channels`, `aiDigestEnabled`, `digestMode` (`realtime`/`daily`/`twice_daily`/`weekly`), `digestHour`, `digestTimezone`, `countries`, `tickers`. Validation errors return structured 400 codes (e.g. `COUNTRIES_MUST_BE_ARRAY`, `TICKERS_LIMIT_EXCEEDED`). |
 
 All actions require Clerk bearer + PRO, and PRO here specifically means a **billed entitlement row** at `tier >= 1`. A Clerk session whose role is `pro` but which has no entitlement row does **not** qualify, unlike the gateway's tier-1 REST gate: notification delivery is enforced a second time inside Convex (`assertProEntitlement`), so the edge gate returns the clean `403 pro_required` rather than letting the request fail deeper with a less useful error. Invalid actions return `400 Unknown action`. Requests are forwarded to Convex via `RELAY_SHARED_SECRET`.
 

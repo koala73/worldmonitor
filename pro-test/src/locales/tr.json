@@ -32,7 +32,7 @@
     "proF6": "Uçuş arama ve fiyat karşılaştırma",
     "proF7": "Uyarı kuralı motoru — özel tetikleyiciler, sessiz saatler, AES-256 şifreli kanallar",
     "proF8": "Pazar watchlist'i, makro ve merkez bankası takibi",
-    "proF9": "AI Market Implications ve Regional Intelligence (Yakında: yörünge gözetimi, premium harita katmanları, uzatılmış geçmiş)",
+    "proF9": "AI Pazar Etkileri ve Bölgesel İstihbarat",
     "choosePlan": "Planınızı seçin",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Paylaşılan izleme, API erişimi, deployment seçenekleri, TV uygulamaları ve doğrudan desteğe ihtiyaç duyan ekipler için.",
@@ -48,10 +48,11 @@
     "entF10": "Bulut, on-premises veya air-gapped deployment",
     "entF11": "Adanmış onboarding ve destek",
     "entCta": "Satışla konuşun",
-    "freeF2": "Seçilmiş akışlar, atfedilmiş kaynaklar ve harita katmanları"
+    "freeF2": "Seçilmiş akışlar, atfedilmiş kaynaklar ve harita katmanları",
+    "proF10": "İntel belleği — geçmiş arama, zaman çizelgeleri ve benzer olay arama"
   },
   "whyUpgrade": {
-    "title": "Neden yükseltmeli",
+    "title": "World Monitor Pro'ya neden yükseltme yapmalısınız?",
     "noiseTitle": "İlk siz bilin",
     "noiseDesc": "AIS anomalisi → Brent sıçraması → Slack'iniz bir dakikadan kısa sürede. Sinyal, manşet değil.",
     "fasterTitle": "Her şeyi sorun",
@@ -71,7 +72,7 @@
   },
   "deliveryDesk": {
     "eyebrow": "TESLİM MASASI",
-    "title": "Kişisel istihbarat masanız",
+    "title": "Kişisel istihbarat masası nedir?",
     "body": "Gönderim başına 30'a kadar sıralanmış öğe, kaynaklar arasında kopyasız, izleme listene göre puanlanmış. Cadenceini seç — günlük, iki günlük veya haftalık — AI Değerlendirmesi ve İzlenecek Sinyallerle birlikte Slack, Discord, Telegram, Email veya webhook'a gönderilir.",
     "closer": "Haber bülteni değil. Analist.",
     "channels": "Slack · Discord · Telegram · E-posta · Webhook · AES-256 şifreli · Sessiz saatler"
@@ -93,7 +94,7 @@
     "asToldTo": "anlatıldığı kişi"
   },
   "audience": {
-    "title": "Hızlı sinyale ihtiyacı olanlar için yapıldı",
+    "title": "World Monitor kimlere yönelik olarak tasarlanmıştır?",
     "investorsTitle": "Yatırımcılar ve portföy yöneticileri",
     "investorsDesc": "Küresel hisseleri, analist hedeflerini, değerleme metriklerini ve makro göstergeleri jeopolitik risk sinyalleriyle birlikte takip edin.",
     "tradersTitle": "Enerji ve emtia yatırımcıları",
@@ -108,7 +109,7 @@
     "teamsDesc": "Bireysel kullanımdan paylaşılan iş akışlarına, API erişimine, TV uygulamalarına ve yönetilen deployment'lara geçin."
   },
   "dataCoverage": {
-    "title": "World Monitor'un izlediği şeyler",
+    "title": "World Monitor neleri takip eder?",
     "subtitle": "Hizmet alanları eş zamanlı olarak alınır. Pazar, makro, jeopolitik, enerji, altyapı — her şey normalleştirilmiş ve WebGL kürede işlenmiş.",
     "markets": "Finansal piyasalar ve hisseler",
     "marketsDesc": "Küresel hisse analizi, emtia, kripto, ETF akışları, analist hedefleri ve FRED makro verileri",
@@ -145,7 +146,7 @@
   },
   "proShowcase": {
     "proTier": "PRO SEVİYESİ",
-    "title": "Hiç uyumayan AI analistiniz",
+    "title": "World Monitor yapay zeka analisti ne yapar?",
     "subtitle": "Ücretsiz kontrol paneli size dünyayı gösterir. Pro, soracağınız bir analist, abone olacağınız bir özet ve üzerine inşa edebileceğiniz primitifler verir. Hisseler, makro, jeopolitik risk — ve aralarındaki bağlantılar.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Finansal verilerin görselleştirilmesi, analist fiyat hedefleri ve değerleme metrikleri ile küresel hisse analizi. Piyasaları hareket ettiren şeyleri takip edin.",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "GSYH, enflasyon, faiz oranları ve büyüme döngüleri. Piyasa sinyalleri ve jeopolitik olaylarla ilişkili makro veriler.",
     "riskMonitoring": "Risk izleme ve senaryolar",
     "riskMonitoringDesc": "Küresel risk puanlama, senaryo analizi ve jeopolitik risk değerlendirmesi. Piyasa ve siyasi sinyaller arasında yakınsama tespiti.",
-    "orbitalSurveillance": "Yörünge gözetimi",
-    "orbitalSurveillanceDesc": "(Yakında) Yörünge geçiş tahminleri, yeniden ziyaret frekansı analizi ve görüntüleme penceresi uyarıları. İstihbarat uydularının ilgi alanlarınızı ne zaman gözlediğini bilin.",
     "morningBriefs": "Kişisel istihbarat masası",
     "morningBriefsDesc": "Özet başına 30'a kadar sıralanmış haber, kaynaklar arasında kopyasız. Günlük, iki günlük veya haftalık cadenceyi seç — veya kritik olaylar için gerçek zamanlı uyarılar. AI Değerlendirmesi ve İzlenecek Sinyallerle birlikte Slack, Discord, Telegram, Email veya webhook'a gönderilir. Haber bülteni değil — bir analist.",
     "oneKey": "Canlı Hizmetler, 1 Anahtarla",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky ve daha fazlası — hepsi aktif, ayrı kayıt yok.",
-    "deliveryLabel": "İstihbaratın sizi nasıl bulacağını seçin"
+    "deliveryLabel": "İstihbaratın sizi nasıl bulacağını seçin",
+    "supplyChainLab": "Tedarik Zinciri Stres Laboratuvarı",
+    "supplyChainLabDesc": "Ülkeler ve sektörler arasında maliyet şokunun modelini oluşturun. Darboğaz bağımlılığına göre emtia kırılganlığını sıralayın. Madenden rafineri haline kadar konsantrasyon ve SGE–COMEX fiziksel premium farklılaşmasını izleyin — manşet gelmeden hareket eden seri.",
+    "roadmapNote": "Yol haritasında: yörüngesel gözetim, daha uzun geçmiş, premium harita katmanları."
   },
   "slackMock": {
     "morningBrief": "Sabah brifi",
@@ -174,7 +176,7 @@
   },
   "apiSection": {
     "apiTier": "API SEVİYESİ",
-    "title": "Programatik istihbarat",
+    "title": "API'ler ve ajanlar World Monitor'ı nasıl kullanır?",
     "subtitle": "World Monitor verileri üzerine inşa eden geliştiriciler, analistler ve ekipler için. Pro'dan ayrı — ikisini veya birini kullanın.",
     "restApi": "Hizmet alanları arasında REST API — JavaScript, Python, Ruby, Go için resmi SDK'lar",
     "authenticated": "Anahtar başına kimlik doğrulamalı, seviye başına rate-limited",
@@ -190,7 +192,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE SEVİYESİ",
-    "title": "İstihbarat altyapısı",
+    "title": "World Monitor Enterprise neler içerir?",
     "subtitle": "Maksimum güvenlik, AI ajanları, TV uygulamaları ve veri derinliğiyle tam platforma ihtiyaç duyan hükümetler, kurumlar, trading desk'leri ve organizasyonlar için.",
     "security": "Hükümet düzeyinde güvenlik",
     "securityDesc": "Air-gapped deployment, on-premises Docker, özel bulut tenant'ı, SOC 2 Type II yolu, SSO/MFA ve tam denetim izi.",
@@ -227,7 +229,7 @@
     "contactFailed": "Gönderilemedi. enterprise@worldmonitor.app adresine e-posta gönderin"
   },
   "pricingTable": {
-    "title": "Seviyeleri karşılaştır",
+    "title": "World Monitor planları nasıl karşılaştırılır?",
     "feature": "Özellik",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -271,10 +273,25 @@
     "fKeyAuth": "Anahtar kimlik doğrulama",
     "fSsoMfa": "SSO/MFA/RBAC/denetim",
     "noteBelow": "Temel platform ücretsiz kalır. Ücretli planlar equity research, makro analitik, AI briflerini ve kurumsal kullanımı açar.",
-    "f50plus": "Mevcut"
+    "f50plus": "Mevcut",
+    "sourcesRow": "Kaynaklar",
+    "followedRow": "İzlenen ülkeler",
+    "tabsRow": "Dashboard sekmeler",
+    "fUnlimited": "Sınırsız",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Tüm katmanlar",
+    "fLayersNoResilience": "Dayanıklılık hariç tümü",
+    "fStandardCadence": "Standart",
+    "fQuotes30s": "Pazar teklifleri: 30s",
+    "panelsRow": "Etkin paneller",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Tümü"
   },
   "faq": {
-    "title": "Sık sorulan sorular",
+    "title": "World Monitor Pro hakkında sık sorulan sorular",
     "q1": "World Monitor hâlâ ücretsiz mi?",
     "a1": "Evet. Temel platform ücretsizdir. Pro, öz sermaye araştırması, makro analitiği ve AI brifinglerini ekler. Pro Business, ticari lisans ve veri dışa aktarımı ekler. Enterprise, ekip dağıtımlarını ve TV uygulamalarını ekler.",
     "q2": "Neden Pro için ödeme yapalım?",
@@ -298,12 +315,12 @@
     "q11": "Özet ne kadar kişiselleştirilmiş?",
     "a11": "Cadenceini seç — günlük, iki günlük veya haftalık. Her izlenen haberi uyarı kurallarına ve izleme listene karşı yeniden puanlarız, kaynaklar arasında kopyasız işleriz ve AI Değerlendirmesi ve İzlenecek Sinyallerle birlikte 30'a kadar sıralanmış öğe göndeririz. Kritik olaylar için gerçek zamanlı uyarılar da mevcuttur.",
     "q12": "Yenileme hızı nedir?",
-    "a12": "Pro için neredeyse gerçek zamanlı. Free'de 5–15 dakika.",
+    "a12": "Pro piyasa tekliflerini her 30 saniyede yeniler. Diğer veriler kendi kaynağının ritmini izler. Free standart kaynak ritminde kalır.",
     "q13": "Verilerim nereye gidiyor?",
     "a13": "Bildirim kanalları durağan durumda AES-256 şifrelidir. Özetler pipeline'ımızı asla redakte edilmeden terk etmez."
   },
   "finalCta": {
-    "title": "Pro ile başlayın. Enterprise'a ölçeklendirin.",
+    "title": "Pro ile nasıl başlarım veya satış ekibiyle konuşurum?",
     "subtitle": "World Monitor'u ücretsiz kullanmaya devam edin veya equity research, makro analitik ve AI brifleri için yükseltin. Organizasyonunuzun ekip erişimine, TV uygulamalarına veya API desteğine ihtiyacı varsa, bizimle konuşun.",
     "talkToSales": "Satışla konuşun"
   },
@@ -326,7 +343,7 @@
     "suffixPerYear": "/yıl",
     "amountCustom": "Özel",
     "opening": "Açılıyor…",
-    "headerTitle": "Planınızı Seçin",
+    "headerTitle": "World Monitor'ın maliyeti nedir?",
     "headerSubtitle": "Gerçek zamanlı izlemeden tam istihbarat altyapısına kadar. Görevinize uygun katmanı seçin.",
     "billingMonthly": "Aylık",
     "billingAnnual": "Yıllık",
@@ -348,14 +365,14 @@
       "pro": {
         "description": "Tam istihbarat gösterge paneli",
         "features": [
-          "Ücretsizde her şey",
-          "AI hisse senedi analizi ve geri test",
-          "Günlük pazar özeti",
-          "Askeri ve jeopolitik izleme",
-          "Özel widget oluşturucu",
-          "10 özel pano (3'e karşılık)",
+          "Ücretsiz tarafta her şey — paneller, kaynaklar ve izlenen ülkeler sınırsız",
+          "WM Analist sohbeti + AI hisse senedi analizi ve geriye dönük test",
+          "Maliyet şoku modelleme ve tedarik zinciri stres testleri",
+          "İntel belleği — geçmiş arama, zaman çizelgeleri ve benzer olaylar",
+          "Fiziksel metaller farklılaşması, mineraller konsantrasyonu ve egemen borç verileri",
+          "Planlı AI özeti + uyarı kuralları motoru",
           "Claude Desktop ve diğer AI istemcileri için MCP + SDK erişimi (50 çağrı/gün)",
-          "Öncelikli veri yenileme"
+          "Özel parçacıklar ve 10 pano (vs 3)"
         ],
         "highlightFeatures": [
           "Kişisel lisans",
@@ -384,7 +401,12 @@
           "Özel destek",
           "Özel entegrasyonlar",
           "SLA garantisi",
-          "Şirket içi seçenek"
+          "Şirket içi seçenek",
+          "Veri İşleme Anlaşması (DPA)",
+          "Satın Alma Siparişi Faturalandırması",
+          "SAML SSO, SCIM",
+          "Özel Güvenlik ve Gizlilik Ayarları",
+          "Tamamen beyaz etiketli — gelir paylaşımı ile veya olmadan"
         ],
         "cta": "Satışla İletişime Geçin"
       },
@@ -395,7 +417,7 @@
           "Yeniden dağıtım hakları — verilerimizi sattığınız şeye yerleştirin",
           "300 istek/dakika",
           "10.000 istek/gün dahil",
-          "5 Pro lisansı dahil",
+          "5 Pro lisansı — herhangi bir kurumsal e-posta alan adına sahip kullanıcıları davet edin",
           "Öncelikli destek"
         ],
         "highlightFeatures": [
@@ -459,11 +481,12 @@
       "screenshotAlt": "World Monitor canlı istihbarat panosu — çatışma, nakliye ve pazar katmanları olan global harita",
       "plateNote": "Canlı haritadan yakalandı — açmak için tıkla",
       "trustBuild": "Buna katkıda bulun:",
-      "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil"
+      "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil",
+      "asOf": "31 Ağustos 2026 itibarıyla"
     },
     "live": {
       "eyebrow": "Şu anda canlı",
-      "title": "Bu sayfa pano ile aynı API'lere bağlı.",
+      "title": "Bu sayfa şu anda hangi canlı verileri gösteriyor?",
       "subtitle": "World Monitor'un gece gündüz izlediği yüz artı sinyal arasından dört tanesi.",
       "liveBadge": "Canlı",
       "sampleBadge": "Örnek",
@@ -482,7 +505,7 @@
     },
     "moments": {
       "eyebrow": "Korelasyon motoru",
-      "title": "Kenar, sinyallerin birlikte hareket ettiğini görüyor.",
+      "title": "World Monitor sinyalleri nasıl ilişkilendirir?",
       "sub": "Feed'leri yüz yerde bulabilirsiniz. Kenar, jeopolitik, denizcilik, emtialar, makro, pazarlar, hava durumu, altyapı, siber, haber ve ülke riski birbirini açıklayabileceği tek bir yüzey.",
       "signalStack": "Füzyonlaştırılan sinyaller",
       "correlation": "Korelasyon",
@@ -546,7 +569,7 @@
     },
     "firstFive": {
       "eyebrow": "Sıfırdan oryantasyon",
-      "title": "Canlı haritada ilk beş dakikanız.",
+      "title": "Harita üzerindeki ilk beş dakikanızda ne olur?",
       "sub": "Tur yok, boş durumlar yok, kayıt duvarı yok. Gerçekte neler oluyor.",
       "f1Title": "Harita zaten hareket ediyor",
       "f1Desc": "Çatışmalar, gemiler, uçaklar, yangınlar ve kesintiler sayfa yüklenirken render edilir. Önce yapılandırılacak bir şey yok.",
@@ -562,7 +585,7 @@
     },
     "depth": {
       "eyebrow": "Kapak altında",
-      "title": "Derinlik üründür.",
+      "title": "World Monitor veri modeli ne kadar derindir?",
       "sub": "Aşağıdaki her sayı bugün panosunda canlıdır — bir yol haritası değil.",
       "s1v": "Paylaşılan",
       "s1l": "Harita katmanları",
@@ -612,7 +635,7 @@
     },
     "agents": {
       "eyebrow": "İnşaatçılar & AI ajanları için",
-      "title": "Canlı dünya istihbaratı üzerine inşa edin — herhangi bir yığında.",
+      "title": "World Monitor'ı kendi yığınımdan nasıl geliştirim?",
       "sub": "Haritadaki her şey aynı zamanda bir API'dir. Claude üzerinde MCP ile entegre edin, REST uç noktalarını nereden de çağırın veya Python, Ruby, Go veya JavaScript için yerel istemci kurun — kodunuz eğitim verileri anılarından ziyade canlı veri ile araştırma yapar.",
       "b1": "MCP araçları — risk puanları, darboğazlar, çatışmalar, piyasalar, özetler",
       "b2": "Belgelenmiş REST API — bir OpenAPI 3.1 spec'i, bir anahtarla",
@@ -655,7 +678,7 @@
     },
     "faq": {
       "eyebrow": "Ek koşul yok",
-      "title": "Adil sorular.",
+      "title": "World Monitor hakkında yaygın sorular nelerdir?",
       "q1": "World Monitor gerçekten ücretsiz mi?",
       "a1": "Evet. Canlı harita — Resilience hariç her katman, seçilmiş beslemeler, ülke özetleri, kesintiye uğrayan uyarılar ve izleme yüzeyleri — kaydolmaksızın ve deneme saati olmaksızın ücretsiz. Pro beslemelere ödeme yapar: WM Analyst, senaryo motorunu, Route Explorer'ı, planlanan özetleri, AI istemcileri için MCP erişimini ve Resilience harita katmanını ekler. Reklam yok, ve hesap olmadığı için satılacak kullanıcı verisi yok.",
       "q2": "Global istihbarat panosu nedir?",
@@ -680,7 +703,7 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "Dünya haritası sizi beklemez.",
+      "title": "Dünya haritasını izlemeye nasıl başlarım?",
       "subtitle": "Bu sayfayı okurken her şey hareket etmeye devam ediyor — boğazlar, kritik bölgeler, piyasalar, seçilmiş haberler. Bunlardan biri yarının manşet haberi olacak. Onu ilk bulun — ücretsiz, hesap gerekmez.",
       "button": "İlk olarak bul",
       "note": "Ücretsiz · Kaydolmaya gerek yok · Saniyeler içinde yüklenir",
@@ -698,5 +721,19 @@
       "countryRiskDesc": "Bir ülkenin değişiminin arkasındaki siyasi, güvenlik, ekonomik ve dayanıklılık sinyallerini izleyin.",
       "open": "Kanıt görüntüle"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Gemi sevkiyat günlüğü",
+    "title": "WorldMonitor'daki yenilikler",
+    "subtitle": "Son 30 gündeki yeni özellikler — düzeltmeler ve altyapı güncellemeleri dahil değil.",
+    "proTag": "PRO",
+    "m1": "Fiziksel premium farklılaşma endeksi — SGE vs COMEX, geçmiş verileriyle birlikte",
+    "m2": "Emtia tedarik kırılganlığı sıralaması — darboğaz bağımlılığı yayılımı",
+    "m3": "Mineral üretim konsantrasyonu ve savunma endüstrisi temeli",
+    "m4": "Beş faktörlü dayanıklılık karne sistemleri gösterge düzeyinde puanlarla",
+    "m5": "Özel Telegram kanal izleme listeleri",
+    "m6": "Şifre anahtarı ile oturum açma",
+    "m7": "AI ajanları panoyu yönlendirebilir — paneller, sekmeler, harita katmanları ve görevler",
+    "m8": "Daha zengin ülke dayanıklılığı sayfaları"
   }
 }

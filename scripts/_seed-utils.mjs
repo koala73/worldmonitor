@@ -22,6 +22,13 @@ async function exitAfterTelemetryFlush(code) {
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
 const MAX_PAYLOAD_BYTES = 5 * 1024 * 1024; // 5MB per key
+export const SEED_REDIS_COMMAND_TIMEOUT_MS = 15_000;
+export const SEED_REDIS_RETRY_ATTEMPTS = 3;
+export const SEED_REDIS_RETRY_BASE_MS = 1_000;
+export const SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS = 10_000;
+export const SEED_VERIFY_COMMAND_TIMEOUT_MS = 5_000;
+export const SEED_VERIFY_ATTEMPTS = 2;
+export const SEED_VERIFY_RETRY_DELAY_MS = 500;
 
 const __seed_dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -396,7 +403,7 @@ export async function redisCommand(url, token, command, options = {}) {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
     body: JSON.stringify(command),
-    signal: AbortSignal.timeout(options.timeoutMs ?? 15_000),
+    signal: AbortSignal.timeout(options.timeoutMs ?? SEED_REDIS_COMMAND_TIMEOUT_MS),
   });
   return parseRedisCommandResponse(resp, label);
 }
@@ -413,7 +420,7 @@ async function redisGet(url, token, key) {
     data = await withRetry(async () => {
       const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
         headers: { Authorization: `Bearer ${token}` },
-        signal: AbortSignal.timeout(5_000),
+        signal: AbortSignal.timeout(SEED_VERIFY_COMMAND_TIMEOUT_MS),
       });
       if (!resp.ok) {
         const err = new Error(`Redis GET ${key} failed: HTTP ${resp.status}`);
@@ -427,7 +434,7 @@ async function redisGet(url, token, key) {
         throw err;
       }
       return resp.json();
-    }, 2, 1000);
+    }, SEED_REDIS_RETRY_ATTEMPTS - 1, SEED_REDIS_RETRY_BASE_MS);
   } catch (err) {
     if (err.httpStatus == null) throw err;
     console.warn(`  Redis GET ${key}: degraded to null (${err.message})`);
@@ -474,7 +481,11 @@ export async function acquireLock(domain, runId, ttlMs) {
 export async function acquireLockSafely(domain, runId, ttlMs, opts = {}) {
   const label = opts.label || domain;
   try {
-    const locked = await withRetry(() => acquireLock(domain, runId, ttlMs), opts.maxRetries ?? 2, opts.delayMs ?? 1000);
+    const locked = await withRetry(
+      () => acquireLock(domain, runId, ttlMs),
+      opts.maxRetries ?? SEED_REDIS_RETRY_ATTEMPTS - 1,
+      opts.delayMs ?? SEED_REDIS_RETRY_BASE_MS,
+    );
     return { locked, skipped: false, reason: null };
   } catch (err) {
     if (isTransientRedisError(err)) {
@@ -543,6 +554,16 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
   // orphaned stagings naturally.
   return await withRetry(
     async () => {
+      if (options.publishAtomically) {
+        await options.publishAtomically({
+          canonicalKey,
+          payload,
+          payloadValue,
+          ttlSeconds,
+        });
+        return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
+      }
+
       const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const stagingKey = `${canonicalKey}:staging:${runId}`;
 
@@ -561,8 +582,8 @@ export async function atomicPublish(canonicalKey, data, validateFn, ttlSeconds, 
 
       return { payloadBytes, recordCount: Array.isArray(data) ? data.length : null };
     },
-    2,    // 2 retries (3 attempts total) — sufficient for transient blips
-    1000, // 1s base delay; exponential backoff → 1s + 2s = ~3s worst-case
+    SEED_REDIS_RETRY_ATTEMPTS - 1,
+    SEED_REDIS_RETRY_BASE_MS,
           // cumulative wait between attempts. Plus per-attempt fetch time
           // (15s timeout each) means total worst-case before propagating ≈ 48s.
   );
@@ -655,13 +676,17 @@ export async function writeFreshnessMetadata(
   }
   // Use the data TTL if it exceeds 7 days so monthly/annual seeds don't lose
   // their meta key before the health check maxStaleMin threshold is reached.
-  const metaTtl = Math.max(86400 * 7, ttlSeconds || 0);
+  const metaTtl = resolveSeedMetaTtl(undefined, ttlSeconds);
   // Retry transient Redis failures: this SET runs bare on runSeed's
   // validate-skip path, where an unretried Upstash abort escaped to the
   // seeder's top-level catch as `FATAL: The operation was aborted due to
   // timeout` → exit 1 (seed-gdelt-intel, issue #5437). redisCommand tags
   // permanent 4xx nonRetryable and 429 with Retry-After; withRetry honors both.
-  await withRetry(() => redisSet(url, token, metaKey, meta, metaTtl), 2, 1000);
+  await withRetry(
+    () => redisSet(url, token, metaKey, meta, metaTtl),
+    SEED_REDIS_RETRY_ATTEMPTS - 1,
+    SEED_REDIS_RETRY_BASE_MS,
+  );
   return meta;
 }
 
@@ -777,6 +802,12 @@ export const PERMANENT_4XX_STATUSES = new Set([400, 401, 403, 404, 410, 413, 422
 // bundle runner should retry/report non-OK without treating the seeder as a
 // generic crash.
 export const GRACEFUL_FETCH_FAILURE_EXIT_CODE = 75;
+
+// #6396: the seeder fetched its data but its coverage gate refused to publish
+// (and preserved the last-good TTL instead). Distinct from EX_TEMPFAIL so the
+// bundle runner can report PUBLISH_BLOCKED rather than OK for a section whose
+// entire purpose — writing the seed keys — did not happen.
+export const PUBLISH_BLOCKED_EXIT_CODE = 76;
 
 // Cap upstream Retry-After hints so a stuck/abusive header can't park the
 // bundle past its section timeoutMs. Mirrors _yahoo-fetch.mjs convention.
@@ -1008,9 +1039,9 @@ export async function writeExtraKey(key, data, ttl, envelopeMeta) {
   await withRetry(async () => {
     await redisCommand(url, token, ['SET', key, payload, 'EX', ttl], {
       label: `Extra key ${key}`,
-      timeoutMs: 10_000,
+      timeoutMs: SEED_EXTRA_KEY_COMMAND_TIMEOUT_MS,
     });
-  }, 2, 1000);
+  }, SEED_REDIS_RETRY_ATTEMPTS - 1, SEED_REDIS_RETRY_BASE_MS);
   console.log(`  Extra key ${key}: written`);
 }
 
@@ -1023,6 +1054,34 @@ export function serializeExtraKeyValue(key, data, envelopeMeta) {
 /** Return the UTF-8 size of an extra-key value as Redis receives it. */
 export function extraKeyPayloadBytes(key, data, envelopeMeta) {
   return Buffer.byteLength(serializeExtraKeyValue(key, data, envelopeMeta), 'utf8');
+}
+
+/**
+ * Floor for every seed-meta TTL. A meta key must survive its data key's
+ * disappearance so health can report STALE_SEED (present-but-stale) rather than
+ * losing the heartbeat at the same moment as the payload — see the "seed-meta
+ * outlives its data key" note in api/health.js's absence branch.
+ */
+export const SEED_META_MIN_TTL_SECONDS = 86400 * 7;
+
+/**
+ * The meta TTL for a data key written with `dataTtlSeconds`.
+ *
+ * The floor alone is not enough once a data key outlives 7 days: health reads
+ * freshness from seed-meta and falls through to plain OK when the meta is gone
+ * but the data key still has bytes, so a meta that expires FIRST makes the
+ * STALE_SEED alarm unreachable for the remainder of the data key's life. The
+ * clamp is the same one `writeFreshnessMetadata` has always applied to the
+ * canonical key; extra keys need it for the same reason.
+ *
+ * An explicit `metaTtlSeconds` still wins, so the parameter keeps meaning what
+ * it says. The three seeders that already pass one (seed-jodi-gas,
+ * seed-natural-events, seed-defense-industrial-suppliers) pass their own data
+ * TTL — the value this would have computed — so they are byte-identical either
+ * way; the override exists for a future caller that needs a different one.
+ */
+export function resolveSeedMetaTtl(metaTtlSeconds, dataTtlSeconds) {
+  return metaTtlSeconds ?? Math.max(SEED_META_MIN_TTL_SECONDS, dataTtlSeconds || 0);
 }
 
 export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaTtlSeconds, coverage, extra) {
@@ -1040,7 +1099,9 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
       if (value !== undefined) meta[key] = value;
     }
   }
-  const metaTtl = metaTtlSeconds ?? 86400 * 7;
+  // No data TTL is in scope here — callers that know one resolve it through
+  // `resolveSeedMetaTtl` before calling. Bare floor otherwise.
+  const metaTtl = resolveSeedMetaTtl(metaTtlSeconds);
   const resp = await fetch(url, {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json', 'User-Agent': CHROME_UA },
@@ -1060,7 +1121,10 @@ export async function writeSeedMeta(dataKey, recordCount, metaKeyOverride, metaT
 
 export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKeyOverride, metaTtlSeconds, coverage) {
   await writeExtraKey(key, data, ttl);
-  return writeSeedMeta(key, recordCount, metaKeyOverride, metaTtlSeconds, coverage);
+  // The data TTL is right here, so the meta never has to be the shorter of the
+  // two. seed-economy's four EIA weekly keys (21d data, 14d health budget) rode
+  // the bare 7d default and went silent-OK for the 14 days in between.
+  return writeSeedMeta(key, recordCount, metaKeyOverride, resolveSeedMetaTtl(metaTtlSeconds, ttl), coverage);
 }
 
 // Detailed counterpart to extendExistingTtl. Results stay aligned to the input
@@ -1268,6 +1332,46 @@ export function isTransientProxyError(message) {
 
 const FRED_JSON_HEADERS = { Accept: 'application/json', 'User-Agent': CHROME_UA };
 
+// FRED's own edge returns sporadic 5xx on individual series. Observed
+// 2026-08-26: four consecutive 24/24 runs, then `FRED T10Y2Y: fetch failed —
+// direct: HTTP 502` and the same for UNRATE, publishing 22/24 — enough to trip
+// health's minRecordCount of 24 for the whole hour. Both series answered 200
+// when queried directly minutes later, and adjacent runs fetched them fine.
+//
+// Deliberately status-only, and deliberately NOT reusing isTransientProxyError:
+// that predicate also matches timeouts and socket tears, and a direct leg that
+// timed out has already burned its 20s budget — retrying it would double the
+// worst case inside runSeed's fetch-phase deadline for a leg that is plainly
+// broken. A 5xx fails fast, so this retry costs a few hundred milliseconds.
+const FRED_DIRECT_ATTEMPTS = 2;
+function isRetriableFredStatus(status) {
+  return Number.isInteger(status) && status >= 500 && status <= 599;
+}
+
+// Direct FRED fetch with a bounded retry on a fast-failing 5xx. Shared by the
+// proxy-fallback path and the no-proxy path: a transient 502 is transient
+// regardless of which leg reached it, and having only one of the two retry is
+// how the asymmetry below went unnoticed — the proxy leg already retried three
+// times while its own fallback got a single attempt.
+async function fredDirectFetchJson(url) {
+  let lastError;
+  for (let attempt = 1; attempt <= FRED_DIRECT_ATTEMPTS; attempt += 1) {
+    try {
+      const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
+      if (r.ok) return await r.json();
+      throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+    } catch (error) {
+      lastError = error;
+      if (attempt < FRED_DIRECT_ATTEMPTS && isRetriableFredStatus(error?.status)) {
+        await new Promise((resolve) => setTimeout(resolve, 350 * attempt + Math.random() * 250));
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw lastError;
+}
+
 // Fetch JSON from a FRED URL, routing through proxy when available.
 // Proxy-first: FRED consistently blocks/throttles Railway datacenter IPs,
 // so try proxy first to avoid 20s timeout on every direct attempt.
@@ -1291,16 +1395,12 @@ export async function fredFetchJson(url, proxyAuth) {
     }
     console.warn(`  [fredFetch] proxy failed after retries (${lastProxyErr?.message}) — retrying direct`);
     try {
-      const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
-      if (r.ok) return r.json();
-      throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+      return await fredDirectFetchJson(url);
     } catch (directErr) {
       throw Object.assign(new Error(`direct: ${directErr.message}`), { cause: directErr });
     }
   }
-  const r = await fetch(url, { headers: FRED_JSON_HEADERS, signal: AbortSignal.timeout(20_000) });
-  if (r.ok) return r.json();
-  throw Object.assign(new Error(`HTTP ${r.status}`), { status: r.status });
+  return fredDirectFetchJson(url);
 }
 
 // Fetch JSON from an IMF DataMapper URL, direct-first with proxy fallback.
@@ -1861,6 +1961,23 @@ export function roundSparkline(values, sig = SPARKLINE_SIGNIFICANT_DIGITS) {
   return values.map((v) => toSignificantDigits(v, sig));
 }
 
+/** Decimal places kept for published geographic coordinates. 5 dp is ~1.1m at the equator. */
+export const GEO_COORDINATE_DECIMALS = 5;
+
+/**
+ * Round one lat/lon to `decimals` places for the PUBLISHED payload.
+ *
+ * Apply this at the serialization boundary, never at the parse boundary. Rounded
+ * coordinates that reach comparison logic shift its decisions: the earthquake
+ * cross-agency dedup gates on `haversineDistanceKm(...) <= 10`, and rounding both
+ * sides first can move a pair across that threshold (verified: pairs at 9.99977km
+ * become 10.00054km, so a duplicate publishes twice — or two distinct events merge).
+ * Non-finite values pass through untouched, matching roundSparkline's contract.
+ */
+export function roundGeoCoordinate(value, decimals = GEO_COORDINATE_DECIMALS) {
+  return Number.isFinite(value) ? Number(value.toFixed(decimals)) : value;
+}
+
 export function parseYahooChart(data, symbol) {
   const result = data?.chart?.result?.[0];
   const meta = result?.meta;
@@ -1977,6 +2094,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     validateFn,
     ttlSeconds,
     lockTtlMs = 120_000,
+    lockAcquireRetries = 2,
     extraKeys,
     // Keys written outside runSeed's normal extra-key phase that still need
     // last-good TTL protection when the primary fetch fails or is skipped.
@@ -1986,6 +2104,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     // existing canonical-TTL behavior for backward compatibility.
     preserveKeyTtls = [],
     beforePublish,
+    publishAtomically,
     afterPublish,
     afterValidationSkip,
     afterPreservedValidationSkip,
@@ -2008,6 +2127,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   }
   if (afterPublish && typeof afterPublish !== 'function') {
     console.error(`  CONTRACT VIOLATION: ${domain}:${resource} afterPublish must be a function`);
+    process.exit(1);
+  }
+  if (publishAtomically && typeof publishAtomically !== 'function') {
+    console.error(`  CONTRACT VIOLATION: ${domain}:${resource} publishAtomically must be a function`);
     process.exit(1);
   }
   if (afterFreshness && typeof afterFreshness !== 'function') {
@@ -2127,6 +2250,7 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // Acquire lock
   const lockResult = await acquireLockSafely(`${domain}:${resource}`, runId, lockTtlMs, {
     label: `${domain}:${resource}`,
+    maxRetries: lockAcquireRetries,
   });
   if (lockResult.skipped) {
     process.exit(0);
@@ -2347,12 +2471,33 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       await exitAfterTelemetryFlush(0);
     }
 
-    const publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
-      envelopeMeta,
-      beforePublish: beforePublish
-        ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
-        : undefined,
-    });
+    let publishResult;
+    try {
+      publishResult = await atomicPublish(canonicalKey, publishData, validateFn, ttlSeconds, {
+        envelopeMeta,
+        beforePublish: beforePublish
+          ? () => beforePublish(data, { canonicalKey, ttlSeconds, runId })
+          : undefined,
+        publishAtomically: publishAtomically
+          ? (publishContext) => publishAtomically(data, { ...publishContext, runId })
+          : undefined,
+      });
+    } catch (error) {
+      // An atomic publisher either switches its complete key cohort or leaves
+      // the prior cohort untouched. If staging or the final switch fails,
+      // extend that untouched last-good cohort before surfacing the failure.
+      // Validation skips are handled below and retain their stricter policy.
+      // A thrown `beforePublish` is the same shape: it runs ahead of every
+      // canonical/extra write, so the prior cohort is likewise untouched and the
+      // deep coverage rejections that live there must not cost last-good TTLs.
+      if (publishAtomically || beforePublish) {
+        const preserved = await preserveExistingKeys().catch(() => false);
+        if (!preserved) {
+          console.error(`  FAILURE: atomic publish failed and last-good preservation was incomplete`);
+        }
+      }
+      throw error;
+    }
     if (publishResult.skipped) {
       const durationMs = Date.now() - startMs;
       const preserved = await preserveExistingKeys();
@@ -2558,7 +2703,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
             ek.key,
             ekEnvelope?.recordCount ?? 0,
             ek.metaKey,
-            ek.metaTtlSeconds,
+            // Same data TTL the writeExtraKey above just used, so a long-lived
+            // extra key can't outlive the meta that reports on it.
+            resolveSeedMetaTtl(ek.metaTtlSeconds, ek.ttl || ttlSeconds),
             ek.coverage,
             metaExtra,
           );
@@ -2645,13 +2792,17 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
 
     // Verify (best-effort: write already succeeded, don't fail the job on transient read issues)
     let verified = false;
-    for (let attempt = 0; attempt < 2; attempt++) {
+    for (let attempt = 0; attempt < SEED_VERIFY_ATTEMPTS; attempt++) {
       try {
         verified = !!(await verifySeedKey(canonicalKey));
         if (verified) break;
-        if (attempt === 0) await new Promise(r => setTimeout(r, 500));
+        if (attempt < SEED_VERIFY_ATTEMPTS - 1) {
+          await new Promise(r => setTimeout(r, SEED_VERIFY_RETRY_DELAY_MS));
+        }
       } catch {
-        if (attempt === 0) await new Promise(r => setTimeout(r, 500));
+        if (attempt < SEED_VERIFY_ATTEMPTS - 1) {
+          await new Promise(r => setTimeout(r, SEED_VERIFY_RETRY_DELAY_MS));
+        }
       }
     }
     if (verified) {

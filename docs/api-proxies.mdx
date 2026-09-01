@@ -34,6 +34,8 @@ All proxies:
 
 Fetches an RSS/Atom feed and returns the parsed JSON. The URL must match one of the patterns in `_rss-allowed-domains.js` — arbitrary URLs are refused to prevent SSRF.
 
+The route is API-key gated. Responses use `Cache-Control: private, max-age=180` and omit `CDN-Cache-Control`, because shared caches do not key on the credential header. Browser clients may still reuse the body for three minutes.
+
 ## Skills registry
 
 ### `POST /api/skills/fetch-agentskills`
@@ -42,10 +44,10 @@ Fetches a single agentskills.io skill definition — pass either `url` or `id` i
 
 ## Legacy / internal
 
-### `POST /api/fwdstart`
+### `GET /api/fwdstart`
 
-Forward-starting scenario helper used by the desktop app during first-run. Internal.
+Scrapes the FwdStart newsletter archive and republishes it as an RSS 2.0 XML feed (30-minute cache). Internal feed shim, not a JSON API.
 
-### `GET /api/mcp-proxy`
+### `GET|POST /api/mcp-proxy`
 
-Legacy MCP shim — forwards to the current MCP route. Deprecated; use [`/api/mcp`](/mcp-overview) directly.
+Pro-gated outbound MCP proxy: forwards MCP traffic to a caller-supplied third-party MCP server with SSRF protection (private/link-local targets are refused) and its own 30 requests/minute/IP limit. It does **not** forward to WorldMonitor's own [`/api/mcp`](/mcp-overview) — call that directly.

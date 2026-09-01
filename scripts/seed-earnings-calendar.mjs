@@ -6,16 +6,55 @@ loadEnvFile(import.meta.url);
 
 const KEY = 'market:earnings-calendar:v1';
 const TTL = 129600; // 36h — 3× a 12h cron interval
+export const EARNINGS_CALENDAR_CAP = 100;
+
+// Keep aligned with NQ_INFLUENCE_SYMBOLS in src/config/nq-context.ts.
+export const NQ_INFLUENCE_EARNINGS_SYMBOLS = [
+  'AAPL',
+  'MSFT',
+  'NVDA',
+  'AMZN',
+  'GOOGL',
+  'META',
+  'AVGO',
+  'TSLA',
+];
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10);
+}
+
+function compareEarningsEntries(a, b) {
+  if (a.date !== b.date) return a.date.localeCompare(b.date);
+  return (b.revenueEstimate ?? 0) - (a.revenueEstimate ?? 0);
+}
+
+/**
+ * Reserve every matching NQ influence report from the normalized window,
+ * then fill remaining capacity with general chronological rows.
+ */
+export function boundEarningsCalendar(normalized, {
+  cap = EARNINGS_CALENDAR_CAP,
+  reservedSymbols = NQ_INFLUENCE_EARNINGS_SYMBOLS,
+} = {}) {
+  const reservedSet = new Set(reservedSymbols);
+  const reserved = [];
+  const general = [];
+  for (const entry of Array.isArray(normalized) ? normalized : []) {
+    if (reservedSet.has(entry.symbol)) reserved.push(entry);
+    else general.push(entry);
+  }
+  reserved.sort(compareEarningsEntries);
+  general.sort(compareEarningsEntries);
+  const remaining = Math.max(0, cap - reserved.length);
+  return [...reserved, ...general.slice(0, remaining)].sort(compareEarningsEntries);
 }
 
 async function fetchAll() {
   const apiKey = process.env.FINNHUB_API_KEY;
   if (!apiKey) {
     console.warn('  FINNHUB_API_KEY not set — skipping');
-    return { earnings: [], unavailable: true };
+    return { earnings: [], unavailable: true, asOf: new Date().toISOString() };
   }
 
   const from = new Date();
@@ -40,7 +79,7 @@ async function fetchAll() {
   const data = await resp.json();
   const raw = Array.isArray(data?.earningsCalendar) ? data.earningsCalendar : [];
 
-  const earnings = raw
+  const normalized = raw
     .filter(e => e.symbol)
     .map(e => {
       const epsEst = e.epsEstimate != null ? Number(e.epsEstimate) : null;
@@ -78,14 +117,12 @@ async function fetchAll() {
       return false;
     })
     // Within same date, largest companies first; across dates, chronological
-    .sort((a, b) => {
-      if (a.date !== b.date) return a.date.localeCompare(b.date);
-      return (b.revenueEstimate ?? 0) - (a.revenueEstimate ?? 0);
-    })
-    .slice(0, 100);
+    .sort(compareEarningsEntries);
+
+  const earnings = boundEarningsCalendar(normalized);
 
   console.log(`  Fetched ${earnings.length} earnings entries (from ${raw.length} total)`);
-  return { earnings, unavailable: false };
+  return { earnings, unavailable: false, asOf: new Date().toISOString() };
 }
 
 function validate(data) {

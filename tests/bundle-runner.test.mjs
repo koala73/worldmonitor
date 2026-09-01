@@ -12,7 +12,7 @@ import { mkdirSync, writeFileSync, unlinkSync } from 'node:fs';
 import { createServer } from 'node:http';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { GRACEFUL_FETCH_FAILURE_EXIT_CODE } from '../scripts/_seed-utils.mjs';
+import { GRACEFUL_FETCH_FAILURE_EXIT_CODE, PUBLISH_BLOCKED_EXIT_CODE } from '../scripts/_seed-utils.mjs';
 import { DAY, readSectionFreshness, bundleHeartbeatKey, BUNDLE_HEARTBEAT_TTL_SECONDS } from '../scripts/_bundle-runner.mjs';
 import {
   SUPERSEDED_KEY_TTL_SECONDS,
@@ -38,6 +38,64 @@ test('requireCanonical ignores fresh legacy meta when a new canonical envelope i
   });
   assert.equal(freshness, null);
   assert.deepEqual(reads, ['economic:china:macro:v2']);
+});
+
+test('a fresh legacy marker cannot suppress a required source-version migration', async () => {
+  const fetchedAt = Date.now();
+  const freshness = await readSectionFreshness({
+    seedMetaKey: 'economic:owid-energy-mix',
+    expectedSourceVersion: 'owid-energy-mix-v3',
+  }, async () => ({
+    fetchedAt,
+    recordCount: 214,
+    sourceVersion: 'owid-energy-mix-v1',
+  }));
+  assert.equal(freshness, null);
+});
+
+test('a matching source version preserves the normal freshness clock', async () => {
+  const fetchedAt = Date.now();
+  const freshness = await readSectionFreshness({
+    seedMetaKey: 'economic:owid-energy-mix',
+    expectedSourceVersion: 'owid-energy-mix-v3',
+  }, async () => ({
+    fetchedAt,
+    recordCount: 214,
+    sourceVersion: 'owid-energy-mix-v3',
+  }));
+  assert.deepEqual(freshness, { fetchedAt });
+});
+
+test('an error seed marker never makes a failed migration look fresh', async () => {
+  const freshness = await readSectionFreshness({
+    seedMetaKey: 'economic:owid-energy-mix',
+    expectedSourceVersion: 'owid-energy-mix-v3',
+  }, async () => ({
+    fetchedAt: Date.now(),
+    recordCount: 0,
+    sourceVersion: 'owid-energy-mix-v3',
+    status: 'error',
+  }));
+  assert.equal(freshness, null);
+});
+
+// The version gate is opt-in. A section that never asked for it must keep the
+// pre-migration clock, error marker included: Resilience-Static writes
+// `status: 'error'` with a FRESH fetchedAt precisely so its 90-day interval
+// still holds during an upstream outage. Rejecting that marker for every
+// section makes it due on every tick — the #6806 failure the docstring above
+// forbids, and a retry storm against 11 third-party datasets.
+test('an error marker still holds the clock for a section with no version gate', async () => {
+  const fetchedAt = Date.now();
+  const freshness = await readSectionFreshness({
+    seedMetaKey: 'resilience:static',
+  }, async () => ({
+    fetchedAt,
+    recordCount: 196,
+    sourceVersion: 'resilience-static-v1',
+    status: 'error',
+  }));
+  assert.deepEqual(freshness, { fetchedAt });
 });
 
 test('an explicit freshness meta key gates from source transport success', async () => {
@@ -159,6 +217,102 @@ function runBundleWith(sections, opts = {}, env = {}) {
     `import { runBundle } from '../_bundle-runner.mjs';\nawait runBundle('test', ${JSON.stringify(
       fixtureSections,
     )}, ${JSON.stringify(opts)});\n`,
+  );
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: { ...process.env, ...env },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (c) => { stdout += c; });
+    child.stderr.on('data', (c) => { stderr += c; });
+    child.on('close', (code) => {
+      try { unlinkSync(runPath); } catch {}
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+function runBundleWithTerminalHook(sections, hookSource, opts = {}) {
+  const runPath = join(FIXTURES_DIR, `_bundle-runner-test-hook-${randomUUID()}.mjs`);
+  const fixtureSections = sections.map((section) => ({
+    ...section,
+    script: fixtureScript(section.script),
+  }));
+  writeFileSync(
+    runPath,
+    `import { runBundle } from '../_bundle-runner.mjs';\n`
+    + `await runBundle('test-hook', ${JSON.stringify(fixtureSections)}, { ...${JSON.stringify(opts)}, onTerminalComplete: ${hookSource} });\n`,
+  );
+  return new Promise((resolve) => {
+    const child = spawn(process.execPath, [runPath], {
+      stdio: ['ignore', 'pipe', 'pipe'],
+      env: {
+        ...process.env,
+        UPSTASH_REDIS_REST_URL: '',
+        UPSTASH_REDIS_REST_TOKEN: '',
+      },
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('close', (code) => {
+      try { unlinkSync(runPath); } catch {}
+      resolve({ code, stdout, stderr });
+    });
+  });
+}
+
+test('terminal completion hook runs before a successful bundle exits', async () => {
+  const result = await runBundleWithTerminalHook([], "async () => { console.log('terminal-hook-called'); }");
+  assert.equal(result.code, 0);
+  assert.match(result.stdout, /terminal-hook-called/);
+});
+
+test('terminal completion hook failure turns a successful bundle into a loud failure', async () => {
+  const result = await runBundleWithTerminalHook([], "async () => { throw new Error('ack failed'); }");
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /terminal completion hook failed: ack failed/);
+});
+
+test('an invalid terminal completion hook fails before bundle work starts', async () => {
+  const result = await runBundleWithTerminalHook([], '42');
+  assert.equal(result.code, 1);
+  assert.match(result.stderr, /onTerminalComplete must be a function/);
+  assert.doesNotMatch(result.stdout, /\[Bundle:test-hook\] Starting/);
+});
+
+test('a completed non-zero bundle acknowledges its turn without hiding the failure', async () => {
+  const cleanup = writeFixture('_bundle-fixture-terminal-fail.mjs', `process.exit(2);\n`);
+  try {
+    const result = await runBundleWithTerminalHook(
+      [{ label: 'FAIL', script: '_bundle-fixture-terminal-fail.mjs', intervalMs: 1, timeoutMs: 5000 }],
+      "async () => { console.log('terminal-hook-called'); }",
+    );
+    assert.equal(result.code, 1);
+    assert.match(result.stdout, /terminal-hook-called/);
+  } finally {
+    cleanup();
+  }
+});
+
+function runBundleWithVirtualClock(sections, opts = {}, clockOffsetsMs = [], env = {}) {
+  const runPath = join(FIXTURES_DIR, `_bundle-runner-test-run-${randomUUID()}.mjs`);
+  const fixtureSections = sections.map((section) => ({
+    ...section,
+    script: fixtureScript(section.script),
+  }));
+  writeFileSync(
+    runPath,
+    `import { runBundle } from '../_bundle-runner.mjs';\n`
+    + `const realNow = Date.now;\n`
+    + `const baseNow = realNow();\n`
+    + `const offsets = ${JSON.stringify(clockOffsetsMs)};\n`
+    + `let idx = 0;\n`
+    + `Date.now = () => baseNow + (offsets[Math.min(idx++, offsets.length - 1)] ?? 0);\n`
+    + `await runBundle('test', ${JSON.stringify(fixtureSections)}, ${JSON.stringify(opts)});\n`,
   );
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [runPath], {
@@ -1028,6 +1182,80 @@ test('graceful-only fetch failure exits 0 (no data lost) but still logs the skip
     assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:0 failed:0 graceful:1/);
     assert.match(stdout, /\[Bundle:test\] 1 graceful fetch skip\(s\), no hard failures — no data lost, exiting 0/);
     assert.doesNotMatch(combined, /\[Bundle:test\] section=GRACEFUL status=OK/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a coverage-gate refusal reports PUBLISH_BLOCKED, never OK (#6396)', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-publish-blocked.mjs',
+    `console.error('COVERAGE GATE FAILED: china-missing (dataMonth=missing)');\nconsole.log('Extended TTL on 52 key(s)');\nprocess.exit(${PUBLISH_BLOCKED_EXIT_CODE});\n`,
+  );
+  try {
+    const { code, stdout, stderr } = await runBundleWith([
+      { label: 'GATED', script: '_bundle-fixture-publish-blocked.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    const combined = stdout + stderr;
+    // The gate refused to publish and preserved the last-good TTL: not a
+    // crash (the freshness monitor owns the staleness alarm), but the summary
+    // must never be able to say OK for a section that wrote no seed keys.
+    assert.equal(code, 0, 'publish-blocked-only tick preserves last-good and is not a crash');
+    assert.match(combined, /\[GATED\] COVERAGE GATE FAILED: china-missing/);
+    assert.match(combined, new RegExp(`Failed after .*s: coverage gate refused to publish \\(exit ${PUBLISH_BLOCKED_EXIT_CODE}\\)`));
+    assert.match(combined, new RegExp(`\\[Bundle:test\\] section=GATED status=PUBLISH_BLOCKED .*reason=coverage gate refused to publish \\(exit ${PUBLISH_BLOCKED_EXIT_CODE}\\)`));
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:0 failed:0 graceful:0 stalled:0 publish_blocked:1/);
+    assert.match(stdout, /\[Bundle:test\] 1 publish-blocked section\(s\) preserved last-good and wrote no seed keys/);
+    assert.doesNotMatch(combined, /\[Bundle:test\] section=GATED status=OK/);
+    assert.doesNotMatch(stdout, /graceful:1/);
+  } finally {
+    cleanup();
+  }
+});
+
+test('a publish-blocked section does not claim exit 0 when the tick starves due work', async () => {
+  const cleanupBlocked = writeFixture(
+    '_bundle-fixture-publish-blocked-starves.mjs',
+    `console.error('COVERAGE GATE FAILED: china-missing (dataMonth=missing)');\nprocess.exit(${PUBLISH_BLOCKED_EXIT_CODE});\n`,
+  );
+  const cleanupLate = writeFixture('_bundle-fixture-publish-blocked-late.mjs', `console.log('late-ran');\n`);
+  try {
+    const { code, stdout, stderr } = await runBundleWithVirtualClock(
+      [
+        { label: 'GATED', script: '_bundle-fixture-publish-blocked-starves.mjs', intervalMs: 1, timeoutMs: 5_000 },
+        { label: 'LATE', script: '_bundle-fixture-publish-blocked-late.mjs', intervalMs: 1, timeoutMs: 5_000 },
+      ],
+      { maxBundleMs: 30_000 },
+      [0, 0, 0, 100, 16_000, 16_000],
+    );
+    assert.equal(code, 1, 'publish-blocked work must not mask deferred due work');
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:0 skipped:0 deferred:1 failed:0 graceful:0 stalled:0 publish_blocked:1/);
+    assert.match(
+      stderr,
+      /\[Bundle:test\] ran:0 while 1 due section\(s\) were deferred/,
+      `expected the starvation explanation; stderr:\n${stderr}`,
+    );
+    assert.doesNotMatch(stdout, /publish-blocked section\(s\).*exiting 0/);
+    assert.doesNotMatch(stdout, /late-ran/);
+  } finally {
+    cleanupBlocked();
+    cleanupLate();
+  }
+});
+
+test('bundles without gate refusals keep a byte-identical summary line', async () => {
+  const cleanup = writeFixture(
+    '_bundle-fixture-ok-member.mjs',
+    `console.log('seeded');\n`,
+  );
+  try {
+    const { code, stdout } = await runBundleWith([
+      { label: 'OKMEMBER', script: '_bundle-fixture-ok-member.mjs', intervalMs: 1, timeoutMs: 5000 },
+    ]);
+    assert.equal(code, 0);
+    assert.match(stdout, /\[Bundle:test\] Finished .* ran:1 skipped:0 deferred:0 failed:0 graceful:0 stalled:0$/m);
+    // publish_blocked is appended only when non-zero, exactly like disabled:.
+    assert.doesNotMatch(stdout, /publish_blocked/);
   } finally {
     cleanup();
   }

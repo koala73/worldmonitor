@@ -63,6 +63,23 @@ function createDefaultUserPrefsDeps(): UserPrefsDeps {
 
 let userPrefsDeps: UserPrefsDeps = createDefaultUserPrefsDeps();
 
+/**
+ * The Two-Verifier Seam invariant (#7097, CONCEPTS.md): a token the edge
+ * accepted only inside its bounded clockTolerance can age past Convex's own
+ * leeway and be refused there. That 401 is expected near-expiry traffic, not
+ * Clerk-vs-Convex auth drift, and it is deliberately kept OUT of the
+ * WORLDMONITOR-QK (convex_auth_drift) capture by this predicate rather than
+ * by any edge 401 — the `warning`-level downgrade on that bucket only holds
+ * while QK contains genuine drift. One predicate for both the GET and POST
+ * branches so the two halves of the invariant cannot drift apart (#7140).
+ */
+function isExpectedNearExpiry401(
+  kind: string,
+  session: { acceptedWithinClockTolerance?: true },
+): boolean {
+  return kind === 'UNAUTHENTICATED' && session.acceptedWithinClockTolerance === true;
+}
+
 export function __setUserPrefsDepsForTests(overrides: Partial<UserPrefsDeps> | null): void {
   userPrefsDeps = overrides
     ? { ...createDefaultUserPrefsDeps(), ...overrides }
@@ -220,6 +237,19 @@ export default async function handler(
       // drift — skip the drift capture for it so the WORLDMONITOR-QK bucket
       // keeps meaning what its comment says.
       //
+      // The May–July 2026 13.6x QK ramp (8 → 109 ev/wk, 344 users, all POST
+      // setPreferences) was the *other* near-expiry feeder: `getClerkToken`
+      // stamped Clerk's stale-while-revalidate leftover with a flat 50s TTL,
+      // so tokens with ≤15s of life still passed the edge and died at Convex.
+      // That defect was constant from #1812, though, so it sets the failure
+      // rate per write, not the ramp — the climb was exposure: #4323, #4741
+      // and #4926 each moved more state onto the cloud-prefs write path. Both
+      // terms were cut on 2026-07-28, #5755 (10:32Z, serialized writes) and
+      // #5753 (17:57Z, `exp`-bounded reuse); the last high-rate event (22:40Z)
+      // ran a deploy that already carried both, so it is stale client bundle.
+      // Residual ~5 ev/wk is this designed two-verifier baseline. See
+      // docs/solutions/integration-issues/convex-auth-drift-ramp-was-stacked-clerk-token-cache.md.
+      //
       // Every other UNAUTHENTICATED here is genuine auth/audience/issuer
       // drift between our Clerk JWKS validation and Convex's auth config (a
       // Clerk JWKS rotation lag, an audience mismatch, a stale
@@ -233,10 +263,19 @@ export default async function handler(
       // client retry recovers cleanly. Keeping the capture at error
       // drowned real bugs in the dashboard while delivering no operational
       // signal beyond "drift happened" (already evident from the warning
-      // bucket). A genuine systemic drift incident would still surface
-      // because volume would escalate and reopen the archived issue.
+      // bucket). A genuine systemic drift incident surfaces only because the
+      // QK bucket is archived `until_escalating` — Sentry's forecast reopens
+      // it when volume departs baseline. That mode is load-bearing for this
+      // downgrade, not incidental: QK sat on `archived_forever` (which opts
+      // OUT of escalation detection) from 2026-05 and absorbed a 13.6x ramp
+      // — 8 ev/wk to 109 ev/wk across 344 users, peaking the week of
+      // 2026-07-20 — with no reopen and no notification. Nobody diagnosed
+      // that spike while it ran; it self-resolved, and its cause was only
+      // recovered months later by the dedicated investigation noted above.
+      // Re-archiving as anything that cannot reopen silently deletes the
+      // only escalation path this `warning` level leaves.
       if (kind === 'UNAUTHENTICATED') {
-        if (session.acceptedWithinClockTolerance) {
+        if (isExpectedNearExpiry401(kind, session)) {
           console.warn(
             '[user-prefs] GET 401 for token accepted within edge clock tolerance (expected near-expiry, not drift)',
           );
@@ -361,7 +400,16 @@ export default async function handler(
       // passed validateBearerToken). Capture at `warning` for visibility
       // without paging — the observed pattern is transient
       // single-event-per-user that recovers on client retry (WORLDMONITOR-QK).
-      if (session.acceptedWithinClockTolerance) {
+      //
+      // This is the capture that produced the QK population: the `method` tag
+      // reads POST on 354 of 354 retained events, none from the GET branch.
+      // It is therefore the one to watch after any change that puts more state
+      // on the cloud-prefs write path — QK volume is the near-expiry failure
+      // rate times POST volume, so growing `CLOUD_SYNC_KEYS` raises this
+      // bucket with no auth regression at all. That is what the May–July 2026
+      // 13.6x ramp was; see
+      // docs/solutions/integration-issues/convex-auth-drift-ramp-was-stacked-clerk-token-cache.md.
+      if (isExpectedNearExpiry401(kind, session)) {
         console.warn(
           '[user-prefs] POST 401 for token accepted within edge clock tolerance (expected near-expiry, not drift)',
         );

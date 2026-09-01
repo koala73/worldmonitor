@@ -53,12 +53,22 @@ export interface McpToolExecutionContext {
 export interface BaseToolDef {
   name: string;
   description: string;
-  inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    required: string[];
+    oneOf?: Array<Record<string, unknown>>;
+  };
   // Per-tool output budget. When serialised tool output exceeds this AFTER
   // _postFilter + summary + JMESPath, the server returns a `_budget_exceeded`
   // envelope instead of the oversized payload. Required so a new tool can't
   // be added without an explicit budget choice.
   _outputBudgetBytes: number;
+  // Attribution-bound responses may opt out of the universal JMESPath
+  // projection when projecting fields independently would make an otherwise
+  // permitted value unsafe to redistribute. The dispatcher also enforces the
+  // denial as defence in depth.
+  _jmespathDisabled?: true;
   // U7 (R7, R9): membership in the always-free subset — servable to an
   // uncredentialed caller, consuming no quota for any principal. Declared HERE,
   // on the tool itself, so the roster and the tool definition cannot drift
@@ -164,6 +174,18 @@ export interface FreshnessCheck {
   key: string;
   maxStaleMin: number;
   minRecordCount?: number;
+  // When true, `stale` additionally reflects the seed-meta content-age trio
+  // (newestItemAt / oldestItemAt / maxContentAgeMin) via the shared assessor
+  // in api/_content-age.js — the same rule api/health.js classifyKey applies,
+  // so the two surfaces cannot answer differently for one key (#7141).
+  //
+  // Opt-in is declared HERE, on the check, not inferred from the presence of
+  // maxContentAgeMin on the stored seed-meta. Many seeders already stamp that
+  // field, so inferring from it would silently enroll ~14 unrelated keys whose
+  // tools never declared a content-age contract and have no test coverage for
+  // one. Enrolling a new key is therefore a deliberate, reviewable edit here,
+  // matching how minRecordCount and requireContentFreshness already opt in.
+  honorContentAge?: boolean;
   // When set, `stale` additionally reflects the producer's own per-entity
   // observations, re-aged against read time. Mirrors the health check of the
   // same name so the two surfaces cannot answer differently for one key.
@@ -277,7 +299,12 @@ export interface ApplyJmespathResult {
 export interface PublicToolShape {
   name: string;
   description: string;
-  inputSchema: { type: string; properties: Record<string, unknown>; required: string[] };
+  inputSchema: {
+    type: string;
+    properties: Record<string, unknown>;
+    required: string[];
+    oneOf?: Array<Record<string, unknown>>;
+  };
   outputSchema: object;
   annotations: {
     readOnlyHint: boolean;

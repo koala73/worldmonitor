@@ -27,6 +27,7 @@ import {
   shouldDeferFreeTierEnforcement,
   FREE_MAX_PANELS,
   FREE_MAX_SOURCES,
+  countFreePanelCapUsage,
 } from '@/config';
 import {
   sanitizeLayersForVariant,
@@ -60,6 +61,7 @@ import {
   loadFromStorage,
   markStorageQuotaExceeded,
   parseMapUrlState,
+  readDashboardSearchQuery,
   saveToStorage,
   showToast,
 } from '@/utils';
@@ -97,6 +99,8 @@ import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
 import type { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
 import type { MacroTilesPanel } from '@/components/MacroTilesPanel';
 import type { FSIPanel } from '@/components/FSIPanel';
+import type { NqPulsePanel } from '@/components/NqPulsePanel';
+import type { NqCatalystsPanel } from '@/components/NqCatalystsPanel';
 import type { YieldCurvePanel } from '@/components/YieldCurvePanel';
 import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
@@ -159,12 +163,31 @@ import { describeWmSessionDegradation, WM_SESSION_DEGRADED_FALLBACK_COPY } from 
 import { describeFreshness } from '@/services/persistent-cache';
 import { DesktopUpdater } from '@/app/desktop-updater';
 import { CountryIntelManager } from '@/app/country-intel';
-import { DashboardBindingError, registerWebMcpTools } from '@/services/webmcp';
 import {
+  DashboardBindingError,
+  isWebMcpAbortError,
+  raceWebMcpAbort,
+  registerWebMcpTools,
+  throwIfWebMcpAborted,
+  type WebMcpExecutionOptions,
+} from '@/services/webmcp';
+import {
+  applyWebMcpMissionPreset,
+  applyWebMcpOpenAlerts,
+  applyWebMcpOpenMissionPicker,
+  applyWebMcpOpenSettings,
+  applyWebMcpSwitchMonitor,
   getWebMcpDashboardContext,
+  getWebMcpMapLayerCatalogSnapshot,
+  listWebMcpDashboardPanels,
+  listWebMcpMissionPresets,
+  WEBMCP_UI_READY_TIMEOUT_MS,
   waitForWebMcpUiReady,
 } from '@/app/webmcp-dashboard';
+import type { MapLayerRuntimeAvailability } from '@/services/map-layer-runtime-availability';
+import { getWebMcpAccessContext, openWebMcpSignIn } from '@/app/webmcp-access';
 import { runDashboardActionBinding } from '@/app/dashboard-action-binding';
+import { selectWebMcpPanelTab } from '@/app/webmcp-panel-tab-binding';
 import { refreshDataFreshnessFromHealth } from '@/services/health-freshness';
 import { scheduleAfterFirstPaint } from '@/utils/after-paint';
 import type { SearchManager } from '@/app/search-manager';
@@ -172,6 +195,7 @@ import { RefreshScheduler } from '@/app/refresh-scheduler';
 import { PanelLayoutManager } from '@/app/panel-layout';
 import { DataLoaderManager } from '@/app/data-loader';
 import { EventHandlerManager } from '@/app/event-handlers';
+import { isCatalogPanelLive, waitUntilPanelLive } from '@/app/panel-enablement';
 import {
   FreeTierGate,
   panelGateStateChanged,
@@ -267,6 +291,7 @@ export class App {
   private pendingDeepLinkExpanded = false;
   private pendingDeepLinkStoryCode: string | null = null;
   private pendingDeepLinkChokepoint: string | null = null;
+  private pendingDeepLinkSearchQuery: string | null = null;
   private chokepointDeepLinkTimer: number | null = null;
   private stockDeepLinkTimer: number | null = null;
 
@@ -293,10 +318,9 @@ export class App {
   private unsubFreeTier: (() => void) | null = null;
   private unsubEntitlementPremiumLoaders: (() => void) | null = null;
   // Resolves once Phase-4 UI modules have initialised so WebMCP bindings can
-  // await readiness before touching nullable UI targets. Avoids the startup
-  // race where an agent
-  // discovers a tool via early registerTool and invokes it before the
-  // target panel exists.
+  // await readiness before dispatching into UI managers. Avoids the startup
+  // race where an agent discovers a tool via early registerTool and invokes it
+  // before the manager that owns its target is ready.
   private uiReady!: Promise<void>;
   private resolveUiReady!: () => void;
   private appDestroyed!: Promise<void>;
@@ -306,6 +330,10 @@ export class App {
   // triggers it so test harnesses / same-document re-inits don't accumulate
   // duplicate registrations.
   private webMcpController: AbortController | null = null;
+  // Cancels App-owned waits that have already entered a callback. Distinct from
+  // the tool-invocation caller signal, and from webMcpController which only
+  // unregisters tools — aborting registration does not stop an in-flight waiter.
+  private readonly lifecycleController = new AbortController();
   private visiblePanelPrimed = new Set<string>();
   /**
    * Per-pass viewport results, or null outside a pass. See
@@ -318,6 +346,7 @@ export class App {
   private visiblePanelPrimeRetryAt = new Map<string, number>();
   private visiblePanelPrimeRaf: number | null = null;
   private viewportHydrationReady = false;
+  private viewportHydrationReadyAt = 0;
   private followedCountriesCapDropToastTimer: number | null = null;
   private bootstrapHydrationState: BootstrapHydrationState = getBootstrapHydrationState();
   private cachedModeBannerEl: HTMLElement | null = null;
@@ -339,6 +368,13 @@ export class App {
   };
   private readonly handleViewportPrime = (event?: Event): void => {
     if (!this.viewportHydrationReady || this.state.isDestroyed) return;
+    if (
+      event &&
+      this.viewportHydrationReadyAt > 0 &&
+      event.timeStamp < this.viewportHydrationReadyAt
+    ) {
+      return;
+    }
     if (
       event?.type === 'scroll' &&
       event.target instanceof Element &&
@@ -381,6 +417,11 @@ export class App {
     const detail = (ev as CustomEvent<CloudPrefsAppliedDetail>).detail;
     this.applyCloudSyncedPrefsToRuntime(detail?.keys ?? [], detail?.syncVersion);
   };
+  private readonly getMapLayerRuntimeAvailability = (): MapLayerRuntimeAvailability => ({
+    cyberLayerEnabled: CYBER_LAYER_ENABLED,
+    aisConfigured: isAisConfigured(),
+    outagesAvailable: isOutagesConfigured() !== false,
+  });
   private readonly handleCloudPrefsSignInTerminal = (ev: Event): void => {
     const detail = (ev as CustomEvent<CloudPrefsSignInTerminalDetail>).detail;
     const pendingGeneration = this.pendingPreferenceHandoffGeneration;
@@ -477,8 +518,8 @@ export class App {
 
     if (keySet.has(STORAGE_KEYS.mapMode)) {
       const mode = getStoredMapModePreference();
-      if (mode === 'globe') this.state.map?.switchToGlobe();
-      else this.state.map?.switchToFlat();
+      if (mode === 'globe') void this.state.map?.switchToGlobe();
+      else void this.state.map?.switchToFlat();
     }
 
     if (
@@ -794,6 +835,14 @@ export class App {
       const panel = this.state.panels['fsi'] as FSIPanel | undefined;
       if (panel) primeTask('fsi', () => panel.fetchData());
     }
+    if (shouldPrime('nq-pulse')) {
+      const panel = this.state.panels['nq-pulse'] as NqPulsePanel | undefined;
+      if (panel) primeTask('nq-pulse', () => panel.fetchData());
+    }
+    if (shouldPrime('nq-catalysts')) {
+      const panel = this.state.panels['nq-catalysts'] as NqCatalystsPanel | undefined;
+      if (panel) primeTask('nq-catalysts', () => panel.fetchData());
+    }
     if (shouldPrime('yield-curve')) {
       const panel = this.state.panels['yield-curve'] as YieldCurvePanel | undefined;
       if (panel) primeTask('yield-curve', () => panel.fetchData());
@@ -906,6 +955,8 @@ export class App {
 
     const PANEL_ORDER_KEY = 'panel-order';
     const PANEL_SPANS_KEY = 'worldmonitor-panel-spans';
+    const PANEL_ORDER_MIGRATION_KEY = 'worldmonitor-panel-order-v1.9';
+    const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
 
     const isMobile = isMobileDevice();
     const isDesktopApp = isDesktopRuntime();
@@ -965,6 +1016,8 @@ export class App {
       );
       // Load existing panel prefs (if any), disable panels not belonging to the new variant
       const newVariantKeys = new Set(VARIANT_DEFAULTS[currentVariant] ?? []);
+      const hadLegacyPanelLayoutState = localStorage.getItem(PANEL_ORDER_KEY) !== null
+        || localStorage.getItem(PANEL_SPANS_KEY) !== null;
       panelSettings = applyVariantPanelLayoutTransition({
         currentVariant,
         panelSettings: loadFromStorage<Record<string, PanelConfig>>(STORAGE_KEYS.panels, {}),
@@ -989,6 +1042,17 @@ export class App {
           localStorage.setItem(STORAGE_KEYS.panelLayoutVariant, variant);
         },
       });
+      if (
+        !hadLegacyPanelLayoutState
+        && localStorage.getItem(STORAGE_KEYS.panelLayoutVariant) === currentVariant
+      ) {
+        try {
+          localStorage.setItem(PANEL_ORDER_MIGRATION_KEY, 'done');
+          localStorage.setItem(LAYOUT_RESET_MIGRATION_KEY, 'done');
+        } catch {
+          // Blocked storage leaves the legacy migrations eligible for a later retry.
+        }
+      }
     } else {
       mapLayers = normalizeExclusiveChoropleths(
         sanitizeLayersForVariant(
@@ -1101,7 +1165,6 @@ export class App {
       console.log('[App] Loaded panel settings from storage:', Object.entries(panelSettings).filter(([_, v]) => !v.enabled).map(([k]) => k));
 
       // One-time migration: reorder panels for existing users (v1.9 panel layout)
-      const PANEL_ORDER_MIGRATION_KEY = 'worldmonitor-panel-order-v1.9';
       if (!localStorage.getItem(PANEL_ORDER_MIGRATION_KEY)) {
         const savedOrder = localStorage.getItem(PANEL_ORDER_KEY);
         if (savedOrder) {
@@ -1173,7 +1236,6 @@ export class App {
       }
 
       // One-time migration: clear stale panel ordering and sizing state
-      const LAYOUT_RESET_MIGRATION_KEY = 'worldmonitor-layout-reset-v2.5';
       if (!localStorage.getItem(LAYOUT_RESET_MIGRATION_KEY)) {
         const hadSavedOrder = !!localStorage.getItem(PANEL_ORDER_KEY);
         const hadSavedSpans = !!localStorage.getItem(PANEL_SPANS_KEY);
@@ -1567,32 +1629,12 @@ export class App {
         }
 
         const manager = new SearchManager(this.state, {
-          openCountryBriefByCode: (code, country, options) => {
-            return new Promise<boolean>((resolve) => {
-              let acknowledged = false;
-              const finish = (opened: boolean): void => {
-                if (acknowledged) return;
-                acknowledged = true;
-                resolve(opened);
-              };
-              void this.countryIntel.openCountryBriefByCode(code, country, {
-                trackAnalytics: options?.trackDetailedAnalytics !== false,
-                onPresented: () => {
-                  const page = this.state.countryBriefPage;
-                  finish(page?.isVisible() === true && page.getCode() === code);
-                },
-              }).then(() => {
-                // A superseded, destroyed, or failed open can settle without
-                // ever presenting the requested page.
-                finish(false);
-              }).catch((err) => {
-                console.error('[CountryBrief] Failed to open country brief:', err);
-                this.state.map?.setRenderPaused(false);
-                showToast('Country brief failed to open. Please try again.');
-                finish(false);
-              });
-            });
-          },
+          openCountryBriefByCode: (code, country, options) => (
+            this.openCountryBriefWithAcknowledgement(code, country, {
+              trackAnalytics: options?.trackDetailedAnalytics !== false,
+              signal: options?.signal,
+            })
+          ),
           enablePanel: (panelId, options) => this.eventHandlers.enablePanelById(panelId, {
             trackAnalytics: options?.trackDetailedAnalytics !== false,
           }),
@@ -1618,6 +1660,87 @@ export class App {
     return this.searchManagerLoad;
   }
 
+  private openCountryBriefWithAcknowledgement(
+    code: string,
+    country: string,
+    options: { trackAnalytics: boolean; signal?: AbortSignal; owner?: 'agent' | 'human' },
+  ): Promise<boolean> {
+    return new Promise<boolean>((resolve, reject) => {
+      let acknowledged = false;
+      const cleanup = (): void => {
+        options.signal?.removeEventListener('abort', handleAbort);
+      };
+      const finish = (opened: boolean): void => {
+        if (acknowledged) return;
+        acknowledged = true;
+        cleanup();
+        resolve(opened);
+      };
+      const fail = (error: unknown): void => {
+        if (acknowledged) return;
+        acknowledged = true;
+        cleanup();
+        if (
+          options.signal?.aborted
+          || isWebMcpAbortError(error)
+        ) {
+          reject(error);
+          return;
+        }
+        console.error('[CountryBrief] Failed to open country brief:', error);
+        this.state.map?.setRenderPaused(false);
+        showToast('Country brief failed to open. Please try again.');
+        resolve(false);
+      };
+      const handleAbort = (): void => {
+        try {
+          throwIfWebMcpAborted(options.signal);
+        } catch (error) {
+          fail(error);
+        }
+      };
+
+      try {
+        throwIfWebMcpAborted(options.signal);
+      } catch (error) {
+        fail(error);
+        return;
+      }
+      options.signal?.addEventListener('abort', handleAbort, { once: true });
+      void this.countryIntel.openCountryBriefByCode(code, country, {
+        trackAnalytics: options.trackAnalytics,
+        signal: options.signal,
+        owner: options.owner,
+        onPresented: () => {
+          const page = this.state.countryBriefPage;
+          finish(page?.isVisible() === true && page.getCode() === code);
+        },
+      }).then(() => {
+        // A superseded, destroyed, or failed open can settle without ever
+        // presenting the requested page.
+        finish(false);
+      }).catch(fail);
+    });
+  }
+
+  private async openWebMcpCountryBrief(
+    code: string,
+    country: string,
+    execution?: WebMcpExecutionOptions,
+  ): Promise<boolean> {
+    await this.waitForUiReady(execution?.signal);
+    throwIfWebMcpAborted(execution?.signal);
+    return this.openCountryBriefWithAcknowledgement(code, country, {
+      trackAnalytics: false,
+      signal: execution?.signal,
+      // No shipping browser hands WebMCP tools a target-side AbortSignal, so
+      // ownership must be stated rather than inferred from execution.signal —
+      // otherwise this agent open claims 'human' and skips the arbitration
+      // that keeps it from evicting an in-flight human request.
+      owner: 'agent',
+    });
+  }
+
   private updateSearchIndexIfReady(): void {
     this.searchManager?.updateSearchIndex();
   }
@@ -1635,7 +1758,14 @@ export class App {
     this.searchManager?.updateFlightSource(adsb, military, this.latestSearchAdsbUpdatedAt);
   }
 
-  private async openSearch(options: { toggle?: boolean; throwOnFailure?: boolean; replaceOverlayId?: OverlayId; historyPending?: boolean } = {}): Promise<void> {
+  private async openSearch(options: {
+    toggle?: boolean;
+    throwOnFailure?: boolean;
+    replaceOverlayId?: OverlayId;
+    historyPending?: boolean;
+    signal?: AbortSignal;
+    initialQuery?: string;
+  } = {}): Promise<boolean> {
     // Concurrency model: each press registers its intent, then claims a
     // monotonic epoch. After the lazy load resolves, only the latest epoch acts
     // — superseded presses bail. This yields one deterministic modal.open() for
@@ -1651,13 +1781,20 @@ export class App {
         })
       : null;
     try {
-      await this.waitForUiReady();
-      if (pendingGate && !pendingGate.isCurrent()) return;
+      await this.waitForUiReady(options.signal);
+      throwIfWebMcpAborted(options.signal);
+      // A fresh palette intent (human Cmd+K/button or agent open_search)
+      // supersedes any older open_search_result presentation before we decide
+      // whether to toggle, lazy-load, or open the modal. This cancellation is
+      // intentionally limited to agent selection work; it does not clear the
+      // palette's query/debounce state or unrelated human actions.
+      this.searchManager?.cancelPendingProgrammaticSelection();
+      if (pendingGate && !pendingGate.isCurrent()) return false;
 
       const existingModal = this.state.searchModal;
       if (options.toggle && existingModal?.isOpen()) {
         existingModal.close();
-        return;
+        return false;
       }
 
       const togglingBeforeLoad = Boolean(options.toggle) && !this.searchManager;
@@ -1666,25 +1803,31 @@ export class App {
       }
 
       epoch = ++this.openSearchEpoch;
-      const manager = await this.ensureSearchManager();
-      if (this.openSearchEpoch !== epoch) return;
-      if (pendingGate && !pendingGate.isCurrent()) return;
+      const manager = await raceWebMcpAbort(this.ensureSearchManager(), options.signal);
+      throwIfWebMcpAborted(options.signal);
+      if (this.openSearchEpoch !== epoch) return false;
+      if (pendingGate && !pendingGate.isCurrent()) return false;
 
       const wantOpen = togglingBeforeLoad ? this.searchToggleDesiredOpen : true;
-      if (!wantOpen) return;
+      if (!wantOpen) return false;
 
       manager.updateSearchIndex();
       const modal = this.state.searchModal;
       if (!modal) throw new Error('Search modal is not initialised');
+      throwIfWebMcpAborted(options.signal);
       modal.open(pendingGate ? pendingId : options.replaceOverlayId);
+      if (options.initialQuery) modal.applyQuery(options.initialQuery);
+      return modal.isOpen();
     } catch (error) {
       const actionWasCancelled = pendingGate !== null && !pendingGate.isCurrent();
-      if (!this.state.isDestroyed && !actionWasCancelled) {
+      const invocationWasCancelled = options.signal?.aborted === true;
+      if (!this.state.isDestroyed && !actionWasCancelled && !invocationWasCancelled) {
         console.warn('[search] Failed to load search manager:', error);
         if (!options.throwOnFailure) showToast('Search failed to load. Please try again.');
       }
       pendingGate?.cancel();
-      if (options.throwOnFailure) throw error;
+      if (options.throwOnFailure || options.signal?.aborted) throw error;
+      return false;
     } finally {
       // Reset the toggle accumulator once the latest press settles.
       if (this.openSearchEpoch === epoch) this.searchToggleDesiredOpen = false;
@@ -1781,35 +1924,77 @@ export class App {
     // WebMCP — register synchronously before any init awaits so agent
     // scanners (isitagentready.com, in-browser agents) find the tools on
     // their first probe. No-op in browsers without document.modelContext.
-    // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so
-    // a tool invoked during the startup window waits for the target
-    // panel to exist instead of throwing. A 10s timeout keeps a genuinely
-    // broken state from hanging the caller. Store the returned controller
+    // Bindings await `this.uiReady` (resolves after Phase-4 UI init) so a tool
+    // invoked during startup waits for managers that can lazily create their
+    // targets. A bounded startup timeout keeps a genuinely broken state from
+    // hanging the caller. Store the returned controller
     // so destroy() can unregister every tool on teardown.
     this.webMcpController = registerWebMcpTools({
-      openCountryBriefByCode: async (code, country) => {
-        await this.waitForUiReady();
-        if (!this.state.countryBriefPage) {
-          throw new Error('Country brief panel is not initialised');
-        }
-        await this.countryIntel.openCountryBriefByCode(code, country);
-      },
+      openCountryBriefByCode: (code, country, execution) => (
+        this.openWebMcpCountryBrief(code, country, execution)
+      ),
       resolveCountryName: (code) => CountryIntelManager.resolveCountryName(code),
-      openSearch: async () => {
+      openSearch: async (execution) => {
         // openSearch() awaits UI readiness internally and throws on failure when
         // throwOnFailure is set, so the agent receives a real success/failure.
         // (Re-checking searchModal here would spuriously throw if a concurrent
         // Cmd+K closed it between open and the check — #4403 review ADV-4.)
-        await this.openSearch({ throwOnFailure: true });
+        return this.openSearch({ throwOnFailure: true, signal: execution?.signal });
       },
-      getDashboardContext: async () => {
-        await this.waitForDashboardReady();
+      getDashboardContext: async (execution) => {
+        await this.waitForDashboardReady(true, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
         return getWebMcpDashboardContext(this.state, SITE_VARIANT);
       },
-      applyDashboardAction: async (action) => {
+      listMapLayerCatalog: async (execution) => {
+        await this.waitForDashboardReady(true, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return getWebMcpMapLayerCatalogSnapshot(
+          this.state,
+          SITE_VARIANT,
+          hasPremiumAccess(getAuthState()),
+          t,
+          this.getMapLayerRuntimeAvailability(),
+        );
+      },
+      listDashboardPanels: async (query, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return listWebMcpDashboardPanels(this.state, SITE_VARIANT, query, {
+          isPanelAllowed: (panelId, config) => (
+            isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()))
+          ),
+        });
+      },
+      switchMonitor: async (monitor, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpSwitchMonitor(
+          this.state,
+          SITE_VARIANT,
+          monitor,
+          (variant) => this.eventHandlers.navigateToVisibleVariant(variant),
+        );
+      },
+      openSettings: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpOpenSettings(this.state, SITE_VARIANT);
+      },
+      openAlerts: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpOpenAlerts(this.state, SITE_VARIANT);
+      },
+      applyDashboardAction: async (action, execution) => {
         return runDashboardActionBinding(this.state, action, {
-          waitForUiReady: () => this.waitForDashboardReady(false),
-          waitForMapReady: () => this.waitForDashboardReady(),
+          waitForUiReady: () => this.waitForDashboardReady(false, execution?.signal),
+          waitForMapReady: () => this.waitForDashboardReady(true, execution?.signal),
+          getMapAuthorityToken: () => this.state.map?.getViewportAuthorityToken() ?? 0,
+          signal: execution?.signal,
           applierOptions: {
             getPanelConfig: (panelId) => getEffectivePanelConfig(panelId, SITE_VARIANT),
             isPanelAllowed: (panelId, config) => (
@@ -1819,21 +2004,39 @@ export class App {
             applyViewChange: (viewAction) => {
               if (viewAction.view) trackMapViewChange(viewAction.view);
             },
+            getMapLayerRuntimeAvailability: this.getMapLayerRuntimeAvailability,
             applyLayerChange: (layer, enabled, source) => (
               this.eventHandlers.applyMapLayerChange(layer, enabled, source)
             ),
+            requireMapModePersistence: true,
           },
           syncUrlStateNow: () => this.eventHandlers.syncUrlStateNow(),
         });
       },
-      searchDashboard: async (query, scope, limit) => {
-        await this.waitForDashboardReady(false);
+      selectPanelTab: async (panelId, tab, execution) => {
+        return selectWebMcpPanelTab(this.state.panels, panelId, tab, {
+          waitForUiReady: () => this.waitForDashboardReady(false, execution?.signal),
+          prepareTab: (_selectedPanelId, selectedTab, signal) => (
+            selectedTab === 'physical'
+              ? this.dataLoader.loadPhysicalPremiumComparison(signal)
+              : undefined
+          ),
+          signal: execution?.signal,
+        });
+      },
+      searchDashboard: async (query, scope, limit, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
         if (this.state.isDestroyed) {
           throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
         }
         let manager: SearchManager;
         try {
-          manager = await this.ensureSearchManager();
+          manager = await raceWebMcpAbort(
+            this.ensureSearchManager(),
+            execution?.signal,
+          );
+          throwIfWebMcpAborted(execution?.signal);
         } catch (error) {
           if (this.state.isDestroyed) {
             throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
@@ -1843,9 +2046,16 @@ export class App {
         if (this.state.isDestroyed) {
           throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
         }
-        return manager.searchDashboard(query, scope, limit);
+        const result = await manager.searchDashboard(
+          query,
+          scope,
+          limit,
+          execution?.signal,
+        );
+        throwIfWebMcpAborted(execution?.signal);
+        return result;
       },
-      openSearchResult: async (resultKey) => {
+      openSearchResult: async (resultKey, execution) => {
         // A capability can only exist after search_dashboard initialized the
         // manager. Deny fabricated first-use keys without loading the lazy
         // search chunk or demanding a map renderer.
@@ -1853,8 +2063,146 @@ export class App {
         if (!manager) {
           return { ok: false, status: 'denied', reason: 'invalid_or_expired_key' } as const;
         }
-        await this.waitForUiReady();
-        return manager.openSearchResult(resultKey, () => this.waitForDashboardReady());
+        await this.waitForUiReady(execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return manager.openSearchResult(
+          resultKey,
+          () => this.waitForDashboardReady(true, execution?.signal),
+          execution?.signal,
+        );
+      },
+      applyDashboardTabAction: async (action, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpTabAction(action);
+      },
+      setPanelEnabled: async (panelId, enabled, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        const result = this.eventHandlers.setPanelEnabledById(panelId, enabled);
+        // Map uses #mapSection, not ctx.panels / [data-panel]. After persist,
+        // do not abort on the caller signal: cancellation-required only gates a
+        // missing signal. The App lifecycle signal still cancels this waiter
+        // when destroy() runs, so a same-document re-init cannot wake the
+        // MutationObserver on replacement DOM.
+        if (
+          result.ok
+          && result.changed
+          && result.effectiveEnabled
+          && typeof panelId === 'string'
+          && panelId !== 'map'
+        ) {
+          try {
+            await waitUntilPanelLive({
+              isLive: () => isCatalogPanelLive(panelId, this.state.panels),
+              signal: this.lifecycleController.signal,
+            });
+          } catch (error) {
+            if (this.state.isDestroyed || this.lifecycleController.signal.aborted) {
+              throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+            }
+            throw error;
+          }
+        }
+        return result;
+      },
+      listMissionPresets: async (query, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return listWebMcpMissionPresets(this.state, SITE_VARIANT, query, {
+          hasPremium: hasPremiumAccess(getAuthState()),
+          isPanelEntitled: (panelId) => {
+            const config = this.state.panelSettings[panelId]
+              ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
+            if (!config) return true;
+            return isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()));
+          },
+        });
+      },
+      applyMissionPreset: async (presetId, execution) => {
+        await this.waitForDashboardReady(true, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return applyWebMcpMissionPreset(this.state, SITE_VARIANT, presetId, {
+          hasPremium: hasPremiumAccess(getAuthState()),
+          isPanelEntitled: (panelId) => {
+            const config = this.state.panelSettings[panelId]
+              ?? getEffectivePanelConfig(panelId, SITE_VARIANT);
+            if (!config) return true;
+            return isPanelEntitled(panelId, config, hasPremiumAccess(getAuthState()));
+          },
+          apply: (id) => this.eventHandlers.applyMissionPresetForWebMcp(id),
+        });
+      },
+      openMissionPicker: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        return applyWebMcpOpenMissionPicker(
+          this.state,
+          SITE_VARIANT,
+          () => this.eventHandlers.openMissionPresetPickerForWebMcp(),
+        );
+      },
+      getPanelLayout: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.getPanelLayoutSnapshot();
+      },
+      setPanelCollapsed: async (panelId, collapsed, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpSetPanelCollapsed(panelId, collapsed);
+      },
+      movePanel: async (panelId, region, index, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpMovePanel(panelId, region, index);
+      },
+      setPanelFullscreen: async (panelId, fullscreen, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return this.panelLayout.applyWebMcpSetPanelFullscreen(panelId, fullscreen);
+      },
+      getAccessContext: async (execution) => {
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return getWebMcpAccessContext({
+          enabledPanelUsed: countFreePanelCapUsage(this.state.panelSettings),
+          dashboardTabCount: this.panelLayout.getDashboardTabCount(),
+          freeTierFallbackActive: this.freeTierGate.authSettleDeadlineExceeded,
+        });
+      },
+      openSignIn: async (execution) => {
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        return openWebMcpSignIn(execution?.signal);
       },
     });
 
@@ -2047,8 +2395,10 @@ export class App {
         // market-brief / market-implications because their schedulers are
         // gated to SITE_VARIANT === 'finance'). The audit-locking regression
         // test in tests/premium-loaders-fan-out-coverage.test.mts asserts
-        // every `hasPremiumAccess() && shouldLoad('X')` gate in data-loader.ts
+        // every premium gate in data-loader.ts
         // has a matching call here.
+        void this.dataLoader.loadPhysicalPremiumComparison();
+        void this.dataLoader.loadMineralProduction();
         void this.dataLoader.loadTradePolicy();
         void this.dataLoader.loadStockAnalysis();
         void this.dataLoader.loadStockBacktest();
@@ -2060,6 +2410,8 @@ export class App {
       } else if (!nowPremium && hadPremium) {
         // Pro data must not remain visible or available from the client cache
         // after sign-out, expiry, or downgrade.
+        this.dataLoader.clearPhysicalPremiumComparison();
+        this.dataLoader.clearMineralProduction();
         void this.dataLoader.clearGlobalTenders();
       }
       _prevHadPremium = nowPremium;
@@ -2327,6 +2679,7 @@ export class App {
     await this.countryIntel.init();
     // Unblock any WebMCP tool invocations that arrived during startup.
     this.resolveUiReady();
+    markLcpDebug('wm:boot:webmcp-ui-ready');
 
     // Phase 5: Event listeners + URL sync
     this.eventHandlers.init();
@@ -2337,6 +2690,7 @@ export class App {
     this.pendingDeepLinkChokepoint = initState.chokepoint ?? null;
     const earlyParams = new URLSearchParams(window.location.search);
     this.pendingDeepLinkStoryCode = earlyParams.get('c') ?? null;
+    this.pendingDeepLinkSearchQuery = readDashboardSearchQuery(window.location.search);
     this.eventHandlers.setupUrlStateSync();
     if (import.meta.env.VITE_E2E === '1') {
       document.documentElement.dataset.wmEventHandlersReady = 'true';
@@ -2370,6 +2724,10 @@ export class App {
     // (3.5 s browser / 8.5 s desktop). (#4512)
     await slowTierReady;
     if (this.state.isDestroyed) return;
+    this.viewportHydrationReadyAt = typeof performance !== 'undefined' &&
+      typeof performance.now === 'function'
+      ? performance.now()
+      : Date.now();
     this.viewportHydrationReady = true;
     // Register viewport triggers only after the slow bootstrap tier settles.
     // Scrolls before this point are covered by the initial fan-out below, which
@@ -2904,6 +3262,9 @@ export class App {
     this.latestSearchMilitary = [];
     this.latestSearchAdsbUpdatedAt = 0;
     this.resolveAppDestroyed();
+    // Cancel in-flight App-owned waits before DOM teardown can mutate the
+    // document and wake a waiter that still closes over this instance.
+    this.lifecycleController.abort();
     // Unregister agent entry points before the rest of teardown. In particular,
     // init-failure cleanup may run on a partially initialised App; even if a
     // later module cleanup throws, no WebMCP tool may retain this dead instance.
@@ -2912,6 +3273,7 @@ export class App {
     this.tierPreferenceHandoff.clear();
     this.pendingPreferenceHandoffGeneration = undefined;
     this.viewportHydrationReady = false;
+    this.viewportHydrationReadyAt = 0;
     cancelBootstrapSlowTier();
     window.removeEventListener('scroll', this.handleViewportPrime, { capture: true });
     window.removeEventListener('resize', this.handleViewportPrime);
@@ -3080,13 +3442,19 @@ export class App {
   // state so a tool invoked during startup waits rather than throwing;
   // the timeout guards against a genuinely broken init path hanging the
   // agent forever.
-  private async waitForUiReady(timeoutMs = 10_000): Promise<void> {
-    await waitForWebMcpUiReady(this.uiReady, this.appDestroyed, timeoutMs);
+  private async waitForUiReady(
+    signal?: AbortSignal,
+    timeoutMs = WEBMCP_UI_READY_TIMEOUT_MS,
+  ): Promise<void> {
+    await waitForWebMcpUiReady(this.uiReady, this.appDestroyed, timeoutMs, 'UI', signal);
   }
 
-  private async waitForDashboardReady(requireMapRenderer = true): Promise<void> {
+  private async waitForDashboardReady(
+    requireMapRenderer = true,
+    signal?: AbortSignal,
+  ): Promise<void> {
     try {
-      await this.waitForUiReady();
+      await this.waitForUiReady(signal);
       if (!requireMapRenderer) return;
       const map = this.state.map;
       if (map) {
@@ -3095,9 +3463,11 @@ export class App {
           this.appDestroyed,
           15_000,
           'Map renderer',
+          signal,
         );
       }
     } catch (error) {
+      throwIfWebMcpAborted(signal);
       // A dashboard binding that loses the readiness/destroy race must reach
       // the narrow context/applier seam so it can return its closed
       // app_destroyed reason. Genuine readiness timeouts still reject.
@@ -3108,6 +3478,19 @@ export class App {
   private handleDeepLinks(): void {
     const url = new URL(window.location.href);
     const DEEP_LINK_INITIAL_DELAY_MS = 1500;
+
+    // SearchAction lands on /dashboard?q=… after URL sync has already rewritten
+    // the address bar. Consume the captured term through the same lazy path as
+    // Cmd+K so the modal is created only when a query is actually present.
+    const searchQuery = this.pendingDeepLinkSearchQuery;
+    this.pendingDeepLinkSearchQuery = null;
+    if (
+      searchQuery
+      && (url.pathname === '/dashboard' || url.pathname === '/dashboard/')
+    ) {
+      void this.openSearch({ initialQuery: searchQuery });
+      return;
+    }
 
     // Check for country brief deep link: ?c=IR (captured early before URL sync)
     const storyCode = this.pendingDeepLinkStoryCode ?? url.searchParams.get('c');
@@ -3507,6 +3890,18 @@ export class App {
       () => (this.state.panels['fsi'] as FSIPanel).fetchData(),
       REFRESH_INTERVALS.fsi,
       () => this.isPanelNearViewport('fsi')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'nq-pulse',
+      () => (this.state.panels['nq-pulse'] as NqPulsePanel).fetchData(),
+      REFRESH_INTERVALS.nqPulse,
+      () => this.isPanelNearViewport('nq-pulse')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'nq-catalysts',
+      () => (this.state.panels['nq-catalysts'] as NqCatalystsPanel).fetchData(),
+      REFRESH_INTERVALS.nqCatalysts,
+      () => this.isPanelNearViewport('nq-catalysts')
     );
     this.refreshScheduler.scheduleRefresh(
       'yield-curve',

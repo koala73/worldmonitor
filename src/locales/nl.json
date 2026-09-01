@@ -213,6 +213,8 @@
       "recent": "Recente zoekopdrachten",
       "empty": "Zoek gegevens of voer opdrachten uit",
       "noResults": "No results found",
+      "resultAnnouncement_one": "{{count}} resultaat voor {{query}}",
+      "resultAnnouncement_other": "{{count}} resultaten voor {{query}}",
       "navigate": "navigeren",
       "select": "selecteren",
       "close": "dichtbij",
@@ -1106,6 +1108,16 @@
       "loading": "Verbinding maken met Telegram-relay...",
       "empty": "Geen berichten beschikbaar",
       "disabled": "Telegram-relay niet actief",
+      "watchlistPlaceholder": "Openbaar kanaal toevoegen via @username",
+      "resolving": "Kanaal opzoeken...",
+      "invalidUsername": "Gebruik een openbare Telegram-@username",
+      "resolveFailed": "Kanaal kon niet worden gevonden",
+      "watchlistLimit": "Je kunt maximaal {{count}} aangepaste kanalen volgen",
+      "previewMembers": "{{count}} leden",
+      "addChannel": "Kanaal toevoegen",
+      "added": "Toegevoegd",
+      "remove": "Verwijderen",
+      "custom": "Aangepast",
       "filterAll": "Alles",
       "filterBreaking": "Belangrijk",
       "filterConflict": "Conflicten",
@@ -1599,7 +1611,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Upgrade naar PRO voor aandelen van mijn- en raffinaderijen per land met concentratie (HHI) per fase."
     },
     "positiveNewsFeed": {
       "noStories": "Nog geen verhalen in deze categorie"
@@ -1647,6 +1660,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Fysieke stressindex: {{value}} / 100",
+        "fiveDayTrend": "Trend premie vijf handelsdagen",
+        "regimes": {
+          "normal": "Normaal",
+          "elevated": "Verhoogd",
+          "stressed": "Onder spanning",
+          "extreme": "Extreem"
+        },
+        "states": {
+          "insufficientHistory": "Opwarmfase: {{count}} / {{required}} handelspunten",
+          "staleInput": "Fysieke benchmark is verouderd",
+          "missingInput": "Divergentiesignaal niet beschikbaar"
+        },
+        "twentyDayTrend": "Premiumtrend over twintig handelsdagen"
       }
     },
     "crypto": {
@@ -1803,6 +1832,26 @@
         "failedToLoad": "Laden mislukt"
       },
       "cissStale": "ECB heeft geen nieuwere waarde gepubliceerd — deze waarde kan verouderd zijn."
+    },
+    "supplyVulnerability": {
+      "title": "Kwetsbaarheid voor grondstoffen",
+      "help": "Blootstelling per grondstof op basis van leveranciersconcentratie, maritieme doorvoer en beschikbare strategische buffers.",
+      "loading": "Kwetsbaarheid voor grondstoffen laden…",
+      "unavailable": "Gegevens over grondstoffenkwetsbaarheid niet beschikbaar",
+      "noCoverage": "Onvoldoende bewijs voor dit land",
+      "unknown": "Onbekend",
+      "concentration": "Concentratie",
+      "transit": "Doorvoer",
+      "buffer": "Bufferreserve",
+      "sources": "Bronnen",
+      "methodology": "Methodologie",
+      "hormuzTitle": "Grondstofafhankelijkheden",
+      "dependentCountries": "Afhankelijke landen",
+      "dependentCommodities": "Afhankelijke grondstoffen",
+      "stateOk": "Actueel",
+      "stateStale": "Verouderde invoer",
+      "stateInsufficient": "Onvoldoende gegevens",
+      "proLocked": "Upgrade naar PRO voor scorebepaling van grondstofgevoeligheid"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz-handelstracker</strong> Live AIS-scheepvaarttracking door de Straat van Hormuz, het meest kritieke olieknelpunt ter wereld. Monitort tankeraantallen, verstoringsevenementen en wekelijkse stroomwijzigingen. Ongeveer 20% van de wereldwijde olietoevoer passeert hier dagelijks.",
@@ -2348,6 +2397,18 @@
       "rubBase": "Centrale Bank van Rusland — roebel per 1 eenheid",
       "rubPerUnit": "Roebel per eenheid",
       "sourceCbr": "Bron: Centrale Bank van Rusland"
+    },
+    "passkeyOffer": {
+      "title": "Wachtsleutel opslaan?",
+      "body": "Volgende keer inloggen met je vingerafdruk, gezicht of apparaat-pincode — geen wachtwoord om te onthouden.",
+      "accept": "Wachtsleutel opslaan",
+      "dismiss": "Nu niet",
+      "close": "Sluiten",
+      "announce": "Sla een wachtsleutel op om volgende keer sneller in te loggen.",
+      "busy": "Je apparaat wordt gecontroleerd…",
+      "succeeded": "Wachtsleutel opgeslagen. Je kunt deze gebruiken wanneer je volgende keer inlogt.",
+      "retryable": "Dit is niet afgerond. Je kunt het opnieuw proberen.",
+      "failed": "We konden geen wachtsleutel op dit apparaat opslaan."
     }
   },
   "popups": {
@@ -2681,7 +2742,11 @@
       "heading": "RUBRIEK",
       "hexCode": "HEX-CODE",
       "squawk": "SQUAWK",
-      "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Bron: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "STIJGSNELHEID",
+      "manufacturer": "FABRIKANT",
+      "owner": "EIGENAAR",
+      "builtYear": "BOUWJAAR"
     },
     "militaryVessel": {
       "aisDark": "AIS DONKER",
@@ -2726,7 +2791,8 @@
       "moreVessels": "+{{count}} meer schepen",
       "vesselsCount": "{{count}} VAARTUIGEN",
       "vessels": "VAARTUIGEN",
-      "trackedVessels": "BIJGEVOERDE VAARTUIGEN"
+      "trackedVessels": "BIJGEVOERDE VAARTUIGEN",
+      "showLess": "Minder weergeven"
     },
     "naturalEvent": {
       "closed": "GESLOTEN",
@@ -3316,6 +3382,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Vijffactoren-resiliëntiescorekaart",
+      "help": "Vastgevroren v1-bewijsscores voor voedsel, energie, demografie, technologie en defensie. Breid een rij uit om invoer, bronherkomst en redenen voor ontbrekende gegevens te inspecteren.",
+      "loading": "Vijffactoren-scorekaart wordt geladen…",
+      "unavailable": "Vijffactoren-scorekaart niet beschikbaar.",
+      "proLocked": "Upgrade naar PRO voor de vijffactoren-resiliëntiescorekaart",
+      "insufficient": "Onvoldoende gegevens",
+      "notAvailable": "Niet beschikbaar",
+      "noEvidence": "Er is geen bewijs beschikbaar voor deze pijler.",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% dekking",
+      "methodologyVersion": "Methode v{{version}}",
+      "methodologyLink": "Toegangs methode",
+      "pillars": {
+        "food": "Voedsel",
+        "energy": "Energie",
+        "demographics": "Demografie",
+        "technology": "Technologie",
+        "defense": "Defensie"
+      },
+      "reasons": {
+        "source-unavailable": "Bron niet beschikbaar",
+        "country-unavailable": "Land niet beschikbaar",
+        "invalid-value": "Ongeldige bronwaarde",
+        "stale": "Bewijs is verouderd",
+        "coverage-below-floor": "Dekking onder de scoregrens",
+        "required-group-missing": "Verplichte bewijsgroep ontbreekt",
+        "missing-population": "Bevolking niet beschikbaar",
+        "redistribution-blocked": "Herredistributie van bron is niet toegestaan",
+        "pillar-unavailable": "Pijler niet beschikbaar"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "Productiebalans",
+        "food_stocksToUse": "Voorraden te gebruiken",
+        "food_waterSecurity": "Waterveiligheid",
+        "food_importDiversity": "Importdiversiteit",
+        "energy_productionBalance": "Productiebalans",
+        "energy_lowCarbonShare": "Aandeel koolstofarme energie",
+        "energy_gridEfficiency": "Netdoeltreffendheid",
+        "demographics_totalDependency": "Totale afhankelijkheidsratio",
+        "demographics_oldAgeDependency": "Ouderdomsafhankelijkheidsratio",
+        "demographics_workingAgeProjection": "Projectie werkende bevolking",
+        "demographics_tertiaryEnrollment": "Inschrijving hoger onderwijs",
+        "demographics_researchersPerMillion": "Onderzoekers per miljoen",
+        "demographics_stemGraduateShare": "Aandeel STEM-afgestudeerden",
+        "demographics_trainedIndustrialShare": "Aandeel getrainde industriële arbeidskrachten",
+        "demographics_manufacturingEmploymentShare": "Aandeel werkgelegenheid in de maakindustrie",
+        "technology_internetUse": "Internetgebruik",
+        "technology_mobileSubscriptions": "Mobiele abonnementen",
+        "technology_fixedBroadband": "Vaste breedband",
+        "technology_rdSpend": "Onderzoeks- en ontwikkelingsuitgaven",
+        "technology_researchersPerMillion": "Onderzoekers per miljoen",
+        "technology_stemGraduateShare": "Aandeel STEM-afgestudeerden",
+        "technology_electricityAccess": "Toegang tot elektriciteit",
+        "defense_expenditureUsd": "Militaire uitgaven",
+        "defense_expenditurePctGdp": "Militaire last",
+        "defense_personnel": "Personeel van de gewapende strijdkrachten",
+        "defense_industrialBalance": "Industrieel evenwicht defensie",
+        "defense_supplierDiversity": "Diversiteit wapenleveranciers"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Upgrade naar PRO voor afhankelijkheid van wapenleveranciers en militaire capaciteit"
     }
   },
   "preferences": {
@@ -3338,7 +3469,9 @@
     "fontFamily": "Lettertype",
     "fontFamilyDesc": "Monospace voor een technische uitstraling, systeemstandaard voor gemakkelijker lezen.",
     "fontMono": "Monospace",
-    "fontSystem": "Systeemstandaard"
+    "fontSystem": "Systeemstandaard",
+    "panelFontScale": "Tekstgrootte",
+    "followGlobalFontScale": "Algemene instelling gebruiken"
   },
   "contextMenu": {
     "openCountryBrief": "Landenoverzicht openen",
@@ -3437,7 +3570,8 @@
   "auth": {
     "signIn": "Aanmelden",
     "createAccount": "Account aanmaken",
-    "settings": "Instellingen"
+    "settings": "Instellingen",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP Verbinden",

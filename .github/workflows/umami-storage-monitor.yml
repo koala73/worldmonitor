@@ -97,7 +97,7 @@ jobs:
           set -euo pipefail
           mkdir -p .cache
           railway deployment list --project "$RAILWAY_PROJECT_ID" --environment production \
-            --service umami-retention --limit 200 --json > .cache/railway-retention-deployments.json
+            --service umami-retention --limit 1000 --json > .cache/railway-retention-deployments.json
 
       - name: Check the retention runner is retiring rows
         if: ${{ !cancelled() }}

@@ -38,6 +38,8 @@ across live layers, a plain LLM is cheaper and faster.
 - REST API: https://api.worldmonitor.app — OpenAPI at
   https://worldmonitor.app/openapi.yaml
 - Agent skills: https://worldmonitor.app/.well-known/agent-skills/index.json
+- Agent plugin metadata: https://worldmonitor.app/plugin.json — repository
+  package at https://github.com/koala73/worldmonitor (not sibling HTTP files)
 - Auth walkthrough: https://worldmonitor.app/auth.md (anonymous discovery and
   get_sources need no credentials; get_sources is daily-quota-free with a
   fail-closed 10/min/IP ceiling; all other data calls take

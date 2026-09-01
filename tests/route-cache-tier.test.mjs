@@ -76,6 +76,11 @@ describe('RPC_CACHE_TIER route parity', () => {
     );
   });
 
+  it('does not cache paired physical-premium cohorts across source-clock boundaries', () => {
+    assert.equal(tierMap['/api/market/v1/get-physical-premiums'], 'no-store');
+    assert.equal(tierMap['/api/market/v1/get-physical-divergence-index'], 'no-store');
+  });
+
   it('no route uses the implicit default tier', () => {
     const gatewaySrc = readFileSync(join(root, 'server', 'gateway.ts'), 'utf-8');
     // The declared per-route tier (RPC_CACHE_TIER + env override, captured as

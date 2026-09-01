@@ -18,6 +18,20 @@
       "twitter:card": "summary_large_image",
       "twitter:site": "@worldmonitorai",
       "twitter:image": "https://www.worldmonitor.app/favico/og-image.png"
+    },
+    "organization": {
+      "id": "https://www.worldmonitor.app/#organization",
+      "name": "World Monitor",
+      "url": "https://www.worldmonitor.app/",
+      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://www.npmjs.com/package/worldmonitor",
+        "https://x.com/worldmonitorai",
+        "https://x.com/eliehabib",
+        "https://discord.gg/re63kWKxaz",
+        "https://www.wired.com/story/world-monitor-elie-habib/"
+      ]
     }
   },
   "colors": {
@@ -85,6 +99,7 @@
                 "pages": [
                   "overview",
                   "features",
+                  "pro-intelligence-suite",
                   "data-sources",
                   "global-procurement-intelligence",
                   "hotspots"
@@ -104,6 +119,14 @@
                   "methodology/news-credibility",
                   "country-instability-index",
                   "methodology/country-resilience-index",
+                  "methodology/resilience-indicators",
+                  "methodology/resilience-indicator-licensing",
+                  "methodology/five-factor-scorecard",
+                  "methodology/demographics-capability",
+                  "methodology/food-stocks",
+                  "methodology/defense-industrial-base",
+                  "methodology/mineral-production",
+                  "methodology/supply-vulnerability",
                   "methodology/chokepoints",
                   "methodology/pipelines",
                   "methodology/storage",
@@ -112,6 +135,7 @@
                   "methodology/cii-risk-scores",
                   "methodology/disease-alert-level",
                   "methodology/thermal-escalation",
+                  "methodology/physical-divergence-index",
                   "corrections",
                   "geographic-convergence",
                   "strategic-risk",
@@ -234,6 +258,7 @@
                   "contributing",
                   "authentication",
                   "adding-endpoints",
+                  "webmcp-maintenance",
                   "api-key-deployment",
                   "releasing-cli",
                   "release-packaging",
@@ -453,7 +478,7 @@
         ]
       },
       {
-        "language": "zh-Hans",
+        "language": "zh",
         "navbar": {
           "links": [
             {
@@ -557,6 +582,7 @@
                 "pages": [
                   "zh/overview",
                   "zh/features",
+                  "zh/pro-intelligence-suite",
                   "zh/data-sources",
                   "zh/hotspots"
                 ]
@@ -575,6 +601,14 @@
                   "zh/methodology/news-credibility",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
+                  "zh/methodology/resilience-indicators",
+                  "zh/methodology/resilience-indicator-licensing",
+                  "zh/methodology/five-factor-scorecard",
+                  "zh/methodology/demographics-capability",
+                  "zh/methodology/food-stocks",
+                  "zh/methodology/defense-industrial-base",
+                  "zh/methodology/mineral-production",
+                  "zh/methodology/supply-vulnerability",
                   "zh/methodology/chokepoints",
                   "zh/methodology/pipelines",
                   "zh/methodology/storage",
@@ -583,6 +617,7 @@
                   "zh/methodology/cii-risk-scores",
                   "zh/methodology/disease-alert-level",
                   "zh/methodology/thermal-escalation",
+                  "zh/methodology/physical-divergence-index",
                   "zh/corrections",
                   "zh/geographic-convergence",
                   "zh/strategic-risk",
@@ -705,6 +740,7 @@
                   "zh/contributing",
                   "zh/authentication",
                   "zh/adding-endpoints",
+                  "zh/webmcp-maintenance",
                   "zh/api-key-deployment",
                   "zh/releasing-cli",
                   "zh/release-packaging",

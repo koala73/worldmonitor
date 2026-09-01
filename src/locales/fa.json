@@ -301,6 +301,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "کارت امتیازدهی تاب‌آوری پنج‌عاملی",
+      "help": "امتیازهای ثابت نسخه ۱ شواهد برای غذا، انرژی، جمعیت‌شناسی، فناوری و دفاع. برای بررسی ورودی‌ها، مبدأ منابع و دلایل داده‌های گمشده، یک ردیف را باز کنید.",
+      "loading": "در حال بارگذاری کارت امتیازدهی پنج‌عاملی…",
+      "unavailable": "کارت امتیازدهی پنج‌عاملی در دسترس نیست.",
+      "proLocked": "برای دسترسی به کارت امتیازدهی تاب‌آوری پنج‌عاملی به نسخه PRO ارتقا دهید",
+      "insufficient": "داده‌های ناکافی",
+      "notAvailable": "در دسترس نیست",
+      "noEvidence": "شواهدی برای این ستون در دسترس نیست.",
+      "score": "{{score}}/5",
+      "coverage": "پوشش {{coverage}}٪",
+      "methodologyVersion": "روش‌شناسی نسخه {{version}}",
+      "methodologyLink": "مشاهده روش‌شناسی",
+      "pillars": {
+        "food": "غذا",
+        "energy": "انرژی",
+        "demographics": "جمعیت‌شناسی",
+        "technology": "فناوری",
+        "defense": "دفاع"
+      },
+      "reasons": {
+        "source-unavailable": "منبع در دسترس نیست",
+        "country-unavailable": "کشور در دسترس نیست",
+        "invalid-value": "مقدار منبع نامعتبر است",
+        "stale": "شواهد منقضی شده‌اند",
+        "coverage-below-floor": "پوشش زیر حد نصاب امتیازدهی",
+        "required-group-missing": "گروه شواهد الزامی یافت نشد",
+        "missing-population": "جمعیت در دسترس نیست",
+        "redistribution-blocked": "توزیع مجدد منبع مجاز نیست",
+        "pillar-unavailable": "ستون در دسترس نیست"
+      },
+      "inputs": {
+        "population": "جمعیت",
+        "food_productionBalance": "توازن تولید",
+        "food_stocksToUse": "موجودی‌های قابل استفاده",
+        "food_waterSecurity": "امنیت آب",
+        "food_importDiversity": "تنوع واردات",
+        "energy_productionBalance": "توازن تولید",
+        "energy_lowCarbonShare": "سهم انرژی کم‌کربن",
+        "energy_gridEfficiency": "بهره‌وری شبکه",
+        "demographics_totalDependency": "وابستگی کل",
+        "demographics_oldAgeDependency": "وابستگی سالمندی",
+        "demographics_workingAgeProjection": "پیش‌بینی جمعیت در سن کار",
+        "demographics_tertiaryEnrollment": "نرخ ثبت‌نام در آموزش عالی",
+        "demographics_researchersPerMillion": "پژوهشگران به ازای هر میلیون نفر",
+        "demographics_stemGraduateShare": "سهم فارغ‌التحصیلان علوم، فناوری، مهندسی و ریاضیات",
+        "demographics_trainedIndustrialShare": "سهم نیروی کار صنعتی آموزش‌دیده",
+        "demographics_manufacturingEmploymentShare": "سهم اشتغال در صنعت",
+        "technology_internetUse": "استفاده از اینترنت",
+        "technology_mobileSubscriptions": "اشتراک‌های موبایل",
+        "technology_fixedBroadband": "باند پهن ثابت",
+        "technology_rdSpend": "مصرف تحقیق و توسعه",
+        "technology_researchersPerMillion": "پژوهشگران به ازای هر میلیون نفر",
+        "technology_stemGraduateShare": "سهم فارغ‌التحصیلان علوم، فناوری، مهندسی و ریاضیات",
+        "technology_electricityAccess": "دسترسی به برق",
+        "defense_expenditureUsd": "مصرف نظامی",
+        "defense_expenditurePctGdp": "بار نظامی",
+        "defense_personnel": "نیروهای مسلح",
+        "defense_industrialBalance": "تراز صنعت دفاعی",
+        "defense_supplierDiversity": "تنوع تأمین‌کنندگان تسلیحات"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "برای دسترسی به وابستگی تامین‌کننده تسلیحات و ظرفیت نظامی به PRO ارتقا دهید."
     }
   },
   "header": {
@@ -599,6 +664,8 @@
       "recent": "Recent Searches",
       "empty": "Search data or run commands",
       "noResults": "No results",
+      "resultAnnouncement_one": "{{count}} نتیجه برای {{query}}",
+      "resultAnnouncement_other": "{{count}} نتیجه برای {{query}}",
       "commands": "Commands",
       "results": "Results",
       "addPanel": "Add",
@@ -1016,7 +1083,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "برای دسترسی به سهم کشورهای معدن و پالایشگاه با غلظت (HHI) براساس مرحله به PRO ارتقا دهید."
     },
     "tradePolicy": {
       "overview": "Overview",
@@ -1895,6 +1963,16 @@
       "loading": "Connecting to Telegram relay...",
       "empty": "No messages available",
       "disabled": "Telegram relay not active",
+      "watchlistPlaceholder": "افزودن کانال عمومی با @username",
+      "resolving": "در حال بررسی کانال...",
+      "invalidUsername": "از یک @username عمومی تلگرام استفاده کنید",
+      "resolveFailed": "کانال پیدا نشد",
+      "watchlistLimit": "می‌توانید حداکثر {{count}} کانال سفارشی را دنبال کنید",
+      "previewMembers": "{{count}} عضو",
+      "addChannel": "افزودن کانال",
+      "added": "افزوده شد",
+      "remove": "حذف",
+      "custom": "سفارشی",
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
@@ -2042,6 +2120,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "شاخص تنش فیزیکی: {{value}} / 100",
+        "fiveDayTrend": "روند حق‌الاضافه پنج روز معاملاتی",
+        "regimes": {
+          "normal": "عادی",
+          "elevated": "افزایش‌یافته",
+          "stressed": "تحت فشار",
+          "extreme": "شدید"
+        },
+        "states": {
+          "insufficientHistory": "گرم‌شدن: {{count}} / {{required}} نقطه معاملاتی",
+          "staleInput": "معیار فیزیکی منسوخ است",
+          "missingInput": "سیگنال واگرایی در دسترس نیست"
+        },
+        "twentyDayTrend": "روند حق بیمه بیست روز معاملاتی"
       }
     },
     "crypto": {
@@ -2328,6 +2422,26 @@
         "unavailable": "FSI data unavailable",
         "failedToLoad": "Failed to load"
       }
+    },
+    "supplyVulnerability": {
+      "title": "آسیب‌پذیری کالاها",
+      "help": "میزان مواجهه کشور به تفکیک کالا بر پایه تمرکز تأمین‌کنندگان، ترانزیت دریایی و ذخایر راهبردی موجود.",
+      "loading": "در حال بارگیری آسیب‌پذیری کالاها…",
+      "unavailable": "داده‌های آسیب‌پذیری کالاها در دسترس نیست",
+      "noCoverage": "شواهد برای این کشور کافی نیست",
+      "unknown": "نامشخص",
+      "concentration": "تمرکز",
+      "transit": "ترانزیت",
+      "buffer": "ذخیره",
+      "sources": "منابع",
+      "methodology": "روش‌شناسی",
+      "hormuzTitle": "وابستگی‌های کالایی",
+      "dependentCountries": "کشورهای وابسته",
+      "dependentCommodities": "کالاهای وابسته",
+      "stateOk": "به‌روز",
+      "stateStale": "ورودی قدیمی",
+      "stateInsufficient": "داده ناکافی",
+      "proLocked": "برای دسترسی به امتیازدهی آسیب‌پذیری کالا به PRO ارتقا دهید."
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
@@ -2732,6 +2846,18 @@
       "rubBase": "بانک مرکزی روسیه — روبل به ازای هر ۱ واحد",
       "rubPerUnit": "روبل به ازای هر واحد",
       "sourceCbr": "منبع: بانک مرکزی روسیه"
+    },
+    "passkeyOffer": {
+      "title": "ذخیره کلید دسترسی؟",
+      "body": "دفعه بعد با اثر انگشت، چهره یا کد PIN دستگاه خود وارد شوید — نیازی نیست رمز عبور را یادداشت کنید.",
+      "accept": "ذخیره کلید دسترسی",
+      "dismiss": "اکنون نه",
+      "close": "بستن",
+      "announce": "کلید دسترسی را ذخیره کنید تا دفعه بعد سریع‌تر وارد شوید.",
+      "busy": "در انتظار دستگاه شما…",
+      "succeeded": "کلید دسترسی ذخیره شد. می‌توانید آن را دفعه بعد هنگام ورود استفاده کنید.",
+      "retryable": "این کار تکمیل نشد. می‌توانید دوباره تلاش کنید.",
+      "failed": "نتوانستیم کلید دسترسی را در این دستگاه ذخیره کنیم."
     }
   },
   "popups": {
@@ -3073,7 +3199,11 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "سرعت صعود",
+      "manufacturer": "سازنده",
+      "owner": "مالک",
+      "builtYear": "سال ساخت"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",
@@ -3118,7 +3248,8 @@
       "moreVessels": "+{{count}} more vessels",
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "VESSELS",
-      "trackedVessels": "TRACKED VESSELS"
+      "trackedVessels": "TRACKED VESSELS",
+      "showLess": "نمایش کمتر"
     },
     "naturalEvent": {
       "closed": "CLOSED",
@@ -3412,7 +3543,9 @@
     "fontFamily": "Font Family",
     "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
     "fontMono": "Monospace",
-    "fontSystem": "System Default"
+    "fontSystem": "System Default",
+    "panelFontScale": "اندازه متن",
+    "followGlobalFontScale": "استفاده از تنظیم سراسری"
   },
   "premium": {
     "pro": "PRO",
@@ -3437,7 +3570,8 @@
   "auth": {
     "signIn": "Sign In",
     "createAccount": "Create account",
-    "settings": "Settings"
+    "settings": "Settings",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connect MCP",

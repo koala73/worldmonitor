@@ -44,6 +44,14 @@ const PARAM_DESCRIPTION =
   'Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.';
 const JMESPATH_ERROR_SCHEMA_NAME = 'JmespathProjectionError';
 const JMESPATH_ERROR_SCHEMA_REF = `#/components/schemas/${JMESPATH_ERROR_SCHEMA_NAME}`;
+// A projection could detach a raw resilience value from the attribution and
+// retrieval fields that make its redistribution permissible.
+export const PROJECTION_DISABLED_OPERATION_IDS = new Set([
+  'GetResilienceIndicators',
+  'GetCountryVulnerabilities',
+  'GetChokepointDependencies',
+  'ListVulnerabilityRankings',
+]);
 
 // Canonical JSON parameter object. Key order is irrelevant — serialize() sorts
 // keys recursively, matching the generator's byte layout.
@@ -112,6 +120,24 @@ function ensureJmespath400Response(op) {
   return true;
 }
 
+function removeJmespath400Response(op) {
+  const schema = op?.responses?.['400']?.content?.['application/json']?.schema;
+  if (!Array.isArray(schema?.oneOf)) return false;
+  const kept = schema.oneOf.filter((entry) => entry?.$ref !== JMESPATH_ERROR_SCHEMA_REF);
+  if (kept.length === schema.oneOf.length) return false;
+  op.responses['400'].content['application/json'].schema = kept.length === 1 ? kept[0] : { oneOf: kept };
+  return true;
+}
+
+function removeJmespathParam(op) {
+  if (!Array.isArray(op.parameters)) return false;
+  const index = op.parameters.findIndex((p) => p && p.name === PARAM_NAME);
+  if (index === -1) return false;
+  op.parameters.splice(index, 1);
+  if (op.parameters.length === 0) delete op.parameters;
+  return true;
+}
+
 function ensureJmespathParam(op) {
   if (!Array.isArray(op.parameters)) op.parameters = [];
   const existingIndex = op.parameters.findIndex((p) => p && p.name === PARAM_NAME);
@@ -164,6 +190,14 @@ function injectJson(spec) {
   for (const ops of Object.values(spec.paths ?? {})) {
     const op = ops?.get;
     if (!op || typeof op !== 'object') continue;
+    if (PROJECTION_DISABLED_OPERATION_IDS.has(op.operationId)) {
+      // The disabled set is authoritative in both directions. Skipping alone
+      // would leave a previously-injected parameter documented while the
+      // gateway rejects it, so retract it when an operation joins the set.
+      if (removeJmespathParam(op)) changed = true;
+      if (removeJmespath400Response(op)) changed = true;
+      continue;
+    }
     if (ensureJmespathParam(op)) changed = true;
     if (ensureJmespath400Response(op)) changed = true;
   }
@@ -210,6 +244,17 @@ function injectYaml(text) {
     }
 
     if (responsesIndex === -1) continue;
+    const projectionDisabled = lines.slice(i + 1, blockEnd).some((candidate) => {
+      const match = candidate.match(/^ {12}operationId:\s*(\S+)\s*$/);
+      return match && PROJECTION_DISABLED_OPERATION_IDS.has(match[1]);
+    });
+    if (projectionDisabled) {
+      // Retract a previously-injected parameter (see injectJson): documenting a
+      // projection the gateway now refuses would be a contract lie.
+      if (hasJmespath && removeYamlJmespathParam(lines, i, blockEnd)) changed = true;
+      if (removeYamlJmespath400Response(lines, i, blockEnd)) changed = true;
+      continue;
+    }
 
     if (!hasJmespath) {
       const block = hasParameters
@@ -234,6 +279,28 @@ function ensureYamlJmespathErrorSchema(lines) {
   return true;
 }
 
+// Inverse of ensureYamlJmespathParam: drop the jmespath list item, and the
+// now-empty `parameters:` header if it was the operation's only entry.
+function removeYamlJmespathParam(lines, start, end) {
+  const paramIndex = lines.findIndex((line, index) =>
+    index > start && index < end && /^ {16}- name: jmespath\s*$/.test(line));
+  if (paramIndex === -1) return false;
+
+  let paramEnd = end;
+  for (let i = paramIndex + 1; i < end; i++) {
+    if (/^ {16}- name: \S+/.test(lines[i]) || /^ {12}\S/.test(lines[i])) {
+      paramEnd = i;
+      break;
+    }
+  }
+  const headerIndex = paramIndex - 1;
+  const onlyEntry = /^ {12}parameters:\s*$/.test(lines[headerIndex] ?? '')
+    && !/^ {16}- name: \S+/.test(lines[paramEnd] ?? '');
+  const from = onlyEntry ? headerIndex : paramIndex;
+  lines.splice(from, paramEnd - from);
+  return true;
+}
+
 function ensureYamlJmespathParam(lines, start, end) {
   const paramIndex = lines.findIndex((line, index) =>
     index > start && index < end && /^ {16}- name: jmespath\s*$/.test(line));
@@ -241,7 +308,7 @@ function ensureYamlJmespathParam(lines, start, end) {
 
   let paramEnd = end;
   for (let i = paramIndex + 1; i < end; i++) {
-    if (/^ {16}- name: \S+/.test(lines[i]) || /^ {12}responses:\s*$/.test(lines[i])) {
+    if (/^ {16}- name: \S+/.test(lines[i]) || /^ {12}\S/.test(lines[i])) {
       paramEnd = i;
       break;
     }
@@ -252,6 +319,37 @@ function ensureYamlJmespathParam(lines, start, end) {
   }
   lines.splice(paramIndex, paramEnd - paramIndex, ...JMESPATH_YAML_ITEM);
   return true;
+}
+
+// Inverse of ensureYamlJmespath400Response: collapse the injected `oneOf` back
+// to the operation's own error schema. `make generate` gets this for free by
+// rebuilding the spec from the protos; running the injector alone must reach the
+// same state, or the freshness gate reports drift.
+function removeYamlJmespath400Response(lines, start, end) {
+  let changed = false;
+  for (let i = start; i < end; i++) {
+    if (!/^ {16}"400":\s*$/.test(lines[i])) continue;
+
+    let responseEnd = end;
+    for (let j = i + 1; j < end; j++) {
+      if (/^ {16}("\d{3}"|default):\s*$/.test(lines[j])) {
+        responseEnd = j;
+        break;
+      }
+    }
+    const oneOfIndex = lines.findIndex((line, index) =>
+      index > i && index < responseEnd && /^ {32}oneOf:\s*$/.test(line));
+    if (oneOfIndex === -1) continue;
+    const first = lines[oneOfIndex + 1] ?? '';
+    const second = lines[oneOfIndex + 2] ?? '';
+    const firstMatch = first.match(/^ {36}- \$ref: (.+)$/);
+    if (!firstMatch || !second.includes(JMESPATH_ERROR_SCHEMA_NAME)) continue;
+
+    lines.splice(oneOfIndex, 3, `                                $ref: ${firstMatch[1]}`);
+    changed = true;
+    end -= 2;
+  }
+  return changed;
 }
 
 function ensureYamlJmespath400Response(lines, start, end) {
@@ -319,11 +417,11 @@ for (const file of yamlFiles) {
 
 if (CHECK) {
   if (wouldChange > 0) {
-    console.error(`✗ ${wouldChange} OpenAPI artifact(s) missing the jmespath parameter: ${touched.join(', ')}`);
+    console.error(`✗ ${wouldChange} OpenAPI artifact(s) missing the eligible jmespath contract: ${touched.join(', ')}`);
     console.error('  Run: npm run gen:openapi:jmespath');
     process.exit(1);
   }
-  console.log('✓ jmespath projection parameter present on every GET operation');
+  console.log('✓ jmespath projection parameter present on every eligible GET operation');
 } else {
   console.log(`openapi-inject-jmespath: updated ${wouldChange} artifact(s)`);
 }

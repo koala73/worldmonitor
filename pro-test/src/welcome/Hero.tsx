@@ -10,6 +10,7 @@ import {
   DASHBOARD_SCREENSHOT_AVIF_SRCSET,
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from '../assets/dashboard-screenshot';
+import { SILICON_CANALS_2M_URL } from '../../../shared/press';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
 
@@ -120,6 +121,9 @@ export const Hero = () => (
         <p className="text-base md:text-lg text-wm-muted max-w-2xl mx-auto mt-6">
           {t('welcome.hero.sub')}
         </p>
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
+          <time dateTime="2026-08-31">{t('welcome.hero.asOf')}</time>
+        </p>
       </motion.div>
 
       <motion.div
@@ -160,7 +164,15 @@ export const Hero = () => (
         className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted"
       >
         <WiredBadge />
-        <span>{t('welcome.hero.trustUsers')}</span>
+        <a
+          href={SILICON_CANALS_2M_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-wm-text transition-colors"
+          title="2M+ users — Silicon Canals"
+        >
+          {t('welcome.hero.trustUsers')}
+        </a>
         <span aria-hidden="true" className="text-wm-border">|</span>
         <a
           href="https://github.com/koala73/worldmonitor"

@@ -3,11 +3,13 @@ import { afterEach, describe, it } from 'node:test';
 
 import {
   __testing__,
+  getLlmHealthStatus,
   getLlmModelHealthStatus,
   isModelRejection,
   isModelUsable,
   recordModelFailure,
   recordModelSuccess,
+  warmHealthCache,
 } from '../server/_shared/llm-health.ts';
 
 const { MODEL_FAILURE_THRESHOLD, MODEL_QUARANTINE_MS } = __testing__;
@@ -26,10 +28,42 @@ const OPENAI_STYLE_UNKNOWN_MODEL = JSON.stringify({
 const OLLAMA_UNKNOWN_MODEL = JSON.stringify({ error: `model '${DEAD_MODEL}' not found, try pulling it first` });
 
 const originalDateNow = Date.now;
+const originalFetch = globalThis.fetch;
+const originalProviderEnv = {
+  GROQ_API_KEY: process.env.GROQ_API_KEY,
+  OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+  OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+  LLM_API_URL: process.env.LLM_API_URL,
+};
 
 afterEach(() => {
   Date.now = originalDateNow;
+  globalThis.fetch = originalFetch;
+  for (const [key, value] of Object.entries(originalProviderEnv)) {
+    if (value === undefined) delete process.env[key];
+    else process.env[key] = value;
+  }
   __testing__.reset();
+});
+
+describe('configured provider health', () => {
+  it('reports a configured non-gsk Groq key as available on the server (#7126)', async () => {
+    process.env.GROQ_API_KEY = 'groq-test-key';
+    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OLLAMA_API_URL;
+    delete process.env.LLM_API_URL;
+
+    globalThis.fetch = async (input) => {
+      assert.equal(String(input), 'https://api.groq.com');
+      return new Response(null, { status: 404 });
+    };
+
+    warmHealthCache();
+    await new Promise<void>((resolve) => setImmediate(resolve));
+
+    const status = getLlmHealthStatus();
+    assert.equal(status['https://api.groq.com']?.available, true);
+  });
 });
 
 describe('isModelRejection', () => {

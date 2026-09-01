@@ -37,7 +37,12 @@
       var url = new URL(origin);
       var isLocalhost = url.hostname === 'localhost' || url.hostname === '127.0.0.1';
       if ((url.protocol === 'http:' || url.protocol === 'https:') && isLocalhost) {
-        return true;
+        // public/ ships byte-for-byte to prod (no build-time env), so a bare
+        // localhost referrer would let any local server embed the prod sandbox.
+        // Require sandbox's own hostname to be localhost too — referrer is
+        // spoofable, window.location is not.
+        var selfHostname = window.location.hostname;
+        return selfHostname === 'localhost' || selfHostname === '127.0.0.1';
       }
       if (url.protocol !== 'https:') {
         return false;

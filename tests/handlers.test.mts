@@ -42,6 +42,7 @@ import type { USNIFleetReport } from '../src/generated/server/worldmonitor/milit
 // ---------------------------------------------------------------------------
 import { deduplicateHeadlines } from '../server/worldmonitor/news/v1/dedup.mjs';
 import { buildArticlePrompts, hashString, selectUniqueHeadlinePairs } from '../server/worldmonitor/news/v1/_shared.ts';
+import { MAX_BODY_LEN } from '../src/utils/summary-cache-key.ts';
 
 // ---------------------------------------------------------------------------
 // Infrastructure / cable health helpers
@@ -471,12 +472,12 @@ describe('buildArticlePrompts', () => {
     assert.ok(result.userPrompt.includes('2. SpaceX launch delayed\n    Context: SpaceX postponed'));
   });
 
-  it('clips body to 400 chars at prompt-builder level', () => {
-    const longBody = 'B'.repeat(800);
+  it('clips body with the canonical cache-key limit at prompt-builder level', () => {
+    const longBody = 'B'.repeat(MAX_BODY_LEN * 2);
     const result = buildArticlePrompts(['H'], ['H'], { ...baseOpts, bodies: [longBody] });
     const match = result.userPrompt.match(/Context: (B+)/);
     assert.ok(match, 'Context: present');
-    assert.strictEqual(match[1].length, 400, 'body clipped to 400');
+    assert.strictEqual(match[1].length, MAX_BODY_LEN, 'prompt and cache identity share one body limit');
   });
 
   it('translate mode ignores bodies (safety: translate path is headline[0]-only)', () => {

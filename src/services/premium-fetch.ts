@@ -195,13 +195,29 @@ function isProFreshCacheRpcTarget(input: RequestInfo | URL): boolean {
 /**
  * Fetch adapter for generated RPC clients that include Pro-fresh market reads.
  *
- * Only the exact shared allowlist opts into Clerk bearer injection. Other
- * methods on the same generated client retain the anonymous wm-session path.
+ * Two disjoint reasons to leave the anonymous wm-session path, in order:
+ *
+ *   1. PREMIUM_RPC_PATHS — the route REQUIRES pro auth. Delegating to
+ *      premiumFetch (which is itself path-gated on the same set) attaches the
+ *      Bearer and marks premium intent, so an anonymous 401 reads as a Pro
+ *      denial instead of a dead session cookie. Added with the physical-metals
+ *      gate (#6436/#6448): MarketServiceClient wraps THIS adapter, not
+ *      premiumFetch, so without this branch a path-map edit alone would have
+ *      left every browser Pro user unauthenticated on those two routes —
+ *      the #3797 chat-analyst regression, arriving through a different door.
+ *   2. PRO_FRESH_CACHE_RPC_PATHS — the route stays free, but an active Pro
+ *      plan may refresh it more aggressively. `forcePremium` opts a caller
+ *      into Bearer injection on a path premiumFetch would otherwise skip.
+ *
+ * Everything else keeps the anonymous wm-session path.
  */
 export function proFreshRpcFetch(
   input: RequestInfo | URL,
   init?: RequestInit,
 ): Promise<Response> {
+  if (isPremiumRpcTarget(input)) {
+    return premiumFetch(input, init);
+  }
   if (!isProFreshCacheRpcTarget(input)) {
     return globalThis.fetch(input, init);
   }

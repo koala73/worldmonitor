@@ -165,9 +165,7 @@
       "energyMix": "สัดส่วนการผลิตไฟฟ้า",
       "coal": "ถ่านหิน",
       "noMajorDisruptions": "ไม่มีรายงานการหยุดชะงักที่สำคัญ",
-      "activeDisruptions_one": "การหยุดชะงักที่ยังดำเนินอยู่ {{count}} รายการ",
       "activeDisruptions_other": "การหยุดชะงักที่ยังดำเนินอยู่ {{count}} รายการ",
-      "activeSignals_one": "สัญญาณที่ยังดำเนินอยู่ {{count}} รายการ",
       "activeSignals_other": "สัญญาณที่ยังดำเนินอยู่ {{count}} รายการ",
       "aviationSource": "การติดตามการบิน",
       "hazardSource": "สัญญาณข่าวกรองรายประเทศ",
@@ -232,6 +230,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "คะแนนความยืดหยุ่น 5 ปัจจัย",
+      "help": "คะแนนหลักฐาน v1 ที่ถูกล็อกสำหรับอาหาร พลังงาน ประชากรศาสตร์ เทคโนโลยี และกลาโหม ขยายแถวเพื่อตรวจสอบข้อมูลนำเข้า แหล่งที่มาของข้อมูล และเหตุผลของข้อมูลที่ไม่ครบถ้วน",
+      "loading": "กำลังโหลดคะแนนความยืดหยุ่น 5 ปัจจัย…",
+      "unavailable": "คะแนนความยืดหยุ่น 5 ปัจจัยไม่พร้อมใช้งาน",
+      "proLocked": "อัปเกรดเป็น PRO เพื่อเข้าถึงคะแนนความยืดหยุ่น 5 ปัจจัย",
+      "insufficient": "ข้อมูลไม่เพียงพอ",
+      "notAvailable": "ไม่พร้อมใช้งาน",
+      "noEvidence": "ไม่มีหลักฐานสำหรับเสาหลักนี้",
+      "score": "{{score}}/5",
+      "coverage": "ครอบคลุม {{coverage}}%",
+      "methodologyVersion": "ระเบียบวิธี v{{version}}",
+      "methodologyLink": "ดูระเบียบวิธีวิจัย",
+      "pillars": {
+        "food": "อาหาร",
+        "energy": "พลังงาน",
+        "demographics": "ประชากรศาสตร์",
+        "technology": "เทคโนโลยี",
+        "defense": "กลาโหม"
+      },
+      "reasons": {
+        "source-unavailable": "แหล่งข้อมูลไม่พร้อมใช้งาน",
+        "country-unavailable": "ประเทศไม่พร้อมใช้งาน",
+        "invalid-value": "ค่าจากแหล่งข้อมูลไม่ถูกต้อง",
+        "stale": "หลักฐานล้าสมัย",
+        "coverage-below-floor": "ความครอบคลุมต่ำกว่าเกณฑ์ขั้นต่ำในการให้คะแนน",
+        "required-group-missing": "ขาดกลุ่มหลักฐานที่จำเป็น",
+        "missing-population": "ไม่มีข้อมูลประชากร",
+        "redistribution-blocked": "ไม่ได้รับอนุญาตให้กระจายแหล่งข้อมูลใหม่",
+        "pillar-unavailable": "ไม่มีข้อมูลเสาหลัก"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "สมดุลการผลิต",
+        "food_stocksToUse": "สต็อกที่จะใช้",
+        "food_waterSecurity": "ความมั่นคงด้านน้ำ",
+        "food_importDiversity": "ความหลากหลายของการนำเข้า",
+        "energy_productionBalance": "สมดุลการผลิต",
+        "energy_lowCarbonShare": "สัดส่วนพลังงานคาร์บอนต่ำ",
+        "energy_gridEfficiency": "ประสิทธิภาพโครงข่ายไฟฟ้า",
+        "demographics_totalDependency": "อัตราพึ่งพาโดยรวม",
+        "demographics_oldAgeDependency": "อัตราพึ่งพาผู้สูงอายุ",
+        "demographics_workingAgeProjection": "การคาดการณ์ประชากรวัยทำงาน",
+        "demographics_tertiaryEnrollment": "อัตราการเข้าเรียนระดับอุดมศึกษา",
+        "demographics_researchersPerMillion": "นักวิจัยต่อประชากร 1 ล้านคน",
+        "demographics_stemGraduateShare": "สัดส่วนผู้สำเร็จการศึกษาด้าน STEM",
+        "demographics_trainedIndustrialShare": "สัดส่วนแรงงานอุตสาหกรรมที่ผ่านการฝึกอบรม",
+        "demographics_manufacturingEmploymentShare": "สัดส่วนการจ้างงานในภาคการผลิต",
+        "technology_internetUse": "การใช้งานอินเทอร์เน็ต",
+        "technology_mobileSubscriptions": "การสมัครสมาชิกโทรศัพท์มือถือ",
+        "technology_fixedBroadband": "บรอดแบนด์แบบสาย",
+        "technology_rdSpend": "การใช้จ่ายด้านการวิจัยและพัฒนา",
+        "technology_researchersPerMillion": "นักวิจัยต่อประชากร 1 ล้านคน",
+        "technology_stemGraduateShare": "สัดส่วนผู้สำเร็จการศึกษาด้าน STEM",
+        "technology_electricityAccess": "การเข้าถึงไฟฟ้า",
+        "defense_expenditureUsd": "การใช้จ่ายทางทหาร",
+        "defense_expenditurePctGdp": "ภาระทางทหาร",
+        "defense_personnel": "กำลังพลของกองทัพ",
+        "defense_industrialBalance": "สมดุลอุตสาหกรรมป้องกันประเทศ",
+        "defense_supplierDiversity": "ความหลากหลายของผู้จัดหาอาวุธ"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "อัปเกรดเป็น PRO เพื่อดูการพึ่งพาผู้จัดจำหน่ายอาวุธและความสามารถทางการทหาร"
     }
   },
   "header": {
@@ -530,6 +593,7 @@
       "recent": "การค้นหาล่าสุด",
       "empty": "ค้นหาข้อมูลหรือรันคำสั่ง",
       "noResults": "ไม่พบผลลัพธ์",
+      "resultAnnouncement_other": "พบ {{count}} ผลลัพธ์สำหรับ {{query}}",
       "commands": "คำสั่ง",
       "results": "ผลลัพธ์",
       "seeAllCommands": "ดูคำสั่งทั้งหมด",
@@ -915,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "อัปเกรดเป็น PRO เพื่อดูส่วนแบ่งประเทศของเหมืองและโรงกลั่น พร้อมความเข้มข้น (HHI) ตามขั้นตอน"
     },
     "tradePolicy": {
       "tariffs": "ภาษีศุลกากร",
@@ -1404,7 +1469,6 @@
       "clusters": "กลุ่มข้อมูล",
       "alertsLabel": "การแจ้งเตือน",
       "alert": "การแจ้งเตือน",
-      "sources_one": "{{count}} แหล่งที่มา",
       "sources_other": "{{count}} แหล่งที่มา",
       "briefTech": "บทสรุปเทคโนโลยี",
       "briefCommodity": "บทสรุปสินค้าโภคนำ",
@@ -1751,6 +1815,16 @@
       "loading": "กำลังเชื่อมต่อรีเลย์ Telegram...",
       "empty": "ไม่มีข้อความ",
       "disabled": "รีเลย์ Telegram ไม่ทำงาน",
+      "watchlistPlaceholder": "เพิ่มช่องสาธารณะด้วย @username",
+      "resolving": "กำลังค้นหาช่อง...",
+      "invalidUsername": "ใช้ @username สาธารณะของ Telegram",
+      "resolveFailed": "ไม่พบช่อง",
+      "watchlistLimit": "คุณติดตามช่องแบบกำหนดเองได้สูงสุด {{count}} ช่อง",
+      "previewMembers": "สมาชิก {{count}} คน",
+      "addChannel": "เพิ่มช่อง",
+      "added": "เพิ่มแล้ว",
+      "remove": "ลบ",
+      "custom": "กำหนดเอง",
       "filterAll": "ทั้งหมด",
       "filterBreaking": "ด่วน",
       "filterConflict": "ความขัดแย้ง",
@@ -1962,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "ดัชนีความเครียดทางกายภาพ: {{value}} / 100",
+        "fiveDayTrend": "แนวโน้มพรีเมียมห้าวันซื้อขาย",
+        "regimes": {
+          "normal": "ปกติ",
+          "elevated": "สูงขึ้น",
+          "stressed": "ความเครียด",
+          "extreme": "รุนแรง"
+        },
+        "states": {
+          "insufficientHistory": "วอร์มอัป: {{count}} / {{required}} จุดซื้อขาย",
+          "staleInput": "เกณฑ์มาตรฐานทางกายภาพล้าสมัย",
+          "missingInput": "สัญญาณความแตกต่างไม่พร้อมใช้งาน"
+        },
+        "twentyDayTrend": "แนวโน้มพรีเมียมในรอบ 20 วันการค้า"
       }
     },
     "crypto": {
@@ -2036,17 +2126,12 @@
       },
       "time": {
         "justNow": "เมื่อสักครู่",
-        "hoursAgo_one": "{{count}}h ที่ผ่านมา",
         "hoursAgo_other": "{{count}}h ที่ผ่านมา",
-        "daysAgo_one": "{{count}}d ที่ผ่านมา",
         "daysAgo_other": "{{count}}d ที่ผ่านมา"
       },
       "filters": {
-        "alert_one": "{{count}} การแจ้งเตือน",
         "alert_other": "{{count}} การแจ้งเตือน",
-        "warning_one": "{{count}} คำเตือน",
         "warning_other": "{{count}} คำเตือน",
-        "watch_one": "{{count}} การติดตาม",
         "watch_other": "{{count}} การติดตาม"
       },
       "errors": {
@@ -2118,6 +2203,26 @@
         "failedToLoad": "การโหลดล้มเหลว"
       },
       "cissStale": "ECB ยังไม่ได้เผยแพร่ค่าที่ใหม่กว่า — การอ่านค่านี้อาจล้าสมัยแล้ว"
+    },
+    "supplyVulnerability": {
+      "title": "ความเปราะบางด้านสินค้าโภคภัณฑ์",
+      "help": "ความเสี่ยงของประเทศแยกตามสินค้า จากการกระจุกตัวของผู้จัดหา การขนส่งทางทะเล และเงินสำรองเชิงยุทธศาสตร์ที่มีอยู่",
+      "loading": "กำลังโหลดความเปราะบางด้านสินค้าโภคภัณฑ์…",
+      "unavailable": "ไม่มีข้อมูลความเปราะบางด้านสินค้าโภคภัณฑ์",
+      "noCoverage": "หลักฐานสำหรับประเทศนี้ไม่เพียงพอ",
+      "unknown": "ไม่ทราบ",
+      "concentration": "การกระจุกตัว",
+      "transit": "การขนส่ง",
+      "buffer": "เงินสำรอง",
+      "sources": "แหล่งข้อมูล",
+      "methodology": "ระเบียบวิธี",
+      "hormuzTitle": "การพึ่งพาสินค้าโภคภัณฑ์",
+      "dependentCountries": "ประเทศที่พึ่งพา",
+      "dependentCommodities": "สินค้าโภคภัณฑ์ที่พึ่งพา",
+      "stateOk": "ปัจจุบัน",
+      "stateStale": "ข้อมูลนำเข้าล้าสมัย",
+      "stateInsufficient": "ข้อมูลไม่เพียงพอ",
+      "proLocked": "อัปเกรดเป็น PRO เพื่อดูคะแนนความเสี่ยงสินค้าโภคนัย"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>ตัวติดตามการค้าฮอร์มุซ</strong> การติดตามเรือ AIS แบบสดผ่านช่องแคบฮอร์มุซ จุดคอขวดน้ำมันที่สำคัญที่สุดของโลก ตรวจสอบจำนวนเรือบรรทุกน้ำมัน เหตุการณ์หยุดชะงัก และการเปลี่ยนแปลงการไหลรายสัปดาห์ อุปทานน้ำมันโลกประมาณ 20% ผ่านที่นี่ทุกวัน",
@@ -2209,7 +2314,6 @@
       "rationale": "เหตุผล:",
       "driver": "ตัวขับเคลื่อน:",
       "appliesToNext": "ใช้กับการสร้างสัญญาณ AI ครั้งถัดไป",
-      "signals_one": "{{count}} สัญญาณ",
       "signals_other": "{{count}} สัญญาณ",
       "disclaimer": "สัญญาณการซื้อขายที่สร้างโดย AI เพื่อวัตถุประสงค์ข้อมูลเท่านั้น ไม่ใช่คำแนะนำการลงทุน ทำการศึกษาวิจัยของคุณเองเสมอ",
       "unavailable": "ผลกระทบต่อตลาด AI จะสร้างขึ้นหลังจากแต่ละครั้งที่รันการพยากรณ์ กรุณาตรวจสอบอีกครั้งในไม่ช่วงเวลา"
@@ -2440,7 +2544,6 @@
         "new": "ใหม่",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}} การระบุตัวตน",
       "designations_other": "{{count}} การระบุตัวตน",
       "fallbacks": {
         "unattributed": "ไม่ได้ระบุแหล่งที่มา",
@@ -2478,9 +2581,7 @@
         "updated": "อัปเดตแล้ว {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h ที่แล้ว",
         "hoursAgo_other": "{{count}}h ที่แล้ว",
-        "daysAgo_one": "{{count}}d ที่แล้ว",
         "daysAgo_other": "{{count}}d ที่แล้ว"
       },
       "confidence": {
@@ -2510,7 +2611,6 @@
     "correlation": {
       "loading": "รอข้อมูล...",
       "empty": "ไม่พบการบรรจบกันที่ใช้งานอยู่",
-      "signals_one": "{{count}} สัญญาณ",
       "signals_other": "{{count}} สัญญาณ",
       "analyzing": "กำลังวิเคราะห์...",
       "viewOnMap": "ดูบนแผนที่"
@@ -2537,16 +2637,11 @@
         "industrial": "อุตสาหกรรม",
         "strategic": "เชิงกลยุทธ์"
       },
-      "observations_one": "{{count}} obs",
       "observations_other": "{{count}} obs",
-      "sources_one": "{{count}} src",
       "sources_other": "{{count}} src",
       "age": {
-        "minutesAgo_one": "{{count}}m ที่แล้ว",
         "minutesAgo_other": "{{count}}m ที่แล้ว",
-        "hoursAgo_one": "{{count}}h ที่แล้ว",
         "hoursAgo_other": "{{count}}h ที่แล้ว",
-        "daysAgo_one": "{{count}}d ที่แล้ว",
         "daysAgo_other": "{{count}}d ที่แล้ว"
       }
     },
@@ -2663,6 +2758,18 @@
       "rubBase": "ธนาคารกลางรัสเซีย — รูเบิลต่อ 1 หน่วย",
       "rubPerUnit": "รูเบิลต่อหน่วย",
       "sourceCbr": "แหล่งที่มา: ธนาคารกลางรัสเซีย"
+    },
+    "passkeyOffer": {
+      "title": "บันทึกพาสคีย์ใช่ไหม?",
+      "body": "ลงชื่อเข้าครั้งต่อไปด้วยลายนิ้วมือ ใบหน้า หรือ PIN ของอุปกรณ์ — ไม่มีรหัสผ่านให้จำ",
+      "accept": "บันทึกพาสคีย์",
+      "dismiss": "ไม่ใช่ตอนนี้",
+      "close": "ปิด",
+      "announce": "บันทึกพาสคีย์เพื่อลงชื่อเข้าได้เร็วขึ้นครั้งต่อไป",
+      "busy": "กำลังรอการยืนยันจากอุปกรณ์ของคุณ…",
+      "succeeded": "บันทึกพาสคีย์แล้ว คุณสามารถใช้ได้ในครั้งต่อไปที่คุณลงชื่อเข้า",
+      "retryable": "ไม่เสร็จสิ้น คุณสามารถลองใหม่ได้",
+      "failed": "เราไม่สามารถบันทึกพาสคีย์บนอุปกรณ์นี้ได้"
     }
   },
   "popups": {
@@ -3004,7 +3111,11 @@
       "heading": "ทิศทาง",
       "hexCode": "รหัส HEX",
       "squawk": "รหัส SQUAWK",
-      "attribution": "แหล่งที่มา: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "แหล่งที่มา: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "อัตราการขึ้น",
+      "manufacturer": "ผู้ผลิต",
+      "owner": "เจ้าของ",
+      "builtYear": "ปีที่ผลิต"
     },
     "militaryVessel": {
       "aisDark": "AIS มืด",
@@ -3049,7 +3160,8 @@
       "moreVessels": "+{{count}} more vessels",
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "เรือ",
-      "trackedVessels": "เรือที่ติดตาม"
+      "trackedVessels": "เรือที่ติดตาม",
+      "showLess": "แสดงน้อยลง"
     },
     "naturalEvent": {
       "closed": "ปิด",
@@ -3338,7 +3450,9 @@
     "fontFamily": "ตระกูลฟอนต์",
     "fontFamilyDesc": "Monospace สำหรับลักษณะเทคนิค ฟอนต์เริ่มต้นของระบบสำหรับการอ่านที่ง่ายกว่า",
     "fontMono": "Monospace",
-    "fontSystem": "ค่าเริ่มต้นของระบบ"
+    "fontSystem": "ค่าเริ่มต้นของระบบ",
+    "panelFontScale": "ขนาดข้อความ",
+    "followGlobalFontScale": "ใช้การตั้งค่าทั่วโลก"
   },
   "contextMenu": {
     "openCountryBrief": "เปิดภาพรวมประเทศ",
@@ -3437,7 +3551,8 @@
   "auth": {
     "signIn": "ลงชื่อเข้าใช้",
     "createAccount": "สร้างบัญชี",
-    "settings": "การตั้งค่า"
+    "settings": "การตั้งค่า",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "เชื่อมต่อ MCP",

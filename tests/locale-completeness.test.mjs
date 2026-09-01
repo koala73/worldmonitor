@@ -5,6 +5,13 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { flattenKeys } from '../scripts/_locale-keys.mjs';
+import {
+  expectedKeysForLocale,
+  findPluralBases,
+  flatten,
+  getPluralCategories,
+} from '../scripts/translate-locales.mjs';
+import { syncFromTemplate } from '../scripts/sync-locale-keys.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, '..', 'src', 'locales');
@@ -45,6 +52,8 @@ const STALE_WEATHER_SCOPE_BY_LOCALE = Object.freeze({
 describe('locale completeness', () => {
   const en = JSON.parse(readFileSync(join(LOCALES_DIR, 'en.json'), 'utf8'));
   const enKeys = flattenKeys(en);
+  const enFlat = flatten(en);
+  const pluralBases = findPluralBases(enFlat);
   const localeFiles = readdirSync(LOCALES_DIR)
     .filter((name) => name.endsWith('.json') && name !== 'en.json' && name !== 'en.shell.json')
     .sort();
@@ -57,13 +66,72 @@ describe('locale completeness', () => {
     assert.ok(enKeys.length >= 2000, `expected a large en catalog, got ${enKeys.length}`);
   });
 
+  it('syncs only the plural keys in a locale CLDR projection', () => {
+    const template = {
+      cart: {
+        items_one: 'one item',
+        items_other: 'many items',
+      },
+      plain: 'Plain copy',
+    };
+    const locale = { cart: { items_one: 'uno' } };
+    const templateFlat = flatten(template);
+    const expected = expectedKeysForLocale(
+      templateFlat,
+      findPluralBases(templateFlat),
+      ['zero', 'one', 'two', 'few', 'many', 'other'],
+    );
+
+    assert.deepEqual(syncFromTemplate(template, locale, expected), {
+      cart: {
+        items_one: 'uno',
+        items_other: 'many items',
+        items_zero: 'many items',
+        items_two: 'many items',
+        items_few: 'many items',
+        items_many: 'many items',
+      },
+      plain: 'Plain copy',
+    });
+  });
+
+  it('does not add an English singular variant to an other-only locale', () => {
+    // The projection must not import a CLDR category the locale never uses.
+    // Writing `_one` into a locale whose plural rules have no `one` is what
+    // makes a sync look complete while emitting a key i18next never selects.
+    const template = { alerts_one: '{{count}} alert', alerts_other: '{{count}} alerts', title: 'Status' };
+    const templateFlat = flatten(template);
+    const expected = expectedKeysForLocale(
+      templateFlat,
+      findPluralBases(templateFlat),
+      getPluralCategories('ja'),
+    );
+
+    assert.deepEqual(
+      syncFromTemplate(template, { alerts_other: '通知' }, expected),
+      { alerts_other: '通知', title: 'Status' },
+    );
+  });
+
+  it('rebuilds missing flattened array paths as arrays', () => {
+    const template = { pricing: { features: ['First', 'Second'] } };
+    const expected = { 'pricing.features[0]': 'First', 'pricing.features[1]': 'Second' };
+
+    assert.deepEqual(syncFromTemplate(template, {}, expected), template);
+    assert.equal(Array.isArray(syncFromTemplate(template, {}, expected).pricing.features), true);
+  });
+
   for (const file of localeFiles) {
-    it(`${file} contains every en.json key`, () => {
+    it(`${file} contains every key required by its CLDR plural rules`, () => {
       const locale = JSON.parse(readFileSync(join(LOCALES_DIR, file), 'utf8'));
       const localeKeySet = new Set(flattenKeys(locale));
-      const missing = enKeys.filter((key) => !localeKeySet.has(key));
+      const localeCode = file.replace(/\.json$/, '');
+      const expected = Object.keys(
+        expectedKeysForLocale(enFlat, pluralBases, getPluralCategories(localeCode)),
+      );
+      const missing = expected.filter((key) => !localeKeySet.has(key));
 
-      // inventory-contract: locale-key-completeness; classification: parity; reason: missing-key parity is an exact completeness contract, not a catalog total
+      // inventory-contract: locale-key-completeness; classification: parity; reason: missing-key parity follows each locale's exact CLDR contract, not English-only plural suffixes or a catalog total
       assert.equal(
         missing.length,
         0,

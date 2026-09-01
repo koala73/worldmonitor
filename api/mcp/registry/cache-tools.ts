@@ -14,6 +14,7 @@ import {
   computeCredibilityScore,
 } from '../../../shared/news-credibility.js';
 import { getSourceTier } from '../../../server/_shared/source-tiers';
+import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
@@ -43,8 +44,33 @@ import {
   selectDatasets,
   summarizeData,
 } from '../filters';
+import { resolveCountryCode } from '../../../shared/country-code-resolve';
 import type { ToolDef } from '../types';
+
+/**
+ * Country codes for a `countries` filter, resolving names and alpha-3 the way
+ * the country-scoped tools do.
+ *
+ * `pickMapKeys` FAILS OPEN — a filter that matches nothing returns the entire
+ * map (api/mcp/filters.ts:100), by design, so naming keys that do not exist is
+ * not silently an empty result. That makes an unresolved designator expensive
+ * here: the `country-briefing` prompt fans one argument out to three tools, and
+ * a name reaching this one un-normalized would splice EVERY country's macro
+ * indicators into a single-country brief.
+ *
+ * Unresolvable entries pass through untouched, so this is never worse than the
+ * previous behaviour — it only adds the designators the sibling tools accept.
+ */
+function resolveCountryFilter(value: unknown): string[] {
+  return argStrList(value).map((code) => resolveCountryCode(code)?.toLowerCase() ?? code);
+}
 import { utf8ByteLength } from '../utils';
+import {
+  PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA,
+  PHYSICAL_PREMIUM_OUTPUT_SCHEMA,
+  PHYSICAL_PREMIUM_SYMBOL_ALIASES,
+  normalizePhysicalDivergenceDataset,
+} from '../../../server/_shared/mcp-physical-divergence';
 import {
   CHOKEPOINT_MONITOR_UI_URI,
   CONFLICT_EVENTS_UI_URI,
@@ -67,10 +93,31 @@ const IRAN_EVENTS_ENABLED = (process.env.IRAN_EVENTS_ENABLED ?? 'false').toLower
 const CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES = 128 * 1024;
 const CONFLICT_EVENTS_DATA_BUDGET_BYTES = CONFLICT_EVENTS_OUTPUT_BUDGET_BYTES - 1024;
 const CONFLICT_EVENT_LISTS = ['ucdp-events', 'iran-events', 'events'] as const;
-const PHYSICAL_PREMIUM_SYMBOL_ALIASES: Record<string, string[]> = {
-  gold: ['gold', 'xau', 'gc=f'],
-  silver: ['silver', 'xag', 'si=f'],
-};
+const CROSS_SOURCE_SIGNAL_TYPES = [
+  'CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE',
+  'CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING',
+  'CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER',
+  'CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE',
+  'CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK',
+  'CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION',
+  'CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT',
+  'CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY',
+  'CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE',
+  'CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS',
+  'CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME',
+  'CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION',
+  'CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION',
+  'CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE',
+  'CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION',
+] as const;
 
 function fitConflictEventsToBudget(data: Record<string, unknown>): void {
   const lists = CONFLICT_EVENT_LISTS.flatMap((label) => {
@@ -405,14 +452,14 @@ export const CACHE_TOOLS: ToolDef[] = [
     // docs/finance-data.mdx § Client parity.
     name: 'get_market_data',
     _outputBudgetBytes: 131072,
-    description: 'Real-time equity quotes, commodity prices (including SGE physical-vs-COMEX gold and silver premiums), crypto prices, forex FX rates, sector performance and valuation coverage, ETF flows, and Gulf market quotes from WorldMonitor\'s curated bootstrap cache. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
+    description: 'Real-time equity quotes, commodity prices, SGE physical-vs-COMEX premiums, physical-divergence regimes and trends, crypto, FX, sectors with explicit valuation coverage, ETF flows, and Gulf markets. Covers the curated symbol universe only — it filters that snapshot rather than looking up arbitrary tickers.',
     inputSchema: {
       type: 'object',
       properties: {
         symbols: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot.',
+          description: 'Tickers to keep, e.g. ["AAPL","GC=F","BTC"]. Case-insensitive; matches equity/commodity/crypto/gulf quotes, physical-premium and divergence aliases (gold/XAU/GC=F, silver/XAG/SI=F), sector ETFs, and ETF-flow tickers. Omit for the full snapshot.',
         },
         asset_class: {
           type: 'array',
@@ -423,11 +470,17 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       required: [],
     },
+    // Every quote list serves `change` (a PERCENT — the seeders
+    // normalise Finnhub `dp` / Alpha Vantage / Yahoo through
+    // scripts/shared/market-quote-provider.mjs) and ETF rows serve `estFlow`.
+    // This schema previously advertised `changePercent` and `flow`, which no
+    // producer has ever written, so every agent projecting per the hint got
+    // null for each row. Keep these names pinned to the seeders.
     outputSchema: cacheEnvelope({
       'stocks-bootstrap': {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
           finnhubSkipped: { type: 'boolean' },
           skipReason: { type: 'string' },
           rateLimited: { type: 'boolean' },
@@ -436,39 +489,24 @@ export const CACHE_TOOLS: ToolDef[] = [
       'commodities-bootstrap': {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
         },
       },
-      'physical-premium': {
-        type: ['object', 'null'],
-        properties: {
-          premiums: {
-            type: 'array',
-            items: {
-              type: 'object',
-              properties: {
-                metal: { type: 'string', enum: ['gold', 'silver'] },
-                physical: { type: 'object', properties: { price: { type: 'number' }, currency: { type: 'string' }, unit: { type: 'string' }, source: { type: 'string' }, asOf: { type: 'string' } } },
-                paper: { type: 'object', properties: { price: { type: 'number' }, source: { type: 'string' }, asOf: { type: 'string' } } },
-                premiumUsdPerOz: { type: 'number' },
-                premiumPct: { type: 'number' },
-                computedAt: { type: 'string' },
-              },
-            },
-          },
-          fx: { type: 'object', properties: { pair: { type: 'string' }, rate: { type: 'number' }, source: { type: 'string' }, asOf: { type: 'string' } } },
-        },
-      },
+      'physical-premium': PHYSICAL_PREMIUM_OUTPUT_SCHEMA,
+      'physical-divergence': PHYSICAL_DIVERGENCE_OUTPUT_SCHEMA,
       crypto: {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          // Crypto trades continuously, so there is no prior close to compare
+          // against: scripts/seed-crypto-quotes.mjs carries the provider's
+          // rolling percent_change_24h straight into `change`.
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change over the trailing 24 hours (crypto trades continuously; this is not a prior-close comparison).' } } } },
         },
       },
       sectors: {
         type: ['object', 'null'],
         properties: {
-          sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, changePercent: { type: 'number' } } } },
+          sectors: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, name: { type: 'string' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
           valuations: { type: ['object', 'array', 'null'] },
           valuationCoverage: {
             type: ['object', 'null'],
@@ -535,14 +573,14 @@ export const CACHE_TOOLS: ToolDef[] = [
         properties: {
           timestamp: { type: ['string', 'number', 'null'] },
           summary: { type: ['object', 'null'] },
-          etfs: { type: 'array', items: { type: 'object', properties: { ticker: { type: 'string' }, flow: { type: 'number' } } } },
+          etfs: { type: 'array', items: { type: 'object', properties: { ticker: { type: 'string' }, estFlow: { type: 'number', description: 'Estimated net USD flow (volume x price heuristic).' } } } },
           rateLimited: { type: 'boolean' },
         },
       },
       'gulf-quotes': {
         type: ['object', 'null'],
         properties: {
-          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, changePercent: { type: 'number' } } } },
+          quotes: { type: 'array', items: { type: 'object', properties: { symbol: { type: 'string' }, price: { type: 'number' }, change: { type: 'number', description: 'Percent change vs prior close.' } } } },
           rateLimited: { type: 'boolean' },
         },
       },
@@ -562,6 +600,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      normalizePhysicalDivergenceDataset(data);
       const symbols = argStrList(params.symbols);
       if (symbols.length > 0) {
         for (const label of ['stocks-bootstrap', 'commodities-bootstrap', 'crypto', 'gulf-quotes']) {
@@ -574,6 +613,28 @@ export const CACHE_TOOLS: ToolDef[] = [
           if (!aliases) return false;
           return aliases.some((alias) => matchesCode(alias, symbols));
         });
+        narrowNested(data, 'physical-divergence', 'readings', (reading) => {
+          const aliases = typeof reading.metal === 'string'
+            ? PHYSICAL_PREMIUM_SYMBOL_ALIASES[reading.metal]
+            : undefined;
+          return aliases?.some((alias) => matchesCode(alias, symbols)) ?? false;
+        });
+        const divergence = data['physical-divergence'];
+        if (divergence && typeof divergence === 'object' && !Array.isArray(divergence)) {
+          const divergenceRecord = divergence as Record<string, unknown>;
+          const readings = Array.isArray(divergenceRecord.readings)
+            ? divergenceRecord.readings
+            : [];
+          const visibleMetals = new Set(readings.flatMap((reading) => (
+            reading && typeof reading === 'object' && !Array.isArray(reading)
+            && typeof (reading as Record<string, unknown>).metal === 'string'
+              ? [(reading as Record<string, unknown>).metal]
+              : []
+          )));
+          if (!(visibleMetals.has('gold') && visibleMetals.has('silver'))) {
+            delete divergenceRecord.composite;
+          }
+        }
         narrowNested(data, 'sectors', 'sectors', (s) => matchesCode(s.symbol, symbols));
         const sectorData = data.sectors;
         if (sectorData && typeof sectorData === 'object' && !Array.isArray(sectorData)) {
@@ -701,7 +762,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       const cls = argStrList(params.asset_class);
       if (cls.length > 0) {
         const map: Record<string, string[]> = {
-          equity: ['stocks-bootstrap'], commodity: ['commodities-bootstrap', 'physical-premium'], crypto: ['crypto'],
+          equity: ['stocks-bootstrap'], commodity: ['commodities-bootstrap', 'physical-premium', 'physical-divergence'], crypto: ['crypto'],
           sectors: ['sectors'], etf: ['etf-flows'], gulf: ['gulf-quotes'], sentiment: ['fear-greed'],
         };
         return selectDatasets(data, cls.flatMap((assetClass) => map[assetClass] ?? []));
@@ -715,6 +776,7 @@ export const CACHE_TOOLS: ToolDef[] = [
       'market:stocks-bootstrap:v1',
       'market:commodities-bootstrap:v1',
       'market:physical-premium:v1',
+      'market:physical-divergence:v1',
       'market:crypto:v1',
       'market:sectors:v2',
       'market:etf-flows:v1',
@@ -735,6 +797,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     _apiPaths: [
       "GET /api/market/v1/get-fear-greed-index",
       "GET /api/market/v1/get-physical-premiums",
+      "GET /api/market/v1/get-physical-divergence-index",
       "GET /api/market/v1/get-sector-summary",
       "GET /api/market/v1/list-commodity-quotes",
       "GET /api/market/v1/list-crypto-quotes",
@@ -917,7 +980,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     name: 'get_news_intelligence',
     _uiResourceUri: NEWS_INTELLIGENCE_UI_URI,
     _outputBudgetBytes: 131072,
-    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).',
+    description: 'AI-classified geopolitical threat news summaries, GDELT intelligence signals, cross-source signals including physical-premium regime transitions, and security advisories from WorldMonitor\'s intelligence layer. Each top story carries full corroboration metadata — uniqueSourceCount, corroborationSourceCount, entityCorroboration, sourceTier, the contributing outlet names, every clustered headline, and credibilityScore (0-100 source reliability, distinct from importance).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -989,7 +1052,17 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       'cross-source-signals': {
         type: ['object', 'null'],
-        properties: { signals: { type: 'array', items: { type: 'object' } } },
+        properties: { signals: { type: 'array', items: { type: 'object', properties: {
+          id: { type: 'string' },
+          type: { type: 'string', enum: [...CROSS_SOURCE_SIGNAL_TYPES] },
+          theater: { type: 'string' },
+          summary: { type: 'string' },
+          severity: { type: 'string' },
+          severityScore: { type: 'number' },
+          detectedAt: { type: 'number' },
+          contributingTypes: { type: 'array', items: { type: 'string' } },
+          signalCount: { type: 'number' },
+        } } } },
       },
       'advisories-bootstrap': {
         type: ['object', 'null'],
@@ -1477,7 +1550,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         for (const label of ['macro', 'growth', 'labor', 'external']) pickNestedMap(data, label, 'countries', codes);
         return data;
@@ -1527,7 +1600,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'house-prices', 'countries', codes);
         return data;
@@ -1566,7 +1639,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'gov-debt-q', 'countries', codes);
         return data;
@@ -1605,7 +1678,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       if (codes.length > 0) {
         pickNestedMap(data, 'industrial-production', 'countries', codes);
         return data;
@@ -1780,7 +1853,7 @@ export const CACHE_TOOLS: ToolDef[] = [
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
-      const codes = argStrList(params.countries);
+      const codes = resolveCountryFilter(params.countries);
       const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
       if (codes.length > 0) {
         narrowNested(data, 'summary', 'countries', (c) => matchesCode(c.code, codes));
@@ -2063,6 +2136,108 @@ export const CACHE_TOOLS: ToolDef[] = [
     ],
   },
   {
+    name: 'get_imd_cyclone_marine',
+    _outputBudgetBytes: 65536,
+    description:
+      'Bounded India Meteorological Department cyclone tracks, forecast wind radii, cones of uncertainty, and official port / sea-area / coastal bulletins. ' +
+      'Not merged into weather:alerts:v1. Live fetch requires IMD_API_KEY. ' +
+      'Read coverageState on every call: disabled means IMD_API_KEY is missing, degraded is a partial product failure, unavailable means no usable IMD snapshot, and ok is live. ' +
+      'Empty lists with disabled, degraded, or unavailable coverage are not an India all-clear.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        dataset: {
+          type: 'array',
+          items: { type: 'string', enum: ['cyclone', 'port', 'marine'] },
+          description: 'Restrict to cyclone tracks/wind/cones, port warnings, or sea-area/coastal bulletins. Omit for the full snapshot. coverageState and per-product health are always returned.',
+        },
+        limit: { type: 'number', description: 'Cap each product list to at most this many items (default 30, pass 0 for no cap).' },
+      },
+      required: [],
+    },
+    outputSchema: cacheEnvelope({
+      imd_cyclone_marine: {
+        type: ['object', 'null'],
+        properties: {
+          coverageState: { type: 'string', enum: ['ok', 'disabled', 'degraded', 'unavailable'] },
+          skipReason: { type: ['string', 'null'] },
+          generatedAt: { type: 'number' },
+          products: { type: 'object', additionalProperties: { type: 'object', properties: {
+            status: { type: 'string' },
+            reason: { type: ['string', 'null'] },
+            recordCount: { type: 'number' },
+            warningCount: { type: 'number' },
+            carried: { type: 'boolean' },
+          } } },
+          failedProducts: { type: 'array', items: { type: 'string' } },
+          cycloneEvents: { type: 'array', items: { type: 'object' } },
+          portAlerts: { type: 'array', items: { type: 'object' } },
+          marineBulletins: { type: 'array', items: { type: 'object' } },
+          cyclones: { type: 'array', items: { type: 'object' } },
+          windRadii: { type: 'array', items: { type: 'object' } },
+          cones: { type: 'array', items: { type: 'object' } },
+          portWarnings: { type: 'array', items: { type: 'object' } },
+          seaBulletins: { type: 'array', items: { type: 'object' } },
+          coastalBulletins: { type: 'array', items: { type: 'object' } },
+          sourceName: { type: 'string' },
+          sourceUrl: { type: 'string' },
+          attribution: { type: 'string' },
+        },
+        required: ['coverageState'],
+      },
+    }),
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _postFilter: (data, params) => {
+      let snapshot = data.imd_cyclone_marine;
+      // A legacy or corrupt cache value must not look like an India all-clear.
+      // The wire contract requires coverageState on every usable object, so
+      // replace an unexpected value with the explicit unavailable state.
+      if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) {
+        snapshot = { coverageState: 'unavailable', skipReason: 'IMD_CACHE_INVALID' };
+        data.imd_cyclone_marine = snapshot;
+      }
+      const rec = snapshot as Record<string, unknown>;
+      if (!['ok', 'disabled', 'degraded', 'unavailable'].includes(argStr(rec.coverageState))) {
+        rec.coverageState = 'unavailable';
+        rec.skipReason = 'IMD_CACHE_INVALID';
+      }
+      const limit = (argNum(params.limit) ?? DEFAULT_LIST_LIMIT);
+      const listKeys = [
+        'cyclones', 'windRadii', 'cones', 'portWarnings', 'seaBulletins',
+        'coastalBulletins', 'cycloneEvents', 'portAlerts', 'marineBulletins', 'records',
+      ] as const;
+      for (const key of listKeys) capNested(data, 'imd_cyclone_marine', key, limit);
+
+      const datasets = argStrList(params.dataset);
+      if (datasets.length > 0) {
+        const keep = new Set<string>();
+        if (datasets.includes('cyclone')) {
+          keep.add('cyclones');
+          keep.add('windRadii');
+          keep.add('cones');
+          keep.add('cycloneEvents');
+        }
+        if (datasets.includes('port')) {
+          keep.add('portWarnings');
+          keep.add('portAlerts');
+        }
+        if (datasets.includes('marine')) {
+          keep.add('seaBulletins');
+          keep.add('coastalBulletins');
+          keep.add('marineBulletins');
+        }
+        for (const key of listKeys) {
+          if (!keep.has(key) && Array.isArray(rec[key])) rec[key] = [];
+        }
+      }
+      return data;
+    },
+    _cacheKeys: ['weather:imd-cyclone-marine:v1'],
+    _cacheLabels: { 'weather:imd-cyclone-marine:v1': 'imd_cyclone_marine' },
+    _freshnessChecks: [{ key: 'seed-meta:weather:imd-cyclone-marine', maxStaleMin: 45 }],
+    _apiPaths: [],
+  },
+  {
     name: 'get_infrastructure_status',
     _outputBudgetBytes: 131072,
     description: 'Internet infrastructure health: Cloudflare Radar outages and service status for major cloud providers and internet services.',
@@ -2303,6 +2478,10 @@ export const CACHE_TOOLS: ToolDef[] = [
             incidentCount7d: { type: ['number', 'null'] }, disruptionPct: { type: ['number', 'null'] },
             riskSummary: { type: 'string' }, riskReportAction: { type: 'string' },
             anomaly: { type: 'object' }, dataAvailable: { type: 'boolean' },
+            // null todayTotal means the relay's 24h AIS window was empty --
+            // unsupplied, not a measured zero (#7457). dataAvailable is
+            // PortWatch history presence and says nothing about today's count.
+            todayCountsAvailable: { type: 'boolean' },
           } } },
           fetchedAt: { type: ['number', 'string'] },
         },
@@ -2310,7 +2489,14 @@ export const CACHE_TOOLS: ToolDef[] = [
       chokepoint_transits: {
         type: ['object', 'null'],
         properties: {
-          transits: { type: 'object', additionalProperties: { type: 'object' } },
+          // Same in-memory AIS window as transit-summaries, so the same caveat
+          // applies: `available: false` means the window was empty and the
+          // numeric counts are a zero fill, not a measurement.
+          transits: { type: 'object', additionalProperties: { type: 'object', properties: {
+            tanker: { type: 'number' }, cargo: { type: 'number' },
+            other: { type: 'number' }, total: { type: 'number' },
+            available: { type: 'boolean' },
+          } } },
           fetchedAt: { type: ['number', 'string'] },
         },
       },
@@ -2334,11 +2520,61 @@ export const CACHE_TOOLS: ToolDef[] = [
       },
       'chokepoint-flows': {
         type: ['object', 'null'],
-        additionalProperties: { type: 'object' },
+        additionalProperties: { type: 'object', properties: {
+          currentMbd: { type: ['number', 'null'] },
+          baselineMbd: { type: ['number', 'null'] },
+          flowRatio: { type: ['number', 'null'] },
+          disrupted: { type: 'boolean' },
+          // The closed taxonomy #6101 promoted on the REST path; served
+          // values are narrowed onto it in _postFilter below, so this enum
+          // is enforced, not aspirational (#6113).
+          source: { type: 'string', enum: [...FLOW_SOURCE_WIRE_VALUES] },
+          // Raw seeder value, NOT the closed hazard enum. Hand-authored JSON
+          // Schema COULD express it here today (#6113 says so explicitly; see
+          // the `source` enums on get_toronto_* above) — this is DEFERRED, not
+          // blocked: #6106 blocks the REST twin on sebuf codegen, and shipping
+          // the closed set on one surface only would recreate the very
+          // declare-vs-serve split this tool just closed for `source`.
+          //
+          // Nullability is likewise a DELIBERATE divergence from REST, not an
+          // oversight: get-chokepoint-status.ts coerces `null -> ''` because
+          // the proto field is non-nullable, a constraint this hand-authored
+          // schema does not have. Serving `null` keeps "no hazard nearby"
+          // distinguishable from "hazard with an empty name", which is the more
+          // useful answer for an agent. Declared as it is actually served.
+          hazardAlertLevel: { type: ['string', 'null'] },
+          hazardAlertName: { type: ['string', 'null'] },
+        } },
       },
     }),
     annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
     _postFilter: (data, params) => {
+      // Narrow BEFORE any filtering so the declared source enum above is a
+      // property of every served response, exactly as the REST boundary's
+      // narrowServedSources makes it (#6113). The blob is written by a seeder
+      // that deploys independently; an undeclared basis must read as
+      // FLOW_SOURCE_UNSPECIFIED, never leak verbatim.
+      //
+      // Deliberately NOT guarded on `'source' in entry`. This is about the
+      // CLOSED-ENUM field specifically: the schema above declares a closed set
+      // for `source`, and "absent" is not a member of it, so an entry omitting
+      // the key must read FLOW_SOURCE_UNSPECIFIED — the declared way to say
+      // "not one of the known bases". The REST twin resolves it the same way
+      // (`source: toFlowSource(...)`, built unconditionally), and
+      // tests/chokepoint-flow-source-taxonomy.test.mts pins that case there.
+      //
+      // Scope note: this is NOT a general "match REST field-for-field" rule.
+      // REST also defaults hazardAlertLevel/hazardAlertName (`?? ''`), and this
+      // surface deliberately does not — see the nullability comment on those
+      // two fields above. Closed enum here, raw passthrough there, on purpose.
+      const flows = data['chokepoint-flows'];
+      if (flows && typeof flows === 'object') {
+        for (const entry of Object.values(flows)) {
+          if (entry && typeof entry === 'object') {
+            (entry as { source: unknown }).source = narrowFlowSource((entry as { source: unknown }).source);
+          }
+        }
+      }
       const cp = argStr(params.chokepoint);
       if (cp) {
         mapNested(data, 'transit-summaries', 'summaries', (m) => pickMapKeysLike(m, cp));
@@ -2710,7 +2946,9 @@ export const CACHE_TOOLS: ToolDef[] = [
     },
     _cacheKeys: ['temporal:anomalies:v1'],
     _cacheLabels: { 'temporal:anomalies:v1': 'snapshot' },
-    _freshnessChecks: [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 }],
+    // liveness 45min; content-age (newestItemAt vs maxContentAgeMin) is stamped
+    // on the same key and evaluated by evaluateFreshness via honorContentAge.
+    _freshnessChecks: [{ key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true }],
     _apiPaths: [],
   },
 

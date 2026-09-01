@@ -22,6 +22,9 @@ import { listFuelShortages } from './list-fuel-shortages';
 import { getFuelShortageDetail } from './get-fuel-shortage-detail';
 import { listEnergyDisruptions } from './list-energy-disruptions';
 import { getChinaCorridorControlTowers } from './get-china-corridor-control-towers';
+import { getCountryVulnerabilities } from './get-country-vulnerabilities';
+import { getChokepointDependencies } from './get-chokepoint-dependencies';
+import { listVulnerabilityRankings } from './list-vulnerability-rankings';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
@@ -46,4 +49,7 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   getFuelShortageDetail,
   listEnergyDisruptions,
   getChinaCorridorControlTowers,
+  getCountryVulnerabilities,
+  getChokepointDependencies,
+  listVulnerabilityRankings,
 };

@@ -10,7 +10,7 @@ import { getTheaterPostureSummaries } from '@/services/military-surge';
 import { getCachedPosture } from '@/services/cached-theater-posture';
 import { isMobileDevice } from '@/utils';
 import { escapeHtml, sanitizeUrl, unsafeRawHtml } from '@/utils/sanitize';
-import { collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
+import { collectBriefCitationSources, collectBriefSources, normalizeCachedBriefSources, renderBriefSourcesFooter, type BriefSource } from '@/utils/brief-sources';
 import { formatIntelBrief } from '@/utils/format-intel-brief';
 import { SITE_VARIANT } from '@/config';
 import { deletePersistentCache, getPersistentCache, setPersistentCache } from '@/services/persistent-cache';
@@ -22,6 +22,7 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { FrameworkSelector } from './FrameworkSelector';
 import { fetchServerInsights, getServerInsights, type ServerInsights, type ServerInsightStory } from '@/services/insights-loader';
 import { computeISQ, type SignalQuality, type SignalQualityInput } from '@/utils/signal-quality';
+import { TimeoutError, withTimeout } from '@/utils/with-timeout';
 import { extractEntitiesFromTitle } from '@/services/entity-extraction';
 import { getEntityIndex } from '@/services/entity-index';
 
@@ -48,6 +49,14 @@ export class InsightsPanel extends Panel {
   // list at the legacy 6 orphans [7]/[8] citations on the early paint (#4890)
   // and client cooldown renders. Keep read + write on this shared bound.
   private static readonly BRIEF_CACHE_MAX_SOURCES = 12;
+  // #7464: local paint wait only — do not pass this to fetchServerInsights.
+  // The loader's shared AbortController follows the longest caller budget; a
+  // 2500ms abort here would cut off the later 5s updateInsights recovery
+  // (insights-loader.ts:166-168). Longer than the 1.2s FAST-tier abort so a
+  // cold `?keys=insights` recovery can still win LCP, shorter than the 5s
+  // fetch default so a hung request cannot replace the 0.6–1.0s skeleton
+  // with a 5s blank. Same wait as the Pro-activation brief preview.
+  private static readonly EARLY_PAINT_INSIGHTS_TIMEOUT_MS = 2500;
 
   constructor() {
     super({
@@ -129,20 +138,82 @@ export class InsightsPanel extends Panel {
   }
 
   /**
-   * #4890: early-paint the persisted World Brief at construction time so the
-   * LCP text block exists at shell paint instead of after the full insights
-   * pipeline. Generation guards on BOTH sides of the async cache read keep
-   * this from clobbering a real updateInsights() pass that races the
-   * IndexedDB read (updateInsights bumps updateGeneration synchronously on
-   * entry, so a stale early paint can never land on top of real content).
+   * #4928 external review: the synthesis cites up to 8 stories — a 6-source
+   * cap orphaned [7]/[8]. Cap to the payload's own citation index space
+   * (bounded at BRIEF_CACHE_MAX_SOURCES defensively). Shared by every path
+   * that renders a server brief so the citation bound cannot drift between
+   * the early paint (#7118) and the full render.
+   */
+  private static serverBriefSources(insights: ServerInsights): BriefSource[] {
+    return collectBriefCitationSources(
+      insights.worldBriefSources ?? [],
+      Math.min(
+        InsightsPanel.BRIEF_CACHE_MAX_SOURCES,
+        Math.max(6, insights.worldBriefSources?.length ?? 6),
+      ),
+    );
+  }
+
+  /**
+   * #4890: early-paint the World Brief at construction time so the LCP text
+   * block exists at shell paint instead of after the full insights pipeline.
+   * Generation guards on BOTH sides of the async cache read keep this from
+   * clobbering a real updateInsights() pass that races the IndexedDB read
+   * (updateInsights bumps updateGeneration synchronously on entry, so a stale
+   * early paint can never land on top of real content).
+   *
+   * #7118: the persistent cache only exists for REPEAT visitors, so before
+   * this the early paint did nothing on a cold visit — the brief waited for
+   * the whole pipeline and became the field LCP element at p75 ~3.5s (#7113,
+   * docs/perf/field-lcp-dashboard-2026-08-24.md). `insights` rides the FAST
+   * bootstrap tier (api/_bootstrap-tier-keys.js), so on a cold visit the
+   * brief is usually already hydrated — fall back to it. The cache is still
+   * preferred: it is the cheaper read and needs no bootstrap round trip.
+   *
+   * #7464: that fallback was a single synchronous sample. Panel construction
+   * can lose the race with `populateCache` (or the 1.2s FAST-tier abort can
+   * leave `insights` empty), so a cold visitor fell through to the slow
+   * pipeline and the brief became LCP at p75 2.5–8s. Await the coalesced
+   * on-demand fetch when the sync read misses; fetchServerInsights memoises
+   * on success, so updateInsights() still sees the payload. Race a local
+   * 2500ms wait via withTimeout — do not pass that budget into
+   * fetchServerInsights, or the shared abort would kill the request before
+   * updateInsights can join with the 5s recovery.
    */
   private async paintCachedBriefEarly(): Promise<void> {
-    if (this.updateGeneration > 0) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
     await this.loadBriefFromCache();
-    if (this.updateGeneration > 0 || !this.cachedBrief) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
+
+    let brief = this.cachedBrief;
+    let sources = this.cachedBriefSources;
+    if (!brief) {
+      let server = getServerInsights();
+      if (!server) {
+        try {
+          server = await withTimeout(
+            fetchServerInsights(),
+            InsightsPanel.EARLY_PAINT_INSIGHTS_TIMEOUT_MS,
+            'insights-early-paint',
+          );
+        } catch (err) {
+          if (!(err instanceof TimeoutError)) throw err;
+        }
+        if (this.signal.aborted || this.updateGeneration > 0) return;
+        // Bootstrap populateCache may have landed while the fetch raced.
+        server ??= getServerInsights();
+      }
+      if (server?.worldBrief) {
+        brief = server.worldBrief;
+        sources = InsightsPanel.serverBriefSources(server);
+      }
+    }
+    if (!brief) return;
+    if (this.signal.aborted || this.updateGeneration > 0) return;
+
     this.setDataBadge('cached');
     this.setSafeContent(unsafeRawHtml(
-      this.renderWorldBrief(this.cachedBrief, this.cachedBriefSources),
+      this.renderWorldBrief(brief, sources),
       'renderWorldBrief formats and links the cached summary (#4890 early brief paint)',
     ));
   }
@@ -317,6 +388,21 @@ export class InsightsPanel extends Panel {
 
       // Sentiment classification uses positional indexing — must happen AFTER re-sort
       const titles = sortedStories.slice(0, 5).map(s => s.primaryTitle);
+
+      // #7118: the brief is already in hand, so paint it BEFORE the sentiment
+      // worker round trip rather than after. classifySentiment can cost
+      // seconds on first use while the ONNX model loads, and the brief is the
+      // field LCP element on ~38% of desktop /dashboard views (#7113). The
+      // full render below supersedes this; Panel drops a debounced
+      // setSafeContent write that has not committed yet, so when sentiment
+      // resolves inside the debounce window this paint costs nothing.
+      if (serverInsights.worldBrief) {
+        this.setSafeContent(unsafeRawHtml(
+          this.renderWorldBrief(serverInsights.worldBrief, InsightsPanel.serverBriefSources(serverInsights)),
+          'renderWorldBrief formats and links the server summary (#7118 pre-sentiment paint)',
+        ));
+      }
+
       let sentiments: Array<{ label: string; score: number }> | null = null;
       if (mlWorker.isAvailable) {
         sentiments = await mlWorker.classifySentiment(titles).catch(() => null);
@@ -333,6 +419,9 @@ export class InsightsPanel extends Panel {
   }
 
   private async updateFromClient(clusters: ClusteredEvent[], thisGeneration: number): Promise<void> {
+    if (this.updateGeneration !== thisGeneration) return;
+    this.lastMissedStories = [];
+
     // Web-only: if no AI providers enabled, show disabled state
     if (!isDesktopRuntime() && !isAnyAiProviderEnabled()) {
       this.setDataBadge('unavailable');
@@ -347,7 +436,7 @@ export class InsightsPanel extends Panel {
       skipBrowserFallback: !aiFlow.browserModel,
     };
 
-    const totalSteps = 4;
+    const totalSteps = 3;
 
     try {
       // Step 1: Signal aggregation + focal point detection (must run BEFORE ranking)
@@ -355,9 +444,10 @@ export class InsightsPanel extends Panel {
 
       // Run parallel multi-perspective analysis in background
       const parallelPromise = parallelAnalysis.analyzeHeadlines(clusters).then(report => {
-        this.lastMissedStories = report.missedByKeywords;
+        return report.missedByKeywords;
       }).catch(err => {
         console.warn('[ParallelAnalysis] Error:', err);
+        return [];
       });
 
       let signalSummary: ReturnType<typeof signalAggregator.getSummary>;
@@ -479,18 +569,22 @@ export class InsightsPanel extends Panel {
 
       this.setDataBadge(worldBrief ? 'live' : 'unavailable');
 
-      // Step 4: Wait for parallel analysis to complete
-      this.setProgress(4, totalSteps, t('components.insights.multiPerspectiveAnalysis'));
-      await parallelPromise;
+      const briefSources = this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources;
+      // #7464: the brief is already in hand. #7118 named holding it behind
+      // the parallel-analysis await and did not ship the change — that wait
+      // held `#insightsContent .brief-para` until ONNX NER/embeddings
+      // finished, which is the 8.7s-of-pure-render-delay cohort. Missed-story
+      // chrome is debug-gated; re-render when the analysis lands. Do not
+      // setProgress(4) here: that would replace the brief with a bar and put
+      // the wait back on LCP.
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
+
+      const missedStories = await parallelPromise;
 
       if (this.updateGeneration !== thisGeneration) return;
 
-      this.renderInsights(
-        importantItems,
-        sentiments,
-        worldBrief,
-        this.cachedBriefSources.length > 0 ? this.cachedBriefSources : currentBriefSources,
-      );
+      this.lastMissedStories = missedStories;
+      this.renderInsights(importantItems, sentiments, worldBrief, briefSources);
     } catch (error) {
       console.error('[InsightsPanel] Error:', error);
       this.showError();
@@ -530,13 +624,7 @@ export class InsightsPanel extends Panel {
     insights: ServerInsights,
     sentiments: Array<{ label: string; score: number }> | null,
   ): void {
-    // #4928 external review: the synthesis cites up to 8 stories — a
-    // 6-source cap orphaned [7]/[8]. Cap to the payload's own citation
-    // index space (bounded at 12 defensively).
-    const worldBriefSources = collectBriefSources(
-      insights.worldBriefSources ?? [],
-      Math.min(12, Math.max(6, insights.worldBriefSources?.length ?? 6)),
-    );
+    const worldBriefSources = InsightsPanel.serverBriefSources(insights);
     const briefHtml = insights.worldBrief
       ? this.renderWorldBrief(insights.worldBrief, worldBriefSources, this.renderBriefExtras(insights))
       : '';

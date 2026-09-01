@@ -2081,14 +2081,14 @@ paths:
             parameters:
                 - name: fromDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive lower date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
                     type: string
                 - name: toDate
                   in: query
-                  description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                  description: Inclusive upper date bound in YYYY-MM-DD format.
                   required: false
                   example: "2026-01-15"
                   schema:
@@ -2107,6 +2107,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "asOf": "example"
                                 "events":
                                     - "actual": "example"
                                       "country": "US"
@@ -2116,7 +2117,6 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/GetEconomicCalendarResponse'
                 "400":
@@ -5144,10 +5144,10 @@ components:
             properties:
                 fromDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive lower date bound in YYYY-MM-DD format.
                 toDate:
                     type: string
-                    description: Accepted but currently ignored; no-op until this handler supports the parameter.
+                    description: Inclusive upper date bound in YYYY-MM-DD format.
         GetEconomicCalendarResponse:
             type: object
             properties:
@@ -5167,6 +5167,8 @@ components:
                     description: |-
                         True when the upstream or seed-backed variant is unavailable; empty payload fields
                          are graceful degradation, not confirmed zero data.
+                asOf:
+                    type: string
         EconomicEvent:
             type: object
             properties:

@@ -10,6 +10,7 @@ let desktop = true;
 vi.mock('@/services/desktop-runtime', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/services/desktop-runtime')>()),
   isDesktopRuntime: () => desktop,
+  hasExplicitDesktopSignals: () => desktop,
 }));
 
 const { waitForSidecarReady } = await import('@/services/runtime');

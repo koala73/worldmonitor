@@ -18,7 +18,9 @@ name: Pro bundle freshness
 on:
   pull_request:
     paths:
+      - 'api/mcp/registry/**'
       - 'convex/config/productCatalog.ts'
+      - 'public/.well-known/agent-card.json'
       - 'scripts/generate-product-config.mjs'
       - 'scripts/generate-public-product-facts.mjs'
       - 'shared/content-attribution.ts'
@@ -71,6 +73,8 @@ jobs:
           # gitignored, and `git diff --exit-code` on an untracked path exits 0,
           # so listing it reads as coverage while never being able to fail.
           # tests/public-product-facts.test.mjs is what actually guards it.
+          # public/.well-known/agent-card.json is tracked and rewritten by the
+          # same generator, so a stale committed catalog size must fail here.
           if ! git diff --exit-code \
             api/_product-catalog.generated.js \
             pro-test/index.html \
@@ -78,6 +82,7 @@ jobs:
             pro-test/src/generated/tiers.json \
             pro-test/src/locales/ \
             pro-test/welcome.html \
+            public/.well-known/agent-card.json \
             scripts/shared/product-catalog.generated.json \
             scripts/shared/product-facts.generated.json \
             shared/product-catalog.generated.json \

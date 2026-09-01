@@ -21,49 +21,7 @@ export function formatTime(date: Date): string {
   }
 }
 
-// Live feeds occasionally omit numeric fields (undefined) rather than sending
-// null, and `null`/NaN/Infinity slip through call-site `!` assertions on
-// `number | null` fields. Shared guard so every formatter renders the
-// unavailable state instead of throwing or emitting misleading output
-// (WORLDMONITOR-SH).
-function isFiniteNumber(value: unknown): value is number {
-  return typeof value === 'number' && Number.isFinite(value);
-}
-
-export function formatPrice(price: number | null | undefined): string {
-  if (!isFiniteNumber(price)) return '--';
-  if (price >= 1000) {
-    return `$${price.toLocaleString(undefined, {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0,
-    })}`;
-  }
-  return `$${price.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
-}
-
-export function formatChange(change: number | null | undefined): string {
-  if (!isFiniteNumber(change)) return '--';
-  const sign = change >= 0 ? '+' : '';
-  return `${sign}${change.toFixed(2)}%`;
-}
-
-export function getChangeClass(change: number | null | undefined): string {
-  if (!isFiniteNumber(change)) return '';
-  return change >= 0 ? 'up' : 'down';
-}
-
-export function getHeatmapClass(change: number | null | undefined): string {
-  if (!isFiniteNumber(change)) return '';
-  const abs = Math.abs(change);
-  const direction = change >= 0 ? 'up' : 'down';
-
-  if (abs >= 2) return `${direction}-3`;
-  if (abs >= 1) return `${direction}-2`;
-  return `${direction}-1`;
-}
+export { formatChange, formatPrice, getChangeClass, getHeatmapClass } from './market-format';
 
 export function debounce<T extends (...args: unknown[]) => void>(
   fn: T,
@@ -136,15 +94,17 @@ export function loadFromStorage<T>(key: string, defaultValue: T): T {
   return defaultValue;
 }
 
-export function saveToStorage<T>(key: string, value: T): void {
+export function saveToStorage<T>(key: string, value: T): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value));
+    return true;
   } catch (e) {
     if (isQuotaError(e)) {
       markStorageQuotaExceeded();
     } else {
       console.warn(`Failed to save ${key} to storage:`, e);
     }
+    return false;
   }
 }
 
@@ -189,7 +149,8 @@ export function shuffle<T>(arr: T[]): T[] {
 }
 
 export { proxyUrl, fetchWithProxy, hasNoStoreCacheDirective, rssProxyUrl } from './proxy';
-export { buildMapUrl, parseMapUrlState } from './urlState';
+export { buildMapUrl, parseMapUrlState, readDashboardSearchQuery } from './urlState';
+export { DASHBOARD_SEARCH_QUERY_MAX_CHARS } from './urlState';
 export { withTimeout, TimeoutError } from './with-timeout';
 export type { ParsedMapUrlState } from './urlState';
 export { CircuitBreaker, createCircuitBreaker, getCircuitBreakerStatus, getCircuitBreakerCooldownInfo } from './circuit-breaker';

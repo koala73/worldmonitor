@@ -21,11 +21,17 @@ import { readFileSync, writeFileSync, readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { flattenKeys } from './_locale-keys.mjs';
+import { flattenKeys, localePathTokens } from './_locale-keys.mjs';
 // Imported rather than restated: this file would otherwise be a third place
 // that has to be told zh-TW is generated, after translate-locales.mjs and the
 // catalogue test.
-import { GENERATED_LOCALES } from './translate-locales.mjs';
+import {
+  GENERATED_LOCALES,
+  expectedKeysForLocale,
+  findPluralBases,
+  flatten,
+  getPluralCategories,
+} from './translate-locales.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const LOCALES_DIR = join(__dirname, '..', 'src', 'locales');
@@ -40,10 +46,9 @@ const GENERATED_HINT = 'Run: npm run locales:zh-tw';
  * translated). Iterating the locale first keeps the diff to just the new keys
  * instead of rewriting every file into en's order.
  *
- * Pluralization caveat: a brand-new pluralized key only carries en's CLDR
- * categories (`_one`/`_other`). Locales needing richer forms (e.g. Arabic's
- * `_zero`/`_two`/`_few`/`_many`) get them when a translator fills the key in;
- * existing locale-only plural variants are preserved by the append loop below.
+ * Brand-new pluralized keys use the locale's CLDR projection. Categories that
+ * English does not carry (for example Arabic `_zero`, `_two`, `_few`, and
+ * `_many`) start with the projected English fallback until translated.
  *
  * Leaf values (strings and arrays) prefer the locale's translation and fall
  * back to en; nested objects are merged key-by-key.
@@ -51,7 +56,7 @@ const GENERATED_HINT = 'Run: npm run locales:zh-tw';
  * @param {unknown} template
  * @param {unknown} locale
  */
-function syncFromTemplate(template, locale) {
+export function syncFromTemplate(template, locale, expectedKeys, prefix = '') {
   if (typeof template === 'string') {
     return typeof locale === 'string' ? locale : template;
   }
@@ -70,17 +75,32 @@ function syncFromTemplate(template, locale) {
       locale && typeof locale === 'object' && !Array.isArray(locale)
         ? /** @type {Record<string, unknown>} */ (locale)
         : {};
+    const expectedKeyList = Object.keys(expectedKeys);
 
     // Keep the locale's own key order (and recurse to preserve nested order).
     // Locale-only keys (legacy / in-flight translations) are carried through.
     for (const [key, value] of Object.entries(localeObj)) {
-      out[key] = key in templateObj ? syncFromTemplate(templateObj[key], value) : value;
+      const keyPath = prefix ? `${prefix}.${key}` : key;
+      out[key] = key in templateObj
+        ? syncFromTemplate(templateObj[key], value, expectedKeys, keyPath)
+        : value;
     }
 
     // Append keys present in en but missing from the locale, in en's order.
     for (const [key, value] of Object.entries(templateObj)) {
       if (!(key in out)) {
-        out[key] = syncFromTemplate(value, localeObj[key]);
+        const keyPath = prefix ? `${prefix}.${key}` : key;
+        const isExpected = Object.hasOwn(expectedKeys, keyPath)
+          || expectedKeyList.some((candidate) => candidate.startsWith(`${keyPath}.`));
+        if (isExpected) {
+          out[key] = syncFromTemplate(value, localeObj[key], expectedKeys, keyPath);
+        }
+      }
+    }
+
+    if (prefix === '') {
+      for (const [keyPath, value] of Object.entries(expectedKeys)) {
+        setMissingDottedPath(out, keyPath, value);
       }
     }
 
@@ -88,6 +108,22 @@ function syncFromTemplate(template, locale) {
   }
 
   return template;
+}
+
+function setMissingDottedPath(target, keyPath, value) {
+  const segments = localePathTokens(keyPath).map((token) => token.value);
+  let cursor = target;
+  for (let index = 0; index < segments.length - 1; index++) {
+    const segment = segments[index];
+    const wantsArray = typeof segments[index + 1] === 'number';
+    const existing = cursor[segment];
+    if (!existing || typeof existing !== 'object' || Array.isArray(existing) !== wantsArray) {
+      cursor[segment] = wantsArray ? [] : {};
+    }
+    cursor = cursor[segment];
+  }
+  const leaf = segments.at(-1);
+  if (leaf !== undefined && !(leaf in cursor)) cursor[leaf] = value;
 }
 
 /**
@@ -106,7 +142,8 @@ function readJson(path, label) {
 
 function main() {
   const en = readJson(EN_PATH, 'en.json');
-  const enKeys = new Set(flattenKeys(en));
+  const enFlat = flatten(en);
+  const pluralBases = findPluralBases(enFlat);
   const localeFiles = readdirSync(LOCALES_DIR)
     .filter((name) => name.endsWith('.json') && name !== 'en.json' && !name.endsWith('.shell.json'))
     .sort();
@@ -120,7 +157,12 @@ function main() {
     const localeCode = file.replace(/\.json$/, '');
     const locale = readJson(path, file);
     const localeKeys = new Set(flattenKeys(locale));
-    const missing = [...enKeys].filter((key) => !localeKeys.has(key));
+    const expectedKeys = expectedKeysForLocale(
+      enFlat,
+      pluralBases,
+      getPluralCategories(localeCode),
+    );
+    const missing = Object.keys(expectedKeys).filter((key) => !localeKeys.has(key));
 
     if (missing.length === 0) {
       console.log(`${file}: up to date (${localeKeys.size} keys)`);
@@ -143,7 +185,7 @@ function main() {
     console.log(`${file}: missing ${missing.length} key(s)`);
 
     if (!CHECK_ONLY) {
-      const synced = syncFromTemplate(en, locale);
+      const synced = syncFromTemplate(en, locale, expectedKeys);
       writeFileSync(path, `${JSON.stringify(synced, null, 2)}\n`, 'utf8');
     }
   }
@@ -156,12 +198,12 @@ function main() {
       }
       process.exit(1);
     }
-    console.log(`All ${localeFiles.length} locale files match en.json (${enKeys.size} keys each).`);
+    console.log(`All ${localeFiles.length} locale files match their CLDR projection of en.json.`);
     return;
   }
 
   if (totalMissing === 0) {
-    console.log(`All locale files already match en.json (${enKeys.size} keys).`);
+    console.log('All locale files already match their CLDR projection of en.json.');
     return;
   }
 

@@ -165,9 +165,7 @@
       "energyMix": "電力結構",
       "coal": "煤炭",
       "noMajorDisruptions": "未報告重大中斷",
-      "activeDisruptions_one": "{{count}} 起活躍中斷",
       "activeDisruptions_other": "{{count}} 起活躍中斷",
-      "activeSignals_one": "{{count}} 個活躍訊號",
       "activeSignals_other": "{{count}} 個活躍訊號",
       "aviationSource": "航空監測",
       "hazardSource": "國家情報訊號",
@@ -232,6 +230,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "五維韌性記分卡",
+      "help": "食品、能源、人口、技術和國防領域的 v1 凍結證據得分。展開行以檢視輸入項、資料來源及缺失資料原因。",
+      "loading": "正在載入五維記分卡…",
+      "unavailable": "五維記分卡不可用。",
+      "proLocked": "升級至 PRO 以獲取五維韌性記分卡",
+      "insufficient": "資料不足",
+      "notAvailable": "不可用",
+      "noEvidence": "該支柱暫無可用證據。",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% 覆蓋率",
+      "methodologyVersion": "方法論 v{{version}}",
+      "methodologyLink": "檢視方法論",
+      "pillars": {
+        "food": "糧食",
+        "energy": "能源",
+        "demographics": "人口",
+        "technology": "技術",
+        "defense": "國防"
+      },
+      "reasons": {
+        "source-unavailable": "資料來源不可用",
+        "country-unavailable": "國家資料不可用",
+        "invalid-value": "源資料值無效",
+        "stale": "證據已過期",
+        "coverage-below-floor": "覆蓋率低於評分下限",
+        "required-group-missing": "缺少必需的證據組",
+        "missing-population": "人口資料不可用",
+        "redistribution-blocked": "源資料不允許再分發",
+        "pillar-unavailable": "支柱資料不可用"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "生產平衡",
+        "food_stocksToUse": "可用庫存",
+        "food_waterSecurity": "水安全",
+        "food_importDiversity": "進口多樣性",
+        "energy_productionBalance": "生產平衡",
+        "energy_lowCarbonShare": "低碳能源佔比",
+        "energy_gridEfficiency": "電網效率",
+        "demographics_totalDependency": "總撫養比",
+        "demographics_oldAgeDependency": "老年撫養比",
+        "demographics_workingAgeProjection": "勞動年齡人口預測",
+        "demographics_tertiaryEnrollment": "高等教育入學率",
+        "demographics_researchersPerMillion": "每百萬人口研究人員數",
+        "demographics_stemGraduateShare": "STEM畢業生佔比",
+        "demographics_trainedIndustrialShare": "受過培訓產業勞動力佔比",
+        "demographics_manufacturingEmploymentShare": "製造業就業佔比",
+        "technology_internetUse": "網際網路使用",
+        "technology_mobileSubscriptions": "移動使用者數",
+        "technology_fixedBroadband": "固定寬頻",
+        "technology_rdSpend": "研發支出",
+        "technology_researchersPerMillion": "每百萬人口研究人員數",
+        "technology_stemGraduateShare": "STEM畢業生佔比",
+        "technology_electricityAccess": "電力普及率",
+        "defense_expenditureUsd": "軍事支出",
+        "defense_expenditurePctGdp": "軍費負擔",
+        "defense_personnel": "武裝部隊人員",
+        "defense_industrialBalance": "國防工業平衡",
+        "defense_supplierDiversity": "武器供應商多樣性"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "升級至PRO以檢視武器供應商依賴關係和軍事能力"
     }
   },
   "header": {
@@ -530,6 +593,7 @@
       "recent": "最近搜尋",
       "empty": "搜尋資料或執行命令",
       "noResults": "無結果",
+      "resultAnnouncement_other": "“{{query}}”有 {{count}} 個結果",
       "commands": "命令",
       "results": "結果",
       "seeAllCommands": "檢視所有命令",
@@ -915,7 +979,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "升級至PRO以檢視礦山和煉油廠按階段分佈的國家份額和濃度(HHI)"
     },
     "tradePolicy": {
       "tariffs": "關稅",
@@ -1404,7 +1469,6 @@
       "clusters": "聚類",
       "alertsLabel": "警報",
       "alert": "警報",
-      "sources_one": "{{count}} 個來源",
       "sources_other": "{{count}} 個來源",
       "briefTech": "技術簡報",
       "briefCommodity": "商品簡報",
@@ -1751,6 +1815,16 @@
       "loading": "正在連線Telegram中繼...",
       "empty": "暫無訊息",
       "disabled": "Telegram中繼未啟用",
+      "watchlistPlaceholder": "透過 @username 新增公開頻道",
+      "resolving": "正在查詢頻道...",
+      "invalidUsername": "請使用公開的 Telegram @username",
+      "resolveFailed": "找不到頻道",
+      "watchlistLimit": "最多可關注 {{count}} 個自訂頻道",
+      "previewMembers": "{{count}} 位成員",
+      "addChannel": "新增頻道",
+      "added": "已新增",
+      "remove": "移除",
+      "custom": "自訂",
       "filterAll": "全部",
       "filterBreaking": "突發",
       "filterConflict": "衝突",
@@ -1962,6 +2036,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "物理壓力指數：{{value}} / 100",
+        "fiveDayTrend": "五個交易日溢價趨勢",
+        "regimes": {
+          "normal": "正常",
+          "elevated": "升高",
+          "stressed": "受壓",
+          "extreme": "極端"
+        },
+        "states": {
+          "insufficientHistory": "預熱中：{{count}} / {{required}} 個交易點",
+          "staleInput": "物理基準資料已過期",
+          "missingInput": "分歧訊號不可用"
+        },
+        "twentyDayTrend": "二十個交易日溢價趨勢"
       }
     },
     "crypto": {
@@ -2036,17 +2126,12 @@
       },
       "time": {
         "justNow": "剛才",
-        "hoursAgo_one": "{{count}}小時前",
         "hoursAgo_other": "{{count}}小時前",
-        "daysAgo_one": "{{count}}天前",
         "daysAgo_other": "{{count}}天前"
       },
       "filters": {
-        "alert_one": "{{count}} 條警報",
         "alert_other": "{{count}} 條警報",
-        "warning_one": "{{count}} 條警告",
         "warning_other": "{{count}} 條警告",
-        "watch_one": "{{count}} 條監測",
         "watch_other": "{{count}} 條監測"
       },
       "errors": {
@@ -2118,6 +2203,26 @@
         "failedToLoad": "載入失敗"
       },
       "cissStale": "歐洲中央銀行尚未釋出新數值 — 此讀數可能已過期。"
+    },
+    "supplyVulnerability": {
+      "title": "大宗商品脆弱性",
+      "help": "基於供應商集中度、海運通道和可用戰略緩衝評估各國分商品風險敞口。",
+      "loading": "正在載入大宗商品脆弱性…",
+      "unavailable": "大宗商品脆弱性資料不可用",
+      "noCoverage": "該國家的證據不足",
+      "unknown": "未知",
+      "concentration": "集中度",
+      "transit": "運輸通道",
+      "buffer": "戰略緩衝",
+      "sources": "來源",
+      "methodology": "方法論",
+      "hormuzTitle": "大宗商品依賴",
+      "dependentCountries": "依賴國家",
+      "dependentCommodities": "依賴商品",
+      "stateOk": "當前",
+      "stateStale": "輸入已過期",
+      "stateInsufficient": "資料不足",
+      "proLocked": "升級至PRO以檢視商品脆弱性評分"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>霍爾木茲貿易追蹤器</strong> 透過全球最關鍵的石油咽喉要道霍爾木茲海峽的AIS船舶即時追蹤。監控油輪數量、中斷事件和每週流量變化。全球約20%的石油供應每天經此透過。",
@@ -2209,7 +2314,6 @@
       "rationale": "理由：",
       "driver": "驅動因素：",
       "appliesToNext": "適用於下一次AI重新生成",
-      "signals_one": "{{count}}個訊號",
       "signals_other": "{{count}}個訊號",
       "disclaimer": "AI生成的交易訊號僅供參考。非投資建議。請自行研究。",
       "unavailable": "AI市場影響在每次預測執行後生成。請稍後檢視。"
@@ -2440,7 +2544,6 @@
         "new": "新增",
         "sema": "sema-ca"
       },
-      "designations_one": "{{count}} 項指定",
       "designations_other": "{{count}} 項指定",
       "fallbacks": {
         "unattributed": "未歸屬",
@@ -2478,9 +2581,7 @@
         "updated": "更新於 {{time}}"
       },
       "observed": {
-        "hoursAgo_one": "{{count}}h 前",
         "hoursAgo_other": "{{count}}h 前",
-        "daysAgo_one": "{{count}}d 前",
         "daysAgo_other": "{{count}}d 前"
       },
       "confidence": {
@@ -2510,7 +2611,6 @@
     "correlation": {
       "loading": "等待資料...",
       "empty": "未檢測到活躍收斂",
-      "signals_one": "{{count}} 個訊號",
       "signals_other": "{{count}} 個訊號",
       "analyzing": "分析中...",
       "viewOnMap": "在地圖上檢視"
@@ -2537,16 +2637,11 @@
         "industrial": "工業",
         "strategic": "戰略性"
       },
-      "observations_one": "{{count}} 次觀測",
       "observations_other": "{{count}} 次觀測",
-      "sources_one": "{{count}} 個來源",
       "sources_other": "{{count}} 個來源",
       "age": {
-        "minutesAgo_one": "{{count}} 分鐘前",
         "minutesAgo_other": "{{count}} 分鐘前",
-        "hoursAgo_one": "{{count}} 小時前",
         "hoursAgo_other": "{{count}} 小時前",
-        "daysAgo_one": "{{count}} 天前",
         "daysAgo_other": "{{count}} 天前"
       }
     },
@@ -2663,6 +2758,18 @@
       "rubBase": "俄羅斯央行 — 每 1 單位盧布",
       "rubPerUnit": "每單位盧布",
       "sourceCbr": "來源：俄羅斯央行"
+    },
+    "passkeyOffer": {
+      "title": "儲存通行金鑰？",
+      "body": "下次登入時使用指紋、面容或裝置PIN即可——無需記住密碼。",
+      "accept": "儲存通行金鑰",
+      "dismiss": "暫不儲存",
+      "close": "關閉",
+      "announce": "儲存通行金鑰以便下次更快登入。",
+      "busy": "正在等待裝置響應…",
+      "succeeded": "通行金鑰已儲存。下次登入時可以使用。",
+      "retryable": "操作未完成。您可以重試。",
+      "failed": "無法在此裝置上儲存通行金鑰。"
     }
   },
   "popups": {
@@ -3004,7 +3111,11 @@
       "heading": "航向",
       "hexCode": "HEX程式碼",
       "squawk": "應答機程式碼",
-      "attribution": "來源：adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "來源：adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "爬升率",
+      "manufacturer": "製造商",
+      "owner": "所有者",
+      "builtYear": "製造年份"
     },
     "militaryVessel": {
       "aisDark": "AIS訊號消失",
@@ -3049,7 +3160,8 @@
       "moreVessels": "還有{{count}}艘艦艇",
       "vesselsCount": "{{count}}艘艦艇",
       "vessels": "艦艇",
-      "trackedVessels": "跟蹤艦艇"
+      "trackedVessels": "跟蹤艦艇",
+      "showLess": "顯示更少"
     },
     "naturalEvent": {
       "closed": "已結束",
@@ -3338,7 +3450,9 @@
     "fontFamily": "字型",
     "fontFamilyDesc": "等寬字型用於技術外觀，系統預設字型便於閱讀。",
     "fontMono": "等寬字型",
-    "fontSystem": "系統預設"
+    "fontSystem": "系統預設",
+    "panelFontScale": "文字大小",
+    "followGlobalFontScale": "使用全域性設定"
   },
   "contextMenu": {
     "openCountryBrief": "開啟國家簡報",
@@ -3437,7 +3551,8 @@
   "auth": {
     "signIn": "登入",
     "createAccount": "建立帳戶",
-    "settings": "設定"
+    "settings": "設定",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "連線 MCP",

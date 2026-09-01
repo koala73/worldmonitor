@@ -40,7 +40,19 @@ describe('post-merge deploy monitor workflow', () => {
     const runStep = workflow.jobs.monitor.steps.find((step) => step.name === 'Check post-merge deploys reached production');
     assert.ok(runStep, 'workflow must define the checker step');
     const fetchLine = runStep.run.split(/\r?\n/).find((line) => line.includes('git fetch'));
-    assert.equal(fetchLine?.trim(), 'git fetch --quiet origin main', 'proof-ref refresh must fail the job when it cannot run');
+    // Unsuppressed: the refresh must still FAIL THE JOB when it cannot run —
+    // a monitor that silently proceeds on a stale tree proves nothing.
+    assert.ok(fetchLine, 'the checker step must refresh its proof refs');
+    assert.doesNotMatch(fetchLine, /\|\||2>\/dev\/null|--quiet\s*;/, 'the refresh must not be error-suppressed');
+    // `--tags --force` is required by #7359: the convex/ skip proof compares
+    // production's deployed commit (the force-moved `convex-deployed` tag) with
+    // main, and without it the local tag never advances past the checkout — the
+    // monitor would then report drift for code that is already deployed.
+    assert.equal(
+      fetchLine.trim(),
+      'git fetch --quiet --tags --force origin main',
+      'the deployed-baseline tag is force-moved, so the refresh must fetch tags with --force',
+    );
     assert.match(runStep.run, /node scripts\/check-postmerge-deploys\.mjs/);
     assert.doesNotMatch(runStep.run, /gate/);
     // The seed-freshness green-main gate must NOT appear here: gating on main

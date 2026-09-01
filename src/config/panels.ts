@@ -525,6 +525,9 @@ const FINANCE_PANELS: Record<string, PanelConfig> = {
   'world-clock': { name: 'World Clock', enabled: true, priority: 2 },
   monitors: { name: 'My Monitors', enabled: true, priority: 2 },
   'latest-brief': { name: 'Latest Brief', enabled: true, priority: 1, premium: 'locked' as const },
+  'nq-pulse': { name: 'NQ Pulse', enabled: false, priority: 1 },
+  'nq-catalysts': { name: 'NQ Catalysts', enabled: false, priority: 1 },
+  'nq-news': { name: 'NQ News', enabled: false, priority: 2 },
 };
 
 const FINANCE_MAP_LAYERS: MapLayers = {
@@ -1161,6 +1164,12 @@ function getVariantPanelConfigs(variant: string): Record<string, PanelConfig> | 
     : undefined;
 }
 
+/** True when `panelId` is in the selected monitor's native catalog, not merely in ALL_PANELS. */
+export function isPanelNativeToVariant(panelId: string, variant: string): boolean {
+  const configs = getVariantPanelConfigs(variant);
+  return Boolean(configs && Object.prototype.hasOwnProperty.call(configs, panelId));
+}
+
 /** All panels from all variants — canonical cross-variant registry. */
 export const ALL_PANELS: Record<string, PanelConfig> = {
   ...HAPPY_PANELS,
@@ -1555,7 +1564,7 @@ export const PANEL_CATEGORY_MAP: Record<string, { labelKey: string; panelKeys: s
   // Finance variant
   finMarkets: {
     labelKey: 'header.panelCatMarkets',
-    panelKeys: ['markets', 'stock-analysis', 'stock-backtest', 'daily-market-brief', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket'],
+    panelKeys: ['markets', 'stock-analysis', 'stock-backtest', 'daily-market-brief', 'markets-news', 'heatmap', 'macro-signals', 'analysis', 'polymarket', 'nq-pulse', 'nq-catalysts', 'nq-news'],
     variants: ['finance'],
   },
   fixedIncomeFx: {
@@ -1650,24 +1659,3 @@ export function getProPanelKeys(
     panelSettings[key]?.enabled && Boolean(getEffectivePanelConfig(key, variant).premium),
   );
 }
-
-// Monitor palette — fixed category colors persisted to localStorage (not theme-dependent)
-export const MONITOR_COLORS = [
-  '#44ff88',
-  '#ff8844',
-  '#4488ff',
-  '#ff44ff',
-  '#ffff44',
-  '#ff4444',
-  '#44ffff',
-  '#88ff44',
-  '#ff88ff',
-  '#88ffff',
-];
-
-export const STORAGE_KEYS = {
-  panels: 'worldmonitor-panels',
-  monitors: 'worldmonitor-monitors',
-  mapLayers: 'worldmonitor-layers',
-  disabledFeeds: 'worldmonitor-disabled-feeds',
-} as const;

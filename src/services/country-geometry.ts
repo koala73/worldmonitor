@@ -385,6 +385,12 @@ export function getCountryBbox(code: string): [number, number, number, number] |
   return entry?.bbox ?? null;
 }
 
+/** Polygon rings for focus math. The stored bbox stays a naive AABB for hit-tests. */
+export function getCountryPolygons(code: string): [number, number][][][] | null {
+  const entry = countryIndex.get(code.toUpperCase());
+  return entry?.polygons ?? null;
+}
+
 export function getCountryCentroid(
   code: string,
   fallbackBounds?: Record<string, { n: number; s: number; e: number; w: number }>,

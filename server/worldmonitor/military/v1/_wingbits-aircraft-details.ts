@@ -5,6 +5,17 @@ import { mapWingbitsDetails } from './_shared';
 
 export const AIRCRAFT_DETAILS_CACHE_KEY = 'military:aircraft:v1';
 export const AIRCRAFT_DETAILS_CACHE_TTL = 24 * 60 * 60; // 24 hours — aircraft metadata is mostly static
+// Kept module-private: `isValidAircraftIcao24` is the only shape both callers
+// need, and the proto carries the same rule for the singular request
+// (get_aircraft_details.proto) so the generated validator rejects a malformed
+// address before the handler runs. This is the in-handler half of that pair —
+// the batch request has no proto-level pattern because its field is a repeated
+// list, so the filter below is the only shape gate that route gets.
+const AIRCRAFT_ICAO24_PATTERN = /^[0-9a-f]{6}$/i;
+
+export function isValidAircraftIcao24(value: string): boolean {
+  return AIRCRAFT_ICAO24_PATTERN.test(value);
+}
 
 export interface CachedAircraftDetails {
   details: AircraftDetails | null;

@@ -234,6 +234,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Scorecard di resilienza a cinque fattori",
+      "help": "Punteggi delle prove v1 congelati per cibo, energia, demografia, tecnologia e difesa. Espandi una riga per ispezionare gli input, la provenienza delle fonti e le motivazioni dei dati mancanti.",
+      "loading": "Caricamento della scorecard a cinque fattori…",
+      "unavailable": "Scorecard a cinque fattori non disponibile.",
+      "proLocked": "Passa a PRO per la scorecard di resilienza a cinque fattori",
+      "insufficient": "Dati insufficienti",
+      "notAvailable": "Non disponibile",
+      "noEvidence": "Non sono disponibili prove per questo pilastro.",
+      "score": "{{score}}/5",
+      "coverage": "Copertura {{coverage}}%",
+      "methodologyVersion": "Metodologia v{{version}}",
+      "methodologyLink": "Vedi metodologia",
+      "pillars": {
+        "food": "Cibo",
+        "energy": "Energia",
+        "demographics": "Demografia",
+        "technology": "Tecnologia",
+        "defense": "Difesa"
+      },
+      "reasons": {
+        "source-unavailable": "Fonte non disponibile",
+        "country-unavailable": "Paese non disponibile",
+        "invalid-value": "Valore della fonte non valido",
+        "stale": "Evidenze non aggiornate",
+        "coverage-below-floor": "Copertura sotto la soglia di punteggio",
+        "required-group-missing": "Gruppo di evidenze obbligatorio mancante",
+        "missing-population": "Popolazione non disponibile",
+        "redistribution-blocked": "Ridistribuzione della fonte non consentita",
+        "pillar-unavailable": "Pilastro non disponibile"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "Bilancio della produzione",
+        "food_stocksToUse": "Scorte da utilizzare",
+        "food_waterSecurity": "Sicurezza idrica",
+        "food_importDiversity": "Diversità delle importazioni",
+        "energy_productionBalance": "Bilancio della produzione",
+        "energy_lowCarbonShare": "Quota di energia a basse emissioni di carbonio",
+        "energy_gridEfficiency": "Efficienza della rete",
+        "demographics_totalDependency": "Indice di dipendenza totale",
+        "demographics_oldAgeDependency": "Indice di dipendenza degli anziani",
+        "demographics_workingAgeProjection": "Proiezione popolazione in età lavorativa",
+        "demographics_tertiaryEnrollment": "Iscrizioni al terziario",
+        "demographics_researchersPerMillion": "Ricercatori per milione",
+        "demographics_stemGraduateShare": "Quota di laureati STEM",
+        "demographics_trainedIndustrialShare": "Quota di forza lavoro industriale qualificata",
+        "demographics_manufacturingEmploymentShare": "Quota di occupazione manifatturiera",
+        "technology_internetUse": "Uso di Internet",
+        "technology_mobileSubscriptions": "Abbonamenti mobili",
+        "technology_fixedBroadband": "Banda larga fissa",
+        "technology_rdSpend": "Spesa per ricerca e sviluppo",
+        "technology_researchersPerMillion": "Ricercatori per milione",
+        "technology_stemGraduateShare": "Quota di laureati STEM",
+        "technology_electricityAccess": "Accesso all'elettricità",
+        "defense_expenditureUsd": "Spesa militare",
+        "defense_expenditurePctGdp": "Gravame militare",
+        "defense_personnel": "Personale delle forze armate",
+        "defense_industrialBalance": "Bilanciamento industriale della difesa",
+        "defense_supplierDiversity": "Diversità dei fornitori di armamenti"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Esegui l'upgrade a PRO per le dipendenze dai fornitori di armi e la capacità militare"
     }
   },
   "header": {
@@ -530,6 +595,9 @@
       "recent": "Ricerche recenti",
       "empty": "Cerca dati o esegui comandi",
       "noResults": "Nessun risultato",
+      "resultAnnouncement_one": "{{count}} risultato per {{query}}",
+      "resultAnnouncement_many": "{{count}} risultati per {{query}}",
+      "resultAnnouncement_other": "{{count}} risultati per {{query}}",
       "navigate": "naviga",
       "select": "seleziona",
       "close": "chiudi",
@@ -905,7 +973,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Esegui l'upgrade a PRO per le quote di paese delle miniere e delle raffinerie con concentrazione (HHI) per fase"
     },
     "tradePolicy": {
       "tariffs": "Dazi",
@@ -1564,6 +1633,16 @@
       "loading": "Connessione al relay Telegram...",
       "empty": "Nessun messaggio disponibile",
       "disabled": "Relay Telegram non attivo",
+      "watchlistPlaceholder": "Aggiungi un canale pubblico tramite @username",
+      "resolving": "Ricerca del canale...",
+      "invalidUsername": "Usa un @username Telegram pubblico",
+      "resolveFailed": "Impossibile trovare il canale",
+      "watchlistLimit": "Puoi seguire fino a {{count}} canali personalizzati",
+      "previewMembers": "{{count}} membri",
+      "addChannel": "Aggiungi canale",
+      "added": "Aggiunto",
+      "remove": "Rimuovi",
+      "custom": "Personalizzato",
       "filterAll": "Tutti",
       "filterBreaking": "Ultima ora",
       "filterConflict": "Conflitti",
@@ -1965,6 +2044,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Indice di stress fisico: {{value}} / 100",
+        "fiveDayTrend": "Tendenza premio su cinque giorni di negoziazione",
+        "regimes": {
+          "normal": "Normale",
+          "elevated": "Elevato",
+          "stressed": "Sotto stress",
+          "extreme": "Estremo"
+        },
+        "states": {
+          "insufficientHistory": "Riscaldamento: {{count}} / {{required}} punti di negoziazione",
+          "staleInput": "Benchmark fisico obsoleto",
+          "missingInput": "Segnale di divergenza non disponibile"
+        },
+        "twentyDayTrend": "Trend del premio su venti giorni di negoziazione"
       }
     },
     "crypto": {
@@ -2126,6 +2221,26 @@
         "failedToLoad": "Caricamento non riuscito"
       },
       "cissStale": "La BCE non ha pubblicato un valore più recente — questa lettura potrebbe essere obsoleta."
+    },
+    "supplyVulnerability": {
+      "title": "Vulnerabilità delle materie prime",
+      "help": "Esposizione del paese per materia prima in base alla concentrazione dei fornitori, al transito marittimo e alle riserve strategiche disponibili.",
+      "loading": "Caricamento della vulnerabilità delle materie prime…",
+      "unavailable": "Dati sulla vulnerabilità delle materie prime non disponibili",
+      "noCoverage": "Prove insufficienti per questo paese",
+      "unknown": "Sconosciuto",
+      "concentration": "Concentrazione",
+      "transit": "Transito",
+      "buffer": "Riserva",
+      "sources": "Fonti",
+      "methodology": "Metodologia",
+      "hormuzTitle": "Dipendenze dalle materie prime",
+      "dependentCountries": "Paesi dipendenti",
+      "dependentCommodities": "Materie prime dipendenti",
+      "stateOk": "Attuale",
+      "stateStale": "Input obsoleto",
+      "stateInsufficient": "Dati insufficienti",
+      "proLocked": "Esegui l'upgrade a PRO per la valutazione della vulnerabilità delle materie prime"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Tracker commerciale di Hormuz</strong> Tracciamento AIS di navi in tempo reale attraverso lo Stretto di Hormuz, il collo di bottiglia petrolifero più critico al mondo. Monitora il conteggio delle petroliere, eventi di interruzione e variazioni settimanali dei flussi. Circa il 20% della fornitura globale di petrolio transita qui quotidianamente.",
@@ -2681,6 +2796,18 @@
       "rubBase": "Banca di Russia — rubli per 1 unità",
       "rubPerUnit": "Rubli per unità",
       "sourceCbr": "Fonte: Banca di Russia"
+    },
+    "passkeyOffer": {
+      "title": "Salvare una passkey?",
+      "body": "La prossima volta accedi con l'impronta digitale, il volto o il PIN del dispositivo — nessuna password da ricordare.",
+      "accept": "Salva passkey",
+      "dismiss": "Non ora",
+      "close": "Chiudi",
+      "announce": "Salva una passkey per accedere più velocemente la prossima volta.",
+      "busy": "In attesa del tuo dispositivo…",
+      "succeeded": "Passkey salvata. Puoi usarla la prossima volta che accedi.",
+      "retryable": "Non è andato a buon fine. Puoi provare di nuovo.",
+      "failed": "Non siamo riusciti a salvare una passkey su questo dispositivo."
     }
   },
   "popups": {
@@ -3014,7 +3141,11 @@
       "heading": "ROTTA",
       "hexCode": "CODICE ESAGONALE",
       "squawk": "SQUAWK",
-      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Fonte: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "VELOCITÀ DI SALITA",
+      "manufacturer": "PRODUTTORE",
+      "owner": "PROPRIETARIO",
+      "builtYear": "ANNO DI COSTRUZIONE"
     },
     "militaryVessel": {
       "aisDark": "AIS OSCURO",
@@ -3059,7 +3190,8 @@
       "moreVessels": "+{{count}} altre navi",
       "vesselsCount": "{{count}} VASI",
       "vessels": "VASI",
-      "trackedVessels": "NAVI CINGOLATE"
+      "trackedVessels": "NAVI CINGOLATE",
+      "showLess": "Mostra meno"
     },
     "naturalEvent": {
       "closed": "CHIUSO",
@@ -3356,7 +3488,9 @@
     "fontFamily": "Famiglia di Caratteri",
     "fontFamilyDesc": "Monospace per un aspetto tecnico, predefinito di sistema per una lettura più agevole.",
     "fontMono": "Monospace",
-    "fontSystem": "Predefinito di Sistema"
+    "fontSystem": "Predefinito di Sistema",
+    "panelFontScale": "Dimensione testo",
+    "followGlobalFontScale": "Usa globale"
   },
   "contextMenu": {
     "openCountryBrief": "Apri scheda paese",
@@ -3455,7 +3589,8 @@
   "auth": {
     "signIn": "Accedi",
     "createAccount": "Crea account",
-    "settings": "Impostazioni"
+    "settings": "Impostazioni",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connetti MCP",

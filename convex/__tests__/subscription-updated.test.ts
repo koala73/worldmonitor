@@ -73,7 +73,13 @@ async function seedActiveSub(
 async function fireSubscriptionUpdated(
   t: ReturnType<typeof convexTest>,
   status: string,
-  opts: { eventTimestamp?: number; planKey?: string; cancelledAt?: number } = {},
+  opts: {
+    eventTimestamp?: number;
+    planKey?: string;
+    cancelledAt?: number;
+    /** `null` omits next_billing_date so cancellation keeps the stored period end. */
+    nextBillingDate?: number | null;
+  } = {},
 ) {
   await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
     webhookId: `msg_test_${SUB_ID}_updated_${status}_${Math.random().toString(36).slice(2, 6)}`,
@@ -87,7 +93,13 @@ async function fireSubscriptionUpdated(
         customer: { customer_id: CUSTOMER_ID },
         metadata: { wm_user_id: USER_ID },
         previous_billing_date: new Date(Date.now() - 23 * DAY_MS).toISOString(),
-        next_billing_date: new Date(Date.now() + 7 * DAY_MS).toISOString(),
+        ...(opts.nextBillingDate === null
+          ? {}
+          : {
+              next_billing_date: new Date(
+                opts.nextBillingDate ?? Date.now() + 7 * DAY_MS,
+              ).toISOString(),
+            }),
         ...(opts.cancelledAt
           ? { cancelled_at: new Date(opts.cancelledAt).toISOString() }
           : {}),
@@ -125,7 +137,10 @@ describe("subscription.updated → status='cancelled' (paid-through invariant)",
     const periodEnd = Date.now() + 7 * DAY_MS;
     await seedActiveSub(t, { currentPeriodEnd: periodEnd });
 
-    await fireSubscriptionUpdated(t, "cancelled", { cancelledAt: Date.now() });
+    await fireSubscriptionUpdated(t, "cancelled", {
+      cancelledAt: Date.now(),
+      nextBillingDate: periodEnd,
+    });
 
     const sub = await readSub(t);
     expect(sub?.status).toBe("cancelled");
@@ -144,7 +159,13 @@ describe("subscription.updated → status='cancelled' (paid-through invariant)",
     // Cancellation alone NEVER downgrades, even when the period is already
     // in the past. The entitlement's `validUntil` already reflects period
     // end; `subscription.expired` is the only path that flips planKey→free.
-    await fireSubscriptionUpdated(t, "cancelled", { cancelledAt: Date.now() });
+    // Pin the payload date to the stored (already-lapsed) period so this
+    // stays a lapsed cancel, not the missed-renewal case that persists a
+    // newer next_billing_date.
+    await fireSubscriptionUpdated(t, "cancelled", {
+      cancelledAt: Date.now(),
+      nextBillingDate: expiredPeriodEnd,
+    });
 
     const ent = await readEntitlement(t);
     expect(ent?.planKey).toBe("pro_monthly");

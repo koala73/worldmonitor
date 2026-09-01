@@ -197,7 +197,11 @@
         "partial": "Partial",
         "stale": "Stale",
         "unavailable": "Unavailable"
-      }
+      },
+      "activeDisruptions_few": "{{count}} активні збої",
+      "activeDisruptions_many": "{{count}} активних збоїв",
+      "activeSignals_few": "{{count}} активні сигнали",
+      "activeSignals_many": "{{count}} активних сигналів"
     },
     "ownFlights": "Own Flights",
     "foreignFlights": "Foreign Flights",
@@ -301,6 +305,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "П'ятифакторна шкала стійкості",
+      "help": "Зафіксовані оцінки доказів v1 для продовольства, енергетики, демографії, технологій та оборони. Розгорніть рядок, щоб переглянути вхідні дані, походження джерел та причини відсутності даних.",
+      "loading": "Завантаження п'ятифакторної шкали…",
+      "unavailable": "П'ятифакторна шкала недоступна.",
+      "proLocked": "Оновіть до PRO для доступу до п'ятифакторної шкали стійкості",
+      "insufficient": "Недостатньо даних",
+      "notAvailable": "Недоступно",
+      "noEvidence": "Немає доступних доказів для цього фактора.",
+      "score": "{{score}}/5",
+      "coverage": "Покриття {{coverage}}%",
+      "methodologyVersion": "Методологія v{{version}}",
+      "methodologyLink": "Переглянути методологію",
+      "pillars": {
+        "food": "Їжа",
+        "energy": "Енергія",
+        "demographics": "Демографія",
+        "technology": "Технології",
+        "defense": "Оборона"
+      },
+      "reasons": {
+        "source-unavailable": "Джерело недоступне",
+        "country-unavailable": "Країна недоступна",
+        "invalid-value": "Некоректне значення джерела",
+        "stale": "Дані застарілі",
+        "coverage-below-floor": "Покриття нижче порогу оцінювання",
+        "required-group-missing": "Відсутня обов'язкова група доказів",
+        "missing-population": "Дані про населення недоступні",
+        "redistribution-blocked": "Перерозподіл джерела не дозволено",
+        "pillar-unavailable": "Стовп недоступний"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "Баланс виробництва",
+        "food_stocksToUse": "Запаси для використання",
+        "food_waterSecurity": "Водна безпека",
+        "food_importDiversity": "Різноманітність імпорту",
+        "energy_productionBalance": "Баланс виробництва",
+        "energy_lowCarbonShare": "Частка низьковуглецевої енергії",
+        "energy_gridEfficiency": "Ефективність електромережі",
+        "demographics_totalDependency": "Загальний коефіцієнт залежності",
+        "demographics_oldAgeDependency": "Коефіцієнт залежності осіб старшого віку",
+        "demographics_workingAgeProjection": "Прогноз частки працездатного населення",
+        "demographics_tertiaryEnrollment": "Рівень охоплення третинною освітою",
+        "demographics_researchersPerMillion": "Дослідники на мільйон населення",
+        "demographics_stemGraduateShare": "Частка випускників STEM",
+        "demographics_trainedIndustrialShare": "Частка кваліфікованих промислових кадрів",
+        "demographics_manufacturingEmploymentShare": "Частка зайнятості у виробництві",
+        "technology_internetUse": "Використання інтернету",
+        "technology_mobileSubscriptions": "Мобільні підписки",
+        "technology_fixedBroadband": "Стільовий широкополосний інтернет",
+        "technology_rdSpend": "Витрати на дослідження та розробки",
+        "technology_researchersPerMillion": "Дослідники на мільйон населення",
+        "technology_stemGraduateShare": "Частка випускників STEM",
+        "technology_electricityAccess": "Доступ до електроенергії",
+        "defense_expenditureUsd": "Витрати на оборону",
+        "defense_expenditurePctGdp": "Оборонне навантаження",
+        "defense_personnel": "Персонал збройних сил",
+        "defense_industrialBalance": "Баланс оборонної промисловості",
+        "defense_supplierDiversity": "Різноманітність постачальників озброєнь"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Перейдіть на PRO для залежності від постачальників озброєння та військової потужності"
     }
   },
   "header": {
@@ -599,6 +668,10 @@
       "recent": "Recent Searches",
       "empty": "Search data or run commands",
       "noResults": "No results",
+      "resultAnnouncement_one": "{{count}} результат для {{query}}",
+      "resultAnnouncement_few": "{{count}} результати для {{query}}",
+      "resultAnnouncement_many": "{{count}} результатів для {{query}}",
+      "resultAnnouncement_other": "{{count}} результатів для {{query}}",
       "commands": "Commands",
       "results": "Results",
       "addPanel": "Add",
@@ -1016,7 +1089,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Перейдіть на PRO для доступу до часток країн у видобутку та переробці з концентрацією (HHI) за етапом"
     },
     "tradePolicy": {
       "overview": "Overview",
@@ -1134,7 +1208,9 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "disclaimer": "AI-generated trade signals for informational purposes only. Not investment advice. Always do your own research.",
-      "unavailable": "AI market implications are generated after each forecast run. Check back shortly."
+      "unavailable": "AI market implications are generated after each forecast run. Check back shortly.",
+      "signals_few": "{{count}} сигнали",
+      "signals_many": "{{count}} сигналів"
     },
     "status": {
       "updatedAt": "Updated {{time}}"
@@ -1563,7 +1639,9 @@
       "compiledFrom": "Compiled from {{stories}} stories across {{sources}} sources",
       "provenanceTitle": "Coverage provenance: how many ingested stories and distinct sources this brief was selected from",
       "briefFreshness": "Generated {{minutes}}m ago · newest source {{hours}}h old",
-      "briefStoryDetails": "Story details ({{count}})"
+      "briefStoryDetails": "Story details ({{count}})",
+      "sources_few": "{{count}} джерела",
+      "sources_many": "{{count}} джерел"
     },
     "settings": {
       "exportSettings": "Export Settings",
@@ -1895,6 +1973,16 @@
       "loading": "Connecting to Telegram relay...",
       "empty": "No messages available",
       "disabled": "Telegram relay not active",
+      "watchlistPlaceholder": "Додати публічний канал за @username",
+      "resolving": "Пошук каналу...",
+      "invalidUsername": "Використовуйте публічне ім’я @username у Telegram",
+      "resolveFailed": "Не вдалося знайти канал",
+      "watchlistLimit": "Можна стежити щонайбільше за {{count}} власними каналами",
+      "previewMembers": "{{count}} учасників",
+      "addChannel": "Додати канал",
+      "added": "Додано",
+      "remove": "Видалити",
+      "custom": "Власний",
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
@@ -2042,6 +2130,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Індекс фізичного стресу: {{value}} / 100",
+        "fiveDayTrend": "Тренд премії за п'ять торгових днів",
+        "regimes": {
+          "normal": "Нормальний",
+          "elevated": "Підвищений",
+          "stressed": "Напружений",
+          "extreme": "Екстремальний"
+        },
+        "states": {
+          "insufficientHistory": "Прогрівання: {{count}} / {{required}} торгових точок",
+          "staleInput": "Фізичний орієнтир застарілий",
+          "missingInput": "Сигнал дивергенції недоступний"
+        },
+        "twentyDayTrend": "Тренд премії за двадцять торгових днів"
       }
     },
     "crypto": {
@@ -2250,7 +2354,11 @@
         "hoursAgo_one": "{{count}}h ago",
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}d ago",
-        "daysAgo_other": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d ago",
+        "hoursAgo_few": "{{count}}г тому",
+        "hoursAgo_many": "{{count}}г тому",
+        "daysAgo_few": "{{count}}д тому",
+        "daysAgo_many": "{{count}}д тому"
       },
       "filters": {
         "alert_one": "{{count}} Alert",
@@ -2258,7 +2366,13 @@
         "warning_one": "{{count}} Warning",
         "warning_other": "{{count}} Warnings",
         "watch_one": "{{count}} Watch",
-        "watch_other": "{{count}} Watches"
+        "watch_other": "{{count}} Watches",
+        "alert_few": "{{count}} Сповіщення",
+        "alert_many": "{{count}} Сповіщень",
+        "warning_few": "{{count}} Попередження",
+        "warning_many": "{{count}} Попереджень",
+        "watch_few": "{{count}} Моніторингу",
+        "watch_many": "{{count}} Моніторингу"
       },
       "errors": {
         "noData": "No outbreak data available",
@@ -2328,6 +2442,26 @@
         "unavailable": "FSI data unavailable",
         "failedToLoad": "Failed to load"
       }
+    },
+    "supplyVulnerability": {
+      "title": "Сировинна вразливість",
+      "help": "Вразливість країни за товаром на основі концентрації постачальників, морського транзиту та доступних стратегічних резервів.",
+      "loading": "Завантаження даних про сировинну вразливість…",
+      "unavailable": "Дані про сировинну вразливість недоступні",
+      "noCoverage": "Недостатньо доказів для цієї країни",
+      "unknown": "Невідомо",
+      "concentration": "Концентрація",
+      "transit": "Транзит",
+      "buffer": "Резерв",
+      "sources": "Джерела",
+      "methodology": "Методологія",
+      "hormuzTitle": "Сировинні залежності",
+      "dependentCountries": "Залежні країни",
+      "dependentCommodities": "Залежні товари",
+      "stateOk": "Актуально",
+      "stateStale": "Застарілі вхідні дані",
+      "stateInsufficient": "Недостатньо даних",
+      "proLocked": "Перейдіть на PRO для оцінки вразливості сировини"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
@@ -2534,7 +2668,9 @@
         "unattributed": "Unattributed",
         "program": "Program",
         "undated": "undated"
-      }
+      },
+      "designations_few": "{{count}} санкції",
+      "designations_many": "{{count}} санкцій"
     },
     "radiationWatch": {
       "title": "Radiation Watch",
@@ -2569,7 +2705,11 @@
         "hoursAgo_one": "{{count}}h ago",
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}d ago",
-        "daysAgo_other": "{{count}}d ago"
+        "daysAgo_other": "{{count}}d ago",
+        "hoursAgo_few": "{{count}}г тому",
+        "hoursAgo_many": "{{count}}г тому",
+        "daysAgo_few": "{{count}}д тому",
+        "daysAgo_many": "{{count}}д тому"
       },
       "confidence": {
         "high": "high confidence",
@@ -2601,7 +2741,9 @@
       "signals_one": "{{count}} signal",
       "signals_other": "{{count}} signals",
       "analyzing": "Analyzing...",
-      "viewOnMap": "View on map"
+      "viewOnMap": "View on map",
+      "signals_few": "{{count}} сигнали",
+      "signals_many": "{{count}} сигналів"
     },
     "thermalEscalation": {
       "title": "Thermal Escalation",
@@ -2635,8 +2777,18 @@
         "hoursAgo_one": "{{count}}h ago",
         "hoursAgo_other": "{{count}}h ago",
         "daysAgo_one": "{{count}}d ago",
-        "daysAgo_other": "{{count}}d ago"
-      }
+        "daysAgo_other": "{{count}}d ago",
+        "minutesAgo_few": "{{count}}хв тому",
+        "minutesAgo_many": "{{count}}хв тому",
+        "hoursAgo_few": "{{count}}г тому",
+        "hoursAgo_many": "{{count}}г тому",
+        "daysAgo_few": "{{count}}д тому",
+        "daysAgo_many": "{{count}}д тому"
+      },
+      "observations_few": "{{count}} спост.",
+      "observations_many": "{{count}} спост.",
+      "sources_few": "{{count}} джер.",
+      "sources_many": "{{count}} джер."
     },
     "chokepointStrip": {
       "title": "Chokepoint Status",
@@ -2732,6 +2884,18 @@
       "rubBase": "Банк Росії — рублів за 1 одиницю",
       "rubPerUnit": "Рублів за одиницю",
       "sourceCbr": "Джерело: Банк Росії"
+    },
+    "passkeyOffer": {
+      "title": "Зберегти пропуск?",
+      "body": "Наступного разу увійдіть за допомогою відбитка пальця, обличчя або PIN-коду пристрою — без необхідності запам'ятовувати пароль.",
+      "accept": "Зберегти пропуск",
+      "dismiss": "Не зараз",
+      "close": "Закрити",
+      "announce": "Збережіть пропуск, щоб входити швидше наступного разу.",
+      "busy": "Очікування вашого пристрою…",
+      "succeeded": "Пропуск збережено. Ви можете використовувати його при наступному вході.",
+      "retryable": "Це не завершилось. Ви можете спробувати ще раз.",
+      "failed": "Нам не вдалося зберегти пропуск на цьому пристрої."
     }
   },
   "popups": {
@@ -3073,7 +3237,11 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "ШВИДКІСТЬ НАБОРУ ВИСОТИ",
+      "manufacturer": "ВИРОБНИК",
+      "owner": "ВЛАСНИК",
+      "builtYear": "РІК ВИПУСКУ"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",
@@ -3118,7 +3286,8 @@
       "moreVessels": "+{{count}} more vessels",
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "VESSELS",
-      "trackedVessels": "TRACKED VESSELS"
+      "trackedVessels": "TRACKED VESSELS",
+      "showLess": "Показати менше"
     },
     "naturalEvent": {
       "closed": "CLOSED",
@@ -3412,7 +3581,9 @@
     "fontFamily": "Font Family",
     "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
     "fontMono": "Monospace",
-    "fontSystem": "System Default"
+    "fontSystem": "System Default",
+    "panelFontScale": "Розмір тексту",
+    "followGlobalFontScale": "Використовувати глобальний"
   },
   "premium": {
     "pro": "PRO",
@@ -3437,7 +3608,8 @@
   "auth": {
     "signIn": "Sign In",
     "createAccount": "Create account",
-    "settings": "Settings"
+    "settings": "Settings",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connect MCP",

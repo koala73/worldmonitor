@@ -106,10 +106,16 @@ services:
       LLM_API_URL: ""             # e.g. http://localhost:11434/v1/chat/completions
       LLM_API_KEY: ""
       LLM_MODEL: ""
+      # Same value as ais-relay — gateway accepts it on list-feed-digest (#7437).
+      WORLDMONITOR_RELAY_KEY: ""
 
   ais-relay:
     environment:
       AISSTREAM_API_KEY: ""       # same key as above — relay needs it too
+      # Classify fetches the local digest (compose defaults API_BASE_URL to
+      # http://worldmonitor:8080). Set the same WORLDMONITOR_RELAY_KEY on
+      # worldmonitor so the digest GET is not a silent 401.
+      WORLDMONITOR_RELAY_KEY: ""
 ```
 
 ### 💰 Free vs Paid
@@ -192,8 +198,10 @@ node scripts/seed-military-flights.mjs
 | `worldmonitor-ais-relay` | Live vessel tracking WebSocket | 3004 (internal) |
 
 > **`redis-rest` command allowlist**: the bundled proxy (`docker/redis-rest-proxy.mjs`) only
-> forwards a fixed allowlist of Redis commands and rejects `EVAL`/`EVALSHA`/`SCRIPT` (no Lua
-> scripting). Two consequences for a self-hosted stack:
+> forwards a fixed allowlist of Redis commands. It permits byte-pinned `EVAL` scripts for
+> the news digest's atomic last-good publication, fenced story-alias publication, and Pro MCP
+> quota reservation; all caller-selected Lua plus `EVALSHA` and `SCRIPT` remain rejected.
+> Two consequences for a self-hosted stack:
 >
 > - `@upstash/ratelimit`'s Lua-based sliding-window limiter (`server/_shared/rate-limit.ts`,
 >   `api/_rate-limit.js`) can't run against it. Both automatically detect the rejection once and
@@ -204,6 +212,81 @@ node scripts/seed-military-flights.mjs
 >   never satisfies. Set `UPSTASH_ALLOW_INSECURE_HTTP=true` on the `ais-relay` service (already
 >   wired for `redis-rest` in `docker-compose.yml`) to opt into using the proxy from
 >   inside the relay container.
+
+## Revoking a news item
+
+Sometimes a headline has to come down now — a retracted story, a defamatory
+claim, a wrong attribution. The digest keeps a narrow, versioned set of
+suppressed URLs and filters against it at **read** time, on every path that can
+return bytes: a fresh build, a digest cache hit, the durable last-good
+snapshot, the warm-isolate replay, the country brief, and the chat analyst.
+
+```bash
+# Source .env so REDIS_TOKEN is available, then point at the REST proxy.
+set -a; . ./.env; set +a
+export UPSTASH_REDIS_REST_URL=http://localhost:8079
+export UPSTASH_REDIS_REST_TOKEN="$REDIS_TOKEN"
+
+# 1. Suppress the URL. Match is EXACT string equality on the item's `link` —
+#    scheme, trailing slash, and query string all count. Copy the URL from the
+#    API response rather than retyping it.
+curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
+  -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '[["SADD","news:digest:revoked-urls:v1","https://example.com/retracted-story"]]'
+```
+
+That single `SADD` is enough for everything served out of Redis — no key
+deletion is required, because suppression happens on read.
+
+**Two things it does not do**, both of which matter during an incident:
+
+1. **It does not evict shared caches.** `/api/news/v1/list-feed-digest` is
+   served with `s-maxage=1800` and `CDN-Cache-Control: s-maxage=3600`. Once a
+   revocation is live the endpoint stops feeding shared caches, but copies
+   already stored survive. **Purge the CDN for that path** if you have one in
+   front of the stack. A purely local Docker stack has no CDN and can skip this.
+2. **It does not force a rebuild.** The existing digest keeps being rebuilt on
+   its normal ~900s cycle. To rebuild immediately:
+
+   ```bash
+   curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
+     -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
+     -H 'Content-Type: application/json' \
+     -d '[["DEL","news:digest:v1:full:en"],["DEL","news:digest:lastgood:v1:full:en"]]'
+   ```
+
+   Note the key version is **v1**. Repeat per `<variant>:<lang>` scope you serve.
+
+To lift a revocation, `SREM` the same URL — stored bodies are kept unfiltered on
+purpose, so the item reappears on the next read without waiting for a rebuild.
+
+```bash
+curl -s -X POST "$UPSTASH_REDIS_REST_URL/pipeline" \
+  -H "Authorization: Bearer $UPSTASH_REDIS_REST_TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d '[["SREM","news:digest:revoked-urls:v1","https://example.com/retracted-story"]]'
+```
+
+> If the revocation set cannot be read at all (Redis erroring, not merely
+> absent), every serving path fails **closed** — it serves nothing rather than
+> serving content it could not check. A stack with no Redis configured is a
+> different case: there is no suppression store to consult, so serving proceeds
+> normally.
+
+> **`redis-rest` request body limit**: the proxy accepts request bodies up to **16 MB**,
+> overridable with `SRH_MAX_BODY_BYTES` (bytes) on the `redis-rest` service. The default is
+> sized for the seeders: every seeder publishing through `atomicPublish` is capped at 5 MB per
+> key (`MAX_PAYLOAD_BYTES` in `scripts/_seed-utils.mjs`), and `atomicPublish` sends that payload
+> as a JSON string nested inside `["SET", key, <payload>, "EX", ttl]`, so escaping makes the
+> wire body larger than the payload.
+>
+> An over-limit body is answered with `413 Payload Too Large` and logged by the proxy, so a
+> rejection shows up as a clear HTTP status in the seeder log *and* a matching line in
+> `docker compose logs redis-rest` — never a bare `EPIPE`-style connection error. That holds at
+> any value you set, so lowering the limit is safe to diagnose. The `redis-rest` service also
+> carries a `mem_limit`, since the proxy buffers each accepted body in full; raise both together
+> if you raise `SRH_MAX_BODY_BYTES`.
 
 ## 🔨 Building from Source
 

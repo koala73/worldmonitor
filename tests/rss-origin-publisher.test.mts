@@ -43,6 +43,7 @@ describe('parseRssXml carries the RSS <source> element (#6430)', () => {
     const parsed = parseRssXml(xml, FEED, 'full');
     assert.ok(parsed && parsed.items.length === 1);
     assert.equal(parsed.items[0]!.originPublisher, 'S&P Global');
+    assert.equal(parsed.items[0]!.originPublisherTrusted, true);
     assert.equal(parsed.items[0]!.source, 'Oil & Gas');
   });
 
@@ -55,6 +56,20 @@ describe('parseRssXml carries the RSS <source> element (#6430)', () => {
     const parsed = parseRssXml(xml, FEED, 'full');
     assert.ok(parsed && parsed.items.length === 1);
     assert.equal(parsed.items[0]!.originPublisher, '');
+    assert.equal(parsed.items[0]!.originPublisherTrusted, true);
+  });
+
+  it('does not trust RSS <source> from an ordinary configured feed', () => {
+    const xml = rss(`<item>
+      <title>Oil prices climb as supply concerns mount</title>
+      <link>https://example.com/a</link>
+      <pubDate>Tue, 07 Jul 2026 12:00:00 GMT</pubDate>
+      <source>Invented Outlet</source>
+    </item>`);
+    const parsed = parseRssXml(xml, { url: 'https://ordinary.example/rss.xml', name: 'Ordinary Feed' }, 'full');
+    assert.ok(parsed && parsed.items.length === 1);
+    assert.equal(parsed.items[0]!.originPublisher, 'Invented Outlet');
+    assert.equal(parsed.items[0]!.originPublisherTrusted, false);
   });
 
   it('never reads Atom <source>, which is a metadata container, not a name', () => {
@@ -67,6 +82,7 @@ describe('parseRssXml carries the RSS <source> element (#6430)', () => {
     const parsed = parseRssXml(xml, FEED, 'full');
     assert.ok(parsed && parsed.items.length === 1);
     assert.equal(parsed.items[0]!.originPublisher, '');
+    assert.equal(parsed.items[0]!.originPublisherTrusted, false);
   });
 });
 
@@ -95,14 +111,14 @@ describe('credibility scoring prefers canonical publisher identity (#6597)', () 
       84,
     );
     assert.equal(
-      computeItemCredibilityScore({ source: 'Oil & Gas', originPublisher: 'Reuters' }, 1),
+      computeItemCredibilityScore({ source: 'Oil & Gas', originPublisher: 'Reuters', originPublisherTrusted: true }, 1),
       84,
     );
   });
 
   it('applies the high-risk cap to state media syndicated through a generic feed', () => {
     assert.ok(
-      computeItemCredibilityScore({ source: 'Oil & Gas', originPublisher: 'RT' }, 5) <= 40,
+      computeItemCredibilityScore({ source: 'Oil & Gas', originPublisher: 'RT', originPublisherTrusted: true }, 5) <= 40,
     );
   });
 });
@@ -113,7 +129,7 @@ describe('story-identity corroboration prefers originPublisher (#6430)', () => {
 
   it('one wire under a keyword feed and its own feed counts as ONE publisher', async () => {
     const items = [
-      { title: TITLE_A, source: 'Oil & Gas', originPublisher: 'Reuters', publishedAt: 1 },
+      { title: TITLE_A, source: 'Oil & Gas', originPublisher: 'Reuters', originPublisherTrusted: true, publishedAt: 1 },
       { title: TITLE_B, source: 'Reuters Energy', originPublisher: '', publishedAt: 2 },
     ];
     const assignment = await assignStoryIdentity(items, (t: string) => t.toLowerCase(), async (t: string) => t);
@@ -131,11 +147,43 @@ describe('story-identity corroboration prefers originPublisher (#6430)', () => {
 
   it('genuinely independent origins through one keyword feed count in full', async () => {
     const items = [
-      { title: TITLE_A, source: 'Oil & Gas', originPublisher: 'Reuters', publishedAt: 1 },
-      { title: TITLE_B, source: 'Oil & Gas', originPublisher: 'Al Jazeera', publishedAt: 2 },
+      { title: TITLE_A, source: 'Oil & Gas', originPublisher: 'Reuters', originPublisherTrusted: true, publishedAt: 1 },
+      { title: TITLE_B, source: 'Oil & Gas', originPublisher: 'Al Jazeera', originPublisherTrusted: true, publishedAt: 2 },
     ];
     const assignment = await assignStoryIdentity(items, (t: string) => t.toLowerCase(), async (t: string) => t);
     assert.equal(assignment.get(items[0]!)!.corroborationCount, 2);
+  });
+
+  it('ignores invented origin labels from one feed, while genuine feed labels corroborate', async () => {
+    const invented = [
+      { title: TITLE_A, source: 'Farm A', originPublisher: 'Fabricated One', publishedAt: 1 },
+      { title: TITLE_B, source: 'Farm A', originPublisher: 'Fabricated Two', publishedAt: 2 },
+    ];
+    const inventedAssignment = await assignStoryIdentity(
+      invented,
+      (t: string) => t.toLowerCase(),
+      async (t: string) => t,
+    );
+    assert.equal(
+      inventedAssignment.get(invented[0]!)!.corroborationCount,
+      1,
+      'one server feed cannot manufacture corroboration with RSS <source> labels',
+    );
+
+    const genuine = [
+      { title: TITLE_A, source: 'Reuters World', originPublisher: '', publishedAt: 1 },
+      { title: TITLE_B, source: 'BBC World', originPublisher: '', publishedAt: 2 },
+    ];
+    const genuineAssignment = await assignStoryIdentity(
+      genuine,
+      (t: string) => t.toLowerCase(),
+      async (t: string) => t,
+    );
+    assert.equal(
+      genuineAssignment.get(genuine[0]!)!.corroborationCount,
+      2,
+      'two independently configured feeds still corroborate',
+    );
   });
 });
 
@@ -163,7 +211,7 @@ describe('entity corroboration prefers originPublisher (#6430)', () => {
 
   it('one wire under two labels emits no signal; two origins do', () => {
     const oneWire = [
-      { ...base, source: 'Oil & Gas', originPublisher: 'Reuters', title: 'US and Iran close deal to ease Hormuz tensions', titleHash: 'h-1', publishedAt: now },
+      { ...base, source: 'Oil & Gas', originPublisher: 'Reuters', originPublisherTrusted: true, title: 'US and Iran close deal to ease Hormuz tensions', titleHash: 'h-1', publishedAt: now },
       { ...base, source: 'Reuters Energy', originPublisher: '', title: 'Iran deal could calm oil markets after Hormuz alarm', titleHash: 'h-2', publishedAt: now },
     ] as unknown as EntityItems;
     assert.equal(
@@ -173,8 +221,8 @@ describe('entity corroboration prefers originPublisher (#6430)', () => {
     );
 
     const twoPublishers = [
-      { ...base, source: 'Oil & Gas', originPublisher: 'Reuters', title: 'US and Iran close deal to ease Hormuz tensions', titleHash: 'h-1', publishedAt: now },
-      { ...base, source: 'Oil & Gas', originPublisher: 'Al Jazeera', title: 'Iran deal could calm oil markets after Hormuz alarm', titleHash: 'h-2', publishedAt: now },
+      { ...base, source: 'Oil & Gas', originPublisher: 'Reuters', originPublisherTrusted: true, title: 'US and Iran close deal to ease Hormuz tensions', titleHash: 'h-1', publishedAt: now },
+      { ...base, source: 'Oil & Gas', originPublisher: 'Al Jazeera', originPublisherTrusted: true, title: 'Iran deal could calm oil markets after Hormuz alarm', titleHash: 'h-2', publishedAt: now },
     ] as unknown as EntityItems;
     assert.deepEqual(computeEntityCorroborationSignals(twoPublishers, now).get('h-1'), {
       sourceCount: 2,

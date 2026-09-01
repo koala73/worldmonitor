@@ -234,6 +234,71 @@
       "manufacturingShare": "Manufacturing employment",
       "source": "Sources: {{sources}}.",
       "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Tableau de bord de résilience à cinq facteurs",
+      "help": "Scores de preuves figés v1 pour l'alimentation, l'énergie, la démographie, la technologie et la défense. Dépliez une ligne pour examiner les entrées, la provenance des sources et les raisons des données manquantes.",
+      "loading": "Chargement du tableau de bord à cinq facteurs…",
+      "unavailable": "Tableau de bord à cinq facteurs indisponible.",
+      "proLocked": "Passez à PRO pour le tableau de bord de résilience à cinq facteurs",
+      "insufficient": "Données insuffisantes",
+      "notAvailable": "Indisponible",
+      "noEvidence": "Aucune preuve disponible pour ce pilier.",
+      "score": "{{score}}/5",
+      "coverage": "Couverture de {{coverage}} %",
+      "methodologyVersion": "Méthodologie v{{version}}",
+      "methodologyLink": "Voir la méthodologie",
+      "pillars": {
+        "food": "Alimentation",
+        "energy": "Énergie",
+        "demographics": "Démographie",
+        "technology": "Technologie",
+        "defense": "Défense"
+      },
+      "reasons": {
+        "source-unavailable": "Source indisponible",
+        "country-unavailable": "Pays indisponible",
+        "invalid-value": "Valeur source invalide",
+        "stale": "Données obsolètes",
+        "coverage-below-floor": "Couverture inférieure au seuil de notation",
+        "required-group-missing": "Groupe de preuves requis manquant",
+        "missing-population": "Population indisponible",
+        "redistribution-blocked": "Redistribution de la source non autorisée",
+        "pillar-unavailable": "Pilier indisponible"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "Bilan de production",
+        "food_stocksToUse": "Stocks à utiliser",
+        "food_waterSecurity": "Sécurité hydrique",
+        "food_importDiversity": "Diversité des importations",
+        "energy_productionBalance": "Bilan de production",
+        "energy_lowCarbonShare": "Part des énergies bas carbone",
+        "energy_gridEfficiency": "Efficacité du réseau",
+        "demographics_totalDependency": "Dépendance totale",
+        "demographics_oldAgeDependency": "Dépendance des personnes âgées",
+        "demographics_workingAgeProjection": "Projection de la population active",
+        "demographics_tertiaryEnrollment": "Inscription tertiaire",
+        "demographics_researchersPerMillion": "Chercheurs par million",
+        "demographics_stemGraduateShare": "Part des diplômés STEM",
+        "demographics_trainedIndustrialShare": "Part de la main-d'œuvre industrielle qualifiée",
+        "demographics_manufacturingEmploymentShare": "Part de l'emploi manufacturier",
+        "technology_internetUse": "Utilisation d'Internet",
+        "technology_mobileSubscriptions": "Abonnements mobiles",
+        "technology_fixedBroadband": "Bande passante fixe",
+        "technology_rdSpend": "Dépenses en recherche et développement",
+        "technology_researchersPerMillion": "Chercheurs par million",
+        "technology_stemGraduateShare": "Part des diplômés STEM",
+        "technology_electricityAccess": "Accès à l'électricité",
+        "defense_expenditureUsd": "Dépenses militaires",
+        "defense_expenditurePctGdp": "Charge militaire",
+        "defense_personnel": "Personnel des forces armées",
+        "defense_industrialBalance": "Balance industrielle de défense",
+        "defense_supplierDiversity": "Diversité des fournisseurs d'armes"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Passez à PRO pour les dépendances fournisseurs d'armements et la capacité militaire"
     }
   },
   "header": {
@@ -530,6 +595,9 @@
       "recent": "Recherches récentes",
       "empty": "Rechercher des données ou exécuter des commandes",
       "noResults": "Aucun résultat trouvé",
+      "resultAnnouncement_one": "{{count}} résultat pour {{query}}",
+      "resultAnnouncement_many": "{{count}} résultats pour {{query}}",
+      "resultAnnouncement_other": "{{count}} résultats pour {{query}}",
       "navigate": "naviguer",
       "select": "sélectionner",
       "close": "fermer",
@@ -1656,6 +1724,16 @@
       "loading": "Connexion au relais Telegram...",
       "empty": "Aucun message disponible",
       "disabled": "Relais Telegram inactif",
+      "watchlistPlaceholder": "Ajouter une chaîne publique par @username",
+      "resolving": "Recherche de la chaîne...",
+      "invalidUsername": "Utilisez un @username Telegram public",
+      "resolveFailed": "Impossible de trouver la chaîne",
+      "watchlistLimit": "Vous pouvez suivre jusqu’à {{count}} chaînes personnalisées",
+      "previewMembers": "{{count}} membres",
+      "addChannel": "Ajouter la chaîne",
+      "added": "Ajoutée",
+      "remove": "Supprimer",
+      "custom": "Personnalisée",
       "filterAll": "Tous",
       "filterBreaking": "Urgences",
       "filterConflict": "Conflits",
@@ -1926,7 +2004,8 @@
       "refineryStage": "Refine",
       "stageUnavailable": "No published figures for this stage",
       "withheldNote": "W withheld",
-      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them."
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Passez à PRO pour les parts de pays de mines et de raffineries avec concentration (HHI) par étape"
     },
     "positiveNewsFeed": {
       "noStories": "Aucune histoire dans cette catégorie pour le moment"
@@ -1965,6 +2044,22 @@
       "metals": {
         "gold": "Gold",
         "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Indice de stress physique : {{value}} / 100",
+        "fiveDayTrend": "Tendance de prime sur cinq jours de négociation",
+        "regimes": {
+          "normal": "Normal",
+          "elevated": "Élevé",
+          "stressed": "Sous stress",
+          "extreme": "Extrême"
+        },
+        "states": {
+          "insufficientHistory": "Initialisation : {{count}} / {{required}} points de négociation",
+          "staleInput": "Référence physique obsolète",
+          "missingInput": "Signal de divergence indisponible"
+        },
+        "twentyDayTrend": "Tendance de la prime sur vingt jours de négociation"
       }
     },
     "crypto": {
@@ -2126,6 +2221,26 @@
         "failedToLoad": "Échec du chargement"
       },
       "cissStale": "La BCE n'a pas publié de valeur plus récente — cette lecture peut être obsolète."
+    },
+    "supplyVulnerability": {
+      "title": "Vulnérabilité des matières premières",
+      "help": "Exposition du pays par matière première selon la concentration des fournisseurs, le transit maritime et les réserves stratégiques disponibles.",
+      "loading": "Chargement de la vulnérabilité des matières premières…",
+      "unavailable": "Données de vulnérabilité des matières premières indisponibles",
+      "noCoverage": "Données probantes insuffisantes pour ce pays",
+      "unknown": "Inconnu",
+      "concentration": "Concentration",
+      "transit": "Transit maritime",
+      "buffer": "Réserve",
+      "sources": "Sources des données",
+      "methodology": "Méthodologie",
+      "hormuzTitle": "Dépendances aux matières premières",
+      "dependentCountries": "Pays dépendants",
+      "dependentCommodities": "Matières premières dépendantes",
+      "stateOk": "À jour",
+      "stateStale": "Donnée d’entrée obsolète",
+      "stateInsufficient": "Données insuffisantes",
+      "proLocked": "Passez à PRO pour l'évaluation de vulnérabilité des matières premières"
     },
     "hormuzTracker": {
       "infoTooltip": "<strong>Suivi commercial d'Ormuz</strong> Suivi AIS des navires en temps réel à travers le détroit d'Ormuz, le goulet d'étranglement pétrolier le plus critique au monde. Surveille le nombre de pétroliers, les événements de perturbation et les variations hebdomadaires des flux. Environ 20 % de l'approvisionnement mondial en pétrole y transite quotidiennement.",
@@ -2681,6 +2796,18 @@
       "rubBase": "Banque de Russie — roubles pour 1 unité",
       "rubPerUnit": "Roubles par unité",
       "sourceCbr": "Source : Banque de Russie"
+    },
+    "passkeyOffer": {
+      "title": "Enregistrer une clé d'accès ?",
+      "body": "Connectez-vous la prochaine fois avec votre empreinte digitale, votre visage ou votre code PIN — pas de mot de passe à retenir.",
+      "accept": "Enregistrer la clé d'accès",
+      "dismiss": "Pas maintenant",
+      "close": "Fermer",
+      "announce": "Enregistrez une clé d'accès pour vous connecter plus rapidement la prochaine fois.",
+      "busy": "En attente de votre appareil…",
+      "succeeded": "Clé d'accès enregistrée. Vous pouvez l'utiliser la prochaine fois que vous vous connectez.",
+      "retryable": "Cette opération ne s'est pas terminée. Vous pouvez réessayer.",
+      "failed": "Nous n'avons pas pu enregistrer une clé d'accès sur cet appareil."
     }
   },
   "popups": {
@@ -3014,7 +3141,11 @@
       "heading": "TITRE",
       "hexCode": "CODE HEXICAL",
       "squawk": "CRI",
-      "attribution": "Source : adsb.lol (ODbL) · OpenSky Network"
+      "attribution": "Source : adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "TAUX DE MONTÉE",
+      "manufacturer": "CONSTRUCTEUR",
+      "owner": "PROPRIÉTAIRE",
+      "builtYear": "ANNÉE DE FABRICATION"
     },
     "militaryVessel": {
       "aisDark": "AIS FONCÉ",
@@ -3059,7 +3190,8 @@
       "moreVessels": "+{{count}} navires supplémentaires",
       "vesselsCount": "{{count}} NAVIRES",
       "vessels": "NAVIRES",
-      "trackedVessels": "NAVIRES SUIVANTS"
+      "trackedVessels": "NAVIRES SUIVANTS",
+      "showLess": "Afficher moins"
     },
     "naturalEvent": {
       "closed": "FERMÉ",
@@ -3356,7 +3488,9 @@
     "fontFamily": "Famille de polices",
     "fontFamilyDesc": "Monospace pour un look technique, police système par défaut pour une lecture plus facile.",
     "fontMono": "Monospace",
-    "fontSystem": "Police système par défaut"
+    "fontSystem": "Police système par défaut",
+    "panelFontScale": "Taille du texte",
+    "followGlobalFontScale": "Utiliser le paramètre global"
   },
   "contextMenu": {
     "openCountryBrief": "Ouvrir la fiche pays",
@@ -3455,7 +3589,8 @@
   "auth": {
     "signIn": "Se connecter",
     "createAccount": "Créer un compte",
-    "settings": "Paramètres"
+    "settings": "Paramètres",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connecter MCP",

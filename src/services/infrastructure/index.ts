@@ -9,7 +9,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { ListInternetDdosAttacksResponse, ListInternetOutagesResponse, ListInternetTrafficAnomaliesResponse, ListServiceStatusesResponse, InternetOutage as ProtoOutage, ServiceStatus as ProtoServiceStatus } from '@/generated/client/worldmonitor/infrastructure/v1/service_client';
 import type { InternetOutage } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { isFeatureAvailable } from '../runtime-config';
 import { getHydratedData } from '@/services/bootstrap';
 import { InfrastructureServiceClient } from '@/services/generated-rpc-clients';
@@ -82,15 +82,21 @@ export async function fetchInternetOutages(): Promise<InternetOutage[]> {
   }
 
   const hydrated = getHydratedData('outages') as ListInternetOutagesResponse | undefined;
-  const resp = (hydrated?.outages?.length ? hydrated : null) ?? await outageBreaker.execute(async () => {
-    return client.listInternetOutages({
-      country: '',
-      start: 0,
-      end: 0,
-      pageSize: 0,
-      cursor: '',
-    });
-  }, emptyOutageFallback, { shouldCache: (r) => r.outages.length > 0 });
+  let resp: ListInternetOutagesResponse;
+  if (hydrated?.outages?.length) {
+    outageBreaker.recordSuccess(hydrated);
+    resp = hydrated;
+  } else {
+    resp = await outageBreaker.execute(async () => {
+      return client.listInternetOutages({
+        country: '',
+        start: 0,
+        end: 0,
+        pageSize: 0,
+        cursor: '',
+      });
+    }, emptyOutageFallback, { shouldCache: (r) => r.outages.length > 0 });
+  }
 
   if (resp.outages.length === 0) {
     if (outagesConfigured === null) outagesConfigured = false;
@@ -111,7 +117,10 @@ export function getOutagesStatus(): string {
 
 export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksResponse> {
   const hydrated = getHydratedData('ddosAttacks') as ListInternetDdosAttacksResponse | undefined;
-  if (hydrated?.protocol?.length || hydrated?.vector?.length) return hydrated;
+  if (hydrated?.protocol?.length || hydrated?.vector?.length) {
+    ddosBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   return ddosBreaker.execute(async () => {
     return client.listInternetDdosAttacks({});
@@ -124,11 +133,17 @@ export async function fetchDdosAttacks(): Promise<ListInternetDdosAttacksRespons
 
 export async function fetchTrafficAnomalies(country?: string): Promise<ListInternetTrafficAnomaliesResponse> {
   const hydrated = getHydratedData('trafficAnomalies') as ListInternetTrafficAnomaliesResponse | undefined;
-  if (hydrated?.anomalies !== undefined && !country) return hydrated;
+  if (hydrated?.anomalies !== undefined && !country) {
+    if (hydrated.anomalies.length > 0) trafficAnomaliesBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   return trafficAnomaliesBreaker.execute(async () => {
     return client.listInternetTrafficAnomalies({ country: country || '' });
-  }, emptyAnomaliesFallback, { shouldCache: (r) => r.anomalies.length > 0 });
+  }, emptyAnomaliesFallback, {
+    cacheKey: country,
+    shouldCache: (r) => r.anomalies.length > 0,
+  });
 }
 
 // ========================================================================
@@ -188,8 +203,11 @@ function computeSummary(services: ServiceStatusResult[]): ServiceStatusSummary {
 }
 
 export async function fetchServiceStatuses(): Promise<ServiceStatusResponse> {
-  const hydrated = getHydratedData('serviceStatuses') as { statuses?: ProtoServiceStatus[] } | undefined;
+  const hydrated = getHydratedData('serviceStatuses') as ListServiceStatusesResponse | undefined;
   if (hydrated?.statuses?.length) {
+    // Warm the breaker under the same key a later recurring call reads (#7048);
+    // a bare return drained the consume-once slot and forced a refetch.
+    statusBreaker.recordSuccess(hydrated);
     const services = hydrated.statuses.map(toServiceResult);
     return { success: true, timestamp: new Date().toISOString(), summary: computeSummary(services), services };
   }

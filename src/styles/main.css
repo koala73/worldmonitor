@@ -96,6 +96,15 @@
   --threat-low: #22c55e;
   --threat-info: #3b82f6;
 
+  /* Plan-card billing tones (#7315). Dark hexes match the threat scale
+     (unknown is a dedicated grey — the scale has no grey rung). Light
+     overrides below raise every tone to WCAG AA on --bg / --surface. */
+  --billing-tone-active: #22c55e;
+  --billing-tone-attention: #eab308;
+  --billing-tone-ending: #3b82f6;
+  --billing-tone-ended: #ef4444;
+  --billing-tone-unknown: #9ca3af;
+
   /* DEFCON levels */
   --defcon-1: #ff0040;
   --defcon-2: #ff4400;
@@ -138,6 +147,16 @@
   /* Tailwind yellow-600 (was #eab308, 1.82:1) */
   --threat-low: #15803d;
   /* Tailwind green-700 (was #22c55e, 2.16:1) */
+  --billing-tone-active: #15803d;
+  /* green-700; was #22c55e 2.16:1 on --bg */
+  --billing-tone-attention: #a16207;
+  /* yellow-700; was #eab308 1.82:1 — yellow-600 #ca8a04 is still 2.79:1 */
+  --billing-tone-ending: #2563eb;
+  /* blue-600; was #3b82f6 3.49:1 — sky-600 #0284c7 is still 3.89:1 */
+  --billing-tone-ended: #b91c1c;
+  /* red-700; was #ef4444 3.57:1 */
+  --billing-tone-unknown: #4b5563;
+  /* gray-600; was #9ca3af 2.41:1 */
   --defcon-3: #d97706;
   /* Tailwind amber-600 (was #ffaa00, 1.81:1) */
   --defcon-4: #0284c7;
@@ -1588,6 +1607,9 @@ canvas,
   display: flex;
   align-items: center;
   justify-content: space-between;
+  /* The digest coverage row (#7085) joins as a full-width flex child and
+     wraps onto its own line; the brand/nav/copy children still fit one row. */
+  flex-wrap: wrap;
   padding: 12px 20px;
   font-size: calc(11px * var(--wm-panel-effective-scale, 1));
   color: var(--text-dim);
@@ -1645,6 +1667,20 @@ canvas,
   color: var(--text-dim);
 }
 
+/* #7085: digest coverage status row, mounted into the site footer by
+   StatusPanel. Text-only state disclosure — same muted mono treatment as the
+   footer copy, which already clears WCAG AA on this surface. */
+.site-footer .status-panel-container {
+  flex-basis: 100%;
+  order: 10;
+}
+.digest-coverage-row {
+  font-family: var(--font-mono, monospace);
+  font-size: calc(10px * var(--wm-panel-effective-scale, 1));
+  color: var(--text-dim);
+  padding-top: 6px;
+}
+
 /* Mobile application navigation is injected with the hydrated shell but stays
    out of desktop layout entirely. */
 .mobile-tab-bar {
@@ -1652,8 +1688,48 @@ canvas,
 }
 
 @media (max-width: 768px) {
+  /* #7085: display:none on the whole footer removed the digest coverage row's
+     live region from the mobile accessibility tree (PR #7267 review). Keep the
+     footer in flow but collapse it: brand/nav/copy stay hidden, and the
+     coverage row announces from off-screen instead of painting. */
   .site-footer {
+    padding: 0;
+    border-top: none;
+  }
+
+  .site-footer > :not(.status-panel-container) {
     display: none;
+  }
+
+  /* #app is a fixed-viewport flex column and .main-content scrolls internally,
+     so .site-footer is pinned to the viewport bottom and its contents are
+     LCP-eligible at EVERY width — desktop included. What differs is only the
+     competition: at 1440x900 the row measures ~29,400px2 against .map-section's
+     ~607,000px2 and never wins, but collapsing the footer on mobile left the
+     row facing a 12,302px2 shell skeleton, which its 139 characters of wrapped
+     10px mono beat at 15,066px2. Since the text is written only on the first
+     digest load, LCP then waited on a network round trip: field p75 for mobile
+     /dashboard went 1137ms to 2357ms across the three days after #7267, and the
+     throttled lab check measured a 13.3s render delay against a 271ms baseline.
+     Do not read this as "desktop is safe because the footer is out of view" —
+     it is in view, and shrinking the desktop first-paint candidate would
+     regress it the same way. e2e/dashboard-lcp-attribution.spec.ts pins the
+     invariant on both viewports for that reason.
+     Off-screen keeps role="status" announcing with zero candidate area;
+     display:none and visibility:hidden are the two the #7267 review rejected.
+     Same declarations as .wm-visually-hidden, duplicated the way
+     .passkey-offer-announce already does, since plain CSS (no preprocessor in
+     this repo) cannot share a rule into a media query. */
+  .site-footer .status-panel-container {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
   }
 
   .mobile-tab-bar {
@@ -4226,6 +4302,18 @@ body.live-news-fullscreen-active .panels-grid > *:not(.live-news-fullscreen) {
   font-size: calc(0.7rem * var(--wm-panel-effective-scale, 1));
   color: var(--text-muted, #888);
   margin-bottom: 6px;
+}
+
+.deckgl-webcam-popup-link {
+  display: block;
+  margin: 4px 0;
+  color: var(--accent, #00d4ff);
+  font-size: calc(0.75rem * var(--wm-panel-effective-scale, 1));
+  text-decoration: none;
+}
+
+.deckgl-webcam-popup-link:hover {
+  text-decoration: underline;
 }
 
 /* News Items */
@@ -13693,6 +13781,30 @@ a.prediction-link:hover {
  * "shown/total" for layers the globe's marker budget is trimming (#5368).
  * Muted and right-aligned: it reports a limit, it is not a call to action.
  */
+/* #7112: the marker-budget disclosure for maps with no layer-toggle rail —
+   `chrome: false` embeds. The per-layer `shown/total` badge needs a toggle row to
+   sit on; this states the same fact for the whole overlay when no row exists.
+   Informational only: pointer-events stay on so the title tooltip works, but it
+   is not a control and must not read as one. */
+.map-truncation-summary {
+  position: absolute;
+  bottom: 6px;
+  left: 6px;
+  z-index: 60;
+  padding: 2px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.4;
+  white-space: nowrap;
+  /* Theme tokens, not hardcoded colours: an embed inherits the host page's
+     theme and a fixed white would vanish on the light one. */
+  color: var(--text-dim);
+  background: color-mix(in srgb, var(--bg) 78%, transparent);
+  cursor: help;
+  pointer-events: auto;
+}
+
 .layer-truncation-count {
   margin-left: auto;
   font-size: calc(8px * var(--wm-panel-effective-scale, 1));
@@ -14667,14 +14779,57 @@ a.prediction-link:hover {
   .credit-link,
   .github-link,
   .region-selector,
-  .mobile-settings-btn,
-  .header-right {
+  .mobile-settings-btn {
     display: none !important;
+  }
+
+  .header-right {
+    display: flex !important;
+    flex: 0 0 auto;
+    gap: 0;
+    margin-left: auto;
+    padding-left: 0 !important;
+  }
+
+  .header-right > :not(#authWidgetMount),
+  #authWidgetMount .auth-signup-link,
+  #authWidgetMount .auth-header-skeleton-signup {
+    display: none !important;
+  }
+
+  #authWidgetMount {
+    min-width: 0 !important;
+    min-height: 44px;
+  }
+
+  #authWidgetMount .auth-header-widget {
+    gap: 0;
+  }
+
+  #authWidgetMount .auth-signin-btn {
+    min-height: 44px;
+    padding: 0 12px;
+  }
+
+  #authWidgetMount .auth-header-widget-pending {
+    width: 72px;
+  }
+
+  #authWidgetMount .auth-header-skeleton-signin {
+    flex-basis: 72px;
+    height: 44px;
+  }
+
+  #authWidgetMount .auth-clerk-user-button,
+  #authWidgetMount .cl-userButtonTrigger {
+    min-width: 44px;
+    min-height: 44px;
   }
 
   .header {
     gap: 8px;
-    padding: 8px 12px;
+    height: 45px;
+    padding: 0 12px;
   }
 
   .header-left {
@@ -23171,6 +23326,7 @@ body.has-breaking-alert .panels-grid {
   z-index: 10;
   transition: background 0.15s ease;
   flex-shrink: 0;
+  touch-action: none;
 }
 
 .map-width-resize-handle::after {
@@ -23198,13 +23354,46 @@ body.map-width-resizing {
   user-select: none;
 }
 
-@media (min-width: 1600px) {
+/* The map-side toggle only means something in the split layout. */
+.map-side-btn {
+  display: none;
+}
+
+/* In a narrow map column the absolutely-centered clock overlaps the header
+   actions; the width-resize handler toggles this class. */
+.map-section.map-col-narrow .header-clock {
+  display: none;
+}
+
+/* 900px mirrors SPLIT_LAYOUT_MIN_WIDTH (src/app/split-layout.ts) — one
+   threshold for web and desktop since #6417 (the Tauri window minimum width
+   keeps the desktop app above it, so this block covers both). The map track
+   pins both pixel floors: 220px = MAP_COL_MIN_PX and 306px = PANELS_COL_MIN_PX
+   + MAP_COL_DIVIDER_PX. tests/responsive-zone-listener.test.mjs pins the
+   alignment. */
+@media (min-width: 900px) {
   .main-content {
     display: grid;
-    grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
+    grid-template-columns: min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px)) 6px 1fr;
     grid-template-rows: 1fr auto;
     gap: 4px 0;
     overflow: hidden;
+  }
+
+  .main-content.map-right:not(.map-hidden) {
+    grid-template-columns: 1fr 6px min(max(var(--map-col-width, 60%), 220px), calc(100% - 306px));
+  }
+
+  .main-content.map-right .map-section {
+    grid-column: 3;
+  }
+
+  .main-content.map-right .panels-grid {
+    grid-column: 1;
+  }
+
+  .map-side-btn {
+    display: inline-flex;
   }
 
   .map-width-resize-handle {
@@ -23288,81 +23477,136 @@ body.map-width-resizing {
   }
 }
 
-/* Desktop app grid layout (active at any width >= 900px via JS class) */
-.main-content.desktop-grid {
-  display: grid;
-  grid-template-columns: var(--map-col-width, 60%) 6px 1fr;
-  grid-template-rows: 1fr auto;
-  gap: 4px 0;
-  overflow: hidden;
-}
-
-.main-content.desktop-grid .map-width-resize-handle {
-  display: flex;
-  grid-column: 2;
-  grid-row: 1;
-}
-
-.main-content.desktop-grid.map-hidden {
-  grid-template-columns: 1fr;
-}
-
-.main-content.desktop-grid.map-hidden .panels-grid {
-  grid-column: 1;
-}
-
-.main-content.desktop-grid.map-hidden .map-width-resize-handle {
-  display: none;
-}
-
-.main-content.desktop-grid .map-section {
-  grid-column: 1;
-  grid-row: 1;
-  height: 100% !important;
-  min-height: 0;
-  max-height: none;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border-bottom: none;
-}
-
-.main-content.desktop-grid .panels-grid {
-  grid-column: 3;
-  grid-row: 1;
-  min-height: 0;
-  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-  grid-auto-rows: minmax(var(--dashboard-panel-row-min), var(--dashboard-panel-row-max));
-  align-content: start;
-  overflow-y: auto;
-}
-
-.main-content.desktop-grid .map-resize-handle {
-  position: relative;
-  bottom: auto;
-  left: auto;
-  right: auto;
-  height: 12px;
-  background: var(--border-subtle);
-  margin: 0;
-  cursor: ns-resize;
-  display: flex;
-}
-
-.main-content.desktop-grid .map-resize-handle:hover {
-  background: var(--accent);
-}
-
-.main-content.desktop-grid .map-bottom-grid:empty {
-  border-top: none;
-  padding: 0;
-}
-
 /* ==========================================================================
    Telegram Intel Panel
    ========================================================================== */
 
 /* telegram-intel-tabs: now uses shared .panel-tabs / .panel-tab */
+
+.telegram-intel-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--accent) 7%, transparent), transparent 70%),
+    var(--surface);
+}
+
+.telegram-intel-input-row {
+  display: flex;
+  gap: 8px;
+}
+
+.telegram-intel-input {
+  width: 100%;
+  min-width: 0;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font-size: 12px;
+  padding: 10px 12px;
+}
+
+.telegram-intel-input:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent) 22%, transparent);
+}
+
+.telegram-intel-input:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.telegram-intel-preview {
+  min-height: 0;
+}
+
+.telegram-intel-preview-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--accent) 8%, var(--surface));
+}
+
+.telegram-intel-preview-card.is-loading,
+.telegram-intel-preview-card.is-error {
+  justify-content: flex-start;
+}
+
+.telegram-intel-preview-card.is-error {
+  color: var(--danger);
+  border-color: color-mix(in srgb, var(--danger) 35%, var(--border));
+  background: color-mix(in srgb, var(--danger) 9%, var(--surface));
+}
+
+.telegram-intel-preview-copy {
+  min-width: 0;
+}
+
+.telegram-intel-preview-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.telegram-intel-preview-meta {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--text-dim);
+}
+
+.telegram-intel-preview-status {
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--green);
+}
+
+.telegram-intel-watchlist-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.telegram-intel-watchlist-pills.is-empty {
+  display: none;
+}
+
+.telegram-intel-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--accent) 30%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  color: var(--text);
+  font-size: 11px;
+  padding: 4px 10px;
+  cursor: pointer;
+}
+
+.telegram-intel-pill:hover {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 16%, transparent);
+}
+
+.telegram-intel-pill-remove {
+  font-size: 12px;
+  line-height: 1;
+  color: var(--text-dim);
+}
 
 .telegram-intel-items {
   display: flex;
@@ -23421,6 +23665,18 @@ body.map-width-resizing {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.telegram-intel-custom-tag {
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--bg);
+  background: color-mix(in srgb, var(--accent) 82%, black);
+  border-radius: 4px;
+  padding: 2px 4px;
+  line-height: 1;
 }
 
 .live-indicator {
@@ -26128,6 +26384,33 @@ body.map-width-resizing {
   background: var(--surface);
 }
 
+.upgrade-pro-section[data-billing-tone] {
+  --billing-tone: var(--billing-tone-unknown);
+  border-color: color-mix(in srgb, var(--billing-tone) 20%, transparent);
+  background: color-mix(in srgb, var(--billing-tone) 4%, transparent);
+}
+
+.upgrade-pro-section[data-billing-tone="active"] { --billing-tone: var(--billing-tone-active); }
+.upgrade-pro-section[data-billing-tone="attention"] { --billing-tone: var(--billing-tone-attention); }
+.upgrade-pro-section[data-billing-tone="ending"] { --billing-tone: var(--billing-tone-ending); }
+.upgrade-pro-section[data-billing-tone="ended"] { --billing-tone: var(--billing-tone-ended); }
+.upgrade-pro-section[data-billing-tone="unknown"] { --billing-tone: var(--billing-tone-unknown); }
+
+.upgrade-pro-tone-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--billing-tone);
+  flex-shrink: 0;
+}
+
+.upgrade-pro-plan-name {
+  color: var(--billing-tone);
+  font-weight: 600;
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+}
+
 .upgrade-pro-title {
   font-weight: 600;
   font-size: calc(14px * var(--wm-panel-effective-scale, 1));
@@ -28025,4 +28308,175 @@ body.map-width-resizing {
 .ed-row:focus-visible {
   outline: 2px solid var(--text);
   outline-offset: -2px;
+}
+
+/* ---------------------------------------------------------------------------
+   Passkey offer prompt (post-sign-in)
+
+   The bottom edge is the most contested space in the mobile layout: the fixed
+   .mobile-tab-bar (58px + safe area, z 10003) and the .cached-mode-banner
+   (variable height, wraps to two lines on narrow viewports) both live there. A
+   hardcoded `bottom` overlaps one of them at some width.
+
+   Two custom properties, not one. The banner cannot offset itself, so a single
+   combined value cannot place both surfaces:
+     --wm-bottom-base    the tab bar plus safe-area inset (0 on desktop)
+     --wm-bottom-banner  the cached-mode banner's measured height, 0px absent
+   The card sits above both. Whichever surface changes height, the card moves.
+   The banner's height is measured by a ResizeObserver in the controller, since
+   App.ts creates, removes, and recreates it.
+   --------------------------------------------------------------------------- */
+:root {
+  --wm-bottom-base: env(safe-area-inset-bottom, 0px);
+  --wm-bottom-banner: 0px;
+}
+
+@media (max-width: 768px) {
+  :root {
+    /* Clears .mobile-tab-bar, whose min-height is the 58px below. */
+    --wm-bottom-base: calc(58px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/*
+ * Matches `.update-toast`, the house pattern for an elevated notification with
+ * an action: green-tinted dark gradient, green primary, panel-scaled type.
+ *
+ * The first cut used the generic `--surface-active` / `--border` / `--accent`
+ * tokens and rendered as a foreign white-on-white card, because `--accent` is
+ * `#fff` in the dark theme. Nothing generic reads as "our UI" here.
+ */
+.passkey-offer-prompt {
+  position: fixed;
+  left: 50%;
+  bottom: calc(var(--wm-bottom-base) + var(--wm-bottom-banner) + 16px);
+  transform: translateX(-50%);
+  z-index: 10004; /* above .mobile-tab-bar (10003); it is an actionable prompt */
+  width: min(400px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 14px 16px;
+  border: 1px solid rgba(68, 255, 136, 0.25);
+  border-radius: 10px;
+  background: linear-gradient(135deg, #1a2332 0%, #0f1923 100%);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(68, 255, 136, 0.08);
+}
+
+.passkey-offer-prompt[hidden] {
+  display: none;
+}
+
+.passkey-offer-title {
+  margin: 0 0 4px;
+  padding-right: 20px; /* clear the close button */
+  font-size: calc(13px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  color: #e8e8e8;
+}
+
+.passkey-offer-body {
+  margin: 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  line-height: 1.5;
+  letter-spacing: 0.3px;
+  color: #888;
+}
+
+/*
+ * Screen-reader only. The arrival sentence must not be painted: it restates the
+ * body copy, and rendering both put two sentences saying the same thing on one
+ * small card.
+ */
+.passkey-offer-announce {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Visible when non-empty; carries only the status sentence, never the body copy. */
+.passkey-offer-status {
+  margin: 8px 0 0;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  letter-spacing: 0.3px;
+  color: var(--green);
+}
+
+.passkey-offer-status:empty {
+  margin: 0;
+}
+
+.passkey-offer-prompt[data-state="failed"] .passkey-offer-status {
+  color: #ff6b6b;
+}
+
+.passkey-offer-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  margin-top: 12px;
+}
+
+.passkey-offer-actions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: calc(11px * var(--wm-panel-effective-scale, 1));
+  font-weight: 600;
+  letter-spacing: 0.3px;
+  cursor: pointer;
+  transition: filter 0.15s, transform 0.15s;
+}
+
+.passkey-offer-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.passkey-offer-actions button:not(:disabled):hover {
+  filter: brightness(1.15);
+}
+
+.passkey-offer-actions button:not(:disabled):active {
+  transform: scale(0.97);
+}
+
+.passkey-offer-accept {
+  border: none;
+  background: var(--green);
+  color: #0a0a0a;
+}
+
+.passkey-offer-dismiss {
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  background: transparent;
+  color: #888;
+}
+
+.passkey-offer-close {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: none;
+  color: #666;
+  font-size: calc(16px * var(--wm-panel-effective-scale, 1));
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  transition: color 0.15s;
+}
+
+.passkey-offer-close:hover {
+  color: #e8e8e8;
 }

@@ -36,6 +36,7 @@ const OPTIONAL_FIELDS = new Set([
   'lockTtlMs',
   'extraKeys',
   'afterPublish',
+  'publishAtomically',
   'publishTransform',
   'emptyDataIsFailure',
   'zeroIsValid',

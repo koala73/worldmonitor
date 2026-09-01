@@ -1,0 +1,35 @@
+[
+  {
+    "Id": "109",
+    "Date of Observation": "2023-03-28",
+    "Layer": "South West Bay ",
+    "Issued by": "ACWC KOLKATA",
+    "Valid From": "2023-03-28 21:00:00",
+    "Validity": "12",
+    "TTT Warning": "NIL",
+    "Wind": "East/ South Easterly, 5 - 10 Knots ",
+    "Synoptic Situation": "Weather seasonal over bay of bengal and andaman sea.",
+    "Weather": "Isolated Rain/ Thunderstorm ",
+    "Visibility": "Good Becoming Moderate ",
+    "Sea Condition": "Smooth to Smooth",
+    "Part 4": "NIL",
+    "Part 5": "NIL",
+    "Part 6": "nil",
+    "Update Time": "2023-03-28 20:40:07"
+  },
+  {
+    "Id": "110",
+    "Date of Observation": "2023-11-05",
+    "Layer": "Bay of Bengal",
+    "Issued by": "ACWC KOLKATA",
+    "Valid From": "2023-11-05 12:00:00",
+    "Validity": "12",
+    "TTT Warning": "Squally weather with wind 35-45 knots",
+    "Wind": "North Easterly, 35 - 45 Knots ",
+    "Synoptic Situation": "Cyclonic storm over west-central Bay of Bengal.",
+    "Weather": "Widespread rain",
+    "Visibility": "Poor",
+    "Sea Condition": "Very rough",
+    "Update Time": "2023-11-05 11:40:00"
+  }
+]

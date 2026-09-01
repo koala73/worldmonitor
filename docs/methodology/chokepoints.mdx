@@ -3,6 +3,49 @@ title: "Chokepoint Methodology"
 description: "How World Monitor scores 13 monitored maritime chokepoints, including the seven-item live-flow subset backed by EIA energy baseline volumes."
 ---
 
+## Start here
+
+A handful of narrow waterways carry a wildly disproportionate share of world
+trade. The Strait of Hormuz alone runs at a baseline of about 21 million barrels
+a day — comparable to a fifth of global petroleum liquids consumption. Close one
+of these, and the effects reach every continent within weeks.
+
+WorldMonitor watches 13 of them and answers, continuously: **is anything wrong
+here, and who would feel it?**
+
+### What a chokepoint row tells you
+
+Each waterway carries four separate readings, and it is worth keeping them
+apart:
+
+| Reading | The question it answers |
+|---|---|
+| **Flow** | Is traffic actually down? Measured against this strait's own 90-day norm, not a global average. |
+| **Threat** | What kind of problem is it — weather, war risk, mechanical, congestion? |
+| **Disruption score** | How bad, on one scale, so waterways can be ranked. |
+| **Country exposure** | Which countries' trade routes through here, so a closure has named victims. |
+
+<Warning>
+**Only 7 of the 13 carry a live flow estimate.** Hormuz, Malacca, Suez, Bab
+el-Mandeb, Dover, Bosporus, and Panama have an EIA energy baseline to measure
+against. The other six get transit summaries, threat classification, disruption
+scoring, and war-risk tiers, but `flowEstimate` is simply absent — not zero, not
+"normal." Do not read a missing flow as calm water.
+</Warning>
+
+### How "flow is down" is decided
+
+Traffic is compared against itself. The last 7 days of shipping activity are
+measured against the previous 90 — so a quiet week in a normally quiet strait
+does not register, while the same drop in a busy one does. That ratio is then
+applied to the strait's known baseline oil volume to express the shortfall in
+barrels per day.
+
+Two consequences worth internalizing: the number is a **modelled estimate** from
+vessel movement, not a metered measurement of oil; and it is deliberately
+capped, so a traffic surge cannot report more flow than the waterway plausibly
+carries.
+
 ## What we track
 
 WorldMonitor has **13 monitored waterways** in the canonical chokepoint registry and the

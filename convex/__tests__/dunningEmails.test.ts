@@ -11,6 +11,10 @@
  *     (pre-existing holds get a single catch-up email), ledger pre-check
  *   - winback: 30–60d window, skips while still entitled, skips
  *     resubscribed users, one-shot
+ *
+ * Cancellation confirmation, copy, retry-scan, and shared-ledger cases live
+ * in cancellationEmails.test.ts so this file stays on the dunning + winback
+ * lifecycle.
  */
 import { convexTest } from "convex-test";
 import { afterEach, describe, expect, test, vi } from "vitest";
@@ -147,6 +151,38 @@ describe("on_hold webhook → day-0 email", () => {
 });
 
 describe("sendDunningEmail guards", () => {
+  test("delayed on_hold after currentPeriodEnd skips the day-0 send", async () => {
+    vi.useFakeTimers();
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const now = Date.now();
+    const eventTs = now - 2 * 60 * 60 * 1000;
+    await seedSub(t, {
+      status: "active",
+      currentPeriodEnd: now - DAY_MS,
+      updatedAt: eventTs - 60_000,
+    });
+
+    await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
+      webhookId: "wh_delayed_expired_hold",
+      eventType: "subscription.on_hold",
+      rawPayload: { data: { subscription_id: SUB_ID, customer: { email: EMAIL } } },
+      timestamp: eventTs,
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "dunning_day0",
+      episodeAt: eventTs,
+    });
+    expect(result).toEqual({ sent: false, reason: "not_covering" });
+
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    expect(resendSends(fetchMock)).toHaveLength(0);
+    expect(await ledgerRows(t)).toHaveLength(0);
+  });
+
   test("second invocation for the same step+episode is a no-op", async () => {
     vi.useFakeTimers();
     process.env.RESEND_API_KEY = "re_test";
@@ -525,6 +561,56 @@ describe("winback", () => {
       status: "cancelled",
       cancelledAt: Date.now() - 10 * DAY_MS,
       currentPeriodEnd: Date.now() + 200 * DAY_MS,
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "winback_day30",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: false, reason: "resubscribed" });
+    expect(resendSends(fetchMock)).toHaveLength(0);
+  });
+
+  test("expired on_hold sibling does not suppress winback", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 40 * DAY_MS;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() - 35 * DAY_MS,
+    });
+    await seedSub(t, {
+      dodoSubscriptionId: "sub_expired_hold",
+      status: "on_hold",
+      currentPeriodEnd: Date.now() - DAY_MS,
+    });
+
+    const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {
+      dodoSubscriptionId: SUB_ID,
+      step: "winback_day30",
+      episodeAt: cancelledAt,
+    });
+    expect(result).toEqual({ sent: true });
+    expect(resendSends(fetchMock)).toHaveLength(1);
+  });
+
+  test("paid-through on_hold sibling still suppresses winback", async () => {
+    process.env.RESEND_API_KEY = "re_test";
+    const fetchMock = mockResend();
+    const t = convexTest(schema, modules);
+    const cancelledAt = Date.now() - 40 * DAY_MS;
+    await seedSub(t, {
+      status: "cancelled",
+      cancelledAt,
+      currentPeriodEnd: Date.now() - 35 * DAY_MS,
+    });
+    await seedSub(t, {
+      dodoSubscriptionId: "sub_paid_through_hold",
+      status: "on_hold",
+      currentPeriodEnd: Date.now() + DAY_MS,
     });
 
     const result = await t.action(internal.payments.subscriptionEmails.sendDunningEmail, {

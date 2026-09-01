@@ -796,6 +796,43 @@ export class Panel {
     btn.title = label;
   }
 
+  /** True when this panel exposes the same collapse control a person uses. */
+  public supportsCollapse(): boolean {
+    return this._collapseBtn !== null;
+  }
+
+  public isCollapsed(): boolean {
+    return this._collapsed;
+  }
+
+  /**
+   * Apply collapse/expand through the visible control path and persist it.
+   * Persist first so a quota/private-mode failure leaves the live DOM unchanged.
+   */
+  public setCollapsed(collapsed: boolean): { ok: boolean; persisted: boolean } {
+    if (!this._collapseBtn) return { ok: false, persisted: true };
+    if (this._collapsed === collapsed) return { ok: true, persisted: true };
+    if (!savePanelCollapsed(this.panelId, collapsed)) {
+      return { ok: false, persisted: false };
+    }
+    this._applyCollapsed(this._collapseBtn, collapsed);
+    return { ok: true, persisted: true };
+  }
+
+  /** Override in panels that expose a fullscreen control. */
+  public supportsFullscreen(): boolean {
+    return false;
+  }
+
+  public isFullscreenActive(): boolean {
+    return false;
+  }
+
+  /** Apply fullscreen through the visible control path. Default: unsupported. */
+  public setFullscreen(_fullscreen: boolean): boolean {
+    return false;
+  }
+
   protected appendCollapseButton(): void {
     const btn = h('button', {
       className: 'icon-btn panel-collapse-btn',
@@ -805,8 +842,7 @@ export class Panel {
     }, '▾') as HTMLButtonElement;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._applyCollapsed(btn, !this._collapsed);
-      savePanelCollapsed(this.panelId, this._collapsed);
+      this.setCollapsed(!this._collapsed);
     });
     this._collapseBtn = btn;
     this.header.appendChild(btn);
@@ -1021,6 +1057,24 @@ export class Panel {
 
   public resetRetryBackoff(): void {
     this.retryAttempt = 0;
+  }
+
+  /**
+   * Run a content write WITHOUT crediting the upstream with a recovery
+   * (#6679). The setContent* helpers clear the whole error state — chip,
+   * countdown, AND the exponential-backoff rung — because a success render
+   * normally proves the upstream recovered. Replaying a cache while the live
+   * fetch still fails proves no such thing. Wrapping that write here keeps the
+   * visible clears while the still-failing upstream keeps its rung instead of
+   * dropping back to the 15s floor. Callers must know from the result's
+   * provenance that the write is non-authoritative; an empty payload alone is
+   * not enough. Safe to nest; the setContent* clear is synchronous, so the
+   * restore cannot race a debounced write.
+   */
+  protected withRetryBackoffPreserved(write: () => void): void {
+    const rung = this.retryAttempt;
+    write();
+    this.retryAttempt = rung;
   }
 
   /**

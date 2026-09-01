@@ -19,15 +19,22 @@
  * the human-readable YAML. Wired into `build:openapi` (and therefore every
  * web-variant build + the default prebuild hook). Idempotent.
  *
- * Four emit-time transforms keep the served JSON below its guarded scanner
+ * Emit-time transforms keep the served JSON below its guarded scanner
  * budget with identical semantics. The 2026-07-05 rate-limit/idempotency/example
  * doc injections grew the minified JSON from ~752 KB to ~1.04 MB, crossing the
  * ~1 MB cap and flipping orank's function-calling check to "couldn't validate":
  *
  *   - repeated non-2xx error responses      -> components.responses $refs
+ *   - repeated response headers             -> components.headers $refs
  *   - fleet-wide injected parameters        -> components.parameters $refs
+ *     (then one inline typed param restored on ops that would otherwise
+ *     have only $refs — JSON-only scanners often skip parameter $refs)
  *   - shared China provenance value schemas -> reused $refs
- *     (all three in openapi-dedup-*.mjs; tests prove they are lossless)
+ *   - byte-identical nested Schema Objects  -> reused local $refs
+ *   - repeated response headers, generated int64 warnings, and China
+ *     date-precision unions                  -> components $refs
+ *     (all in openapi-dedup-schemas.mjs; every dedup transform is resolved
+ *     back to the source document in tests, proving they are lossless)
  *   - component schemas nothing can reach   -> removed
  *     (openapi-drop-unreachable-schemas.mjs)
  *
@@ -38,8 +45,18 @@ import { readFileSync, realpathSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { parse as parseYaml } from 'yaml';
-import { dedupeErrorResponses, dedupeSharedParameters } from './openapi-dedup-responses.mjs';
-import { dedupeSharedChinaProvenanceSchemas } from './openapi-dedup-schemas.mjs';
+import {
+  dedupeErrorResponses,
+  dedupeSharedParameters,
+  ensureInlineTypedInput,
+} from './openapi-dedup-responses.mjs';
+import {
+  dedupeRepeatedChinaDateSchemas,
+  dedupeRepeatedInt64Schemas,
+  dedupeSharedChinaProvenanceSchemas,
+  dedupeSharedResponseHeaders,
+  dedupeSharedSchemaSubtrees,
+} from './openapi-dedup-schemas.mjs';
 import { dropUnreachableSchemas } from './openapi-drop-unreachable-schemas.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
@@ -49,6 +66,37 @@ const scriptDir = dirname(fileURLToPath(import.meta.url));
 export const yamlPath = process.env.OPENAPI_YAML_PATH
   ?? resolve(scriptDir, '../docs/api/worldmonitor.openapi.yaml');
 export const jsonPath = resolve(scriptDir, '../public/openapi.json');
+
+export const DEPRECATION_POLICY_URL = 'https://www.worldmonitor.app/api-versioning.md';
+const DEPRECATION_POLICY_HTML_URL = 'https://www.worldmonitor.app/docs/api-versioning';
+
+function injectDeprecationPolicyMetadata(spec) {
+  spec.components ??= {};
+  spec.components.headers ??= {};
+  spec.components.headers.Deprecation ??= {
+    description:
+      'RFC 9745. Present only when this operation or version is deprecated; omitted while the surface is current. Value is the deprecation instant as an HTTP Structured Field date (for example `@1782864000`).',
+    schema: { type: 'string', examples: ['@1782864000'] },
+  };
+  spec.components.headers.Sunset ??= {
+    description:
+      'RFC 8594. Present only when this operation or version is deprecated. Final availability date in HTTP-date format (for example `Thu, 31 Dec 2026 23:59:59 GMT`).',
+    schema: { type: 'string', examples: ['Thu, 31 Dec 2026 23:59:59 GMT'] },
+  };
+  spec.components.headers.DeprecationPolicyLink ??= {
+    description:
+      `RFC 8288 Link with rel="deprecation" pointing at the versioning and sunset policy (${DEPRECATION_POLICY_URL}). May appear on current, non-deprecated responses so agents can discover the policy before any surface is retired.`,
+    schema: { type: 'string' },
+  };
+
+  const info = spec.info ?? (spec.info = {});
+  const description = String(info.description ?? '');
+  if (!description.includes('api-versioning.md')) {
+    const policyNote =
+      ` Static machine-readable deprecation policy: ${DEPRECATION_POLICY_URL} (HTML: ${DEPRECATION_POLICY_HTML_URL}). Current responses may carry Link rel="deprecation" for policy discovery (RFC 9745); Deprecation and Sunset headers are sent only on deprecated surfaces.`;
+    info.description = description + policyNote;
+  }
+}
 
 /**
  * Produce the exact artifact `public/openapi.json` receives, without writing it.
@@ -75,8 +123,18 @@ export function buildBundle({ spec: provided } = {}) {
   }
 
   const stats = dedupeErrorResponses(spec);
+  const headerStats = dedupeSharedResponseHeaders(spec);
   const schemaStats = dedupeSharedChinaProvenanceSchemas(spec);
+  // The named passes run before the generic byte-identical sweep. Reversing them
+  // lets the generic pass absorb the int64/China-date shapes into anonymous
+  // shared refs, and the named transforms then report zero engagement — the
+  // silent-disengagement case the contract test watches for.
+  const chinaDateStats = dedupeRepeatedChinaDateSchemas(spec);
+  const int64Stats = dedupeRepeatedInt64Schemas(spec);
+  const schemaSubtreeStats = dedupeSharedSchemaSubtrees(spec);
   const paramStats = dedupeSharedParameters(spec);
+  const inlineTypedStats = ensureInlineTypedInput(spec);
+  injectDeprecationPolicyMetadata(spec);
   // Last by convention, not by necessity. The drop seeds reachability from
   // EVERY non-schema bucket (see openapi-drop-unreachable-schemas.mjs), so the
   // responses and parameters the passes above hoist into components keep their
@@ -93,22 +151,45 @@ export function buildBundle({ spec: provided } = {}) {
     json,
     bytes: Buffer.byteLength(json, 'utf8'),
     stats,
+    headerStats,
     schemaStats,
+    schemaSubtreeStats,
+    chinaDateStats,
+    int64Stats,
     paramStats,
+    inlineTypedStats,
     unreachableStats,
   };
 }
 
 function main() {
-  const { spec, json, bytes, stats, schemaStats, paramStats, unreachableStats } = buildBundle();
+  const {
+    spec,
+    json,
+    bytes,
+    stats,
+    schemaStats,
+    schemaSubtreeStats,
+    chinaDateStats,
+    int64Stats,
+    headerStats,
+    paramStats,
+    inlineTypedStats,
+    unreachableStats,
+  } = buildBundle();
   writeFileSync(jsonPath, json);
 
   const pathCount = spec.paths ? Object.keys(spec.paths).length : 0;
   console.log(
     `build-openapi-json: wrote ${jsonPath} (OpenAPI ${spec.openapi}, ${pathCount} paths, ` +
       `${bytes} bytes; hoisted ${stats.hoisted} shared error responses into ${stats.replacedRefs} $refs; ` +
+      `hoisted ${headerStats.hoisted} shared response headers into ${headerStats.replacedRefs} $refs; ` +
       `hoisted ${paramStats.hoisted} fleet-wide parameters into ${paramStats.replacedRefs} $refs; ` +
+      `reused ${int64Stats.replacedRefs} generated int64 schemas; ` +
+      `restored ${inlineTypedStats.inlined} inline typed parameters for JSON-only scanners; ` +
       `reused ${schemaStats.replacedRefs}/${schemaStats.compared} shared China provenance schemas; ` +
+      `reused ${schemaSubtreeStats.replacedRefs} byte-identical schema subtrees across ${schemaSubtreeStats.groups} groups; ` +
+      `reused ${chinaDateStats.replacedRefs} China date-precision schemas; ` +
       `dropped ${unreachableStats.dropped} unreachable schemas worth ${unreachableStats.bytesFreed} bytes)`,
   );
 }

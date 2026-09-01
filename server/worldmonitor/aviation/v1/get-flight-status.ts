@@ -4,7 +4,7 @@ import type {
     GetFlightStatusResponse,
     FlightInstance,
 } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
-import { cachedFetchJson } from '../../../_shared/redis';
+import { cachedFetchJsonWithMeta } from '../../../_shared/redis';
 import { markNoCacheResponse } from '../../../_shared/response-headers';
 import { getRelayBaseUrl, getRelayHeaders, requireLiveAviationAccess } from './_shared';
 import { aviationStackBudgetCycle, reserveAviationStackCalls } from './_avstack-budget';
@@ -75,7 +75,7 @@ export async function getFlightStatus(
     let unavailableSource = 'unavailable';
 
     try {
-        const result = await cachedFetchJson<{ flights: FlightInstance[]; source: 'aviationstack' }>(
+        const result = await cachedFetchJsonWithMeta<{ flights: FlightInstance[]; source: 'aviationstack' }>(
             cacheKey, CACHE_TTL, async () => {
                 const relayBase = getRelayBaseUrl();
                 if (!relayBase) {
@@ -117,19 +117,19 @@ export async function getFlightStatus(
             }
         );
 
-        if (!result) {
+        if (!result.data) {
             markNoCacheResponse(ctx.request);
             return {
                 flights: [],
                 source: unavailableSource,
-                cacheHit: false,
+                cacheHit: result.source === 'cache',
             };
         }
 
         return {
-            flights: result.flights,
-            source: result.source,
-            cacheHit: false,
+            flights: result.data.flights,
+            source: result.data.source,
+            cacheHit: result.source === 'cache',
         };
     } catch (err) {
         console.warn(`[Aviation] GetFlightStatus failed for ${flightNumber}: ${err instanceof Error ? err.message : err}`);

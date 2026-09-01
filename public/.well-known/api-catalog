@@ -84,6 +84,21 @@
           "href": "https://worldmonitor.app/sdks.md",
           "type": "text/markdown",
           "title": "World Monitor SDKs — Python, Ruby, Go, JavaScript (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/world-monitor.md",
+          "type": "text/markdown",
+          "title": "World Monitor brand identity — official name, NAP, canonical domain"
+        },
+        {
+          "href": "https://worldmonitor.app/api-versioning.md",
+          "type": "text/markdown",
+          "title": "World Monitor REST versioning and deprecation policy (machine-readable)"
+        },
+        {
+          "href": "https://worldmonitor.app/plugin.json",
+          "type": "application/json",
+          "title": "World Monitor Agent Plugins manifest (plugin.json)"
         }
       ],
       "status": [

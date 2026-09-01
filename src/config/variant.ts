@@ -38,7 +38,10 @@ export const SITE_VARIANT: string = (() => {
     return buildVariant;
   }
 
-  const h = location.hostname;
+  // window.location, not bare `location`: node-based tests stub `window`
+  // without a global `location`, and this module must stay importable there.
+  const h = window.location?.hostname;
+  if (!h) return buildVariant;
   if (h.startsWith('tech.')) return 'tech';
   if (h.startsWith('finance.')) return 'finance';
   if (h.startsWith('happy.')) return 'happy';
