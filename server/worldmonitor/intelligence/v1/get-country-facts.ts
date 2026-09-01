@@ -5,24 +5,28 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson } from '../../../_shared/redis';
-import { CHROME_UA } from '../../../_shared/constants';
+import unToIso2Json from '../../../../shared/un-to-iso2.json';
 
 const FACTS_TTL = 86400;
 const NEGATIVE_TTL = 120;
 const UPSTREAM_TIMEOUT = 10_000;
-
-interface RestCountryData {
-  name?: { common?: string };
-  population?: number;
-  capital?: string[];
-  languages?: Record<string, string>;
-  currencies?: Record<string, { name?: string }>;
-  area?: number;
-}
+const WIKIDATA_ATTEMPTS = 2;
+const WIKIMEDIA_UA = 'WorldMonitorCountryFacts/1.0 (https://worldmonitor.app; monitor@worldmonitor.app)';
+const ISO2_TO_M49 = Object.fromEntries(
+  Object.entries(unToIso2Json as Record<string, string>).map(([m49, iso2]) => [iso2, m49]),
+) as Record<string, string>;
 
 interface WikidataBinding {
+  country?: { value?: string };
+  countryLabel?: { value?: string };
+  m49?: { value?: string };
   headLabel?: { value?: string };
   officeLabel?: { value?: string };
+  population?: { value?: string };
+  area?: { value?: string };
+  capitalLabel?: { value?: string };
+  languageLabel?: { value?: string };
+  currencyLabel?: { value?: string };
 }
 
 interface WikidataResponse {
@@ -54,101 +58,179 @@ export async function getCountryFacts(
   if (!req.countryCode) return EMPTY;
 
   const code = req.countryCode.toUpperCase();
-
-  const [rcData, wikiData] = await Promise.all([
-    fetchRestCountries(code),
-    fetchWikidata(code),
-  ]);
-
-  const countryName = rcData?.name?.common ?? '';
+  const countryData = await fetchWikidata(code);
+  const countryName = countryData?.countryName || displayCountryName(code);
 
   const wikiSummary = countryName ? await fetchWikipediaSummary(code, countryName) : null;
 
   return {
-    headOfState: wikiData?.headOfState ?? '',
-    headOfStateTitle: wikiData?.headOfStateTitle ?? '',
+    headOfState: countryData?.headOfState ?? '',
+    headOfStateTitle: countryData?.headOfStateTitle ?? '',
     wikipediaSummary: wikiSummary?.extract ?? '',
     wikipediaThumbnailUrl: wikiSummary?.thumbnailUrl ?? '',
-    population: rcData?.population ?? 0,
-    capital: rcData?.capital?.[0] ?? '',
-    languages: rcData?.languages ? Object.values(rcData.languages) : [],
-    currencies: rcData?.currencies
-      ? Object.values(rcData.currencies).map(c => c.name ?? '').filter(Boolean)
-      : [],
-    areaSqKm: rcData?.area ?? 0,
+    population: countryData?.population ?? 0,
+    capital: countryData?.capital ?? '',
+    languages: countryData?.languages ?? [],
+    currencies: countryData?.currencies ?? [],
+    areaSqKm: countryData?.areaSqKm ?? 0,
     countryName,
   };
 }
 
-async function fetchRestCountries(code: string): Promise<RestCountryData | null> {
+interface WikiResult {
+  headOfState: string;
+  headOfStateTitle: string;
+  population: number;
+  areaSqKm: number;
+  capital: string;
+  languages: string[];
+  currencies: string[];
+  countryName: string;
+}
+
+async function fetchWikidata(code: string): Promise<WikiResult | null> {
+  if (!/^[A-Z]{2}$/.test(code)) return null;
+  if (!ISO2_TO_M49[code]) return null;
   try {
-    return await cachedFetchJson<RestCountryData>(
-      `intel:country-facts:rc:${code}`,
+    return await cachedFetchJson<WikiResult>(
+      `intel:country-facts:wikidata:v7:${code}`,
       FACTS_TTL,
       async () => {
-        try {
-          const resp = await fetch(`https://restcountries.com/v3.1/alpha/${code}`, {
-            headers: { 'User-Agent': CHROME_UA },
-            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT),
-          });
-          if (!resp.ok) return null;
-          const data = await resp.json();
-          const entry = Array.isArray(data) ? data[0] : data;
-          if (!entry) return null;
-          return {
-            name: entry.name,
-            population: entry.population,
-            capital: entry.capital,
-            languages: entry.languages,
-            currencies: entry.currencies,
-            area: entry.area,
-          } as RestCountryData;
-        } catch {
-          return null;
-        }
+        const entityId = await resolveWikidataEntityId(code);
+        if (!entityId) return null;
+        const result = parseWikidataFacts(await queryWikidata(wikidataFactsQuery(entityId, code)));
+        if (!result) return null;
+        return { ...result, countryName: displayCountryName(code) || result.countryName };
       },
       NEGATIVE_TTL,
+      { cacheFetcherErrors: false },
     );
   } catch {
     return null;
   }
 }
 
-interface WikiResult {
-  headOfState: string;
-  headOfStateTitle: string;
+async function resolveWikidataEntityId(code: string): Promise<string | null> {
+  return selectWikidataEntityId(
+    code,
+    await queryWikidata(
+      `SELECT ?country ?countryLabel ?m49 WHERE { ?country wdt:P297 "${code}". OPTIONAL { ?country wdt:P2082 ?m49 } FILTER NOT EXISTS { ?country wdt:P576 ?dissolved } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } LIMIT 10`,
+    ),
+  );
 }
 
-async function fetchWikidata(code: string): Promise<WikiResult | null> {
-  if (!/^[A-Z]{2}$/.test(code)) return null;
+export function selectWikidataEntityId(code: string, bindings: WikidataBinding[]): string | null {
+  const expectedM49 = ISO2_TO_M49[code];
+  if (!expectedM49) return null;
+
+  const candidates = new Map<string, Set<string>>();
+  for (const binding of bindings) {
+    const id = binding.country?.value?.match(/\/entity\/(Q\d+)$/)?.[1];
+    if (!id) continue;
+    const codes = candidates.get(id) ?? new Set<string>();
+    const m49 = binding.m49?.value;
+    if (m49) codes.add(m49);
+    candidates.set(id, codes);
+  }
+
+  const m49Matches = [...candidates.entries()]
+    .filter(([, codes]) => codes.has(expectedM49))
+    .map(([id]) => id);
+  if (m49Matches.length === 1) return m49Matches[0] ?? null;
+  if (m49Matches.length === 0 && candidates.size === 1) {
+    return candidates.keys().next().value ?? null;
+  }
+  return null;
+}
+
+function wikidataFactsQuery(entityId: string, code: string): string {
+  return `SELECT ?countryLabel ?headLabel ?officeLabel ?population ?area ?capitalLabel ?languageLabel ?currencyLabel WHERE { BIND(wd:${entityId} AS ?country) OPTIONAL { ?country p:P35 ?headStatement. ?headStatement ps:P35 ?head. FILTER NOT EXISTS { ?headStatement pq:P582 ?headEnd } OPTIONAL { ?headStatement pq:P39 ?office } } OPTIONAL { ?country wdt:P1082 ?population } OPTIONAL { ?country wdt:P2046 ?area } OPTIONAL { ?country wdt:P36 ?capital } OPTIONAL { ?country p:P37 ?languageStatement. ?languageStatement ps:P37 ?language. FILTER NOT EXISTS { ?languageStatement pq:P518 ?languageRegion } FILTER NOT EXISTS { ?languageStatement pq:P582 ?languageEnd } } OPTIONAL { ?country p:P38 ?currencyStatement. ?currencyStatement ps:P38 ?currency. FILTER NOT EXISTS { ?currencyStatement pq:P582 ?currencyEnd } FILTER NOT EXISTS { ?currencyStatement pq:P518 ?currencyRegion. ?currencyRegion wdt:P297 ?currencyRegionCode. FILTER(?currencyRegionCode != "${code}") } } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } ORDER BY ?capitalLabel ?languageLabel ?currencyLabel`;
+}
+
+async function queryWikidata(sparql: string): Promise<WikidataBinding[]> {
+  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+
+  for (let attempt = 0; attempt < WIKIDATA_ATTEMPTS; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: { 'User-Agent': WIKIMEDIA_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT),
+      });
+    } catch (error) {
+      if (attempt === WIKIDATA_ATTEMPTS - 1) throw error;
+      continue;
+    }
+    if (!response.ok) {
+      const retryable = response.status === 429 || response.status >= 500;
+      if (retryable && attempt < WIKIDATA_ATTEMPTS - 1) continue;
+      throw new Error(`Wikidata request failed with status ${response.status}`);
+    }
+
+    try {
+      const data = (await response.json()) as WikidataResponse;
+      return data.results?.bindings ?? [];
+    } catch (error) {
+      if (attempt === WIKIDATA_ATTEMPTS - 1) throw error;
+    }
+  }
+
+  throw new Error('Wikidata request failed');
+}
+
+function parseWikidataFacts(bindings: WikidataBinding[]): WikiResult | null {
+  if (bindings.length === 0) return null;
+
+  const firstLabel = (field: keyof WikidataBinding): string => {
+    for (const binding of bindings) {
+      const label = cleanLabel(binding[field]?.value);
+      if (label) return label;
+    }
+    return '';
+  };
+  const firstNumber = (field: 'population' | 'area'): number => {
+    for (const binding of bindings) {
+      const value = Number(binding[field]?.value);
+      if (Number.isFinite(value) && value > 0) return value;
+    }
+    return 0;
+  };
+
+  return {
+    headOfState: firstLabel('headLabel'),
+    headOfStateTitle: firstLabel('officeLabel'),
+    population: Math.trunc(firstNumber('population')),
+    areaSqKm: firstNumber('area'),
+    capital: firstLabel('capitalLabel'),
+    languages: uniqueLabels(bindings.map(binding => binding.languageLabel?.value)),
+    currencies: uniqueLabels(bindings.map(binding => binding.currencyLabel?.value)),
+    countryName: firstLabel('countryLabel'),
+  };
+}
+
+function cleanLabel(value: string | undefined): string {
+  const label = value?.trim() ?? '';
+  return /^Q\d+$/.test(label) ? '' : label;
+}
+
+function uniqueLabels(values: Array<string | undefined>): string[] {
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const value of values) {
+    const label = cleanLabel(value);
+    const key = label.toLocaleLowerCase('en');
+    if (!label || seen.has(key)) continue;
+    seen.add(key);
+    labels.push(label);
+  }
+  return labels;
+}
+
+function displayCountryName(code: string): string {
   try {
-    return await cachedFetchJson<WikiResult>(
-      `intel:country-facts:wiki:${code}`,
-      FACTS_TTL,
-      async () => {
-        try {
-          const sparql = `SELECT ?headLabel ?officeLabel WHERE { ?country wdt:P297 "${code}". ?country p:P35 ?stmt. ?stmt ps:P35 ?head. FILTER NOT EXISTS { ?stmt pq:P582 ?end } OPTIONAL { ?stmt pq:P39 ?office } SERVICE wikibase:label { bd:serviceParam wikibase:language "en" } } LIMIT 1`;
-          const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
-          const resp = await fetch(url, {
-            headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
-            signal: AbortSignal.timeout(UPSTREAM_TIMEOUT),
-          });
-          if (!resp.ok) return null;
-          const data = (await resp.json()) as WikidataResponse;
-          const binding = data.results?.bindings?.[0];
-          if (!binding) return null;
-          return {
-            headOfState: binding.headLabel?.value ?? '',
-            headOfStateTitle: binding.officeLabel?.value ?? '',
-          };
-        } catch {
-          return null;
-        }
-      },
-      NEGATIVE_TTL,
-    );
+    return new Intl.DisplayNames(['en'], { type: 'region' }).of(code) ?? '';
   } catch {
-    return null;
+    return '';
   }
 }
 
@@ -166,7 +248,7 @@ async function fetchWikipediaSummary(code: string, countryName: string): Promise
         try {
           const encoded = encodeURIComponent(countryName);
           const resp = await fetch(`https://en.wikipedia.org/api/rest_v1/page/summary/${encoded}`, {
-            headers: { 'User-Agent': CHROME_UA },
+            headers: { 'User-Agent': WIKIMEDIA_UA },
             signal: AbortSignal.timeout(UPSTREAM_TIMEOUT),
           });
           if (!resp.ok) return null;

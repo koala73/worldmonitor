@@ -15757,7 +15757,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryFacts
-            description: GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.
+            description: GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
             operationId: GetCountryFacts
             parameters:
                 - name: country_code
