@@ -1,12 +1,19 @@
 import { addLocalDays, localYmd } from '@/utils/local-date';
 import { escapeHtml } from '@/utils/sanitize';
 import {
+  NQ_CATALYST_CURRENT_MAX_MS,
+  NQ_CATALYST_DELAYED_MAX_MS,
   NQ_EARNINGS_WINDOW_DAYS,
   NQ_INFLUENCE_SYMBOLS,
   NQ_MACRO_WINDOW_DAYS,
   NQ_PULSE_DISCLOSURE,
 } from '@/config/nq-context';
 import { freshnessLabelForAsOf, nqPulseAsOfLabel, type NqFreshnessLabel } from './nq-pulse-content';
+
+const CATALYST_FRESHNESS = {
+  currentMaxMs: NQ_CATALYST_CURRENT_MAX_MS,
+  delayedMaxMs: NQ_CATALYST_DELAYED_MAX_MS,
+};
 
 export const NQ_EARNINGS_EMPTY = 'No tracked NQ earnings in this window';
 export const NQ_MACRO_EMPTY = 'No high-impact US releases in this window';
@@ -84,10 +91,10 @@ export function composeNqCatalystsHtml(input: {
   const nowMs = input.nowMs ?? Date.now();
   const macroFreshness = input.macroUnavailable
     ? 'Freshness unavailable'
-    : freshnessLabelForAsOf(input.macroAsOf, nowMs);
+    : freshnessLabelForAsOf(input.macroAsOf, nowMs, CATALYST_FRESHNESS);
   const earningsFreshness = input.earningsUnavailable
     ? 'Freshness unavailable'
-    : freshnessLabelForAsOf(input.earningsAsOf, nowMs);
+    : freshnessLabelForAsOf(input.earningsAsOf, nowMs, CATALYST_FRESHNESS);
 
   return `
     <section class="nq-catalysts-section">

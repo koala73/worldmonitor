@@ -13,7 +13,10 @@ import {
   NQ_MACRO_EMPTY,
   NQ_SECTION_UNAVAILABLE,
 } from '../src/components/nq-catalysts-content.ts';
+import { freshnessLabelForAsOf } from '../src/components/nq-pulse-content.ts';
 import {
+  NQ_CATALYST_CURRENT_MAX_MS,
+  NQ_CATALYST_DELAYED_MAX_MS,
   NQ_EARNINGS_WINDOW_DAYS,
   NQ_MACRO_WINDOW_DAYS,
   NQ_PULSE_DISCLOSURE,
@@ -149,6 +152,57 @@ describe('NQ Catalysts filters', () => {
     assert.match(html, /Time unknown/);
     assert.match(html, />amc</);
     assert.doesNotMatch(html, /08:30|14:00 ET|release at/);
+  });
+
+  it('labels catalyst freshness at the 12-hour and 24-hour boundaries', () => {
+    const nowMs = Date.parse('2026-08-31T18:00:00.000Z');
+    const thresholds = {
+      currentMaxMs: NQ_CATALYST_CURRENT_MAX_MS,
+      delayedMaxMs: NQ_CATALYST_DELAYED_MAX_MS,
+    };
+    assert.equal(NQ_CATALYST_CURRENT_MAX_MS, 12 * 60 * 60 * 1000);
+    assert.equal(NQ_CATALYST_DELAYED_MAX_MS, 24 * 60 * 60 * 1000);
+    assert.equal(freshnessLabelForAsOf('2026-08-31T06:00:00.000Z', nowMs, thresholds), 'Current');
+    assert.equal(freshnessLabelForAsOf('2026-08-31T05:59:59.000Z', nowMs, thresholds), 'Delayed');
+    assert.equal(freshnessLabelForAsOf('2026-08-30T18:00:00.000Z', nowMs, thresholds), 'Delayed');
+    assert.equal(freshnessLabelForAsOf('2026-08-30T17:59:59.000Z', nowMs, thresholds), 'Stale');
+
+    const currentHtml = composeNqCatalystsHtml({
+      macro: [{ event: 'CPI', country: 'US', date: '2026-09-02', impact: 'High' }],
+      earnings: [{ symbol: 'AAPL', company: 'Apple', date: '2026-09-03', hour: 'bmo' }],
+      macroUnavailable: false,
+      earningsUnavailable: false,
+      macroAsOf: '2026-08-31T06:00:00.000Z',
+      earningsAsOf: '2026-08-31T14:00:00.000Z',
+      nowMs,
+    });
+    assert.equal((currentHtml.match(/>Current</g) ?? []).length, 2);
+
+    const delayedHtml = composeNqCatalystsHtml({
+      macro: [],
+      earnings: [],
+      macroUnavailable: false,
+      earningsUnavailable: false,
+      macroAsOf: '2026-08-31T05:59:59.000Z',
+      earningsAsOf: '2026-08-30T18:00:00.000Z',
+      nowMs,
+    });
+    assert.equal((delayedHtml.match(/>Delayed</g) ?? []).length, 2);
+    assert.doesNotMatch(delayedHtml, />Current</);
+    assert.doesNotMatch(delayedHtml, />Stale</);
+
+    const staleHtml = composeNqCatalystsHtml({
+      macro: [],
+      earnings: [],
+      macroUnavailable: false,
+      earningsUnavailable: false,
+      macroAsOf: '2026-08-30T17:59:59.000Z',
+      earningsAsOf: '2026-08-30T17:59:59.000Z',
+      nowMs,
+    });
+    assert.equal((staleHtml.match(/>Stale</g) ?? []).length, 2);
+    assert.doesNotMatch(staleHtml, />Current</);
+    assert.doesNotMatch(staleHtml, />Delayed</);
   });
 
   it('carries seed asOf through calendar handlers', () => {

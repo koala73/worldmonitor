@@ -31,3 +31,7 @@ export const NQ_MACRO_WINDOW_DAYS = 7;
 export const NQ_EARNINGS_WINDOW_DAYS = 14;
 export const NQ_CURRENT_MAX_MS = 10 * 60 * 1000;
 export const NQ_DELAYED_MAX_MS = 30 * 60 * 1000;
+/** Calendar seed cadence is 12h; stay Current through a healthy cycle. */
+export const NQ_CATALYST_CURRENT_MAX_MS = 12 * 60 * 60 * 1000;
+/** Calendar health budget is 24h; Delayed until that seed-meta ceiling. */
+export const NQ_CATALYST_DELAYED_MAX_MS = 24 * 60 * 60 * 1000;
