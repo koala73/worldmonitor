@@ -3,8 +3,8 @@
 // Shape contract: one Redis payload at resilience:food-stocks:v1 keyed by ISO-2
 // (plus `_world`). Each country holds per-commodity balances whose clock is the
 // marketing-year label, never a calendar year. FAOSTAT Food Balances may fill a
-// production and domestic-supply pair when PSD has no complete country balance.
-// The fallback never invents stocks.
+// production and domestic-supply pair when PSD has no complete country balance
+// and no valid USDA stock evidence. The fallback never invents stocks.
 
 export const FOOD_STOCKS_CANONICAL_KEY = 'resilience:food-stocks:v1';
 export const FOOD_STOCKS_WORLD_KEY = '_world';
@@ -120,6 +120,11 @@ function finiteOrNull(value) {
   return Number.isFinite(value) ? value : null;
 }
 
+/** USDA stock evidence that a FAOSTAT production/use pair must not overwrite. */
+function hasValidStockEvidence(rec) {
+  return Number.isFinite(rec?.endingStocks) || Number.isFinite(rec?.stocksToUseRatio);
+}
+
 function vintageRank(calendarYear, month) {
   const year = Number(calendarYear);
   const mo = Number(month);
@@ -229,9 +234,10 @@ function faostatRows(input) {
 }
 
 /**
- * Add one FAOSTAT Food Balances pair when PSD has no complete country balance.
- * A null or Error fill is a no-op, so a failed FAOSTAT stage cannot damage the
- * PSD snapshot.
+ * Add one FAOSTAT Food Balances pair when PSD has no complete country balance
+ * and no valid USDA stock evidence. A PSD row with finite endingStocks or
+ * stocksToUseRatio is kept even if production is missing. A null or Error fill
+ * is a no-op, so a failed FAOSTAT stage cannot damage the PSD snapshot.
  *
  * @param {Array<Record<string, unknown>>} psdRecords
  * @param {Array<Record<string, unknown>> | Error | null} faostatRecords
@@ -252,6 +258,11 @@ export function applyFaostatFoodBalanceFill(psdRecords, faostatRecords, opts) {
         && rec.consumption > 0)
       .map((rec) => rec.countryCode),
   );
+  const stockEvidencePsd = new Set(
+    base
+      .filter((rec) => rec.commodity === commodity && hasValidStockEvidence(rec))
+      .map((rec) => rec.countryCode),
+  );
 
   const replacements = new Map();
 
@@ -259,7 +270,7 @@ export function applyFaostatFoodBalanceFill(psdRecords, faostatRecords, opts) {
     const countryCode = normalizePsdCountryCode(row?.countryCode);
     const rowCommodity = row?.commodity || commodity;
     if (!countryCode || rowCommodity !== commodity) continue;
-    if (completePsd.has(countryCode)) continue;
+    if (completePsd.has(countryCode) || stockEvidencePsd.has(countryCode)) continue;
     const production = finiteOrNull(row?.production);
     const consumption = finiteOrNull(row?.consumption);
     const marketingYear = formatMarketingYear(row?.calendarYear);
