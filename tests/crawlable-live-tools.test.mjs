@@ -4,11 +4,13 @@ import { Window } from 'happy-dom';
 
 import {
   airportDisruptionViewModel,
+  ciiRankingViewModel,
   chokepointStatusViewModel,
   crisisTrackerViewModel,
   hasPublishedLivePulse,
   hazardPulseViewModel,
   loadChokepoint,
+  loadCiiRanking,
   loadCountryRisk,
   loadHazards,
   militaryFlightsViewModel,
@@ -110,6 +112,103 @@ describe('crawlable live intelligence view models', () => {
       ),
       /stale/i,
     );
+  });
+
+  it('normalizes and ranks a complete current CII response', () => {
+    const view = ciiRankingViewModel({
+      ciiScores: [
+        {
+          region: 'IR',
+          combinedScore: 67,
+          dynamicScore: 7,
+          trend: 'TREND_DIRECTION_RISING',
+          computedAt: NOW - 60_000,
+          methodologyVersion: 'v8',
+        },
+        {
+          region: 'UA',
+          combinedScore: 78,
+          dynamicScore: -2,
+          trend: 'TREND_DIRECTION_FALLING',
+          computedAt: NOW - 120_000,
+          methodologyVersion: 'v8',
+        },
+      ],
+      degraded: false,
+      stale: false,
+    }, NOW);
+
+    assert.deepEqual(view, {
+      rows: [
+        {
+          code: 'UA',
+          score: '78',
+          scoreValue: 78,
+          band: 'High',
+          trend: 'Falling -2',
+          computedAt: NOW - 120_000,
+          methodologyVersion: 'v8',
+        },
+        {
+          code: 'IR',
+          score: '67',
+          scoreValue: 67,
+          band: 'High',
+          trend: 'Rising +7',
+          computedAt: NOW - 60_000,
+          methodologyVersion: 'v8',
+        },
+      ],
+      updatedAt: NOW - 60_000,
+      methodologyVersion: 'v8',
+    });
+  });
+
+  it('rejects incomplete, stale, or degraded CII ranking responses', () => {
+    const score = {
+      region: 'IR',
+      combinedScore: 67,
+      dynamicScore: 7,
+      trend: 'TREND_DIRECTION_RISING',
+      computedAt: NOW - 60_000,
+      methodologyVersion: 'v8',
+    };
+
+    assert.throws(() => ciiRankingViewModel({ ciiScores: [], degraded: false, stale: false }, NOW), /unavailable/i);
+    assert.throws(() => ciiRankingViewModel({ ciiScores: [score], degraded: true, stale: false }, NOW), /degraded/i);
+    assert.throws(
+      () => ciiRankingViewModel({
+        ciiScores: [{ ...score, computedAt: NOW - (49 * 60 * 60 * 1_000) }],
+        degraded: false,
+        stale: false,
+      }, NOW),
+      /timestamp/i,
+    );
+    assert.throws(
+      () => ciiRankingViewModel({ ciiScores: [score, score], degraded: false, stale: false }, NOW),
+      /duplicate/i,
+    );
+  });
+
+  it('keeps same-score CII rows in payload order instead of ISO code order', () => {
+    const score = {
+      combinedScore: 50,
+      dynamicScore: 0,
+      trend: 'TREND_DIRECTION_STABLE',
+      computedAt: NOW - 60_000,
+      methodologyVersion: 'v8',
+    };
+    const view = ciiRankingViewModel({
+      ciiScores: [
+        { ...score, region: 'VE' },
+        { ...score, region: 'AE' },
+        { ...score, region: 'BR' },
+      ],
+      degraded: false,
+      stale: false,
+    }, NOW);
+
+    assert.deepEqual(view.rows.map((row) => row.code), ['VE', 'AE', 'BR']);
   });
 
   it('does not publish a numeric 0 transit count when the AIS window is empty', () => {
@@ -924,6 +1023,248 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(chokepoint.querySelector('[data-live-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
     assert.match(chokepoint.querySelector('[data-live-status]').textContent, /published pulse/i);
     assert.equal(chokepoint.dataset.state, 'error');
+  });
+
+  it('preserves published CII rankings when live refresh fails before hydrate', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div data-live-grid aria-busy="false">
+          <table data-cii-ranking>
+            <tbody data-cii-ranking-body>
+              <tr data-cii-country="BR"><td>Brazil</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+              <tr data-cii-country="AE"><td>United Arab Emirates</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <time data-cii-ranking-updated datetime="2026-08-30T12:00:00.000Z">Latest published score Aug 30, 2026</time>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-cii-ranking]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => {
+      throw new Error('offline');
+    };
+    try {
+      await loadCiiRanking(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const codes = [...tool.querySelectorAll('[data-cii-country]')].map((row) => row.dataset.ciiCountry);
+    assert.deepEqual(codes, ['BR', 'AE']);
+    assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').textContent, '50');
+    assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').getAttribute('value'), '50');
+    assert.equal(
+      tool.querySelector('[data-cii-country="AE"] [data-cii-updated]').getAttribute('datetime'),
+      '2026-08-30T12:00:00.000Z',
+    );
+    assert.equal(
+      tool.querySelector('[data-live-status]').textContent,
+      'Live refresh unavailable — showing published rankings',
+    );
+    assert.equal(tool.dataset.state, 'error');
+  });
+
+  it('keeps last loaded CII rankings after a later failed refresh', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div data-live-grid aria-busy="false">
+          <table data-cii-ranking>
+            <tbody data-cii-ranking-body>
+              <tr data-cii-country="BR"><td>Brazil</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+              <tr data-cii-country="AE"><td>United Arab Emirates</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <time data-cii-ranking-updated datetime="2026-08-30T12:00:00.000Z">Latest published score Aug 30, 2026</time>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-cii-ranking]');
+    const originalFetch = globalThis.fetch;
+    let phase = 'hydrate';
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      if (phase === 'hydrate') {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            degraded: false,
+            stale: false,
+            ciiScores: [
+              {
+                region: 'AE',
+                combinedScore: 61,
+                dynamicScore: 1.5,
+                trend: 'TREND_DIRECTION_RISING',
+                computedAt: Date.now() - 30_000,
+                methodologyVersion: 'v8',
+              },
+              {
+                region: 'BR',
+                combinedScore: 61,
+                dynamicScore: -0.5,
+                trend: 'TREND_DIRECTION_FALLING',
+                computedAt: Date.now() - 45_000,
+                methodologyVersion: 'v8',
+              },
+            ],
+          }),
+        };
+      }
+      throw new Error('offline');
+    };
+    try {
+      await loadCiiRanking(tool);
+      assert.deepEqual(
+        [...tool.querySelectorAll('[data-cii-country]')].map((row) => row.dataset.ciiCountry),
+        ['BR', 'AE'],
+        'tied live scores must keep the published country order',
+      );
+      assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').textContent, '61');
+      assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').getAttribute('value'), '61');
+      assert.equal(tool.dataset.ciiHydrated, 'true');
+
+      phase = 'fail';
+      await loadCiiRanking(tool);
+      assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').textContent, '61');
+      assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').getAttribute('value'), '61');
+      assert.equal(
+        tool.querySelector('[data-live-status]').textContent,
+        'Live refresh unavailable — showing last loaded rankings',
+      );
+      assert.equal(tool.dataset.state, 'error');
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it('keeps published CII rows when the live country set does not match', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div data-live-grid aria-busy="false">
+          <table data-cii-ranking>
+            <tbody data-cii-ranking-body>
+              <tr data-cii-country="BR"><td>Brazil</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+              <tr data-cii-country="AE"><td>United Arab Emirates</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <time data-cii-ranking-updated datetime="2026-08-30T12:00:00.000Z">Latest published score Aug 30, 2026</time>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-cii-ranking]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          degraded: false,
+          stale: false,
+          ciiScores: [
+            {
+              region: 'IR',
+              combinedScore: 67,
+              dynamicScore: 7,
+              trend: 'TREND_DIRECTION_RISING',
+              computedAt: Date.now() - 60_000,
+              methodologyVersion: 'v8',
+            },
+          ],
+        }),
+      };
+    };
+    try {
+      await loadCiiRanking(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.deepEqual(
+      [...tool.querySelectorAll('[data-cii-country]')].map((row) => row.dataset.ciiCountry),
+      ['BR', 'AE'],
+    );
+    assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').textContent, '50');
+    assert.equal(
+      tool.querySelector('[data-live-status]').textContent,
+      'Live refresh unavailable — showing published rankings',
+    );
+    assert.equal(tool.dataset.state, 'error');
+  });
+
+  it('keeps published CII rows when the live methodology does not match', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div data-live-grid aria-busy="false">
+          <table data-cii-ranking>
+            <tbody data-cii-ranking-body>
+              <tr data-cii-country="BR"><td>Brazil</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+              <tr data-cii-country="AE"><td>United Arab Emirates</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <time data-cii-ranking-updated datetime="2026-08-30T12:00:00.000Z">Latest published score Aug 30, 2026</time>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-cii-ranking]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          degraded: false,
+          stale: false,
+          ciiScores: [
+            {
+              region: 'AE',
+              combinedScore: 61,
+              dynamicScore: 1.5,
+              trend: 'TREND_DIRECTION_RISING',
+              computedAt: Date.now() - 30_000,
+              methodologyVersion: 'v9',
+            },
+            {
+              region: 'BR',
+              combinedScore: 60,
+              dynamicScore: -0.5,
+              trend: 'TREND_DIRECTION_FALLING',
+              computedAt: Date.now() - 45_000,
+              methodologyVersion: 'v9',
+            },
+          ],
+        }),
+      };
+    };
+    try {
+      await loadCiiRanking(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.deepEqual(
+      [...tool.querySelectorAll('[data-cii-country]')].map((row) => row.dataset.ciiCountry),
+      ['BR', 'AE'],
+    );
+    assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').textContent, '50');
+    assert.equal(tool.querySelector('[data-cii-ranking-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
+    assert.equal(tool.dataset.ciiHydrated, undefined);
+    assert.equal(tool.dataset.state, 'error');
   });
 
   it('keeps SSR datetime after an undated partial country hydrate so later soft failures preserve sub-signals', async () => {

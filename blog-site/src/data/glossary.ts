@@ -62,6 +62,7 @@ export const GLOSSARY_TERMS: GlossaryTerm[] = [
     ],
     related: ['country-resilience-index', 'strategic-risk', 'focal-point-detection'],
     learnMore: [
+      { label: 'Live CII rankings', href: 'https://www.worldmonitor.app/country-instability-index/' },
       { label: 'CII methodology', href: 'https://www.worldmonitor.app/docs/country-instability-index' },
       { label: 'CII methodology explainer (blog)', href: 'https://www.worldmonitor.app/blog/posts/country-instability-index-methodology-explained/' },
     ],
