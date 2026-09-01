@@ -5,9 +5,16 @@ import type { NewsItem } from '@/types';
 const rssMocks = vi.hoisted(() => ({
   fetchFeed: vi.fn(),
 }));
+const runtimeMocks = vi.hoisted(() => ({
+  isDesktopRuntime: vi.fn(() => false),
+}));
 
 vi.mock('@/services/rss', () => ({
   fetchFeed: rssMocks.fetchFeed,
+}));
+vi.mock('@/services/runtime', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/runtime')>(),
+  isDesktopRuntime: runtimeMocks.isDesktopRuntime,
 }));
 
 import { fetchCountryCoverage } from '@/services/country-coverage';
@@ -35,6 +42,7 @@ function newsItem(
 describe('country coverage', () => {
   beforeEach(() => {
     rssMocks.fetchFeed.mockReset();
+    runtimeMocks.isDesktopRuntime.mockReturnValue(false);
   });
 
   afterEach(() => {
@@ -102,5 +110,19 @@ describe('country coverage', () => {
         severity: 'medium',
       },
     ]);
+  });
+
+  it('routes desktop country feeds through the local RSS proxy', async () => {
+    runtimeMocks.isDesktopRuntime.mockReturnValue(true);
+    rssMocks.fetchFeed.mockResolvedValue([]);
+
+    await fetchCountryCoverage('France');
+
+    expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
+    for (const [feed] of rssMocks.fetchFeed.mock.calls) {
+      const proxyUrl = new URL(feed.url, 'https://desktop.local');
+      expect(proxyUrl.pathname).toBe('/api/rss-proxy');
+      expect(new URL(proxyUrl.searchParams.get('url') ?? '').hostname).toBe('news.google.com');
+    }
   });
 });
