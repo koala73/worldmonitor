@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
 import { __clearLocalUnavailableBackoffForTests } from '../server/_shared/redis.ts';
-import { getCountryFacts } from '../server/worldmonitor/intelligence/v1/get-country-facts.ts';
+import {
+  getCountryFacts,
+  selectWikidataEntityId,
+} from '../server/worldmonitor/intelligence/v1/get-country-facts.ts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
@@ -28,7 +31,7 @@ function configureRemoteRedis(): void {
 }
 
 function wikidataCacheWrites(writes: string[]): string[] {
-  return writes.filter(body => body.includes('intel:country-facts:wikidata:v5:'));
+  return writes.filter(body => body.includes('intel:country-facts:wikidata:v6:'));
 }
 
 function wikidataWritesContainNegSentinel(writes: string[]): boolean {
@@ -37,6 +40,44 @@ function wikidataWritesContainNegSentinel(writes: string[]): boolean {
 
 function wikidataValue(value: string): { value: string } {
   return { value };
+}
+
+function wikidataEntity(qid: string, label: string): {
+  country: { value: string };
+  countryLabel: { value: string };
+} {
+  return {
+    country: { value: `http://www.wikidata.org/entity/${qid}` },
+    countryLabel: { value: label },
+  };
+}
+
+function isWikidataIdentityQuery(query: string): boolean {
+  return query.includes('wdt:P297') && !/\bwd:Q\d+\b/.test(query);
+}
+
+const ISO_ENTITIES = {
+  US: { qid: 'Q30', label: 'United States' },
+  BR: { qid: 'Q155', label: 'Brazil' },
+  FR: { qid: 'Q142', label: 'France' },
+  JP: { qid: 'Q17', label: 'Japan' },
+  ZA: { qid: 'Q258', label: 'South Africa' },
+  AQ: { qid: 'Q51', label: 'Antarctica' },
+  IN: { qid: 'Q668', label: 'India' },
+  NL: { qid: 'Q55', label: 'Netherlands' },
+} as const;
+
+function identityBindingsForQuery(
+  query: string,
+  extra: Array<ReturnType<typeof wikidataEntity>> = [],
+): Response | null {
+  if (!isWikidataIdentityQuery(query)) return null;
+  const code = query.match(/wdt:P297 "([A-Z]{2})"/)?.[1] as keyof typeof ISO_ENTITIES | undefined;
+  const entity = code ? ISO_ENTITIES[code] : undefined;
+  if (!entity) return null;
+  return new Response(JSON.stringify({
+    results: { bindings: [...extra, wikidataEntity(entity.qid, entity.label)] },
+  }));
 }
 
 describe('getCountryFacts provider contract', () => {
@@ -64,6 +105,8 @@ describe('getCountryFacts provider contract', () => {
           'automated Wikimedia requests must identify the application',
         );
         const query = url.searchParams.get('query') ?? '';
+        const identity = identityBindingsForQuery(query);
+        if (identity) return identity;
         const headLabel = query.includes('wikibase:language "en,mul"')
           ? 'Donald Trump'
           : 'Q22686';
@@ -130,7 +173,12 @@ describe('getCountryFacts provider contract', () => {
 
       if (url.hostname === 'query.wikidata.org') {
         const query = url.searchParams.get('query') ?? '';
-        assert.match(query, /wdt:P297 "BR"/, 'the query must use the requested ISO country code');
+        const identity = identityBindingsForQuery(query);
+        if (identity) {
+          assert.match(query, /wdt:P297 "BR"/, 'the identity query must use the requested ISO country code');
+          return identity;
+        }
+        assert.match(query, /\bwd:Q155\b/, 'facts query must pin the verified Brazil entity');
 
         const shared = {
           countryLabel: wikidataValue('Brazil'),
@@ -178,9 +226,9 @@ describe('getCountryFacts provider contract', () => {
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
     const countries = {
-      FR: { iso3: 'FRA', name: 'France', capital: 'Paris', language: 'French', currency: 'euro' },
-      JP: { iso3: 'JPN', name: 'Japan', capital: 'Tokyo', language: 'Japanese', currency: 'yen' },
-      ZA: { iso3: 'ZAF', name: 'South Africa', capital: 'Bloemfontein', language: 'Zulu', currency: 'rand' },
+      FR: { iso3: 'FRA', qid: 'Q142', name: 'France', capital: 'Paris', language: 'French', currency: 'euro' },
+      JP: { iso3: 'JPN', qid: 'Q17', name: 'Japan', capital: 'Tokyo', language: 'Japanese', currency: 'yen' },
+      ZA: { iso3: 'ZAF', qid: 'Q258', name: 'South Africa', capital: 'Bloemfontein', language: 'Zulu', currency: 'rand' },
     } as const;
 
     globalThis.fetch = (async (input: string | URL | Request) => {
@@ -188,10 +236,18 @@ describe('getCountryFacts provider contract', () => {
 
       if (url.hostname === 'query.wikidata.org') {
         const query = url.searchParams.get('query') ?? '';
-        const code = query.match(/wdt:P297 "([A-Z]{2})"/)?.[1] as keyof typeof countries | undefined;
-        assert.ok(code && countries[code], 'the query must contain the requested ISO country code');
-        const country = countries[code];
-        assert.match(query, new RegExp(`wdt:P298 "${country.iso3}"`));
+        const identity = identityBindingsForQuery(query);
+        if (identity) {
+          const code = query.match(/wdt:P297 "([A-Z]{2})"/)?.[1] as keyof typeof countries | undefined;
+          assert.ok(code && countries[code], 'the identity query must contain the requested ISO country code');
+          assert.match(query, new RegExp(`wdt:P298 "${countries[code].iso3}"`));
+          return identity;
+        }
+        const qid = query.match(/\bwd:(Q\d+)\b/)?.[1];
+        const country = Object.values(countries).find(entry => entry.qid === qid);
+        assert.ok(country, 'facts query must pin a verified representative-country entity');
+        const code = (Object.keys(countries) as Array<keyof typeof countries>)
+          .find(key => countries[key].qid === qid);
         const currencies = code === 'FR'
           ? [
               ...(query.includes('wdt:P38') ? ['CFP Franc'] : []),
@@ -239,7 +295,10 @@ describe('getCountryFacts provider contract', () => {
 
       if (url.hostname === 'query.wikidata.org') {
         wikidataAttempts += 1;
+        const query = url.searchParams.get('query') ?? '';
         if (wikidataAttempts === 1) return new Response('temporarily unavailable', { status: 503 });
+        const identity = identityBindingsForQuery(query);
+        if (identity) return identity;
         return new Response(JSON.stringify({
           results: {
             bindings: [{
@@ -263,7 +322,7 @@ describe('getCountryFacts provider contract', () => {
 
     const result = await getCountryFacts({} as never, { countryCode: 'ZA' });
 
-    assert.equal(wikidataAttempts, 2);
+    assert.equal(wikidataAttempts, 3);
     assert.equal(result.population, 62_027_503);
     assert.equal(result.capital, 'Bloemfontein');
   });
@@ -276,21 +335,19 @@ describe('getCountryFacts provider contract', () => {
       const url = new URL(input instanceof Request ? input.url : input);
 
       if (url.hostname === 'query.wikidata.org') {
-        const antarctica = {
-          countryLabel: wikidataValue('Antarctica'),
-          population: wikidataValue('1000'),
-          area: wikidataValue('14200000'),
-        };
+        const query = url.searchParams.get('query') ?? '';
+        const identity = identityBindingsForQuery(
+          query,
+          [wikidataEntity('Q21590062', 'Antarctic Treaty area')],
+        );
+        if (identity) return identity;
         return new Response(JSON.stringify({
           results: {
-            bindings: [
-              {
-                countryLabel: wikidataValue('Antarctic Treaty area'),
-                population: wikidataValue('1100'),
-                area: wikidataValue('14000000'),
-              },
-              antarctica,
-            ],
+            bindings: [{
+              countryLabel: wikidataValue('Antarctica'),
+              population: wikidataValue('1000'),
+              area: wikidataValue('14200000'),
+            }],
           },
         }));
       }
@@ -333,9 +390,15 @@ describe('getCountryFacts provider contract', () => {
       const url = new URL(input instanceof Request ? input.url : input);
 
       if (url.hostname === 'query.wikidata.org') {
-        capturedQuery = url.searchParams.get('query') ?? '';
-        assert.match(capturedQuery, /wdt:P297 "IN"/);
-        assert.match(capturedQuery, /wdt:P298 "IND"/);
+        const query = url.searchParams.get('query') ?? '';
+        const identity = identityBindingsForQuery(query);
+        if (identity) {
+          assert.match(query, /wdt:P297 "IN"/);
+          assert.match(query, /wdt:P298 "IND"/);
+          return identity;
+        }
+        capturedQuery = query;
+        assert.match(capturedQuery, /\bwd:Q668\b/);
         const shared = {
           countryLabel: wikidataValue('India'),
           headLabel: wikidataValue('Droupadi Murmu'),
@@ -398,8 +461,11 @@ describe('getCountryFacts provider contract', () => {
       const url = new URL(raw);
       if (url.hostname === 'query.wikidata.org') {
         wikidataCalls += 1;
+        const query = url.searchParams.get('query') ?? '';
         if (wikidataMode === 'status') return new Response('rate limited', { status: 429 });
         if (wikidataMode === 'network') throw new Error('wikidata network down');
+        const identity = identityBindingsForQuery(query);
+        if (identity) return identity;
         return new Response(JSON.stringify({
           results: {
             bindings: [{
@@ -449,7 +515,7 @@ describe('getCountryFacts provider contract', () => {
     assert.equal(recovered.population, 340_110_988);
     assert.equal(recovered.capital, 'Washington, D.C.');
     assert.equal(recovered.headOfState, 'Donald Trump');
-    assert.equal(wikidataCalls, 4);
+    assert.equal(wikidataCalls, 5, 'recovery issues identity then facts after the outage');
     assert.equal(wikidataWritesContainNegSentinel(writes), false);
     assert.ok(
       wikidataCacheWrites(writes).some(body => body.includes('Donald Trump')),
@@ -504,5 +570,83 @@ describe('getCountryFacts provider contract', () => {
     const cachedEmpty = await getCountryFacts({} as never, { countryCode: 'AQ' });
     assert.equal(cachedEmpty.population, 0);
     assert.equal(wikidataCalls, 1, 'successful empty must be served from NEG_SENTINEL');
+  });
+
+  it('resolves NL to Q55 and does not mix Kingdom of the Netherlands facts', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    const factsQueries: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+
+      if (url.hostname === 'query.wikidata.org') {
+        const query = url.searchParams.get('query') ?? '';
+        if (isWikidataIdentityQuery(query)) {
+          assert.match(query, /wdt:P297 "NL"/);
+          assert.match(query, /wdt:P298 "NLD"/);
+          return new Response(JSON.stringify({
+            results: {
+              bindings: [
+                wikidataEntity('Q29999', 'Kingdom of the Netherlands'),
+                wikidataEntity('Q55', 'Netherlands'),
+              ],
+            },
+          }));
+        }
+
+        factsQueries.push(query);
+        assert.match(query, /\bwd:Q55\b/, 'facts query must pin the verified Netherlands entity');
+        assert.doesNotMatch(query, /\bwd:Q29999\b/);
+        assert.doesNotMatch(query, /wdt:P297/);
+
+        return new Response(JSON.stringify({
+          results: {
+            bindings: [{
+              countryLabel: wikidataValue('Netherlands'),
+              headLabel: wikidataValue('Willem-Alexander'),
+              officeLabel: wikidataValue('King of the Netherlands'),
+              population: wikidataValue('17900000'),
+              area: wikidataValue('41543'),
+              capitalLabel: wikidataValue('Amsterdam'),
+              currencyLabel: wikidataValue('euro'),
+              languageLabel: wikidataValue('Dutch'),
+            }],
+          },
+        }));
+      }
+
+      if (url.hostname === 'en.wikipedia.org') {
+        return new Response(JSON.stringify({
+          extract: 'The Netherlands is a country in Northwestern Europe.',
+        }));
+      }
+
+      throw new Error(`Unexpected country-facts request: ${url}`);
+    }) as typeof fetch;
+
+    assert.equal(
+      selectWikidataEntityId('NL', [
+        wikidataEntity('Q29999', 'Kingdom of the Netherlands'),
+        wikidataEntity('Q55', 'Netherlands'),
+      ]),
+      'Q55',
+    );
+
+    const result = await getCountryFacts({} as never, { countryCode: 'NL' });
+
+    assert.equal(factsQueries.length, 1);
+    assert.deepEqual(result, {
+      headOfState: 'Willem-Alexander',
+      headOfStateTitle: 'King of the Netherlands',
+      wikipediaSummary: 'The Netherlands is a country in Northwestern Europe.',
+      wikipediaThumbnailUrl: '',
+      population: 17_900_000,
+      capital: 'Amsterdam',
+      languages: ['Dutch'],
+      currencies: ['euro'],
+      areaSqKm: 41_543,
+      countryName: 'Netherlands',
+    });
   });
 });
