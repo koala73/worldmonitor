@@ -2274,6 +2274,8 @@ describe('crawlable corpus generator', () => {
         ['missing status', { ...validPulse, status: '' }],
         ['missing congestion', { ...validPulse, congestion: '' }],
         ['impossible timestamp', { ...validPulse, asOf: '2026-02-31T13:37:22.049Z' }],
+        ['future timestamp', { ...validPulse, asOf: '2099-01-01T00:00:00.000Z' }],
+        ['stale timestamp', { ...validPulse, asOf: '2020-01-01T00:00:00.000Z' }],
       ]) {
         const invalidLivePulse = {
           ...corpusData.livePulse,
@@ -2309,6 +2311,23 @@ describe('crawlable corpus generator', () => {
         () => buildChokepointHubRows(corpusData.chokepoints, extraPulse),
         /unexpected obsolete_strait/,
         'an extra pulse key must fail the chokepoint hub build',
+      );
+      const priorDay = new Date(
+        Date.parse(`${corpusData.livePulse.capturedAt}T00:00:00.000Z`) - 86_400_000,
+      ).toISOString().slice(0, 10);
+      const priorDayPulse = {
+        ...corpusData.livePulse,
+        chokepoints: {
+          ...corpusData.livePulse.chokepoints,
+          [firstChokepoint.id]: {
+            ...validPulse,
+            asOf: `${priorDay}T12:00:00.000Z`,
+          },
+        },
+      };
+      assert.doesNotThrow(
+        () => buildChokepointHubRows(corpusData.chokepoints, priorDayPulse),
+        'the freeze prior-day window must remain accepted',
       );
 
       const sourcesPage = read(outDir, 'sources/index.html');
@@ -3001,6 +3020,44 @@ describe('crawlable corpus generator', () => {
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
+  });
+
+  it('rejects future and stale chokepoint hub timestamps while allowing the freeze prior-day window', async () => {
+    const corpusData = await loadCorpusData({ rootDir: repoRoot });
+    const [firstChokepoint] = corpusData.chokepoints;
+    const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];
+    const capturedAt = corpusData.livePulse.capturedAt;
+    const priorDay = new Date(Date.parse(`${capturedAt}T00:00:00.000Z`) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const staleDay = new Date(Date.parse(`${capturedAt}T00:00:00.000Z`) - 2 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const withAsOf = (asOf) => ({
+      ...corpusData.livePulse,
+      chokepoints: {
+        ...corpusData.livePulse.chokepoints,
+        [firstChokepoint.id]: { ...validPulse, asOf },
+      },
+    });
+    const invalidFor = (asOf, label) => {
+      assert.throws(
+        () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(asOf)),
+        new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+        label,
+      );
+    };
+
+    invalidFor('2099-01-01T00:00:00.000Z', 'a future asOf must fail the chokepoint hub build');
+    invalidFor(`${staleDay}T12:00:00.000Z`, 'a stale asOf older than the prior-day window must fail');
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(`${priorDay}T12:00:00.000Z`)),
+      'the freeze prior-day window must remain accepted',
+    );
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(corpusData.chokepoints, corpusData.livePulse),
+      'committed same-day asOf values must remain accepted',
+    );
   });
 
   it('loads deterministic source data without network access', async () => {
