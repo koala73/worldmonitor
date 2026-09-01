@@ -45,6 +45,8 @@ import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
   instabilityBand,
+  MAX_FUTURE_SKEW_MS,
+  MAX_LIVE_SNAPSHOT_AGE_MS,
   parseCiiMovement,
   publishedTransitCountLabel,
   withheldTransitCountSentence,
@@ -346,28 +348,14 @@ function isCanonicalIsoInstant(value) {
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
 
-const SNAPSHOT_CAPTURE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const UTC_DAY_MS = 86_400_000;
-
-function isSnapshotCaptureDate(value) {
-  if (typeof value !== 'string' || !SNAPSHOT_CAPTURE_DATE_RE.test(value)) return false;
-  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
-  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
-}
-
-function utcDateOffset(dateOnly, days) {
-  const timestamp = Date.parse(`${dateOnly}T00:00:00.000Z`);
-  return new Date(timestamp + days * UTC_DAY_MS).toISOString().slice(0, 10);
-}
-
-// Freeze writes asOf from fetchedAt, which may land on the UTC day before
-// capturedAt when harvest crosses midnight. A 2099 (or next-day) instant is
-// syntactically canonical but would win latest-row reduction and become the
-// hub dateModified, so bound each row to the capture day plus that prior day.
-function isAsOfWithinSnapshotCaptureWindow(asOf, capturedAt) {
-  if (!isCanonicalIsoInstant(asOf) || !isSnapshotCaptureDate(capturedAt)) return false;
-  const asOfDay = asOf.slice(0, 10);
-  return asOfDay === capturedAt || asOfDay === utcDateOffset(capturedAt, -1);
+// Freeze writes asOf from fetchedAt and accepts that instant within 48h of
+// capturedAtMs, plus 5 minutes of future skew. A calendar-day check rejects a
+// valid row at capturedAtMs - 47h when that instant falls two UTC dates earlier.
+function isAsOfWithinSnapshotCaptureWindow(asOf, capturedAtMs) {
+  if (!isCanonicalIsoInstant(asOf) || !Number.isFinite(capturedAtMs)) return false;
+  const asOfMs = Date.parse(asOf);
+  return asOfMs >= capturedAtMs - MAX_LIVE_SNAPSHOT_AGE_MS
+    && asOfMs <= capturedAtMs + MAX_FUTURE_SKEW_MS;
 }
 
 function pulseDateOnly(asOf, fallback) {
@@ -2761,7 +2749,7 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
       || !status
       || !congestion
       || status !== chokepointHubStatusForScore(score)
-      || !isAsOfWithinSnapshotCaptureWindow(asOf, livePulse?.capturedAt)
+      || !isAsOfWithinSnapshotCaptureWindow(asOf, livePulse?.capturedAtMs)
     ) {
       throw new Error(`Chokepoint hub pulse is invalid for ${chokepoint.id}`);
     }
