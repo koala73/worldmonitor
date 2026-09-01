@@ -52,8 +52,32 @@ rather than spiking:
 A median equal to the peak is a steady automated workload, not a burst. Those
 accounts break the moment the flag flips, on every subsequent day.
 
+## Blocker: fix the shared-key rollback race first
+
+Do not flip until this is resolved. It is inert while REST is in shadow and
+becomes real the moment it is not.
+
+REST and MCP now share `rl:apikey:day:<userId>:<date>` but reject through
+different protocols. The REST path (`reserveDailyMeter`) does an `INCR`, decides,
+and issues a *separate* `DECR` on rejection. The MCP path does the whole
+reservation in one Lua `EVAL` that can `DECRBY` its own weight and then `SET` the
+key down to the enforced limit to clamp residue.
+
+Interleaved, a REST `DECR` can land after the MCP clamp has already written the
+limit, pushing the counter below actual accepted usage. Concurrent REST
+rejections amplify it. The effect is an undercount at the cap boundary, so a few
+extra calls are served for free — bounded, but it is revenue leaking in the
+wrong direction.
+
+The fix is to put the REST reserve/reject on the same atomic EVAL rather than
+INCR-then-DECR, so both doors share one protocol as well as one key. Until then
+the MCP rejection path must not clamp a counter that has external non-atomic
+rollbacks against it.
+
 ## Sequence
 
+0. **Clear the rollback-race blocker above.** Flipping the flag is what makes
+   the shared key a cap for both doors, and the race with it.
 1. **Re-measure.** Re-run both queries above. The account list will have moved.
 2. **Confirm the notice path is live.** Over-limit accounts should already be
    carrying an over-limit Convex notice, because the scanner reads the same

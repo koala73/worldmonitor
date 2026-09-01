@@ -15,16 +15,20 @@
 //                                     -32029 message so a regression back to the
 //                                     hardcoded constant can't hide
 //
-// KTD6 boundary: plan-driven limits reach the `pro` context ONLY — and the
-// boundary is a PLAN boundary, not a credential boundary. A `user_key` caller
-// keeps the hardcoded 50/day whatever their plan says, AND an API-tier
-// entitlement arriving through the pro (OAuth) door keeps 50 too: API-tier
-// subscribers satisfy the pro-token mint gate (tier>=1 + mcpAccess), so
-// without `resolvePlanDrivenMcpAllowance` their 1000/10000 catalog allowance
-// would leak through the door their `user_key` is capped behind. Raising
-// API-plan MCP allowances is a deliberate follow-up, not a side effect of
-// this unit. The API-tier cases below and the last describe block are the
-// witnesses for that.
+// Credential symmetry: both the `pro` (OAuth) and `user_key` doors resolve the
+// SAME budget for the same subscriber. KTD6 used to pin both to a hardcoded 50
+// because the catalog published an API-tier MCP allowance enforcement refused
+// to honour, so the two doors could otherwise disagree. The number is gone —
+// API tiers now charge their REST budget — and the symmetry is what must
+// survive. The last describe block is the witness for that, and it asserts the
+// doors AGREE rather than that they agree on any particular number.
+//
+// The shared budget is only a cap once `API_RATE_LIMIT_ENFORCE` is on. While
+// REST runs in shadow the gateway serves over-allowance requests and leaves the
+// increments on the shared key, so charging MCP against it would 429 the
+// heaviest accounts immediately; those plans stay on their dedicated counter
+// until the flag flips. Cases that describe the enforced end state set the flag
+// explicitly — see tests/mcp-shared-budget-enforcement.test.mjs.
 //
 // Why a sibling file rather than an insert into tests/mcp.test.mjs: the quota
 // surface already splits its concerns this way (mcp-quota-concurrent.test.mjs,
@@ -383,6 +387,9 @@ describe('api/mcp.ts — plan-driven daily quota on the pro context', () => {
   });
 
   it('api_starter on the PRO context charges the shared REST budget, rejecting at it', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
     const { deps, pipe } = makeProDeps({
       pipelineOpts: { initialCount: 1000 },
       getEntitlements: async () => entitlement('api_starter', sharedLimits(1000), { tier: 2 }),
@@ -396,6 +403,9 @@ describe('api/mcp.ts — plan-driven daily quota on the pro context', () => {
   });
 
   it('SECURITY: an API-tier subscriber resolves the SAME budget through both credential doors', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
     // The property KTD6 was actually protecting. It pinned both doors to a
     // hardcoded 50 because the catalog published an MCP number enforcement
     // refused to honour. That number is gone; the symmetry it bought is the
@@ -503,6 +513,9 @@ describe('api/mcp.ts — the shared budget reaches the user_key context', () => 
   }
 
   it('api_business-owned user key runs to its shared REST budget, not a hardcoded 50', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
     const { deps, pipe } = apiBusinessUserKeyDeps({ initialCount: 60 });
     const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
     assert.equal(res.status, 200, 'past the old hardcoded 50 and still inside the 10,000 budget');
@@ -510,6 +523,9 @@ describe('api/mcp.ts — the shared budget reaches the user_key context', () => 
   });
 
   it('api_business-owned user key is rejected once the shared budget is spent', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
     const { deps, pipe } = apiBusinessUserKeyDeps({ initialCount: 10_000 });
     const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
     assert.equal(res.status, 429);

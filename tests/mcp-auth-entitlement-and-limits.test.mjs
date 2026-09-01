@@ -347,50 +347,75 @@ const withLimits = (planKey, mcpCallsPerDay, tier = 1) => ({
   validUntil: Date.now() + DAY,
 });
 
+/** An API-tier row: no MCP allowance of its own, charges the REST budget. */
+const withSharedLimits = (planKey, apiRequestsPerDay, tier = 2) => ({
+  planKey,
+  features: {
+    tier,
+    mcpAccess: true,
+    planLimits: {
+      apiRequestsPerDay,
+      apiBurstRequestsPerMinute: 60,
+      mcpCallsPerDay: 'shared-api-budget',
+      mcpBurstRequestsPerMinute: 60,
+    },
+  },
+  validUntil: Date.now() + DAY,
+});
+
 describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / KTD6)', () => {
   it('pro context carries the plan limit through to the caller (pro_business → 250)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_business_monthly', 250) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true, 'an entitled Pro Business owner passes the gate');
-    assert.equal(res.mcpDailyLimit, 250, 'the resolved limit rides on the pass result');
+    assert.deepEqual(res.budget, { scope: 'mcp', limit: 250 }, 'the resolved budget rides on the pass result');
   });
 
   it('pro context with the Pro plan resolves 50 (the plan value, which happens to equal the default)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_monthly', 50) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, 50);
+    assert.deepEqual(res.budget, { scope: 'mcp', limit: 50 });
   });
 
   it('pro context with an unlimited plan resolves null (distinct from "missing")', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('enterprise', null, 3) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, null, 'null is the unlimited sentinel, not an absent value');
+    assert.deepEqual(res.budget, { scope: 'mcp', limit: null }, 'null is the unlimited sentinel, not an absent value');
   });
 
-  it('pro context on a legacy row without planLimits resolves undefined → caller applies the 50 default', async () => {
+  it('pro context on a legacy row without planLimits falls back to the dedicated 50 default', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => entOk() });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.deepEqual(res.budget, { scope: 'mcp', limit: 50 }, 'an unreadable limit never buys a wider cap');
   });
 
-  it('KTD6: user_key DROPS the plan limit even when the owner is on a 10k plan', async () => {
-    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
-    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
-    assert.equal(res.ok, true, 'the owner is entitled — only the LIMIT is withheld');
-    assert.equal(
-      res.mcpDailyLimit, undefined,
-      'raising API-plan MCP allowances is a deliberate follow-up; user_key keeps the hardcoded cap',
+  it('user_key carries the SAME budget as the OAuth door for the same subscriber', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const ent = async () => withSharedLimits('api_business', 10_000, 2);
+    const viaUserKey = await authMod.runContextPreChecks(
+      USER_KEY_CONTEXT, makeProDeps({ getEntitlements: ent }).deps, RESOURCE_META_URL, CORS,
     );
+    const viaOauth = await authMod.runContextPreChecks(
+      PRO_CONTEXT, makeProDeps({ getEntitlements: ent }).deps, RESOURCE_META_URL, CORS,
+    );
+    assert.equal(viaUserKey.ok, true);
+    assert.deepEqual(
+      viaUserKey.budget, viaOauth.budget,
+      'the two credential doors must not disagree about the cap — the property KTD6 pinned to 50',
+    );
+    assert.deepEqual(viaUserKey.budget, { scope: 'api', limit: 10_000 });
   });
 
   it('env_key passes with no limit at all (never metered by the daily counter)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
     const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.equal(res.budget, undefined);
   });
 
   it('a rejected gate carries the Response and no limit (fail-closed shape is unambiguous)', async () => {
@@ -399,7 +424,7 @@ describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / 
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, false);
     assert.ok(res.response instanceof Response);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.equal(res.budget, undefined);
   });
 });
 

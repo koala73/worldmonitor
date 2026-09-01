@@ -49,6 +49,18 @@ export function resolveDailyLimit(planDailyLimit?: number | null): number | null
 export const SHARED_API_BUDGET = 'shared-api-budget';
 
 /**
+ * Whether the per-account daily meter REJECTS or merely records.
+ *
+ * The same flag `server/gateway.ts` reads, and deliberately so: the shared
+ * budget is only a cap when both doors treat it as one. Read at call time
+ * rather than module load so a deploy that flips the flag takes effect without
+ * waiting for an edge instance to recycle.
+ */
+export function isRestEnforcementEnabled(): boolean {
+  return process.env.API_RATE_LIMIT_ENFORCE === 'true';
+}
+
+/**
  * Which daily counter a caller's MCP calls charge, and the ceiling on it.
  *
  * `scope: 'api'` is the API tiers: MCP and REST draw one budget
@@ -79,8 +91,18 @@ export interface McpBudget {
 export function resolveMcpBudget(
   mcpCallsPerDay: number | null | string | undefined,
   apiRequestsPerDay?: number | null,
+  restEnforced: boolean = isRestEnforcementEnabled(),
 ): McpBudget {
   if (mcpCallsPerDay === SHARED_API_BUDGET) {
+    // While REST runs in shadow the gateway SERVES over-allowance requests and
+    // leaves their increments on this key (`reserveDailyMeter` only rolls back
+    // when it actually rejects). The counter is therefore a demand signal that
+    // sits far above the limit for exactly the heaviest accounts, not a cap.
+    // Rejecting MCP against it would 429 those accounts for the rest of the UTC
+    // day the moment this ships — the opposite of the advisory behaviour the
+    // flag promises. Stay on the dedicated counter at the plan default until
+    // the flag makes the shared budget real for REST and MCP together.
+    if (!restEnforced) return { scope: 'mcp', limit: PRO_DAILY_QUOTA_LIMIT };
     return { scope: 'api', limit: resolveDailyLimit(apiRequestsPerDay) };
   }
   return {

@@ -294,6 +294,9 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
   });
 
   it('displays the shared REST budget for an API-tier plan (display == enforcement)', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
     // An API-tier plan has no MCP allowance of its own: its calls charge
     // `apiRequestsPerDay`, so that is the number the meter applies and the only
     // honest one to display. Showing a separate MCP figure here is what told a
