@@ -5,7 +5,6 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getCountryDefenseIndustrialBase } from '@/services/defense-industrial';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
-import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
 import type {
   CountryDeepDiveEconomicIndicator,
@@ -17,7 +16,7 @@ import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
 import type { CountryCoverageEvent } from '@/services/country-coverage';
-import { reconcileCountryTimelineEvents } from '@/services/country-timeline-reconciliation';
+import { reconcileCountryTimelineIncidents } from '@/services/country-timeline-events';
 import {
   getCountryAtCoordinates,
   getCountryCentroid,
@@ -139,6 +138,7 @@ export class CountryIntelManager implements AppModule {
   private countryPremiumSectionsToken = 0;
   private countryBriefPageLoading: Promise<boolean> | null = null;
   private currentCoverageEvents: CountryCoverageEvent[] = [];
+  private coverageAbortController: AbortController | null = null;
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -166,6 +166,7 @@ export class CountryIntelManager implements AppModule {
 
   destroy(): void {
     this.briefRequestToken++;
+    this.abortCountryCoverage();
     this.pendingBriefRequest = null;
     if (this._fwDebounce) { clearTimeout(this._fwDebounce); this._fwDebounce = null; }
     this.ctx.countryTimeline?.destroy();
@@ -223,8 +224,21 @@ export class CountryIntelManager implements AppModule {
       return null;
     }
     const request = { token: ++this.briefRequestToken, owner };
+    this.abortCountryCoverage();
     this.pendingBriefRequest = request;
     return request;
+  }
+
+  private abortCountryCoverage(): void {
+    this.coverageAbortController?.abort();
+    this.coverageAbortController = null;
+  }
+
+  private startCountryCoverageRequest(): AbortSignal {
+    this.abortCountryCoverage();
+    const controller = new AbortController();
+    this.coverageAbortController = controller;
+    return controller.signal;
   }
 
   private clearBriefRequest(request: PendingCountryBriefRequest): void {
@@ -324,6 +338,7 @@ export class CountryIntelManager implements AppModule {
 
     this.ctx.countryBriefPage.onClose(() => {
       this.briefRequestToken++;
+      this.abortCountryCoverage();
       this.ctx.map?.clearCountryHighlight();
       this.ctx.map?.setRenderPaused(false);
       this.ctx.countryTimeline?.destroy();
@@ -420,7 +435,6 @@ export class CountryIntelManager implements AppModule {
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
       page.show(country, code, score, signals);
-      const pageSignal = page.signal;
       this.currentCoverageEvents = [];
       pageShown = true;
       this.visibleBriefOwner = request.owner;
@@ -565,17 +579,15 @@ export class CountryIntelManager implements AppModule {
       const hasCountryTerm = (headline: string): boolean => (
         CountryIntelManager.firstMentionPosition(headline, countrySearchTerms) !== Infinity
       );
+      const coverageSignal = this.startCountryCoverageRequest();
       void import('@/services/country-coverage')
-        .then(({ fetchCountryCoverage }) => {
-          pageSignal.throwIfAborted();
-          if (token !== this.briefRequestToken || this.ctx.countryBriefPage !== page || page.getCode() !== code) {
-            return null;
-          }
-          return fetchCountryCoverage({ country, searchTerms: countrySearchTerms, signal: pageSignal });
-        })
+        .then(({ fetchCountryCoverage }) => fetchCountryCoverage(country, countrySearchTerms, { signal: coverageSignal }))
         .then((coverage) => {
-          if (!coverage) return;
-          if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+          if (
+            coverageSignal.aborted
+            || token !== this.briefRequestToken
+            || this.ctx.countryBriefPage?.getCode() !== code
+          ) return;
           const countryHeadlines = coverage.headlines.filter(item => (
             CountryIntelManager.isCountryHeadline(item.title, country, code)
           ));
@@ -584,7 +596,10 @@ export class CountryIntelManager implements AppModule {
           this.mountCountryTimeline(code, country, this.currentCoverageEvents);
         })
         .catch((error) => {
-          if (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError') return;
+          if (
+            coverageSignal.aborted
+            || (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')
+          ) return;
           console.warn('[CountryBrief] country coverage fetch failed:', error);
         });
 
@@ -1361,7 +1376,7 @@ export class CountryIntelManager implements AppModule {
     const mount = this.ctx.countryBriefPage?.getTimelineMount();
     if (!mount) return;
 
-    const structuredEvents: TimelineEvent[] = [];
+    const structuredEvents: CountryCoverageEvent[] = [];
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
     const inCountry = (lat: number, lon: number) => hasGeoShape && this.isInCountry(lat, lon, code);
@@ -1439,10 +1454,10 @@ export class CountryIntelManager implements AppModule {
       });
     }
 
-    const isVisibleEvent = (event: TimelineEvent): boolean => (
+    const isVisibleEvent = (event: CountryCoverageEvent): boolean => (
       Number.isFinite(event.timestamp) && event.timestamp >= sevenDaysAgo
     );
-    const events = reconcileCountryTimelineEvents(
+    const events = reconcileCountryTimelineIncidents(
       coverageEvents.filter(isVisibleEvent),
       structuredEvents.filter(isVisibleEvent),
     );

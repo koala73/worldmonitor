@@ -15,6 +15,29 @@ import { isHeadlineMemoryEnabled } from './ai-flow-settings';
 import { yieldToMain } from '@/utils/after-paint';
 import { createYieldingWorkQueue } from '@/utils/yielding-work-queue';
 
+export interface RssFetchPolicy {
+  ingestGlobalTrends: boolean;
+  ingestVectorMemory: boolean;
+  classifyWithAi: boolean;
+}
+
+export const DEFAULT_RSS_FETCH_POLICY: RssFetchPolicy = Object.freeze({
+  ingestGlobalTrends: true,
+  ingestVectorMemory: true,
+  classifyWithAi: true,
+});
+
+export const BRIEF_ONLY_RSS_FETCH_POLICY: RssFetchPolicy = Object.freeze({
+  ingestGlobalTrends: false,
+  ingestVectorMemory: false,
+  classifyWithAi: false,
+});
+
+export interface FetchFeedOptions {
+  policy?: RssFetchPolicy;
+  signal?: AbortSignal;
+}
+
 const FEED_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 2;
 const MAX_CACHE_ENTRIES = 100;
@@ -222,28 +245,32 @@ function extractImageUrl(item: Element): string | undefined {
   return undefined;
 }
 
-export interface IsolatedFeedOptions {
-  mode: 'isolated';
-  signal: AbortSignal;
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException('The operation was aborted.', 'AbortError');
 }
 
-export async function fetchFeed(feed: Feed, options?: IsolatedFeedOptions): Promise<NewsItem[]> {
-  const isolated = options?.mode === 'isolated';
-  const signal = options?.signal;
-  signal?.throwIfAborted();
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
 
-  if (!isolated && feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
+export async function fetchFeed(feed: Feed, options: FetchFeedOptions = {}): Promise<NewsItem[]> {
+  const policy = options.policy ?? DEFAULT_RSS_FETCH_POLICY;
+  const signal = options.signal;
+  throwIfAborted(signal);
+  if (feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
   const currentLang = getCurrentLanguage();
   const feedScope = getFeedScope(feed.name, currentLang);
 
-  if (!isolated && isFeedOnCooldown(feedScope)) {
+  if (isFeedOnCooldown(feedScope)) {
     const cached = feedCache.get(feedScope);
     if (cached) return cached.items;
     return (await loadPersistentFeed(feedScope)) || [];
   }
 
-  const cached = isolated ? undefined : feedCache.get(feedScope);
-  if (!isolated && cached && Date.now() - cached.timestamp < CACHE_TTL) {
+  const cached = feedCache.get(feedScope);
+  if (cached && Date.now() - cached.timestamp < CACHE_TTL) {
     return cached.items;
   }
 
@@ -255,29 +282,25 @@ export async function fetchFeed(feed: Feed, options?: IsolatedFeedOptions): Prom
 
     if (!url) throw new Error(`No URL found for feed ${feed.name}`);
 
-    const response = isolated
-      ? await fetchWithProxy(url, { signal: signal!, responseCache: 'bypass' })
-      : await fetchWithProxy(url);
-    signal?.throwIfAborted();
+    const response = await fetchWithProxy(url, signal ? { signal } : {});
+    throwIfAborted(signal);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const noStoreResponse = hasNoStoreCacheDirective(response.headers);
     const text = await response.text();
-    signal?.throwIfAborted();
+    throwIfAborted(signal);
     const isMobile = isMobileDevice();
     const doc = await parseFeedXml(text, isMobile);
-    signal?.throwIfAborted();
+    throwIfAborted(signal);
 
     // XML parsing is synchronous. It is serialized behind a yield so several
     // completed mobile feed requests cannot parse back-to-back in one
     // post-hydration task; yield again before querying and mapping entries.
     // (#5165)
     if (isMobile) await yieldToMain();
-    signal?.throwIfAborted();
 
     const parseError = doc.querySelector('parsererror');
     if (parseError) {
       console.warn(`Parse error for ${feed.name}`);
-      if (isolated) return [];
       recordFeedFailure(feedScope);
       const persistent = await loadPersistentFeed(feedScope);
       return cached?.items || persistent || [];
@@ -337,26 +360,31 @@ export async function fetchFeed(feed: Feed, options?: IsolatedFeedOptions): Prom
       // and geo inference. Let paint/input run before the next item instead
       // of concatenating all five into the same task on mobile. (#5165)
       if (isMobile && index < itemNodes.length - 1) await yieldToMain();
-      signal?.throwIfAborted();
     }
 
-    if (isolated) return parsed;
-
+    throwIfAborted(signal);
     if (!noStoreResponse) {
       feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
       void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
     }
-
     recordFeedSuccess(feedScope);
-    ingestHeadlines(parsed.map(item => ({
-      title: item.title,
-      pubDate: item.pubDate,
-      pubDateMissing: item.pubDateMissing,
-      source: item.source,
-      link: item.link,
-    })));
+    if (policy.ingestGlobalTrends) {
+      ingestHeadlines(parsed.map(item => ({
+        title: item.title,
+        pubDate: item.pubDate,
+        pubDateMissing: item.pubDateMissing,
+        source: item.source,
+        link: item.link,
+      })));
+    }
 
-    if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && parsed.length > 0) {
+    if (
+      policy.ingestVectorMemory
+      && isHeadlineMemoryEnabled()
+      && mlWorker.isAvailable
+      && mlWorker.isModelLoaded('embeddings')
+      && parsed.length > 0
+    ) {
       mlWorker.vectorStoreIngest(parsed.map(item => ({
         text: item.title,
         pubDate: item.pubDate.getTime(),
@@ -366,28 +394,29 @@ export async function fetchFeed(feed: Feed, options?: IsolatedFeedOptions): Prom
       }))).catch(() => {});
     }
 
-    const aiCandidates = parsed
-      .filter(item => item.threat.source === 'keyword')
-      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
-      .slice(0, AI_CLASSIFY_MAX_PER_FEED);
+    if (policy.classifyWithAi) {
+      const aiCandidates = parsed
+        .filter(item => item.threat.source === 'keyword')
+        .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
+        .slice(0, AI_CLASSIFY_MAX_PER_FEED);
 
-    for (const item of aiCandidates) {
-      if (!canQueueAiClassification({ link: item.link, title: item.title })) continue;
-      classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
-        if (aiResult && aiResult.confidence > item.threat.confidence) {
-          item.threat = aiResult;
-          item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
-        }
-      }).catch(() => { });
+      for (const item of aiCandidates) {
+        if (!canQueueAiClassification({ link: item.link, title: item.title })) continue;
+        classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
+          if (aiResult && aiResult.confidence > item.threat.confidence) {
+            item.threat = aiResult;
+            item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
+          }
+        }).catch(() => { });
+      }
     }
 
     return parsed;
   } catch (e) {
-    if (isolated && (signal?.aborted || (e && typeof e === 'object' && 'name' in e && e.name === 'AbortError'))) {
-      throw e;
+    if (signal?.aborted || isAbortError(e)) {
+      throw e instanceof Error ? e : new DOMException('The operation was aborted.', 'AbortError');
     }
     console.error(`Failed to fetch ${feed.name}:`, e);
-    if (isolated) return [];
     recordFeedFailure(feedScope);
     const persistent = await loadPersistentFeed(feedScope);
     return cached?.items || persistent || [];

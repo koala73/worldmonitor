@@ -54,7 +54,7 @@ interface AllowEntry {
 const ALLOW_LIST: AllowEntry[] = [
   {
     file: 'src/services/rss.ts',
-    line: 342,
+    line: 390,
     reason: 'mlWorker.vectorStoreIngest stores pubDate as embedding metadata; not used as a freshness comparator.',
   },
   // effectivePubDateMs implementation moved to shared/news-clustering-core.js
@@ -175,24 +175,22 @@ describe('feed-date freshness guardrail — effectivePubDateMs usage', () => {
       ...SCAN_DIRS.flatMap((dir) => listTsFiles(dir)),
       ...SCAN_FILES,
     ];
-    {
-      for (const file of scanTargets) {
-        const src = readFileSync(resolve(repoRoot, file), 'utf8');
-        const lines = src.split(/\r?\n/);
-        for (let i = 0; i < lines.length; i++) {
-          const text = lines[i]!;
-          if (!PUBDATE_GETTIME_RE.test(text)) continue;
-          // Skip JSDoc / line comments — these aren't executing code. A line
-          // beginning with `*` (JSDoc continuation) or `//` (line comment)
-          // is documentation, not a ranking call site. Block comments that
-          // contain the pattern on their own line (e.g. `* Returns ... .pubDate.
-          // getTime()`) are caught here too.
-          const trimmed = text.trim();
-          if (trimmed.startsWith('*') || trimmed.startsWith('//')) continue;
-          if (EFFECTIVE_HELPER_RE.test(text)) continue; // helper invoked nearby
-          if (isAllowed(file, i + 1)) continue;
-          violations.push({ file, line: i + 1, text: trimmed });
-        }
+    for (const file of scanTargets) {
+      const src = readFileSync(resolve(repoRoot, file), 'utf8');
+      const lines = src.split(/\r?\n/);
+      for (let i = 0; i < lines.length; i++) {
+        const text = lines[i]!;
+        if (!PUBDATE_GETTIME_RE.test(text)) continue;
+        // Skip JSDoc / line comments — these aren't executing code. A line
+        // beginning with `*` (JSDoc continuation) or `//` (line comment)
+        // is documentation, not a ranking call site. Block comments that
+        // contain the pattern on their own line (e.g. `* Returns ... .pubDate.
+        // getTime()`) are caught here too.
+        const trimmed = text.trim();
+        if (trimmed.startsWith('*') || trimmed.startsWith('//')) continue;
+        if (EFFECTIVE_HELPER_RE.test(text)) continue; // helper invoked nearby
+        if (isAllowed(file, i + 1)) continue;
+        violations.push({ file, line: i + 1, text: trimmed });
       }
     }
 

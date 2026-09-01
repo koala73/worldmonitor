@@ -3,33 +3,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { AppContext } from '@/app/app-context';
 import type { CountryBriefSignals } from '@/types';
 
-const geometryMocks = vi.hoisted(() => ({
-  preloadCountryGeometry: vi.fn(),
+const coverageMocks = vi.hoisted(() => ({
+  fetchCountryCoverage: vi.fn(),
 }));
 
-const infraMocks = vi.hoisted(() => ({
-  preloadInfrastructureTables: vi.fn(),
-}));
-
-const militaryMocks = vi.hoisted(() => ({
-  preloadMilitaryBases: vi.fn(async () => []),
-}));
-
-vi.mock('@/services/country-geometry', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/services/country-geometry')>(),
-  preloadCountryGeometry: () => geometryMocks.preloadCountryGeometry(),
-}));
-
-vi.mock('@/services/related-assets', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/services/related-assets')>(),
-  preloadInfrastructureTables: () => infraMocks.preloadInfrastructureTables(),
-  getNearbyInfrastructure: () => [],
-}));
-
-vi.mock('@/services/military-base-config', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/services/military-base-config')>(),
-  preloadMilitaryBases: () => militaryMocks.preloadMilitaryBases(),
-  getCachedMilitaryBases: () => [],
+vi.mock('@/services/country-coverage', () => ({
+  fetchCountryCoverage: (...args: unknown[]) => coverageMocks.fetchCountryCoverage(...args),
 }));
 
 vi.mock('@/utils/after-paint', async (importOriginal) => ({
@@ -117,10 +96,9 @@ const EMPTY_SIGNALS: CountryBriefSignals = {
   sanctionsNewDesignations: 0,
 };
 
-function createBriefHarness(code: string) {
+function createBriefHarness() {
   let visible = false;
   let activeCode = '';
-  const infrastructureUpdates: string[] = [];
   const newsUpdates: string[] = [];
   const page = {
     getCode: () => activeCode,
@@ -137,9 +115,7 @@ function createBriefHarness(code: string) {
       visible = true;
       activeCode = '__loading__';
     },
-    updateInfrastructure: (nextCode: string) => {
-      infrastructureUpdates.push(nextCode);
-    },
+    updateInfrastructure: () => {},
     updateNews: () => {
       newsUpdates.push(activeCode);
     },
@@ -178,62 +154,39 @@ function createBriefHarness(code: string) {
   Reflect.set(manager, 'fetchCommodityVulnerability', () => {});
   Reflect.set(manager, 'mountCountryTimeline', () => {});
   return {
-    infrastructureUpdates,
     newsUpdates,
-    open: () => manager.openCountryBriefByCode(code, code, { trackAnalytics: false }),
+    open: (code: string, name: string) => manager.openCountryBriefByCode(code, name, { trackAnalytics: false }),
   };
 }
 
-describe('CountryIntelManager infrastructure preload barrier', () => {
+describe('CountryIntelManager coverage abort', () => {
   beforeEach(() => {
-    geometryMocks.preloadCountryGeometry.mockReset();
-    infraMocks.preloadInfrastructureTables.mockReset();
-    militaryMocks.preloadMilitaryBases.mockReset();
-    militaryMocks.preloadMilitaryBases.mockResolvedValue([]);
+    coverageMocks.fetchCountryCoverage.mockReset();
     vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('offline'));
   });
 
-  it('does not render a cold brief until geometry and infrastructure tables settle, then refreshes once', async () => {
-    const geometry = deferred();
-    const infrastructure = deferred();
-    geometryMocks.preloadCountryGeometry.mockReturnValue(geometry.promise);
-    infraMocks.preloadInfrastructureTables.mockReturnValue(infrastructure.promise);
+  it('aborts an in-flight country coverage fetch when the brief switches countries', async () => {
+    const franceCoverage = deferred<{ headlines: []; timelineEvents: [] }>();
+    const capturedSignals: AbortSignal[] = [];
+    coverageMocks.fetchCountryCoverage.mockImplementation(async (_country, _terms, options) => {
+      capturedSignals.push(options.signal);
+      if (capturedSignals.length === 1) return franceCoverage.promise;
+      return { headlines: [], timelineEvents: [] };
+    });
 
-    const { infrastructureUpdates, newsUpdates, open } = createBriefHarness('FR');
-    const pendingOpen = open();
-    await vi.waitFor(() => expect(newsUpdates).toEqual(['FR']));
+    const { newsUpdates, open } = createBriefHarness();
+    const franceOpen = open('FR', 'France');
+    await vi.waitFor(() => expect(coverageMocks.fetchCountryCoverage).toHaveBeenCalledTimes(1));
+    expect(capturedSignals[0]?.aborted).toBe(false);
 
-    expect(infrastructureUpdates).toEqual([]);
+    const germanyOpen = open('DE', 'Germany');
+    await vi.waitFor(() => expect(capturedSignals[0]?.aborted).toBe(true));
+    await vi.waitFor(() => expect(coverageMocks.fetchCountryCoverage).toHaveBeenCalledTimes(2));
+    expect(capturedSignals[1]?.aborted).toBe(false);
+    expect(coverageMocks.fetchCountryCoverage.mock.calls[1]?.[0]).toBe('Germany');
 
-    geometry.resolve();
-    await Promise.resolve();
-    expect(infrastructureUpdates).toEqual([]);
-
-    infrastructure.resolve();
-    await vi.waitFor(() => expect(infrastructureUpdates).toEqual(['FR']));
-    await pendingOpen;
-    expect(infrastructureUpdates).toEqual(['FR']);
-  });
-
-  it('keeps the immediate infrastructure render when a warm centroid is already known', async () => {
-    const geometry = deferred();
-    const infrastructure = deferred();
-    geometryMocks.preloadCountryGeometry.mockReturnValue(geometry.promise);
-    infraMocks.preloadInfrastructureTables.mockReturnValue(infrastructure.promise);
-
-    const { infrastructureUpdates, newsUpdates, open } = createBriefHarness('AE');
-    const pendingOpen = open();
-    await vi.waitFor(() => expect(newsUpdates).toEqual(['AE']));
-
-    expect(infrastructureUpdates).toEqual(['AE']);
-
-    infrastructure.resolve();
-    await Promise.resolve();
-    expect(infrastructureUpdates).toEqual(['AE']);
-
-    geometry.resolve();
-    await vi.waitFor(() => expect(infrastructureUpdates).toEqual(['AE', 'AE']));
-    await pendingOpen;
-    expect(infrastructureUpdates).toEqual(['AE', 'AE']);
+    franceCoverage.resolve({ headlines: [], timelineEvents: [] });
+    await Promise.all([franceOpen, germanyOpen]);
+    expect(newsUpdates[newsUpdates.length - 1]).toBe('DE');
   });
 });

@@ -2,19 +2,16 @@ import type { EventCategory, NewsItem, ThreatLevel } from '@/types';
 import { rssProxyUrl } from '@/utils';
 import { isDesktopRuntime } from './runtime';
 import { effectivePubDateMs } from './feed-date';
-import { fetchFeed } from './rss';
+import { BRIEF_ONLY_RSS_FETCH_POLICY, fetchFeed } from './rss';
+import {
+  clusterCountryTimelineIncidents,
+  type CountryTimelineIncident,
+} from './country-timeline-events';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const EVENT_QUERY = 'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';
 
-export interface CountryCoverageEvent {
-  timestamp: number;
-  lane: 'protest' | 'conflict' | 'natural' | 'military';
-  label: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-  source: string;
-  link: string;
-}
+export type CountryCoverageEvent = CountryTimelineIncident;
 
 export interface CountryCoverage {
   headlines: NewsItem[];
@@ -57,18 +54,18 @@ function normalizeGoogleNewsItem(item: NewsItem): NewsItem {
   };
 }
 
-export interface CountryCoverageRequest {
-  country: string;
-  searchTerms: string[];
-  signal: AbortSignal;
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException('The operation was aborted.', 'AbortError');
 }
 
-export async function fetchCountryCoverage({
-  country,
-  searchTerms,
-  signal,
-}: CountryCoverageRequest): Promise<CountryCoverage> {
-  signal.throwIfAborted();
+export async function fetchCountryCoverage(
+  country: string,
+  searchTerms: string[] = [],
+  options: { signal?: AbortSignal } = {},
+): Promise<CountryCoverage> {
+  throwIfAborted(options.signal);
   const uniqueTerms = new Map<string, string>();
   for (const rawTerm of [country, ...searchTerms]) {
     const term = rawTerm.trim();
@@ -81,36 +78,40 @@ export async function fetchCountryCoverage({
     .map(term => `"${term.replace(/"/g, '')}"`)
     .join(' OR ');
 
+  const feedOptions = {
+    policy: BRIEF_ONLY_RSS_FETCH_POLICY,
+    signal: options.signal,
+  };
   const [headlineItems, eventItems] = await Promise.all([
     fetchFeed({
       name: `Country coverage: ${country}`,
       url: googleNewsFeedUrl(`"${country}" when:7d`),
-    }, { mode: 'isolated', signal }),
+    }, feedOptions),
     fetchFeed({
       name: `Country events: ${country}`,
       url: googleNewsFeedUrl(`(${eventTerms}) (${EVENT_QUERY}) when:7d`),
-    }, { mode: 'isolated', signal }),
+    }, feedOptions),
   ]);
-  signal.throwIfAborted();
+  throwIfAborted(options.signal);
   const cutoff = Date.now() - SEVEN_DAYS_MS;
   const headlines = headlineItems
     .filter(item => effectivePubDateMs(item) >= cutoff)
     .map(normalizeGoogleNewsItem);
-  const timelineEvents = eventItems
-    .filter(item => effectivePubDateMs(item) >= cutoff)
-    .map(normalizeGoogleNewsItem)
-    .flatMap<CountryCoverageEvent>((item) => {
-      const lane = item.threat ? TIMELINE_LANES[item.threat.category] : undefined;
-      if (!lane) return [];
-      return [{
-        timestamp: effectivePubDateMs(item),
-        lane,
-        label: item.title,
-        severity: timelineSeverity(item.threat?.level),
-        source: item.source,
-        link: item.link,
-      }];
-    });
+  const timelineEvents = clusterCountryTimelineIncidents(
+    eventItems
+      .filter(item => effectivePubDateMs(item) >= cutoff)
+      .map(normalizeGoogleNewsItem)
+      .flatMap<CountryCoverageEvent>((item) => {
+        const lane = item.threat ? TIMELINE_LANES[item.threat.category] : undefined;
+        if (!lane) return [];
+        return [{
+          timestamp: effectivePubDateMs(item),
+          lane,
+          label: item.title,
+          severity: timelineSeverity(item.threat?.level),
+        }];
+      }),
+  );
 
   return { headlines, timelineEvents };
 }

@@ -9,7 +9,8 @@ const runtimeMocks = vi.hoisted(() => ({
   isDesktopRuntime: vi.fn(() => false),
 }));
 
-vi.mock('@/services/rss', () => ({
+vi.mock('@/services/rss', async (importOriginal) => ({
+  ...await importOriginal<typeof import('@/services/rss')>(),
   fetchFeed: rssMocks.fetchFeed,
 }));
 vi.mock('@/services/runtime', async (importOriginal) => ({
@@ -18,6 +19,13 @@ vi.mock('@/services/runtime', async (importOriginal) => ({
 }));
 
 import { fetchCountryCoverage } from '@/services/country-coverage';
+import {
+  COVERAGE_CLUSTER_WINDOW_MS,
+  clusterCountryTimelineIncidents,
+  reconcileCountryTimelineIncidents,
+  type CountryTimelineIncident,
+} from '@/services/country-timeline-events';
+import { BRIEF_ONLY_RSS_FETCH_POLICY } from '@/services/rss';
 
 function newsItem(
   title: string,
@@ -51,7 +59,6 @@ describe('country coverage', () => {
 
   it('loads recent country headlines and maps only timeline event categories', async () => {
     vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
-    const signal = new AbortController().signal;
     const recentMilitary = newsItem(
       'France deploys military units after security alert',
       'military',
@@ -78,15 +85,16 @@ describe('country coverage', () => {
         : [recentEconomic, staleConflict]
     ));
 
-    const coverage = await fetchCountryCoverage({
-      country: 'France',
-      searchTerms: ['france', 'french', 'paris'],
-      signal,
-    });
+    const coverage = await fetchCountryCoverage('France', ['france', 'french', 'paris']);
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
-    const queries = rssMocks.fetchFeed.mock.calls.map(([feed, options]) => {
-      expect(options).toEqual({ mode: 'isolated', signal });
+    for (const [, options] of rssMocks.fetchFeed.mock.calls) {
+      expect(options).toEqual({
+        policy: BRIEF_ONLY_RSS_FETCH_POLICY,
+        signal: undefined,
+      });
+    }
+    const queries = rssMocks.fetchFeed.mock.calls.map(([feed]) => {
       const proxyUrl = new URL(feed.url, 'https://worldmonitor.test');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
       const feedUrl = new URL(proxyUrl.searchParams.get('url') ?? '');
@@ -104,49 +112,173 @@ describe('country coverage', () => {
     }]);
     expect(coverage.timelineEvents).toEqual([
       {
-        timestamp: recentMilitary.pubDate.getTime(),
-        lane: 'military',
-        label: recentMilitary.title,
-        severity: 'high',
-        source: recentMilitary.source,
-        link: recentMilitary.link,
-      },
-      {
         timestamp: recentProtest.pubDate.getTime(),
         lane: 'protest',
         label: recentProtest.title,
         severity: 'medium',
-        source: recentProtest.source,
-        link: recentProtest.link,
       },
+      {
+        timestamp: recentMilitary.pubDate.getTime(),
+        lane: 'military',
+        label: recentMilitary.title,
+        severity: 'high',
+      },
+    ]);
+  });
+
+  it('clusters same-lane coverage reprints of one incident', async () => {
+    vi.setSystemTime(new Date('2026-09-01T12:00:00Z'));
+    const first = newsItem(
+      'Thousands join Paris protest after police clash',
+      'protest',
+      new Date('2026-08-31T08:00:00Z'),
+    );
+    const reprint = newsItem(
+      'Crowds join Paris protest after police clash',
+      'protest',
+      new Date('2026-08-31T10:00:00Z'),
+    );
+    const laterWording = newsItem(
+      'Thousands join the Paris protest after a police clash',
+      'protest',
+      new Date('2026-08-31T12:00:00Z'),
+    );
+    laterWording.threat = { ...laterWording.threat!, level: 'high' };
+    const distinct = newsItem(
+      'French unions plan a national protest next week',
+      'protest',
+      new Date('2026-08-30T09:00:00Z'),
+    );
+    rssMocks.fetchFeed.mockImplementation(async (feed) => (
+      feed.name === 'Country events: France'
+        ? [first, reprint, laterWording, distinct]
+        : []
+    ));
+
+    const coverage = await fetchCountryCoverage('France');
+
+    expect(coverage.timelineEvents).toEqual([
+      {
+        timestamp: distinct.pubDate.getTime(),
+        lane: 'protest',
+        label: distinct.title,
+        severity: 'medium',
+      },
+      {
+        timestamp: first.pubDate.getTime(),
+        lane: 'protest',
+        label: first.title,
+        severity: 'high',
+      },
+    ]);
+  });
+
+  it('keeps similar coverage articles in different lanes or outside the window', () => {
+    const t0 = Date.parse('2026-08-31T08:00:00Z');
+    const protest: CountryTimelineIncident = {
+      timestamp: t0,
+      lane: 'protest',
+      label: 'Thousands join Paris protest after police clash',
+      severity: 'medium',
+    };
+    const conflict: CountryTimelineIncident = {
+      timestamp: t0 + 60 * 60 * 1000,
+      lane: 'conflict',
+      label: 'Thousands join Paris protest after police clash',
+      severity: 'high',
+    };
+    const laterWave: CountryTimelineIncident = {
+      timestamp: t0 + COVERAGE_CLUSTER_WINDOW_MS + 1,
+      lane: 'protest',
+      label: 'Crowds join Paris protest after police clash',
+      severity: 'low',
+    };
+
+    expect(clusterCountryTimelineIncidents([protest, conflict, laterWave])).toEqual([
+      protest,
+      conflict,
+      laterWave,
+    ]);
+  });
+
+  it('prefers one structured record over several matching coverage articles', () => {
+    const t0 = Date.parse('2026-08-31T08:00:00Z');
+    const articles: CountryTimelineIncident[] = [
+      {
+        timestamp: t0,
+        lane: 'protest',
+        label: 'Thousands join Paris protest after police clash',
+        severity: 'medium',
+      },
+      {
+        timestamp: t0 + 2 * 60 * 60 * 1000,
+        lane: 'protest',
+        label: 'Crowds join Paris protest after police clash',
+        severity: 'medium',
+      },
+      {
+        timestamp: t0 + 4 * 60 * 60 * 1000,
+        lane: 'protest',
+        label: 'Thousands join the Paris protest after a police clash',
+        severity: 'high',
+      },
+    ];
+    const structured: CountryTimelineIncident = {
+      timestamp: t0 + 30 * 60 * 1000,
+      lane: 'protest',
+      label: 'Paris protest after police clash',
+      severity: 'high',
+    };
+    const unrelated: CountryTimelineIncident = {
+      timestamp: t0 + 60 * 60 * 1000,
+      lane: 'military',
+      label: 'France deploys military units after security alert',
+      severity: 'high',
+    };
+
+    expect(reconcileCountryTimelineIncidents([...articles, unrelated], [structured])).toEqual([
+      structured,
+      unrelated,
     ]);
   });
 
   it('routes desktop country feeds through the local RSS proxy', async () => {
     runtimeMocks.isDesktopRuntime.mockReturnValue(true);
     rssMocks.fetchFeed.mockResolvedValue([]);
-    const signal = new AbortController().signal;
 
-    await fetchCountryCoverage({ country: 'France', searchTerms: [], signal });
+    await fetchCountryCoverage('France');
 
     expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2);
     for (const [feed, options] of rssMocks.fetchFeed.mock.calls) {
-      expect(options).toEqual({ mode: 'isolated', signal });
+      expect(options.policy).toBe(BRIEF_ONLY_RSS_FETCH_POLICY);
       const proxyUrl = new URL(feed.url, 'https://desktop.local');
       expect(proxyUrl.pathname).toBe('/api/rss-proxy');
       expect(new URL(proxyUrl.searchParams.get('url') ?? '').hostname).toBe('news.google.com');
     }
   });
 
-  it('rejects before starting either feed when the request is already aborted', async () => {
+  it('forwards an abort signal and rejects a superseded country request', async () => {
     const controller = new AbortController();
-    controller.abort();
+    let releaseFirst!: () => void;
+    const firstHold = new Promise<NewsItem[]>(resolve => {
+      releaseFirst = () => resolve([]);
+    });
+    rssMocks.fetchFeed.mockImplementation((_feed, options) => {
+      if (options?.signal?.aborted) {
+        return Promise.reject(new DOMException('The operation was aborted.', 'AbortError'));
+      }
+      return firstHold;
+    });
 
-    await expect(fetchCountryCoverage({
-      country: 'France',
-      searchTerms: [],
-      signal: controller.signal,
-    })).rejects.toMatchObject({ name: 'AbortError' });
-    expect(rssMocks.fetchFeed).not.toHaveBeenCalled();
+    const pending = fetchCountryCoverage('France', [], { signal: controller.signal });
+    await vi.waitFor(() => expect(rssMocks.fetchFeed).toHaveBeenCalledTimes(2));
+    for (const [, options] of rssMocks.fetchFeed.mock.calls) {
+      expect(options.signal).toBe(controller.signal);
+      expect(options.policy).toBe(BRIEF_ONLY_RSS_FETCH_POLICY);
+    }
+
+    controller.abort();
+    releaseFirst();
+    await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
   });
 });

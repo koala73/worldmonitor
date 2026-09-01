@@ -145,14 +145,15 @@ function isPersistedResponseFresh(
     && ageMs < persistedResponseMaxAgeMs(cached.data);
 }
 
-export interface FetchWithProxyOptions {
-  signal?: AbortSignal;
-  responseCache?: 'bypass';
+function throwIfAborted(signal?: AbortSignal | null): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException('The operation was aborted.', 'AbortError');
 }
 
-async function fetchAndPersist(url: string, signal?: AbortSignal): Promise<Response> {
-  const init: RequestInit = signal ? { cache: 'no-store', signal } : { cache: 'no-store' };
-  const response = await fetch(proxyUrl(url), proxyFetchInit(url, init));
+async function fetchAndPersist(url: string, init: RequestInit = {}): Promise<Response> {
+  const response = await fetch(proxyUrl(url), proxyFetchInit(url, { ...init, cache: 'no-store' }));
+  throwIfAborted(init.signal);
   if (response.ok && shouldPersistResponse(url) && !hasNoStoreCacheDirective(response.headers)) {
     try {
       const body = await response.clone().text();
@@ -164,32 +165,22 @@ async function fetchAndPersist(url: string, signal?: AbortSignal): Promise<Respo
   return response;
 }
 
-export async function fetchWithProxy(
-  url: string,
-  options: FetchWithProxyOptions = {},
-): Promise<Response> {
-  if (options.responseCache === 'bypass') {
-    const init: RequestInit = options.signal
-      ? { cache: 'no-store', signal: options.signal }
-      : { cache: 'no-store' };
-    return fetch(proxyUrl(url), proxyFetchInit(url, init));
-  }
-
+export async function fetchWithProxy(url: string, init: RequestInit = {}): Promise<Response> {
+  throwIfAborted(init.signal);
   if (!shouldPersistResponse(url)) {
-    return options.signal
-      ? fetch(proxyUrl(url), proxyFetchInit(url, { signal: options.signal }))
-      : fetch(proxyUrl(url), proxyFetchInit(url));
+    return fetch(proxyUrl(url), proxyFetchInit(url, init));
   }
 
   const cacheKey = buildResponseCacheKey(url);
   const cached = await getPersistentCache<CachedResponsePayload>(cacheKey);
+  throwIfAborted(init.signal);
 
   if (cached?.data && isPersistedResponseFresh(cached)) {
-    void fetchAndPersist(url, options.signal).catch((error) => {
+    void fetchAndPersist(url).catch((error) => {
       console.warn('[proxy] Background refresh failed for cached API response', error);
     });
     return toResponse(cached.data);
   }
 
-  return fetchAndPersist(url, options.signal);
+  return fetchAndPersist(url, init);
 }
