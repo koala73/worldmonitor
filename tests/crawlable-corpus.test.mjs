@@ -880,6 +880,28 @@ describe('crawlable corpus generator', () => {
     );
   });
 
+  it('rejects a chokepoint pulse key that is not in the registry', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(data.chokepoints, data.livePulse),
+      'the committed pulse must match the registry exactly',
+    );
+    const livePulse = structuredClone(data.livePulse);
+    const [firstChokepoint] = data.chokepoints;
+    livePulse.chokepoints.obsolete_strait = { ...livePulse.chokepoints[firstChokepoint.id] };
+
+    assert.throws(
+      () => buildChokepointHubRows(data.chokepoints, livePulse),
+      /unexpected obsolete_strait/,
+    );
+    const missingPulse = structuredClone(data.livePulse);
+    delete missingPulse.chokepoints[firstChokepoint.id];
+    assert.throws(
+      () => buildChokepointHubRows(data.chokepoints, missingPulse),
+      new RegExp(`missing ${firstChokepoint.id}`),
+    );
+  });
+
   it('emits temporalCoverage only from a committed observation interval', () => {
     assert.equal(datasetTemporalCoverage('2026-05-28'), '2026-05-28');
     assert.equal(datasetTemporalCoverage('2026-01-01/2026-01-31'), '2026-01-01/2026-01-31');
@@ -898,6 +920,60 @@ describe('crawlable corpus generator', () => {
     });
     assert.equal(newerRegistry.capturedAt, '2026-05-01');
     assert.equal(newerRegistry.volumeObservedAt, '2026-03-14');
+  });
+
+  it('rejects invalid chokepoint hub status and congestion before publication', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const [firstChokepoint] = data.chokepoints;
+    const validPulse = data.livePulse.chokepoints[firstChokepoint.id];
+    assert.ok(validPulse, 'committed pulse must include the first registry chokepoint');
+    assert.equal(
+      buildChokepointHubRows(data.chokepoints, {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Elevated' },
+        },
+      }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      'Elevated',
+    );
+    assert.equal(
+      buildChokepointHubRows(data.chokepoints, {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Not reported' },
+        },
+      }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      'Not reported',
+    );
+
+    for (const [label, pulse] of [
+      ['object status', { ...validPulse, status: { label: 'Yellow' } }],
+      ['numeric status', { ...validPulse, status: 42 }],
+      ['unknown status', { ...validPulse, status: 'Orange' }],
+      ['lowercase status', { ...validPulse, status: 'yellow' }],
+      ['status below score band', { ...validPulse, disruptionScore: '70', status: 'Green' }],
+      ['status above score band', { ...validPulse, disruptionScore: '5', status: 'Red' }],
+      ['status in adjacent score band', { ...validPulse, disruptionScore: '19', status: 'Yellow' }],
+      ['object congestion', { ...validPulse, congestion: { level: 'Normal' } }],
+      ['numeric congestion', { ...validPulse, congestion: 3 }],
+      ['unknown congestion', { ...validPulse, congestion: 'Severe' }],
+      ['lowercase congestion', { ...validPulse, congestion: 'normal' }],
+    ]) {
+      const invalidLivePulse = {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: pulse,
+        },
+      };
+      assert.throws(
+        () => buildChokepointHubRows(data.chokepoints, invalidLivePulse),
+        new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+        `${label} must fail the chokepoint hub build`,
+      );
+    }
   });
 
   it('tracks every material chokepoint page input in its lastmod clock', () => {
@@ -2205,6 +2281,8 @@ describe('crawlable corpus generator', () => {
         ['missing status', { ...validPulse, status: '' }],
         ['missing congestion', { ...validPulse, congestion: '' }],
         ['impossible timestamp', { ...validPulse, asOf: '2026-02-31T13:37:22.049Z' }],
+        ['future timestamp', { ...validPulse, asOf: '2099-01-01T00:00:00.000Z' }],
+        ['stale timestamp', { ...validPulse, asOf: '2020-01-01T00:00:00.000Z' }],
       ]) {
         const invalidLivePulse = {
           ...corpusData.livePulse,
@@ -2226,8 +2304,37 @@ describe('crawlable corpus generator', () => {
       delete missingPulse.chokepoints[firstChokepoint.id];
       assert.throws(
         () => buildChokepointHubRows(corpusData.chokepoints, missingPulse),
-        new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+        new RegExp(`missing ${firstChokepoint.id}`),
         'a missing registry member must fail the chokepoint hub build',
+      );
+      const extraPulse = {
+        ...corpusData.livePulse,
+        chokepoints: {
+          ...corpusData.livePulse.chokepoints,
+          obsolete_strait: validPulse,
+        },
+      };
+      assert.throws(
+        () => buildChokepointHubRows(corpusData.chokepoints, extraPulse),
+        /unexpected obsolete_strait/,
+        'an extra pulse key must fail the chokepoint hub build',
+      );
+      const priorDay = new Date(
+        Date.parse(`${corpusData.livePulse.capturedAt}T00:00:00.000Z`) - 86_400_000,
+      ).toISOString().slice(0, 10);
+      const priorDayPulse = {
+        ...corpusData.livePulse,
+        chokepoints: {
+          ...corpusData.livePulse.chokepoints,
+          [firstChokepoint.id]: {
+            ...validPulse,
+            asOf: `${priorDay}T12:00:00.000Z`,
+          },
+        },
+      };
+      assert.doesNotThrow(
+        () => buildChokepointHubRows(corpusData.chokepoints, priorDayPulse),
+        'the freeze prior-day window must remain accepted',
       );
 
       const sourcesPage = read(outDir, 'sources/index.html');
@@ -2935,6 +3042,44 @@ describe('crawlable corpus generator', () => {
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
+  });
+
+  it('rejects future and stale chokepoint hub timestamps while allowing the freeze prior-day window', async () => {
+    const corpusData = await loadCorpusData({ rootDir: repoRoot });
+    const [firstChokepoint] = corpusData.chokepoints;
+    const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];
+    const capturedAt = corpusData.livePulse.capturedAt;
+    const priorDay = new Date(Date.parse(`${capturedAt}T00:00:00.000Z`) - 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const staleDay = new Date(Date.parse(`${capturedAt}T00:00:00.000Z`) - 2 * 86_400_000)
+      .toISOString()
+      .slice(0, 10);
+    const withAsOf = (asOf) => ({
+      ...corpusData.livePulse,
+      chokepoints: {
+        ...corpusData.livePulse.chokepoints,
+        [firstChokepoint.id]: { ...validPulse, asOf },
+      },
+    });
+    const invalidFor = (asOf, label) => {
+      assert.throws(
+        () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(asOf)),
+        new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+        label,
+      );
+    };
+
+    invalidFor('2099-01-01T00:00:00.000Z', 'a future asOf must fail the chokepoint hub build');
+    invalidFor(`${staleDay}T12:00:00.000Z`, 'a stale asOf older than the prior-day window must fail');
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(`${priorDay}T12:00:00.000Z`)),
+      'the freeze prior-day window must remain accepted',
+    );
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(corpusData.chokepoints, corpusData.livePulse),
+      'committed same-day asOf values must remain accepted',
+    );
   });
 
   it('loads deterministic source data without network access', async () => {

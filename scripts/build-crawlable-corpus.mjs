@@ -346,6 +346,30 @@ function isCanonicalIsoInstant(value) {
   return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
 }
 
+const SNAPSHOT_CAPTURE_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
+const UTC_DAY_MS = 86_400_000;
+
+function isSnapshotCaptureDate(value) {
+  if (typeof value !== 'string' || !SNAPSHOT_CAPTURE_DATE_RE.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00.000Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
+function utcDateOffset(dateOnly, days) {
+  const timestamp = Date.parse(`${dateOnly}T00:00:00.000Z`);
+  return new Date(timestamp + days * UTC_DAY_MS).toISOString().slice(0, 10);
+}
+
+// Freeze writes asOf from fetchedAt, which may land on the UTC day before
+// capturedAt when harvest crosses midnight. A 2099 (or next-day) instant is
+// syntactically canonical but would win latest-row reduction and become the
+// hub dateModified, so bound each row to the capture day plus that prior day.
+function isAsOfWithinSnapshotCaptureWindow(asOf, capturedAt) {
+  if (!isCanonicalIsoInstant(asOf) || !isSnapshotCaptureDate(capturedAt)) return false;
+  const asOfDay = asOf.slice(0, 10);
+  return asOfDay === capturedAt || asOfDay === utcDateOffset(capturedAt, -1);
+}
+
 function pulseDateOnly(asOf, fallback) {
   if (typeof asOf === 'string' && /^\d{4}-\d{2}-\d{2}/.test(asOf)) {
     return asOf.slice(0, 10);
@@ -2689,7 +2713,40 @@ ${analysis.html}
   });
 }
 
+const CHOKEPOINT_HUB_STATUS_LABELS = new Set(['Green', 'Yellow', 'Red']);
+const CHOKEPOINT_HUB_CONGESTION_LABELS = new Set([
+  'Low',
+  'Normal',
+  'Elevated',
+  'High',
+  'Not reported',
+]);
+
+function publishedPulseLabel(value, allowed) {
+  if (typeof value !== 'string') return '';
+  const label = value.trim();
+  return allowed.has(label) ? label : '';
+}
+
+function chokepointHubStatusForScore(score) {
+  if (score < 20) return 'Green';
+  if (score < 50) return 'Yellow';
+  return 'Red';
+}
+
 export function buildChokepointHubRows(chokepoints, livePulse) {
+  const registryIds = chokepoints.map((chokepoint) => chokepoint.id);
+  const registryIdSet = new Set(registryIds);
+  const pulseIds = Object.keys(livePulse?.chokepoints || {});
+  const pulseIdSet = new Set(pulseIds);
+  const missingIds = registryIds.filter((id) => !pulseIdSet.has(id));
+  const unexpectedIds = pulseIds.filter((id) => !registryIdSet.has(id));
+  if (missingIds.length > 0 || unexpectedIds.length > 0) {
+    throw new Error(
+      `Chokepoint hub pulse set is invalid: missing ${missingIds.join(', ') || 'none'}; `
+      + `unexpected ${unexpectedIds.join(', ') || 'none'}`,
+    );
+  }
   return chokepoints.map((chokepoint) => {
     const pulse = livePulse?.chokepoints?.[chokepoint.id];
     const rawScore = pulse?.disruptionScore;
@@ -2699,8 +2756,8 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
     } else if (typeof rawScore === 'string' && /^\d+(?:\.\d+)?$/.test(rawScore)) {
       score = Number(rawScore);
     }
-    const status = String(pulse?.status || '').trim();
-    const congestion = String(pulse?.congestion || '').trim();
+    const status = publishedPulseLabel(pulse?.status, CHOKEPOINT_HUB_STATUS_LABELS);
+    const congestion = publishedPulseLabel(pulse?.congestion, CHOKEPOINT_HUB_CONGESTION_LABELS);
     const asOf = String(pulse?.asOf || '').trim();
     if (
       !pulse
@@ -2709,7 +2766,8 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
       || score > 100
       || !status
       || !congestion
-      || !isCanonicalIsoInstant(asOf)
+      || status !== chokepointHubStatusForScore(score)
+      || !isAsOfWithinSnapshotCaptureWindow(asOf, livePulse?.capturedAt)
     ) {
       throw new Error(`Chokepoint hub pulse is invalid for ${chokepoint.id}`);
     }
