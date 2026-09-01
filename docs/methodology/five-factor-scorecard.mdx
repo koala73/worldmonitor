@@ -257,23 +257,20 @@ population-weighted across the members that have evidence.
 the system that delivers it sound?
 
 Consumption comes from OWID `primary_energy_consumption`. Production is derived
-from the audited World Bank net-energy-imports observation (`EG.IMP.CONS.ZS`)
-already carried by the resilience static source:
+from the audited net-energy-imports observation already carried by the
+resilience static source, Eurostat `nrg_ind_id` for covered European countries
+and World Bank `EG.IMP.CONS.ZS` elsewhere:
 
 ```text
 production TWh = consumption TWh * (1 - net imports percent / 100)
 ```
 
-Where that import-dependency observation is Eurostat `nrg_ind_id` rather than
-World Bank, the input reports `redistribution-blocked` and the country scores no
-primary balance. Eurostat is not audited for raw redistribution of this
-indicator, and publishing the derived ratio would expose the raw percentage
-anyway, since consumption is published beside it. Restoring those countries
-requires a source audit, not a code change.
+Both providers are audited for raw redistribution, so the `netEnergyImportsPercent`
+observation carries the provenance of whichever one supplied it.
 
 | Component | Weight | Direction and goalposts | Input source |
 |---|---:|---|---|
-| Primary production / consumption | 0.60 | higher; `0.25 -> 0`, `1.25 -> 100` | OWID plus World Bank |
+| Primary production / consumption | 0.60 | higher; `0.25 -> 0`, `1.25 -> 100` | OWID plus World Bank or Eurostat |
 | Low-carbon generation share | 0.25 | higher; `0% -> 0`, `80% -> 100` | resilience low-carbon generation |
 | Grid delivery efficiency | 0.15 | lower losses; `25% -> 0`, `3% -> 100` | resilience power losses |
 
