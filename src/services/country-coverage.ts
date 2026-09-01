@@ -3,16 +3,15 @@ import { rssProxyUrl } from '@/utils';
 import { isDesktopRuntime } from './runtime';
 import { effectivePubDateMs } from './feed-date';
 import { fetchFeed } from './rss';
+import {
+  clusterCountryTimelineIncidents,
+  type CountryTimelineIncident,
+} from './country-timeline-events';
 
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 const EVENT_QUERY = 'protest OR demonstration OR riot OR conflict OR attack OR military OR earthquake OR flood OR wildfire';
 
-export interface CountryCoverageEvent {
-  timestamp: number;
-  lane: 'protest' | 'conflict' | 'natural' | 'military';
-  label: string;
-  severity: 'low' | 'medium' | 'high' | 'critical';
-}
+export type CountryCoverageEvent = CountryTimelineIncident;
 
 export interface CountryCoverage {
   headlines: NewsItem[];
@@ -85,19 +84,21 @@ export async function fetchCountryCoverage(
   const headlines = headlineItems
     .filter(item => effectivePubDateMs(item) >= cutoff)
     .map(normalizeGoogleNewsItem);
-  const timelineEvents = eventItems
-    .filter(item => effectivePubDateMs(item) >= cutoff)
-    .map(normalizeGoogleNewsItem)
-    .flatMap<CountryCoverageEvent>((item) => {
-      const lane = item.threat ? TIMELINE_LANES[item.threat.category] : undefined;
-      if (!lane) return [];
-      return [{
-        timestamp: effectivePubDateMs(item),
-        lane,
-        label: item.title,
-        severity: timelineSeverity(item.threat?.level),
-      }];
-    });
+  const timelineEvents = clusterCountryTimelineIncidents(
+    eventItems
+      .filter(item => effectivePubDateMs(item) >= cutoff)
+      .map(normalizeGoogleNewsItem)
+      .flatMap<CountryCoverageEvent>((item) => {
+        const lane = item.threat ? TIMELINE_LANES[item.threat.category] : undefined;
+        if (!lane) return [];
+        return [{
+          timestamp: effectivePubDateMs(item),
+          lane,
+          label: item.title,
+          severity: timelineSeverity(item.threat?.level),
+        }];
+      }),
+  );
 
   return { headlines, timelineEvents };
 }
