@@ -128,6 +128,33 @@ describe('canonical schema graph', () => {
     assert.deepEqual(sourceCode.targetProduct, { '@id': SOFTWARE_ID });
   });
 
+  it('connects the canonical dashboard page to its product graph and visible SEO content', () => {
+    const blocks = jsonLdBlocks(read('index.html'));
+    const application = blocksOfType(blocks, 'WebApplication')[0];
+    const webSite = blocksOfType(blocks, 'WebSite')[0];
+    const webPage = blocksOfType(blocks, 'WebPage')[0];
+    const crumbs = blocksOfType(blocks, 'BreadcrumbList')[0];
+    const dashboardUrl = 'https://www.worldmonitor.app/dashboard';
+
+    assert.equal(application['@id'], SOFTWARE_ID);
+    assert.equal(webSite['@id'], WEBSITE_ID);
+    assert.equal(webPage['@id'], `${dashboardUrl}#webpage`);
+    assert.equal(webPage.url, dashboardUrl);
+    assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
+    assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
+    assert.deepEqual(webPage.publisher, { '@id': ORGANIZATION_ID });
+    assert.deepEqual(webPage.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.app-seo-summary'],
+    });
+    assert.deepEqual(webPage.breadcrumb, { '@id': `${dashboardUrl}#breadcrumb` });
+    assert.equal(crumbs['@id'], `${dashboardUrl}#breadcrumb`);
+    assert.deepEqual(crumbs.itemListElement, [
+      { '@type': 'ListItem', position: 1, name: 'World Monitor', item: CANONICAL_ORIGIN },
+      { '@type': 'ListItem', position: 2, name: 'Dashboard', item: dashboardUrl },
+    ]);
+  });
+
   it('binds every canonical product surface to the World Monitor Wikidata item (#7373)', () => {
     const dashboardBlocks = jsonLdBlocks(read('index.html'));
     const proBlocks = jsonLdBlocks(read('pro-test/index.html'));
@@ -170,6 +197,8 @@ describe('canonical schema graph', () => {
 
       const webPage = blocksOfType(renderedBlocks, 'WebPage')[0];
       const crumbs = blocksOfType(renderedBlocks, 'BreadcrumbList')[0];
+      assert.equal(blocksOfType(renderedBlocks, 'WebPage').length, 1, `${variant} must replace the canonical WebPage`);
+      assert.equal(blocksOfType(renderedBlocks, 'BreadcrumbList').length, 1, `${variant} must replace the canonical BreadcrumbList`);
       assert.ok(webPage, `${variant} must declare a WebPage that joins the canonical graph`);
       assert.equal(webPage['@id'], `${VARIANT_META[variant].url}#webpage`);
       assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
@@ -205,8 +234,15 @@ describe('canonical schema graph', () => {
     assert.equal(webPage['@id'], 'https://www.worldmonitor.app/pro#webpage');
     assert.deepEqual(webPage.isPartOf, { '@id': WEBSITE_ID });
     assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
-    assert.equal(webPage.speakable?.['@type'], 'SpeakableSpecification');
-    assert.ok(webPage.speakable.cssSelector.includes('h1'));
+    assert.deepEqual(webPage.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', 'main > p:first-of-type'],
+    });
+    assert.match(
+      read('pro-test/index.html'),
+      /<main[^>]*>\s*<p>/,
+      'the Pro speakable paragraph selector must match the static main content',
+    );
     assert.deepEqual(webPage.breadcrumb, { '@id': 'https://www.worldmonitor.app/pro#breadcrumb' });
     const crumbs = blocksOfType(blocks, 'BreadcrumbList')[0];
     assert.equal(crumbs['@id'], 'https://www.worldmonitor.app/pro#breadcrumb');
@@ -222,7 +258,13 @@ describe('canonical schema graph', () => {
       assert.doesNotMatch(source, /['"]@type['"]:\s*['"]Organization['"]/, `${path} must not redeclare Organization`);
       assert.match(source, new RegExp(`['"]@id['"]:\\s*['"]${ORGANIZATION_ID.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}['"]`));
     }
-    assert.match(read('blog-site/src/pages/authors/elie-habib.astro'), /['"]@type['"]:\s*['"]BreadcrumbList['"]/);
+    const authorPage = read('blog-site/src/pages/authors/elie-habib.astro');
+    assert.match(authorPage, /['"]@type['"]:\s*['"]BreadcrumbList['"]/);
+    assert.match(
+      authorPage,
+      /'@type': 'ProfilePage',[\s\S]*?speakable: \{\s*'@type': 'SpeakableSpecification',\s*cssSelector: \['h1', '\.author-page-bio'\]/,
+      'the author ProfilePage must target its static h1 and biography content',
+    );
   });
 
   it('overrides Mintlify publisher metadata with the canonical Organization', () => {
@@ -335,6 +377,7 @@ describe('canonical schema graph', () => {
         `${path} disambiguation must disclaim the similarly named mobile applications`,
       );
       assert.equal(organization.alternateName, 'WorldMonitor');
+      assert.equal(organization.interactionStatistic, undefined);
     }
   });
 

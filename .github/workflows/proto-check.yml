@@ -157,9 +157,12 @@ jobs:
           key: buf-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install buf
-        run: make install-buf
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
 
       - name: Check for breaking proto changes
         run: make breaking
@@ -229,7 +232,7 @@ jobs:
       - name: Install plugins, generate, and judge exact-head freshness
         id: patch
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
           TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
         run: |
@@ -254,6 +257,9 @@ jobs:
               ;;
           esac
 
+          GO_BIN="$(go env GOPATH)/bin"
+          echo "$GO_BIN" >> "$GITHUB_PATH"
+          export PATH="$GO_BIN:$PATH"
           "$MAKE_BIN" install-buf install-plugins
           "$MAKE_BIN" generate
 
@@ -452,12 +458,9 @@ jobs:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
-      # Same GITHUB_PATH / GITHUB_ENV boundary as exact-head generation:
-      # capture trusted make/git, then keep merge install, generate, and
-      # the freshness verdict in one shell.
       - name: Install plugins, generate, and verify merge-result freshness
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
         run: |
           MAKE_BIN=$(command -v make || true)
@@ -481,6 +484,9 @@ jobs:
               ;;
           esac
 
+          GO_BIN="$(go env GOPATH)/bin"
+          echo "$GO_BIN" >> "$GITHUB_PATH"
+          export PATH="$GO_BIN:$PATH"
           "$MAKE_BIN" install-buf install-plugins
           "$MAKE_BIN" generate
 
