@@ -60,7 +60,6 @@ const PREDICTION_COUNTRY_DEMONYMS = Object.freeze({
   NO: ['norwegian', 'norwegians'],
   PH: ['filipino', 'filipinos'],
   PK: ['pakistani', 'pakistanis'],
-  PL: ['polish'],
   PT: ['portuguese'],
   RU: ['russian', 'russians'],
   SA: ['saudi', 'saudis'],
@@ -73,6 +72,10 @@ const PREDICTION_COUNTRY_DEMONYMS = Object.freeze({
   VE: ['venezuelan', 'venezuelans'],
   VN: ['vietnamese'],
   YE: ['yemeni', 'yemenis'],
+});
+
+const CONTEXTUAL_COUNTRY_DEMONYMS = Object.freeze({
+  PL: ['polish election', 'polish government', 'polish president', 'polish parliament'],
 });
 
 const AMBIGUOUS_COUNTRY_KEYWORDS = Object.freeze({
@@ -100,6 +103,13 @@ const COUNTRY_TERM_SHADOWS = Object.freeze({
   CG: { term: normalizeSearchText('congo'), specificCountryCode: 'CD' },
 });
 
+const COUNTRY_DEMONYM_PHRASE_SHADOWS = Object.freeze({
+  FR: ['french hill'].map(normalizeSearchText),
+  GR: ['greek letters'].map(normalizeSearchText),
+  IN: ['indian wells'].map(normalizeSearchText),
+  NL: ['dutch bros', 'dutch auction'].map(normalizeSearchText),
+});
+
 function compileCountryMatchers(countries) {
   return Object.entries(countries).map(([countryCode, country]) => {
     const name = String(country?.name ?? '').trim();
@@ -108,6 +118,7 @@ function compileCountryMatchers(countries) {
       ...(country?.keywords ?? []),
       ...(PREDICTION_COUNTRY_KEYWORDS[countryCode] ?? []),
       ...(PREDICTION_COUNTRY_DEMONYMS[countryCode] ?? []),
+      ...(CONTEXTUAL_COUNTRY_DEMONYMS[countryCode] ?? []),
     ]
       .map((keyword) => String(keyword).trim())
       .filter((keyword) => keyword
@@ -132,6 +143,15 @@ function termOccurrences(normalizedTitle, term, matchStrength, countryCode) {
   return matches;
 }
 
+function occurrenceFallsWithin(normalizedTitle, candidate, enclosingTerm) {
+  let start = normalizedTitle.indexOf(enclosingTerm);
+  while (start >= 0) {
+    if (start <= candidate.start && start + enclosingTerm.length >= candidate.end) return true;
+    start = normalizedTitle.indexOf(enclosingTerm, start + 1);
+  }
+  return false;
+}
+
 function countryMatches(normalizedTitle, matchers) {
   const rawMatches = [];
   for (const matcher of matchers) {
@@ -151,13 +171,15 @@ function countryMatches(normalizedTitle, matchers) {
     const shadowedByCountryContext = shadow
       && candidate.term === shadow.term
       && rawMatches.some((other) => other.countryCode === shadow.specificCountryCode);
+    const shadowedByPhrase = (COUNTRY_DEMONYM_PHRASE_SHADOWS[candidate.countryCode] ?? [])
+      .some((phrase) => occurrenceFallsWithin(normalizedTitle, candidate, phrase));
     const embeddedInSpecificCountry = rawMatches.some((other) => (
       other.countryCode !== candidate.countryCode
       && other.term.length > candidate.term.length
       && other.start <= candidate.start
       && other.end >= candidate.end
     ));
-    if (shadowedByCountryContext || embeddedInSpecificCountry) continue;
+    if (shadowedByCountryContext || shadowedByPhrase || embeddedInSpecificCountry) continue;
     const incumbent = strongest.get(candidate.countryCode);
     if (!incumbent
       || candidate.matchStrength > incumbent.matchStrength

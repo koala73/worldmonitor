@@ -149,6 +149,10 @@ describe('buildCountryMarketIndex', () => {
   it('matches verified demonym-only titles to their country', () => {
     const cases = [
       ['French election', 'FR'],
+      ['Dutch election', 'NL'],
+      ['Indian election', 'IN'],
+      ['Greek election', 'GR'],
+      ['Polish election', 'PL'],
       ['German chancellor', 'DE'],
       ['Russian ceasefire', 'RU'],
       ['Chinese tariffs', 'CN'],
@@ -165,6 +169,34 @@ describe('buildCountryMarketIndex', () => {
         title,
       );
       if (countryCode === 'KP') assert.equal(index.KR, undefined, title);
+    }
+  });
+
+  for (const [title, countryCode] of [
+    ['French Hill', 'FR'],
+    ['Dutch Bros', 'NL'],
+    ['Dutch auction', 'NL'],
+    ['Indian Wells', 'IN'],
+    ['Greek letters', 'GR'],
+    ['Will Apple polish Siri before 2027?', 'PL'],
+  ]) {
+    it(`does not assign the polysemous title "${title}" to ${countryCode}`, () => {
+      const index = buildCountryMarketIndex([market(title, 'polymarket', 10_000)], { now: NOW });
+      assert.equal(index[countryCode], undefined);
+    });
+  }
+
+  it('keeps separate demonym occurrences outside shadowed phrases', () => {
+    const cases = [
+      ['Will French Hill run in the French election?', 'FR'],
+      ['Will Dutch Bros price a Dutch auction during the Dutch election?', 'NL'],
+      ['Will Indian Wells host a debate before the Indian election?', 'IN'],
+      ['Will Greek letters appear on ballots in the Greek election?', 'GR'],
+    ];
+
+    for (const [title, countryCode] of cases) {
+      const index = buildCountryMarketIndex([market(title, 'polymarket', 10_000)], { now: NOW });
+      assert.deepEqual(index[countryCode]?.map((entry) => entry.title), [title], title);
     }
   });
 });
