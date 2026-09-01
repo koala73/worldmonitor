@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import { __clearLocalUnavailableBackoffForTests } from '../server/_shared/redis.ts';
 import { getCountryFacts } from '../server/worldmonitor/intelligence/v1/get-country-facts.ts';
 
 const originalFetch = globalThis.fetch;
@@ -14,6 +15,7 @@ function restoreEnv(name: string, value: string | undefined): void {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  __clearLocalUnavailableBackoffForTests();
   restoreEnv('UPSTASH_REDIS_REST_URL', originalRedisUrl);
   restoreEnv('UPSTASH_REDIS_REST_TOKEN', originalRedisToken);
 });
@@ -47,6 +49,18 @@ describe('getCountryFacts provider contract', () => {
           'automated Wikimedia requests must identify the application',
         );
         const query = url.searchParams.get('query') ?? '';
+        if (query.includes('SELECT ?country ?countryLabel')) {
+          return new Response(JSON.stringify({
+            results: {
+              bindings: [{
+                country: wikidataValue('http://www.wikidata.org/entity/Q30'),
+                countryLabel: wikidataValue('United States'),
+                m49: wikidataValue('840'),
+              }],
+            },
+          }));
+        }
+        assert.match(query, /VALUES \?country \{ wd:Q30 \}/);
         const headLabel = query.includes('wikibase:language "en,mul"')
           ? 'Donald Trump'
           : 'Q22686';
@@ -113,7 +127,20 @@ describe('getCountryFacts provider contract', () => {
 
       if (url.hostname === 'query.wikidata.org') {
         const query = url.searchParams.get('query') ?? '';
-        assert.match(query, /wdt:P297 "BR"/, 'the query must use the requested ISO country code');
+
+        if (query.includes('SELECT ?country ?countryLabel')) {
+          assert.match(query, /wdt:P297 "BR"/, 'the query must use the requested ISO country code');
+          return new Response(JSON.stringify({
+            results: {
+              bindings: [{
+                country: wikidataValue('http://www.wikidata.org/entity/Q155'),
+                countryLabel: wikidataValue('Brazil'),
+                m49: wikidataValue('076'),
+              }],
+            },
+          }));
+        }
+        assert.match(query, /VALUES \?country \{ wd:Q155 \}/);
 
         const shared = {
           countryLabel: wikidataValue('Brazil'),
@@ -161,9 +188,9 @@ describe('getCountryFacts provider contract', () => {
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
     const countries = {
-      FR: { iso3: 'FRA', name: 'France', capital: 'Paris', language: 'French', currency: 'euro' },
-      JP: { iso3: 'JPN', name: 'Japan', capital: 'Tokyo', language: 'Japanese', currency: 'yen' },
-      ZA: { iso3: 'ZAF', name: 'South Africa', capital: 'Bloemfontein', language: 'Zulu', currency: 'rand' },
+      FR: { m49: '250', qid: 'Q142', name: 'France', capital: 'Paris', language: 'French', currency: 'euro' },
+      JP: { m49: '392', qid: 'Q17', name: 'Japan', capital: 'Tokyo', language: 'Japanese', currency: 'yen' },
+      ZA: { m49: '710', qid: 'Q258', name: 'South Africa', capital: 'Bloemfontein', language: 'Zulu', currency: 'rand' },
     } as const;
 
     globalThis.fetch = (async (input: string | URL | Request) => {
@@ -171,10 +198,27 @@ describe('getCountryFacts provider contract', () => {
 
       if (url.hostname === 'query.wikidata.org') {
         const query = url.searchParams.get('query') ?? '';
-        const code = query.match(/wdt:P297 "([A-Z]{2})"/)?.[1] as keyof typeof countries | undefined;
-        assert.ok(code && countries[code], 'the query must contain the requested ISO country code');
+        const resolutionCode = query.match(/wdt:P297 "([A-Z]{2})"/)?.[1] as keyof typeof countries | undefined;
+        if (resolutionCode) {
+          const country = countries[resolutionCode];
+          assert.ok(country, 'the query must contain the requested ISO country code');
+          assert.match(query, /OPTIONAL \{ \?country wdt:P2082 \?m49 \}/);
+          return new Response(JSON.stringify({
+            results: {
+              bindings: [{
+                country: wikidataValue(`http://www.wikidata.org/entity/${country.qid}`),
+                countryLabel: wikidataValue(country.name),
+                m49: wikidataValue(country.m49),
+              }],
+            },
+          }));
+        }
+
+        const code = Object.entries(countries).find(([, country]) => (
+          query.includes(`VALUES ?country { wd:${country.qid} }`)
+        ))?.[0] as keyof typeof countries | undefined;
+        assert.ok(code, 'the facts query must use the resolved Wikidata entity');
         const country = countries[code];
-        assert.match(query, new RegExp(`wdt:P298 "${country.iso3}"`));
         const currencies = code === 'FR'
           ? [
               ...(query.includes('wdt:P38') ? ['CFP Franc'] : []),
@@ -212,6 +256,72 @@ describe('getCountryFacts provider contract', () => {
     }
   });
 
+  it('resolves one verified Wikidata entity before fetching Netherlands facts', async () => {
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+
+    const wikidataQueries: string[] = [];
+    globalThis.fetch = (async (input: string | URL | Request) => {
+      const url = new URL(input instanceof Request ? input.url : input);
+
+      if (url.hostname === 'query.wikidata.org') {
+        const query = url.searchParams.get('query') ?? '';
+        wikidataQueries.push(query);
+
+        if (query.includes('SELECT ?country ?countryLabel')) {
+          assert.match(query, /wdt:P297 "NL"/);
+          assert.match(query, /OPTIONAL \{ \?country wdt:P2082 \?m49 \}/);
+          return new Response(JSON.stringify({
+            results: {
+              bindings: [
+                {
+                  country: wikidataValue('http://www.wikidata.org/entity/Q55'),
+                  countryLabel: wikidataValue('Netherlands'),
+                  m49: wikidataValue('528'),
+                },
+                {
+                  country: wikidataValue('http://www.wikidata.org/entity/Q29999'),
+                  countryLabel: wikidataValue('Kingdom of the Netherlands'),
+                },
+              ],
+            },
+          }));
+        }
+
+        assert.match(query, /VALUES \?country \{ wd:Q55 \}/);
+        assert.doesNotMatch(query, /\?country wdt:P297|wdt:P2082/);
+        assert.match(query, /\?currencyRegion wdt:P297 \?currencyRegionCode/);
+        return new Response(JSON.stringify({
+          results: {
+            bindings: [{
+              countryLabel: wikidataValue('Netherlands'),
+              population: wikidataValue('18044100'),
+              area: wikidataValue('41865'),
+              capitalLabel: wikidataValue('Amsterdam'),
+              languageLabel: wikidataValue('Dutch'),
+              currencyLabel: wikidataValue('euro'),
+            }],
+          },
+        }));
+      }
+
+      if (url.hostname === 'en.wikipedia.org') {
+        return new Response(JSON.stringify({ extract: 'The Netherlands is a country in Europe.' }));
+      }
+
+      throw new Error(`Unexpected country-facts request: ${url}`);
+    }) as typeof fetch;
+
+    const result = await getCountryFacts({} as never, { countryCode: 'NL' });
+
+    assert.equal(wikidataQueries.length, 2);
+    assert.equal(result.countryName, 'Netherlands');
+    assert.equal(result.population, 18_044_100);
+    assert.equal(result.capital, 'Amsterdam');
+    assert.deepEqual(result.languages, ['Dutch']);
+    assert.deepEqual(result.currencies, ['euro']);
+  });
+
   it('retries one transient Wikidata failure before returning empty facts', async () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
@@ -223,6 +333,18 @@ describe('getCountryFacts provider contract', () => {
       if (url.hostname === 'query.wikidata.org') {
         wikidataAttempts += 1;
         if (wikidataAttempts === 1) return new Response('temporarily unavailable', { status: 503 });
+        const query = url.searchParams.get('query') ?? '';
+        if (query.includes('SELECT ?country ?countryLabel')) {
+          return new Response(JSON.stringify({
+            results: {
+              bindings: [{
+                country: wikidataValue('http://www.wikidata.org/entity/Q258'),
+                countryLabel: wikidataValue('South Africa'),
+                m49: wikidataValue('710'),
+              }],
+            },
+          }));
+        }
         return new Response(JSON.stringify({
           results: {
             bindings: [{
@@ -246,9 +368,66 @@ describe('getCountryFacts provider contract', () => {
 
     const result = await getCountryFacts({} as never, { countryCode: 'ZA' });
 
-    assert.equal(wikidataAttempts, 2);
+    assert.equal(wikidataAttempts, 3);
     assert.equal(result.population, 62_027_503);
     assert.equal(result.capital, 'Bloemfontein');
+  });
+
+  it('negative-caches a successful empty result but not a transient Wikidata failure', async () => {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+
+    const store = new Map<string, string>();
+    let wikidataMode: 'failure' | 'empty' = 'failure';
+    let wikidataAttempts = 0;
+
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const rawUrl = input instanceof Request ? input.url : String(input);
+
+      if (rawUrl.startsWith('https://redis.example.test/get/')) {
+        const key = decodeURIComponent(rawUrl.slice('https://redis.example.test/get/'.length));
+        return new Response(JSON.stringify({ result: store.get(key) ?? null }));
+      }
+
+      if (rawUrl === 'https://redis.example.test/') {
+        const command = JSON.parse(String(init?.body)) as string[];
+        if (command[0] === 'SET') store.set(command[1]!, command[2]!);
+        return new Response(JSON.stringify({ result: 'OK' }));
+      }
+
+      const url = new URL(rawUrl);
+      if (url.hostname === 'query.wikidata.org') {
+        wikidataAttempts += 1;
+        if (wikidataMode === 'failure') {
+          return new Response('temporarily unavailable', { status: 503 });
+        }
+        return new Response(JSON.stringify({ results: { bindings: [] } }));
+      }
+
+      if (url.hostname === 'en.wikipedia.org') {
+        return new Response(JSON.stringify({ extract: 'The Netherlands is a country in Europe.' }));
+      }
+
+      throw new Error(`Unexpected country-facts request: ${url}`);
+    }) as typeof fetch;
+
+    await getCountryFacts({} as never, { countryCode: 'NL' });
+    assert.equal(wikidataAttempts, 2, 'a transient failure should use the bounded retry');
+    assert.ok(
+      ![...store.keys()].some(key => key.includes('country-facts:wikidata')),
+      'a transient failure must not write a Wikidata negative cache entry',
+    );
+
+    __clearLocalUnavailableBackoffForTests();
+    wikidataMode = 'empty';
+    await getCountryFacts({} as never, { countryCode: 'NL' });
+    assert.equal(wikidataAttempts, 3, 'a successful empty result should make one resolver request');
+
+    const wikidataEntry = [...store.entries()].find(([key]) => key.includes('country-facts:wikidata'));
+    assert.equal(JSON.parse(wikidataEntry?.[1] ?? 'null'), '__WM_NEG__');
+
+    await getCountryFacts({} as never, { countryCode: 'NL' });
+    assert.equal(wikidataAttempts, 3, 'the definitive empty result should be served from negative cache');
   });
 
   it('does not infer a language for a territory with no factual language binding', async () => {
@@ -259,6 +438,25 @@ describe('getCountryFacts provider contract', () => {
       const url = new URL(input instanceof Request ? input.url : input);
 
       if (url.hostname === 'query.wikidata.org') {
+        const query = url.searchParams.get('query') ?? '';
+        if (query.includes('SELECT ?country ?countryLabel')) {
+          return new Response(JSON.stringify({
+            results: {
+              bindings: [
+                {
+                  country: wikidataValue('http://www.wikidata.org/entity/Q51'),
+                  countryLabel: wikidataValue('Antarctica'),
+                  m49: wikidataValue('010'),
+                },
+                {
+                  country: wikidataValue('http://www.wikidata.org/entity/Q10372207'),
+                  countryLabel: wikidataValue('Antarctic Treaty area'),
+                },
+              ],
+            },
+          }));
+        }
+        assert.match(query, /VALUES \?country \{ wd:Q51 \}/);
         const antarctica = {
           countryLabel: wikidataValue('Antarctica'),
           population: wikidataValue('1000'),
@@ -266,14 +464,7 @@ describe('getCountryFacts provider contract', () => {
         };
         return new Response(JSON.stringify({
           results: {
-            bindings: [
-              {
-                countryLabel: wikidataValue('Antarctic Treaty area'),
-                population: wikidataValue('1100'),
-                area: wikidataValue('14000000'),
-              },
-              antarctica,
-            ],
+            bindings: [antarctica],
           },
         }));
       }
@@ -288,6 +479,7 @@ describe('getCountryFacts provider contract', () => {
     const result = await getCountryFacts({} as never, { countryCode: 'AQ' });
 
     assert.equal(result.countryName, 'Antarctica');
+    assert.equal(result.areaSqKm, 14_200_000);
     assert.deepEqual(result.languages, []);
   });
 });
