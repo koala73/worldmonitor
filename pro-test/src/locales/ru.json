@@ -481,7 +481,8 @@
       "screenshotAlt": "Панель разведданных World Monitor — глобальная карта с слоями конфликтов, судоходства и рынков",
       "plateNote": "Снято с живой карты — нажмите, чтобы открыть её",
       "trustBuild": "Разработка на основе:",
-      "positioningLink": "World Monitor — это не открытый Palantir"
+      "positioningLink": "World Monitor — это не открытый Palantir",
+      "asOf": "По состоянию на 31 августа 2026 г."
     },
     "live": {
       "eyebrow": "Прямо сейчас в эфире",

@@ -481,7 +481,8 @@
       "screenshotAlt": "لوحة ذكاء مباشرة World Monitor — خريطة عالمية مع طبقات الصراع والشحن والأسواق",
       "plateNote": "التقط من الخريطة المباشرة — انقر لفتحها",
       "trustBuild": "البناء عليه:",
-      "positioningLink": "WorldMonitor ليست نسخة مفتوحة المصدر من Palantir"
+      "positioningLink": "WorldMonitor ليست نسخة مفتوحة المصدر من Palantir",
+      "asOf": "اعتباراً من 31 أغسطس 2026"
     },
     "live": {
       "eyebrow": "مباشر الآن",
