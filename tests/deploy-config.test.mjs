@@ -128,6 +128,9 @@ function probePlaywrightWebMcpEnvironment(overrides = {}) {
   return probe;
 }
 
+const HTML_ENTRY_BROWSER_CACHE = 'public, max-age=0, must-revalidate';
+const HTML_ENTRY_EDGE_CACHE = 'public, s-maxage=600, stale-while-revalidate=60';
+
 const getCacheHeaderValue = (sourcePath) => {
   let value = null;
   for (const rule of vercelConfig.headers.filter((entry) => entry.source === sourcePath)) {
@@ -249,6 +252,43 @@ const effectiveCacheControl = (path) => {
     if (header) value = header.value;
   }
   return value;
+};
+
+const effectiveHeader = (path, key) => {
+  let value = null;
+  for (const entry of vercelConfig.headers) {
+    if (!sourceToRegExp(entry.source).test(path)) continue;
+    const header = entry.headers?.find((h) => h.key.toLowerCase() === key.toLowerCase());
+    if (header) value = header.value;
+  }
+  return value;
+};
+
+const assertPublicHtmlEntryCache = (route) => {
+  assert.equal(
+    effectiveCacheControl(route),
+    HTML_ENTRY_BROWSER_CACHE,
+    `${route} must keep a browser-only revalidation policy after all matching rules apply`,
+  );
+  assert.ok(
+    !effectiveCacheControl(route).includes('no-store'),
+    'HTML must not set no-store — it disables bfcache',
+  );
+  assert.doesNotMatch(
+    effectiveCacheControl(route),
+    /\bs-maxage\b/,
+    `${route} Cache-Control must not carry s-maxage; Vercel consumes it and forwards max-age=0 to Cloudflare`,
+  );
+  assert.equal(
+    effectiveHeader(route, 'CDN-Cache-Control'),
+    HTML_ENTRY_EDGE_CACHE,
+    `${route} must advertise the 600s Cloudflare TTL on CDN-Cache-Control`,
+  );
+  assert.equal(
+    effectiveHeader(route, 'Vercel-CDN-Cache-Control'),
+    HTML_ENTRY_EDGE_CACHE,
+    `${route} must advertise the 600s Vercel TTL on Vercel-CDN-Cache-Control`,
+  );
 };
 
 const getHeaderValueForSource = (sourcePath, key) => {
@@ -744,19 +784,16 @@ describe('deploy/cache configuration guardrails', () => {
     // path-to-regexp source-pattern parser rejects `(?:...)` in `source` fields
     // (deploy-fail PR #3646 round-2 review).
     //
-    // The header uses `public, max-age=0, s-maxage=600,
-    // stale-while-revalidate=60` for static HTML entry routes: browsers still
-    // revalidate while shared caches can serve the immutable shell quickly.
-    // `no-store` remains forbidden — it disables Chrome bfcache (#3993/#4004).
+    // Stacked-CDN HTML entries keep browser `Cache-Control` at max-age=0
+    // (must-revalidate, never no-store — #3993/#4004) and put the 600s TTL on
+    // CDN-Cache-Control + Vercel-CDN-Cache-Control. A combined Cache-Control
+    // value lets Vercel consume s-maxage and forward max-age=0 to Cloudflare,
+    // which then refuses to cache HTML.
     const spaNoCache = getCacheHeaderValue(SPA_HTML_CACHE_SOURCE);
     assert.equal(spaNoCache, 'private, no-cache, must-revalidate');
     assert.ok(!spaNoCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
     for (const route of ['/', '/dashboard', '/dashboard.html']) {
-      assert.equal(
-        effectiveCacheControl(route),
-        'public, max-age=0, s-maxage=600, stale-while-revalidate=60',
-        `${route} must keep the public revalidation policy after all matching rules apply`,
-      );
+      assertPublicHtmlEntryCache(route);
     }
   });
 
@@ -1153,21 +1190,15 @@ describe('welcome landing page routing', () => {
   });
 
   it('requires revalidation for /dashboard HTML without disabling bfcache', () => {
-    const dashboardCache = getCacheHeaderValue('/dashboard');
-    assert.equal(dashboardCache, 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
-    assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+    assertPublicHtmlEntryCache('/dashboard');
   });
 
   it('requires revalidation for root welcome HTML without disabling bfcache', () => {
-    const welcomeCache = getCacheHeaderValue('/');
-    assert.equal(welcomeCache, 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
-    assert.ok(!welcomeCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+    assertPublicHtmlEntryCache('/');
   });
 
   it('requires revalidation for direct dashboard.html without disabling bfcache', () => {
-    const dashboardCache = getCacheHeaderValue('/dashboard.html');
-    assert.equal(dashboardCache, 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
-    assert.ok(!dashboardCache.includes('no-store'), 'HTML must not set no-store — it disables bfcache');
+    assertPublicHtmlEntryCache('/dashboard.html');
   });
 
   it('redirects bare /api to the docs API reference hub (#7382)', () => {
@@ -4581,9 +4612,9 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     const catchAllHeader = vercelConfig.headers.find((r) => r.source === SPA_HTML_CACHE_SOURCE);
     assert.ok(catchAllHeader, 'expected the pinned SPA cache-header rule');
     assert.equal(getCacheHeaderValue(SPA_HTML_CACHE_SOURCE), 'private, no-cache, must-revalidate');
-    // Explicit /dashboard entry uses public revalidate (#7382); other SPA
+    // Explicit /dashboard entry uses the stacked public HTML policy; other SPA
     // pretty-URLs still inherit the catch-all private policy.
-    assert.equal(effectiveCacheControl('/dashboard'), 'public, max-age=0, s-maxage=600, stale-while-revalidate=60');
+    assertPublicHtmlEntryCache('/dashboard');
     for (const path of ['/stocks', '/stocks/AAPL', '/story']) {
       assert.equal(effectiveCacheControl(path), 'private, no-cache, must-revalidate', path + ' must stay no-cache');
     }
