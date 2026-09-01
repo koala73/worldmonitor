@@ -69,6 +69,34 @@ export function hasNamedImportBinding(src, {
   });
 }
 
+/** Return the literal section array from the unique matching runBundle call. */
+export function extractRunBundleSectionSource(src, bundleName) {
+  const sourceFile = parseJavaScriptSource('bundle-source.mjs', src);
+  if (sourceFile.parseDiagnostics.length > 0) return null;
+
+  const matches = [];
+  const visit = (node) => {
+    if (
+      ts.isCallExpression(node)
+      && ts.isIdentifier(node.expression)
+      && node.expression.text === 'runBundle'
+      && node.arguments.length >= 2
+      && ts.isStringLiteralLike(node.arguments[0])
+      && node.arguments[0].text === bundleName
+    ) {
+      matches.push(node);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(sourceFile);
+
+  if (matches.length !== 1) return null;
+  const sections = matches[0].arguments[1];
+  return sections && ts.isArrayLiteralExpression(sections)
+    ? sections.getText(sourceFile)
+    : null;
+}
+
 /**
  * Remove `//` line comments and block comments, leaving string literals
  * intact (so `'https://example.com'` and `regexFilter: 'a//b'` survive).

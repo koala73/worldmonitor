@@ -18,6 +18,7 @@ import {
   countSectionScriptKeys,
   extractBundleOption,
   extractBundleSections,
+  extractRunBundleSectionSource,
   hasNamedImportBinding,
   resolveExpr,
   stripLineComments,
@@ -195,6 +196,19 @@ export const SECTIONS = [
   assert.equal(sections[1].intervalMsExpr, '12 * HOUR');
   assert.equal(sections[1].expectedSourceVersionExpr, null);
   assert.equal(countSectionAnchors(stripLineComments(sample)), 2);
+});
+
+test('a dead section outside runBundle is not treated as live configuration', () => {
+  const sample = `
+const deadSections = [
+  { label: 'OWID-Energy-Mix', script: 'seed-owid-energy-mix.mjs', expectedSourceVersion: OWID_SOURCE_VERSION, intervalMs: 1000 },
+];
+await runBundle('energy-sources', []);
+`;
+
+  const sectionSource = extractRunBundleSectionSource(sample, 'energy-sources');
+  assert.notEqual(sectionSource, null);
+  assert.equal(extractBundleSections(sectionSource).length, 0);
 });
 
 test('extractBundleSections: reports a missing timeoutMs as null, not as a default', () => {

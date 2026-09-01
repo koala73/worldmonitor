@@ -24,6 +24,7 @@ import {
   countSectionAnchors,
   countSectionScriptKeys,
   extractBundleSections,
+  extractRunBundleSectionSource,
   hasNamedImportBinding,
   stripLineComments,
 } from './helpers/bundle-section-parser.mjs';
@@ -106,7 +107,13 @@ test('an error canonical envelope never makes a failed migration look fresh', as
 test('energy-sources wires the OWID freshness gate to the producer version', () => {
   const bundlePath = join(SCRIPTS_DIR, 'seed-bundle-energy-sources.mjs');
   const rawSource = readFileSync(bundlePath, 'utf8');
-  const source = stripLineComments(rawSource);
+  const sectionSource = extractRunBundleSectionSource(rawSource, 'energy-sources');
+  assert.notEqual(
+    sectionSource,
+    null,
+    'energy-sources must pass a literal section array to one runBundle call',
+  );
+  const source = stripLineComments(sectionSource);
   const sections = extractBundleSections(source);
   const owidSections = sections.filter((section) => section.label === 'OWID-Energy-Mix');
 
