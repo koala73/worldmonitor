@@ -2566,7 +2566,8 @@ describe('crawlable corpus generator', () => {
         const noteRe = new RegExp(
           `World Monitor is not currently publishing a transit count for ${meta.name} for this period`,
         );
-        if (Number.isFinite(raw) && raw >= 1) {
+        const countsAvailable = pulse.todayCountsAvailable ?? (Number.isFinite(raw) && raw >= 1);
+        if (countsAvailable && (raw === 0 || raw >= 1)) {
           publishedCounts++;
           assert.match(
             page,
@@ -2574,6 +2575,14 @@ describe('crawlable corpus generator', () => {
             `${meta.name} has a supplied count of ${pulse.todayTransits} and must publish it`,
           );
           assert.doesNotMatch(page, noteRe, `${meta.name} publishes a count and must not carry the withhold note`);
+          assert.ok(
+            page.includes(`data-chokepoint-warnings>${pulse.warnings}<`),
+            `${meta.name} has a supplied count and must keep pulse warnings visible`,
+          );
+          assert.ok(
+            page.includes(`data-chokepoint-movement>${pulse.weekMovement ?? 'Unavailable'}<`),
+            `${meta.name} has a supplied count and must keep week movement visible`,
+          );
         } else {
           withheldCounts++;
           assert.match(page, /data-chokepoint-transits>—/);
@@ -2581,6 +2590,16 @@ describe('crawlable corpus generator', () => {
             page,
             /data-chokepoint-transits>0</,
             `${meta.name} must not render a numeric 0 for an unsupplied transit count`,
+          );
+          assert.match(
+            page,
+            /data-chokepoint-warnings>—</,
+            `${meta.name} must withhold warnings and AIS when its transit count is unavailable`,
+          );
+          assert.match(
+            page,
+            /data-chokepoint-movement>—</,
+            `${meta.name} must withhold week-over-week movement when its transit count is unavailable`,
           );
           assert.match(page, noteRe);
         }
