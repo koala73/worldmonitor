@@ -111,6 +111,11 @@ describe('canonical schema graph', () => {
       webSite.potentialAction?.target?.urlTemplate,
       'https://www.worldmonitor.app/dashboard?q={search_term_string}',
     );
+    const webPage = blocksOfType(welcomeBlocks, 'WebPage')[0];
+    const crumbs = blocksOfType(welcomeBlocks, 'BreadcrumbList')[0];
+    assert.equal(webPage['@id'], `${CANONICAL_ORIGIN}#webpage`);
+    assert.deepEqual(webPage.breadcrumb, { '@id': `${CANONICAL_ORIGIN}#breadcrumb` });
+    assert.equal(crumbs['@id'], `${CANONICAL_ORIGIN}#breadcrumb`);
     assert.equal(application['@id'], SOFTWARE_ID);
     assert.deepEqual(application.isBasedOn, { '@id': SOURCE_ID });
     assert.equal(sourceCode['@id'], SOURCE_ID);
@@ -168,7 +173,9 @@ describe('canonical schema graph', () => {
       assert.deepEqual(webPage.mainEntity, { '@id': `${VARIANT_META[variant].url}#software` });
       assert.equal(webPage.speakable?.['@type'], 'SpeakableSpecification');
       assert.ok(Array.isArray(webPage.speakable?.cssSelector) && webPage.speakable.cssSelector.includes('h1'));
+      assert.deepEqual(webPage.breadcrumb, { '@id': `${VARIANT_META[variant].url}#breadcrumb` });
       assert.ok(crumbs, `${variant} must declare BreadcrumbList`);
+      assert.equal(crumbs['@id'], `${VARIANT_META[variant].url}#breadcrumb`);
       assert.equal(crumbs.itemListElement?.[0]?.item, CANONICAL_ORIGIN);
 
       const host = new URL(VARIANT_META[variant].url).hostname;
@@ -196,6 +203,9 @@ describe('canonical schema graph', () => {
     assert.deepEqual(webPage.mainEntity, { '@id': SOFTWARE_ID });
     assert.equal(webPage.speakable?.['@type'], 'SpeakableSpecification');
     assert.ok(webPage.speakable.cssSelector.includes('h1'));
+    assert.deepEqual(webPage.breadcrumb, { '@id': 'https://www.worldmonitor.app/pro#breadcrumb' });
+    const crumbs = blocksOfType(blocks, 'BreadcrumbList')[0];
+    assert.equal(crumbs['@id'], 'https://www.worldmonitor.app/pro#breadcrumb');
   });
 
   it('uses bare publisher references in the blog and includes author breadcrumbs', () => {

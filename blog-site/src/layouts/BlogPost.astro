@@ -84,16 +84,23 @@ const citations = extractCitations(rawBody);
 const breadcrumbLd = {
   "@context": "https://schema.org",
   "@type": "BreadcrumbList",
+  "@id": `${canonicalUrl}#breadcrumb`,
   "itemListElement": [
     {
       "@type": "ListItem",
       "position": 1,
+      "name": "Home",
+      "item": "https://www.worldmonitor.app/"
+    },
+    {
+      "@type": "ListItem",
+      "position": 2,
       "name": "Blog",
       "item": "https://www.worldmonitor.app/blog/"
     },
     {
       "@type": "ListItem",
-      "position": 2,
+      "position": 3,
       "name": title,
       "item": canonicalUrl
     }
@@ -131,10 +138,21 @@ const jsonLd = {
   },
   "mainEntityOfPage": {
     "@type": "WebPage",
-    "@id": canonicalUrl
+    "@id": `${canonicalUrl}#webpage`,
+    "url": canonicalUrl,
+    "isPartOf": { "@id": "https://www.worldmonitor.app/#website" },
+    "breadcrumb": { "@id": `${canonicalUrl}#breadcrumb` },
+    "speakable": {
+      "@type": "SpeakableSpecification",
+      "cssSelector": ["h1", ".article-dek"]
+    }
   },
   "image": ogImage || "https://www.worldmonitor.app/favico/og-image.png",
   "url": canonicalUrl,
+  "speakable": {
+    "@type": "SpeakableSpecification",
+    "cssSelector": ["h1", ".article-dek"]
+  },
   "isPartOf": {
     "@type": "Blog",
     "@id": "https://www.worldmonitor.app/blog/#blog",

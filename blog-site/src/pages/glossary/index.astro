@@ -12,27 +12,45 @@ const pageUrl = 'https://www.worldmonitor.app/blog/glossary/';
 
 const jsonLd = {
   '@context': 'https://schema.org',
-  '@type': 'DefinedTermSet',
+  '@type': 'CollectionPage',
+  '@id': `${pageUrl}#webpage`,
+  url: pageUrl,
   name: 'World Monitor Global Intelligence Glossary',
   description:
     'Definitions of the global-intelligence, OSINT, resilience-scoring, and maritime-chokepoint terms used across World Monitor.',
-  url: pageUrl,
   inLanguage: 'en-US',
-  hasDefinedTerm: sorted.map((t) => ({
-    '@type': 'DefinedTerm',
-    name: t.term,
-    ...(t.abbr ? { alternateName: t.abbr } : {}),
-    description: t.short,
-    url: `https://www.worldmonitor.app/blog/glossary/${t.slug}/`,
-  })),
+  isPartOf: { '@id': 'https://www.worldmonitor.app/#website' },
+  publisher: { '@id': 'https://www.worldmonitor.app/#organization' },
+  speakable: {
+    '@type': 'SpeakableSpecification',
+    cssSelector: ['h1', '.subtitle'],
+  },
+  breadcrumb: { '@id': `${pageUrl}#breadcrumb` },
+  mainEntity: {
+    '@type': 'DefinedTermSet',
+    name: 'World Monitor Global Intelligence Glossary',
+    description:
+      'Definitions of the global-intelligence, OSINT, resilience-scoring, and maritime-chokepoint terms used across World Monitor.',
+    url: pageUrl,
+    inLanguage: 'en-US',
+    hasDefinedTerm: sorted.map((t) => ({
+      '@type': 'DefinedTerm',
+      name: t.term,
+      ...(t.abbr ? { alternateName: t.abbr } : {}),
+      description: t.short,
+      url: `https://www.worldmonitor.app/blog/glossary/${t.slug}/`,
+    })),
+  },
 };
 
 const breadcrumbLd = {
   '@context': 'https://schema.org',
   '@type': 'BreadcrumbList',
+  '@id': `${pageUrl}#breadcrumb`,
   itemListElement: [
-    { '@type': 'ListItem', position: 1, name: 'Blog', item: 'https://www.worldmonitor.app/blog/' },
-    { '@type': 'ListItem', position: 2, name: 'Glossary', item: pageUrl },
+    { '@type': 'ListItem', position: 1, name: 'Home', item: 'https://www.worldmonitor.app/' },
+    { '@type': 'ListItem', position: 2, name: 'Blog', item: 'https://www.worldmonitor.app/blog/' },
+    { '@type': 'ListItem', position: 3, name: 'Glossary', item: pageUrl },
   ],
 };
 ---
