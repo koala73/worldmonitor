@@ -3,8 +3,8 @@
 // Shape contract: one Redis payload at resilience:food-stocks:v1 keyed by ISO-2
 // (plus `_world`). Each country holds per-commodity balances whose clock is the
 // marketing-year label, never a calendar year. FAOSTAT Food Balances may fill a
-// production and domestic-supply pair when PSD has no complete country balance.
-// The fallback never invents stocks.
+// production and domestic-supply pair when PSD has no complete country balance
+// and no valid USDA stock evidence. The fallback never invents stocks.
 
 export const FOOD_STOCKS_CANONICAL_KEY = 'resilience:food-stocks:v1';
 export const FOOD_STOCKS_WORLD_KEY = '_world';
@@ -229,9 +229,10 @@ function faostatRows(input) {
 }
 
 /**
- * Add one FAOSTAT Food Balances pair when PSD has no complete country balance.
- * A null or Error fill is a no-op, so a failed FAOSTAT stage cannot damage the
- * PSD snapshot.
+ * Add one FAOSTAT Food Balances pair when PSD has no complete country balance
+ * and no valid USDA stock evidence. A PSD row with finite endingStocks or
+ * stocksToUseRatio is kept even if production is missing. A null or Error fill
+ * is a no-op, so a failed FAOSTAT stage cannot damage the PSD snapshot.
  *
  * @param {Array<Record<string, unknown>>} psdRecords
  * @param {Array<Record<string, unknown>> | Error | null} faostatRecords
@@ -250,6 +251,7 @@ export function applyFaostatFoodBalanceFill(psdRecords, faostatRecords, opts) {
           && rec.production >= 0
           && Number.isFinite(rec.consumption)
           && rec.consumption > 0)
+          || Number.isFinite(rec.endingStocks)
           || Number.isFinite(rec.stocksToUseRatio)))
       .map((rec) => rec.countryCode),
   );
