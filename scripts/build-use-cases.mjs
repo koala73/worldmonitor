@@ -9,7 +9,7 @@ import { mkdirSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 
 /** Bump when hub or child copy changes so lastmod advances without touching every sibling. */
-export const USE_CASES_CONTENT_VERSION = '2026-08-30';
+export const USE_CASES_CONTENT_VERSION = '2026-08-31';
 
 export const USE_CASE_PAGES = [
   {
@@ -103,7 +103,14 @@ function assertMetaDescription(description, label) {
 }
 
 
-/** FAQPage + ItemList companions for HowTo-shaped use-case pages (#7381). */
+/** FAQPage + HowTo/ItemList companions for HowTo-shaped use-case pages (#7381, #7462). */
+const WORLD_MONITOR_ORG = Object.freeze({
+  '@id': 'https://www.worldmonitor.app/#organization',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: 'https://www.worldmonitor.app/',
+});
+
 function faqPageLd(questions) {
   return {
     '@context': 'https://schema.org',
@@ -116,17 +123,72 @@ function faqPageLd(questions) {
   };
 }
 
-function itemListLd(name, steps) {
+function stepSlug(name) {
+  return `step-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+}
+
+function stepUrl(pageUrl, name) {
+  return `${pageUrl}#${stepSlug(name)}`;
+}
+
+function itemListLd(name, pageUrl, steps) {
   return {
     '@context': 'https://schema.org',
     '@type': 'ItemList',
     name,
     numberOfItems: steps.length,
-    itemListElement: steps.map((step, index) => ({
-      '@type': 'ListItem',
+    itemListElement: steps.map((step, index) => {
+      const url = stepUrl(pageUrl, step.name);
+      return {
+        '@type': 'ListItem',
+        position: index + 1,
+        name: step.name,
+        url,
+        description: step.text,
+        item: {
+          '@type': 'HowToStep',
+          name: step.name,
+          url,
+          text: step.text,
+        },
+      };
+    }),
+  };
+}
+
+function howToLd({ name, description, url, steps }) {
+  return {
+    '@context': 'https://schema.org',
+    '@id': `${url}#howto`,
+    '@type': 'HowTo',
+    name,
+    description,
+    url,
+    publisher: { ...WORLD_MONITOR_ORG },
+    step: steps.map((step, index) => ({
+      '@type': 'HowToStep',
       position: index + 1,
-      name: step,
+      name: step.name,
+      url: stepUrl(url, step.name),
+      text: step.text,
     })),
+  };
+}
+
+function useCaseWebPageLd({ name, description, url, lastmod }) {
+  return {
+    '@context': 'https://schema.org',
+    '@type': 'WebPage',
+    '@id': `${url}#webpage`,
+    name,
+    description,
+    url,
+    inLanguage: 'en-US',
+    dateModified: lastmod,
+    isPartOf: { '@id': 'https://www.worldmonitor.app/#website' },
+    publisher: { ...WORLD_MONITOR_ORG },
+    breadcrumb: { '@id': `${url}#breadcrumb` },
+    mainEntity: { '@id': `${url}#howto` },
   };
 }
 
@@ -241,11 +303,11 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
 
       <h2>End-to-end workflow</h2>
       <ol>
-        <li><strong>Establish a baseline.</strong> Read the Country Instability Index (fast clock) beside the Country Resilience Index (slow clock) for each exposure. Record the score, band, and 24-hour delta. Live country pages publish the current snapshot at <a href="/countries/">/countries/</a>.</li>
-        <li><strong>Review current instability and forecasts.</strong> Open the country brief, inspect component drivers (unrest, conflict, security, information), and note any prediction-market contracts tied to the country without treating them as proof.</li>
-        <li><strong>Check corroborating economic and security signals.</strong> Look for independent families near the exposure — hotspot trends, keyword monitors, infrastructure adjacency, chokepoints, travel advisories, or sanctions context — and require more than repeated headlines.</li>
-        <li><strong>Record uncertainty.</strong> Write what is observed, what is inferred, what is stale, and what coverage gaps can explain missing signals. Absence of a sensor is not proof of calm.</li>
-        <li><strong>Set the follow-up or escalation.</strong> Choose routine watch, deepen dossier, enable Pro alerting, or automate via API/MCP. Continue into the exact product state below rather than the generic homepage.</li>
+        <li id="step-establish-a-baseline"><strong>Establish a baseline.</strong> Read the Country Instability Index (fast clock) beside the Country Resilience Index (slow clock) for each exposure. Record the score, band, and 24-hour delta. Live country pages publish the current snapshot at <a href="/countries/">/countries/</a>.</li>
+        <li id="step-review-current-instability-and-forecasts"><strong>Review current instability and forecasts.</strong> Open the country brief, inspect component drivers (unrest, conflict, security, information), and note any prediction-market contracts tied to the country without treating them as proof.</li>
+        <li id="step-check-corroborating-economic-and-security-signals"><strong>Check corroborating economic and security signals.</strong> Look for independent families near the exposure — hotspot trends, keyword monitors, infrastructure adjacency, chokepoints, travel advisories, or sanctions context — and require more than repeated headlines.</li>
+        <li id="step-record-uncertainty"><strong>Record uncertainty.</strong> Write what is observed, what is inferred, what is stale, and what coverage gaps can explain missing signals. Absence of a sensor is not proof of calm.</li>
+        <li id="step-set-the-follow-up-or-escalation"><strong>Set the follow-up or escalation.</strong> Choose routine watch, deepen dossier, enable Pro alerting, or automate via API/MCP. Continue into the exact product state below rather than the generic homepage.</li>
       </ol>
 
       <h2>Product proof used by this workflow</h2>
@@ -289,6 +351,30 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
       </ul>
       <p class="source">Canonical treatment (#6849): this page owns the evergreen task framing. <a href="/countries/">/countries/</a> remains the live evidence surface. The blog workflow article remains distinct supporting editorial — not a duplicate indexable procedure.</p>`;
 
+  const pageUrl = absoluteUrl(baseUrl, path);
+  const workflowSteps = [
+    {
+      name: 'Establish a baseline',
+      text: 'Read the Country Instability Index (fast clock) beside the Country Resilience Index (slow clock) for each exposure. Record the score, band, and 24-hour delta.',
+    },
+    {
+      name: 'Review current instability and forecasts',
+      text: 'Open the country brief, inspect component drivers (unrest, conflict, security, information), and note any prediction-market contracts tied to the country without treating them as proof.',
+    },
+    {
+      name: 'Check corroborating economic and security signals',
+      text: 'Look for independent families near the exposure — hotspot trends, keyword monitors, infrastructure adjacency, chokepoints, travel advisories, or sanctions context — and require more than repeated headlines.',
+    },
+    {
+      name: 'Record uncertainty',
+      text: 'Write what is observed, what is inferred, what is stale, and what coverage gaps can explain missing signals. Absence of a sensor is not proof of calm.',
+    },
+    {
+      name: 'Set the follow-up or escalation',
+      text: 'Choose routine watch, deepen dossier, enable Pro alerting, or automate via API/MCP. Continue into the exact product state below rather than the generic homepage.',
+    },
+  ];
+
   return pageDocument({
     baseUrl,
     path,
@@ -297,15 +383,12 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
     lastmod,
     ogType: 'article',
     jsonLd: [
-      {
-        '@context': 'https://schema.org',
-        '@type': 'WebPage',
+      useCaseWebPageLd({
         name: 'Monitor country risk',
         description,
-        url: absoluteUrl(baseUrl, path),
-        inLanguage: 'en-US',
-        dateModified: lastmod,
-      },
+        url: pageUrl,
+        lastmod,
+      }),
       faqPageLd([
         [
           'How do you monitor country risk with World Monitor?',
@@ -320,13 +403,13 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
           'A dated monitoring note with baseline, live pressure, corroboration, uncertainty, and the next action, continuing into an exact World Monitor country brief rather than a generic homepage.',
         ],
       ]),
-      itemListLd('Country-risk end-to-end workflow', [
-        'Establish a baseline',
-        'Review current instability and forecasts',
-        'Check corroborating economic and security signals',
-        'Record uncertainty',
-        'Set the follow-up or escalation',
-      ]),
+      howToLd({
+        name: 'Country-risk end-to-end workflow',
+        description,
+        url: pageUrl,
+        steps: workflowSteps,
+      }),
+      itemListLd('Country-risk end-to-end workflow', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
@@ -406,12 +489,12 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
 
       <h2>End-to-end workflow</h2>
       <ol>
-        <li><strong>Capture the claim precisely.</strong> Write the exact wording, claimed location, time window, and decision deadline. Separate what is asserted from what is merely implied.</li>
-        <li><strong>Assess the original source.</strong> Note publication time, first-hand vs derivative media, and the repost chain. Treat wire pickup as reach, not independent confirmation.</li>
-        <li><strong>Check news velocity without equating repetition to proof.</strong> Look at topic velocity, hotspot movement, and outlet diversity. Many copies of one video are still one source family.</li>
-        <li><strong>Test only relevant independent signals.</strong> Use AIS/maritime, aviation/NOTAMs, FIRMS thermal, seismic, connectivity/outages, webcams, or country context when the claim’s physics or geography would leave a fingerprint. Skip layers that cannot speak to this claim.</li>
-        <li><strong>Record freshness, fit, and contradictions.</strong> Log observation time, spatial/temporal mismatch, missing coverage that can explain a quiet sensor, and any signal that conflicts with the claim.</li>
-        <li><strong>Assign a qualified outcome.</strong> Choose supported, contradicted, unresolved, or stale — with uncertainty visible — then continue into the exact dashboard, Pro alert, API, or MCP action below.</li>
+        <li id="step-capture-the-claim-precisely"><strong>Capture the claim precisely.</strong> Write the exact wording, claimed location, time window, and decision deadline. Separate what is asserted from what is merely implied.</li>
+        <li id="step-assess-the-original-source"><strong>Assess the original source.</strong> Note publication time, first-hand vs derivative media, and the repost chain. Treat wire pickup as reach, not independent confirmation.</li>
+        <li id="step-check-news-velocity-without-equating-repetition-to-proof"><strong>Check news velocity without equating repetition to proof.</strong> Look at topic velocity, hotspot movement, and outlet diversity. Many copies of one video are still one source family.</li>
+        <li id="step-test-only-relevant-independent-signals"><strong>Test only relevant independent signals.</strong> Use AIS/maritime, aviation/NOTAMs, FIRMS thermal, seismic, connectivity/outages, webcams, or country context when the claim’s physics or geography would leave a fingerprint. Skip layers that cannot speak to this claim.</li>
+        <li id="step-record-freshness-fit-and-contradictions"><strong>Record freshness, fit, and contradictions.</strong> Log observation time, spatial/temporal mismatch, missing coverage that can explain a quiet sensor, and any signal that conflicts with the claim.</li>
+        <li id="step-assign-a-qualified-outcome"><strong>Assign a qualified outcome.</strong> Choose supported, contradicted, unresolved, or stale — with uncertainty visible — then continue into the exact dashboard, Pro alert, API, or MCP action below.</li>
       </ol>
 
       <h2>Product proof used by this workflow</h2>
@@ -456,6 +539,34 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
       </ul>
       <p class="source">Canonical treatment (#6850): this page owns the evergreen verification procedure. The <a href="/blog/posts/verify-breaking-news-osint-workflow-journalists/">OSINT blog article</a> remains dated supporting editorial with minute-by-minute narrative — not a duplicate indexable task page. No redirect.</p>`;
 
+  const pageUrl = absoluteUrl(baseUrl, path);
+  const workflowSteps = [
+    {
+      name: 'Capture the claim precisely',
+      text: 'Write the exact wording, claimed location, time window, and decision deadline. Separate what is asserted from what is merely implied.',
+    },
+    {
+      name: 'Assess the original source',
+      text: 'Note publication time, first-hand vs derivative media, and the repost chain. Treat wire pickup as reach, not independent confirmation.',
+    },
+    {
+      name: 'Check news velocity without equating repetition to proof',
+      text: 'Look at topic velocity, hotspot movement, and outlet diversity. Many copies of one video are still one source family.',
+    },
+    {
+      name: 'Test only relevant independent signals',
+      text: 'Use AIS/maritime, aviation/NOTAMs, FIRMS thermal, seismic, connectivity/outages, webcams, or country context when the claim’s physics or geography would leave a fingerprint. Skip layers that cannot speak to this claim.',
+    },
+    {
+      name: 'Record freshness, fit, and contradictions',
+      text: 'Log observation time, spatial/temporal mismatch, missing coverage that can explain a quiet sensor, and any signal that conflicts with the claim.',
+    },
+    {
+      name: 'Assign a qualified outcome',
+      text: 'Choose supported, contradicted, unresolved, or stale — with uncertainty visible — then continue into the exact dashboard, Pro alert, API, or MCP action below.',
+    },
+  ];
+
   return pageDocument({
     baseUrl,
     path,
@@ -464,15 +575,12 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
     lastmod,
     ogType: 'article',
     jsonLd: [
-      {
-        '@context': 'https://schema.org',
-        '@type': 'WebPage',
+      useCaseWebPageLd({
         name: 'Verify breaking news',
         description,
-        url: absoluteUrl(baseUrl, path),
-        inLanguage: 'en-US',
-        dateModified: lastmod,
-      },
+        url: pageUrl,
+        lastmod,
+      }),
       faqPageLd([
         [
           'How do you verify breaking news with World Monitor?',
@@ -487,14 +595,13 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
           'That a quiet map means nothing happened, or that repeated headlines are independent confirmations. Correlated sensors are evidence, not certainty, and this workflow does not certify that an event is true.',
         ],
       ]),
-      itemListLd('Breaking-news verification workflow', [
-        'Capture the claim precisely',
-        'Assess the original source',
-        'Check news velocity without equating repetition to proof',
-        'Test only relevant independent signals',
-        'Record freshness, fit, and contradictions',
-        'Assign a qualified outcome',
-      ]),
+      howToLd({
+        name: 'Breaking-news verification workflow',
+        description,
+        url: pageUrl,
+        steps: workflowSteps,
+      }),
+      itemListLd('Breaking-news verification workflow', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
@@ -574,19 +681,19 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
 
       <h2>Routine monitoring checklist</h2>
       <ol>
-        <li><strong>Define the exposure.</strong> Name the commodity, supplier geography, facility, route, chokepoint, market, and decision horizon.</li>
-        <li><strong>Establish a baseline.</strong> Record normal route conditions, country-risk bands, price ranges, policy restrictions, and usual data latency for each exposure.</li>
-        <li><strong>Run the daily scan.</strong> Check unusual maritime or route activity, security events near the exposure, weather/disaster signals, sanctions or trade-policy changes, and market confirmation — without treating any single ticker move as proof of disruption.</li>
-        <li><strong>Set watch thresholds.</strong> Write explicit reassess and escalate conditions before an incident starts.</li>
+        <li id="step-define-the-exposure"><strong>Define the exposure.</strong> Name the commodity, supplier geography, facility, route, chokepoint, market, and decision horizon.</li>
+        <li id="step-establish-a-baseline"><strong>Establish a baseline.</strong> Record normal route conditions, country-risk bands, price ranges, policy restrictions, and usual data latency for each exposure.</li>
+        <li id="step-run-the-daily-scan"><strong>Run the daily scan.</strong> Check unusual maritime or route activity, security events near the exposure, weather/disaster signals, sanctions or trade-policy changes, and market confirmation — without treating any single ticker move as proof of disruption.</li>
+        <li id="step-set-watch-thresholds"><strong>Set watch thresholds.</strong> Write explicit reassess and escalate conditions before an incident starts.</li>
       </ol>
 
       <h2>Incident-response checklist</h2>
       <ol>
-        <li><strong>Identify the first-order constraint.</strong> Is the signal a closed waterway, delayed berth, sanctions change, facility risk, or market spike?</li>
-        <li><strong>Test exposure fit.</strong> Confirm the event can reach <em>your</em> suppliers, routes, or customers — not only the same region in headlines.</li>
-        <li><strong>Map transmission paths.</strong> Consider substitute capacity, country dependencies, prices, lead times, and downstream sectors as hypotheses, not deterministic outcomes.</li>
-        <li><strong>Separate evidence classes.</strong> Label observed AIS/port/chokepoint signals, model or forecast outputs, and analyst inference in distinct lines.</li>
-        <li><strong>Record stale, missing, or contradictory sources.</strong> Then choose watch, reassess, or escalate and open the exact product state below.</li>
+        <li id="step-identify-the-first-order-constraint"><strong>Identify the first-order constraint.</strong> Is the signal a closed waterway, delayed berth, sanctions change, facility risk, or market spike?</li>
+        <li id="step-test-exposure-fit"><strong>Test exposure fit.</strong> Confirm the event can reach <em>your</em> suppliers, routes, or customers — not only the same region in headlines.</li>
+        <li id="step-map-transmission-paths"><strong>Map transmission paths.</strong> Consider substitute capacity, country dependencies, prices, lead times, and downstream sectors as hypotheses, not deterministic outcomes.</li>
+        <li id="step-separate-evidence-classes"><strong>Separate evidence classes.</strong> Label observed AIS/port/chokepoint signals, model or forecast outputs, and analyst inference in distinct lines.</li>
+        <li id="step-record-stale-missing-or-contradictory-sources"><strong>Record stale, missing, or contradictory sources.</strong> Then choose watch, reassess, or escalate and open the exact product state below.</li>
       </ol>
 
       <h2>Product proof used by this workflow</h2>
@@ -633,6 +740,46 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
       </ul>
       <p class="source">Canonical treatment (#6851): this page owns the evergreen supply-chain monitoring workflow. <a href="/chokepoints/">/chokepoints/</a> and commodity surfaces remain factual evidence. The <a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">supply-chain blog article</a> remains distinct supporting editorial — no redirect.</p>`;
 
+  const pageUrl = absoluteUrl(baseUrl, path);
+  const workflowSteps = [
+    {
+      name: 'Define the exposure',
+      text: 'Name the commodity, supplier geography, facility, route, chokepoint, market, and decision horizon.',
+    },
+    {
+      name: 'Establish a baseline',
+      text: 'Record normal route conditions, country-risk bands, price ranges, policy restrictions, and usual data latency for each exposure.',
+    },
+    {
+      name: 'Run the daily scan',
+      text: 'Check unusual maritime or route activity, security events near the exposure, weather/disaster signals, sanctions or trade-policy changes, and market confirmation — without treating any single ticker move as proof of disruption.',
+    },
+    {
+      name: 'Set watch thresholds',
+      text: 'Write explicit reassess and escalate conditions before an incident starts.',
+    },
+    {
+      name: 'Identify the first-order constraint',
+      text: 'Is the signal a closed waterway, delayed berth, sanctions change, facility risk, or market spike?',
+    },
+    {
+      name: 'Test exposure fit',
+      text: 'Confirm the event can reach your suppliers, routes, or customers — not only the same region in headlines.',
+    },
+    {
+      name: 'Map transmission paths',
+      text: 'Consider substitute capacity, country dependencies, prices, lead times, and downstream sectors as hypotheses, not deterministic outcomes.',
+    },
+    {
+      name: 'Separate evidence classes',
+      text: 'Label observed AIS/port/chokepoint signals, model or forecast outputs, and analyst inference in distinct lines.',
+    },
+    {
+      name: 'Record stale, missing, or contradictory sources',
+      text: 'Then choose watch, reassess, or escalate and open the exact product state below.',
+    },
+  ];
+
   return pageDocument({
     baseUrl,
     path,
@@ -641,15 +788,12 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
     lastmod,
     ogType: 'article',
     jsonLd: [
-      {
-        '@context': 'https://schema.org',
-        '@type': 'WebPage',
+      useCaseWebPageLd({
         name: 'Monitor supply-chain disruptions',
         description,
-        url: absoluteUrl(baseUrl, path),
-        inLanguage: 'en-US',
-        dateModified: lastmod,
-      },
+        url: pageUrl,
+        lastmod,
+      }),
       faqPageLd([
         [
           'How do you monitor supply-chain disruptions with World Monitor?',
@@ -664,17 +808,13 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
           'That an event will cause a specific price, shortage, delay, or customer impact. Market moves are confirmation signals, not causal proof.',
         ],
       ]),
-      itemListLd('Supply-chain disruption monitoring steps', [
-        'Define the exposure',
-        'Establish a baseline',
-        'Run the daily scan',
-        'Set watch thresholds',
-        'Identify the first-order constraint',
-        'Test exposure fit',
-        'Map transmission paths',
-        'Separate evidence classes',
-        'Record stale, missing, or contradictory sources',
-      ]),
+      howToLd({
+        name: 'Supply-chain disruption monitoring steps',
+        description,
+        url: pageUrl,
+        steps: workflowSteps,
+      }),
+      itemListLd('Supply-chain disruption monitoring steps', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
