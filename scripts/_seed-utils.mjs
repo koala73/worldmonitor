@@ -1131,8 +1131,9 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
 // keys so callers that publish per-key health can distinguish a confirmed
 // EXPIRE no-op from a successful extension and from a pipeline result that
 // could not be confirmed at all.
-export async function extendExistingTtlDetailed(keys, ttlSeconds = 600) {
+export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, { optionalKeys = [] } = {}) {
   const requestedKeys = Array.isArray(keys) ? keys : [];
+  const optional = new Set(Array.isArray(optionalKeys) ? optionalKeys : []);
   if (requestedKeys.length === 0) {
     return {
       allExtended: true,
@@ -1192,10 +1193,14 @@ export async function extendExistingTtlDetailed(keys, ttlSeconds = 600) {
       }
     }
     if (extendedKeys.length > 0) console.log(`  Extended TTL on ${extendedKeys.length} key(s) (${ttlSeconds}s)`);
-    if (missingKeys.length > 0) console.warn(`  WARNING: ${missingKeys.length} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
+    const requiredMissing = missingKeys.filter((key) => !optional.has(key));
+    if (requiredMissing.length > 0) {
+      console.warn(`  WARNING: ${requiredMissing.length} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
+    }
     if (unconfirmedKeys.length > 0) console.warn(`  WARNING: TTL extension result was unconfirmed for ${unconfirmedKeys.length} key(s)`);
+    const requiredKeys = requestedKeys.filter((key) => !optional.has(key));
     return {
-      allExtended: extendedKeys.length === requestedKeys.length,
+      allExtended: requiredKeys.every((key) => extendedKeys.includes(key)),
       extendedKeys,
       missingKeys,
       unconfirmedKeys,
@@ -1218,8 +1223,8 @@ export async function extendExistingTtlDetailed(keys, ttlSeconds = 600) {
 // proof the data is still alive (e.g. a market-closed skip that then reports
 // fresh) MUST gate on this boolean and fall back to a real fetch on false —
 // otherwise a silent extension failure looks green while the key expires.
-export async function extendExistingTtl(keys, ttlSeconds = 600) {
-  const result = await extendExistingTtlDetailed(keys, ttlSeconds);
+export async function extendExistingTtl(keys, ttlSeconds = 600, options = {}) {
+  const result = await extendExistingTtlDetailed(keys, ttlSeconds, options);
   return result.allExtended;
 }
 
@@ -2206,7 +2211,11 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       process.exit(1);
     }
     declaredTtlByKey.set(key, declaredTtl);
-    normalizedPreserveKeyTtls.push({ key, ttlSeconds: declaredTtl });
+    normalizedPreserveKeyTtls.push({
+      key,
+      ttlSeconds: declaredTtl,
+      ...(declaration?.optional === true ? { optional: true } : {}),
+    });
   }
   const runId = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const startMs = Date.now();
@@ -2224,11 +2233,18 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
   // override a key that also appears in the default canonical-TTL cohort.
   const preserveExistingKeys = async (targets) => {
     const ttlByKey = new Map();
+    const optionalKeys = new Set();
     if (targets) {
-      for (const target of targets) ttlByKey.set(target.key, target.ttlSeconds);
+      for (const target of targets) {
+        ttlByKey.set(target.key, target.ttlSeconds);
+        if (target.optional) optionalKeys.add(target.key);
+      }
     } else {
       for (const key of defaultPreservationKeys) ttlByKey.set(key, defaultPreservationTtl);
-      for (const target of normalizedPreserveKeyTtls) ttlByKey.set(target.key, target.ttlSeconds);
+      for (const target of normalizedPreserveKeyTtls) {
+        ttlByKey.set(target.key, target.ttlSeconds);
+        if (target.optional) optionalKeys.add(target.key);
+      }
     }
 
     const keysByTtl = new Map();
@@ -2236,8 +2252,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       if (!keysByTtl.has(targetTtl)) keysByTtl.set(targetTtl, []);
       keysByTtl.get(targetTtl).push(key);
     }
+    const optionalKeyList = [...optionalKeys];
     const results = await Promise.all(
-      [...keysByTtl].map(([targetTtl, keys]) => extendExistingTtl(keys, targetTtl)),
+      [...keysByTtl].map(([targetTtl, keys]) => extendExistingTtl(keys, targetTtl, { optionalKeys: optionalKeyList })),
     );
     return results.every(Boolean);
   };
@@ -2666,11 +2683,17 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // whose IDs the upstream dropped this cycle). Preserve last-good by
           // extending the existing key's TTL instead.
           if (shouldSkipEmptyExtraKey(ek, ekCount)) {
-            await preserveExistingKeys([{
-              key: ek.key,
-              ttlSeconds: ek.ttl || ttlSeconds || 600,
-            }]);
-            console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
+            const ttl = ek.ttl || ttlSeconds || 600;
+            const detail = await extendExistingTtlDetailed([ek.key], ttl, {
+              optionalKeys: ek.preserveOptional ? [ek.key] : [],
+            });
+            if (detail.extendedKeys.includes(ek.key)) {
+              console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
+            } else if (ek.preserveOptional && detail.missingKeys.includes(ek.key)) {
+              console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write; optional key absent (expected before first completion)`);
+            } else {
+              console.warn(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, but last-good preservation failed`);
+            }
             continue;
           }
           ekEnvelope = {

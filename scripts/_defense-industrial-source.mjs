@@ -304,6 +304,10 @@ export async function fetchSipriSupplierDependencies({
   // The slice this tick is allowed to refresh. Undefined = every mapped
   // importer, which is the shape the unit tests and any one-shot manual run use.
   selectImporters = null,
+  // When set, only the first N stale candidates are attempted this tick; the
+  // remainder stay deferred and count toward sweep.unfetched. Production passes
+  // SIPRI_SWEEP_CHUNK here AFTER selectImporters returns the full stale set.
+  maxImporters = null,
   softBudgetMs = SIPRI_SWEEP_SOFT_BUDGET_MS,
   now = () => Date.now(),
 } = {}) {
@@ -337,12 +341,18 @@ export async function fetchSipriSupplierDependencies({
     importerByIso2.set(importer.iso2, importer);
   }
   const catalogImporters = [...importerByIso2.values()];
-  // selectImporters returns the slice owed a refresh; everything it leaves out
-  // keeps its previously published row via buildSipriSupplierSnapshot.
-  const uniqueImporters = typeof selectImporters === 'function'
+  // selectImporters returns every importer still owed a refresh this sweep.
+  // maxImporters applies the production chunk AFTER that full stale set is known,
+  // so current catalog rows are not mistaken for unfinished work (#7522).
+  const staleCandidates = typeof selectImporters === 'function'
     ? selectImporters(catalogImporters, maxYear)
     : catalogImporters;
-  const sweepPending = catalogImporters.length - uniqueImporters.length;
+  const deferredByLimit = Number.isInteger(maxImporters) && maxImporters > 0 && staleCandidates.length > maxImporters
+    ? staleCandidates.length - maxImporters
+    : 0;
+  const uniqueImporters = deferredByLimit > 0
+    ? staleCandidates.slice(0, maxImporters)
+    : staleCandidates;
   const output = {};
   const unmapped = new Map();
   const failedImporters = [];
@@ -399,11 +409,16 @@ export async function fetchSipriSupplierDependencies({
       .join(', ');
     logger.warn(`  SIPRI importer requests failed (${failedImporters.length}): ${preview}`);
   }
-  const unfetched = budgetStoppedAt + sweepPending;
+  const unfetched = deferredByLimit + budgetStoppedAt;
   if (budgetStoppedAt > 0) {
     logger.warn(
       `  SIPRI soft budget reached after ${Math.round((now() - fetchStartedAt) / 1000)}s — `
       + `${budgetStoppedAt} importer(s) left for the next tick`,
+    );
+  }
+  if (deferredByLimit > 0) {
+    logger.warn(
+      `  SIPRI chunk limit deferred ${deferredByLimit} stale importer(s) to a later tick`,
     );
   }
   return {
@@ -415,8 +430,10 @@ export async function fetchSipriSupplierDependencies({
       attempted: uniqueImporters.length,
       fetched: Object.keys(output).length,
       // Sections this tick did not even attempt: deliberately deferred by the
-      // slice, plus any the soft budget cut off.
+      // chunk limit, plus any the soft budget cut off.
       unfetched,
+      deferredByLimit,
+      budgetStoppedAt,
     },
   };
 }

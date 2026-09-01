@@ -267,6 +267,53 @@ test('skipWhenEmpty preserves the last-good extra key without refreshing its see
   );
 });
 
+test('skipWhenEmpty on an optional extra key does not claim TTL extension when EXPIRE is a no-op', async () => {
+  expireResult = 0;
+  const logs = [];
+  const originalLog = console.log;
+  const originalWarn = console.warn;
+  console.log = (...args) => { logs.push(args.join(' ')); originalLog(...args); };
+  console.warn = (...args) => { logs.push(args.join(' ')); originalWarn(...args); };
+
+  try {
+    const exitCode = await runWithExitTrap(() => runSeed('test', 'extra-meta-optional-empty', 'test:extra-meta-optional-empty:v1', async () => ({
+      events: [{ id: 'canonical' }],
+      warnings: [],
+    }), {
+      validateFn: (data) => Array.isArray(data?.events),
+      ttlSeconds: 3600,
+      sourceVersion: 'test-v1',
+      schemaVersion: 1,
+      maxStaleMin: 120,
+      declareRecords: (data) => data.events.length,
+      extraKeys: [{
+        key: 'test:extra-meta-optional-empty:warnings',
+        transform: (data) => data.warnings,
+        declareRecords: (warnings) => warnings.length,
+        skipWhenEmpty: true,
+        preserveOptional: true,
+      }],
+    }));
+
+    assert.equal(exitCode, 0);
+    assert.ok(
+      logs.some((line) => line.includes('optional key absent')),
+      'missing optional completion marker must not claim last-good TTL extension',
+    );
+    assert.ok(
+      !logs.some((line) => line.includes('extended TTL to preserve last-good')),
+      'EXPIRE 0 must not print a false preservation success message',
+    );
+    assert.ok(
+      !logs.some((line) => line.includes('manual seed required')),
+      'optional EXPIRE no-op must not fire manual-seed alarm',
+    );
+  } finally {
+    console.log = originalLog;
+    console.warn = originalWarn;
+  }
+});
+
 // PR #3582: When validateFn rejects a transient blip but canonical key still
 // holds a contract-mode envelope with recordCount > 0, seed-meta should mirror
 // the canonical's (fetchedAt, recordCount) rather than overwrite with zero.

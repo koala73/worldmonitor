@@ -47,6 +47,25 @@ test('extendExistingTtl: returns false when any key is missing/expired (EXPIRE n
   assert.equal(ok, false);
 });
 
+test('extendExistingTtl: treats optional missing keys as success without manual-seed alarm', async () => {
+  let warned = false;
+  const originalWarn = console.warn;
+  console.warn = (...args) => {
+    warned = true;
+    originalWarn(...args);
+  };
+  try {
+    mockPipeline([{ result: 1 }, { result: 0 }]);
+    const ok = await extendExistingTtl(['required', 'optional-complete'], 1800, {
+      optionalKeys: ['optional-complete'],
+    });
+    assert.equal(ok, true);
+    assert.equal(warned, false, 'optional EXPIRE no-op must not fire manual-seed alarm');
+  } finally {
+    console.warn = originalWarn;
+  }
+});
+
 test('extendExistingTtlDetailed: preserves mixed per-key EXPIRE outcomes', async () => {
   mockPipeline([{ result: 1 }, { result: 0 }, { result: null }]);
   const result = await extendExistingTtlDetailed(['alive', 'missing', 'unknown'], 1800);

@@ -467,3 +467,149 @@ describe('SIPRI chunked sweep (#6806)', () => {
     );
   });
 });
+
+describe('SIPRI sweep completion vs production chunk limit (#7522)', () => {
+  const names = ['Ukraine', 'Poland', 'Japan', 'Egypt', 'India', 'Brazil', 'Norway', 'Chile'];
+  const catalog = Array.from({ length: 160 }, (_, i) => ({
+    EntityId: 1000 + (i % names.length),
+    Name: names[i % names.length],
+  }));
+
+  function fetchFnFactory({ post } = {}) {
+    return async (url) => {
+      if (String(url).includes('getMaxYear')) return new Response('2025');
+      if (String(url).includes('getAllCountriesTrimmed')) return new Response(JSON.stringify(catalog));
+      if (typeof post === 'function') return post(url);
+      return new Response(JSON.stringify({ bytes: '' }));
+    };
+  }
+
+  function syntheticStale(count) {
+    return Array.from({ length: count }, (_, i) => ({
+      EntityId: 5000 + i,
+      Name: `Synthetic ${i}`,
+      iso2: `C${i}`,
+    }));
+  }
+
+  it('below-limit: only deferred stale importers count as unfetched, not fresh catalog rows', async () => {
+    // Production used to subtract the chunked selection from the FULL mapped
+    // catalog, so every current importer inflated sweep.unfetched and a final
+    // tick could never write the completion marker.
+    const sipriBytes = Buffer.from(sipriFixture).toString('base64');
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: fetchFnFactory({
+        post: async () => new Response(JSON.stringify({ bytes: sipriBytes })),
+      }),
+      delayMs: 0,
+      softBudgetMs: 0,
+      maxImporters: 56,
+      selectImporters: (candidates) => candidates.slice(0, 3),
+    });
+    assert.equal(result.sweep.attempted, 3);
+    assert.equal(result.sweep.unfetched, 0, 'fresh catalog rows must not block sweep completion');
+    assert.equal(result.failedImporters.length, 0);
+  });
+
+  it('exact-limit: selecting exactly the chunk size with no deferred stale leaves unfetched at 0', async () => {
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: fetchFnFactory(),
+      delayMs: 0,
+      softBudgetMs: 0,
+      maxImporters: 56,
+      selectImporters: () => syntheticStale(56),
+    });
+    assert.equal(result.sweep.attempted, 56);
+    assert.equal(result.sweep.unfetched, 0);
+  });
+
+  it('above-limit: deferred stale beyond the chunk remain unfetched', async () => {
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: fetchFnFactory(),
+      delayMs: 0,
+      softBudgetMs: 0,
+      maxImporters: 56,
+      selectImporters: () => syntheticStale(80),
+    });
+    assert.equal(result.sweep.attempted, 56);
+    assert.equal(result.sweep.unfetched, 24, 'only the deferred stale tail is unfinished work');
+  });
+
+  it('soft-budget stops add to unfetched on top of deferred stale', async () => {
+    let clock = 0;
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: fetchFnFactory({
+        post: async () => {
+          clock += 10_000;
+          return new Response(JSON.stringify({ bytes: '' }));
+        },
+      }),
+      delayMs: 0,
+      softBudgetMs: 30_000,
+      maxImporters: 56,
+      selectImporters: () => syntheticStale(80),
+      now: () => clock,
+    });
+    // 24 deferred by the chunk + whatever the soft budget left inside the chunk.
+    assert.ok(result.sweep.unfetched >= 24);
+    assert.ok(result.sweep.attempted === 56 || result.sweep.unfetched > 24);
+  });
+
+  it('failed requests stay out of unfetched and still block the completion marker', async () => {
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: fetchFnFactory({
+        post: async () => new Response('boom', { status: 500 }),
+      }),
+      delayMs: 0,
+      softBudgetMs: 0,
+      maxImporters: 56,
+      selectImporters: (candidates) => candidates.slice(0, 2),
+    });
+    assert.equal(result.sweep.unfetched, 0, 'attempted failures are retried later, not counted unfetched');
+    assert.ok(result.failedImporters.length > 0);
+
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: { importers: {} },
+      minimumCompleteImporterCount: 1,
+      fetchSipri: async () => result,
+    });
+    assert.equal(snapshot.stage.status, 'partial');
+    assert.deepEqual(buildArmsSupplierCompletion(snapshot), {});
+  });
+
+  it('default full-catalog path with no maxImporters still reports budget-stopped work', async () => {
+    let served = 0;
+    let clock = 0;
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: fetchFnFactory({
+        post: async () => {
+          served += 1;
+          clock += 10_000;
+          return new Response(JSON.stringify({ bytes: '' }));
+        },
+      }),
+      delayMs: 0,
+      softBudgetMs: 30_000,
+      now: () => clock,
+    });
+    assert.ok(served > 0);
+    assert.ok(result.sweep.unfetched > 0);
+  });
+
+  it('the suppliers seeder applies the chunk after selecting the full stale set', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const src = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
+    assert.match(src, /maxImporters:\s*SIPRI_SWEEP_CHUNK/);
+    assert.doesNotMatch(
+      src,
+      /selectSweepImporters\([\s\S]*?\)\.slice\(0,\s*SIPRI_SWEEP_CHUNK\)/,
+      'slicing inside selectImporters hides deferred stale from the fetcher',
+    );
+    assert.doesNotMatch(
+      src,
+      /readCanonicalValue\(ARMS_SUPPLIERS_KEY\)\.catch\(\s*\(\)\s*=>\s*null\s*\)/,
+      'a snapshot read failure must abort, not pretend the key was empty',
+    );
+    assert.match(src, /optional:\s*true/);
+  });
+});

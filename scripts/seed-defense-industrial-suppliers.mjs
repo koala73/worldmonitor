@@ -31,7 +31,7 @@ export function supplierContentMeta(data) {
 }
 
 async function fetchSupplierSnapshot() {
-  const previousSnapshot = await readCanonicalValue(ARMS_SUPPLIERS_KEY).catch(() => null);
+  const previousSnapshot = await readCanonicalValue(ARMS_SUPPLIERS_KEY);
   const previous = previousSnapshot || {};
   return buildSipriSupplierSnapshot({
     previousSnapshot: previous,
@@ -40,11 +40,12 @@ async function fetchSupplierSnapshot() {
     // whole-catalog pass cannot be made to fit at any deadline.
     fetchSipri: (options) => fetchSipriSupplierDependencies({
       ...options,
+      maxImporters: SIPRI_SWEEP_CHUNK,
       selectImporters: (candidates, windowEndYear) => selectSweepImporters(
         candidates,
         previous,
         windowEndYear,
-      ).slice(0, SIPRI_SWEEP_CHUNK),
+      ),
     }),
   });
 }
@@ -77,6 +78,7 @@ await runSeed('military', 'arms-suppliers', ARMS_SUPPLIERS_KEY, fetchSupplierSna
       transform: buildArmsSupplierCompletion,
       declareRecords: (data) => data.completedAt ? 1 : 0,
       skipWhenEmpty: true,
+      preserveOptional: true,
       metaKey: 'seed-meta:military:arms-suppliers-complete',
       metaTtlSeconds: DEFENSE_INDUSTRIAL_TTL_SECONDS,
       metaExtra: (data) => ({
@@ -87,7 +89,7 @@ await runSeed('military', 'arms-suppliers', ARMS_SUPPLIERS_KEY, fetchSupplierSna
     },
   ],
   preserveKeyTtls: [
-    { key: ARMS_SUPPLIERS_COMPLETE_KEY, ttlSeconds: DEFENSE_INDUSTRIAL_TTL_SECONDS },
+    { key: ARMS_SUPPLIERS_COMPLETE_KEY, ttlSeconds: DEFENSE_INDUSTRIAL_TTL_SECONDS, optional: true },
     { key: 'seed-meta:military:arms-suppliers-complete', ttlSeconds: DEFENSE_INDUSTRIAL_TTL_SECONDS },
   ],
 });

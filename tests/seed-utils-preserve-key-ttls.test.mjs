@@ -108,3 +108,29 @@ test('preserveKeyTtls rejects malformed declarations before acquiring the Redis 
   assert.equal(exitCode, 1);
   assert.equal(calls.length, 0, 'configuration failure must happen before any Redis operation');
 });
+
+test('optional preserveKeyTtls entries do not fail preservation when EXPIRE is a no-op', async () => {
+  globalThis.fetch = async (url, opts = {}) => {
+    const body = opts.body ? JSON.parse(opts.body) : null;
+    calls.push({ url: String(url), body });
+    if (Array.isArray(body) && Array.isArray(body[0])) {
+      return Response.json(body.map((command) => ({
+        result: command[1] === 'test:optional-marker:v1' ? 0 : 1,
+      })));
+    }
+    return Response.json({ result: 'OK' });
+  };
+
+  const exitCode = await trapExit(() =>
+    runSeed('test', 'optional-marker', 'test:optional-marker:v1', async () => {
+      throw Object.assign(new Error('upstream failed'), { nonRetryable: true });
+    }, {
+      ttlSeconds: 3600,
+      preserveKeyTtls: [
+        { key: 'test:optional-marker:v1', ttlSeconds: 3600, optional: true },
+      ],
+    }),
+  );
+
+  assert.equal(exitCode, GRACEFUL_FETCH_FAILURE_EXIT_CODE);
+});
