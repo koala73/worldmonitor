@@ -446,12 +446,39 @@ jobs:
       - name: Verify generated artifacts are fresh against the merge result
         run: |
           read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
-          if ! git diff --exit-code -- "${GENERATED_PATH_ARRAY[@]}"; then
+          EXCLUSIONS=()
+          for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
+            if [[ "$GENERATED_PATH" == */ ]]; then
+              EXCLUSIONS+=(":(exclude,glob)${GENERATED_PATH}**")
+            else
+              EXCLUSIONS+=(":(exclude,literal)$GENERATED_PATH")
+            fi
+          done
+
+          if ! git diff --quiet -- . "${EXCLUSIONS[@]}" || \
+             ! git diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
+            echo "ERROR: Merge-result generation modified tracked files outside the generated artifact paths."
+            git diff --stat -- . "${EXCLUSIONS[@]}"
+            git diff --cached --stat -- . "${EXCLUSIONS[@]}"
+            exit 1
+          fi
+
+          UNEXPECTED_UNTRACKED=$(git ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
+          if [ -n "$UNEXPECTED_UNTRACKED" ]; then
+            echo "ERROR: Merge-result generation created files outside the generated artifact paths:"
+            echo "$UNEXPECTED_UNTRACKED"
+            exit 1
+          fi
+
+          if ! git diff --quiet -- "${GENERATED_PATH_ARRAY[@]}" || \
+             ! git diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
             echo ""
             echo "============================================================"
             echo "ERROR: Generated artifacts are stale against the PR merge result."
             echo "Merge the latest main branch into the PR branch and retry."
             echo "============================================================"
+            git diff --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            git diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
             exit 1
           fi
 

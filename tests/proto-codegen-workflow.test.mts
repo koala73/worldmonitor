@@ -262,6 +262,67 @@ function runGenerationVerdict(mode: GenerationMode, trustedFork: boolean) {
   return returned;
 }
 
+type MergeVerdictMode =
+  | 'clean'
+  | 'generated-drift'
+  | 'generated-staged'
+  | 'unexpected-tracked'
+  | 'unexpected-staged'
+  | 'unexpected-untracked';
+
+function runMergeVerdict(mode: MergeVerdictMode) {
+  const temp = mkdtempSync(join(tmpdir(), 'wm-proto-merge-verdict-'));
+  const repo = join(temp, 'repo');
+  const generatedPaths = (workflow.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean);
+  const verdict = stepByName(
+    'internal-merge-freshness',
+    'Verify generated artifacts are fresh against the merge result',
+  );
+
+  mkdirSync(repo);
+  assert.equal(git(repo, ['init', '--quiet', '--initial-branch=merge-verdict']).status, 0);
+  assert.equal(git(repo, ['config', 'user.email', 'fixture@example.invalid']).status, 0);
+  assert.equal(git(repo, ['config', 'user.name', 'Fixture']).status, 0);
+
+  for (const generatedPath of generatedPaths) {
+    const fixturePath = generatedPath.endsWith('/')
+      ? join(generatedPath, generatedPath.startsWith('docs/') ? 'fixture.yaml' : 'fixture.ts')
+      : generatedPath;
+    mkdirSync(dirname(join(repo, fixturePath)), { recursive: true });
+    writeFileSync(join(repo, fixturePath), 'generated fixture\n');
+  }
+  mkdirSync(join(repo, 'src/components'), { recursive: true });
+  writeFileSync(join(repo, 'src/components/Panel.ts'), 'export const panel = 1;\n');
+  assert.equal(git(repo, ['add', '-A']).status, 0);
+  assert.equal(git(repo, ['commit', '--quiet', '-m', 'base']).status, 0);
+
+  if (mode === 'generated-drift' || mode === 'generated-staged') {
+    writeFileSync(join(repo, 'src/generated/fixture.ts'), 'generated fixture changed\n');
+    if (mode === 'generated-staged') {
+      assert.equal(git(repo, ['add', 'src/generated/fixture.ts']).status, 0);
+    }
+  } else if (mode === 'unexpected-tracked' || mode === 'unexpected-staged') {
+    writeFileSync(join(repo, 'src/components/Panel.ts'), 'export const panel = 2;\n');
+    if (mode === 'unexpected-staged') {
+      assert.equal(git(repo, ['add', 'src/components/Panel.ts']).status, 0);
+    }
+  } else if (mode === 'unexpected-untracked') {
+    writeFileSync(join(repo, 'src/components/Unexpected.ts'), 'export const unexpected = true;\n');
+  }
+
+  const result = spawnSync('bash', ['-euo', 'pipefail', '-c', verdict.run ?? ''], {
+    cwd: repo,
+    encoding: 'utf8',
+    env: {
+      ...isolatedGitEnv(),
+      ...workflow.env,
+    },
+  });
+
+  rmSync(temp, { recursive: true, force: true });
+  return result;
+}
+
 function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failure' | 'current') {
   const temp = mkdtempSync(join(tmpdir(), 'wm-proto-writer-'));
   const repo = join(temp, 'repo');
@@ -696,6 +757,34 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.match(writer, /GENERATED_PATHS/);
     assert.match(writer, /PATHNAME.*GENERATED_PATH/);
     assert.match(mergeCheck, /GENERATED_PATHS/);
+    assert.match(mergeCheck, /git diff --cached --quiet -- \. "\$\{EXCLUSIONS\[@\]\}"/);
+    assert.match(mergeCheck, /git diff --cached --quiet -- "\$\{GENERATED_PATH_ARRAY\[@\]\}"/);
+    assert.match(mergeCheck, /UNEXPECTED_UNTRACKED/);
+  });
+
+  it('executes merge-verdict fixtures for staged generated drift and outside-path writes', () => {
+    const clean = runMergeVerdict('clean');
+    assert.equal(clean.status, 0, clean.stderr);
+
+    const unstagedGenerated = runMergeVerdict('generated-drift');
+    assert.notEqual(unstagedGenerated.status, 0);
+    assert.match(unstagedGenerated.stdout, /stale against the PR merge result/i);
+
+    const stagedGenerated = runMergeVerdict('generated-staged');
+    assert.notEqual(stagedGenerated.status, 0, 'staged generated drift must fail the merge verdict');
+    assert.match(stagedGenerated.stdout, /stale against the PR merge result/i);
+
+    const unexpectedTracked = runMergeVerdict('unexpected-tracked');
+    assert.notEqual(unexpectedTracked.status, 0);
+    assert.match(unexpectedTracked.stdout, /outside the generated artifact paths/i);
+
+    const unexpectedStaged = runMergeVerdict('unexpected-staged');
+    assert.notEqual(unexpectedStaged.status, 0);
+    assert.match(unexpectedStaged.stdout, /outside the generated artifact paths/i);
+
+    const unexpectedUntracked = runMergeVerdict('unexpected-untracked');
+    assert.notEqual(unexpectedUntracked.status, 0);
+    assert.match(unexpectedUntracked.stdout, /outside the generated artifact paths/i);
   });
 
   it('runs merge freshness after a deliberately skipped trusted-fork writer', () => {
