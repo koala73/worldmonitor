@@ -28,7 +28,7 @@ const monitoredLifecycleItem = {
 const coverageItem = {
   type: 'string',
   pattern: '^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$',
-  description: 'identity_unresolved is not quiet.',
+  description: 'Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation. identity_unresolved is not a quiet result.',
 };
 const impactDirectionItem = {
   type: 'string',

@@ -555,6 +555,18 @@ function patternString(pattern, key) {
   }
   const simpleAlternation = pattern.match(/^\^\(([^)]+)\)\$/);
   if (simpleAlternation) return simpleAlternation[1].split('|')[0];
+  const nonCapturingAlternation = pattern.match(/^\^\(\?:(.+)\)$/);
+  if (nonCapturingAlternation) {
+    let depth = 0;
+    let first = '';
+    for (const ch of nonCapturingAlternation[1]) {
+      if (ch === '(') depth += 1;
+      else if (ch === ')') depth -= 1;
+      else if (ch === '|' && depth === 0) break;
+      else first += ch;
+    }
+    if (first && !/[+*?[\\]/.test(first)) return first;
+  }
   const companyMonitoringLogicalId = pattern.match(
     /^\^(cm_(?:company|claim|event|evidence|impact)_)\[0-9A-HJKMNP-TV-Z\]\{26\}\$$/,
   );
