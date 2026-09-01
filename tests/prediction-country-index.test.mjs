@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildCountryMarketIndex,
   countCountryMarkets,
+  projectCountryMarketIndex,
 } from '../scripts/_prediction-country-index.mjs';
 
 const NOW = Date.parse('2026-08-31T00:00:00Z');
@@ -122,5 +123,95 @@ describe('buildCountryMarketIndex', () => {
     const index = buildCountryMarketIndex([usState, country], { now: NOW });
 
     assert.deepEqual(index.GE.map((entry) => entry.title), [country.title]);
+  });
+
+  it('requires country context before assigning bare Jordan or Chad names', () => {
+    const jordanPerson = market('Will Jordan Bardella win the election?', 'kalshi', 90_000);
+    const chadPerson = market('Will Chad Bianco become governor?', 'polymarket', 80_000);
+    const jordanian = market('Will Jordanian GDP grow in 2027?', 'kalshi', 40_000);
+    const amman = market('Will Amman host the summit?', 'polymarket', 35_000);
+    const chadian = market('Will Chadian forces hold the border?', 'kalshi', 30_000);
+    const nDjamena = market("Will N'Djamena hold a local election?", 'polymarket', 25_000);
+
+    const personOnly = buildCountryMarketIndex([jordanPerson, chadPerson], { now: NOW });
+    assert.equal(personOnly.JO, undefined);
+    assert.equal(personOnly.TD, undefined);
+
+    const index = buildCountryMarketIndex(
+      [jordanPerson, chadPerson, jordanian, amman, chadian, nDjamena],
+      { now: NOW },
+    );
+
+    assert.deepEqual(index.JO.map((entry) => entry.title), [jordanian.title, amman.title]);
+    assert.deepEqual(index.TD.map((entry) => entry.title), [chadian.title, nDjamena.title]);
+  });
+
+  it('matches verified demonym-only titles to their country', () => {
+    const cases = [
+      ['French election', 'FR'],
+      ['Dutch election', 'NL'],
+      ['Indian election', 'IN'],
+      ['Greek election', 'GR'],
+      ['Polish election', 'PL'],
+      ['German chancellor', 'DE'],
+      ['Russian ceasefire', 'RU'],
+      ['Chinese tariffs', 'CN'],
+      ['Israeli election', 'IL'],
+      ['Iranian president', 'IR'],
+      ['North Korean missile', 'KP'],
+    ];
+
+    for (const [title, countryCode] of cases) {
+      const index = buildCountryMarketIndex([market(title, 'polymarket', 10_000)], { now: NOW });
+      assert.deepEqual(
+        index[countryCode]?.map((entry) => entry.title),
+        [title],
+        title,
+      );
+      if (countryCode === 'KP') assert.equal(index.KR, undefined, title);
+    }
+  });
+
+  for (const [title, countryCode] of [
+    ['French Hill', 'FR'],
+    ['Dutch Bros', 'NL'],
+    ['Dutch auction', 'NL'],
+    ['Indian Wells', 'IN'],
+    ['Greek letters', 'GR'],
+    ['Will Apple polish Siri before 2027?', 'PL'],
+  ]) {
+    it(`does not assign the polysemous title "${title}" to ${countryCode}`, () => {
+      const index = buildCountryMarketIndex([market(title, 'polymarket', 10_000)], { now: NOW });
+      assert.equal(index[countryCode], undefined);
+    });
+  }
+
+  it('keeps separate demonym occurrences outside shadowed phrases', () => {
+    const cases = [
+      ['Will French Hill run in the French election?', 'FR'],
+      ['Will Dutch Bros price a Dutch auction during the Dutch election?', 'NL'],
+      ['Will Indian Wells host a debate before the Indian election?', 'IN'],
+      ['Will Greek letters appear on ballots in the Greek election?', 'GR'],
+    ];
+
+    for (const [title, countryCode] of cases) {
+      const index = buildCountryMarketIndex([market(title, 'polymarket', 10_000)], { now: NOW });
+      assert.deepEqual(index[countryCode]?.map((entry) => entry.title), [title], title);
+    }
+  });
+});
+
+describe('projectCountryMarketIndex', () => {
+  const usMarket = market('Will United States GDP grow in 2027?', 'kalshi', 6_000);
+
+  it('returns an empty map when any source segment is incomplete', () => {
+    assert.deepEqual(projectCountryMarketIndex([usMarket], { complete: false, now: NOW }), {});
+    assert.deepEqual(projectCountryMarketIndex([usMarket], { now: NOW }), {});
+    assert.equal(countCountryMarkets(projectCountryMarketIndex([usMarket], { complete: false })), 0);
+  });
+
+  it('projects the country index when every source segment succeeded', () => {
+    const index = projectCountryMarketIndex([usMarket], { complete: true, now: NOW });
+    assert.deepEqual(index.US.map((entry) => entry.title), [usMarket.title]);
   });
 });

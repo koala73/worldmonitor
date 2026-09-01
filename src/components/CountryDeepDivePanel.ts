@@ -1946,16 +1946,22 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       const tbody = this.el('tbody');
       for (const s of sectors.slice(0, 10)) {
         const isSelected = this.selectedSectorHs2 === s.hs2;
+        const detailId = `cdp-sector-detail-${s.hs2}`;
         const tr = this.el('tr');
         tr.className = `cdp-sector-row${isSelected ? ' cdp-sector-row--selected' : ''}`;
         tr.dataset.hs2 = s.hs2;
         const sectorCell = this.el('td', 'cdp-sector-label');
-        sectorCell.textContent = s.label;
+        const toggle = this.el('button', 'cdp-sector-toggle', s.label);
+        toggle.type = 'button';
+        toggle.dataset.hs2 = s.hs2;
+        toggle.setAttribute('aria-expanded', String(isSelected));
+        toggle.setAttribute('aria-controls', detailId);
         const flag = DEPENDENCY_FLAG_LABELS[s.dependencyFlag];
         if (flag) {
           const badge = this.el('span', `cdp-dep-badge ${flag.cls}`, flag.text);
-          sectorCell.append(document.createTextNode(' '), badge);
+          toggle.append(badge);
         }
+        sectorCell.append(toggle);
         const cpCell = this.el('td', 'cdp-chokepoint-name');
         cpCell.textContent = s.primaryChokepointName;
         const scoreCell = this.el('td', 'cdp-exposure-score');
@@ -1967,6 +1973,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         if (isSelected) {
           const detailRow = this.el('tr');
           detailRow.className = 'cdp-sector-detail-row';
+          detailRow.id = detailId;
           const detailCell = this.el('td');
           detailCell.setAttribute('colspan', '3');
           detailCell.append(this.buildRouteDetail(s));
@@ -1977,9 +1984,18 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       table.append(tbody);
 
       tbody.addEventListener('click', (e) => {
-        const row = (e.target as HTMLElement).closest<HTMLElement>('tr.cdp-sector-row');
+        const target = e.target as HTMLElement;
+        const row = target.closest<HTMLElement>('tr.cdp-sector-row');
         if (!row?.dataset.hs2) return;
-        this.handleSectorRowClick(row.dataset.hs2);
+        const focusedToggle = target.closest<HTMLButtonElement>('button.cdp-sector-toggle');
+        const shouldRestoreFocus = focusedToggle === document.activeElement;
+        const hs2 = row.dataset.hs2;
+        this.handleSectorRowClick(hs2);
+        if (shouldRestoreFocus) {
+          this.tradeExposureBody
+            ?.querySelector<HTMLButtonElement>(`button.cdp-sector-toggle[data-hs2="${hs2}"]`)
+            ?.focus({ preventScroll: true });
+        }
       });
 
       this.tradeExposureBody.append(table);

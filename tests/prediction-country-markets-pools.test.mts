@@ -17,6 +17,9 @@ const entryPath = resolve(root, 'src/services/prediction/index.ts');
 interface CountryMarketsTestState {
   rpcCalls: { category: string; query: string }[];
   rpcMarketsByCategory: Record<string, unknown[]>;
+  // Production returns dataAvailable: true whenever the country index exists,
+  // including ISO2 codes with no records. An omitted or false value keeps the rollout fallback.
+  rpcDataAvailable?: boolean;
   hydrated?: unknown;
 }
 
@@ -68,7 +71,10 @@ async function loadPredictionService() {
         async listPredictionMarkets(req) {
           const state = globalThis.__wmCountryMarketsTestState;
           state.rpcCalls.push({ category: req.category, query: req.query });
-          return { markets: state.rpcMarketsByCategory[req.category] ?? [] };
+          return {
+            markets: state.rpcMarketsByCategory[req.category] ?? [],
+            dataAvailable: state.rpcDataAvailable === true,
+          };
         }
       }
     `],
@@ -141,6 +147,24 @@ describe('fetchCountryMarkets uses the producer country index', () => {
     const titles = out.map((m: { title: string }) => m.title);
     assert.ok(titles.some((t: string) => t.includes('invade Taiwan')), `geo market missing: ${titles}`);
     assert.ok(titles.some((t: string) => t.includes('best AI model')), `tech market missing: ${titles}`);
+  });
+
+  it('returns empty when the country index is authoritative but has no ISO2 records', async () => {
+    globalThis.__wmCountryMarketsTestState = {
+      rpcCalls: [],
+      rpcMarketsByCategory: { 'country:CN': [] },
+      rpcDataAvailable: true,
+      hydrated: {
+        geopolitical: [],
+        tech: [bootstrapMarket('Will China ship the best AI model', 9_000_000)],
+        finance: [bootstrapMarket('Will China cut its policy rate', 4_000_000)],
+        fetchedAt: Date.now(),
+      },
+    };
+    const service = await loadPredictionService();
+    const out = await service.fetchCountryMarkets('China', 'CN');
+
+    assert.deepEqual(out, []);
   });
 
   it('unions all three buckets in the bootstrap fallback', async () => {

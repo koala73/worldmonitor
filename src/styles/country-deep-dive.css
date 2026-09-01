@@ -1692,6 +1692,24 @@
 .cdp-trade-exposure-table tbody tr.cdp-sector-row--selected {
   background: rgba(100, 160, 255, 0.1);
 }
+.cdp-sector-toggle {
+  display: inline-flex;
+  align-items: center;
+  width: 100%;
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: inherit;
+}
+.cdp-sector-toggle:focus-visible {
+  outline: 2px solid var(--text);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
 .cdp-route-detail {
   padding: 10px 0;
   border-top: 1px solid rgba(100, 116, 139, 0.12);
