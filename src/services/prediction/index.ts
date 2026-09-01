@@ -25,8 +25,6 @@ const breaker = createCircuitBreaker<PredictionMarket[]>({ name: 'Polymarket', c
 const client = new PredictionServiceClient(getRpcBaseUrl(), { fetch: (...args) => globalThis.fetch(...args) });
 
 import predictionTags from '../../../scripts/data/prediction-tags.json';
-import countryCodes from '../../../scripts/data/country-codes.json';
-import predictionCountryLanguage from '../../../scripts/shared/prediction-country-language.json';
 import { PredictionServiceClient } from '@/services/generated-rpc-clients';
 
 const GEOPOLITICAL_TAGS = predictionTags.geopolitical;
@@ -139,9 +137,6 @@ interface CountrySearchMatcher {
   excludedPhrases: string[];
 }
 
-const COUNTRY_METADATA = countryCodes as Record<string, CountryMetadata>;
-const PREDICTION_COUNTRY_LANGUAGE = predictionCountryLanguage.countries as Record<string, PredictionCountryLanguage>;
-
 function normalizeCountryText(value: string): string {
   const words = value
     .normalize('NFKD')
@@ -152,9 +147,15 @@ function normalizeCountryText(value: string): string {
   return words ? ` ${words} ` : '';
 }
 
-function countrySearchMatcher(country: string, countryCode: string): CountrySearchMatcher {
-  const metadata = COUNTRY_METADATA[countryCode] ?? {};
-  const language = PREDICTION_COUNTRY_LANGUAGE[countryCode] ?? {};
+async function countrySearchMatcher(country: string, countryCode: string): Promise<CountrySearchMatcher> {
+  const [{ default: countryCodes }, { default: predictionCountryLanguage }] = await Promise.all([
+    import('../../../scripts/data/country-codes.json'),
+    import('../../../scripts/shared/prediction-country-language.json'),
+  ]);
+  const countryMetadata = countryCodes as Record<string, CountryMetadata>;
+  const countryLanguage = predictionCountryLanguage.countries as Record<string, PredictionCountryLanguage>;
+  const metadata = countryMetadata[countryCode] ?? {};
+  const language = countryLanguage[countryCode] ?? {};
   const names = [...new Set([country, metadata.name]
     .map((name) => String(name ?? '').trim())
     .filter(Boolean))];
@@ -208,7 +209,6 @@ function matchesCountryTerms(title: string, matcher: CountrySearchMatcher): bool
 
 export async function fetchCountryMarkets(country: string, countryCode: string): Promise<PredictionMarket[]> {
   const normalizedCode = countryCode.trim().toUpperCase();
-  const matcher = countrySearchMatcher(country, normalizedCode);
   if (/^[A-Z]{2}$/.test(normalizedCode)) {
     const response = await client.listPredictionMarkets({
       category: `country:${normalizedCode}`,
@@ -221,6 +221,8 @@ export async function fetchCountryMarkets(country: string, countryCode: string):
     }
     if (response?.dataAvailable) return [];
   }
+
+  const matcher = await countrySearchMatcher(country, normalizedCode);
 
   // Fallback: search bootstrap data across all buckets. `tech` must be included
   // explicitly — until #5733 the geopolitical bucket was an unfiltered copy of
