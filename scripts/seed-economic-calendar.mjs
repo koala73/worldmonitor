@@ -288,7 +288,7 @@ async function fetchEconomicCalendar() {
   if (!apiKey) {
     console.warn('  FRED_API_KEY missing — returning FOMC + ECB + Eurostat dates only');
     events.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
-    return { events, fromDate, toDate, total: events.length };
+    return { events, fromDate, toDate, total: events.length, asOf: now.toISOString() };
   }
 
   console.log(`  Fetching FRED economic release calendar ${fromDate} → ${toDate}`);
@@ -342,7 +342,7 @@ async function fetchEconomicCalendar() {
 
   console.log(`  Total events: ${events.length}`);
 
-  return { events, recentPrints, fromDate, toDate, total: events.length };
+  return { events, recentPrints, fromDate, toDate, total: events.length, asOf: now.toISOString() };
 }
 
 function validate(data) {

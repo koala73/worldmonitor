@@ -481,7 +481,8 @@
       "screenshotAlt": "แดชบอร์ดข่าวกรรมการสด World Monitor — แผนที่โลกที่มีเลเยอร์ความขัดแย้ง การจัดส่ง และตลาด",
       "plateNote": "ที่จับจากแผนที่สด — คลิกเพื่อเปิด",
       "trustBuild": "สร้างบนมัน:",
-      "positioningLink": "WorldMonitor ไม่ใช่ Palantir โอเพนซอร์ส"
+      "positioningLink": "WorldMonitor ไม่ใช่ Palantir โอเพนซอร์ส",
+      "asOf": "ณ วันที่ 31 สิงหาคม 2026"
     },
     "live": {
       "eyebrow": "สดตอนนี้",

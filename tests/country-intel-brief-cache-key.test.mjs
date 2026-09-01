@@ -14,45 +14,47 @@ describe('country intel brief cache key derivation', () => {
   it('anon callers share one key per country+lang regardless of client context', () => {
     const a = deriveCountryIntelCacheKey({
       countryCode: 'FR', lang: 'en', isPremium: false,
-      contextHash: 'aaaaaaaaaaaaaaaa', frameworkHash: '', energyYear: '2024',
+      contextHash: 'aaaaaaaaaaaaaaaa', frameworkHash: '', energyYear: '2024', energyImportYear: '2023',
     });
     const b = deriveCountryIntelCacheKey({
       countryCode: 'FR', lang: 'en', isPremium: false,
-      contextHash: 'bbbbbbbbbbbbbbbb', frameworkHash: '', energyYear: '2024',
+      contextHash: 'bbbbbbbbbbbbbbbb', frameworkHash: '', energyYear: '2024', energyImportYear: '2023',
     });
     assert.equal(a, b, 'anon key must not vary with client context');
-    assert.ok(a.startsWith('ci-sebuf:v5:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
+    assert.ok(a.startsWith('ci-sebuf:v6:FR:en:shared'), `anon key should use shared namespace, got ${a}`);
   });
 
   it('anon key ignores framework hash (framework is premium-only input)', () => {
     const base = deriveCountryIntelCacheKey({
       countryCode: 'FR', lang: 'en', isPremium: false,
-      contextHash: 'base', frameworkHash: '', energyYear: '',
+      contextHash: 'base', frameworkHash: '', energyYear: '', energyImportYear: '',
     });
     const withFw = deriveCountryIntelCacheKey({
       countryCode: 'FR', lang: 'en', isPremium: false,
-      contextHash: 'base', frameworkHash: 'deadbeef', energyYear: '',
+      contextHash: 'base', frameworkHash: 'deadbeef', energyYear: '', energyImportYear: '',
     });
     assert.equal(base, withFw);
   });
 
   it('anon keys separate by country, lang, and energy data-year', () => {
-    const mk = (countryCode, lang, energyYear) => deriveCountryIntelCacheKey({
-      countryCode, lang, isPremium: false, contextHash: 'base', frameworkHash: '', energyYear,
+    const mk = (countryCode, lang, energyYear, energyImportYear = '2023') => deriveCountryIntelCacheKey({
+      countryCode, lang, isPremium: false, contextHash: 'base', frameworkHash: '', energyYear, energyImportYear,
     });
     assert.notEqual(mk('FR', 'en', '2024'), mk('DE', 'en', '2024'));
     assert.notEqual(mk('FR', 'en', '2024'), mk('FR', 'fr', '2024'));
     assert.notEqual(mk('FR', 'en', '2024'), mk('FR', 'en', '2023'));
+    assert.notEqual(mk('FR', 'en', '2024', '2023'), mk('FR', 'en', '2024', '2022'));
   });
 
   it('premium callers keep per-context and per-framework keys', () => {
     const mk = (contextHash, frameworkHash) => deriveCountryIntelCacheKey({
       countryCode: 'FR', lang: 'en', isPremium: true, contextHash, frameworkHash, energyYear: '2024',
+      energyImportYear: '2023',
     });
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', ''), mk('bbbbbbbbbbbbbbbb', ''), 'premium context must personalize the key');
     assert.equal(mk('aaaaaaaaaaaaaaaa', ''), mk('aaaaaaaaaaaaaaaa', ''), 'same premium context must share the key');
     assert.notEqual(mk('aaaaaaaaaaaaaaaa', 'deadbeef'), mk('aaaaaaaaaaaaaaaa', ''), 'framework must personalize the key');
-    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v5:FR:en:aaaaaaaaaaaaaaaa'));
+    assert.ok(mk('aaaaaaaaaaaaaaaa', '').startsWith('ci-sebuf:v6:FR:en:aaaaaaaaaaaaaaaa'));
     assert.ok(!mk('aaaaaaaaaaaaaaaa', '').includes(':shared'));
   });
 });

@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor ライブ インテリジェンス ダッシュボード — 紛争、海運、市場レイヤー付きグローバルマップ",
       "plateNote": "ライブマップからキャプチャ — クリックして開く",
       "trustBuild": "構築:",
-      "positioningLink": "WorldMonitor はオープンソース版 Palantir ではありません"
+      "positioningLink": "WorldMonitor はオープンソース版 Palantir ではありません",
+      "asOf": "2026年8月31日時点"
     },
     "live": {
       "eyebrow": "現在ライブ配信中",

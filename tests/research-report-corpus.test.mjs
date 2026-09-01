@@ -82,6 +82,7 @@ describe('research report corpus (#5668)', () => {
   it('keeps dates ordered and consistent across surfaces', () => {
     const [reportLd] = jsonLdObjects(html);
     assert.equal(reportLd['@type'], 'Report');
+    assert.equal(reportLd['@id'], `https://www.worldmonitor.app/research/${report.slug}/#report`);
     assert.ok(report.datePublished <= report.dateModified, 'published must not postdate modified');
     assert.equal(reportLd.datePublished, report.datePublished);
     assert.equal(reportLd.dateModified, report.dateModified);
@@ -92,7 +93,7 @@ describe('research report corpus (#5668)', () => {
       focus.observationEnd <= String(snapshot.capturedAt).slice(0, 10),
       'observation period must end on or before the retrieval date',
     );
-    assert.match(html, /<meta name="lastmod" content="2026-08-30">/);
+    assert.match(html, /<meta name="lastmod" content="2026-07-27">/);
     assert.match(
       html,
       new RegExp(`published <time datetime="${report.datePublished}">`),
@@ -123,6 +124,11 @@ describe('research report corpus (#5668)', () => {
     assert.equal(reportLd.version, report.version);
     assert.equal(dataJson.version, report.version);
     assert.equal(reportLd.url, `https://www.worldmonitor.app/research/${report.slug}/`);
+    assert.equal(reportLd['@id'], `${reportLd.url}#report`);
+    assert.deepEqual(reportLd.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.lede'],
+    });
     assert.equal(dataJson.canonicalUrl, reportLd.url);
     // Headline metric agreement: the decline percentage rendered on the page
     // matches the JSON download byte-for-value.

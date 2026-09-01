@@ -16,6 +16,7 @@ function buildFallbackResult(req?: GetEconomicCalendarRequest): GetEconomicCalen
     toDate: req?.toDate ?? '',
     total: 0,
     unavailable: true,
+    asOf: '',
   };
 }
 
@@ -30,6 +31,7 @@ export function buildEconomicCalendarResponse(
     ...range,
     total: events.length,
     unavailable: false,
+    asOf: result.asOf ?? '',
   };
 }
 

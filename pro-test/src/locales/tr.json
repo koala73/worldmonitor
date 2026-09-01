@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor canlı istihbarat panosu — çatışma, nakliye ve pazar katmanları olan global harita",
       "plateNote": "Canlı haritadan yakalandı — açmak için tıkla",
       "trustBuild": "Buna katkıda bulun:",
-      "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil"
+      "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil",
+      "asOf": "31 Ağustos 2026 itibarıyla"
     },
     "live": {
       "eyebrow": "Şu anda canlı",

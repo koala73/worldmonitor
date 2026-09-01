@@ -10,7 +10,8 @@ import { runInNewContext } from 'node:vm';
 
 import {
   buildCorpus,
-  CORPUS_GENERATOR_CONTENT_VERSION,
+  gitFileLastmod,
+  WORLD_MONITOR_ORG,
 } from '../scripts/build-crawlable-corpus.mjs';
 import {
   HANDOFF_PRESERVE_SCRIPT,
@@ -19,10 +20,13 @@ import {
 } from '../scripts/build-use-cases.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
+// Same inputs as useCasesLastmod in scripts/build-crawlable-corpus.mjs: version
+// stamps plus the UTC git lastmod of the use-cases builder. A pinned calendar
+// date fails when that file is committed on a later UTC day.
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
-  CORPUS_GENERATOR_CONTENT_VERSION,
-].sort().at(-1);
+  gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
+].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
@@ -37,12 +41,8 @@ function faqQuestion(name, text) {
   };
 }
 
-function itemListElement(steps) {
-  return steps.map((name, index) => ({
-    '@type': 'ListItem',
-    position: index + 1,
-    name,
-  }));
+function stepSlug(name) {
+  return `step-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
 }
 
 /** Visible <ol> step titles from the workflow / checklist sections. */
@@ -52,7 +52,7 @@ function visibleWorkflowStepNames(html) {
       /<h2>(?:End-to-end workflow|Routine monitoring checklist|Incident-response checklist)<\/h2>\s*<ol>([\s\S]*?)<\/ol>/g,
     ),
   ].flatMap(([, ol]) =>
-    [...ol.matchAll(/<li><strong>([^<]+)<\/strong>/g)].map(([, name]) => name.replace(/\.$/, '').trim()),
+    [...ol.matchAll(/<li[^>]*><strong>([^<]+)<\/strong>/g)].map(([, name]) => name.replace(/\.$/, '').trim()),
   );
 }
 
@@ -278,33 +278,72 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
     const [hubLd] = jsonLdObjects(hubHtml);
     const [pageLd] = jsonLdObjects(supplyChainHtml);
     assert.equal(hubLd['@type'], 'CollectionPage');
+    assert.equal(hubLd['@id'], 'https://www.worldmonitor.app/use-cases/#webpage');
+    assert.deepEqual(hubLd.speakable, {
+      '@type': 'SpeakableSpecification',
+      cssSelector: ['h1', '.lede'],
+    });
     assert.equal(pageLd['@type'], 'WebPage');
 
-    for (const [label, html] of [
-      ['country-risk', countryRiskHtml],
-      ['breaking-news', breakingNewsHtml],
-      ['supply-chain', supplyChainHtml],
+    for (const [label, html, canonical] of [
+      ['country-risk', countryRiskHtml, '/use-cases/monitor-country-risk/'],
+      ['breaking-news', breakingNewsHtml, '/use-cases/verify-breaking-news/'],
+      ['supply-chain', supplyChainHtml, '/use-cases/monitor-supply-chain-disruptions/'],
     ]) {
       const expected = USE_CASE_STRUCTURED_DATA[label];
-      const types = new Set(jsonLdObjects(html).map((ld) => ld['@type']));
+      const pageUrl = `https://www.worldmonitor.app${canonical}`;
+      const objects = jsonLdObjects(html);
+      const types = new Set(objects.map((ld) => ld['@type']));
       assert.ok(types.has('WebPage'), `${label} missing WebPage JSON-LD`);
       assert.ok(types.has('FAQPage'), `${label} missing FAQPage JSON-LD for AI extraction (#7381)`);
       assert.ok(types.has('ItemList'), `${label} missing ItemList JSON-LD for AI extraction (#7381)`);
-      const faq = jsonLdObjects(html).find((ld) => ld['@type'] === 'FAQPage');
+      assert.ok(types.has('HowTo'), `${label} missing HowTo JSON-LD for AI extraction (#7462)`);
+      const faq = objects.find((ld) => ld['@type'] === 'FAQPage');
       assert.deepEqual(faq.mainEntity, expected.faq, `${label} FAQPage questions`);
-      const list = jsonLdObjects(html).find((ld) => ld['@type'] === 'ItemList');
+      const webPage = objects.find((ld) => ld['@type'] === 'WebPage');
+      assert.equal(webPage['@id'], `${pageUrl}#webpage`, `${label} WebPage @id`);
+      assert.deepEqual(webPage.isPartOf, { '@id': 'https://www.worldmonitor.app/#website' });
+      assert.deepEqual(webPage.publisher, WORLD_MONITOR_ORG);
+      assert.deepEqual(webPage.breadcrumb, { '@id': `${pageUrl}#breadcrumb` });
+      assert.deepEqual(webPage.speakable, {
+        '@type': 'SpeakableSpecification',
+        cssSelector: ['h1', '.lede'],
+      });
+      assert.deepEqual(webPage.mainEntity, { '@id': `${pageUrl}#howto` });
+      const howto = objects.find((ld) => ld['@type'] === 'HowTo');
+      assert.equal(howto['@id'], `${pageUrl}#howto`);
+      assert.equal(howto.name, expected.itemListName);
+      assert.equal(howto.step.length, expected.steps.length);
+      const list = objects.find((ld) => ld['@type'] === 'ItemList');
       assert.equal(list.name, expected.itemListName, `${label} ItemList name`);
       assert.equal(list.numberOfItems, expected.steps.length, `${label} ItemList numberOfItems`);
-      assert.deepEqual(
-        list.itemListElement,
-        itemListElement(expected.steps),
-        `${label} ItemList steps`,
-      );
+      assert.equal(list.itemListElement.length, expected.steps.length);
       assert.deepEqual(
         visibleWorkflowStepNames(html),
         expected.steps,
         `${label} visible workflow steps must match ItemList names`,
       );
+      for (const [index, name] of expected.steps.entries()) {
+        const url = `${pageUrl}#${stepSlug(name)}`;
+        const el = list.itemListElement[index];
+        const step = howto.step[index];
+        assert.equal(el['@type'], 'ListItem');
+        assert.equal(el.position, index + 1);
+        assert.equal(el.name, name);
+        assert.equal(el.url, url);
+        assert.match(el.description, /\S/, `${label} ItemList ${name} needs a description`);
+        assert.ok(html.includes(el.description), `${label} ItemList ${name} description must match visible copy`);
+        assert.equal(el.item['@type'], 'HowToStep');
+        assert.equal(el.item.name, name);
+        assert.equal(el.item.url, url);
+        assert.equal(el.item.text, el.description);
+        assert.equal(step['@type'], 'HowToStep');
+        assert.equal(step.position, index + 1);
+        assert.equal(step.name, name);
+        assert.equal(step.url, url);
+        assert.equal(step.text, el.description);
+        assert.ok(html.includes(`id="${stepSlug(name)}"`), `${label} missing visible step id ${stepSlug(name)}`);
+      }
     }
   });
 

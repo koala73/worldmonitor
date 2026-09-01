@@ -228,7 +228,8 @@ describe('news panel ↔ feed coverage (panel-layout createNewsPanel ⇔ feeds.t
     'intel', // INTEL_SOURCES + bespoke branch in DataLoader.loadNews()
   ]);
 
-  // Every client-side variant feed map. CANONICAL_FEEDS is their union.
+  // Every client-side variant feed map plus on-demand categories.
+  // CANONICAL_FEEDS is their union; nq-news lives only in ON_DEMAND_FEEDS.
   const ALL_FEED_CONSTS = [
     'FULL_FEEDS',
     'TECH_FEEDS',
@@ -236,6 +237,7 @@ describe('news panel ↔ feed coverage (panel-layout createNewsPanel ⇔ feeds.t
     'COMMODITY_FEEDS',
     'ENERGY_FEEDS',
     'HAPPY_FEEDS',
+    'ON_DEMAND_FEEDS',
   ];
 
   test('every createNewsPanel(...) key resolves to feeds in CANONICAL_FEEDS', () => {

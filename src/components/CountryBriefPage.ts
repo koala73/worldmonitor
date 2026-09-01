@@ -551,11 +551,14 @@ export class CountryBriefPage implements CountryBriefPanel {
       const pct = Math.round(m.yesPrice);
       const noPct = 100 - pct;
       const vol = m.volume ? `$${(m.volume / 1000).toFixed(0)}k vol` : '';
+      const source = m.source === 'kalshi' ? 'Kalshi' : 'Polymarket';
+      const sourceKey = m.source === 'kalshi' ? 'kalshi' : 'polymarket';
       const safeUrl = sanitizeUrl(m.url || '');
       const link = safeUrl ? ` <a href="${safeUrl}" target="_blank" rel="noopener" class="cb-market-link">↗</a>` : '';
       return `
         <div class="cb-market-item">
           <div class="cb-market-title">${escapeHtml(m.title.slice(0, 100))}${link}</div>
+          <span class="prediction-source" data-source="${sourceKey}">${source}</span>
           <div class="market-bar">
             <div class="market-yes" style="width:${pct}%">${pct}%</div>
             <div class="market-no" style="width:${noPct}%">${noPct > 15 ? noPct + '%' : ''}</div>

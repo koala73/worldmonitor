@@ -26,17 +26,39 @@ describe('related-assets lazy datacenter table contract', () => {
     );
   });
 
-  it('refreshes one-shot related-asset renderers after the lazy infrastructure chunks resolve', () => {
+  it('refreshes country infrastructure after geometry and lazy asset tables resolve', () => {
+    const initialInfrastructureRender = countryIntelSrc.indexOf('page.updateInfrastructure(code);');
     const preloadBlockStart = countryIntelSrc.indexOf(
       'void Promise.all([',
-      countryIntelSrc.indexOf('page.updateInfrastructure(code);'),
+      initialInfrastructureRender,
     );
     assert.notEqual(preloadBlockStart, -1, 'country brief should preload lazy related-asset tables after first render');
     const preloadBlockEnd = countryIntelSrc.indexOf('const intelClient =', preloadBlockStart);
     assert.notEqual(preloadBlockEnd, -1, 'country brief preload block should precede intelligence client setup');
     const preloadBlock = countryIntelSrc.slice(preloadBlockStart, preloadBlockEnd);
+    const preloadBarrierEnd = preloadBlock.indexOf('.then(() => {');
+    assert.notEqual(preloadBarrierEnd, -1, 'country brief preload barrier should settle before refreshing');
+    const preloadBarrier = preloadBlock.slice(0, preloadBarrierEnd);
+    const finalInfrastructureRender = preloadBlock.indexOf('countryBriefPage.updateInfrastructure(code)');
+
+    assert.deepEqual(
+      {
+        immediateRenderGuarded: /if\s*\(getCountryCentroid\(code, ME_STRIKE_BOUNDS\)\)\s*page\.updateInfrastructure\(code\);/.test(countryIntelSrc),
+        geometrySharesPreloadBarrier: [
+          /preloadCountryGeometry\(\)/,
+          /preloadMilitaryBases\(\)/,
+          /preloadInfrastructureTables\(\)/,
+        ].every((pattern) => pattern.test(preloadBarrier)),
+      },
+      {
+        immediateRenderGuarded: true,
+        geometrySharesPreloadBarrier: true,
+      },
+      'country brief infrastructure should render only with a known centroid and refresh after geometry joins the lazy-table barrier',
+    );
     assert.match(preloadBlock, /preloadInfrastructureTables\(\)/);
     assert.match(preloadBlock, /countryBriefPage\.updateInfrastructure\(code\)/);
+    assert.ok(finalInfrastructureRender > preloadBarrierEnd, 'country brief should refresh infrastructure after every preload settles');
     assert.match(
       newsPanelSrc,
       /preloadRelatedAssetTables\(titles\)\s*[\r\n\s.]+then\(\(shouldRefresh\) => \{[\s\S]*?if \(shouldRefresh && this\.lastRawClusters\)/,

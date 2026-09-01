@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor live zpravodajský dashboard — globální mapa s vrstvami konfliktů, lodní dopravy a trhů",
       "plateNote": "Zachyceno z živé mapy — kliknutím ji otevřete",
       "trustBuild": "Postavte na tom:",
-      "positioningLink": "WorldMonitor není open-source Palantir"
+      "positioningLink": "WorldMonitor není open-source Palantir",
+      "asOf": "K 31. srpna 2026"
     },
     "live": {
       "eyebrow": "Live právě teď",

@@ -46,6 +46,14 @@ import {
   publishedTransitCountLabel,
   withheldTransitCountSentence,
 } from './crawlable-live-tools.mjs';
+import {
+  CHOKEPOINT_CONTENT,
+  CHOKEPOINT_PAGE_CONTENT_PATH,
+  CHOKEPOINT_REGISTRY_OBSERVED_AT,
+  EIA_OIL_TRANSIT_BASELINES,
+  TRADE_ROUTES_OBSERVED_AT,
+} from './chokepoint-page-content.mjs';
+import { EIA_OIL_TRANSIT_BASELINES_PATH } from './chokepoint-eia-baselines.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -84,10 +92,16 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
   'shared/publisher-families.js',
   ...FEED_DECLARATION_FILES,
 ]);
+export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
+  CHOKEPOINT_REGISTRY_PATH,
+  TRADE_ROUTES_PATH,
+  CHOKEPOINT_PAGE_CONTENT_PATH,
+  EIA_OIL_TRANSIT_BASELINES_PATH,
+]);
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
-export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-30';
+export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-08-31';
 const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
 // Public ranking / confidence gates. Keep aligned with
 // server/worldmonitor/resilience/v1/_shared.ts and
@@ -101,7 +115,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-31';
+const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-01';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -141,6 +155,24 @@ export const WORLD_MONITOR_ORG = Object.freeze({
   name: 'World Monitor',
   url: 'https://www.worldmonitor.app/',
 });
+export const WEBSITE_ID = 'https://www.worldmonitor.app/#website';
+const DEFAULT_SPEAKABLE = Object.freeze({
+  '@type': 'SpeakableSpecification',
+  cssSelector: ['h1', '.lede'],
+});
+const PAGE_TYPES_WITH_SPEAKABLE = new Set([
+  'WebPage',
+  'CollectionPage',
+  'ItemPage',
+  'Article',
+  'Report',
+  'BlogPosting',
+]);
+const PAGE_TYPES_WITH_WEBPAGE_ID = new Set([
+  'WebPage',
+  'CollectionPage',
+  'ItemPage',
+]);
 // Approximate monitoring footprint around each registry centroid (degrees).
 // Registry entries are points; GeoShape.box lets crawlers treat the waterway as
 // a corridor envelope rather than a zero-area pin.
@@ -150,83 +182,6 @@ const MAX_TOOL_LATITUDE_SPAN = 45;
 const MAX_TOOL_LONGITUDE_SPAN = 60;
 const META_DESCRIPTION_MIN = 155;
 const META_DESCRIPTION_MAX = 160;
-
-// Hand-authored, human-readable context for each canonical chokepoint, keyed by
-// the registry `id`. `region` describes what the waterway connects (used as the
-// index card subtitle and the "Connects" tile); `blurb` is a factual 2-sentence
-// summary used as the page lede; `glossarySlug` cross-links
-// to the matching /blog/glossary/ term where one exists. Keeping this beside the
-// registry (rather than in it) keeps the app bundle free of prose it never uses.
-const CHOKEPOINT_CONTENT = {
-  suez: {
-    region: 'Mediterranean ↔ Red Sea',
-    glossarySlug: 'suez-canal',
-    blurb:
-      'The Suez Canal is the artificial waterway linking the Mediterranean and the Red Sea, giving shipping the shortest route between Europe and Asia without rounding Africa. Its southern approach runs through Bab el-Mandeb, so a blockage or a Red Sea security threat that reroutes traffic around the Cape of Good Hope adds days of transit and materially raises freight costs.',
-  },
-  malacca_strait: {
-    region: 'Indian Ocean ↔ South China Sea',
-    glossarySlug: 'strait-of-malacca',
-    blurb:
-      'The Strait of Malacca runs between the Malay Peninsula and Sumatra, linking the Indian Ocean to the South China Sea and the Pacific. It is one of the busiest shipping lanes in the world and the main artery for energy and container flows into East Asia, where the alternatives are longer and lower-capacity.',
-  },
-  hormuz_strait: {
-    region: 'Persian Gulf ↔ Gulf of Oman',
-    glossarySlug: 'strait-of-hormuz',
-    blurb:
-      'The Strait of Hormuz is the narrow waterway connecting the Persian Gulf to the Gulf of Oman and the open ocean. It is the single most closely watched energy chokepoint on Earth: about 20% of the world’s seaborne crude oil — and a large share of LNG — has no alternative route out of the Gulf.',
-  },
-  bab_el_mandeb: {
-    region: 'Red Sea ↔ Gulf of Aden',
-    blurb:
-      'Bab el-Mandeb is the strait between the Horn of Africa and the Arabian Peninsula that connects the Red Sea to the Gulf of Aden and the Indian Ocean. Every ship using the Suez Canal route also transits Bab el-Mandeb, so attacks or instability here push traffic onto the far longer Cape of Good Hope route.',
-  },
-  panama: {
-    region: 'Atlantic ↔ Pacific',
-    blurb:
-      'The Panama Canal cuts across the Isthmus of Panama to link the Atlantic and Pacific oceans, saving vessels the long voyage around South America. Its lock system depends on freshwater from Gatún Lake, so drought can throttle daily transits and reshape Asia–US East Coast routing.',
-  },
-  taiwan_strait: {
-    region: 'East China Sea ↔ South China Sea',
-    blurb:
-      'The Taiwan Strait separates Taiwan from mainland China and carries a large share of the container traffic moving between North Asia and the rest of the world. Its strategic sensitivity makes any military tension here a first-order risk to global shipping and the semiconductor supply chain.',
-  },
-  cape_of_good_hope: {
-    region: 'Atlantic ↔ Indian Ocean',
-    blurb:
-      'The Cape of Good Hope is the deep-water route around the southern tip of Africa. It has no canal tolls and no width limits, which makes it the default fallback when the Suez–Bab el-Mandeb corridor is disrupted — at the cost of thousands of extra nautical miles and days of transit.',
-  },
-  gibraltar: {
-    region: 'Atlantic ↔ Mediterranean',
-    blurb:
-      'The Strait of Gibraltar is the roughly 14-km-wide gateway between the Atlantic Ocean and the Mediterranean Sea. Every cargo moving between the Mediterranean and the wider ocean — including Suez-bound Europe–Asia traffic — passes through it.',
-  },
-  bosphorus: {
-    region: 'Black Sea ↔ Sea of Marmara',
-    blurb:
-      'The Bosporus Strait runs through Istanbul to connect the Black Sea to the Sea of Marmara and, via the Dardanelles, the Mediterranean. It is the sole maritime outlet for Black Sea grain and Russian oil exports, and passage through it is governed by the Montreux Convention.',
-  },
-  korea_strait: {
-    region: 'East China Sea ↔ Sea of Japan',
-    blurb:
-      'The Korea Strait lies between the Korean Peninsula and the Japanese islands, linking the East China Sea to the Sea of Japan. It is a key passage for North Asian container and energy traffic and a closely watched naval corridor.',
-  },
-  dover_strait: {
-    region: 'English Channel ↔ North Sea',
-    blurb:
-      'The Strait of Dover is the narrowest point of the English Channel, connecting it to the North Sea. It is one of the busiest shipping lanes in the world, funnelling North Sea and Baltic traffic past the coasts of England and France.',
-  },
-  kerch_strait: {
-    region: 'Black Sea ↔ Sea of Azov',
-    blurb:
-      'The Kerch Strait connects the Black Sea to the Sea of Azov and is the only sea route to the Azov ports of Ukraine and Russia. It has been a repeated flashpoint in the Russia–Ukraine conflict, where control of the strait directly gates Azov-basin trade.',
-  },
-  lombok_strait: {
-    region: 'Indian Ocean ↔ Java Sea',
-    blurb:
-      'The Lombok Strait, between Bali and Lombok, is a deep-water alternative to the Malacca–Singapore route. It is favoured by the largest, deepest-draft bulk carriers and serves as a relief valve when Malacca is congested or disrupted.',
-  },
-};
 
 // Search-friendly common names for ISO2 codes whose source identities use a
 // formal long form, truncated token ("Uk", "Korea Rep", "Lao Pdr"), or code.
@@ -401,6 +356,27 @@ function laterDate(...values) {
     .at(-1) ?? null;
 }
 
+/** Observation window for chokepoint Dataset temporalCoverage and table stamps.
+ *  Git lastmod wins when history is present; committed dates keep Docker
+ *  corpus builds (no `.git`) from publishing capturedAt: null. */
+export function resolveChokepointObservation({
+  registryGitLastmod = null,
+  tradeRoutesGitLastmod = null,
+} = {}) {
+  return {
+    capturedAt: laterDate(
+      registryGitLastmod,
+      tradeRoutesGitLastmod,
+      CHOKEPOINT_REGISTRY_OBSERVED_AT,
+      TRADE_ROUTES_OBSERVED_AT,
+    ),
+    volumeObservedAt: laterDate(
+      tradeRoutesGitLastmod,
+      TRADE_ROUTES_OBSERVED_AT,
+    ),
+  };
+}
+
 export function sourcePageLastmod({
   manifestLastmod,
   rendererLastmod,
@@ -524,7 +500,11 @@ function countryDatasetDownload(country, {
   });
 }
 
-function chokepointDatasetDownload(chokepoint, { tradeRoutesById }) {
+function chokepointDatasetDownload(chokepoint, {
+  tradeRoutesById,
+  capturedAt = null,
+  volumeObservedAt = null,
+}) {
   const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
   const modelledTradeRoutes = chokepoint.routeIds
     .map((id) => tradeRoutesById.get(id))
@@ -545,6 +525,8 @@ function chokepointDatasetDownload(chokepoint, { tradeRoutesById }) {
     region: content.region || null,
     shockModelSupported: chokepoint.shockModelSupported,
     modelledTradeRoutes,
+    capturedAt: capturedAt || null,
+    volumeObservedAt: volumeObservedAt || capturedAt || null,
     source: [CHOKEPOINT_REGISTRY_PATH, TRADE_ROUTES_PATH],
     license: DATASET_LICENSE.url,
   });
@@ -698,6 +680,13 @@ function prettyDate(isoDate) {
   if (!match) return String(isoDate || '');
   const [, year, month, day] = match;
   return `${MONTHS[Number(month) - 1]} ${Number(day)}, ${year}`;
+}
+
+function timeMarkup(isoDate, label = prettyDate(isoDate)) {
+  if (typeof isoDate !== 'string' || !/^\d{4}(-\d{2}(-\d{2})?)?$/.test(isoDate)) {
+    return escapeHtml(label);
+  }
+  return `<time datetime="${escapeHtml(isoDate)}">${escapeHtml(label)}</time>`;
 }
 
 function formatPercent(value) {
@@ -1302,43 +1291,43 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   );
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
+  // Family lastmods are change-dates, not build-dates (#7463). Do not fold
+  // CORPUS_GENERATOR_CONTENT_VERSION into any family. Country and chokepoint
+  // pages include the published pulse, so their lastmod includes its date.
   const countriesLastmod = laterDate(
     resilience.capturedAt,
     livePulse.capturedAt,
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
-    CORPUS_GENERATOR_CONTENT_VERSION,
     COUNTRY_PAGE_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
     latestDatedChangelogRelease(changelog),
-    CORPUS_GENERATOR_CONTENT_VERSION,
   );
+  const { capturedAt: chokepointCapturedAt, volumeObservedAt: chokepointVolumeObservedAt } =
+    resolveChokepointObservation({
+      registryGitLastmod: gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
+      tradeRoutesGitLastmod: gitFileLastmod(rootDir, TRADE_ROUTES_PATH),
+    });
   const chokepointsLastmod = laterDate(
-    gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
+    ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
   );
   const toolsLastmod = laterDate(
     gitFileLastmod(rootDir, LIVE_TOOLS_SCRIPT_PATH),
-    livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     TOOLS_PAGE_CONTENT_VERSION,
   );
   const crisesLastmod = laterDate(
     gitFileLastmod(rootDir, CRISIS_REGISTRY_PATH),
     livePulse.capturedAt,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     CRISIS_PAGE_CONTENT_VERSION,
   );
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
-    CORPUS_GENERATOR_CONTENT_VERSION,
   );
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
-    CORPUS_GENERATOR_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
   );
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
@@ -1407,6 +1396,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     countryBboxByCode,
     crises,
     chokepoints,
+    chokepointObservation: {
+      capturedAt: chokepointCapturedAt,
+      volumeObservedAt: chokepointVolumeObservedAt,
+    },
     tradeRoutesById,
     glossaryTerms,
     changelog,
@@ -1415,9 +1408,11 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
 }
 
 function breadcrumbLd(baseUrl, items) {
+  const currentPath = items[items.length - 1]?.path;
   return {
     '@context': SCHEMA_ORG_CONTEXT_URL,
     '@type': 'BreadcrumbList',
+    ...(currentPath ? { '@id': `${absoluteUrl(baseUrl, currentPath)}#breadcrumb` } : {}),
     itemListElement: items.map((item, index) => ({
       '@type': 'ListItem',
       position: index + 1,
@@ -1425,6 +1420,26 @@ function breadcrumbLd(baseUrl, items) {
       item: absoluteUrl(baseUrl, item.path),
     })),
   };
+}
+
+function jsonLdTypes(entry) {
+  const type = entry?.['@type'];
+  return Array.isArray(type) ? type : type ? [type] : [];
+}
+
+function withSpeakableAndGraph(entry, { canonical, breadcrumbId }) {
+  if (!entry || typeof entry !== 'object') return entry;
+  const types = jsonLdTypes(entry);
+  if (!types.some((type) => PAGE_TYPES_WITH_SPEAKABLE.has(type))) return entry;
+  const next = { ...entry };
+  if (!next.speakable) next.speakable = { ...DEFAULT_SPEAKABLE };
+  if (types.some((type) => PAGE_TYPES_WITH_WEBPAGE_ID.has(type))) {
+    if (!next['@id']) next['@id'] = `${canonical}#webpage`;
+    if (!next.isPartOf) next.isPartOf = { '@id': WEBSITE_ID };
+    if (!next.breadcrumb && breadcrumbId) next.breadcrumb = { '@id': breadcrumbId };
+    if (!next.publisher) next.publisher = { ...WORLD_MONITOR_ORG };
+  }
+  return next;
 }
 
 function imageObjectLd(baseUrl, ogImage, ogImageAlt) {
@@ -1487,12 +1502,14 @@ function pageDocument({
   // + FAQPage + ItemList for AI-extractable use-case workflows — #7381).
   // Attach ImageObject to page-shaped graphs so multimodal crawlers see a
   // primary image even when the HTML body is mostly text (#7382).
+  const breadcrumbId = breadcrumbs?.['@id'] || null;
   const ld = [
     ...(Array.isArray(jsonLd) ? jsonLd : jsonLd ? [jsonLd] : []),
     breadcrumbs,
   ]
     .filter(Boolean)
-    .map((entry) => withPrimaryImage(entry, pageImage));
+    .map((entry) => withPrimaryImage(entry, pageImage))
+    .map((entry) => withSpeakableAndGraph(entry, { canonical, breadcrumbId }));
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>
@@ -1629,16 +1646,54 @@ ${body}
 function renderCountriesIndex({ countries, baseUrl, capturedAt, lastmod, snapshotPath }) {
   const path = '/countries/';
   const description = `Browse ${countries.length} country risk and resilience pages from World Monitor's dated ${capturedAt} structural snapshot, with current instability signals on each page.`;
-  const itemList = countries.map((country, index) => ({
-    '@type': 'ListItem',
-    position: index + 1,
-    name: country.name,
-    url: absoluteUrl(baseUrl, `/countries/${country.slug}/`),
-  }));
+  const rankedCountries = countries
+    .filter((country) => Number.isInteger(country.rank))
+    .sort((a, b) => a.rank - b.rank);
+  const topRankedNames = rankedCountries.slice(0, 3).map((country) => country.name);
+  const rankingYear = capturedAt.slice(0, 4);
+  const hubFaqs = [
+    {
+      question: `Which countries are most resilient in ${rankingYear}?`,
+      answer: `The ${prettyDate(capturedAt)} Country Resilience Index snapshot ranks ${rankedCountries.length} of ${countries.length} countries. Its top three are ${topRankedNames.join(', ')}, with ${topRankedNames[0]} at rank 1. The index measures capacity to absorb shocks and recover; high scores reflect fiscal room, institutions, infrastructure, and supplies, while countries below the headline cutoff remain unranked instead of being guessed.`,
+    },
+    {
+      question: 'How is the Country Resilience Index calculated?',
+      answer:
+        'Seventy-two published indicators are rescaled to 0-100, blended into 21 dimensions, grouped into six domains, then three pillars. Those pillars combine at 0.40/0.35/0.25, then a min-pillar penalty drags the total toward the weakest link. Coverage ships with every score; thin evidence is flagged low-confidence and held out of the ranking.',
+    },
+  ];
+  const itemList = countries.map((country, index) => {
+    const scorePublished = country.headlineEligible !== false;
+    const url = absoluteUrl(baseUrl, `/countries/${country.slug}/`);
+    return {
+      '@type': 'ListItem',
+      position: index + 1,
+      name: country.name,
+      url,
+      item: {
+        '@type': 'Country',
+        name: country.name,
+        url,
+        ...(scorePublished
+          ? {
+            additionalProperty: {
+              '@type': 'PropertyValue',
+              name: 'Country Resilience Index score',
+              value: country.overallScore,
+              minValue: 0,
+              maxValue: 100,
+            },
+          }
+          : {}),
+      },
+    };
+  });
   const body = `      <p class="eyebrow">Country corpus</p>
       <h1>Country risk and resilience</h1>
       <p class="lede">${escapeHtml(description)}</p>
       <p>For the evergreen monitoring procedure that uses these pages as evidence, see <a href="/use-cases/monitor-country-risk/">Monitor country risk</a>.</p>
+${hubFaqs.map((faq) => `      <h2>${escapeHtml(faq.question)}</h2>
+      <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
       <div class="table-scroll"><table data-country-ranking>
         <caption>${escapeHtml(prettyDate(capturedAt))} Country Resilience Index snapshot</caption>
         <thead><tr><th scope="col">Rank</th><th scope="col">Country</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Confidence</th></tr></thead>
@@ -1667,6 +1722,15 @@ ${countries.map((country) => {
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: hubFaqs.map((faq) => ({
+          '@type': 'Question',
+          name: faq.question,
+          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+        })),
       },
       {
         '@context': 'https://schema.org',
@@ -2206,7 +2270,7 @@ ${liveGrid}
       </section>${scoreDisclosure}
 ${analysis.html}
       <h2>How to read this page</h2>
-      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules.</p>
+      <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
       <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals.</p>
       <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${escapeHtml(snapshotPath)}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
@@ -2342,6 +2406,92 @@ ${chokepoints.map((cp) => {
   });
 }
 
+function chokepointFaqs(chokepoint, { content, routes, capturedAt, volumeObservedAt }) {
+  const authored = Array.isArray(content.faqs) ? content.faqs.slice(0, 2) : [];
+  const datedVolume = volumeObservedAt ? prettyDate(volumeObservedAt) : 'the committed trade-route table';
+  const datedCapture = capturedAt ? prettyDate(capturedAt) : 'the committed registry snapshot';
+  const generated = routes.length
+    ? {
+      question: `Which modelled trade routes use ${chokepoint.displayName}?`,
+      answer: `${chokepoint.displayName} is a waypoint on ${routes.map((route) => `${route.name} (${route.volumeDesc})`).join('; ')}. Those corridor volumes are World Monitor modelled figures dated ${datedVolume} in ${TRADE_ROUTES_PATH}.`,
+    }
+    : {
+      question: `How should readers use the ${chokepoint.displayName} reference snapshot?`,
+      answer: `Read the ${datedCapture} registry copy with the live disruption pulse. ${chokepoint.displayName} is tracked as a strategic waterway reference; modelled corridor rows are absent until TRADE_ROUTES gains a waypoint, which is not a claim that traffic is zero.`,
+    };
+  return [...authored, generated].slice(0, 3);
+}
+
+function chokepointRouteTable({ chokepoint, routes, capturedAt, volumeObservedAt }) {
+  const datedStamp = volumeObservedAt || capturedAt;
+  const datedVolume = datedStamp ? timeMarkup(datedStamp) : 'the committed trade-route table';
+  if (!routes.length) {
+    return `<p>${escapeHtml(chokepoint.displayName)} is tracked as a strategic waterway reference. It is not currently mapped to one of World Monitor's modelled trade-route corridors, but its vessel traffic and disruption signals are still monitored on the live map.</p>
+      <div class="table-scroll"><table data-chokepoint-routes>
+        <caption>No modelled corridor is currently mapped through ${escapeHtml(chokepoint.displayName)}. Waterway reference dated ${datedVolume}.</caption>
+        <thead><tr><th scope="col">Route</th><th scope="col">Category</th><th scope="col">Modelled volume</th><th scope="col">As of</th></tr></thead>
+        <tbody>
+          <tr><td colspan="4">Strategic waterway reference — corridor book unmapped, as of ${datedVolume}</td></tr>
+        </tbody>
+      </table></div>`;
+  }
+  return `<div class="table-scroll"><table data-chokepoint-routes>
+        <caption>Modelled trade-route corridors through ${escapeHtml(chokepoint.displayName)}. Volumes are World Monitor corridor figures as of ${datedVolume}.</caption>
+        <thead><tr><th scope="col">Route</th><th scope="col">Category</th><th scope="col">Modelled volume</th><th scope="col">As of</th></tr></thead>
+        <tbody>
+${routes.map((route) => {
+    const category = route.category
+      ? route.category.charAt(0).toUpperCase() + route.category.slice(1)
+      : '—';
+    const asOf = volumeObservedAt ? timeMarkup(volumeObservedAt) : '—';
+    return `          <tr><td>${escapeHtml(route.name)}</td><td>${escapeHtml(category)}</td><td><data value="${escapeHtml(route.volumeDesc)}">${escapeHtml(route.volumeDesc)}</data></td><td>${asOf}</td></tr>`;
+  }).join('\n')}
+        </tbody>
+      </table></div>`;
+}
+
+function renderChokepointAnalysis({
+  chokepoint,
+  content,
+  routes,
+  capturedAt,
+  volumeObservedAt,
+}) {
+  const faqs = chokepointFaqs(chokepoint, { content, routes, capturedAt, volumeObservedAt });
+  const whyHeading = content.whyHeading
+    || `Why does ${chokepoint.displayName} matter for shipping?`;
+  const analysisParagraphs = Array.isArray(content.analysis) ? content.analysis : [];
+  const coords = formatCoordinates(chokepoint.lat, chokepoint.lon);
+  const region = content.region || 'its connected waters';
+  const datedCapture = capturedAt ? timeMarkup(capturedAt) : 'the committed registry snapshot';
+  const shockClause = chokepoint.shockModelSupported
+    ? 'World Monitor enables the energy shock model on this waterway.'
+    : 'World Monitor does not enable the energy shock model on this waterway.';
+  const routeClause = routes.length
+    ? `The ${datedCapture} reference maps ${routes.length} modelled trade-route corridor${routes.length === 1 ? '' : 's'} onto this waypoint.`
+    : `The ${datedCapture} reference maps no modelled trade-route corridor onto this waypoint.`;
+  const eia = EIA_OIL_TRANSIT_BASELINES.byRegistryId[chokepoint.id];
+  const eiaYear = String(EIA_OIL_TRANSIT_BASELINES.referenceYear);
+  const eiaParagraph = eia
+    ? `<p>The ${timeMarkup(eiaYear, eiaYear)} ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)} series records ${escapeHtml(String(eia.mbd))} million barrels a day on the ${escapeHtml(eia.eiaName)} row. ${escapeHtml(shockClause)}</p>`
+    : `<p>${escapeHtml(shockClause)} This waterway has no row in the committed ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)} series.</p>`;
+  const html = `      <article data-chokepoint-analysis>
+        <h2>${escapeHtml(whyHeading)}</h2>
+        <p>${escapeHtml(chokepoint.displayName)} sits at ${escapeHtml(coords)} and connects ${escapeHtml(region)}. ${routeClause}</p>
+${analysisParagraphs.map((paragraph) => `        <p>${escapeHtml(paragraph)}</p>`).join('\n')}
+        ${eiaParagraph}
+        ${content.alternative ? `<p>${escapeHtml(content.alternative)}</p>` : ''}
+        <h3>Major trade routes through ${escapeHtml(chokepoint.displayName)}</h3>
+        ${chokepointRouteTable({ chokepoint, routes, capturedAt, volumeObservedAt })}
+        <h3>How to read this page</h3>
+        <p>The crawlable Dataset is the ${datedCapture} registry-and-route snapshot under the <a href="/docs/methodology/chokepoints">chokepoint disruption methodology</a>. Live pulse tiles are a separately frozen observation and are not copied into this Dataset. Modelled corridor volumes are dated ${volumeObservedAt ? timeMarkup(volumeObservedAt) : 'with the committed trade-route table'}.</p>
+        <p class="snapshot-note">Template revision ${escapeHtml(CHOKEPOINT_PAGE_CONTENT_VERSION)}. Reference observation ${capturedAt ? timeMarkup(capturedAt) : 'unspecified'}. This note is a methodology-revision stamp, not a live AIS clock.</p>
+        <h3>Questions about ${escapeHtml(chokepoint.displayName)}</h3>
+${faqs.map((faq) => `        <details data-chokepoint-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
+      </article>`;
+  return { html, faqs };
+}
+
 function renderChokepointPage({
   chokepoint,
   baseUrl,
@@ -2349,6 +2499,8 @@ function renderChokepointPage({
   tradeRoutesById,
   researchReports = [],
   livePulse = null,
+  capturedAt = null,
+  volumeObservedAt = null,
 }) {
   const path = `/chokepoints/${chokepoint.slug}/`;
   const content = CHOKEPOINT_CONTENT[chokepoint.id] || {};
@@ -2363,19 +2515,18 @@ function renderChokepointPage({
   const routes = chokepoint.routeIds
     .map((id) => tradeRoutesById.get(id))
     .filter(Boolean);
-  const routesSection = routes.length
-    ? `<ul class="routes">
-${routes.map((route) => {
-    const category = route.category ? route.category.charAt(0).toUpperCase() + route.category.slice(1) : '';
-    return `        <li>${escapeHtml(route.name)} <span class="vol">&middot; ${escapeHtml(route.volumeDesc)}${category ? ` &middot; ${escapeHtml(category)}` : ''}</span></li>`;
-  }).join('\n')}
-      </ul>`
-    : `<p>${escapeHtml(chokepoint.displayName)} is tracked as a strategic waterway reference. It is not currently mapped to one of World Monitor's modelled trade-route corridors, but its vessel traffic and disruption signals are still monitored on the live map.</p>`;
+  const analysis = renderChokepointAnalysis({
+    chokepoint,
+    content,
+    routes,
+    capturedAt,
+    volumeObservedAt,
+  });
 
   const tiles = [
     content.region ? metricTile('Connects', content.region) : null,
     metricTile('Position', formatCoordinates(chokepoint.lat, chokepoint.lon)),
-    chokepoint.shockModelSupported ? metricTile('Energy shock model', 'Yes') : null,
+    metricTile('Energy shock model', chokepoint.shockModelSupported ? 'Yes' : 'No'),
   ].filter(Boolean).join('\n');
 
   const relatedItems = [];
@@ -2451,13 +2602,12 @@ ${liveGrid}
       <section class="grid" aria-label="Chokepoint overview">
 ${tiles}
       </section>
-      <h2>Major trade routes through ${escapeHtml(chokepoint.displayName)}</h2>
-      ${routesSection}
+${analysis.html}
       <h2>Related</h2>
       <ul class="related">
 ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
       </ul>
-      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CHOKEPOINT_DATASET_DOWNLOAD))}">${CHOKEPOINT_DATASET_DOWNLOAD}</a>. Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}. Methodology: <a href="/docs/methodology/chokepoints">how chokepoint disruption is scored</a>.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CHOKEPOINT_DATASET_DOWNLOAD))}">${CHOKEPOINT_DATASET_DOWNLOAD}</a>. Source: ${CHOKEPOINT_REGISTRY_PATH} and ${TRADE_ROUTES_PATH}. Captured ${capturedAt ? escapeHtml(capturedAt) : 'unspecified'}. Methodology: <a href="/docs/methodology/chokepoints">how chokepoint disruption is scored</a>.</p>`;
   const hasCoordinates = Number.isFinite(chokepoint.lat) && Number.isFinite(chokepoint.lon);
   const geoCoordinates = hasCoordinates
     ? {
@@ -2477,12 +2627,52 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
       : null,
   ].filter(Boolean);
   const referenceDownload = absoluteUrl(baseUrl, datasetDownloadHref(path, CHOKEPOINT_DATASET_DOWNLOAD));
+  const datasetId = `${absoluteUrl(baseUrl, path)}#chokepoint-dataset`;
+  const coordinatesValue = formatCoordinates(chokepoint.lat, chokepoint.lon);
+  const variableMeasured = [
+    { '@type': 'PropertyValue', name: 'Geographic coordinates', value: coordinatesValue },
+    ...(content.region
+      ? [{ '@type': 'PropertyValue', name: 'Connected waters', value: content.region }]
+      : []),
+    { '@type': 'PropertyValue', name: 'Energy shock model support', value: chokepoint.shockModelSupported ? 'Yes' : 'No' },
+    { '@type': 'PropertyValue', name: 'Modelled trade routes', value: routes.length },
+  ];
+  const dataset = {
+    '@type': 'Dataset',
+    '@id': datasetId,
+    name: `World Monitor chokepoint reference for ${chokepoint.displayName}`,
+    description: `A World Monitor maritime reference dataset for ${chokepoint.displayName}, with its position, connected waters, energy shock model support, and modelled trade-route corridors.`,
+    url: absoluteUrl(baseUrl, path),
+    identifier: chokepoint.id,
+    creator: { ...WORLD_MONITOR_ORG },
+    license: DATASET_LICENSE,
+    datePublished: capturedAt || undefined,
+    dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION.chokepoint),
+    temporalCoverage: datasetTemporalCoverage(capturedAt),
+    isAccessibleForFree: true,
+    includedInDataCatalog: includedInDataCatalog(baseUrl),
+    variableMeasured,
+    spatialCoverage: {
+      '@type': 'Place',
+      name: chokepoint.displayName,
+      identifier: chokepoint.id,
+      geo: [geoCoordinates, geoShape].filter(Boolean),
+    },
+    distribution: [
+      dataDownload(referenceDownload),
+    ],
+  };
   return pageDocument({
     baseUrl,
     path,
     title: `${chokepoint.displayName} Chokepoint Status | World Monitor`,
     description,
     lastmod,
+    extraStyles: `
+      details[data-chokepoint-faq] { margin-top: 10px; border: 1px solid var(--line); border-radius: 8px; padding: 10px 14px; background: var(--panel); }
+      details[data-chokepoint-faq] summary { cursor: pointer; color: var(--text); font-weight: 600; }
+      details[data-chokepoint-faq] p { margin: 8px 0 0; }
+`,
     jsonLd: [
       {
         '@context': 'https://schema.org',
@@ -2498,31 +2688,16 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
           geo: [geoCoordinates, geoShape].filter(Boolean),
           additionalProperty: additionalProperty.length ? additionalProperty : undefined,
         },
-        mainEntity: {
-          '@type': 'Dataset',
-          name: `World Monitor chokepoint reference for ${chokepoint.displayName}`,
-          description: `A World Monitor maritime reference dataset for ${chokepoint.displayName}, with its position, connected waters, energy shock model support, and modelled trade-route corridors.`,
-          creator: { ...WORLD_MONITOR_ORG },
-          license: DATASET_LICENSE,
-          dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION.chokepoint),
-          isAccessibleForFree: true,
-          includedInDataCatalog: includedInDataCatalog(baseUrl),
-          variableMeasured: [
-            'Geographic coordinates',
-            'Connected waters',
-            'Energy shock model support',
-            'Modelled trade routes',
-          ],
-          spatialCoverage: {
-            '@type': 'Place',
-            name: chokepoint.displayName,
-            identifier: chokepoint.id,
-            geo: [geoCoordinates, geoShape].filter(Boolean),
-          },
-          distribution: [
-            dataDownload(referenceDownload),
-          ],
-        },
+        mainEntity: dataset,
+      },
+      {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: analysis.faqs.map((faq) => ({
+          '@type': 'Question',
+          name: faq.question,
+          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+        })),
       },
       dataCatalogLd(baseUrl),
     ],
@@ -3275,6 +3450,8 @@ export async function buildCorpus({
         tradeRoutesById: data.tradeRoutesById,
         researchReports: data.researchReports,
         livePulse: data.livePulse,
+        capturedAt: data.chokepointObservation?.capturedAt || null,
+        volumeObservedAt: data.chokepointObservation?.volumeObservedAt || null,
       }),
     );
     writeGeneratedFile(
@@ -3282,6 +3459,8 @@ export async function buildCorpus({
       datasetDownloadFile(pagePath, CHOKEPOINT_DATASET_DOWNLOAD),
       chokepointDatasetDownload(chokepoint, {
         tradeRoutesById: data.tradeRoutesById,
+        capturedAt: data.chokepointObservation?.capturedAt || null,
+        volumeObservedAt: data.chokepointObservation?.volumeObservedAt || null,
       }),
     );
   }

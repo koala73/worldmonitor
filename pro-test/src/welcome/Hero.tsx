@@ -121,6 +121,9 @@ export const Hero = () => (
         <p className="text-base md:text-lg text-wm-muted max-w-2xl mx-auto mt-6">
           {t('welcome.hero.sub')}
         </p>
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
+          <time dateTime="2026-08-31">{t('welcome.hero.asOf')}</time>
+        </p>
       </motion.div>
 
       <motion.div

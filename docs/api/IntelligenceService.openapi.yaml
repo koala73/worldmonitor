@@ -2307,7 +2307,7 @@ paths:
             tags:
                 - IntelligenceService
             summary: GetCountryFacts
-            description: GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.
+            description: GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
             operationId: GetCountryFacts
             parameters:
                 - name: country_code
@@ -8448,6 +8448,16 @@ components:
                     items:
                         type: string
                         description: Same presence contract for JODI gas source paths.
+                importShareAvailable:
+                    type: boolean
+                    description: |-
+                        Primary-energy import dependency comes from the audited resilience-static
+                         source. It is independent from the OWID electricity-generation mix.
+                importShareYear:
+                    type: integer
+                    format: int32
+                importShareSource:
+                    type: string
         ComputeEnergyShockScenarioRequest:
             type: object
             properties:

@@ -236,3 +236,32 @@ describe('enabledNewsCategoryKeys', () => {
     );
   });
 });
+
+describe('on-demand NQ News resolution', () => {
+  test('nq-news is absent from the preset work-list until that panel is enabled', () => {
+    const canonical = {
+      politics: [f('BBC', 'bbc')],
+      'nq-news': [f('Reuters Nasdaq Futures', 'nq1')],
+    };
+    const preset = { politics: [f('BBC', 'bbc')] };
+    const disabled = resolveNewsCategories(
+      preset,
+      canonical,
+      enabledNewsCategoryKeys(new Map([['nq-news', 'nq-news']]), { 'nq-news': { enabled: false } }),
+    );
+    assert.deepStrictEqual(disabled.map((category) => category.key), ['politics']);
+
+    const enabled = resolveNewsCategories(
+      preset,
+      canonical,
+      enabledNewsCategoryKeys(new Map([['nq-news', 'nq-news']]), { 'nq-news': { enabled: true } }),
+    );
+    assert.deepStrictEqual(
+      enabled.map((category) => ({ key: category.key, isCustom: category.isCustom })),
+      [
+        { key: 'politics', isCustom: false },
+        { key: 'nq-news', isCustom: true },
+      ],
+    );
+  });
+});

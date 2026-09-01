@@ -84,6 +84,7 @@ function defaultSeed(): ListMarketQuotesResponse {
     skipReason: '',
     rateLimited: false,
     unavailableSymbols: [],
+    asOf: '2026-08-31T12:00:00.000Z',
   };
 }
 

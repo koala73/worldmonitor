@@ -59,7 +59,7 @@ const layoutSrc = src('src/app/panel-layout.ts');
 // visits categories in the same order `Object.keys(CANONICAL_FEEDS)` does. No two
 // categories compete for one panel key today, but matching the order costs nothing
 // and removes a way for the replay to diverge from production later.
-const FEED_PRESETS = ['FULL_FEEDS', 'TECH_FEEDS', 'FINANCE_FEEDS', 'COMMODITY_FEEDS', 'ENERGY_FEEDS', 'HAPPY_FEEDS'];
+const FEED_PRESETS = ['FULL_FEEDS', 'TECH_FEEDS', 'FINANCE_FEEDS', 'COMMODITY_FEEDS', 'ENERGY_FEEDS', 'HAPPY_FEEDS', 'ON_DEMAND_FEEDS'];
 const PANEL_PRESETS = ['FULL_PANELS', 'TECH_PANELS', 'FINANCE_PANELS', 'HAPPY_PANELS', 'COMMODITY_PANELS', 'ENERGY_PANELS'];
 
 /**

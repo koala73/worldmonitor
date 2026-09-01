@@ -52,7 +52,7 @@ test('a fresh legacy marker cannot suppress a required source-version migration'
   const fetchedAt = Date.now();
   const freshness = await readSectionFreshness({
     seedMetaKey: 'economic:owid-energy-mix',
-    expectedSourceVersion: 'owid-energy-mix-v2',
+    expectedSourceVersion: 'owid-energy-mix-v3',
   }, async () => ({
     fetchedAt,
     recordCount: 214,
@@ -65,11 +65,11 @@ test('a matching source version preserves the normal freshness clock', async () 
   const fetchedAt = Date.now();
   const freshness = await readSectionFreshness({
     seedMetaKey: 'economic:owid-energy-mix',
-    expectedSourceVersion: 'owid-energy-mix-v2',
+    expectedSourceVersion: 'owid-energy-mix-v3',
   }, async () => ({
     fetchedAt,
     recordCount: 214,
-    sourceVersion: 'owid-energy-mix-v2',
+    sourceVersion: 'owid-energy-mix-v3',
   }));
   assert.deepEqual(freshness, { fetchedAt });
 });
@@ -77,11 +77,11 @@ test('a matching source version preserves the normal freshness clock', async () 
 test('an error seed marker never makes a failed migration look fresh', async () => {
   const freshness = await readSectionFreshness({
     seedMetaKey: 'economic:owid-energy-mix',
-    expectedSourceVersion: 'owid-energy-mix-v2',
+    expectedSourceVersion: 'owid-energy-mix-v3',
   }, async () => ({
     fetchedAt: Date.now(),
     recordCount: 0,
-    sourceVersion: 'owid-energy-mix-v2',
+    sourceVersion: 'owid-energy-mix-v3',
     status: 'error',
   }));
   assert.equal(freshness, null);

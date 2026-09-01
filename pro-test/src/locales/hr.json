@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor živa obavještajna nadzorna ploča — globalna karta sa slojevima sukoba, transporta i tržišta",
       "plateNote": "Snimljeno sa živih karti — klikni da je otvoriš",
       "trustBuild": "Izgradi na njoj:",
-      "positioningLink": "WorldMonitor nije otvoreni kod Palantira"
+      "positioningLink": "WorldMonitor nije otvoreni kod Palantira",
+      "asOf": "Od 31. kolovoza 2026."
     },
     "live": {
       "eyebrow": "Uživo sada",

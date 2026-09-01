@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor लाइव इंटेलिजेंस डैशबोर्ड — संघर्ष, शिपिंग और बाजार परतों के साथ वैश्विक मानचित्र",
       "plateNote": "लाइव मानचित्र से कैप्चर किया गया — इसे खोलने के लिए क्लिक करें",
       "trustBuild": "इस पर बनाएं:",
-      "positioningLink": "WorldMonitor एक ओपन-सोर्स Palantir नहीं है"
+      "positioningLink": "WorldMonitor एक ओपन-सोर्स Palantir नहीं है",
+      "asOf": "31 अगस्त 2026 तक"
     },
     "live": {
       "eyebrow": "अभी लाइव",

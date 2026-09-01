@@ -1308,6 +1308,7 @@ const KNOWN_MISSION_IDS = new Set([
   'macro-market-watch',
   'tech-ai-watch',
   'good-news-explorer',
+  'nq-day-trader',
 ]);
 
 /** Unknown mission ids collapse to 'unknown' — closed vocabulary, like productId. */

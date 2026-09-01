@@ -63,12 +63,13 @@ function quote(symbol, price) {
   };
 }
 
-function marketResponse(quotes) {
+function marketResponse(quotes, extras = {}) {
   return {
     quotes,
     finnhubSkipped: false,
     skipReason: '',
     rateLimited: false,
+    ...extras,
   };
 }
 
@@ -181,6 +182,72 @@ describe('market service symbol casing', () => {
       assert.equal(result.data[0]?.name, 'Lower BTC');
       assert.equal(result.data[0]?.display, 'btc lower');
     } finally {
+      globalThis.fetch = originalFetch;
+      clearAllCircuitBreakers();
+      restoreBrowserEnv();
+    }
+  });
+
+  it('keeps the last successful quote and asOf when a later same-symbol response is empty', async () => {
+    const restoreBrowserEnv = installBrowserEnv();
+    // Import the same circuit-breaker module instance the market service binds
+    // so we can evict its in-memory TTL cache between the two calls.
+    const { CircuitBreaker, clearAllCircuitBreakers } = await import(CIRCUIT_BREAKER_URL);
+    clearAllCircuitBreakers();
+
+    const originalExecute = CircuitBreaker.prototype.execute;
+    const seenBreakers = new Set();
+    CircuitBreaker.prototype.execute = function executeWithCapture(...args) {
+      seenBreakers.add(this);
+      return originalExecute.apply(this, args);
+    };
+
+    const originalFetch = globalThis.fetch;
+    const firstAsOf = '2026-08-31T12:00:00.000Z';
+    const laterAsOf = '2026-09-01T06:00:00.000Z';
+    let fetchCount = 0;
+
+    globalThis.fetch = async () => {
+      fetchCount += 1;
+      if (fetchCount === 1) {
+        return new Response(JSON.stringify(marketResponse([quote('QQQ', 714.25)], {
+          asOf: firstAsOf,
+        })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(marketResponse([], { asOf: laterAsOf })), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      });
+    };
+
+    try {
+      const { fetchMultipleStocks } = await import(freshImportUrl(MARKET_SERVICE_URL));
+      const qqq = [{ symbol: 'QQQ', name: 'Invesco QQQ', display: 'QQQ' }];
+
+      const first = await fetchMultipleStocks(qqq);
+      assert.equal(first.data[0]?.symbol, 'QQQ');
+      assert.equal(first.data[0]?.price, 714.25);
+      assert.equal(first.asOf, firstAsOf);
+
+      assert.ok(seenBreakers.size > 0, 'must observe the Market Quotes breaker to evict its TTL cache');
+      for (const breaker of seenBreakers) {
+        breaker.clearCache();
+      }
+
+      const second = await fetchMultipleStocks(qqq);
+      assert.equal(fetchCount, 2, 'empty refresh must reach the network after cache eviction');
+      assert.equal(second.data[0]?.symbol, 'QQQ');
+      assert.equal(second.data[0]?.price, 714.25);
+      assert.equal(
+        second.asOf,
+        firstAsOf,
+        'retained quote must keep the first response freshness clock',
+      );
+    } finally {
+      CircuitBreaker.prototype.execute = originalExecute;
       globalThis.fetch = originalFetch;
       clearAllCircuitBreakers();
       restoreBrowserEnv();

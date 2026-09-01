@@ -1,7 +1,7 @@
 {
   "capturedAt": "2026-08-29",
   "source": "Production Upstash Redis resilience ranking snapshot",
-  "snapshotNote": "Post-P1-1 full-universe capture: pillar scores applied domain design weights inside pillar aggregation on 2026-08-29.",
+  "snapshotNote": "This 2026-08-29 snapshot applies domain design weights inside pillar aggregation. Earlier published CRI numbers used coverage-only member aggregation and are not directly comparable.",
   "detailSource": "Production Upstash Redis per-country resilience score snapshots",
   "identitySource": {
     "name": "Wikidata P297 country identity",

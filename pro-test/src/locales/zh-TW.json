@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor 即時情報儀表板 — 包含衝突、海運和市場圖層的全球地圖\t",
       "plateNote": "從即時地圖捕獲 — 點選開啟\t",
       "trustBuild": "構建應用：\t",
-      "positioningLink": "WorldMonitor 不是開源的 Palantir\t"
+      "positioningLink": "WorldMonitor 不是開源的 Palantir\t",
+      "asOf": "截至2026年8月31日"
     },
     "live": {
       "eyebrow": "即時線上\t",

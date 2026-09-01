@@ -24,6 +24,7 @@ import {
   ME_STRIKE_BOUNDS,
   iso3ToIso2Code,
   nameToCountryCode,
+  preloadCountryGeometry,
 } from '@/services/country-geometry';
 import { getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
 import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cached-risk-scores';
@@ -57,7 +58,7 @@ import {
 import { getNearbyInfrastructure, preloadInfrastructureTables } from '@/services/related-assets';
 import { getCachedMilitaryBases, preloadMilitaryBases } from '@/services/military-base-config';
 import { toFlagEmoji } from '@/utils/country-flag';
-import { iso2ToIso3, iso2ToComtradeReporterCode } from '@/utils/country-codes';
+import { iso2ToIso3, iso2ToUnCode, iso2ToComtradeReporterCode } from '@/utils/country-codes';
 import { buildDependencyGraph } from '@/services/infrastructure-cascade';
 import { getActiveFrameworkForPanel, subscribeFrameworkChange } from '@/services/analysis-framework-store';
 import { fetchMultiSectorExposure, fetchCountryProducts, fetchMultiSectorCostShock, fetchCountryVulnerabilities } from '@/services/supply-chain';
@@ -539,7 +540,7 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
       }).catch(() => { /* non-fatal */ });
 
-      fetchCountryMarkets(country)
+      fetchCountryMarkets(country, code)
         .then((markets) => {
           if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets(markets);
         })
@@ -547,26 +548,18 @@ export class CountryIntelManager implements AppModule {
           if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets([]);
         });
 
-      const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
-      const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
-      const matchingNews = this.ctx.allNews.filter((n) => {
-        const t = n.title.toLowerCase();
-        return CountryIntelManager.firstMentionPosition(t, searchTerms) !== Infinity;
-      });
-      const filteredNews = matchingNews.filter((n) => {
-        const t = n.title.toLowerCase();
-        const ourPos = CountryIntelManager.firstMentionPosition(t, searchTerms);
-        const otherPos = CountryIntelManager.firstMentionPosition(t, otherCountryTerms);
-        return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
-      }).sort((a, b) => {
+      const filteredNews = this.ctx.allNews.filter((item) => (
+        CountryIntelManager.isCountryHeadline(item.title, country, code)
+      )).sort((a, b) => {
         const severityDelta = this.newsSeverityRank(b) - this.newsSeverityRank(a);
         if (severityDelta !== 0) return severityDelta;
         return effectivePubDateMs(b) - effectivePubDateMs(a);
       });
       page.updateNews(filteredNews.slice(0, 10));
 
-      page.updateInfrastructure(code);
+      if (getCountryCentroid(code, ME_STRIKE_BOUNDS)) page.updateInfrastructure(code);
       void Promise.all([
+        preloadCountryGeometry(),
         preloadMilitaryBases().catch(() => []),
         preloadInfrastructureTables().catch(() => {}),
       ])
@@ -622,6 +615,9 @@ export class CountryIntelManager implements AppModule {
             solarShare: profile.solarShare,
             hydroShare: profile.hydroShare,
             importShare: profile.importShare,
+            importShareAvailable: profile.importShareAvailable,
+            importShareYear: profile.importShareYear,
+            importShareSource: profile.importShareSource,
             gasStorageAvailable: profile.gasStorageAvailable,
             gasStorageFillPct: profile.gasStorageFillPct,
             gasStorageChange1d: profile.gasStorageChange1d,
@@ -677,7 +673,8 @@ export class CountryIntelManager implements AppModule {
           this.ctx.countryBriefPage.updateEnergyProfile?.({
             mixAvailable: false, mixYear: 0, coalShare: 0, gasShare: 0, oilShare: 0,
             nuclearShare: 0, renewShare: 0, windShare: 0, solarShare: 0, hydroShare: 0,
-            importShare: 0, gasStorageAvailable: false, gasStorageFillPct: 0,
+            importShare: 0, importShareAvailable: false, importShareYear: 0,
+            importShareSource: '', gasStorageAvailable: false, gasStorageFillPct: 0,
             gasStorageChange1d: 0, gasStorageTrend: '', gasStorageDate: '', electricityAvailable: false,
             electricityPriceMwh: 0, electricitySource: '', electricityDate: '',
             jodiOilAvailable: false, jodiOilDataMonth: '', gasolineDemandKbd: 0,
@@ -1045,14 +1042,15 @@ export class CountryIntelManager implements AppModule {
       if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateSanctionsPressure?.(null);
     });
 
-    const unCode = iso2ToComtradeReporterCode(code);
+    const comtradeReporterCode = iso2ToComtradeReporterCode(code);
+    const tariffCountryCode = iso2ToUnCode(code);
     // Trade RPCs (listComtradeFlows + getTariffTrends) are PRO-gated and
     // 401 for anonymous/free users. Mirror the hasPremiumAccess() guard
     // already used above for the other premium country-brief cards so we
     // don't spray the console with 401s on every country click.
     const hasPremium = hasPremiumAccess(getAuthState());
-    if (unCode && hasPremium) {
-      tradeClient.listComtradeFlows({ reporterCode: unCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
+    if (comtradeReporterCode && tariffCountryCode && hasPremium) {
+      tradeClient.listComtradeFlows({ reporterCode: comtradeReporterCode, cmdCode: '', anomaliesOnly: false }).then(resp => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         const topFlows = (resp.flows || [])
           .sort((a, b) => b.tradeValueUsd - a.tradeValueUsd)
@@ -1063,7 +1061,7 @@ export class CountryIntelManager implements AppModule {
         if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateComtradeFlows?.(null);
       });
 
-      tradeClient.getTariffTrends({ reportingCountry: unCode, productSector: '', years: 10, partnerCountry: '' }).then(resp => {
+      tradeClient.getTariffTrends({ reportingCountry: tariffCountryCode, productSector: '', years: 10, partnerCountry: '' }).then(resp => {
         if (this.ctx.countryBriefPage?.getCode() !== code) return;
         const pts = resp.datapoints || [];
         const latest = pts[pts.length - 1];
@@ -1433,13 +1431,8 @@ export class CountryIntelManager implements AppModule {
       ? globalCluster.signals.filter((s) => s.type === 'temporal_anomaly').length
       : 0;
 
-    const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
-    const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
     const criticalNews = this.ctx.latestClusters.filter((cluster) => {
-      const title = cluster.primaryTitle.toLowerCase();
-      const ourPos = CountryIntelManager.firstMentionPosition(title, searchTerms);
-      const otherPos = CountryIntelManager.firstMentionPosition(title, otherCountryTerms);
-      if (ourPos === Infinity || (otherPos !== Infinity && otherPos < ourPos)) return false;
+      if (!CountryIntelManager.isCountryHeadline(cluster.primaryTitle, country, code)) return false;
       return cluster.isAlert || cluster.threat?.level === 'critical' || cluster.threat?.level === 'high';
     }).length;
 
@@ -1854,7 +1847,7 @@ export class CountryIntelManager implements AppModule {
     EG: ['egypt', 'egyptian', 'cairo', 'suez'],
     LB: ['lebanon', 'lebanese', 'beirut'],
     TR: ['turkey', 'turkish', 'ankara', 'erdogan', 'türkiye'],
-    US: ['united states', 'american', 'washington', 'pentagon', 'white house'],
+    US: ['united states', 'US', 'u.s.', 'u.s', 'american', 'washington', 'pentagon', 'white house'],
     GB: ['united kingdom', 'british', 'london', 'uk '],
     BR: ['brazil', 'brazilian', 'brasilia', 'lula', 'bolsonaro'],
     AE: ['united arab emirates', 'uae', 'emirati', 'dubai', 'abu dhabi'],
@@ -1867,9 +1860,15 @@ export class CountryIntelManager implements AppModule {
   }
 
   static countryTermIndex(text: string, term: string): number {
-    const normalizedTerm = term.trim().toLowerCase();
-    if (!normalizedTerm) return -1;
-    const match = new RegExp(`(^|[^a-z0-9])${CountryIntelManager.escapeRegExp(normalizedTerm)}(?=$|[^a-z0-9])`, 'i').exec(text);
+    const trimmedTerm = term.trim();
+    if (!trimmedTerm) return -1;
+    // Plain two/three-letter country acronyms are case-sensitive so US does
+    // not match the pronoun "us". Dotted forms such as U.S. are unambiguous
+    // and remain case-insensitive with every full-name and demonym alias.
+    const caseSensitive = /^[A-Z]{2,3}$/.test(trimmedTerm);
+    const matchText = caseSensitive ? text : text.toLowerCase();
+    const matchTerm = caseSensitive ? trimmedTerm : trimmedTerm.toLowerCase();
+    const match = new RegExp(`(^|[^A-Za-z0-9])${CountryIntelManager.escapeRegExp(matchTerm)}(?=$|[^A-Za-z0-9])`).exec(matchText);
     return match ? match.index + (match[1] ?? '').length : -1;
   }
 
@@ -1883,21 +1882,30 @@ export class CountryIntelManager implements AppModule {
   }
 
   static getOtherCountryTerms(code: string): string[] {
-    const cached = CountryIntelManager.otherCountryTermsCache.get(code);
+    const normalizedCode = code.toUpperCase();
+    const cached = CountryIntelManager.otherCountryTermsCache.get(normalizedCode);
     if (cached) return cached;
 
     const dedup = new Set<string>();
     Object.entries(CountryIntelManager.COUNTRY_ALIASES).forEach(([countryCode, aliases]) => {
-      if (countryCode === code) return;
+      if (countryCode === normalizedCode) return;
       aliases.forEach((alias) => {
-        const normalized = alias.toLowerCase();
-        if (normalized.trim().length > 0) dedup.add(normalized);
+        const trimmed = alias.trim();
+        if (trimmed.length > 0) dedup.add(trimmed);
       });
     });
 
     const terms = [...dedup];
-    CountryIntelManager.otherCountryTermsCache.set(code, terms);
+    CountryIntelManager.otherCountryTermsCache.set(normalizedCode, terms);
     return terms;
+  }
+
+  static isCountryHeadline(title: string, country: string, code: string): boolean {
+    const searchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
+    const otherCountryTerms = CountryIntelManager.getOtherCountryTerms(code);
+    const ourPos = CountryIntelManager.firstMentionPosition(title, searchTerms);
+    const otherPos = CountryIntelManager.firstMentionPosition(title, otherCountryTerms);
+    return ourPos !== Infinity && (otherPos === Infinity || ourPos <= otherPos);
   }
 
   static resolveCountryName(code: string): string {
@@ -1917,10 +1925,10 @@ export class CountryIntelManager implements AppModule {
   }
 
   static getCountrySearchTerms(country: string, code: string): string[] {
-    const aliases = CountryIntelManager.COUNTRY_ALIASES[code];
+    const aliases = CountryIntelManager.COUNTRY_ALIASES[code.toUpperCase()];
     if (aliases) return aliases;
     if (/^[A-Z]{2}$/i.test(country.trim())) return [];
-    return [country.toLowerCase()];
+    return [country];
   }
 
   static toFlagEmoji(code: string): string {
