@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import {
   compareUnpublishedRankedPeers,
+  describeMicrostateEvidence,
+  describeMicrostateEvidenceSummary,
   countryMetaDescription,
   describeAvailableEvidence,
   describeCoverageGaps,
@@ -25,8 +27,8 @@ const sharedSource = readFileSync(
   'utf8',
 );
 
-function dimension(id, coverage, imputationClass = '') {
-  return { id, coverage, imputationClass };
+function dimension(id, coverage, imputationClass = '', score = null) {
+  return { id, coverage, imputationClass, score };
 }
 
 function countryFixture(overrides, dimensions) {
@@ -37,6 +39,7 @@ function countryFixture(overrides, dimensions) {
     imputationShare: 0.2,
     lowConfidence: true,
     headlineEligible: false,
+    microstateTerritory: false,
     domains: [
       {
         id: 'economic',
@@ -135,6 +138,112 @@ describe('unranked country copy', () => {
     );
     assert.match(describeAvailableEvidence(country), /Input coverage is 12%/);
     assert.match(describeAvailableEvidence(country), /imputation share is 61%/);
+  });
+
+  it('explains what available dimensions show for microstate pages', () => {
+    const country = countryFixture({
+      name: 'Tuvalu',
+      code: 'TV',
+      microstateTerritory: true,
+      dimensionCoverage: 0.62,
+      imputationShare: 0.176,
+    }, [
+      dimension('borderSecurity', 1, '', 100),
+      dimension('cyberDigital', 1, '', 100),
+      dimension('education', 0.8, '', 34),
+      dimension('healthPublicService', 1, '', 65),
+      dimension('externalDebtCoverage', 0.3, 'unmonitored', 50),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /Border security[^.]*100/);
+    assert.match(evidence, /Education capacity[^.]*34/);
+    assert.match(evidence, /UCDP/);
+    assert.match(evidence, /World Bank/);
+    assert.match(evidence, /not a published overall score|not a country rank/i);
+  });
+
+  it('keeps overlapping sources scoped to dimensions instead of declaring them absent', () => {
+    const country = countryFixture({
+      name: 'Overlap Isles',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 1, '', 72),
+      dimension('stateContinuity', 0, 'unmonitored'),
+      dimension('healthPublicService', 0, 'unmonitored'),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /Overlapping feeds also supply observed dimensions: UCDP/);
+    assert.match(evidence, /Missing or unmonitored feeds: WHO/);
+    assert.doesNotMatch(evidence, /UCDP does not cover Overlap Isles|UCDP is absent/);
+  });
+
+  it('withholds scores when a microstate has no observed dimensions', () => {
+    const country = countryFixture({
+      name: 'Sparse Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 0, 'unmonitored', 88),
+      dimension('education', 0, 'source-failure', 41),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.match(evidence, /No overall resilience score or country rank is published/);
+    assert.doesNotMatch(evidence, /88|41/);
+  });
+
+  it('does not publish a missing dimension score as an observed zero', () => {
+    const country = countryFixture({
+      name: 'Scoreless Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 1),
+      dimension('education', 0.8, '', 'not-a-score'),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.doesNotMatch(evidence, /Border security|Education capacity/);
+  });
+
+  it('does not present stable-absence imputation as an observed reading', () => {
+    const country = countryFixture({
+      name: 'Stable Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('foodWater', 0.7, 'stable-absence', 88),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.doesNotMatch(evidence, /Food and water security|88/);
+  });
+
+  it('requires usable coverage and observed imputation for a dimension reading', () => {
+    const country = countryFixture({
+      name: 'Partial Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [
+      dimension('borderSecurity', 0.49, '', 12),
+      dimension('education', 0.7, 'not-applicable', 44),
+    ]);
+    const evidence = describeMicrostateEvidence(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.doesNotMatch(evidence, /Border security|Education capacity|12|44/);
+  });
+
+  it('keeps the compact FAQ fallback score-free when no dimensions are observed', () => {
+    const country = countryFixture({
+      name: 'Empty Atoll',
+      code: 'TV',
+      microstateTerritory: true,
+    }, [dimension('borderSecurity', 0, 'unmonitored', 88)]);
+    const evidence = describeMicrostateEvidenceSummary(country);
+    assert.match(evidence, /no observed dimension reading/);
+    assert.match(evidence, /No overall resilience score or country rank is published/);
+    assert.doesNotMatch(evidence, /88/);
   });
 
   it('labels low-confidence unpublished meta descriptions distinctly', () => {
