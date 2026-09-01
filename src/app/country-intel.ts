@@ -24,6 +24,7 @@ import {
   ME_STRIKE_BOUNDS,
   iso3ToIso2Code,
   nameToCountryCode,
+  preloadCountryGeometry,
 } from '@/services/country-geometry';
 import { getCountryData, TIER1_COUNTRIES, type CountryScore } from '@/services/country-instability';
 import { getCachedCountryScore, normalizeCiiCountryCode } from '@/services/cached-risk-scores';
@@ -539,7 +540,7 @@ export class CountryIntelManager implements AppModule {
         this.ctx.countryBriefPage.updateEconomicIndicators?.(this.buildEconomicIndicators(code, score, latestStock, bundle));
       }).catch(() => { /* non-fatal */ });
 
-      fetchCountryMarkets(country)
+      fetchCountryMarkets(country, code)
         .then((markets) => {
           if (this.ctx.countryBriefPage?.getCode() === code) this.ctx.countryBriefPage.updateMarkets(markets);
         })
@@ -556,8 +557,9 @@ export class CountryIntelManager implements AppModule {
       });
       page.updateNews(filteredNews.slice(0, 10));
 
-      page.updateInfrastructure(code);
+      if (getCountryCentroid(code, ME_STRIKE_BOUNDS)) page.updateInfrastructure(code);
       void Promise.all([
+        preloadCountryGeometry(),
         preloadMilitaryBases().catch(() => []),
         preloadInfrastructureTables().catch(() => {}),
       ])

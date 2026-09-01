@@ -125,6 +125,7 @@
     { "source": "/.well-known/oauth-authorization-server", "destination": "/api/oauth-authorization-server" },
     { "source": "/.well-known/mcp", "destination": "/api/mcp" },
     { "source": "/.well-known/mcp.json", "destination": "/api/mcp" },
+    { "source": "/.well-known/mcp/server.json", "destination": "/.well-known/mcp/server-card.json" },
     { "source": "/.well-known/http-message-signatures-directory", "destination": "/api/http-message-signatures-directory" },
     { "source": "/embed", "destination": "/embed.html" },
     { "source": "/dashboard", "has": [{ "type": "host", "value": "tech.worldmonitor.app" }], "destination": "/dashboard-tech.html" },

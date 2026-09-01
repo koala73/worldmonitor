@@ -481,7 +481,8 @@
       "screenshotAlt": "Tableau de bord d'intelligence en direct World Monitor — carte mondiale avec couches de conflits, de navigation et de marchés",
       "plateNote": "Capturé depuis la carte en direct — cliquez pour l'ouvrir",
       "trustBuild": "Construisez dessus :",
-      "positioningLink": "WorldMonitor n'est pas un Palantir open-source"
+      "positioningLink": "WorldMonitor n'est pas un Palantir open-source",
+      "asOf": "Au 31 août 2026"
     },
     "live": {
       "eyebrow": "En direct maintenant",

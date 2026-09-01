@@ -44,6 +44,11 @@ export function parseYesPrice(market) {
   return null;
 }
 
+export function parsePredictionMarketVolume(market) {
+  const value = Number(market?.volumeNum ?? market?.volume);
+  return Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
 // Kalshi mirror of parseYesPrice: null for unreadable prices — a fabricated
 // default (e.g. 50) would flow downstream as a finite anchor and calibrate
 // forecasts against invented data. Whole-string validation: parseFloat would

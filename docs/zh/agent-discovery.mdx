@@ -41,6 +41,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) | OpenAPI 3.1 | 单一打包规范，覆盖**所有** REST 服务（Conflict、Resilience、Market、Economic、Maritime、Aviation、Climate……）——可喂给任何代码生成器 |
 | [`/openapi.json`](https://www.worldmonitor.app/openapi.json) | OpenAPI 3.1 | 压缩 JSON 打包，面向只解析 JSON 的工具与扫描器。操作、参数、请求体与响应与 `/openapi.yaml` 完全一致；为控制在扫描器的响应体大小上限内，共享结构以 `$ref` 合并，并省略任何操作都无法引用到的组件 schema |
 | [`/.well-known/mcp/server-card.json`](https://worldmonitor.app/.well-known/mcp/server-card.json) | MCP | 传输方式（`streamableHttp`）、端点、OAuth 资源、作用域、流式、能力标志 |
+| [`/.well-known/mcp/server.json`](https://worldmonitor.app/.well-known/mcp/server.json) | MCP | 与 `server-card.json` 相同的载荷，使用较新的 well-known 文件名。这**不是**仓库根目录的 MCP 注册表 `server.json` |
 | [`/.well-known/oauth-authorization-server`](https://api.worldmonitor.app/.well-known/oauth-authorization-server) | [RFC 8414](https://datatracker.ietf.org/doc/html/rfc8414) | OAuth 2.1 授权服务器元数据（PKCE、DCR、令牌端点） |
 | [`/.well-known/oauth-protected-resource`](https://worldmonitor.app/.well-known/oauth-protected-resource) | [RFC 9728](https://datatracker.ietf.org/doc/html/rfc9728) | `https://worldmonitor.app/mcp` 的资源元数据 |
 | [`/.well-known/mcp/docs-server-card.json`](https://worldmonitor.app/.well-known/mcp/docs-server-card.json) | MCP | `/docs/mcp` 处**文档** MCP 服务器的服务器卡片（见下文）——与上面的数据服务器卡片相互独立 |
@@ -49,7 +50,7 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | （自定义） | 预打包智能体技能索引（`fetch-country-brief`、`fetch-resilience-score`……）——每个技能都是一份自包含的配方 |
 | [`/plugin.json`](https://worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | World Monitor 智能体插件清单（`name: worldmonitor`）。GitHub 仓库即插件包：根目录 `plugin.json`、`mcp.json` 与常规 `skills/*/SKILL.md` 文件（不是 git 符号链接——Windows 检出和 zip 解压仍能得到 YAML 前置元数据）。插件配方与 well-known 目录一致，只是 REST 示例使用公开站点源 `https://worldmonitor.app` |
 | [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM 友好的 markdown 简报——概述、能力、链接 |
-| [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | （扩展） | 长格式变体，覆盖所有数据层、面板和数据源 |
+| [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | （扩展） | 完整 LLM 语料：产品简报，外加内联的术语表、咽喉点方法论与解说、国家韧性指数方法论、更正日志，以及已发布的排名快照 |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | （自定义） | 按密钥的种子状态、新鲜度、记录计数——智能体可据此门控抓取 |
 
 头部可发现的静态资产（`.well-known/*`、`/openapi.yaml`、`/openapi.json`、`/plugin.json`）提供 `Access-Control-Allow-Origin: *`，并以 `public, max-age=3600` 缓存——可以安全地记忆化。`/api/health` 使用常规 API CORS 允许列表，且**未**缓存（`private, no-store`），因为它反映实时种子新鲜度；智能体在需要基于数据可用性进行门控时应每次重新请求。
