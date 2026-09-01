@@ -87,20 +87,19 @@ interface WikiResult {
 
 async function fetchWikidata(code: string): Promise<WikiResult | null> {
   if (!/^[A-Z]{2}$/.test(code)) return null;
-  const iso3 = ISO2_TO_ISO3[code];
-  if (!iso3) return null;
+  if (!ISO2_TO_ISO3[code]) return null;
   try {
     return await cachedFetchJson<WikiResult>(
-      `intel:country-facts:wikidata:v6:${code}`,
+      `intel:country-facts:wikidata:v7:${code}`,
       FACTS_TTL,
       async () => {
-        const entityId = await resolveWikidataEntityId(code, iso3);
+        const entityId = await resolveWikidataEntityId(code);
         if (!entityId) return null;
-        return parseWikidataFacts(await queryWikidata(wikidataFactsQuery(entityId)));
+        const result = parseWikidataFacts(await queryWikidata(wikidataFactsQuery(entityId)));
+        if (!result) return null;
+        return { ...result, countryName: displayCountryName(code) || result.countryName };
       },
       NEGATIVE_TTL,
-      // Transient 429/5xx/network errors must not become NEG_SENTINEL. A 200
-      // with no bindings still returns null and is negative-cached as empty.
       { cacheFetcherErrors: false },
     );
   } catch {
@@ -108,11 +107,11 @@ async function fetchWikidata(code: string): Promise<WikiResult | null> {
   }
 }
 
-async function resolveWikidataEntityId(code: string, iso3: string): Promise<string | null> {
+async function resolveWikidataEntityId(code: string): Promise<string | null> {
   return selectWikidataEntityId(
     code,
     await queryWikidata(
-      `SELECT ?country ?countryLabel WHERE { ?country wdt:P297 "${code}"; wdt:P298 "${iso3}". FILTER NOT EXISTS { ?country wdt:P576 ?dissolved } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } }`,
+      `SELECT ?country ?countryLabel WHERE { ?country wdt:P297 "${code}". FILTER NOT EXISTS { ?country wdt:P576 ?dissolved } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } }`,
     ),
   );
 }
@@ -147,7 +146,39 @@ function extractWikidataQid(entityUri: string | undefined): string | null {
 }
 
 function wikidataFactsQuery(entityId: string): string {
-  return `SELECT ?countryLabel ?headLabel ?officeLabel ?population ?area ?capitalLabel ?languageLabel ?currencyLabel WHERE { BIND(wd:${entityId} AS ?country) OPTIONAL { ?country p:P35 ?headStatement. ?headStatement ps:P35 ?head. FILTER NOT EXISTS { ?headStatement pq:P582 ?headEnd } OPTIONAL { ?headStatement pq:P39 ?office } } OPTIONAL { ?country wdt:P1082 ?population } OPTIONAL { ?country wdt:P2046 ?area } OPTIONAL { ?country wdt:P36 ?capital } OPTIONAL { ?country p:P37 ?languageStatement. ?languageStatement ps:P37 ?language. FILTER NOT EXISTS { ?languageStatement pq:P518 ?languageRegion } FILTER NOT EXISTS { ?languageStatement pq:P582 ?languageEnd } } OPTIONAL { ?country p:P38 ?currencyStatement. ?currencyStatement ps:P38 ?currency. FILTER NOT EXISTS { ?currencyStatement pq:P518 ?currencyRegion } FILTER NOT EXISTS { ?currencyStatement pq:P582 ?currencyEnd } } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } ORDER BY ?capitalLabel ?languageLabel ?currencyLabel`;
+  return `SELECT ?countryLabel ?headLabel ?officeLabel ?population ?area ?capitalLabel ?languageLabel ?currencyLabel WHERE {
+  BIND(wd:${entityId} AS ?country)
+  OPTIONAL {
+    ?country p:P35 ?headStatement.
+    ?headStatement ps:P35 ?head.
+    FILTER NOT EXISTS { ?headStatement pq:P582 ?headEnd }
+    OPTIONAL { ?headStatement pq:P39 ?office }
+  }
+  OPTIONAL { ?country wdt:P1082 ?population }
+  OPTIONAL { ?country wdt:P2046 ?area }
+  OPTIONAL { ?country wdt:P36 ?capital }
+  OPTIONAL {
+    ?country p:P37 ?languageStatement.
+    ?languageStatement ps:P37 ?language.
+    FILTER NOT EXISTS { ?languageStatement pq:P518 ?languageRegion }
+    FILTER NOT EXISTS { ?languageStatement pq:P582 ?languageEnd }
+  }
+  OPTIONAL {
+    ?country wdt:P38 ?currency.
+    ?country p:P38 ?currencyStatement.
+    ?currencyStatement ps:P38 ?currency.
+    FILTER NOT EXISTS { ?currencyStatement pq:P582 ?currencyEnd }
+    FILTER NOT EXISTS {
+      ?currencyStatement pq:P518 ?currencyRegion.
+      ?country p:P38 ?unscopedCurrencyStatement.
+      ?unscopedCurrencyStatement ps:P38 ?unscopedCurrency.
+      FILTER NOT EXISTS { ?unscopedCurrencyStatement pq:P518 ?unscopedCurrencyRegion }
+      FILTER NOT EXISTS { ?unscopedCurrencyStatement pq:P582 ?unscopedCurrencyEnd }
+    }
+  }
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" }
+}
+ORDER BY ?capitalLabel ?languageLabel ?currencyLabel`;
 }
 
 async function queryWikidata(sparql: string): Promise<WikidataBinding[]> {
