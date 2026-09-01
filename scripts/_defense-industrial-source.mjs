@@ -386,7 +386,7 @@ export async function fetchSipriSupplierDependencies({
           windowStartYear: startYear,
           windowEndYear: maxYear,
         });
-        if (parsed.suppliers.length > 0) output[importer.iso2] = parsed;
+        output[importer.iso2] = parsed;
         for (const entity of parsed.unmappedEntities) unmapped.set(entity, (unmapped.get(entity) || 0) + 1);
       } catch (error) {
         failedImporters.push({
@@ -483,10 +483,12 @@ export async function buildSipriSupplierSnapshot({
   // The floor applies to the MERGED snapshot, never to one tick's slice. Judging
   // a chunk by it would reject every healthy sweep tick, since a slice is
   // smaller than the floor by design.
-  const mergedImporterCount = Object.keys(importers).length;
-  if (failures.length === 0 && mergedImporterCount < minimumCompleteImporterCount) {
+  const positiveImporterCount = Object.values(importers)
+    .filter((importer) => Array.isArray(importer?.suppliers) && importer.suppliers.length > 0)
+    .length;
+  if (failures.length === 0 && positiveImporterCount < minimumCompleteImporterCount) {
     throw new Error(
-      `SIPRI snapshot holds only ${mergedImporterCount} positive importer rows; `
+      `SIPRI snapshot holds only ${positiveImporterCount} positive importer rows; `
       + `minimum is ${minimumCompleteImporterCount}`,
     );
   }

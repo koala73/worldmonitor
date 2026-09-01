@@ -115,7 +115,16 @@ describe('defense-industrial source parsing', () => {
   it('rejects an all-empty complete SIPRI cohort and does not create a completion marker', async () => {
     await assert.rejects(
       () => buildSipriSupplierSnapshot({
-        fetchSipri: async () => ({ importers: {}, failedImporters: [], windowEndYear: 2025 }),
+        fetchSipri: async () => ({
+          importers: {
+            UA: {
+              suppliers: [],
+              window: { startYear: 2021, endYear: 2025 },
+            },
+          },
+          failedImporters: [],
+          windowEndYear: 2025,
+        }),
         minimumCompleteImporterCount: 1,
       }),
       /holds only 0 positive importer rows/,
@@ -476,7 +485,11 @@ describe('SIPRI chunked sweep (#6806)', () => {
     // would reject every healthy sweep tick.
     const previous = {
       importers: Object.fromEntries(
-        Array.from({ length: 30 }, (_, i) => [`X${i}`, { suppliers: [], window: { endYear: 2025 }, fetchedAt: iso(NOW - 3600_000) }]),
+        Array.from({ length: 30 }, (_, i) => [`X${i}`, {
+          suppliers: [{ supplierIso2: 'US', tivShare: 1 }],
+          window: { endYear: 2025 },
+          fetchedAt: iso(NOW - 3600_000),
+        }]),
       ),
     };
     const snapshot = await buildSipriSupplierSnapshot({
@@ -484,7 +497,12 @@ describe('SIPRI chunked sweep (#6806)', () => {
       minimumCompleteImporterCount: 25,
       now: () => new Date(NOW),
       fetchSipri: async () => ({
-        importers: { FR: { suppliers: [], window: { endYear: 2025 } } },
+        importers: {
+          FR: {
+            suppliers: [{ supplierIso2: 'US', tivShare: 1 }],
+            window: { endYear: 2025 },
+          },
+        },
         failedImporters: [],
         windowEndYear: 2025,
         sweep: { catalogCount: 31, attempted: 1, fetched: 1, unfetched: 30 },
@@ -676,6 +694,44 @@ describe('SIPRI chunked sweep (#6806)', () => {
       selectSweepImporters([{ iso2: importerCodes[0] }], snapshot, 2025, NOW)
         .map((importer) => importer.iso2),
       [importerCodes[0]],
+    );
+  });
+
+  it('records a successful zero-transfer importer as current before completing the sweep', async () => {
+    const previous = previousSnapshot(1);
+    const headerOnlyCsv = 'Supplier,2021-2025\n';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(headerOnlyCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+    const importerIso2 = importerCodes[0];
+
+    assert.deepEqual(result.importers[importerIso2].suppliers, []);
+    assert.equal(result.sweep.fetched, 1);
+    assert.equal(result.sweep.unfetched, 0);
+    assert.deepEqual(snapshot.importers[importerIso2].suppliers, []);
+    assert.equal(snapshot.importers[importerIso2].retained, false);
+    assert.equal(snapshot.importers[importerIso2].fetchedAt, iso(NOW));
+    assert.deepEqual(
+      selectSweepImporters([{ iso2: importerIso2 }], snapshot, 2025, NOW),
+      [],
+    );
+    assert.deepEqual(
+      buildArmsSupplierCompletion(snapshot),
+      { completedAt: iso(NOW), windowEndYear: 2025 },
     );
   });
 
