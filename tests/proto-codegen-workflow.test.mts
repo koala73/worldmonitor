@@ -181,7 +181,7 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
   writeFileSync(output, '');
   writeFileSync(ghLog, '');
   writeFileSync(join(fakeBin, 'gh'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\n`, { mode: 0o755 });
-  writeFileSync(join(fakeBin, 'base64'), '#!/bin/sh\nprintf encoded-token', { mode: 0o755 });
+  writeFileSync(join(fakeBin, 'base64'), '#!/bin/sh\ncat >/dev/null\nprintf encoded-token', { mode: 0o755 });
 
   assert.equal(git(repo, ['init', '--quiet', '--initial-branch=writer']).status, 0);
   assert.equal(git(repo, ['config', 'user.email', 'fixture@example.invalid']).status, 0);
@@ -535,7 +535,11 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
 
   it('executes writer boundary, status, and lease failure paths', () => {
     const current = runWriter('current');
-    assert.equal(current.result.status, 0, current.result.stderr);
+    assert.equal(
+      current.result.status,
+      0,
+      `${current.result.stderr || ''}\nsignal=${String(current.result.signal)}`,
+    );
     assert.match(current.output, /^pushed=false$/m);
     assert.match(current.ghLog, new RegExp(`statuses/${current.expectedSha}.*state=success`));
 
