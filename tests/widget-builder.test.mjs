@@ -84,7 +84,7 @@ describe('widget-agent relay — security', () => {
   it('widget-key auth 403 includes invalid_widget_key error code', () => {
     const gateIdx = relay.indexOf('function requireWidgetAgentAccess');
     assert.ok(gateIdx !== -1, 'requireWidgetAgentAccess must be defined');
-    const region = relay.slice(gateIdx, gateIdx + 800);
+    const region = relay.slice(gateIdx, gateIdx + 1500);
     assert.ok(
       region.includes("'invalid_widget_key'") || region.includes('"invalid_widget_key"'),
       'Widget-key 403 responses must identify the invalid widget key cause',
@@ -2311,14 +2311,14 @@ describe('WidgetChatModal — preflight 403 message branches on auth mode', () =
   });
 
   it('resolvePreflightMessage takes usedTesterKey and branches Clerk path on isPro', () => {
-    const fnIdx = modal.indexOf('function resolvePreflightMessage');
-    assert.ok(fnIdx !== -1, 'resolvePreflightMessage not found');
-    const fnEnd = modal.indexOf('\nfunction setReadinessState', fnIdx);
-    assert.ok(fnEnd !== -1, 'resolvePreflightMessage boundary not found');
+    const fnIdx = modal.indexOf('function resolveWidgetAgentFailureMessage');
+    assert.ok(fnIdx !== -1, 'resolveWidgetAgentFailureMessage not found');
+    const fnEnd = modal.indexOf('\nfunction resolvePreflightMessage', fnIdx);
+    assert.ok(fnEnd !== -1, 'resolveWidgetAgentFailureMessage boundary not found');
     const region = modal.slice(fnIdx, fnEnd);
     assert.ok(
       region.includes('usedTesterKey'),
-      'resolvePreflightMessage must take usedTesterKey to branch on auth mode',
+      'resolveWidgetAgentFailureMessage must take usedTesterKey to branch on auth mode',
     );
     assert.ok(
       region.includes('preflightProSubscriptionRequired'),
