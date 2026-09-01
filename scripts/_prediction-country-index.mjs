@@ -10,7 +10,7 @@ export function countCountryMarkets(countryMarkets) {
 
 const PREDICTION_COUNTRY_KEYWORDS = Object.freeze({
   US: ['american', 'congress', 'white house', 'federal reserve', 'the fed', 'fed rate', 'fed chair', 'fed cut', 'fed hike', 'us recession', 'us gdp', 'us election', 'us tariff', 'us president', 'us presidency'],
-  GB: ['british', 'uk election', 'uk economy', 'uk prime minister'],
+  GB: ['british', 'uk', 'uk election', 'uk economy', 'uk prime minister'],
   KR: ['south korean'],
   KP: ['dprk'],
   AE: ['emirati'],
