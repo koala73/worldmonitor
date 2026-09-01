@@ -2144,6 +2144,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(chokepointItemList['@id'], 'https://www.worldmonitor.app/chokepoints/#status-list');
       assert.equal(chokepointItemList.numberOfItems, corpusData.chokepoints.length);
       assert.equal(chokepointItemList.itemListElement.length, corpusData.chokepoints.length);
+      assert.equal(chokepointItemList.itemListOrder, 'https://schema.org/ItemListUnordered');
       assert.deepEqual(chokepointDataset.creator, {
         '@id': 'https://www.worldmonitor.app/#organization',
         '@type': 'Organization',

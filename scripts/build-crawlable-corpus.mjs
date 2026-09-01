@@ -2822,7 +2822,7 @@ ${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.
         '@id': itemListId,
         name: 'Maritime chokepoint status snapshot',
         numberOfItems: chokepointHubRows.length,
-        itemListOrder: 'https://schema.org/ItemListOrderAscending',
+        itemListOrder: 'https://schema.org/ItemListUnordered',
         itemListElement,
       },
       dataCatalogLd(baseUrl),
