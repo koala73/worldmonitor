@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -664,6 +664,54 @@ function assertDataCatalogPresent(html, route) {
   return catalog;
 }
 
+// A root JSON-LD node with no `@context` has no vocabulary binding: `@type`
+// resolves to nothing, and every schema.org consumer discards the block
+// silently rather than erroring. #7502 shipped 62 such blocks across the 31
+// CII-covered country pages, which undid the Dataset/DataCatalog work from
+// #7379 on exactly the highest-intent pages and was invisible to every
+// existing assertion. Nested nodes inherit the root context, so only the
+// top-level block of each script tag is checked.
+const SCHEMA_ORG_CONTEXT_URLS = new Set(['https://schema.org', 'http://schema.org']);
+
+function jsonLdContextIsResolvable(context) {
+  if (typeof context === 'string') {
+    return SCHEMA_ORG_CONTEXT_URLS.has(context.replace(/\/$/, ''));
+  }
+  if (Array.isArray(context)) return context.some((entry) => jsonLdContextIsResolvable(entry));
+  if (context && typeof context === 'object') return jsonLdContextIsResolvable(context['@vocab']);
+  return false;
+}
+
+function assertJsonLdContexts(html, route) {
+  const blocks = jsonLdObjects(html);
+  assert.ok(blocks.length > 0, `${route} must emit at least one JSON-LD block`);
+  for (const [index, block] of blocks.entries()) {
+    const type = Array.isArray(block['@type']) ? block['@type'].join('+') : block['@type'];
+    const label = block['@id'] || type || `block ${index + 1}`;
+    assert.ok(
+      jsonLdContextIsResolvable(block['@context']),
+      `${route} JSON-LD block ${index + 1} (${label}) must declare a schema.org @context; without one @type binds to no vocabulary and consumers discard the block silently`,
+    );
+  }
+}
+
+// Walk what the build actually wrote, not the manifest's route list. The two
+// disagree: `manifest.sections.changelog` reports one route for fourteen
+// published pages, so a manifest-driven sweep silently skips the thirteen
+// `/reference/changelog/page/N/` pages (229 of 242 covered). A structured-data
+// guard that skips pages is the defect class it exists to catch.
+function generatedPageRoutes(outDir) {
+  const routes = [];
+  const visit = (relative) => {
+    for (const entry of readdirSync(join(outDir, relative), { withFileTypes: true })) {
+      if (entry.isDirectory()) visit(join(relative, entry.name));
+      else if (entry.name === 'index.html') routes.push(`/${relative === '.' ? '' : `${relative}/`}`);
+    }
+  };
+  visit('.');
+  return routes.sort();
+}
+
 function decodeHtmlAttribute(value) {
   return value
     .replaceAll('&#39;', "'")
@@ -731,6 +779,42 @@ function productionScriptNonce() {
   assert.ok(nonce, 'production CSP must declare a strict-dynamic script nonce');
   return nonce;
 }
+
+// The corpus-wide @context sweep is an absence assertion — it stays green if
+// the rule is deleted, weakened, or never sees a block. These controls prove it
+// still rejects each way the defect can present.
+describe('JSON-LD @context guard', () => {
+  const ldBlock = (value) => `<script type="application/ld+json">${JSON.stringify(value)}</script>`;
+  const route = '/countries/taiwan/';
+
+  it('rejects a top-level block with no @context (the #7502 shape)', () => {
+    const html = ldBlock({ '@context': 'https://schema.org', '@type': 'WebPage' })
+      + ldBlock({ '@type': 'Dataset', '@id': 'https://www.worldmonitor.app/countries/taiwan/#cii-dataset' });
+    assert.throws(
+      () => assertJsonLdContexts(html, route),
+      /block 2 \(https:\/\/www\.worldmonitor\.app\/countries\/taiwan\/#cii-dataset\) must declare a schema\.org @context/,
+    );
+  });
+
+  it('rejects a top-level block whose @context resolves to a non-schema.org vocabulary', () => {
+    const html = ldBlock({ '@context': 'https://example.invalid/vocab', '@type': 'Dataset' });
+    assert.throws(() => assertJsonLdContexts(html, route), /must declare a schema\.org @context/);
+  });
+
+  it('rejects a page that emits no JSON-LD at all', () => {
+    assert.throws(() => assertJsonLdContexts('<html><body>no structured data</body></html>', route), /must emit at least one JSON-LD block/);
+  });
+
+  it('accepts schema.org string, array, and @vocab contexts', () => {
+    assert.doesNotThrow(() => assertJsonLdContexts(
+      ldBlock({ '@context': 'https://schema.org', '@type': 'Dataset' })
+      + ldBlock({ '@context': 'https://schema.org/', '@type': 'Dataset' })
+      + ldBlock({ '@context': ['https://schema.org', { wm: 'https://www.worldmonitor.app/#' }], '@type': 'Dataset' })
+      + ldBlock({ '@context': { '@vocab': 'https://schema.org/' }, '@type': 'Dataset' }),
+      route,
+    ));
+  });
+});
 
 describe('crawlable corpus generator', () => {
   it('requires the exact shared Tier-1 country set for CII publication', async () => {
@@ -1084,6 +1168,17 @@ describe('crawlable corpus generator', () => {
       const countryObservationRoutes = new Set(manifest.sections.countries.routes);
       const liveObservationRoutes = new Set(manifest.sections.chokepoints.routes);
       const crisisObservationRoutes = new Set(manifest.sections.crises.routes);
+      // #7502: sweep every page the build wrote, including the paginated
+      // changelog pages the manifest's route list omits.
+      const writtenRoutes = generatedPageRoutes(outDir);
+      assert.ok(
+        writtenRoutes.length >= generatedRoutes.size,
+        `the @context sweep must cover at least every manifest route (wrote ${writtenRoutes.length}, manifest lists ${generatedRoutes.size})`,
+      );
+      for (const route of writtenRoutes) {
+        assertJsonLdContexts(read(outDir, `${route.slice(1)}index.html`), route);
+      }
+
       for (const route of generatedRoutes) {
         const html = read(outDir, `${route.slice(1)}index.html`);
         assertDatasetGoogleProperties(
@@ -1639,6 +1734,18 @@ describe('crawlable corpus generator', () => {
         taiwanResilienceDataset?.description ?? '',
         /below the ranking threshold|input coverage is below/i,
       );
+      // #7502: on CII-covered pages both Datasets are siblings of the WebPage
+      // rather than nested under it, so each must bind its own vocabulary or it
+      // parses as nothing at all.
+      for (const fragment of ['#cii-dataset', '#resilience-dataset']) {
+        const block = jsonLdObjects(taiwan).find((entry) => entry['@id']?.endsWith(fragment));
+        assert.ok(block, `taiwan must emit a top-level ${fragment} block`);
+        assert.equal(block['@type'], 'Dataset', `taiwan ${fragment} must be a Dataset`);
+        assert.ok(
+          jsonLdContextIsResolvable(block['@context']),
+          `taiwan ${fragment} must bind schema.org so it parses as a Dataset`,
+        );
+      }
 
       for (const slug of ['taiwan', 'palau', 'san-marino']) {
         const html = read(outDir, `countries/${slug}/index.html`);
