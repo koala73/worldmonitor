@@ -567,7 +567,9 @@ export class CountryIntelManager implements AppModule {
         .then(({ fetchCountryCoverage }) => fetchCountryCoverage(country, countrySearchTerms))
         .then((coverage) => {
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
-          const countryHeadlines = coverage.headlines.filter(item => hasCountryTerm(item.title));
+          const countryHeadlines = coverage.headlines.filter(item => (
+            CountryIntelManager.isCountryHeadline(item.title, country, code)
+          ));
           if (countryHeadlines.length > 0) page.updateNews(countryHeadlines);
           this.currentCoverageEvents = coverage.timelineEvents.filter(event => hasCountryTerm(event.label));
           this.mountCountryTimeline(code, country, this.currentCoverageEvents);
