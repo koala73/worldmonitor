@@ -449,7 +449,22 @@ fi
 # at the wrong thing. npm writes .package-lock.json only on a completed install,
 # which is exactly the check shouldInstallDependencies() in
 # scripts/bootstrap-worktree.mjs already uses. Keep the two in agreement.
-if [ ! -f node_modules/.package-lock.json ]; then
+# Bun leaves no completed-install marker of its own (only node_modules/.bin,
+# which a half-finished install also creates), and `bun install --frozen-lockfile`
+# on an installed tree costs ~11s — too slow to run unconditionally in a gate
+# whose cached-green re-push is ~0.5s. So a bun install writes the sha256 of the
+# lockfile it installed from, and we compare against the current lockfile here.
+# That also catches a STALE tree, which npm's marker cannot. Kept in agreement
+# with hasFreshBunInstall() in scripts/bootstrap-worktree.mjs.
+bun_install_is_fresh() {
+  [ -f bun.lock ] || return 1
+  [ -f node_modules/.wm-bun-install ] || return 1
+  _wm_want=$(shasum -a 256 bun.lock 2>/dev/null | awk '{print $1}')
+  _wm_have=$(tr -d '[:space:]' < node_modules/.wm-bun-install 2>/dev/null)
+  [ -n "$_wm_want" ] && [ "$_wm_want" = "$_wm_have" ]
+}
+
+if [ ! -f node_modules/.package-lock.json ] && ! bun_install_is_fresh; then
   echo "node_modules missing or incomplete, running npm ci..."
   npm ci --cache "$npm_config_cache" --prefer-offline || exit 1
 fi

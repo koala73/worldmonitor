@@ -148,3 +148,11 @@ playground-pricing.html
 # compile time — `cargo test` fails on a resource path that does not exist.
 src-tauri/notices/*
 !src-tauri/notices/.gitkeep
+
+# Bun package-manager spike (#SPIKE): package-lock.json stays the single source
+# of truth while the spike is open. bun.lock is generated locally for
+# measurement only and must NOT be committed — two lockfiles that can disagree
+# is exactly the drift this policy exists to prevent. Deleting these lines is
+# the deliberate act that makes bun authoritative.
+bun.lock
+bun.lockb

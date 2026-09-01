@@ -277,6 +277,12 @@
     "youtubei.js": "^16.0.1",
     "zod": "^4.3.6"
   },
+  "trustedDependencies": [
+    "browser-tabs-lock",
+    "core-js",
+    "es5-ext",
+    "protobufjs"
+  ],
   "overrides": {
     "convex": {
       "esbuild": "0.28.1"
