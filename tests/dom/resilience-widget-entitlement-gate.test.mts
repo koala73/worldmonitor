@@ -27,10 +27,8 @@ let entitlementTier: number | null = null;
 let verificationStatus: 'idle' | 'pending' | 'ready' | 'unavailable' = 'idle';
 const authListeners: Array<(state: Session) => void> = [];
 const entitlementListeners: Array<(state: unknown) => void> = [];
-const subscriptionListeners: Array<(state: unknown) => void> = [];
 const verificationListeners: Array<(status: string) => void> = [];
 let entitlementUnsubscribed = 0;
-let subscriptionUnsubscribed = 0;
 let verificationUnsubscribed = 0;
 
 vi.mock('@/services/auth-state', () => ({
@@ -85,16 +83,13 @@ vi.mock('@/services/entitlements', () => ({
   },
 }));
 
+// panel-gating still imports billing; stub the module so this suite does not
+// pull the live watcher. The widget itself no longer subscribes here.
 vi.mock('@/services/billing', () => ({
   getSubscription: () => null,
-  onSubscriptionChange: (listener: (state: unknown) => void) => {
-    subscriptionListeners.push(listener);
-    return () => {
-      subscriptionUnsubscribed++;
-      const index = subscriptionListeners.indexOf(listener);
-      if (index >= 0) subscriptionListeners.splice(index, 1);
-    };
-  },
+  onSubscriptionChange: () => () => {},
+  openBillingPortal: async () => {},
+  prereserveBillingPortalTab: () => {},
 }));
 
 vi.mock('@/services/runtime-config', () => ({
@@ -143,10 +138,8 @@ beforeEach(() => {
   verificationStatus = 'idle';
   authListeners.length = 0;
   entitlementListeners.length = 0;
-  subscriptionListeners.length = 0;
   verificationListeners.length = 0;
   entitlementUnsubscribed = 0;
-  subscriptionUnsubscribed = 0;
   verificationUnsubscribed = 0;
   getResilienceScore.mockClear();
   document.body.replaceChildren();
@@ -239,7 +232,7 @@ describe('ResilienceWidget entitlement gate (WORLDMONITOR-NY)', () => {
     widget.destroy();
   });
 
-  it('releases the entitlement and subscription subscriptions on destroy', () => {
+  it('releases the entitlement and verification subscriptions on destroy', () => {
     const widget = new ResilienceWidget('US');
     document.body.appendChild(widget.getElement());
     emitAuth(PAYING_USER);
@@ -247,7 +240,6 @@ describe('ResilienceWidget entitlement gate (WORLDMONITOR-NY)', () => {
     widget.destroy();
 
     expect(entitlementUnsubscribed).toBe(1);
-    expect(subscriptionUnsubscribed).toBe(1);
     expect(verificationUnsubscribed).toBe(1);
   });
 

@@ -1,5 +1,4 @@
 import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/auth-state';
-import { onSubscriptionChange } from '@/services/billing';
 import {
   getEntitlementVerificationStatus,
   onEntitlementChange,
@@ -56,7 +55,6 @@ export class ResilienceWidget {
   private authState: AuthSession = getAuthState();
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
-  private unsubscribeSubscription: (() => void) | null = null;
   private unsubscribeVerification: (() => void) | null = null;
   private currentCountryCode: string | null = null;
   private currentData: ResilienceScoreResponse | null = null;
@@ -73,15 +71,14 @@ export class ResilienceWidget {
       this.reactToAccessChange();
     });
 
-    // The entitlement snapshot and the subscription row change on their OWN
-    // channels — production fires no auth event when they land. Subscribing to
-    // auth alone meant the access verdict computed during the pre-snapshot
-    // window was never revisited, so a paying user did not merely see the wrong
-    // CTA for a moment, they kept it (WORLDMONITOR-NY). `panel-layout.ts`
-    // already rides all three channels for the same reason; this widget is the
-    // surface that did not.
+    // The entitlement snapshot lands on its own channel — production fires no
+    // auth event when it arrives. Subscribing to auth alone meant the access
+    // verdict computed during the pre-snapshot window was never revisited, so
+    // a paying user did not merely see the wrong CTA for a moment, they kept
+    // it (WORLDMONITOR-NY). Billing/subscription is not a gate input here;
+    // this widget still uses getPanelGateReason, not the billing-aware
+    // refinement panel-layout.ts applies.
     this.unsubscribeEntitlement = onEntitlementChange(() => this.reactToAccessChange());
-    this.unsubscribeSubscription = onSubscriptionChange(() => this.reactToAccessChange());
     // The terminal "no snapshot is coming" outcome arrives ONLY here — see
     // isAccessStillResolving. Without this subscription the widget would still
     // hang on the waiting state until some unrelated event forced a re-render.
@@ -156,16 +153,15 @@ export class ResilienceWidget {
     this.unsubscribeAuth = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
-    this.unsubscribeSubscription?.();
-    this.unsubscribeSubscription = null;
     this.unsubscribeVerification?.();
     this.unsubscribeVerification = null;
   }
 
   /**
-   * Re-evaluate access after any of the three signals that feed the gate moved,
-   * fetching the score once the verdict first becomes NONE. Shared by all three
-   * subscriptions so the auth path and the snapshot path cannot drift.
+   * Re-evaluate access after any of the signals that feed the gate moved,
+   * fetching the score once the verdict first becomes NONE. Shared by the
+   * auth, entitlement, and verification subscriptions so those paths cannot
+   * drift.
    */
   private reactToAccessChange(): void {
     const gateReason = this.getGateReason();
