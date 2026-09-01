@@ -181,7 +181,7 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
   writeFileSync(output, '');
   writeFileSync(ghLog, '');
   writeFileSync(join(fakeBin, 'gh'), `#!/bin/sh\nprintf '%s\\n' "$*" >> '${ghLog}'\n`, { mode: 0o755 });
-  writeFileSync(join(fakeBin, 'base64'), '#!/bin/sh\nprintf encoded-token', { mode: 0o755 });
+  writeFileSync(join(fakeBin, 'base64'), '#!/bin/sh\ncat >/dev/null\nprintf encoded-token', { mode: 0o755 });
 
   assert.equal(git(repo, ['init', '--quiet', '--initial-branch=writer']).status, 0);
   assert.equal(git(repo, ['config', 'user.email', 'fixture@example.invalid']).status, 0);
@@ -233,7 +233,7 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
     assert.equal(update.status, 0, update.stderr);
   }
 
-  const spawnWriter = () => spawnSync('bash', ['-euo', 'pipefail', '-c', writer.run ?? ''], {
+  const result = spawnSync('bash', ['-euo', 'pipefail', '-c', writer.run ?? ''], {
     cwd: repo,
     encoding: 'utf8',
     env: {
@@ -249,12 +249,6 @@ function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failur
       RUNNER_TEMP: temp,
     },
   });
-  // 16-way `test:data` can SIGPIPE (141) the fixture bash; one retry is the
-  // same writer script against the same repo, not a changed assertion.
-  let result = spawnWriter();
-  if (result.status === 141 || result.signal === 'SIGPIPE') {
-    result = spawnWriter();
-  }
 
   const returned = {
     expectedSha,
