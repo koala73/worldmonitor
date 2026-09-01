@@ -18,7 +18,7 @@ interface CountryMarketsTestState {
   rpcCalls: { category: string; query: string }[];
   rpcMarketsByCategory: Record<string, unknown[]>;
   // Production returns dataAvailable: true whenever the country index exists,
-  // including ISO2 codes with no records. Omit / false keeps the rollout fallback.
+  // including ISO2 codes with no records. An omitted or false value keeps the rollout fallback.
   rpcDataAvailable?: boolean;
   hydrated?: unknown;
 }
@@ -150,8 +150,6 @@ describe('fetchCountryMarkets uses the producer country index', () => {
   });
 
   it('returns empty when the country index is authoritative but has no ISO2 records', async () => {
-    // Production sets dataAvailable: true when the country index exists, even
-    // if this ISO2 has no markets. That must win over hydrated bootstrap data.
     globalThis.__wmCountryMarketsTestState = {
       rpcCalls: [],
       rpcMarketsByCategory: { 'country:CN': [] },

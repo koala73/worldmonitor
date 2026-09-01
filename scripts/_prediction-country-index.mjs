@@ -22,7 +22,7 @@ const PREDICTION_COUNTRY_KEYWORDS = Object.freeze({
 });
 
 // Verified demonyms from the shared brief table (`DEMONYM_TO_NATION`).
-// Bare "korean" is omitted — it is not a specific ISO-2 country.
+// Bare "korean" is omitted because it is not a specific ISO-2 country.
 const PREDICTION_COUNTRY_DEMONYMS = Object.freeze({
   AF: ['afghan', 'afghans'],
   AR: ['argentine', 'argentinian', 'argentinians'],
