@@ -1,24 +1,20 @@
-import type {
-  EconomicServiceClient,
-  GetEconomicCalendarResponse,
-} from '@/generated/client/worldmonitor/economic/v1/service_client';
-import type {
-  ListEarningsCalendarResponse,
-  MarketServiceClient,
-} from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
+import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
+import { localYmd } from '@/utils/local-date';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
+import { LatestRequestGuard } from '@/utils/latest-request-guard';
 import { NQ_EARNINGS_WINDOW_DAYS, NQ_MACRO_WINDOW_DAYS, NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import {
   composeNqCatalystsHtml,
   filterNqEarnings,
   filterNqMacroEvents,
+  nqInclusiveWindowTo,
 } from './nq-catalysts-content';
-import { nqCalendarWindow, type NqCalendarWindow } from './nq-calendar-window';
 
-const NQ_REQUEST_TIMEOUT_MS = 15_000;
+export const NQ_CATALYSTS_REQUEST_TIMEOUT_MS = 15_000;
 
 let economicClient: EconomicServiceClient | null = null;
 let marketClient: MarketServiceClient | null = null;
@@ -43,38 +39,10 @@ async function getMarketClient(): Promise<MarketServiceClient> {
   return marketClient;
 }
 
-export interface NqCatalystsPanelDependencies {
-  now: () => Date;
-  createTimeoutSignal: (ms: number) => AbortSignal;
-  combineAbortSignals: (signals: AbortSignal[]) => AbortSignal;
-  fetchMacro: (window: NqCalendarWindow, signal: AbortSignal) => Promise<GetEconomicCalendarResponse>;
-  fetchEarnings: (window: NqCalendarWindow, signal: AbortSignal) => Promise<ListEarningsCalendarResponse>;
-}
-
-const DEFAULT_DEPENDENCIES: NqCatalystsPanelDependencies = {
-  now: () => new Date(),
-  createTimeoutSignal,
-  combineAbortSignals,
-  fetchMacro: async (window, signal) => {
-    const client = await getEconomicClient();
-    return client.getEconomicCalendar(
-      { fromDate: window.from, toDate: window.to },
-      { signal },
-    );
-  },
-  fetchEarnings: async (window, signal) => {
-    const client = await getMarketClient();
-    return client.listEarningsCalendar(
-      { fromDate: window.from, toDate: window.to },
-      { signal },
-    );
-  },
-};
-
 export class NqCatalystsPanel extends Panel {
-  private requestGeneration = 0;
+  private readonly requestGuard = new LatestRequestGuard();
 
-  constructor(private readonly dependencies: NqCatalystsPanelDependencies = DEFAULT_DEPENDENCIES) {
+  constructor() {
     super({
       id: 'nq-catalysts',
       title: 'NQ Catalysts',
@@ -84,22 +52,34 @@ export class NqCatalystsPanel extends Panel {
   }
 
   public async fetchData(): Promise<boolean> {
-    const generation = ++this.requestGeneration;
+    const generation = this.requestGuard.begin();
     this.showLoading('Loading NQ catalysts...');
-    const now = this.dependencies.now();
-    const macroWindow = nqCalendarWindow(now, NQ_MACRO_WINDOW_DAYS);
-    const earningsWindow = nqCalendarWindow(now, NQ_EARNINGS_WINDOW_DAYS);
+    const now = new Date();
+    const macroFrom = localYmd(now);
+    const macroTo = nqInclusiveWindowTo(now, NQ_MACRO_WINDOW_DAYS);
+    const earningsFrom = localYmd(now);
+    const earningsTo = nqInclusiveWindowTo(now, NQ_EARNINGS_WINDOW_DAYS);
+    const macroSignal = combineAbortSignals([
+      this.signal,
+      createTimeoutSignal(NQ_CATALYSTS_REQUEST_TIMEOUT_MS),
+    ]);
+    const earningsSignal = combineAbortSignals([
+      this.signal,
+      createTimeoutSignal(NQ_CATALYSTS_REQUEST_TIMEOUT_MS),
+    ]);
 
     try {
-      const macroTimeoutSignal = this.dependencies.createTimeoutSignal(NQ_REQUEST_TIMEOUT_MS);
-      const earningsTimeoutSignal = this.dependencies.createTimeoutSignal(NQ_REQUEST_TIMEOUT_MS);
-      const macroSignal = this.dependencies.combineAbortSignals([this.signal, macroTimeoutSignal]);
-      const earningsSignal = this.dependencies.combineAbortSignals([this.signal, earningsTimeoutSignal]);
       const [macroSettled, earningsSettled] = await Promise.allSettled([
-        this.dependencies.fetchMacro(macroWindow, macroSignal),
-        this.dependencies.fetchEarnings(earningsWindow, earningsSignal),
+        getEconomicClient().then((client) => client.getEconomicCalendar(
+          { fromDate: macroFrom, toDate: macroTo },
+          { signal: macroSignal },
+        )),
+        getMarketClient().then((client) => client.listEarningsCalendar(
+          { fromDate: earningsFrom, toDate: earningsTo },
+          { signal: earningsSignal },
+        )),
       ]);
-      if (this.signal.aborted || generation !== this.requestGeneration) return false;
+      if (!this.requestGuard.isCurrent(generation) || this.signal.aborted) return false;
 
       const macroUnavailable = macroSettled.status !== 'fulfilled' || Boolean(macroSettled.value.unavailable);
       const earningsUnavailable = earningsSettled.status !== 'fulfilled' || Boolean(earningsSettled.value.unavailable);
@@ -117,7 +97,9 @@ export class NqCatalystsPanel extends Panel {
       this.setSafeContent(unsafeRawHtml(html, 'NQ Catalysts rows use escaped event labels and source dates'));
       return !macroUnavailable || !earningsUnavailable;
     } catch (error) {
-      if (this.signal.aborted || generation !== this.requestGeneration || this.isAbortError(error)) return false;
+      if (!this.requestGuard.isCurrent(generation) || this.signal.aborted || this.isAbortError(error)) {
+        return false;
+      }
       this.showError(error instanceof Error ? error.message : 'NQ catalysts unavailable.', () => {
         void this.fetchData();
       });

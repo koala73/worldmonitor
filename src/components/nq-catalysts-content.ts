@@ -1,14 +1,19 @@
+import { addLocalDays, localYmd } from '@/utils/local-date';
 import { escapeHtml } from '@/utils/sanitize';
 import {
-  NQ_CALENDAR_CURRENT_MAX_MS,
-  NQ_CALENDAR_DELAYED_MAX_MS,
+  NQ_CATALYST_CURRENT_MAX_MS,
+  NQ_CATALYST_DELAYED_MAX_MS,
   NQ_EARNINGS_WINDOW_DAYS,
   NQ_INFLUENCE_SYMBOLS,
   NQ_MACRO_WINDOW_DAYS,
   NQ_PULSE_DISCLOSURE,
 } from '@/config/nq-context';
-import { nqPulseAsOfLabel, type NqFreshnessLabel } from './nq-pulse-content';
-import { nqCalendarWindow } from './nq-calendar-window';
+import { freshnessLabelForAsOf, nqPulseAsOfLabel, type NqFreshnessLabel } from './nq-pulse-content';
+
+const CATALYST_FRESHNESS = {
+  currentMaxMs: NQ_CATALYST_CURRENT_MAX_MS,
+  delayedMaxMs: NQ_CATALYST_DELAYED_MAX_MS,
+};
 
 export const NQ_EARNINGS_EMPTY = 'No tracked NQ earnings in this window';
 export const NQ_MACRO_EMPTY = 'No high-impact US releases in this window';
@@ -38,11 +43,17 @@ function inLocalWindow(date: string, from: string, to: string): boolean {
   return Boolean(date) && date >= from && date <= to;
 }
 
+/** Inclusive local YYYY-MM-DD end for a window of `windowDays` calendar dates starting today. */
+export function nqInclusiveWindowTo(now: Date, windowDays: number): string {
+  return localYmd(addLocalDays(now, windowDays - 1));
+}
+
 export function filterNqMacroEvents(
   events: readonly NqMacroEvent[],
   now: Date = new Date(),
 ): NqMacroEvent[] {
-  const { from, to } = nqCalendarWindow(now, NQ_MACRO_WINDOW_DAYS);
+  const from = localYmd(now);
+  const to = nqInclusiveWindowTo(now, NQ_MACRO_WINDOW_DAYS);
   return events
     .filter((event) => (
       event.country === 'US'
@@ -56,24 +67,11 @@ export function filterNqEarnings(
   earnings: readonly NqEarningsEntry[],
   now: Date = new Date(),
 ): NqEarningsEntry[] {
-  const { from, to } = nqCalendarWindow(now, NQ_EARNINGS_WINDOW_DAYS);
+  const from = localYmd(now);
+  const to = nqInclusiveWindowTo(now, NQ_EARNINGS_WINDOW_DAYS);
   return earnings
     .filter((entry) => INFLUENCE_SET.has(entry.symbol) && inLocalWindow(entry.date, from, to))
     .sort((a, b) => a.date.localeCompare(b.date) || a.symbol.localeCompare(b.symbol));
-}
-
-export function calendarFreshnessLabelForAsOf(
-  asOf: string | null | undefined,
-  nowMs: number,
-): NqFreshnessLabel {
-  if (!asOf) return 'Freshness unavailable';
-  const ts = Date.parse(asOf);
-  if (!Number.isFinite(ts)) return 'Freshness unavailable';
-  const age = nowMs - ts;
-  if (!Number.isFinite(age) || age < 0) return 'Freshness unavailable';
-  if (age <= NQ_CALENDAR_CURRENT_MAX_MS) return 'Current';
-  if (age <= NQ_CALENDAR_DELAYED_MAX_MS) return 'Delayed';
-  return 'Stale';
 }
 
 function formatHour(hour: string | undefined): string {
@@ -93,10 +91,10 @@ export function composeNqCatalystsHtml(input: {
   const nowMs = input.nowMs ?? Date.now();
   const macroFreshness = input.macroUnavailable
     ? 'Freshness unavailable'
-    : calendarFreshnessLabelForAsOf(input.macroAsOf, nowMs);
+    : freshnessLabelForAsOf(input.macroAsOf, nowMs, CATALYST_FRESHNESS);
   const earningsFreshness = input.earningsUnavailable
     ? 'Freshness unavailable'
-    : calendarFreshnessLabelForAsOf(input.earningsAsOf, nowMs);
+    : freshnessLabelForAsOf(input.earningsAsOf, nowMs, CATALYST_FRESHNESS);
 
   return `
     <section class="nq-catalysts-section">

@@ -6,15 +6,22 @@ import { fileURLToPath } from 'node:url';
 
 import {
   composeNqCatalystsHtml,
-  calendarFreshnessLabelForAsOf,
   filterNqEarnings,
   filterNqMacroEvents,
+  nqInclusiveWindowTo,
   NQ_EARNINGS_EMPTY,
   NQ_MACRO_EMPTY,
   NQ_SECTION_UNAVAILABLE,
 } from '../src/components/nq-catalysts-content.ts';
-import { nqCalendarWindow } from '../src/components/nq-calendar-window.ts';
-import { NQ_PULSE_DISCLOSURE } from '../src/config/nq-context.ts';
+import { freshnessLabelForAsOf } from '../src/components/nq-pulse-content.ts';
+import {
+  NQ_CATALYST_CURRENT_MAX_MS,
+  NQ_CATALYST_DELAYED_MAX_MS,
+  NQ_EARNINGS_WINDOW_DAYS,
+  NQ_MACRO_WINDOW_DAYS,
+  NQ_PULSE_DISCLOSURE,
+} from '../src/config/nq-context.ts';
+import { addLocalDays, localYmd } from '../src/utils/local-date.ts';
 import {
   enabledNewsCategoryKeys,
   resolveNewsCategories,
@@ -48,23 +55,6 @@ after(() => {
 });
 
 describe('NQ Catalysts filters', () => {
-  it('uses inclusive windows with exactly seven and fourteen local calendar dates', () => {
-    assert.deepEqual(nqCalendarWindow(now, 7), { from: '2026-08-31', to: '2026-09-06' });
-    assert.deepEqual(nqCalendarWindow(now, 14), { from: '2026-08-31', to: '2026-09-13' });
-
-    const macro = filterNqMacroEvents([
-      { event: 'Day seven', country: 'US', date: '2026-09-06', impact: 'High' },
-      { event: 'Day eight', country: 'US', date: '2026-09-07', impact: 'High' },
-    ], now);
-    assert.deepEqual(macro.map((event) => event.event), ['Day seven']);
-
-    const earnings = filterNqEarnings([
-      { symbol: 'AAPL', company: 'Apple', date: '2026-09-13' },
-      { symbol: 'MSFT', company: 'Microsoft', date: '2026-09-14' },
-    ], now);
-    assert.deepEqual(earnings.map((entry) => entry.symbol), ['AAPL']);
-  });
-
   it('keeps only high-impact US macro events in the next seven days', () => {
     const filtered = filterNqMacroEvents([
       { event: 'CPI', country: 'US', date: '2026-09-02', impact: 'High' },
@@ -74,6 +64,33 @@ describe('NQ Catalysts filters', () => {
       { event: 'Too Far', country: 'US', date: '2026-09-20', impact: 'High' },
     ], now);
     assert.deepEqual(filtered.map((event) => event.event), ['CPI']);
+  });
+
+  it('keeps catalyst windows to exactly 7 and 14 inclusive dates', () => {
+    const macroLast = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS - 1));
+    const macroNext = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS));
+    const earningsLast = localYmd(addLocalDays(now, NQ_EARNINGS_WINDOW_DAYS - 1));
+    const earningsNext = localYmd(addLocalDays(now, NQ_EARNINGS_WINDOW_DAYS));
+
+    assert.equal(nqInclusiveWindowTo(now, NQ_MACRO_WINDOW_DAYS), macroLast);
+    assert.equal(nqInclusiveWindowTo(now, NQ_EARNINGS_WINDOW_DAYS), earningsLast);
+
+    const macro = filterNqMacroEvents([
+      { event: 'Last', country: 'US', date: macroLast, impact: 'High' },
+      { event: 'Next', country: 'US', date: macroNext, impact: 'High' },
+    ], now);
+    assert.deepEqual(macro.map((event) => event.event), ['Last']);
+
+    const earnings = filterNqEarnings([
+      { symbol: 'AAPL', company: 'Apple', date: earningsLast },
+      { symbol: 'MSFT', company: 'Microsoft', date: earningsNext },
+    ], now);
+    assert.deepEqual(earnings.map((entry) => entry.symbol), ['AAPL']);
+
+    const panel = readFileSync(resolve(root, 'src/components/NqCatalystsPanel.ts'), 'utf8');
+    assert.match(panel, /nqInclusiveWindowTo\(now, NQ_MACRO_WINDOW_DAYS\)/);
+    assert.match(panel, /nqInclusiveWindowTo\(now, NQ_EARNINGS_WINDOW_DAYS\)/);
+    assert.doesNotMatch(panel, /addLocalDays\(now, NQ_(MACRO|EARNINGS)_WINDOW_DAYS\)/);
   });
 
   it('keeps influence-basket earnings in chronological order and drops unrelated names', () => {
@@ -137,13 +154,55 @@ describe('NQ Catalysts filters', () => {
     assert.doesNotMatch(html, /08:30|14:00 ET|release at/);
   });
 
-  it('uses the 12-hour and 24-hour calendar freshness boundaries', () => {
+  it('labels catalyst freshness at the 12-hour and 24-hour boundaries', () => {
     const nowMs = Date.parse('2026-08-31T18:00:00.000Z');
-    assert.equal(calendarFreshnessLabelForAsOf('2026-08-31T06:00:00.000Z', nowMs), 'Current');
-    assert.equal(calendarFreshnessLabelForAsOf('2026-08-31T05:59:59.999Z', nowMs), 'Delayed');
-    assert.equal(calendarFreshnessLabelForAsOf('2026-08-30T18:00:00.000Z', nowMs), 'Delayed');
-    assert.equal(calendarFreshnessLabelForAsOf('2026-08-30T17:59:59.999Z', nowMs), 'Stale');
-    assert.equal(calendarFreshnessLabelForAsOf(undefined, nowMs), 'Freshness unavailable');
+    const thresholds = {
+      currentMaxMs: NQ_CATALYST_CURRENT_MAX_MS,
+      delayedMaxMs: NQ_CATALYST_DELAYED_MAX_MS,
+    };
+    assert.equal(NQ_CATALYST_CURRENT_MAX_MS, 12 * 60 * 60 * 1000);
+    assert.equal(NQ_CATALYST_DELAYED_MAX_MS, 24 * 60 * 60 * 1000);
+    assert.equal(freshnessLabelForAsOf('2026-08-31T06:00:00.000Z', nowMs, thresholds), 'Current');
+    assert.equal(freshnessLabelForAsOf('2026-08-31T05:59:59.000Z', nowMs, thresholds), 'Delayed');
+    assert.equal(freshnessLabelForAsOf('2026-08-30T18:00:00.000Z', nowMs, thresholds), 'Delayed');
+    assert.equal(freshnessLabelForAsOf('2026-08-30T17:59:59.000Z', nowMs, thresholds), 'Stale');
+
+    const currentHtml = composeNqCatalystsHtml({
+      macro: [{ event: 'CPI', country: 'US', date: '2026-09-02', impact: 'High' }],
+      earnings: [{ symbol: 'AAPL', company: 'Apple', date: '2026-09-03', hour: 'bmo' }],
+      macroUnavailable: false,
+      earningsUnavailable: false,
+      macroAsOf: '2026-08-31T06:00:00.000Z',
+      earningsAsOf: '2026-08-31T14:00:00.000Z',
+      nowMs,
+    });
+    assert.equal((currentHtml.match(/>Current</g) ?? []).length, 2);
+
+    const delayedHtml = composeNqCatalystsHtml({
+      macro: [],
+      earnings: [],
+      macroUnavailable: false,
+      earningsUnavailable: false,
+      macroAsOf: '2026-08-31T05:59:59.000Z',
+      earningsAsOf: '2026-08-30T18:00:00.000Z',
+      nowMs,
+    });
+    assert.equal((delayedHtml.match(/>Delayed</g) ?? []).length, 2);
+    assert.doesNotMatch(delayedHtml, />Current</);
+    assert.doesNotMatch(delayedHtml, />Stale</);
+
+    const staleHtml = composeNqCatalystsHtml({
+      macro: [],
+      earnings: [],
+      macroUnavailable: false,
+      earningsUnavailable: false,
+      macroAsOf: '2026-08-30T17:59:59.000Z',
+      earningsAsOf: '2026-08-30T17:59:59.000Z',
+      nowMs,
+    });
+    assert.equal((staleHtml.match(/>Stale</g) ?? []).length, 2);
+    assert.doesNotMatch(staleHtml, />Current</);
+    assert.doesNotMatch(staleHtml, />Delayed</);
   });
 
   it('carries seed asOf through calendar handlers', () => {

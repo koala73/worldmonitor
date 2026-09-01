@@ -53,40 +53,32 @@ describe('market quote refresh resilience', () => {
     });
   });
 
+  it('includes every-cycle NQ auxiliaries even when bulk Yahoo is not due', () => {
+    const args = {
+      mandatoryYahooSymbols: ['^GSPC', '^HSI', 'NQ=F', 'QQQ', '^VXN', '^TNX'],
+      everyCycleSymbols: ['NQ=F', 'QQQ', '^VXN', '^TNX'],
+      missedPrimarySymbols: ['AAPL'],
+      refreshIntervalMs: 15 * 60_000,
+    };
+
+    assert.deepEqual(planYahooRefresh({ ...args, nowMs: 1_000_000, lastRefreshAt: 0 }), {
+      due: true,
+      symbols: ['^GSPC', '^HSI', 'NQ=F', 'QQQ', '^VXN', '^TNX', 'AAPL'],
+    });
+    assert.deepEqual(planYahooRefresh({ ...args, nowMs: 1_300_000, lastRefreshAt: 1_000_000 }), {
+      due: false,
+      symbols: ['NQ=F', 'QQQ', '^VXN', '^TNX'],
+    });
+  });
+
   it('deduplicates Yahoo candidates shared by mandatory and fallback paths', () => {
     assert.deepEqual(planYahooRefresh({
       mandatoryYahooSymbols: ['^GSPC', 'AAPL'],
       missedPrimarySymbols: ['AAPL', 'MSFT'],
-      alwaysRefreshYahooSymbols: ['AAPL', '^VXN'],
       nowMs: 10,
       lastRefreshAt: 0,
       refreshIntervalMs: 100,
-    }).symbols, ['^GSPC', 'AAPL', 'MSFT', '^VXN']);
-  });
-
-  it('fetches every NQ auxiliary symbol on consecutive 5-minute cycles while bulk Yahoo work is throttled', () => {
-    const stocksConfig = require('../scripts/shared/stocks.json');
-    const { loadMarketSeedUniverse } = require('../scripts/shared/market-seed-universe.cjs');
-    const auxiliarySymbols = loadMarketSeedUniverse(stocksConfig).auxiliarySymbols;
-    const fetchedByCycle = [];
-    const lastBulkRefreshAt = 1_000_000;
-
-    for (const nowMs of [lastBulkRefreshAt + 5 * 60_000, lastBulkRefreshAt + 10 * 60_000]) {
-      const plan = planYahooRefresh({
-        mandatoryYahooSymbols: ['^GSPC', 'CL=F'],
-        missedPrimarySymbols: ['AAPL'],
-        alwaysRefreshYahooSymbols: auxiliarySymbols,
-        nowMs,
-        lastRefreshAt: lastBulkRefreshAt,
-        refreshIntervalMs: 15 * 60_000,
-      });
-      assert.equal(plan.due, false);
-      fetchedByCycle.push(plan.symbols);
-    }
-
-    assert.deepEqual(auxiliarySymbols, ['NQ=F', 'QQQ', '^VXN', '^TNX']);
-    assert.deepEqual(fetchedByCycle, [auxiliarySymbols, auxiliarySymbols]);
-    assert.ok(fetchedByCycle.flat().every((symbol) => !['^GSPC', 'CL=F', 'AAPL'].includes(symbol)));
+    }).symbols, ['^GSPC', 'AAPL', 'MSFT']);
   });
 
   it('does not stamp a fresh asOf when last-good quotes were retained', () => {
@@ -129,7 +121,7 @@ describe('market quote refresh resilience', () => {
     const envExample = readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
 
     assert.match(relay, /previousPayloadPromise = envelopeRead\('market:stocks-bootstrap:v1'\)/);
-    assert.match(relay, /alwaysRefreshYahooSymbols: AUXILIARY_YAHOO_SYMBOLS/);
+    assert.match(relay, /everyCycleSymbols: MARKET_AUXILIARY_SYMBOLS\.filter\(\(s\) => YAHOO_ONLY\.has\(s\)\)/);
     assert.match(relay, /mergeLastGoodQuotes\(MARKET_SYMBOLS, freshQuotes, previousQuotes\)/);
     assert.match(relay, /resolveMergedQuotesAsOf\(freshQuotes, quotes, previousPayload\?\.asOf, fetchedAt\)/);
     assert.match(standalone, /resolveMergedQuotesAsOf\(quotes, mergedQuotes, previousPayload\?\.asOf, fetchedAt\)/);

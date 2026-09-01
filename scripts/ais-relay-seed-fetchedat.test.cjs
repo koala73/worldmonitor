@@ -127,9 +127,8 @@ test('seedMarketQuotes: envelope fetchedAt matches seed-meta fetchedAt for one p
   globalThis.seedMarketQuotes = seedMarketQuotes;
 
   globalThis.MARKET_SYMBOLS = ['AAPL', 'MSFT'];
+  globalThis.MARKET_AUXILIARY_SYMBOLS = [];
   globalThis.YAHOO_ONLY = new Set(globalThis.MARKET_SYMBOLS); // route everything through the Yahoo-only path
-  globalThis.AUXILIARY_YAHOO_SYMBOLS = [];
-  globalThis.AUXILIARY_YAHOO_SET = new Set();
   globalThis.MARKET_META = new Map([
     ['AAPL', { name: 'Apple', display: 'Apple' }],
     ['MSFT', { name: 'Microsoft', display: 'Microsoft' }],
@@ -174,4 +173,60 @@ test('seedMarketQuotes: envelope fetchedAt matches seed-meta fetchedAt for one p
 
   assert.ok(envelopeFetchedAts.every((ts) => ts === envelopeFetchedAts[0]), `envelope fetchedAt values must agree with each other, saw: ${JSON.stringify(envelopeFetchedAts)}`);
   assert.equal(seedMetaFetchedAt, envelopeFetchedAts[0], 'seed-meta.fetchedAt must equal the envelopes\' _seed.fetchedAt for one logical publish');
+});
+
+test('seedMarketQuotes: two consecutive cycles refresh only NQ auxiliaries after bulk Yahoo is throttled', async () => {
+  const { seedMarketQuotes } = loadFunctions(['seedMarketQuotes']);
+  const nqAuxiliary = ['NQ=F', 'QQQ', '^VXN', '^TNX'];
+  const fetchedByCycle = [];
+  let currentCycle = -1;
+
+  globalThis.seedMarketQuotes = seedMarketQuotes;
+  globalThis.MARKET_SYMBOLS = ['^GSPC', ...nqAuxiliary];
+  globalThis.MARKET_AUXILIARY_SYMBOLS = [...nqAuxiliary];
+  globalThis.YAHOO_ONLY = new Set(globalThis.MARKET_SYMBOLS);
+  globalThis.MARKET_META = new Map(
+    globalThis.MARKET_SYMBOLS.map((symbol) => [symbol, { name: symbol, display: symbol }]),
+  );
+  globalThis.FINNHUB_API_KEY = '';
+  globalThis.fetchFinnhubQuoteDirect = async () => null;
+  let previousPayload = null;
+  globalThis.envelopeRead = async () => previousPayload;
+  const publishEnvelope = globalThis.envelopeWrite;
+  globalThis.envelopeWrite = async (key, payload, ttl, meta) => {
+    if (key === 'market:stocks-bootstrap:v1') previousPayload = payload;
+    return publishEnvelope(key, payload, ttl, meta);
+  };
+  globalThis.planYahooRefresh = planYahooRefresh;
+  globalThis.mergeLastGoodQuotes = mergeLastGoodQuotes;
+  globalThis.resolveMergedQuotesAsOf = resolveMergedQuotesAsOf;
+  globalThis._lastYahooMarketRefreshAt = 0;
+  globalThis.MARKET_YAHOO_REFRESH_INTERVAL_MS = 900_000;
+  globalThis.fetchYahooChartDirect = async (symbol) => {
+    fetchedByCycle[currentCycle].push(symbol);
+    return { price: 100, change: 1, sparkline: [1, 2, 3] };
+  };
+  globalThis.sleep = async () => {};
+  globalThis.MARKET_SEED_TTL = 7200;
+  globalThis.CHINA_COUNTRY_STOCK_SYMBOL = '000001.SS';
+  globalThis.writeChinaCountryStockIndex = async () => {};
+  globalThis._lastEquityQuoteCount = 0;
+  globalThis.publishNotificationEvent = async () => {};
+  globalThis.marketAlertCoalesceKey = () => 'coalesce-key';
+  globalThis.upstashSet = async () => true;
+
+  const restoreClock = mockIncrementingClock();
+  try {
+    for (let cycle = 0; cycle < 2; cycle++) {
+      currentCycle = cycle;
+      fetchedByCycle[cycle] = [];
+      const count = await seedMarketQuotes();
+      assert.equal(count, globalThis.MARKET_SYMBOLS.length);
+    }
+  } finally {
+    restoreClock();
+  }
+
+  assert.deepEqual(fetchedByCycle[0], ['^GSPC', ...nqAuxiliary]);
+  assert.deepEqual(fetchedByCycle[1], nqAuxiliary);
 });

@@ -63,14 +63,13 @@ function quote(symbol, price) {
   };
 }
 
-function marketResponse(quotes, asOf = '') {
+function marketResponse(quotes, extras = {}) {
   return {
     quotes,
     finnhubSkipped: false,
     skipReason: '',
     rateLimited: false,
-    unavailableSymbols: [],
-    asOf,
+    ...extras,
   };
 }
 
@@ -189,23 +188,36 @@ describe('market service symbol casing', () => {
     }
   });
 
-  it('retains the original quote and asOf when a later same-symbol response is empty', async () => {
+  it('keeps the last successful quote and asOf when a later same-symbol response is empty', async () => {
     const restoreBrowserEnv = installBrowserEnv();
-    const { clearAllCircuitBreakers } = await import(freshImportUrl(CIRCUIT_BREAKER_URL));
+    // Import the same circuit-breaker module instance the market service binds
+    // so we can evict its in-memory TTL cache between the two calls.
+    const { CircuitBreaker, clearAllCircuitBreakers } = await import(CIRCUIT_BREAKER_URL);
     clearAllCircuitBreakers();
 
+    const originalExecute = CircuitBreaker.prototype.execute;
+    const seenBreakers = new Set();
+    CircuitBreaker.prototype.execute = function executeWithCapture(...args) {
+      seenBreakers.add(this);
+      return originalExecute.apply(this, args);
+    };
+
     const originalFetch = globalThis.fetch;
-    const originalDateNow = Date.now;
-    const firstAsOf = '2026-08-31T18:00:00.000Z';
+    const firstAsOf = '2026-08-31T12:00:00.000Z';
+    const laterAsOf = '2026-09-01T06:00:00.000Z';
     let fetchCount = 0;
-    let nowMs = Date.parse(firstAsOf);
-    Date.now = () => nowMs;
+
     globalThis.fetch = async () => {
       fetchCount += 1;
-      const body = fetchCount === 1
-        ? marketResponse([quote('WM-RETENTION-TEST', 123)], firstAsOf)
-        : marketResponse([], '');
-      return new Response(JSON.stringify(body), {
+      if (fetchCount === 1) {
+        return new Response(JSON.stringify(marketResponse([quote('QQQ', 714.25)], {
+          asOf: firstAsOf,
+        })), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return new Response(JSON.stringify(marketResponse([], { asOf: laterAsOf })), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -213,20 +225,29 @@ describe('market service symbol casing', () => {
 
     try {
       const { fetchMultipleStocks } = await import(freshImportUrl(MARKET_SERVICE_URL));
-      const symbols = [{ symbol: 'WM-RETENTION-TEST', name: 'Retention', display: 'RET' }];
-      const first = await fetchMultipleStocks(symbols);
-      nowMs += 5 * 60 * 1000 + 1;
-      const retained = await fetchMultipleStocks(symbols);
-      for (let attempt = 0; attempt < 20 && fetchCount < 2; attempt += 1) {
-        await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+      const qqq = [{ symbol: 'QQQ', name: 'Invesco QQQ', display: 'QQQ' }];
+
+      const first = await fetchMultipleStocks(qqq);
+      assert.equal(first.data[0]?.symbol, 'QQQ');
+      assert.equal(first.data[0]?.price, 714.25);
+      assert.equal(first.asOf, firstAsOf);
+
+      assert.ok(seenBreakers.size > 0, 'must observe the Market Quotes breaker to evict its TTL cache');
+      for (const breaker of seenBreakers) {
+        breaker.clearCache();
       }
 
-      assert.equal(fetchCount, 2, 'the stale second read must start a live refresh');
-      assert.equal(first.data[0]?.price, 123);
-      assert.equal(retained.data[0]?.price, 123);
-      assert.equal(retained.asOf, firstAsOf);
+      const second = await fetchMultipleStocks(qqq);
+      assert.equal(fetchCount, 2, 'empty refresh must reach the network after cache eviction');
+      assert.equal(second.data[0]?.symbol, 'QQQ');
+      assert.equal(second.data[0]?.price, 714.25);
+      assert.equal(
+        second.asOf,
+        firstAsOf,
+        'retained quote must keep the first response freshness clock',
+      );
     } finally {
-      Date.now = originalDateNow;
+      CircuitBreaker.prototype.execute = originalExecute;
       globalThis.fetch = originalFetch;
       clearAllCircuitBreakers();
       restoreBrowserEnv();

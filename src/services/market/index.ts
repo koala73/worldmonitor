@@ -119,12 +119,11 @@ export async function fetchMultipleStocks(
   const allSymbolStrings = [...symbolMetaMap.keys()];
   const setKey = symbolSetKey(allSymbolStrings);
 
-  const timeoutSignal = createTimeoutSignal(15_000);
-  const requestSignal = options.signal
-    ? combineAbortSignals([options.signal, timeoutSignal])
-    : timeoutSignal;
   const resp = await stockBreaker.execute(async () => {
-    return client.listMarketQuotes({ symbols: allSymbolStrings }, { signal: requestSignal });
+    return client.listMarketQuotes(
+      { symbols: allSymbolStrings },
+      options.signal ? { signal: options.signal } : undefined,
+    );
   }, emptyStockFallback, {
     cacheKey: setKey,
     shouldCache: (r) => r.quotes.length > 0,

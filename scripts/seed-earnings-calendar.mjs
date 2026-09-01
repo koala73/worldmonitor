@@ -6,9 +6,10 @@ loadEnvFile(import.meta.url);
 
 const KEY = 'market:earnings-calendar:v1';
 const TTL = 129600; // 36h — 3× a 12h cron interval
-const MAX_PUBLISHED_EARNINGS = 100;
+export const EARNINGS_CALENDAR_CAP = 100;
 
-export const NQ_INFLUENCE_SYMBOLS = Object.freeze([
+// Keep aligned with NQ_INFLUENCE_SYMBOLS in src/config/nq-context.ts.
+export const NQ_INFLUENCE_EARNINGS_SYMBOLS = [
   'AAPL',
   'MSFT',
   'NVDA',
@@ -17,65 +18,36 @@ export const NQ_INFLUENCE_SYMBOLS = Object.freeze([
   'META',
   'AVGO',
   'TSLA',
-]);
-
-function compareEarnings(a, b) {
-  if (a.date !== b.date) return a.date.localeCompare(b.date);
-  const revenueOrder = (b.revenueEstimate ?? 0) - (a.revenueEstimate ?? 0);
-  if (revenueOrder !== 0) return revenueOrder;
-  const symbolOrder = a.symbol.localeCompare(b.symbol);
-  if (symbolOrder !== 0) return symbolOrder;
-  return a.hour.localeCompare(b.hour);
-}
-
-function reportKey(entry) {
-  return `${entry.symbol}\u0000${entry.date}`;
-}
-
-function uniqueSorted(entries) {
-  const seen = new Set();
-  return [...entries].sort(compareEarnings).filter((entry) => {
-    const key = reportKey(entry);
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
-}
-
-// Keep companies with meaningful analyst coverage. Positive revenue estimates
-// below $10M are micro-cap noise; entries without a usable revenue line need an
-// absolute EPS estimate of at least $0.05 as the coverage proxy.
-function hasMeaningfulCoverage(entry) {
-  if (entry.revenueEstimate != null && entry.revenueEstimate > 0) {
-    return entry.revenueEstimate >= 10_000_000;
-  }
-  if (entry.epsEstimate != null) return Math.abs(entry.epsEstimate) >= 0.05;
-  return false;
-}
-
-export function selectEarningsForPublication(normalizedEntries) {
-  const entries = Array.isArray(normalizedEntries) ? normalizedEntries : [];
-  const influenceSet = new Set(NQ_INFLUENCE_SYMBOLS);
-  const reserved = uniqueSorted(entries.filter((entry) => influenceSet.has(entry.symbol)));
-  const selected = reserved.slice(0, MAX_PUBLISHED_EARNINGS);
-  const selectedKeys = new Set(selected.map(reportKey));
-
-  if (selected.length < MAX_PUBLISHED_EARNINGS) {
-    const general = uniqueSorted(entries.filter(hasMeaningfulCoverage));
-    for (const entry of general) {
-      const key = reportKey(entry);
-      if (selectedKeys.has(key)) continue;
-      selected.push(entry);
-      selectedKeys.add(key);
-      if (selected.length === MAX_PUBLISHED_EARNINGS) break;
-    }
-  }
-
-  return selected.sort(compareEarnings);
-}
+];
 
 function toDateStr(d) {
   return d.toISOString().slice(0, 10);
+}
+
+function compareEarningsEntries(a, b) {
+  if (a.date !== b.date) return a.date.localeCompare(b.date);
+  return (b.revenueEstimate ?? 0) - (a.revenueEstimate ?? 0);
+}
+
+/**
+ * Reserve every matching NQ influence report from the normalized window,
+ * then fill remaining capacity with general chronological rows.
+ */
+export function boundEarningsCalendar(normalized, {
+  cap = EARNINGS_CALENDAR_CAP,
+  reservedSymbols = NQ_INFLUENCE_EARNINGS_SYMBOLS,
+} = {}) {
+  const reservedSet = new Set(reservedSymbols);
+  const reserved = [];
+  const general = [];
+  for (const entry of Array.isArray(normalized) ? normalized : []) {
+    if (reservedSet.has(entry.symbol)) reserved.push(entry);
+    else general.push(entry);
+  }
+  reserved.sort(compareEarningsEntries);
+  general.sort(compareEarningsEntries);
+  const remaining = Math.max(0, cap - reserved.length);
+  return [...reserved, ...general.slice(0, remaining)].sort(compareEarningsEntries);
 }
 
 async function fetchAll() {
@@ -132,9 +104,22 @@ async function fetchAll() {
         hasActuals,
         surpriseDirection,
       };
-    });
+    })
+    // Keep companies with meaningful analyst coverage:
+    // - revenue estimate > 0 && >= $10M → large/mid-cap (primary filter)
+    // - revenue estimate === 0 OR null → pre-revenue (biotech, SPACs) or financial/REIT
+    //   with no revenue line — use |EPS| >= $0.05 as proxy for analyst coverage depth
+    //   ($0.05 keeps well-covered loss-making companies; $0.10 was too aggressive)
+    // - revenue estimate > 0 && < $10M → small-cap / micro-cap → always drop
+    .filter(e => {
+      if (e.revenueEstimate != null && e.revenueEstimate > 0) return e.revenueEstimate >= 10_000_000;
+      if (e.epsEstimate != null) return Math.abs(e.epsEstimate) >= 0.05;
+      return false;
+    })
+    // Within same date, largest companies first; across dates, chronological
+    .sort(compareEarningsEntries);
 
-  const earnings = selectEarningsForPublication(normalized);
+  const earnings = boundEarningsCalendar(normalized);
 
   console.log(`  Fetched ${earnings.length} earnings entries (from ${raw.length} total)`);
   return { earnings, unavailable: false, asOf: new Date().toISOString() };

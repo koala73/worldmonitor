@@ -36,14 +36,17 @@ export type NqPulseRow =
 export function freshnessLabelForAsOf(
   asOf: string | null | undefined,
   nowMs: number,
+  thresholds: { currentMaxMs?: number; delayedMaxMs?: number } = {},
 ): NqFreshnessLabel {
   if (!asOf) return 'Freshness unavailable';
   const ts = Date.parse(asOf);
   if (!Number.isFinite(ts)) return 'Freshness unavailable';
   const age = nowMs - ts;
   if (!Number.isFinite(age) || age < 0) return 'Freshness unavailable';
-  if (age <= NQ_CURRENT_MAX_MS) return 'Current';
-  if (age <= NQ_DELAYED_MAX_MS) return 'Delayed';
+  const currentMaxMs = thresholds.currentMaxMs ?? NQ_CURRENT_MAX_MS;
+  const delayedMaxMs = thresholds.delayedMaxMs ?? NQ_DELAYED_MAX_MS;
+  if (age <= currentMaxMs) return 'Current';
+  if (age <= delayedMaxMs) return 'Delayed';
   return 'Stale';
 }
 

@@ -88,6 +88,8 @@ describe('NQ auxiliary quote basket', () => {
     const relay = readFileSync(resolve(root, 'scripts/ais-relay.cjs'), 'utf8');
     assert.match(standalone, /allSymbols: MARKET_SYMBOLS/);
     assert.match(relay, /const MARKET_SYMBOLS = _stockUniverse\.allSymbols/);
+    assert.match(relay, /const MARKET_AUXILIARY_SYMBOLS = _stockUniverse\.auxiliarySymbols/);
+    assert.match(relay, /everyCycleSymbols: MARKET_AUXILIARY_SYMBOLS\.filter\(\(s\) => YAHOO_ONLY\.has\(s\)\)/);
     assert.equal(new Set(universe.allSymbols).size, universe.allSymbols.length);
     assert.deepEqual(
       universe.allSymbols.slice(universe.catalogSymbols.length),
@@ -224,4 +226,13 @@ describe('NQ Pulse rendering', () => {
     assert.doesNotMatch(html, /execution-grade prices|real[- ]time tape/i);
   });
 
+  it('ignores late responses after the pulse and catalysts panels are destroyed', () => {
+    const pulse = readFileSync(resolve(root, 'src/components/NqPulsePanel.ts'), 'utf8');
+    const catalysts = readFileSync(resolve(root, 'src/components/NqCatalystsPanel.ts'), 'utf8');
+    assert.match(pulse, /this\.signal\.aborted/);
+    assert.match(pulse, /LatestRequestGuard/);
+    assert.match(pulse, /createTimeoutSignal/);
+    assert.match(catalysts, /LatestRequestGuard/);
+    assert.match(catalysts, /createTimeoutSignal/);
+  });
 });
