@@ -92,6 +92,71 @@ test('STATUS_COUNTS buckets OK/cascade to ok, empty to crit, on-demand/stale to 
   assert.equal(STATUS_COUNTS.STALE_SEED, 'warn');
 });
 
+// Deliberately `ok`, not `warn`. Two pillars ship ~6 countries above their
+// floors today, so a warn bucket would flip fleet health to WARNING on the
+// current healthy cohort and stay lit until coverage grows — the chronically
+// red monitor that stops being read. Registration here is load-bearing on its
+// own: the summary does `STATUS_COUNTS[status] ?? 'warn'`, so an unregistered
+// status silently becomes the warn this exists to avoid.
+test('STATUS_COUNTS buckets COVERAGE_MARGIN_LOW to ok so a thin-but-passing cohort never alerts', () => {
+  assert.equal(STATUS_COUNTS.COVERAGE_MARGIN_LOW, 'ok');
+});
+
+// ── pool coverage margin (scorecardFiveFactor) ──────────────────────────────
+
+const FLOORS = SEED_META.scorecardFiveFactor.minPoolCounts;
+const COMFORTABLE = Object.fromEntries(
+  Object.entries(FLOORS).map(([pool, floor]) => [pool, floor + 50]),
+);
+const classifyScorecard = (poolCounts, over = {}) => classifyKey(
+  'scorecardFiveFactor',
+  STANDALONE_KEYS.scorecardFiveFactor,
+  { allowOnDemand: false },
+  makeCtx({
+    strens: { [STANDALONE_KEYS.scorecardFiveFactor]: 4096 },
+    metaValues: {
+      [SEED_META.scorecardFiveFactor.key]: seedMeta({ recordCount: 196, poolCounts, ...over }),
+    },
+    activationStates: { scorecardFiveFactor: true },
+  }),
+);
+
+test('a cohort clear of every floor reports OK and still publishes its headroom', () => {
+  const entry = classifyScorecard(COMFORTABLE);
+  assert.equal(entry.status, 'OK');
+  // Emitted on a healthy cohort too — trending headroom is the point, and a
+  // consumer that only ever saw the thin readings could not compute a trend.
+  assert.equal(entry.poolCoverageMargin.food.margin, 50);
+  assert.equal(entry.poolCoverageMargin.food.low, false);
+  assert.equal(entry.poolCountMargin, 10);
+});
+
+test('a pool within the margin of its floor reports COVERAGE_MARGIN_LOW, not OK', () => {
+  // Mirrors the live cohort: food passes its floor of 80 by six countries.
+  const entry = classifyScorecard({ ...COMFORTABLE, food: FLOORS.food + 6 });
+  assert.equal(entry.status, 'COVERAGE_MARGIN_LOW');
+  assert.deepEqual(entry.poolCoverageMargin.food, {
+    count: FLOORS.food + 6, floor: FLOORS.food, margin: 6, low: true,
+  });
+  assert.equal(entry.poolCoverageMargin.energy.low, false);
+});
+
+// The whole risk of adding a status late in the chain: it must never win over a
+// real fault. A thin cohort that has also stopped publishing is a stale cohort.
+test('a thin margin never masks staleness or an outright shortfall', () => {
+  const stale = classifyScorecard(
+    { ...COMFORTABLE, food: FLOORS.food + 6 },
+    { fetchedAt: NOW - (SEED_META.scorecardFiveFactor.maxStaleMin + 1) * ONE_MIN_MS },
+  );
+  assert.equal(stale.status, 'STALE_SEED');
+
+  const breached = classifyScorecard({ ...COMFORTABLE, food: FLOORS.food - 1 });
+  assert.equal(breached.status, 'COVERAGE_PARTIAL');
+  // Reported low as well, so the margin view can never read healthier than the
+  // shortfall verdict on the same counts.
+  assert.equal(breached.poolCoverageMargin.food.low, true);
+});
+
 // ── classifyKey core statuses ───────────────────────────────────────────────
 
 test('classifyKey: fresh seed + data → OK', () => {

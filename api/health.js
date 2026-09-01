@@ -4,6 +4,7 @@ import { USER_API_KEY_GATEWAY_VALIDATION_ERROR, validateApiKey } from './_api-ke
 import {
   hasPoolCoverageShortfall,
   parsePoolCounts,
+  poolCoverageMargins,
   PREDICTION_MARKET_MIN_POOL_COUNTS,
 } from './_pool-coverage.js';
 import {
@@ -1235,6 +1236,15 @@ const SEED_META = {
     maxStaleMin: 2160, // Daily section; 36h allows one delayed Railway tick before the 3d data TTL.
     minRecordCount: 180,
     minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 110, defense: 30 },
+    // These minimums are byte-identical to SCORECARD_PUBLICATION_FLOORS in
+    // server/worldmonitor/scorecard/v1/_snapshot.ts, so the producer refuses to
+    // publish any cohort that would trip the shortfall check — health can only
+    // ever see a passing cohort or a stale one, and COVERAGE_PARTIAL is
+    // unreachable here. This margin makes the remaining headroom observable
+    // while the cohort still passes. Informational only (COVERAGE_MARGIN_LOW
+    // buckets to `ok`); 10 is a starting distance, not a calibrated one — worth
+    // revisiting against published poolCounts history before anything alerts.
+    poolCountMargin: 10,
     activationKey: 'seed-activated:scorecard:five-factor',
     cutover: {
       mode: 'activation-marker',
@@ -2008,6 +2018,12 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     ? meta.redistributionPolicyVersion
     : null;
   const poolCounts = parsePoolCounts(meta?.poolCounts, seedCfg.minPoolCounts);
+  // Opt-in per probe: only keys that declare `poolCountMargin` report headroom.
+  // Null whenever the counts are unusable, so a malformed cohort reads as
+  // "unknown margin" rather than a comfortable one.
+  const poolMargins = seedCfg.poolCountMargin != null
+    ? poolCoverageMargins(poolCounts, seedCfg.minPoolCounts, seedCfg.poolCountMargin)
+    : null;
   const errorCode = typeof meta?.errorCode === 'string'
     && /^[A-Z0-9_]{1,64}$/.test(meta.errorCode)
     ? meta.errorCode
@@ -2029,6 +2045,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       metaRankableCount,
       redistributionPolicyVersion,
       poolCounts,
+      poolMargins,
       contentAge: null,
       contentFreshness: null,
       decisionGroups: null,
@@ -2211,6 +2228,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     metaRankableCount,
     redistributionPolicyVersion,
     poolCounts,
+    poolMargins,
     contentAge,
     contentFreshness,
     decisionGroups,
@@ -2315,6 +2333,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     metaRankableCount,
     redistributionPolicyVersion,
     poolCounts,
+    poolMargins,
     contentAge,
     contentFreshness,
     decisionGroups,
@@ -2543,6 +2562,11 @@ function classifyKey(name, redisKey, opts, ctx) {
   // whole corpus, and the named entities are on the wire so an operator sees
   // the stale source family instead of a generic warning.
   else if (contentFreshness?.contentStale) status = 'STALE_CONTENT';
+  // Last in the chain, and only reachable when every fault branch above
+  // declined: this says "nothing is wrong, but a pool is close to its floor".
+  // Placing it here is what keeps it from masking a real verdict — a stale or
+  // shortfalling cohort must never be reported as merely thin.
+  else if (poolMargins && Object.values(poolMargins).some((pool) => pool.low)) status = 'COVERAGE_MARGIN_LOW';
   else status = 'OK';
 
   const entry = { status, records };
@@ -2595,6 +2619,11 @@ function classifyKey(name, redisKey, opts, ctx) {
     entry.requiredVulnerabilityCoverage = seedCfg.requireVulnerabilityCoverage;
   }
   if (poolCounts) entry.poolCounts = poolCounts;
+  // Emitted for every status, not just COVERAGE_MARGIN_LOW: the headroom on a
+  // healthy cohort is the whole point, and a consumer trending it needs the
+  // comfortable readings too, not only the thin ones.
+  if (poolMargins) entry.poolCoverageMargin = poolMargins;
+  if (seedCfg?.poolCountMargin != null) entry.poolCountMargin = seedCfg.poolCountMargin;
   if (coverage || seedCfg?.requireCoverage) entry.coverage = coverage;
   // Emitted whenever the producer recorded a cause, not only when the fault
   // verdict WON. When a missing data key outranks the fault (#6263) the status
@@ -2669,6 +2698,18 @@ const STATUS_COUNTS = {
   // same bounded paths cannot clear it, so this is informational rather than a
   // fleet-health warning.
   SOURCE_BLOCKED: 'ok',
+  // Every configured pool is ABOVE its floor, but at least one is within
+  // `poolCountMargin` of it. Buckets to `ok` on purpose: for probes whose
+  // health minimums equal the producer's publication floors, a passing cohort
+  // sitting a few records above the line is the normal steady state, so warning
+  // on it would flip fleet health to WARNING indefinitely and train operators
+  // to ignore it. The margin is carried as data on the entry
+  // (`poolCoverageMargin`) for dashboards and trend queries; an actual breach
+  // is still COVERAGE_PARTIAL (warn), and a producer that stops publishing
+  // still goes STALE_SEED (warn). Registered here rather than left out because
+  // the summary does `STATUS_COUNTS[status] ?? 'warn'` — omitting it would
+  // silently produce exactly the warn this status exists to avoid.
+  COVERAGE_MARGIN_LOW: 'ok',
   STALE_SEED: 'warn',
   SEED_ERROR: 'warn',
   EMPTY_ON_DEMAND: 'warn',

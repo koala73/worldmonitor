@@ -36,3 +36,33 @@ export function hasPoolCoverageShortfall(counts, minimums) {
     return !Number.isSafeInteger(count) || count < minimum;
   });
 }
+
+/**
+ * Distance from each pool's published count to its floor.
+ *
+ * `hasPoolCoverageShortfall` can only answer "has the floor already been
+ * breached?", and for probes whose health minimums equal the producer's own
+ * publication floors that question is structurally unanswerable: the producer
+ * refuses to publish the cohort that would breach them, so health observes a
+ * passing cohort or a stale one, never a shortfall. The useful signal — "how
+ * close is this to blocking?" — is only readable while the cohort still passes.
+ *
+ * `low` marks a pool at or under `marginThreshold` from its floor. A breached
+ * floor (negative margin) is reported low too rather than being filtered out,
+ * so this can never read healthier than the shortfall check on the same counts.
+ *
+ * Fail closed to null on anything unusable — a partial margin map would invite
+ * a caller to treat absent pools as comfortable.
+ */
+export function poolCoverageMargins(counts, minimums, marginThreshold) {
+  if (!minimums || !counts || typeof counts !== 'object' || Array.isArray(counts)) return null;
+  if (!Number.isSafeInteger(marginThreshold) || marginThreshold < 0) return null;
+  const margins = {};
+  for (const [pool, floor] of Object.entries(minimums)) {
+    const count = counts[pool];
+    if (!Number.isSafeInteger(count) || !Number.isSafeInteger(floor)) return null;
+    const margin = count - floor;
+    margins[pool] = { count, floor, margin, low: margin < marginThreshold };
+  }
+  return margins;
+}
