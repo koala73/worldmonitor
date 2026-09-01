@@ -2683,6 +2683,27 @@ ${analysis.html}
   });
 }
 
+const CHOKEPOINT_HUB_STATUS_LABELS = new Set(['Green', 'Yellow', 'Red']);
+const CHOKEPOINT_HUB_CONGESTION_LABELS = new Set([
+  'Low',
+  'Normal',
+  'Elevated',
+  'High',
+  'Not reported',
+]);
+
+function publishedPulseLabel(value, allowed) {
+  if (typeof value !== 'string') return '';
+  const label = value.trim();
+  return allowed.has(label) ? label : '';
+}
+
+function chokepointHubStatusForScore(score) {
+  if (score < 20) return 'Green';
+  if (score < 50) return 'Yellow';
+  return 'Red';
+}
+
 export function buildChokepointHubRows(chokepoints, livePulse) {
   return chokepoints.map((chokepoint) => {
     const pulse = livePulse?.chokepoints?.[chokepoint.id];
@@ -2693,8 +2714,8 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
     } else if (typeof rawScore === 'string' && /^\d+(?:\.\d+)?$/.test(rawScore)) {
       score = Number(rawScore);
     }
-    const status = String(pulse?.status || '').trim();
-    const congestion = String(pulse?.congestion || '').trim();
+    const status = publishedPulseLabel(pulse?.status, CHOKEPOINT_HUB_STATUS_LABELS);
+    const congestion = publishedPulseLabel(pulse?.congestion, CHOKEPOINT_HUB_CONGESTION_LABELS);
     const asOf = String(pulse?.asOf || '').trim();
     if (
       !pulse
@@ -2703,6 +2724,7 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
       || score > 100
       || !status
       || !congestion
+      || status !== chokepointHubStatusForScore(score)
       || !isCanonicalIsoInstant(asOf)
     ) {
       throw new Error(`Chokepoint hub pulse is invalid for ${chokepoint.id}`);

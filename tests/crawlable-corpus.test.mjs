@@ -899,6 +899,60 @@ describe('crawlable corpus generator', () => {
     assert.equal(newerRegistry.volumeObservedAt, '2026-03-14');
   });
 
+  it('rejects invalid chokepoint hub status and congestion before publication', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const [firstChokepoint] = data.chokepoints;
+    const validPulse = data.livePulse.chokepoints[firstChokepoint.id];
+    assert.ok(validPulse, 'committed pulse must include the first registry chokepoint');
+    assert.equal(
+      buildChokepointHubRows(data.chokepoints, {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Elevated' },
+        },
+      }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      'Elevated',
+    );
+    assert.equal(
+      buildChokepointHubRows(data.chokepoints, {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Not reported' },
+        },
+      }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      'Not reported',
+    );
+
+    for (const [label, pulse] of [
+      ['object status', { ...validPulse, status: { label: 'Yellow' } }],
+      ['numeric status', { ...validPulse, status: 42 }],
+      ['unknown status', { ...validPulse, status: 'Orange' }],
+      ['lowercase status', { ...validPulse, status: 'yellow' }],
+      ['status below score band', { ...validPulse, disruptionScore: '70', status: 'Green' }],
+      ['status above score band', { ...validPulse, disruptionScore: '5', status: 'Red' }],
+      ['status in adjacent score band', { ...validPulse, disruptionScore: '19', status: 'Yellow' }],
+      ['object congestion', { ...validPulse, congestion: { level: 'Normal' } }],
+      ['numeric congestion', { ...validPulse, congestion: 3 }],
+      ['unknown congestion', { ...validPulse, congestion: 'Severe' }],
+      ['lowercase congestion', { ...validPulse, congestion: 'normal' }],
+    ]) {
+      const invalidLivePulse = {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: pulse,
+        },
+      };
+      assert.throws(
+        () => buildChokepointHubRows(data.chokepoints, invalidLivePulse),
+        new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+        `${label} must fail the chokepoint hub build`,
+      );
+    }
+  });
+
   it('tracks every material chokepoint page input in its lastmod clock', () => {
     assert.deepEqual(CHOKEPOINT_PAGE_LASTMOD_PATHS, [
       'src/config/chokepoint-registry.ts',
