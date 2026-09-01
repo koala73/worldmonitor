@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import { parsePsdForecastRows } from '../scripts/_food-stocks-helpers.mjs';
 import {
   fetchFoodStocks,
-  parseFaostatAreaMap,
   parseFaostatFoodBalanceRows,
   validateFoodStocks,
 } from '../scripts/seed-food-stocks.mjs';
@@ -22,41 +21,89 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-describe('FAOSTAT parsers', () => {
-  test('map area codes through ISO3 and leave unmapped rows out', () => {
-    const map = parseFaostatAreaMap([
-      { code: '231', iso3: 'USA', label: 'United States of America' },
-      { code: '834', iso3: 'TZA', label: 'United Republic of Tanzania' },
-      { code: '999', label: 'Not A Real Country' },
-    ]);
-    assert.equal(map.get('231'), 'US');
-    assert.equal(map.get('834'), 'TZ');
-    assert.equal(map.has('999'), false);
-  });
+const FAOSTAT_CSV_HEADER = 'faostat,m49_code,country_name_en,item_code,item,year,production_1000_tonnes,stock_variation_1000_tonnes,domestic_supply_quantity_1000_tonnes';
 
+function faostatCsvResponse(rows = [], status = 200) {
+  return new Response([FAOSTAT_CSV_HEADER, ...rows].join('\n'), {
+    status,
+    headers: { 'content-type': 'text/csv' },
+  });
+}
+
+describe('FAOSTAT parsers', () => {
   test('reads a same-year production and domestic-supply pair in 1000 tonnes', () => {
-    const rows = parseFaostatFoodBalanceRows({
-      data: [
-        { 'Area Code': '68', 'Element Code': 5511, Year: 2023, Unit: '1000 t', Value: 31_500 },
-        { 'Area Code': '68', 'Element Code': 5301, Year: 2023, Unit: '1000 t', Value: 47_250 },
-        { 'Area Code': '834', 'Element Code': 5511, Year: 2023, Unit: '1000 t', Value: 1_200 },
-        { 'Area Code': '834', 'Element Code': 5301, Year: 2022, Unit: '1000 t', Value: 950 },
-      ],
-    }, { commodity: 'wheat', areaMap: new Map([['68', 'FR'], ['834', 'TZ']]) });
+    const rows = parseFaostatFoodBalanceRows([
+      FAOSTAT_CSV_HEADER,
+      '68,250,France,2511,Wheat and products,2023,31500,4896,47250',
+      '215,834,United Republic of Tanzania,2511,Wheat and products,2023,1200,50,',
+      '68,250,France,2514,Maize and products,2023,999,99,888',
+    ].join('\n'), { commodity: 'wheat' });
     assert.equal(rows.length, 1);
     assert.equal(rows[0].countryCode, 'FR');
     assert.equal(rows[0].production, 31_500);
     assert.equal(rows[0].consumption, 47_250);
     assert.equal(rows[0].calendarYear, 2023);
+    assert.equal('endingStocks' in rows[0], false, 'stock variation must not become stock evidence');
   });
 });
 
 describe('fetchFoodStocks stages', () => {
+  test('queries the Food Balances item and seeds both balance quantities without stocks', async () => {
+    const faostatUrls = [];
+    const psdRow = (countryCode, attributeId, value) => ({
+      commodityCode: '0410000', countryCode, marketYear: '2025',
+      calendarYear: '2026', month: 5, attributeId, unitId: 8, value,
+    });
+    const fetchImpl = async (url) => {
+      const href = String(url);
+      if (href.includes('api.data.apps.fao.org')) {
+        faostatUrls.push(href);
+        const itemCode = new URL(href).searchParams.get('item_code');
+        if (itemCode !== '2511') return faostatCsvResponse();
+        return faostatCsvResponse([
+          '68,250,France,2511,Wheat and products,2023,31500,4896,47250',
+        ]);
+      }
+      const yearMatch = href.match(/\/year\/(\d{4})/);
+      const year = yearMatch ? Number(yearMatch[1]) : 0;
+      if (year !== 2025 || !href.includes('0410000')) return jsonResponse([]);
+      if (href.includes('/world/year/')) {
+        return jsonResponse([
+          psdRow('00', 28, 800_000),
+          psdRow('00', 125, 900_000),
+          psdRow('00', 176, 100_000),
+        ]);
+      }
+      return jsonResponse([
+        psdRow('US', 28, 50_000),
+        psdRow('US', 125, 45_000),
+        psdRow('US', 176, 8_000),
+      ]);
+    };
+
+    const snapshot = await fetchFoodStocks({
+      fetchImpl,
+      apiKey: 'test-key',
+      now: new Date('2026-09-01T00:00:00.000Z'),
+      gapMs: 0,
+    });
+
+    const wheatUrl = new URL(faostatUrls.find((url) => new URL(url).searchParams.get('item_code') === '2511'));
+    assert.equal(wheatUrl.hostname, 'api.data.apps.fao.org');
+    assert.ok(wheatUrl.searchParams.get('sql_url')?.endsWith('fct-fbs-food-balances.query.sql'));
+    assert.equal(wheatUrl.searchParams.has('element'), false, 'the paired CSV fields replace element queries');
+    assert.equal(snapshot.US.commodities.wheat.source, 'psd');
+    assert.equal(snapshot.FR.commodities.wheat.source, 'faostat');
+    assert.equal(snapshot.FR.commodities.wheat.production, 31_500);
+    assert.equal(snapshot.FR.commodities.wheat.consumption, 47_250);
+    assert.equal(snapshot.FR.commodities.wheat.endingStocks, null);
+    assert.equal(snapshot.FR.commodities.wheat.stocksToUseRatio, null);
+  });
+
   test('a FAOSTAT 502 leaves the PSD snapshot intact', async () => {
     const fetchImpl = async (url) => {
       const href = String(url);
-      if (href.includes('codes/area')) return jsonResponse([]);
-      if (href.includes('faostat')) return jsonResponse({ error: 'down' }, 502);
+      if (href.includes('api.data.apps.fao.org')) return jsonResponse({ error: 'down' }, 502);
       const yearMatch = href.match(/\/year\/(\d{4})/);
       const year = yearMatch ? Number(yearMatch[1]) : 0;
       if (year !== 2025 || !href.includes('0440000')) return jsonResponse([]);
@@ -92,7 +139,7 @@ describe('fetchFoodStocks stages', () => {
   test('a 404 on the current marketing year falls through to the previous year', async () => {
     const fetchImpl = async (url) => {
       const href = String(url);
-      if (href.includes('codes/area') || href.includes('faostat')) return jsonResponse([]);
+      if (href.includes('api.data.apps.fao.org')) return faostatCsvResponse();
       const yearMatch = href.match(/\/year\/(\d{4})/);
       const year = yearMatch ? Number(yearMatch[1]) : 0;
       if (year === 2026) return jsonResponse({ error: 'not published' }, 404);
@@ -132,7 +179,7 @@ describe('fetchFoodStocks stages', () => {
     // a 503 means "we do not know" and must not be read as an answer.
     const fetchImpl = async (url) => {
       const href = String(url);
-      if (href.includes('codes/area') || href.includes('faostat')) return jsonResponse([]);
+      if (href.includes('api.data.apps.fao.org')) return faostatCsvResponse();
       const year = Number(href.match(/\/year\/(\d{4})/)?.[1] ?? 0);
       if (year === 2026) return jsonResponse({ error: 'upstream down' }, 503);
       if (year !== 2025 || !href.includes('0440000')) return jsonResponse([]);
@@ -155,7 +202,7 @@ describe('fetchFoodStocks stages', () => {
     // a commodity whose only stocks row was `_world`.
     const fetchImpl = async (url) => {
       const href = String(url);
-      if (href.includes('codes/area') || href.includes('faostat')) return jsonResponse([]);
+      if (href.includes('api.data.apps.fao.org')) return faostatCsvResponse();
       if (!href.includes('0440000')) return jsonResponse([]);
       if (href.includes('/world/year/')) return jsonResponse(cornWorldRows('2025', '2026'));
       return jsonResponse({ error: 'boom' }, 500); // every country/all year fails
@@ -174,7 +221,7 @@ describe('fetchFoodStocks stages', () => {
   test('a healthy run is not marked degraded', async () => {
     const fetchImpl = async (url) => {
       const href = String(url);
-      if (href.includes('codes/area') || href.includes('faostat')) return jsonResponse([]);
+      if (href.includes('api.data.apps.fao.org')) return faostatCsvResponse();
       const year = Number(href.match(/\/year\/(\d{4})/)?.[1] ?? 0);
       if (year !== 2026 || !href.includes('0440000')) return jsonResponse([]);
       if (href.includes('/world/year/')) return jsonResponse(cornWorldRows('2026', '2026'));
@@ -219,12 +266,12 @@ describe('fetchFoodStocks stages', () => {
     );
     assert.equal(
       validateFoodStocks({
-        // FAOSTAT production-only fill: no endingStocks anywhere but _world.
+        // FAOSTAT balance fill: no endingStocks anywhere but _world.
         ...countriesWith(200, { stocksToUseRatio: null, endingStocks: null, source: 'faostat' }),
         _world: worldWith(SLUGS),
       }),
       false,
-      'a world row plus FAOSTAT production fill is not a food-stocks snapshot',
+      'a world row plus FAOSTAT balance fill is not a food-stocks snapshot',
     );
     assert.equal(validateFoodStocks({ ...countriesWith(10, realStocks) }), false, 'missing _world');
   });

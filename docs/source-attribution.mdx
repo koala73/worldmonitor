@@ -2,7 +2,7 @@
 ## Observed Source Inventory
 
 {/* BEGIN GENERATED SOURCE ATTRIBUTION */}
-This generated inventory covers **757 active source hosts** representing **747 active providers** (**328 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
+This generated inventory covers **758 active source hosts** representing **747 active providers** (**329 structured/API**, **461 feed**, and **30 operational-status** hosts). It is derived from source declarations in `scripts/`, `server/`, `api/`, and `src/`. Each row shows the configured provider identity and where the source is referenced. Syndication transports such as FeedBurner and Google News remain listed as hosts and are not counted as publishers.
 
 | Provider | Observed surface |
 | --- | --- |
@@ -234,7 +234,9 @@ This generated inventory covers **757 active source hosts** representing **747 a
 | Example domain placeholder (example.com) | structured — scripts/openapi-inject-examples.mjs, src/services/mcp-store.ts, src/utils/sanitize.ts |
 | export.arxiv.org (export.arxiv.org) | feed+structured — scripts/seed-research.mjs, server/worldmonitor/news/v1/_feeds.ts, src/config/feeds.ts, src/config/variants/tech.ts |
 | fao.org (fao.org) | feed — src/config/feeds.ts |
-| FAOSTAT (fenixservices.fao.org) | structured — scripts/seed-food-stocks.mjs |
+| FAOSTAT (api.data.apps.fao.org) | structured — scripts/seed-food-stocks.mjs |
+| FAOSTAT (data.apps.fao.org) | structured — scripts/seed-food-stocks.mjs |
+| FAOSTAT (fenixservices.fao.org) | Excluded / candidate — No current fetch observed |
 | farsnews.ir (farsnews.ir) | feed — src/config/feeds.ts |
 | fas.org (fas.org) | feed — src/config/feeds.ts |
 | fc.yahoo.com (fc.yahoo.com) | structured — scripts/_yahoo-sector-valuations.cjs |

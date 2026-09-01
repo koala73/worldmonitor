@@ -110,6 +110,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The B.C. catalogue record supplies the licence for the ArcGIS evacuation dataset.',
     reviewReference: 'Issue #6659 source-rights probe',
   }),
+  faostat: Object.freeze({
+    provider: 'FAOSTAT',
+    memberHosts: Object.freeze(['api.data.apps.fao.org', 'data.apps.fao.org', 'fenixservices.fao.org']),
+    reason: 'The FAO smart CSV API and query catalog replace the retired Fenix API host for one FAOSTAT dataset identity.',
+    reviewReference: 'Review #20260901 FAOSTAT Food Balances transport migration',
+  }),
   imd: Object.freeze({
     provider: 'India Meteorological Department',
     memberHosts: Object.freeze(['api.imd.gov.in', 'rsmcnewdelhi.imd.gov.in', 'mausam.imd.gov.in']),
@@ -363,8 +369,23 @@ const PROVIDER_OVERRIDES = {
     attribution: 'USDA Foreign Agricultural Service, Production, Supply and Distribution (PSD).',
     status: 'reviewed',
   },
+  'api.data.apps.fao.org': {
+    provider: 'FAOSTAT',
+    identityGroup: 'faostat',
+    license: 'FAOSTAT CC-BY; attribution to FAO required',
+    attribution: 'FAO. FAOSTAT. https://www.fao.org/faostat/',
+    status: 'reviewed',
+  },
+  'data.apps.fao.org': {
+    provider: 'FAOSTAT',
+    identityGroup: 'faostat',
+    license: 'FAOSTAT CC-BY; attribution to FAO required',
+    attribution: 'FAO. FAOSTAT. https://www.fao.org/faostat/',
+    status: 'reviewed',
+  },
   'fenixservices.fao.org': {
     provider: 'FAOSTAT',
+    identityGroup: 'faostat',
     license: 'FAOSTAT CC-BY; attribution to FAO required',
     attribution: 'FAO. FAOSTAT. https://www.fao.org/faostat/',
     status: 'reviewed',
@@ -867,13 +888,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '77fe5d378bb92d98998a2ec5ce74cea31e4bdaf58f50dfe3228bba39f83059f8',
-  reason: 'Group the BGS observation API and required attribution page under one reviewed, redistribution-restricted provider identity for issue #6449.',
+  sha256: '54ee3d9914feef11b7b029cec925f8be810b2799c5a0278cefdc33e97719ea57',
+  reason: 'Preserve reviewed provider identities when one source spans data, catalog, attribution, or retired transport hosts.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, and the 2026-09-01 FAOSTAT transport identity review.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

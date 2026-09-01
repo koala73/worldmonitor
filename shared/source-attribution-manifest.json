@@ -636,6 +636,20 @@
       ]
     },
     {
+      "host": "api.data.apps.fao.org",
+      "provider": "FAOSTAT",
+      "kind": "structured",
+      "observed": true,
+      "license": "FAOSTAT CC-BY; attribution to FAO required",
+      "attribution": "FAO. FAOSTAT. https://www.fao.org/faostat/",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-food-stocks.mjs"
+        }
+      ]
+    },
+    {
       "host": "api.data.gov.my",
       "provider": "api.data.gov.my",
       "kind": "structured",
@@ -2760,6 +2774,20 @@
       ]
     },
     {
+      "host": "data.apps.fao.org",
+      "provider": "FAOSTAT",
+      "kind": "structured",
+      "observed": true,
+      "license": "FAOSTAT CC-BY; attribution to FAO required",
+      "attribution": "FAO. FAOSTAT. https://www.fao.org/faostat/",
+      "status": "reviewed",
+      "references": [
+        {
+          "path": "scripts/seed-food-stocks.mjs"
+        }
+      ]
+    },
+    {
       "host": "data.ecb.europa.eu",
       "provider": "data.ecb.europa.eu",
       "kind": "structured",
@@ -4114,15 +4142,10 @@
       "host": "fenixservices.fao.org",
       "provider": "FAOSTAT",
       "kind": "structured",
-      "observed": true,
+      "observed": false,
       "license": "FAOSTAT CC-BY; attribution to FAO required",
       "attribution": "FAO. FAOSTAT. https://www.fao.org/faostat/",
-      "status": "reviewed",
-      "references": [
-        {
-          "path": "scripts/seed-food-stocks.mjs"
-        }
-      ]
+      "status": "excluded"
     },
     {
       "host": "feodotracker.abuse.ch",

@@ -575,10 +575,10 @@ stocks for selected countries only, so a real producer routinely reports
 production and consumption with no stocks series at all. When the flag is `false`
 the zero is a placeholder; treat it as "not measured", never as 0%.
 
-`totalUseTmt` is consumption + exports for a country, but consumption only for
-`WORLD`, because world exports are internal transfers already counted in the
-importing country's consumption. Rows with `source: "faostat"` are production-only
-gap fill and always carry both flags `false`.
+For PSD country rows, `totalUseTmt` is consumption plus exports. For `WORLD`, it
+is consumption only because world exports are internal transfers. A row with
+`source: "faostat"` carries a same-year Food Balances production and domestic-
+supply pair. The row has no stock measurement, so both stock flags are `false`.
 
 <CodeGroup>
 

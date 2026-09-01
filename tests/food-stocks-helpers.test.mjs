@@ -44,6 +44,16 @@ describe('PSD commodity registry', () => {
     assert.equal(PSD_COMMODITIES.soybeans.code, '2222000');
     assert.equal(PSD_COMMODITIES.barley.code, '0430000');
     assert.equal(PSD_COMMODITIES.palmOil.code, '4243000');
+    assert.deepEqual(Object.fromEntries(
+      Object.entries(PSD_COMMODITIES).map(([slug, commodity]) => [slug, commodity.faostatBalanceItem]),
+    ), {
+      wheat: 2511,
+      corn: 2514,
+      rice: 2807,
+      soybeans: 2555,
+      barley: 2513,
+      palmOil: 2577,
+    });
   });
 
   test('storage key and world sentinel match the issue contract', () => {
