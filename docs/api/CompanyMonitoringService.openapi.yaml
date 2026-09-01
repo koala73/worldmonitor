@@ -751,18 +751,18 @@ paths:
                         description: "Accepted values are active, paused, and removed."
                 - name: coverage
                   in: query
-                  description: Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation.
+                  description: Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation.
                   required: false
                   style: form
                   explode: true
                   example:
-                      - "awaiting_first_scan"
+                      - "example"
                   schema:
                     type: array
                     items:
                         type: "string"
-                        pattern: "^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
-                        description: "Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation."
+                        pattern: "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
+                        description: "identity_unresolved is not quiet."
                 - name: page_size
                   in: query
                   description: Maximum rows to return, from 1 through 100; zero requests the server default.
@@ -1847,7 +1847,8 @@ components:
                         - COMPANY_COVERAGE_STATE_STALE
                         - COMPANY_COVERAGE_STATE_UNAVAILABLE
                         - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
-                    description: CompanyCoverageState reports source and assessment readiness, not event count.
+                        - COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED
+                    description: IDENTITY_UNRESOLVED must not be reported as quiet.
                 observation:
                     type: string
                     enum:
@@ -2085,9 +2086,9 @@ components:
                     type: array
                     items:
                         type: "string"
-                        pattern: "^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
-                        description: "Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation."
-                    maxItems: 6
+                        pattern: "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
+                        description: "identity_unresolved is not quiet."
+                    maxItems: 7
                 pageSize:
                     type: integer
                     maximum: 100
@@ -2431,7 +2432,8 @@ components:
                         - COMPANY_COVERAGE_STATE_STALE
                         - COMPANY_COVERAGE_STATE_UNAVAILABLE
                         - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
-                    description: CompanyCoverageState reports source and assessment readiness, not event count.
+                        - COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED
+                    description: IDENTITY_UNRESOLVED must not be reported as quiet.
                 observation:
                     type: string
                     enum:
