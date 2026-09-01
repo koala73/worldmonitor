@@ -212,22 +212,55 @@ describe('fetchCountryMarkets uses the producer country index', () => {
     ]);
   });
 
-  it('uses the UK alias when the literal country name is absent', async () => {
-    globalThis.__wmCountryMarketsTestState = {
-      rpcCalls: [],
-      rpcMarketsByCategory: {},
-      hydrated: {
-        geopolitical: [bootstrapMarket('Will the UK hold an early election?', 2_000_000)],
-        tech: [],
-        finance: [],
-        fetchedAt: Date.now(),
-      },
-    };
-    const service = await loadPredictionService();
-    const out = await service.fetchCountryMarkets('United Kingdom', 'GB');
+  it('uses the shared country vocabulary in the bootstrap fallback', async () => {
+    const cases = [
+      ['France', 'FR', 'Will the French government survive the confidence vote?'],
+      ['Germany', 'DE', 'Will the German chancellor call an early election?'],
+      ['Saudi Arabia', 'SA', 'Will Saudi cut oil production this year?'],
+      ['United Kingdom', 'GB', 'Will the UK hold an early election?'],
+    ] as const;
 
-    assert.deepEqual(out.map((m: { title: string }) => m.title), [
-      'Will the UK hold an early election?',
-    ]);
+    for (const [country, countryCode, title] of cases) {
+      globalThis.__wmCountryMarketsTestState = {
+        rpcCalls: [],
+        rpcMarketsByCategory: {},
+        hydrated: {
+          geopolitical: [bootstrapMarket(title, 2_000_000)],
+          tech: [],
+          finance: [],
+          fetchedAt: Date.now(),
+        },
+      };
+      const service = await loadPredictionService();
+      const out = await service.fetchCountryMarkets(country, countryCode);
+
+      assert.deepEqual(out.map((m: { title: string }) => m.title), [title], countryCode);
+    }
+  });
+
+  it('keeps excluded demonym phrases out of the bootstrap fallback', async () => {
+    const cases = [
+      ['France', 'FR', 'Will French Hill win reelection?'],
+      ['Netherlands', 'NL', 'Will Dutch Bros beat earnings?'],
+      ['India', 'IN', 'Will Indian Wells expand the tournament?'],
+      ['Greece', 'GR', 'Will Greek letters appear in the product name?'],
+    ] as const;
+
+    for (const [country, countryCode, title] of cases) {
+      globalThis.__wmCountryMarketsTestState = {
+        rpcCalls: [],
+        rpcMarketsByCategory: {},
+        hydrated: {
+          geopolitical: [bootstrapMarket(title, 2_000_000)],
+          tech: [],
+          finance: [],
+          fetchedAt: Date.now(),
+        },
+      };
+      const service = await loadPredictionService();
+      const out = await service.fetchCountryMarkets(country, countryCode);
+
+      assert.deepEqual(out, [], countryCode);
+    }
   });
 });
