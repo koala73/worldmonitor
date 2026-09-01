@@ -276,3 +276,13 @@ export function buildCountryMarketIndex(markets, {
 
   return index;
 }
+
+/**
+ * Build the country index only when every source segment succeeded.
+ * A partial fetch must yield `{}` so `skipWhenEmpty` retains the last-good
+ * extra key instead of publishing an incomplete map as authoritative empty.
+ */
+export function projectCountryMarketIndex(markets, { complete, ...options } = {}) {
+  if (complete !== true) return {};
+  return buildCountryMarketIndex(markets, options);
+}
