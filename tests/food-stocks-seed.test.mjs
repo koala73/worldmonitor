@@ -8,7 +8,7 @@ import { parsePsdForecastRows } from '../scripts/_food-stocks-helpers.mjs';
 import {
   fetchFoodStocks,
   parseFaostatAreaMap,
-  parseFaostatProductionRows,
+  parseFaostatFoodBalanceRows,
   validateFoodStocks,
 } from '../scripts/seed-food-stocks.mjs';
 
@@ -34,15 +34,19 @@ describe('FAOSTAT parsers', () => {
     assert.equal(map.has('999'), false);
   });
 
-  test('keeps the latest year and converts tonnes to 1000 MT', () => {
-    const rows = parseFaostatProductionRows({
+  test('reads a same-year production and domestic-supply pair in 1000 tonnes', () => {
+    const rows = parseFaostatFoodBalanceRows({
       data: [
-        { 'Area Code': '231', Year: 2022, Value: 50_000_000 },
-        { 'Area Code': '231', Year: 2023, Value: 49_000_000 },
+        { 'Area Code': '68', 'Element Code': 5511, Year: 2023, Unit: '1000 t', Value: 31_500 },
+        { 'Area Code': '68', 'Element Code': 5301, Year: 2023, Unit: '1000 t', Value: 47_250 },
+        { 'Area Code': '834', 'Element Code': 5511, Year: 2023, Unit: '1000 t', Value: 1_200 },
+        { 'Area Code': '834', 'Element Code': 5301, Year: 2022, Unit: '1000 t', Value: 950 },
       ],
-    }, { commodity: 'wheat', areaMap: new Map([['231', 'US']]) });
+    }, { commodity: 'wheat', areaMap: new Map([['68', 'FR'], ['834', 'TZ']]) });
     assert.equal(rows.length, 1);
-    assert.equal(rows[0].production, 49000);
+    assert.equal(rows[0].countryCode, 'FR');
+    assert.equal(rows[0].production, 31_500);
+    assert.equal(rows[0].consumption, 47_250);
     assert.equal(rows[0].calendarYear, 2023);
   });
 });
