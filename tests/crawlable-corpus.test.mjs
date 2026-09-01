@@ -38,6 +38,18 @@ function jsonLdObjects(html) {
     .map(([, raw]) => JSON.parse(raw));
 }
 
+function proseWordCount(value) {
+  return String(value || '').trim().split(/\s+/).filter(Boolean).length;
+}
+
+function assertDefaultSpeakable(node, label) {
+  assert.deepEqual(
+    node?.speakable,
+    { '@type': 'SpeakableSpecification', cssSelector: ['h1', '.lede'] },
+    `${label} must carry SpeakableSpecification`,
+  );
+}
+
 function htmlDocument(html, url) {
   const window = new Window({ url });
   window.document.write(html);
@@ -939,7 +951,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.sources.count, 1);
-      assert.equal(manifest.generatorContentVersion, '2026-08-30');
+      assert.equal(manifest.generatorContentVersion, '2026-08-31');
       const sitemapEntries = buildSitemapEntries({
         repoRoot,
         publicDir: outDir,
@@ -1273,11 +1285,68 @@ describe('crawlable corpus generator', () => {
         true,
       );
       const countriesLd = jsonLdObjects(countriesIndex);
+      const countryCollection = countriesLd.find((entry) => entry['@type'] === 'CollectionPage');
       const countryItemList = countriesLd.find((entry) => entry['@type'] === 'ItemList');
       const countryDataset = countriesLd.find((entry) => entry['@type'] === 'Dataset');
+      const countryFaq = countriesLd.find((entry) => entry['@type'] === 'FAQPage');
+      assert.equal(countryCollection?.name, 'Country risk and resilience');
+      assert.equal(countryCollection?.['@id'], 'https://www.worldmonitor.app/countries/#webpage');
+      assertDefaultSpeakable(countryCollection, 'countries hub CollectionPage');
+      assert.deepEqual(countryCollection?.breadcrumb, {
+        '@id': 'https://www.worldmonitor.app/countries/#breadcrumb',
+      });
       assert.equal(countryItemList?.numberOfItems, corpusData.countries.length);
       assert.equal(countryItemList?.itemListElement?.length, corpusData.countries.length);
       assert.equal(countryDataset?.variableMeasured?.name, 'Country resilience score');
+      const hubHeadings = [...countriesDocument.querySelectorAll('h2')].map((node) => node.textContent.trim());
+      assert.deepEqual(hubHeadings, [
+        `Which countries are most resilient in ${corpusData.resilience.capturedAt.slice(0, 4)}?`,
+        'How is the Country Resilience Index calculated?',
+      ]);
+      assert.equal(countryFaq?.mainEntity?.length, 2);
+      for (const question of hubHeadings) {
+        const qa = countryFaq.mainEntity.find((entity) => entity.name === question);
+        assert.ok(qa, `countries hub FAQPage is missing ${question}`);
+        const answer = qa.acceptedAnswer.text;
+        const answerWords = proseWordCount(answer);
+        assert.ok(
+          answerWords >= 40 && answerWords <= 60,
+          `${question} answer is ${answerWords} words, need 40-60`,
+        );
+        assert.ok(
+          countriesIndex.includes(answer),
+          `countries hub FAQ answer for ${question} must match visible copy`,
+        );
+      }
+      const rankedCountries = corpusData.countries
+        .filter((country) => Number.isInteger(country.rank))
+        .sort((a, b) => a.rank - b.rank);
+      const resilienceAnswer = countryFaq.mainEntity[0].acceptedAnswer.text;
+      const snapshotDateLabel = countriesDocument
+        .querySelector('table[data-country-ranking] caption')
+        ?.textContent.trim()
+        .replace(/ Country Resilience Index snapshot$/, '');
+      assert.ok(snapshotDateLabel, 'countries hub ranking caption needs a snapshot date');
+      assert.ok(
+        resilienceAnswer.includes(
+          `${snapshotDateLabel} Country Resilience Index snapshot ranks ${rankedCountries.length} of ${corpusData.countries.length} countries`,
+        ),
+      );
+      for (const country of rankedCountries.slice(0, 3)) {
+        assert.match(resilienceAnswer, new RegExp(`\\b${country.name}\\b`));
+      }
+      assert.doesNotMatch(resilienceAnswer, /\btoday\b/i);
+      const rankedListItem = countryItemList.itemListElement.find((entry) => entry.item?.additionalProperty);
+      assert.ok(rankedListItem, 'ranked hub ItemList entries need a Country node with a score PropertyValue');
+      assert.equal(rankedListItem.item['@type'], 'Country');
+      assert.equal(rankedListItem.item.additionalProperty['@type'], 'PropertyValue');
+      assert.equal(rankedListItem.item.additionalProperty.name, 'Country Resilience Index score');
+      assert.equal(typeof rankedListItem.item.additionalProperty.value, 'number');
+      const unpublishedListItem = countryItemList.itemListElement.find((entry, index) => (
+        corpusData.countries[index]?.headlineEligible === false
+      ));
+      assert.ok(unpublishedListItem, 'unpublished countries must remain in the hub ItemList');
+      assert.equal(unpublishedListItem.item?.additionalProperty, undefined);
 
       const sampleCodes = ['AD', 'CD', 'IR', 'JP', 'KP', 'MO', 'NO', 'NR', 'UA', 'US'];
       const sampleArticles = [];
@@ -1380,6 +1449,7 @@ describe('crawlable corpus generator', () => {
       );
       const taiwanWebPage = jsonLdObjects(taiwan)
         .find((entry) => entry['@type'] === 'WebPage');
+      assertDefaultSpeakable(taiwanWebPage, 'taiwan country WebPage');
       assert.equal(taiwanWebPage?.mainEntity?.value, undefined);
       assert.equal(taiwanWebPage?.mainEntity?.overallScore, undefined);
       assert.match(
@@ -1622,6 +1692,10 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(chokepointsIndex, /\d+ routes?<\/span>/, 'chokepoint index must not expose raw "N routes" counts');
       assert.doesNotMatch(chokepointsIndex, /hormuz_strait &middot;/, 'chokepoint index must not expose raw canonical ids');
       assert.match(chokepointsIndex, /Persian Gulf ↔ Gulf of Oman/, 'chokepoint cards should show the human region');
+      assertDefaultSpeakable(
+        jsonLdObjects(chokepointsIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'chokepoints hub CollectionPage',
+      );
 
       const sourcesPage = read(outDir, 'sources/index.html');
       assert.match(sourcesPage, /<h1>See every source behind World Monitor\.<\/h1>/);
@@ -1924,6 +1998,7 @@ describe('crawlable corpus generator', () => {
 
       const hormuzLd = jsonLdObjects(hormuz);
       const hormuzPage = hormuzLd.find((entry) => entry['@type'] === 'WebPage');
+      assertDefaultSpeakable(hormuzPage, 'hormuz chokepoint WebPage');
       assert.ok(hormuzPage?.about?.['@type'] === 'Place' && hormuzPage.about?.name === 'Strait of Hormuz');
       const hormuzGeos = Array.isArray(hormuzPage.about.geo)
         ? hormuzPage.about.geo
@@ -2146,6 +2221,10 @@ describe('crawlable corpus generator', () => {
       assert.match(crisesIndex, /<h1>Current crisis trackers<\/h1>/);
       assert.match(crisesIndex, /href="\/crises\/red-sea-security\/"/);
       assertDataCatalogPresent(crisesIndex, '/crises/');
+      assertDefaultSpeakable(
+        jsonLdObjects(crisesIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'crises hub CollectionPage',
+      );
 
       const redSea = read(outDir, 'crises/red-sea-security/index.html');
       assert.match(redSea, /data-live-crisis/);
@@ -2162,6 +2241,7 @@ describe('crawlable corpus generator', () => {
       assert.match(redSea, /data-crisis-period>20\d{2}-\d{2}-\d{2}/);
       const redSeaLd = jsonLdObjects(redSea);
       const redSeaPage = redSeaLd.find((entry) => entry['@type'] === 'WebPage');
+      assertDefaultSpeakable(redSeaPage, 'red-sea crisis WebPage');
       const redSeaDataset = collectDatasets(redSeaPage)[0];
       assert.ok(redSeaDataset, 'crisis page must expose a Dataset mainEntity');
       const redSeaReference = JSON.parse(read(outDir, 'crises/red-sea-security/tracker.json'));
@@ -2227,6 +2307,25 @@ describe('crawlable corpus generator', () => {
 
       const toolsIndex = read(outDir, 'tools/index.html');
       assert.match(toolsIndex, /<h1>Check a current operational signal<\/h1>/);
+      assertDefaultSpeakable(
+        jsonLdObjects(toolsIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'tools hub CollectionPage',
+      );
+      const useCasesIndex = read(outDir, 'use-cases/index.html');
+      assertDefaultSpeakable(
+        jsonLdObjects(useCasesIndex).find((entry) => entry['@type'] === 'CollectionPage'),
+        'use-cases hub CollectionPage',
+      );
+      const breakingNews = read(outDir, 'use-cases/verify-breaking-news/index.html');
+      const breakingNewsLd = jsonLdObjects(breakingNews);
+      assertDefaultSpeakable(
+        breakingNewsLd.find((entry) => entry['@type'] === 'WebPage'),
+        'breaking-news WebPage',
+      );
+      assert.ok(
+        breakingNewsLd.some((entry) => entry['@type'] === 'HowTo'),
+        'HowTo-shaped use-case pages must emit HowTo JSON-LD (#7462)',
+      );
       assert.match(toolsIndex, /href="\/tools\/natural-hazard-pulse\/"/);
       assert.match(toolsIndex, /href="\/tools\/airspace-disruption-checker\/"/);
       assert.match(toolsIndex, /href="\/tools\/signal-convergence\/"/);
@@ -2312,7 +2411,7 @@ describe('crawlable corpus generator', () => {
     // Family lastmods use material + page/generator versions only — not the
     // Dataset schema stamp that previously forced a shared build date (#7382).
     assert.equal(data.lastmod.countries, '2026-08-31');
-    assert.equal(data.lastmod.research, '2026-08-30');
+    assert.equal(data.lastmod.research, '2026-08-31');
     assert.equal(data.lastmod.chokepoints, '2026-09-01');
     assert.equal(
       data.lastmod.sources,
