@@ -16,11 +16,12 @@ export type McpAuthContext =
   | { kind: 'env_key'; apiKey: string }
   | { kind: 'pro'; userId: string; mcpTokenId: string }
   // Customer-issued dashboard key (Convex userApiKeys, #4859). Carries BOTH
-  // the raw key (downstream _execute fetches authenticate as the owner via
-  // X-WorldMonitor-Key, so REST metering/limits attribute to them) AND the
-  // resolved owner userId (per-user rate limit + daily quota + the mcpAccess
+  // the presented inbound key (auth-resolution identity) AND the resolved
+  // owner userId (per-user rate limit + daily quota + the mcpAccess
   // entitlement pre-check — a user_key context must NEVER skip that gate the
-  // way env_key does).
+  // way env_key does). Downstream `_execute` fetches sign as this userId via
+  // the same internal HMAC as the OAuth door, so the gateway does not
+  // increment the shared daily account meter a second time.
   | { kind: 'user_key'; apiKey: string; userId: string }
   // U7 (R7): an uncredentialed caller admitted to the always-free tool subset.
   // Carries NO identity by construction — it is the absence of a principal,

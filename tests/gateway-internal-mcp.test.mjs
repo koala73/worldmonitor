@@ -332,6 +332,44 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     );
   });
 
+  it('HMAC-signed user_key request cannot increment rl:apikey:day even when REST enforcement is on', async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const dailyIncrements = [];
+    const previousFetch = globalThis.fetch;
+    globalThis.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input?.url;
+      if (typeof url === 'string' && url.includes('redis.test/pipeline')) {
+        const commands = JSON.parse(String(init?.body ?? '[]'));
+        for (const cmd of commands) {
+          if (cmd?.[0] === 'INCR' && String(cmd[1] ?? '').includes('rl:apikey:day')) {
+            dailyIncrements.push(cmd[1]);
+          }
+        }
+      }
+      return previousFetch(input, init);
+    };
+
+    const { buildAuthHeaders } = await import(`../api/mcp/auth.ts?t=${Date.now()}`);
+    const url = 'https://example.test/api/news/v1/summarize-article';
+    const body = JSON.stringify({ provider: 'auto', mode: 'brief' });
+    const headers = await buildAuthHeaders(
+      { kind: 'user_key', apiKey: 'wm_must_not_reach_gateway_meter', userId: PRO_USER_ID },
+      'POST',
+      url,
+      body,
+    );
+    assert.equal(headers['X-WorldMonitor-Key'], undefined, 'signer must not attach the dashboard key');
+
+    const handler = makeGateway();
+    const res = await handler(new Request(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body,
+    }));
+    assert.equal(res.status, 200, `signed user_key request should pass, body=${await res.clone().text()}`);
+    assert.deepEqual(dailyIncrements, [], 'internal-MCP path must not re-enter the shared daily meter');
+  });
+
   it('same signed internal-MCP request succeeds once, then replay is rejected before handler trust', async () => {
     const handler = makeGateway();
     const url = 'https://api.worldmonitor.app/api/news/v1/summarize-article';

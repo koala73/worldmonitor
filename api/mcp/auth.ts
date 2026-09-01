@@ -105,9 +105,12 @@ function getMcpAnonRatelimit(): Ratelimit | null {
 /**
  * Build the Authorization header set for a downstream `_execute` fetch.
  *
- *   - env_key → `X-WorldMonitor-Key: <apiKey>` (existing, unchanged).
- *   - pro     → `X-WM-MCP-Internal: <ts>.<sig>` + `X-WM-MCP-User-Id: <userId>`.
+ *   - env_key → `X-WorldMonitor-Key: <apiKey>` (legacy operator keys).
+ *   - pro / user_key → `X-WM-MCP-Internal: <ts>.<sig>` + `X-WM-MCP-User-Id`.
  *               Signature binds method+pathname+queryHash+bodyHash+userId.
+ *               Identity-resolved dashboard keys use this path so the
+ *               gateway does not increment the shared daily account meter
+ *               a second time after MCP already reserved the tool weight.
  *
  * `body` MUST be the EXACT bytes the caller passes to `fetch()` so the
  * signed payload matches the wire bytes. For JSON, pre-stringify on the
@@ -119,24 +122,20 @@ export async function buildAuthHeaders(
   url: string,
   body: BodyInit | null | undefined,
 ): Promise<Record<string, string>> {
-  if (context.kind === 'env_key' || context.kind === 'user_key') {
-    // user_key (#4859): the downstream REST gateway validates the raw key
-    // itself (Convex hash lookup + the #4611 apiAccess gate + per-account
-    // limits), so usage attributes to the key owner exactly like a direct
-    // REST call — no internal-HMAC identity smuggling needed.
+  if (context.kind === 'env_key') {
     return { 'X-WorldMonitor-Key': context.apiKey };
   }
   if (context.kind === 'free') {
     // U7: a free-tier context has no principal to authenticate as, so there is
     // nothing honest to sign. Throwing is the fail-closed choice — the
-    // alternative (falling through to the `pro` HMAC branch below) would mint
+    // alternative (falling through to the HMAC branch below) would mint
     // an internally-trusted signature for an anonymous caller, which is the
     // one outcome the free tier must never produce. A free-tier tool that
     // reaches here is misconfigured: it declared `_freeTier` while calling a
     // credentialed downstream.
     throw new Error('buildAuthHeaders: free-tier context has no credentials — a free-tier tool must not call a credentialed downstream');
   }
-  // context.kind === 'pro'
+  // context.kind === 'pro' | 'user_key'
   const secret = process.env.MCP_INTERNAL_HMAC_SECRET ?? '';
   if (!secret) {
     // Should never happen in production (deploy gate at U10) — surface as
@@ -671,6 +670,20 @@ export async function runUserKeyPreChecks(
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
+  // Same F12 posture as the OAuth door: identity-resolved user_key fetches
+  // sign with the internal HMAC, so a missing secret must fail closed here
+  // rather than reserve a slot and then throw mid-dispatch.
+  if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
+    captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
+      tags: { route: 'api/mcp', step: 'user-key-secret-preflight' },
+      ctx,
+    });
+    return { ok: false, response: new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+      { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+    ) };
+  }
+
   const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
   // The budget now passes through verbatim. KTD6 dropped it here so a `user_key`
   // caller fell back to the hardcoded 50/day while the same subscriber's OAuth

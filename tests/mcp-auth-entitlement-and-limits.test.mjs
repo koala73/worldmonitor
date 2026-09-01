@@ -426,6 +426,48 @@ describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / 
     assert.ok(res.response instanceof Response);
     assert.equal(res.budget, undefined);
   });
+
+  it('user_key fails closed before dispatch when MCP_INTERNAL_HMAC_SECRET is missing', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    let entitlementCalls = 0;
+    const { deps } = makeProDeps({
+      getEntitlements: async () => {
+        entitlementCalls += 1;
+        return withLimits('api_business', 10_000, 2);
+      },
+    });
+    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, false);
+    assert.equal(res.response.status, 503);
+    assert.equal(res.response.headers.get('Retry-After'), '5');
+    assert.equal(entitlementCalls, 0, 'must not reach entitlement or quota once the signing secret is gone');
+  });
+
+  it('env_key still skips the HMAC-secret preflight (legacy operator path)', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    const { deps } = makeProDeps();
+    const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true);
+  });
+});
+
+describe('api/mcp/auth.ts — buildAuthHeaders credential class', () => {
+  it('user_key signs the internal HMAC and never forwards the dashboard key', async () => {
+    const { verifyInternalMcpRequest } = await import('../server/_shared/mcp-internal-hmac.ts');
+    const url = 'https://example.test/api/intelligence/v1/get-country-risk?countryCode=US';
+    const headers = await authMod.buildAuthHeaders(USER_KEY_CONTEXT, 'GET', url, null);
+    assert.equal(headers['X-WorldMonitor-Key'], undefined);
+    assert.ok(headers['X-WM-MCP-Internal']);
+    assert.equal(headers['X-WM-MCP-User-Id'], USER_KEY_USER_ID);
+    const signed = new Request(url, { method: 'GET', headers });
+    assert.ok(await verifyInternalMcpRequest(signed, HMAC_SECRET));
+  });
+
+  it('env_key stays on the raw-key path', async () => {
+    const headers = await authMod.buildAuthHeaders(ENV_KEY_CONTEXT, 'GET', 'https://example.test/api/x', null);
+    assert.equal(headers['X-WorldMonitor-Key'], ENV_KEY);
+    assert.equal(headers['X-WM-MCP-Internal'], undefined);
+  });
 });
 
 // ---------------------------------------------------------------------------
