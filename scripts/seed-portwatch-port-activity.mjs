@@ -509,7 +509,10 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
 
 // Fetch ALL ports globally in one paginated pass, grouped by ISO3.
 // ArcGIS server-cap: advance by actual features.length, never PAGE_SIZE.
-async function fetchAllPortRefs({ signal } = {}) {
+export async function fetchAllPortRefs({
+  signal,
+  fetchPage = fetchWithRetryOnInvalidParams,
+} = {}) {
   const byIso3 = new Map();
   let offset = 0;
   let body;
@@ -527,7 +530,7 @@ async function fetchAllPortRefs({ signal } = {}) {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithRetryOnInvalidParams(`${EP4_BASE}?${params}`, { signal });
+    body = await fetchPage(`${EP4_BASE}?${params}`, { signal });
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
