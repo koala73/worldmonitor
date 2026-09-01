@@ -109,6 +109,7 @@ const PANEL_CLUSTER: Record<string, PanelChunkName> = {
   MacroSignals: 'panels-markets', Market: 'panels-markets',
   MarketBreadth: 'panels-markets', MarketImplications: 'panels-markets',
   NewsMarketCorrelation: 'panels-markets',
+  NqCatalysts: 'panels-markets', NqPulse: 'panels-markets',
   Positioning: 'panels-markets', Stablecoin: 'panels-markets',
   StockAnalysis: 'panels-markets', StockBacktest: 'panels-markets',
   WsbTickerScanner: 'panels-markets', YieldCurve: 'panels-markets',

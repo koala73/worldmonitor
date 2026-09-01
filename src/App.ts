@@ -99,6 +99,8 @@ import type { ConsumerPricesPanel } from '@/components/ConsumerPricesPanel';
 import type { DefensePatentsPanel } from '@/components/DefensePatentsPanel';
 import type { MacroTilesPanel } from '@/components/MacroTilesPanel';
 import type { FSIPanel } from '@/components/FSIPanel';
+import type { NqPulsePanel } from '@/components/NqPulsePanel';
+import type { NqCatalystsPanel } from '@/components/NqCatalystsPanel';
 import type { YieldCurvePanel } from '@/components/YieldCurvePanel';
 import type { EarningsCalendarPanel } from '@/components/EarningsCalendarPanel';
 import type { EconomicCalendarPanel } from '@/components/EconomicCalendarPanel';
@@ -832,6 +834,14 @@ export class App {
     if (shouldPrime('fsi')) {
       const panel = this.state.panels['fsi'] as FSIPanel | undefined;
       if (panel) primeTask('fsi', () => panel.fetchData());
+    }
+    if (shouldPrime('nq-pulse')) {
+      const panel = this.state.panels['nq-pulse'] as NqPulsePanel | undefined;
+      if (panel) primeTask('nq-pulse', () => panel.fetchData());
+    }
+    if (shouldPrime('nq-catalysts')) {
+      const panel = this.state.panels['nq-catalysts'] as NqCatalystsPanel | undefined;
+      if (panel) primeTask('nq-catalysts', () => panel.fetchData());
     }
     if (shouldPrime('yield-curve')) {
       const panel = this.state.panels['yield-curve'] as YieldCurvePanel | undefined;
@@ -3880,6 +3890,18 @@ export class App {
       () => (this.state.panels['fsi'] as FSIPanel).fetchData(),
       REFRESH_INTERVALS.fsi,
       () => this.isPanelNearViewport('fsi')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'nq-pulse',
+      () => (this.state.panels['nq-pulse'] as NqPulsePanel).fetchData(),
+      REFRESH_INTERVALS.nqPulse,
+      () => this.isPanelNearViewport('nq-pulse')
+    );
+    this.refreshScheduler.scheduleRefresh(
+      'nq-catalysts',
+      () => (this.state.panels['nq-catalysts'] as NqCatalystsPanel).fetchData(),
+      REFRESH_INTERVALS.nqCatalysts,
+      () => this.isPanelNearViewport('nq-catalysts')
     );
     this.refreshScheduler.scheduleRefresh(
       'yield-curve',

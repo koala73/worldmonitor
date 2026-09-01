@@ -20,6 +20,7 @@
   "response": {
     "status": 200,
     "body": {
+      "asOf": "example",
       "finnhubSkipped": true,
       "quotes": [
         {
@@ -34,13 +35,7 @@
         }
       ],
       "rateLimited": true,
-      "skipReason": "example",
-      "unavailableSymbols": [
-        {
-          "reason": "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND",
-          "symbol": "AAPL"
-        }
-      ]
+      "skipReason": "example"
     }
   }
 }

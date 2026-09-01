@@ -36,4 +36,6 @@ message ListMarketQuotesResponse {
   // are booleans too. This matches the established repo name for the same idea
   // — the sector valuation coverage payload's `unavailableSymbols`.
   repeated MarketQuoteUnavailable unavailable_symbols = 5;
+
+  string as_of = 6;
 }

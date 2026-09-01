@@ -25,7 +25,6 @@ function makeMix(overrides = {}) {
     oilShare: 0.9,
     nuclearShare: 1.8,
     renewShare: 55.8,
-    importShare: 3.4,
     windShare: 34.0,
     solarShare: 12.0,
     hydroShare: 3.0,

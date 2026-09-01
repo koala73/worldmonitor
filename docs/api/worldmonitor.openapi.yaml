@@ -8624,6 +8624,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "asOf": "example"
                                 "events":
                                     - "actual": "example"
                                       "country": "US"
@@ -8633,7 +8634,6 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_economic_v1_GetEconomicCalendarResponse'
                 "400":
@@ -18596,6 +18596,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "asOf": "example"
                                 "finnhubSkipped": true
                                 "quotes":
                                     - "change": 1.5
@@ -18607,9 +18608,6 @@ paths:
                                       "symbol": "AAPL"
                                 "rateLimited": true
                                 "skipReason": "example"
-                                "unavailableSymbols":
-                                    - "reason": "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND"
-                                      "symbol": "AAPL"
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_ListMarketQuotesResponse'
                 "400":
@@ -21100,6 +21098,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "asOf": "example"
                                 "earnings":
                                     - "company": "example"
                                       "date": "2026-01-15"
@@ -21109,7 +21108,6 @@ paths:
                                 "fromDate": "2026-01-15"
                                 "toDate": "2026-01-15"
                                 "total": 1
-                                "unavailable": false
                             schema:
                                 $ref: '#/components/schemas/worldmonitor_market_v1_ListEarningsCalendarResponse'
                 "400":
@@ -40564,6 +40562,8 @@ components:
                     description: |-
                         True when the upstream or seed-backed variant is unavailable; empty payload fields
                          are graceful degradation, not confirmed zero data.
+                asOf:
+                    type: string
         worldmonitor_economic_v1_EconomicEvent:
             type: object
             properties:
@@ -45036,6 +45036,16 @@ components:
                     items:
                         type: string
                         description: Same presence contract for JODI gas source paths.
+                importShareAvailable:
+                    type: boolean
+                    description: |-
+                        Primary-energy import dependency comes from the audited resilience-static
+                         source. It is independent from the OWID electricity-generation mix.
+                importShareYear:
+                    type: integer
+                    format: int32
+                importShareSource:
+                    type: string
         worldmonitor_intelligence_v1_ComputeEnergyShockScenarioRequest:
             type: object
             properties:
@@ -46510,6 +46520,8 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_market_v1_MarketQuoteUnavailable'
+                asOf:
+                    type: string
             description: ListMarketQuotesResponse contains stock and index quotes.
         worldmonitor_market_v1_MarketQuote:
             type: object
@@ -48102,6 +48114,8 @@ components:
                     description: |-
                         True when the upstream or seed-backed variant is unavailable; empty payload fields
                          are graceful degradation, not confirmed zero data.
+                asOf:
+                    type: string
         worldmonitor_market_v1_EarningsEntry:
             type: object
             properties:

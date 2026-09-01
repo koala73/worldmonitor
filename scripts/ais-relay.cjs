@@ -83,7 +83,7 @@ const {
 } = require('./_ingestion-coverage.cjs');
 const { maintainClosedMarketEquityKeys: maintainClosedMarketEquityKeysWithDeps } = require('./shared/closed-market-equity-maintenance.cjs');
 const { getUsEquitySession, isMultiMarketEquityTradingDay } = require('./shared/market-hours.cjs');
-const { mergeLastGoodQuotes, planYahooRefresh } = require('./shared/market-quote-refresh.cjs');
+const { mergeLastGoodQuotes, planYahooRefresh, resolveMergedQuotesAsOf } = require('./shared/market-quote-refresh.cjs');
 // ESM module loaded via require(esm) (Node >= 22.12; relay image is node:24).
 // Same implementation the RPC handler scores with — see the module header for
 // why it lives in shared/ rather than beside the other scoring helpers.
@@ -3103,9 +3103,12 @@ const MARKET_YAHOO_REFRESH_INTERVAL_MS = Math.max(
     : 900_000,
 );
 
+const { loadMarketSeedUniverse } = require('./shared/market-seed-universe.cjs');
 const _stockCfg = requireShared('stocks.json');
-const MARKET_SYMBOLS = _stockCfg.symbols.map((s) => s.symbol);
-const MARKET_META = new Map(_stockCfg.symbols.map((s) => [s.symbol, { name: s.name, display: s.display }]));
+const _stockUniverse = loadMarketSeedUniverse(_stockCfg);
+const MARKET_SYMBOLS = _stockUniverse.allSymbols;
+const MARKET_AUXILIARY_SYMBOLS = _stockUniverse.auxiliarySymbols;
+const MARKET_META = _stockUniverse.metaBySymbol;
 
 const _commodityCfg = requireShared('commodities.json');
 const COMMODITY_SYMBOLS = _commodityCfg.commodities.map(c => c.symbol);
@@ -3333,6 +3336,7 @@ async function seedMarketQuotes() {
     : finnhubSymbols;
   const yahooPlan = planYahooRefresh({
     mandatoryYahooSymbols: yahooSymbols,
+    everyCycleSymbols: MARKET_AUXILIARY_SYMBOLS.filter((s) => YAHOO_ONLY.has(s)),
     missedPrimarySymbols: missedFinnhub,
     nowMs: Date.now(),
     lastRefreshAt: _lastYahooMarketRefreshAt,
@@ -3362,12 +3366,18 @@ async function seedMarketQuotes() {
   const yahooSuccessCount = freshQuotes.length - freshCountBeforeYahoo;
   const coveredByYahoo = finnhubSymbols.every((s) => quotes.some((q) => q.symbol === s));
   const skipped = !FINNHUB_API_KEY && !coveredByYahoo;
-  const payload = { quotes, finnhubSkipped: skipped, skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '', rateLimited: false };
   const redisKey = `market:quotes:v1:${[...MARKET_SYMBOLS].sort().join(',')}`;
   // Compute once and thread through every write below so the envelopes'
   // _seed.fetchedAt and seed-meta.fetchedAt agree for this one publish,
   // instead of each awaited round-trip sampling Date.now() independently.
   const fetchedAt = Date.now();
+  const payload = {
+    quotes,
+    finnhubSkipped: skipped,
+    skipReason: skipped ? 'FINNHUB_API_KEY not configured' : '',
+    rateLimited: false,
+    asOf: resolveMergedQuotesAsOf(freshQuotes, quotes, previousPayload?.asOf, fetchedAt),
+  };
   const ok = await envelopeWrite(redisKey, payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });
   // Bootstrap-friendly fixed key — frontend hydrates from /api/bootstrap without RPC
   const ok2 = await envelopeWrite('market:stocks-bootstrap:v1', payload, MARKET_SEED_TTL, { fetchedAt, recordCount: quotes.length, sourceVersion: 'market-stocks' });

@@ -1053,7 +1053,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
 
     const hasAny = data.mixAvailable || data.jodiOilAvailable || data.ieaStocksAvailable
       || data.jodiGasAvailable || data.gasStorageAvailable || data.electricityAvailable
-      || data.emberAvailable || data.sprAvailable;
+      || data.emberAvailable || data.sprAvailable || data.importShareAvailable;
 
     if (!hasAny) {
       this.energyBody.append(this.makeEmpty('Energy data unavailable for this country.'));
@@ -1100,15 +1100,21 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       this.energyBody.append(src);
     }
 
-    if (data.mixAvailable) {
+    if (data.mixAvailable || data.importShareAvailable) {
       const importPct = data.importShare;
-      const color = importPct > 60 ? '#ef4444'
-        : importPct >= 30 ? '#f59e0b'
-        : importPct > 0 ? '#22c55e'
-        : '#6b7280';
-      const labelText = importPct <= 0 ? 'Net exporter' : `${Math.round(importPct)}%`;
+      let color = '#6b7280';
+      let labelText = 'Unavailable';
+      if (data.importShareAvailable) {
+        labelText = importPct < 0 ? 'Net exporter' : `${Math.round(importPct)}%`;
+        if (importPct > 60) color = '#ef4444';
+        else if (importPct >= 30) color = '#f59e0b';
+        else if (importPct > 0) color = '#22c55e';
+      }
       const row = this.el('div', '');
       row.style.cssText = 'display:flex;align-items:center;gap:6px;margin-top:6px';
+      if (data.importShareAvailable) {
+        row.title = `${data.importShareSource}, ${data.importShareYear}`;
+      }
       const label = this.el('span', 'cdp-economic-source', 'Import dependency:');
       const badge = this.el('span', '');
       badge.style.cssText = `background:${color};color:#fff;padding:1px 6px;border-radius:3px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))`;

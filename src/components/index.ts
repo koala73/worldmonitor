@@ -88,6 +88,8 @@ export * from './MarketBreadthPanel';
 export * from './NewsMarketCorrelationPanel';
 export * from './MacroTilesPanel';
 export * from './FSIPanel';
+export * from './NqPulsePanel';
+export * from './NqCatalystsPanel';
 export * from './YieldCurvePanel';
 export * from './EarningsCalendarPanel';
 export * from './EconomicCalendarPanel';

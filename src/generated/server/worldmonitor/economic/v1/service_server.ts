@@ -487,6 +487,7 @@ export interface GetEconomicCalendarResponse {
   toDate: string;
   total: number;
   unavailable: boolean;
+  asOf: string;
 }
 
 export interface EconomicEvent {

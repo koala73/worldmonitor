@@ -46,20 +46,22 @@ export interface CountryIntelCacheKeyOpts {
   frameworkHash: string;
   /** OWID energy data-year, or '' when unavailable. */
   energyYear: string;
+  /** Audited primary-energy import data-year, or '' when unavailable. */
+  energyImportYear: string;
 }
 
 export function deriveCountryIntelCacheKey(opts: CountryIntelCacheKeyOpts): string {
-  // v4 → v5 (2026-07-06, #4944): intel briefs moved to deepseek-v4-flash;
-  // v4 rows carry old-model prose and must age out at cutover.
+  // v5 to v6 removes cached briefs that could describe missing import data as 0%.
   const energyTag = opts.energyYear ? `:e${opts.energyYear}` : '';
+  const energyImportTag = opts.energyImportYear ? `:i${opts.energyImportYear}` : '';
   if (!opts.isPremium) {
     // Anonymous tier: caller inputs must not reach the key, or the shared
     // cache degenerates back into a per-caller one (and one caller's
     // context could mint entries served to everyone).
-    return `ci-sebuf:v5:${opts.countryCode}:${opts.lang}:shared${energyTag}`;
+    return `ci-sebuf:v6:${opts.countryCode}:${opts.lang}:shared${energyTag}${energyImportTag}`;
   }
   const fw = opts.frameworkHash ? `:${opts.frameworkHash}` : '';
-  return `ci-sebuf:v5:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}`;
+  return `ci-sebuf:v6:${opts.countryCode}:${opts.lang}:${opts.contextHash}${fw}${energyTag}${energyImportTag}`;
 }
 
 interface DigestItemForBrief {

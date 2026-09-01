@@ -41,6 +41,7 @@ import {
   enforceFreePanelLimit,
 } from '@/config';
 import { BETA_MODE } from '@/config/beta';
+import { NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents } from '@/services/analytics';
@@ -2210,6 +2211,7 @@ export class PanelLayoutManager implements AppModule {
 
   private static readonly NEWS_PANEL_TOOLTIPS: Record<string, string> = {
     centralbanks: t('components.centralBankWatch.infoTooltip'),
+    'nq-news': NQ_PULSE_DISCLOSURE,
   };
 
   private createNewsPanel(key: string, labelKey: string): void {
@@ -3009,6 +3011,8 @@ export class PanelLayoutManager implements AppModule {
     this.lazyDefaultPanel('news-market-correlation', () => import('@/components/NewsMarketCorrelationPanel'), 'NewsMarketCorrelationPanel');
     this.lazyDefaultPanel('macro-tiles', () => import('@/components/MacroTilesPanel'), 'MacroTilesPanel');
     this.lazyDefaultPanel('fsi', () => import('@/components/FSIPanel'), 'FSIPanel');
+    this.lazyDefaultPanel('nq-pulse', () => import('@/components/NqPulsePanel'), 'NqPulsePanel');
+    this.lazyDefaultPanel('nq-catalysts', () => import('@/components/NqCatalystsPanel'), 'NqCatalystsPanel');
     this.lazyDefaultPanel('yield-curve', () => import('@/components/YieldCurvePanel'), 'YieldCurvePanel');
     this.lazyDefaultPanel('earnings-calendar', () => import('@/components/EarningsCalendarPanel'), 'EarningsCalendarPanel');
     this.lazyDefaultPanel('economic-calendar', () => import('@/components/EconomicCalendarPanel'), 'EconomicCalendarPanel');

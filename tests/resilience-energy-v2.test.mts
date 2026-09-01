@@ -152,7 +152,7 @@ describe('scoreEnergy — RESILIENCE_ENERGY_V2_ENABLED=true', () => {
     const trace = createIndicatorTraceCollector();
     await scoreEnergy(TEST_ISO2, makeEnergyReader(TEST_ISO2, {
       staticRecord: {
-        iea: { energyImportDependency: { value: 40, year: 2018, source: 'World Bank' } },
+        iea: { energyImportDependency: { value: 40, year: 2018, source: 'worldbank' } },
         infrastructure: { indicators: {} },
       },
       fossilBulk: { countries: { [TEST_ISO2]: { value: 50, year: 2024 } } },

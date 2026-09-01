@@ -140,6 +140,7 @@ const PUBLISHER_FAMILY_DATA = {
       "Reuters India",
       "Reuters LatAm",
       "Reuters Markets",
+      "Reuters Nasdaq Futures",
       "Reuters US",
       "Reuters World",
     ],

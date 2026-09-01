@@ -7,6 +7,11 @@ import jodiMeasurementFields from '../../../../scripts/shared/jodi-measurement-f
 
 import { getCachedJson } from '../../../_shared/redis';
 import { ENERGY_SPINE_KEY_PREFIX, EMBER_ELECTRICITY_KEY_PREFIX, SPR_POLICIES_KEY } from '../../../_shared/cache-keys';
+import {
+  resolveEnergyImportDependency,
+  UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY,
+  type ResolvedEnergyImportDependency,
+} from './_energy-import-dependency';
 
 interface OwidMix {
   year?: number | null;
@@ -18,7 +23,6 @@ interface OwidMix {
   windShare?: number | null;
   solarShare?: number | null;
   hydroShare?: number | null;
-  importShare?: number | null;
 }
 
 interface GasStorage {
@@ -108,7 +112,6 @@ interface EnergySpine {
     windShare?: number;
     solarShare?: number;
     hydroShare?: number;
-    importShare?: number;
   };
   electricity?: {
     fossilShare?: number | null;
@@ -132,6 +135,9 @@ const EMPTY: GetCountryEnergyProfileResponse = {
   solarShare: 0,
   hydroShare: 0,
   importShare: 0,
+  importShareAvailable: false,
+  importShareYear: 0,
+  importShareSource: '',
   gasStorageAvailable: false,
   gasStorageFillPct: 0,
   gasStorageChange1d: 0,
@@ -285,12 +291,27 @@ function buildSprFields(sprPolicy: SprPolicy | null | undefined): Pick<
   };
 }
 
+function buildImportDependencyFields(
+  dependency: ResolvedEnergyImportDependency,
+): Pick<
+  GetCountryEnergyProfileResponse,
+  'importShare' | 'importShareAvailable' | 'importShareYear' | 'importShareSource'
+> {
+  return {
+    importShare: dependency.value,
+    importShareAvailable: dependency.available,
+    importShareYear: dependency.year,
+    importShareSource: dependency.source,
+  };
+}
+
 export function buildResponseFromSpine(
   spine: EnergySpine,
   gasStorage: GasStorage | null,
   electricity: ElectricityEntry | null,
   emberData: EmberData | null,
   sprPolicy: SprPolicy | null | undefined,
+  importDependency: ResolvedEnergyImportDependency = UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY,
 ): GetCountryEnergyProfileResponse {
   const cov = spine.coverage ?? {};
   const src = spine.sources ?? {};
@@ -315,7 +336,7 @@ export function buildResponseFromSpine(
     windShare: n(mix.windShare),
     solarShare: n(mix.solarShare),
     hydroShare: n(mix.hydroShare),
-    importShare: n(mix.importShare),
+    ...buildImportDependencyFields(importDependency),
 
     gasStorageAvailable: gasStorage != null,
     gasStorageFillPct: n(gasStorage?.fillPct),
@@ -377,11 +398,12 @@ export async function getCountryEnergyProfile(
   // Always read gas-storage and electricity directly — both update sub-daily
   // (gas storage ~10:30 UTC, electricity ~14:00 UTC) while the spine seeds once
   // at 06:00 UTC. Serving them from the spine would return stale data for up to 8h.
-  const [spineResult, gasStorageResult, electricityResult, sprRegistryResult] = await Promise.allSettled([
+  const [spineResult, gasStorageResult, electricityResult, sprRegistryResult, staticRecordResult] = await Promise.allSettled([
     getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${code}`, true),
     getCachedJson(`energy:gas-storage:v1:${code}`, true),
     getCachedJson(`energy:electricity:v1:${code}`, true),
     getCachedJson(SPR_POLICIES_KEY, true),
+    getCachedJson(`resilience:static:${code}`, true),
   ]);
 
   const spine = spineResult.status === 'fulfilled' ? (spineResult.value as EnergySpine | null) : null;
@@ -389,6 +411,8 @@ export async function getCountryEnergyProfile(
   const electricity = electricityResult.status === 'fulfilled' ? (electricityResult.value as ElectricityEntry | null) : null;
   const sprRegistry = sprRegistryResult.status === 'fulfilled' ? (sprRegistryResult.value as SprRegistry | null) : null;
   const sprPolicy = sprRegistry?.policies?.[code] ?? null;
+  const staticRecord = staticRecordResult.status === 'fulfilled' ? staticRecordResult.value : null;
+  const importDependency = resolveEnergyImportDependency(staticRecord);
 
   if (spine != null && typeof spine === 'object' && spine.coverage != null) {
     let emberFallback: EmberData | null = null;
@@ -398,10 +422,9 @@ export async function getCountryEnergyProfile(
         emberFallback = directEmber as EmberData;
       }
     }
-    return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback, sprPolicy);
+    return buildResponseFromSpine(spine, gasStorage, electricity, emberFallback, sprPolicy, importDependency);
   }
 
-  // Fallback: 4-key direct join (cold cache or countries not yet in spine)
   const [mixResult, jodiOilResult, jodiGasResult, ieaStocksResult, emberResult] =
     await Promise.allSettled([
       getCachedJson(`energy:mix:v1:${code}`, true),
@@ -430,7 +453,7 @@ export async function getCountryEnergyProfile(
     windShare: n(mix?.windShare),
     solarShare: n(mix?.solarShare),
     hydroShare: n(mix?.hydroShare),
-    importShare: n(mix?.importShare),
+    ...buildImportDependencyFields(importDependency),
 
     gasStorageAvailable: gasStorage != null,
     gasStorageFillPct: n(gasStorage?.fillPct),

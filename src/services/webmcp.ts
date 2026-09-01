@@ -528,6 +528,10 @@ const MAX_SEARCH_RESULTS = 10;
 const DEFAULT_SEARCH_RESULTS = 8;
 const MAX_OUTPUT_CHARS = WEBMCP_TOOL_BUDGETS.outputJsonChars;
 const TARGET_OUTPUT_CHARS = 1_400;
+// Navigation results fill leftover dashboard context into a tighter envelope
+// than the catalog ceiling. Raising `outputJsonChars` for list_mission_presets
+// must not let a hostile 200-id context grow toward that larger cap.
+const NAVIGATION_MAX_OUTPUT_CHARS = 1_500;
 export const DASHBOARD_SEARCH_OUTPUT_TARGET_CHARS = 1_400;
 export const DASHBOARD_SEARCH_TYPE_MAX_CHARS = 32;
 export const DASHBOARD_SEARCH_TITLE_MAX_CHARS = 160;
@@ -1590,12 +1594,12 @@ function boundDashboardNavigationResult(result: WebMcpNavigationResult): Record<
   };
   const envelopeChars = JSON.stringify(envelope).length;
   // `"context":{}` is already in the envelope; the empty object is 2 chars.
-  const contextBudget = Math.max(0, MAX_OUTPUT_CHARS - envelopeChars + 2);
+  const contextBudget = Math.max(0, NAVIGATION_MAX_OUTPUT_CHARS - envelopeChars + 2);
   const bounded = {
     ...envelope,
     context: boundDashboardContext(result.context ?? EMPTY_NAV_CONTEXT, contextBudget),
   };
-  if (JSON.stringify(bounded).length > MAX_OUTPUT_CHARS) {
+  if (JSON.stringify(bounded).length > NAVIGATION_MAX_OUTPUT_CHARS) {
     throw new SafeWebMcpError('Dashboard navigation result exceeded the safe output limit.');
   }
   return bounded;
