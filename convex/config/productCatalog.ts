@@ -627,6 +627,16 @@ export function getEntitlementFeatures(planKey: string): PlanFeatures {
   return entry.features;
 }
 
+/**
+ * True when the plan's MCP calls charge its REST budget rather than a counter
+ * of their own. Derived from the catalog so a new plan cannot be added to one
+ * list and forgotten in another — the drift that left API-tier MCP usage read
+ * from an Axiom query that could not answer it.
+ */
+export function hasSharedApiBudget(planKey: string): boolean {
+  return getEntitlementFeatures(planKey).planLimits?.mcpCallsPerDay === SHARED_API_BUDGET;
+}
+
 export function getPlanLimit(
   planKey: string,
   dimension: PlanLimitDimension,

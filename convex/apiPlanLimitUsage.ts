@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import {
   PRODUCT_CATALOG,
   getPlanLimit,
+  hasSharedApiBudget,
   type PlanLimitDimension,
 } from "./config/productCatalog";
 import {
@@ -103,25 +104,14 @@ function windowForDimension(dimension: PlanLimitDimension, now: number) {
   };
 }
 
-// Plans whose MCP calls are metered by the Redis `mcp:pro-usage` counter — i.e.
-// the plans that authenticate into the MCP edge's `pro` context and hit the
-// INCR-first reservation in api/mcp/dispatch.ts. Both a producer (the Redis
-// read) and a consumer (the Axiom-row drop) key on this, and they must agree:
-// see the dual-sourcing note above `redisMcpDailyUsers`.
-function isRedisMeteredMcpPlan(planKey: string): boolean {
-  return (
-    planKey === "pro_monthly" || planKey === "pro_annual"
-    || planKey === "pro_business_monthly" || planKey === "pro_business_annual"
-  );
-}
-
 function dodoUpgradeNotice(planKey: string, dimension: PlanLimitDimension): Omit<NoticeInput, "state"> {
-  // Pro AND Pro Business both top out below API Starter's MCP allowance, and
-  // both are self-serve checkout products — so a capped caller on either gets
-  // the same "buy API Starter" CTA. Without the pro_business arm the notice
-  // falls through to `{ctaKind: 'none'}`: the customer is told they hit the cap
-  // with no way out of it.
-  if (isRedisMeteredMcpPlan(planKey)) {
+  // Pro AND Pro Business both top out below API Starter's request allowance,
+  // and both are self-serve checkout products — so a capped caller on either
+  // gets the same "buy API Starter" CTA. Without the pro_business arm the
+  // notice falls through to `{ctaKind: 'none'}`: the customer is told they hit
+  // the cap with no way out of it. Derived from the catalog rather than a plan
+  // list so a new dedicated-counter plan routes correctly on the day it ships.
+  if (!hasSharedApiBudget(planKey) && planKey !== "enterprise") {
     return { upgradeTargetPlanKey: "api_starter", ctaKind: "checkout" };
   }
   if (planKey === "api_starter" || planKey === "api_starter_annual") {
@@ -354,7 +344,6 @@ async function buildProductionRows(
 ): Promise<{ rows: ScannerUsageRow[]; blocked: ScannerSummary["blocked"] }> {
   const blocked: ScannerSummary["blocked"] = [];
   const rows: ScannerUsageRow[] = [];
-  const day = utcDayKey(now);
 
   // api_daily_requests is now sourced from the enforcement Redis meter, keyed by
   // userId, in the Upstash-gated block below (not an Axiom count() by customer_id).
@@ -397,32 +386,14 @@ async function buildProductionRows(
     }
   }
 
-  // mcp_daily_calls for Pro accounts is authoritatively metered by the Redis
-  // mcp:pro-usage counter (read in the Upstash block below), NOT the Axiom
-  // mcp.toolcall count. The Axiom count also tallies quota-EXEMPT calls, so it
-  // reads structurally higher, and dual-sourcing mints a second row that flaps
-  // the same-dimension notice within one scan. Drop the Axiom row for those
-  // users so the Redis read (or its blocked entry) is their single source; the
-  // Axiom row still stands for api-tier mcpAccess plans that have no Redis
-  // counter. Mirrors the U8 api_daily_requests move to a single Redis source.
-  const redisMcpDailyUsers = new Set(
-    active
-      .filter((e) => isRedisMeteredMcpPlan(e.planKey) && e.mcpAccess)
-      .map((e) => e.userId),
-  );
-  const mcpDailyApl = `['wm_api_usage']
-| where tag == "mcp.toolcall" and ok == true and _time >= datetime(${day}T00:00:00Z)
-| where isnotnull(user_id) and user_id != ""
-| summarize usage = count() by user_id`;
-  const mcpDaily = await queryAxiom(mcpDailyApl, "mcp_daily_calls");
-  rows.push(...mcpDaily.rows
-    .filter((row) => !redisMcpDailyUsers.has(row.userId))
-    .map((row) => ({
-      ...row,
-      source: "axiom:mcp_toolcall",
-    })));
-  if (mcpDaily.blockedReason) blocked.push({ dimension: "mcp_daily_calls", reason: mcpDaily.blockedReason });
-
+  // mcp_daily_calls is metered entirely in Redis. The Axiom fallback that used
+  // to cover API-tier plans queried `where tag == "mcp.toolcall" ... by user_id`
+  // against `wm_api_usage`, which has neither column — the query returned
+  // HTTP 400 on every scan, so the dimension was recorded as blocked rather
+  // than evaluated, and no API-tier customer could ever receive a cap warning.
+  // Nothing repaired it because the comment claimed those plans "have no Redis
+  // counter"; they always did. With one shared budget the reads below are the
+  // single source for every plan.
   const mcpBurstApl = `['wm_api_usage']
 | where tag == "mcp.rate_limit_hit" and dimension == "mcp_minute_burst" and _time > ago(10m)
 | where isnotnull(user_id) and user_id != ""
@@ -471,11 +442,11 @@ async function buildProductionRows(
     if (ent.apiAccess && getPlanLimit(ent.planKey, "api_daily_requests") != null) {
       reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "api_daily_requests", source: "redis:apikey_day" });
     }
-    // mcp_daily_calls: the pro-family daily-counter read that pairs with the
-    // Axiom-row drop above. The two sets MUST stay identical — a plan in one
-    // and not the other either dual-sources the dimension (notice flap) or
-    // leaves it unmetered.
-    if (isRedisMeteredMcpPlan(ent.planKey) && ent.mcpAccess) {
+    // mcp_daily_calls: only plans with a counter of their OWN. A shared-budget
+    // plan charges MCP to the same key `api_daily_requests` just read, so
+    // emitting a second row here would dual-source one budget and flap the
+    // notice between two identical usages within a single scan.
+    if (ent.mcpAccess && !hasSharedApiBudget(ent.planKey) && getPlanLimit(ent.planKey, "mcp_daily_calls") != null) {
       reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "mcp_daily_calls", source: "redis:mcp_pro_daily" });
     }
   }
