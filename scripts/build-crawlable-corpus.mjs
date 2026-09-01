@@ -44,9 +44,9 @@ import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // side-effect-free in Node (its only module-scope statement is a
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
+  chokepointCoverageMetrics,
   instabilityBand,
   parseCiiMovement,
-  publishedTransitCountLabel,
   withheldTransitCountSentence,
 } from './crawlable-live-tools.mjs';
 import {
@@ -3037,7 +3037,13 @@ function renderChokepointPage({
   // Presence, not truthiness -- a fully calm chokepoint scores 0, which is a
   // real published value and must not fall back to the loading skeleton.
   const hasPulse = pulse != null && pulse.disruptionScore != null;
-  const transitsLabel = publishedTransitCountLabel(pulse?.todayTransits);
+  const coverageMetrics = chokepointCoverageMetrics({
+    todayTransits: pulse?.todayTransits,
+    todayCountsAvailable: pulse?.todayCountsAvailable,
+    warnings: pulse?.warnings,
+    weekMovement: pulse?.weekMovement ?? null,
+  });
+  const transitsLabel = coverageMetrics.todayTransits;
   const transitsWithheld = hasPulse && transitsLabel == null;
   const pulsePartial = pulse?.partial === true || transitsWithheld;
   const liveState = hasPulse ? (pulsePartial ? 'partial' : 'ready') : 'loading';
@@ -3051,9 +3057,9 @@ function renderChokepointPage({
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(pulse.disruptionScore)}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
           <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion>${escapeHtml(pulse.congestion)}</strong></div>
-          <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings>${escapeHtml(pulse.warnings)}</strong></div>
+          <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings>${escapeHtml(coverageMetrics.warnings)}</strong></div>
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
-          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(pulse.weekMovement ?? 'Unavailable')}</strong></div>
+          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (transitsWithheld ? '—' : 'Unavailable'))}</strong></div>
         </div>
         <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>
 ${transitsNote}`
