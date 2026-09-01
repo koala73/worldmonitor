@@ -2832,9 +2832,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS интерференция",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Засегнати летателни средства",
+      "samples": "Брой засегнати летателни средства",
+      "aircraft": "Наблюдавани летателни средства",
       "h3Hex": "H3 Hex"
     },
     "flight": {

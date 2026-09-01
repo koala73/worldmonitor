@@ -2870,9 +2870,9 @@
     },
     "gpsJamming": {
       "title": "Помехи GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Затронутые воздушные суда",
+      "samples": "Количество затронутых воздушных судов",
+      "aircraft": "Обнаруженные воздушные суда",
       "h3Hex": "H3 Hex"
     },
     "flight": {

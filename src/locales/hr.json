@@ -2929,9 +2929,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS Smetnje",
-      "navPerformance": "Performanse Navigacije",
-      "samples": "ADS-B Uzorci",
-      "aircraft": "Zrakoplovi",
+      "navPerformance": "Pogođeni zrakoplovi",
+      "samples": "Broj pogođenih",
+      "aircraft": "Uočeni zrakoplovi",
       "h3Hex": "H3 Hex"
     },
     "flight": {

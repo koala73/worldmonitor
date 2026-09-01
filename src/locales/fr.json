@@ -2850,9 +2850,9 @@
     },
     "gpsJamming": {
       "title": "Interférence GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Aéronefs affectés",
+      "samples": "Nombre d'aéronefs affectés",
+      "aircraft": "Aéronefs observés",
       "h3Hex": "H3 Hex"
     },
     "flight": {

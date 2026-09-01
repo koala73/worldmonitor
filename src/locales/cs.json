@@ -2870,9 +2870,9 @@
     },
     "gpsJamming": {
       "title": "Interference GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Zasažená letadla",
+      "samples": "Počet zasažených letadel",
+      "aircraft": "Pozorovaná letadla",
       "h3Hex": "H3 Hex"
     },
     "flight": {

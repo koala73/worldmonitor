@@ -2813,9 +2813,9 @@
     },
     "gpsJamming": {
       "title": "Nhiễu GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Máy bay bị ảnh hưởng",
+      "samples": "Số máy bay bị ảnh hưởng",
+      "aircraft": "Số máy bay quan sát được",
       "h3Hex": "H3 Hex"
     },
     "flight": {

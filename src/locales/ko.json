@@ -2813,9 +2813,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS 간섭",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "영향을 받은 항공기",
+      "samples": "영향을 받은 항공기 수",
+      "aircraft": "관측된 항공기 수",
       "h3Hex": "H3 Hex"
     },
     "flight": {

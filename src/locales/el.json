@@ -2832,9 +2832,9 @@
     },
     "gpsJamming": {
       "title": "Παρεμβολή GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Επηρεαζόμενα αεροσκάφη",
+      "samples": "Αριθμός επηρεαζόμενων αεροσκαφών",
+      "aircraft": "Εντοπισμένα αεροσκάφη",
       "h3Hex": "H3 Hex"
     },
     "flight": {

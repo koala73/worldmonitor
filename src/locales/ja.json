@@ -2813,9 +2813,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS干渉",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "影響を受けた航空機",
+      "samples": "影響を受けた航空機数",
+      "aircraft": "観測航空機数",
       "h3Hex": "H3 Hex"
     },
     "flight": {

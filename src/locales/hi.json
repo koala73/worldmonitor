@@ -2901,9 +2901,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS व्यवधान",
-      "navPerformance": "नेविगेशन प्रदर्शन",
-      "samples": "ADS-B नमूने",
-      "aircraft": "विमान",
+      "navPerformance": "प्रभावित विमान",
+      "samples": "प्रभावित विमानों की संख्या",
+      "aircraft": "देखे गए विमान",
       "h3Hex": "H3 हेक्स"
     },
     "flight": {

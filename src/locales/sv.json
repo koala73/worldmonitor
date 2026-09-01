@@ -2451,9 +2451,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS-störning",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Påverkade flygplan",
+      "samples": "Antal påverkade flygplan",
+      "aircraft": "Observerade flygplan",
       "h3Hex": "H3 Hex"
     },
     "flight": {

@@ -2901,9 +2901,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS zavar",
-      "navPerformance": "Navigációs teljesítmény",
-      "samples": "ADS-B minták",
-      "aircraft": "Repülőgép",
+      "navPerformance": "Érintett repülőgépek",
+      "samples": "Érintett repülőgépek száma",
+      "aircraft": "Észlelt repülőgépek",
       "h3Hex": "H3 Hex"
     },
     "flight": {
