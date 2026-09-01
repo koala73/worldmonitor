@@ -2,14 +2,29 @@ import {
   allSettledWithConcurrency,
   fredFetchJson,
   getRedisCredentials,
+  redisCommand,
   resolveProxyForConnect,
 } from './_seed-utils.mjs';
+import { getOptionalUpstashCreds } from './_upstash-rest.mjs';
 import { unwrapEnvelope } from './_seed-envelope-source.mjs';
 
 export const FRED_KEY_PREFIX = 'economic:fred:v1';
 export const STRESS_INDEX_KEY = 'economic:stress-index:v1';
 export const STRESS_INDEX_TTL = 21600; // 6h
 export const FRED_TTL = 93600; // 26h — survive daily cron scheduling drift
+
+// Series metadata (title/units/frequency) is DESCRIPTIVE, not observational —
+// DGS10's title and units do not change between hourly runs. Fetching it beside
+// every observations call meant each series cost TWO proxied requests per run, so
+// half of this seeder's FRED traffic re-read constants. api.stlouisfed.org carries
+// the largest request count of any target on the residential proxy account
+// (391K over 90 days), and seed-fred-rates is hourly × 24 series.
+//
+// One blob for all series: a single GET per run, and a SETEX only when something
+// was actually fetched. The 30-day TTL is the guard against a renamed or re-based
+// series being pinned forever — not a freshness requirement.
+export const FRED_SERIES_META_KEY = 'economic:fred:series-meta:v1';
+export const FRED_SERIES_META_TTL = 30 * 24 * 60 * 60; // 30d
 
 export const FRED_SEED_SERIES = ['WALCL', 'FEDFUNDS', 'T10Y2Y', 'UNRATE', 'CPIAUCSL', 'DGS10', 'VIXCLS', 'GDP', 'M2SL', 'DCOILWTICO', 'BAMLH0A0HYM2', 'ICSA', 'MORTGAGE30US', 'BAMLC0A0CM', 'SOFR', 'DGS1MO', 'DGS3MO', 'DGS6MO', 'DGS1', 'DGS2', 'DGS5', 'DGS30', 'T10Y3M', 'STLFSI4'];
 
@@ -73,6 +88,86 @@ export async function fetchGscpiFromRedis() {
 }
 
 /**
+ * Keep only the metadata fields this seeder publishes, and only when FRED actually
+ * described the series. Returning null for anything else is what stops the
+ * `title = seriesId` fallback from being cached as if it were real metadata.
+ * @param {unknown} entry
+ * @returns {{ title: string; units: string; frequency: string } | null}
+ */
+export function normalizeFredSeriesMeta(entry) {
+  const e = /** @type {any} */ (entry);
+  const title = typeof e?.title === 'string' ? e.title.trim() : '';
+  if (!title) return null;
+  return {
+    title,
+    units: typeof e?.units === 'string' ? e.units : '',
+    frequency: typeof e?.frequency === 'string' ? e.frequency : '',
+  };
+}
+
+/**
+ * Read the cached series-metadata blob. Any failure — Redis down, malformed JSON,
+ * a non-object payload — degrades to `{}`, which makes every series a cache miss
+ * and restores the previous fetch-metadata-every-run behaviour exactly.
+ * @returns {Promise<Record<string, { title: string; units: string; frequency: string }>>}
+ */
+export async function readFredSeriesMetaCache() {
+  // getRedisCredentials() calls process.exit(1) when Upstash is unconfigured — a
+  // try/catch cannot contain that. This cache is an optimisation, so it must degrade,
+  // never terminate the seeder: take the credentials through the optional helper.
+  const creds = getOptionalUpstashCreds();
+  if (!creds) return {};
+  const { restUrl: url, token } = creds;
+  try {
+    const resp = await fetch(`${url}/get/${encodeURIComponent(FRED_SERIES_META_KEY)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      signal: AbortSignal.timeout(5_000),
+    });
+    if (!resp.ok) return {};
+    const body = /** @type {{ result?: string | null; error?: unknown }} */ (await resp.json());
+    if (body.error != null || !body.result) return {};
+    const parsed = JSON.parse(body.result);
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) return {};
+    /** @type {Record<string, { title: string; units: string; frequency: string }>} */
+    const clean = {};
+    for (const [seriesId, entry] of Object.entries(parsed)) {
+      const meta = normalizeFredSeriesMeta(entry);
+      if (meta) clean[seriesId] = meta;
+    }
+    return clean;
+  } catch {
+    return {};
+  }
+}
+
+/**
+ * Persist the merged metadata blob, pruned to the current series list so a removed
+ * series cannot linger. Best-effort: a failed write costs one extra metadata fetch
+ * next run, never a failed seed.
+ * @param {Record<string, { title: string; units: string; frequency: string }>} meta
+ */
+export async function writeFredSeriesMetaCache(meta) {
+  // Same process.exit(1) hazard as the reader — see readFredSeriesMetaCache.
+  const creds = getOptionalUpstashCreds();
+  if (!creds) return;
+  const { restUrl: url, token } = creds;
+  try {
+    const pruned = Object.fromEntries(
+      FRED_SEED_SERIES.filter((seriesId) => meta[seriesId]).map((seriesId) => [seriesId, meta[seriesId]]),
+    );
+    if (Object.keys(pruned).length === 0) return;
+    await redisCommand(
+      url,
+      token,
+      ['SETEX', FRED_SERIES_META_KEY, String(FRED_SERIES_META_TTL), JSON.stringify(pruned)],
+      { label: 'FRED series-meta cache' },
+    );
+  } catch (error) {
+    console.warn(`  [FRED] series-meta cache write skipped — ${error instanceof Error ? error.message : error}`);
+  }
+}
+
+/**
  * Compute the composite stress index from freshly-fetched FRED data.
  * Scan backwards through observations to skip FRED's end-of-series null sentinels.
  * @param {Record<string, { observations: { date: string; value: number }[] }>} fr
@@ -122,19 +217,25 @@ export function computeStressIndex(fr) {
   return { compositeScore, label, components, seededAt: new Date().toISOString(), unavailable: false };
 }
 
-async function fetchOneFredSeries(seriesId, apiKey, fredFetchFn, proxyAuth) {
+async function fetchOneFredSeries(seriesId, apiKey, fredFetchFn, proxyAuth, cachedMeta = null) {
   const limit = 120;
   const obsParams = new URLSearchParams({
     series_id: seriesId, api_key: apiKey, file_type: 'json', sort_order: 'desc', limit: String(limit),
   });
-  const metaParams = new URLSearchParams({
-    series_id: seriesId, api_key: apiKey, file_type: 'json',
-  });
 
-  const [obsResp, metaResp] = await Promise.allSettled([
+  // Observations always go over the wire; the /fred/series description only when
+  // it is not already cached. On a warm cache this halves the request count.
+  const requests = [
     fredFetchFn(`https://api.stlouisfed.org/fred/series/observations?${obsParams}`, proxyAuth),
-    fredFetchFn(`https://api.stlouisfed.org/fred/series?${metaParams}`, proxyAuth),
-  ]);
+  ];
+  if (!cachedMeta) {
+    const metaParams = new URLSearchParams({
+      series_id: seriesId, api_key: apiKey, file_type: 'json',
+    });
+    requests.push(fredFetchFn(`https://api.stlouisfed.org/fred/series?${metaParams}`, proxyAuth));
+  }
+
+  const [obsResp, metaResp] = await Promise.allSettled(requests);
 
   if (obsResp.status === 'rejected') {
     throw new Error(`fetch failed — ${obsResp.reason?.message || obsResp.reason}`);
@@ -146,13 +247,26 @@ async function fetchOneFredSeries(seriesId, apiKey, fredFetchFn, proxyAuth) {
     .filter(Boolean)
     .reverse();
 
-  let title = seriesId, units = '', frequency = '';
-  if (metaResp.status === 'fulfilled') {
-    const meta = metaResp.value.seriess?.[0];
-    if (meta) { title = meta.title || seriesId; units = meta.units || ''; frequency = meta.frequency || ''; }
+  // `fetched` is the only state that may be written back to the cache — a failed
+  // metadata call still yields the historical `title = seriesId` fallback, and
+  // caching that would pin a placeholder title for the whole 30-day TTL.
+  let metaSource = 'fallback';
+  let meta = cachedMeta ? normalizeFredSeriesMeta(cachedMeta) : null;
+  if (meta) {
+    metaSource = 'cache';
+  } else if (metaResp?.status === 'fulfilled') {
+    meta = normalizeFredSeriesMeta(metaResp.value.seriess?.[0]);
+    if (meta) metaSource = 'fetched';
   }
 
-  return { seriesId, title, units, frequency, observations };
+  return {
+    seriesId,
+    title: meta?.title || seriesId,
+    units: meta?.units || '',
+    frequency: meta?.frequency || '',
+    observations,
+    metaSource,
+  };
 }
 
 export function isUsableFredSeries(series) {
@@ -166,26 +280,47 @@ export async function fetchFredSeries({
   fredFetchFn = fredFetchJson,
   concurrency = FRED_CONCURRENCY,
   proxyAuth = resolveProxyForConnect(),
+  readMetaCache = readFredSeriesMetaCache,
+  writeMetaCache = writeFredSeriesMetaCache,
 } = {}) {
   const apiKey = process.env.FRED_API_KEY;
   if (!apiKey) throw new Error('Missing FRED_API_KEY');
 
+  const cachedMeta = await readMetaCache();
+
   const settled = await allSettledWithConcurrency(
     FRED_SEED_SERIES,
     concurrency,
-    (seriesId) => fetchOneFredSeries(seriesId, apiKey, fredFetchFn, proxyAuth),
+    (seriesId) => fetchOneFredSeries(seriesId, apiKey, fredFetchFn, proxyAuth, cachedMeta[seriesId]),
   );
 
   const results = {};
+  /** @type {Record<string, { title: string; units: string; frequency: string }>} */
+  const freshMeta = {};
   settled.forEach((s, i) => {
     const seriesId = FRED_SEED_SERIES[i];
-    if (s.status === 'fulfilled' && isUsableFredSeries(s.value)) results[seriesId] = s.value;
-    else if (s.status === 'fulfilled') console.warn(`  FRED ${seriesId}: no usable observations`);
+    // Metadata is worth caching whenever FRED described the series, even if the
+    // observations were unusable — the description is what the next run wants to skip.
+    if (s.status === 'fulfilled' && s.value?.metaSource === 'fetched') {
+      freshMeta[seriesId] = { title: s.value.title, units: s.value.units, frequency: s.value.frequency };
+    }
+    if (s.status === 'fulfilled' && isUsableFredSeries(s.value)) {
+      const { metaSource, ...series } = s.value;
+      results[seriesId] = series;
+    } else if (s.status === 'fulfilled') console.warn(`  FRED ${seriesId}: no usable observations`);
     else console.warn(`  FRED ${seriesId}: ${s.reason?.message || s.reason}`);
   });
 
+  if (Object.keys(freshMeta).length > 0) {
+    await writeMetaCache({ ...cachedMeta, ...freshMeta });
+  }
+
   const fredCount = Object.keys(results).length;
-  console.log(`  FRED series: ${fredCount}/${FRED_SEED_SERIES.length}`);
+  // Count what the cache actually served, not "everything that wasn't fetched" — a
+  // series whose whole request rejected never consulted the cache, and folding it in
+  // would report a hit rate that rises when the seeder is failing.
+  const metaHits = FRED_SEED_SERIES.filter((seriesId) => cachedMeta[seriesId]).length;
+  console.log(`  FRED series: ${fredCount}/${FRED_SEED_SERIES.length} (series-meta cache: ${metaHits}/${FRED_SEED_SERIES.length} hits)`);
   if (fredCount === 0) console.warn('  [WARN] FRED series: 0 fetched — all series failed or returned no observations. Check FRED_API_KEY and PROXY_URL. FRED-dependent panels will go stale.');
   return results;
 }
