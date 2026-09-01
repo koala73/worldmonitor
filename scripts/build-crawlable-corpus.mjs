@@ -37,6 +37,7 @@ import {
   CHANGELOG_PAGINATION_ROBOTS_CONTENT,
   INDEXABLE_ROBOTS_CONTENT,
 } from '../shared/seo-robots.mjs';
+import { CII_COUNTRY_CODES } from '../shared/cii-weights.ts';
 import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // Single source with the browser copy: crawlable-live-tools.mjs is what gets
 // written verbatim to public/tools/live-tools.js, and importing it here is
@@ -74,7 +75,6 @@ const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 // than silently republish months-old numbers under a current-state heading.
 // Sized to clear the monthly refresh cadence with slack.
 const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
-const CII_PUBLISHED_COUNTRY_COUNT = 31;
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
 const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
@@ -105,7 +105,10 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
+const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
+const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
+const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
+const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
 // Public ranking / confidence gates. Keep aligned with
 // server/worldmonitor/resilience/v1/_shared.ts and
 // docs/methodology/country-resilience-index.mdx.
@@ -378,9 +381,14 @@ export function buildCiiRankingEntries(countries, livePulse) {
   }
 
   entries.sort((left, right) => right.score - left.score || left.country.name.localeCompare(right.country.name));
-  if (entries.length !== CII_PUBLISHED_COUNTRY_COUNT) {
+  const entryCodes = new Set(entries.map((entry) => entry.code));
+  const expectedCodes = new Set(CII_COUNTRY_CODES);
+  const missingCodes = CII_COUNTRY_CODES.filter((code) => !entryCodes.has(code));
+  const unexpectedCodes = [...entryCodes].filter((code) => !expectedCodes.has(code));
+  if (missingCodes.length > 0 || unexpectedCodes.length > 0) {
     throw new Error(
-      `CII ranking requires ${CII_PUBLISHED_COUNTRY_COUNT} scored countries; found ${entries.length}`,
+      `CII ranking country set is invalid: missing ${missingCodes.join(', ') || 'none'}; `
+      + `unexpected ${unexpectedCodes.join(', ') || 'none'}`,
     );
   }
   if (methodologyVersions.size !== 1) {
@@ -831,13 +839,16 @@ export function countryMetaDescription({
   ciiEntry = null,
 }) {
   if (ciiEntry) {
+    const movementFact = ciiEntry.change24h == null
+      ? 'with 24-hour movement stable or unavailable'
+      : `and is ${ciiEntry.movementText}`;
     const subjects = [
       `${name} Country Instability Index`,
       `${name} instability index`,
     ];
     const facts = [
-      `is ${ciiEntry.score}/100 (${ciiEntry.band}), ${ciiEntry.movementText}`,
-      `scores ${ciiEntry.score}/100 (${ciiEntry.band}) and is ${ciiEntry.movementText}`,
+      `is ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
+      `scores ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
     ];
     const contexts = [
       'with World Monitor country-risk, resilience, advisory, and sanctions context.',
@@ -1379,13 +1390,25 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const glossaryTerms = normalizeGlossaryTerms(GLOSSARY_TERMS);
   const changelog = parseChangelog(readText(rootDir, CHANGELOG_PATH));
   // Family lastmods are change-dates, not build-dates (#7463). Do not fold
-  // CORPUS_GENERATOR_CONTENT_VERSION into any family. Country and chokepoint
-  // pages include the published pulse, so their lastmod includes its date.
+  // CORPUS_GENERATOR_CONTENT_VERSION into any family. All country pages include
+  // the pulse date, while CII-targeted pages use a separate content clock.
   const countriesLastmod = laterDate(
     resilience.capturedAt,
     livePulse.capturedAt,
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
     COUNTRY_PAGE_CONTENT_VERSION,
+  );
+  const ciiCountriesLastmod = laterDate(
+    countriesLastmod,
+    CII_COUNTRY_PAGE_CONTENT_VERSION,
+  );
+  const countriesIndexLastmod = laterDate(
+    countriesLastmod,
+    COUNTRIES_INDEX_CONTENT_VERSION,
+  );
+  const countryInstabilityIndexLastmod = laterDate(
+    countriesLastmod,
+    CII_RANKING_PAGE_CONTENT_VERSION,
   );
   const changelogLastmod = laterDate(
     gitFileLastmod(rootDir, CHANGELOG_PATH),
@@ -1466,8 +1489,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     },
     livePulse,
     lastmod: {
-      countryInstabilityIndex: countriesLastmod,
+      countryInstabilityIndex: countryInstabilityIndexLastmod,
+      countriesIndex: countriesIndexLastmod,
       countries: countriesLastmod,
+      ciiCountries: ciiCountriesLastmod,
       changelog: changelogLastmod,
       chokepoints: chokepointsLastmod,
       tools: toolsLastmod,
@@ -1732,6 +1757,15 @@ ${body}
 `;
 }
 
+function ciiMovementProperties(change24h) {
+  return change24h == null ? [] : [{
+    '@type': 'PropertyValue',
+    name: 'Approximate 24-hour movement',
+    value: change24h,
+    unitText: 'index points',
+  }];
+}
+
 function renderCountryInstabilityIndexPage({
   ciiRanking,
   baseUrl,
@@ -1740,7 +1774,7 @@ function renderCountryInstabilityIndexPage({
   snapshotPath,
 }) {
   const path = '/country-instability-index/';
-  const description = "See World Monitor's live Country Instability Index rankings, with current scores, 24-hour movement, severity levels, and update times for 31 Tier-1 countries.";
+  const description = `See World Monitor's live Country Instability Index rankings, with current scores, available 24-hour movement, severity levels, and update times for ${ciiRanking.entries.length} Tier-1 countries.`;
   const datasetId = `${absoluteUrl(baseUrl, path)}#dataset`;
   const rankingId = `${absoluteUrl(baseUrl, path)}#ranking`;
   const versionLabel = `CII ${ciiRanking.methodologyVersion}`;
@@ -1757,7 +1791,7 @@ function renderCountryInstabilityIndexPage({
         url,
         additionalProperty: [
           { '@type': 'PropertyValue', name: 'Country Instability Index score', value: entry.score, minValue: 0, maxValue: 100 },
-          { '@type': 'PropertyValue', name: 'Approximate 24-hour movement', value: entry.change24h, unitText: 'index points' },
+          ...ciiMovementProperties(entry.change24h),
           { '@type': 'PropertyValue', name: 'Instability level', value: entry.band },
         ],
       },
@@ -1765,8 +1799,8 @@ function renderCountryInstabilityIndexPage({
   });
   const body = `      <p class="eyebrow">Current country stress</p>
       <h1>Country Instability Index</h1>
-      <p class="lede">The World Monitor Country Instability Index (CII) measures current country-level stress on a 0-100 scale using conflict, unrest, security and information signals. ${escapeHtml(versionLabel)} currently monitors ${ciiRanking.entries.length} countries and tracks approximate 24-hour movement.</p>
-      <section class="live-tool" data-live-cii-ranking data-state="ready" data-published-pulse>
+      <p class="lede">The World Monitor Country Instability Index (CII) measures current country-level stress on a 0-100 scale using conflict, unrest, security and information signals. ${escapeHtml(versionLabel)} currently monitors ${ciiRanking.entries.length} countries and reports approximate 24-hour movement when available.</p>
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="${escapeHtml(ciiRanking.methodologyVersion)}" data-state="ready" data-published-pulse>
         <div class="tool-head">
           <div>
             <p class="eyebrow">Live rankings</p>
@@ -1778,7 +1812,7 @@ function renderCountryInstabilityIndexPage({
           <caption>Published ${escapeHtml(formatStaticDateTime(ciiRanking.updatedAt))} from the committed crawlable pulse. The table refreshes from the current API after load.</caption>
           <thead><tr><th scope="col">Country</th><th scope="col">CII</th><th scope="col">24h</th><th scope="col">Level</th><th scope="col">Updated</th></tr></thead>
           <tbody data-cii-ranking-body>
-${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(entry.score)}</data></td><td data-cii-trend>${escapeHtml(entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
+${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(entry.score)}</data></td><td data-cii-trend>${escapeHtml(entry.change24h == null ? 'Stable or unavailable' : entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
           </tbody>
         </table></div>
         <div class="tool-meta">
@@ -1788,7 +1822,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
         <noscript><p>The published rankings remain available without JavaScript. Enable JavaScript to request the current API result.</p></noscript>
       </section>
       <h2>What the CII measures</h2>
-      <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII v8 methodology</a> before using a score in an analysis.</p>
+      <p>CII combines a 40% structural baseline with 60% live event pressure. The event score weights conflict at 30%, unrest at 25%, information at 25%, and security at 20%. It also applies bounded boosts and conflict or advisory floors. Read the <a href="/docs/methodology/cii-risk-scores">CII ${escapeHtml(ciiRanking.methodologyVersion)} methodology</a> before using a score in an analysis.</p>
       <p>CII measures short-term stress. The separate <a href="/countries/">Country Resilience Index</a> measures longer-term structural capacity across 196 countries. Do not combine the scores.</p>
       <a class="cta" href="${escapeHtml(withUtmSource(absoluteUrl(baseUrl, '/dashboard'), 'seo-cii'))}">Open the live CII panel in World Monitor →</a>
       <p class="source">Source: ${escapeHtml(snapshotPath)}. Published ${escapeHtml(prettyDate(capturedAt))}. Current results: <code>/api/intelligence/v1/get-risk-scores</code>.</p>`;
@@ -1813,7 +1847,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
         '@type': 'Dataset',
         '@id': datasetId,
         name: `World Monitor Country Instability Index (CII) ${ciiRanking.methodologyVersion}`,
-        description: `Current 0-100 instability scores, approximate 24-hour movement, and instability levels for ${ciiRanking.entries.length} monitored countries.`,
+        description: `Current 0-100 instability scores, available approximate 24-hour movement, and instability levels for ${ciiRanking.entries.length} monitored countries.`,
         url: absoluteUrl(baseUrl, path),
         identifier: `world-monitor-cii-${ciiRanking.methodologyVersion}-${capturedAt}`,
         creator: { ...WORLD_MONITOR_ORG },
@@ -2446,7 +2480,7 @@ function renderCountryPage({
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current country instability metrics" aria-busy="false">
           <div class="metric"><span>Instability score</span><strong><span data-live-score>${pulse.partial ? '—' : escapeHtml(pulse.score)}</span><small data-live-band>${pulse.partial ? 'No current score' : escapeHtml(pulse.band)}</small></strong></div>
-          <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : pulse.trend)}</strong></div>
+          <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : ciiEntry?.change24h === null ? 'Stable or unavailable' : pulse.trend)}</strong></div>
           <div class="metric"><span>Travel advisory input</span><strong data-live-advisory>${escapeHtml(pulse.advisory)}</strong></div>
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions>${escapeHtml(pulse.sanctions)}</strong></div>
         </div>`
@@ -2550,7 +2584,7 @@ ${analysis.html}
     '@type': 'Dataset',
     '@id': ciiDatasetId,
     name: `World Monitor Country Instability Index: ${country.name}`,
-    description: `The current World Monitor Country Instability Index score, approximate 24-hour movement, instability level, and methodology version for ${country.name}.`,
+    description: `The current World Monitor Country Instability Index score, available approximate 24-hour movement, instability level, and methodology version for ${country.name}.`,
     url: absoluteUrl(baseUrl, path),
     identifier: `${country.code}-cii-${ciiEntry.methodologyVersion}`,
     creator: { ...WORLD_MONITOR_ORG },
@@ -2565,7 +2599,7 @@ ${analysis.html}
     measurementTechnique: `World Monitor CII ${ciiEntry.methodologyVersion}`,
     variableMeasured: [
       { '@type': 'PropertyValue', name: 'Instability score', value: ciiEntry.score, minValue: 0, maxValue: 100 },
-      { '@type': 'PropertyValue', name: 'Approximate 24-hour movement', value: ciiEntry.change24h, unitText: 'index points' },
+      ...ciiMovementProperties(ciiEntry.change24h),
       { '@type': 'PropertyValue', name: 'Instability level', value: ciiEntry.band },
     ],
   } : null;
@@ -2595,10 +2629,9 @@ ${analysis.html}
           identifier: country.code,
           sameAs: country.identity.sameAs,
         },
-        mainEntity: { '@id': ciiEntry ? ciiDatasetId : resilienceDatasetId },
+        mainEntity: ciiEntry ? { '@id': ciiDatasetId } : resilienceDataset,
       },
-      ciiDataset,
-      resilienceDataset,
+      ...(ciiEntry ? [ciiDataset, resilienceDataset] : []),
       {
         '@context': 'https://schema.org',
         '@type': 'FAQPage',
@@ -3669,7 +3702,7 @@ export async function buildCorpus({
       ciiRanking: data.ciiRanking,
       baseUrl,
       capturedAt: data.resilience.capturedAt,
-      lastmod: data.lastmod.countries,
+      lastmod: data.lastmod.countriesIndex,
       snapshotPath: data.sources.resilienceSnapshot,
     }),
   );
@@ -3683,7 +3716,9 @@ export async function buildCorpus({
         country,
         baseUrl,
         capturedAt: data.resilience.capturedAt,
-        lastmod: data.lastmod.countries,
+        lastmod: data.ciiRanking.byCode.has(country.code)
+          ? data.lastmod.ciiCountries
+          : data.lastmod.countries,
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
         rankedCount,
         snapshotNote: data.resilience.snapshotNote,

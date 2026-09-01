@@ -27,7 +27,7 @@ describe('crawlable country live-risk tool', () => {
   it('formats trend and advisory tokens for readers', () => {
     assert.equal(formatTrend(2.4, 'TREND_DIRECTION_RISING'), 'Rising +2.4');
     assert.equal(formatTrend(-1.2, 'TREND_DIRECTION_FALLING'), 'Falling -1.2');
-    assert.equal(formatTrend(0, 'TREND_DIRECTION_STABLE'), 'Stable');
+    assert.equal(formatTrend(0, 'TREND_DIRECTION_STABLE'), 'Stable or unavailable');
     assert.equal(formatAdvisory('reconsider'), 'Reconsider Travel');
     assert.equal(formatAdvisory('caution'), 'Exercise Increased Caution');
     assert.equal(formatAdvisory(''), 'Not present');
@@ -43,12 +43,12 @@ describe('crawlable country live-risk tool', () => {
       movementText: 'down 1 point over approximately 24 hours',
     });
     assert.deepEqual(parseCiiMovement(formatTrend(0, 'TREND_DIRECTION_STABLE')), {
-      change24h: 0,
-      movementText: 'unchanged over approximately 24 hours',
+      change24h: null,
+      movementText: 'stable or unavailable over approximately 24 hours',
     });
     assert.deepEqual(parseCiiMovement(formatTrend(null, '')), {
-      change24h: 0,
-      movementText: 'unchanged over approximately 24 hours',
+      change24h: null,
+      movementText: 'stable or unavailable over approximately 24 hours',
     });
     assert.throws(() => parseCiiMovement('Rising later'), /Invalid CII movement label/);
   });

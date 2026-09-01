@@ -113,17 +113,25 @@ export function formatTrend(dynamicScore, trend) {
   if (delta !== null) {
     if (delta > 0) return `Rising +${formatNumber(delta)}`;
     if (delta < 0) return `Falling ${formatNumber(delta)}`;
+    return 'Stable or unavailable';
   }
 
   const normalized = humanizeToken(trend, ['TREND_DIRECTION_']);
   if (normalized && normalized !== 'Unspecified') return normalized;
-  return 'Stable / unavailable';
+  return 'Stable or unavailable';
 }
 
 export function parseCiiMovement(trend) {
   const normalized = String(trend || '').trim();
-  if (normalized === 'Stable' || normalized === 'Stable / unavailable') {
-    return { change24h: 0, movementText: 'unchanged over approximately 24 hours' };
+  if (
+    normalized === 'Stable'
+    || normalized === 'Stable / unavailable'
+    || normalized === 'Stable or unavailable'
+  ) {
+    return {
+      change24h: null,
+      movementText: 'stable or unavailable over approximately 24 hours',
+    };
   }
   const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
   if (!match) throw new Error(`Invalid CII movement label: ${normalized || '(empty)'}`);
@@ -1015,6 +1023,13 @@ export async function loadCountryRisk(tool) {
 }
 
 function renderCiiRankingViewModel(tool, view) {
+  const publishedMethodologyVersion = String(tool.dataset.ciiMethodologyVersion || '').trim();
+  if (
+    !publishedMethodologyVersion
+    || publishedMethodologyVersion !== view.methodologyVersion
+  ) {
+    throw new Error('CII ranking response does not match the published methodology');
+  }
   const body = tool.querySelector('[data-cii-ranking-body]');
   if (!body) throw new Error('CII ranking table body is unavailable');
   const rowByCode = new Map(

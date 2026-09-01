@@ -125,6 +125,41 @@ describe('root sitemap generator', () => {
     }
   });
 
+  it('requires the exact Country Instability Index route in a complete corpus', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-sitemap-complete-'));
+    const publicDir = join(tempRoot, 'public');
+    try {
+      for (const pathname of [
+        '/countries/norway/',
+        '/chokepoints/strait-of-hormuz/',
+        '/crises/red-sea-security/',
+        '/tools/natural-hazard-pulse/',
+        '/research/example/',
+        '/reference/changelog/',
+        '/country-instability-index/archive/',
+      ]) {
+        writeCorpusPage(publicDir, `${pathname.slice(1)}index.html`, {
+          canonical: `${SITE_ORIGIN}${pathname}`,
+          lastmod: '2026-07-20',
+        });
+      }
+
+      assert.throws(
+        () => buildSitemapEntries({
+          repoRoot,
+          publicDir,
+          existingSitemapSource: '',
+          resolveMaterialLastmod: () => '2026-07-21',
+          requireCompleteCorpus: true,
+          today: '2026-07-27',
+        }),
+        /no \/country-instability-index\/ page/,
+      );
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
   it('rejects malformed, noncanonical, duplicate, missing, and future metadata', () => {
     const valid = {
       loc: `${SITE_ORIGIN}/dashboard`,

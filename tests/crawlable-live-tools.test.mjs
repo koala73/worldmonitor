@@ -1029,7 +1029,7 @@ describe('crawlable live intelligence view models', () => {
     const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
     const { document } = window;
     document.body.innerHTML = `
-      <section class="live-tool" data-live-cii-ranking data-published-pulse data-state="ready">
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
         <span class="live-status" data-live-status>Published pulse</span>
         <div data-live-grid aria-busy="false">
           <table data-cii-ranking>
@@ -1072,7 +1072,7 @@ describe('crawlable live intelligence view models', () => {
     const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
     const { document } = window;
     document.body.innerHTML = `
-      <section class="live-tool" data-live-cii-ranking data-published-pulse data-state="ready">
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
         <span class="live-status" data-live-status>Published pulse</span>
         <div data-live-grid aria-busy="false">
           <table data-cii-ranking>
@@ -1149,7 +1149,7 @@ describe('crawlable live intelligence view models', () => {
     const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
     const { document } = window;
     document.body.innerHTML = `
-      <section class="live-tool" data-live-cii-ranking data-published-pulse data-state="ready">
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
         <span class="live-status" data-live-status>Published pulse</span>
         <div data-live-grid aria-busy="false">
           <table data-cii-ranking>
@@ -1200,6 +1200,70 @@ describe('crawlable live intelligence view models', () => {
       tool.querySelector('[data-live-status]').textContent,
       'Live refresh unavailable — showing published rankings',
     );
+    assert.equal(tool.dataset.state, 'error');
+  });
+
+  it('keeps published CII rows when the live methodology does not match', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/country-instability-index/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="v8" data-published-pulse data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div data-live-grid aria-busy="false">
+          <table data-cii-ranking>
+            <tbody data-cii-ranking-body>
+              <tr data-cii-country="BR"><td>Brazil</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+              <tr data-cii-country="AE"><td>United Arab Emirates</td><td><data data-cii-score value="50">50</data></td><td data-cii-trend>Stable</td><td data-cii-band>Normal</td><td><time data-cii-updated datetime="2026-08-30T12:00:00.000Z">Aug 30, 2026</time></td></tr>
+            </tbody>
+          </table>
+        </div>
+        <time data-cii-ranking-updated datetime="2026-08-30T12:00:00.000Z">Latest published score Aug 30, 2026</time>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-cii-ranking]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/api/wm-session')) return anonymousSessionResponse();
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          degraded: false,
+          stale: false,
+          ciiScores: [
+            {
+              region: 'AE',
+              combinedScore: 61,
+              dynamicScore: 1.5,
+              trend: 'TREND_DIRECTION_RISING',
+              computedAt: Date.now() - 30_000,
+              methodologyVersion: 'v9',
+            },
+            {
+              region: 'BR',
+              combinedScore: 60,
+              dynamicScore: -0.5,
+              trend: 'TREND_DIRECTION_FALLING',
+              computedAt: Date.now() - 45_000,
+              methodologyVersion: 'v9',
+            },
+          ],
+        }),
+      };
+    };
+    try {
+      await loadCiiRanking(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.deepEqual(
+      [...tool.querySelectorAll('[data-cii-country]')].map((row) => row.dataset.ciiCountry),
+      ['BR', 'AE'],
+    );
+    assert.equal(tool.querySelector('[data-cii-country="AE"] [data-cii-score]').textContent, '50');
+    assert.equal(tool.querySelector('[data-cii-ranking-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
+    assert.equal(tool.dataset.ciiHydrated, undefined);
     assert.equal(tool.dataset.state, 'error');
   });
 

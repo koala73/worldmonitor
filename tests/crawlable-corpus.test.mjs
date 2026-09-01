@@ -9,6 +9,7 @@ import { describe, it } from 'node:test';
 import { Window } from 'happy-dom';
 
 import {
+  buildCiiRankingEntries,
   buildCorpus,
   CHOKEPOINT_PAGE_LASTMOD_PATHS,
   chokepointMetaDescription,
@@ -732,6 +733,18 @@ function productionScriptNonce() {
 }
 
 describe('crawlable corpus generator', () => {
+  it('requires the exact shared Tier-1 country set for CII publication', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const livePulse = structuredClone(data.livePulse);
+    livePulse.countries.NO = { ...livePulse.countries.US };
+    delete livePulse.countries.US;
+
+    assert.throws(
+      () => buildCiiRankingEntries(data.countries, livePulse),
+      /missing US; unexpected NO/,
+    );
+  });
+
   it('emits temporalCoverage only from a committed observation interval', () => {
     assert.equal(datasetTemporalCoverage('2026-05-28'), '2026-05-28');
     assert.equal(datasetTemporalCoverage('2026-01-01/2026-01-31'), '2026-01-01/2026-01-31');
@@ -1168,7 +1181,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="alternate" hreflang="x-default" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
-      assert.match(norway, /<meta name="lastmod" content="2026-09-01">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-08-31">/);
       assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
       assert.match(
         norway,
@@ -1199,6 +1212,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /data-live-band>No current score/);
       assert.match(norway, /data-live-trend>Unavailable/);
       const ukraine = read(outDir, 'countries/ukraine/index.html');
+      assert.match(ukraine, /<meta name="lastmod" content="2026-09-01">/);
       assert.match(ukraine, /<title>Ukraine Instability Index &amp; Country Risk \| World Monitor<\/title>/);
       assert.match(ukraine, /<h1>Ukraine Country Instability Index<\/h1>/);
       assert.match(ukraine, /Ukraine's Country Instability Index is <strong>\d+\/100 &middot; [^<]+<\/strong>/);
@@ -1231,6 +1245,24 @@ describe('crawlable corpus generator', () => {
         true,
         'only country pages with a published CII score may target Country Instability Index',
       );
+      assert.equal(
+        manifest.sections.countries.routes.filter((route) => (
+          /<meta name="lastmod" content="2026-08-31">/.test(
+            read(outDir, `${route.slice(1)}index.html`),
+          )
+        )).length,
+        165,
+        'the 165 generic country pages must retain the generic content clock',
+      );
+      assert.equal(
+        ciiTargetedCountryPages.every((route) => (
+          /<meta name="lastmod" content="2026-09-01">/.test(
+            read(outDir, `${route.slice(1)}index.html`),
+          )
+        )),
+        true,
+        'only the 31 CII-targeted country pages use the CII content clock',
+      );
 
       const ciiIndex = read(outDir, 'country-instability-index/index.html');
       const ciiDocument = htmlDocument(
@@ -1239,9 +1271,11 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(ciiIndex, /<title>Country Instability Index: Live Rankings \| World Monitor<\/title>/);
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
+      assert.match(ciiIndex, /<meta name="lastmod" content="2026-09-01">/);
+      assert.match(ciiIndex, /data-cii-methodology-version="v8"/);
       assert.match(
         ciiIndex,
-        /CII v8 currently monitors 31 countries and tracks approximate 24-hour movement\./,
+        /CII v8 currently monitors 31 countries and reports approximate 24-hour movement when available\./,
       );
       assert.equal(ciiDocument.querySelectorAll('[data-cii-country]').length, 31);
       assert.equal(
@@ -1269,6 +1303,38 @@ describe('crawlable corpus generator', () => {
       });
       assert.equal(ciiItemList?.numberOfItems, 31);
       assert.equal(ciiItemList?.itemListElement?.length, 31);
+      const aeRankingItem = ciiItemList.itemListElement.find(
+        (entry) => entry.item?.name === 'United Arab Emirates',
+      );
+      const afRankingItem = ciiItemList.itemListElement.find(
+        (entry) => entry.item?.name === 'Afghanistan',
+      );
+      assert.equal(
+        aeRankingItem.item.additionalProperty.find(
+          (property) => property.name === 'Approximate 24-hour movement',
+        ),
+        undefined,
+        'ambiguous stable movement must not publish a numeric JSON-LD value',
+      );
+      assert.equal(
+        afRankingItem.item.additionalProperty.find(
+          (property) => property.name === 'Approximate 24-hour movement',
+        )?.value,
+        2,
+      );
+
+      const unitedArabEmirates = read(outDir, 'countries/united-arab-emirates/index.html');
+      assert.match(unitedArabEmirates, /stable or unavailable over approximately 24 hours/);
+      assert.match(unitedArabEmirates, /data-live-trend>Stable or unavailable<\/strong>/);
+      const aeCiiDataset = jsonLdObjects(unitedArabEmirates)
+        .flatMap((entry) => collectDatasets(entry))
+        .find((entry) => entry['@id']?.endsWith('#cii-dataset'));
+      assert.equal(
+        aeCiiDataset.variableMeasured.find(
+          (property) => property.name === 'Approximate 24-hour movement',
+        ),
+        undefined,
+      );
 
       const ukraineLd = jsonLdObjects(ukraine);
       const ukrainePage = ukraineLd.find((entry) => entry['@type'] === 'WebPage');
@@ -1755,6 +1821,12 @@ describe('crawlable corpus generator', () => {
       const norwayLd = jsonLdObjects(norway);
       const norwayWebPage = norwayLd.find((entry) => entry['@type'] === 'WebPage');
       assert.ok(norwayWebPage?.about?.['@type'] === 'Country' && norwayWebPage.about?.name === 'Norway');
+      assert.equal(norwayWebPage?.mainEntity?.['@type'], 'Dataset');
+      assert.equal(
+        norwayLd.some((entry) => entry['@type'] === 'Dataset'),
+        false,
+        'generic country JSON-LD must keep its resilience Dataset embedded in WebPage.mainEntity',
+      );
       assert.equal(norwayWebPage?.primaryImageOfPage?.['@type'], 'ImageObject');
       assert.equal(
         norwayWebPage?.primaryImageOfPage?.contentUrl,
@@ -2377,14 +2449,14 @@ describe('crawlable corpus generator', () => {
       );
       assert.equal(
         pageLastmod(redSea),
-        '2026-09-01',
+        '2026-08-31',
         'crisis page lastmod must advance with its changed Dataset schema',
       );
       assert.equal(
         sitemapEntries.find((entry) => (
           new URL(entry.loc).pathname === '/crises/red-sea-security/'
         ))?.lastmod,
-        '2026-09-01',
+        '2026-08-31',
         'crisis sitemap lastmod must advance with its changed Dataset schema',
       );
       assert.equal(redSeaDataset.isAccessibleForFree, true);
