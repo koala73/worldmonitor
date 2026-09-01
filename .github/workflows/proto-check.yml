@@ -128,7 +128,10 @@ jobs:
           key: buf-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install buf
-        run: make install-buf
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf
         env:
           GOPROXY: direct
 
@@ -192,7 +195,10 @@ jobs:
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install buf and protoc plugins
-        run: make install-buf install-plugins
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf install-plugins
         env:
           GOPROXY: direct
           GOPRIVATE: github.com/SebastienMelki
@@ -387,7 +393,10 @@ jobs:
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install buf and protoc plugins
-        run: make install-buf install-plugins
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf install-plugins
         env:
           GOPROXY: direct
           GOPRIVATE: github.com/SebastienMelki

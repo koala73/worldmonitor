@@ -64,6 +64,45 @@ const fixture = `<!doctype html>
       "publisher": { "@id": "https://www.worldmonitor.app/#organization" }
     }
     </script>
+    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      "@id": "https://www.worldmonitor.app/dashboard#webpage",
+      "url": "https://www.worldmonitor.app/dashboard",
+      "name": "World Monitor — Real-Time Global Intelligence Dashboard",
+      "description": "Open-source real-time global intelligence dashboard aggregating conflicts, military movements, markets, infrastructure, and geopolitical data.",
+      "isPartOf": { "@id": "https://www.worldmonitor.app/#website" },
+      "publisher": { "@id": "https://www.worldmonitor.app/#organization" },
+      "mainEntity": { "@id": "https://www.worldmonitor.app/#software" },
+      "breadcrumb": { "@id": "https://www.worldmonitor.app/dashboard#breadcrumb" },
+      "speakable": {
+        "@type": "SpeakableSpecification",
+        "cssSelector": ["h1", ".app-seo-summary"]
+      }
+    }
+    </script>
+    <script type="application/ld+json" nonce="wm-static-bootstrap">
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      "@id": "https://www.worldmonitor.app/dashboard#breadcrumb",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "position": 1,
+          "name": "World Monitor",
+          "item": "https://www.worldmonitor.app/"
+        },
+        {
+          "@type": "ListItem",
+          "position": 2,
+          "name": "Dashboard",
+          "item": "https://www.worldmonitor.app/dashboard"
+        }
+      ]
+    }
+    </script>
   </head>
   <body>
     <h1 class="app-heading">World Monitor — Real-Time Global Intelligence Dashboard</h1>
