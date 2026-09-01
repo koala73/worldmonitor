@@ -33,13 +33,13 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
     const method = sliceBetween('private async paintCachedBriefEarly()', 'private extractISQInput');
     assert.match(
       method,
-      /if \(this\.updateGeneration > 0\) return;[\s\S]*?await this\.loadBriefFromCache\(\)/,
-      'must bail before the cache read when a real update already started',
+      /if \(this\.signal\.aborted \|\| this\.updateGeneration > 0\) return;[\s\S]*?await this\.loadBriefFromCache\(\)/,
+      'must bail before the cache read when a real update already started or the panel was destroyed',
     );
     assert.match(
       method,
-      /await this\.loadBriefFromCache\(\);\s*if \(this\.updateGeneration > 0\) return;/,
-      'must re-check updateGeneration AFTER the async cache read — updateInsights() may have started during the await',
+      /await this\.loadBriefFromCache\(\);\s*if \(this\.signal\.aborted \|\| this\.updateGeneration > 0\) return;/,
+      'must re-check abort + updateGeneration AFTER the async cache read — updateInsights() or destroy() may have run during the await',
     );
     assert.match(
       method,
@@ -82,6 +82,68 @@ describe('InsightsPanel early cached-brief paint (#4890)', () => {
     assert.ok(
       paintIdx < sentimentIdx,
       'the brief paint must come BEFORE the sentiment await — classifySentiment can cost seconds while the ONNX model loads',
+    );
+  });
+
+  // #7464: #7118 never shipped "stop holding the brief behind parallelPromise".
+  // The client fallback still awaits multi-perspective analysis (ONNX NER +
+  // embeddings, seconds on first load) AFTER the brief is already in hand, so
+  // `#insightsContent .brief-para` becomes the field LCP element at p75 2.5–8s.
+  // Two-phase paint: renderInsights first, await, then re-render.
+  it('does not hold the client brief behind parallel analysis (#7464)', () => {
+    const method = sliceBetween('private async updateFromClient(', 'private renderInsights(');
+    const awaitIdx = method.indexOf('await parallelPromise');
+    assert.notEqual(awaitIdx, -1, 'updateFromClient must still await parallel analysis');
+    const firstRenderIdx = method.indexOf('this.renderInsights(');
+    const secondRenderIdx = method.lastIndexOf('this.renderInsights(');
+    assert.notEqual(firstRenderIdx, -1, 'updateFromClient must paint via renderInsights');
+    assert.ok(
+      firstRenderIdx < awaitIdx,
+      'the first renderInsights must come BEFORE await parallelPromise — the brief is already in hand',
+    );
+    assert.ok(
+      secondRenderIdx > awaitIdx,
+      'must re-render after parallel analysis so missed-by-keywords stories can land',
+    );
+    assert.notEqual(
+      firstRenderIdx,
+      secondRenderIdx,
+      'two-phase paint needs two renderInsights calls, not one moved across the await',
+    );
+    const progressBeforeAwait = method.slice(0, awaitIdx);
+    assert.doesNotMatch(
+      progressBeforeAwait,
+      /setProgress\(\s*4\s*,/,
+      'step-4 progress would replace the brief with a progress bar and put the wait back on the LCP path',
+    );
+  });
+
+  it('retries the early paint through fetchServerInsights when the sync bootstrap read misses (#7464)', () => {
+    const method = sliceBetween('private async paintCachedBriefEarly()', 'private extractISQInput');
+    assert.match(
+      method,
+      /getServerInsights\(\);[\s\S]*?withTimeout\([\s\S]*?fetchServerInsights\(\)/,
+      'a cold construction that loses the consume-once hydration race must await the on-demand insights fetch, not sample once and give up',
+    );
+    assert.match(
+      method,
+      /withTimeout\([\s\S]*?InsightsPanel\.EARLY_PAINT_INSIGHTS_TIMEOUT_MS/,
+      'the 2500ms figure is a local paint wait — withTimeout must bound the constructor, not the shared fetch abort',
+    );
+    assert.doesNotMatch(
+      method,
+      /fetchServerInsights\(\s*InsightsPanel\.EARLY_PAINT_INSIGHTS_TIMEOUT_MS/,
+      'passing 2500ms into fetchServerInsights aborts the shared in-flight request before updateInsights can join with the 5s recovery',
+    );
+    assert.match(
+      method,
+      /TimeoutError[\s\S]*?if \(this\.signal\.aborted \|\| this\.updateGeneration > 0\) return;/,
+      'must re-check abort + updateGeneration AFTER the fetch wait — updateInsights() or destroy() may have run during the await',
+    );
+    assert.match(
+      method,
+      /server \?\?= getServerInsights\(\)/,
+      'after a fetch miss or paint-budget timeout, re-sample getServerInsights in case bootstrap hydration landed during the wait',
     );
   });
 
