@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 import {
   buildCountryMarketIndex,
   countCountryMarkets,
+  projectCountryMarketIndex,
 } from '../scripts/_prediction-country-index.mjs';
 
 const NOW = Date.parse('2026-08-31T00:00:00Z');
@@ -144,5 +145,20 @@ describe('buildCountryMarketIndex', () => {
       );
       if (countryCode === 'KP') assert.equal(index.KR, undefined, title);
     }
+  });
+});
+
+describe('projectCountryMarketIndex', () => {
+  const usMarket = market('Will United States GDP grow in 2027?', 'kalshi', 6_000);
+
+  it('returns an empty map when any source segment is incomplete', () => {
+    assert.deepEqual(projectCountryMarketIndex([usMarket], { complete: false, now: NOW }), {});
+    assert.deepEqual(projectCountryMarketIndex([usMarket], { now: NOW }), {});
+    assert.equal(countCountryMarkets(projectCountryMarketIndex([usMarket], { complete: false })), 0);
+  });
+
+  it('projects the country index when every source segment succeeded', () => {
+    const index = projectCountryMarketIndex([usMarket], { complete: true, now: NOW });
+    assert.deepEqual(index.US.map((entry) => entry.title), [usMarket.title]);
   });
 });

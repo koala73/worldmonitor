@@ -10,7 +10,7 @@ import {
   isExcluded, parseYesPrice, parseKalshiYesPrice, parsePredictionMarketVolume,
   selectPricedKalshiMarket, isExpired,
 } from './_prediction-scoring.mjs';
-import { buildCountryMarketIndex, countCountryMarkets } from './_prediction-country-index.mjs';
+import { countCountryMarkets, projectCountryMarketIndex } from './_prediction-country-index.mjs';
 import {
   fetchKalshiEvents as fetchKalshiEventPages,
   fetchPolymarketEventsByTag,
@@ -37,17 +37,20 @@ const FINANCE_TAGS = predictionTags.finance;
 
 async function fetchKalshiEvents() {
   try {
-    return await fetchKalshiEventPages({
+    let complete = true;
+    const events = await fetchKalshiEventPages({
       baseUrl: KALSHI_BASE,
       userAgent: CHROME_UA,
       timeoutMs: FETCH_TIMEOUT,
       onPageError: (err, page) => {
+        complete = false;
         console.warn(`  [kalshi] page ${page} failed; using earlier pages: ${err.message}`);
       },
     });
+    return { events, complete };
   } catch (err) {
     console.warn(`  [kalshi] error fetching events: ${err.message}`);
-    return [];
+    return { events: [], complete: false };
   }
 }
 
@@ -59,7 +62,7 @@ function kalshiTitle(marketTitle, eventTitle) {
 }
 
 async function fetchKalshiMarkets() {
-  const events = await fetchKalshiEvents();
+  const { events, complete } = await fetchKalshiEvents();
   const featured = [];
   const countryCandidates = [];
 
@@ -110,7 +113,7 @@ async function fetchKalshiMarkets() {
     });
   }
 
-  return { featured, countryCandidates };
+  return { featured, countryCandidates, complete };
 }
 
 async function fetchAllPredictions() {
@@ -118,6 +121,7 @@ async function fetchAllPredictions() {
   const seen = new Set();
   const markets = [];
   const countryCandidates = [];
+  let countryProjectionComplete = true;
 
   // Start Kalshi fetch early so it overlaps with Polymarket tag iterations
   const kalshiPromise = fetchKalshiMarkets();
@@ -180,6 +184,7 @@ async function fetchAllPredictions() {
         }
       }
     } catch (err) {
+      countryProjectionComplete = false;
       console.warn(`  [${tag}] error: ${err.message}`);
     }
     await sleep(TAG_DELAY_MS);
@@ -187,6 +192,7 @@ async function fetchAllPredictions() {
 
   // Await the Kalshi fetch that was started in parallel with tag iterations
   const kalshiMarkets = await kalshiPromise;
+  if (!kalshiMarkets.complete) countryProjectionComplete = false;
   console.log(`  [kalshi] ${kalshiMarkets.featured.length} featured markets`);
   markets.push(...kalshiMarkets.featured);
   countryCandidates.push(...kalshiMarkets.countryCandidates);
@@ -202,7 +208,9 @@ async function fetchAllPredictions() {
   // _prediction-classify.mjs so the tests exercise THIS wiring, not a replica of
   // it (this module can never be imported by a test — runSeed runs at import).
   const { pools, classified, duplicatesDropped } = buildBootstrapPools(markets);
-  const countryMarkets = buildCountryMarketIndex(countryCandidates);
+  const countryMarkets = projectCountryMarketIndex(countryCandidates, {
+    complete: countryProjectionComplete,
+  });
 
   if (duplicatesDropped > 0) {
     console.log(`  deduped ${duplicatesDropped} same-identity record(s) before classification`);
@@ -211,7 +219,11 @@ async function fetchAllPredictions() {
     `  classified: geopolitical ${classified.geopolitical}, tech ${classified.tech}, finance ${classified.finance}`
     + ` → published: ${pools.geopolitical.length}/${pools.tech.length}/${pools.finance.length}`,
   );
-  console.log(`  country index: ${Object.keys(countryMarkets).length} countries`);
+  if (countryProjectionComplete) {
+    console.log(`  country index: ${Object.keys(countryMarkets).length} countries`);
+  } else {
+    console.warn('  country index: incomplete source fetch; skipping publish to retain last-good');
+  }
 
   return {
     ...pools,
