@@ -1,14 +1,6 @@
-// fetchCountryMarkets must reach every pool after #5733 made the producer's
-// geopolitical/tech/finance buckets a disjoint partition.
-//
-// Before the fix, `bootstrap.geopolitical` was an unfiltered copy of every
-// market, so BOTH of this function's paths could ignore the tech pool and still
-// see tech-classified markets. Now they cannot:
-//   - the RPC fan-out must query a tech category, because it early-returns as
-//     soon as any geopolitics/economy match is found and would otherwise never
-//     reach the fallback below;
-//   - the bootstrap fallback must union all three buckets.
-// Both holes were live in the same function, so this pins both.
+// fetchCountryMarkets reads the producer-ranked country projection first. Its
+// rollout fallback still has to union every disjoint bootstrap pool so a market
+// does not disappear only because it was classified as tech or finance.
 //
 // Loaded through an esbuild stub bundle (the pattern in
 // tests/giving-service-recovery.test.mts) because the module is browser-side and
@@ -121,29 +113,30 @@ after(() => {
   delete globalThis.__wmCountryMarketsTestState;
 });
 
-describe('fetchCountryMarkets reaches every pool (#5733)', () => {
-  it('queries a tech category in the RPC fan-out, not just geopolitics + economy', async () => {
+describe('fetchCountryMarkets uses the producer country index', () => {
+  it('sends one ISO2 request instead of literal-title category fan-out', async () => {
     globalThis.__wmCountryMarketsTestState = { rpcCalls: [], rpcMarketsByCategory: {} };
     const service = await loadPredictionService();
-    await service.fetchCountryMarkets('China');
+    await service.fetchCountryMarkets('China', 'CN');
 
-    const categories = globalThis.__wmCountryMarketsTestState!.rpcCalls.map((c) => c.category).sort();
-    assert.deepEqual(categories, ['economy', 'geopolitics', 'tech']);
+    assert.deepEqual(globalThis.__wmCountryMarketsTestState!.rpcCalls, [{
+      category: 'country:CN',
+      query: '',
+    }]);
   });
 
-  it('does not let a geopolitics hit early-return past the tech pool', async () => {
-    // This is the actual defect: the function returns as soon as any
-    // geopolitics/economy market matches the country, so a tech-only category
-    // would never be seen if it were not in the fan-out above.
+  it('returns the server-ranked cross-pool country selection', async () => {
     globalThis.__wmCountryMarketsTestState = {
       rpcCalls: [],
       rpcMarketsByCategory: {
-        geopolitics: [protoMarket('Will China invade Taiwan by 2027?', 5_000_000)],
-        tech: [protoMarket('Will China ship the best AI model?', 9_000_000)],
+        'country:CN': [
+          protoMarket('Will China invade Taiwan by 2027?', 5_000_000),
+          protoMarket('Will China ship the best AI model?', 9_000_000),
+        ],
       },
     };
     const service = await loadPredictionService();
-    const out = await service.fetchCountryMarkets('China');
+    const out = await service.fetchCountryMarkets('China', 'CN');
 
     const titles = out.map((m: { title: string }) => m.title);
     assert.ok(titles.some((t: string) => t.includes('invade Taiwan')), `geo market missing: ${titles}`);
@@ -164,10 +157,53 @@ describe('fetchCountryMarkets reaches every pool (#5733)', () => {
       },
     };
     const service = await loadPredictionService();
-    const out = await service.fetchCountryMarkets('China');
+    const out = await service.fetchCountryMarkets('China', 'CN');
 
     const titles = out.map((m: { title: string }) => m.title);
     assert.ok(titles.some((t: string) => t.includes('best AI model')), `tech bucket missing: ${titles}`);
     assert.ok(titles.some((t: string) => t.includes('policy rate')), `finance bucket missing: ${titles}`);
+  });
+
+  it('keeps precise country aliases in the bootstrap rollout fallback', async () => {
+    globalThis.__wmCountryMarketsTestState = {
+      rpcCalls: [],
+      rpcMarketsByCategory: {},
+      hydrated: {
+        geopolitical: [
+          bootstrapMarket('Will Trump nominate the next Fed chair?', 5_000_000),
+          bootstrapMarket('Will the Fed pause rates?', 4_000_000),
+          bootstrapMarket('Will The Last of Us win best drama?', 9_000_000),
+        ],
+        tech: [],
+        finance: [],
+        fetchedAt: Date.now(),
+      },
+    };
+    const service = await loadPredictionService();
+    const out = await service.fetchCountryMarkets('United States', 'US');
+
+    assert.deepEqual(out.map((m: { title: string }) => m.title), [
+      'Will Trump nominate the next Fed chair?',
+      'Will the Fed pause rates?',
+    ]);
+  });
+
+  it('uses the UK alias when the literal country name is absent', async () => {
+    globalThis.__wmCountryMarketsTestState = {
+      rpcCalls: [],
+      rpcMarketsByCategory: {},
+      hydrated: {
+        geopolitical: [bootstrapMarket('Will the UK hold an early election?', 2_000_000)],
+        tech: [],
+        finance: [],
+        fetchedAt: Date.now(),
+      },
+    };
+    const service = await loadPredictionService();
+    const out = await service.fetchCountryMarkets('United Kingdom', 'GB');
+
+    assert.deepEqual(out.map((m: { title: string }) => m.title), [
+      'Will the UK hold an early election?',
+    ]);
   });
 });

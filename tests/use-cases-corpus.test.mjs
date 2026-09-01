@@ -10,7 +10,6 @@ import { runInNewContext } from 'node:vm';
 
 import {
   buildCorpus,
-  CORPUS_GENERATOR_CONTENT_VERSION,
   gitFileLastmod,
   WORLD_MONITOR_ORG,
 } from '../scripts/build-crawlable-corpus.mjs';
@@ -26,7 +25,6 @@ const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 // date fails when that file is committed on a later UTC day.
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
-  CORPUS_GENERATOR_CONTENT_VERSION,
   gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
 ].filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? '')).sort().at(-1);
 

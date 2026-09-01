@@ -481,7 +481,8 @@
       "screenshotAlt": "World Monitor живо табло за разузнавателна информация — глобална карта със слоеве за конфликти, търговия и пазари",
       "plateNote": "Заснето от живата карта — кликнете, за да я отворите",
       "trustBuild": "Изградете върху него:",
-      "positioningLink": "WorldMonitor не е отворен код Palantir"
+      "positioningLink": "WorldMonitor не е отворен код Palantir",
+      "asOf": "Към 31 август 2026 г."
     },
     "live": {
       "eyebrow": "Живо в момента",

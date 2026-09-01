@@ -86,6 +86,8 @@ const EXCLUDED_FROM_MCP = new Map([
     'dashboard-internal: Manitoba 511 events and alerts union onto the canadaRoads map layer (#6622); not a queryable MCP slice.'],
   ['infra:bc-open511:v1',
     'dashboard-internal: DriveBC Open511 events union onto the canadaRoads map layer (#6611); not a queryable MCP slice.'],
+  ['prediction:markets-country-index:v1',
+    'dashboard-internal: per-country projection read by the country-brief prediction RPC. The MCP get_prediction_markets tool exposes the canonical prediction:markets-bootstrap:v1 feed; adding this index to its _cacheKeys would return the complete country map and change the tool response envelope.'],
 
   // ===========================================================================
   // Intermediate / pipeline keys (data surfaces through a sibling tool)

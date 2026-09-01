@@ -2564,7 +2564,11 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
       }
 
       const prob = this.el('div', 'cdp-market-prob', `Probability: ${Math.round(market.yesPrice)}%`);
-      const meta = this.el('div', 'cdp-market-meta', market.endDate ? `Ends ${this.shortDate(market.endDate)}` : 'Active');
+      const source = market.source === 'kalshi' ? 'Kalshi' : 'Polymarket';
+      const meta = this.el('div', 'cdp-market-meta');
+      const sourceBadge = this.el('span', 'prediction-source', source);
+      sourceBadge.dataset.source = market.source === 'kalshi' ? 'kalshi' : 'polymarket';
+      meta.append(sourceBadge, document.createTextNode(market.endDate ? ` Ends ${this.shortDate(market.endDate)}` : ' Active'));
       item.append(top, prob, meta);
 
       const expanded = this.el('div', 'cdp-expanded-only');

@@ -1364,7 +1364,14 @@ export function validateVolatileInventoryClaims() {
   const failures = [];
   const observedRetainedContracts = new Set();
   const visit = (path) => {
-    for (const [index, line] of read(path).split('\n').entries()) {
+    const source = read(path);
+    // Generated llms-full corpus republishes methodology already scanned at
+    // its source paths (#7463). Keep the hand-authored brief in this scan.
+    const generatedCorpusAt = path === 'public/llms-full.txt'
+      ? source.indexOf('\n## Generated corpus\n')
+      : -1;
+    const scannable = generatedCorpusAt === -1 ? source : source.slice(0, generatedCorpusAt);
+    for (const [index, line] of scannable.split('\n').entries()) {
       if (/\btool errors\b/i.test(line)) continue;
       if (/\bTier \d+(?:[–-]\d+)? sources\b/i.test(line)) continue;
       const retained = retainedExactContracts.filter((entry) => entry.path === path && entry.text.test(line));
