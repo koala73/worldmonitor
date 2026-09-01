@@ -7,6 +7,7 @@ import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
 import { resolveMcpBudget, SHARED_API_BUDGET } from '../api/mcp/quota.ts';
+import { reservationWeight, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { mergeEntitlementFeatures } from '../convex/lib/entitlements.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 
@@ -119,5 +120,33 @@ describe('stored entitlement rows cannot outrank the shared-budget marker', () =
       },
     });
     assert.equal(merged.planLimits.mcpCallsPerDay, 500, 'a Pro-tier override still applies');
+  });
+});
+
+describe('per-tool weight applies only to the shared API budget', () => {
+  const byName = (name) => {
+    const tool = TOOL_REGISTRY.find((candidate) => candidate.name === name);
+    assert.ok(tool, `${name} must exist in the registry`);
+    return tool;
+  };
+
+  it('a Pro / shadow-mode counter charges one unit even for a live-fetch tool', () => {
+    const countryRisk = byName('get_country_risk');
+    const classify = byName('classify_event');
+    const brief = byName('get_country_brief');
+    for (const budget of [{ scope: 'mcp', limit: 50 }, { scope: 'mcp', limit: 250 }, undefined]) {
+      assert.equal(reservationWeight(budget, countryRisk), 1);
+      assert.equal(reservationWeight(budget, classify), 1);
+      assert.equal(reservationWeight(budget, brief), 1);
+    }
+  });
+
+  it('the enforced shared budget charges the published weight', () => {
+    const api = { scope: 'api', limit: 1000 };
+    assert.equal(reservationWeight(api, byName('get_market_data')), 1, 'cache read = 1 REST unit');
+    assert.equal(reservationWeight(api, byName('get_country_risk')), 2, 'live fetch = 2 REST units');
+    assert.equal(reservationWeight(api, byName('classify_event')), 2);
+    assert.equal(reservationWeight(api, byName('get_country_brief')), 3, 'two downstream fetches');
+    assert.equal(reservationWeight(api, byName('get_airspace')), 3);
   });
 });

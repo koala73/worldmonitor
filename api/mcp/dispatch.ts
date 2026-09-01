@@ -16,7 +16,7 @@ import { applyJmespath } from './jmespath';
 import { reserveQuota, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
-import { isQuotaExemptMetadataTool, TOOL_REGISTRY, toolWeight } from './registry/index';
+import { isQuotaExemptMetadataTool, reservationWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import {
@@ -379,7 +379,12 @@ export async function dispatchToolsCall(
       // Slot charged for good once dispatch begins (same GHSA-hcq5 posture as
       // reserveQuota). No caller-side rollback after this point.
     } else {
-      const reservation = await reserveQuota(context.userId, deps.redisPipeline, budget, toolWeight(tool));
+      const reservation = await reserveQuota(
+        context.userId,
+        deps.redisPipeline,
+        budget,
+        reservationWeight(budget, tool),
+      );
       if (!reservation.ok) {
         if (reservation.reason === 'cap-exceeded') {
           // `floor` is the limit the reservation actually enforced, so the copy
