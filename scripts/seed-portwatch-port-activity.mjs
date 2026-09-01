@@ -214,10 +214,6 @@ const CONCURRENCY = 6;
 // run — negligible against the 570s bundle budget.
 const BATCH_BACKOFF_MS = 5_000;
 const BATCH_LOG_EVERY = 5;
-// A country-level ArcGIS request can be rate-limited even when the run has
-// ample bundle time left. Retry that country once after a short cooldown;
-// the outer per-country timeout remains the hard ceiling for the whole retry
-// sequence, so a slow upstream cannot extend the run indefinitely.
 const RATE_LIMIT_RETRY_DELAY_MS = 2_000;
 const MAX_RATE_LIMIT_RETRIES = 1;
 // Cache hygiene: force a full refetch if the cached payload is older than 7 days
@@ -512,6 +508,7 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
 export async function fetchAllPortRefs({
   signal,
   fetchPage = fetchWithRetryOnInvalidParams,
+  sleepFn = waitForRetry,
 } = {}) {
   const byIso3 = new Map();
   let offset = 0;
@@ -530,7 +527,11 @@ export async function fetchAllPortRefs({
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchPage(`${EP4_BASE}?${params}`, { signal });
+    const url = `${EP4_BASE}?${params}`;
+    body = await retryRateLimited(
+      (attemptSignal) => fetchPage(url, { signal: attemptSignal }),
+      { signal, sleepFn, label: `reference page ${page}` },
+    );
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
