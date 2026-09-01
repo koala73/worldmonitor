@@ -690,29 +690,9 @@ jobs:
           retention-days: 14
       - name: Build /pro artifacts for prehydration browser checks
         # public/pro/ is built output since #6898. Keep this explicit and
-        # immediately before the focused specs so the browser checks cannot run
-        # against missing or stale bytes from another build. Both the critical-CSS
-        # CLS gate and the prehydration checks below read those bytes; nothing
-        # rebuilds between here and them.
+        # immediately before the focused spec so the browser checks cannot run
+        # against missing or stale bytes from another build.
         run: npm run build:pro
-      # Named explicitly for the same reason as the ci-smoke set above: no job
-      # runs the e2e/ glob, so this gate would have reported green while a
-      # critical-CSS regression shipped. It reads public/pro/, hence its place
-      # after the build.
-      - name: Run critical-CSS layout-shift gate
-        id: pro-cls
-        run: npm run test:e2e:pro-cls
-      # Its own upload, per the rule above: Playwright clears test-results/ when
-      # the next run starts, so the prehydration step would otherwise delete this
-      # gate's failure trace before anyone could read it.
-      - name: Upload critical-CSS CLS Playwright artifacts
-        if: ${{ !cancelled() && steps.pro-cls.outcome != 'skipped' }}
-        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
-        with:
-          name: playwright-pro-cls-${{ github.run_id }}-${{ github.run_attempt }}
-          path: test-results/
-          if-no-files-found: ignore
-          retention-days: 14
       - name: Run fail-closed prehydration browser checks
         id: prehydration
         run: npm run test:e2e:prehydration
@@ -721,6 +701,27 @@ jobs:
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
         with:
           name: playwright-prehydration-${{ github.run_id }}-${{ github.run_attempt }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14
+      # Named explicitly for the same reason as the ci-smoke set above: nothing
+      # runs the e2e/ glob, so this gate reported green while never executing.
+      # It reads the same public/pro/ bytes the build step above produced, and
+      # nothing between here and there rebuilds them -- it sits after the
+      # prehydration upload rather than beside its build because
+      # dashboard-build-guards.test.mjs pins that build/prehydration pair as
+      # literally adjacent text.
+      - name: Run critical-CSS layout-shift gate
+        id: pro-cls
+        run: npm run test:e2e:pro-cls
+      # Its own upload, per the rule above: Playwright clears test-results/ when
+      # the next run starts, so the WebMCP step would otherwise delete this
+      # gate's failure trace before anyone could read it.
+      - name: Upload critical-CSS CLS Playwright artifacts
+        if: ${{ !cancelled() && steps.pro-cls.outcome != 'skipped' }}
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: playwright-pro-cls-${{ github.run_id }}-${{ github.run_attempt }}
           path: test-results/
           if-no-files-found: ignore
           retention-days: 14
