@@ -2559,7 +2559,8 @@ describe('crawlable corpus generator', () => {
         const noteRe = new RegExp(
           `World Monitor is not currently publishing a transit count for ${meta.name} for this period`,
         );
-        if (Number.isFinite(raw) && raw >= 1) {
+        const countsAvailable = pulse.todayCountsAvailable ?? (Number.isFinite(raw) && raw >= 1);
+        if (countsAvailable && (raw === 0 || raw >= 1)) {
           publishedCounts++;
           assert.match(
             page,

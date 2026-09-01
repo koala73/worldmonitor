@@ -5,6 +5,7 @@ import { Window } from 'happy-dom';
 import {
   airportDisruptionViewModel,
   ciiRankingViewModel,
+  chokepointCoverageMetrics,
   chokepointStatusViewModel,
   crisisTrackerViewModel,
   hasPublishedLivePulse,
@@ -79,6 +80,7 @@ describe('crawlable live intelligence view models', () => {
       warnings: '—',
       description: 'Shipping warning activity is elevated.',
       todayTransits: null,
+      todayCountsAvailable: undefined,
       weekMovement: null,
       fetchedAt: NOW - 60_000,
       partial: true,
@@ -249,7 +251,7 @@ describe('crawlable live intelligence view models', () => {
     assert.notEqual(view.todayTransits, '0');
   });
 
-  it('hydrates withheld transits instead of a numeric 0 when AIS is empty and WoW is present', async () => {
+  it('hydrates a measured zero with warnings and movement when the API marks the count available', async () => {
     const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
     const { document } = window;
     document.body.innerHTML = `
@@ -289,6 +291,7 @@ describe('crawlable live intelligence view models', () => {
               transitSummary: {
                 dataAvailable: true,
                 todayTotal: 0,
+                todayCountsAvailable: true,
                 wowChangePct: 12.9,
               },
             }],
@@ -303,14 +306,30 @@ describe('crawlable live intelligence view models', () => {
       globalThis.fetch = originalFetch;
     }
 
-    assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '—');
-    assert.notEqual(tool.querySelector('[data-chokepoint-transits]').textContent, '0');
-    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '—');
-    assert.equal(tool.querySelector('[data-chokepoint-warnings]').textContent, '—');
-    assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, false);
-    assert.match(
-      tool.querySelector('[data-chokepoint-transits-note]').textContent,
-      /not currently publishing a transit count for Strait of Hormuz for this period/,
+    assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '0');
+    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+12.9% vs prior week');
+    assert.equal(tool.querySelector('[data-chokepoint-warnings]').textContent, '0 warnings · 0 AIS disruptions');
+    assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, true);
+    assert.equal(tool.querySelector('[data-chokepoint-transits-note]').textContent, '');
+  });
+
+  it('derives the coverage tuple from explicit availability with a legacy fallback', () => {
+    const tuple = { warnings: '2 warnings', weekMovement: '+3% vs prior week' };
+    assert.deepEqual(
+      chokepointCoverageMetrics({ ...tuple, todayTransits: 0, todayCountsAvailable: true }),
+      { ...tuple, todayTransits: '0', todayCountsAvailable: true },
+    );
+    assert.deepEqual(
+      chokepointCoverageMetrics({ ...tuple, todayTransits: 9, todayCountsAvailable: false }),
+      { todayTransits: null, todayCountsAvailable: false, warnings: '—', weekMovement: null },
+    );
+    assert.deepEqual(
+      chokepointCoverageMetrics({ ...tuple, todayTransits: 0 }),
+      { todayTransits: null, todayCountsAvailable: undefined, warnings: '—', weekMovement: null },
+    );
+    assert.deepEqual(
+      chokepointCoverageMetrics({ ...tuple, todayTransits: 9 }),
+      { ...tuple, todayTransits: '9', todayCountsAvailable: undefined },
     );
   });
 
@@ -391,6 +410,7 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(publishedTransitCountLabel(1234), '1,234', 'counts are thousands-separated');
     assert.equal(publishedTransitCountLabel('1,234'), '1,234', 'an already-formatted string round-trips');
     assert.equal(publishedTransitCountLabel(1234567), '1,234,567');
+    assert.equal(publishedTransitCountLabel(0, { allowZero: true }), '0');
 
     // Withheld: absent, empty, and the zero-fill this exists to stop.
     for (const value of [null, undefined, '', '0', 0, -1, '-3', 'Unavailable', NaN, Infinity]) {
@@ -400,6 +420,8 @@ describe('crawlable live intelligence view models', () => {
     // A fraction clears a bare `> 0` gate and then formats to the literal "0".
     assert.equal(publishedTransitCountLabel(0.4), null, 'a sub-1 fraction must not render as "0"');
     assert.equal(publishedTransitCountLabel(0.6), null);
+    assert.equal(publishedTransitCountLabel(0.4, { allowZero: true }), null);
+    assert.equal(publishedTransitCountLabel(-1, { allowZero: true }), null);
 
     // Strings are re-formatted from the parsed number, never echoed, so a
     // malformed upstream value cannot reach the page verbatim.

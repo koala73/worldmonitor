@@ -2856,6 +2856,7 @@ function renderChokepointPage({
   const hasPulse = pulse != null && pulse.disruptionScore != null;
   const coverageMetrics = chokepointCoverageMetrics({
     todayTransits: pulse?.todayTransits,
+    todayCountsAvailable: pulse?.todayCountsAvailable,
     warnings: pulse?.warnings,
     weekMovement: pulse?.weekMovement ?? null,
   });
