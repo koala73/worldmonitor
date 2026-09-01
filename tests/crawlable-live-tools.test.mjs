@@ -76,7 +76,7 @@ describe('crawlable live intelligence view models', () => {
       disruptionScore: '72',
       status: 'Red',
       congestion: 'High',
-      warnings: '3 warnings · 2 AIS disruptions',
+      warnings: '—',
       description: 'Shipping warning activity is elevated.',
       todayTransits: null,
       weekMovement: null,
@@ -238,7 +238,8 @@ describe('crawlable live intelligence view models', () => {
 
     const view = chokepointStatusViewModel(payload, 'hormuz_strait', NOW);
     assert.equal(view.todayTransits, null);
-    assert.equal(view.weekMovement, '+12.9% vs prior week');
+    assert.equal(view.weekMovement, null);
+    assert.equal(view.warnings, '—');
     assert.equal(view.partial, true);
     assert.notEqual(view.todayTransits, '0');
   });
@@ -299,7 +300,8 @@ describe('crawlable live intelligence view models', () => {
 
     assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '—');
     assert.notEqual(tool.querySelector('[data-chokepoint-transits]').textContent, '0');
-    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+12.9% vs prior week');
+    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '—');
+    assert.equal(tool.querySelector('[data-chokepoint-warnings]').textContent, '—');
     assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, false);
     assert.match(
       tool.querySelector('[data-chokepoint-transits-note]').textContent,

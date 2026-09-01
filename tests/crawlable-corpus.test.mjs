@@ -2575,6 +2575,16 @@ describe('crawlable corpus generator', () => {
             /data-chokepoint-transits>0</,
             `${meta.name} must not render a numeric 0 for an unsupplied transit count`,
           );
+          assert.match(
+            page,
+            /data-chokepoint-warnings>—</,
+            `${meta.name} must withhold warnings and AIS when its transit count is unavailable`,
+          );
+          assert.match(
+            page,
+            /data-chokepoint-movement>—</,
+            `${meta.name} must withhold week-over-week movement when its transit count is unavailable`,
+          );
           assert.match(page, noteRe);
         }
       }
