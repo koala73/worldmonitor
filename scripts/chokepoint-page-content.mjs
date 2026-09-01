@@ -1,8 +1,11 @@
 // Hand-authored crawlable copy for /chokepoints/* pages. Kept out of the
 // browser bundle (the registry in src/config/ stays numeric). Every analysis
 // paragraph is waterway-specific so the 13 pages do not share the pre-rewrite
-// template skeleton (#7461). EIA oil figures are the committed 2023 World Oil
-// Transit Chokepoints baselines from scripts/seed-chokepoint-baselines.mjs.
+// template skeleton (#7461). EIA oil figures are derived from the committed
+// 2023 World Oil Transit Chokepoints table shared with
+// scripts/seed-chokepoint-baselines.mjs.
+
+import { buildEiaOilTransitBaselines } from './chokepoint-eia-baselines.mjs';
 
 export const CHOKEPOINT_PAGE_CONTENT_PATH = 'scripts/chokepoint-page-content.mjs';
 
@@ -13,19 +16,7 @@ export const CHOKEPOINT_PAGE_CONTENT_PATH = 'scripts/chokepoint-page-content.mjs
 export const CHOKEPOINT_REGISTRY_OBSERVED_AT = '2026-04-09';
 export const TRADE_ROUTES_OBSERVED_AT = '2026-03-14';
 
-export const EIA_OIL_TRANSIT_BASELINES = Object.freeze({
-  source: 'EIA World Oil Transit Chokepoints',
-  referenceYear: 2023,
-  byRegistryId: Object.freeze({
-    hormuz_strait: Object.freeze({ mbd: 21.0, eiaName: 'Strait of Hormuz' }),
-    malacca_strait: Object.freeze({ mbd: 17.2, eiaName: 'Strait of Malacca' }),
-    suez: Object.freeze({ mbd: 7.6, eiaName: 'Suez Canal / SUMED' }),
-    bab_el_mandeb: Object.freeze({ mbd: 6.2, eiaName: 'Bab el-Mandeb' }),
-    dover_strait: Object.freeze({ mbd: 3.0, eiaName: 'Danish Straits' }),
-    bosphorus: Object.freeze({ mbd: 2.9, eiaName: 'Turkish Straits' }),
-    panama: Object.freeze({ mbd: 0.9, eiaName: 'Panama Canal' }),
-  }),
-});
+export const EIA_OIL_TRANSIT_BASELINES = buildEiaOilTransitBaselines();
 
 export const CHOKEPOINT_CONTENT = {
   suez: {

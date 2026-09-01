@@ -2,6 +2,11 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
 import {
+  CHOKEPOINTS,
+  EIA_OIL_TRANSIT_REFERENCE_YEAR,
+  EIA_OIL_TRANSIT_SOURCE,
+} from '../scripts/seed-chokepoint-baselines.mjs';
+import {
   CHOKEPOINT_CONTENT,
   CHOKEPOINT_REGISTRY_OBSERVED_AT,
   EIA_OIL_TRANSIT_BASELINES,
@@ -47,11 +52,20 @@ describe('chokepoint page content (#7461)', () => {
     }
   });
 
-  it('keeps EIA oil baselines aligned with the committed seeder ids', () => {
-    assert.equal(EIA_OIL_TRANSIT_BASELINES.referenceYear, 2023);
-    assert.equal(EIA_OIL_TRANSIT_BASELINES.byRegistryId.hormuz_strait.mbd, 21.0);
-    assert.equal(EIA_OIL_TRANSIT_BASELINES.byRegistryId.panama.mbd, 0.9);
-    assert.equal(EIA_OIL_TRANSIT_BASELINES.byRegistryId.dover_strait.eiaName, 'Danish Straits');
+  it('derives EIA oil baselines from every committed seeder row', () => {
+    assert.equal(EIA_OIL_TRANSIT_BASELINES.source, EIA_OIL_TRANSIT_SOURCE);
+    assert.equal(EIA_OIL_TRANSIT_BASELINES.referenceYear, EIA_OIL_TRANSIT_REFERENCE_YEAR);
+    assert.deepEqual(
+      Object.keys(EIA_OIL_TRANSIT_BASELINES.byRegistryId).sort(),
+      CHOKEPOINTS.map((cp) => cp.relayId).sort(),
+    );
+    for (const cp of CHOKEPOINTS) {
+      assert.deepEqual(
+        EIA_OIL_TRANSIT_BASELINES.byRegistryId[cp.relayId],
+        { mbd: cp.mbd, eiaName: cp.name },
+        `${cp.relayId} must match the seeder mbd and EIA name`,
+      );
+    }
   });
 
   it('does not claim a missing table or off-page rows as this page’s table', () => {
