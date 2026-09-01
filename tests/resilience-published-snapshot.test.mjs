@@ -58,8 +58,8 @@ describe('published resilience snapshot freshness', () => {
       const data = await crawlableCorpus.loadCorpusData({ rootDir: repoRoot });
       await crawlableCorpus.buildCorpus({ rootDir: repoRoot, outDir });
       const norway = readFileSync(join(outDir, 'countries', 'norway', 'index.html'), 'utf8');
-      const webPage = jsonLdObjects(norway).find((entry) => entry['@type'] === 'WebPage');
-      const dataset = webPage?.mainEntity;
+      const dataset = jsonLdObjects(norway)
+        .find((entry) => entry['@id']?.endsWith('#resilience-dataset'));
 
       assert.equal(dataset?.datePublished, data.resilience.capturedAt);
       assert.equal(dataset?.dateModified, data.resilience.capturedAt);
