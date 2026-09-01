@@ -11,6 +11,7 @@ import { runInNewContext } from 'node:vm';
 import {
   buildCorpus,
   CORPUS_GENERATOR_CONTENT_VERSION,
+  gitFileLastmod,
   WORLD_MONITOR_ORG,
 } from '../scripts/build-crawlable-corpus.mjs';
 import {
@@ -23,7 +24,8 @@ const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 const EXPECTED_USE_CASES_LASTMOD = [
   USE_CASES_CONTENT_VERSION,
   CORPUS_GENERATOR_CONTENT_VERSION,
-].sort().at(-1);
+  gitFileLastmod(repoRoot, 'scripts/build-use-cases.mjs'),
+].filter(Boolean).sort().at(-1);
 
 function jsonLdObjects(html) {
   return [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)]
