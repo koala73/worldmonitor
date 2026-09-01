@@ -133,11 +133,11 @@ const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // contract (#7391), so their recrawl signal is COUNTRY_PAGE_CONTENT_VERSION.
 const DATASET_SCHEMA_CONTENT_VERSION = {
   chokepoint: '2026-08-31',
-  crisis: '2026-08-31',
-  tools: '2026-08-31',
+  crisis: '2026-09-01',
+  tools: '2026-09-01',
 };
-const CRISIS_PAGE_CONTENT_VERSION = '2026-08-31';
-const TOOLS_PAGE_CONTENT_VERSION = '2026-08-30';
+const CRISIS_PAGE_CONTENT_VERSION = '2026-09-01';
+const TOOLS_PAGE_CONTENT_VERSION = '2026-09-01';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
   name: 'World Monitor Terms of Service (27 July 2026)',
@@ -614,7 +614,7 @@ function pulseTotals(pulse) {
   };
 }
 
-function crisisDatasetDownload(crisis, pulse = null) {
+function crisisDatasetDownload(crisis, pulse = null, numericTotals = null) {
   return stableJson({
     dataset: 'crisis-tracker',
     slug: crisis.slug,
@@ -629,10 +629,11 @@ function crisisDatasetDownload(crisis, pulse = null) {
       maintainedPulse: {
         state: pulse.state,
         // The pulse carries Intl-formatted display strings ("9,824"); a Dataset
-        // download must be machine-readable, so re-derive the totals from the
-        // raw per-country rows. `eventsTotal === null` stays the marker for
+        // The build loop shares numeric totals with the page schema. The pulse
+        // carries Intl-formatted display strings, so these values stay
+        // machine-readable; `eventsTotal === null` remains the marker for
         // "reference periods differ, combined total withheld".
-        ...pulseTotals(pulse),
+        ...numericTotals,
         referencePeriod: pulse.referencePeriod,
         asOf: pulse.asOf,
         missingCountries: pulse.missingCountries,
@@ -1025,7 +1026,9 @@ function normalizeCountry(item, sourceStatus, seen, reverseNames) {
     identity: {
       commonName,
       officialName,
-      alternateNames: [...new Set(identity.alternateNames || [])],
+      alternateNames: [...new Set((identity.alternateNames || []).map((name) => (
+        name === 'Macao S A R' ? 'Macao SAR' : name
+      )))],
       sameAs,
     },
     rank: sourceStatus === 'ranked' ? Number(item.rank) : null,
@@ -1911,6 +1914,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
 function renderCountriesIndex({ countries, ciiRanking, baseUrl, capturedAt, lastmod, snapshotPath }) {
   const path = '/countries/';
   const description = `Browse World Monitor country risk pages with structural resilience across ${countries.length} countries and high-frequency instability scores for ${ciiRanking.entries.length} Tier-1 countries.`;
+  const datasetId = `${absoluteUrl(baseUrl, path)}#dataset`;
   const rankedCountries = countries
     .filter((country) => Number.isInteger(country.rank))
     .sort((a, b) => a.rank - b.rank);
@@ -1988,6 +1992,7 @@ ${countries.map((country) => {
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
+        mainEntity: { '@id': datasetId },
       },
       {
         '@context': 'https://schema.org',
@@ -2009,6 +2014,7 @@ ${countries.map((country) => {
       {
         '@context': 'https://schema.org',
         '@type': 'Dataset',
+        '@id': datasetId,
         name: `World Monitor Country Resilience Index snapshot for ${capturedAt}`,
         description,
         url: absoluteUrl(baseUrl, path),
@@ -3077,7 +3083,14 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
   });
 }
 
-function renderCrisisPage({ crisis, baseUrl, lastmod, livePulse = null, livePulseSnapshotPath = null }) {
+function renderCrisisPage({
+  crisis,
+  baseUrl,
+  lastmod,
+  livePulse = null,
+  livePulseSnapshotPath = null,
+  publishedTotals,
+}) {
   const path = `/crises/${crisis.slug}/`;
   const dashboardUrl = withUtmSource(absoluteUrl(baseUrl, crisis.dashboardPath), 'seo-crisis');
   const pulse = livePulse?.crises?.[crisis.slug] || null;
@@ -3086,6 +3099,8 @@ function renderCrisisPage({ crisis, baseUrl, lastmod, livePulse = null, livePuls
   // HAPI months; publishing that as a period would put it in the page prose and
   // the Dataset description while temporalCoverage silently drops to undefined.
   const hasPulse = pulse != null && OBSERVATION_PERIOD_RE.test(String(pulse.referencePeriod ?? ''));
+  const publishedPeriod = hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined;
+  const publishedDate = hasPulse ? pulseDateOnly(livePulse.capturedAt, undefined) : undefined;
   const liveState = hasPulse ? pulse.state : 'loading';
   const liveStatus = hasPulse
     ? (pulse.state === 'partial' ? 'Published partial pulse' : 'Published pulse')
@@ -3168,19 +3183,44 @@ ${snapshotSection}
   const distribution = [
     dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))),
   ];
-  const variableMeasured = hasPulse
-    ? [
-        'Tracker scope',
-        'Covered countries',
-        'Recorded conflict events',
-        'Recorded fatalities',
-        'Political violence events',
-        'Humanitarian reference period',
-      ]
-    : [
-        'Tracker scope',
-        'Covered countries',
-      ];
+  const variableMeasured = [
+    {
+      '@type': 'PropertyValue',
+      name: 'Tracker scope',
+      value: crisis.shortTitle || crisis.title,
+    },
+    {
+      '@type': 'PropertyValue',
+      name: 'Covered countries',
+      value: crisis.coverage.length,
+      unitText: 'countries',
+    },
+    ...(hasPulse ? [
+      {
+        '@type': 'PropertyValue',
+        name: 'Recorded conflict events',
+        value: publishedTotals.eventsTotal ?? 'Unavailable',
+        unitText: 'events',
+      },
+      {
+        '@type': 'PropertyValue',
+        name: 'Recorded fatalities',
+        value: publishedTotals.fatalities ?? 'Unavailable',
+        unitText: 'fatalities',
+      },
+      {
+        '@type': 'PropertyValue',
+        name: 'Political violence events',
+        value: publishedTotals.politicalViolenceEvents ?? 'Unavailable',
+        unitText: 'events',
+      },
+      {
+        '@type': 'PropertyValue',
+        name: 'Humanitarian reference period',
+        value: pulse.referencePeriod,
+      },
+    ] : []),
+  ];
   const datasetDescription = hasPulse
     ? `A bounded World Monitor crisis tracker for ${crisis.title}, with the maintained ${pulse.referencePeriod} HAPI/HDX country summaries across ${crisis.coverage.map((country) => country.name).join(', ')}.`
     : `A bounded World Monitor crisis tracker reference for ${crisis.title}, defining the maintained geographic scope across ${crisis.coverage.map((country) => country.name).join(', ')}.`;
@@ -3201,18 +3241,23 @@ ${snapshotSection}
         about: coveragePlaces,
         mainEntity: {
           '@type': 'Dataset',
+          '@id': `${absoluteUrl(baseUrl, path)}#crisis-dataset`,
           name: `World Monitor crisis tracker reference: ${crisis.shortTitle || crisis.title}`,
           description: datasetDescription,
+          url: absoluteUrl(baseUrl, path),
+          identifier: `crisis-tracker-${crisis.slug}`,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
+          datePublished: publishedDate,
           dateModified: laterDate(
             hasPulse ? pulseDateOnly(pulse.asOf, lastmod) : lastmod,
             DATASET_SCHEMA_CONTENT_VERSION.crisis,
           ),
-          temporalCoverage: hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined,
+          temporalCoverage: publishedPeriod,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured,
+          measurementTechnique: 'Monthly country-level HAPI/HDX humanitarian conflict summaries; combined totals are published only when covered countries share a reference period.',
           spatialCoverage: coverageSpatial.length === 1 ? coverageSpatial[0] : coverageSpatial,
           distribution,
         },
@@ -3274,6 +3319,8 @@ function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, snap
   const metricName = signalConvergence.metricName || 'Geographic Convergence Score';
   const description = `World Monitor's ${metricName} (0-100) names when protests, military flights, naval vessels, and earthquakes co-occur in the same 1° cell.`;
   const downloadHref = datasetDownloadHref(path, CONVERGENCE_DATASET_DOWNLOAD);
+  const datasetUrl = absoluteUrl(baseUrl, path);
+  const datasetId = `${datasetUrl}#signal-convergence-dataset`;
   const examples = (signalConvergence.referenceExamples || []).map((example) => (
     `        <article class="card">
           <p class="eyebrow">${escapeHtml(example.kind === 'methodology-example' ? 'Methodology example' : 'Reference')}</p>
@@ -3331,24 +3378,30 @@ ${examples}
         inLanguage: 'en-US',
         mainEntity: {
           '@type': 'Dataset',
+          '@id': datasetId,
           name: `World Monitor ${metricName} reference`,
           description,
+          url: datasetUrl,
+          identifier: `signal-convergence-${signalConvergence.capturedAt || 'reference'}`,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          // This reference is a formula plus documentation-derived examples --
-          // it has no observation window, so it carries no temporalCoverage and
-          // is dated from its content version, not the freeze wall clock. The
-          // family schema stamp rides alongside so a Dataset-shape change signals
+          // This reference is a formula plus documentation-derived examples. It
+          // has no observation window, so it carries no temporalCoverage; when
+          // available, datePublished identifies the source snapshot. The family
+          // schema stamp rides alongside so a Dataset-shape change signals
           // recrawl without dragging the page lastmod with it (#7382).
+          datePublished: datasetTemporalCoverage(signalConvergence.capturedAt),
           dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION.tools),
+          spatialCoverage: 'Worldwide',
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured: [
-            { '@type': 'PropertyValue', name: metricName, minValue: 0, maxValue: 100 },
-            'Default minimum domains',
-            'Alert priority thresholds',
+            { '@type': 'PropertyValue', name: metricName, minValue: 0, maxValue: 100, unitText: 'score points' },
+            { '@type': 'PropertyValue', name: 'Default minimum domains', value: signalConvergence.defaultMinDomains ?? 3, minValue: 1 },
+            { '@type': 'PropertyValue', name: 'Alert priority thresholds', value: signalConvergence.thresholds?.length ?? 0, unitText: 'thresholds' },
           ],
           measurementTechnique: 'type_score = event_types × 25; count_boost = min(25, total_events × 2); convergence_score = min(100, type_score + count_boost)',
+          citation: absoluteUrl(baseUrl, '/docs/geographic-convergence'),
           distribution: [dataDownload(absoluteUrl(baseUrl, downloadHref))],
         },
       },
@@ -3637,6 +3690,7 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         count: crisisRoutes.length,
         index: '/crises/',
         routes: crisisRoutes,
+        sourceCapturedAt: data.livePulse.capturedAt,
       },
       tools: {
         count: toolRoutes.length,
@@ -3881,6 +3935,7 @@ export async function buildCorpus({
   for (const crisis of data.crises) {
     const pagePath = `/crises/${crisis.slug}/`;
     const crisisPulse = data.livePulse.crises?.[crisis.slug] || null;
+    const crisisPulseTotals = crisisPulse ? pulseTotals(crisisPulse) : null;
     writeGeneratedFile(
       outDir,
       routeFile(pagePath),
@@ -3890,12 +3945,13 @@ export async function buildCorpus({
         lastmod: data.lastmod.crises,
         livePulse: data.livePulse,
         livePulseSnapshotPath: data.sources.livePulseSnapshot,
+        publishedTotals: crisisPulseTotals,
       }),
     );
     writeGeneratedFile(
       outDir,
       datasetDownloadFile(pagePath, CRISIS_DATASET_DOWNLOAD),
-      crisisDatasetDownload(crisis, crisisPulse),
+      crisisDatasetDownload(crisis, crisisPulse, crisisPulseTotals),
     );
   }
 

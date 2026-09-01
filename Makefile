@@ -8,7 +8,9 @@ GEN_SERVER_DIR := src/generated/server
 DOCS_API_DIR := docs/api
 
 # Go install settings
-GO_PROXY := GOPROXY=direct
+# Use the public module proxy for public dependencies, with direct fallback.
+# GOPRIVATE keeps the private sebuf module off the public proxy.
+GO_PROXY := GOPROXY=https://proxy.golang.org,direct
 GO_PRIVATE := GOPRIVATE=github.com/SebastienMelki
 GO_INSTALL := $(GO_PROXY) $(GO_PRIVATE) go install
 
