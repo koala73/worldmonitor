@@ -153,21 +153,24 @@ function variantBreadcrumbJsonLd(meta: VariantMeta): string {
   });
 }
 
-function removeJsonLdType(html: string, expectedType: string): string {
-  let count = 0;
+function removeJsonLdTypes(html: string, expectedTypes: readonly string[]): string {
+  const counts = new Map(expectedTypes.map((type) => [type, 0]));
   const result = html.replace(
     /[ \t]*<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>\s*/gi,
     (script, json: string) => {
       const type = JSON.parse(json)['@type'];
-      if (type !== expectedType) return script;
-      count += 1;
+      if (!counts.has(type)) return script;
+      counts.set(type, counts.get(type)! + 1);
       return '';
     },
   );
-  if (count !== 1) {
-    throw new Error(
-      `[variant-dashboard-html] JSON-LD type "${expectedType}" matched ${count} time(s), expected 1`,
-    );
+  for (const expectedType of expectedTypes) {
+    const count = counts.get(expectedType)!;
+    if (count !== 1) {
+      throw new Error(
+        `[variant-dashboard-html] JSON-LD type "${expectedType}" matched ${count} time(s), expected 1`,
+      );
+    }
   }
   return result;
 }
@@ -268,7 +271,7 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     'WebApplication featureList',
   );
 
-  html = removeJsonLdType(html, 'WebSite');
+  html = removeJsonLdTypes(html, ['WebSite', 'WebPage', 'BreadcrumbList']);
 
   // Variants stay on their own canonical URL but must not be entity-orphaned:
   // join the canonical Organization/WebSite via WebPage + breadcrumbs + speakable

@@ -201,6 +201,7 @@ function chokepointRecord(view) {
     warnings: view.warnings,
     description: publishableDescription(view.description),
     todayTransits: view.todayTransits,
+    todayCountsAvailable: view.todayCountsAvailable,
     weekMovement: view.weekMovement,
     partial: view.partial === true,
     asOf: new Date(view.fetchedAt).toISOString(),
