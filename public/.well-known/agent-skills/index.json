@@ -28,7 +28,7 @@
       "type": "skill-md",
       "description": "Retrieve composite country risk intelligence — Country Instability Index (CII), travel advisory level, and active sanctions exposure — for one country by ISO code. Use when the user asks how risky or unstable a country is right now.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/check-country-risk/SKILL.md",
-      "digest": "sha256:9dc6275c69a37e633c161477041b695d12eb8b2c2c79e91476c6999112f45642"
+      "digest": "sha256:b75c3518f110c60b9ca7166f883a3cfb741e0f019693b2597f192881dd760acd"
     },
     {
       "name": "check-forecast-signals",

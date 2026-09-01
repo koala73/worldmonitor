@@ -7,6 +7,7 @@
     { "source": "/", "has": [{ "type": "host", "value": "^api\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/", "permanent": true },
     { "source": "/docs/:match*", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/docs/:match*", "permanent": true },
     { "source": "/blog/:match*", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/blog/:match*", "permanent": true },
+    { "source": "/country-instability-index/:match*", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/country-instability-index/:match*", "permanent": true },
     { "source": "/countries/:match*", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/countries/:match*", "permanent": true },
     { "source": "/chokepoints/:match*", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/chokepoints/:match*", "permanent": true },
     { "source": "/research/:match*", "has": [{ "type": "host", "value": "^(?:tech|finance|commodity|happy|energy|api)\\.worldmonitor\\.app$" }], "destination": "https://www.worldmonitor.app/research/:match*", "permanent": true },
@@ -30,6 +31,7 @@
     { "source": "/blog/posts", "destination": "/blog", "permanent": true },
     { "source": "/changelog", "destination": "/reference/changelog/", "permanent": true },
     { "source": "/reference", "destination": "/reference/changelog/", "permanent": false },
+    { "source": "/country-instability-index", "destination": "/country-instability-index/", "permanent": true },
     { "source": "/countries", "destination": "/countries/", "permanent": true },
     { "source": "/countries/czech-republic", "destination": "/countries/czechia/", "permanent": true },
     { "source": "/countries/czech-republic/", "destination": "/countries/czechia/", "permanent": true },
@@ -557,6 +559,18 @@
       ]
     },
     {
+      "source": "/country-instability-index/:path*",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
+      "source": "/country-instability-index",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
+      ]
+    },
+    {
       "source": "/countries/:path*",
       "headers": [
         { "key": "Cache-Control", "value": "public, max-age=3600, must-revalidate" }
@@ -665,7 +679,7 @@
       ]
     },
     {
-      "source": "/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)",
+      "source": "/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
       ]

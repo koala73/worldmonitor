@@ -42,6 +42,10 @@ export const CII_COUNTRY_WEIGHTS = {
 
 export type CiiCountryCode = keyof typeof CII_COUNTRY_WEIGHTS;
 
+export const CII_COUNTRY_CODES = Object.freeze(
+  Object.keys(CII_COUNTRY_WEIGHTS) as CiiCountryCode[],
+);
+
 export const CII_BASELINE_RISK: Record<CiiCountryCode, number> =
   Object.fromEntries(
     Object.entries(CII_COUNTRY_WEIGHTS).map(([code, weights]) => [code, weights.baselineRisk]),
