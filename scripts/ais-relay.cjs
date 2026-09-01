@@ -3107,6 +3107,7 @@ const { loadMarketSeedUniverse } = require('./shared/market-seed-universe.cjs');
 const _stockCfg = requireShared('stocks.json');
 const _stockUniverse = loadMarketSeedUniverse(_stockCfg);
 const MARKET_SYMBOLS = _stockUniverse.allSymbols;
+const MARKET_AUXILIARY_SYMBOLS = _stockUniverse.auxiliarySymbols;
 const MARKET_META = _stockUniverse.metaBySymbol;
 
 const _commodityCfg = requireShared('commodities.json');
@@ -3335,6 +3336,7 @@ async function seedMarketQuotes() {
     : finnhubSymbols;
   const yahooPlan = planYahooRefresh({
     mandatoryYahooSymbols: yahooSymbols,
+    everyCycleSymbols: MARKET_AUXILIARY_SYMBOLS.filter((s) => YAHOO_ONLY.has(s)),
     missedPrimarySymbols: missedFinnhub,
     nowMs: Date.now(),
     lastRefreshAt: _lastYahooMarketRefreshAt,

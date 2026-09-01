@@ -53,6 +53,24 @@ describe('market quote refresh resilience', () => {
     });
   });
 
+  it('includes every-cycle NQ auxiliaries even when bulk Yahoo is not due', () => {
+    const args = {
+      mandatoryYahooSymbols: ['^GSPC', '^HSI', 'NQ=F', 'QQQ', '^VXN', '^TNX'],
+      everyCycleSymbols: ['NQ=F', 'QQQ', '^VXN', '^TNX'],
+      missedPrimarySymbols: ['AAPL'],
+      refreshIntervalMs: 15 * 60_000,
+    };
+
+    assert.deepEqual(planYahooRefresh({ ...args, nowMs: 1_000_000, lastRefreshAt: 0 }), {
+      due: true,
+      symbols: ['^GSPC', '^HSI', 'NQ=F', 'QQQ', '^VXN', '^TNX', 'AAPL'],
+    });
+    assert.deepEqual(planYahooRefresh({ ...args, nowMs: 1_300_000, lastRefreshAt: 1_000_000 }), {
+      due: false,
+      symbols: ['NQ=F', 'QQQ', '^VXN', '^TNX'],
+    });
+  });
+
   it('deduplicates Yahoo candidates shared by mandatory and fallback paths', () => {
     assert.deepEqual(planYahooRefresh({
       mandatoryYahooSymbols: ['^GSPC', 'AAPL'],
@@ -103,6 +121,7 @@ describe('market quote refresh resilience', () => {
     const envExample = readFileSync(new URL('../.env.example', import.meta.url), 'utf8');
 
     assert.match(relay, /previousPayloadPromise = envelopeRead\('market:stocks-bootstrap:v1'\)/);
+    assert.match(relay, /everyCycleSymbols: MARKET_AUXILIARY_SYMBOLS\.filter\(\(s\) => YAHOO_ONLY\.has\(s\)\)/);
     assert.match(relay, /mergeLastGoodQuotes\(MARKET_SYMBOLS, freshQuotes, previousQuotes\)/);
     assert.match(relay, /resolveMergedQuotesAsOf\(freshQuotes, quotes, previousPayload\?\.asOf, fetchedAt\)/);
     assert.match(standalone, /resolveMergedQuotesAsOf\(quotes, mergedQuotes, previousPayload\?\.asOf, fetchedAt\)/);
