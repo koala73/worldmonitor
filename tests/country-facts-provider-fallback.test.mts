@@ -31,7 +31,7 @@ function configureRemoteRedis(): void {
 }
 
 function wikidataCacheWrites(writes: string[]): string[] {
-  return writes.filter(body => body.includes('intel:country-facts:wikidata:v6:'));
+  return writes.filter(body => body.includes('intel:country-facts:wikidata:v7:'));
 }
 
 function wikidataWritesContainNegSentinel(writes: string[]): boolean {
@@ -243,6 +243,7 @@ describe('getCountryFacts provider contract', () => {
           const code = query.match(/wdt:P297 "([A-Z]{2})"/)?.[1] as keyof typeof countries | undefined;
           assert.ok(code && countries[code], 'the identity query must contain the requested ISO country code');
           assert.match(query, /OPTIONAL \{ \?country wdt:P2082 \?m49 \}/);
+          assert.doesNotMatch(query, /wdt:P298/);
           return identity;
         }
         const qid = query.match(/\bwd:(Q\d+)\b/)?.[1];
@@ -252,7 +253,9 @@ describe('getCountryFacts provider contract', () => {
           .find(key => countries[key].qid === qid);
         const currencies = code === 'FR'
           ? [
-              ...(query.includes('wdt:P38') ? ['CFP Franc'] : []),
+              ...(query.includes('wdt:P38') && !query.includes('?unscopedCurrencyStatement')
+                ? ['CFP Franc']
+                : []),
               ...(!query.includes('pq:P582 ?currencyEnd') ? ['French franc'] : []),
               country.currency,
             ]
@@ -412,6 +415,7 @@ describe('getCountryFacts provider contract', () => {
         if (identity) {
           assert.match(query, /wdt:P297 "IN"/);
           assert.match(query, /OPTIONAL \{ \?country wdt:P2082 \?m49 \}/);
+          assert.doesNotMatch(query, /wdt:P298/);
           return identity;
         }
         capturedQuery = query;
@@ -607,6 +611,7 @@ describe('getCountryFacts provider contract', () => {
     delete process.env.UPSTASH_REDIS_REST_URL;
     delete process.env.UPSTASH_REDIS_REST_TOKEN;
 
+    const identityQueries: string[] = [];
     const factsQueries: string[] = [];
     globalThis.fetch = (async (input: string | URL | Request) => {
       const url = new URL(input instanceof Request ? input.url : input);
@@ -614,6 +619,7 @@ describe('getCountryFacts provider contract', () => {
       if (url.hostname === 'query.wikidata.org') {
         const query = url.searchParams.get('query') ?? '';
         if (isWikidataIdentityQuery(query)) {
+          identityQueries.push(query);
           assert.match(query, /wdt:P297 "NL"/);
           assert.match(query, /OPTIONAL \{ \?country wdt:P2082 \?m49 \}/);
           return new Response(JSON.stringify({
@@ -635,7 +641,7 @@ describe('getCountryFacts provider contract', () => {
         return new Response(JSON.stringify({
           results: {
             bindings: [{
-              countryLabel: wikidataValue('Netherlands'),
+              countryLabel: wikidataValue('Kingdom of the Netherlands'),
               headLabel: wikidataValue('Willem-Alexander'),
               officeLabel: wikidataValue('King of the Netherlands'),
               population: wikidataValue('17900000'),
@@ -667,7 +673,13 @@ describe('getCountryFacts provider contract', () => {
 
     const result = await getCountryFacts({} as never, { countryCode: 'NL' });
 
+    assert.equal(identityQueries.length, 1);
+    assert.match(identityQueries[0], /wdt:P297 "NL"/);
+    assert.match(identityQueries[0], /OPTIONAL \{ \?country wdt:P2082 \?m49 \}/);
+    assert.doesNotMatch(identityQueries[0], /wdt:P298/);
     assert.equal(factsQueries.length, 1);
+    assert.match(factsQueries[0], /\?currencyRegion wdt:P297 \?currencyRegionCode/);
+    assert.doesNotMatch(factsQueries[0], /\?country wdt:P297/);
     assert.deepEqual(result, {
       headOfState: 'Willem-Alexander',
       headOfStateTitle: 'King of the Netherlands',

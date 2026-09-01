@@ -90,20 +90,19 @@ interface WikiResult {
 
 async function fetchWikidata(code: string): Promise<WikiResult | null> {
   if (!/^[A-Z]{2}$/.test(code)) return null;
-  const m49 = ISO2_TO_M49[code];
-  if (!m49) return null;
+  if (!ISO2_TO_M49[code]) return null;
   try {
     return await cachedFetchJson<WikiResult>(
-      `intel:country-facts:wikidata:v6:${code}`,
+      `intel:country-facts:wikidata:v7:${code}`,
       FACTS_TTL,
       async () => {
         const entityId = await resolveWikidataEntityId(code);
         if (!entityId) return null;
-        return parseWikidataFacts(await queryWikidata(wikidataFactsQuery(entityId, code)));
+        const result = parseWikidataFacts(await queryWikidata(wikidataFactsQuery(entityId, code)));
+        if (!result) return null;
+        return { ...result, countryName: displayCountryName(code) || result.countryName };
       },
       NEGATIVE_TTL,
-      // Transient 429/5xx/network errors must not become NEG_SENTINEL. A 200
-      // with no bindings still returns null and is negative-cached as empty.
       { cacheFetcherErrors: false },
     );
   } catch {
