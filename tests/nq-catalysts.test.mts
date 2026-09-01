@@ -8,11 +8,17 @@ import {
   composeNqCatalystsHtml,
   filterNqEarnings,
   filterNqMacroEvents,
+  nqInclusiveWindowTo,
   NQ_EARNINGS_EMPTY,
   NQ_MACRO_EMPTY,
   NQ_SECTION_UNAVAILABLE,
 } from '../src/components/nq-catalysts-content.ts';
-import { NQ_PULSE_DISCLOSURE } from '../src/config/nq-context.ts';
+import {
+  NQ_EARNINGS_WINDOW_DAYS,
+  NQ_MACRO_WINDOW_DAYS,
+  NQ_PULSE_DISCLOSURE,
+} from '../src/config/nq-context.ts';
+import { addLocalDays, localYmd } from '../src/utils/local-date.ts';
 import {
   enabledNewsCategoryKeys,
   resolveNewsCategories,
@@ -55,6 +61,33 @@ describe('NQ Catalysts filters', () => {
       { event: 'Too Far', country: 'US', date: '2026-09-20', impact: 'High' },
     ], now);
     assert.deepEqual(filtered.map((event) => event.event), ['CPI']);
+  });
+
+  it('keeps catalyst windows to exactly 7 and 14 inclusive dates', () => {
+    const macroLast = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS - 1));
+    const macroNext = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS));
+    const earningsLast = localYmd(addLocalDays(now, NQ_EARNINGS_WINDOW_DAYS - 1));
+    const earningsNext = localYmd(addLocalDays(now, NQ_EARNINGS_WINDOW_DAYS));
+
+    assert.equal(nqInclusiveWindowTo(now, NQ_MACRO_WINDOW_DAYS), macroLast);
+    assert.equal(nqInclusiveWindowTo(now, NQ_EARNINGS_WINDOW_DAYS), earningsLast);
+
+    const macro = filterNqMacroEvents([
+      { event: 'Last', country: 'US', date: macroLast, impact: 'High' },
+      { event: 'Next', country: 'US', date: macroNext, impact: 'High' },
+    ], now);
+    assert.deepEqual(macro.map((event) => event.event), ['Last']);
+
+    const earnings = filterNqEarnings([
+      { symbol: 'AAPL', company: 'Apple', date: earningsLast },
+      { symbol: 'MSFT', company: 'Microsoft', date: earningsNext },
+    ], now);
+    assert.deepEqual(earnings.map((entry) => entry.symbol), ['AAPL']);
+
+    const panel = readFileSync(resolve(root, 'src/components/NqCatalystsPanel.ts'), 'utf8');
+    assert.match(panel, /nqInclusiveWindowTo\(now, NQ_MACRO_WINDOW_DAYS\)/);
+    assert.match(panel, /nqInclusiveWindowTo\(now, NQ_EARNINGS_WINDOW_DAYS\)/);
+    assert.doesNotMatch(panel, /addLocalDays\(now, NQ_(MACRO|EARNINGS)_WINDOW_DAYS\)/);
   });
 
   it('keeps influence-basket earnings in chronological order and drops unrelated names', () => {

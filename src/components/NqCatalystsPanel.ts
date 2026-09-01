@@ -1,7 +1,7 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import type { MarketServiceClient } from '@/generated/client/worldmonitor/market/v1/service_client';
 import { Panel } from './Panel';
-import { addLocalDays, localYmd } from '@/utils/local-date';
+import { localYmd } from '@/utils/local-date';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { NQ_EARNINGS_WINDOW_DAYS, NQ_MACRO_WINDOW_DAYS, NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
@@ -9,6 +9,7 @@ import {
   composeNqCatalystsHtml,
   filterNqEarnings,
   filterNqMacroEvents,
+  nqInclusiveWindowTo,
 } from './nq-catalysts-content';
 
 let economicClient: EconomicServiceClient | null = null;
@@ -48,9 +49,9 @@ export class NqCatalystsPanel extends Panel {
     this.showLoading('Loading NQ catalysts...');
     const now = new Date();
     const macroFrom = localYmd(now);
-    const macroTo = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS));
+    const macroTo = nqInclusiveWindowTo(now, NQ_MACRO_WINDOW_DAYS);
     const earningsFrom = localYmd(now);
-    const earningsTo = localYmd(addLocalDays(now, NQ_EARNINGS_WINDOW_DAYS));
+    const earningsTo = nqInclusiveWindowTo(now, NQ_EARNINGS_WINDOW_DAYS);
 
     try {
       const [macroSettled, earningsSettled] = await Promise.allSettled([

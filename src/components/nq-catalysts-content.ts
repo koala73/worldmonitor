@@ -36,12 +36,17 @@ function inLocalWindow(date: string, from: string, to: string): boolean {
   return Boolean(date) && date >= from && date <= to;
 }
 
+/** Inclusive local YYYY-MM-DD end for a window of `windowDays` calendar dates starting today. */
+export function nqInclusiveWindowTo(now: Date, windowDays: number): string {
+  return localYmd(addLocalDays(now, windowDays - 1));
+}
+
 export function filterNqMacroEvents(
   events: readonly NqMacroEvent[],
   now: Date = new Date(),
 ): NqMacroEvent[] {
   const from = localYmd(now);
-  const to = localYmd(addLocalDays(now, NQ_MACRO_WINDOW_DAYS));
+  const to = nqInclusiveWindowTo(now, NQ_MACRO_WINDOW_DAYS);
   return events
     .filter((event) => (
       event.country === 'US'
@@ -56,7 +61,7 @@ export function filterNqEarnings(
   now: Date = new Date(),
 ): NqEarningsEntry[] {
   const from = localYmd(now);
-  const to = localYmd(addLocalDays(now, NQ_EARNINGS_WINDOW_DAYS));
+  const to = nqInclusiveWindowTo(now, NQ_EARNINGS_WINDOW_DAYS);
   return earnings
     .filter((entry) => INFLUENCE_SET.has(entry.symbol) && inLocalWindow(entry.date, from, to))
     .sort((a, b) => a.date.localeCompare(b.date) || a.symbol.localeCompare(b.symbol));
