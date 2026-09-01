@@ -95,6 +95,11 @@ describe('crawlable live intelligence view models', () => {
     }, 'hormuz_strait', NOW);
     assert.equal(responsePartial.todayTransits, '11');
     assert.equal(responsePartial.weekMovement, '+2.5% vs prior week');
+    assert.equal(
+      responsePartial.warnings,
+      '3 warnings · 2 AIS disruptions',
+      'complete transit coverage must keep formatted warnings visible',
+    );
     assert.equal(responsePartial.partial, true);
     assert.throws(
       () => chokepointStatusViewModel({ chokepoints: [], upstreamUnavailable: true }, 'hormuz_strait', NOW),
@@ -307,6 +312,69 @@ describe('crawlable live intelligence view models', () => {
       tool.querySelector('[data-chokepoint-transits-note]').textContent,
       /not currently publishing a transit count for Strait of Hormuz for this period/,
     );
+  });
+
+  it('hydrates formatted warnings when transit coverage is complete', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid>
+          <div class="metric"><strong><span data-chokepoint-score>—</span><small data-chokepoint-band></small></strong></div>
+          <div class="metric"><strong data-chokepoint-congestion>—</strong></div>
+          <div class="metric"><strong data-chokepoint-warnings>—</strong></div>
+          <div class="metric"><strong data-chokepoint-transits>—</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>—</strong></div>
+        </div>
+        <p data-chokepoint-description></p>
+        <p data-chokepoint-transits-note hidden></p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+      </section>
+    `;
+
+    const tool = document.querySelector('[data-live-chokepoint]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-chokepoint-status')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+            upstreamUnavailable: false,
+            chokepoints: [{
+              id: 'hormuz_strait',
+              disruptionScore: 72,
+              status: 'red',
+              congestionLevel: 'high',
+              activeWarnings: 3,
+              aisDisruptions: 2,
+              description: 'Elevated shipping warnings.',
+              transitSummary: {
+                dataAvailable: true,
+                todayTotal: 11,
+                wowChangePct: 2.5,
+              },
+            }],
+          }),
+        };
+      }
+      return anonymousSessionResponse();
+    };
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '11');
+    assert.equal(
+      tool.querySelector('[data-chokepoint-warnings]').textContent,
+      '3 warnings · 2 AIS disruptions',
+    );
+    assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+2.5% vs prior week');
+    assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, true);
   });
 
   // The mirror-parity test this replaces could not do its job: of its ten

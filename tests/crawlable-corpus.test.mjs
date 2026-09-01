@@ -2567,6 +2567,14 @@ describe('crawlable corpus generator', () => {
             `${meta.name} has a supplied count of ${pulse.todayTransits} and must publish it`,
           );
           assert.doesNotMatch(page, noteRe, `${meta.name} publishes a count and must not carry the withhold note`);
+          assert.ok(
+            page.includes(`data-chokepoint-warnings>${pulse.warnings}<`),
+            `${meta.name} has a supplied count and must keep pulse warnings visible`,
+          );
+          assert.ok(
+            page.includes(`data-chokepoint-movement>${pulse.weekMovement ?? 'Unavailable'}<`),
+            `${meta.name} has a supplied count and must keep week movement visible`,
+          );
         } else {
           withheldCounts++;
           assert.match(page, /data-chokepoint-transits>—/);
