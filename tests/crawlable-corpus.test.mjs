@@ -1188,6 +1188,9 @@ describe('crawlable corpus generator', () => {
       assert.match(ukraine, /<title>Ukraine Instability Index &amp; Country Risk \| World Monitor<\/title>/);
       assert.match(ukraine, /<h1>Ukraine Country Instability Index<\/h1>/);
       assert.match(ukraine, /Ukraine's Country Instability Index is <strong>\d+\/100 &middot; [^<]+<\/strong>/);
+      assert.match(ukraine, /<summary>What is Ukraine&#39;s Country Instability Index\?<\/summary>/);
+      const ukraineFaq = jsonLdObjects(ukraine).find((entry) => entry['@type'] === 'FAQPage');
+      assert.match(ukraineFaq?.mainEntity?.[0]?.name || '', /Country Instability Index/);
       assert.match(ukraine, /data-live-score>\d/);
       assert.doesNotMatch(ukraine, /data-live-score>—/);
       assert.doesNotMatch(ukraine, /Connecting…/);
@@ -1439,7 +1442,14 @@ describe('crawlable corpus generator', () => {
         sampleArticles.push({ route, text: mainText });
 
         const faqEntries = [...document.querySelectorAll('[data-country-faq]')];
-        assert.ok(faqEntries.length >= 2 && faqEntries.length <= 3, `${route} must show 2-3 FAQs`);
+        const ciiTargeted = /<h1>[^<]+ Country Instability Index<\/h1>/.test(html);
+        assert.ok(
+          faqEntries.length >= 2 && faqEntries.length <= (ciiTargeted ? 4 : 3),
+          `${route} must show 2-3 CRI FAQs, plus one CII FAQ when retargeted`,
+        );
+        if (ciiTargeted) {
+          assert.match(faqEntries[0]?.textContent || '', /Country Instability Index/);
+        }
         const pageLd = jsonLdObjects(html);
         const faqPage = pageLd.find((entry) => entry['@type'] === 'FAQPage');
         assert.equal(faqPage?.mainEntity?.length, faqEntries.length);
@@ -1674,6 +1684,7 @@ describe('crawlable corpus generator', () => {
       assert.match(syria, /Macro-fiscal position/);
       assert.match(syria, /IMF/);
       const andorra = read(outDir, 'countries/andorra/index.html');
+      assert.doesNotMatch(andorra, /<summary>What is Andorra&#39;s Country Instability Index\?<\/summary>/);
       assert.equal(countryByCode.get('AD')?.lowConfidence, false);
       const andorraDataset = JSON.parse(read(outDir, 'countries/andorra/resilience.json'));
       assert.equal(andorraDataset.confidence, 'standard');

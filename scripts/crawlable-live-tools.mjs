@@ -120,6 +120,32 @@ export function formatTrend(dynamicScore, trend) {
   return 'Stable / unavailable';
 }
 
+export function parseCiiMovement(trend) {
+  const normalized = String(trend || '').trim();
+  if (normalized === 'Stable' || normalized === 'Stable / unavailable') {
+    return { change24h: 0, movementText: 'unchanged over approximately 24 hours' };
+  }
+  const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
+  if (!match) throw new Error(`Invalid CII movement label: ${normalized || '(empty)'}`);
+  const change24h = Number(match[2]);
+  const magnitude = Math.abs(change24h);
+  const unit = magnitude === 1 ? 'point' : 'points';
+  const direction = match[1] === 'Rising' ? 'up' : 'down';
+  return {
+    change24h,
+    movementText: `${direction} ${magnitude} ${unit} over approximately 24 hours`,
+  };
+}
+
+function compareCiiRankingRows(left, right, publishedCodes = []) {
+  const scoreDelta = right.scoreValue - left.scoreValue;
+  if (scoreDelta !== 0) return scoreDelta;
+  if (publishedCodes.length === 0) return 0;
+  const order = new Map(publishedCodes.map((code, index) => [code, index]));
+  return (order.get(left.code) ?? Number.POSITIVE_INFINITY)
+    - (order.get(right.code) ?? Number.POSITIVE_INFINITY);
+}
+
 export function liveRiskViewModel(payload, now = Date.now()) {
   if (!payload || typeof payload !== 'object') {
     throw new Error('Country risk response is not an object');
@@ -230,7 +256,7 @@ export function ciiRankingViewModel(payload, now = Date.now()) {
       computedAt,
       methodologyVersion,
     };
-  }).sort((left, right) => right.scoreValue - left.scoreValue || left.code.localeCompare(right.code));
+  }).sort((left, right) => compareCiiRankingRows(left, right));
 
   if (methodologyVersions.size !== 1) {
     throw new Error('CII ranking response mixes methodology versions');
@@ -1001,9 +1027,17 @@ function renderCiiRankingViewModel(tool, view) {
     throw new Error('CII ranking response does not match the published country set');
   }
 
-  for (const entry of view.rows) {
+  const publishedCodes = [...body.querySelectorAll('[data-cii-country]')].map(
+    (row) => row.dataset.ciiCountry,
+  );
+  const rows = [...view.rows].sort((left, right) => compareCiiRankingRows(left, right, publishedCodes));
+  for (const entry of rows) {
     const row = rowByCode.get(entry.code);
-    setText(row, '[data-cii-score]', entry.score);
+    const scoreCell = row.querySelector('[data-cii-score]');
+    if (scoreCell) {
+      scoreCell.textContent = entry.score;
+      scoreCell.setAttribute('value', entry.score);
+    }
     setText(row, '[data-cii-trend]', entry.trend);
     setText(row, '[data-cii-band]', entry.band);
     const updated = row.querySelector('[data-cii-updated]');
@@ -1014,8 +1048,19 @@ function renderCiiRankingViewModel(tool, view) {
     body.append(row);
   }
   setTime(tool, '[data-cii-ranking-updated]', view.updatedAt, 'Latest score');
+  tool.dataset.ciiHydrated = 'true';
   markPublishedLivePulse(tool);
   setToolState(tool, 'ready', `API result · ${view.methodologyVersion}`);
+}
+
+function renderCiiRankingError(tool) {
+  setToolState(
+    tool,
+    'error',
+    tool.dataset.ciiHydrated === 'true'
+      ? 'Live refresh unavailable — showing last loaded rankings'
+      : 'Live refresh unavailable — showing published rankings',
+  );
 }
 
 export async function loadCiiRanking(tool) {
@@ -1033,7 +1078,7 @@ export async function loadCiiRanking(tool) {
       (view) => renderCiiRankingViewModel(tool, view),
     );
   } catch {
-    setToolState(tool, 'error', 'Live refresh unavailable — showing published rankings');
+    renderCiiRankingError(tool);
   }
 }
 

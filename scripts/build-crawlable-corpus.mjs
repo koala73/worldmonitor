@@ -44,6 +44,7 @@ import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
   instabilityBand,
+  parseCiiMovement,
   publishedTransitCountLabel,
   withheldTransitCountSentence,
 } from './crawlable-live-tools.mjs';
@@ -343,23 +344,6 @@ function pulseDateOnly(asOf, fallback) {
   return fallback;
 }
 
-function ciiMovement(trend) {
-  const normalized = String(trend || '').trim();
-  if (normalized === 'Stable') {
-    return { change24h: 0, movementText: 'unchanged over approximately 24 hours' };
-  }
-  const match = normalized.match(/^(Rising|Falling) ([+-]?\d+(?:\.\d+)?)$/);
-  if (!match) throw new Error(`Invalid CII movement label: ${normalized || '(empty)'}`);
-  const change24h = Number(match[2]);
-  const magnitude = Math.abs(change24h);
-  const unit = magnitude === 1 ? 'point' : 'points';
-  const direction = match[1] === 'Rising' ? 'up' : 'down';
-  return {
-    change24h,
-    movementText: `${direction} ${magnitude} ${unit} over approximately 24 hours`,
-  };
-}
-
 export function buildCiiRankingEntries(countries, livePulse) {
   const countryByCode = new Map(countries.map((country) => [country.code, country]));
   const methodologyVersions = new Set();
@@ -389,7 +373,7 @@ export function buildCiiRankingEntries(countries, livePulse) {
       trend: String(pulse.trend || '').trim(),
       asOf,
       methodologyVersion,
-      ...ciiMovement(pulse.trend),
+      ...parseCiiMovement(pulse.trend),
     });
   }
 
@@ -2255,10 +2239,17 @@ function formatSignedScore(value) {
   return `${numeric > 0 ? '+' : ''}${formatScore(numeric)}`;
 }
 
-function countryFaqs(country, capturedAt, rankedCount) {
+function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
+  const ciiFaq = ciiEntry
+    ? [{
+      question: `What is ${country.name}'s Country Instability Index?`,
+      answer: `${country.name}'s Country Instability Index is ${ciiEntry.score}/100 (${ciiEntry.band}), ${ciiEntry.movementText}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
+    }]
+    : [];
   const scorePublished = country.headlineEligible !== false;
   if (!scorePublished) {
     return [
+      ...ciiFaq,
       {
         question: `What is ${country.name}'s resilience score?`,
         answer: `No resilience score or rank is published for ${country.name}. ${country.name}'s published rank would require coverage of at least ${Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100)}%, no low-confidence flag, and either a population of at least ${HEADLINE_RANKING_MIN_POPULATION.toLocaleString('en-US')} or coverage of at least ${Math.round(HEADLINE_RANKING_HIGH_COVERAGE * 100)}%. Low confidence for ${country.name} means coverage falls below ${Math.round(LOW_CONFIDENCE_MIN_COVERAGE * 100)}% or imputation share exceeds ${Math.round(LOW_CONFIDENCE_MAX_IMPUTATION * 100)}%.`,
@@ -2280,6 +2271,7 @@ function countryFaqs(country, capturedAt, rankedCount) {
     ? 'outside the headline ranking because the snapshot labels its evidence low-confidence'
     : `#${country.rank} of ${rankedCount} ranked countries`;
   return [
+    ...ciiFaq,
     {
       question: `What is ${country.name}'s resilience score?`,
       answer: `${country.name} scores ${formatScore(country.overallScore)} out of 100 in the ${prettyDate(capturedAt)} structural snapshot and sits ${rankText}. This is a comparative index, not a crisis probability.`,
@@ -2295,7 +2287,7 @@ function countryFaqs(country, capturedAt, rankedCount) {
   ];
 }
 
-function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount }) {
+function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
   const scorePublished = country.headlineEligible !== false;
   if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
@@ -2309,7 +2301,7 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
   const crisisText = country.crisisMemberships.length > 0
     ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
     : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
-  const faqs = countryFaqs(country, capturedAt, rankedCount);
+  const faqs = countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
     const inventory = selectUnrankedInventory(country);
     const inventoryItems = inventory.length > 0
@@ -2437,6 +2429,7 @@ function renderCountryPage({
     capturedAt,
     methodologyFormula,
     rankedCount,
+    ciiEntry,
   });
   const officialNameNote = country.identity.officialName !== country.identity.commonName
     ? `      <p><strong>Official name:</strong> ${escapeHtml(country.identity.officialName)}. <a href="${escapeHtml(country.identity.sameAs)}">Wikidata identity record</a>.</p>\n`
