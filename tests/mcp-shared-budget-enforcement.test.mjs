@@ -6,10 +6,12 @@
 import { describe, it, beforeEach, afterEach } from 'node:test';
 import { strict as assert } from 'node:assert';
 
-import { resolveMcpBudget, SHARED_API_BUDGET } from '../api/mcp/quota.ts';
+import { budgetCounterKey, resolveMcpBudget, SHARED_API_BUDGET } from '../api/mcp/quota.ts';
 import { reservationWeight, TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
 import { mergeEntitlementFeatures } from '../convex/lib/entitlements.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
+import { apiKeyDailyKey } from '../server/_shared/api-key-rate-limit.ts';
+import { dailyCounterKey, envPrefix } from '../server/_shared/pro-mcp-token.ts';
 
 const originalEnv = { ...process.env };
 
@@ -120,6 +122,47 @@ describe('stored entitlement rows cannot outrank the shared-budget marker', () =
       },
     });
     assert.equal(merged.planLimits.mcpCallsPerDay, 500, 'a Pro-tier override still applies');
+  });
+});
+
+describe('budgetCounterKey stays in the deployment Redis namespace', () => {
+  const date = new Date(Date.UTC(2026, 8, 1));
+  const userId = 'user_api_starter';
+  const apiBudget = { scope: 'api', limit: 1000 };
+  const mcpBudget = { scope: 'mcp', limit: 50 };
+
+  it('production: API-scope key matches the unprefixed REST logical key', () => {
+    process.env.VERCEL_ENV = 'production';
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    const key = budgetCounterKey(apiBudget, userId, date);
+    assert.equal(key, apiKeyDailyKey(userId, date));
+    assert.equal(key, `rl:apikey:day:${userId}:2026-09-01`);
+    assert.equal(envPrefix(), '');
+  });
+
+  it('preview: API-scope key carries envPrefix so the raw MCP pipeline shares REST\'s namespaced counter', () => {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'abcdef12deadbeef';
+    const key = budgetCounterKey(apiBudget, userId, date);
+    assert.equal(key, `${envPrefix()}${apiKeyDailyKey(userId, date)}`);
+    assert.equal(key, `preview:abcdef12:rl:apikey:day:${userId}:2026-09-01`);
+  });
+
+  it('production: dedicated MCP key stays the bare historical shape', () => {
+    process.env.VERCEL_ENV = 'production';
+    delete process.env.VERCEL_GIT_COMMIT_SHA;
+    const key = budgetCounterKey(mcpBudget, userId, date);
+    assert.equal(key, dailyCounterKey(userId, date));
+    assert.equal(key, `mcp:pro-usage:${userId}:2026-09-01`);
+  });
+
+  it('preview: dedicated MCP key already carries envPrefix (no double prefix)', () => {
+    process.env.VERCEL_ENV = 'preview';
+    process.env.VERCEL_GIT_COMMIT_SHA = 'abcdef12deadbeef';
+    const key = budgetCounterKey(mcpBudget, userId, date);
+    assert.equal(key, dailyCounterKey(userId, date));
+    assert.equal(key, `preview:abcdef12:mcp:pro-usage:${userId}:2026-09-01`);
+    assert.ok(!key.startsWith('preview:abcdef12:preview:'));
   });
 });
 

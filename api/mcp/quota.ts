@@ -2,6 +2,7 @@ import { apiKeyDailyKey } from '../../server/_shared/api-key-rate-limit';
 import {
   dailyCounterKey,
   dailyQuotaFloorKey,
+  envPrefix,
   PRO_DAILY_QUOTA_LIMIT,
   PRO_DAILY_QUOTA_TTL_SECONDS,
 } from '../../server/_shared/pro-mcp-token';
@@ -116,9 +117,16 @@ export function resolveMcpBudget(
  * (`api/user/mcp-quota.ts`) and the `account/mcp-allowance` resource must READ
  * the counter this module WRITES; a second copy of this choice would be exactly
  * the drift those surfaces exist to prevent.
+ *
+ * API-scope keys are prefixed here because this path talks to the raw Upstash
+ * pipeline. REST's `apiKeyDailyKey` is a logical key — `runRedisPipeline`
+ * adds `envPrefix()` for it. Dedicated MCP keys already carry that prefix
+ * inside `dailyCounterKey`.
  */
 export function budgetCounterKey(budget: McpBudget | undefined, userId: string, date?: Date): string {
-  return budget?.scope === 'api' ? apiKeyDailyKey(userId, date) : dailyCounterKey(userId, date);
+  if (budget?.scope !== 'api') return dailyCounterKey(userId, date);
+  const key = apiKeyDailyKey(userId, date);
+  return key ? `${envPrefix()}${key}` : key;
 }
 
 function asFiniteNumber(raw: unknown): number | null {
@@ -141,9 +149,10 @@ export async function reserveQuota(
   // the plan default rather than skipping the check and enforcing `undefined`.
   const limit = budget ? resolveDailyLimit(budget.limit) : PRO_DAILY_QUOTA_LIMIT;
   // A shared-budget plan charges the REST meter, so an MCP call and a REST call
-  // draw down the same number the customer was sold. `apiKeyDailyKey` is the
-  // key `server/_shared/api-key-rate-limit.ts` increments, and its floor key is
-  // namespaced separately so the clamp logic cannot collide with the REST path.
+  // draw down the same number the customer was sold. `budgetCounterKey` is the
+  // deployment-namespaced form of `apiKeyDailyKey` — REST prefixes that logical
+  // key in `runRedisPipeline`; this raw MCP pipeline must prefix it here. The
+  // floor key is namespaced separately so the clamp cannot collide with REST.
   const key = budgetCounterKey(budget, userId);
   const floorKey = dailyQuotaFloorKey(userId);
   if (!key || !floorKey) return { ok: false, reason: 'redis-unavailable' };
