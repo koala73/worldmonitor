@@ -1,6 +1,7 @@
 // Committed EIA 2023 World Oil Transit Chokepoints rows. Shared by the
 // Redis seeder and crawlable /chokepoints pages so the two cannot drift.
 
+export const EIA_OIL_TRANSIT_BASELINES_PATH = 'scripts/chokepoint-eia-baselines.mjs';
 export const EIA_OIL_TRANSIT_SOURCE = 'EIA World Oil Transit Chokepoints';
 export const EIA_OIL_TRANSIT_REFERENCE_YEAR = 2023;
 

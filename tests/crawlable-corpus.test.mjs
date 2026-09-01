@@ -10,6 +10,7 @@ import { Window } from 'happy-dom';
 
 import {
   buildCorpus,
+  CHOKEPOINT_PAGE_LASTMOD_PATHS,
   chokepointMetaDescription,
   countryMetaDescription,
   datasetTemporalCoverage,
@@ -737,6 +738,15 @@ describe('crawlable corpus generator', () => {
     });
     assert.equal(newerRegistry.capturedAt, '2026-05-01');
     assert.equal(newerRegistry.volumeObservedAt, '2026-03-14');
+  });
+
+  it('tracks every material chokepoint page input in its lastmod clock', () => {
+    assert.deepEqual(CHOKEPOINT_PAGE_LASTMOD_PATHS, [
+      'src/config/chokepoint-registry.ts',
+      'src/config/trade-routes.ts',
+      'scripts/chokepoint-page-content.mjs',
+      'scripts/chokepoint-eia-baselines.mjs',
+    ]);
   });
 
   it('advances the sources lastmod when the shared page template changes', () => {
@@ -1926,12 +1936,12 @@ describe('crawlable corpus generator', () => {
       assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
       assert.equal(
         hormuzDataset.dateModified,
-        '2026-08-31',
+        '2026-09-01',
         'chokepoint page template change must advance Dataset dateModified with page lastmod',
       );
       assert.equal(
         pageLastmod(hormuz),
-        '2026-08-31',
+        '2026-09-01',
         'chokepoint transit-withhold template change must advance page lastmod',
       );
       assertSourceDerivedTemporalCoverage(hormuzDataset, {
@@ -2303,7 +2313,7 @@ describe('crawlable corpus generator', () => {
     // Dataset schema stamp that previously forced a shared build date (#7382).
     assert.equal(data.lastmod.countries, '2026-08-31');
     assert.equal(data.lastmod.research, '2026-08-30');
-    assert.equal(data.lastmod.chokepoints, '2026-08-31');
+    assert.equal(data.lastmod.chokepoints, '2026-09-01');
     assert.equal(
       data.lastmod.sources,
       sourcePageLastmod({

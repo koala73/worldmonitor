@@ -53,6 +53,7 @@ import {
   EIA_OIL_TRANSIT_BASELINES,
   TRADE_ROUTES_OBSERVED_AT,
 } from './chokepoint-page-content.mjs';
+import { EIA_OIL_TRANSIT_BASELINES_PATH } from './chokepoint-eia-baselines.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -91,6 +92,12 @@ export const SOURCE_CATALOG_LASTMOD_PATHS = Object.freeze([
   'shared/publisher-families.js',
   ...FEED_DECLARATION_FILES,
 ]);
+export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
+  CHOKEPOINT_REGISTRY_PATH,
+  TRADE_ROUTES_PATH,
+  CHOKEPOINT_PAGE_CONTENT_PATH,
+  EIA_OIL_TRANSIT_BASELINES_PATH,
+]);
 // Last substantive change to the shared HTML template/content language. Data
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
@@ -108,7 +115,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-08-31';
+const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-01';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -1284,9 +1291,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       tradeRoutesGitLastmod: gitFileLastmod(rootDir, TRADE_ROUTES_PATH),
     });
   const chokepointsLastmod = laterDate(
-    gitFileLastmod(rootDir, CHOKEPOINT_REGISTRY_PATH),
-    gitFileLastmod(rootDir, TRADE_ROUTES_PATH),
-    gitFileLastmod(rootDir, CHOKEPOINT_PAGE_CONTENT_PATH),
+    ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(rootDir, path)),
     livePulse.capturedAt,
     CORPUS_GENERATOR_CONTENT_VERSION,
     CHOKEPOINT_PAGE_CONTENT_VERSION,
