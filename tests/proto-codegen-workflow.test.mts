@@ -70,7 +70,16 @@ type PullFile = {
 
 function runChangeClassifier(
   files?: Array<string | PullFile> | Array<Array<string | PullFile>>,
-  options: { changedFiles?: number; headSha?: string; baseSha?: string } = {},
+  options: {
+    action?: string;
+    actor?: string;
+    baseSha?: string;
+    changedFiles?: number;
+    headRepository?: string;
+    headSha?: string;
+    pullRequestAuthor?: string;
+    repositoryOwner?: string;
+  } = {},
 ) {
   const temp = mkdtempSync(join(tmpdir(), 'wm-proto-classifier-'));
   const fakeBin = join(temp, 'bin');
@@ -115,12 +124,17 @@ function runChangeClassifier(
       env: {
         ...process.env,
         ...workflow.env,
+        EVENT_ACTION: options.action ?? 'opened',
+        EVENT_ACTOR: options.actor ?? 'contributor',
         EVENT_BASE_SHA: eventBaseSha,
+        EVENT_HEAD_REPOSITORY: options.headRepository ?? 'contributor/worldmonitor',
         EVENT_HEAD_SHA: eventHeadSha,
         GITHUB_OUTPUT: output,
         PATH: `${fakeBin}:${process.env.PATH}`,
+        PR_AUTHOR: options.pullRequestAuthor ?? 'contributor',
         PR_NUMBER: '7397',
         REPOSITORY: 'koala73/worldmonitor',
+        REPOSITORY_OWNER: options.repositoryOwner ?? 'koala73',
       },
     });
 
@@ -379,6 +393,73 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       result.commands,
       /^api repos\/koala73\/worldmonitor\/pulls\/7397\/files --paginate --slurp$/m,
     );
+  });
+
+  it('trusts only an owner-started exact-head fork synchronization with codegen changes', () => {
+    const trusted = runChangeClassifier(['proto/worldmonitor/example/v1/service.proto'], {
+      action: 'synchronize',
+      actor: 'koala73',
+    });
+    assert.equal(trusted.status, 0, trusted.stderr);
+    assert.match(trusted.output, /^trusted_fork=true$/m);
+
+    const untrustedCases: Array<[string, Parameters<typeof runChangeClassifier>[0], Parameters<typeof runChangeClassifier>[1]]> = [
+      ['contributor push', ['proto/service.proto'], { action: 'synchronize', actor: 'contributor' }],
+      ['opened by owner', ['proto/service.proto'], { action: 'opened', actor: 'koala73' }],
+      ['reopened by owner', ['proto/service.proto'], { action: 'reopened', actor: 'koala73' }],
+      [
+        'same-repository head',
+        ['proto/service.proto'],
+        { action: 'synchronize', actor: 'koala73', headRepository: 'koala73/worldmonitor' },
+      ],
+      [
+        'Dependabot author',
+        ['proto/service.proto'],
+        { action: 'synchronize', actor: 'koala73', pullRequestAuthor: 'dependabot[bot]' },
+      ],
+      ['non-codegen change', ['src/components/Panel.ts'], { action: 'synchronize', actor: 'koala73' }],
+      ['missing actor', ['proto/service.proto'], { action: 'synchronize', actor: '' }],
+      [
+        'missing repository owner',
+        ['proto/service.proto'],
+        { action: 'synchronize', actor: 'koala73', repositoryOwner: '' },
+      ],
+      [
+        'missing head repository',
+        ['proto/service.proto'],
+        { action: 'synchronize', actor: 'koala73', headRepository: '' },
+      ],
+      [
+        'missing pull request author',
+        ['proto/service.proto'],
+        { action: 'synchronize', actor: 'koala73', pullRequestAuthor: '' },
+      ],
+    ];
+
+    for (const [name, files, options] of untrustedCases) {
+      const result = runChangeClassifier(files, options);
+      assert.equal(result.status, 0, `${name}: ${result.stderr}`);
+      assert.match(result.output, /^trusted_fork=false$/m, name);
+    }
+  });
+
+  it('wires original event identity into the executable trusted-fork classifier', () => {
+    const classifier = stepByName('changes', 'Classify proto codegen paths');
+    assert.equal(classifier.env?.EVENT_ACTION, '${{ github.event.action }}');
+    assert.equal(classifier.env?.EVENT_ACTOR, '${{ github.actor }}');
+    assert.equal(classifier.env?.REPOSITORY_OWNER, '${{ github.repository_owner }}');
+    assert.equal(
+      classifier.env?.EVENT_HEAD_REPOSITORY,
+      '${{ github.event.pull_request.head.repo.full_name }}',
+    );
+    assert.equal(classifier.env?.PR_AUTHOR, '${{ github.event.pull_request.user.login }}');
+    assert.equal(
+      job('changes').outputs?.trusted_fork,
+      '${{ steps.paths.outputs.trusted_fork || steps.non-pr.outputs.trusted_fork }}',
+    );
+    assert.match(stepByName('changes', 'Publish non-PR path classification').run ?? '', /trusted_fork=false/);
+    assert.doesNotMatch(workflowSource, /github\.triggering_actor/);
+    assert.doesNotMatch(workflowSource, /commit(?:ter)?\.(?:name|email|login)/i);
   });
 
   it('never executes fork-controlled code and requires trusted codegen validation', () => {

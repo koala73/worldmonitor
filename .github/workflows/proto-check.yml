@@ -38,16 +38,22 @@ jobs:
     outputs:
       codegen: ${{ steps.paths.outputs.codegen || steps.non-pr.outputs.codegen }}
       breaking: ${{ steps.paths.outputs.breaking || steps.non-pr.outputs.breaking }}
+      trusted_fork: ${{ steps.paths.outputs.trusted_fork || steps.non-pr.outputs.trusted_fork }}
     steps:
       - name: Classify proto codegen paths
         id: paths
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_ACTOR: ${{ github.actor }}
           EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
           PR_JSON=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")
           FILES_JSON=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --paginate --slurp)
@@ -67,7 +73,15 @@ jobs:
             exit 1
           fi
 
-          jq -r --arg inputs "$CODEGEN_INPUT_REGEX" --arg outputs "$GENERATED_PATHS" '
+          jq -r \
+            --arg action "$EVENT_ACTION" \
+            --arg actor "$EVENT_ACTOR" \
+            --arg head_repository "$EVENT_HEAD_REPOSITORY" \
+            --arg inputs "$CODEGEN_INPUT_REGEX" \
+            --arg outputs "$GENERATED_PATHS" \
+            --arg pr_author "$PR_AUTHOR" \
+            --arg repository "$REPOSITORY" \
+            --arg repository_owner "$REPOSITORY_OWNER" '
             def is_generated($path; $generated):
               any($generated[];
                 . as $output
@@ -84,6 +98,20 @@ jobs:
             {
               codegen: any($paths[]; . as $path | test($inputs) or is_generated($path; $generated)),
               breaking: any($paths[]; test("^proto(?:/|$)"))
+            } as $classification
+            |
+            $classification + {
+              trusted_fork: (
+                $classification.codegen
+                and $action == "synchronize"
+                and ($actor | length) > 0
+                and ($repository_owner | length) > 0
+                and ($head_repository | length) > 0
+                and ($pr_author | length) > 0
+                and $actor == $repository_owner
+                and $head_repository != $repository
+                and $pr_author != "dependabot[bot]"
+              )
             }
             | to_entries[]
             | "\(.key)=\(.value)"
@@ -95,6 +123,7 @@ jobs:
         run: |
           echo "codegen=false" >> "$GITHUB_OUTPUT"
           echo "breaking=false" >> "$GITHUB_OUTPUT"
+          echo "trusted_fork=false" >> "$GITHUB_OUTPUT"
 
   proto-breaking:
     needs: changes
