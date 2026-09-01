@@ -263,4 +263,56 @@ describe('fetchCountryMarkets uses the producer country index', () => {
       assert.deepEqual(out, [], countryCode);
     }
   });
+
+  it('suppresses shadowed and embedded country names in the bootstrap fallback', async () => {
+    const cases = [
+      ['Republic of the Congo', 'CG', 'Will Democratic Republic of the Congo hold an election?'],
+      ['Republic of the Congo', 'CG', 'Will Kinshasa, Congo hold a local election?'],
+      ['Sudan', 'SD', 'Will South Sudan reach a peace agreement?'],
+      ['Guinea', 'GN', 'Will Equatorial Guinea increase oil output?'],
+    ] as const;
+
+    for (const [country, countryCode, title] of cases) {
+      globalThis.__wmCountryMarketsTestState = {
+        rpcCalls: [],
+        rpcMarketsByCategory: {},
+        hydrated: {
+          geopolitical: [bootstrapMarket(title, 2_000_000)],
+          tech: [],
+          finance: [],
+          fetchedAt: Date.now(),
+        },
+      };
+      const service = await loadPredictionService();
+      const out = await service.fetchCountryMarkets(country, countryCode);
+
+      assert.deepEqual(out, [], `${countryCode} must not claim ${title}`);
+    }
+  });
+
+  it('keeps the specific country on overlapping titles in the bootstrap fallback', async () => {
+    const cases = [
+      ['DR Congo', 'CD', 'Will Democratic Republic of the Congo hold an election?'],
+      ['DR Congo', 'CD', 'Will Kinshasa, Congo hold a local election?'],
+      ['South Sudan', 'SS', 'Will South Sudan reach a peace agreement?'],
+      ['Equatorial Guinea', 'GQ', 'Will Equatorial Guinea increase oil output?'],
+    ] as const;
+
+    for (const [country, countryCode, title] of cases) {
+      globalThis.__wmCountryMarketsTestState = {
+        rpcCalls: [],
+        rpcMarketsByCategory: {},
+        hydrated: {
+          geopolitical: [bootstrapMarket(title, 2_000_000)],
+          tech: [],
+          finance: [],
+          fetchedAt: Date.now(),
+        },
+      };
+      const service = await loadPredictionService();
+      const out = await service.fetchCountryMarkets(country, countryCode);
+
+      assert.deepEqual(out.map((m: { title: string }) => m.title), [title], countryCode);
+    }
+  });
 });
