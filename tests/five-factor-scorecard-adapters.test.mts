@@ -98,26 +98,62 @@ describe('five-factor source adapters', () => {
 
   });
 
-  // Eurostat's nrg_ind_id observation is audit-incomplete for raw
-  // redistribution: decideIndicatorRawRedistribution denies it for
-  // energyImportDependency, and the resilience API withholds the number.
-  // The scorecard must not republish through a second surface what the first
-  // one deliberately withholds. Withholding only the observation would not be
-  // enough -- production = consumption * (1 - netImports / 100) is published
-  // alongside consumption, so the raw percentage is recoverable by arithmetic.
-  it('blocks redistribution of a Eurostat-backed import-dependency observation', () => {
+  // Eurostat nrg_ind_id is audited for raw redistribution alongside World Bank
+  // EG.IMP.CONS.ZS, so an EU country publishes the same balance and carries
+  // Eurostat's own provenance on the net-imports observation.
+  it('publishes a Eurostat-backed import-dependency observation with Eurostat provenance', () => {
     const eurostatSources = sourceFixture();
     eurostatSources.staticByCountry.US.iea = {
       source: 'eurostat-nrg_ind_id',
       energyImportDependency: { value: 20, year: 2024, source: 'eurostat' },
     };
     const eurostatBalance = adaptCountryEvidence('US', eurostatSources).inputs['energy.productionBalance'];
-    assert.equal(eurostatBalance.availability, 'unavailable');
-    if (eurostatBalance.availability !== 'unavailable') return;
-    assert.equal(eurostatBalance.reason, 'redistribution-blocked');
+    assert.equal(eurostatBalance.availability, 'available');
+    if (eurostatBalance.availability !== 'available') return;
+    assert.equal(eurostatBalance.source, 'OWID and Eurostat');
+    assert.equal(eurostatBalance.observations[1]?.indicatorCode, 'nrg_ind_id');
+    assert.equal(eurostatBalance.observations[1]?.source, 'Eurostat');
+  });
 
-    const worldBank = adaptCountryEvidence('US', sourceFixture()).inputs['energy.productionBalance'];
-    assert.equal(worldBank.availability, 'available', 'the audited World Bank observation still publishes');
+  it('withholds an energy balance unless import provenance is an exact audited pair', () => {
+    for (const iea of [
+      {
+        source: 'eurostat-other',
+        energyImportDependency: { value: 20, year: 2024, source: 'eurostat' },
+      },
+      {
+        source: 'eurostat-nrg_ind_id',
+        energyImportDependency: { value: 20, year: 2024, source: 'eurostat-other' },
+      },
+      {
+        source: 'unknown-energy-imports',
+        energyImportDependency: { value: 20, year: 2024, source: 'unknown' },
+      },
+      {
+        source: 'worldbank-energy-imports',
+        energyImportDependency: { value: 20, year: 2024, source: 'eurostat' },
+      },
+      {
+        source: 'eurostat-nrg_ind_id',
+        energyImportDependency: { value: 20, year: 2024, source: 'worldbank' },
+      },
+      {
+        energyImportDependency: { value: 20, year: 2024, source: 'worldbank' },
+      },
+      {
+        source: 'worldbank-energy-imports',
+        energyImportDependency: { value: 20, year: 2024 },
+      },
+      {
+        source: 'Worldbank-energy-imports',
+        energyImportDependency: { value: 20, year: 2024, source: 'worldbank' },
+      },
+    ]) {
+      const sources = sourceFixture();
+      (sources.staticByCountry.US as { iea?: unknown }).iea = iea;
+      const balance = adaptCountryEvidence('US', sources).inputs['energy.productionBalance'];
+      assert.equal(balance.availability === 'unavailable' && balance.reason, 'redistribution-blocked');
+    }
   });
 
   it('distinguishes missing balance observations from finite invalid denominators', () => {
