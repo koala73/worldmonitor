@@ -107,33 +107,9 @@ function usesCookies(): boolean {
   return location.hostname.endsWith('worldmonitor.app');
 }
 
-function getCookieValue(name: string): string {
-  try {
-    const match = document.cookie
-      .split(';')
-      .map((entry) => entry.trim())
-      .find((entry) => entry.startsWith(`${name}=`));
-    return match ? match.slice(name.length + 1) : '';
-  } catch {
-    return '';
-  }
-}
-
 function setDomainCookie(name: string, value: string): void {
   if (!usesCookies()) return;
   document.cookie = `${name}=${encodeURIComponent(value)}; domain=${COOKIE_DOMAIN}; path=/; max-age=${KEY_MAX_AGE}; SameSite=Lax; Secure`;
-}
-
-function getKey(name: string): string {
-  const cookieVal = getCookieValue(name);
-  if (cookieVal) {
-    try {
-      return decodeURIComponent(cookieVal).trim();
-    } catch {
-      return cookieVal.trim();
-    }
-  }
-  try { return (localStorage.getItem(name) ?? '').trim(); } catch { return ''; }
 }
 
 export function setWidgetKey(key: string): void {
@@ -146,25 +122,13 @@ export function setProKey(key: string): void {
   try { localStorage.setItem('wm-pro-key', key); } catch { /* ignore */ }
 }
 
-export function isWidgetFeatureEnabled(): boolean {
-  return !!getKey('wm-widget-key');
-}
-
-export function getWidgetAgentKey(): string {
-  return getKey('wm-widget-key');
-}
-
-export function isProWidgetEnabled(): boolean {
-  return !!getKey('wm-pro-key');
-}
-
-export function isProUser(): boolean {
-  return isWidgetFeatureEnabled() || isProWidgetEnabled();
-}
-
-export function getProWidgetKey(): string {
-  return getKey('wm-pro-key');
-}
+export {
+  getProWidgetKey,
+  getWidgetAgentKey,
+  isProUser,
+  isProWidgetEnabled,
+  isWidgetFeatureEnabled,
+} from '@/services/pro-access';
 
 function cleanSpanEntry(storageKey: string, panelId: string): void {
   try {

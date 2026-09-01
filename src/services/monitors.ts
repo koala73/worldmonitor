@@ -2,6 +2,7 @@ import { MONITOR_COLORS } from '@/config/variants/base';
 import type { BreakingAlert } from '@/services/breaking-news-alerts';
 import type { ListCrossSourceSignalsResponse } from '@/services/cross-source-signals';
 import { getSecretState } from '@/services/runtime-config';
+import { isProUser } from '@/services/pro-access';
 import type { SecurityAdvisory } from '@/services/security-advisories';
 import type {
   Monitor,
@@ -48,16 +49,29 @@ function trimText(value: string | undefined): string {
   return (value || '').trim();
 }
 
-function uniqueKeywords(items: string[] | undefined): string[] {
+function uniqueKeywords(items: string[] | string | undefined): string[] {
+  const rawItems = Array.isArray(items)
+    ? items
+    : typeof items === 'string'
+      ? items.split(/[\n,]+/g)
+      : [];
   const out: string[] = [];
   const seen = new Set<string>();
-  for (const item of items || []) {
+  for (const item of rawItems) {
     const normalized = item.trim().toLowerCase();
     if (!normalized || seen.has(normalized)) continue;
     seen.add(normalized);
     out.push(normalized);
   }
   return out;
+}
+
+const SAFE_MONITOR_COLOR_PATTERN = /^(#[0-9a-fA-F]{3,8}|var\(--[a-zA-Z0-9-]+\)|rgb\(\s*\d{1,3}\s*,\s*\d{1,3}\s*,\s*\d{1,3}\s*\)|[a-zA-Z]+)$/;
+
+export function sanitizeMonitorColor(color: string | undefined, fallback: string): string {
+  const trimmed = trimText(color);
+  if (trimmed && SAFE_MONITOR_COLOR_PATTERN.test(trimmed)) return trimmed;
+  return fallback;
 }
 
 function uniqueSources(items: MonitorSourceKind[] | undefined): MonitorSourceKind[] {
@@ -91,7 +105,19 @@ function inferMonitorName(keywords: string[], fallbackIndex: number): string {
 }
 
 export function hasMonitorProAccess(): boolean {
-  return getSecretState('WORLDMONITOR_API_KEY').present || hasStoredProKey();
+  return getSecretState('WORLDMONITOR_API_KEY').present || isProUser();
+}
+
+export function partitionMonitorsForAccess(
+  monitors: Monitor[],
+  proAccess = hasMonitorProAccess(),
+): { active: Monitor[]; inactive: Monitor[] } {
+  const normalized = normalizeMonitors(monitors);
+  if (proAccess) return { active: normalized, inactive: [] };
+  return {
+    active: normalized.slice(0, FREE_MONITOR_LIMIT),
+    inactive: normalized.slice(FREE_MONITOR_LIMIT),
+  };
 }
 
 export function monitorUsesProFeatures(monitor: Monitor): boolean {
@@ -111,7 +137,10 @@ export function normalizeMonitor(input: Monitor, index = 0): Monitor {
     keywords: includeKeywords,
     includeKeywords,
     excludeKeywords,
-    color: trimText(input.color) || MONITOR_COLORS[index % MONITOR_COLORS.length] || 'var(--status-live)',
+    color: sanitizeMonitorColor(
+      input.color,
+      MONITOR_COLORS[index % MONITOR_COLORS.length] || 'var(--status-live)',
+    ),
     matchMode: input.matchMode === 'all' ? 'all' : 'any',
     sources: normalizeSources(input.sources),
     createdAt: typeof input.createdAt === 'number' ? input.createdAt : now,
@@ -120,7 +149,8 @@ export function normalizeMonitor(input: Monitor, index = 0): Monitor {
 }
 
 export function normalizeMonitors(monitors: Monitor[]): Monitor[] {
-  return (monitors || []).map((monitor, index) => normalizeMonitor(monitor, index));
+  if (!Array.isArray(monitors)) return [];
+  return monitors.map((monitor, index) => normalizeMonitor(monitor, index));
 }
 
 export function prepareMonitorsForRuntime(monitors: Monitor[], proAccess = hasMonitorProAccess()): Monitor[] {
@@ -159,9 +189,9 @@ function matchesKeyword(haystack: string, keyword: string): boolean {
   const re = new RegExp(`(^|[^a-z0-9])${escaped}($|[^a-z0-9])`, 'i');
   if (re.test(haystack)) return true;
 
-  // Broad monitor terms like "iran" should also catch close derivatives such as
-  // "iranian" without requiring users to enumerate every suffix manually.
-  if (/^[a-z0-9]{4,}$/.test(normalizedKeyword)) {
+  // Longer stems may match close derivatives such as "korean" for keyword "korea".
+  // Shorter 4-letter stems stay on exact word boundaries to avoid port -> Portugal noise.
+  if (/^[a-z0-9]{5,}$/.test(normalizedKeyword)) {
     const prefixRe = new RegExp(`(^|[^a-z0-9])${escaped}[a-z0-9]+`, 'i');
     return prefixRe.test(haystack);
   }
@@ -275,8 +305,6 @@ export function evaluateMonitorMatches(
       for (const item of feed.breakingAlerts || []) {
         const haystack = [
           item.headline,
-          item.source,
-          item.origin,
         ].filter(Boolean).join(' ').toLowerCase();
         const matchedTerms = evaluateTextRule(haystack, includeKeywords, excludeKeywords, matchMode);
         if (matchedTerms.length === 0) continue;
@@ -301,10 +329,6 @@ export function evaluateMonitorMatches(
       for (const item of feed.advisories || []) {
         const haystack = [
           item.title,
-          item.source,
-          item.country,
-          item.sourceCountry,
-          item.level,
         ].filter(Boolean).join(' ').toLowerCase();
         const matchedTerms = evaluateTextRule(haystack, includeKeywords, excludeKeywords, matchMode);
         if (matchedTerms.length === 0) continue;
@@ -330,8 +354,6 @@ export function evaluateMonitorMatches(
         const haystack = [
           item.theater,
           item.summary,
-          item.type,
-          ...(item.contributingTypes || []),
         ].filter(Boolean).join(' ').toLowerCase();
         const matchedTerms = evaluateTextRule(haystack, includeKeywords, excludeKeywords, matchMode);
         if (matchedTerms.length === 0) continue;
@@ -387,36 +409,4 @@ export function applyMonitorHighlightsToNews(
       ...(highlight ? { monitorColor: highlight.color } : { monitorColor: undefined }),
     };
   });
-}
-
-function hasStoredProKey(): boolean {
-  try {
-    const cookie = document.cookie || '';
-    const cookieEntries = cookie.split(';').map((entry) => entry.trim()).filter(Boolean);
-    const hasCookieKey = (name: string): boolean => cookieEntries.some((entry) => {
-      const separatorIndex = entry.indexOf('=');
-      const key = separatorIndex >= 0 ? entry.slice(0, separatorIndex).trim() : entry.trim();
-      if (key !== name) return false;
-      const rawValue = separatorIndex >= 0 ? entry.slice(separatorIndex + 1).trim() : '';
-      if (!rawValue) return false;
-      try {
-        return decodeURIComponent(rawValue).trim().length > 0;
-      } catch {
-        return rawValue.length > 0;
-      }
-    });
-    if (hasCookieKey('wm-widget-key') || hasCookieKey('wm-pro-key')) return true;
-  } catch {
-    // ignore
-  }
-
-  try {
-    const hasStoredKey = (name: 'wm-widget-key' | 'wm-pro-key'): boolean => {
-      const value = localStorage.getItem(name);
-      return typeof value === 'string' && value.trim().length > 0;
-    };
-    return hasStoredKey('wm-widget-key') || hasStoredKey('wm-pro-key');
-  } catch {
-    return false;
-  }
 }

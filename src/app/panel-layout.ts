@@ -138,6 +138,7 @@ export class PanelLayoutManager implements AppModule {
     this.aviationCommandBar?.destroy();
     this.aviationCommandBar = null;
     this.ctx.panels['airline-intel']?.destroy();
+    this.ctx.panels['monitors']?.destroy();
 
     window.removeEventListener('resize', this.ensureCorrectZones);
   }

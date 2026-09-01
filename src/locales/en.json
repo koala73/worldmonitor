@@ -840,7 +840,10 @@
       "remove": "Remove monitor",
       "edit": "Edit monitor",
       "save": "Save monitor",
-      "editing": "Editing monitor rule"
+      "editing": "Editing monitor rule",
+      "inactiveNotice": "{{count}} monitors are inactive on the free plan. Upgrade to Pro to activate them.",
+      "inactiveBadge": "Inactive on free plan",
+      "freeFallbackSources": "Matching on free sources: {{sources}}"
     },
     "regulation": {
       "dashboard": "AI Regulation Dashboard",

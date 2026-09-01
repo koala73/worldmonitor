@@ -9,6 +9,9 @@ import {
   monitorUsesProFeatures,
   normalizeMonitor,
   normalizeMonitors,
+  partitionMonitorsForAccess,
+  prepareMonitorsForRuntime,
+  sanitizeMonitorColor,
   type MonitorFeedInput,
   type MonitorMatch,
 } from '@/services/monitors';
@@ -211,10 +214,19 @@ export class MonitorPanel extends Panel {
       input.title = proAccess ? '' : t('components.monitor.lockedAdvanced');
       if (!proAccess) input.checked = false;
     }
-    this.setComposerStatus(
-      t('components.monitor.freeLimit', { count: String(FREE_MONITOR_LIMIT) }),
-      'info',
-    );
+    this.refreshComposerStatus();
+  }
+
+  private refreshComposerStatus(): void {
+    const proAccess = hasMonitorProAccess();
+    if (!proAccess) {
+      this.setComposerStatus(
+        t('components.monitor.freeLimit', { count: String(FREE_MONITOR_LIMIT) }),
+        'info',
+      );
+      return;
+    }
+    if (this.statusEl) this.statusEl.textContent = '';
   }
 
   private setComposerStatus(message: string, tone: 'info' | 'warn' = 'info'): void {
@@ -236,7 +248,8 @@ export class MonitorPanel extends Panel {
     if (includeKeywords.length === 0) return;
 
     const proAccess = hasMonitorProAccess();
-    if (!proAccess && this.monitors.length >= FREE_MONITOR_LIMIT) {
+    const isEditing = Boolean(this.editingMonitorId);
+    if (!proAccess && !isEditing && this.monitors.length >= FREE_MONITOR_LIMIT) {
       track('gate-hit', { feature: 'monitor-limit' });
       this.setComposerStatus(t('components.monitor.limitReached', { count: String(FREE_MONITOR_LIMIT) }), 'warn');
       return;
@@ -286,7 +299,7 @@ export class MonitorPanel extends Panel {
     }
 
     this.resetComposer();
-    this.setComposerStatus(t('components.monitor.freeLimit', { count: String(FREE_MONITOR_LIMIT) }), 'info');
+    this.refreshComposerStatus();
     this.renderMonitorsList();
     this.refreshResults();
     this.onMonitorsChange?.(this.monitors);
@@ -326,7 +339,7 @@ export class MonitorPanel extends Panel {
 
   private cancelEdit(): void {
     this.resetComposer();
-    this.setComposerStatus(t('components.monitor.freeLimit', { count: String(FREE_MONITOR_LIMIT) }), 'info');
+    this.refreshComposerStatus();
   }
 
   private resetComposer(): void {
@@ -342,7 +355,12 @@ export class MonitorPanel extends Panel {
     if (this.cancelBtn) this.cancelBtn.style.display = 'none';
   }
 
-  private renderMonitorCard(monitor: Monitor): HTMLElement {
+  private renderMonitorCard(monitor: Monitor, inactive = false): HTMLElement {
+    const proAccess = hasMonitorProAccess();
+    const safeColor = sanitizeMonitorColor(monitor.color, getCSSColor('--status-live'));
+    const runtimeSources = !proAccess && monitorUsesProFeatures(monitor)
+      ? prepareMonitorsForRuntime([monitor], false)[0]?.sources ?? monitor.sources ?? ['news']
+      : monitor.sources ?? ['news'];
     const metaBits: string[] = [];
     if (monitor.matchMode === 'all') metaBits.push(t('components.monitor.modeAll'));
     if ((monitor.excludeKeywords?.length ?? 0) > 0) metaBits.push(`exclude: ${monitor.excludeKeywords?.join(', ')}`);
@@ -357,14 +375,28 @@ export class MonitorPanel extends Panel {
       }, SOURCE_LABELS[source]),
     ));
 
-    const lockedNote = monitorUsesProFeatures(monitor) && !hasMonitorProAccess()
+    const lockedNote = monitorUsesProFeatures(monitor) && !proAccess
       ? h('div', {
         style: 'margin-top:8px;font-size:11px;color:var(--semantic-elevated)',
       }, t('components.monitor.lockedRule'))
       : null;
 
+    const fallbackNote = !proAccess && monitorUsesProFeatures(monitor)
+      ? h('div', {
+        style: 'margin-top:6px;font-size:10px;color:var(--text-dim)',
+      }, t('components.monitor.freeFallbackSources', {
+        sources: runtimeSources.map((source) => SOURCE_LABELS[source]).join(', '),
+      }))
+      : null;
+
+    const inactiveNote = inactive
+      ? h('div', {
+        style: 'margin-top:8px;font-size:11px;color:var(--text-dim)',
+      }, t('components.monitor.inactiveBadge'))
+      : null;
+
     return h('div', {
-      style: `border:1px solid var(--border);border-left:3px solid ${monitor.color};padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.02)`,
+      style: `border:1px solid var(--border);border-left:3px solid ${safeColor};padding:10px 12px;border-radius:10px;background:rgba(255,255,255,0.02);${inactive ? 'opacity:0.55;' : ''}`,
     },
     h('div', {
       style: 'display:flex;justify-content:space-between;gap:8px;align-items:flex-start',
@@ -385,12 +417,14 @@ export class MonitorPanel extends Panel {
     h('div', {
       style: 'display:flex;align-items:center;gap:8px',
     },
-    h('button', {
-      className: 'icon-btn',
-      title: t('components.monitor.edit'),
-      'aria-label': t('components.monitor.edit'),
-      onClick: () => this.startEdit(monitor.id),
-    }, t('components.monitor.edit')),
+    inactive
+      ? null
+      : h('button', {
+        className: 'icon-btn',
+        title: t('components.monitor.edit'),
+        'aria-label': t('components.monitor.edit'),
+        onClick: () => this.startEdit(monitor.id),
+      }, t('components.monitor.edit')),
     h('button', {
       className: 'monitor-tag-remove',
       title: t('components.monitor.remove'),
@@ -401,6 +435,8 @@ export class MonitorPanel extends Panel {
     ),
     sourceRow,
     lockedNote,
+    fallbackNote,
+    inactiveNote,
     );
   }
 
@@ -415,8 +451,17 @@ export class MonitorPanel extends Panel {
       return;
     }
 
+    const proAccess = hasMonitorProAccess();
+    const { active, inactive } = partitionMonitorsForAccess(this.monitors, proAccess);
+
     replaceChildren(this.monitorsListEl,
-      ...this.monitors.map((monitor) => this.renderMonitorCard(monitor)),
+      inactive.length > 0
+        ? h('div', {
+          style: 'color:var(--text-dim);font-size:11px;line-height:1.5;padding:0 0 4px',
+        }, t('components.monitor.inactiveNotice', { count: String(inactive.length) }))
+        : null,
+      ...active.map((monitor) => this.renderMonitorCard(monitor, false)),
+      ...inactive.map((monitor) => this.renderMonitorCard(monitor, true)),
     );
   }
 
@@ -441,9 +486,10 @@ export class MonitorPanel extends Panel {
       }, match.title)
       : h('div', { className: 'item-title' }, match.title);
 
+    const safeColor = sanitizeMonitorColor(match.monitorColor, getCSSColor('--status-live'));
     return h('div', {
       className: 'item',
-      style: `border-left:2px solid ${match.monitorColor};padding-left:8px;margin-left:-8px`,
+      style: `border-left:2px solid ${safeColor};padding-left:8px;margin-left:-8px`,
     },
     h('div', {
       style: 'display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:4px',

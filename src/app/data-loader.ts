@@ -2841,6 +2841,7 @@ export class DataLoaderManager implements AppModule {
         this.callPanel('security-advisories', 'setData', result.advisories);
         this.ctx.intelligenceCache.advisories = result.advisories;
         ingestAdvisoriesForCII(result.advisories);
+        this.updateMonitorResults();
       }
     } catch (error) {
       console.error('[App] Security advisories fetch failed:', error);
@@ -2919,6 +2920,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.intelligenceCache.crossSourceSignals = result;
       this.callPanel('cross-source-signals', 'setData', result);
       dataFreshness.recordUpdate('cross-source-signals' as DataSourceId, result.signals?.length ?? 0);
+      this.updateMonitorResults();
     } catch (error) {
       console.error('[App] Cross-source signals fetch failed:', error);
       this.callPanel('cross-source-signals', 'showFetchError');

@@ -7,7 +7,10 @@ import {
   hasMonitorProAccess,
   mergeMonitorEdits,
   normalizeMonitor,
+  normalizeMonitors,
+  partitionMonitorsForAccess,
   prepareMonitorsForRuntime,
+  sanitizeMonitorColor,
 } from '../src/services/monitors.ts';
 import type { Monitor } from '../src/types/index.ts';
 import { getSecretState } from '../src/services/runtime-config.ts';
@@ -58,6 +61,21 @@ describe('prepareMonitorsForRuntime', () => {
 
     assert.equal(runtime.length, 1);
     assert.deepEqual(runtime[0]?.sources, ['news', 'breaking']);
+  });
+
+  it('limits free runtime execution to the first three monitors', () => {
+    const monitors = Array.from({ length: 4 }, (_, index) => ({
+      id: `m${index}`,
+      name: `Monitor ${index + 1}`,
+      keywords: [`term${index}`],
+      includeKeywords: [`term${index}`],
+      sources: ['news'] as const,
+      color: '#0f0',
+    }));
+
+    const runtime = prepareMonitorsForRuntime(monitors, false);
+    assert.equal(runtime.length, 3);
+    assert.deepEqual(runtime.map((monitor) => monitor.id), ['m0', 'm1', 'm2']);
   });
 });
 
@@ -133,9 +151,9 @@ describe('evaluateMonitorMatches', () => {
   it('matches close word derivatives for broad monitor terms', () => {
     const monitor: Monitor = {
       id: 'm3',
-      name: 'Iran broad',
-      keywords: ['iran'],
-      includeKeywords: ['iran'],
+      name: 'Korea broad',
+      keywords: ['korea'],
+      includeKeywords: ['korea'],
       sources: ['news'],
       color: '#00f',
     };
@@ -143,15 +161,125 @@ describe('evaluateMonitorMatches', () => {
     const matches = evaluateMonitorMatches([monitor], {
       news: [{
         source: 'Example',
-        title: 'Iranian shipping patterns shift after new sanctions',
-        link: 'https://example.com/iranian-shipping',
+        title: 'Korean shipping patterns shift after new sanctions',
+        link: 'https://example.com/korean-shipping',
         pubDate: new Date('2026-03-28T10:00:00Z'),
         isAlert: false,
       }],
     }, { proAccess: false });
 
     assert.equal(matches.length, 1);
-    assert.equal(matches[0]?.matchedTerms[0], 'iran');
+    assert.equal(matches[0]?.matchedTerms[0], 'korea');
+  });
+
+  it('requires all include terms when matchMode is all', () => {
+    const monitor: Monitor = {
+      id: 'm-all',
+      name: 'Dual watch',
+      keywords: ['hormuz', 'insurance'],
+      includeKeywords: ['hormuz', 'insurance'],
+      matchMode: 'all',
+      sources: ['news'],
+      color: '#0f0',
+    };
+
+    const partial = evaluateMonitorMatches([monitor], {
+      news: [{
+        source: 'Example',
+        title: 'Hormuz shipping lanes remain open',
+        link: 'https://example.com/hormuz',
+        pubDate: new Date('2026-03-28T10:00:00Z'),
+        isAlert: false,
+      }],
+    }, { proAccess: false });
+    assert.equal(partial.length, 0);
+
+    const full = evaluateMonitorMatches([monitor], {
+      news: [{
+        source: 'Example',
+        title: 'Hormuz insurance premiums rise sharply',
+        link: 'https://example.com/hormuz-insurance',
+        pubDate: new Date('2026-03-28T10:00:00Z'),
+        isAlert: false,
+      }],
+    }, { proAccess: false });
+    assert.equal(full.length, 1);
+  });
+
+  it('does not match breaking alerts from source or origin metadata alone', () => {
+    const monitor: Monitor = {
+      id: 'm-breaking-meta',
+      name: 'Port watch',
+      keywords: ['port'],
+      includeKeywords: ['port'],
+      sources: ['breaking'],
+      color: '#0f0',
+    };
+
+    const matches = evaluateMonitorMatches([monitor], {
+      breakingAlerts: [{
+        id: 'alert-port',
+        headline: 'Shipping disruption reported near Lisbon',
+        source: 'Port Authority',
+        threatLevel: 'high',
+        timestamp: new Date('2026-03-28T10:05:00Z'),
+        origin: 'port_monitor',
+      }],
+    }, { proAccess: true });
+
+    assert.equal(matches.length, 0);
+  });
+
+  it('does not match advisories from source or level metadata alone', () => {
+    const monitor: Monitor = {
+      id: 'm-advisory-meta',
+      name: 'Port watch',
+      keywords: ['port'],
+      includeKeywords: ['port'],
+      sources: ['advisories'],
+      color: '#0f0',
+    };
+
+    const matches = evaluateMonitorMatches([monitor], {
+      advisories: [{
+        title: 'Travel advisory updated for Lisbon region',
+        link: 'https://example.com/lisbon-advisory',
+        pubDate: new Date('2026-03-28T11:00:00Z'),
+        source: 'Port Authority',
+        sourceCountry: 'PT',
+        country: 'PT',
+        level: 'reconsider',
+      }],
+    }, { proAccess: true });
+
+    assert.equal(matches.length, 0);
+  });
+
+  it('does not match cross-source enum labels without theater or summary hits', () => {
+    const monitor: Monitor = {
+      id: 'm-cross-meta',
+      name: 'Shipping enum watch',
+      keywords: ['shipping_disruption'],
+      includeKeywords: ['shipping_disruption'],
+      sources: ['cross-source'],
+      color: '#0f0',
+    };
+
+    const matches = evaluateMonitorMatches([monitor], {
+      crossSourceSignals: [{
+        id: 'sig-enum',
+        type: 'CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION',
+        theater: 'Eastern Mediterranean',
+        summary: 'Composite escalation detected around traffic lanes.',
+        severity: 'CROSS_SOURCE_SIGNAL_SEVERITY_HIGH',
+        severityScore: 82,
+        detectedAt: Date.parse('2026-03-28T12:00:00Z'),
+        contributingTypes: ['shipping_disruption', 'market_stress'],
+        signalCount: 2,
+      }],
+    }, { proAccess: true });
+
+    assert.equal(matches.length, 0);
   });
 
   it('does not match monitor keywords from URL slug text', () => {
@@ -335,6 +463,40 @@ describe('hasMonitorProAccess', () => {
         (globalThis as { localStorage?: unknown }).localStorage = originalLocalStorage;
       }
     }
+  });
+});
+
+describe('normalizeMonitors', () => {
+  it('returns an empty array for corrupt storage shapes', () => {
+    assert.deepEqual(normalizeMonitors(null as unknown as Monitor[]), []);
+    assert.deepEqual(normalizeMonitors(undefined as unknown as Monitor[]), []);
+    assert.deepEqual(normalizeMonitors({} as unknown as Monitor[]), []);
+  });
+});
+
+describe('partitionMonitorsForAccess', () => {
+  it('splits active and inactive monitors for free users', () => {
+    const monitors = Array.from({ length: 4 }, (_, index) => ({
+      id: `m${index}`,
+      name: `Monitor ${index + 1}`,
+      keywords: [`term${index}`],
+      includeKeywords: [`term${index}`],
+      sources: ['news'] as const,
+      color: '#0f0',
+    }));
+
+    const { active, inactive } = partitionMonitorsForAccess(monitors, false);
+    assert.equal(active.length, 3);
+    assert.equal(inactive.length, 1);
+    assert.equal(inactive[0]?.id, 'm3');
+  });
+});
+
+describe('sanitizeMonitorColor', () => {
+  it('rejects unsafe CSS values', () => {
+    assert.equal(sanitizeMonitorColor('red; background:url(javascript:alert(1))', '#abc'), '#abc');
+    assert.equal(sanitizeMonitorColor('#abc', '#000'), '#abc');
+    assert.equal(sanitizeMonitorColor('var(--status-live)', '#000'), 'var(--status-live)');
   });
 });
 
