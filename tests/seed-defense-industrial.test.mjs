@@ -171,6 +171,31 @@ describe('defense-industrial deployment wiring', () => {
     assert.match(supplierSeeder, /transform:\s*buildArmsSupplierCompletion/);
     assert.match(supplierSeeder, /maxContentAgeMin:\s*800 \* 24 \* 60/);
   });
+
+  it('passes both production sweep inputs without the callback contract', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const supplierSeeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
+
+    assert.deepEqual({
+      pairedInputs: /fetchSipriSupplierDependencies\(\{\s*\.\.\.options,\s*previousSnapshot:\s*previous,\s*maxSweepImporters:\s*SIPRI_SWEEP_CHUNK,?\s*\}\)/s
+        .test(supplierSeeder),
+      selectImporters: /selectImporters:/.test(supplierSeeder),
+    }, {
+      pairedInputs: true,
+      selectImporters: false,
+    });
+  });
+
+  it('propagates a previous-snapshot read failure', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const supplierSeeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
+
+    assert.equal(
+      /const previousSnapshot = await readCanonicalValue\(ARMS_SUPPLIERS_KEY\);/.test(supplierSeeder),
+      true,
+      'readCanonicalValue failure must propagate out of fetchSupplierSnapshot',
+    );
+  });
 });
 
 describe('SIPRI importer fan-out fits its fetch deadline (#6799, #6806)', () => {
@@ -289,6 +314,31 @@ describe('SIPRI chunked sweep (#6806)', () => {
   const candidates = [{ iso2: 'FR' }, { iso2: 'DE' }, { iso2: 'JP' }, { iso2: 'BR' }];
 
   const DAY = 24 * 3600_000;
+  const importerCodes = [...new Set(Object.values(JSON.parse(
+    readFileSync(new URL('../scripts/shared/country-names.json', import.meta.url), 'utf8'),
+  )))].slice(0, 60);
+  const importerCatalog = (count = importerCodes.length) => Array.from(
+    { length: Math.max(150, count * 3) },
+    (_, index) => ({
+      EntityId: 1000 + (index % count),
+      Name: importerCodes[index % count],
+    }),
+  );
+  const makeSipriFetch = ({ importerCount = importerCodes.length, onImporter = () => {} } = {}) => async (url) => {
+    if (String(url).includes('getMaxYear')) return new Response('2025');
+    if (String(url).includes('getAllCountriesTrimmed')) {
+      return new Response(JSON.stringify(importerCatalog(importerCount)));
+    }
+    onImporter();
+    return new Response(JSON.stringify({ bytes: Buffer.from(sipriFixture).toString('base64') }));
+  };
+  const previousSnapshot = (staleCount) => ({
+    importers: Object.fromEntries(importerCodes.map((iso2, index) => [iso2, {
+      suppliers: [{ supplierIso2: 'US', tivShare: 1 }],
+      window: { startYear: 2021, endYear: 2025 },
+      fetchedAt: iso(NOW - (index < staleCount ? 11 * DAY : DAY)),
+    }])),
+  });
 
   it('selects only rows outside the horizon, oldest first, and never a current one', () => {
     const previous = {
@@ -436,6 +486,96 @@ describe('SIPRI chunked sweep (#6806)', () => {
     });
     assert.equal(Object.keys(snapshot.importers).length, 31);
     assert.equal(snapshot.stage.status, 'partial');
+  });
+
+  it('the final stale set below the cap completes the sweep and writes the marker', async () => {
+    const previous = previousSnapshot(2);
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch(),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      attempted: 2,
+      unfetched: 0,
+      completion: { completedAt: iso(NOW), windowEndYear: 2025 },
+    });
+  });
+
+  it('reports stale importers deferred above the sweep limit', async () => {
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch(),
+      previousSnapshot: previousSnapshot(importerCodes.length),
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+
+    assert.deepEqual({
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+    }, {
+      attempted: 56,
+      unfetched: 4,
+    });
+  });
+
+  for (const [missing, sweepOptions] of [
+    ['previousSnapshot', { maxSweepImporters: 56 }],
+    ['maxSweepImporters', { previousSnapshot: {} }],
+  ]) {
+    it(`rejects production sweep inputs without ${missing}`, async () => {
+      await assert.rejects(
+        () => fetchSipriSupplierDependencies({
+          fetchFn: makeSipriFetch(),
+          concurrency: 1,
+          delayMs: 0,
+          ...sweepOptions,
+        }),
+        /previousSnapshot.*maxSweepImporters.*together/,
+      );
+    });
+  }
+
+  it('counts only importer requests started before the soft budget', async () => {
+    let served = 0;
+    let clock = 0;
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        onImporter: () => {
+          served += 1;
+          clock += 10_000;
+        },
+      }),
+      concurrency: 1,
+      delayMs: 0,
+      softBudgetMs: 15_000,
+      now: () => clock,
+    });
+
+    assert.deepEqual({
+      served,
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+    }, {
+      served: 2,
+      attempted: 2,
+      unfetched: 58,
+    });
   });
 
   it('the soft budget returns partial progress instead of losing the tick', async () => {
