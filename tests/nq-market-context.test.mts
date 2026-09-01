@@ -204,7 +204,9 @@ describe('NQ Pulse rendering', () => {
   it('ignores late responses after the pulse and catalysts panels are destroyed', () => {
     const pulse = readFileSync(resolve(root, 'src/components/NqPulsePanel.ts'), 'utf8');
     const catalysts = readFileSync(resolve(root, 'src/components/NqCatalystsPanel.ts'), 'utf8');
-    assert.match(pulse, /if \(this\.signal\.aborted\) return false;/);
+    assert.match(pulse, /this\.signal\.aborted/);
+    assert.match(pulse, /LatestRequestGuard/);
+    assert.match(pulse, /createTimeoutSignal/);
     assert.match(catalysts, /if \(this\.signal\.aborted\) return false;/);
   });
 });

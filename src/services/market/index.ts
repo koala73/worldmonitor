@@ -96,7 +96,7 @@ function symbolSetKey(symbols: string[]): string {
 
 export async function fetchMultipleStocks(
   symbols: Array<{ symbol: string; name: string; display: string }>,
-  options: { onBatch?: (results: MarketData[]) => void } = {},
+  options: { onBatch?: (results: MarketData[]) => void; signal?: AbortSignal } = {},
 ): Promise<MarketFetchResult> {
   // Preserve exact requested symbols for cache keys and request payloads so
   // case-distinct instruments do not collapse into one cache entry.
@@ -120,10 +120,14 @@ export async function fetchMultipleStocks(
   const setKey = symbolSetKey(allSymbolStrings);
 
   const resp = await stockBreaker.execute(async () => {
-    return client.listMarketQuotes({ symbols: allSymbolStrings });
+    return client.listMarketQuotes(
+      { symbols: allSymbolStrings },
+      options.signal ? { signal: options.signal } : undefined,
+    );
   }, emptyStockFallback, {
     cacheKey: setKey,
     shouldCache: (r) => r.quotes.length > 0,
+    ignoreError: () => options.signal?.aborted === true,
   });
 
   const results = resp.quotes.map((q) => {
