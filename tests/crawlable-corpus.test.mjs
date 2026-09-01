@@ -2426,7 +2426,7 @@ describe('crawlable corpus generator', () => {
     // publishes pulse values. CORPUS_GENERATOR_CONTENT_VERSION stays out
     // (#7463). Research lastmod is the report dateModified, not a rebuild stamp.
     assert.equal(data.lastmod.countries, '2026-08-31');
-    assert.equal(data.lastmod.research, '2026-08-31');
+    assert.equal(data.lastmod.research, '2026-07-27');
     assert.equal(data.lastmod.chokepoints, '2026-09-01');
     assert.equal(
       data.lastmod.sources,

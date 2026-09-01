@@ -38,14 +38,13 @@ function stripFrontmatter(source) {
 }
 
 function redactInternalApiOrigins(text) {
-  // The generated corpus copies methodology markdown. Some source pages cite
-  // the live API origin, which this repo treats as a configured secret.
-  // Collapse those hosts to the existing [REDACTED] placeholder used in the
-  // hand-authored brief so the committed corpus cannot leak them.
+  // Keep the documented public API reachable, but redact other API-prefixed
+  // origins that can come from deployment-specific source material.
   return String(text).replace(
     /https?:\/\/([^/\s)"'`<>]+)([^\s)"'`<>]*)/g,
     (full, host, rest) => {
       const hostname = String(host).toLowerCase();
+      if (hostname === 'api.worldmonitor.app') return full;
       if (hostname === 'api' || hostname.split('.')[0] === 'api') {
         return `[REDACTED]${rest}`;
       }

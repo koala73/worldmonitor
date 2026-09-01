@@ -76,6 +76,11 @@ describe('GEO residue #7463', () => {
     assert.match(committed, /## Generated corpus/);
     assert.match(committed, /72 indicators across 21 active dimensions, 6 domains/);
     assert.match(committed, /product-facts\.json.*capabilities\.localeCodes/);
+    assert.match(
+      committed,
+      /\[runtime manifest\]\(https:\/\/api\.worldmonitor\.app\/resilience\/v1\/get-runtime-manifest\)/,
+    );
+    assert.doesNotMatch(committed, /\[runtime manifest\]\(\[REDACTED\]\//);
   });
 
   it('serves the MCP server card at the newer well-known server.json name', () => {
