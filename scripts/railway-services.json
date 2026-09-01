@@ -1063,6 +1063,7 @@
       "scripts/_defense-industrial-source.mjs",
       "scripts/_defense-patents-source.mjs",
       "scripts/_demographics-capability-source.mjs",
+      "scripts/chokepoint-eia-baselines.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
