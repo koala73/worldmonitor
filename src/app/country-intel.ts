@@ -16,10 +16,7 @@ import type {
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
-import {
-  fetchCountryCoverage,
-  type CountryCoverageEvent,
-} from '@/services/country-coverage';
+import type { CountryCoverageEvent } from '@/services/country-coverage';
 import {
   getCountryAtCoordinates,
   getCountryCentroid,
@@ -566,7 +563,8 @@ export class CountryIntelManager implements AppModule {
       const hasCountryTerm = (headline: string): boolean => (
         CountryIntelManager.firstMentionPosition(headline, countrySearchTerms) !== Infinity
       );
-      void fetchCountryCoverage(country, countrySearchTerms)
+      void import('@/services/country-coverage')
+        .then(({ fetchCountryCoverage }) => fetchCountryCoverage(country, countrySearchTerms))
         .then((coverage) => {
           if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
           const countryHeadlines = coverage.headlines.filter(item => hasCountryTerm(item.title));
