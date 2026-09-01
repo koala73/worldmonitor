@@ -94,18 +94,16 @@ async function fetchWikidata(code: string): Promise<WikiResult | null> {
   if (!m49) return null;
   try {
     return await cachedFetchJson<WikiResult>(
-      `intel:country-facts:wikidata:v5:${code}`,
+      `intel:country-facts:wikidata:v6:${code}`,
       FACTS_TTL,
       async () => {
-        const entityQuery = `SELECT ?country ?countryLabel ?m49 WHERE { ?country wdt:P297 "${code}". OPTIONAL { ?country wdt:P2082 ?m49 } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } LIMIT 10`;
-        const entityBindings = await fetchWikidataBindings(entityQuery);
-        const entityId = resolveEntityId(entityBindings, m49);
+        const entityId = await resolveWikidataEntityId(code);
         if (!entityId) return null;
-
-        const factsQuery = `SELECT ?countryLabel ?headLabel ?officeLabel ?population ?area ?capitalLabel ?languageLabel ?currencyLabel WHERE { VALUES ?country { wd:${entityId} } OPTIONAL { ?country p:P35 ?headStatement. ?headStatement ps:P35 ?head. FILTER NOT EXISTS { ?headStatement pq:P582 ?headEnd } OPTIONAL { ?headStatement pq:P39 ?office } } OPTIONAL { ?country wdt:P1082 ?population } OPTIONAL { ?country wdt:P2046 ?area } OPTIONAL { ?country wdt:P36 ?capital } OPTIONAL { ?country p:P37 ?languageStatement. ?languageStatement ps:P37 ?language. FILTER NOT EXISTS { ?languageStatement pq:P518 ?languageRegion } FILTER NOT EXISTS { ?languageStatement pq:P582 ?languageEnd } } OPTIONAL { ?country p:P38 ?currencyStatement. ?currencyStatement ps:P38 ?currency. FILTER NOT EXISTS { ?currencyStatement pq:P582 ?currencyEnd } FILTER NOT EXISTS { ?currencyStatement pq:P518 ?currencyRegion. ?currencyRegion wdt:P297 ?currencyRegionCode. FILTER(?currencyRegionCode != "${code}") } } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } ORDER BY ?capitalLabel ?languageLabel ?currencyLabel LIMIT 100`;
-        return parseWikidataFacts(await fetchWikidataBindings(factsQuery));
+        return parseWikidataFacts(await queryWikidata(wikidataFactsQuery(entityId, code)));
       },
       NEGATIVE_TTL,
+      // Transient 429/5xx/network errors must not become NEG_SENTINEL. A 200
+      // with no bindings still returns null and is negative-cached as empty.
       { cacheFetcherErrors: false },
     );
   } catch {
@@ -113,39 +111,19 @@ async function fetchWikidata(code: string): Promise<WikiResult | null> {
   }
 }
 
-async function fetchWikidataBindings(sparql: string): Promise<WikidataBinding[]> {
-  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
-
-  for (let attempt = 0; attempt < WIKIDATA_ATTEMPTS; attempt += 1) {
-    let response: Response;
-    try {
-      response = await fetch(url, {
-        headers: { 'User-Agent': WIKIMEDIA_UA, Accept: 'application/json' },
-        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT),
-      });
-    } catch (error) {
-      if (attempt === WIKIDATA_ATTEMPTS - 1) throw error;
-      continue;
-    }
-
-    if (!response.ok) {
-      const retryable = response.status === 429 || response.status >= 500;
-      if (retryable && attempt < WIKIDATA_ATTEMPTS - 1) continue;
-      throw new Error(`Wikidata request failed with status ${response.status}`);
-    }
-
-    try {
-      const data = (await response.json()) as WikidataResponse;
-      return data.results?.bindings ?? [];
-    } catch (error) {
-      if (attempt === WIKIDATA_ATTEMPTS - 1) throw error;
-    }
-  }
-
-  throw new Error('Wikidata request failed');
+async function resolveWikidataEntityId(code: string): Promise<string | null> {
+  return selectWikidataEntityId(
+    code,
+    await queryWikidata(
+      `SELECT ?country ?countryLabel ?m49 WHERE { ?country wdt:P297 "${code}". OPTIONAL { ?country wdt:P2082 ?m49 } FILTER NOT EXISTS { ?country wdt:P576 ?dissolved } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } LIMIT 10`,
+    ),
+  );
 }
 
-function resolveEntityId(bindings: WikidataBinding[], expectedM49: string): string | null {
+export function selectWikidataEntityId(code: string, bindings: WikidataBinding[]): string | null {
+  const expectedM49 = ISO2_TO_M49[code];
+  if (!expectedM49) return null;
+
   const candidates = new Map<string, Set<string>>();
   for (const binding of bindings) {
     const id = binding.country?.value?.match(/\/entity\/(Q\d+)$/)?.[1];
@@ -164,6 +142,41 @@ function resolveEntityId(bindings: WikidataBinding[], expectedM49: string): stri
     return candidates.keys().next().value ?? null;
   }
   return null;
+}
+
+function wikidataFactsQuery(entityId: string, code: string): string {
+  return `SELECT ?countryLabel ?headLabel ?officeLabel ?population ?area ?capitalLabel ?languageLabel ?currencyLabel WHERE { BIND(wd:${entityId} AS ?country) OPTIONAL { ?country p:P35 ?headStatement. ?headStatement ps:P35 ?head. FILTER NOT EXISTS { ?headStatement pq:P582 ?headEnd } OPTIONAL { ?headStatement pq:P39 ?office } } OPTIONAL { ?country wdt:P1082 ?population } OPTIONAL { ?country wdt:P2046 ?area } OPTIONAL { ?country wdt:P36 ?capital } OPTIONAL { ?country p:P37 ?languageStatement. ?languageStatement ps:P37 ?language. FILTER NOT EXISTS { ?languageStatement pq:P518 ?languageRegion } FILTER NOT EXISTS { ?languageStatement pq:P582 ?languageEnd } } OPTIONAL { ?country p:P38 ?currencyStatement. ?currencyStatement ps:P38 ?currency. FILTER NOT EXISTS { ?currencyStatement pq:P582 ?currencyEnd } FILTER NOT EXISTS { ?currencyStatement pq:P518 ?currencyRegion. ?currencyRegion wdt:P297 ?currencyRegionCode. FILTER(?currencyRegionCode != "${code}") } } SERVICE wikibase:label { bd:serviceParam wikibase:language "en,mul" } } ORDER BY ?capitalLabel ?languageLabel ?currencyLabel`;
+}
+
+async function queryWikidata(sparql: string): Promise<WikidataBinding[]> {
+  const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
+
+  for (let attempt = 0; attempt < WIKIDATA_ATTEMPTS; attempt += 1) {
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        headers: { 'User-Agent': WIKIMEDIA_UA, Accept: 'application/json' },
+        signal: AbortSignal.timeout(UPSTREAM_TIMEOUT),
+      });
+    } catch (error) {
+      if (attempt === WIKIDATA_ATTEMPTS - 1) throw error;
+      continue;
+    }
+    if (!response.ok) {
+      const retryable = response.status === 429 || response.status >= 500;
+      if (retryable && attempt < WIKIDATA_ATTEMPTS - 1) continue;
+      throw new Error(`Wikidata request failed with status ${response.status}`);
+    }
+
+    try {
+      const data = (await response.json()) as WikidataResponse;
+      return data.results?.bindings ?? [];
+    } catch (error) {
+      if (attempt === WIKIDATA_ATTEMPTS - 1) throw error;
+    }
+  }
+
+  throw new Error('Wikidata request failed');
 }
 
 function parseWikidataFacts(bindings: WikidataBinding[]): WikiResult | null {
