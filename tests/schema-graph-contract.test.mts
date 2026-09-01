@@ -377,13 +377,7 @@ describe('canonical schema graph', () => {
         `${path} disambiguation must disclaim the similarly named mobile applications`,
       );
       assert.equal(organization.alternateName, 'WorldMonitor');
-      assert.deepEqual(organization.interactionStatistic, {
-        '@type': 'InteractionCounter',
-        interactionType: 'https://schema.org/LikeAction',
-        userInteractionCount: 85288,
-        name: 'GitHub stars',
-        url: 'https://github.com/koala73/worldmonitor/stargazers',
-      });
+      assert.equal(organization.interactionStatistic, undefined);
     }
   });
 

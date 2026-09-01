@@ -3094,6 +3094,7 @@ function renderCrisisPage({
   // the Dataset description while temporalCoverage silently drops to undefined.
   const hasPulse = pulse != null && OBSERVATION_PERIOD_RE.test(String(pulse.referencePeriod ?? ''));
   const publishedPeriod = hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined;
+  const publishedDate = hasPulse ? pulseDateOnly(livePulse.capturedAt, undefined) : undefined;
   const liveState = hasPulse ? pulse.state : 'loading';
   const liveStatus = hasPulse
     ? (pulse.state === 'partial' ? 'Published partial pulse' : 'Published pulse')
@@ -3241,7 +3242,7 @@ ${snapshotSection}
           identifier: `crisis-tracker-${crisis.slug}`,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          datePublished: publishedPeriod,
+          datePublished: publishedDate,
           dateModified: laterDate(
             hasPulse ? pulseDateOnly(pulse.asOf, lastmod) : lastmod,
             DATASET_SCHEMA_CONTENT_VERSION.crisis,
@@ -3683,6 +3684,7 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         count: crisisRoutes.length,
         index: '/crises/',
         routes: crisisRoutes,
+        sourceCapturedAt: data.livePulse.capturedAt,
       },
       tools: {
         count: toolRoutes.length,

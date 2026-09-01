@@ -751,6 +751,7 @@ function assertSourceDerivedTemporalCoverage(dataset, {
   observationInterval,
   lastmod,
   index = 1,
+  publishedDate,
 } = {}) {
   const expected = datasetTemporalCoverage(observationInterval);
   assert.equal(
@@ -779,8 +780,8 @@ function assertSourceDerivedTemporalCoverage(dataset, {
   if (dataset.datePublished) {
     assert.equal(
       dataset.datePublished,
-      expected,
-      `${route} Dataset ${index} datePublished must match the same observation interval`,
+      publishedDate ?? expected,
+      `${route} Dataset ${index} datePublished must match the published snapshot date`,
     );
   }
 }
@@ -1294,6 +1295,7 @@ describe('crawlable corpus generator', () => {
             assertSourceDerivedTemporalCoverage(dataset, {
               route,
               observationInterval: tracker.maintainedPulse?.referencePeriod,
+              publishedDate: manifest.sections.crises.sourceCapturedAt,
               lastmod: pageLastmod(html),
               index: index + 1,
             });
@@ -2621,6 +2623,7 @@ describe('crawlable corpus generator', () => {
       assertSourceDerivedTemporalCoverage(redSeaDataset, {
         route: '/crises/red-sea-security/',
         observationInterval: redSeaReference.maintainedPulse?.referencePeriod,
+        publishedDate: corpus.livePulse.capturedAt,
         lastmod: pageLastmod(redSea),
       });
       assert.equal(
@@ -2679,7 +2682,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(redSeaDataset['@id'], 'https://www.worldmonitor.app/crises/red-sea-security/#crisis-dataset');
       assert.equal(redSeaDataset.url, 'https://www.worldmonitor.app/crises/red-sea-security/');
       assert.equal(redSeaDataset.identifier, 'crisis-tracker-red-sea-security');
-      assert.equal(redSeaDataset.datePublished, redSeaReference.maintainedPulse.referencePeriod);
+      assert.equal(redSeaDataset.datePublished, corpus.livePulse.capturedAt);
       assert.match(redSeaDataset.measurementTechnique, /HAPI\/HDX/);
       assertDataCatalogPresent(redSea, '/crises/red-sea-security/');
 
