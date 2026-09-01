@@ -1592,14 +1592,21 @@ function withPrimaryImage(entry, image) {
 // Every top-level JSON-LD block binds its own vocabulary. A root node without
 // `@context` is not a lenient block — it has no vocabulary at all, so `@type`
 // resolves to nothing and schema.org consumers discard it silently rather than
-// erroring. Stamping here rather than at each call site is deliberate: #7502
-// shipped 62 unparseable blocks across the 31 CII-covered country pages because
-// two hand-written sibling Datasets were promoted out of a `@context`'d parent
-// and nobody re-declared it. A builder that forgets can no longer produce one.
+// erroring. Stamping here rather than at each call site is deliberate: #7491
+// shipped 62 unparseable blocks across the 31 CII-covered country pages (found
+// in #7502) because two hand-written sibling Datasets were promoted out of a
+// `@context`'d parent and nobody re-declared it. A builder that forgets can no
+// longer produce one.
 // Nested nodes inherit the root context and are left untouched.
-function withSchemaContext(entry) {
-  if (!entry || typeof entry !== 'object' || entry['@context']) return entry;
-  return { '@context': SCHEMA_ORG_CONTEXT_URL, ...entry };
+export function withSchemaContext(entry) {
+  if (!entry || typeof entry !== 'object') return entry;
+  // A deliberate `@context` is preserved; a missing OR empty one is replaced.
+  // Destructure the dead key out rather than spreading `entry` over the stamp,
+  // or `'@context': null` would be re-applied on top of it and the "cannot
+  // forget" invariant above would hold only for the absent case.
+  if (entry['@context']) return entry;
+  const { '@context': unusable, ...rest } = entry;
+  return { '@context': SCHEMA_ORG_CONTEXT_URL, ...rest };
 }
 
 function pageDocument({

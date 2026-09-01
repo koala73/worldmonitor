@@ -22,6 +22,7 @@ import {
   resolveChokepointObservation,
   SOURCE_CATALOG_LASTMOD_PATHS,
   sourcePageLastmod,
+  withSchemaContext,
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
@@ -666,11 +667,11 @@ function assertDataCatalogPresent(html, route) {
 
 // A root JSON-LD node with no `@context` has no vocabulary binding: `@type`
 // resolves to nothing, and every schema.org consumer discards the block
-// silently rather than erroring. #7502 shipped 62 such blocks across the 31
-// CII-covered country pages, which undid the Dataset/DataCatalog work from
-// #7379 on exactly the highest-intent pages and was invisible to every
-// existing assertion. Nested nodes inherit the root context, so only the
-// top-level block of each script tag is checked.
+// silently rather than erroring. #7491 shipped 62 such blocks across the 31
+// CII-covered country pages (found in #7502), which undid the
+// Dataset/DataCatalog work from #7379 on exactly the highest-intent pages and
+// was invisible to every existing assertion. Nested nodes inherit the root
+// context, so only the top-level block of each script tag is checked.
 const SCHEMA_ORG_CONTEXT_URLS = new Set(['https://schema.org', 'http://schema.org']);
 
 function jsonLdContextIsResolvable(context) {
@@ -693,6 +694,9 @@ function assertJsonLdContexts(html, route) {
       `${route} JSON-LD block ${index + 1} (${label}) must declare a schema.org @context; without one @type binds to no vocabulary and consumers discard the block silently`,
     );
   }
+  // Returned so the caller can prove the sweep actually ran: a loop that never
+  // executes is indistinguishable from one where every page passed.
+  return blocks.length;
 }
 
 // Walk what the build actually wrote, not the manifest's route list. The two
@@ -803,6 +807,26 @@ describe('JSON-LD @context guard', () => {
 
   it('rejects a page that emits no JSON-LD at all', () => {
     assert.throws(() => assertJsonLdContexts('<html><body>no structured data</body></html>', route), /must emit at least one JSON-LD block/);
+  });
+
+  it('stamps a missing or unusable @context and preserves a deliberate one', () => {
+    // The stamp is what makes the defect unreproducible, so both branches are
+    // pinned: forgetting the key gets it back, and choosing a vocabulary keeps
+    // it. `null`/`''` count as forgetting -- they bind no vocabulary either.
+    assert.deepEqual(
+      withSchemaContext({ '@type': 'Dataset', name: 'CII' }),
+      { '@context': 'https://schema.org', '@type': 'Dataset', name: 'CII' },
+    );
+    for (const unusable of [null, '', undefined]) {
+      assert.equal(
+        withSchemaContext({ '@context': unusable, '@type': 'Dataset' })['@context'],
+        'https://schema.org',
+        `a ${JSON.stringify(unusable)} @context binds no vocabulary and must be replaced`,
+      );
+    }
+    const deliberate = { '@context': 'https://example.invalid/vocab', '@type': 'Dataset' };
+    assert.deepEqual(withSchemaContext(deliberate), deliberate);
+    assert.equal(withSchemaContext(null), null);
   });
 
   it('accepts schema.org string, array, and @vocab contexts', () => {
@@ -1175,9 +1199,24 @@ describe('crawlable corpus generator', () => {
         writtenRoutes.length >= generatedRoutes.size,
         `the @context sweep must cover at least every manifest route (wrote ${writtenRoutes.length}, manifest lists ${generatedRoutes.size})`,
       );
+      let sweptPages = 0;
+      let sweptBlocks = 0;
       for (const route of writtenRoutes) {
-        assertJsonLdContexts(read(outDir, `${route.slice(1)}index.html`), route);
+        sweptBlocks += assertJsonLdContexts(read(outDir, `${route.slice(1)}index.html`), route);
+        sweptPages += 1;
       }
+      // Without this the sweep is an absence assertion that also passes when it
+      // is unwired: delete the loop above and every per-page check silently
+      // stops running. Tallying makes the wiring itself falsifiable.
+      assert.equal(
+        sweptPages,
+        writtenRoutes.length,
+        `the @context sweep must inspect every written page (swept ${sweptPages} of ${writtenRoutes.length})`,
+      );
+      assert.ok(
+        sweptBlocks >= sweptPages * 3,
+        `every corpus page carries at least a page node, DataCatalog and BreadcrumbList (swept ${sweptBlocks} blocks across ${sweptPages} pages)`,
+      );
 
       for (const route of generatedRoutes) {
         const html = read(outDir, `${route.slice(1)}index.html`);
