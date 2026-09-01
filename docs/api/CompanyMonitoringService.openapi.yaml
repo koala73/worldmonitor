@@ -751,7 +751,7 @@ paths:
                         description: "Accepted values are active, paused, and removed."
                 - name: coverage
                   in: query
-                  description: Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation.
+                  description: Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation.
                   required: false
                   style: form
                   explode: true
@@ -1847,7 +1847,11 @@ components:
                         - COMPANY_COVERAGE_STATE_STALE
                         - COMPANY_COVERAGE_STATE_UNAVAILABLE
                         - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
-                    description: CompanyCoverageState reports source and assessment readiness, not event count.
+                        - COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED
+                    description: |-
+                        CompanyCoverageState reports source and assessment readiness, not event count.
+                         IDENTITY_UNRESOLVED means no independent identity binding exists, so the
+                         company cannot be scanned safely and must not be reported as quiet.
                 observation:
                     type: string
                     enum:
@@ -2087,7 +2091,7 @@ components:
                         type: "string"
                         pattern: "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
                         description: "Accepted values are awaiting_first_scan, identity_unresolved, adequate, partial, stale, unavailable, and needs_confirmation. identity_unresolved means no independent identity binding exists so the company cannot be scanned — it is not a quiet result."
-                    maxItems: 6
+                    maxItems: 7
                 pageSize:
                     type: integer
                     maximum: 100
@@ -2431,7 +2435,11 @@ components:
                         - COMPANY_COVERAGE_STATE_STALE
                         - COMPANY_COVERAGE_STATE_UNAVAILABLE
                         - COMPANY_COVERAGE_STATE_NEEDS_CONFIRMATION
-                    description: CompanyCoverageState reports source and assessment readiness, not event count.
+                        - COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED
+                    description: |-
+                        CompanyCoverageState reports source and assessment readiness, not event count.
+                         IDENTITY_UNRESOLVED means no independent identity binding exists, so the
+                         company cannot be scanned safely and must not be reported as quiet.
                 observation:
                     type: string
                     enum:

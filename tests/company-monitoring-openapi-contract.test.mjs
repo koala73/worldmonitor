@@ -81,10 +81,15 @@ describe('Company Monitoring generated OpenAPI contract', () => {
     });
 
     it(`${label} publishes identity_unresolved as a non-quiet coverage state`, () => {
-      const coverageState = spec.components.schemas[`${prefix}CompanyCoverage`]
-        .properties.state;
-      assert.ok(coverageState.enum.includes('COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED'));
-      assert.match(coverageState.description, /identity_unresolved.+must not be reported as quiet/is);
+      for (const [schemaName, propertyName] of [
+        ['CompanyCoverage', 'state'],
+        ['MonitoredCompany', 'coverage'],
+      ]) {
+        const coverageState = spec.components.schemas[`${prefix}${schemaName}`]
+          .properties[propertyName];
+        assert.ok(coverageState.enum.includes('COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED'));
+        assert.match(coverageState.description, /identity_unresolved.+must not be reported as quiet/is);
+      }
     });
   }
 

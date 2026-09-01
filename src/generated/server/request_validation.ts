@@ -473,7 +473,7 @@ export const GENERATED_MESSAGE_RULES = {
       "coverageStates": {
         "kind": "string",
         "repeated": true,
-        "repeatedMaxItems": 6,
+        "repeatedMaxItems": 7,
         "stringPattern": "^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$"
       },
       "pageSize": {
