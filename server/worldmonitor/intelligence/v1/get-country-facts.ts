@@ -97,32 +97,37 @@ async function fetchWikidata(code: string): Promise<WikiResult | null> {
         const url = `https://query.wikidata.org/sparql?format=json&query=${encodeURIComponent(sparql)}`;
 
         for (let attempt = 0; attempt < WIKIDATA_ATTEMPTS; attempt += 1) {
+          let resp: Response;
           try {
-            const resp = await fetch(url, {
+            resp = await fetch(url, {
               headers: { 'User-Agent': WIKIMEDIA_UA, Accept: 'application/json' },
               signal: AbortSignal.timeout(UPSTREAM_TIMEOUT),
             });
-            if (!resp.ok) {
-              if (attempt === 0 && resp.status >= 500) continue;
-              return null;
-            }
-            const data = (await resp.json()) as WikidataResponse;
-            const bindings = data.results?.bindings ?? [];
-            const expectedName = displayCountryName(code);
-            const matchingBindings = bindings.filter(binding => (
-              cleanLabel(binding.countryLabel?.value).localeCompare(expectedName, 'en', {
-                sensitivity: 'base',
-              }) === 0
-            ));
-            return parseWikidataFacts(matchingBindings.length > 0 ? matchingBindings : bindings);
-          } catch {
-            if (attempt === WIKIDATA_ATTEMPTS - 1) return null;
+          } catch (error) {
+            if (attempt === WIKIDATA_ATTEMPTS - 1) throw error;
+            continue;
           }
+          if (!resp.ok) {
+            if (attempt === 0 && resp.status >= 500) continue;
+            throw new Error(`Wikidata SPARQL HTTP ${resp.status}`);
+          }
+          const data = (await resp.json()) as WikidataResponse;
+          const bindings = data.results?.bindings ?? [];
+          const expectedName = displayCountryName(code);
+          const matchingBindings = bindings.filter(binding => (
+            cleanLabel(binding.countryLabel?.value).localeCompare(expectedName, 'en', {
+              sensitivity: 'base',
+            }) === 0
+          ));
+          return parseWikidataFacts(matchingBindings.length > 0 ? matchingBindings : bindings);
         }
 
-        return null;
+        throw new Error('Wikidata SPARQL exhausted retries');
       },
       NEGATIVE_TTL,
+      // Transient 429/5xx/network errors must not become NEG_SENTINEL. A 200
+      // with no bindings still returns null and is negative-cached as empty.
+      { cacheFetcherErrors: false },
     );
   } catch {
     return null;

@@ -1,11 +1,14 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
 
+import { __clearLocalUnavailableBackoffForTests } from '../server/_shared/redis.ts';
 import { getCountryFacts } from '../server/worldmonitor/intelligence/v1/get-country-facts.ts';
 
 const originalFetch = globalThis.fetch;
 const originalRedisUrl = process.env.UPSTASH_REDIS_REST_URL;
 const originalRedisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+const REDIS_URL = 'https://redis.country-facts.test';
+const NEG_SENTINEL = '__WM_NEG__';
 
 function restoreEnv(name: string, value: string | undefined): void {
   if (value === undefined) delete process.env[name];
@@ -16,7 +19,21 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   restoreEnv('UPSTASH_REDIS_REST_URL', originalRedisUrl);
   restoreEnv('UPSTASH_REDIS_REST_TOKEN', originalRedisToken);
+  __clearLocalUnavailableBackoffForTests();
 });
+
+function configureRemoteRedis(): void {
+  process.env.UPSTASH_REDIS_REST_URL = REDIS_URL;
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+}
+
+function wikidataCacheWrites(writes: string[]): string[] {
+  return writes.filter(body => body.includes('intel:country-facts:wikidata:v5:'));
+}
+
+function wikidataWritesContainNegSentinel(writes: string[]): boolean {
+  return wikidataCacheWrites(writes).some(body => body.includes(NEG_SENTINEL));
+}
 
 function wikidataValue(value: string): { value: string } {
   return { value };
@@ -350,5 +367,142 @@ describe('getCountryFacts provider contract', () => {
     assert.ok(result.languages.includes('Hindi'), `expected Hindi in ${JSON.stringify(result.languages)}`);
     assert.ok(result.languages.includes('English'), `expected English in ${JSON.stringify(result.languages)}`);
     assert.ok(result.languages.length > 100);
+  });
+
+  it('does not negative-cache a Wikidata status or transport failure', async () => {
+    configureRemoteRedis();
+    const redis = new Map<string, string>();
+    const writes: string[] = [];
+    let wikidataCalls = 0;
+    let wikidataMode: 'status' | 'network' | 'ok' = 'status';
+
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const raw = String(input instanceof Request ? input.url : input);
+      if (init?.method === 'POST' && init.body) {
+        writes.push(String(init.body));
+        const command = JSON.parse(String(init.body)) as [string, string, string];
+        if (command[0] === 'SET') redis.set(command[1], command[2]);
+        return new Response(JSON.stringify({ result: 'OK' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (raw.startsWith(`${REDIS_URL}/get/`)) {
+        const key = decodeURIComponent(raw.slice(`${REDIS_URL}/get/`.length));
+        return new Response(JSON.stringify({ result: redis.get(key) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      const url = new URL(raw);
+      if (url.hostname === 'query.wikidata.org') {
+        wikidataCalls += 1;
+        if (wikidataMode === 'status') return new Response('rate limited', { status: 429 });
+        if (wikidataMode === 'network') throw new Error('wikidata network down');
+        return new Response(JSON.stringify({
+          results: {
+            bindings: [{
+              countryLabel: wikidataValue('United States'),
+              headLabel: wikidataValue('Donald Trump'),
+              officeLabel: wikidataValue('president'),
+              population: wikidataValue('340110988'),
+              area: wikidataValue('9826675'),
+              capitalLabel: wikidataValue('Washington, D.C.'),
+              languageLabel: wikidataValue('English'),
+              currencyLabel: wikidataValue('United States dollar'),
+            }],
+          },
+        }));
+      }
+
+      if (url.hostname === 'en.wikipedia.org') {
+        return new Response(JSON.stringify({ extract: 'The United States is a country.' }));
+      }
+
+      throw new Error(`Unexpected country-facts request: ${raw}`);
+    }) as typeof fetch;
+
+    const failed = await getCountryFacts({} as never, { countryCode: 'US' });
+    assert.equal(failed.population, 0);
+    assert.equal(failed.capital, '');
+    assert.equal(failed.headOfState, '');
+    assert.equal(wikidataCalls, 1);
+    assert.equal(wikidataCacheWrites(writes).length, 0);
+    assert.equal(wikidataWritesContainNegSentinel(writes), false);
+
+    const stillFailed = await getCountryFacts({} as never, { countryCode: 'US' });
+    assert.equal(stillFailed.population, 0);
+    assert.equal(wikidataCalls, 1, 'isolate-local backoff must suppress Wikidata fan-out');
+    assert.equal(wikidataCacheWrites(writes).length, 0);
+
+    __clearLocalUnavailableBackoffForTests();
+    wikidataMode = 'network';
+    const networkFailed = await getCountryFacts({} as never, { countryCode: 'US' });
+    assert.equal(networkFailed.population, 0);
+    assert.equal(wikidataCalls, 3, 'transport errors retry once, then throw without caching');
+    assert.equal(wikidataWritesContainNegSentinel(writes), false);
+
+    __clearLocalUnavailableBackoffForTests();
+    wikidataMode = 'ok';
+    const recovered = await getCountryFacts({} as never, { countryCode: 'US' });
+    assert.equal(recovered.population, 340_110_988);
+    assert.equal(recovered.capital, 'Washington, D.C.');
+    assert.equal(recovered.headOfState, 'Donald Trump');
+    assert.equal(wikidataCalls, 4);
+    assert.equal(wikidataWritesContainNegSentinel(writes), false);
+    assert.ok(
+      wikidataCacheWrites(writes).some(body => body.includes('Donald Trump')),
+      'recovered facts must be written as a positive cache entry',
+    );
+  });
+
+  it('negative-caches a successful empty Wikidata result, not a later healthy payload', async () => {
+    configureRemoteRedis();
+    const redis = new Map<string, string>();
+    const writes: string[] = [];
+    let wikidataCalls = 0;
+
+    globalThis.fetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const raw = String(input instanceof Request ? input.url : input);
+      if (init?.method === 'POST' && init.body) {
+        writes.push(String(init.body));
+        const command = JSON.parse(String(init.body)) as [string, string, string];
+        if (command[0] === 'SET') redis.set(command[1], command[2]);
+        return new Response(JSON.stringify({ result: 'OK' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      if (raw.startsWith(`${REDIS_URL}/get/`)) {
+        const key = decodeURIComponent(raw.slice(`${REDIS_URL}/get/`.length));
+        return new Response(JSON.stringify({ result: redis.get(key) }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      const url = new URL(raw);
+      if (url.hostname === 'query.wikidata.org') {
+        wikidataCalls += 1;
+        return new Response(JSON.stringify({ results: { bindings: [] } }));
+      }
+
+      if (url.hostname === 'en.wikipedia.org') {
+        return new Response(JSON.stringify({ extract: 'Antarctica is a continent.' }));
+      }
+
+      throw new Error(`Unexpected country-facts request: ${raw}`);
+    }) as typeof fetch;
+
+    const empty = await getCountryFacts({} as never, { countryCode: 'AQ' });
+    assert.equal(empty.population, 0);
+    assert.deepEqual(empty.languages, []);
+    assert.equal(wikidataCalls, 1);
+    assert.equal(wikidataWritesContainNegSentinel(writes), true);
+
+    const cachedEmpty = await getCountryFacts({} as never, { countryCode: 'AQ' });
+    assert.equal(cachedEmpty.population, 0);
+    assert.equal(wikidataCalls, 1, 'successful empty must be served from NEG_SENTINEL');
   });
 });
