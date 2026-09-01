@@ -99,6 +99,47 @@ async function readAllInputs() {
 }
 
 /**
+ * Fail-closed parse of an Upstash pipeline GET. Missing keys (null result)
+ * stay absent; a truncated response, command error, or malformed row aborts
+ * so regional scores are not published from a partial country read.
+ *
+ * @param {string[]} keys
+ * @param {unknown} results
+ * @returns {Record<string, unknown>}
+ */
+export function parseCountryPipelineResults(keys, results) {
+  if (!Array.isArray(results) || results.length !== keys.length) {
+    throw new Error(
+      `Redis pipeline read: expected ${keys.length} rows, got ${Array.isArray(results) ? results.length : 0}`,
+    );
+  }
+  /** @type {Record<string, unknown>} */
+  const out = {};
+  for (let i = 0; i < keys.length; i += 1) {
+    const row = results[i];
+    if (row && typeof row === 'object' && /** @type {Record<string, unknown>} */ (row).error != null) {
+      throw new Error(
+        `Redis pipeline command failed: ${String(/** @type {Record<string, unknown>} */ (row).error)}`,
+      );
+    }
+    const raw = row && typeof row === 'object'
+      ? /** @type {Record<string, unknown>} */ (row).result
+      : undefined;
+    if (raw === null || raw === undefined) continue;
+    if (typeof raw !== 'string') {
+      throw new Error(`Redis pipeline read: ${keys[i]} returned a non-string result`);
+    }
+    try {
+      out[keys[i]] = unwrapEnvelope(JSON.parse(raw));
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new Error(`Redis pipeline read: ${keys[i]} returned unparseable JSON: ${msg}`);
+    }
+  }
+  return out;
+}
+
+/**
  * Pipeline-GET arbitrary Redis keys and unwrap seed envelopes.
  * Used to hydrate the audited energy-import aggregate from per-country
  * resilience:static:{ISO2} records.
@@ -107,9 +148,7 @@ async function readAllInputs() {
  * @returns {Promise<Record<string, unknown>>}
  */
 async function readRedisKeys(keys) {
-  /** @type {Record<string, unknown>} */
-  const out = {};
-  if (!keys.length) return out;
+  if (!keys.length) return {};
   const { url, token } = getRedisCredentials();
   const resp = await fetch(`${url}/pipeline`, {
     method: 'POST',
@@ -118,18 +157,7 @@ async function readRedisKeys(keys) {
     signal: AbortSignal.timeout(15_000),
   });
   if (!resp.ok) throw new Error(`Redis pipeline read: HTTP ${resp.status}`);
-  const results = await resp.json();
-  for (let i = 0; i < keys.length; i += 1) {
-    const raw = results[i]?.result;
-    if (raw === null || raw === undefined) continue;
-    try {
-      out[keys[i]] = unwrapEnvelope(JSON.parse(raw));
-    } catch {
-      // The aggregate hydrator requires every indexed country payload.
-      // Omitting a malformed row makes the whole read fail closed.
-    }
-  }
-  return out;
+  return parseCountryPipelineResults(keys, await resp.json());
 }
 
 /**
@@ -261,6 +289,8 @@ async function main() {
   // Step 1: read all inputs once (shared across regions), plus seed-meta
   // companions for inputs whose payloads lack top-level timestamps.
   const { sources, metaSources } = await readAllInputs();
+  // Fail closed before compute and persistence when the audited producer,
+  // its transport, or any indexed country row is incomplete.
   await hydrateEnergyImportAggregate(
     sources,
     readRedisKeys,
