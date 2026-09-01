@@ -17,6 +17,10 @@ import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
 import {
+  fetchCountryCoverage,
+  type CountryCoverageEvent,
+} from '@/services/country-coverage';
+import {
   getCountryAtCoordinates,
   getCountryCentroid,
   hasCountryGeometry,
@@ -136,6 +140,7 @@ export class CountryIntelManager implements AppModule {
   private lastHadPremium = false;
   private countryPremiumSectionsToken = 0;
   private countryBriefPageLoading: Promise<boolean> | null = null;
+  private currentCoverageEvents: CountryCoverageEvent[] = [];
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -417,6 +422,7 @@ export class CountryIntelManager implements AppModule {
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
       page.show(country, code, score, signals);
+      this.currentCoverageEvents = [];
       pageShown = true;
       this.visibleBriefOwner = request.owner;
       this.clearBriefRequest(request);
@@ -556,6 +562,21 @@ export class CountryIntelManager implements AppModule {
         return effectivePubDateMs(b) - effectivePubDateMs(a);
       });
       page.updateNews(filteredNews.slice(0, 10));
+      const countrySearchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
+      const hasCountryTerm = (headline: string): boolean => (
+        CountryIntelManager.firstMentionPosition(headline, countrySearchTerms) !== Infinity
+      );
+      void fetchCountryCoverage(country, countrySearchTerms)
+        .then((coverage) => {
+          if (token !== this.briefRequestToken || this.ctx.countryBriefPage?.getCode() !== code) return;
+          const countryHeadlines = coverage.headlines.filter(item => hasCountryTerm(item.title));
+          if (countryHeadlines.length > 0) page.updateNews(countryHeadlines);
+          this.currentCoverageEvents = coverage.timelineEvents.filter(event => hasCountryTerm(event.label));
+          this.mountCountryTimeline(code, country, this.currentCoverageEvents);
+        })
+        .catch((error) => {
+          console.warn('[CountryBrief] country coverage fetch failed:', error);
+        });
 
       if (getCountryCentroid(code, ME_STRIKE_BOUNDS)) page.updateInfrastructure(code);
       void Promise.all([
@@ -1147,6 +1168,15 @@ export class CountryIntelManager implements AppModule {
       });
   }
 
+  refreshOpenTimeline(): void {
+    const page = this.ctx.countryBriefPage;
+    if (!page?.isVisible()) return;
+    const code = page.getCode();
+    if (!code || code === '__loading__' || code === '__error__') return;
+    const country = page.getName() ?? CountryIntelManager.resolveCountryName(code);
+    this.mountCountryTimeline(code, country, this.currentCoverageEvents);
+  }
+
   private async fetchCountryIntelBrief(code: string, contextSnapshot: string, framework = ''): Promise<CountryIntelBriefResult> {
     const lang = getCurrentLanguage();
     const params = new URLSearchParams({ country_code: code, lang });
@@ -1310,14 +1340,18 @@ export class CountryIntelManager implements AppModule {
     }
   }
 
-  private mountCountryTimeline(code: string, country: string): void {
+  private mountCountryTimeline(
+    code: string,
+    country: string,
+    coverageEvents: CountryCoverageEvent[] = [],
+  ): void {
     this.ctx.countryTimeline?.destroy();
     this.ctx.countryTimeline = null;
 
     const mount = this.ctx.countryBriefPage?.getTimelineMount();
     if (!mount) return;
 
-    const events: TimelineEvent[] = [];
+    const events: TimelineEvent[] = [...coverageEvents];
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
     const inCountry = (lat: number, lon: number) => hasGeoShape && this.isInCountry(lat, lon, code);
@@ -1849,6 +1883,7 @@ export class CountryIntelManager implements AppModule {
     TR: ['turkey', 'turkish', 'ankara', 'erdogan', 'türkiye'],
     US: ['united states', 'US', 'u.s.', 'u.s', 'american', 'washington', 'pentagon', 'white house'],
     GB: ['united kingdom', 'british', 'london', 'uk '],
+    FR: ['france', 'french', 'paris'],
     BR: ['brazil', 'brazilian', 'brasilia', 'lula', 'bolsonaro'],
     AE: ['united arab emirates', 'uae', 'emirati', 'dubai', 'abu dhabi'],
   };
