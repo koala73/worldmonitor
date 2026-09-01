@@ -41,13 +41,13 @@ vi.mock('@/services/ml-worker', async (importOriginal) => {
       ...actual.mlWorker,
       get isAvailable() { return true; },
       isModelLoaded: () => true,
-      vectorStoreIngest: (...args: unknown[]) => memoryMocks.vectorStoreIngest(...args),
+      vectorStoreIngest: memoryMocks.vectorStoreIngest,
     },
   };
 });
 vi.mock('@/services/ai-classify-queue', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/services/ai-classify-queue')>(),
-  canQueueAiClassification: (...args: unknown[]) => aiQueueMocks.canQueueAiClassification(...args),
+  canQueueAiClassification: aiQueueMocks.canQueueAiClassification,
 }));
 
 import {

@@ -187,6 +187,6 @@ describe('CountryIntelManager coverage abort', () => {
 
     franceCoverage.resolve({ headlines: [], timelineEvents: [] });
     await Promise.all([franceOpen, germanyOpen]);
-    expect(newsUpdates.at(-1)).toBe('DE');
+    expect(newsUpdates[newsUpdates.length - 1]).toBe('DE');
   });
 });

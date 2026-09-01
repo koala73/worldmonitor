@@ -203,6 +203,6 @@ describe('CountryIntelManager lazy coverage headlines', () => {
     expect(newsUpdates[0]?.map((item) => item.title)).toEqual([eagerHeadline.title]);
     expect(newsUpdates.some((batch) => batch.some((item) => item.title === secondCountryHeadline.title)))
       .toBe(false);
-    expect(newsUpdates.at(-1)?.map((item) => item.title)).toEqual([eagerHeadline.title]);
+    expect(newsUpdates[newsUpdates.length - 1]?.map((item: NewsItem) => item.title)).toEqual([eagerHeadline.title]);
   });
 });
