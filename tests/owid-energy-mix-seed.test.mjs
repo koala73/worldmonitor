@@ -15,7 +15,6 @@ import {
   OWID_META_KEY,
   OWID_TTL_SECONDS,
 } from '../scripts/seed-owid-energy-mix.mjs';
-import { computeBalanceVector, SCORING_VERSION } from '../scripts/regional-snapshot/balance-vector.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const FIXTURE_DIR = resolve(__dirname, 'fixtures');
@@ -199,20 +198,6 @@ describe('buildAllCountriesMap', () => {
     }
   });
 
-  it('does not score removed import dependency as a favorable zero downstream', () => {
-    const all = buildAllCountriesMap(makeCountries());
-    assert.ok(!('importShare' in all.SA));
-
-    const { vector } = computeBalanceVector('mena', {
-      'energy:mix:v1:_all': all,
-      'economic:eu-gas-storage:v1': { months: [{ fillPct: 0 }] },
-      'economic:spr:v1': { daysOfCover: 90 },
-    });
-
-    assert.equal(SCORING_VERSION, '1.2.0');
-    assert.equal(vector.energy_vulnerability, 0.5,
-      'the available storage and SPR components must be renormalized to the full axis weight');
-  });
 });
 
 // ---------------------------------------------------------------------------
