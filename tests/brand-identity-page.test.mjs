@@ -22,6 +22,16 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /\|\s*Name\s*\|\s*World Monitor\s*\|/);
     assert.match(body, /https:\/\/www\.worldmonitor\.app/);
     assert.match(body, /https:\/\/worldmonitor\.app \(permanent redirect to www\)/);
+    assert.match(
+      body,
+      /^\|\s*Wikidata \(product\)\s*\|\s*https:\/\/www\.wikidata\.org\/wiki\/Q141237754\s*\|$/m,
+      'the NAP table must identify the World Monitor product Wikidata item',
+    );
+    assert.match(
+      body,
+      /^Founder:.*https:\/\/www\.wikidata\.org\/wiki\/Q121365724.*$/m,
+      'the brand page must identify the founder Wikidata item on the founder line',
+    );
     assert.match(body, /support@worldmonitor\.app/);
     assert.match(body, /enterprise@worldmonitor\.app/);
     assert.match(body, /\|\s*Locality\s*\|\s*Dubai\s*\|/);
@@ -38,6 +48,15 @@ describe('World Monitor brand-identity page', () => {
     assert.match(body, /mena\.entrepreneur\.com/);
     assert.match(body, /siliconcanals\.com/);
     assert.match(body, /lorientlejour\.com/);
+  });
+
+  it('names both Wikidata items so agents can resolve the product, not only the founder (#7373)', () => {
+    const body = read(BRAND_PAGE);
+    // The founder's item was already here; the product's item -- the one every
+    // AI engine reconciles "World Monitor" against -- was not. A brand-identity
+    // record that cites only the person leaves the product unresolvable.
+    assert.match(body, /https:\/\/www\.wikidata\.org\/wiki\/Q121365724/, 'brand page must cite the founder Wikidata item');
+    assert.match(body, /https:\/\/www\.wikidata\.org\/wiki\/Q141237754/, 'brand page must cite the World Monitor Wikidata item');
   });
 
   it('is advertised on catalog, llms, agents, and sitemap discovery surfaces', () => {

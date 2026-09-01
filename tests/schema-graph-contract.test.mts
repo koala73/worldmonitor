@@ -9,7 +9,11 @@ import {
   renderVariantDashboardHtml,
 } from '../src/config/variant-dashboard-html';
 import { VARIANT_META } from '../src/config/variant-meta';
-import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
+import {
+  guardProBuiltOutput,
+  shouldSkipProBuiltOutput,
+  withoutUnbuiltProPaths,
+} from './_lib/pro-built-output.mjs';
 
 const ORGANIZATION_ID = 'https://www.worldmonitor.app/#organization';
 const WEBSITE_ID = 'https://www.worldmonitor.app/#website';
@@ -290,6 +294,48 @@ describe('canonical schema graph', () => {
     // no generated corpus page declares (#7459b).
     assert.equal(WORLD_MONITOR_ORG['@type'], 'Organization');
     assert.ok(WORLD_MONITOR_ORG.name, 'role filler must carry a name so the reference resolves');
+  });
+
+  it('disambiguates the Organization from the live name collisions (#7373)', () => {
+    // Four live confusables share the name: worldmonitor.io, world-monitor.app,
+    // an impersonating "World Monitor Pro" GitHub repo, and three App Store
+    // apps. `alternateName` alone cannot separate them -- it only adds a second
+    // string that all four also match. `disambiguatingDescription` is the
+    // property schema.org defines for exactly this, and it must state the
+    // canonical domain rather than repeat the marketing description.
+    for (const path of withoutUnbuiltProPaths(['pro-test/welcome.html', 'public/pro/welcome.html'])) {
+      const organization = blocksOfType(jsonLdBlocks(read(path)), 'Organization')[0];
+      const disambiguation = organization.disambiguatingDescription;
+
+      assert.equal(typeof disambiguation, 'string', `${path} must carry disambiguatingDescription`);
+      assert.ok(
+        disambiguation.includes('www.worldmonitor.app'),
+        `${path} disambiguation must name the canonical domain, since the collision is on the name`,
+      );
+      assert.ok(
+        disambiguation.includes('Q141237754'),
+        `${path} disambiguation must name the World Monitor product Wikidata item`,
+      );
+      assert.ok(
+        disambiguation !== organization.description,
+        `${path} disambiguatingDescription must distinguish, not restate description`,
+      );
+      assert.ok(
+        /worldmonitor\.io/.test(disambiguation) && /world-monitor\.app/.test(disambiguation),
+        `${path} disambiguation must name the colliding domains it is disclaiming`,
+      );
+      assert.match(
+        disambiguation,
+        /World Monitor Pro/,
+        `${path} disambiguation must disclaim the similarly named repository`,
+      );
+      assert.match(
+        disambiguation,
+        /unrelated mobile applications/,
+        `${path} disambiguation must disclaim the similarly named mobile applications`,
+      );
+      assert.equal(organization.alternateName, 'WorldMonitor');
+    }
   });
 
   it('grounds the source Organization with founder and foundingDate (#7459e)', () => {
