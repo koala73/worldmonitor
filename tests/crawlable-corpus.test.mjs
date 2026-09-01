@@ -26,6 +26,10 @@ import {
   withSchemaContext,
 } from '../scripts/build-crawlable-corpus.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
+import {
+  MAX_FUTURE_SKEW_MS,
+  MAX_LIVE_SNAPSHOT_AGE_MS,
+} from '../scripts/crawlable-live-tools.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
@@ -2281,8 +2285,6 @@ describe('crawlable corpus generator', () => {
         ['missing status', { ...validPulse, status: '' }],
         ['missing congestion', { ...validPulse, congestion: '' }],
         ['impossible timestamp', { ...validPulse, asOf: '2026-02-31T13:37:22.049Z' }],
-        ['future timestamp', { ...validPulse, asOf: '2099-01-01T00:00:00.000Z' }],
-        ['stale timestamp', { ...validPulse, asOf: '2020-01-01T00:00:00.000Z' }],
       ]) {
         const invalidLivePulse = {
           ...corpusData.livePulse,
@@ -2318,23 +2320,6 @@ describe('crawlable corpus generator', () => {
         () => buildChokepointHubRows(corpusData.chokepoints, extraPulse),
         /unexpected obsolete_strait/,
         'an extra pulse key must fail the chokepoint hub build',
-      );
-      const priorDay = new Date(
-        Date.parse(`${corpusData.livePulse.capturedAt}T00:00:00.000Z`) - 86_400_000,
-      ).toISOString().slice(0, 10);
-      const priorDayPulse = {
-        ...corpusData.livePulse,
-        chokepoints: {
-          ...corpusData.livePulse.chokepoints,
-          [firstChokepoint.id]: {
-            ...validPulse,
-            asOf: `${priorDay}T12:00:00.000Z`,
-          },
-        },
-      };
-      assert.doesNotThrow(
-        () => buildChokepointHubRows(corpusData.chokepoints, priorDayPulse),
-        'the freeze prior-day window must remain accepted',
       );
 
       const sourcesPage = read(outDir, 'sources/index.html');
@@ -3063,17 +3048,11 @@ describe('crawlable corpus generator', () => {
     }
   });
 
-  it('rejects future and stale chokepoint hub timestamps while allowing the freeze prior-day window', async () => {
+  it('uses the same chokepoint timestamp window as the freeze producer', async () => {
     const corpusData = await loadCorpusData({ rootDir: repoRoot });
     const [firstChokepoint] = corpusData.chokepoints;
     const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];
-    const capturedAt = corpusData.livePulse.capturedAt;
-    const priorDay = new Date(Date.parse(`${capturedAt}T00:00:00.000Z`) - 86_400_000)
-      .toISOString()
-      .slice(0, 10);
-    const staleDay = new Date(Date.parse(`${capturedAt}T00:00:00.000Z`) - 2 * 86_400_000)
-      .toISOString()
-      .slice(0, 10);
+    const capturedAtMs = corpusData.livePulse.capturedAtMs;
     const withAsOf = (asOf) => ({
       ...corpusData.livePulse,
       chokepoints: {
@@ -3089,11 +3068,20 @@ describe('crawlable corpus generator', () => {
       );
     };
 
-    invalidFor('2099-01-01T00:00:00.000Z', 'a future asOf must fail the chokepoint hub build');
-    invalidFor(`${staleDay}T12:00:00.000Z`, 'a stale asOf older than the prior-day window must fail');
+    invalidFor(
+      new Date(capturedAtMs - MAX_LIVE_SNAPSHOT_AGE_MS - 1).toISOString(),
+      'an asOf older than the producer freshness window must fail',
+    );
+    invalidFor(
+      new Date(capturedAtMs + MAX_FUTURE_SKEW_MS + 1).toISOString(),
+      'an asOf beyond the producer future-skew window must fail',
+    );
     assert.doesNotThrow(
-      () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(`${priorDay}T12:00:00.000Z`)),
-      'the freeze prior-day window must remain accepted',
+      () => buildChokepointHubRows(
+        corpusData.chokepoints,
+        withAsOf(new Date(capturedAtMs - 47 * 60 * 60 * 1_000).toISOString()),
+      ),
+      'a row inside the producer freshness window must remain accepted',
     );
     assert.doesNotThrow(
       () => buildChokepointHubRows(corpusData.chokepoints, corpusData.livePulse),
