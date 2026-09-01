@@ -169,6 +169,33 @@ describe('FRED series-metadata cache', () => {
     }
   });
 
+  it('sends a User-Agent on the cache read — AGENTS.md server-fetch contract', async () => {
+    // redisCommand (the write path) already sends CHROME_UA; this raw GET has to set it
+    // itself, and a recurring seeder request with only an Authorization header is
+    // exactly the unidentifiable traffic that contract exists to prevent.
+    const seen = [];
+    const realFetch = globalThis.fetch;
+    const realUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const realToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.UPSTASH_REDIS_REST_URL = 'https://upstash.test';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'token';
+    globalThis.fetch = async (url, init) => {
+      seen.push(init?.headers || {});
+      return { ok: true, json: async () => ({ result: null }) };
+    };
+    try {
+      await readFredSeriesMetaCache();
+    } finally {
+      globalThis.fetch = realFetch;
+      if (realUrl === undefined) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = realUrl;
+      if (realToken === undefined) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = realToken;
+    }
+    assert.equal(seen.length, 1, 'the cache read must have issued exactly one fetch');
+    assert.ok(seen[0]['User-Agent'], 'the cache read must carry a User-Agent header');
+  });
+
   it('normalizeFredSeriesMeta accepts only a real description', () => {
     assert.deepEqual(
       normalizeFredSeriesMeta({ title: '10-Year Treasury', units: 'Percent', frequency: 'Daily', extra: 'dropped' }),

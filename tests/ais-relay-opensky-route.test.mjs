@@ -84,10 +84,30 @@ test('the proxy route is gated on OPENSKY_ROUTE, not merely on a configured prox
   assert.ok(gate, 'OPENSKY_PROXY_ENABLED declaration not found');
   assert.match(
     gate[1],
-    /OPENSKY_ROUTE === 'proxy'/,
+    /OPENSKY_ROUTE_REQUESTED === 'proxy'/,
     'OPENSKY_PROXY_ENABLED reverted to keying off OPENSKY_PROXY_AUTH alone. PROXY_URL is '
     + 'set on ais-relay for other consumers, so that form silently re-enables the paid '
     + 'OpenSky route and there is no env-only way back to direct.',
+  );
+});
+
+test('the reported route is the EFFECTIVE one, derived from the proxy gate', () => {
+  // `OPENSKY_ROUTE=proxy` with no credential falls back to direct. Reporting the
+  // REQUESTED value would tell operators the proxy is live in exactly the
+  // misconfiguration this telemetry exists to diagnose, and make the 403s that follow
+  // unreadable. Deriving it from OPENSKY_PROXY_ENABLED makes the two impossible to
+  // disagree.
+  const decl = SRC.match(/const OPENSKY_ROUTE = ([^;]+);/);
+  assert.ok(decl, 'OPENSKY_ROUTE declaration not found');
+  assert.match(
+    decl[1],
+    /OPENSKY_PROXY_ENABLED \? 'proxy' : 'direct'/,
+    'OPENSKY_ROUTE must be derived from OPENSKY_PROXY_ENABLED, not from the raw env value.',
+  );
+  assert.match(
+    SRC,
+    /const OPENSKY_ROUTE_REQUESTED = resolveOpenSkyRoute\(process\.env\.OPENSKY_ROUTE\);/,
+    'the requested route must stay available so the mismatch is reportable',
   );
 });
 
@@ -171,7 +191,13 @@ test('every rolling metric is declared in the bucket factory and summed in the r
 
 test('/health reports the selected route alongside the two blocked-for-different-reasons signals', () => {
   const aviation = blockAfter('    aviation: {');
-  assert.match(aviation, /openskyRoute: OPENSKY_ROUTE/, 'operators must see which route is live');
+  assert.match(aviation, /openskyRoute: OPENSKY_ROUTE,/, 'operators must see which route is live');
+  assert.match(
+    aviation,
+    /openskyRouteRequested: OPENSKY_ROUTE_REQUESTED/,
+    'the requested route must be reported alongside the effective one — the two differing '
+    + 'IS the "proxy configured but unusable" signal',
+  );
   assert.match(aviation, /openskyRouteRejection: rollup\.openskyRouteRejection/, '403/451 → flip the route');
   assert.match(aviation, /openskyProviderBlocked/, '429 → the account is out of credits; no route change helps');
 });

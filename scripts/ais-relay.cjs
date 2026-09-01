@@ -210,16 +210,23 @@ function resolveOpenSkyRoute(raw) {
   return OPENSKY_ROUTE_DEFAULT;
 }
 
-const OPENSKY_ROUTE = resolveOpenSkyRoute(process.env.OPENSKY_ROUTE);
+const OPENSKY_ROUTE_REQUESTED = resolveOpenSkyRoute(process.env.OPENSKY_ROUTE);
 const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
 // Fail OPEN to the free route: an unconfigured escape hatch must not take OpenSky down.
-if (OPENSKY_ROUTE === 'proxy' && !OPENSKY_PROXY_AUTH) {
+if (OPENSKY_ROUTE_REQUESTED === 'proxy' && !OPENSKY_PROXY_AUTH) {
   console.warn(
     '[Relay] OPENSKY_ROUTE=proxy but neither OPENSKY_PROXY_AUTH nor PROXY_URL is set — '
     + 'using the direct route.',
   );
 }
-const OPENSKY_PROXY_ENABLED = OPENSKY_ROUTE === 'proxy' && !!OPENSKY_PROXY_AUTH;
+const OPENSKY_PROXY_ENABLED = OPENSKY_ROUTE_REQUESTED === 'proxy' && !!OPENSKY_PROXY_AUTH;
+// The EFFECTIVE route — what requests actually do, which is the only thing an operator
+// can act on. Derived from OPENSKY_PROXY_ENABLED rather than tracked separately so the
+// two can never disagree: `OPENSKY_ROUTE=proxy` with no credential silently falls back
+// to direct, and reporting the REQUESTED value there would send an operator hunting a
+// proxy that was never in the request path — in exactly the misconfiguration this
+// telemetry exists to diagnose. The requested value stays available for the mismatch.
+const OPENSKY_ROUTE = OPENSKY_PROXY_ENABLED ? 'proxy' : 'direct';
 
 const PROXY_URL = process.env.PROXY_URL || ''; // generic residential proxy (US exit) — http://user:pass@host:port or host:port:user:pass (Decodo)
 
@@ -8612,10 +8619,14 @@ function getRelayRollingMetrics() {
     aviation: {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
-      // Which OpenSky route is selected, and whether the origin is refusing this exit
-      // IP. routeRejection (403/451) means "flip OPENSKY_ROUTE"; providerBlocked (429)
-      // means the ACCOUNT is out of credits and no route change can help.
+      // Which OpenSky route requests actually take, and whether the origin is refusing
+      // this exit IP. routeRejection (403/451) means "flip OPENSKY_ROUTE";
+      // providerBlocked (429) means the ACCOUNT is out of credits and no route change
+      // can help. `openskyRoute` is the EFFECTIVE route; `openskyRouteRequested` is what
+      // OPENSKY_ROUTE asked for, so the two differing is itself the misconfiguration
+      // signal (proxy requested, no credential, silently serving direct).
       openskyRoute: OPENSKY_ROUTE,
+      openskyRouteRequested: OPENSKY_ROUTE_REQUESTED,
       openskyRouteRejection: rollup.openskyRouteRejection,
       openskyProviderBlocked,
     },
@@ -11878,7 +11889,7 @@ const server = http.createServer(async (req, res) => {
     const clientId = process.env.OPENSKY_CLIENT_ID;
     const clientSecret = process.env.OPENSKY_CLIENT_SECRET;
 
-    diag.steps.push({ step: 'env_check', hasClientId: !!clientId, hasClientSecret: !!clientSecret, route: OPENSKY_ROUTE, proxyEnabled: OPENSKY_PROXY_ENABLED });
+    diag.steps.push({ step: 'env_check', hasClientId: !!clientId, hasClientSecret: !!clientSecret, route: OPENSKY_ROUTE, routeRequested: OPENSKY_ROUTE_REQUESTED, proxyEnabled: OPENSKY_PROXY_ENABLED });
     diag.steps.push({
       step: 'auth_state',
       cachedToken: !!openskyToken,
@@ -14069,7 +14080,7 @@ const wss = new WebSocketServer({ server });
 server.listen(PORT, () => {
   const listeningPort = server.address()?.port || PORT;
   relayBoundPort = listeningPort;
-  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE === 'proxy' && !OPENSKY_PROXY_ENABLED ? ' — unconfigured, using direct' : ''})`);
+  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
   if (RELAY_TEST_MODE) {
     if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
       candidateReports.set('test-military-vessel', {

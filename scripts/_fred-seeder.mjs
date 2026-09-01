@@ -1,4 +1,5 @@
 import {
+  CHROME_UA,
   allSettledWithConcurrency,
   fredFetchJson,
   getRedisCredentials,
@@ -120,7 +121,9 @@ export async function readFredSeriesMetaCache() {
   const { restUrl: url, token } = creds;
   try {
     const resp = await fetch(`${url}/get/${encodeURIComponent(FRED_SERIES_META_KEY)}`, {
-      headers: { Authorization: `Bearer ${token}` },
+      // AGENTS.md: server-side fetches must carry a User-Agent. redisCommand (the write
+      // path) already sends CHROME_UA; this raw GET has to set it itself.
+      headers: { Authorization: `Bearer ${token}`, 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(5_000),
     });
     if (!resp.ok) return {};
