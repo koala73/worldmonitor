@@ -186,6 +186,10 @@ function git(cwd: string, args: string[]) {
   });
 }
 
+const poisonPathFixture = resolve(root, 'tests/fixtures/proto-codegen/write-fake-tool-path.sh');
+const exactHeadStepName = 'Install plugins, generate, and judge exact-head freshness';
+const mergeFreshnessStepName = 'Install plugins, generate, and verify merge-result freshness';
+
 type GenerationMode =
   | 'clean'
   | 'generated-drift'
@@ -193,20 +197,43 @@ type GenerationMode =
   | 'unexpected-tracked'
   | 'unexpected-untracked';
 
-function runGenerationVerdict(mode: GenerationMode, trustedFork: boolean) {
-  const temp = mkdtempSync(join(tmpdir(), 'wm-proto-generation-'));
-  const repo = join(temp, 'repo');
-  const output = join(temp, 'output');
-  const patch = join(temp, 'generated.patch');
-  const generatedPaths = (workflow.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean);
-  const guard = stepByName(
-    'internal-generate',
-    'Reject generator writes outside generated artifact paths',
-  );
-  const verdict = stepByName('internal-generate', 'Prepare generated artifact patch');
+function writeNoopMake(fakeBin: string, poisonDir?: string) {
+  mkdirSync(fakeBin, { recursive: true });
+  const poison = poisonDir
+    ? `if [ "\${1:-}" = generate ]; then\n  '${poisonPathFixture}' '${poisonDir}'\nfi\n`
+    : '';
+  writeFileSync(join(fakeBin, 'make'), `#!/bin/sh\nset -eu\n${poison}exit 0\n`, { mode: 0o755 });
+}
 
+function assertCapturedToolBoundary(script: string) {
+  const makeCapture = script.indexOf('MAKE_BIN=$(command -v make || true)');
+  const gitCapture = script.indexOf('GIT_BIN=$(command -v git || true)');
+  const firstMake = script.indexOf('"$MAKE_BIN" install-buf install-plugins');
+  assert.ok(makeCapture >= 0, 'must capture make');
+  assert.ok(gitCapture >= 0, 'must capture git');
+  assert.ok(firstMake > makeCapture, 'must capture make before invoking it');
+  assert.ok(firstMake > gitCapture, 'must capture git before invoking make');
+  assert.match(script, /trusted make must resolve to an absolute path/);
+  assert.match(script, /trusted git must resolve to an absolute path/);
+  assert.match(script, /"\$MAKE_BIN" generate/);
+  assert.doesNotMatch(script, /^[ \t]*(?:if ! )?make /m);
+  assert.doesNotMatch(script, /^[ \t]*(?:if ! )?git /m);
+}
+
+function assertNoLaterValidatorSteps(steps: Step[] | undefined, combinedName: string) {
+  const index = steps?.findIndex((step) => step.name === combinedName) ?? -1;
+  assert.ok(index >= 0, `missing combined step ${combinedName}`);
+  for (const step of steps?.slice(index + 1) ?? []) {
+    assert.equal(
+      step.run,
+      undefined,
+      `${step.name ?? step.uses} must not run after the captured verdict`,
+    );
+  }
+}
+
+function seedGeneratedRepo(repo: string, generatedPaths: string[]) {
   mkdirSync(repo);
-  writeFileSync(output, '');
   assert.equal(git(repo, ['init', '--quiet', '--initial-branch=generation']).status, 0);
   assert.equal(git(repo, ['config', 'user.email', 'fixture@example.invalid']).status, 0);
   assert.equal(git(repo, ['config', 'user.name', 'Fixture']).status, 0);
@@ -222,6 +249,27 @@ function runGenerationVerdict(mode: GenerationMode, trustedFork: boolean) {
   writeFileSync(join(repo, 'src/components/Panel.ts'), 'export const panel = 1;\n');
   assert.equal(git(repo, ['add', '-A']).status, 0);
   assert.equal(git(repo, ['commit', '--quiet', '-m', 'base']).status, 0);
+}
+
+function runGenerationVerdict(
+  mode: GenerationMode,
+  trustedFork: boolean,
+  options: { poison?: boolean } = {},
+) {
+  const temp = mkdtempSync(join(tmpdir(), 'wm-proto-generation-'));
+  const repo = join(temp, 'repo');
+  const fakeBin = join(temp, 'bin');
+  const poisonDir = join(temp, 'poison');
+  const output = join(temp, 'output');
+  const githubPath = join(temp, 'github-path');
+  const patch = join(temp, 'generated.patch');
+  const generatedPaths = (workflow.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean);
+  const verdict = stepByName('internal-generate', exactHeadStepName);
+
+  writeFileSync(output, '');
+  writeFileSync(githubPath, '');
+  writeNoopMake(fakeBin, options.poison ? poisonDir : undefined);
+  seedGeneratedRepo(repo, generatedPaths);
 
   if (mode === 'generated-drift') {
     writeFileSync(join(repo, 'src/generated/fixture.ts'), 'generated fixture changed\n');
@@ -232,31 +280,29 @@ function runGenerationVerdict(mode: GenerationMode, trustedFork: boolean) {
     writeFileSync(join(repo, 'src/components/Unexpected.ts'), 'export const unexpected = true;\n');
   }
 
-  const env = {
-    ...isolatedGitEnv(),
-    ...workflow.env,
-    GITHUB_OUTPUT: output,
-    RUNNER_TEMP: temp,
-    TRUSTED_FORK: String(trustedFork),
-  };
-  const guardResult = spawnSync('bash', ['-euo', 'pipefail', '-c', guard.run ?? ''], {
+  const result = spawnSync('bash', ['-euo', 'pipefail', '-c', verdict.run ?? ''], {
     cwd: repo,
     encoding: 'utf8',
-    env,
+    env: {
+      ...isolatedGitEnv(),
+      ...workflow.env,
+      GITHUB_OUTPUT: output,
+      GITHUB_PATH: githubPath,
+      PATH: `${fakeBin}:${process.env.PATH}`,
+      RUNNER_TEMP: temp,
+      TRUSTED_FORK: String(trustedFork),
+    },
   });
-  const verdictResult = guardResult.status === 0
-    ? spawnSync('bash', ['-euo', 'pipefail', '-c', verdict.run ?? ''], {
-        cwd: repo,
-        encoding: 'utf8',
-        env,
-      })
-    : undefined;
 
+  const fakeGit = options.poison
+    ? spawnSync(join(poisonDir, 'git'), ['diff', '--quiet'], { encoding: 'utf8' })
+    : undefined;
   const returned = {
-    guardResult,
+    fakeGitStatus: fakeGit?.status,
+    githubPath: readFileSync(githubPath, 'utf8'),
     output: readFileSync(output, 'utf8'),
     patchExists: existsSync(patch),
-    verdictResult,
+    result,
   };
   rmSync(temp, { recursive: true, force: true });
   return returned;
@@ -270,31 +316,18 @@ type MergeVerdictMode =
   | 'unexpected-staged'
   | 'unexpected-untracked';
 
-function runMergeVerdict(mode: MergeVerdictMode) {
+function runMergeVerdict(mode: MergeVerdictMode, options: { poison?: boolean } = {}) {
   const temp = mkdtempSync(join(tmpdir(), 'wm-proto-merge-verdict-'));
   const repo = join(temp, 'repo');
+  const fakeBin = join(temp, 'bin');
+  const poisonDir = join(temp, 'poison');
+  const githubPath = join(temp, 'github-path');
   const generatedPaths = (workflow.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean);
-  const verdict = stepByName(
-    'internal-merge-freshness',
-    'Verify generated artifacts are fresh against the merge result',
-  );
+  const verdict = stepByName('internal-merge-freshness', mergeFreshnessStepName);
 
-  mkdirSync(repo);
-  assert.equal(git(repo, ['init', '--quiet', '--initial-branch=merge-verdict']).status, 0);
-  assert.equal(git(repo, ['config', 'user.email', 'fixture@example.invalid']).status, 0);
-  assert.equal(git(repo, ['config', 'user.name', 'Fixture']).status, 0);
-
-  for (const generatedPath of generatedPaths) {
-    const fixturePath = generatedPath.endsWith('/')
-      ? join(generatedPath, generatedPath.startsWith('docs/') ? 'fixture.yaml' : 'fixture.ts')
-      : generatedPath;
-    mkdirSync(dirname(join(repo, fixturePath)), { recursive: true });
-    writeFileSync(join(repo, fixturePath), 'generated fixture\n');
-  }
-  mkdirSync(join(repo, 'src/components'), { recursive: true });
-  writeFileSync(join(repo, 'src/components/Panel.ts'), 'export const panel = 1;\n');
-  assert.equal(git(repo, ['add', '-A']).status, 0);
-  assert.equal(git(repo, ['commit', '--quiet', '-m', 'base']).status, 0);
+  writeFileSync(githubPath, '');
+  writeNoopMake(fakeBin, options.poison ? poisonDir : undefined);
+  seedGeneratedRepo(repo, generatedPaths);
 
   if (mode === 'generated-drift' || mode === 'generated-staged') {
     writeFileSync(join(repo, 'src/generated/fixture.ts'), 'generated fixture changed\n');
@@ -316,11 +349,21 @@ function runMergeVerdict(mode: MergeVerdictMode) {
     env: {
       ...isolatedGitEnv(),
       ...workflow.env,
+      GITHUB_PATH: githubPath,
+      PATH: `${fakeBin}:${process.env.PATH}`,
     },
   });
 
+  const fakeGit = options.poison
+    ? spawnSync(join(poisonDir, 'git'), ['diff', '--quiet'], { encoding: 'utf8' })
+    : undefined;
+  const returned = {
+    fakeGitStatus: fakeGit?.status,
+    githubPath: readFileSync(githubPath, 'utf8'),
+    result,
+  };
   rmSync(temp, { recursive: true, force: true });
-  return result;
+  return returned;
 }
 
 function runWriter(mode: 'valid' | 'valid-mirror' | 'unexpected' | 'lease-failure' | 'current') {
@@ -652,10 +695,11 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
     assert.equal(generationCheckout?.with?.['persist-credentials'], false);
     assert.match(String(generationCheckout?.with?.ref), /pull_request\.head\.sha/);
 
-    const verdict = stepByName('internal-generate', 'Prepare generated artifact patch');
+    const verdict = stepByName('internal-generate', exactHeadStepName);
     assert.match(verdict.env?.TRUSTED_FORK ?? '', /needs\.changes\.outputs\.trusted_fork/);
     assert.match(verdict.run ?? '', /TRUSTED_FORK/);
     assert.match(verdict.run ?? '', /Generated artifacts are stale on the owner-trusted fork head/);
+    assertCapturedToolBoundary(verdict.run ?? '');
 
     const upload = generation.steps?.find((step) => step.uses?.startsWith('actions/upload-artifact@'));
     assert.match(upload?.if ?? '', /needs\.changes\.outputs\.trusted_fork != 'true'/);
@@ -672,10 +716,15 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
 
     assert.equal(internal.steps?.some((step) => step.run === 'make generate'), false);
     assert.equal(
-      generation.steps?.some((step) => step.run === 'make generate'),
+      generation.steps?.some((step) => step.name === exactHeadStepName),
       true,
-      'the read-only job must own generation',
+      'the read-only job must own generation and the exact-head verdict',
     );
+    assert.equal(
+      generation.steps?.filter((step) => (step.run ?? '').includes('"$MAKE_BIN" generate')).length,
+      1,
+    );
+    assertNoLaterValidatorSteps(generation.steps, exactHeadStepName);
     assert.equal(
       generation.steps?.find((step) => step.uses?.startsWith('actions/upload-artifact@'))?.uses,
       'actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f',
@@ -698,21 +747,18 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
   it('executes clean, drift, and unexpected-write generation verdicts', () => {
     for (const trustedFork of [false, true]) {
       const clean = runGenerationVerdict('clean', trustedFork);
-      assert.equal(clean.guardResult.status, 0, clean.guardResult.stderr);
-      assert.equal(clean.verdictResult?.status, 0, clean.verdictResult?.stderr);
+      assert.equal(clean.result.status, 0, clean.result.stderr);
       assert.match(clean.output, /^changed=false$/m);
       assert.equal(clean.patchExists, false);
     }
 
     const internalDrift = runGenerationVerdict('generated-drift', false);
-    assert.equal(internalDrift.guardResult.status, 0, internalDrift.guardResult.stderr);
-    assert.equal(internalDrift.verdictResult?.status, 0, internalDrift.verdictResult?.stderr);
+    assert.equal(internalDrift.result.status, 0, internalDrift.result.stderr);
     assert.match(internalDrift.output, /^changed=true$/m);
     assert.equal(internalDrift.patchExists, true);
 
     const trustedDrift = runGenerationVerdict('generated-drift', true);
-    assert.equal(trustedDrift.guardResult.status, 0, trustedDrift.guardResult.stderr);
-    assert.notEqual(trustedDrift.verdictResult?.status, 0);
+    assert.notEqual(trustedDrift.result.status, 0);
     assert.equal(trustedDrift.output, '');
     assert.equal(trustedDrift.patchExists, false);
 
@@ -722,21 +768,17 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       'unexpected-untracked',
     ] satisfies GenerationMode[]) {
       const result = runGenerationVerdict(mode, true);
-      assert.notEqual(result.guardResult.status, 0, mode);
-      assert.equal(result.verdictResult, undefined);
+      assert.notEqual(result.result.status, 0, mode);
       assert.equal(result.output, '');
       assert.equal(result.patchExists, false);
     }
   });
 
   it('fails generator writes outside the complete generated-output allowlist', () => {
-    const guard = stepByName(
-      'internal-generate',
-      'Reject generator writes outside generated artifact paths',
-    ).run ?? '';
+    const guard = stepByName('internal-generate', exactHeadStepName).run ?? '';
 
     assert.match(guard, /GENERATED_PATHS/);
-    assert.match(guard, /git diff --cached --quiet/);
+    assert.match(guard, /"\$GIT_BIN" diff --cached --quiet/);
     assert.match(guard, /UNEXPECTED_UNTRACKED/);
 
     const generatedPaths = new Set((workflow.env?.GENERATED_PATHS ?? '').split(/\s+/).filter(Boolean));
@@ -750,41 +792,57 @@ describe('proto codegen workflow trust boundaries (#3340)', () => {
       'internal-auto-generate',
       'Commit generated artifacts to the internal PR branch',
     ).run ?? '';
-    const mergeCheck = stepByName(
-      'internal-merge-freshness',
-      'Verify generated artifacts are fresh against the merge result',
-    ).run ?? '';
+    const mergeCheck = stepByName('internal-merge-freshness', mergeFreshnessStepName).run ?? '';
     assert.match(writer, /GENERATED_PATHS/);
     assert.match(writer, /PATHNAME.*GENERATED_PATH/);
     assert.match(mergeCheck, /GENERATED_PATHS/);
-    assert.match(mergeCheck, /git diff --cached --quiet -- \. "\$\{EXCLUSIONS\[@\]\}"/);
-    assert.match(mergeCheck, /git diff --cached --quiet -- "\$\{GENERATED_PATH_ARRAY\[@\]\}"/);
+    assert.match(mergeCheck, /"\$GIT_BIN" diff --cached --quiet -- \. "\$\{EXCLUSIONS\[@\]\}"/);
+    assert.match(mergeCheck, /"\$GIT_BIN" diff --cached --quiet -- "\$\{GENERATED_PATH_ARRAY\[@\]\}"/);
     assert.match(mergeCheck, /UNEXPECTED_UNTRACKED/);
+    assertCapturedToolBoundary(mergeCheck);
+    assertNoLaterValidatorSteps(job('internal-merge-freshness').steps, mergeFreshnessStepName);
   });
 
   it('executes merge-verdict fixtures for staged generated drift and outside-path writes', () => {
     const clean = runMergeVerdict('clean');
-    assert.equal(clean.status, 0, clean.stderr);
+    assert.equal(clean.result.status, 0, clean.result.stderr);
 
     const unstagedGenerated = runMergeVerdict('generated-drift');
-    assert.notEqual(unstagedGenerated.status, 0);
-    assert.match(unstagedGenerated.stdout, /stale against the PR merge result/i);
+    assert.notEqual(unstagedGenerated.result.status, 0);
+    assert.match(unstagedGenerated.result.stdout, /stale against the PR merge result/i);
 
     const stagedGenerated = runMergeVerdict('generated-staged');
-    assert.notEqual(stagedGenerated.status, 0, 'staged generated drift must fail the merge verdict');
-    assert.match(stagedGenerated.stdout, /stale against the PR merge result/i);
+    assert.notEqual(stagedGenerated.result.status, 0, 'staged generated drift must fail the merge verdict');
+    assert.match(stagedGenerated.result.stdout, /stale against the PR merge result/i);
 
     const unexpectedTracked = runMergeVerdict('unexpected-tracked');
-    assert.notEqual(unexpectedTracked.status, 0);
-    assert.match(unexpectedTracked.stdout, /outside the generated artifact paths/i);
+    assert.notEqual(unexpectedTracked.result.status, 0);
+    assert.match(unexpectedTracked.result.stdout, /outside the generated artifact paths/i);
 
     const unexpectedStaged = runMergeVerdict('unexpected-staged');
-    assert.notEqual(unexpectedStaged.status, 0);
-    assert.match(unexpectedStaged.stdout, /outside the generated artifact paths/i);
+    assert.notEqual(unexpectedStaged.result.status, 0);
+    assert.match(unexpectedStaged.result.stdout, /outside the generated artifact paths/i);
 
     const unexpectedUntracked = runMergeVerdict('unexpected-untracked');
-    assert.notEqual(unexpectedUntracked.status, 0);
-    assert.match(unexpectedUntracked.stdout, /outside the generated artifact paths/i);
+    assert.notEqual(unexpectedUntracked.result.status, 0);
+    assert.match(unexpectedUntracked.result.stdout, /outside the generated artifact paths/i);
+  });
+
+  it('rejects generated drift after fork code writes a fake tool path', () => {
+    assert.equal(existsSync(poisonPathFixture), true);
+
+    const exactHead = runGenerationVerdict('generated-drift', true, { poison: true });
+    assert.match(exactHead.githubPath, /\/poison$/m);
+    assert.equal(exactHead.fakeGitStatus, 0, 'the fake git must hide drift from an unqualified later step');
+    assert.notEqual(exactHead.result.status, 0);
+    assert.match(exactHead.result.stdout, /stale on the owner-trusted fork head/i);
+    assert.equal(exactHead.patchExists, false);
+
+    const merge = runMergeVerdict('generated-drift', { poison: true });
+    assert.match(merge.githubPath, /\/poison$/m);
+    assert.equal(merge.fakeGitStatus, 0, 'the fake git must hide drift from an unqualified later merge step');
+    assert.notEqual(merge.result.status, 0);
+    assert.match(merge.result.stdout, /stale against the PR merge result/i);
   });
 
   it('runs merge freshness after a deliberately skipped trusted-fork writer', () => {

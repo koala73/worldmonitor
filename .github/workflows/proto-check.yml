@@ -222,17 +222,41 @@ jobs:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
-      - name: Install buf and protoc plugins
-        run: make install-buf install-plugins
+      # Fork-controlled make can write GITHUB_PATH or GITHUB_ENV. GitHub
+      # applies those files to later steps, so a fake git could hide drift.
+      # Capture trusted make/git first, then keep install, generate, and the
+      # exact-head verdict in this one shell.
+      - name: Install plugins, generate, and judge exact-head freshness
+        id: patch
         env:
           GOPROXY: direct
           GOPRIVATE: github.com/SebastienMelki
-
-      - name: Run proto generation
-        run: make generate
-
-      - name: Reject generator writes outside generated artifact paths
+          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
         run: |
+          MAKE_BIN=$(command -v make || true)
+          GIT_BIN=$(command -v git || true)
+          if [ -z "$MAKE_BIN" ] || [ -z "$GIT_BIN" ]; then
+            echo "ERROR: trusted make or git is missing from PATH."
+            exit 1
+          fi
+          case "$MAKE_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted make must resolve to an absolute path: $MAKE_BIN"
+              exit 1
+              ;;
+          esac
+          case "$GIT_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted git must resolve to an absolute path: $GIT_BIN"
+              exit 1
+              ;;
+          esac
+
+          "$MAKE_BIN" install-buf install-plugins
+          "$MAKE_BIN" generate
+
           read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
           EXCLUSIONS=()
           for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
@@ -243,29 +267,23 @@ jobs:
             fi
           done
 
-          if ! git diff --quiet -- . "${EXCLUSIONS[@]}" || \
-             ! git diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
+          if ! "$GIT_BIN" diff --quiet -- . "${EXCLUSIONS[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
             echo "ERROR: make generate modified tracked files outside the generated artifact paths."
-            git diff --stat -- . "${EXCLUSIONS[@]}"
-            git diff --cached --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --cached --stat -- . "${EXCLUSIONS[@]}"
             exit 1
           fi
 
-          UNEXPECTED_UNTRACKED=$(git ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
+          UNEXPECTED_UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
           if [ -n "$UNEXPECTED_UNTRACKED" ]; then
             echo "ERROR: make generate created files outside the generated artifact paths:"
             echo "$UNEXPECTED_UNTRACKED"
             exit 1
           fi
 
-      - name: Prepare generated artifact patch
-        id: patch
-        env:
-          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
-        run: |
-          read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
-          git add -A -- "${GENERATED_PATH_ARRAY[@]}"
-          if git diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
+          "$GIT_BIN" add -A -- "${GENERATED_PATH_ARRAY[@]}"
+          if "$GIT_BIN" diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -273,11 +291,11 @@ jobs:
           if [ "$TRUSTED_FORK" = "true" ]; then
             echo "ERROR: Generated artifacts are stale on the owner-trusted fork head."
             echo "Regenerate the artifacts and push the reviewed result from the repository owner account."
-            git diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
             exit 1
           fi
 
-          git diff --cached --binary --full-index -- "${GENERATED_PATH_ARRAY[@]}" > "$RUNNER_TEMP/generated.patch"
+          "$GIT_BIN" diff --cached --binary --full-index -- "${GENERATED_PATH_ARRAY[@]}" > "$RUNNER_TEMP/generated.patch"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload generated artifact patch
@@ -434,17 +452,38 @@ jobs:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
-      - name: Install buf and protoc plugins
-        run: make install-buf install-plugins
+      # Same GITHUB_PATH / GITHUB_ENV boundary as exact-head generation:
+      # capture trusted make/git, then keep merge install, generate, and
+      # the freshness verdict in one shell.
+      - name: Install plugins, generate, and verify merge-result freshness
         env:
           GOPROXY: direct
           GOPRIVATE: github.com/SebastienMelki
-
-      - name: Run proto generation against merge commit
-        run: make generate
-
-      - name: Verify generated artifacts are fresh against the merge result
         run: |
+          MAKE_BIN=$(command -v make || true)
+          GIT_BIN=$(command -v git || true)
+          if [ -z "$MAKE_BIN" ] || [ -z "$GIT_BIN" ]; then
+            echo "ERROR: trusted make or git is missing from PATH."
+            exit 1
+          fi
+          case "$MAKE_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted make must resolve to an absolute path: $MAKE_BIN"
+              exit 1
+              ;;
+          esac
+          case "$GIT_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted git must resolve to an absolute path: $GIT_BIN"
+              exit 1
+              ;;
+          esac
+
+          "$MAKE_BIN" install-buf install-plugins
+          "$MAKE_BIN" generate
+
           read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
           EXCLUSIONS=()
           for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
@@ -455,34 +494,34 @@ jobs:
             fi
           done
 
-          if ! git diff --quiet -- . "${EXCLUSIONS[@]}" || \
-             ! git diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
+          if ! "$GIT_BIN" diff --quiet -- . "${EXCLUSIONS[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
             echo "ERROR: Merge-result generation modified tracked files outside the generated artifact paths."
-            git diff --stat -- . "${EXCLUSIONS[@]}"
-            git diff --cached --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --cached --stat -- . "${EXCLUSIONS[@]}"
             exit 1
           fi
 
-          UNEXPECTED_UNTRACKED=$(git ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
+          UNEXPECTED_UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
           if [ -n "$UNEXPECTED_UNTRACKED" ]; then
             echo "ERROR: Merge-result generation created files outside the generated artifact paths:"
             echo "$UNEXPECTED_UNTRACKED"
             exit 1
           fi
 
-          if ! git diff --quiet -- "${GENERATED_PATH_ARRAY[@]}" || \
-             ! git diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
+          if ! "$GIT_BIN" diff --quiet -- "${GENERATED_PATH_ARRAY[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
             echo ""
             echo "============================================================"
             echo "ERROR: Generated artifacts are stale against the PR merge result."
             echo "Merge the latest main branch into the PR branch and retry."
             echo "============================================================"
-            git diff --stat -- "${GENERATED_PATH_ARRAY[@]}"
-            git diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            "$GIT_BIN" diff --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
             exit 1
           fi
 
-          UNTRACKED=$(git ls-files --others --exclude-standard -- "${GENERATED_PATH_ARRAY[@]}")
+          UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- "${GENERATED_PATH_ARRAY[@]}")
           if [ -n "$UNTRACKED" ]; then
             echo "ERROR: Untracked generated files found against the PR merge result:"
             echo "$UNTRACKED"
