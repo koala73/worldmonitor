@@ -144,4 +144,26 @@ describe('buildCountryMarketIndex', () => {
     assert.deepEqual(index.JO.map((entry) => entry.title), [jordanian.title, amman.title]);
     assert.deepEqual(index.TD.map((entry) => entry.title), [chadian.title, nDjamena.title]);
   });
+
+  it('matches verified demonym-only titles to their country', () => {
+    const cases = [
+      ['French election', 'FR'],
+      ['German chancellor', 'DE'],
+      ['Russian ceasefire', 'RU'],
+      ['Chinese tariffs', 'CN'],
+      ['Israeli election', 'IL'],
+      ['Iranian president', 'IR'],
+      ['North Korean missile', 'KP'],
+    ];
+
+    for (const [title, countryCode] of cases) {
+      const index = buildCountryMarketIndex([market(title, 'polymarket', 10_000)], { now: NOW });
+      assert.deepEqual(
+        index[countryCode]?.map((entry) => entry.title),
+        [title],
+        title,
+      );
+      if (countryCode === 'KP') assert.equal(index.KR, undefined, title);
+    }
+  });
 });
