@@ -36,17 +36,11 @@ function formatNumber(value, maximumFractionDigits = 1) {
   }).format(value);
 }
 
-// Today's transits are counts from the relay's in-memory 24h AIS window. That
-// window is empty far more often than it is zero-trafficked, and the seeder
-// cannot tell the two apart (`relayTransit` is only built when
-// `recent.length > 0`), so a count below 1 is unsupplied and must not publish
-// as "0" (#7457 / #7370 class).
-//
 // This module is copied verbatim into public/tools/live-tools.js by
 // build-crawlable-corpus.mjs, so it must stay import-free at module scope. The
 // generator imports THESE exports rather than mirroring them -- a "keep in
 // sync" comment is a contract nothing can fail on.
-export function publishedTransitCountLabel(value) {
+export function publishedTransitCountLabel(value, { allowZero = false } = {}) {
   if (value == null || value === '') return null;
   const numeric = typeof value === 'number'
     ? value
@@ -54,8 +48,28 @@ export function publishedTransitCountLabel(value) {
   // Always re-format the parsed number instead of echoing the input string:
   // a passthrough would publish "1e3" or "0x10" verbatim, and a fraction such
   // as 0.4 clears a `> 0` gate only to render as the "0" this exists to stop.
-  if (!Number.isFinite(numeric) || numeric < 1) return null;
+  if (
+    !Number.isFinite(numeric)
+    || numeric < 0
+    || (numeric > 0 && numeric < 1)
+    || (numeric === 0 && !allowZero)
+  ) return null;
   return formatNumber(numeric, 0);
+}
+
+export function chokepointCoverageMetrics({
+  todayTransits,
+  todayCountsAvailable,
+  warnings,
+  weekMovement,
+}) {
+  const transitLabel = todayCountsAvailable === false
+    ? null
+    : publishedTransitCountLabel(todayTransits, { allowZero: todayCountsAvailable === true });
+  if (transitLabel === null) {
+    return { todayTransits: null, todayCountsAvailable, warnings: '—', weekMovement: null };
+  }
+  return { todayTransits: transitLabel, todayCountsAvailable, warnings, weekMovement };
 }
 
 export function withheldTransitCountSentence(displayName) {
@@ -333,21 +347,27 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   // chokepoint (it dropped two for ~4.5h on 2026-08-25) and then rendered the
   // withhold note over live data. The count carries its own absence.
   const transitAvailable = transit?.dataAvailable === true;
-  const todayTransits = publishedTransitCountLabel(nonNegativeNumber(transit?.todayTotal));
   const weekMovement = transitAvailable ? finiteNumber(transit.wowChangePct) : null;
+  const coverageMetrics = chokepointCoverageMetrics({
+    todayTransits: nonNegativeNumber(transit?.todayTotal),
+    todayCountsAvailable: transit?.todayCountsAvailable,
+    warnings: `${formatNumber(activeWarnings, 0)} ${activeWarnings === 1 ? 'warning' : 'warnings'} · ${formatNumber(aisDisruptions, 0)} AIS ${aisDisruptions === 1 ? 'disruption' : 'disruptions'}`,
+    weekMovement: weekMovement === null
+      ? null
+      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+  });
 
   return {
     disruptionScore: formatNumber(score, 0),
     status,
     congestion: humanizeToken(row.congestionLevel) || 'Not reported',
-    warnings: `${formatNumber(activeWarnings, 0)} ${activeWarnings === 1 ? 'warning' : 'warnings'} · ${formatNumber(aisDisruptions, 0)} AIS ${aisDisruptions === 1 ? 'disruption' : 'disruptions'}`,
+    warnings: coverageMetrics.warnings,
     description: String(row.description || '').trim() || 'No additional status note was supplied.',
-    todayTransits,
-    weekMovement: weekMovement === null
-      ? null
-      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+    todayTransits: coverageMetrics.todayTransits,
+    todayCountsAvailable: coverageMetrics.todayCountsAvailable,
+    weekMovement: coverageMetrics.weekMovement,
     fetchedAt,
-    partial: payload.upstreamUnavailable === true || !transitAvailable || todayTransits === null,
+    partial: payload.upstreamUnavailable === true || !transitAvailable || coverageMetrics.todayTransits === null,
   };
 }
 
@@ -1113,7 +1133,7 @@ export async function loadChokepoint(tool) {
     setText(tool, '[data-chokepoint-congestion]', view.congestion);
     setText(tool, '[data-chokepoint-warnings]', view.warnings);
     setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? '—');
-    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? 'Unavailable');
+    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (view.todayTransits === null ? '—' : 'Unavailable'));
     setText(tool, '[data-chokepoint-description]', view.description);
     const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
     if (transitsNote) {

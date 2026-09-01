@@ -296,7 +296,7 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
       const types = new Set(objects.map((ld) => ld['@type']));
       assert.ok(types.has('WebPage'), `${label} missing WebPage JSON-LD`);
       assert.ok(types.has('FAQPage'), `${label} missing FAQPage JSON-LD for AI extraction (#7381)`);
-      assert.ok(types.has('ItemList'), `${label} missing ItemList JSON-LD for AI extraction (#7381)`);
+      assert.equal(types.has('ItemList'), false, `${label} must not duplicate its HowTo steps in ItemList JSON-LD (#7506)`);
       assert.ok(types.has('HowTo'), `${label} missing HowTo JSON-LD for AI extraction (#7462)`);
       const faq = objects.find((ld) => ld['@type'] === 'FAQPage');
       assert.deepEqual(faq.mainEntity, expected.faq, `${label} FAQPage questions`);
@@ -314,34 +314,20 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
       assert.equal(howto['@id'], `${pageUrl}#howto`);
       assert.equal(howto.name, expected.itemListName);
       assert.equal(howto.step.length, expected.steps.length);
-      const list = objects.find((ld) => ld['@type'] === 'ItemList');
-      assert.equal(list.name, expected.itemListName, `${label} ItemList name`);
-      assert.equal(list.numberOfItems, expected.steps.length, `${label} ItemList numberOfItems`);
-      assert.equal(list.itemListElement.length, expected.steps.length);
       assert.deepEqual(
         visibleWorkflowStepNames(html),
         expected.steps,
-        `${label} visible workflow steps must match ItemList names`,
+        `${label} visible workflow steps must match HowTo names`,
       );
       for (const [index, name] of expected.steps.entries()) {
         const url = `${pageUrl}#${stepSlug(name)}`;
-        const el = list.itemListElement[index];
         const step = howto.step[index];
-        assert.equal(el['@type'], 'ListItem');
-        assert.equal(el.position, index + 1);
-        assert.equal(el.name, name);
-        assert.equal(el.url, url);
-        assert.match(el.description, /\S/, `${label} ItemList ${name} needs a description`);
-        assert.ok(html.includes(el.description), `${label} ItemList ${name} description must match visible copy`);
-        assert.equal(el.item['@type'], 'HowToStep');
-        assert.equal(el.item.name, name);
-        assert.equal(el.item.url, url);
-        assert.equal(el.item.text, el.description);
         assert.equal(step['@type'], 'HowToStep');
         assert.equal(step.position, index + 1);
         assert.equal(step.name, name);
         assert.equal(step.url, url);
-        assert.equal(step.text, el.description);
+        assert.match(step.text, /\S/, `${label} HowTo ${name} needs a description`);
+        assert.ok(html.includes(step.text), `${label} HowTo ${name} text must match visible copy`);
         assert.ok(html.includes(`id="${stepSlug(name)}"`), `${label} missing visible step id ${stepSlug(name)}`);
       }
     }
