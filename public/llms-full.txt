@@ -36,6 +36,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 ## Live Instances
 
 - [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure — RSS categories, panels, military bases, nuclear facilities, hotspots
+- [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
 - [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity — RSS categories, panels, tech HQs, cloud regions, startup hubs
 - [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI — RSS categories, panels, stock exchanges, central banks, Gulf investments
 - [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, shipping, chokepoints, supply chains, commodity markets
@@ -105,6 +106,10 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 ### What is World Monitor?
 
 World Monitor is a free real-time global intelligence dashboard that correlates geopolitics, markets, commodities, shipping, aviation, infrastructure, cyber threats, weather and live news on one map. It is designed for people who need to see when separate signals converge before they become a consensus headline.
+
+### What is the Country Instability Index?
+
+The Country Instability Index (CII) is World Monitor's high-frequency 0-100 stress score for 31 Tier-1 countries. CII v8 combines a 40% editorial baseline with a 60% live event score. The event score weights conflict at 30%, unrest at 25%, information signals at 25%, and security signals at 20%, then applies bounded boosts and authoritative floors. Each country has an instability band and signed movement against a valid snapshot from approximately 24 hours earlier. See the [live CII rankings](https://www.worldmonitor.app/country-instability-index/).
 
 ### How does World Monitor help market analysis?
 

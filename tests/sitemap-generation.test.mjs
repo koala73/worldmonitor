@@ -76,6 +76,10 @@ describe('root sitemap generator', () => {
         canonical: `${SITE_ORIGIN}/tools/natural-hazard-pulse/`,
         lastmod: '2026-07-20',
       });
+      writeCorpusPage(publicDir, 'country-instability-index/index.html', {
+        canonical: `${SITE_ORIGIN}/country-instability-index/`,
+        lastmod: '2026-07-20',
+      });
 
       const resolveMaterialLastmod = () => '2026-07-21';
       const existingSitemapSource = `<?xml version="1.0"?><urlset><url>`
@@ -104,6 +108,10 @@ describe('root sitemap generator', () => {
       assert.equal(XMLValidator.validate(first), true);
       assert.match(first, /<loc>https:\/\/www\.worldmonitor\.app\/countries\/norway\/<\/loc>/);
       assert.match(first, /<loc>https:\/\/www\.worldmonitor\.app\/tools\/natural-hazard-pulse\/<\/loc>/);
+      assert.equal(
+        first.split(`<loc>${SITE_ORIGIN}/country-instability-index/</loc>`).length - 1,
+        1,
+      );
       assert.match(first, /<lastmod>2026-05-28<\/lastmod>/);
       assert.match(first, /<lastmod>2026-07-20<\/lastmod>/);
       assert.doesNotMatch(first, /<changefreq>|<priority>/);

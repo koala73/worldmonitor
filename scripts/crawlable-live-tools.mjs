@@ -186,6 +186,62 @@ export function liveRiskViewModel(payload, now = Date.now()) {
   };
 }
 
+export function ciiRankingViewModel(payload, now = Date.now()) {
+  if (!payload || typeof payload !== 'object' || !Array.isArray(payload.ciiScores)) {
+    throw new Error('CII ranking response is unavailable');
+  }
+  if (payload.degraded === true || payload.stale === true) {
+    throw new Error('CII ranking response is degraded or stale');
+  }
+  if (payload.ciiScores.length === 0) {
+    throw new Error('CII ranking response is unavailable');
+  }
+
+  const seenCodes = new Set();
+  const methodologyVersions = new Set();
+  const rows = payload.ciiScores.map((entry) => {
+    const code = String(entry?.region || '').trim().toUpperCase();
+    if (!/^[A-Z]{2}$/.test(code)) throw new Error('CII ranking country code is invalid');
+    if (seenCodes.has(code)) throw new Error(`CII ranking contains duplicate country ${code}`);
+    seenCodes.add(code);
+
+    const scoreValue = finiteNumber(entry?.combinedScore);
+    const band = instabilityBand(scoreValue);
+    const change24h = finiteNumber(entry?.dynamicScore);
+    if (scoreValue === null || band === null || change24h === null || change24h < -100 || change24h > 100) {
+      throw new Error(`CII ranking score is invalid for ${code}`);
+    }
+    const computedAt = requireTimestamp(
+      entry?.computedAt,
+      now,
+      `CII ranking ${code}`,
+      MAX_LIVE_SNAPSHOT_AGE_MS,
+    );
+    const methodologyVersion = String(entry?.methodologyVersion || '').trim();
+    if (!methodologyVersion) throw new Error(`CII ranking methodology is unavailable for ${code}`);
+    methodologyVersions.add(methodologyVersion);
+
+    return {
+      code,
+      score: formatNumber(scoreValue),
+      scoreValue,
+      band,
+      trend: formatTrend(change24h, entry?.trend),
+      computedAt,
+      methodologyVersion,
+    };
+  }).sort((left, right) => right.scoreValue - left.scoreValue || left.code.localeCompare(right.code));
+
+  if (methodologyVersions.size !== 1) {
+    throw new Error('CII ranking response mixes methodology versions');
+  }
+  return {
+    rows,
+    updatedAt: Math.max(...rows.map((row) => row.computedAt)),
+    methodologyVersion: rows[0].methodologyVersion,
+  };
+}
+
 function normalizeBounds(bounds) {
   if (!Array.isArray(bounds) || bounds.length !== 4) return null;
   const values = bounds.map(finiteNumber);
@@ -932,6 +988,55 @@ export async function loadCountryRisk(tool) {
   }
 }
 
+function renderCiiRankingViewModel(tool, view) {
+  const body = tool.querySelector('[data-cii-ranking-body]');
+  if (!body) throw new Error('CII ranking table body is unavailable');
+  const rowByCode = new Map(
+    [...body.querySelectorAll('[data-cii-country]')].map((row) => [row.dataset.ciiCountry, row]),
+  );
+  if (
+    rowByCode.size !== view.rows.length
+    || view.rows.some((entry) => !rowByCode.has(entry.code))
+  ) {
+    throw new Error('CII ranking response does not match the published country set');
+  }
+
+  for (const entry of view.rows) {
+    const row = rowByCode.get(entry.code);
+    setText(row, '[data-cii-score]', entry.score);
+    setText(row, '[data-cii-trend]', entry.trend);
+    setText(row, '[data-cii-band]', entry.band);
+    const updated = row.querySelector('[data-cii-updated]');
+    if (updated) {
+      updated.textContent = formatDateTime(entry.computedAt);
+      updated.setAttribute('datetime', new Date(entry.computedAt).toISOString());
+    }
+    body.append(row);
+  }
+  setTime(tool, '[data-cii-ranking-updated]', view.updatedAt, 'Latest score');
+  markPublishedLivePulse(tool);
+  setToolState(tool, 'ready', `API result · ${view.methodologyVersion}`);
+}
+
+export async function loadCiiRanking(tool) {
+  setToolState(tool, 'loading', 'Refreshing live scores…');
+  try {
+    await runLatestToolRequest(
+      tool,
+      async (signal) => {
+        const payload = await requestLiveJson('/api/intelligence/v1/get-risk-scores', {
+          signal,
+          preflightSession: true,
+        });
+        return ciiRankingViewModel(payload);
+      },
+      (view) => renderCiiRankingViewModel(tool, view),
+    );
+  } catch {
+    setToolState(tool, 'error', 'Live refresh unavailable — showing published rankings');
+  }
+}
+
 export async function loadChokepoint(tool) {
   const state = beginToolRequest(tool);
   const id = String(tool.dataset.chokepointId || '');
@@ -1208,6 +1313,10 @@ function applyInitialCountrySelection(tool) {
 }
 
 export function initLiveTools(root = document) {
+  for (const tool of root.querySelectorAll('[data-live-cii-ranking]')) {
+    tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCiiRanking(tool));
+    void loadCiiRanking(tool);
+  }
   for (const tool of root.querySelectorAll('[data-live-country-risk]')) {
     tool.querySelector('[data-live-refresh]')?.addEventListener('click', () => loadCountryRisk(tool));
     void loadCountryRisk(tool);

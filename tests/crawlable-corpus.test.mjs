@@ -945,13 +945,14 @@ describe('crawlable corpus generator', () => {
       });
 
       assert.equal(manifest.sections.countries.count, 196);
+      assert.equal(manifest.sections.countryInstabilityIndex.count, 1);
       assert.equal(manifest.sections.chokepoints.count, 13);
       assert.equal(manifest.sections.crises.count, 4);
       assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
       assert.equal(manifest.sections.sources.count, 1);
-      assert.equal(manifest.generatorContentVersion, '2026-08-31');
+      assert.equal(manifest.generatorContentVersion, '2026-09-01');
       const sitemapEntries = buildSitemapEntries({
         repoRoot,
         publicDir: outDir,
@@ -971,6 +972,8 @@ describe('crawlable corpus generator', () => {
       const manifestLocations = new Set([
         manifest.sections.countries.index,
         ...manifest.sections.countries.routes,
+        manifest.sections.countryInstabilityIndex.index,
+        ...manifest.sections.countryInstabilityIndex.routes,
         manifest.sections.chokepoints.index,
         ...manifest.sections.chokepoints.routes,
         manifest.sections.crises.index,
@@ -1038,12 +1041,14 @@ describe('crawlable corpus generator', () => {
           .filter(Boolean),
       );
       const datasetRequiredRoutes = new Set([
+        manifest.sections.countryInstabilityIndex.index,
         ...manifest.sections.countries.routes,
         ...manifest.sections.chokepoints.routes,
         ...manifest.sections.crises.routes,
         ...manifest.sections.research.routes,
       ]);
       const catalogLinkedRoutes = new Set([
+        manifest.sections.countryInstabilityIndex.index,
         ...manifest.sections.countries.routes,
         ...manifest.sections.chokepoints.routes,
         ...manifest.sections.crises.routes,
@@ -1068,9 +1073,12 @@ describe('crawlable corpus generator', () => {
         if (countryObservationRoutes.has(route)) {
           const datasets = jsonLdObjects(html).flatMap((entry) => collectDatasets(entry));
           for (const [index, dataset] of datasets.entries()) {
+            const isCiiDataset = dataset['@id']?.endsWith('#cii-dataset');
             assertSourceDerivedTemporalCoverage(dataset, {
               route,
-              observationInterval: manifest.sections.countries.sourceCapturedAt,
+              observationInterval: isCiiDataset
+                ? manifest.sections.countryInstabilityIndex.sourceCapturedAt
+                : manifest.sections.countries.sourceCapturedAt,
               lastmod: pageLastmod(html),
               index: index + 1,
             });
@@ -1103,12 +1111,17 @@ describe('crawlable corpus generator', () => {
         assertDatasetDownloadsAreGenerated(html, outDir, route);
       }
       assertDataCatalogPresent(read(outDir, 'countries/index.html'), '/countries/');
+      assertDataCatalogPresent(
+        read(outDir, 'country-instability-index/index.html'),
+        '/country-instability-index/',
+      );
       assertDataCatalogPresent(read(outDir, 'chokepoints/index.html'), '/chokepoints/');
       assertDataCatalogPresent(read(outDir, 'crises/index.html'), '/crises/');
       assertDataCatalogPresent(read(outDir, 'research/index.html'), '/research/');
 
       for (const path of [
         'countries/index.html',
+        'country-instability-index/index.html',
         'countries/norway/index.html',
         'countries/norway/resilience.json',
         'chokepoints/index.html',
@@ -1141,7 +1154,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="alternate" hreflang="x-default" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
-      assert.match(norway, /<meta name="lastmod" content="2026-08-31">/);
+      assert.match(norway, /<meta name="lastmod" content="2026-09-01">/);
       assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
       assert.match(
         norway,
@@ -1172,6 +1185,9 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /data-live-band>No current score/);
       assert.match(norway, /data-live-trend>Unavailable/);
       const ukraine = read(outDir, 'countries/ukraine/index.html');
+      assert.match(ukraine, /<title>Ukraine Instability Index &amp; Country Risk \| World Monitor<\/title>/);
+      assert.match(ukraine, /<h1>Ukraine Country Instability Index<\/h1>/);
+      assert.match(ukraine, /Ukraine's Country Instability Index is <strong>\d+\/100 &middot; [^<]+<\/strong>/);
       assert.match(ukraine, /data-live-score>\d/);
       assert.doesNotMatch(ukraine, /data-live-score>—/);
       assert.doesNotMatch(ukraine, /Connecting…/);
@@ -1187,6 +1203,67 @@ describe('crawlable corpus generator', () => {
         scoredCountryPages >= 25,
         `expected at least 25 country pages to publish a numeric instability score, got ${scoredCountryPages}`,
       );
+      const ciiTargetedCountryPages = manifest.sections.countries.routes.filter((route) => (
+        /<h1>[^<]+ Country Instability Index<\/h1>/.test(read(outDir, `${route.slice(1)}index.html`))
+      ));
+      assert.equal(ciiTargetedCountryPages.length, 31);
+      assert.equal(
+        ciiTargetedCountryPages.every((route) => (
+          /data-live-score>\d/.test(read(outDir, `${route.slice(1)}index.html`))
+        )),
+        true,
+        'only country pages with a published CII score may target Country Instability Index',
+      );
+
+      const ciiIndex = read(outDir, 'country-instability-index/index.html');
+      const ciiDocument = htmlDocument(
+        ciiIndex,
+        'https://www.worldmonitor.app/country-instability-index/',
+      );
+      assert.match(ciiIndex, /<title>Country Instability Index: Live Rankings \| World Monitor<\/title>/);
+      assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
+      assert.match(
+        ciiIndex,
+        /CII v8 currently monitors 31 countries and tracks approximate 24-hour movement\./,
+      );
+      assert.equal(ciiDocument.querySelectorAll('[data-cii-country]').length, 31);
+      assert.equal(
+        ciiDocument.querySelectorAll('[data-cii-country] [data-cii-score]').length,
+        31,
+      );
+      assert.equal(
+        [...ciiDocument.querySelectorAll('[data-cii-country]')].every((row) => (
+          /^\d+(?:\.\d+)?$/.test(row.querySelector('[data-cii-score]')?.textContent || '')
+          && Boolean(row.querySelector('time[data-cii-updated][datetime]'))
+        )),
+        true,
+        'every CII ranking row must publish a numeric score and authoritative timestamp',
+      );
+      const ciiLd = jsonLdObjects(ciiIndex);
+      const ciiCollection = ciiLd.find((entry) => entry['@type'] === 'CollectionPage');
+      const ciiDataset = ciiLd.find((entry) => entry['@type'] === 'Dataset');
+      const ciiItemList = ciiLd.find((entry) => entry['@type'] === 'ItemList');
+      assert.deepEqual(ciiCollection?.mainEntity, {
+        '@id': 'https://www.worldmonitor.app/country-instability-index/#dataset',
+      });
+      assert.equal(ciiDataset?.measurementTechnique, 'World Monitor CII v8');
+      assert.deepEqual(ciiDataset?.mainEntity, {
+        '@id': 'https://www.worldmonitor.app/country-instability-index/#ranking',
+      });
+      assert.equal(ciiItemList?.numberOfItems, 31);
+      assert.equal(ciiItemList?.itemListElement?.length, 31);
+
+      const ukraineLd = jsonLdObjects(ukraine);
+      const ukrainePage = ukraineLd.find((entry) => entry['@type'] === 'WebPage');
+      const ukraineDatasets = ukraineLd.flatMap((entry) => collectDatasets(entry));
+      const ukraineCiiDataset = ukraineDatasets.find((entry) => entry['@id']?.endsWith('#cii-dataset'));
+      const ukraineResilienceDataset = ukraineDatasets.find((entry) => entry['@id']?.endsWith('#resilience-dataset'));
+      assert.deepEqual(ukrainePage?.mainEntity, {
+        '@id': 'https://www.worldmonitor.app/countries/ukraine/#cii-dataset',
+      });
+      assert.equal(ukraineCiiDataset?.measurementTechnique, 'World Monitor CII v8');
+      assert.equal(ukraineCiiDataset?.spatialCoverage?.['@type'], 'Place');
+      assert.ok(ukraineResilienceDataset, 'CII country pages must retain the CRI Dataset');
       assert.ok(norway.includes(liveScriptTag), 'country live script must match the production CSP nonce');
       // Deep-link CTA into the live map (opens the maximized country brief). `&` is HTML-escaped.
       // Carries utm_source (NOT ref= — that would be captured as an affiliate referral code).
@@ -1289,7 +1366,7 @@ describe('crawlable corpus generator', () => {
       const countryItemList = countriesLd.find((entry) => entry['@type'] === 'ItemList');
       const countryDataset = countriesLd.find((entry) => entry['@type'] === 'Dataset');
       const countryFaq = countriesLd.find((entry) => entry['@type'] === 'FAQPage');
-      assert.equal(countryCollection?.name, 'Country risk and resilience');
+      assert.equal(countryCollection?.name, 'Country risk, instability and resilience by country');
       assert.equal(countryCollection?.['@id'], 'https://www.worldmonitor.app/countries/#webpage');
       assertDefaultSpeakable(countryCollection, 'countries hub CollectionPage');
       assert.deepEqual(countryCollection?.breadcrumb, {
@@ -1366,7 +1443,10 @@ describe('crawlable corpus generator', () => {
         const pageLd = jsonLdObjects(html);
         const faqPage = pageLd.find((entry) => entry['@type'] === 'FAQPage');
         assert.equal(faqPage?.mainEntity?.length, faqEntries.length);
-        const dataset = pageLd.flatMap((entry) => collectDatasets(entry))[0];
+        const dataset = pageLd
+          .flatMap((entry) => collectDatasets(entry))
+          .find((entry) => entry['@id']?.endsWith('#resilience-dataset'));
+        assert.ok(dataset, `${route} must retain its Country Resilience Index dataset`);
         const measurements = new Map(
           dataset.variableMeasured.map((measurement) => [measurement.name, measurement.value]),
         );
@@ -1397,10 +1477,13 @@ describe('crawlable corpus generator', () => {
       }
 
       const uk = read(outDir, 'countries/united-kingdom/index.html');
-      assert.match(uk, /<h1>United Kingdom country risk and resilience<\/h1>/);
+      assert.match(uk, /<h1>United Kingdom Country Instability Index<\/h1>/);
       assert.doesNotMatch(uk, /<h1>Uk /);
       const dprk = read(outDir, 'countries/north-korea/index.html');
-      assert.match(dprk, /<title>North Korea Country Risk and Resilience \| World Monitor<\/title>/);
+      assert.match(
+        dprk,
+        /<title>North Korea Instability Index &amp; Country Risk \| World Monitor<\/title>/,
+      );
 
       const taiwan = read(outDir, 'countries/taiwan/index.html');
       assert.match(
@@ -1440,7 +1523,7 @@ describe('crawlable corpus generator', () => {
       assert.match(taiwan, /Nearest ranked comparators:/);
       assert.match(taiwan, /Taiwan is included separately in the rankable universe/);
       assert.doesNotMatch(taiwan, /special administrative region/);
-      assert.match(taiwan, /a low-confidence listing/);
+      assert.match(taiwan, /Taiwan instability index scores 48\/100 \(Normal\)/);
       assert.doesNotMatch(taiwan, /\bTW · /);
       assert.doesNotMatch(
         taiwan,
@@ -1449,15 +1532,21 @@ describe('crawlable corpus generator', () => {
       );
       const taiwanWebPage = jsonLdObjects(taiwan)
         .find((entry) => entry['@type'] === 'WebPage');
+      const taiwanResilienceDataset = jsonLdObjects(taiwan)
+        .flatMap((entry) => collectDatasets(entry))
+        .find((entry) => entry['@id']?.endsWith('#resilience-dataset'));
       assertDefaultSpeakable(taiwanWebPage, 'taiwan country WebPage');
+      assert.deepEqual(taiwanWebPage?.mainEntity, {
+        '@id': 'https://www.worldmonitor.app/countries/taiwan/#cii-dataset',
+      });
       assert.equal(taiwanWebPage?.mainEntity?.value, undefined);
       assert.equal(taiwanWebPage?.mainEntity?.overallScore, undefined);
       assert.match(
-        taiwanWebPage?.mainEntity?.description ?? '',
+        taiwanResilienceDataset?.description ?? '',
         /does not meet the published ranking eligibility criteria/,
       );
       assert.doesNotMatch(
-        taiwanWebPage?.mainEntity?.description ?? '',
+        taiwanResilienceDataset?.description ?? '',
         /below the ranking threshold|input coverage is below/i,
       );
 
@@ -1543,16 +1632,20 @@ describe('crawlable corpus generator', () => {
       }
       const coveredWebPage = jsonLdObjects(coveredHtml)
         .find((entry) => entry['@type'] === 'WebPage');
+      const coveredResilienceDataset = jsonLdObjects(coveredHtml)
+        .flatMap((entry) => collectDatasets(entry))
+        .find((entry) => entry['@id']?.endsWith('#resilience-dataset'));
+      assert.ok(coveredWebPage, `${coveredIneligible.name} must publish a WebPage`);
       assert.match(
-        coveredWebPage?.mainEntity?.description ?? '',
+        coveredResilienceDataset?.description ?? '',
         /does not meet the published ranking eligibility criteria/,
       );
       assert.match(
-        coveredWebPage?.mainEntity?.description ?? '',
+        coveredResilienceDataset?.description ?? '',
         /Ranking requires coverage of at least 65%/,
       );
       assert.doesNotMatch(
-        coveredWebPage?.mainEntity?.description ?? '',
+        coveredResilienceDataset?.description ?? '',
         /below the ranking threshold|input coverage is below/i,
       );
 
@@ -1648,7 +1741,9 @@ describe('crawlable corpus generator', () => {
       const switzerlandWebPage = jsonLdObjects(switzerland).find((entry) => entry['@type'] === 'WebPage');
       assert.ok(switzerlandWebPage?.about?.alternateName?.includes('Swiss Confederation'));
       assert.equal(switzerlandWebPage?.about?.sameAs, 'https://www.wikidata.org/wiki/Q39');
-      const norwayDataset = collectDatasets(norwayWebPage)[0];
+      const norwayDataset = norwayLd
+        .flatMap((entry) => collectDatasets(entry))
+        .find((entry) => entry['@id']?.endsWith('#resilience-dataset'));
       assert.ok(norwayDataset, 'country page must expose a Dataset mainEntity');
       assert.equal(
         norwayDataset.dateModified,
@@ -2257,14 +2352,14 @@ describe('crawlable corpus generator', () => {
       );
       assert.equal(
         pageLastmod(redSea),
-        '2026-08-31',
+        '2026-09-01',
         'crisis page lastmod must advance with its changed Dataset schema',
       );
       assert.equal(
         sitemapEntries.find((entry) => (
           new URL(entry.loc).pathname === '/crises/red-sea-security/'
         ))?.lastmod,
-        '2026-08-31',
+        '2026-09-01',
         'crisis sitemap lastmod must advance with its changed Dataset schema',
       );
       assert.equal(redSeaDataset.isAccessibleForFree, true);
@@ -2410,8 +2505,8 @@ describe('crawlable corpus generator', () => {
     assert.ok(data.sources.resilienceSnapshot.includes(data.resilience.capturedAt));
     // Family lastmods use material + page/generator versions only — not the
     // Dataset schema stamp that previously forced a shared build date (#7382).
-    assert.equal(data.lastmod.countries, '2026-08-31');
-    assert.equal(data.lastmod.research, '2026-08-31');
+    assert.equal(data.lastmod.countries, '2026-09-01');
+    assert.equal(data.lastmod.research, '2026-09-01');
     assert.equal(data.lastmod.chokepoints, '2026-09-01');
     assert.equal(
       data.lastmod.sources,

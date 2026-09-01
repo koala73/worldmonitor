@@ -8,6 +8,7 @@ public/blog/
 # pro-test/src without rebuilding.
 public/pro/
 public/countries/
+public/country-instability-index/
 public/chokepoints/
 public/crises/
 public/tools/

@@ -4,6 +4,7 @@ import { Window } from 'happy-dom';
 
 import {
   airportDisruptionViewModel,
+  ciiRankingViewModel,
   chokepointStatusViewModel,
   crisisTrackerViewModel,
   hasPublishedLivePulse,
@@ -109,6 +110,82 @@ describe('crawlable live intelligence view models', () => {
         NOW,
       ),
       /stale/i,
+    );
+  });
+
+  it('normalizes and ranks a complete current CII response', () => {
+    const view = ciiRankingViewModel({
+      ciiScores: [
+        {
+          region: 'IR',
+          combinedScore: 67,
+          dynamicScore: 7,
+          trend: 'TREND_DIRECTION_RISING',
+          computedAt: NOW - 60_000,
+          methodologyVersion: 'v8',
+        },
+        {
+          region: 'UA',
+          combinedScore: 78,
+          dynamicScore: -2,
+          trend: 'TREND_DIRECTION_FALLING',
+          computedAt: NOW - 120_000,
+          methodologyVersion: 'v8',
+        },
+      ],
+      degraded: false,
+      stale: false,
+    }, NOW);
+
+    assert.deepEqual(view, {
+      rows: [
+        {
+          code: 'UA',
+          score: '78',
+          scoreValue: 78,
+          band: 'High',
+          trend: 'Falling -2',
+          computedAt: NOW - 120_000,
+          methodologyVersion: 'v8',
+        },
+        {
+          code: 'IR',
+          score: '67',
+          scoreValue: 67,
+          band: 'High',
+          trend: 'Rising +7',
+          computedAt: NOW - 60_000,
+          methodologyVersion: 'v8',
+        },
+      ],
+      updatedAt: NOW - 60_000,
+      methodologyVersion: 'v8',
+    });
+  });
+
+  it('rejects incomplete, stale, or degraded CII ranking responses', () => {
+    const score = {
+      region: 'IR',
+      combinedScore: 67,
+      dynamicScore: 7,
+      trend: 'TREND_DIRECTION_RISING',
+      computedAt: NOW - 60_000,
+      methodologyVersion: 'v8',
+    };
+
+    assert.throws(() => ciiRankingViewModel({ ciiScores: [], degraded: false, stale: false }, NOW), /unavailable/i);
+    assert.throws(() => ciiRankingViewModel({ ciiScores: [score], degraded: true, stale: false }, NOW), /degraded/i);
+    assert.throws(
+      () => ciiRankingViewModel({
+        ciiScores: [{ ...score, computedAt: NOW - (49 * 60 * 60 * 1_000) }],
+        degraded: false,
+        stale: false,
+      }, NOW),
+      /timestamp/i,
+    );
+    assert.throws(
+      () => ciiRankingViewModel({ ciiScores: [score, score], degraded: false, stale: false }, NOW),
+      /duplicate/i,
     );
   });
 
