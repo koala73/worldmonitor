@@ -146,6 +146,24 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /objectStoreNames/,
       /Unexpected identifier 'https'/,
       /Can't find variable: _0x/,
+      // The Chromium/Gecko half of the entry above. javascript-obfuscator names
+      // its identifiers `_0x<hex>`, and a userscript or extension bundle that
+      // reads its own obfuscated global before define throws
+      // `_0x58c9 is not defined` there and `Can't find variable: _0x58c9` on
+      // WebKit — so the entry above has covered only Safari since #4005.
+      // WORLDMONITOR-11P is the other half leaking through (Chrome 152 /
+      // Windows, three `<anonymous>:1` frames and nothing else); it landed on
+      // the marketing surface, which runs a separate Sentry client, and the
+      // same hole exists here.
+      //
+      // Added ALONGSIDE the WebKit entry rather than replacing it: keying on
+      // four-or-more hex digits is what makes the identifier unmistakably
+      // obfuscator output, but it would drop a non-hex `_0x…` name that the
+      // broader Safari-phrasing entry has been suppressing for months. Neither
+      // pattern subsumes the other. Vite's esbuild/terser minifier emits
+      // single-letter and `$`-prefixed names, never a `_0x` prefix, and the
+      // literal appears nowhere in src/, api/, shared/, public/ or index.html.
+      /\b_0x[0-9a-f]{4,}\b/,
       /Can't find variable: video/,
       /hackLocationFailed is not defined/,
       /userScripts is not defined/,

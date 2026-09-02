@@ -19,10 +19,10 @@ export const PLAN_LIMITS = {
   "pro_annual": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":50,"dashboardAiCallsPerDay":500,"mcpBurstRequestsPerMinute":60},
   "pro_business_monthly": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":250,"dashboardAiCallsPerDay":2500,"mcpBurstRequestsPerMinute":60},
   "pro_business_annual": {"apiRequestsPerDay":0,"apiBurstRequestsPerMinute":0,"mcpCallsPerDay":250,"dashboardAiCallsPerDay":2500,"mcpBurstRequestsPerMinute":60},
-  "api_starter": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":1000,"dashboardAiCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
-  "api_starter_annual": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":1000,"dashboardAiCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
-  "api_business": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":10000,"dashboardAiCallsPerDay":10000,"mcpBurstRequestsPerMinute":300},
-  "api_business_annual": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":10000,"dashboardAiCallsPerDay":10000,"mcpBurstRequestsPerMinute":300},
+  "api_starter": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
+  "api_starter_annual": {"apiRequestsPerDay":1000,"apiBurstRequestsPerMinute":60,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":1000,"mcpBurstRequestsPerMinute":60},
+  "api_business": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":10000,"mcpBurstRequestsPerMinute":300},
+  "api_business_annual": {"apiRequestsPerDay":10000,"apiBurstRequestsPerMinute":300,"mcpCallsPerDay":"shared-api-budget","dashboardAiCallsPerDay":10000,"mcpBurstRequestsPerMinute":300},
   "enterprise": {"apiRequestsPerDay":null,"apiBurstRequestsPerMinute":1000,"mcpCallsPerDay":null,"dashboardAiCallsPerDay":null,"mcpBurstRequestsPerMinute":1000},
 } as const;
 

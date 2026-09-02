@@ -24,7 +24,9 @@ export interface EntitlementState {
     planLimits?: {
       apiRequestsPerDay: number | null;
       apiBurstRequestsPerMinute: number | null;
-      mcpCallsPerDay: number | null;
+      /** `"shared-api-budget"` = no separate MCP allowance; MCP calls charge
+       *  `apiRequestsPerDay`. Mirrors `PlanLimits` in convex/config/productCatalog.ts. */
+      mcpCallsPerDay: number | null | "shared-api-budget";
       mcpBurstRequestsPerMinute: number | null;
       dashboardAiCallsPerDay?: number | null;
     };

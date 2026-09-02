@@ -82,11 +82,15 @@ export interface CachedEntitlements {
      * `planLimits` altogether) means unknown, and consumers resolve unknown
      * toward cost protection — never toward the higher allowance. The MCP
      * daily quota (plan 2026-07-25-001 U3) and dashboard-AI quota are consumers.
+     *
+     * `mcpCallsPerDay` also carries the catalog's `SHARED_API_BUDGET` marker on
+     * the API tiers, so it is not a plain number: mirroring it as `number | null`
+     * made the value the API tiers actually ship an impossible one here.
      */
     planLimits?: {
       apiRequestsPerDay?: number | null;
       apiBurstRequestsPerMinute?: number | null;
-      mcpCallsPerDay?: number | null;
+      mcpCallsPerDay?: number | null | 'shared-api-budget';
       mcpBurstRequestsPerMinute?: number | null;
       dashboardAiCallsPerDay?: number | null;
     };
@@ -558,10 +562,22 @@ async function _getEntitlementsImpl(userId: string): Promise<CachedEntitlements 
       // and every paid tier above Pro would silently resolve to the Pro default
       // (Pro Business 2,500 -> 500, API Business 10,000 -> 500). Require the
       // member the same way, so those rows self-heal through Convex instead.
+      // Third instance of the same trap, for `planLimits.mcpCallsPerDay`. An
+      // API-tier entry written before the shared-budget marker carries the old
+      // numeric 1,000/10,000, which satisfies both checks above and resolves
+      // `{allowance: 'mcp'}` — same counter and same ceiling as the correct
+      // `{allowance: 'api', counter: 'mcp'}`, but one unit per call instead of
+      // the per-tool weight, so those callers under-pay until the entry ages
+      // out. No paid plan legitimately pairs `apiAccess` with a NUMERIC
+      // mcpCallsPerDay (the API tiers carry the marker, enterprise carries
+      // `null`), so that pairing identifies a pre-marker entry exactly.
+      const legacySharedBudgetShape = ent.features.apiAccess === true
+        && typeof ent.features.planLimits?.mcpCallsPerDay === 'number';
       if (
         ent.validUntil >= Date.now() &&
         typeof (ent.features as { mcpAccess?: boolean }).mcpAccess === 'boolean' &&
-        ent.features.planLimits?.dashboardAiCallsPerDay !== undefined
+        ent.features.planLimits?.dashboardAiCallsPerDay !== undefined &&
+        !legacySharedBudgetShape
       ) {
         return ent;
       }

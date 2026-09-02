@@ -347,50 +347,75 @@ const withLimits = (planKey, mcpCallsPerDay, tier = 1) => ({
   validUntil: Date.now() + DAY,
 });
 
+/** An API-tier row: no MCP allowance of its own, charges the REST budget. */
+const withSharedLimits = (planKey, apiRequestsPerDay, tier = 2) => ({
+  planKey,
+  features: {
+    tier,
+    mcpAccess: true,
+    planLimits: {
+      apiRequestsPerDay,
+      apiBurstRequestsPerMinute: 60,
+      mcpCallsPerDay: 'shared-api-budget',
+      mcpBurstRequestsPerMinute: 60,
+    },
+  },
+  validUntil: Date.now() + DAY,
+});
+
 describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / KTD6)', () => {
   it('pro context carries the plan limit through to the caller (pro_business → 250)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_business_monthly', 250) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true, 'an entitled Pro Business owner passes the gate');
-    assert.equal(res.mcpDailyLimit, 250, 'the resolved limit rides on the pass result');
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: 250 }, 'the resolved budget rides on the pass result');
   });
 
   it('pro context with the Pro plan resolves 50 (the plan value, which happens to equal the default)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_monthly', 50) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, 50);
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: 50 });
   });
 
   it('pro context with an unlimited plan resolves null (distinct from "missing")', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('enterprise', null, 3) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, null, 'null is the unlimited sentinel, not an absent value');
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: null }, 'null is the unlimited sentinel, not an absent value');
   });
 
-  it('pro context on a legacy row without planLimits resolves undefined → caller applies the 50 default', async () => {
+  it('pro context on a legacy row without planLimits falls back to the dedicated 50 default', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => entOk() });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: 50 }, 'an unreadable limit never buys a wider cap');
   });
 
-  it('KTD6: user_key DROPS the plan limit even when the owner is on a 10k plan', async () => {
-    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
-    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
-    assert.equal(res.ok, true, 'the owner is entitled — only the LIMIT is withheld');
-    assert.equal(
-      res.mcpDailyLimit, undefined,
-      'raising API-plan MCP allowances is a deliberate follow-up; user_key keeps the hardcoded cap',
+  it('user_key carries the SAME budget as the OAuth door for the same subscriber', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const ent = async () => withSharedLimits('api_business', 10_000, 2);
+    const viaUserKey = await authMod.runContextPreChecks(
+      USER_KEY_CONTEXT, makeProDeps({ getEntitlements: ent }).deps, RESOURCE_META_URL, CORS,
     );
+    const viaOauth = await authMod.runContextPreChecks(
+      PRO_CONTEXT, makeProDeps({ getEntitlements: ent }).deps, RESOURCE_META_URL, CORS,
+    );
+    assert.equal(viaUserKey.ok, true);
+    assert.deepEqual(
+      viaUserKey.budget, viaOauth.budget,
+      'the two credential doors must not disagree about the cap — the property KTD6 pinned to 50',
+    );
+    assert.deepEqual(viaUserKey.budget, { allowance: 'api', counter: 'api', limit: 10_000 });
   });
 
   it('env_key passes with no limit at all (never metered by the daily counter)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
     const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.equal(res.budget, undefined);
   });
 
   it('a rejected gate carries the Response and no limit (fail-closed shape is unambiguous)', async () => {
@@ -399,7 +424,49 @@ describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / 
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, false);
     assert.ok(res.response instanceof Response);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.equal(res.budget, undefined);
+  });
+
+  it('user_key fails closed before dispatch when MCP_INTERNAL_HMAC_SECRET is missing', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    let entitlementCalls = 0;
+    const { deps } = makeProDeps({
+      getEntitlements: async () => {
+        entitlementCalls += 1;
+        return withLimits('api_business', 10_000, 2);
+      },
+    });
+    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, false);
+    assert.equal(res.response.status, 503);
+    assert.equal(res.response.headers.get('Retry-After'), '5');
+    assert.equal(entitlementCalls, 0, 'must not reach entitlement or quota once the signing secret is gone');
+  });
+
+  it('env_key still skips the HMAC-secret preflight (legacy operator path)', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    const { deps } = makeProDeps();
+    const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true);
+  });
+});
+
+describe('api/mcp/auth.ts — buildAuthHeaders credential class', () => {
+  it('user_key signs the internal HMAC and never forwards the dashboard key', async () => {
+    const { verifyInternalMcpRequest } = await import('../server/_shared/mcp-internal-hmac.ts');
+    const url = 'https://example.test/api/intelligence/v1/get-country-risk?countryCode=US';
+    const headers = await authMod.buildAuthHeaders(USER_KEY_CONTEXT, 'GET', url, null);
+    assert.equal(headers['X-WorldMonitor-Key'], undefined);
+    assert.ok(headers['X-WM-MCP-Internal']);
+    assert.equal(headers['X-WM-MCP-User-Id'], USER_KEY_USER_ID);
+    const signed = new Request(url, { method: 'GET', headers });
+    assert.ok(await verifyInternalMcpRequest(signed, HMAC_SECRET));
+  });
+
+  it('env_key stays on the raw-key path', async () => {
+    const headers = await authMod.buildAuthHeaders(ENV_KEY_CONTEXT, 'GET', 'https://example.test/api/x', null);
+    assert.equal(headers['X-WorldMonitor-Key'], ENV_KEY);
+    assert.equal(headers['X-WM-MCP-Internal'], undefined);
   });
 });
 
@@ -535,6 +602,144 @@ describe('api/mcp/auth.ts — applyPerMinuteLimit (#5379 Gap 9)', () => {
     const res = await authMod.applyPerMinuteLimit(ENV_KEY_CONTEXT);
     assert.equal(res.status, 200, 'JSON-RPC errors ride on HTTP 200');
     assert.equal((await res.json()).error?.code, -32029);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Per-plan minute burst
+// ---------------------------------------------------------------------------
+// The catalog sells API Business 300/min and everyone else 60. A single
+// hardcoded slidingWindow(60) throttled that plan to a fifth of its number and
+// then reported 60 as the observed ceiling in telemetry.
+
+/** An entitlement row with an explicit MCP burst, everything else catalog-shaped. */
+const withBurst = (planKey, mcpBurstRequestsPerMinute, tier = 2) => ({
+  planKey,
+  features: {
+    tier,
+    mcpAccess: true,
+    planLimits: {
+      apiRequestsPerDay: 10_000,
+      apiBurstRequestsPerMinute: 300,
+      mcpCallsPerDay: 'shared-api-budget',
+      mcpBurstRequestsPerMinute,
+    },
+  },
+  validUntil: Date.now() + DAY,
+});
+
+describe('api/mcp/auth.ts — the minute burst is the plan\'s, not a constant', () => {
+  it('the pre-check resolves the plan burst for both credential doors', async () => {
+    for (const context of [PRO_CONTEXT, USER_KEY_CONTEXT]) {
+      const { deps } = makeProDeps({ getEntitlements: async () => withBurst('api_business', 300) });
+      const res = await authMod.runContextPreChecks(context, deps, RESOURCE_META_URL, CORS);
+      assert.equal(res.ok, true);
+      assert.equal(res.burstPerMinute, 300, 'API Business sells 300/min through either door');
+    }
+  });
+
+  it('a 60/min plan resolves 60', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_monthly', 50) });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.burstPerMinute, 60);
+  });
+
+  it('an unreadable burst resolves to 60 — the lower of the two ceilings sold', async () => {
+    for (const bad of [undefined, null, Number.NaN, -30, '300', 0.5]) {
+      const { deps } = makeProDeps({ getEntitlements: async () => withBurst('api_business', bad) });
+      const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+      assert.equal(res.burstPerMinute, 60, `burst ${String(bad)} must not widen the window`);
+    }
+  });
+
+  it('a catalog 0 resolves to 60 rather than a slidingWindow(0) that rejects everything', async () => {
+    // The free plan publishes `mcpBurstRequestsPerMinute: 0`. Honouring it here
+    // would 429 the #6716 free-account funnel on its first call; that funnel's
+    // ceiling is its daily allowance. `server/gateway.ts` guards `perMinute > 0`
+    // before checkBurst for the same reason.
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: {
+          tier: 0,
+          mcpAccess: false,
+          planLimits: { mcpCallsPerDay: 0, mcpBurstRequestsPerMinute: 0 },
+        },
+        validUntil: Date.now() + DAY,
+      }),
+    });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true, 'a free row is admitted to the metered allowance (#6716)');
+    assert.equal(res.freeAccountAllowance, true);
+    assert.equal(res.burstPerMinute, 60);
+  });
+
+  it('a legacy row with no planLimits still resolves 60', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => entOk() });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.burstPerMinute, 60);
+  });
+
+  it('the resolved burst becomes the sliding-window threshold, same bucket key', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: true });
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 300);
+    assert.equal(calls[0].tokens, 300, 'the window must admit what the plan sold');
+    assert.equal(calls[0].window, '60 s');
+    assert.equal(
+      calls[0].key,
+      `rl:mcp:pro-min:pro-user:${PRO_USER_ID}`,
+      'Upstash applies the threshold at read time, so the key family must not move',
+    );
+  });
+
+  it('two plans on one deployment get their own limiters and keep their own buckets', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: true });
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 60);
+    await authMod.applyPerMinuteLimit({ kind: 'pro', userId: 'user_business', mcpTokenId: 't' }, CORS, 300);
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 60);
+    assert.deepEqual(calls.map((c) => c.tokens), [60, 300, 60], 'the memo must be keyed by limit, not shared');
+    assert.equal(calls[0].key, calls[2].key);
+    assert.notEqual(calls[0].key, calls[1].key);
+  });
+
+  it('a 300/min hit reports 300 — the scanner reads observed_limit from this line', async () => {
+    enableLimiterEnv();
+    stubLimiter({ success: false });
+    const hits = await withTelemetry(() => authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 300));
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].limit, 300, 'a hardcoded 60 records the wrong ceiling for every API Business account');
+    assert.equal(hits[0].window_seconds, 60);
+  });
+
+  it('the -32029 copy quotes the limit that actually rejected', async () => {
+    enableLimiterEnv();
+    stubLimiter({ success: false });
+    const res = await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 300);
+    assert.equal(
+      (await res.json()).error?.message,
+      'Rate limit exceeded. Max 300 requests per minute per user.',
+    );
+  });
+
+  it('env_key keeps the fixed legacy threshold, whatever the caller passes', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: false });
+    const res = await authMod.applyPerMinuteLimit(ENV_KEY_CONTEXT, CORS, 300);
+    assert.equal(calls[0].tokens, 60, 'operator keys carry no entitlement row to read a plan from');
+    assert.equal(
+      (await res.json()).error?.message,
+      'Rate limit exceeded. Max 60 requests per minute per API key.',
+    );
+  });
+
+  it('an omitted burst falls back to 60, so an unresolved pre-check cannot widen it', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: true });
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS);
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, undefined);
+    assert.deepEqual(calls.map((c) => c.tokens), [60, 60]);
   });
 });
 

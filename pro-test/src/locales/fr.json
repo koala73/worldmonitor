@@ -386,7 +386,7 @@
           "Clé de licence / API incluse",
           "Flux de données en temps réel",
           "60 requêtes/minute",
-          "1 000 requêtes/jour incluses",
+          "1 000 requêtes/jour incluses (REST + MCP combinés)",
           "Notifications webhook"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Tout ce qui est dans API Starter",
           "Droits de redistribution — intégrez nos données dans ce que vous vendez",
           "300 requêtes/minute",
-          "10 000 requêtes/jour incluses",
+          "10 000 requêtes/jour incluses (REST + MCP combinés)",
           "5 licences Pro — invitez des utilisateurs avec n’importe quel domaine de messagerie d’entreprise",
           "Support prioritaire"
         ],

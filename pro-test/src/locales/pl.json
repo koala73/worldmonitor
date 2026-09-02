@@ -386,7 +386,7 @@
           "Klucz licencyjny / API w zestawie",
           "Strumienie danych w czasie rzeczywistym",
           "60 żądań/minutę",
-          "1000 żądań/dzień w cenie",
+          "1000 żądań/dzień (REST + MCP łącznie)",
           "Powiadomienia webhook"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Wszystko z planu API Starter",
           "Prawa do redystrybucji — osadzaj nasze dane w tym, co sprzedajesz",
           "300 żądań/minutę",
-          "10 000 żądań/dzień w pakiecie",
+          "10000 żądań/dzień (REST + MCP łącznie)",
           "5 licencji Pro — zapraszaj użytkowników z dowolnej firmowej domeny e-mail",
           "Wsparcie priorytetowe"
         ],

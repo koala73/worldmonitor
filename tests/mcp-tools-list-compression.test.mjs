@@ -138,12 +138,15 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
       return body.result.tools;
     }
 
-    it('compressDescriptions=true returns the public shape plus access metadata and no internal keys', async () => {
+    it('compressDescriptions=true returns the public shape plus access and weight metadata and no internal keys', async () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
       assert.deepEqual(Object.keys(t).sort(), ['_meta', 'annotations', 'description', 'inputSchema', 'name', 'outputSchema']);
-      assert.deepEqual(t._meta, { 'worldmonitor/access': 'free-account' });
+      assert.deepEqual(t._meta, {
+        'worldmonitor/access': 'free-account',
+        'worldmonitor/weight': 1,
+      });
     });
 
     it('every cache-tool result has inputSchema.properties.summary STRUCTURALLY equal to SUMMARY_SCHEMA (deepEqual not ===)', async () => {
@@ -307,11 +310,14 @@ describe('api/mcp.ts — tools/list description compression (v1.7.0)', () => {
         'the deprecated flat ui/resourceUri alias must mirror the nested form');
     });
 
-    it('a tool WITHOUT a UI surface carries only its access marker in _meta', async () => {
+    it('a tool WITHOUT a UI surface carries only the universal markers in _meta', async () => {
       const tools = await getRegistry();
       const t = tools.find(t => t.name === 'get_cyber_threats');
       assert.ok(t, 'get_cyber_threats must be registered');
-      assert.deepEqual(t._meta, { 'worldmonitor/access': 'free-account' });
+      assert.deepEqual(t._meta, {
+        'worldmonitor/access': 'free-account',
+        'worldmonitor/weight': 1,
+      });
     });
 
     it('describe_tool(get_country_risk) carries the same _meta.ui linkage (uncompressed path)', async () => {

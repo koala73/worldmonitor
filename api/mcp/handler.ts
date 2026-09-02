@@ -45,6 +45,7 @@ import { emitTelemetry, principalIdForLog } from './telemetry';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
 import { utf8ByteLength } from './utils';
 import type { McpAuthContext, McpHandlerDeps } from './types';
+import type { McpBudget } from './quota';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
 // discovery surface an agent (or an agent-readiness scanner) needs to learn
@@ -435,7 +436,7 @@ async function handleAuthenticatedSseReplay(
     usage.phase = getPreCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
     return getPreCheck.response;
   }
-  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
   if (getLimited) {
     usage.phase = 'limit';
     return getLimited;
@@ -801,7 +802,7 @@ async function mcpHandlerInner(
   let context: McpAuthContext | null = null;
   // Set alongside `context` by the gated branch's pre-check. Stays undefined on
   // the public/anon branch — which never reaches a metered dispatch anyway.
-  let mcpDailyLimit: number | null | undefined;
+  let budget: McpBudget | undefined;
   let freeAccountAllowance = false;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
@@ -833,6 +834,11 @@ async function mcpHandlerInner(
           return validation.response;
         }
       }
+      // No pre-check runs on the public branch, so there is no entitlement in
+      // hand to read a plan burst from. `applyPerMinuteLimit` defaults to the
+      // common ceiling rather than fetching one: these are metadata and
+      // free-tier methods, and the tighter of the two sold thresholds is the
+      // defensible guess.
       const limited = await applyPerMinuteLimit(context, corsHeaders);
       if (limited) {
         usage.phase = 'limit';
@@ -871,12 +877,14 @@ async function mcpHandlerInner(
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
     }
-    // Plan-driven daily allowance, resolved from the entitlement the pre-check
-    // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
-    // dispatch sites below; unset for every caller class but `pro`.
-    mcpDailyLimit = preCheck.mcpDailyLimit;
+    // Plan-driven allowances, both resolved from the entitlement the pre-check
+    // already fetched (plan 2026-07-25-001 U3): the daily budget rides down to
+    // the two metered dispatch sites below, and the minute burst is spent right
+    // here. Set for `pro` and `user_key`; the other caller classes have no
+    // entitlement row and fall back to the defaults.
+    budget = preCheck.budget;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
-    const limited = await applyPerMinuteLimit(context, corsHeaders);
+    const limited = await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute);
     if (limited) {
       usage.phase = 'limit';
       return limited;
@@ -954,7 +962,7 @@ async function mcpHandlerInner(
         body,
         corsHeaders,
         ctx,
-        mcpDailyLimit,
+        budget,
         freeAccountAllowance,
         resourceMetadataUrl,
       );
@@ -1047,7 +1055,7 @@ async function mcpHandlerInner(
           deps,
           body,
           corsHeaders,
-          mcpDailyLimit,
+          budget,
           freeAccountAllowance,
         ));
       }
@@ -1071,7 +1079,7 @@ async function mcpHandlerInner(
           body,
           corsHeaders,
           ctx,
-          mcpDailyLimit,
+          budget,
           freeAccountAllowance,
           resourceMetadataUrl,
         );

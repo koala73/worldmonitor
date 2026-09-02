@@ -275,9 +275,15 @@ describe('get_world_brief seeded brief routing', () => {
           assert.deepEqual(offending, [], `unauthorized mcp.downstream keys: ${offending}`);
         }
 
-        if (auth.kind === 'pro') {
+        if (auth.kind === 'env_key') {
           for (const call of calls) {
-            assert.ok(call.headers.get('x-wm-mcp-internal'), `${call.url}: Pro signature`);
+            assert.equal(call.headers.get('x-worldmonitor-key'), ENV_KEY);
+            assert.equal(call.headers.get('x-wm-mcp-internal'), null, `${call.url}: operator env_key stays on the raw-key path`);
+          }
+        } else {
+          for (const call of calls) {
+            assert.equal(call.headers.get('x-worldmonitor-key'), null, `${call.url}: ${auth.kind} must not forward a dashboard key`);
+            assert.ok(call.headers.get('x-wm-mcp-internal'), `${call.url}: ${auth.kind} signature`);
             const signedRequest = new Request(call.url, {
               method: call.method,
               headers: call.headers,
@@ -287,11 +293,6 @@ describe('get_world_brief seeded brief routing', () => {
               await verifyInternalMcpRequest(signedRequest, HMAC_SECRET),
               `${call.url}: HMAC must bind the exact canonical method/URL/body`,
             );
-          }
-        } else {
-          for (const call of calls) {
-            const expectedKey = auth.kind === 'env_key' ? ENV_KEY : USER_KEY;
-            assert.equal(call.headers.get('x-worldmonitor-key'), expectedKey);
           }
         }
       }

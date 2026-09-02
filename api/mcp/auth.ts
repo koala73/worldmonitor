@@ -11,7 +11,7 @@ import { getClientIp, hasCloudflareTransitProof } from '../_client-ip.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { redisPipeline as rawRedisPipeline } from '../_upstash-json.js';
-import { resolvePlanDrivenMcpAllowance } from './quota';
+import { resolveMcpBudget } from './quota';
 import {
   getBillingVerificationDenial,
   getEntitlements,
@@ -40,20 +40,23 @@ import type {
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
-import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
+import { buildMcpStructuredDenial, type McpStaticDenialReason } from './upgrade';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
 // ---------------------------------------------------------------------------
 //   - Legacy per-key 60/min (Starter+ env-key bearers): prefix `rl:mcp`,
 //     keyed `key:<apiKey>`. Unchanged from pre-U7.
-//   - Pro per-user 60/min: prefix `rl:mcp:pro-min`, keyed `pro-user:<userId>`.
-//     Independent limiter so a Pro user with two Claude installations sees
-//     combined 60/min across both bearers (same userId).
+//   - Per-user MCP burst: prefix `rl:mcp:pro-min`, keyed `pro-user:<userId>`.
+//     Independent limiter so a Pro user with two Claude installations sees one
+//     combined budget across both bearers (same userId). The threshold is the
+//     plan's `mcpBurstRequestsPerMinute`, so one Ratelimit is cached per
+//     distinct limit — Upstash applies the threshold at read time, so accounts
+//     on different plans share the key family without a migration.
 // ---------------------------------------------------------------------------
 
 let mcpRatelimit: Ratelimit | null = null;
-let mcpProMinRatelimit: Ratelimit | null = null;
+const mcpProMinRatelimits = new Map<number, Ratelimit>();
 // Anonymous MCP discovery limiter (initialize / tools/list without credentials).
 // Keyed by client IP so a public discovery surface can't be hammered by an
 // unauthenticated caller. Separate prefix from the authed per-key/per-user
@@ -74,18 +77,47 @@ function getMcpRatelimit(): Ratelimit | null {
   return mcpRatelimit;
 }
 
-function getMcpProMinRatelimit(): Ratelimit | null {
-  if (mcpProMinRatelimit) return mcpProMinRatelimit;
+/**
+ * Per-minute MCP burst for a caller whose plan limit is unreadable, and the
+ * value every plan below API Business sells anyway.
+ */
+export const MCP_DEFAULT_BURST_PER_MINUTE = 60;
+
+/**
+ * The burst threshold a plan sells, from `planLimits.mcpBurstRequestsPerMinute`.
+ *
+ * Only a finite integer of at least 1 is honoured. Everything else — undefined,
+ * a legacy row with no `planLimits`, `null`, NaN, a negative, and a literal `0`
+ * — resolves to `MCP_DEFAULT_BURST_PER_MINUTE`, which fails toward the lower of
+ * the two ceilings the catalog sells for MCP (60 vs Business's 300).
+ *
+ * `0` is folded in rather than honoured for the same reason `server/gateway.ts`
+ * guards `perMinute > 0` before `checkBurst` — a `slidingWindow(0)` rejects
+ * every request, so honouring the free plan's `mcpBurstRequestsPerMinute: 0`
+ * here would 429 the #6716 free-account funnel on its first call. That funnel's
+ * real ceiling is its daily allowance, not this bucket.
+ */
+export function resolveMcpBurstPerMinute(planBurst?: number | null): number {
+  if (typeof planBurst === 'number' && Number.isFinite(planBurst) && planBurst >= 1) {
+    return Math.floor(planBurst);
+  }
+  return MCP_DEFAULT_BURST_PER_MINUTE;
+}
+
+function getMcpProMinRatelimit(perMinute: number): Ratelimit | null {
+  const existing = mcpProMinRatelimits.get(perMinute);
+  if (existing) return existing;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-  mcpProMinRatelimit = new Ratelimit({
+  const limiter = new Ratelimit({
     redis: new Redis({ url, token, retry: false }),
-    limiter: Ratelimit.slidingWindow(60, '60 s'),
+    limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
     prefix: 'rl:mcp:pro-min',
     analytics: false,
   });
-  return mcpProMinRatelimit;
+  mcpProMinRatelimits.set(perMinute, limiter);
+  return limiter;
 }
 
 function getMcpAnonRatelimit(): Ratelimit | null {
@@ -105,9 +137,12 @@ function getMcpAnonRatelimit(): Ratelimit | null {
 /**
  * Build the Authorization header set for a downstream `_execute` fetch.
  *
- *   - env_key → `X-WorldMonitor-Key: <apiKey>` (existing, unchanged).
- *   - pro     → `X-WM-MCP-Internal: <ts>.<sig>` + `X-WM-MCP-User-Id: <userId>`.
+ *   - env_key → `X-WorldMonitor-Key: <apiKey>` (legacy operator keys).
+ *   - pro / user_key → `X-WM-MCP-Internal: <ts>.<sig>` + `X-WM-MCP-User-Id`.
  *               Signature binds method+pathname+queryHash+bodyHash+userId.
+ *               Identity-resolved dashboard keys use this path so the
+ *               gateway does not increment the shared daily account meter
+ *               a second time after MCP already reserved the tool weight.
  *
  * `body` MUST be the EXACT bytes the caller passes to `fetch()` so the
  * signed payload matches the wire bytes. For JSON, pre-stringify on the
@@ -119,24 +154,20 @@ export async function buildAuthHeaders(
   url: string,
   body: BodyInit | null | undefined,
 ): Promise<Record<string, string>> {
-  if (context.kind === 'env_key' || context.kind === 'user_key') {
-    // user_key (#4859): the downstream REST gateway validates the raw key
-    // itself (Convex hash lookup + the #4611 apiAccess gate + per-account
-    // limits), so usage attributes to the key owner exactly like a direct
-    // REST call — no internal-HMAC identity smuggling needed.
+  if (context.kind === 'env_key') {
     return { 'X-WorldMonitor-Key': context.apiKey };
   }
   if (context.kind === 'free') {
     // U7: a free-tier context has no principal to authenticate as, so there is
     // nothing honest to sign. Throwing is the fail-closed choice — the
-    // alternative (falling through to the `pro` HMAC branch below) would mint
+    // alternative (falling through to the HMAC branch below) would mint
     // an internally-trusted signature for an anonymous caller, which is the
     // one outcome the free tier must never produce. A free-tier tool that
     // reaches here is misconfigured: it declared `_freeTier` while calling a
     // credentialed downstream.
     throw new Error('buildAuthHeaders: free-tier context has no credentials — a free-tier tool must not call a credentialed downstream');
   }
-  // context.kind === 'pro'
+  // context.kind === 'pro' | 'user_key'
   const secret = process.env.MCP_INTERNAL_HMAC_SECRET ?? '';
   if (!secret) {
     // Should never happen in production (deploy gate at U10) — surface as
@@ -188,13 +219,13 @@ export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): str
  * Bearer challenge so clients do not enter an OAuth retry loop.
  */
 export function mcpStructuredDenialResponse(
-  reason: McpDenialReason,
+  reason: McpStaticDenialReason,
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
   opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number },
 ): Response {
-  const built = buildMcpStructuredDenial(reason);
+  const built = buildMcpStructuredDenial({ reason });
   const { data } = built;
   // A caller may keep its own, more specific `message` (e.g. the credential
   // mechanics on the auth-resolution 401s) while still gaining the machine-
@@ -320,7 +351,7 @@ export function getMcpBillingVerificationDenial(
   // on the billing envelope (-32002 / 403), with agent-facing upgrade
   // attribution so clients can distinguish it from the free-account path.
   const structured = billingStatus === 'subscription_lapsed'
-    ? buildMcpStructuredDenial('lapsed-subscription')
+    ? buildMcpStructuredDenial({ reason: 'lapsed-subscription' })
     : null;
 
   return new Response(
@@ -555,14 +586,13 @@ export async function validateProMcpAuthorization(
  * Authentication failures remain 401; terminal entitlement failures are 403;
  * unverifiable entitlement reads are retryable 503 responses.
  *
- * A passing result also reports `mcpDailyLimit`, read straight off the
- * entitlement this call already fetched — but only for plan-driven plan
- * families (`resolvePlanDrivenMcpAllowance`): API-tier subscribers reach this
- * gate through the same OAuth door, and their catalog allowance must not
- * out-rank the 50/day their `user_key` is capped at. A row with no
- * `planLimits` (legacy shape) or a non-plan-driven plan reports `undefined`,
- * which the quota layer resolves to the plan default — the entitlement is
- * NOT re-fetched to fill the gap.
+ * A passing result also reports `budget` — which counter this caller's MCP
+ * calls charge and its ceiling — resolved off the entitlement this call already
+ * fetched. API-tier subscribers reach this gate through the same OAuth door as
+ * `user_key` callers and resolve the same shared REST budget, so the two
+ * credential classes cannot disagree about the cap. A row with no `planLimits`
+ * (legacy shape) resolves to the dedicated Pro default; the entitlement is NOT
+ * re-fetched to fill the gap.
  *
  * Only `free_account` is admitted to the metered allowance. Other insufficient
  * entitlement states remain auth denials; thrown or unverifiable reads remain
@@ -602,9 +632,17 @@ async function checkMcpEntitlementGate(
     // real outage as a routine upsell. Fail closed on a retryable envelope.
     return unavailable();
   }
+  // Resolved once from the row this gate already holds: the burst threshold is
+  // per-plan (API Business sells 300/min, everyone else 60), and a second
+  // lookup on the hot path to learn it would be the round-trip KTD6 removed.
+  const burstPerMinute = resolveMcpBurstPerMinute(ent?.features?.planLimits?.mcpBurstRequestsPerMinute);
   const passed = (): McpPreCheckResult => ({
     ok: true,
-    mcpDailyLimit: resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay),
+    budget: resolveMcpBudget(
+      ent?.features?.planLimits?.mcpCallsPerDay,
+      ent?.features?.planLimits?.apiRequestsPerDay,
+    ),
+    burstPerMinute,
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
@@ -637,7 +675,8 @@ async function checkMcpEntitlementGate(
     // live in dispatch.
     return {
       ok: true,
-      mcpDailyLimit: FREE_ACCOUNT_CALLS_PER_DAY,
+      budget: { allowance: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
+      burstPerMinute,
       freeAccountAllowance: true,
     };
   }
@@ -669,20 +708,27 @@ export async function runUserKeyPreChecks(
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
   id: unknown = null,
 ): Promise<McpPreCheckResult> {
-  const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
-  // KTD6: the entitlement verdict applies, the plan's MCP allowance does NOT —
-  // except the free-account paid-funnel ceiling (#6716), which is not a plan
-  // catalog allowance. user_key callers otherwise stay on the hardcoded daily
-  // cap whatever their API plan advertises.
-  if (!gate.ok) return gate;
-  if (gate.freeAccountAllowance) {
-    return {
-      ok: true,
-      mcpDailyLimit: gate.mcpDailyLimit,
-      freeAccountAllowance: true,
-    };
+  // Same F12 posture as the OAuth door: identity-resolved user_key fetches
+  // sign with the internal HMAC, so a missing secret must fail closed here
+  // rather than reserve a slot and then throw mid-dispatch.
+  if (!process.env.MCP_INTERNAL_HMAC_SECRET) {
+    captureSilentError(new Error('MCP_INTERNAL_HMAC_SECRET unset'), {
+      tags: { route: 'api/mcp', step: 'user-key-secret-preflight' },
+      ctx,
+    });
+    return { ok: false, response: new Response(
+      JSON.stringify({ jsonrpc: '2.0', id: id ?? null, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+      { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+    ) };
   }
-  return { ok: true };
+
+  const gate = await checkMcpEntitlementGate(context.userId, deps, resourceMetadataUrl, corsHeaders, 'user-key-entitlement', ctx, id);
+  // The budget now passes through verbatim. KTD6 dropped it here so a `user_key`
+  // caller fell back to the hardcoded 50/day while the same subscriber's OAuth
+  // token would have resolved the catalog's 1,000 — the asymmetry the exception
+  // list existed to paper over. Both doors resolve one shared REST budget, so
+  // there is nothing left to withhold.
+  return gate;
 }
 
 /**
@@ -719,23 +765,33 @@ export async function runContextPreChecks(
 
 /** Per-minute rate limit. Both paths fail-OPEN on Upstash error (graceful);
  *  the daily quota is the hard-cap fail-CLOSED gate. Returns null on success
- *  or pass-through, a Response on a real 60/min limit hit.
+ *  or pass-through, a Response on a real burst limit hit.
+ *  `perMinute` is the caller's plan threshold, carried from the pre-check that
+ *  already read the entitlement; it defaults to the catalog's common value for
+ *  the one call site that has no pre-check to carry it (a credentialed caller
+ *  on a PUBLIC method), which errs to the lower of the two ceilings sold.
  *  user_key (#4859) shares the per-USER limiter with pro — the principal is
  *  the key OWNER, so a user with an OAuth connection and a dashboard key gets
- *  one combined 60/min budget instead of two stackable ones. */
-export async function applyPerMinuteLimit(context: McpAuthContext, headers: Record<string, string> = {}): Promise<Response | null> {
+ *  one combined budget instead of two stackable ones. */
+export async function applyPerMinuteLimit(
+  context: McpAuthContext,
+  headers: Record<string, string> = {},
+  perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
+): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
     if (!rl) return null;
     try {
       const { success } = await rl.limit(`key:${context.apiKey}`);
       if (!success) {
+        // Operator env keys are ungated and carry no entitlement row, so this
+        // branch keeps the fixed legacy threshold rather than a plan's.
         emitMcpRateLimitHit(context, {
           dimension: 'mcp_minute_burst',
-          limit: 60,
+          limit: MCP_DEFAULT_BURST_PER_MINUTE,
           windowSeconds: 60,
         });
-        return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.', headers);
+        return rpcError(null, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, headers);
       }
     } catch { /* graceful degradation */ }
     return null;
@@ -749,17 +805,21 @@ export async function applyPerMinuteLimit(context: McpAuthContext, headers: Reco
     // worse than useless — every free caller would share one bucket.
     return null;
   }
-  const rl = getMcpProMinRatelimit();
+  const rl = getMcpProMinRatelimit(perMinute);
   if (!rl) return null;
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
     if (!success) {
+      // The emitted limit must be the one that actually rejected: the
+      // `mcp_minute_burst` scanner query reads `observed_limit` from this
+      // field, so a hardcoded 60 would report the wrong ceiling for every
+      // API Business account.
       emitMcpRateLimitHit(context, {
         dimension: 'mcp_minute_burst',
-        limit: 60,
+        limit: perMinute,
         windowSeconds: 60,
       });
-      return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per user.', headers);
+      return rpcError(null, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per user.`, headers);
     }
   } catch { /* graceful degradation */ }
   return null;

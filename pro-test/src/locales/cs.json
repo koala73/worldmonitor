@@ -386,7 +386,7 @@
           "Licenční / API klíč v ceně",
           "Datové toky v reálném čase",
           "60 požadavků/minutu",
-          "1 000 požadavků denně v ceně",
+          "1 000 požadavků za den (REST + MCP kombinovány)",
           "Webhook oznámení"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Vše z API Starter",
           "Práva na redistribuci — vložte naše data do toho, co prodáváte",
           "300 požadavků/minutu",
-          "10 000 požadavků/den zahrnuto",
+          "10 000 požadavků za den (REST + MCP kombinovány)",
           "5 licencí Pro — pozvěte uživatele z libovolné firemní e-mailové domény",
           "Prioritní podpora"
         ],

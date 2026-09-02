@@ -28,7 +28,10 @@ export type DirectLlmEntitlementShape = {
   features?: {
     tier?: number;
     planLimits?: {
-      mcpCallsPerDay?: number | null;
+      // `SHARED_API_BUDGET` is a real catalog value for `mcpCallsPerDay` on the
+      // API tiers; this shape is structurally matched against entitlement rows
+      // that carry it, so narrowing it to `number | null` would reject them.
+      mcpCallsPerDay?: number | null | 'shared-api-budget';
       dashboardAiCallsPerDay?: number | null;
     };
   };
