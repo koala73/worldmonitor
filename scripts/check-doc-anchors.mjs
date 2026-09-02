@@ -49,7 +49,7 @@ if (htmlFiles.length === 0) {
   process.exit(2);
 }
 
-const unescape = (s) => s
+const decodeEntities = (s) => s
   .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
   .replace(/&quot;/g, '"').replace(/&#(\d+);/g, (_, d) => String.fromCharCode(+d));
 
@@ -58,12 +58,12 @@ const failures = [];
 
 for (const file of htmlFiles) {
   const doc = readFileSync(file, 'utf8');
-  const ids = new Set([...doc.matchAll(/id="([^"]+)"/g)].map((m) => unescape(m[1])));
+  const ids = new Set([...doc.matchAll(/id="([^"]+)"/g)].map((m) => decodeEntities(m[1])));
   const hrefs = new Set(
     [...doc.matchAll(/href="#([^"]+)"/g)].map((m) => {
       let raw = m[1];
       try { raw = decodeURIComponent(raw); } catch { /* keep raw when not percent-encoded */ }
-      return unescape(raw);
+      return decodeEntities(raw);
     }),
   );
   const page = relative(root, file).split(sep).slice(0, -1).join('/') || '(root)';
