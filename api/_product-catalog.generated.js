@@ -231,7 +231,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 0,
       "dashboardAiCallsPerDay": 0,
-      "mcpBurstRequestsPerMinute": 0
+      "mcpBurstRequestsPerMinute": 0,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Get Started",
     "href": "https://worldmonitor.app/dashboard",
@@ -260,7 +261,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 50,
       "dashboardAiCallsPerDay": 500,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": true
   },
@@ -285,7 +287,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 0,
       "mcpCallsPerDay": 250,
       "dashboardAiCallsPerDay": 2500,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "highlighted": false
   },
@@ -307,9 +310,10 @@ export const TIER_CONFIG = {
     "planLimits": {
       "apiRequestsPerDay": 1000,
       "apiBurstRequestsPerMinute": 60,
-      "mcpCallsPerDay": "shared-api-budget",
+      "mcpCallsPerDay": 1000,
       "dashboardAiCallsPerDay": 1000,
-      "mcpBurstRequestsPerMinute": 60
+      "mcpBurstRequestsPerMinute": 60,
+      "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
   },
@@ -331,9 +335,10 @@ export const TIER_CONFIG = {
     "planLimits": {
       "apiRequestsPerDay": 10000,
       "apiBurstRequestsPerMinute": 300,
-      "mcpCallsPerDay": "shared-api-budget",
+      "mcpCallsPerDay": 10000,
       "dashboardAiCallsPerDay": 10000,
-      "mcpBurstRequestsPerMinute": 300
+      "mcpBurstRequestsPerMinute": 300,
+      "mcpDailyBudgetSharedWithRest": true
     },
     "highlighted": false
   },
@@ -359,7 +364,8 @@ export const TIER_CONFIG = {
       "apiBurstRequestsPerMinute": 1000,
       "mcpCallsPerDay": null,
       "dashboardAiCallsPerDay": null,
-      "mcpBurstRequestsPerMinute": 1000
+      "mcpBurstRequestsPerMinute": 1000,
+      "mcpDailyBudgetSharedWithRest": false
     },
     "cta": "Contact Sales",
     "href": "mailto:enterprise@worldmonitor.app",
