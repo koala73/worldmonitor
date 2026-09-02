@@ -195,4 +195,46 @@ describe('chokepoint source availability', () => {
     assert.equal(meta.recordCount, 0);
     assert.equal(meta.uncoveredChokepoints?.length, 13);
   });
+
+  it('qualifies quiet rows that are missing from a partial transit payload', async () => {
+    Date.now = () => Date.parse('2026-03-05T00:00:00.000Z');
+    const harness = redisHarness(async (url) => {
+      if (url.includes('msi.nga.mil')) return Response.json([]);
+      if (url.startsWith('https://relay.test/ais/snapshot')) {
+        return Response.json({
+          density: [],
+          disruptions: [],
+          snapshotAt: Date.now(),
+          status: { connected: true, vessels: 10, messages: 20 },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    harness.values.set('supply_chain:transit-summaries:v1', JSON.stringify({
+      summaries: {
+        malacca_strait: {
+          todayTotal: 4,
+          todayTanker: 1,
+          todayCargo: 2,
+          todayOther: 1,
+          wowChangePct: 0,
+          riskLevel: '',
+          incidentCount7d: 0,
+          disruptionPct: 0,
+          riskSummary: '',
+          riskReportAction: '',
+          dataAvailable: true,
+        },
+      },
+    }));
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+
+    const response = await getChokepointStatus({} as never, {});
+
+    assert.equal(response.chokepoints.find((row) => row.id === 'malacca_strait')?.description, 'No active disruptions');
+    assert.match(
+      response.chokepoints.find((row) => row.id === 'panama')?.description || '',
+      /source coverage incomplete/,
+    );
+  });
 });
