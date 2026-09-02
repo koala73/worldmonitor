@@ -26,6 +26,7 @@ import {
   hasObservedValue,
   laterDate,
   loadCorpusData,
+  renderCountryAnalysis,
   resolveChokepointObservation,
   resolveLatestLivePulseSnapshotPath,
   SOURCE_CATALOG_LASTMOD_PATHS,
@@ -955,6 +956,42 @@ describe('crawlable corpus generator', () => {
       false,
       'an unrecognised imputation class must fail closed, not publish',
     );
+  });
+
+  it('never ranks a withheld pillar or domain as weakest or strongest', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const source = data.countries.find((entry) => Number.isInteger(entry.rank)
+      && (entry.pillars?.length ?? 0) >= 3
+      && (entry.domains?.length ?? 0) >= 6);
+    assert.ok(source, 'need a ranked country with full pillar and domain detail');
+
+    const render = (country) => renderCountryAnalysis({
+      country,
+      capturedAt: data.resilience.capturedAt,
+      methodologyFormula: 'test-formula',
+      rankedCount: 170,
+    });
+
+    // Baseline: with everything observed the published wording is unchanged.
+    const baseline = render(structuredClone(source));
+    assert.match(baseline.html, /is the weakest pillar at \d/);
+    assert.match(baseline.html, /Top domain: /);
+
+    // Now withhold the lowest-scoring pillar and blank out one whole domain.
+    const degraded = structuredClone(source);
+    const lowestPillar = [...degraded.pillars].sort((a, b) => a.score - b.score)[0];
+    lowestPillar.coverage = 0;
+    const lowestDomain = [...degraded.domains].sort((a, b) => a.score - b.score)[0];
+    for (const dimension of lowestDomain.dimensions) dimension.imputationClass = 'unmonitored';
+    const { html } = render(degraded);
+
+    // The whole point: no claim may name an entry whose score renders as a dash.
+    assert.doesNotMatch(html, /is the weakest pillar at —/, 'must not call a withheld pillar the weakest');
+    assert.doesNotMatch(html, /is strongest at —/, 'must not call a withheld pillar the strongest');
+    assert.doesNotMatch(html, /is the lowest of the six underlying domains at —/, 'must not call a withheld domain the lowest');
+    assert.doesNotMatch(html, /Top domain: [^.]*, —\./, 'must not report a withheld domain as the top domain');
+    // It still degrades to a statement, not silence.
+    assert.match(html, /Pillars with an observed reading, weakest first:/);
   });
 
   it('dates chokepoint observations without git history', () => {

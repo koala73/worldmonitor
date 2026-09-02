@@ -818,6 +818,17 @@ function domainScoreEvidence(domain) {
   return { coverage: domain.dimensions.some(hasObservedDimensionScore) };
 }
 
+// Weakest/strongest claims may only rank entries that actually have a reading.
+// A withheld pillar or domain is not the weakest one, it is no reading at all --
+// ranking it would name it in prose and then print an em dash for its score.
+function observedPillarsOf(pillars) {
+  return pillars.filter((pillar) => hasObservedValue(pillar.score, { coverage: pillar.coverage }));
+}
+
+function observedDomainsOf(domains) {
+  return domains.filter((domain) => hasObservedValue(domain.score, domainScoreEvidence(domain)));
+}
+
 function dimensionEvidenceState(dimension) {
   const evidenceState = String(dimension.imputationClass || '');
   if (evidenceState) return humanizeId(evidenceState);
@@ -2465,9 +2476,14 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
       },
     ];
   }
-  const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
+  const pillars = observedPillarsOf([...country.pillars].sort((left, right) => left.score - right.score));
   const weakest = pillars[0];
   const second = pillars[1];
+  const weakestPillarsAnswer = weakest && second
+    ? `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is lowest at ${formatScore(weakest.score, { coverage: weakest.coverage })}, followed by ${PILLAR_LABELS[second.id] || humanizeId(second.id)} at ${formatScore(second.score, { coverage: second.coverage })}. Their evidence coverage is ${formatPercent(weakest.coverage)} and ${formatPercent(second.coverage)}.`
+    : weakest
+      ? `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is the only pillar with an observed reading, at ${formatScore(weakest.score, { coverage: weakest.coverage })} with ${formatPercent(weakest.coverage)} evidence coverage. The other pillars are withheld because this snapshot has no observed evidence for them.`
+      : `No pillar has an observed reading in this snapshot, so no pillar can be ranked weakest.`;
   const rankText = country.rank == null
     ? 'outside the headline ranking because the snapshot labels its evidence low-confidence'
     : `#${country.rank} of ${rankedCount} ranked countries`;
@@ -2479,7 +2495,7 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
     },
     {
       question: `Which resilience pillars are weakest for ${country.name}?`,
-      answer: `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is lowest at ${formatScore(weakest.score, { coverage: weakest.coverage })}, followed by ${PILLAR_LABELS[second.id] || humanizeId(second.id)} at ${formatScore(second.score, { coverage: second.coverage })}. Their evidence coverage is ${formatPercent(weakest.coverage)} and ${formatPercent(second.coverage)}.`,
+      answer: weakestPillarsAnswer,
     },
     {
       question: `Is ${country.name}'s resilience score rising or falling?`,
@@ -2500,7 +2516,7 @@ function describeCountryAvailableEvidenceFaq(country) {
     : describeAvailableEvidence(country);
 }
 
-function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
+export function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
   const scorePublished = country.headlineEligible !== false;
   if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
@@ -2563,10 +2579,11 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
   }
   const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
   const domains = [...country.domains].sort((left, right) => left.score - right.score);
+  const observedPillars = observedPillarsOf(pillars);
+  const observedDomains = observedDomainsOf(domains);
   const [weakestPillar, secondPillar] = pillars;
   const strongestPillar = pillars.at(-1);
   const [weakestDomain] = domains;
-  const strongestDomain = domains.at(-1);
   const trendSentence = hasObservedValue(country.change30d, { coverage: scorePublished })
     ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d, { coverage: scorePublished })} points.`
     : 'The committed snapshot does not contain a comparable 30-day change.';
@@ -2574,8 +2591,25 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
   const secondPillarLabel = PILLAR_LABELS[secondPillar.id] || humanizeId(secondPillar.id);
   const strongestPillarLabel = PILLAR_LABELS[strongestPillar.id] || humanizeId(strongestPillar.id);
   const weakestDomainLabel = DOMAIN_LABELS[weakestDomain.id] || humanizeId(weakestDomain.id);
-  const strongestDomainLabel = DOMAIN_LABELS[strongestDomain.id] || humanizeId(strongestDomain.id);
-  const summary = `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore, { coverage: scorePublished })} out of 100. ${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score, { coverage: weakestPillar.coverage })}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score, { coverage: secondPillar.coverage })}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score, { coverage: strongestPillar.coverage })}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score, domainScoreEvidence(weakestDomain))}. ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
+  // Every pillar and domain observed is the normal case and keeps the published
+  // wording exactly. Otherwise the claim is rebuilt from observed entries only,
+  // so prose never names a withheld pillar or domain as weakest or strongest.
+  const pillarDomainClause = observedPillars.length === pillars.length
+    && observedDomains.length === domains.length
+    ? `${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score, { coverage: weakestPillar.coverage })}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score, { coverage: secondPillar.coverage })}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score, { coverage: strongestPillar.coverage })}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score, domainScoreEvidence(weakestDomain))}.`
+    : [
+      observedPillars.length > 0
+        ? `Pillars with an observed reading, weakest first: ${observedPillars.map((pillar) => `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} ${formatScore(pillar.score, { coverage: pillar.coverage })}`).join('; ')}. ${pillars.length - observedPillars.length} of ${pillars.length} pillars are withheld for lack of observed evidence.`
+        : `No pillar has an observed reading in this snapshot.`,
+      observedDomains.length > 0
+        ? `${DOMAIN_LABELS[observedDomains[0].id] || humanizeId(observedDomains[0].id)} is the lowest of the ${observedDomains.length} domains with an observed reading, at ${formatScore(observedDomains[0].score, domainScoreEvidence(observedDomains[0]))}.`
+        : `No domain has an observed reading in this snapshot.`,
+    ].join(' ');
+  const topObservedDomain = observedDomains.at(-1);
+  const topDomainSentence = topObservedDomain
+    ? `Top domain: ${DOMAIN_LABELS[topObservedDomain.id] || humanizeId(topObservedDomain.id)}, ${formatScore(topObservedDomain.score, domainScoreEvidence(topObservedDomain))}.`
+    : 'No domain has an observed reading to report as the top domain.';
+  const summary = `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore, { coverage: scorePublished })} out of 100. ${pillarDomainClause} ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
   const allDimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
     ...dimension,
     domainId: domain.id,
@@ -2622,7 +2656,7 @@ ${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_L
         <h3>Tracked crisis context</h3>
         <p>${crisisText}</p>
         <h3>Reading limits</h3>
-        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. Top domain: ${escapeHtml(strongestDomainLabel)}, ${escapeHtml(formatScore(strongestDomain.score, domainScoreEvidence(strongestDomain)))}. Weak pillars reduce the result; compare with coverage and imputation visible.</p>
+        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${escapeHtml(topDomainSentence)} Weak pillars reduce the result; compare with coverage and imputation visible.</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>
 ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
