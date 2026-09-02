@@ -23,6 +23,19 @@ function arcgisJson(body) {
   });
 }
 
+// The two reference pages every pagination case below walks: a first page
+// that reports more to come, and a final page that closes the loop. Only the
+// failure injected between them varies per test. arcgisJson serializes its
+// argument, so sharing these objects cannot leak state across tests.
+const FIRST_PAGE = {
+  features: [{ attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 } }],
+  exceededTransferLimit: true,
+};
+const FINAL_PAGE = {
+  features: [{ attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 } }],
+  exceededTransferLimit: false,
+};
+
 function cachedCountry(iso2, cacheWrittenAt = 0) {
   return {
     iso2,
@@ -53,24 +66,14 @@ describe('PortWatch reference pagination recovery', () => {
       requestedInits.push(init);
 
       if (offset === 0) {
-        return arcgisJson({
-          features: [{
-            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
-          }],
-          exceededTransferLimit: true,
-        });
+        return arcgisJson(FIRST_PAGE);
       }
 
       offsetOneAttempts += 1;
       if (offsetOneAttempts === 1) {
         return arcgisJson(arcgisRateLimitFixture);
       }
-      return arcgisJson({
-        features: [{
-          attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 },
-        }],
-        exceededTransferLimit: false,
-      });
+      return arcgisJson(FINAL_PAGE);
     };
 
     const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
@@ -105,12 +108,7 @@ describe('PortWatch reference pagination recovery', () => {
       const offset = Number(new URL(url).searchParams.get('resultOffset'));
       requestedOffsets.push(offset);
       if (offset === 0) {
-        return arcgisJson({
-          features: [{
-            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
-          }],
-          exceededTransferLimit: true,
-        });
+        return arcgisJson(FIRST_PAGE);
       }
       return arcgisJson(arcgisRateLimitFixture);
     };
@@ -143,22 +141,12 @@ describe('PortWatch reference pagination recovery', () => {
       requestedOffsets.push(offset);
 
       if (offset === 0) {
-        return arcgisJson({
-          features: [{
-            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
-          }],
-          exceededTransferLimit: true,
-        });
+        return arcgisJson(FIRST_PAGE);
       }
 
       offsetOneAttempts += 1;
       if (offsetOneAttempts === 1) return arcgisJson({ error: { code: 429 } });
-      return arcgisJson({
-        features: [{
-          attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 },
-        }],
-        exceededTransferLimit: false,
-      });
+      return arcgisJson(FINAL_PAGE);
     };
 
     const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
@@ -188,12 +176,7 @@ describe('PortWatch reference pagination recovery', () => {
       requestedOffsets.push(offset);
 
       if (offset === 0) {
-        return arcgisJson({
-          features: [{
-            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
-          }],
-          exceededTransferLimit: true,
-        });
+        return arcgisJson(FIRST_PAGE);
       }
 
       offsetOneAttempts += 1;
@@ -202,12 +185,7 @@ describe('PortWatch reference pagination recovery', () => {
           error: { message: 'Cannot perform query. Invalid query parameters.' },
         });
       }
-      return arcgisJson({
-        features: [{
-          attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 },
-        }],
-        exceededTransferLimit: false,
-      });
+      return arcgisJson(FINAL_PAGE);
     };
 
     const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
