@@ -7,6 +7,10 @@ import { CHROME_UA } from '../scripts/_seed-utils.mjs';
 
 const { orderColdFetchQueue } = portwatchSeed;
 const DAY = 86_400_000;
+// Sanitized from a real Railway deployment. Its _comment records that only
+// the HTTP 200 envelope and message were confirmed upstream — other provider
+// fields are unconfirmed rather than observed absent, so do not treat this
+// fixture as proof of the full error shape.
 const arcgisRateLimitFixture = JSON.parse(await readFile(
   new URL('./fixtures/portwatch-arcgis-too-many-requests.json', import.meta.url),
   'utf8',
@@ -38,7 +42,6 @@ describe('PortWatch reference pagination recovery', () => {
       arcgisRateLimitFixture.error.message,
       'Unable to perform query. Too many requests.',
     );
-    assert.match(arcgisRateLimitFixture._comment, /unconfirmed, not observed absent/);
 
     const requestedOffsets = [];
     const requestedInits = [];

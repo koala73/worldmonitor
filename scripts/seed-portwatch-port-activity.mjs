@@ -299,7 +299,16 @@ async function fetchWithTimeout(url, {
   //                       arcgisProxyRetry. Used by preflight so a degraded
   //                       upstream can't burn the container budget on
   //                       best-effort cache-invalidation probes (PR #3711 P1).
-  //   fetchFn          — optional direct transport seam for boundary tests.
+  //   fetchFn          — optional transport seam for boundary tests. Covers
+  //                       the DIRECT leg only (this function and
+  //                       _captureErrorBodyAfterTimeout). The 429 and
+  //                       timeout branches below fall through to
+  //                       arcgisProxyRetry, which takes no seam and always
+  //                       uses httpsProxyFetchRaw — a test driving those
+  //                       branches reaches the real proxy transport, not
+  //                       fetchFn. (loadEnvFile is inert under a test
+  //                       runtime, so that path fails closed with "no proxy
+  //                       configured" rather than dialing out.)
   const combined = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs);
