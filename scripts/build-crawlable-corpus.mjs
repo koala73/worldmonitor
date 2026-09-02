@@ -770,9 +770,14 @@ function formatPercent(value) {
   return `${Math.round(numeric * 100)}%`;
 }
 
-const WITHHELD_EVIDENCE_STATES = new Set(['not-applicable', 'source-failure', 'unmonitored']);
 const OBSERVED_EVIDENCE = Object.freeze({ coverage: true });
 
+// A dimension carries an imputationClass ONLY when observedWeight === 0 -- see the
+// four-class taxonomy in proto/worldmonitor/resilience/v1/resilience.proto and
+// server/worldmonitor/resilience/v1/_shared.ts. So an empty class is the allow-list
+// for "observed", exactly as buildMicrostateEvidenceProfile already requires below.
+// Enumerating the withheld classes instead would fail OPEN on any fifth class
+// (it already omitted 'stable-absence', whose imputed scores run 85-88).
 export function hasObservedValue(value, { coverage, evidenceState = '' } = {}) {
   const numericValue = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
   const numericCoverage = Number(coverage);
@@ -781,7 +786,7 @@ export function hasObservedValue(value, { coverage, evidenceState = '' } = {}) {
     && Number.isFinite(Number(numericValue))
     && Number.isFinite(numericCoverage)
     && numericCoverage > 0
-    && !WITHHELD_EVIDENCE_STATES.has(String(evidenceState || ''));
+    && String(evidenceState || '') === '';
 }
 
 function formatObservedNumber(value, evidence, formatter, fallback = '—') {
@@ -2500,12 +2505,17 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
   if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
   }
-  const peerLinks = country.peers.map((peer) => (
-    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${scorePublished ? ` (${escapeHtml(formatScore(peer.overallScore, { coverage: peer.headlineEligible !== false }))})` : ''}</a>`
-  )).join(', ');
-  const regionalLinks = country.regionalPeers.map((peer) => (
-    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${scorePublished ? ` (${escapeHtml(formatScore(peer.overallScore, { coverage: peer.headlineEligible !== false }))})` : ''}</a>`
-  )).join(', ');
+  // A peer whose own page publishes no headline score gets no parenthetical at all.
+  // Rendering an empty "(—)" would advertise a withheld value instead of omitting it.
+  const peerLink = (peer) => {
+    const score = scorePublished
+      ? formatScore(peer.overallScore, { coverage: peer.headlineEligible !== false })
+      : '—';
+    const suffix = score === '—' ? '' : ` (${escapeHtml(score)})`;
+    return `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${suffix}</a>`;
+  };
+  const peerLinks = country.peers.map(peerLink).join(', ');
+  const regionalLinks = country.regionalPeers.map(peerLink).join(', ');
   const crisisText = country.crisisMemberships.length > 0
     ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
     : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
@@ -2744,14 +2754,21 @@ ${analysis.html}
     ...(scorePublished ? [
       { '@type': 'PropertyValue', name: 'Overall resilience score', value: country.overallScore, minValue: 0, maxValue: 100 },
       { '@type': 'PropertyValue', name: 'Rank', value: country.rank },
-      { '@type': 'PropertyValue', name: '30-day score change', value: country.change30d, unitText: 'index points' },
-      ...country.pillars.map((pillar) => ({
-        '@type': 'PropertyValue',
-        name: `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} score`,
-        value: pillar.score,
-        minValue: 0,
-        maxValue: 100,
-      })),
+      // Structured data is the surface answer engines cite, so it obeys the same
+      // observed-value rule as the visible page: a withheld value is OMITTED here,
+      // never emitted raw next to an em dash in the HTML.
+      ...(hasObservedValue(country.change30d, { coverage: scorePublished })
+        ? [{ '@type': 'PropertyValue', name: '30-day score change', value: country.change30d, unitText: 'index points' }]
+        : []),
+      ...country.pillars
+        .filter((pillar) => hasObservedValue(pillar.score, { coverage: pillar.coverage }))
+        .map((pillar) => ({
+          '@type': 'PropertyValue',
+          name: `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} score`,
+          value: pillar.score,
+          minValue: 0,
+          maxValue: 100,
+        })),
     ] : []),
   ];
   const resilienceDataset = {
@@ -3419,9 +3436,9 @@ function renderCrisisPage({
   }).join('\n');
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current crisis metrics" aria-busy="false">
-          <div class="metric"><span>Recorded events</span><strong data-crisis-events>${escapeHtml(formatObservedNumber(pulse.eventsTotal, { coverage: hasPulse }, String, 'See countries'))}</strong></div>
-          <div class="metric"><span>Recorded fatalities</span><strong data-crisis-fatalities>${escapeHtml(formatObservedNumber(pulse.fatalities, { coverage: hasPulse }, String, 'See countries'))}</strong></div>
-          <div class="metric"><span>Political violence events</span><strong data-crisis-political>${escapeHtml(formatObservedNumber(pulse.politicalViolenceEvents, { coverage: hasPulse }, String, 'See countries'))}</strong></div>
+          <div class="metric"><span>Recorded events</span><strong data-crisis-events>${escapeHtml(formatCount(pulse.eventsTotal, { coverage: hasPulse }, 'See countries'))}</strong></div>
+          <div class="metric"><span>Recorded fatalities</span><strong data-crisis-fatalities>${escapeHtml(formatCount(pulse.fatalities, { coverage: hasPulse }, 'See countries'))}</strong></div>
+          <div class="metric"><span>Political violence events</span><strong data-crisis-political>${escapeHtml(formatCount(pulse.politicalViolenceEvents, { coverage: hasPulse }, 'See countries'))}</strong></div>
           <div class="metric"><span>Reference period</span><strong data-crisis-period>${escapeHtml(pulse.referencePeriod)}</strong></div>
         </div>`
     : `        <p class="tool-note" data-live-fallback>Current monthly conflict metrics load after page enhancement. The tracker scope below remains the dated crawlable reference.</p>
