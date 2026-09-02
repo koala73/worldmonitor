@@ -11,10 +11,13 @@ import {
   fetchSipriSupplierDependencies,
   mapSipriEntityToIso2,
   selectSweepImporters,
+  SIPRI_SWEEP_CHUNK,
   SIPRI_SWEEP_HORIZON_MS,
+  SIPRI_ZERO_REGRESSION_MIN,
   parseSipriSupplierCsv,
   parseWbIndicatorPage,
 } from '../scripts/_defense-industrial-source.mjs';
+import { fetchSupplierSnapshot } from '../scripts/_arms-suppliers-sweep.mjs';
 
 const wbFixture = JSON.parse(readFileSync(new URL('./fixtures/defense-industrial/wb-ms-mil.json', import.meta.url), 'utf8'));
 const sipriFixture = readFileSync(new URL('./fixtures/defense-industrial/sipri-importer.csv', import.meta.url), 'utf8');
@@ -181,29 +184,56 @@ describe('defense-industrial deployment wiring', () => {
     assert.match(supplierSeeder, /maxContentAgeMin:\s*800 \* 24 \* 60/);
   });
 
-  it('passes both production sweep inputs without the callback contract', () => {
-    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-    const supplierSeeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
+  it('passes both production sweep inputs without the callback contract', async () => {
+    // Executed, not regex-matched: a positional source regex reds on a
+    // behaviour-identical property reorder and stays green if the caller passes
+    // the pair and then ignores it.
+    let received = null;
+    await fetchSupplierSnapshot({
+      readCanonical: async () => ({ importers: { FR: { suppliers: [], window: { endYear: 2025 } } } }),
+      buildSnapshot: async ({ fetchSipri }) => { await fetchSipri({ fetchFn: async () => new Response('{}') }); return {}; },
+      fetchSipri: async (options) => { received = options; return { importers: {} }; },
+    });
 
     assert.deepEqual({
-      pairedInputs: /fetchSipriSupplierDependencies\(\{\s*\.\.\.options,\s*previousSnapshot:\s*previous,\s*maxSweepImporters:\s*SIPRI_SWEEP_CHUNK,?\s*\}\)/s
-        .test(supplierSeeder),
-      selectImporters: /selectImporters:/.test(supplierSeeder),
+      previousSnapshot: received.previousSnapshot,
+      maxSweepImporters: received.maxSweepImporters,
     }, {
-      pairedInputs: true,
-      selectImporters: false,
+      previousSnapshot: { importers: { FR: { suppliers: [], window: { endYear: 2025 } } } },
+      maxSweepImporters: SIPRI_SWEEP_CHUNK,
     });
   });
 
-  it('propagates a previous-snapshot read failure', () => {
+  it('does not reintroduce the removed selectImporters callback', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    for (const file of ['scripts/seed-defense-industrial-suppliers.mjs', 'scripts/_arms-suppliers-sweep.mjs']) {
+      assert.equal(
+        /selectImporters:/.test(readFileSync(join(root, file), 'utf8')),
+        false,
+        `${file} must not pass the removed selectImporters callback`,
+      );
+    }
+  });
+
+  it('propagates a previous-snapshot read failure instead of sweeping as a first run', async () => {
+    // The failure this names is the one redisGet's default degrade-to-null hides:
+    // a snapshot that reads as absent is indistinguishable from a first run, and
+    // a first run republishes one 56-row slice over the ~200-row canonical key.
+    let sweepStarted = false;
+    await assert.rejects(
+      () => fetchSupplierSnapshot({
+        readCanonical: async () => { throw new Error('Redis GET failed: HTTP 503'); },
+        buildSnapshot: async () => { sweepStarted = true; return {}; },
+      }),
+      /HTTP 503/,
+    );
+    assert.equal(sweepStarted, false, 'no sweep may start when the previous snapshot could not be read');
+  });
+
+  it('reads the canonical snapshot in strict mode so an HTTP error cannot look absent', () => {
     const root = join(dirname(fileURLToPath(import.meta.url)), '..');
     const supplierSeeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
-
-    assert.equal(
-      /const previousSnapshot = await readCanonicalValue\(ARMS_SUPPLIERS_KEY\);/.test(supplierSeeder),
-      true,
-      'readCanonicalValue failure must propagate out of fetchSupplierSnapshot',
-    );
+    assert.match(supplierSeeder, /readCanonicalValue\(key,\s*\{\s*strict:\s*true\s*\}\)/);
   });
 });
 
@@ -733,6 +763,89 @@ describe('SIPRI chunked sweep (#6806)', () => {
       buildArmsSupplierCompletion(snapshot),
       { completedAt: iso(NOW), windowEndYear: 2025 },
     );
+  });
+
+  it('withholds a collapsed zero-supplier cohort instead of publishing wiped rows', async () => {
+    // Every attempted importer previously HAD suppliers and now parses clean
+    // with none. That is upstream degradation, not 56 countries simultaneously
+    // ceasing arms imports, so the slice must be withheld and retried.
+    const previous = previousSnapshot(importerCodes.length);
+    const headerOnlyCsv = 'Supplier,2021-2025\n';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(headerOnlyCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      published: Object.keys(result.importers).length,
+      failed: result.failedImporters.length,
+      status: snapshot.stage.status,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      published: 0,
+      failed: 56,
+      status: 'partial',
+      completion: {},
+    });
+    // Last-good data survived and the withheld importers stay selectable.
+    assert.deepEqual(snapshot.importers[importerCodes[0]].suppliers, [{ supplierIso2: 'US', tivShare: 1 }]);
+    assert.equal(snapshot.importers[importerCodes[0]].retained, true);
+    assert.equal(
+      selectSweepImporters([{ iso2: importerCodes[0] }], snapshot, 2025, NOW).length,
+      1,
+    );
+  });
+
+  it('still publishes a zero-transfer refresh below the cohort-collapse floor', async () => {
+    // The counterpart to the test above: a handful of genuine zero-transfer
+    // importers must still become current, or the #7524 fix regresses and they
+    // stay stale forever.
+    const staleCount = SIPRI_ZERO_REGRESSION_MIN - 1;
+    const previous = previousSnapshot(staleCount);
+    const headerOnlyCsv = 'Supplier,2021-2025\n';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(headerOnlyCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      published: Object.keys(result.importers).length,
+      failed: result.failedImporters.length,
+      unfetched: result.sweep.unfetched,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      published: staleCount,
+      failed: 0,
+      unfetched: 0,
+      completion: { completedAt: iso(NOW), windowEndYear: 2025 },
+    });
+    assert.equal(snapshot.importers[importerCodes[0]].retained, false);
   });
 
   it('the soft budget returns partial progress instead of losing the tick', async () => {

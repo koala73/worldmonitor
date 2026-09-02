@@ -3,49 +3,29 @@
 import { loadEnvFile, readCanonicalValue, runSeed } from './_seed-utils.mjs';
 import {
   buildArmsSupplierCompletion,
-  buildSipriSupplierSnapshot,
   DEFENSE_INDUSTRIAL_TTL_SECONDS,
-  fetchSipriSupplierDependencies,
-  SIPRI_SWEEP_CHUNK,
 } from './_defense-industrial-source.mjs';
+import {
+  ARMS_SUPPLIERS_COMPLETE_KEY,
+  ARMS_SUPPLIERS_KEY,
+  fetchSupplierSnapshot,
+  supplierContentMeta,
+  validateArmsSuppliers,
+} from './_arms-suppliers-sweep.mjs';
 
 loadEnvFile(import.meta.url, { only: ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'SIPRI_ARMS_API_BASE_URL'] });
 
-export const ARMS_SUPPLIERS_KEY = 'military:arms-suppliers:v1';
-export const ARMS_SUPPLIERS_COMPLETE_KEY = 'military:arms-suppliers:complete:v1';
+export { ARMS_SUPPLIERS_COMPLETE_KEY, ARMS_SUPPLIERS_KEY };
 
-export function validateArmsSuppliers(data) {
-  return data && Object.keys(data.importers || {}).length > 0;
-}
+// strict: an Upstash HTTP error must NOT read as an absent key here. redisGet
+// degrades HTTP failures to null by default, which would make a transient 5xx
+// look like a first run and republish one 56-importer slice over the ~200-row
+// canonical key.
+const readSnapshot = (key) => readCanonicalValue(key, { strict: true });
 
-export function supplierContentMeta(data) {
-  const endYears = Object.values(data.importers || {})
-    .map((entry) => entry?.window?.endYear)
-    .filter(Number.isInteger);
-  if (endYears.length === 0) return null;
-  return {
-    newestItemAt: Date.UTC(Math.max(...endYears), 11, 31, 23, 59, 59),
-    oldestItemAt: Date.UTC(Math.min(...endYears), 0, 1),
-  };
-}
-
-async function fetchSupplierSnapshot() {
-  const previousSnapshot = await readCanonicalValue(ARMS_SUPPLIERS_KEY);
-  const previous = previousSnapshot || {};
-  return buildSipriSupplierSnapshot({
-    previousSnapshot: previous,
-    // One SLICE per tick. The full ~200-importer catalog needs ~800s at the
-    // measured 31.8s/request and Railway kills the container at 600s, so a
-    // whole-catalog pass cannot be made to fit at any deadline.
-    fetchSipri: (options) => fetchSipriSupplierDependencies({
-      ...options,
-      previousSnapshot: previous,
-      maxSweepImporters: SIPRI_SWEEP_CHUNK,
-    }),
-  });
-}
-
-await runSeed('military', 'arms-suppliers', ARMS_SUPPLIERS_KEY, fetchSupplierSnapshot, {
+await runSeed('military', 'arms-suppliers', ARMS_SUPPLIERS_KEY, () => fetchSupplierSnapshot({
+  readCanonical: readSnapshot,
+}), {
   validateFn: validateArmsSuppliers,
   ttlSeconds: DEFENSE_INDUSTRIAL_TTL_SECONDS,
   lockTtlMs: 7 * 60 * 1000,

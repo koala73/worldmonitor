@@ -408,13 +408,19 @@ export async function redisCommand(url, token, command, options = {}) {
   return parseRedisCommandResponse(resp, label);
 }
 
-async function redisGet(url, token, key) {
+async function redisGet(url, token, key, options = {}) {
   // Retry transient failures (timeout / network tear / 5xx / 429) with the
   // redisCommand tagging contract. A single unretried blip here silently read
   // as "key missing", which killed seed-gdelt-intel's cache-merge fallback for
   // 21h while the canonical key was healthy (issue #5437). The external
   // contract is unchanged: HTTP failures still degrade to null (now loudly),
   // thrown failures still propagate — both only after retries.
+  //
+  // `options.strict` opts a single caller out of the HTTP degrade. Degrading is
+  // right for a cache-merge reader that can proceed without the value, and
+  // wrong for one whose next step reads "no value" as a first run — the arms
+  // sweep republished a 56-row slice over its ~200-row canonical key that way.
+  // Default false keeps every existing caller byte-identical.
   let data;
   try {
     data = await withRetry(async () => {
@@ -436,7 +442,7 @@ async function redisGet(url, token, key) {
       return resp.json();
     }, SEED_REDIS_RETRY_ATTEMPTS - 1, SEED_REDIS_RETRY_BASE_MS);
   } catch (err) {
-    if (err.httpStatus == null) throw err;
+    if (err.httpStatus == null || options.strict) throw err;
     console.warn(`  Redis GET ${key}: degraded to null (${err.message})`);
     return null;
   }
@@ -1003,9 +1009,9 @@ export function logSeedResult(domain, count, durationMs, extra = {}) {
  * payload for contract-mode writes; passes legacy bare-shape values through
  * unchanged. Callers MUST NOT parse the envelope themselves.
  */
-export async function readCanonicalValue(key) {
+export async function readCanonicalValue(key, options = {}) {
   const { url, token } = getRedisCredentials();
-  return redisGet(url, token, key);
+  return redisGet(url, token, key, options);
 }
 
 export async function verifySeedKey(key) {
@@ -1131,6 +1137,13 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
 // keys so callers that publish per-key health can distinguish a confirmed
 // EXPIRE no-op from a successful extension and from a pipeline result that
 // could not be confirmed at all.
+//
+// `options.allowMissingKeys` is LOG-ONLY: it suppresses the "manual seed
+// required" warning for keys whose absence is expected (an optional marker that
+// has never been written), but `missingKeys` still lists them and `allExtended`
+// is still false. A caller that needs "absent is fine" must branch on
+// missingKeys — the boolean deliberately keeps its #5364 meaning, where a
+// no-op is a real data condition rather than a transient error.
 export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, options = {}) {
   const requestedKeys = Array.isArray(keys) ? keys : [];
   const allowMissingKeys = new Set(
@@ -1222,8 +1235,8 @@ export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, options 
 // proof the data is still alive (e.g. a market-closed skip that then reports
 // fresh) MUST gate on this boolean and fall back to a real fetch on false —
 // otherwise a silent extension failure looks green while the key expires.
-export async function extendExistingTtl(keys, ttlSeconds = 600) {
-  const result = await extendExistingTtlDetailed(keys, ttlSeconds);
+export async function extendExistingTtl(keys, ttlSeconds = 600, options = {}) {
+  const result = await extendExistingTtlDetailed(keys, ttlSeconds, options);
   return result.allExtended;
 }
 
@@ -2003,6 +2016,12 @@ export function parseYahooChart(data, symbol) {
  * instead of clobbering a good cached payload with an empty recordCount=0 one on
  * a partial upstream fetch. The canonical key is already guarded by validateFn;
  * this closes the same gap for extra keys. Pure function — extracted for tests.
+ *
+ * A companion extra-key option, `allowMissingOnSkip: true`, marks a key whose
+ * ABSENCE is expected rather than alarming — a completion marker that is not
+ * written until the final tick of a multi-tick sweep. It downgrades the
+ * "manual seed required" warning to an info line on every preservation path,
+ * and is meaningless without `skipWhenEmpty`.
  */
 export function shouldSkipEmptyExtraKey(ek, recordCount) {
   return Boolean(ek && ek.skipWhenEmpty) && recordCount === 0;
@@ -2222,6 +2241,17 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
     ...preserveKeys,
   ].filter((key) => typeof key === 'string' && key.length > 0))];
 
+  // Extra keys whose absence is expected rather than alarming (see
+  // shouldSkipEmptyExtraKey). Threaded into EVERY preservation call, not just
+  // the empty-skip branch: the fetch-failure, SIGTERM, contract-RETRY,
+  // atomic-publish-failure and validation-skip paths all preserve the same key
+  // set, and warning "manual seed required" for a marker that is not supposed
+  // to exist yet is the false alarm allowMissingOnSkip exists to remove.
+  const optionalPreservationKeys = (extraKeys || [])
+    .filter((ek) => ek && ek.allowMissingOnSkip)
+    .map((ek) => ek.key)
+    .filter((key) => typeof key === 'string' && key.length > 0);
+
   // Single preservation seam for fetch failure, fetch-phase SIGTERM, contract
   // RETRY, validation skip, and per-extra-key empty skips. Grouping keys by TTL
   // keeps one Redis pipeline per TTL while allowing explicit declarations to
@@ -2241,7 +2271,9 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
       keysByTtl.get(targetTtl).push(key);
     }
     const results = await Promise.all(
-      [...keysByTtl].map(([targetTtl, keys]) => extendExistingTtl(keys, targetTtl)),
+      [...keysByTtl].map(([targetTtl, keys]) => extendExistingTtl(keys, targetTtl, {
+        allowMissingKeys: optionalPreservationKeys,
+      })),
     );
     return results.every(Boolean);
   };
@@ -2668,7 +2700,11 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
           // Opt-in skip-empty: don't overwrite a good cached extra-key payload
           // with a recordCount=0 write on a partial fetch (e.g. a token panel
           // whose IDs the upstream dropped this cycle). Preserve last-good by
-          // extending the existing key's TTL instead.
+          // extending the existing key's TTL instead. Three outcomes, reported
+          // distinctly because they mean different things to an operator:
+          // preserved (EXPIRE confirmed), expected-absent (an
+          // allowMissingOnSkip key that has not been written yet), or a real
+          // preservation failure / unconfirmed pipeline result.
           if (shouldSkipEmptyExtraKey(ek, ekCount)) {
             const preservation = await extendExistingTtlDetailed(
               [ek.key],

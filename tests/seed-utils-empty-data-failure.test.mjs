@@ -365,6 +365,50 @@ test('allowMissingOnSkip keeps a failed expiry warning and does not claim preser
   assert.doesNotMatch(logs.join('\n'), /extended TTL to preserve last-good/);
 });
 
+test('allowMissingOnSkip also silences the warning on the fetch-failure preservation path', async () => {
+  // The empty-skip branch is only one of six preservation paths. The others
+  // (fetch failure, SIGTERM, contract RETRY, atomic-publish failure, validation
+  // skip) all go through preserveExistingKeys, which preserves the same extra
+  // keys -- so without threading the allowance there, the optional completion
+  // marker still triggers "manual seed required" on every failed tick.
+  // Every key in this fixture is absent, so the canonical key and its seed-meta
+  // warn legitimately. What must change is the COUNT: the optional completion
+  // marker is excluded, and the strict control below proves the difference is
+  // the allowance and not the fixture.
+  const runFetchFailure = (resource, extraKeyOptions) => {
+    expireResult = 0;
+    return captureSeedLogs(() => runWithExitTrap(() => runSeed(
+      'test',
+      resource,
+      `test:${resource}:v1`,
+      async () => { throw new Error('upstream down'); },
+      {
+        validateFn: (data) => Array.isArray(data?.events),
+        ttlSeconds: 3600,
+        sourceVersion: 'test-v1',
+        schemaVersion: 1,
+        maxStaleMin: 120,
+        declareRecords: (data) => data.events.length,
+        extraKeys: [{
+          key: `test:${resource}:completion`,
+          transform: (data) => data.completion,
+          declareRecords: (completion) => completion.length,
+          skipWhenEmpty: true,
+          ...extraKeyOptions,
+        }],
+      },
+    )));
+  };
+
+  const optional = await runFetchFailure('optional-extra-fetch-fail', { allowMissingOnSkip: true });
+  const strict = await runFetchFailure('strict-extra-fetch-fail', {});
+
+  assert.equal(optional.exitCode, 75);
+  assert.equal(strict.exitCode, 75);
+  assert.match(optional.warnings.join('\n'), /WARNING: 2 key\(s\) were expired\/missing/);
+  assert.match(strict.warnings.join('\n'), /WARNING: 3 key\(s\) were expired\/missing/);
+});
+
 test('skipWhenEmpty remains strict for a missing extra key without allowMissingOnSkip', async () => {
   expireResult = 0;
   const { exitCode, logs, warnings } = await runSkippedExtraKey('strict-extra-missing');

@@ -76,6 +76,15 @@ export const SIPRI_SWEEP_SOFT_BUDGET_MS = 220_000;
 // nothing.
 export const SIPRI_SWEEP_HORIZON_MS = 10 * 24 * 3600 * 1000;
 
+// A structurally valid CSV parses to zero suppliers two ways: the importer
+// genuinely had no major-weapon transfers in the window, or every positive
+// transfer came from an entity mapSipriEntityToIso2 does not know. Nothing at
+// the parse boundary can tell those apart, so the cohort decides: a few
+// importers going to zero is ordinary drift, most of a slice doing it at once
+// is upstream degradation. Below this count the signal is too small to act on,
+// and withholding would strand genuinely-zero importers as permanently stale.
+export const SIPRI_ZERO_REGRESSION_MIN = 5;
+
 /**
  * Importers still owed a refresh this sweep, oldest first.
  *
@@ -301,6 +310,11 @@ export async function fetchSipriSupplierDependencies({
   concurrency = 8,
   delayMs = 150,
   logger = console,
+  // Sweep mode is opt-in and these two travel together: pass NEITHER for a
+  // whole-catalog pass (the shape the unit tests and any one-shot manual run
+  // use), or BOTH to refresh one capped slice and let buildSipriSupplierSnapshot
+  // carry the rest forward. Splitting them across the caller boundary is what
+  // let the cap and the accounting disagree (#7522).
   previousSnapshot,
   maxSweepImporters,
   softBudgetMs = SIPRI_SWEEP_SOFT_BUDGET_MS,
@@ -352,9 +366,11 @@ export async function fetchSipriSupplierDependencies({
     ? staleImporters.slice(0, maxSweepImporters)
     : staleImporters;
   const deferredByCap = staleImporters.length - selectedImporters.length;
+  const previousImporters = previousSnapshot?.importers || {};
   const output = {};
   const unmapped = new Map();
   const failedImporters = [];
+  const zeroedRegressions = [];
   let cursor = 0;
   let attempted = 0;
 
@@ -386,7 +402,17 @@ export async function fetchSipriSupplierDependencies({
           windowStartYear: startYear,
           windowEndYear: maxYear,
         });
-        output[importer.iso2] = parsed;
+        // A row that HELD suppliers and now parses to none is held back until
+        // the whole slice is in: alone it is a real zero-transfer refresh, but
+        // en masse it is upstream drift that would wipe last-good data AND
+        // report the sweep complete. Rows that were already empty, or absent,
+        // publish immediately -- that is the zero-transfer fix from #7524.
+        if (parsed.suppliers.length === 0
+          && (previousImporters[importer.iso2]?.suppliers?.length || 0) > 0) {
+          zeroedRegressions.push({ iso2: importer.iso2, parsed });
+        } else {
+          output[importer.iso2] = parsed;
+        }
         for (const entity of parsed.unmappedEntities) unmapped.set(entity, (unmapped.get(entity) || 0) + 1);
       } catch (error) {
         failedImporters.push({
@@ -398,6 +424,29 @@ export async function fetchSipriSupplierDependencies({
     }
   }
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, 8)) }, () => worker()));
+
+  // Cohort verdict on the withheld zero-supplier rows. When most of the slice
+  // lost every supplier at once, treat them as failures: their previous rows
+  // stay retained and stale, selectSweepImporters picks them up next tick, and
+  // failures.length > 0 keeps stage.status at 'partial' so no completion marker
+  // is written on wiped data. Otherwise they are real zero-transfer refreshes
+  // and publish as current, which is what stops them being selected forever.
+  const cohortCollapsed = zeroedRegressions.length >= SIPRI_ZERO_REGRESSION_MIN
+    && zeroedRegressions.length * 2 > attempted;
+  for (const { iso2, parsed } of zeroedRegressions) {
+    if (cohortCollapsed) {
+      failedImporters.push({ iso2, message: 'all suppliers dropped across the cohort; withheld pending retry' });
+    } else {
+      output[iso2] = parsed;
+    }
+  }
+  if (cohortCollapsed) {
+    logger.warn(
+      `  SIPRI zero-supplier cohort collapse: ${zeroedRegressions.length}/${attempted} importers lost every `
+      + 'supplier — withholding the slice and retaining last-good rows',
+    );
+  }
+
   if (unmapped.size > 0) {
     const preview = [...unmapped.entries()].slice(0, 25)
       .map(([name, count]) => `${String(name).replace(/[\u0000-\u001f\u007f]/g, ' ')} (${count})`)
@@ -487,10 +536,16 @@ export async function buildSipriSupplierSnapshot({
     .filter((importer) => Array.isArray(importer?.suppliers) && importer.suppliers.length > 0)
     .length;
   if (failures.length === 0 && positiveImporterCount < minimumCompleteImporterCount) {
-    throw new Error(
+    // Non-retryable: runSeed wraps the fetcher in withRetry, so an untagged
+    // throw re-runs the entire ~56-importer slice against a throttled host
+    // shared with seed-defense-industrial, and fetchPhaseTimeoutMs aborts the
+    // second attempt partway anyway. Fail fast into the graceful-failure path.
+    const error = new Error(
       `SIPRI snapshot holds only ${positiveImporterCount} positive importer rows; `
       + `minimum is ${minimumCompleteImporterCount}`,
     );
+    error.nonRetryable = true;
+    throw error;
   }
 
   // 'ok' is what writes the completion marker, and the marker is what stops the
