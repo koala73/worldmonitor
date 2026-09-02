@@ -38,6 +38,14 @@ export type QuoteProviderOutcome =
   | { status: 'ok'; quote: ProviderQuote }
   | { status: 'not_found' }
   | { status: 'rate_limited' }
+  /**
+   * The CALLER's signal aborted the attempt (#6475). Not a provider verdict:
+   * the provider was never allowed to answer, so this outcome must never be
+   * recorded, cached, or backed-off as the provider's failure. The adapter's
+   * own per-attempt timeout stays `error` — a provider that cannot answer in
+   * its budget is provider-attributable.
+   */
+  | { status: 'cancelled' }
   | { status: 'error'; message: string };
 
 export interface MarketQuoteProvider {
@@ -146,6 +154,7 @@ export class FinnhubQuoteProvider implements MarketQuoteProvider {
         },
       };
     } catch (err) {
+      if (requestSignal?.aborted) return { status: 'cancelled' };
       return { status: 'error', message: (err as Error).message || 'fetch failed' };
     } finally {
       attempt.cleanup();
@@ -236,6 +245,7 @@ export class AlphaVantageQuoteProvider implements MarketQuoteProvider {
         },
       };
     } catch (err) {
+      if (requestSignal?.aborted) return { status: 'cancelled' };
       return { status: 'error', message: (err as Error).message || 'fetch failed' };
     } finally {
       attempt.cleanup();
@@ -279,8 +289,16 @@ export class CascadeQuoteProvider implements MarketQuoteProvider {
     let lastError: QuoteProviderOutcome | null = null;
 
     for (const provider of candidates) {
-      if (signal?.aborted) return { status: 'error', message: 'request deadline exceeded' };
+      // Caller cancellation, before or between attempts, ends the cascade
+      // without a provider verdict — trying the next provider would spend
+      // budget on an answer nobody is waiting for (#6475). A rate_limited
+      // verdict already on record is preserved (same as the post-error break).
+      if (signal?.aborted) {
+        if (sawRateLimited) return { status: 'rate_limited' };
+        return { status: 'cancelled' };
+      }
       const outcome = await provider.fetchQuote(symbol, signal);
+      if (outcome.status === 'cancelled') return outcome;
       if (outcome.status === 'ok') {
         // Observability without credentials: which authorized provider filled the gap.
         console.info(`[quote-provider] ${symbol} via ${provider.name}`);

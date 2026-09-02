@@ -40,7 +40,7 @@ import {
   resolveMarketQuoteProvider,
   type ProviderQuote,
 } from './_quote-provider';
-import { CachedFetchTimeoutError, cachedFetchJson, readCachedJson } from '../../../_shared/redis';
+import { CachedFetchCancelledError, CachedFetchTimeoutError, CachedFetchUnavailableBackoffError, cachedFetchJson, readCachedJson } from '../../../_shared/redis';
 
 const BOOTSTRAP_KEY = 'market:stocks-bootstrap:v1';
 
@@ -239,6 +239,40 @@ export function gapFetchCallTimeoutMs(remainingMs: number): number {
  * `rateLimited` flag. At that instant we are out of budget either way, and the
  * next refresh re-attempts the symbol.
  */
+/**
+ * Provider failure carried AS the rejection (#6475), so the cause survives the
+ * shared inflight slot in `cachedFetchJson`: a caller that joins another
+ * request's in-flight lookup receives the leader's rejection with its own
+ * request-local `liveOutcomes` empty — before this, a real 429 seen by the
+ * leader reached the joiner as an anonymous Error and classified as
+ * PROVIDER_ERROR with `rateLimited: false`.
+ */
+export class QuoteGapFetchFailureError extends Error {
+  constructor(readonly reason: Reason, message: string) {
+    super(message);
+    this.name = 'QuoteGapFetchFailureError';
+  }
+}
+
+/** The recorded provider verdict a rejection carries, if it carries one. */
+function recordedReasonFromError(err: unknown): Reason | undefined {
+  if (err instanceof QuoteGapFetchFailureError) return err.reason;
+  if (err instanceof CachedFetchUnavailableBackoffError && err.reasonTag) {
+    return err.reasonTag as Reason;
+  }
+  return undefined;
+}
+
+function shouldArmQuoteUnavailableBackoff(err: unknown, callRemainingMs: number): boolean {
+  if (err instanceof CachedFetchCancelledError) return false;
+  // On the deadline-bound path the inflight timeout is a backstop that must
+  // not arm backoff when it races a deadline abort (#6475).
+  if (err instanceof CachedFetchTimeoutError && callRemainingMs <= QUOTE_PROVIDER_CALL_BUDGET_MS) {
+    return false;
+  }
+  return true;
+}
+
 export function classifyGapFetchFailure(input: {
   deadlineAborted: boolean;
   now: number;
@@ -309,25 +343,52 @@ async function resolveMissingSymbols(missing: string[]): Promise<GapFetchResult>
             liveOutcomes.set(symbol, REASON.notFound);
             return null; // definitive — safe to negative-cache
           }
+          if (outcome.status === 'cancelled') {
+            // Our own cutoff — no provider verdict exists. The typed class
+            // tells the cache layer not to arm the unavailable backoff
+            // (#6475 item 1): an upstream that was never allowed to answer
+            // has not been shown unavailable, and arming would bill the NEXT
+            // request's miss to the provider.
+            throw new CachedFetchCancelledError(`quote lookup for ${symbol} cancelled by request deadline`);
+          }
           // Transient. Throwing with cacheFetcherErrors:false keeps it out of
           // Redis, so a provider blip cannot pin a real symbol as unavailable.
-          liveOutcomes.set(symbol, outcome.status === 'rate_limited' ? REASON.rateLimited : REASON.providerError);
-          throw new Error(outcome.status === 'rate_limited' ? 'provider rate limited' : outcome.message);
+          // The reason rides ON the rejection so a coalesced joiner (whose
+          // request-local liveOutcomes is empty) classifies it identically.
+          const reason = outcome.status === 'rate_limited' ? REASON.rateLimited : REASON.providerError;
+          liveOutcomes.set(symbol, reason);
+          throw new QuoteGapFetchFailureError(reason, outcome.status === 'rate_limited' ? 'provider rate limited' : outcome.message);
         },
         QUOTE_NEGATIVE_TTL_SECONDS,
-        { timeoutMs: gapFetchCallTimeoutMs(remainingMs), cacheFetcherErrors: false },
+        {
+          timeoutMs: gapFetchCallTimeoutMs(remainingMs),
+          cacheFetcherErrors: false,
+          unavailableBackoffReason: recordedReasonFromError,
+          shouldArmUnavailableBackoff: (err) => shouldArmQuoteUnavailableBackoff(err, remainingMs),
+        },
       ), deadlineSignal);
 
       if (cached) quotes.set(symbol, cached);
       else reasons.set(symbol, liveOutcomes.get(symbol) ?? REASON.notFound);
     } catch (err) {
       const now = Date.now();
-      const reason = classifyGapFetchFailure({
-        deadlineAborted: deadlineSignal.aborted,
-        now,
-        deadline,
-        recorded: liveOutcomes.get(symbol),
-      });
+      // A typed cancellation is our cutoff wherever it surfaced — including a
+      // joiner whose own deadline still had budget when the leader's cut the
+      // shared fetch (#6475 item 2). A typed backoff short-circuit means the
+      // provider was not contacted THIS time because a recent real failure
+      // armed the 3s backoff (cancellations no longer arm it), so charging
+      // the provider is honest. Everything else classifies on the recorded
+      // verdict, which now also rides on the rejection itself for joiners.
+      const reason = err instanceof CachedFetchCancelledError
+        ? REASON.budget
+        : err instanceof CachedFetchUnavailableBackoffError
+          ? (err.reasonTag as Reason | undefined) ?? REASON.providerError
+          : classifyGapFetchFailure({
+              deadlineAborted: deadlineSignal.aborted,
+              now,
+              deadline,
+              recorded: liveOutcomes.get(symbol) ?? recordedReasonFromError(err),
+            });
       reasons.set(symbol, reason);
       if (reason === REASON.rateLimited) rateLimited = true;
       // `marginMs` is how much of the window was left when a cutoff fired:

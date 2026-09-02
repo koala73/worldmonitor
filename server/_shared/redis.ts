@@ -517,6 +517,8 @@ const LOCAL_FALLBACK_MAX_ENTRIES = 5000;
 const localNegativeUntil = new Map<string, number>();
 /** Per-key unavailable backoff used only when `cacheFetcherErrors: false` (no Redis NEG_SENTINEL). */
 const localUnavailableUntil = new Map<string, number>();
+/** Optional provenance tag stored when arming unavailable backoff (#6475). */
+const localUnavailableReason = new Map<string, string>();
 const localPositiveFallback = new Map<string, { value: unknown; expiresAt: number }>();
 
 function evictOldestLocalFallbackEntries<T>(map: Map<string, T>): void {
@@ -524,6 +526,7 @@ function evictOldestLocalFallbackEntries<T>(map: Map<string, T>): void {
     const oldestKey = map.keys().next().value;
     if (oldestKey === undefined) return;
     map.delete(oldestKey);
+    if (map === localUnavailableUntil) localUnavailableReason.delete(oldestKey);
   }
 }
 
@@ -544,8 +547,10 @@ function hasLocalNegativeCooldown(key: string): boolean {
   return false;
 }
 
-function armLocalUnavailableBackoff(key: string, ttlSeconds: number): void {
+function armLocalUnavailableBackoff(key: string, ttlSeconds: number, reasonTag?: string): void {
   localUnavailableUntil.set(key, Date.now() + ttlSeconds * 1000);
+  if (reasonTag !== undefined) localUnavailableReason.set(key, reasonTag);
+  else localUnavailableReason.delete(key);
   evictOldestLocalFallbackEntries(localUnavailableUntil);
 }
 
@@ -554,13 +559,19 @@ function hasLocalUnavailableBackoff(key: string): boolean {
   if (expiresAt === undefined) return false;
   if (expiresAt > Date.now()) return true;
   localUnavailableUntil.delete(key);
+  localUnavailableReason.delete(key);
   return false;
+}
+
+function localUnavailableBackoffReason(key: string): string | undefined {
+  return localUnavailableReason.get(key);
 }
 
 // Test-only: clear the short unavailable backoff so recovery paths can be exercised
 // without sleeping FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS.
 export function __clearLocalUnavailableBackoffForTests(): void {
   localUnavailableUntil.clear();
+  localUnavailableReason.clear();
 }
 
 function effectiveRedisFailurePositiveTtlSeconds(ttlSeconds: number): number {
@@ -847,6 +858,34 @@ export class CachedFetchTimeoutError extends Error {
   }
 }
 
+/**
+ * A fetcher throws this when its own CALLER cancelled the work (deadline,
+ * user abort) — as opposed to the upstream failing (#6475). The cache layer
+ * must not arm the local unavailable backoff for it: an upstream that was
+ * never allowed to answer has not been shown to be unavailable, and arming
+ * would make the NEXT caller's miss read as the provider's failure.
+ */
+export class CachedFetchCancelledError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'CachedFetchCancelledError';
+  }
+}
+
+/**
+ * Identifies the local unavailable-backoff short-circuit without matching
+ * text (#6475): the fetcher was NOT run because a recent fetcher failure for
+ * this key armed the 3s backoff. Callers that classify failure provenance
+ * can attribute this to the earlier failure instead of falling through to a
+ * generic reason.
+ */
+export class CachedFetchUnavailableBackoffError extends Error {
+  constructor(message: string, readonly reasonTag?: string) {
+    super(message);
+    this.name = 'CachedFetchUnavailableBackoffError';
+  }
+}
+
 // Test-only: override the DEFAULT inflight timeout so unit tests can exercise
 // the timeout branch without sleeping for 30s. Per-call `opts.timeoutMs` still
 // wins. No production caller should ever invoke this.
@@ -903,6 +942,10 @@ function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: numb
 export interface CachedFetchOpts {
   timeoutMs?: number;
   cacheFetcherErrors?: boolean;
+  /** When arming isolate-local unavailable backoff, store this tag beside the key. */
+  unavailableBackoffReason?: (err: unknown) => string | undefined;
+  /** Override default arming (skip for caller cancel). Default: skip CachedFetchCancelledError only. */
+  shouldArmUnavailableBackoff?: (err: unknown) => boolean;
 }
 
 /**
@@ -929,6 +972,8 @@ export async function cachedFetchJson<T extends object>(
     : {
         timeoutMs: opts.timeoutMs,
         cacheFetcherErrors: opts.cacheFetcherErrors,
+        unavailableBackoffReason: opts.unavailableBackoffReason,
+        shouldArmUnavailableBackoff: opts.shouldArmUnavailableBackoff,
       };
   const result = await cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, coreOpts, 'cachedFetchJson');
   return result.data;
@@ -1032,7 +1077,10 @@ async function cachedFetchJsonCore<T extends object>(
     if (hasLocalNegativeCooldown(key)) return { data: null, source: 'cache', leader: false };
   }
   if (hasLocalUnavailableBackoff(key)) {
-    throw new Error(`${callerName} unavailable backoff active for "${key}"`);
+    throw new CachedFetchUnavailableBackoffError(
+      `${callerName} unavailable backoff active for "${key}"`,
+      localUnavailableBackoffReason(key),
+    );
   }
 
   const inflightKey = opts?.inflightKey ?? key;
@@ -1111,7 +1159,16 @@ async function cachedFetchJsonCore<T extends object>(
         await setCachedJson(key, NEG_SENTINEL, errorTtlSeconds);
         console.warn(`[redis] ${callerName} fetcher failed for "${key}":`, errMsg(err));
       } else {
-        armLocalUnavailableBackoff(key, FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS);
+        const shouldArm = opts?.shouldArmUnavailableBackoff
+          ? opts.shouldArmUnavailableBackoff(err)
+          : !(err instanceof CachedFetchCancelledError);
+        if (shouldArm) {
+          // A cancellation (or deadline-bound timeout race) is the CALLER giving
+          // up, not the upstream failing — arming would bill the next request's
+          // miss to a provider that was never allowed to answer (#6475).
+          const reasonTag = opts?.unavailableBackoffReason?.(err);
+          armLocalUnavailableBackoff(key, FETCH_ERROR_UNAVAILABLE_BACKOFF_SECONDS, reasonTag);
+        }
       }
       throw err;
     })
