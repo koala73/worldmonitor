@@ -105,7 +105,7 @@ jobs:
       name: ingestion-acceptance-production-verification
       deployment: false
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.admission.outputs.head_sha }}
           fetch-depth: 0
@@ -139,7 +139,7 @@ jobs:
       artifact_name: ${{ steps.evidence.outputs.artifact_name }}
       producer_run_attempt: ${{ steps.evidence.outputs.producer_run_attempt }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.admission.outputs.head_sha }}
           fetch-depth: 0
@@ -240,7 +240,7 @@ jobs:
       name: ingestion-acceptance-production-verification
       deployment: false
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.admission.outputs.head_sha }}
           fetch-depth: 0
@@ -293,7 +293,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ needs.admission.outputs.head_sha }}
           fetch-depth: 0
