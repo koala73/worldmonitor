@@ -1,6 +1,7 @@
 ---
 import productFacts from '../../../shared/product-facts.generated.json';
 import TrackedProductLink from '../components/TrackedProductLink.astro';
+import { stringifyJsonLd } from '../lib/json-ld';
 
 interface Props {
   title: string;
@@ -34,9 +35,6 @@ const resolvedCanonicalUrl = canonicalUrl || new URL(Astro.url.pathname, 'https:
 const proCtaUrl = productFacts.product.pricingUrl;
 const proCtaLabel = productFacts.product.primaryCtaLabel;
 
-function stringifyJsonLd(value: Record<string, unknown>): string {
-  return JSON.stringify(value).replace(/</g, '\\u003c');
-}
 ---
 
 <!doctype html>

@@ -2,7 +2,7 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { computeStats, validateCategoryExplainerCopy } from '../scripts/docs-stats.mjs';
 
@@ -110,6 +110,110 @@ describe('blog SEO and GEO corpus contract', () => {
     assert.match(index, /"@type": "CollectionPage"/);
     assert.match(index, /"@type": "BreadcrumbList"/);
     assert.match(index, /"@type": "SpeakableSpecification"/);
+  });
+
+  // blog-site is a live JSON-LD emitter separate from the crawlable corpus: the
+  // #7502 sweep in tests/crawlable-corpus.test.mjs walks built corpus output
+  // and asserts a resolvable @context on every block, and use-cases/research
+  // ride along only because buildCrawlableCorpus writes them into the same
+  // outDir. Nothing covered blog-site's eleven producers, each of which
+  // hand-wrote its own @context — a block that omitted one would have shipped
+  // silently and been ignored by every consumer (#7530). Every producer now
+  // routes through one serialiser that stamps a resolvable context; assert both
+  // the seam's behaviour and that no producer bypasses it.
+  describe('blog-site JSON-LD @context', () => {
+    const jsonLdModule = resolve(root, 'blog-site/src/lib/json-ld.ts');
+    const jsonLdSource = readFileSync(jsonLdModule, 'utf8');
+
+    // Astro templates cannot be imported here, so exercise the seam by
+    // evaluating the module's exported logic against the same cases the corpus
+    // guard uses.
+    const resolvable = (context) => {
+      const urls = new Set(['https://schema.org', 'http://schema.org']);
+      const check = (value) => {
+        if (typeof value === 'string') return urls.has(value.replace(/\/$/, ''));
+        if (Array.isArray(value)) return value.some(check);
+        if (value && typeof value === 'object') return check(value['@vocab']);
+        return false;
+      };
+      return check(context);
+    };
+
+    it('stamps a resolvable context on a node that omits one', async () => {
+      const { withSchemaContext, stringifyJsonLd } = await import(
+        pathToFileURL(jsonLdModule).href
+      );
+      assert.equal(withSchemaContext({ '@type': 'BlogPosting' })['@context'], 'https://schema.org');
+      assert.ok(resolvable(JSON.parse(stringifyJsonLd({ '@type': 'FAQPage' }))['@context']));
+    });
+
+    it('preserves a context that already resolves, including richer forms', async () => {
+      const { withSchemaContext } = await import(pathToFileURL(jsonLdModule).href);
+      const array = ['https://schema.org', { wm: 'https://www.worldmonitor.app/#' }];
+      assert.deepEqual(withSchemaContext({ '@context': array, '@type': 'Person' })['@context'], array);
+      assert.equal(
+        withSchemaContext({ '@context': 'http://schema.org', '@type': 'Person' })['@context'],
+        'http://schema.org',
+      );
+    });
+
+    it('replaces a context that does not resolve to schema.org', async () => {
+      const { withSchemaContext } = await import(pathToFileURL(jsonLdModule).href);
+      assert.equal(
+        withSchemaContext({ '@context': 'https://example.invalid/ctx', '@type': 'Thing' })['@context'],
+        'https://schema.org',
+      );
+    });
+
+    it('escapes a closing script tag so a block cannot break out', async () => {
+      const { stringifyJsonLd } = await import(pathToFileURL(jsonLdModule).href);
+      const serialised = stringifyJsonLd({ '@type': 'Thing', name: '</script><img>' });
+      assert.ok(!serialised.includes('</script>'), 'the raw closing tag must be escaped');
+      assert.equal(JSON.parse(serialised).name, '</script><img>');
+    });
+
+    it('routes every JSON-LD producer through the shared serialiser', () => {
+      // The injection sites live in Base.astro. If a template ever emits its own
+      // ld+json script tag, it bypasses the stamp entirely.
+      const emitters = [];
+      const walk = (dir) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          const path = join(dir, entry.name);
+          if (entry.isDirectory()) walk(path);
+          else if (entry.name.endsWith('.astro')) emitters.push(path);
+        }
+      };
+      walk(resolve(root, 'blog-site/src'));
+      assert.ok(emitters.length > 0, 'expected .astro templates to scan');
+
+      const base = resolve(root, 'blog-site/src/layouts/Base.astro');
+      for (const file of emitters) {
+        const source = readFileSync(file, 'utf8');
+        if (!/application\/ld\+json/.test(source)) continue;
+        assert.equal(
+          file,
+          base,
+          `${file} emits its own ld+json script tag, bypassing the shared @context stamp in Base.astro`,
+        );
+        assert.match(
+          source,
+          /set:html=\{stringifyJsonLd\(/,
+          'Base.astro must serialise every block through stringifyJsonLd',
+        );
+        assert.match(
+          source,
+          /from '\.\.\/lib\/json-ld'/,
+          'Base.astro must import the shared serialiser, not redefine one locally',
+        );
+      }
+
+      assert.doesNotMatch(
+        readFileSync(base, 'utf8'),
+        /function stringifyJsonLd/,
+        'a locally redefined serialiser would silently drop the shared @context stamp',
+      );
+      assert.match(jsonLdSource, /export function withSchemaContext/);
+    });
   });
 
   it('keeps author archives and blog JSON-LD attribution accurate', () => {
