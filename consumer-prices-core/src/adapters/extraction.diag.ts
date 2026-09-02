@@ -80,11 +80,6 @@ for (const slug of slugs) {
       const failures: readonly ExtractionFailure[] = err instanceof SearchTargetError ? err.failures : [];
       let reasonClass = 'unknown';
       let detail = message;
-      // Discovery dead-ends are classified from the message. Since #7551 they
-      // are SearchTargetErrors too, carrying whatever the pin and seed rungs
-      // recorded before discovery ran, so an instanceof-first check would hide
-      // the discovery outcome (and print an empty class when nothing preceded
-      // discovery).
       if (/failed host\/path check/.test(message)) reasonClass = 'discovery-filter';
       else if (/repeated a URL already attempted/.test(message)) reasonClass = 'discovery-repeated';
       else if (/no pages found/.test(message)) reasonClass = 'discovery-empty';

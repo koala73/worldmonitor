@@ -22,7 +22,7 @@ import type { RetailerConfig } from '../config/types.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
 import { MARKET_NAMES } from './market-names.js';
 import { parseSize } from '../normalizers/size.js';
-import { validateSearchHit, type ValidatorResult } from './validator.js';
+import { AUTO_MATCH_THRESHOLD, validateSearchHit, type ValidatorResult } from './validator.js';
 import { normalizeExaBrlMinorUnitPrice, priceEvidenceOnPage, type PriceEvidence } from './price-evidence.js';
 import { ProviderCooldownGate } from './provider-cooldown.js';
 import type { BasketItem } from '../config/types.js';
@@ -132,13 +132,18 @@ export function normalizePathFilters(value: string | string[] | undefined): stri
 
 /**
  * URL passes the path filter if filters list is empty OR any listed substring
- * appears in the URL. Multi-pattern support is required for retailers like
+ * appears in the pathname. Multi-pattern support is required for retailers like
  * Carrefour BR that mix legacy `/produto/<slug>` URLs with VTEX `<slug>/p`
  * URLs — a single substring can't match both.
  */
 export function matchesAnyPathFilter(url: string, filters: string[]): boolean {
   if (filters.length === 0) return true;
-  return filters.some((p) => url.includes(p));
+  try {
+    const { pathname } = new URL(url);
+    return filters.some((filter) => pathname.includes(filter));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -163,12 +168,6 @@ export function matchesRequiredPathSegments(url: string, segments: string[]): bo
   }
 }
 
-/**
- * The full host + path policy a URL must pass before it reaches a paid
- * provider call. Discovery results and configured item seeds both go through
- * this one predicate so a later tightening cannot leave one of them looser.
- * Stored pins deliberately skip the path filter (see discoverTargets).
- */
 export function isUrlInPolicy(url: string, cfg: RetailerConfig['searchConfig'], hosts: readonly string[]): boolean {
   return (
     isAllowedHost(url, hosts) &&
@@ -269,13 +268,6 @@ interface SearchPayload {
   matchId?: string;
 }
 
-/**
- * Shape discoverTargets stores in Target.metadata and fetchTarget reads back.
- * Target.metadata is an open record, so both push sites `satisfies` this type
- * and fetchTarget casts to it; a field added on one side but not the other is
- * then a compile error instead of a silent undefined at runtime. `seedUrl` is
- * a required key (possibly undefined) for exactly that reason.
- */
 type SearchTargetMetadata = {
   canonicalName: string;
   domain: string;
@@ -657,6 +649,7 @@ export class SearchAdapter implements RetailerAdapter {
     const hostAllowlist = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
     const failures: ExtractionFailure[] = [];
     const attemptedUrls = new Set<string>();
+    let seedCandidate: { url: string; result: ExtractionSuccess } | null = null;
 
     const buildFetchResult = (
       productUrl: string,
@@ -681,6 +674,14 @@ export class SearchAdapter implements RetailerAdapter {
       fetchedAt: new Date(),
     });
 
+    const fallbackToSeedCandidate = (reason: string): FetchResult | null => {
+      if (!seedCandidate) return null;
+      ctx.logger.info(
+        `  [search:seed] ${ctx.config.slug}/${canonicalName}: using candidate score=${seedCandidate.result.validator.score.toFixed(3)} after ${reason}`,
+      );
+      return buildFetchResult(seedCandidate.url, seedCandidate.result, false);
+    };
+
     // Direct path: skip Exa discovery, call the configured extractor on the pinned URL.
     if (direct) {
       attemptedUrls.add(target.url);
@@ -704,26 +705,28 @@ export class SearchAdapter implements RetailerAdapter {
       }
     }
 
-    // Seed rung: a configured product page tried before paid discovery. Like
-    // the pin rung it is opportunistic, so a throw here (an off-contract
-    // extractor payload escaping _extractFromUrl's provider try/catch) must
-    // degrade into a recorded failure, not abort the target before discovery.
     if (seedUrl && !attemptedUrls.has(seedUrl)) {
       attemptedUrls.add(seedUrl);
       try {
         const attempt = await this._extractFromUrl(ctx, seedUrl, canonicalName, currency, itemConstraints);
         failures.push(...attempt.failures);
-        if (attempt.result && !attempt.result.validator.ok) {
-          // A pin's validator rejects are counted downstream and eventually
-          // disable the pin; a seed has no such lifecycle and is re-read from
-          // config every run. Accepting a drifted seed page here would make it
-          // a permanent candidate-only hit that never re-enters discovery, so
-          // the seed rung applies the verdict even for shadow-mode retailers.
-          const reasons = attempt.result.validator.reasons.join(',') || 'unknown';
-          failures.push({ provider: attempt.result.provider, reason: 'validator-rejected', detail: reasons });
-          ctx.logger.warn(
-            `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page rejected by validator (${reasons}), falling back to Exa discovery`,
-          );
+        if (
+          attempt.result &&
+          (!attempt.result.validator.ok || attempt.result.validator.score < AUTO_MATCH_THRESHOLD)
+        ) {
+          const validator = attempt.result.validator;
+          const reasons = validator.reasons.join(',') || 'unknown';
+          if (validator.ok) {
+            seedCandidate = { url: seedUrl, result: attempt.result };
+            ctx.logger.warn(
+              `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page score ${validator.score.toFixed(3)} below automatic admission ${AUTO_MATCH_THRESHOLD}, falling back to Exa discovery`,
+            );
+          } else {
+            failures.push({ provider: attempt.result.provider, reason: 'validator-rejected', detail: reasons });
+            ctx.logger.warn(
+              `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page rejected by validator (${reasons}), falling back to Exa discovery`,
+            );
+          }
         } else if (attempt.result) {
           ctx.logger.info(
             `  [search:seed] ${ctx.config.slug}/${canonicalName}: price=${attempt.result.extracted.price} ${attempt.result.extracted.currency} provider=${attempt.result.provider} from ${seedUrl}`,
@@ -745,6 +748,8 @@ export class SearchAdapter implements RetailerAdapter {
     // provider-cooldown; the attempt after the window proceeds as the recovery
     // probe (the probe call itself happens inside _extractFromUrl).
     if (ctx.config.searchConfig?.extractionFallback !== 'exa' && this.firecrawlGate.consumeSkip()) {
+      const fallback = fallbackToSeedCandidate('Firecrawl cooldown opened');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `Firecrawl extraction cooldown is open for "${canonicalName}"`,
         0,
@@ -761,6 +766,8 @@ export class SearchAdapter implements RetailerAdapter {
     // a whole-basket loss, which is the COVERAGE_PARTIAL this adapter exists
     // to prevent.
     if (this.exaDiscoveryGate.consumeSkip()) {
+      const fallback = fallbackToSeedCandidate('Exa discovery cooldown opened');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `Exa discovery cooldown is open for "${canonicalName}"`,
         0,
@@ -795,6 +802,8 @@ export class SearchAdapter implements RetailerAdapter {
           `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery cooling down after consecutive errors — skipping a bounded window, then probing (last: ${detail})`,
         );
       }
+      const fallback = fallbackToSeedCandidate('Exa discovery failed');
+      if (fallback) return fallback;
       // Carry `detail` into the message: nothing downstream reads `.failures`,
       // so without it the log cannot tell an auth failure from a rate limit
       // from a timeout — the distinction the cooldown exists to surface.
@@ -845,11 +854,9 @@ export class SearchAdapter implements RetailerAdapter {
       }
     }
 
-    // Discovery dead-ends throw SearchTargetError so the pin and seed rungs'
-    // classified failures reach the scrape run's failure attribution instead
-    // of being filed as unknown-error. `failures` is empty when nothing ran
-    // before discovery, which scrape.ts already treats as unattributed.
     if (exaResults.length === 0) {
+      const fallback = fallbackToSeedCandidate('discovery found no pages');
+      if (fallback) return fallback;
       throw new SearchTargetError(`Exa: no pages found for "${canonicalName}" on ${domain}`, 0, failures);
     }
     // Discovery may legitimately need a wide net (a retailer whose live route
@@ -881,6 +888,8 @@ export class SearchAdapter implements RetailerAdapter {
       ctx.logger.warn(
         `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${repeatedAttemptedUrl ? ', URL already attempted' : ''}). Rejected: ${sample}`,
       );
+      const fallback = fallbackToSeedCandidate('discovery found no usable page');
+      if (fallback) return fallback;
       if (repeatedAttemptedUrl) {
         throw new SearchTargetError(
           `Exa: all ${exaResults.length} results repeated a URL already attempted for "${canonicalName}"`,
@@ -921,6 +930,8 @@ export class SearchAdapter implements RetailerAdapter {
     }
 
     if (picked === null) {
+      const fallback = fallbackToSeedCandidate('discovered pages failed extraction');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `All ${safeUrls.length} URLs failed extraction for "${canonicalName}". Last: ${formatExtractionFailures(failures.slice(-3))}`,
         // Only retailers that opted into the strict validator contribute to
