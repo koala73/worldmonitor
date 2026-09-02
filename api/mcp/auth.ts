@@ -40,7 +40,7 @@ import type {
 } from './types';
 import { emitMcpRateLimitHit } from './telemetry';
 import { FREE_ACCOUNT_CALLS_PER_DAY } from './upgrade-constants';
-import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
+import { buildMcpStructuredDenial, type McpStaticDenialReason } from './upgrade';
 
 // ---------------------------------------------------------------------------
 // Rate limiters
@@ -219,13 +219,13 @@ export function wwwAuthHeader(resourceMetadataUrl: string, errorParam = ''): str
  * Bearer challenge so clients do not enter an OAuth retry loop.
  */
 export function mcpStructuredDenialResponse(
-  reason: McpDenialReason,
+  reason: McpStaticDenialReason,
   resourceMetadataUrl: string,
   corsHeaders: Record<string, string>,
   id: unknown = null,
   opts?: { wwwAuthError?: string; message?: string; code?: number; status?: number },
 ): Response {
-  const built = buildMcpStructuredDenial(reason);
+  const built = buildMcpStructuredDenial({ reason });
   const { data } = built;
   // A caller may keep its own, more specific `message` (e.g. the credential
   // mechanics on the auth-resolution 401s) while still gaining the machine-
@@ -351,7 +351,7 @@ export function getMcpBillingVerificationDenial(
   // on the billing envelope (-32002 / 403), with agent-facing upgrade
   // attribution so clients can distinguish it from the free-account path.
   const structured = billingStatus === 'subscription_lapsed'
-    ? buildMcpStructuredDenial('lapsed-subscription')
+    ? buildMcpStructuredDenial({ reason: 'lapsed-subscription' })
     : null;
 
   return new Response(

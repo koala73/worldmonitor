@@ -181,10 +181,19 @@ Content-Type: application/json
   "id": 7,
   "error": {
     "code": -32029,
-    "message": "Daily MCP quota exceeded (50/day). Resets at next UTC midnight."
+    "message": "Daily MCP quota exceeded (50/day). Resets at next UTC midnight.",
+    "data": {
+      "reason": "quota-exceeded",
+      "nextStep": "Wait for the next UTC day, or upgrade at the upgrade URL for a higher daily limit.",
+      "upgradeUrl": "https://worldmonitor.app/pro?utm_source=mcp&utm_medium=agent&utm_campaign=mcp-paid-funnel",
+      "limit": 50,
+      "sharedWithRestApi": false
+    }
   }
 }
 ```
+
+`data.limit` 就是实际触发拒绝的那份额度，与消息中引用的数字一致，请据此分支判断，不要去解析文本。`data.sharedWithRestApi` 则是消息无法承载的事实：当 API 套餐启用 REST 限额执行后，这份额度**就是** REST 计量器，因此耗尽的可能是客户端从未发出的 REST 流量。只有该情形下它才为 `true`；Pro、Pro Business 以及影子模式下的 API 套餐都计在 MCP 专属计数器上，因此为 `false`。当它为 `true` 时，`nextStep` 也会说明这一点。
 
 ```http
 HTTP/1.1 429 Too Many Requests

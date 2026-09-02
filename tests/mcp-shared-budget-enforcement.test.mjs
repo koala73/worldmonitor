@@ -410,3 +410,93 @@ describe('mcpHandler charges a weight-3 tool three units of an API-tier budget',
     assert.equal(pipe.count, 1, 'weighting a dedicated 50/day allowance spends it 3x too fast');
   });
 });
+
+// ---------------------------------------------------------------------------
+// The cap-exceeded 429 says WHOSE traffic exhausted the number
+// ---------------------------------------------------------------------------
+
+describe('the daily-cap -32029 carries structured data, not just prose', () => {
+  let mcpHandler;
+
+  const apiStarter = async () => ({
+    planKey: 'api_starter',
+    features: {
+      tier: 2,
+      mcpAccess: true,
+      planLimits: {
+        apiRequestsPerDay: 1000,
+        apiBurstRequestsPerMinute: 60,
+        mcpCallsPerDay: SHARED_API_BUDGET,
+        mcpBurstRequestsPerMinute: 60,
+      },
+    },
+    validUntil: Date.now() + 86_400_000,
+  });
+
+  beforeEach(async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_test_key_structured_cap';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+    mcpHandler = mod.mcpHandler;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  const capped = async (getEntitlements, initialCount) => {
+    const { deps } = makeProDeps({ pipelineOpts: { initialCount }, getEntitlements });
+    const res = await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    return { res, body: await res.json() };
+  };
+
+  it('ENFORCED api_starter: the envelope says the budget is shared with REST', async () => {
+    // Post-flip this exhaustion can be entirely REST-driven. Without the flag
+    // an agent reads "Daily MCP quota exceeded" and concludes it made 1,000
+    // tool calls, which may be false.
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const { res, body } = await capped(apiStarter, 1000);
+    assert.equal(res.status, 429);
+    assert.equal(res.headers.get('Retry-After')?.length > 0, true);
+    assert.equal(body.error.code, -32029);
+    assert.equal(
+      body.error.message,
+      'Daily MCP quota exceeded (1000/day). Resets at next UTC midnight.',
+      'the published copy is unchanged; only data is added',
+    );
+    assert.equal(body.error.data.reason, 'quota-exceeded');
+    assert.equal(body.error.data.limit, 1000);
+    assert.equal(body.error.data.sharedWithRestApi, true);
+    assert.ok(body.error.data.upgradeUrl.length > 0);
+  });
+
+  it('SHADOW api_starter: the same plan on the dedicated counter is not shared', async () => {
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    const { body } = await capped(apiStarter, 1000);
+    assert.equal(body.error.data.limit, 1000);
+    assert.equal(body.error.data.sharedWithRestApi, false, 'only the flag moves the counter');
+  });
+
+  it('a Pro caller at 50/day is never shared with REST', async () => {
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    const { body } = await capped(async () => ({
+      planKey: 'pro_monthly',
+      features: {
+        tier: 1,
+        mcpAccess: true,
+        planLimits: {
+          apiRequestsPerDay: 0,
+          apiBurstRequestsPerMinute: 0,
+          mcpCallsPerDay: 50,
+          mcpBurstRequestsPerMinute: 60,
+        },
+      },
+      validUntil: Date.now() + 86_400_000,
+    }), 50);
+    assert.equal(body.error.data.limit, 50);
+    assert.equal(body.error.data.sharedWithRestApi, false);
+  });
+});
