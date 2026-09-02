@@ -73,3 +73,30 @@ jobs:
         with:
           node-version: '24'
       - run: node scripts/enforce-mintlify-reserved-slugs.mjs
+
+  doc-anchors:
+    # Nothing else catches a dead in-page anchor. mintlify-slugs above guards
+    # only the reserved /mcp slug, `mint validate` passes in strict mode with
+    # dead anchors present, and `mint broken-links` never checks fragments.
+    # The export is the ground truth: Mintlify's slug rules are not safely
+    # reproducible by hand (it strips ASCII parens but keeps full-width ones,
+    # and keeps `&` and em-dashes), so the checker reads the ids it emitted.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Export rendered docs
+        working-directory: docs
+        # Pinned: an unpinned global install would let a Mintlify release
+        # change slugging under us and red this gate with no repo change.
+        # Bump deliberately, and re-read the rules in check-doc-anchors.mjs
+        # when you do.
+        run: |
+          npm i -g mint@4.2.860
+          mint export --output "$RUNNER_TEMP/docs-export.zip"
+      - name: Unpack export
+        run: unzip -q "$RUNNER_TEMP/docs-export.zip" -d "$RUNNER_TEMP/docs-export"
+      - name: Every in-page anchor resolves
+        run: node scripts/check-doc-anchors.mjs "$RUNNER_TEMP/docs-export"
