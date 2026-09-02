@@ -213,7 +213,7 @@ test('multiple throttled batches transfer directly to CONNECT without retry wait
 });
 
 test('shared deadline clamps CONNECT and rejects a response that finishes after expiry', async () => {
-  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+  const { OPEN_METEO_DEADLINE_CODE, fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
 
   let nowMs = 5;
   globalThis.fetch = async () => ({
@@ -238,7 +238,7 @@ test('shared deadline clamps CONNECT and rejects a response that finishes after 
       },
     }),
     (err) => {
-      assert.equal(err.code, 'OPEN_METEO_DEADLINE');
+      assert.equal(err.code, OPEN_METEO_DEADLINE_CODE);
       return true;
     },
   );

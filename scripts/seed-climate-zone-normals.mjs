@@ -3,7 +3,7 @@
 import { pathToFileURL } from 'node:url';
 import { loadEnvFile, runSeed, sleep } from './_seed-utils.mjs';
 import { CLIMATE_ZONES, MIN_CLIMATE_ZONE_COUNT, hasRequiredClimateZones } from './_climate-zones.mjs';
-import { chunkItems, fetchOpenMeteoArchiveBatch } from './_open-meteo-archive.mjs';
+import { OPEN_METEO_DEADLINE_CODE, chunkItems, fetchOpenMeteoArchiveBatch } from './_open-meteo-archive.mjs';
 
 loadEnvFile(import.meta.url);
 
@@ -14,6 +14,7 @@ const NORMALS_START = '1991-01-01';
 const NORMALS_END = '2020-12-31';
 const NORMALS_BATCH_SIZE = 2;
 const NORMALS_BATCH_DELAY_MS = 3_000;
+export const NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS = 225_000;
 
 function round(value, decimals = 2) {
   const scale = 10 ** decimals;
@@ -93,11 +94,17 @@ export function buildZoneNormalsFromBatch(zones, batchPayloads) {
   });
 }
 
-export async function fetchClimateZoneNormals() {
+export async function fetchClimateZoneNormals({ runStartedAtMs = Date.now() } = {}) {
   const normals = [];
-  let failures = 0;
+  const batches = chunkItems(CLIMATE_ZONES, NORMALS_BATCH_SIZE);
+  const deadlineAtMs = runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS;
 
-  for (const batch of chunkItems(CLIMATE_ZONES, NORMALS_BATCH_SIZE)) {
+  for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+    const batch = batches[batchIndex];
+    if (Date.now() >= deadlineAtMs) {
+      break;
+    }
+
     try {
       const payloads = await fetchOpenMeteoArchiveBatch(batch, {
         startDate: NORMALS_START,
@@ -106,19 +113,25 @@ export async function fetchClimateZoneNormals() {
         timeoutMs: 30_000,
         maxRetries: 4,
         retryBaseMs: 5_000,
+        deadlineAtMs,
         label: `normals batch (${batch.map((zone) => zone.name).join(', ')})`,
       });
       const batchNormals = buildZoneNormalsFromBatch(batch, payloads);
       normals.push(...batchNormals);
-      failures += Math.max(0, batch.length - batchNormals.length);
     } catch (err) {
       console.log(`  [CLIMATE_NORMALS] ${err?.message ?? err}`);
-      failures += batch.length;
+      if (err?.code === OPEN_METEO_DEADLINE_CODE) break;
     }
-    await sleep(NORMALS_BATCH_DELAY_MS);
+
+    if (batchIndex < batches.length - 1) {
+      const remainingMs = deadlineAtMs - Date.now();
+      if (remainingMs <= 0) break;
+      await sleep(Math.min(NORMALS_BATCH_DELAY_MS, remainingMs));
+    }
   }
 
   if (normals.length < MIN_CLIMATE_ZONE_COUNT) {
+    const failures = CLIMATE_ZONES.length - normals.length;
     throw new Error(`Only ${normals.length}/${CLIMATE_ZONES.length} zones returned normals (${failures} errors)`);
   }
   if (!hasRequiredClimateZones(normals, (zone) => zone.zone)) {
