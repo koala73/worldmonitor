@@ -2141,6 +2141,10 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         failureReasons: sanitizeCoverageFailureReasons(retailer?.failureReasons),
       }))
     : null;
+  const finiteCoverageField = (field) => {
+    const value = meta?.coverage?.[field];
+    return Number.isFinite(value) ? { [field]: value } : {};
+  };
   const coverage = meta?.coverage && typeof meta.coverage === 'object'
     ? {
         status: typeof meta.coverage.status === 'string' ? meta.coverage.status : null,
@@ -2148,16 +2152,16 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         failedPages: Number(meta.coverage.failedPages) || 0,
         completionRatio: meta.coverage.completionRatio == null ? null : Number(meta.coverage.completionRatio) || 0,
         rejectedCount: Number(meta.coverage.rejectedCount) || 0,
-        ...(meta.coverage.countrySpecificImportCountryCount == null ? {} : { countrySpecificImportCountryCount: Number(meta.coverage.countrySpecificImportCountryCount) || 0 }),
-        ...(meta.coverage.bilateralCountryCount == null ? {} : { bilateralCountryCount: Number(meta.coverage.bilateralCountryCount) || 0 }),
-        ...(meta.coverage.globalProductionCommodityCount == null ? {} : { globalProductionCommodityCount: Number(meta.coverage.globalProductionCommodityCount) || 0 }),
-        ...(meta.coverage.completeCountryCount == null ? {} : { completeCountryCount: Number(meta.coverage.completeCountryCount) || 0 }),
-        ...(meta.coverage.rankableCountryCount == null ? {} : { rankableCountryCount: Number(meta.coverage.rankableCountryCount) || 0 }),
-        ...(meta.coverage.rankableRecordCount == null ? {} : { rankableRecordCount: Number(meta.coverage.rankableRecordCount) || 0 }),
-        ...(meta.coverage.freshRankableRecordCount == null ? {} : { freshRankableRecordCount: Number(meta.coverage.freshRankableRecordCount) || 0 }),
-        ...(meta.coverage.reviewedCommodityCount == null ? {} : { reviewedCommodityCount: Number(meta.coverage.reviewedCommodityCount) || 0 }),
-        ...(meta.coverage.reviewedHs4Count == null ? {} : { reviewedHs4Count: Number(meta.coverage.reviewedHs4Count) || 0 }),
-        ...(meta.coverage.reviewedHs2Count == null ? {} : { reviewedHs2Count: Number(meta.coverage.reviewedHs2Count) || 0 }),
+        ...finiteCoverageField('countrySpecificImportCountryCount'),
+        ...finiteCoverageField('bilateralCountryCount'),
+        ...finiteCoverageField('globalProductionCommodityCount'),
+        ...finiteCoverageField('completeCountryCount'),
+        ...finiteCoverageField('rankableCountryCount'),
+        ...finiteCoverageField('rankableRecordCount'),
+        ...finiteCoverageField('freshRankableRecordCount'),
+        ...finiteCoverageField('reviewedCommodityCount'),
+        ...finiteCoverageField('reviewedHs4Count'),
+        ...finiteCoverageField('reviewedHs2Count'),
         failureReasons: sanitizeCoverageFailureReasons(meta.coverage.failureReasons),
         retailers: coverageRetailers,
       }
