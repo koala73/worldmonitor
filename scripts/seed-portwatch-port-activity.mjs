@@ -676,12 +676,15 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
   signal,
   dateField,
   forceProxy = false,
+  fetchFn,
+  proxyRetryFn,
   sleepFn = waitForRetry,
 } = {}) {
   // Defensive: callers should always thread dateField through, but if a
   // future caller forgets, fall back to the resolver (idempotent + cached).
   const df = dateField || (await resolveArcgisDateField({ signal }));
   let offset = 0;
+  let acceptedRowCount = 0;
   let body;
   do {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
@@ -718,12 +721,15 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
     body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, {
       signal,
       forceProxy,
+      fetchFn,
+      proxyRetryFn,
       sleepFn,
     });
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
       if (!a || a.portid == null || a[df] == null) continue;
+      acceptedRowCount += 1;
       const portId = String(a.portid);
       const calls = Number(a.portcalls_tanker ?? 0);
       const imports = Number(a.import_tanker ?? 0);
@@ -754,6 +760,8 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
     if (features.length === 0) break;
     offset += features.length;
   } while (body.exceededTransferLimit);
+
+  return acceptedRowCount;
 }
 
 // Parse a "YYYY-MM-DD" string (from ArcGIS outStatistics max(date)) into an
@@ -822,12 +830,14 @@ function parseMaxDateToAnchor(maxDateStr) {
 // ~10 days behind real-time, so the last-7-day window was always empty and
 // anomalySignal always false. Not a feature regression — it was already dead.
 //
-// Returns Map<portId, PortAccum>. Memory per country is O(unique ports) ≈ <200.
-async function fetchCountryAccum(iso3, {
+export async function fetchCountryAccum(iso3, {
   signal,
   anchorEpochMs,
   dateField,
   forceProxy = false,
+  fetchFn,
+  proxyRetryFn,
+  sleepFn = waitForRetry,
 } = {}) {
   const anchor = anchorEpochMs ?? Date.now();
   const cutoff30 = anchor - 30 * 86400000;
@@ -840,24 +850,24 @@ async function fetchCountryAccum(iso3, {
   // start via resolveArcgisDateField. The `timestamp 'YYYY-MM-DD HH:MM:SS'`
   // literal works on both the esriFieldTypeDateOnly and esriFieldTypeDate
   // shapes ArcGIS may serve.
-  await Promise.all([
+  const [currentWindowRowCount] = await Promise.all([
     paginateWindowInto(
       portAccumMap,
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff30)}`,
       'last30',
-      { signal, dateField: df, forceProxy },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn },
     ),
     paginateWindowInto(
       portAccumMap,
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff60)} AND ${df} <= ${epochToTimestamp(cutoff30)}`,
       'prev30',
-      { signal, dateField: df, forceProxy },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn },
     ),
   ]);
 
-  return portAccumMap;
+  return { portAccumMap, currentWindowRowCount };
 }
 
 // A direct empty feature set is not proof that a country has no activity.
@@ -874,7 +884,13 @@ export async function fetchCountryActivityWithRecovery(iso3, {
   fetchAccumFn = fetchCountryAccum,
   sleepFn = waitForRetry,
 } = {}) {
-  const portAccumMap = await retryRateLimited(
+  const currentWindowExpected = preflightObservation?.status === 'observed'
+    && preflightObservation.maxDate !== null;
+  const isUsableActivity = (result) => result?.portAccumMap instanceof Map
+    && result.portAccumMap.size > 0
+    && (!currentWindowExpected || result.currentWindowRowCount > 0);
+
+  const directResult = await retryRateLimited(
     (attemptSignal) => fetchAccumFn(iso3, {
       signal: attemptSignal,
       anchorEpochMs,
@@ -883,11 +899,13 @@ export async function fetchCountryActivityWithRecovery(iso3, {
     }),
     { signal, sleepFn, label: iso3 },
   );
-  if (portAccumMap?.size > 0) {
-    return { portAccumMap, verifiedZero: false };
+  if (isUsableActivity(directResult)) {
+    return { portAccumMap: directResult.portAccumMap, verifiedZero: false };
   }
 
-  const verifiedZero = preflightObservation?.status === 'observed'
+  const verifiedZero = directResult?.portAccumMap instanceof Map
+    && directResult.portAccumMap.size === 0
+    && preflightObservation?.status === 'observed'
     && preflightObservation.maxDate === null
     && refMap instanceof Map
     && refMap.size > 0;
@@ -896,14 +914,22 @@ export async function fetchCountryActivityWithRecovery(iso3, {
   }
 
   console.warn(`  [port-activity] ${iso3}: unverified empty activity — retrying via proxy`);
-  const proxiedAccumMap = await fetchAccumFn(iso3, {
-    signal,
-    anchorEpochMs,
-    dateField,
-    forceProxy: true,
-  });
-  if (proxiedAccumMap?.size > 0) {
-    return { portAccumMap: proxiedAccumMap, verifiedZero: false };
+  const proxiedResult = await retryRateLimited(
+    (attemptSignal) => fetchAccumFn(iso3, {
+      signal: attemptSignal,
+      anchorEpochMs,
+      dateField,
+      forceProxy: true,
+    }),
+    {
+      signal,
+      maxRetries: 0,
+      sleepFn,
+      label: `${iso3} proxy empty recovery`,
+    },
+  );
+  if (isUsableActivity(proxiedResult)) {
+    return { portAccumMap: proxiedResult.portAccumMap, verifiedZero: false };
   }
 
   throw Object.assign(new Error('unverified empty activity after proxy retry'), {
