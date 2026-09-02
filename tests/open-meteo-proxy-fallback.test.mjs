@@ -354,6 +354,69 @@ test('normals caller stops launching batches when the soft deadline expires', as
   assert.equal(batchCalls, 1);
 });
 
+test('normals deadline failure stops the outer seed retry loop', async () => {
+  const { OPEN_METEO_DEADLINE_CODE } = await import('../scripts/_open-meteo-archive.mjs');
+  const { withRetry } = await import('../scripts/_seed-utils.mjs');
+  const { fetchClimateZoneNormals } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+
+  let batchCalls = 0;
+  await assert.rejects(
+    () => withRetry(
+      () => fetchClimateZoneNormals({
+        runStartedAtMs: 0,
+        _now: () => 1,
+        _sleep: async () => {},
+        _fetchArchiveBatch: async () => {
+          batchCalls += 1;
+          throw Object.assign(new Error('deadline'), { code: OPEN_METEO_DEADLINE_CODE });
+        },
+      }),
+      3,
+      0,
+    ),
+    (err) => {
+      assert.equal(err.code, OPEN_METEO_DEADLINE_CODE);
+      assert.equal(err.nonRetryable, true);
+      return true;
+    },
+  );
+  assert.equal(batchCalls, 1);
+});
+
+test('normals pre-batch deadline check is non-retryable', async () => {
+  const {
+    NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+    fetchClimateZoneNormals,
+  } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+  const { OPEN_METEO_DEADLINE_CODE } = await import('../scripts/_open-meteo-archive.mjs');
+  const { withRetry } = await import('../scripts/_seed-utils.mjs');
+
+  const runStartedAtMs = 10_000;
+  let fetchCalls = 0;
+  await assert.rejects(
+    () => withRetry(
+      () => {
+        fetchCalls += 1;
+        return fetchClimateZoneNormals({
+          runStartedAtMs,
+          _now: () => runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+          _fetchArchiveBatch: async () => {
+            throw new Error('must not start a batch');
+          },
+        });
+      },
+      3,
+      0,
+    ),
+    (err) => {
+      assert.equal(err.code, OPEN_METEO_DEADLINE_CODE);
+      assert.equal(err.nonRetryable, true);
+      return true;
+    },
+  );
+  assert.equal(fetchCalls, 1);
+});
+
 test('thrown fetch error (timeout/ECONNRESET) on final direct attempt → proxy fallback runs (P1 fix)', async () => {
   // Pre-fix bug: the catch block did `throw err` after the final direct retry,
   // which silently bypassed proxy fallback for thrown-error cases (timeout,

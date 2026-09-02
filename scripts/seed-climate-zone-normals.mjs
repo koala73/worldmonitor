@@ -16,6 +16,15 @@ const NORMALS_BATCH_SIZE = 2;
 const NORMALS_BATCH_DELAY_MS = 3_000;
 export const NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS = 225_000;
 
+function createNormalsFailure(message, deadlineExhausted) {
+  const error = new Error(message);
+  if (deadlineExhausted) {
+    error.code = OPEN_METEO_DEADLINE_CODE;
+    error.nonRetryable = true;
+  }
+  return error;
+}
+
 function round(value, decimals = 2) {
   const scale = 10 ** decimals;
   return Math.round(value * scale) / scale;
@@ -103,10 +112,12 @@ export async function fetchClimateZoneNormals({
   const normals = [];
   const batches = chunkItems(CLIMATE_ZONES, NORMALS_BATCH_SIZE);
   const deadlineAtMs = runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS;
+  let deadlineExhausted = false;
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
     if (_now() >= deadlineAtMs) {
+      deadlineExhausted = true;
       break;
     }
 
@@ -127,7 +138,10 @@ export async function fetchClimateZoneNormals({
       normals.push(...batchNormals);
     } catch (err) {
       console.log(`  [CLIMATE_NORMALS] ${err?.message ?? err}`);
-      if (err?.code === OPEN_METEO_DEADLINE_CODE) break;
+      if (err?.code === OPEN_METEO_DEADLINE_CODE) {
+        deadlineExhausted = true;
+        break;
+      }
     }
 
     if (batchIndex < batches.length - 1) {
@@ -139,10 +153,13 @@ export async function fetchClimateZoneNormals({
 
   if (normals.length < MIN_CLIMATE_ZONE_COUNT) {
     const failures = CLIMATE_ZONES.length - normals.length;
-    throw new Error(`Only ${normals.length}/${CLIMATE_ZONES.length} zones returned normals (${failures} errors)`);
+    throw createNormalsFailure(
+      `Only ${normals.length}/${CLIMATE_ZONES.length} zones returned normals (${failures} errors)`,
+      deadlineExhausted,
+    );
   }
   if (!hasRequiredClimateZones(normals, (zone) => zone.zone)) {
-    throw new Error('Missing one or more required climate-specific zone normals');
+    throw createNormalsFailure('Missing one or more required climate-specific zone normals', deadlineExhausted);
   }
 
   return {
