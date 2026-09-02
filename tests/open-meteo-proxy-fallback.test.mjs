@@ -22,6 +22,12 @@ const VALID_PAYLOAD = ZONES.map((z) => ({
   daily: { time: ['2020-01-01'], temperature_2m_mean: [10] },
 }));
 
+const VALID_NORMALS_DAILY = {
+  time: Array.from({ length: 12 }, (_, index) => `2020-${String(index + 1).padStart(2, '0')}-15`),
+  temperature_2m_mean: Array(12).fill(10),
+  precipitation_sum: Array(12).fill(1),
+};
+
 const ARCHIVE_OPTS = {
   startDate: '2020-01-01',
   endDate: '2020-01-02',
@@ -284,6 +290,67 @@ test('shared deadline gives CONNECT failure time to reach the curl route', async
   assert.equal(connectCalls, 1);
   assert.equal(curlCalls, 1);
   assert.equal(result.length, ZONES.length);
+});
+
+test('normals caller shares one run-anchored deadline across every batch', async () => {
+  const { CLIMATE_ZONES } = await import('../scripts/_climate-zones.mjs');
+  const {
+    NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+    fetchClimateZoneNormals,
+  } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+
+  const runStartedAtMs = 10_000;
+  let nowMs = runStartedAtMs;
+  const deadlines = [];
+  const result = await fetchClimateZoneNormals({
+    runStartedAtMs,
+    _now: () => nowMs,
+    _sleep: async (waitMs) => { nowMs += waitMs; },
+    _fetchArchiveBatch: async (batch, options) => {
+      deadlines.push(options.deadlineAtMs);
+      nowMs += 100;
+      return batch.map((zone) => ({
+        latitude: zone.lat,
+        longitude: zone.lon,
+        daily: VALID_NORMALS_DAILY,
+      }));
+    },
+  });
+
+  const expectedDeadlineAtMs = runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS;
+  assert.equal(deadlines.length, Math.ceil(CLIMATE_ZONES.length / 2));
+  assert.ok(deadlines.every((deadlineAtMs) => deadlineAtMs === expectedDeadlineAtMs));
+  assert.equal(result.normals.length, CLIMATE_ZONES.length);
+  assert.ok(result.fetchedAt < expectedDeadlineAtMs);
+});
+
+test('normals caller stops launching batches when the soft deadline expires', async () => {
+  const {
+    NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+    fetchClimateZoneNormals,
+  } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+
+  const runStartedAtMs = 20_000;
+  let nowMs = runStartedAtMs;
+  let batchCalls = 0;
+  await assert.rejects(
+    () => fetchClimateZoneNormals({
+      runStartedAtMs,
+      _now: () => nowMs,
+      _sleep: async (waitMs) => { nowMs += waitMs; },
+      _fetchArchiveBatch: async (batch) => {
+        batchCalls += 1;
+        nowMs = runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS;
+        return batch.map((zone) => ({
+          latitude: zone.lat,
+          longitude: zone.lon,
+          daily: VALID_NORMALS_DAILY,
+        }));
+      },
+    }),
+    /Only 2\/25 zones returned normals \(23 errors\)/,
+  );
+  assert.equal(batchCalls, 1);
 });
 
 test('thrown fetch error (timeout/ECONNRESET) on final direct attempt → proxy fallback runs (P1 fix)', async () => {

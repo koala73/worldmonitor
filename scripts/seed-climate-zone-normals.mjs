@@ -94,19 +94,24 @@ export function buildZoneNormalsFromBatch(zones, batchPayloads) {
   });
 }
 
-export async function fetchClimateZoneNormals({ runStartedAtMs = Date.now() } = {}) {
+export async function fetchClimateZoneNormals({
+  runStartedAtMs = Date.now(),
+  _now = Date.now,
+  _sleep = sleep,
+  _fetchArchiveBatch = fetchOpenMeteoArchiveBatch,
+} = {}) {
   const normals = [];
   const batches = chunkItems(CLIMATE_ZONES, NORMALS_BATCH_SIZE);
   const deadlineAtMs = runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS;
 
   for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
     const batch = batches[batchIndex];
-    if (Date.now() >= deadlineAtMs) {
+    if (_now() >= deadlineAtMs) {
       break;
     }
 
     try {
-      const payloads = await fetchOpenMeteoArchiveBatch(batch, {
+      const payloads = await _fetchArchiveBatch(batch, {
         startDate: NORMALS_START,
         endDate: NORMALS_END,
         daily: ['temperature_2m_mean', 'precipitation_sum'],
@@ -114,6 +119,8 @@ export async function fetchClimateZoneNormals({ runStartedAtMs = Date.now() } = 
         maxRetries: 4,
         retryBaseMs: 5_000,
         deadlineAtMs,
+        _now,
+        _sleep,
         label: `normals batch (${batch.map((zone) => zone.name).join(', ')})`,
       });
       const batchNormals = buildZoneNormalsFromBatch(batch, payloads);
@@ -124,9 +131,9 @@ export async function fetchClimateZoneNormals({ runStartedAtMs = Date.now() } = 
     }
 
     if (batchIndex < batches.length - 1) {
-      const remainingMs = deadlineAtMs - Date.now();
+      const remainingMs = deadlineAtMs - _now();
       if (remainingMs <= 0) break;
-      await sleep(Math.min(NORMALS_BATCH_DELAY_MS, remainingMs));
+      await _sleep(Math.min(NORMALS_BATCH_DELAY_MS, remainingMs));
     }
   }
 
@@ -140,7 +147,7 @@ export async function fetchClimateZoneNormals({ runStartedAtMs = Date.now() } = 
 
   return {
     referencePeriod: '1991-2020',
-    fetchedAt: Date.now(),
+    fetchedAt: _now(),
     normals,
   };
 }
