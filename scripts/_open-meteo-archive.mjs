@@ -204,9 +204,11 @@ export async function fetchOpenMeteoArchiveBatch(zones, opts) {
   if (connectProxyAuth) {
     try {
       console.log(`  [OPEN_METEO] direct failed on ${label} (${lastDirectError?.message ?? 'unknown'}); trying proxy (CONNECT)`);
+      const connectTimeoutMs = routeTimeoutMs();
       const { buffer } = await _proxyFetcher(url, connectProxyAuth, {
         accept: 'application/json',
-        timeoutMs: routeTimeoutMs(),
+        timeoutMs: connectTimeoutMs,
+        signal: AbortSignal.timeout(connectTimeoutMs),
       });
       ensureBeforeDeadline();
       const data = normalizeArchiveBatchResponse(JSON.parse(buffer.toString('utf8')));

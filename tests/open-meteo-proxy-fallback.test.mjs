@@ -239,6 +239,7 @@ test('shared deadline clamps CONNECT and rejects a response that finishes after 
       _proxyFetcher: async (_url, _proxyAuth, options) => {
         connectCalls += 1;
         assert.equal(options.timeoutMs, 95);
+        assert.ok(options.signal instanceof AbortSignal, 'CONNECT should share one abort signal across tunnel and response work');
         nowMs = 101;
         return { buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'), contentType: 'application/json' };
       },
