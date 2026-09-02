@@ -877,9 +877,11 @@ async function mcpHandlerInner(
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
     }
-    // Plan-driven daily allowance, resolved from the entitlement the pre-check
-    // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
-    // dispatch sites below; unset for every caller class but `pro`.
+    // Plan-driven allowances, both resolved from the entitlement the pre-check
+    // already fetched (plan 2026-07-25-001 U3): the daily budget rides down to
+    // the two metered dispatch sites below, and the minute burst is spent right
+    // here. Set for `pro` and `user_key`; the other caller classes have no
+    // entitlement row and fall back to the defaults.
     budget = preCheck.budget;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
     const limited = await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute);
