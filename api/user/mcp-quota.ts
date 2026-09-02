@@ -9,7 +9,14 @@
  * writer/reader drift cannot occur.
  *
  * Response shape:
- *   200 { used: number, limit: number | null, resetsAt: <ISO at next UTC midnight> }
+ *   200 { used: number, limit: number | null, resetsAt: <ISO at next UTC midnight>,
+ *         sharedWithRestApi: boolean }
+ *
+ * `sharedWithRestApi` says whether `used` counts REST requests too. It mirrors
+ * the same field on the `worldmonitor://account/mcp-allowance` MCP resource,
+ * from the same `isSharedRestCounter` predicate that picks the key both read —
+ * so the settings display and the agent-facing resource cannot describe one
+ * number two different ways.
  *
  * `limit` is the caller's PLAN allowance (plan 2026-07-25-001 U3b), resolved
  * from `features.planLimits.mcpCallsPerDay` through the SAME `resolveDailyLimit`
@@ -49,7 +56,7 @@ import {
   type CachedEntitlements,
 } from '../../server/_shared/entitlement-check';
 import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
-import { budgetCounterKey, resolveDailyLimit, resolveMcpBudget, type McpBudget } from '../mcp/quota';
+import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, resolveMcpBudget, type McpBudget } from '../mcp/quota';
 import {
   FREE_ACCOUNT_CALLS_PER_DAY,
   freeAccountCallsKey,
@@ -160,6 +167,10 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   const key = onFreeAllowance
     ? freeAccountCallsKey(userId, now.getTime())
     : budgetCounterKey(budget, userId, now);
+  // Derived from the SAME branch that picked the key, so the flag describes the
+  // counter `used` was actually read from rather than a budget that was
+  // resolved and then not used.
+  const sharedWithRestApi = !onFreeAllowance && isSharedRestCounter(budget);
 
   let raw: string | null = null;
   try {
@@ -196,7 +207,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   const resetsAt = new Date(resetsAtMs).toISOString();
 
   return new Response(
-    JSON.stringify({ used, limit, resetsAt }),
+    JSON.stringify({ used, limit, resetsAt, sharedWithRestApi }),
     { status: 200, headers: jsonHeaders },
   );
 }

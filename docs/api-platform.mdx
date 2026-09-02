@@ -153,7 +153,7 @@ Returns `{"isPro": true|false}` for the signed-in user. Requires a Clerk bearer 
 
 ### `GET /api/user/mcp-quota`
 
-Settings-UI read of the caller's MCP daily quota, from the same counter the MCP server enforces against. Requires a Clerk session. Returns `{"used": 12, "limit": 250, "resetsAt": "<next UTC midnight>"}`; `limit: null` means unlimited. Free-account callers see the free-allowance meter instead. Backend failures fail soft (`used: 0` / plan default) rather than erroring. `Cache-Control: no-store`.
+Settings-UI read of the caller's MCP daily quota, from the same counter the MCP server enforces against. Requires a Clerk session. Returns `{"used": 12, "limit": 250, "resetsAt": "<next UTC midnight>", "sharedWithRestApi": false}`; `limit: null` means unlimited, and `sharedWithRestApi: true` means the number reported is the account's REST allowance, so it counts REST requests too. Free-account callers see the free-allowance meter instead. Backend failures fail soft (`used: 0` / plan default) rather than erroring. `Cache-Control: no-store`.
 
 ### `POST /api/user/mcp-revoke`
 

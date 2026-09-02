@@ -447,3 +447,61 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
     }
   });
 });
+
+describe('mcp-quota handler — sharedWithRestApi mirrors the counter it read', () => {
+  // Settings shows this number next to "MCP". Once an API plan's MCP calls are
+  // metered on the REST key, that number also counts REST requests, and the
+  // display has to be able to say so — otherwise the endpoint and the
+  // agent-facing allowance resource describe one counter two different ways.
+  const apiStarterEnt = () => ({
+    planKey: 'api_starter',
+    features: {
+      tier: 2,
+      mcpAccess: true,
+      planLimits: {
+        apiRequestsPerDay: 1000,
+        apiBurstRequestsPerMinute: 60,
+        mcpCallsPerDay: 'shared-api-budget',
+        mcpBurstRequestsPerMinute: 60,
+      },
+    },
+    validUntil: Date.now() + 86_400_000,
+  });
+
+  it('is false for a Pro caller on the dedicated counter', async () => {
+    const body = await (await quotaHandler(makeReq(), makeDeps({ redisGet: async () => '7' }))).json();
+    assert.equal(body.sharedWithRestApi, false);
+  });
+
+  it('is false for an API plan while REST enforcement is off', async () => {
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    let observedKey = '';
+    const deps = makeDeps({
+      getEntitlements: async () => apiStarterEnt(),
+      redisGet: async (k) => { observedKey = k; return '12'; },
+    });
+    const body = await (await quotaHandler(makeReq(), deps)).json();
+    assert.equal(body.limit, 1000, 'the sold number is the same in both flag states');
+    assert.equal(body.sharedWithRestApi, false);
+    assert.match(observedKey, /^mcp:pro-usage:/, 'shadow mode reads MCP\'s own counter');
+  });
+
+  it('is true for an API plan once REST enforcement is on', async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    try {
+      let observedKey = '';
+      const deps = makeDeps({
+        getEntitlements: async () => apiStarterEnt(),
+        redisGet: async (k) => { observedKey = k; return '640'; },
+      });
+      const body = await (await quotaHandler(makeReq(), deps)).json();
+      assert.equal(body.used, 640);
+      assert.equal(body.limit, 1000);
+      assert.equal(body.sharedWithRestApi, true);
+      assert.match(observedKey, /rl:apikey:day:/, 'the flag must describe the key actually read');
+    } finally {
+      delete process.env.API_RATE_LIMIT_ENFORCE;
+    }
+  });
+});
+

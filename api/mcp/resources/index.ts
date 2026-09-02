@@ -49,7 +49,7 @@ import type {
 import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
-import { budgetCounterKey, resolveDailyLimit, type McpBudget } from '../quota';
+import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, type McpBudget } from '../quota';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import {
@@ -262,6 +262,12 @@ export async function buildAccountAllowanceResourceResponse(
     remaining,
     resetsAt,
     requestWindows,
+    // Whose traffic `used` counts. On an API plan with REST enforcement on,
+    // this budget IS the REST meter, so `used` includes requests the agent
+    // never made and it must not read the number as its own tool history. A
+    // boolean rather than the counter name: the agent can act on "someone else
+    // spends this too", and the Redis key is ours to move.
+    sharedWithRestApi: !freeAccountAllowance && isSharedRestCounter(budget),
   });
   return rpcOk(id, {
     contents: [{ uri: MCP_ALLOWANCE_RESOURCE_URI, mimeType: 'application/json', text }],
