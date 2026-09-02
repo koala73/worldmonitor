@@ -1,7 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import * as electricitySeed from '../scripts/seed-electricity-prices.mjs';
 import {
   parseEntsoEPrice,
   buildElectricityIndex,
@@ -10,6 +9,8 @@ import {
   ELECTRICITY_KEY_PREFIX,
   ELECTRICITY_TTL_SECONDS,
   fetchEiaRegion,
+  fetchEntsoERegion,
+  meetsEntsoPublicationFloor,
 } from '../scripts/seed-electricity-prices.mjs';
 
 const ENTSO_REGION = { region: 'DE', eic: '10Y1001A1001A82H', name: 'Germany' };
@@ -62,7 +63,7 @@ describe('parseEntsoEPrice', () => {
 describe('fetchEntsoERegion transport recovery', () => {
   it('returns direct XML without calling the proxy', async () => {
     let proxyCalls = 0;
-    const result = await electricitySeed.fetchEntsoERegion(
+    const result = await fetchEntsoERegion(
       ENTSO_REGION,
       'test-token',
       ENTSO_TODAY,
@@ -86,7 +87,7 @@ describe('fetchEntsoERegion transport recovery', () => {
   it('uses the proxy once after retryable direct failures', async () => {
     let directCalls = 0;
     let proxyCalls = 0;
-    const result = await electricitySeed.fetchEntsoERegion(
+    const result = await fetchEntsoERegion(
       ENTSO_REGION,
       'test-token',
       ENTSO_TODAY,
@@ -114,7 +115,7 @@ describe('fetchEntsoERegion transport recovery', () => {
     const originalWarn = console.warn;
     console.warn = (...args) => warnings.push(args.join(' '));
     try {
-      const result = await electricitySeed.fetchEntsoERegion(
+      const result = await fetchEntsoERegion(
         ENTSO_REGION,
         'test-token',
         ENTSO_TODAY,
@@ -143,7 +144,7 @@ describe('ENTSO-E full-snapshot publication floor', () => {
   it('does not accept an EIA-only result as full-snapshot coverage', () => {
     const eiaOnlyCount = EIA_REGIONS.length;
     assert.equal(eiaOnlyCount, 7, 'fixture must represent the complete EIA cohort');
-    assert.equal(electricitySeed.meetsEntsoPublicationFloor(0), false);
+    assert.equal(meetsEntsoPublicationFloor(0), false);
   });
 });
 

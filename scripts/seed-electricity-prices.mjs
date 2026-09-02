@@ -5,9 +5,11 @@ import {
   CHROME_UA,
   extendExistingTtl,
   getRedisCredentials,
+  httpsProxyFetchRaw,
   loadEnvFile,
   logSeedResult,
   releaseLock,
+  resolveProxyForConnect,
   withRetry,
 } from './_seed-utils.mjs';
 
@@ -110,7 +112,15 @@ async function redisPipeline(commands) {
 
 // ── ENTSO-E fetcher ───────────────────────────────────────────────────────────
 
-async function fetchEntsoERegion(region, token, today, yesterday) {
+export function meetsEntsoPublicationFloor(regionCount) {
+  return regionCount >= MIN_ENTSO_REGIONS;
+}
+
+export async function fetchEntsoERegion(region, token, today, yesterday, {
+  fetchFn = globalThis.fetch,
+  proxyAuth = resolveProxyForConnect(),
+  proxyFetcher = httpsProxyFetchRaw,
+} = {}) {
   const params = new URLSearchParams({
     documentType: 'A44',
     in_Domain: region.eic,
@@ -119,22 +129,38 @@ async function fetchEntsoERegion(region, token, today, yesterday) {
     periodEnd: `${isoDate(today).replace(/-/g, '')}2300`,
     securityToken: token,
   });
+  const url = `https://web-api.tp.entsoe.eu/api?${params.toString()}`;
 
   try {
-    const resp = await withRetry(
-      () =>
-        fetch(`https://web-api.tp.entsoe.eu/api?${params.toString()}`, {
-          headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' },
-          signal: AbortSignal.timeout(20_000),
-        }).then((r) => {
-          if (!r.ok) throw new Error(`ENTSO-E ${region.region} HTTP ${r.status}`);
-          return r.text();
-        }),
-      2,
-      500,
-    );
+    let xml;
+    try {
+      xml = await withRetry(
+        () =>
+          fetchFn(url, {
+            headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' },
+            signal: AbortSignal.timeout(20_000),
+          }).then((r) => {
+            if (!r.ok) throw new Error(`ENTSO-E ${region.region} HTTP ${r.status}`);
+            return r.text();
+          }),
+        2,
+        500,
+      );
+    } catch (directErr) {
+      if (!proxyAuth) throw directErr;
+      console.warn(`[electricity] ENTSO-E ${region.region} direct failed (${directErr.message}); retrying via proxy`);
+      try {
+        const { buffer } = await proxyFetcher(url, proxyAuth, {
+          accept: 'application/xml',
+          timeoutMs: 20_000,
+        });
+        xml = buffer.toString('utf8');
+      } catch (proxyErr) {
+        throw new Error(`direct=${directErr.message}; proxy=${proxyErr.message}`);
+      }
+    }
 
-    const price = parseEntsoEPrice(resp);
+    const price = parseEntsoEPrice(xml);
     if (price == null) {
       console.warn(`[electricity] ENTSO-E ${region.region}: no price.amount in response`);
       return null;
@@ -288,7 +314,7 @@ export async function main() {
     }
 
     // Check EU coverage threshold — preserve EU snapshot but still write US data
-    if (entsoToken && entsoResults.length < MIN_ENTSO_REGIONS) {
+    if (!meetsEntsoPublicationFloor(entsoResults.length)) {
       const euKeys = ENTSO_E_REGIONS.map((r) => r.region);
       await preservePreviousSnapshot(
         `Only ${entsoResults.length} ENTSO-E regions returned valid prices (min: ${MIN_ENTSO_REGIONS})`,
