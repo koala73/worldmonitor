@@ -349,6 +349,7 @@
       ]
     ],
     "watchPatterns": [
+      "scripts/_arms-suppliers-sweep.mjs",
       "scripts/_bundle-runner.mjs",
       "scripts/_static-ref-heavy-order.mjs",
       "scripts/_defense-industrial-source.mjs",
