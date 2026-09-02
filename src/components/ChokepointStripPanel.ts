@@ -114,6 +114,9 @@ export class ChokepointStripPanel extends Panel {
           </div>
         </div>`;
     }));
+    const coverageWarning = this.data.upstreamUnavailable
+      ? safeHtml`<div class="cp-strip-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
+      : safeHtml``;
 
     const nAis = ordered.reduce(
       (sum, cp) => sum + (cp.aisSnapshotAvailable === true ? cp.aisDisruptions : 0),
@@ -129,12 +132,14 @@ export class ChokepointStripPanel extends Panel {
     }), 'attributionFooterHtml escapes fields and returns shared footer markup');
 
     this.setSafeContent(safeHtml`
+      ${coverageWarning}
       <div class="cp-strip-wrap">
         <div class="cp-strip">${chips}</div>
         ${footer}
       </div>
       ${unsafeRawHtml(ATTRIBUTION_FOOTER_CSS, 'static attribution footer CSS constant')}
       <style>
+        .cp-strip-warning { margin: 0 0 6px; color: var(--warning, #f59e0b); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
         .cp-strip-wrap { padding: 4px 0; }
         .cp-strip { display: flex; flex-wrap: wrap; gap: 8px; }
         .cp-chip {

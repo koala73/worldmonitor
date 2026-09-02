@@ -462,13 +462,13 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
     if (anomaly.signal) {
       descriptions.push(`Traffic down ${anomaly.dropPct}% vs 30-day baseline, vessels may be transiting dark (AIS off)`);
     }
-    if (!threatConfigFresh) {
-      descriptions.push(THREAT_CONFIG_STALE_NOTE);
-    }
     if (descriptions.length === 0) {
       descriptions.push(sourceCoverageIncomplete || !transitMovementAvailable
         ? 'No active disruptions reported by available sources; source coverage incomplete'
         : 'No active disruptions');
+    }
+    if (!threatConfigFresh) {
+      descriptions.push(THREAT_CONFIG_STALE_NOTE);
     }
 
     return {
@@ -547,19 +547,26 @@ export async function getChokepointStatus(
       async () => {
         const { chokepoints, sourceCoverageIncomplete, hasAnyPublishedSource } = await fetchChokepointData();
         if (!hasAnyPublishedSource) return null;
-        // recordCount reflects the count of chokepoints with REAL upstream data
+        // recordCount reflects the count of chokepoints with complete upstream data
         // (not the canonical shape size — always 13). Lets api/health.js
-        // distinguish 13/13 healthy from partial (e.g., 10/13) via the
-        // minRecordCount threshold. Before this, a partial portwatch failure
-        // showed as OK despite the UI rendering 3 zero-state rows.
-        const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable === true).length;
+        // distinguish 13/13 healthy from a row-local transit shortfall or a
+        // global navigation/AIS outage through the minRecordCount threshold.
+        const coveredCount = chokepoints.filter((c) => (
+          c.transitSummary?.dataAvailable === true
+          && c.navigationalWarningsAvailable === true
+          && c.aisSnapshotAvailable === true
+        )).length;
         // Persist WHICH ones are uncovered alongside the count. recordCount=11
         // says two are missing and never which two, and the upstream usually
         // recovers before anyone looks — on 2026-08-25 the partial ran ~4.5h and
         // was already healthy by the time it was investigated. Bounded by the
         // canonical set, so this cannot grow past 13 short ids.
         const uncoveredIds = chokepoints
-          .filter((c) => c.transitSummary?.dataAvailable !== true)
+          .filter((c) => (
+            c.transitSummary?.dataAvailable !== true
+            || c.navigationalWarningsAvailable !== true
+            || c.aisSnapshotAvailable !== true
+          ))
           .map((c) => c.id);
         // Response-level signal: if any canonical chokepoint lost upstream,
         // flip upstreamUnavailable so clients can show a partial-coverage

@@ -1079,7 +1079,11 @@ async function cachedFetchJsonCore<T extends object>(
       if (result != null) {
         const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
         const cachePartialUpstreamResult = noStoreReason === 'upstream-unavailable'
-          && opts?.cacheUpstreamUnavailablePayloads === true;
+          && opts?.cacheUpstreamUnavailablePayloads === true
+          && getRpcNoStoreReasonFromPayload(
+            { ...result, upstreamUnavailable: false },
+            { includeAvailableFalse: false },
+          ) === null;
         if (noStoreReason && !cachePartialUpstreamResult) {
           upstreamStatus = 0;
           if (opts?.cacheFailures !== false) {
