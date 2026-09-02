@@ -418,6 +418,21 @@ describe('vercel.json source matching', () => {
     assert.equal(matches('/countries'), false, 'the literal /countries rule covers the bare form');
   });
 
+  // The load-bearing form for the shared-content 308s: a named param with an
+  // explicit `.*` pattern behaves like the raw group but keeps the `:match`
+  // destination interpolation every other redirect in this file already uses,
+  // so no rule depends on `$1` support we have no in-repo evidence for.
+  it('models a :name(regex) custom matcher like the equivalent raw group', () => {
+    const named = (path) => sourceToRegExp('/countries/:match(.*)').test(path);
+    const raw = (path) => sourceToRegExp('/countries/(.*)').test(path);
+    for (const path of ['/countries/', '/countries/japan', '/countries/japan/', '/countries']) {
+      assert.equal(named(path), raw(path), `${path} must match both forms identically`);
+    }
+    assert.equal(named('/countries/'), true);
+    assert.equal(named('/countries/japan/'), true);
+    assert.equal(named('/countries'), false);
+  });
+
   it('models a literal source as exact, with no optional trailing slash', () => {
     assert.equal(sourceToRegExp('/countries').test('/countries'), true);
     assert.equal(sourceToRegExp('/countries').test('/countries/'), false);
@@ -4180,15 +4195,15 @@ describe('docs host scoping — Mintlify proxy is www-only (#5345)', () => {
   // proxy. The host list is derived from the /dashboard variant rewrites so a
   // new variant subdomain cannot ship outside the docs redirect.
   const docsHostRedirect = vercelConfig.redirects.find(
-    (r) => r.source === '/docs/(.*)' && r.has
+    (r) => r.source === '/docs/:match(.*)' && r.has
   );
   const variantHosts = vercelConfig.rewrites
     .filter((r) => r.source === '/dashboard' && r.has)
     .map((r) => (r.has ?? []).find((h) => h.type === 'host')?.value ?? '');
 
   it('redirects subdomain /docs/* to www permanently', () => {
-    assert.ok(docsHostRedirect, 'expected a host-conditioned redirect for /docs/(.*)');
-    assert.equal(docsHostRedirect.destination, 'https://www.worldmonitor.app/docs/$1');
+    assert.ok(docsHostRedirect, 'expected a host-conditioned redirect for /docs/:match(.*)');
+    assert.equal(docsHostRedirect.destination, 'https://www.worldmonitor.app/docs/:match');
     assert.equal(docsHostRedirect.permanent, true);
   });
 
@@ -4477,7 +4492,7 @@ describe('skeleton brand text extraction (#5541)', () => {
 // alternates (or, for RSS, duplicates with no user-selected canonical).
 describe('variant-host canonicalization (#6833–#6836)', () => {
   const docsHostRedirect = vercelConfig.redirects.find(
-    (r) => r.source === '/docs/(.*)' && r.has
+    (r) => r.source === '/docs/:match(.*)' && r.has
   );
   const sharedHostValue = (docsHostRedirect?.has ?? []).find((h) => h.type === 'host')?.value ?? '';
   const sharedHostRe = new RegExp(sharedHostValue);
@@ -4517,15 +4532,15 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
 
   for (const prefix of SHARED_WWW_PREFIXES) {
     it(`308s variant/api /${prefix}/* to www (#6833)`, () => {
-      const redirect = hostRedirect(`/${prefix}/(.*)`, 'tech');
-      assert.ok(redirect, `expected a host-conditioned 308 for /${prefix}/(.*)`);
-      assert.equal(redirect.destination, `https://www.worldmonitor.app/${prefix}/$1`);
+      const redirect = hostRedirect(`/${prefix}/:match(.*)`, 'tech');
+      assert.ok(redirect, `expected a host-conditioned 308 for /${prefix}/:match(.*)`);
+      assert.equal(redirect.destination, `https://www.worldmonitor.app/${prefix}/:match`);
       assert.equal(redirect.permanent, true);
       const hostValue = (redirect.has ?? []).find((h) => h.type === 'host')?.value;
       assert.equal(
         hostValue,
         sharedHostValue,
-        `/${prefix}/(.*) must reuse the /docs host regex so a new variant cannot ship uncovered`
+        `/${prefix}/:match(.*) must reuse the /docs host regex so a new variant cannot ship uncovered`
       );
     });
   }
@@ -4549,7 +4564,7 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
         assert.ok(redirect, `${path} must 308 off tech.worldmonitor.app, not serve a duplicate 200`);
         assert.equal(
           redirect.destination,
-          `https://www.worldmonitor.app/${prefix}/$1`,
+          `https://www.worldmonitor.app/${prefix}/:match`,
           `${path} must land on the www canonical`,
         );
       }
@@ -4612,7 +4627,7 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     assert.equal(firstRedirectFor({ host: 'api.worldmonitor.app', path: '/' })?.destination, 'https://www.worldmonitor.app/');
     assert.equal(
       firstRedirectFor({ host: tech, path: '/blog/rss.xml' })?.destination,
-      'https://www.worldmonitor.app/blog/$1'
+      'https://www.worldmonitor.app/blog/:match'
     );
     assert.equal(firstRedirectFor({ host: tech, path: '/pro' })?.destination, 'https://www.worldmonitor.app/pro');
     assert.equal(firstRedirectFor({ host: tech, path: '/pro/' })?.destination, 'https://www.worldmonitor.app/pro');
@@ -4633,9 +4648,9 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
   });
 
   it('places shared-content 308s before host-agnostic trailing-slash redirects (#6833)', () => {
-    const blogIdx = vercelConfig.redirects.findIndex((r) => r.source === '/blog/(.*)' && r.has);
+    const blogIdx = vercelConfig.redirects.findIndex((r) => r.source === '/blog/:match(.*)' && r.has);
     const slashIdx = vercelConfig.redirects.findIndex((r) => r.source === '/countries' && !r.has);
-    assert.ok(blogIdx >= 0, 'missing /blog/(.*) host 308');
+    assert.ok(blogIdx >= 0, 'missing /blog/:match(.*) host 308');
     assert.ok(slashIdx >= 0, 'missing /countries trailing-slash redirect');
     assert.ok(blogIdx < slashIdx, 'host 308s must run before same-host slash normalization');
   });
@@ -4727,7 +4742,7 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     );
     assert.equal(
       firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference/changelog/' })?.destination,
-      'https://www.worldmonitor.app/reference/$1',
+      'https://www.worldmonitor.app/reference/:match',
     );
   });
 
