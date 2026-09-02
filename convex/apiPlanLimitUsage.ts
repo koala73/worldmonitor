@@ -4,6 +4,7 @@ import { internal } from "./_generated/api";
 import {
   PRODUCT_CATALOG,
   getPlanLimit,
+  hasSharedApiBudget,
   type PlanLimitDimension,
 } from "./config/productCatalog";
 import {
@@ -103,25 +104,21 @@ function windowForDimension(dimension: PlanLimitDimension, now: number) {
   };
 }
 
-// Plans whose MCP calls are metered by the Redis `mcp:pro-usage` counter — i.e.
-// the plans that authenticate into the MCP edge's `pro` context and hit the
-// INCR-first reservation in api/mcp/dispatch.ts. Both a producer (the Redis
-// read) and a consumer (the Axiom-row drop) key on this, and they must agree:
-// see the dual-sourcing note above `redisMcpDailyUsers`.
-function isRedisMeteredMcpPlan(planKey: string): boolean {
-  return (
-    planKey === "pro_monthly" || planKey === "pro_annual"
-    || planKey === "pro_business_monthly" || planKey === "pro_business_annual"
-  );
-}
-
 function dodoUpgradeNotice(planKey: string, dimension: PlanLimitDimension): Omit<NoticeInput, "state"> {
-  // Pro AND Pro Business both top out below API Starter's MCP allowance, and
-  // both are self-serve checkout products — so a capped caller on either gets
-  // the same "buy API Starter" CTA. Without the pro_business arm the notice
-  // falls through to `{ctaKind: 'none'}`: the customer is told they hit the cap
-  // with no way out of it.
-  if (isRedisMeteredMcpPlan(planKey)) {
+  // Pro AND Pro Business both top out below API Starter's request allowance,
+  // and both are self-serve checkout products — so a capped caller on either
+  // gets the same "buy API Starter" CTA. Without the pro_business arm the
+  // notice falls through to `{ctaKind: 'none'}`: the customer is told they hit
+  // the cap with no way out of it.
+  //
+  // Derived from the catalog rather than a plan list so a new dedicated-counter
+  // plan routes correctly on the day it ships — but bounded to a PAID plan on a
+  // FINITE counter of its own. `free` also has a dedicated counter (0/day) and
+  // Enterprise's is unlimited (`null`), and neither belongs in a self-serve API
+  // Starter checkout. Today that resolves to exactly pro_monthly, pro_annual
+  // and the two pro_business variants.
+  const features = PRODUCT_CATALOG[planKey]?.features;
+  if (features && features.tier > 0 && typeof features.planLimits?.mcpCallsPerDay === "number") {
     return { upgradeTargetPlanKey: "api_starter", ctaKind: "checkout" };
   }
   if (planKey === "api_starter" || planKey === "api_starter_annual") {
@@ -354,7 +351,6 @@ async function buildProductionRows(
 ): Promise<{ rows: ScannerUsageRow[]; blocked: ScannerSummary["blocked"] }> {
   const blocked: ScannerSummary["blocked"] = [];
   const rows: ScannerUsageRow[] = [];
-  const day = utcDayKey(now);
 
   // api_daily_requests is now sourced from the enforcement Redis meter, keyed by
   // userId, in the Upstash-gated block below (not an Axiom count() by customer_id).
@@ -397,62 +393,35 @@ async function buildProductionRows(
     }
   }
 
-  // mcp_daily_calls for Pro accounts is authoritatively metered by the Redis
-  // mcp:pro-usage counter (read in the Upstash block below), NOT the Axiom
-  // mcp.toolcall count. The Axiom count also tallies quota-EXEMPT calls, so it
-  // reads structurally higher, and dual-sourcing mints a second row that flaps
-  // the same-dimension notice within one scan. Drop the Axiom row for those
-  // users so the Redis read (or its blocked entry) is their single source; the
-  // Axiom row still stands for api-tier mcpAccess plans that have no Redis
-  // counter. Mirrors the U8 api_daily_requests move to a single Redis source.
-  const redisMcpDailyUsers = new Set(
-    active
-      .filter((e) => isRedisMeteredMcpPlan(e.planKey) && e.mcpAccess)
-      .map((e) => e.userId),
-  );
-  const mcpDailyApl = `['wm_api_usage']
-| where tag == "mcp.toolcall" and ok == true and _time >= datetime(${day}T00:00:00Z)
-| where isnotnull(user_id) and user_id != ""
-| summarize usage = count() by user_id`;
-  const mcpDaily = await queryAxiom(mcpDailyApl, "mcp_daily_calls");
-  rows.push(...mcpDaily.rows
-    .filter((row) => !redisMcpDailyUsers.has(row.userId))
-    .map((row) => ({
-      ...row,
-      source: "axiom:mcp_toolcall",
-    })));
-  if (mcpDaily.blockedReason) blocked.push({ dimension: "mcp_daily_calls", reason: mcpDaily.blockedReason });
+  // mcp_daily_calls is metered entirely in Redis. The Axiom fallback that used
+  // to cover API-tier plans queried `where tag == "mcp.toolcall" ... by user_id`
+  // against `wm_api_usage`, which has neither column — the query returned
+  // HTTP 400 on every scan, so the dimension was recorded as blocked rather
+  // than evaluated, and no API-tier customer could ever receive a cap warning.
+  // Nothing repaired it because the comment claimed those plans "have no Redis
+  // counter"; they always did. The Redis reads below are the single source for
+  // every plan.
 
-  const mcpBurstApl = `['wm_api_usage']
-| where tag == "mcp.rate_limit_hit" and dimension == "mcp_minute_burst" and _time > ago(10m)
-| where isnotnull(user_id) and user_id != ""
-| summarize hits = count(), observed_limit = max(todouble(limit)) by user_id, minute = bin(_time, 1m)
-| extend usage = coalesce(observed_limit, 60) + hits`;
-  const mcpBurst = await queryAxiom(mcpBurstApl, "mcp_minute_burst");
-  if (mcpBurst.blockedReason) {
-    blocked.push({ dimension: "mcp_minute_burst", reason: mcpBurst.blockedReason });
-  } else {
-    const byUser = new Map<string, number[]>();
-    for (const row of mcpBurst.rows) {
-      const buckets = byUser.get(row.userId) ?? [];
-      buckets.push(row.usage);
-      byUser.set(row.userId, buckets);
-    }
-    for (const [userId, minuteBuckets] of byUser) {
-      rows.push({
-        userId,
-        dimension: "mcp_minute_burst",
-        usage: Math.max(...minuteBuckets, 0),
-        minuteBuckets,
-        source: "axiom:mcp_rate_limit_hit",
-        sourceFreshAt: now,
-      });
-    }
-  }
+  // mcp_minute_burst has NO readable source, and is recorded as blocked rather
+  // than queried. The APL that stood here — `['wm_api_usage'] | where tag ==
+  // "mcp.rate_limit_hit" ... by user_id` — repeated, immediately below it, the
+  // very defect the paragraph above describes, and could not return a row for
+  // three independent reasons: `wm_api_usage`'s RequestEvent carries
+  // `customer_id` and no `tag` / `user_id` / `dimension` / `limit` column at all
+  // (server/_shared/usage.ts); MCP limiter telemetry never reaches Axiom in the
+  // first place, because `emitTelemetry` is a bare console.log to the Vercel log
+  // drain (api/mcp/telemetry.ts); and `emitMcpRateLimitHit` sets `user_id` only
+  // for the `pro` auth context, so wm_-key callers would be invisible even if
+  // the other two were repaired. A query that can only ever return zero rows
+  // reads as a passing check while measuring nothing. Blocking says plainly that
+  // the dimension is unmonitored, and keeps the recovery sweep from clearing a
+  // burst notice on evidence it never had. Reviving the axis needs an Axiom sink
+  // for MCP limiter hits, not another query.
+  blocked.push({ dimension: "mcp_minute_burst", reason: "mcp_burst_telemetry_never_reaches_axiom" });
 
   if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
     blocked.push({ dimension: "api_daily_requests", reason: "missing_upstash_credentials_for_daily_meter" });
-    blocked.push({ dimension: "mcp_daily_calls", reason: "missing_upstash_credentials_for_pro_daily_fallback" });
+    blocked.push({ dimension: "mcp_daily_calls", reason: "missing_upstash_credentials_for_mcp_daily_meter" });
     return { rows, blocked };
   }
 
@@ -462,21 +431,45 @@ async function buildProductionRows(
     planKey: string;
     dimension: PlanLimitDimension;
     source: string;
+    /** Whether this plan's MCP calls and REST requests share one sold budget. */
+    sharedBudget?: boolean;
   };
   const reads: DailyRead[] = [];
   for (const ent of active) {
+    // An entitlement can outlive its catalog entry: `planKey` is a bare
+    // v.string() in the schema, so a plan renamed or retired leaves live rows
+    // pointing at a key `getEntitlementFeatures` throws on by design. Nothing
+    // catches above here — the cron invokes the action directly — so one stale
+    // row would abort the hourly scan for every other customer. Skip it, and
+    // record it blocked so the recovery sweep cannot read "produced no usage
+    // row" as "fell back under the cap".
+    if (!PRODUCT_CATALOG[ent.planKey]) {
+      blocked.push({ userId: ent.userId, dimension: "api_daily_requests", reason: "unknown_plan_key" });
+      blocked.push({ userId: ent.userId, dimension: "mcp_daily_calls", reason: "unknown_plan_key" });
+      continue;
+    }
     // api_daily_requests: read the SAME per-account daily meter #3199 enforces
     // on, keyed by userId. Skip unlimited plans (null limit == enterprise; the
     // gateway never meters them, so the key is absent anyway).
     if (ent.apiAccess && getPlanLimit(ent.planKey, "api_daily_requests") != null) {
       reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "api_daily_requests", source: "redis:apikey_day" });
     }
-    // mcp_daily_calls: the pro-family daily-counter read that pairs with the
-    // Axiom-row drop above. The two sets MUST stay identical — a plan in one
-    // and not the other either dual-sources the dimension (notice flap) or
-    // leaves it unmetered.
-    if (isRedisMeteredMcpPlan(ent.planKey) && ent.mcpAccess) {
-      reads.push({ userId: ent.userId, planKey: ent.planKey, dimension: "mcp_daily_calls", source: "redis:mcp_pro_daily" });
+    // mcp_daily_calls comes off the dedicated `mcp:pro-usage` counter for EVERY
+    // MCP plan, shared-budget ones included. While API_RATE_LIMIT_ENFORCE is off
+    // that counter is precisely where an API tier's MCP calls are charged, at
+    // the sold allowance (`budgetCounterKey` with counter: 'mcp' — api/mcp/
+    // quota.ts). Skipping those plans here is what left an API Starter customer
+    // with no warning at all before their first 429, which is the defect this
+    // scan exists to prevent. Convex cannot read the edge's flag and does not
+    // need to: the read below degrades on its own once the flag flips.
+    if (ent.mcpAccess && getPlanLimit(ent.planKey, "mcp_daily_calls") != null) {
+      reads.push({
+        userId: ent.userId,
+        planKey: ent.planKey,
+        dimension: "mcp_daily_calls",
+        source: "redis:mcp_pro_daily",
+        sharedBudget: hasSharedApiBudget(ent.planKey),
+      });
     }
   }
 
@@ -495,6 +488,16 @@ async function buildProductionRows(
       blocked.push({ userId: read.userId, dimension: read.dimension, reason: "redis_read_failed" });
       continue;
     }
+    // Once REST enforcement is on, a shared-budget plan's MCP calls move to the
+    // REST key `api_daily_requests` already read, and this counter stops being
+    // written. An ABSENT Upstash key reads as 0, not as a failure (see
+    // readRedisInteger), so without this the scan would publish a permanent
+    // "0 of 1,000 MCP calls" rollup alongside the api_daily_requests row that
+    // holds the real figure for that same sold budget — the one budget reported
+    // twice, once falsely. Zero on a shared budget carries no information in
+    // either state, and dropping the row leaves the stale-notice sweep to clear
+    // anything open, which it does on exactly the same evidence.
+    if (read.sharedBudget && usage === 0) continue;
     rows.push({
       userId: read.userId,
       planKey: read.planKey,
@@ -543,6 +546,13 @@ async function scanHandler(ctx: any, args: {
   // notice minted before this gate) would never clear.
   const evaluated = new Set<string>();
 
+  // (user::dimension) pairs this scan could not JUDGE at all, because the row's
+  // planKey has left the catalog and there is no limit to compare against. The
+  // sweep must treat these like a blocked source rather than a recovery:
+  // clearing the notice would tell a customer they are back under a cap that
+  // nothing measured this scan.
+  const unjudged = new Set<string>();
+
   for (const row of source.rows) {
     const ent = byUser.get(row.userId);
     if (!ent) {
@@ -562,6 +572,16 @@ async function scanHandler(ctx: any, args: {
       continue;
     }
     const planKey = row.planKey ?? ent.planKey;
+    // Same catalog-outlives-entitlement guard as buildProductionRows, repeated
+    // because a burst row carries a userId from Axiom and reaches here without
+    // passing through that loop. `getPlanLimit` throws on an unknown key and
+    // this loop body sits OUTSIDE the per-row try below, so one stale planKey
+    // would abort the scan for every user after it.
+    if (!PRODUCT_CATALOG[planKey]) {
+      summary.skipped.push({ userId: row.userId, dimension: row.dimension, reason: "unknown_plan_key" });
+      unjudged.add(`${row.userId}::${row.dimension}`);
+      continue;
+    }
     const limit = getPlanLimit(planKey, row.dimension);
     const window = windowForDimension(row.dimension, now);
     summary.evaluated += 1;
@@ -650,6 +670,7 @@ async function scanHandler(ctx: any, args: {
     for (const key of openKeys) {
       const pair = `${key.userId}::${key.dimension}`;
       if (evaluated.has(pair)) continue; // evaluated this scan — handled by the loop above
+      if (unjudged.has(pair)) continue; // row seen, but its plan has no catalog limit
       if (blockedDimensions.has(key.dimension)) continue;
       if (blockedUserDimensions.has(pair)) continue;
       const result = await ctx.runMutation(

@@ -13,10 +13,10 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { reserveQuota } from './quota';
+import { isSharedRestCounter, reserveQuota, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
-import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
-import { isQuotaExemptMetadataTool, TOOL_REGISTRY } from './registry/index';
+import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
+import { isQuotaExemptMetadataTool, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import {
@@ -212,14 +212,14 @@ export async function executeTool(
  *   -32029 / 429 — quota/allowance spent; pass `retryAfter`.
  */
 function mcpDenialResponse(
-  reason: McpDenialReason,
+  denial: McpDenial,
   code: number,
   status: number,
   id: unknown,
   corsHeaders: Record<string, string>,
   opts?: { retryAfter?: string; wwwAuthenticate?: string },
 ): Response {
-  const { message, data } = buildMcpStructuredDenial(reason);
+  const { message, data } = buildMcpStructuredDenial(denial);
   return new Response(
     JSON.stringify({ jsonrpc: '2.0', id, error: { code, message, data } }),
     {
@@ -258,11 +258,11 @@ export async function dispatchToolsCall(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
-  // Daily allowance resolved by the context pre-check (api/mcp/auth.ts) from
-  // the entitlement it already fetched. Omitted → `PRO_DAILY_QUOTA_LIMIT`;
-  // null → unlimited. Only the `pro` context ever supplies one (KTD6), so a
-  // caller that skips the pre-check simply inherits the plan default.
-  mcpDailyLimit?: number | null,
+  // Budget resolved by the context pre-check (api/mcp/auth.ts) from the
+  // entitlement it already fetched: which counter to charge and its ceiling.
+  // Omitted → the dedicated Pro counter at `PRO_DAILY_QUOTA_LIMIT`, so a caller
+  // that skips the pre-check inherits the plan default rather than a wider cap.
+  budget?: McpBudget,
   // Free-account paid-funnel path (#6716). When set, meters via the idle-gap
   // + call counters instead of reserveQuota.
   freeAccountAllowance?: boolean,
@@ -310,7 +310,7 @@ export async function dispatchToolsCall(
   // future edit to the handler's matching cannot silently widen what a free
   // caller can reach.
   if (context.kind === 'free' && tool._freeTier !== true) {
-    return mcpDenialResponse('no-account', -32001, 401, id, corsHeaders, {
+    return mcpDenialResponse({ reason: 'no-account' }, -32001, 401, id, corsHeaders, {
       // Every 401 on this surface carries WWW-Authenticate — docs/mcp-error-catalog.mdx
       // states it as an invariant, and RFC-9728 clients discover the OAuth resource
       // metadata through it. `resourceMetadataUrl` is optional only because the
@@ -344,15 +344,15 @@ export async function dispatchToolsCall(
   // local registry read that never reaches the gateway, and it is the tool an
   // agent needs most while deciding what it may call.
   if (freeAccountAllowance && tool._execute && !isMetadataTool && tool._freeTier !== true) {
-    return mcpDenialResponse('upgrade-required', -32002, 403, id, corsHeaders);
+    return mcpDenialResponse({ reason: 'upgrade-required' }, -32002, 403, id, corsHeaders);
   }
 
-  // user_key (#4859) consumes the same per-user daily quota as pro: cache
+  // user_key (#4859) consumes the same per-user daily budget as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
   // unquota'd user_key would be an unmetered data loophole bounded only by
-  // the 60/min limiter. Raising API-plan MCP allowances above the Pro cap is
-  // a deliberate follow-up, not a default — which is why `mcpDailyLimit`
-  // arrives unset for that kind (api/mcp/auth.ts::runUserKeyPreChecks).
+  // the 60/min limiter. Both credential classes resolve their budget through
+  // the same `resolveMcpBudget`, so an API-tier caller charges its REST budget
+  // whichever door it arrives through.
   if (
     (context.kind === 'pro' || context.kind === 'user_key')
     && tool._freeTier !== true
@@ -370,7 +370,7 @@ export async function dispatchToolsCall(
           // It must never be -32001/401: docs/mcp-error-catalog.mdx documents that
           // pair as "re-authenticate via OAuth", so an RFC-9728 client would loop
           // (OAuth succeeds, retry, 401 again) on a condition re-auth cannot fix.
-          return mcpDenialResponse('allowance-exhausted', -32029, 429, id, corsHeaders, {
+          return mcpDenialResponse({ reason: 'allowance-exhausted' }, -32029, 429, id, corsHeaders, {
             retryAfter: String(secondsUntilUtcMidnight()),
           });
         }
@@ -379,14 +379,32 @@ export async function dispatchToolsCall(
       // Slot charged for good once dispatch begins (same GHSA-hcq5 posture as
       // reserveQuota). No caller-side rollback after this point.
     } else {
-      const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
+      const reservation = await reserveQuota(
+        context.userId,
+        deps.redisPipeline,
+        budget,
+        toolWeight(tool),
+      );
       if (!reservation.ok) {
         if (reservation.reason === 'cap-exceeded') {
           // `floor` is the limit the reservation actually enforced, so the copy
           // can never quote a different number from the one that rejected.
-          return new Response(
-            JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
-            { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
+          // `sharedWithRestApi` is the fact the message alone cannot carry:
+          // once REST enforcement is on, an API-tier budget IS the REST meter,
+          // so this exhaustion may be traffic the agent never made. It rides
+          // `data` like every other denial rather than leaving the agent to
+          // string-match, and matches the field the allowance resource reports.
+          return mcpDenialResponse(
+            {
+              reason: 'quota-exceeded',
+              limit: reservation.floor,
+              sharedWithRestApi: isSharedRestCounter(budget),
+            },
+            -32029,
+            429,
+            id,
+            corsHeaders,
+            { retryAfter: String(secondsUntilUtcMidnight()) },
           );
         }
         // Hard-cap correctness: NEVER dispatch on reservation failure.

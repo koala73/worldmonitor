@@ -69,7 +69,13 @@ function makeEntitlements(tier: number, planKey = "free") {
       planLimits: {
         apiRequestsPerDay: tier >= 2 ? 1_000 : 0,
         apiBurstRequestsPerMinute: tier >= 2 ? 60 : 0,
-        mcpCallsPerDay: tier >= 1 ? 50 : 0,
+        // Third field to join the cache-staleness gate, for the same reason as
+        // the two above. An apiAccess plan carrying a NUMERIC mcpCallsPerDay is
+        // a pre-marker row by construction: the catalog gives the API tiers the
+        // shared-budget marker and enterprise `null`, so that pairing cannot
+        // occur in production. A tier-only factory reaches the API tiers at
+        // tier >= 2, so they take the marker here.
+        mcpCallsPerDay: tier >= 2 ? "shared-api-budget" : (tier >= 1 ? 50 : 0),
         dashboardAiCallsPerDay: tier >= 1 ? 500 : 0,
         mcpBurstRequestsPerMinute: tier >= 1 ? 60 : 0,
       },

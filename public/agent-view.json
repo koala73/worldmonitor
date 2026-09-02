@@ -89,7 +89,7 @@
   },
   "rateLimits": {
     "anonymous": "60 requests/min per IP on public MCP metadata methods, /a2a and /ask; get_sources uses a separate fail-closed 10 requests/min per IP ceiling",
-    "authenticated": "60 requests/minute per user for OAuth and dashboard-issued wm_ keys. Subscription data calls reserve a per-user daily quota (50/day default; plan-resolved OAuth exceptions); get_sources and metadata calls are daily-quota-free — see https://worldmonitor.app/pricing.md"
+    "authenticated": "Per-minute burst is plan-resolved and shared per user across OAuth tokens and dashboard-issued wm_ keys: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1000 on Enterprise. Subscription data calls reserve a per-user daily quota on the same plan-resolved budget through either door: Pro 50/day and Pro Business 250/day at one unit per call, API Starter 1000/day and API Business 10000/day drawn from the same allowance as their REST requests and charged at a per-tool weight of 1, 2 or 3, Enterprise unlimited. get_sources and metadata calls are daily-quota-free — see https://worldmonitor.app/pricing.md"
   },
   "documentation": "https://www.worldmonitor.app/docs/documentation",
   "capabilities": [

@@ -386,7 +386,7 @@
           "Bao gồm khóa bản quyền / API",
           "Luồng dữ liệu thời gian thực",
           "60 yêu cầu/phút",
-          "Bao gồm 1.000 yêu cầu/ngày",
+          "1.000 yêu cầu/ngày được bao gồm (REST + MCP kết hợp)",
           "Thông báo Webhook"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Tất cả trong API Starter",
           "Quyền phân phối lại — nhúng dữ liệu của chúng tôi vào những gì bạn bán",
           "300 yêu cầu/phút",
-          "10.000 yêu cầu/ngày được bao gồm",
+          "10.000 yêu cầu/ngày được bao gồm (REST + MCP kết hợp)",
           "5 giấy phép Pro — mời người dùng bằng bất kỳ tên miền email doanh nghiệp nào",
           "Hỗ trợ ưu tiên"
         ],

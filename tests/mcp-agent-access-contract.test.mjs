@@ -7,11 +7,14 @@ import {
   buildPublicTool,
   TOOL_LIST_RESPONSE,
   TOOL_REGISTRY,
+  toolWeight,
 } from '../api/mcp/registry/index.ts';
 import { RESOURCE_TEMPLATE_LIST_RESPONSE } from '../api/mcp/resources/index.ts';
 
 const accessFor = (name) => TOOL_LIST_RESPONSE
   .find((tool) => tool.name === name)?._meta?.['worldmonitor/access'];
+const weightFor = (name) => TOOL_LIST_RESPONSE
+  .find((tool) => tool.name === name)?._meta?.['worldmonitor/weight'];
 
 describe('agent-visible MCP access contract', () => {
   it('labels anonymous, authenticated-free-account, and subscription-only tools', () => {
@@ -26,6 +29,42 @@ describe('agent-visible MCP access contract', () => {
           ? 'free-account'
           : 'subscription';
       assert.equal(accessFor(tool.name), expected, `${tool.name} access marker`);
+    }
+  });
+
+  it('publishes what every tool COSTS, on every tool', () => {
+    // An API-tier caller is charged 1, 2 or 3 units per call. Without this the
+    // only way to learn the price is to watch the allowance resource move, and
+    // it is emitted unconditionally because the cost belongs to the TOOL —
+    // tools/list is served on paths that hold no budget at all.
+    assert.equal(weightFor('get_market_data'), 1, 'a cache read costs one REST-request unit');
+    assert.equal(weightFor('get_country_risk'), 2, 'an _execute tool fetches downstream once');
+    assert.equal(weightFor('get_country_brief'), 3, 'the double-fetch override must reach the wire');
+    // The marker is a price, not a verdict: `worldmonitor/access` decides
+    // whether anything is charged at all, so the free-tier tool still publishes
+    // what its work costs.
+    assert.equal(weightFor('get_sources'), 2);
+    assert.equal(accessFor('get_sources'), 'free');
+
+    for (const tool of TOOL_REGISTRY) {
+      assert.equal(
+        weightFor(tool.name),
+        toolWeight(tool),
+        `${tool.name} advertised weight must be the charged weight`,
+      );
+    }
+  });
+
+  it('keeps tools/list and describe_tool weight metadata identical', () => {
+    for (const listed of TOOL_LIST_RESPONSE) {
+      const internal = TOOL_REGISTRY.find((tool) => tool.name === listed.name);
+      assert.ok(internal, `${listed.name} must exist in the internal registry`);
+      const described = buildPublicTool(internal, { compressDescriptions: false });
+      assert.equal(
+        described._meta?.['worldmonitor/weight'],
+        listed._meta?.['worldmonitor/weight'],
+        `${listed.name} tools/list and describe_tool weight metadata`,
+      );
     }
   });
 

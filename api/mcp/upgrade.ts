@@ -19,20 +19,55 @@ export {
   readMcpAttributionFromSearch,
 } from '../../shared/mcp-attribution';
 
-/** Machine-readable denial reasons agents can branch on. */
-export type McpDenialReason =
+/**
+ * Denial reasons whose copy is a constant — the whole answer is known without
+ * looking at the caller.
+ */
+export type McpStaticDenialReason =
   | 'no-account'
   | 'allowance-exhausted'
   | 'upgrade-required'
   | 'lapsed-subscription';
 
-export type McpStructuredDenial = {
-  reason: McpDenialReason;
-  nextStep: string;
-  upgradeUrl: string;
-};
+/** Machine-readable denial reasons agents can branch on. */
+export type McpDenialReason = McpStaticDenialReason | 'quota-exceeded';
 
-const DENIAL_COPY: Record<McpDenialReason, { message: string; nextStep: string }> = {
+/**
+ * A denial to build, carrying whatever that reason's copy and payload need.
+ *
+ * `quota-exceeded` is the one reason whose answer depends on the caller: the
+ * limit that actually rejected, and whether that limit is the shared REST
+ * budget (post-`API_RATE_LIMIT_ENFORCE`, an API-tier exhaustion can be entirely
+ * REST-driven, so "you have used your MCP quota" would be a lie). Modelling it
+ * as a variant rather than optional fields on a flat object means a quota
+ * denial without its limit cannot be built at all.
+ */
+export type McpDenial =
+  | { reason: McpStaticDenialReason }
+  | {
+      reason: 'quota-exceeded';
+      /** The daily limit the reservation ENFORCED, so copy and cap agree. */
+      limit: number;
+      /** True when REST requests spend this same budget. */
+      sharedWithRestApi: boolean;
+    };
+
+/**
+ * The `error.data` block. The four static reasons emit exactly
+ * `{reason, nextStep, upgradeUrl}`, unchanged; only `quota-exceeded` adds the
+ * two numbers an agent would otherwise have to parse out of the message.
+ */
+export type McpStructuredDenial =
+  | { reason: McpStaticDenialReason; nextStep: string; upgradeUrl: string }
+  | {
+      reason: 'quota-exceeded';
+      nextStep: string;
+      upgradeUrl: string;
+      limit: number;
+      sharedWithRestApi: boolean;
+    };
+
+const DENIAL_COPY: Record<McpStaticDenialReason, { message: string; nextStep: string }> = {
   'no-account': {
     message: 'Authentication required to call this tool.',
     nextStep:
@@ -69,15 +104,34 @@ const DENIAL_COPY: Record<McpDenialReason, { message: string; nextStep: string }
   },
 };
 
-export function buildMcpStructuredDenial(reason: McpDenialReason): {
+export function buildMcpStructuredDenial(denial: McpDenial): {
   message: string;
   data: McpStructuredDenial;
 } {
-  const copy = DENIAL_COPY[reason];
+  if (denial.reason === 'quota-exceeded') {
+    return {
+      // Byte-identical to the copy this denial has always carried, because
+      // docs/mcp-error-catalog.mdx publishes it and clients string-match it.
+      // What changes is that the same two facts now also ride `data`.
+      message: `Daily MCP quota exceeded (${denial.limit}/day). Resets at next UTC midnight.`,
+      data: {
+        reason: denial.reason,
+        nextStep: denial.sharedWithRestApi
+          ? 'This allowance is shared with your REST API requests, so REST traffic spends it too — '
+            + 'the exhaustion may not be your tool calls. Wait for the next UTC day, or upgrade at the '
+            + 'upgrade URL for a higher daily limit.'
+          : 'Wait for the next UTC day, or upgrade at the upgrade URL for a higher daily limit.',
+        upgradeUrl: MCP_UPGRADE_URL,
+        limit: denial.limit,
+        sharedWithRestApi: denial.sharedWithRestApi,
+      },
+    };
+  }
+  const copy = DENIAL_COPY[denial.reason];
   return {
     message: copy.message,
     data: {
-      reason,
+      reason: denial.reason,
       nextStep: copy.nextStep,
       upgradeUrl: MCP_UPGRADE_URL,
     },
