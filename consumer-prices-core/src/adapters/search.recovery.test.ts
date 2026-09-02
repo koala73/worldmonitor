@@ -155,7 +155,7 @@ describe('SearchAdapter recovery path', () => {
       },
     ] as const;
 
-    it.each(fixtures)('accepts the current $slug fallback shape through every safety gate', async (fixture) => {
+    it.each(fixtures)('accepts the current $slug fallback shape through its configured safety gates', async (fixture) => {
       const config = loadRetailerConfig(fixture.slug);
       const exa = {
         search: vi.fn().mockResolvedValue([{ url: fixture.url }]),
@@ -246,6 +246,51 @@ describe('SearchAdapter recovery path', () => {
       expect(exa.extract).toHaveBeenCalledOnce();
       expect(error).toBeInstanceOf(SearchTargetError);
       expect((error as SearchTargetError).failures.map((failure) => failure.reason)).toContain(reason);
+    });
+
+    it('keeps the out-of-range Carrefour chicken visible to the direct-pin rejection gate', async () => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/produto/frango-inteiro-resfriado-com-osso-carrefour-kg-15787';
+      const exa = {
+        search: vi.fn(),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: 'Frango Inteiro Resfriado com Osso Carrefour 1,5Kg - Carrefour',
+            price: 1790,
+            currency: 'BRL',
+            inStock: false,
+            sizeText: '1,5Kg',
+          },
+          pageContent: 'Frango Inteiro Resfriado com Osso Carrefour 1,5Kg\nR$ 17,90',
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const target = makeBrazilTarget(config, {
+        id: 'chicken_whole_1kg',
+        category: 'chicken',
+        canonicalName: 'Frango Inteiro Resfriado 1kg',
+        baseUnit: 'g',
+        minBaseQty: 800,
+        maxBaseQty: 1200,
+      });
+      target.url = url;
+      target.metadata = { ...target.metadata, direct: true };
+      const context = makeContext(config);
+      const adapter = new SearchAdapter(exa, firecrawl);
+
+      const result = await adapter.fetchTarget(context, target);
+      const [product] = await adapter.parseListing(context, result);
+
+      expect(product?.price).toBe(17.9);
+      expect(product?.rawPayload).toMatchObject({
+        direct: true,
+        validator: { ok: false },
+        extractionProvider: 'exa',
+        priceEvidence: 'verified',
+      });
+      expect(exa.search).not.toHaveBeenCalled();
     });
   });
 

@@ -23,7 +23,7 @@ import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Targe
 import { MARKET_NAMES } from './market-names.js';
 import { parseSize } from '../normalizers/size.js';
 import { validateSearchHit, type ValidatorResult } from './validator.js';
-import { priceEvidenceOnPage, type PriceEvidence } from './price-evidence.js';
+import { normalizeExaBrlMinorUnitPrice, priceEvidenceOnPage, type PriceEvidence } from './price-evidence.js';
 import { ProviderCooldownGate } from './provider-cooldown.js';
 import type { BasketItem } from '../config/types.js';
 import type { AcquisitionProviderName, SearchOptions, SearchResult } from '../acquisition/types.js';
@@ -478,10 +478,21 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
 
-      const price = data.price;
+      let price = data.price;
       if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
         failures.push({ provider, reason: 'missing-price' });
         continue;
+      }
+
+      if (provider === 'exa' && currency.toUpperCase() === 'BRL') {
+        const normalizedPrice = normalizeExaBrlMinorUnitPrice(price, pageContent);
+        if (normalizedPrice !== price) {
+          ctx.logger.info(
+            `  [search:price-normalized] ${ctx.config.slug}/${canonicalName}: Exa BRL minor units ${price} -> ${normalizedPrice}`,
+          );
+          price = normalizedPrice;
+          data.price = normalizedPrice;
+        }
       }
 
       // Anti-fabrication proof (#6182): an accepted price must be visible in

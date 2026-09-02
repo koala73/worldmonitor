@@ -1,5 +1,19 @@
 import { describe, expect, it } from 'vitest';
-import { priceEvidenceOnPage } from './price-evidence.js';
+import { normalizeExaBrlMinorUnitPrice, priceEvidenceOnPage } from './price-evidence.js';
+
+describe('normalizeExaBrlMinorUnitPrice', () => {
+  it('corrects the observed Exa separator-loss values from explicit BRL evidence', () => {
+    expect(normalizeExaBrlMinorUnitPrice(529, 'R$ 6,29\nR$ 5,29\nR$ 5,29')).toBe(5.29);
+    expect(normalizeExaBrlMinorUnitPrice(1790, 'Frango inteiro\nR$ 17,90')).toBe(17.9);
+  });
+
+  it('leaves values unchanged without one proved minor-unit conversion', () => {
+    expect(normalizeExaBrlMinorUnitPrice(529, undefined)).toBe(529);
+    expect(normalizeExaBrlMinorUnitPrice(529, 'R$ 6,29')).toBe(529);
+    expect(normalizeExaBrlMinorUnitPrice(529, 'R$ 529,00\nR$ 5,29')).toBe(529);
+    expect(normalizeExaBrlMinorUnitPrice(5.29, 'R$ 5,29')).toBe(5.29);
+  });
+});
 
 describe('priceEvidenceOnPage', () => {
   it('passes through when no page content is available', () => {
