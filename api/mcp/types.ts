@@ -330,10 +330,18 @@ export interface PublicToolShape {
   //     anonymous-free, authenticated free-account allowance, and
   //     subscription-only tools without probing denials. `free` retains its
   //     original anonymous/quota-free meaning for backward compatibility.
+  //   - `worldmonitor/weight`, what one `tools/call` COSTS in budget units
+  //     (`registry/index.ts::toolWeight`). Present on every tool, because the
+  //     cost is a property of the TOOL, not of the caller — `tools/list` is
+  //     served on paths that hold no budget at all. It is only ever CHARGED
+  //     against an `api` allowance, where an MCP call is meant to be
+  //     comparable to a REST request; a dedicated MCP allowance pays one unit
+  //     per call whatever this says.
   _meta: {
     ui?: { resourceUri: string };
     'ui/resourceUri'?: string;
     'worldmonitor/access': McpAccessClass;
+    'worldmonitor/weight': number;
   };
 }
 

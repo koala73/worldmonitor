@@ -58,6 +58,8 @@ A single MCP tool call is not always one unit, because the tools do not cost the
 
 A weighted call is all-or-nothing. With 999 of 1,000 units spent, a 2-unit call is rejected rather than partly served. `describe_tool` and `get_sources` charge nothing, as do all the discovery methods.
 
+You do not have to read this table to know what a call costs. Every `tools/list` and `describe_tool` entry carries its own price at `_meta["worldmonitor/weight"]`, so a client can budget before it calls. The number is what the tool costs; whether it is charged is `_meta["worldmonitor/access"]`'s question, and only an API plan pays the weight — Pro and Pro Business pay one unit per call whatever the weight says.
+
 Today the REST and MCP halves reserve against separate counters that each hold the plan's full number, so an MCP-only workload and a REST-only workload both get the whole 1,000 or 10,000. They become one physical counter when REST enforcement turns on. Plan against the combined figure, because that is the allowance the plan sells and the merge will not raise it.
 
 Pro and Pro Business are unaffected. They have no REST budget, so their MCP calls are metered on their own counter at 50 and 250 per day, with every call costing one.

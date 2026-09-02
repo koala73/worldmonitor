@@ -147,6 +147,7 @@ export function buildPublicTool(
     annotations: structuredClone(tool.annotations),
     _meta: {
       'worldmonitor/access': toolAccess(tool),
+      'worldmonitor/weight': toolWeight(tool),
     },
   };
 
