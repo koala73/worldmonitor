@@ -59,6 +59,7 @@ import {
   TRADE_ROUTES_OBSERVED_AT,
 } from './chokepoint-page-content.mjs';
 import { EIA_OIL_TRANSIT_BASELINES_PATH } from './chokepoint-eia-baselines.mjs';
+import { buildMicrostateCoverageStoryContent } from './microstate-coverage-stories.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -108,7 +109,7 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
 export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
 const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
 const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
@@ -2342,6 +2343,45 @@ export function describeMicrostateEvidenceSummary(country) {
   return `${country.name} has ${profile.supportedDimensions.length} supported dimension readings with observed inputs, including ${formatProseList(highlightedDimensions)}.${feedClause} These readings are partial evidence, not a published overall score or a country rank.`;
 }
 
+function microstateCoverageStoryFacts(country) {
+  const profile = buildMicrostateEvidenceProfile(country);
+  const readings = profile.supportedDimensions
+    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score)} (${formatPercent(dimension.coverage)})`);
+  const highlightedDimensions = profile.supportedDimensions
+    .slice(-3)
+    .map(dimensionLabel);
+  const shortfallPoints = Math.max(
+    0,
+    Math.round((HEADLINE_RANKING_MIN_COVERAGE - Number(country.dimensionCoverage)) * 100),
+  );
+  return {
+    code: country.code,
+    coverage: formatPercent(country.dimensionCoverage),
+    coverageFloor: Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100),
+    crisisRegistrySize: country.crisisRegistrySize,
+    gapDimensionIds: activeCountryDimensions(country).filter(isCoverageGap).map(({ id }) => id),
+    imputationShare: formatPercent(country.imputationShare),
+    readingCount: readings.length,
+    readings: readings.join('; '),
+    highlightedDimensions: formatProseList(highlightedDimensions),
+    sourceExamples: formatProseList(selectMicrostateSourceExamples(profile.supportedSourceFamilies)),
+    shortfall: `${shortfallPoints} ${shortfallPoints === 1 ? 'point' : 'points'}`,
+  };
+}
+
+export function buildMicrostateCoverageStory({
+  country,
+  capturedAt,
+  methodologyFormula,
+}) {
+  if (country.microstateTerritory !== true) return null;
+  return buildMicrostateCoverageStoryContent({
+    ...microstateCoverageStoryFacts(country),
+    capturedDate: prettyDate(capturedAt),
+    methodologyFormula,
+  });
+}
+
 export function dimensionInventoryNote(country, dimension) {
   const sources = dimensionSources(dimension);
   const sourceLabel = formatProseList(sources);
@@ -2466,12 +2506,46 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
   const crisisText = country.crisisMemberships.length > 0
     ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
     : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
-  const faqs = countryFaqs(country, capturedAt, rankedCount, ciiEntry);
+  const coverageStory = !scorePublished
+    ? buildMicrostateCoverageStory({ country, capturedAt, methodologyFormula })
+    : null;
+  const faqs = coverageStory?.faqs || countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
     const inventory = selectUnrankedInventory(country);
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
+    if (coverageStory) {
+      const comparatorLinks = coverageStory.useRegionalComparators ? regionalLinks : peerLinks;
+      const html = `      <article data-country-analysis>
+        <h2>${escapeHtml(country.name)} resilience evidence</h2>
+        <p>${escapeHtml(coverageStory.introduction)}</p>
+        <section data-country-coverage-story>
+          <h3>Source inventory gaps</h3>
+          <p>${escapeHtml(coverageStory.gap)}</p>
+        </section>
+        <h3>What the snapshot does cover</h3>
+        <p>${escapeHtml(coverageStory.evidence)}</p>
+        <h3>Dimension evidence inventory</h3>
+        <ul class="routes">
+${inventoryItems}
+        </ul>
+        <h3>Nearest ranked comparators</h3>
+        <p>${escapeHtml(coverageStory.comparatorLead)} Nearest ranked comparators: ${comparatorLinks}. ${escapeHtml(coverageStory.comparatorTail)}</p>
+        <h3>Tracked crisis context</h3>
+        <p>${escapeHtml(coverageStory.crisis)}</p>
+        <h3>Reading limits</h3>
+        <p>${escapeHtml(coverageStory.limits)}</p>
+        <h3>Questions about ${escapeHtml(country.name)}</h3>
+${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
+      </article>`;
+      return {
+        html,
+        faqs,
+        readingGuide: coverageStory.readingGuide,
+        suppressScoreDisclosure: true,
+      };
+    }
     const officialName = country.identity?.officialName;
     const officialBit = officialName && officialName !== country.name
       ? ` Officially ${officialName}.`
@@ -2601,7 +2675,7 @@ function renderCountryPage({
     ? `      <p><strong>Official name:</strong> ${escapeHtml(country.identity.officialName)}. <a href="${escapeHtml(country.identity.sameAs)}">Wikidata identity record</a>.</p>\n`
     : '';
   const scorePublished = country.headlineEligible !== false;
-  const scoreDisclosure = scorePublished
+  const scoreDisclosure = scorePublished || analysis.suppressScoreDisclosure
     ? ''
     : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)} because it does not meet the published ranking eligibility criteria.</p>`;
   const datasetDescription = scorePublished
@@ -2666,10 +2740,11 @@ ${liveGrid}
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
       </section>${scoreDisclosure}
 ${analysis.html}
-      <h2>How to read this page</h2>
+${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
+      <p>${escapeHtml(analysis.readingGuide)} <a href="/docs/methodology/country-resilience-index">Full CRI method</a> · <a href="/docs/corrections">revision log</a>.</p>` : `      <h2>How to read this page</h2>
       <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
-      <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals.</p>
+      <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals.</p>`}
       <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${escapeHtml(snapshotPath)}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = ciiEntry
     ? `${country.name} Instability Index & Country Risk`

@@ -12,6 +12,7 @@ import {
   buildCiiRankingEntries,
   buildChokepointHubRows,
   buildCorpus,
+  buildMicrostateCoverageStory,
   CHOKEPOINT_PAGE_CONTENT_VERSION,
   CHOKEPOINT_PAGE_LASTMOD_PATHS,
   CII_COUNTRY_PAGE_CONTENT_VERSION,
@@ -36,6 +37,10 @@ import {
   MAX_LIVE_SNAPSHOT_AGE_MS,
 } from '../scripts/crawlable-live-tools.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
+import {
+  auditMicrostateCorpusSimilarity,
+  wordShingles,
+} from '../scripts/audit-microstate-corpus-similarity.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
@@ -76,15 +81,6 @@ function words(value) {
   return String(value || '')
     .toLocaleLowerCase('en-US')
     .match(/[\p{L}\p{N}]+(?:[’'][\p{L}\p{N}]+)*/gu) || [];
-}
-
-function wordShingles(value, width = 5) {
-  const tokens = words(value);
-  const shingles = new Set();
-  for (let index = 0; index <= tokens.length - width; index += 1) {
-    shingles.add(tokens.slice(index, index + width).join(' '));
-  }
-  return shingles;
 }
 
 function pairwiseUniqueShare(left, right) {
@@ -878,6 +874,55 @@ describe('JSON-LD @context guard', () => {
 });
 
 describe('crawlable corpus generator', () => {
+  it('rejects a microstate coverage story when its cited source gap becomes observed', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const tuvalu = structuredClone(data.countries.find(({ code }) => code === 'TV'));
+    const debtDimension = tuvalu.domains
+      .flatMap(({ dimensions }) => dimensions)
+      .find(({ id }) => id === 'externalDebtCoverage');
+    assert.ok(debtDimension, 'Tuvalu must include the external debt dimension');
+    debtDimension.coverage = 1;
+    debtDimension.imputationClass = '';
+
+    assert.throws(
+      () => buildMicrostateCoverageStory({
+        country: tuvalu,
+        capturedAt: '2026-08-29',
+        methodologyFormula: 'World Monitor CRI v3',
+      }),
+      /TV coverage story cites dimensions that are no longer coverage gaps: externalDebtCoverage/,
+    );
+  });
+
+  it('rejects a similarity audit when a country page has no main content', () => {
+    const corpusDir = mkdtempSync(join(tmpdir(), 'wm-microstate-audit-'));
+    try {
+      for (const slug of ['japan', 'germany', 'tuvalu', 'macau', 'san-marino']) {
+        const countryDir = join(corpusDir, 'countries', slug);
+        mkdirSync(countryDir, { recursive: true });
+        const body = slug === 'tuvalu'
+          ? '<article>Tuvalu content outside the main element.</article>'
+          : `<main>${slug} has a complete country page for this audit fixture.</main>`;
+        writeFileSync(join(countryDir, 'index.html'), `<!doctype html><html><body>${body}</body></html>`);
+      }
+
+      assert.throws(
+        () => auditMicrostateCorpusSimilarity({ corpusDir }),
+        /\/countries\/tuvalu\/ must contain non-empty <main> content/,
+      );
+      writeFileSync(
+        join(corpusDir, 'countries/tuvalu/index.html'),
+        '<!doctype html><html><body><main>Only four words here.</main></body></html>',
+      );
+      assert.throws(
+        () => auditMicrostateCorpusSimilarity({ corpusDir }),
+        /\/countries\/tuvalu\/ must contain enough <main> content for a 5-word shingle/,
+      );
+    } finally {
+      rmSync(corpusDir, { recursive: true, force: true });
+    }
+  });
+
   it('requires the exact shared Tier-1 country set for CII publication', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
     const livePulse = structuredClone(data.livePulse);
@@ -2121,7 +2166,7 @@ describe('crawlable corpus generator', () => {
           const evidenceFaq = [...document.querySelectorAll('[data-country-faq]')]
             .find((node) => node.querySelector('summary')?.textContent === evidenceQuestion);
           assert.ok(evidenceFaq, `${route} must show a microstate evidence FAQ`);
-          assert.match(evidenceFaq.textContent || '', /supported dimension readings with observed inputs, including/);
+          assert.match(evidenceFaq.textContent || '', /observed dimension readings|dimensions have observed readings/);
           assert.doesNotMatch(evidenceFaq.textContent || '', /Observed feeds/);
           const faqLabel = {
             TV: 'State continuity',
@@ -2132,7 +2177,7 @@ describe('crawlable corpus generator', () => {
           assert.doesNotMatch(evidenceFaq.textContent || '', /overall score[^.]*\d|country rank[^.]*\d/i);
           const faqPage = jsonLdObjects(html).find((entry) => entry['@type'] === 'FAQPage');
           const faqAnswer = faqPage?.mainEntity?.find((entry) => entry.name === evidenceQuestion);
-          assert.match(faqAnswer?.acceptedAnswer?.text || '', /supported dimension readings with observed inputs, including/);
+          assert.match(faqAnswer?.acceptedAnswer?.text || '', /observed dimension readings|dimensions have observed readings/);
           assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /Observed feeds/);
           assert.match(faqAnswer?.acceptedAnswer?.text || '', new RegExp(faqLabel));
           assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /overall score[^.]*\d|country rank[^.]*\d/i);
@@ -2169,12 +2214,13 @@ describe('crawlable corpus generator', () => {
         assert.ok(dimension, `${code} fixture must retain ${expected.id}`);
         const expectedReading = `${expected.label} ${Number(dimension.score).toFixed(1).replace(/\.0$/, '')} (${Math.round(Number(dimension.coverage) * 100)}%)`;
         assert.ok(evidence.includes(expectedReading), `${code} must publish ${expectedReading}`);
-        assert.match(evidence, /supported dimension readings with observed inputs:/);
-        assert.match(evidence, /Scores use a 0-100 scale; percentages show coverage/);
-        assert.match(evidence, new RegExp(`Possible dimension inputs for ${country.name}:`));
-        assert.match(evidence, new RegExp(`Possible dimension inputs for ${country.name}:.*${expected.source}`));
+        assert.match(
+          evidence,
+          /supported dimension readings|dimensions carry usable observed inputs|dimension measurements backed by observed data/,
+        );
+        assert.match(evidence, new RegExp(expected.source));
         assert.doesNotMatch(evidence, /Observed feeds/);
-        assert.match(evidence, /not a published overall score or a country rank/);
+        assert.match(evidence, /none is an overall score or country rank|rather than a hidden composite result|publication rule blocks an overall number/);
       }
       const andorra = read(outDir, 'countries/andorra/index.html');
       assert.doesNotMatch(andorra, /<summary>What is Andorra&#39;s Country Instability Index\?<\/summary>/);
@@ -2235,6 +2281,30 @@ describe('crawlable corpus generator', () => {
           );
         }
       }
+      const coverageStoryExpectations = {
+        TV: { source: /World Bank/, reason: /very small reporting population falls below the standalone reporting thresholds/ },
+        MO: { source: /WHO and Reporters Without Borders/, reason: /included in China series in others/ },
+        SM: { source: /UN Comtrade/, reason: /Very small sovereign states do not receive a complete standalone record/ },
+      };
+      for (const [code, expected] of Object.entries(coverageStoryExpectations)) {
+        const country = countryByCode.get(code);
+        const html = read(outDir, `countries/${country.slug}/index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app/countries/${country.slug}/`);
+        const story = document.querySelector('[data-country-coverage-story]')?.textContent || '';
+        assert.match(story, expected.source, `${country.name} must name its excluding source`);
+        assert.match(story, expected.reason, `${country.name} must explain its own source gap`);
+      }
+      const similarity = auditMicrostateCorpusSimilarity({ corpusDir: outDir });
+      for (const pair of similarity.pairs) {
+        assert.ok(
+          pair.jaccard <= similarity.threshold,
+          `${pair.codes.join(' / ')} 5-gram Jaccard ${(pair.jaccard * 100).toFixed(1)}% must be within five points of the ${(similarity.floor.jaccard * 100).toFixed(1)}% ranked-page floor`,
+        );
+      }
+      assert.ok(
+        similarity.maskedSentenceSharing.share < 0.4,
+        `masked sentences shared across TV / MO / SM must be below 40%, got ${(similarity.maskedSentenceSharing.share * 100).toFixed(1)}%`,
+      );
 
       const liveRiskScript = read(outDir, 'tools/live-tools.js');
       assert.match(liveRiskScript, /\/api\/wm-session/);

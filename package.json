@@ -85,6 +85,7 @@
     "build:blog": "npm run build:blog:raw",
     "build:blog:raw": "cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",
     "build:crawlable-corpus": "node --import tsx scripts/build-crawlable-corpus.mjs",
+    "audit:microstate-corpus": "node scripts/audit-microstate-corpus-similarity.mjs --check",
     "build:llms-full": "node --import tsx scripts/build-llms-full.mjs",
     "build:llms-full:check": "node --import tsx scripts/build-llms-full.mjs --check",
     "build:sitemap": "node scripts/build-sitemap.mjs",
