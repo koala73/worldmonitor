@@ -62,6 +62,11 @@ export function validateAuditMode({ apply, deploymentOnly }) {
   }
 }
 
+export function selectAuditServices(inventory, expectedServices, { apply, deploymentOnly }) {
+  if (!apply && !deploymentOnly) return inventory;
+  return selectExpectedRepositoryServices(inventory, expectedServices);
+}
+
 function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
 }
@@ -599,9 +604,12 @@ async function main() {
   if (deploymentOnly && performance.now() >= deploymentDeadlineAt) {
     throw new Error(DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR);
   }
-  const services = deploymentOnly
-    ? selectExpectedRepositoryServices(inventory, readExpectedRepositoryFleet())
-    : inventory;
+  const validatesFleetIdentity = apply || deploymentOnly;
+  const services = selectAuditServices(
+    inventory,
+    validatesFleetIdentity ? readExpectedRepositoryFleet() : null,
+    { apply, deploymentOnly },
+  );
   const serviceIdsByName = new Map(services.map((service) => [service.name, service.id]));
   const readConfig = deploymentOnly
     ? () => readViewerDeploymentConfig(environment, services, {

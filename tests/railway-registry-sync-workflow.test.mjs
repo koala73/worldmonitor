@@ -39,6 +39,7 @@ describe('Railway Registry Sync workflow', () => {
         '.github/workflows/railway-registry-sync.yml',
         'scripts/audit-railway-watch-paths.mjs',
         'scripts/railway-native-autodeploy-fleet.json',
+        'scripts/railway-*.mjs',
         'scripts/railway-services.json',
         'scripts/run-railway-registry-sync.mjs',
       ],

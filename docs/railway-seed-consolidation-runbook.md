@@ -257,10 +257,11 @@ list and can answer a matching commit with `No changes to watched files`.
 
 The `Railway Registry Sync` workflow
 (`.github/workflows/railway-registry-sync.yml`) owns this transition. It runs
-after a push to `main` changes the registry, fleet identity, audit, runner, or
-workflow. The apply step uses the dedicated mutation token and the exact merged
-checkout. It changes only registry-managed fields. The final step uses the
-separate Viewer identity and fails unless live Railway matches the repository.
+after a push to `main` changes the registry, fleet identity, audit, a shared
+Railway helper, the runner, or the workflow. The apply step uses the dedicated
+mutation token and the exact merged checkout. It changes only registry-managed
+fields. The final step uses the separate Viewer identity and fails unless live
+Railway matches the repository.
 Both modes retry twice after the first failure. The production concurrency group
 never cancels an in-flight apply.
 

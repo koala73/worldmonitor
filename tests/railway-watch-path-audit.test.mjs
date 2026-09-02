@@ -11,6 +11,7 @@ import {
   buildRailwayServiceConfigPatch,
   managedRailwayServices,
   readArgument,
+  selectAuditServices,
   serializeRailwayServiceConfigPatch,
   waitForRailwayServiceConfigConvergence,
 } from '../scripts/audit-railway-watch-paths.mjs';
@@ -25,6 +26,43 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RAILWAY_SERVICE_REGISTRY = JSON.parse(
   readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
 );
+
+describe('audit service identity boundary', () => {
+  const expected = [{ id: 'svc-a', name: 'seed-a' }];
+  const inventory = [{
+    id: 'svc-a',
+    name: 'seed-a',
+    source: { repo: 'koala73/worldmonitor', image: null },
+  }];
+
+  it('validates the immutable fleet before apply or deployment-only reads', () => {
+    assert.deepEqual(
+      selectAuditServices(inventory, expected, { apply: true, deploymentOnly: false }),
+      inventory,
+    );
+    assert.deepEqual(
+      selectAuditServices(inventory, expected, { apply: false, deploymentOnly: true }),
+      inventory,
+    );
+
+    const replaced = [{
+      id: 'svc-replacement',
+      name: 'seed-a',
+      source: { repo: 'koala73/worldmonitor', image: null },
+    }];
+    assert.throws(
+      () => selectAuditServices(replaced, expected, { apply: true, deploymentOnly: false }),
+      /has service id svc-replacement; expected svc-a/,
+    );
+  });
+
+  it('keeps the non-mutating environment-config audit independent of the roster', () => {
+    assert.equal(
+      selectAuditServices(inventory, null, { apply: false, deploymentOnly: false }),
+      inventory,
+    );
+  });
+});
 
 function service({
   cronSchedule = '0 * * * *',
