@@ -27,10 +27,11 @@ const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 // was removed — those keys are ~500KB each, and reading them on top of the already-large
 // transit-summaries payload was causing Vercel-edge Redis timeouts (1.5s budget) and pinning
 // a silent zero-state cache. Today the ais-relay writer is authoritative for the compact
-// summary; if it's missing we fail-fast via upstreamUnavailable so cachedFetchJson writes
-// NEG_SENTINEL (120s) instead of caching a fake 5-min healthy-but-empty response.
+// summary. When every published source is missing, the handler returns null and
+// cachedFetchJson writes NEG_SENTINEL instead of caching a healthy-looking zero state.
 // See docs/plans/chokepoint-rpc-payload-split.md.
 const REDIS_CACHE_TTL = 300; // 5 min
+const REDIS_NEGATIVE_CACHE_TTL = 120;
 const CHOKEPOINT_SEED_META_KEY = 'seed-meta:supply_chain:chokepoints';
 /** 7-day retain window for last-shortfall diagnostics on seed-meta. */
 const CHOKEPOINT_SEED_META_TTL_SECONDS = 604800;
@@ -464,7 +465,9 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       descriptions.push(THREAT_CONFIG_STALE_NOTE);
     }
     if (descriptions.length === 0) {
-      descriptions.push('No active disruptions');
+      descriptions.push(sourceCoverageIncomplete
+        ? 'No active disruptions reported by available sources; source coverage incomplete'
+        : 'No active disruptions');
     }
 
     return {
@@ -586,6 +589,8 @@ export async function getChokepointStatus(
         })().catch(() => {});
         return response;
       },
+      REDIS_NEGATIVE_CACHE_TTL,
+      { cacheUpstreamUnavailablePayloads: true },
     );
 
     return result ? narrowServedSources(result) : { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };
