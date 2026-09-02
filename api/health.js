@@ -9,6 +9,7 @@ import {
 } from './_pool-coverage.js';
 import {
   EDUCATION_MIN_RANKABLE_RECORD_COUNT,
+  SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT,
   parseEducationPayloadRankableRecordCount,
   parseRankableRecordCount,
 } from './_rankable-coverage.js';
@@ -1040,12 +1041,16 @@ const SEED_META = {
     key: 'seed-meta:supply-chain:vulnerability',
     maxStaleMin: 2880,
     minRecordCount: 110,
-    minRankableRecordCount: 220,
+    minRankableRecordCount: SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT,
     requiredRedistributionPolicyVersion: 1,
+    // Mirrors buildVulnerabilityCoverageRequirements() in
+    // scripts/shared/supply-vulnerability-coverage.mjs; the operations test pins
+    // this object to that output. completeCountryCount is diagnostic only.
     requireVulnerabilityCoverage: {
       countrySpecificImportCountryCount: 110,
+      globalProductionCommodityCount: 1,
       rankableCountryCount: 110,
-      rankableRecordCount: 220,
+      rankableRecordCount: SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT,
       freshRankableRecordCount: 1,
       reviewedCommodityCount: 23,
       reviewedHs4Count: 22,
@@ -2153,7 +2158,6 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
         completionRatio: meta.coverage.completionRatio == null ? null : Number(meta.coverage.completionRatio) || 0,
         rejectedCount: Number(meta.coverage.rejectedCount) || 0,
         ...finiteCoverageField('countrySpecificImportCountryCount'),
-        ...finiteCoverageField('bilateralCountryCount'),
         ...finiteCoverageField('globalProductionCommodityCount'),
         ...finiteCoverageField('completeCountryCount'),
         ...finiteCoverageField('rankableCountryCount'),
