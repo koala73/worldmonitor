@@ -126,6 +126,49 @@ describe('PortWatch reference pagination recovery', () => {
     assert.equal(sleepCalls.length, 1);
     assert.equal(sleepCalls[0][0], 2_000);
   });
+
+  it('retries a code-only rate-limit envelope that carries no message', async () => {
+    // ArcGIS also emits `{"error":{"code":N}}` with no message field (the
+    // shape documented on the proxy parser). The direct parser must surface
+    // the code so the retry classifier still sees a rate limit, rather than
+    // throwing "ArcGIS error: undefined" and abandoning the page.
+    const requestedOffsets = [];
+    const sleepCalls = [];
+    let offsetOneAttempts = 0;
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+
+      if (offset === 0) {
+        return arcgisJson({
+          features: [{
+            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
+          }],
+          exceededTransferLimit: true,
+        });
+      }
+
+      offsetOneAttempts += 1;
+      if (offsetOneAttempts === 1) return arcgisJson({ error: { code: 429 } });
+      return arcgisJson({
+        features: [{
+          attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 },
+        }],
+        exceededTransferLimit: false,
+      });
+    };
+
+    const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
+      fetchFn,
+      sleepFn: async (...args) => {
+        sleepCalls.push(args);
+      },
+    });
+
+    assert.deepEqual(requestedOffsets, [0, 1, 1]);
+    assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
+    assert.equal(sleepCalls.length, 1);
+  });
 });
 
 describe('PortWatch cold-fetch recovery rotation', () => {

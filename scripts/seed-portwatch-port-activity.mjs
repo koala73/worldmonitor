@@ -388,7 +388,12 @@ async function fetchWithTimeout(url, {
   }
   if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
   const body = await resp.json();
-  if (body.error) throw new Error(`ArcGIS error: ${body.error.message}`);
+  // Match the proxy parser's ladder (see arcgisProxyRetry): ArcGIS can return
+  // `{"error":{"code":400}}` with no message field, and a raw interpolation
+  // would throw "ArcGIS error: undefined" — unusable in logs and invisible to
+  // both the rate-limit classifier and the invalid-params circuit breaker,
+  // which read this message.
+  if (body.error) throw new Error(`ArcGIS error: ${body.error.message ?? body.error.code ?? JSON.stringify(body.error)}`);
   return body;
 }
 
