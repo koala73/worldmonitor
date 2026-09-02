@@ -384,14 +384,17 @@ export interface McpHandlerDeps {
     features: {
       tier: number;
       mcpAccess?: boolean;
-      // Mirrors `CachedEntitlements.features.planLimits`. Only the MCP daily
-      // allowance is read here (plan 2026-07-25-001 U3); the siblings are
-      // declared so the shape stays recognisable against the catalog and a
-      // future consumer doesn't have to re-widen the dep contract.
+      // Mirrors `CachedEntitlements.features.planLimits`. The MCP daily
+      // allowance and the MCP minute burst are read here (plan 2026-07-25-001
+      // U3); the siblings are declared so the shape stays recognisable against
+      // the catalog and a future consumer doesn't have to re-widen the dep
+      // contract. `mcpCallsPerDay` carries the `SHARED_API_BUDGET` marker on the
+      // API tiers — narrowing it back to `number | null` here makes the marker
+      // an impossible value in a mirror that receives it every request.
       planLimits?: {
         apiRequestsPerDay?: number | null;
         apiBurstRequestsPerMinute?: number | null;
-        mcpCallsPerDay?: number | null;
+        mcpCallsPerDay?: number | null | 'shared-api-budget';
         mcpBurstRequestsPerMinute?: number | null;
         dashboardAiCallsPerDay?: number | null;
       };
@@ -445,6 +448,12 @@ export interface McpPreCheckPassed {
    * `reserveFreeAccountAllowance` instead of `reserveQuota`.
    */
   budget?: McpBudget;
+  /**
+   * The caller's per-minute MCP burst threshold, from the same entitlement
+   * read. Omitted → `applyPerMinuteLimit` uses its own default, so an
+   * unresolved pre-check can never widen the burst ceiling either.
+   */
+  burstPerMinute?: number;
   /**
    * Authenticated free / insufficient-tier caller admitted at the MCP call
    * site only (#6716). Must never be set by relaxing `checkProMcpAccess`.

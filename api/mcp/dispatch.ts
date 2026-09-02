@@ -16,7 +16,7 @@ import { applyJmespath } from './jmespath';
 import { reserveQuota, type McpBudget } from './quota';
 import { reserveFreeAccountAllowance } from './free-account-allowance';
 import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
-import { isQuotaExemptMetadataTool, reservationWeight, TOOL_REGISTRY } from './registry/index';
+import { isQuotaExemptMetadataTool, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import {
@@ -383,7 +383,7 @@ export async function dispatchToolsCall(
         context.userId,
         deps.redisPipeline,
         budget,
-        reservationWeight(budget, tool),
+        toolWeight(tool),
       );
       if (!reservation.ok) {
         if (reservation.reason === 'cap-exceeded') {

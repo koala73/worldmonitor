@@ -47,13 +47,16 @@ import { buildMcpStructuredDenial, type McpDenialReason } from './upgrade';
 // ---------------------------------------------------------------------------
 //   - Legacy per-key 60/min (Starter+ env-key bearers): prefix `rl:mcp`,
 //     keyed `key:<apiKey>`. Unchanged from pre-U7.
-//   - Pro per-user 60/min: prefix `rl:mcp:pro-min`, keyed `pro-user:<userId>`.
-//     Independent limiter so a Pro user with two Claude installations sees
-//     combined 60/min across both bearers (same userId).
+//   - Per-user MCP burst: prefix `rl:mcp:pro-min`, keyed `pro-user:<userId>`.
+//     Independent limiter so a Pro user with two Claude installations sees one
+//     combined budget across both bearers (same userId). The threshold is the
+//     plan's `mcpBurstRequestsPerMinute`, so one Ratelimit is cached per
+//     distinct limit — Upstash applies the threshold at read time, so accounts
+//     on different plans share the key family without a migration.
 // ---------------------------------------------------------------------------
 
 let mcpRatelimit: Ratelimit | null = null;
-let mcpProMinRatelimit: Ratelimit | null = null;
+const mcpProMinRatelimits = new Map<number, Ratelimit>();
 // Anonymous MCP discovery limiter (initialize / tools/list without credentials).
 // Keyed by client IP so a public discovery surface can't be hammered by an
 // unauthenticated caller. Separate prefix from the authed per-key/per-user
@@ -74,18 +77,47 @@ function getMcpRatelimit(): Ratelimit | null {
   return mcpRatelimit;
 }
 
-function getMcpProMinRatelimit(): Ratelimit | null {
-  if (mcpProMinRatelimit) return mcpProMinRatelimit;
+/**
+ * Per-minute MCP burst for a caller whose plan limit is unreadable, and the
+ * value every plan below API Business sells anyway.
+ */
+export const MCP_DEFAULT_BURST_PER_MINUTE = 60;
+
+/**
+ * The burst threshold a plan sells, from `planLimits.mcpBurstRequestsPerMinute`.
+ *
+ * Only a finite integer of at least 1 is honoured. Everything else — undefined,
+ * a legacy row with no `planLimits`, `null`, NaN, a negative, and a literal `0`
+ * — resolves to `MCP_DEFAULT_BURST_PER_MINUTE`, which fails toward the lower of
+ * the two ceilings the catalog sells for MCP (60 vs Business's 300).
+ *
+ * `0` is folded in rather than honoured for the same reason `server/gateway.ts`
+ * guards `perMinute > 0` before `checkBurst` — a `slidingWindow(0)` rejects
+ * every request, so honouring the free plan's `mcpBurstRequestsPerMinute: 0`
+ * here would 429 the #6716 free-account funnel on its first call. That funnel's
+ * real ceiling is its daily allowance, not this bucket.
+ */
+export function resolveMcpBurstPerMinute(planBurst?: number | null): number {
+  if (typeof planBurst === 'number' && Number.isFinite(planBurst) && planBurst >= 1) {
+    return Math.floor(planBurst);
+  }
+  return MCP_DEFAULT_BURST_PER_MINUTE;
+}
+
+function getMcpProMinRatelimit(perMinute: number): Ratelimit | null {
+  const existing = mcpProMinRatelimits.get(perMinute);
+  if (existing) return existing;
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
-  mcpProMinRatelimit = new Ratelimit({
+  const limiter = new Ratelimit({
     redis: new Redis({ url, token, retry: false }),
-    limiter: Ratelimit.slidingWindow(60, '60 s'),
+    limiter: Ratelimit.slidingWindow(perMinute, '60 s'),
     prefix: 'rl:mcp:pro-min',
     analytics: false,
   });
-  return mcpProMinRatelimit;
+  mcpProMinRatelimits.set(perMinute, limiter);
+  return limiter;
 }
 
 function getMcpAnonRatelimit(): Ratelimit | null {
@@ -600,12 +632,17 @@ async function checkMcpEntitlementGate(
     // real outage as a routine upsell. Fail closed on a retryable envelope.
     return unavailable();
   }
+  // Resolved once from the row this gate already holds: the burst threshold is
+  // per-plan (API Business sells 300/min, everyone else 60), and a second
+  // lookup on the hot path to learn it would be the round-trip KTD6 removed.
+  const burstPerMinute = resolveMcpBurstPerMinute(ent?.features?.planLimits?.mcpBurstRequestsPerMinute);
   const passed = (): McpPreCheckResult => ({
     ok: true,
     budget: resolveMcpBudget(
       ent?.features?.planLimits?.mcpCallsPerDay,
       ent?.features?.planLimits?.apiRequestsPerDay,
     ),
+    burstPerMinute,
   });
   // Single-source Pro MCP decision. A current fallback entitlement still wins
   // over billing uncertainty; this caller keeps the JSON-RPC denial rendering.
@@ -638,7 +675,8 @@ async function checkMcpEntitlementGate(
     // live in dispatch.
     return {
       ok: true,
-      budget: { scope: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
+      budget: { allowance: 'mcp', limit: FREE_ACCOUNT_CALLS_PER_DAY },
+      burstPerMinute,
       freeAccountAllowance: true,
     };
   }
@@ -727,23 +765,33 @@ export async function runContextPreChecks(
 
 /** Per-minute rate limit. Both paths fail-OPEN on Upstash error (graceful);
  *  the daily quota is the hard-cap fail-CLOSED gate. Returns null on success
- *  or pass-through, a Response on a real 60/min limit hit.
+ *  or pass-through, a Response on a real burst limit hit.
+ *  `perMinute` is the caller's plan threshold, carried from the pre-check that
+ *  already read the entitlement; it defaults to the catalog's common value for
+ *  the one call site that has no pre-check to carry it (a credentialed caller
+ *  on a PUBLIC method), which errs to the lower of the two ceilings sold.
  *  user_key (#4859) shares the per-USER limiter with pro — the principal is
  *  the key OWNER, so a user with an OAuth connection and a dashboard key gets
- *  one combined 60/min budget instead of two stackable ones. */
-export async function applyPerMinuteLimit(context: McpAuthContext, headers: Record<string, string> = {}): Promise<Response | null> {
+ *  one combined budget instead of two stackable ones. */
+export async function applyPerMinuteLimit(
+  context: McpAuthContext,
+  headers: Record<string, string> = {},
+  perMinute: number = MCP_DEFAULT_BURST_PER_MINUTE,
+): Promise<Response | null> {
   if (context.kind === 'env_key') {
     const rl = getMcpRatelimit();
     if (!rl) return null;
     try {
       const { success } = await rl.limit(`key:${context.apiKey}`);
       if (!success) {
+        // Operator env keys are ungated and carry no entitlement row, so this
+        // branch keeps the fixed legacy threshold rather than a plan's.
         emitMcpRateLimitHit(context, {
           dimension: 'mcp_minute_burst',
-          limit: 60,
+          limit: MCP_DEFAULT_BURST_PER_MINUTE,
           windowSeconds: 60,
         });
-        return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per API key.', headers);
+        return rpcError(null, -32029, `Rate limit exceeded. Max ${MCP_DEFAULT_BURST_PER_MINUTE} requests per minute per API key.`, headers);
       }
     } catch { /* graceful degradation */ }
     return null;
@@ -757,17 +805,21 @@ export async function applyPerMinuteLimit(context: McpAuthContext, headers: Reco
     // worse than useless — every free caller would share one bucket.
     return null;
   }
-  const rl = getMcpProMinRatelimit();
+  const rl = getMcpProMinRatelimit(perMinute);
   if (!rl) return null;
   try {
     const { success } = await rl.limit(`pro-user:${context.userId}`);
     if (!success) {
+      // The emitted limit must be the one that actually rejected: the
+      // `mcp_minute_burst` scanner query reads `observed_limit` from this
+      // field, so a hardcoded 60 would report the wrong ceiling for every
+      // API Business account.
       emitMcpRateLimitHit(context, {
         dimension: 'mcp_minute_burst',
-        limit: 60,
+        limit: perMinute,
         windowSeconds: 60,
       });
-      return rpcError(null, -32029, 'Rate limit exceeded. Max 60 requests per minute per user.', headers);
+      return rpcError(null, -32029, `Rate limit exceeded. Max ${perMinute} requests per minute per user.`, headers);
     }
   } catch { /* graceful degradation */ }
   return null;

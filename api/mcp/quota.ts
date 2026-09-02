@@ -62,23 +62,36 @@ export function isRestEnforcementEnabled(): boolean {
 }
 
 /**
- * Which daily counter a caller's MCP calls charge, and the ceiling on it.
+ * Which number a plan sold, and where it is counted.
  *
- * `scope: 'api'` is the API tiers: MCP and REST draw one budget
- * (`rl:apikey:day:…`) at a per-tool weight, so a unit of work costs the same
- * whichever door it arrives through. This replaces the KTD6 plan-key exception
- * list, which existed only because the catalog published an MCP number the edge
- * refused to honour — leaving OAuth and `user_key` free to disagree about the
- * cap. One budget behind one marker makes that disagreement unrepresentable.
+ * `allowance` decides the PRICE: `'api'` charges the per-tool weight, so a unit
+ * of work costs the same whichever door it arrives through; `'mcp'` charges one
+ * unit per call, which is what `docs/usage-rate-limits.mdx` sells on the
+ * dedicated counter and what the GHSA-hcq5 no-refund slot assumes.
  *
- * `scope: 'mcp'` is Pro and Pro Business: `apiAccess: false` with a zero REST
- * budget, so they keep their own counter (`mcp:pro-usage:…`) at 50 and 250.
+ * `counter` decides the PLACE, and exists only on the `api` arm — so "a
+ * dedicated MCP allowance charged to the shared REST key" has no field to live
+ * in. The three states below are the only ones representable:
+ *
+ *   - `{allowance: 'mcp'}` — Pro 50, Pro Business 250, the free-account
+ *     ceiling, Enterprise `null`. `apiAccess: false` with a zero REST budget,
+ *     so they keep `mcp:pro-usage:…` at one unit per call.
+ *   - `{allowance: 'api', counter: 'mcp'}` — API tiers while
+ *     `API_RATE_LIMIT_ENFORCE` is off: the sold REST number, weighted, on the
+ *     dedicated counter.
+ *   - `{allowance: 'api', counter: 'api'}` — API tiers once the flag flips:
+ *     the same number on `rl:apikey:day:…`, shared with REST.
+ *
+ * This replaces the KTD6 plan-key exception list, which existed only because
+ * the catalog published an MCP number the edge refused to honour — leaving
+ * OAuth and `user_key` free to disagree about the cap.
+ *
+ * When the flag flip becomes permanent, delete `counter` and the shadow branch
+ * in `resolveMcpBudget`: no variant is renamed and no call site moves.
  */
-export interface McpBudget {
-  scope: 'api' | 'mcp';
-  /** Enforced ceiling; `null` is unlimited (still metered, never rejected). */
-  limit: number | null;
-}
+export type McpBudget =
+  | { allowance: 'mcp'; limit: number | null }
+  | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null };
 
 /**
  * Resolve which budget a plan's MCP calls charge.
@@ -95,19 +108,25 @@ export function resolveMcpBudget(
   restEnforced: boolean = isRestEnforcementEnabled(),
 ): McpBudget {
   if (mcpCallsPerDay === SHARED_API_BUDGET) {
-    // While REST runs in shadow the gateway SERVES over-allowance requests and
-    // leaves their increments on this key (`reserveDailyMeter` only rolls back
-    // when it actually rejects). The counter is therefore a demand signal that
-    // sits far above the limit for exactly the heaviest accounts, not a cap.
+    // The LIMIT is the sold one either way — Starter 1,000, Business 10,000 —
+    // because that is the number every published surface quotes and the number
+    // enforcement must therefore apply. Only the COUNTER moves with the flag:
+    // while REST runs in shadow the gateway SERVES over-allowance requests and
+    // leaves their increments on `rl:apikey:day:…` (`reserveDailyMeter` only
+    // rolls back when it actually rejects), so that key is a demand signal
+    // sitting far above the limit for exactly the heaviest accounts, not a cap.
     // Rejecting MCP against it would 429 those accounts for the rest of the UTC
     // day the moment this ships — the opposite of the advisory behaviour the
-    // flag promises. Stay on the dedicated counter at the plan default until
-    // the flag makes the shared budget real for REST and MCP together.
-    if (!restEnforced) return { scope: 'mcp', limit: PRO_DAILY_QUOTA_LIMIT };
-    return { scope: 'api', limit: resolveDailyLimit(apiRequestsPerDay) };
+    // flag promises. The dedicated counter carries the same ceiling until the
+    // flag makes the shared budget real for REST and MCP together.
+    return {
+      allowance: 'api',
+      counter: restEnforced ? 'api' : 'mcp',
+      limit: resolveDailyLimit(apiRequestsPerDay),
+    };
   }
   return {
-    scope: 'mcp',
+    allowance: 'mcp',
     limit: resolveDailyLimit(typeof mcpCallsPerDay === 'string' ? undefined : mcpCallsPerDay),
   };
 }
@@ -118,13 +137,13 @@ export function resolveMcpBudget(
  * the counter this module WRITES; a second copy of this choice would be exactly
  * the drift those surfaces exist to prevent.
  *
- * API-scope keys are prefixed here because this path talks to the raw Upstash
- * pipeline. REST's `apiKeyDailyKey` is a logical key — `runRedisPipeline`
+ * Shared-counter keys are prefixed here because this path talks to the raw
+ * Upstash pipeline. REST's `apiKeyDailyKey` is a logical key — `runRedisPipeline`
  * adds `envPrefix()` for it. Dedicated MCP keys already carry that prefix
  * inside `dailyCounterKey`.
  */
 export function budgetCounterKey(budget: McpBudget | undefined, userId: string, date?: Date): string {
-  if (budget?.scope !== 'api') return dailyCounterKey(userId, date);
+  if (budget?.allowance !== 'api' || budget.counter !== 'api') return dailyCounterKey(userId, date);
   const key = apiKeyDailyKey(userId, date);
   return key ? `${envPrefix()}${key}` : key;
 }
@@ -136,23 +155,34 @@ function asFiniteNumber(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Charge one `tools/call` against `budget`.
+ *
+ * `toolUnits` is what the tool costs (`toolWeight`), not what it is charged:
+ * only an `api` allowance pays it. A dedicated MCP allowance is one call, one
+ * unit — the number `docs/usage-rate-limits.mdx` sells — so applying the weight
+ * there would double-charge Pro's 50/day, and the price question is answered
+ * here, next to the budget that decides it, rather than at the call site.
+ */
 export async function reserveQuota(
   userId: string,
   pipeline: PipelineFn,
   budget?: McpBudget,
-  weight = 1,
+  toolUnits = 1,
 ): Promise<QuotaReserved | QuotaRejected> {
+  const weight = budget?.allowance === 'api' ? toolUnits : 1;
   // `null` = unlimited: the counter still moves (metering is not optional) but
   // the rejection branch below is skipped entirely.
   // Normalise even a caller-supplied budget: `resolveMcpBudget` already does
   // this, but a hand-built budget carrying a garbage limit must still land on
   // the plan default rather than skipping the check and enforcing `undefined`.
   const limit = budget ? resolveDailyLimit(budget.limit) : PRO_DAILY_QUOTA_LIMIT;
-  // A shared-budget plan charges the REST meter, so an MCP call and a REST call
-  // draw down the same number the customer was sold. `budgetCounterKey` is the
-  // deployment-namespaced form of `apiKeyDailyKey` — REST prefixes that logical
-  // key in `runRedisPipeline`; this raw MCP pipeline must prefix it here. The
-  // floor key is namespaced separately so the clamp cannot collide with REST.
+  // Once the flag flips, a shared-budget plan charges the REST meter, so an MCP
+  // call and a REST call draw down the same number the customer was sold.
+  // `budgetCounterKey` is the deployment-namespaced form of `apiKeyDailyKey` —
+  // REST prefixes that logical key in `runRedisPipeline`; this raw MCP pipeline
+  // must prefix it here. The floor key is namespaced separately so the clamp
+  // cannot collide with REST.
   const key = budgetCounterKey(budget, userId);
   const floorKey = dailyQuotaFloorKey(userId);
   if (!key || !floorKey) return { ok: false, reason: 'redis-unavailable' };
@@ -202,8 +232,8 @@ export async function reserveQuota(
     try {
       await pipeline([['DECRBY', key, weight]]);
     } catch {
-      // Best-effort: a transient Redis failure means the counter overshoots
-      // by 1, which is the cost-protection-correct direction.
+      // Best-effort: a transient Redis failure means the counter overshoots by
+      // the charged weight, which is the cost-protection-correct direction.
     }
   };
 

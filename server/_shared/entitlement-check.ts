@@ -82,11 +82,15 @@ export interface CachedEntitlements {
      * `planLimits` altogether) means unknown, and consumers resolve unknown
      * toward cost protection — never toward the higher allowance. The MCP
      * daily quota (plan 2026-07-25-001 U3) and dashboard-AI quota are consumers.
+     *
+     * `mcpCallsPerDay` also carries the catalog's `SHARED_API_BUDGET` marker on
+     * the API tiers, so it is not a plain number: mirroring it as `number | null`
+     * made the value the API tiers actually ship an impossible one here.
      */
     planLimits?: {
       apiRequestsPerDay?: number | null;
       apiBurstRequestsPerMinute?: number | null;
-      mcpCallsPerDay?: number | null;
+      mcpCallsPerDay?: number | null | 'shared-api-budget';
       mcpBurstRequestsPerMinute?: number | null;
       dashboardAiCallsPerDay?: number | null;
     };

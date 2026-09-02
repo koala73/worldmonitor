@@ -1,6 +1,5 @@
 import { TOOL_DESCRIPTION_MAX_BYTES } from '../constants';
 import { JMESPATH_SCHEMA } from '../jmespath';
-import type { McpBudget } from '../quota';
 import type { McpAccessClass, PublicToolShape, ToolDef } from '../types';
 import { compressDescription, utf8ByteLength } from '../utils';
 import { CACHE_TOOLS } from './cache-tools';
@@ -25,7 +24,12 @@ export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
 }
 
 /**
- * Budget units one `tools/call` charges.
+ * What one `tools/call` COSTS, in REST-request units.
+ *
+ * Whether that cost is charged is `reserveQuota`'s call: only an `api`
+ * allowance pays the weight, because only there is an MCP call meant to be
+ * comparable to a REST request. A dedicated MCP allowance charges one unit per
+ * call regardless of what this returns.
  *
  * A cache tool answers from the Upstash bootstrap cache and costs what a REST
  * request costs, so it charges 1. A tool with `_execute` fetches downstream
@@ -42,19 +46,6 @@ export function isQuotaExemptMetadataTool(tool: ToolDef): boolean {
 export function toolWeight(tool: ToolDef): number {
   if (tool._weight !== undefined) return tool._weight;
   return tool._execute === undefined ? 1 : 2;
-}
-
-/**
- * Units one `tools/call` actually charges against `budget`.
- *
- * Per-tool weight exists so an MCP call and a REST request are comparable on
- * the shared API-tier budget. The dedicated Pro / shadow-mode counter is
- * one-call-one-unit — see `docs/usage-rate-limits.mdx`. Applying `toolWeight`
- * on that counter is the double-charge that broke Pro resources/read,
- * classify_event, and the GHSA-hcq5 no-refund slot.
- */
-export function reservationWeight(budget: McpBudget | undefined, tool: ToolDef): number {
-  return budget?.scope === 'api' ? toolWeight(tool) : 1;
 }
 
 /** Single access classifier used by tools/list, describe_tool, and resources. */

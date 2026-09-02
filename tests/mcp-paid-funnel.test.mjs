@@ -130,7 +130,7 @@ describe('MCP call-site free-account reinterpretation', () => {
     );
     assert.equal(result.ok, true);
     assert.equal(result.freeAccountAllowance, true);
-    assert.equal(result.budget?.scope, 'mcp');
+    assert.equal(result.budget?.allowance, 'mcp');
     assert.equal(result.budget?.limit, FREE_ACCOUNT_CALLS_PER_DAY);
   });
 

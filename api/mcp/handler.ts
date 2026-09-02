@@ -436,7 +436,7 @@ async function handleAuthenticatedSseReplay(
     usage.phase = getPreCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
     return getPreCheck.response;
   }
-  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
   if (getLimited) {
     usage.phase = 'limit';
     return getLimited;
@@ -834,6 +834,11 @@ async function mcpHandlerInner(
           return validation.response;
         }
       }
+      // No pre-check runs on the public branch, so there is no entitlement in
+      // hand to read a plan burst from. `applyPerMinuteLimit` defaults to the
+      // common ceiling rather than fetching one: these are metadata and
+      // free-tier methods, and the tighter of the two sold thresholds is the
+      // defensible guess.
       const limited = await applyPerMinuteLimit(context, corsHeaders);
       if (limited) {
         usage.phase = 'limit';
@@ -877,7 +882,7 @@ async function mcpHandlerInner(
     // dispatch sites below; unset for every caller class but `pro`.
     budget = preCheck.budget;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
-    const limited = await applyPerMinuteLimit(context, corsHeaders);
+    const limited = await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute);
     if (limited) {
       usage.phase = 'limit';
       return limited;

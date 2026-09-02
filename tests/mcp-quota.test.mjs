@@ -315,6 +315,26 @@ describe('mcp-quota handler — plan-resolved limit (U3b)', () => {
     assert.equal(body.used, 48);
   });
 
+  it('displays the same 1,000 in SHADOW mode, because that is still what rejects', async () => {
+    // The flag moves the COUNTER, not the number. While it is off the widget
+    // read the dedicated counter at PRO_DAILY_QUOTA_LIMIT and told an API
+    // Starter subscriber they had 50 calls a day — the published number is
+    // 1,000, and 1,000 is what the reservation now enforces.
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    const deps = makeDeps({
+      getEntitlements: async () => entitlement('api_starter', {
+        apiRequestsPerDay: 1000,
+        apiBurstRequestsPerMinute: 60,
+        mcpCallsPerDay: 'shared-api-budget',
+        mcpBurstRequestsPerMinute: 60,
+      }),
+      redisGet: async () => '48',
+    });
+    const body = await (await quotaHandler(makeReq(), deps)).json();
+    assert.equal(body.limit, 1000);
+    assert.equal(body.used, 48);
+  });
+
   it('falls back to 50 for a legacy entitlement row with no planLimits', async () => {
     const deps = makeDeps({
       getEntitlements: async () => entitlement('pro_monthly', undefined),

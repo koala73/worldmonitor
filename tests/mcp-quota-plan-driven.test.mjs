@@ -130,12 +130,12 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
 
   it('numeric limit 250 → the 250th call reserves, the 251st is capped at 250', async () => {
     const under = makePipelineMock({ initialCount: 249 });
-    const ok = await reserveQuota('u1', under.pipeline, { scope: 'mcp', limit: 250 });
+    const ok = await reserveQuota('u1', under.pipeline, { allowance: 'mcp', limit: 250 });
     assert.equal(ok.ok, true, '250th call must reserve');
     assert.equal(under.count, 250);
 
     const over = makePipelineMock({ initialCount: 250 });
-    const rejected = await reserveQuota('u1', over.pipeline, { scope: 'mcp', limit: 250 });
+    const rejected = await reserveQuota('u1', over.pipeline, { allowance: 'mcp', limit: 250 });
     assert.equal(rejected.ok, false);
     assert.equal(rejected.reason, 'cap-exceeded');
     assert.equal(rejected.floor, 250, 'floor is the PLAN limit, not the constant');
@@ -144,14 +144,14 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
 
   it('numeric limit 250 → a call at count 50 is NOT rejected (the constant is no longer the cap)', async () => {
     const pipe = makePipelineMock({ initialCount: 50 });
-    const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 250 });
+    const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 250 });
     assert.equal(res.ok, true, 'a Pro Business caller must sail past the old 50 cap');
     assert.equal(pipe.count, 51);
   });
 
   it('null limit → unlimited: never rejects, but STILL increments the counter (metering intact)', async () => {
     const pipe = makePipelineMock({ initialCount: 100_000 });
-    const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: null });
+    const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: null });
     assert.equal(res.ok, true, 'null means unlimited — no cap-exceeded branch at any count');
     assert.equal(pipe.count, 100_001, 'unlimited must not mean unmetered');
   });
@@ -159,7 +159,7 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
   it('malformed limits fall back to 50 (cost-protection direction, never the higher value)', async () => {
     for (const bad of [undefined, Number.NaN, Number.POSITIVE_INFINITY, -5, '250', {}]) {
       const pipe = makePipelineMock({ initialCount: 50 });
-      const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: bad });
+      const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: bad });
       assert.equal(res.ok, false, `limit ${String(bad)} must fall back to the 50 default`);
       assert.equal(res.floor, 50, `limit ${String(bad)} must not raise the cap`);
     }
@@ -167,7 +167,7 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
 
   it('limit 0 is honoured verbatim — a zero allowance rejects the first call', async () => {
     const pipe = makePipelineMock({ initialCount: 0 });
-    const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 0 });
+    const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 0 });
     assert.equal(res.ok, false, '0 is a real allowance, not a missing one');
     assert.equal(res.floor, 0);
   });
@@ -177,7 +177,7 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     // call must drive it back to exactly 250 — clamping to 50 would wrongly
     // hand the user 200 free calls.
     const pipe = makePipelineMock({ initialCount: 280 });
-    const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 250 });
+    const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 250 });
     assert.equal(res.ok, false);
     assert.equal(pipe.count, 250, 'clamp target is the resolved plan limit');
   });
@@ -186,7 +186,7 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     // Same user/day key: Pro Business already charged 200 of 250, then a
     // user_key (50/day) rejection must owner-rollback only — not clamp to 50.
     const pipe = makePipelineMock({ initialCount: 200, initialLimitFloor: 250 });
-    const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 50 });
+    const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 50 });
     assert.equal(res.ok, false);
     assert.equal(res.reason, 'cap-exceeded');
     assert.equal(res.floor, 50, 'the rejecting path still reports its own limit');
@@ -195,17 +195,17 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
 
   it('an unlimited reserve marks the floor so a later 50/day rejection cannot clamp', async () => {
     const pipe = makePipelineMock({ initialCount: 100_000 });
-    const unlimited = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: null });
+    const unlimited = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: null });
     assert.equal(unlimited.ok, true);
     assert.equal(pipe.limitFloor, -1);
-    const rejected = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 50 });
+    const rejected = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 50 });
     assert.equal(rejected.ok, false);
     assert.equal(pipe.count, 100_001, 'unlimited metering must not be SET back to 50');
   });
 
   it('a successful finite reserve records the charged limit as the clamp floor', async () => {
     const pipe = makePipelineMock({ initialCount: 10 });
-    const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 250 });
+    const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 250 });
     assert.equal(res.ok, true);
     assert.equal(pipe.limitFloor, 250);
   });
@@ -216,8 +216,8 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
     // includes B's live increment, then B rollbacks and the meter lands at 49.
     const pipe = makePipelineMock({ initialCount: 52 });
     const results = await Promise.all([
-      reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 50 }),
-      reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 50 }),
+      reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 50 }),
+      reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 50 }),
     ]);
     assert.ok(results.every((r) => r.ok === false && r.reason === 'cap-exceeded'));
     assert.equal(
@@ -234,8 +234,8 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
   it('concurrent overshoot rejections on a 250-call plan never clamp below 250', async () => {
     const pipe = makePipelineMock({ initialCount: 252 });
     const results = await Promise.all([
-      reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 250 }),
-      reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 250 }),
+      reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 250 }),
+      reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 250 }),
     ]);
     assert.ok(results.every((r) => r.ok === false && r.reason === 'cap-exceeded' && r.floor === 250));
     assert.ok(
@@ -247,8 +247,8 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
   it('unlimited concurrent reserves still meter and never reject (#7272)', async () => {
     const pipe = makePipelineMock({ initialCount: 100_000 });
     const results = await Promise.all([
-      reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: null }),
-      reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: null }),
+      reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: null }),
+      reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: null }),
     ]);
     assert.ok(results.every((r) => r.ok === true));
     assert.equal(pipe.count, 100_002, 'unlimited must stay metered under concurrency');
@@ -256,7 +256,7 @@ describe('api/mcp/quota.ts — reserveQuota honours the resolved plan limit', ()
 
   it('EVAL/Redis failure still fail-closes before dispatch', async () => {
     const pipe = makePipelineMock({ throwOnIncr: true });
-    const res = await reserveQuota('u1', pipe.pipeline, { scope: 'mcp', limit: 50 });
+    const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 50 });
     assert.equal(res.ok, false);
     assert.equal(res.reason, 'redis-unavailable');
     assert.equal(pipe.count, 0, 'a failed EVAL must not move the counter');
@@ -543,5 +543,154 @@ describe('api/mcp.ts — the shared budget reaches the user_key context', () => 
     const res = await mcpHandler(userKeyReq(callBody('get_market_data')), deps);
     assert.equal(res.status, 200);
     assert.equal(pipe.count, 11);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// The flag-OFF cap — the state production is actually in
+// ---------------------------------------------------------------------------
+// Every API-tier case above sets `API_RATE_LIMIT_ENFORCE` explicitly, so the
+// state the edge runs in today — flag unset — had no end-to-end coverage on
+// either door. That is how a cap 20x narrower than the published one shipped:
+// enforcement quietly fell back to PRO_DAILY_QUOTA_LIMIT and no test looked.
+// These cases pin the SOLD number in the unset state.
+
+describe('api/mcp.ts — API tiers enforce the sold number with REST enforcement OFF', () => {
+  let mcpHandler;
+
+  beforeEach(async () => {
+    process.env.WORLDMONITOR_VALID_KEYS = 'wm_env_operator_key_999';
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    delete process.env.UPSTASH_REDIS_REST_URL;
+    delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
+    process.env.MCP_TELEMETRY = 'false';
+    const mod = await import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+    mcpHandler = mod.mcpHandler;
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    Object.keys(process.env).forEach((k) => {
+      if (!(k in originalEnv)) delete process.env[k];
+    });
+    Object.assign(process.env, originalEnv);
+  });
+
+  /** Both credential doors for one entitlement, so neither can drift alone. */
+  const DOORS = [
+    { name: 'oauth', request: () => proReq('POST', callBody('get_market_data')), extra: {} },
+    {
+      name: 'user_key',
+      request: () => userKeyReq(callBody('get_market_data')),
+      extra: { validateUserApiKey: async (key) => (key === USER_KEY ? { userId: USER_KEY_USER_ID } : null) },
+    },
+  ];
+
+  const PLANS = [
+    { planKey: 'api_starter', sold: 1000 },
+    { planKey: 'api_business', sold: 10_000 },
+  ];
+
+  function enableSuccessPath() {
+    process.env.UPSTASH_REDIS_REST_URL = 'https://stub.upstash';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'stub';
+    stubCacheHit();
+  }
+
+  for (const door of DOORS) {
+    for (const plan of PLANS) {
+      it(`${plan.planKey} via ${door.name}: the call that lands on the sold ${plan.sold} is served`, async () => {
+        enableSuccessPath();
+        const { deps, pipe } = makeProDeps({
+          ...door.extra,
+          pipelineOpts: { initialCount: plan.sold - 1 },
+          getEntitlements: async () => entitlement(plan.planKey, sharedLimits(plan.sold), { tier: 2 }),
+        });
+        const res = await mcpHandler(door.request(), deps);
+        assert.equal(res.status, 200, 'the last call of the published allowance is inside it');
+        assert.equal(pipe.count, plan.sold);
+      });
+
+      it(`${plan.planKey} via ${door.name}: rejects AT the sold ${plan.sold}, quoting it`, async () => {
+        const { deps, pipe } = makeProDeps({
+          ...door.extra,
+          pipelineOpts: { initialCount: plan.sold },
+          getEntitlements: async () => entitlement(plan.planKey, sharedLimits(plan.sold), { tier: 2 }),
+        });
+        const res = await mcpHandler(door.request(), deps);
+        assert.equal(res.status, 429);
+        const body = await res.json();
+        assert.equal(body.error?.code, -32029);
+        assert.match(
+          body.error.message,
+          new RegExp(`\\(${plan.sold}/day\\)`),
+          `the copy must quote the sold number, got: ${body.error?.message}`,
+        );
+        assert.doesNotMatch(
+          body.error.message,
+          /\(50\/day\)/,
+          'the dedicated Pro default must never surface on an API tier',
+        );
+        assert.equal(pipe.count, plan.sold);
+      });
+
+      it(`${plan.planKey} via ${door.name}: call 51 is served — the 50/day default is not the cap`, async () => {
+        enableSuccessPath();
+        const { deps, pipe } = makeProDeps({
+          ...door.extra,
+          pipelineOpts: { initialCount: 50 },
+          getEntitlements: async () => entitlement(plan.planKey, sharedLimits(plan.sold), { tier: 2 }),
+        });
+        const res = await mcpHandler(door.request(), deps);
+        assert.equal(res.status, 200, 'parking API tiers on PRO_DAILY_QUOTA_LIMIT capped them here');
+        assert.equal(pipe.count, 51);
+      });
+    }
+
+    it(`enterprise via ${door.name}: unlimited, and still metered`, async () => {
+      // No case covered an enterprise-owned credential with the flag unset at
+      // all. `mcpCallsPerDay: null` is a dedicated UNLIMITED allowance, not the
+      // shared marker, so it must pick up neither the weight nor a cap.
+      enableSuccessPath();
+      const { deps, pipe } = makeProDeps({
+        ...door.extra,
+        pipelineOpts: { initialCount: 100_000 },
+        getEntitlements: async () => entitlement('enterprise', limits(null), { tier: 3 }),
+      });
+      const res = await mcpHandler(door.request(), deps);
+      assert.equal(res.status, 200, 'a null allowance skips the rejection branch entirely');
+      assert.equal(pipe.count, 100_001, 'unlimited is not unmetered');
+    });
+  }
+
+  it('both doors reach the same verdict at the same depth on the same plan', async () => {
+    const ent = () => entitlement('api_starter', sharedLimits(1000), { tier: 2 });
+    const oauth = makeProDeps({ pipelineOpts: { initialCount: 1000 }, getEntitlements: ent });
+    const oauthRes = await mcpHandler(proReq('POST', callBody('get_market_data')), oauth.deps);
+    const userKey = makeProDeps({
+      pipelineOpts: { initialCount: 1000 },
+      getEntitlements: ent,
+      validateUserApiKey: async (key) => (key === USER_KEY ? { userId: USER_KEY_USER_ID } : null),
+    });
+    const userKeyRes = await mcpHandler(userKeyReq(callBody('get_market_data')), userKey.deps);
+    assert.equal(oauthRes.status, userKeyRes.status);
+    assert.equal(oauthRes.status, 429);
+    assert.equal(oauth.pipe.count, userKey.pipe.count);
+  });
+
+  it('shadow mode charges the DEDICATED counter, never the shared REST key', async () => {
+    // The number is the REST one; the key is not. Charging `rl:apikey:day`
+    // while the gateway still serves over-allowance REST requests onto it would
+    // 429 the heaviest accounts from mid-morning on day one.
+    enableSuccessPath();
+    const { deps, pipe } = makeProDeps({
+      getEntitlements: async () => entitlement('api_starter', sharedLimits(1000), { tier: 2 }),
+    });
+    await mcpHandler(proReq('POST', callBody('get_market_data')), deps);
+    const evals = pipe.ops.flat().filter((cmd) => cmd[0] === 'EVAL' && Number(cmd[2]) === 2);
+    assert.equal(evals.length, 1, 'exactly one reservation per tools/call');
+    assert.match(evals[0][3], /^mcp:pro-usage:/, 'the reservation must land on the dedicated counter');
+    assert.doesNotMatch(evals[0][3], /rl:apikey:day/);
   });
 });
