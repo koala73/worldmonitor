@@ -75,9 +75,21 @@ const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 // The committed pulse is published as "Current signal". Nothing re-runs the
 // freeze automatically except .github/workflows/crawlable-pulse-refresh.yml, so
 // bound the age here: a forgotten or failed refresh must red the build rather
-// than silently republish months-old numbers under a current-state heading.
-// Sized to clear the monthly refresh cadence with slack.
-const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
+// than silently republish stale numbers under a current-state heading.
+//
+// TARGET: 10 days, to match the weekly refresh cron with ~3 days of slack. At
+// 45 against the former monthly cron, pages headed "Approx. 24-hour movement"
+// could ship on six-week-old data — the freshness overstatement in #7530.
+//
+// Still 45 because tightening it today would red the product build with no way
+// to clear it: on 2026-09-02 /api/supply-chain/v1/get-chokepoint-status returns
+// `{"chokepoints":[],"upstreamUnavailable":true}` on every attempt, so
+// `npm run freeze:crawlable-live-pulse` cannot capture its 13 chokepoints and
+// NO refresh can succeed. Drop this to 10 once a refresh has actually landed.
+// The cron moved to weekly in the same change, so the gap closes on its own the
+// moment the upstream recovers; the guard in tests/crawlable-corpus.test.mjs
+// asserts the ceiling still clears the cadence.
+export const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
 const MICROSTATE_TERRITORIES_PATH = 'server/worldmonitor/resilience/v1/cohorts/microstate-territories.json';
@@ -3284,6 +3296,24 @@ ${faqs.map((faq) => `        <details data-chokepoint-faq><summary>${escapeHtml(
   return { html, faqs };
 }
 
+// The upstream status note is optional. A snapshot without one must publish no
+// paragraph at all — until #7530 an absent note froze as "No additional status
+// note was supplied." and rendered as real body prose in <main> on 7 of the 13
+// chokepoint pages, where it was frequently the only sentence the live section
+// contributed.
+// Snapshots frozen before that change still carry the sentence verbatim, so
+// treat it as the absence it always described rather than waiting for a
+// refresh to age it out.
+export const LEGACY_ABSENT_STATUS_NOTE = 'No additional status note was supplied.';
+
+function chokepointDescriptionParagraph(description) {
+  const raw = typeof description === 'string' ? description.trim() : '';
+  const text = raw === LEGACY_ABSENT_STATUS_NOTE ? '' : raw;
+  return text
+    ? `        <p data-chokepoint-description>${escapeHtml(text)}</p>`
+    : '        <p data-chokepoint-description hidden></p>';
+}
+
 function optionalChokepointMetric(label, attribute, value, available) {
   return `          <div class="metric"${available ? '' : ' hidden'}><span>${escapeHtml(label)}</span><strong ${attribute}>${available ? escapeHtml(value) : ''}</strong></div>`;
 }
@@ -3370,7 +3400,7 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', cover
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (transitsWithheld ? '—' : 'Unavailable'))}</strong></div>
         </div>
-        <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>
+${chokepointDescriptionParagraph(pulse.description)}
 ${transitsNote}`
     : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
         <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">

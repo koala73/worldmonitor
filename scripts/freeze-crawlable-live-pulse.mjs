@@ -51,12 +51,28 @@ const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 // where it becomes indexed, quotable page content.
 const INTERNAL_NOTE_RE = /\s*;?\s*Threat baseline last reviewed[^;]*?review recommended\.?/gi;
 
+// Returns null, never a placeholder sentence. "No additional status note was
+// supplied." used to be frozen here and rendered as a real <p> in <main> — an
+// absence described in prose reads to a crawler as published content, and it
+// was the only body text 7 of 13 chokepoint pages carried (#7530). An absent
+// note has no page representation: the paragraph is emitted `hidden`.
 function publishableDescription(value) {
   const cleaned = String(value || '')
     .replace(INTERNAL_NOTE_RE, '')
     .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
     .trim();
-  return cleaned || 'No additional status note was supplied.';
+  return cleaned || null;
+}
+
+// Every capture gate below reports a bare count. That number says a refresh
+// failed but never why, so a red scheduled run (or a hand-run freeze) starts
+// from zero — the per-item errors are collected and then dropped on the throw
+// path. Carry the first one into the message.
+function firstCaptureCause(errors) {
+  const first = errors[0];
+  if (!first) return '';
+  const scope = first.id ?? first.code ?? first.slug ?? 'unknown';
+  return `; first error (${scope}): ${first.message}`;
 }
 
 const RESILIENCE_SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
@@ -412,17 +428,20 @@ export async function freezeCrawlableLivePulse({
   if (Object.keys(countries).length < minCountries) {
     throw new Error(
       `Pulse freeze captured only ${Object.keys(countries).length} of ${codes.length} countries; `
-      + `expected at least ${minCountries}`,
+      + `expected at least ${minCountries}`
+      + firstCaptureCause(countryErrors),
     );
   }
   if (Object.keys(chokepoints).length < chokepointIds.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(chokepoints).length} of ${chokepointIds.length} chokepoints`,
+      `Pulse freeze captured only ${Object.keys(chokepoints).length} of ${chokepointIds.length} chokepoints`
+      + firstCaptureCause(chokepointErrors),
     );
   }
   if (Object.keys(crisisSnapshots).length < crises.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`,
+      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`
+      + firstCaptureCause(crisisErrors),
     );
   }
 

@@ -27,6 +27,7 @@ import {
   hasObservedValue,
   laterDate,
   loadCorpusData,
+  MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
   renderCountryAnalysis,
   resolveChokepointObservation,
   resolveLatestLivePulseSnapshotPath,
@@ -1392,6 +1393,45 @@ describe('crawlable corpus generator', () => {
     }
   });
 
+  // The refresh cron and the staleness ceiling are one contract. The ceiling
+  // was 45 days against a monthly cron, which let pages headed "Approx.
+  // 24-hour movement" ship on data up to six weeks old (#7530). Assert the two
+  // still agree so relaxing one alone cannot silently reopen that gap, and that
+  // the branch key advances as fast as the schedule does — a month-keyed branch
+  // under a weekly cron would find week 1's PR and skip weeks 2-4.
+  it('keeps the pulse staleness ceiling within reach of the refresh cron', () => {
+    const workflow = readFileSync(
+      resolve(repoRoot, '.github/workflows/crawlable-pulse-refresh.yml'),
+      'utf8',
+    );
+    const cron = workflow.match(/^\s*- cron: '([^']+)'/m)?.[1];
+    assert.ok(cron, 'the pulse refresh workflow must declare a cron schedule');
+
+    const [, , dayOfMonth, month, dayOfWeek] = cron.split(/\s+/);
+    let cadenceDays;
+    if (dayOfMonth === '*' && month === '*' && dayOfWeek !== '*') cadenceDays = 7;
+    else if (dayOfMonth !== '*' && month === '*') cadenceDays = 31;
+    else if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') cadenceDays = 1;
+    else assert.fail(`unrecognised pulse refresh cadence: ${cron}`);
+
+    assert.ok(
+      MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS > cadenceDays,
+      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle reds the build`,
+    );
+    // No upper bound asserted yet: the ceiling is deliberately still 45 while
+    // the chokepoint upstream that every freeze depends on is down, so a
+    // `<= cadence * 2` assertion would red the suite for a documented reason.
+    // Tighten this alongside the constant once a refresh has landed.
+
+    if (cadenceDays <= 7) {
+      assert.match(
+        workflow,
+        /period=\$\(date -u \+%G-W%V\)/,
+        'a weekly-or-faster cron needs a branch key that advances weekly; a %Y-%m key makes runs 2-4 of a month no-op',
+      );
+    }
+  });
+
   it('advances the sources lastmod when the shared page template changes', () => {
     const baseline = sourcePageLastmod({
       manifestLastmod: '2026-08-10',
@@ -1703,6 +1743,30 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.crises.routes,
         ...manifest.sections.research.routes,
       ]);
+      // No page may describe an absence in prose. "No additional status note
+      // was supplied." was frozen into the snapshot for chokepoints whose
+      // upstream sent no note and rendered as real body text in <main> on 7 of
+      // 13 pages — often the only sentence the live section contributed
+      // (#7530). Absence now has no page representation: the paragraph is
+      // emitted `hidden` and empty.
+      for (const route of manifest.sections.chokepoints.routes) {
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        assert.doesNotMatch(
+          html,
+          /No additional status note was supplied/,
+          `${route} must not publish a placeholder sentence in place of an absent status note`,
+        );
+        const paragraph = html.match(/<p data-chokepoint-description[^>]*>([\s\S]*?)<\/p>/);
+        assert.ok(paragraph, `${route} must carry the status-note paragraph`);
+        if (!paragraph[1].trim()) {
+          assert.match(
+            paragraph[0],
+            /<p data-chokepoint-description[^>]*\bhidden\b/,
+            `${route} has no status note, so its paragraph must be hidden rather than an empty <p>`,
+          );
+        }
+      }
+
       const countryObservationRoutes = new Set(manifest.sections.countries.routes);
       const liveObservationRoutes = new Set(manifest.sections.chokepoints.routes);
       const crisisObservationRoutes = new Set(manifest.sections.crises.routes);
