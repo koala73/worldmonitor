@@ -1704,7 +1704,15 @@ describe('crawlable corpus generator', () => {
         descriptions.set(description, route);
       }
 
-      for (const route of manifest.sections.countries.routes) {
+      // Chokepoint pages carry a "Template revision <date>" stamp that
+      // self-describes as a methodology-revision stamp, yet pointed nowhere:
+      // the #7503 withdrawal of three derived fields across all 13 pages was a
+      // material revision no reader could trace (#7530). Both families that
+      // publish a revision stamp must link the log.
+      for (const route of [
+        ...manifest.sections.countries.routes,
+        ...manifest.sections.chokepoints.routes,
+      ]) {
         const html = read(outDir, `${route.slice(1)}index.html`);
         assert.match(
           html,
