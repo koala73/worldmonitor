@@ -41,6 +41,7 @@ import {
   auditMicrostateCorpusSimilarity,
   wordShingles,
 } from '../scripts/audit-microstate-corpus-similarity.mjs';
+import { buildMicrostateCoverageStoryContent } from '../scripts/microstate-coverage-stories.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
@@ -891,6 +892,56 @@ describe('crawlable corpus generator', () => {
         methodologyFormula: 'World Monitor CRI v3',
       }),
       /TV coverage story cites dimensions that are no longer coverage gaps: externalDebtCoverage/,
+    );
+  });
+
+  it('rejects a below-floor microstate story when displayed coverage reaches the floor', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const tuvalu = structuredClone(data.countries.find(({ code }) => code === 'TV'));
+    tuvalu.dimensionCoverage = 0.65;
+
+    assert.throws(
+      () => buildMicrostateCoverageStory({
+        country: tuvalu,
+        capturedAt: '2026-08-29',
+        methodologyFormula: 'World Monitor CRI v3',
+      }),
+      /TV coverage story requires displayed coverage below the 65% publication floor/,
+    );
+  });
+
+  it('rejects a microstate story when a cited gap changes imputation class', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const sanMarino = structuredClone(data.countries.find(({ code }) => code === 'SM'));
+    const cohesionDimension = sanMarino.domains
+      .flatMap(({ dimensions }) => dimensions)
+      .find(({ id }) => id === 'socialCohesion');
+    assert.ok(cohesionDimension, 'San Marino must include the social cohesion dimension');
+    cohesionDimension.imputationClass = 'unmonitored';
+
+    assert.throws(
+      () => buildMicrostateCoverageStory({
+        country: sanMarino,
+        capturedAt: '2026-08-29',
+        methodologyFormula: 'World Monitor CRI v3',
+      }),
+      /SM coverage story has stale source-gap claims: socialCohesion: imputation class "unmonitored" \(expected "source-failure"\)/,
+    );
+  });
+
+  it('rejects a microstate story when a cited provider family changes', () => {
+    assert.throws(
+      () => buildMicrostateCoverageStoryContent({
+        code: 'MO',
+        coveragePercent: 61,
+        coverageFloor: 65,
+        gaps: [
+          { id: 'healthPublicService', imputationClass: '', sources: ['WHO'] },
+          { id: 'informationCognitive', imputationClass: '', sources: ['Different provider'] },
+          { id: 'externalDebtCoverage', imputationClass: 'unmonitored', sources: ['World Bank'] },
+        ],
+      }),
+      /MO coverage story has stale source-gap claims: informationCognitive: sources \["Different provider"\] \(expected \["Reporters Without Borders"\]\)/,
     );
   });
 

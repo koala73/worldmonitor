@@ -1,10 +1,10 @@
 const MICROSTATE_COVERAGE_STORIES = Object.freeze({
   TV: {
-    requiredGapDimensionIds: [
-      'externalDebtCoverage',
-      'liquidReserveAdequacy',
-      'importConcentration',
-      'informationCognitive',
+    requiredGaps: [
+      { id: 'externalDebtCoverage', imputationClass: 'unmonitored', sources: ['World Bank'] },
+      { id: 'liquidReserveAdequacy', imputationClass: 'unmonitored', sources: ['World Bank'] },
+      { id: 'importConcentration', imputationClass: 'unmonitored', sources: ['UN Comtrade'] },
+      { id: 'informationCognitive', imputationClass: '', sources: ['Reporters Without Borders'] },
     ],
     build: (facts) => ({
       introduction: `Tuvalu enters the rankable universe as a UN member, but this edition starts from its available Pacific evidence instead of estimating a national result. The observed record reaches ${facts.coverage} coverage and remains below the publication gate.`,
@@ -33,10 +33,10 @@ const MICROSTATE_COVERAGE_STORIES = Object.freeze({
     }),
   },
   MO: {
-    requiredGapDimensionIds: [
-      'healthPublicService',
-      'informationCognitive',
-      'externalDebtCoverage',
+    requiredGaps: [
+      { id: 'healthPublicService', imputationClass: '', sources: ['WHO'] },
+      { id: 'informationCognitive', imputationClass: '', sources: ['Reporters Without Borders'] },
+      { id: 'externalDebtCoverage', imputationClass: 'unmonitored', sources: ['World Bank'] },
     ],
     build: (facts) => ({
       introduction: `World Monitor records Macau separately in the rankable universe. Its trade, digital, fiscal, and continuity inputs form a distinct partial profile, while several providers do not expose the SAR as the same standalone unit.`,
@@ -65,11 +65,11 @@ const MICROSTATE_COVERAGE_STORIES = Object.freeze({
     }),
   },
   SM: {
-    requiredGapDimensionIds: [
-      'importConcentration',
-      'socialCohesion',
-      'informationCognitive',
-      'externalDebtCoverage',
+    requiredGaps: [
+      { id: 'importConcentration', imputationClass: 'unmonitored', sources: ['UN Comtrade'] },
+      { id: 'socialCohesion', imputationClass: 'source-failure', sources: ['IEP', 'UNHCR', 'UCDP'] },
+      { id: 'informationCognitive', imputationClass: '', sources: ['Reporters Without Borders'] },
+      { id: 'externalDebtCoverage', imputationClass: 'unmonitored', sources: ['World Bank'] },
     ],
     build: (facts) => ({
       introduction: `San Marino has many observed European inputs, yet four dimension gaps leave a narrow but material break in this edition. The page therefore shows the measurements that exist and withholds the aggregate.`,
@@ -99,15 +99,41 @@ const MICROSTATE_COVERAGE_STORIES = Object.freeze({
   },
 });
 
+function sameSourceFamilies(actual, expected) {
+  const normalize = (values) => [...new Set(values || [])].sort();
+  return JSON.stringify(normalize(actual)) === JSON.stringify(normalize(expected));
+}
+
 export function buildMicrostateCoverageStoryContent(facts) {
   const story = MICROSTATE_COVERAGE_STORIES[facts.code];
   if (!story) return null;
-  const currentGaps = new Set(facts.gapDimensionIds);
-  const staleClaims = story.requiredGapDimensionIds.filter((id) => !currentGaps.has(id));
-  if (staleClaims.length > 0) {
+  if (!(facts.coveragePercent < facts.coverageFloor)) {
     throw new Error(
-      `${facts.code} coverage story cites dimensions that are no longer coverage gaps: ${staleClaims.join(', ')}`,
+      `${facts.code} coverage story requires displayed coverage below the ${facts.coverageFloor}% publication floor`,
     );
+  }
+
+  const currentGaps = new Map(facts.gaps.map((gap) => [gap.id, gap]));
+  const missingGaps = story.requiredGaps.filter(({ id }) => !currentGaps.has(id));
+  if (missingGaps.length > 0) {
+    throw new Error(
+      `${facts.code} coverage story cites dimensions that are no longer coverage gaps: ${missingGaps.map(({ id }) => id).join(', ')}`,
+    );
+  }
+
+  const staleGapStates = story.requiredGaps.flatMap((expected) => {
+    const actual = currentGaps.get(expected.id);
+    const mismatches = [];
+    if (actual.imputationClass !== expected.imputationClass) {
+      mismatches.push(`imputation class ${JSON.stringify(actual.imputationClass)} (expected ${JSON.stringify(expected.imputationClass)})`);
+    }
+    if (!sameSourceFamilies(actual.sources, expected.sources)) {
+      mismatches.push(`sources ${JSON.stringify(actual.sources)} (expected ${JSON.stringify(expected.sources)})`);
+    }
+    return mismatches.length > 0 ? [`${expected.id}: ${mismatches.join('; ')}`] : [];
+  });
+  if (staleGapStates.length > 0) {
+    throw new Error(`${facts.code} coverage story has stale source-gap claims: ${staleGapStates.join(', ')}`);
   }
   return story.build(facts);
 }

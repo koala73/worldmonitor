@@ -2345,21 +2345,27 @@ export function describeMicrostateEvidenceSummary(country) {
 
 function microstateCoverageStoryFacts(country) {
   const profile = buildMicrostateEvidenceProfile(country);
+  const coveragePercent = Math.round(Number(country.dimensionCoverage) * 100);
+  const coverageFloor = Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100);
   const readings = profile.supportedDimensions
     .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score)} (${formatPercent(dimension.coverage)})`);
   const highlightedDimensions = profile.supportedDimensions
     .slice(-3)
     .map(dimensionLabel);
-  const shortfallPoints = Math.max(
-    0,
-    Math.round((HEADLINE_RANKING_MIN_COVERAGE - Number(country.dimensionCoverage)) * 100),
-  );
+  const shortfallPoints = coverageFloor - coveragePercent;
   return {
     code: country.code,
     coverage: formatPercent(country.dimensionCoverage),
-    coverageFloor: Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100),
+    coverageFloor,
+    coveragePercent,
     crisisRegistrySize: country.crisisRegistrySize,
-    gapDimensionIds: activeCountryDimensions(country).filter(isCoverageGap).map(({ id }) => id),
+    gaps: activeCountryDimensions(country)
+      .filter(isCoverageGap)
+      .map((dimension) => ({
+        id: dimension.id,
+        imputationClass: String(dimension.imputationClass || ''),
+        sources: dimensionSources(dimension),
+      })),
     imputationShare: formatPercent(country.imputationShare),
     readingCount: readings.length,
     readings: readings.join('; '),
