@@ -12,7 +12,7 @@
  * - x-default points at the English URL
  */
 
-import { WEBSITE_ID } from './schema-graph-ids';
+import { ORGANIZATION_ID, WEBSITE_ID } from './schema-graph-ids';
 
 export const DOCS_PUBLIC_ORIGIN = 'https://www.worldmonitor.app';
 export const DOCS_ZH_HREFLANG = 'zh-Hans';
@@ -259,7 +259,7 @@ function pruneWebSites(value: unknown): unknown | null {
 function rewriteDocsJsonLdValue(value: unknown): unknown | null {
   const pruned = pruneWebSites(rewriteDocsWebsiteIds(value));
   if (pruned === null) return null;
-  return withDocsSpeakable(pruned);
+  return withDocsArticleAuthor(withDocsSpeakable(pruned));
 }
 
 const DEFAULT_DOCS_SPEAKABLE = Object.freeze({
@@ -277,6 +277,39 @@ function withDocsSpeakable(value: unknown): unknown {
   }
   if (hasJsonLdType(next, 'WebPage') && next.speakable == null) {
     next.speakable = DEFAULT_DOCS_SPEAKABLE;
+  }
+  return next;
+}
+
+/**
+ * Mintlify emits the docs page node as `["Article","TechArticle"]` carrying
+ * `dateModified` and `publisher` but no `author`. Google requires `author` on
+ * Article, so the docs — the site's deepest expertise asset — were
+ * rich-result ineligible (#7530).
+ *
+ * The docs are product documentation with no per-page byline, so the canonical
+ * Organization is the author. That matches how the research reports attribute
+ * themselves (scripts/build-research-reports.mjs) and folds into the same
+ * entity graph the WebSite retarget above joins.
+ *
+ * `datePublished` is deliberately NOT synthesised. No per-page publication date
+ * exists anywhere: docs/*.mdx frontmatter carries only title and description,
+ * docs.json has no dates, and a git first-commit date is a build-time lookup
+ * unreachable from routing middleware. Copying `dateModified` into it would
+ * assert a publication date we do not know, which is worse than omitting a
+ * recommended (not required) property.
+ */
+function withDocsArticleAuthor(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(withDocsArticleAuthor);
+  if (!value || typeof value !== 'object') return value;
+  const node = value as Record<string, unknown>;
+  const next: Record<string, unknown> = {};
+  for (const [key, nested] of Object.entries(node)) {
+    next[key] = withDocsArticleAuthor(nested);
+  }
+  const isArticle = hasJsonLdType(next, 'Article') || hasJsonLdType(next, 'TechArticle');
+  if (isArticle && next.author == null) {
+    next.author = { '@id': ORGANIZATION_ID };
   }
   return next;
 }

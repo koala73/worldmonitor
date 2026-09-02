@@ -195,6 +195,57 @@ describe('docs entity-graph rewrite (#7459d)', () => {
       cssSelector: ['h1'],
     });
   });
+
+  // Mintlify emits the docs page node as ["Article","TechArticle"] with
+  // dateModified and publisher but no author, which Google requires — the docs
+  // were rich-result ineligible (#7530). Use the real upstream shape.
+  const articleSeed = `<!DOCTYPE html><html lang="en"><head>
+<script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":["Article","TechArticle"],"@id":"https://www.worldmonitor.app/docs/about#article","headline":"About World Monitor","dateModified":"2026-08-30T00:00:00Z","publisher":{"@id":"https://www.worldmonitor.app/#organization"}}]}</script>
+</head><body></body></html>`;
+
+  it('attributes the docs Article to the canonical Organization', () => {
+    const graph = jsonLdBlocks(rewriteDocsLocaleHtml(articleSeed, '/docs/about'))
+      .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    const article = graph.find((node) => Array.isArray(node['@type']));
+    assert.ok(article, 'the Article node must survive the rewrite');
+    assert.deepEqual(article.author, { '@id': 'https://www.worldmonitor.app/#organization' });
+    assert.deepEqual(article.publisher, { '@id': 'https://www.worldmonitor.app/#organization' });
+    assert.equal(article.dateModified, '2026-08-30T00:00:00Z');
+    // Not synthesised: no per-page publication date exists in frontmatter,
+    // docs.json, or any manifest, and copying dateModified into it would
+    // assert a date we do not know.
+    assert.equal(article.datePublished, undefined);
+  });
+
+  it('attributes a singular TechArticle and never overwrites an existing author', () => {
+    const singular = articleSeed.replace('["Article","TechArticle"]', '"TechArticle"');
+    const graph = jsonLdBlocks(rewriteDocsLocaleHtml(singular, '/docs/about'))
+      .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    assert.deepEqual(
+      graph.find((node) => node['@type'] === 'TechArticle')?.author,
+      { '@id': 'https://www.worldmonitor.app/#organization' },
+    );
+
+    const byline = articleSeed.replace(
+      '"publisher"',
+      '"author":{"@type":"Person","name":"A Named Author"},"publisher"',
+    );
+    const bylineGraph = jsonLdBlocks(rewriteDocsLocaleHtml(byline, '/docs/about'))
+      .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    assert.deepEqual(
+      bylineGraph.find((node) => Array.isArray(node['@type']))?.author,
+      { '@type': 'Person', name: 'A Named Author' },
+      'an upstream byline must win over the Organization fallback',
+    );
+  });
+
+  it('does not attribute a non-Article node', () => {
+    const graph = jsonLdBlocks(rewriteDocsLocaleHtml(mintlifySeed, '/docs/getting-started'))
+      .find((block) => Array.isArray(block['@graph']))?.['@graph'] as Record<string, unknown>[];
+    for (const node of graph) {
+      assert.equal(node.author, undefined, `${String(node['@type'])} must not gain an author`);
+    }
+  });
 });
 
 // Mintlify's HTML is third-party output we do not control, so the rewrite must
