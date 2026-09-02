@@ -194,7 +194,8 @@ export class SupplyChainPanel extends Panel {
       : this.mineralProductionData?.commodities?.length
         ? this.mineralProductionData
         : this.mineralsData;
-    const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
+    const unavailableBanner = activeData?.upstreamUnavailable
+      && (this.activeTab === 'chokepoints' || !activeHasData)
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
 

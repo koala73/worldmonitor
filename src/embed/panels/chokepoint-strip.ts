@@ -72,6 +72,13 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
   heading.textContent = t('components.chokepointStrip.title');
   wrap.appendChild(heading);
 
+  if (data.upstreamUnavailable) {
+    const warning = document.createElement('div');
+    warning.className = 'wm-embed-cp-warning';
+    warning.textContent = t('components.supplyChain.upstreamUnavailable');
+    wrap.appendChild(warning);
+  }
+
   const strip = document.createElement('div');
   strip.className = 'wm-embed-cp-strip';
   for (const cp of ordered) {

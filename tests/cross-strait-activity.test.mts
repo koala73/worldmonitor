@@ -17,6 +17,7 @@ import {
   MND_MAX_REVISION_VINTAGES_PER_DAY,
   MND_OUTBOUND_BUDGET_MS,
   MND_REFRESH_DETAIL_REQUESTS_PER_RUN,
+  MND_REQUIRED_REPORTING_DAYS,
   MND_RETENTION_REPORTING_DAYS,
   REVIEWED_JAPAN_MOD_OBSERVATIONS,
   buildCrossStraitActivitySnapshot,
@@ -198,6 +199,18 @@ describe('quantified cross-Strait activity (#5575)', () => {
         sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87086',
       },
     ]);
+    assert.deepEqual(parseTaiwanMndList(`
+      <div class="date headline-h5 h5">2026.09.03</div>
+      <a href="/en/news/plaactlist/2">
+        <div class="date headline-h5 h5">2026.09.03</div>
+      </a>
+      <a href="/en/News/PLAAct/99999">
+        <h5 class="date headline-h5 h5">2026.09.02</h5>
+      </a>
+    `), [{
+      publicationDay: '2026-09-02',
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/99999',
+    }]);
 
     const observation = parseTaiwanMndDetail(fixture('mnd-detail.html'), {
       sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
@@ -2531,6 +2544,42 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.deepEqual(secondJapan?.candidates, firstJapan?.candidates);
     assert.equal(secondJapan?.unreviewedCandidateCount, firstJapan?.unreviewedCandidateCount);
     assert.deepEqual(secondJapan?.shadowIndexProbe, firstJapan?.shadowIndexProbe);
+  });
+
+  it('reports a successful empty MND list response and retains last-good observations', async () => {
+    const retained = Array.from(
+      { length: MND_REQUIRED_REPORTING_DAYS },
+      (_, index) => mndObservationForDay(index + 1),
+    );
+    const previousSnapshot = buildCrossStraitActivitySnapshot({
+      generatedAt: retrievedAt,
+      previousSnapshot: null,
+      mndOutcome: { ok: true, requestCount: 0, observations: retained },
+      japanOutcome: { ok: true, requestCount: 0, availableDocumentUrls: [] },
+    });
+    const mndRequests: string[] = [];
+    const snapshot = await fetchCrossStraitActivitySnapshot({
+      fetchFn: async (input: string | URL | Request) => {
+        const url = String(input);
+        if (url.includes('mod.go.jp')) return new Response(fixture('jmod-homepage.html'));
+        mndRequests.push(url);
+        return new Response('<html><body>no activity rows</body></html>');
+      },
+      now: Date.parse('2026-09-02T08:00:00.000Z'),
+      previousSnapshot,
+      sleepFn: async () => {},
+      proxyUrl: '',
+    });
+    const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
+
+    assert.equal(mnd?.transportStatus, 'error');
+    assert.ok(mnd?.errorCodes.includes('MND_LIST_ROWS_MISSING'));
+    assert.match(mndRequests[0] ?? '', /plaactlist/i);
+    assert.equal(mndRequests.length, 1 + MND_REFRESH_DETAIL_REQUESTS_PER_RUN);
+    assert.equal(
+      snapshot.observations.filter((row: { sourceId: string }) => row.sourceId === 'taiwan-mnd').length,
+      MND_REQUIRED_REPORTING_DAYS,
+    );
   });
 
   it('separates the three index-presence claims by whether the index covers the series', () => {

@@ -3,9 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { afterEach, beforeEach, describe, it } from 'node:test';
 
 import { listNavigationalWarnings } from '../server/worldmonitor/maritime/v1/list-navigational-warnings.ts';
-import { getChokepointStatus } from '../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts';
+import { CHOKEPOINTS, getChokepointStatus } from '../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts';
 
 const originalFetch = globalThis.fetch;
+const originalDateNow = Date.now;
 const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WS_RELAY_URL'] as const;
 const originalEnv = new Map<string, string | undefined>();
 
@@ -32,6 +33,22 @@ function redisHarness(externalFetch: (url: string) => Promise<Response>) {
   return { values, writes, fetchImpl };
 }
 
+function completeTransitSummaries() {
+  return Object.fromEntries(CHOKEPOINTS.map(({ id }) => [id, {
+    todayTotal: 4,
+    todayTanker: 1,
+    todayCargo: 2,
+    todayOther: 1,
+    wowChangePct: 0,
+    riskLevel: '',
+    incidentCount7d: 0,
+    disruptionPct: 0,
+    riskSummary: '',
+    riskReportAction: '',
+    dataAvailable: true,
+  }]));
+}
+
 beforeEach(() => {
   for (const key of ENV_KEYS) originalEnv.set(key, process.env[key]);
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
@@ -41,6 +58,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  Date.now = originalDateNow;
   for (const key of ENV_KEYS) {
     const value = originalEnv.get(key);
     if (value === undefined) delete process.env[key];
@@ -144,6 +162,7 @@ describe('chokepoint source availability', () => {
   });
 
   it('keeps AIS rows and advisories when NGA and transit data are unavailable', async () => {
+    Date.now = () => Date.parse('2026-09-02T00:00:00.000Z');
     const harness = redisHarness(async (url) => {
       if (url.includes('msi.nga.mil')) return new Response('unavailable', { status: 503 });
       if (url.startsWith('https://relay.test/ais/snapshot')) {
@@ -178,10 +197,93 @@ describe('chokepoint source availability', () => {
     assert.equal(hormuz?.aisDisruptions, 1);
     assert.equal(hormuz?.congestionLevel, 'high');
     assert.match(hormuz?.description || '', /Active conflict/);
+    const quietRow = response.chokepoints.find((row) => row.description.includes('source coverage incomplete'));
+    assert.ok(quietRow, 'quiet rows must qualify the all-clear when any source is unavailable');
+    assert.doesNotMatch(quietRow.description, /^No active disruptions$/);
+    assert.match(quietRow.description, /Threat baseline last reviewed/);
+
+    const cachedResponse = await getChokepointStatus({} as never, {});
+    assert.equal(cachedResponse.chokepoints.length, 13, 'partial rows must survive the outer cache');
+    assert.equal(cachedResponse.upstreamUnavailable, true);
+    assert.equal(cachedResponse.chokepoints.find((row) => row.id === 'hormuz_strait')?.aisDisruptions, 1);
 
     await new Promise<void>((resolve) => setImmediate(resolve));
     const meta = JSON.parse(harness.values.get('seed-meta:supply_chain:chokepoints') || '{}');
     assert.equal(meta.recordCount, 0);
     assert.equal(meta.uncoveredChokepoints?.length, 13);
+  });
+
+  it('reports global source outages as incomplete health coverage', async () => {
+    const harness = redisHarness(async (url) => {
+      if (url.includes('msi.nga.mil')) return new Response('unavailable', { status: 503 });
+      if (url.startsWith('https://relay.test/ais/snapshot')) {
+        return Response.json({
+          density: [],
+          disruptions: [],
+          snapshotAt: Date.now(),
+          status: { connected: true, vessels: 10, messages: 20 },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    harness.values.set('supply_chain:transit-summaries:v1', JSON.stringify({
+      summaries: completeTransitSummaries(),
+    }));
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+
+    const response = await getChokepointStatus({} as never, {});
+
+    assert.equal(response.chokepoints.length, 13);
+    assert.equal(response.upstreamUnavailable, true);
+    assert.ok(response.chokepoints.every((row) => row.transitSummary?.dataAvailable === true));
+    assert.ok(response.chokepoints.every((row) => row.navigationalWarningsAvailable === false));
+    assert.ok(response.chokepoints.every((row) => row.aisSnapshotAvailable === true));
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const meta = JSON.parse(harness.values.get('seed-meta:supply_chain:chokepoints') || '{}');
+    assert.equal(meta.recordCount, 0, 'health must count rows with complete source coverage');
+    assert.equal(meta.uncoveredChokepoints?.length, 13);
+  });
+
+  it('qualifies quiet rows that are missing from a partial transit payload', async () => {
+    Date.now = () => Date.parse('2026-03-05T00:00:00.000Z');
+    const harness = redisHarness(async (url) => {
+      if (url.includes('msi.nga.mil')) return Response.json([]);
+      if (url.startsWith('https://relay.test/ais/snapshot')) {
+        return Response.json({
+          density: [],
+          disruptions: [],
+          snapshotAt: Date.now(),
+          status: { connected: true, vessels: 10, messages: 20 },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    harness.values.set('supply_chain:transit-summaries:v1', JSON.stringify({
+      summaries: {
+        malacca_strait: {
+          todayTotal: 4,
+          todayTanker: 1,
+          todayCargo: 2,
+          todayOther: 1,
+          wowChangePct: 0,
+          riskLevel: '',
+          incidentCount7d: 0,
+          disruptionPct: 0,
+          riskSummary: '',
+          riskReportAction: '',
+          dataAvailable: true,
+        },
+      },
+    }));
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+
+    const response = await getChokepointStatus({} as never, {});
+
+    assert.equal(response.chokepoints.find((row) => row.id === 'malacca_strait')?.description, 'No active disruptions');
+    assert.match(
+      response.chokepoints.find((row) => row.id === 'panama')?.description || '',
+      /source coverage incomplete/,
+    );
   });
 });

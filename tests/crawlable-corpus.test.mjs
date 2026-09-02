@@ -23,8 +23,10 @@ import {
   describeHeadlineIneligibilityReason,
   GENERATED_DIRS,
   gitFileLastmod,
+  hasObservedValue,
   laterDate,
   loadCorpusData,
+  renderCountryAnalysis,
   resolveChokepointObservation,
   resolveLatestLivePulseSnapshotPath,
   SOURCE_CATALOG_LASTMOD_PATHS,
@@ -919,6 +921,77 @@ describe('crawlable corpus generator', () => {
     assert.equal(datasetTemporalCoverage(''), undefined);
     assert.equal(datasetTemporalCoverage('2026-08-29T00:00:00Z'), undefined);
     assert.equal(datasetTemporalCoverage('schema-edit'), undefined);
+  });
+
+  it('uses one observed-value contract for every numeric page family', () => {
+    const cases = [
+      ['country zero coverage', 50, { coverage: 0 }, false],
+      ['country not-applicable zero', 0, { coverage: 1, evidenceState: 'not-applicable' }, false],
+      ['country fallback midpoint', 50, { coverage: 0.3, evidenceState: 'unmonitored' }, false],
+      ['country source failure score', 61, { coverage: 0.21, evidenceState: 'source-failure' }, false],
+      ['country stable-absence imputed score', 88, { coverage: 0.42, evidenceState: 'stable-absence' }, false],
+      ['country observed zero', 0, { coverage: 1 }, true],
+      ['chokepoint observed zero', '0', { coverage: true }, true],
+      ['crisis observed zero', 0, { coverage: true }, true],
+      ['tool observed score', 87, { coverage: true }, true],
+    ];
+
+    for (const [label, value, evidence, expected] of cases) {
+      assert.equal(hasObservedValue(value, evidence), expected, label);
+    }
+
+    // The predicate must reject the WHOLE imputation vocabulary, not an enumerated
+    // subset of it. proto/worldmonitor/resilience/v1/resilience.proto documents the
+    // four-class union; a class is set only when observedWeight === 0, so every
+    // non-empty class means "no observation" no matter what score accompanies it.
+    for (const evidenceState of ['stable-absence', 'unmonitored', 'source-failure', 'not-applicable']) {
+      assert.equal(
+        hasObservedValue(50, { coverage: 1, evidenceState }),
+        false,
+        `${evidenceState} is fully imputed and must never publish as a measured score`,
+      );
+    }
+    assert.equal(
+      hasObservedValue(50, { coverage: 1, evidenceState: 'some-future-class' }),
+      false,
+      'an unrecognised imputation class must fail closed, not publish',
+    );
+  });
+
+  it('never ranks a withheld pillar or domain as weakest or strongest', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const source = data.countries.find((entry) => Number.isInteger(entry.rank)
+      && (entry.pillars?.length ?? 0) >= 3
+      && (entry.domains?.length ?? 0) >= 6);
+    assert.ok(source, 'need a ranked country with full pillar and domain detail');
+
+    const render = (country) => renderCountryAnalysis({
+      country,
+      capturedAt: data.resilience.capturedAt,
+      methodologyFormula: 'test-formula',
+      rankedCount: 170,
+    });
+
+    // Baseline: with everything observed the published wording is unchanged.
+    const baseline = render(structuredClone(source));
+    assert.match(baseline.html, /is the weakest pillar at \d/);
+    assert.match(baseline.html, /Top domain: /);
+
+    // Now withhold the lowest-scoring pillar and blank out one whole domain.
+    const degraded = structuredClone(source);
+    const lowestPillar = [...degraded.pillars].sort((a, b) => a.score - b.score)[0];
+    lowestPillar.coverage = 0;
+    const lowestDomain = [...degraded.domains].sort((a, b) => a.score - b.score)[0];
+    for (const dimension of lowestDomain.dimensions) dimension.imputationClass = 'unmonitored';
+    const { html } = render(degraded);
+
+    // The whole point: no claim may name an entry whose score renders as a dash.
+    assert.doesNotMatch(html, /is the weakest pillar at —/, 'must not call a withheld pillar the weakest');
+    assert.doesNotMatch(html, /is strongest at —/, 'must not call a withheld pillar the strongest');
+    assert.doesNotMatch(html, /is the lowest of the six underlying domains at —/, 'must not call a withheld domain the lowest');
+    assert.doesNotMatch(html, /Top domain: [^.]*, —\./, 'must not report a withheld domain as the top domain');
+    // It still degrades to a statement, not silence.
+    assert.match(html, /Pillars with an observed reading, weakest first:/);
   });
 
   it('dates chokepoint observations without git history', () => {
@@ -1924,6 +1997,122 @@ describe('crawlable corpus generator', () => {
       assert.match(
         dprk,
         /<title>North Korea Instability Index &amp; Country Risk \| World Monitor<\/title>/,
+      );
+
+      // The expectation is derived from the snapshot, NOT from a copy of the
+      // generator's own withheld-state list -- an oracle that enumerates the same
+      // strings as the code under test cannot detect a missing class.
+      // A dimension carries an imputationClass only when observedWeight === 0.
+      const isObservedDimension = (dimension) => String(dimension.imputationClass || '') === ''
+        && Number(dimension.coverage) > 0
+        && Number.isFinite(Number(dimension.score));
+
+      let withheldDimensionRows = 0;
+      let observedZeroDimensionRows = 0;
+      let expectedWithheldTotal = 0;
+      let expectedObservedZeroTotal = 0;
+      for (const country of rankedCountries) {
+        const route = `/countries/${country.slug}/`;
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        const rows = [...document.querySelectorAll('[data-country-analysis] table tbody tr')];
+        const dimensions = (country.domains || []).flatMap((domain) => domain.dimensions || []);
+        expectedWithheldTotal += dimensions.filter((d) => !isObservedDimension(d)).length;
+        expectedObservedZeroTotal += dimensions
+          .filter((d) => isObservedDimension(d) && Number(d.score) === 0).length;
+
+        let reachedWithheldRows = false;
+        let previousObservedScore = Number.NEGATIVE_INFINITY;
+        let withheldOnThisPage = 0;
+        for (const row of rows) {
+          const cells = [...row.querySelectorAll('td')].map((cell) => cell.textContent.trim());
+          const [dimension, , score, , evidenceState] = cells;
+          if (score === '—') {
+            withheldDimensionRows++;
+            withheldOnThisPage++;
+            reachedWithheldRows = true;
+            assert.doesNotMatch(
+              evidenceState,
+              /^(?:Fresh|Stale)$/i,
+              `${route} must not label ${dimension} fresh or stale without coverage`,
+            );
+            assert.doesNotMatch(
+              html,
+              new RegExp(`\\blow ${dimension.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')} \\d`),
+              `${route} prose must not rank withheld dimension ${dimension}`,
+            );
+            continue;
+          }
+          assert.equal(reachedWithheldRows, false, `${route} must sort all observed dimensions before withheld rows`);
+          const numericScore = Number(score);
+          assert.ok(Number.isFinite(numericScore), `${route} observed dimension ${dimension} needs a numeric score`);
+          if (numericScore === 0) observedZeroDimensionRows++;
+          assert.ok(
+            numericScore >= previousObservedScore,
+            `${route} observed dimensions must remain sorted weakest first`,
+          );
+          previousObservedScore = numericScore;
+        }
+        assert.equal(
+          withheldOnThisPage,
+          dimensions.filter((d) => !isObservedDimension(d)).length,
+          `${route} must withhold exactly the dimensions the snapshot reports as unobserved`,
+        );
+      }
+      assert.ok(withheldDimensionRows > 0, 'the resilience snapshot must exercise withheld dimension rows');
+      assert.equal(
+        withheldDimensionRows,
+        expectedWithheldTotal,
+        'every unobserved dimension in the snapshot must render as withheld, and no observed one may',
+      );
+      // Positive control: genuine zeroes still publish. Selected from the snapshot so a
+      // refresh moves the subject instead of reddening the suite.
+      assert.ok(expectedObservedZeroTotal > 0, 'the snapshot must contain an observed dimension score of zero');
+      assert.equal(
+        observedZeroDimensionRows,
+        expectedObservedZeroTotal,
+        'an observed country dimension score of zero must remain publishable',
+      );
+
+      const zeroScoredChokepoint = corpusData.chokepoints
+        .find((chokepoint) => Number(corpusData.livePulse.chokepoints?.[chokepoint.id]?.disruptionScore) === 0);
+      assert.ok(zeroScoredChokepoint, 'the pulse must contain an observed chokepoint score of zero');
+      assert.match(
+        read(outDir, `chokepoints/${zeroScoredChokepoint.slug}/index.html`),
+        /data-chokepoint-score>0<\/span>/,
+        'an observed chokepoint score of zero must remain publishable',
+      );
+
+      const zeroCrisis = corpusData.crises
+        .map((crisis) => ({
+          crisis,
+          row: (corpusData.livePulse.crises?.[crisis.slug]?.rows || [])
+            .find((candidate) => Number(candidate.events) === 0 && Number(candidate.fatalities) === 0),
+        }))
+        .find((entry) => entry.row);
+      assert.ok(zeroCrisis, 'the pulse must contain observed crisis counts of zero');
+      const crisisDocument = htmlDocument(
+        read(outDir, `crises/${zeroCrisis.crisis.slug}/index.html`),
+        `https://www.worldmonitor.app/crises/${zeroCrisis.crisis.slug}/`,
+      );
+      // Scoped to the country's own element: an unanchored regex can slide past this
+      // row and match an identical sibling, which would hide over-withholding here.
+      const zeroCrisisValue = crisisDocument.querySelector(
+        `[data-crisis-country][data-country-code="${zeroCrisis.row.code}"] [data-crisis-country-value]`,
+      );
+      assert.ok(zeroCrisisValue, `${zeroCrisis.crisis.slug} must render a ${zeroCrisis.row.code} row`);
+      assert.match(
+        zeroCrisisValue.textContent.trim(),
+        /^0 events · 0 fatalities · \d{4}-\d{2}-\d{2}$/,
+        'observed crisis counts of zero must remain publishable',
+      );
+
+      const convergenceExample = corpusData.livePulse.signalConvergence?.referenceExamples?.[0];
+      assert.ok(convergenceExample, 'signal convergence must publish an example');
+      assert.match(
+        read(outDir, 'tools/signal-convergence/index.html'),
+        new RegExp(`<strong>${String(convergenceExample.score)}</strong>`),
+        'an observed tool score must remain publishable',
       );
 
       const taiwan = read(outDir, 'countries/taiwan/index.html');
@@ -3030,6 +3219,25 @@ describe('crawlable corpus generator', () => {
       assert.doesNotMatch(redSea, /Connecting…/);
       assert.doesNotMatch(redSea, /data-crisis-events>—/);
       assert.doesNotMatch(redSea, /data-crisis-period>Loading/);
+      // The pulse stores these as already-formatted display strings, so the withholding
+      // guard must not round-trip them through Number() and drop the separators.
+      for (const crisis of corpus.crises) {
+        const pulse = corpus.livePulse.crises?.[crisis.slug];
+        if (!pulse) continue;
+        const html = read(outDir, `crises/${crisis.slug}/index.html`);
+        for (const [key, attribute] of [
+          ['eventsTotal', 'data-crisis-events'],
+          ['fatalities', 'data-crisis-fatalities'],
+          ['politicalViolenceEvents', 'data-crisis-political'],
+        ]) {
+          if (pulse[key] == null) continue;
+          assert.match(
+            html,
+            new RegExp(`${attribute}>${String(pulse[key]).replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')}<`),
+            `${crisis.slug} must render ${key} exactly as the pulse formatted it`,
+          );
+        }
+      }
       assert.match(redSea, /<time data-live-updated datetime="20\d{2}-\d{2}-\d{2}T/);
       assert.match(redSea, /Maintained month snapshot/);
       assert.match(redSea, /data-crisis-period>20\d{2}-\d{2}-\d{2}/);
