@@ -1138,12 +1138,18 @@ export async function writeExtraKeyWithMeta(key, data, ttl, recordCount, metaKey
 // EXPIRE no-op from a successful extension and from a pipeline result that
 // could not be confirmed at all.
 //
-// `options.allowMissingKeys` is LOG-ONLY: it suppresses the "manual seed
-// required" warning for keys whose absence is expected (an optional marker that
-// has never been written), but `missingKeys` still lists them and `allExtended`
-// is still false. A caller that needs "absent is fine" must branch on
-// missingKeys — the boolean deliberately keeps its #5364 meaning, where a
-// no-op is a real data condition rather than a transient error.
+// `options.allowMissingKeys` names keys whose absence is EXPECTED (an optional
+// marker that has not been written yet). For those keys a confirmed EXPIRE
+// no-op stops being a failure: the "manual seed required" warning is suppressed
+// and `allExtended` forgives them. That second half is load-bearing --
+// `allExtended` gates runSeed's RETRY exit(1) and its preservationSucceeded
+// diagnostic, so treating an expected-absent marker as a preservation failure
+// would crash-loop a seeder over a key that is not supposed to exist yet.
+//
+// The #5364 contract is otherwise intact: a no-op on any key NOT in this list is
+// still a real data condition, an unconfirmed result is still a failure even for
+// a listed key, and `missingKeys` still reports every no-op for callers that
+// need per-key truth.
 export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, options = {}) {
   const requestedKeys = Array.isArray(keys) ? keys : [];
   const allowMissingKeys = new Set(
@@ -1212,7 +1218,16 @@ export async function extendExistingTtlDetailed(keys, ttlSeconds = 600, options 
     if (strictMissingKeys.length > 0) console.warn(`  WARNING: ${strictMissingKeys.length} key(s) were expired/missing — EXPIRE was a no-op; manual seed required`);
     if (unconfirmedKeys.length > 0) console.warn(`  WARNING: TTL extension result was unconfirmed for ${unconfirmedKeys.length} key(s)`);
     return {
-      allExtended: extendedKeys.length === requestedKeys.length,
+      // An allowed-missing key is EXCLUDED from this verdict, not just from the
+      // warning: `allExtended` gates runSeed's RETRY exit(1) and its
+      // preservationSucceeded diagnostic, so counting an expected-absent marker
+      // as a preservation failure would crash-loop a seeder over a key that is
+      // not supposed to exist yet. The second clause requires a CONFIRMED no-op
+      // -- an allowed-missing key whose EXPIRE result could not be read is still
+      // a failure, because "we could not tell" is not "expectedly absent".
+      allExtended: requestedKeys.every((key) => (
+        extendedKeys.includes(key) || (allowMissingKeys.has(key) && missingKeys.includes(key))
+      )),
       extendedKeys,
       missingKeys,
       unconfirmedKeys,
@@ -2711,7 +2726,10 @@ export async function runSeed(domain, resource, canonicalKey, fetchFn, opts = {}
               ek.ttl || ttlSeconds || 600,
               { allowMissingKeys: ek.allowMissingOnSkip ? [ek.key] : [] },
             );
-            if (preservation.allExtended) {
+            // Per-key truth, not allExtended: that verdict now forgives an
+            // allowed-missing key, so it would report a preserved TTL for a key
+            // that is simply absent.
+            if (preservation.extendedKeys.includes(ek.key)) {
               console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, extended TTL to preserve last-good`);
             } else if (ek.allowMissingOnSkip && preservation.missingKeys.includes(ek.key)) {
               console.log(`  [extraKey] ${ek.key} empty (recordCount=0) — skipped write, optional last-good key was absent`);
