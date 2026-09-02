@@ -148,10 +148,10 @@ function reserve({ argv, initial = {} }) {
 }
 
 /** Reserve `weight` units against `limit` with the counter pre-seeded to `used`. */
-const charge = (weight, limit, used = 0, floor) => reserve({
+const charge = (weight, limit, used, floor) => reserve({
   argv: [limit === null ? '' : limit, PRO_DAILY_QUOTA_TTL_SECONDS, weight],
   initial: {
-    ...(used === 0 ? {} : { [COUNTER_KEY]: used }),
+    ...(used ? { [COUNTER_KEY]: used } : {}),
     ...(floor === undefined ? {} : { [FLOOR_KEY]: floor }),
   },
 });
