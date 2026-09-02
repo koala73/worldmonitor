@@ -265,6 +265,19 @@ describe('PortWatch activity observation recovery', () => {
     );
   });
 
+  it('rejects impossible calendar dates as malformed observations', () => {
+    const parse = portwatchSeed.parseMaxDateObservation;
+
+    assert.deepEqual(
+      parse({ features: [{ attributes: { max_date: '2026-02-30' } }] }),
+      { status: 'failed', maxDate: null },
+    );
+    assert.deepEqual(
+      parse({ features: [{ attributes: { max_date: '2025-02-29' } }] }),
+      { status: 'failed', maxDate: null },
+    );
+  });
+
   it('retries an unverified empty country through the proxy path', async () => {
     const recover = portwatchSeed.fetchCountryActivityWithRecovery;
     assert.equal(typeof recover, 'function');
