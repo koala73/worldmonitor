@@ -38,7 +38,7 @@ function arcgisErrorInfo(err) {
 }
 ```
 
-The string it produces is later classified for retry by `refreshFailureCode`, whose rate-limit rung is a regex (`scripts/seed-portwatch-port-activity.mjs:1079`):
+The string it produces is later classified for retry by `refreshFailureCode`, whose rate-limit rung is a regex in `scripts/seed-portwatch-port-activity.mjs`:
 
 ```js
 if (/\b429\b|rate.?limit|too many requests/i.test(text)) return 'rate_limited';
