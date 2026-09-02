@@ -100,6 +100,29 @@ describe('chokepoint source availability', () => {
     assert.ok(harness.values.has('maritime:navwarnings:v2:all'));
   });
 
+  it('accepts the live NGA broadcast-warn response envelope', async () => {
+    const harness = redisHarness(async () => Response.json({
+      'broadcast-warn': [{
+        msgYear: 2026,
+        msgNumber: 321,
+        navArea: 'P',
+        subregion: '62',
+        text: 'PERSIAN GULF. STRAIT OF HORMUZ. NAVIGATIONAL HAZARD.',
+        issueDate: '021200Z SEP 2026',
+        authority: 'NGA NAVSAFETY',
+      }],
+    }));
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+
+    const response = await listNavigationalWarnings({} as never, { area: '', pageSize: 0, cursor: '' });
+
+    assert.equal(response.dataAvailable, true);
+    assert.equal(response.warnings.length, 1);
+    assert.equal(response.warnings[0]?.id, 'P-2026-321');
+    assert.equal(response.warnings[0]?.area, 'P 62');
+    assert.equal(response.warnings[0]?.text, 'PERSIAN GULF. STRAIT OF HORMUZ. NAVIGATIONAL HAZARD.');
+  });
+
   it('marks an NGA fetch failure unavailable', async () => {
     const harness = redisHarness(async () => new Response('unavailable', { status: 503 }));
     globalThis.fetch = harness.fetchImpl as typeof fetch;
