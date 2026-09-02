@@ -163,6 +163,20 @@ export function matchesRequiredPathSegments(url: string, segments: string[]): bo
   }
 }
 
+/**
+ * The full host + path policy a URL must pass before it reaches a paid
+ * provider call. Discovery results and configured item seeds both go through
+ * this one predicate so a later tightening cannot leave one of them looser.
+ * Stored pins deliberately skip the path filter (see discoverTargets).
+ */
+export function isUrlInPolicy(url: string, cfg: RetailerConfig['searchConfig'], hosts: readonly string[]): boolean {
+  return (
+    isAllowedHost(url, hosts) &&
+    matchesAnyPathFilter(url, normalizePathFilters(cfg?.urlPathContains)) &&
+    matchesRequiredPathSegments(url, cfg?.urlPathMustContain ?? [])
+  );
+}
+
 /** Build the exact Exa discovery request shared by production and diagnostics. */
 export function buildExaDiscoveryRequest(input: {
   searchConfig: RetailerConfig['searchConfig'];
@@ -255,6 +269,25 @@ interface SearchPayload {
   matchId?: string;
 }
 
+/**
+ * Shape discoverTargets stores in Target.metadata and fetchTarget reads back.
+ * Target.metadata is an open record, so both push sites `satisfies` this type
+ * and fetchTarget casts to it; a field added on one side but not the other is
+ * then a compile error instead of a silent undefined at runtime. `seedUrl` is
+ * a required key (possibly undefined) for exactly that reason.
+ */
+type SearchTargetMetadata = {
+  canonicalName: string;
+  domain: string;
+  basketSlug: string;
+  currency: string;
+  itemConstraints?: ItemConstraints;
+  direct: boolean;
+  seedUrl: string | undefined;
+  pinnedProductId?: string;
+  matchId?: string;
+};
+
 const REJECTION_FAILURES = new Set<ExtractionFailureReason>([
   'validator-rejected',
   'quantity-as-price',
@@ -314,7 +347,6 @@ export class SearchAdapter implements RetailerAdapter {
     const baskets = loadAllBasketConfigs().filter((b) => b.marketCode === ctx.config.marketCode);
     const domain = new URL(ctx.config.baseUrl).hostname;
     const allowedHosts = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
-    const pathFilters = normalizePathFilters(ctx.config.searchConfig?.urlPathContains);
     // Pins outlive config changes, so a pin stored while a looser policy was
     // live would keep being scraped directly and bypass discovery entirely.
     // The market scope has to apply here too, not just to discovered URLs.
@@ -326,13 +358,7 @@ export class SearchAdapter implements RetailerAdapter {
         const pinKey = `${basket.slug}:${item.canonicalName}`;
         const pinned = ctx.pinnedUrls?.get(pinKey);
         const seed = ctx.config.discovery.seeds.find((candidate) => candidate.id === item.id);
-        const seedUrl =
-          seed &&
-          isAllowedHost(seed.url, allowedHosts) &&
-          matchesAnyPathFilter(seed.url, pathFilters) &&
-          matchesRequiredPathSegments(seed.url, requiredSegments)
-            ? seed.url
-            : undefined;
+        const seedUrl = seed && isUrlInPolicy(seed.url, ctx.config.searchConfig, allowedHosts) ? seed.url : undefined;
         if (seed && !seedUrl) {
           ctx.logger.warn(`  [search:seed] ignored out-of-policy URL for "${item.canonicalName}": ${seed.url}`);
         }
@@ -363,7 +389,7 @@ export class SearchAdapter implements RetailerAdapter {
               seedUrl,
               pinnedProductId: pinned.productId,
               matchId: pinned.matchId,
-            },
+            } satisfies SearchTargetMetadata,
           });
         } else {
           if (pinned) {
@@ -384,7 +410,7 @@ export class SearchAdapter implements RetailerAdapter {
               itemConstraints,
               direct: false,
               seedUrl,
-            },
+            } satisfies SearchTargetMetadata,
           });
         }
       }
@@ -626,17 +652,8 @@ export class SearchAdapter implements RetailerAdapter {
   }
 
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
-    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, seedUrl, pinnedProductId, matchId } = target.metadata as {
-      canonicalName: string;
-      domain: string;
-      currency: string;
-      basketSlug: string;
-      itemConstraints?: ItemConstraints;
-      direct: boolean;
-      seedUrl?: string;
-      pinnedProductId?: string;
-      matchId?: string;
-    };
+    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, seedUrl, pinnedProductId, matchId } =
+      target.metadata as SearchTargetMetadata;
     const hostAllowlist = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
     const failures: ExtractionFailure[] = [];
     const attemptedUrls = new Set<string>();
@@ -687,19 +704,29 @@ export class SearchAdapter implements RetailerAdapter {
       }
     }
 
+    // Seed rung: a configured product page tried before paid discovery. Like
+    // the pin rung it is opportunistic, so a throw here (an off-contract
+    // extractor payload escaping _extractFromUrl's provider try/catch) must
+    // degrade into a recorded failure, not abort the target before discovery.
     if (seedUrl && !attemptedUrls.has(seedUrl)) {
       attemptedUrls.add(seedUrl);
-      const attempt = await this._extractFromUrl(ctx, seedUrl, canonicalName, currency, itemConstraints);
-      failures.push(...attempt.failures);
-      if (attempt.result) {
-        ctx.logger.info(
-          `  [search:seed] ${ctx.config.slug}/${canonicalName}: price=${attempt.result.extracted.price} ${attempt.result.extracted.currency} provider=${attempt.result.provider} from ${seedUrl}`,
+      try {
+        const attempt = await this._extractFromUrl(ctx, seedUrl, canonicalName, currency, itemConstraints);
+        failures.push(...attempt.failures);
+        if (attempt.result) {
+          ctx.logger.info(
+            `  [search:seed] ${ctx.config.slug}/${canonicalName}: price=${attempt.result.extracted.price} ${attempt.result.extracted.currency} provider=${attempt.result.provider} from ${seedUrl}`,
+          );
+          return buildFetchResult(seedUrl, attempt.result, false);
+        }
+        ctx.logger.warn(
+          `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa discovery`,
         );
-        return buildFetchResult(seedUrl, attempt.result, false);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        failures.push({ provider: 'firecrawl', reason: 'provider-error', detail });
+        ctx.logger.warn(`  [search:seed] ${ctx.config.slug}/${canonicalName}: seed fetch error, falling back to Exa discovery: ${err}`);
       }
-      ctx.logger.warn(
-        `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa discovery`,
-      );
     }
 
     // Half-open (#6182): while the skip window lasts, the target fails fast on
@@ -767,15 +794,7 @@ export class SearchAdapter implements RetailerAdapter {
     const pathFilters = normalizePathFilters(cfg?.urlPathContains);
     const requiredSegments = cfg?.urlPathMustContain ?? [];
     const filterInPolicy = (results: SearchResult[]) =>
-      results
-        .map((r) => r.url)
-        .filter(
-          (url) =>
-            !!url &&
-            isAllowedHost(url, hostAllowlist) &&
-            matchesAnyPathFilter(url, pathFilters) &&
-            matchesRequiredPathSegments(url, requiredSegments),
-        );
+      results.map((r) => r.url).filter((url) => !!url && isUrlInPolicy(url, cfg, hostAllowlist));
     let discoveredUrls = filterInPolicy(exaResults);
     let survivingUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
 

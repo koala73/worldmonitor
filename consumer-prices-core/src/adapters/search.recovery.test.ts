@@ -4,7 +4,7 @@ import type { ExaProvider } from '../acquisition/exa.js';
 import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import type { AdapterContext, Target } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
-import { loadRetailerConfig } from '../config/loader.js';
+import { loadBasketConfig, loadRetailerConfig } from '../config/loader.js';
 
 function makeConfig(overrides: Partial<RetailerConfig['searchConfig']> = {}): RetailerConfig {
   return {
@@ -1023,6 +1023,10 @@ describe('SearchAdapter recovery path', () => {
     const targets = await adapter.discoverTargets(context);
     const target = targets.find((candidate) => candidate.id === 'bread_white');
     expect(target).toBeDefined();
+    // The pin is still the primary target; the seed rides along as metadata.
+    expect(target?.metadata?.direct).toBe(true);
+    expect(target?.url).toBe(stalePinUrl);
+    expect(target?.metadata?.seedUrl).toBe(seedUrl);
 
     const result = await adapter.fetchTarget(context, target!);
     const [product] = await adapter.parseListing(context, result);
@@ -1031,7 +1035,56 @@ describe('SearchAdapter recovery path', () => {
     expect(product?.price).toBe(11.49);
     expect(product?.rawPayload.direct).toBe(false);
     expect(exa.search).not.toHaveBeenCalled();
-    expect(exa.extract).toHaveBeenCalledWith(seedUrl, expect.any(Object), expect.any(Object));
+    // Pin first, then seed: Firecrawl leads each rung and Exa is the configured fallback.
+    expect(firecrawl.extract).toHaveBeenCalledTimes(2);
+    expect(exa.extract).toHaveBeenNthCalledWith(1, stalePinUrl, expect.any(Object), expect.any(Object));
+    expect(exa.extract).toHaveBeenNthCalledWith(2, seedUrl, expect.any(Object), expect.any(Object));
+  });
+
+  it('does not extract the seed twice when the stale pin already points at it', async () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
+    const discoveredUrl = 'https://www.paodeacucar.com/produto/202020/pao-de-forma-branco-500g';
+    config.discovery.seeds = [{ id: 'bread_white', url: seedUrl, category: 'bread' }];
+    const exaSearch = vi.fn().mockResolvedValue([{ url: discoveredUrl }]);
+    const exaExtract = vi.fn().mockImplementation(async (url: string) =>
+      url === discoveredUrl
+        ? {
+            data: {
+              productName: 'Pão de Forma Branco Pacote 500g',
+              price: 10.99,
+              currency: 'BRL',
+              inStock: true,
+              sizeText: '500g',
+            },
+            pageContent: 'Pão de Forma Branco Pacote 500g\nR$ 10,99',
+          }
+        : { data: {}, pageContent: 'Produto sem preço' },
+    );
+    const firecrawlExtract = vi.fn().mockResolvedValue({ data: {}, pageContent: 'Por favor, confirme seu acesso' });
+    const adapter = new SearchAdapter(
+      { search: exaSearch, extract: exaExtract } as unknown as ExaProvider,
+      { extract: firecrawlExtract } as unknown as FirecrawlProvider,
+    );
+    const context = {
+      ...makeContext(config),
+      pinnedUrls: new Map([
+        ['essentials-br:Pão de Forma Branco 500g', { sourceUrl: seedUrl, productId: 'seed-product', matchId: 'seed-match' }],
+      ]),
+    } as AdapterContext;
+    const target = (await adapter.discoverTargets(context)).find((candidate) => candidate.id === 'bread_white');
+    expect(target?.metadata?.direct).toBe(true);
+    expect(target?.url).toBe(seedUrl);
+
+    const result = await adapter.fetchTarget(context, target!);
+    const [product] = await adapter.parseListing(context, result);
+
+    expect(product?.sourceUrl).toBe(discoveredUrl);
+    expect(product?.rawPayload.direct).toBe(false);
+    const callsFor = (fn: ReturnType<typeof vi.fn>, url: string) => fn.mock.calls.filter(([calledUrl]) => calledUrl === url).length;
+    expect(callsFor(firecrawlExtract, seedUrl)).toBe(1);
+    expect(callsFor(exaExtract, seedUrl)).toBe(1);
+    expect(exaSearch).toHaveBeenCalledOnce();
   });
 
   it.each([
@@ -1049,6 +1102,84 @@ describe('SearchAdapter recovery path', () => {
     expect(target?.url).toBe(config.baseUrl);
     expect(target?.metadata?.seedUrl).toBeUndefined();
     expect(context.logger.warn).toHaveBeenCalledWith(expect.stringContaining('ignored out-of-policy URL'));
+  });
+
+  // Pão declares no urlPathMustContain, so the market-scope leg of the seed
+  // gate is vacuous in every Pão case. noon_sa is the retailer that needs it.
+  it('ignores an item seed on another storefront of a multi-market host', async () => {
+    const config = loadRetailerConfig('noon_sa');
+    config.discovery.seeds = [{ id: 'eggs_12', url: 'https://minutes.noon.com/uae-en/now-product/eggs-1', category: 'eggs' }];
+    const context = makeContext(config);
+    const adapter = new SearchAdapter({} as unknown as ExaProvider, {} as unknown as FirecrawlProvider);
+
+    const targets = await adapter.discoverTargets(context);
+    const target = targets.find((candidate) => candidate.id === 'eggs_12');
+
+    expect(target).toBeDefined();
+    expect(target?.url).toBe(config.baseUrl);
+    expect(target?.metadata?.seedUrl).toBeUndefined();
+    expect(context.logger.warn).toHaveBeenCalledWith(expect.stringContaining('ignored out-of-policy URL'));
+  });
+
+  it('falls back to paid discovery when the seed extraction itself throws', async () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
+    const discoveredUrl = 'https://www.paodeacucar.com/produto/202020/pao-de-forma-branco-500g';
+    config.discovery.seeds = [{ id: 'bread_white', url: seedUrl, category: 'bread' }];
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: discoveredUrl }]),
+      extract: vi.fn().mockImplementation(async (url: string) =>
+        url === discoveredUrl
+          ? {
+              data: {
+                productName: 'Pão de Forma Branco Pacote 500g',
+                price: 10.99,
+                currency: 'BRL',
+                inStock: true,
+                sizeText: '500g',
+              },
+              pageContent: 'Pão de Forma Branco Pacote 500g\nR$ 10,99',
+            }
+          : // Off-contract payload: the provider cast does not validate field
+            // types, so a numeric productName reaches the title gate and throws
+            // out of _extractFromUrl after its provider try/catch.
+            { data: { productName: 144583, price: 9.9, currency: 'BRL', inStock: true } },
+      ),
+    } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Por favor, confirme seu acesso' }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(config);
+    const target = (await adapter.discoverTargets(context)).find((candidate) => candidate.id === 'bread_white');
+
+    const result = await adapter.fetchTarget(context, target!);
+    const [product] = await adapter.parseListing(context, result);
+
+    expect(product?.sourceUrl).toBe(discoveredUrl);
+    expect(product?.price).toBe(10.99);
+    expect(exa.search).toHaveBeenCalledOnce();
+    expect(context.logger.warn).toHaveBeenCalledWith(expect.stringContaining('seed fetch error'));
+  });
+
+  it('fails closed when discovery only re-ranks the seed page already attempted', async () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
+    config.discovery.seeds = [{ id: 'bread_white', url: seedUrl, category: 'bread' }];
+    const exaSearch = vi.fn().mockResolvedValue([{ url: seedUrl }]);
+    const exaExtract = vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto sem preço' });
+    const adapter = new SearchAdapter(
+      { search: exaSearch, extract: exaExtract } as unknown as ExaProvider,
+      { extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Por favor, confirme seu acesso' }) } as unknown as FirecrawlProvider,
+    );
+    const context = makeContext(config);
+    const target = (await adapter.discoverTargets(context)).find((candidate) => candidate.id === 'bread_white');
+
+    await expect(adapter.fetchTarget(context, target!)).rejects.toThrow(/repeated a URL already attempted/);
+    // The seed rung paid for the page once; discovery must not pay for it again.
+    expect(exaExtract).toHaveBeenCalledTimes(1);
+    expect(exaExtract).toHaveBeenCalledWith(seedUrl, expect.any(Object), expect.any(Object));
+    expect(exaSearch).toHaveBeenCalled();
   });
 
   it('falls back to paid discovery when an item seed has no price', async () => {
@@ -1088,7 +1219,7 @@ describe('SearchAdapter recovery path', () => {
     expect(exa.search).toHaveBeenCalledOnce();
   });
 
-  it('ships known Pão product pages for the qualifying basket items', () => {
+  it('ships known Pão product pages for the qualifying basket items', async () => {
     const config = loadRetailerConfig('pao_de_acucar_br');
     const seeds = new Map(config.discovery.seeds.map((seed) => [seed.id, seed.url]));
 
@@ -1098,5 +1229,21 @@ describe('SearchAdapter recovery path', () => {
     expect(seeds.get('water_1_5l')).toBe(
       'https://www.paodeacucar.com/produto/99466/agua-mineral-natural-sem-gas-crystal-garrafa-15l',
     );
+
+    // A seed binds by basket item id, and an id that matches nothing is
+    // silently ignored, so the shipped ids must resolve against the BR basket.
+    const basketItemIds = new Set(loadBasketConfig('essentials_br').items.map((item) => item.id));
+    for (const id of seeds.keys()) expect(basketItemIds).toContain(id);
+
+    // The shipped URLs must also pass the retailer's own host/path policy:
+    // discoverTargets attaches seedUrl only to a seed that survived it.
+    const context = makeContext(config);
+    const adapter = new SearchAdapter({} as unknown as ExaProvider, {} as unknown as FirecrawlProvider);
+    const targets = await adapter.discoverTargets(context);
+    for (const [id, url] of seeds) expect(targets.find((target) => target.id === id)?.metadata?.seedUrl).toBe(url);
+    for (const id of ['chicken_whole_1kg', 'onions_1kg']) {
+      expect(targets.find((target) => target.id === id)?.metadata?.seedUrl).toBeUndefined();
+    }
+    expect(context.logger.warn).not.toHaveBeenCalled();
   });
 });
