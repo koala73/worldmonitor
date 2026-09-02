@@ -76,6 +76,19 @@ describe('published resilience snapshot freshness', () => {
         norway.includes(`Source: ${data.sources.resilienceSnapshot}.`),
         'country page must identify the selected dated snapshot',
       );
+      // Coverage-story pages (Tuvalu, Macau, San Marino) swap the shared snapshot
+      // note for a country-specific reading guide (#7527) but keep the corrections
+      // link and the dated snapshot source line.
+      const tuvalu = readFileSync(join(outDir, 'countries', 'tuvalu', 'index.html'), 'utf8');
+      assert.ok(
+        !tuvalu.includes(data.resilience.snapshotNote),
+        'coverage-story pages omit the shared snapshot note by design',
+      );
+      assert.match(tuvalu, /href="\/docs\/corrections"/);
+      assert.ok(
+        tuvalu.includes(`Source: ${data.sources.resilienceSnapshot}.`),
+        'coverage-story pages must still identify the selected dated snapshot',
+      );
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }

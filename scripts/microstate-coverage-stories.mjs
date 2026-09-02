@@ -38,6 +38,8 @@ const MICROSTATE_COVERAGE_STORIES = Object.freeze({
       { id: 'informationCognitive', imputationClass: '', sources: ['Reporters Without Borders'] },
       { id: 'externalDebtCoverage', imputationClass: 'unmonitored', sources: ['World Bank'] },
     ],
+    // The introduction names trade, digital, fiscal and continuity inputs outright.
+    requiredObserved: ['tradePolicy', 'cyberDigital', 'macroFiscal', 'stateContinuity'],
     build: (facts) => ({
       introduction: `World Monitor records Macau separately in the rankable universe. Its trade, digital, fiscal, and continuity inputs form a distinct partial profile, while several providers do not expose the SAR as the same standalone unit.`,
       gap: `WHO and Reporters Without Borders do not contribute separate Macau observations to this snapshot. The World Bank external-debt slot is also unmonitored for Macau. As a special administrative region, Macau is a standalone reporting unit in some provider systems but is included in China series in others. The remaining inputs cover ${facts.coverage}, short of the ${facts.coverageFloor}% rank threshold.`,
@@ -104,6 +106,15 @@ function sameSourceFamilies(actual, expected) {
   return JSON.stringify(normalize(actual)) === JSON.stringify(normalize(expected));
 }
 
+/**
+ * Builds the hand-written coverage story for a microstate, or returns null when
+ * the country has no story. Throws, failing the corpus build, when the snapshot
+ * no longer matches the story's premise: displayed coverage has reached the
+ * publication floor, a cited gap is no longer a coverage gap, a cited gap changed
+ * imputation class or provider family, or a cited observed dimension lost its
+ * observed reading. Cited gaps are validated as a subset: an uncited new gap does
+ * not throw.
+ */
 export function buildMicrostateCoverageStoryContent(facts) {
   const story = MICROSTATE_COVERAGE_STORIES[facts.code];
   if (!story) return null;
@@ -134,6 +145,14 @@ export function buildMicrostateCoverageStoryContent(facts) {
   });
   if (staleGapStates.length > 0) {
     throw new Error(`${facts.code} coverage story has stale source-gap claims: ${staleGapStates.join(', ')}`);
+  }
+
+  const supportedIds = new Set(facts.supportedDimensionIds || []);
+  const missingObserved = (story.requiredObserved || []).filter((id) => !supportedIds.has(id));
+  if (missingObserved.length > 0) {
+    throw new Error(
+      `${facts.code} coverage story cites dimensions that no longer have observed readings: ${missingObserved.join(', ')}`,
+    );
   }
   return story.build(facts);
 }

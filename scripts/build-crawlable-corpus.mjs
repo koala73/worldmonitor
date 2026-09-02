@@ -2357,6 +2357,17 @@ function buildMicrostateEvidenceProfile(country) {
   };
 }
 
+function formatMicrostateReadings(profile) {
+  return profile.supportedDimensions
+    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score, dimensionScoreEvidence(dimension))} (${formatPercent(dimension.coverage)})`);
+}
+
+function highlightMicrostateDimensions(profile) {
+  return profile.supportedDimensions
+    .slice(-3)
+    .map(dimensionLabel);
+}
+
 function selectMicrostateSourceExamples(sources) {
   const preferred = ['World Bank', 'UCDP'].filter((source) => sources.includes(source));
   return [...new Set([
@@ -2372,8 +2383,7 @@ export function describeMicrostateEvidence(country) {
   if (profile.supportedDimensions.length === 0) {
     return `${country.name} is in the microstate and territory cohort, but this snapshot has no observed dimension reading that can support a country-specific evidence interpretation. No overall resilience score or country rank is published.`;
   }
-  const readings = profile.supportedDimensions
-    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score, dimensionScoreEvidence(dimension))} (${formatPercent(dimension.coverage)})`);
+  const readings = formatMicrostateReadings(profile);
   const readingClause = `${country.name} has ${readings.length} supported dimension readings with observed inputs: ${readings.join('; ')}. Scores use a 0-100 scale; percentages show coverage.`;
   const sourceExamples = selectMicrostateSourceExamples(profile.supportedSourceFamilies);
   const supportedSourceClause = sourceExamples.length > 0
@@ -2393,9 +2403,7 @@ export function describeMicrostateEvidenceSummary(country) {
   if (profile.supportedDimensions.length === 0) {
     return `${country.name} has no observed dimension reading that can support a country-specific evidence interpretation. No overall resilience score or country rank is published.`;
   }
-  const highlightedDimensions = profile.supportedDimensions
-    .slice(-3)
-    .map(dimensionLabel);
+  const highlightedDimensions = highlightMicrostateDimensions(profile);
   const sourceExamples = profile.supportedSourceFamilies.slice(-3);
   const feedClause = sourceExamples.length > 0
     ? ` Possible inputs for ${country.name} include ${formatProseList(sourceExamples)}.`
@@ -2407,11 +2415,8 @@ function microstateCoverageStoryFacts(country) {
   const profile = buildMicrostateEvidenceProfile(country);
   const coveragePercent = Math.round(Number(country.dimensionCoverage) * 100);
   const coverageFloor = Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100);
-  const readings = profile.supportedDimensions
-    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score, dimensionScoreEvidence(dimension))} (${formatPercent(dimension.coverage)})`);
-  const highlightedDimensions = profile.supportedDimensions
-    .slice(-3)
-    .map(dimensionLabel);
+  const readings = formatMicrostateReadings(profile);
+  const highlightedDimensions = highlightMicrostateDimensions(profile);
   const shortfallPoints = coverageFloor - coveragePercent;
   const gaps = activeCountryDimensions(country)
     .filter(isCoverageGap)
@@ -2433,6 +2438,7 @@ function microstateCoverageStoryFacts(country) {
     readings: readings.join('; '),
     highlightedDimensions: formatProseList(highlightedDimensions),
     sourceExamples: formatProseList(selectMicrostateSourceExamples(profile.supportedSourceFamilies)),
+    supportedDimensionIds: profile.supportedDimensions.map((dimension) => dimension.id),
     shortfall: `${shortfallPoints} ${shortfallPoints === 1 ? 'point' : 'points'}`,
   };
 }
@@ -2636,6 +2642,9 @@ ${inventoryItems}
         <h3>Questions about ${escapeHtml(country.name)}</h3>
 ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
+      // readingGuide and suppressScoreDisclosure make renderCountryPage swap the
+      // shared "How to read this page" block, its snapshot note and the
+      // score-disclosure paragraph for the country-specific reading guide (#7527).
       return {
         html,
         faqs,

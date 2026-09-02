@@ -970,20 +970,50 @@ describe('crawlable corpus generator', () => {
 
   it('derives the San Marino gap count while preserving cited-gap subset validation', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
-    const sanMarino = structuredClone(data.countries.find(({ code }) => code === 'SM'));
+    const baseline = data.countries.find(({ code }) => code === 'SM');
+    const buildStory = (country) => buildMicrostateCoverageStory({
+      country,
+      capturedAt: '2026-08-29',
+      methodologyFormula: 'World Monitor CRI v3',
+    });
+    const baselineGapCount = Number(
+      buildStory(structuredClone(baseline)).introduction.match(/yet (\d+) dimension gaps/)?.[1],
+    );
+    assert.ok(
+      Number.isInteger(baselineGapCount) && baselineGapCount > 0,
+      'San Marino story must report its current gap count',
+    );
+
+    const sanMarino = structuredClone(baseline);
     const healthDimension = sanMarino.domains
       .flatMap(({ dimensions }) => dimensions)
       .find(({ id }) => id === 'healthPublicService');
     assert.ok(healthDimension, 'San Marino must include the health dimension');
     healthDimension.coverage = 0;
 
-    const story = buildMicrostateCoverageStory({
-      country: sanMarino,
-      capturedAt: '2026-08-29',
-      methodologyFormula: 'World Monitor CRI v3',
-    });
+    assert.match(
+      buildStory(sanMarino).introduction,
+      new RegExp(`yet ${baselineGapCount + 1} dimension gaps`),
+    );
+  });
 
-    assert.match(story.introduction, /5 dimension gaps/);
+  it('rejects the Macau story when a cited observed dimension loses its reading', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const macau = structuredClone(data.countries.find(({ code }) => code === 'MO'));
+    const tradeDimension = macau.domains
+      .flatMap(({ dimensions }) => dimensions)
+      .find(({ id }) => id === 'tradePolicy');
+    assert.ok(tradeDimension, 'Macau must include the trade policy dimension');
+    tradeDimension.coverage = 0;
+
+    assert.throws(
+      () => buildMicrostateCoverageStory({
+        country: macau,
+        capturedAt: '2026-08-29',
+        methodologyFormula: 'World Monitor CRI v3',
+      }),
+      /MO coverage story cites dimensions that no longer have observed readings: tradePolicy/,
+    );
   });
 
   it('uses current crisis membership in a microstate coverage story', async () => {
@@ -1052,34 +1082,82 @@ describe('crawlable corpus generator', () => {
     }
   });
 
-  it('rejects a similarity floor page without a published rank and score', () => {
-    const corpusDir = mkdtempSync(join(tmpdir(), 'wm-microstate-floor-'));
+  it('fails the similarity audit when the microstate pages converge', () => {
+    const corpusDir = mkdtempSync(join(tmpdir(), 'wm-microstate-converge-'));
     try {
-      for (const slug of ['japan', 'germany']) {
+      const floorBodies = {
+        japan: 'Japan publishes a complete ranked resilience profile with observed inputs across every dimension. The island economy reports fiscal, trade, energy and health series through standard providers each month.',
+        germany: 'German federal statistics describe industrial output, border management and reserve adequacy in distinct vocabulary, so this ranked fixture shares almost no five-word phrases with its neighbour.',
+      };
+      for (const [slug, body] of Object.entries(floorBodies)) {
+        const countryDir = join(corpusDir, 'countries', slug);
+        mkdirSync(countryDir, { recursive: true });
+        writeFileSync(join(countryDir, 'index.html'), `<!doctype html><html><body><main>${body}</main></body></html>`);
+      }
+      writeRankedAuditSnapshot(corpusDir, { code: 'JP', slug: 'japan' });
+      writeRankedAuditSnapshot(corpusDir, { code: 'DE', slug: 'germany', rank: 2 });
+      const cohort = [
+        ['tuvalu', 'Tuvalu', 62],
+        ['macau', 'Macau', 61],
+        ['san-marino', 'San Marino', 64],
+      ];
+      for (const [slug, name, coverage] of cohort) {
         const countryDir = join(corpusDir, 'countries', slug);
         mkdirSync(countryDir, { recursive: true });
         writeFileSync(
           join(countryDir, 'index.html'),
-          `<!doctype html><html><body><main>${slug} has a complete ranked country page for the audit floor.</main></body></html>`,
+          `<!doctype html><html><body><main>${name} resilience evidence. ${name} reaches ${coverage}% coverage and stays below the publication floor. The snapshot lists observed readings for ${name} without an overall score.</main></body></html>`,
         );
       }
-      writeRankedAuditSnapshot(corpusDir, { code: 'JP', slug: 'japan' });
-      writeRankedAuditSnapshot(corpusDir, {
-        code: 'DE',
-        slug: 'germany',
-        rank: null,
-        overallScore: null,
-        headlineEligible: false,
-      });
 
-      assert.throws(
-        () => auditMicrostateCorpusSimilarity({ corpusDir }),
-        /\/countries\/germany\/ must be a headline-eligible ranked page with a published overall score/,
+      const result = auditMicrostateCorpusSimilarity({ corpusDir });
+      assert.ok(result.floor.jaccard < 0.1, `ranked floor fixture must stay dissimilar, got ${result.floor.jaccard}`);
+      assert.ok(
+        result.pairs.every((pair) => pair.jaccard > result.threshold),
+        'near-identical microstate pages must exceed the ranked-page floor threshold',
+      );
+      assert.ok(result.maskedSentenceSharing.share >= 0.4, 'templated pages must trip the masked-sentence limit');
+      assert.equal(
+        result.maskedSentenceSharing.sharedCount,
+        result.maskedSentenceSharing.sentenceCounts.TV,
+        'every masked Tuvalu sentence must count as shared when the pages are templated',
       );
     } finally {
       rmSync(corpusDir, { recursive: true, force: true });
     }
   });
+
+  const invalidFloorSnapshots = [
+    ['a mismatched country code', { code: 'FR' }],
+    ['headlineEligible false', { headlineEligible: false }],
+    ['a non-integer rank', { rank: 2.5 }],
+    ['a rank below 1', { rank: 0 }],
+    ['a non-finite overall score', { overallScore: null }],
+  ];
+  for (const [label, override] of invalidFloorSnapshots) {
+    it(`rejects a similarity floor page with ${label}`, () => {
+      const corpusDir = mkdtempSync(join(tmpdir(), 'wm-microstate-floor-'));
+      try {
+        for (const slug of ['japan', 'germany']) {
+          const countryDir = join(corpusDir, 'countries', slug);
+          mkdirSync(countryDir, { recursive: true });
+          writeFileSync(
+            join(countryDir, 'index.html'),
+            `<!doctype html><html><body><main>${slug} has a complete ranked country page for the audit floor.</main></body></html>`,
+          );
+        }
+        writeRankedAuditSnapshot(corpusDir, { code: 'JP', slug: 'japan' });
+        writeRankedAuditSnapshot(corpusDir, { code: 'DE', slug: 'germany', rank: 2, ...override });
+
+        assert.throws(
+          () => auditMicrostateCorpusSimilarity({ corpusDir }),
+          /\/countries\/germany\/ must be a headline-eligible ranked page with a published overall score/,
+        );
+      } finally {
+        rmSync(corpusDir, { recursive: true, force: true });
+      }
+    });
+  }
 
   it('requires the exact shared Tier-1 country set for CII publication', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
@@ -2526,6 +2604,16 @@ describe('crawlable corpus generator', () => {
           assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /Observed feeds/);
           assert.match(faqAnswer?.acceptedAnswer?.text || '', new RegExp(faqLabel));
           assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /overall score[^.]*\d|country rank[^.]*\d/i);
+          // Coverage-story pages replace the shared "How to read this page" block,
+          // including the score-disclosure paragraph and the snapshot comparability
+          // note, with a country-specific reading guide; issue #7527 named those
+          // shared frames as the duplication to remove. Pin the swap so restoring
+          // any of them is a deliberate change, re-measured against the gates below.
+          assert.match(html, /<h2>How to use this evidence<\/h2>/);
+          assert.doesNotMatch(html, /<h2>How to read this page<\/h2>/);
+          assert.doesNotMatch(html, /does not publish a resilience score for/);
+          assert.doesNotMatch(html, /class="snapshot-note"/);
+          assert.match(html, /href="\/docs\/corrections"/);
         }
         analysis.querySelectorAll('[data-country-faq]').forEach((node) => node.remove());
         unrankedArticles.push({
