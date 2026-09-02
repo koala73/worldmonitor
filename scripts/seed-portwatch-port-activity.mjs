@@ -216,6 +216,11 @@ const BATCH_BACKOFF_MS = 5_000;
 const BATCH_LOG_EVERY = 5;
 const RATE_LIMIT_RETRY_DELAY_MS = 2_000;
 const MAX_RATE_LIMIT_RETRIES = 1;
+// Backoff for the OTHER ArcGIS failure class (see
+// fetchWithRetryOnInvalidParams). Deliberately much shorter than the
+// rate-limit delay: it retries inside the per-country budget already
+// spent on direct+proxy, so it has ~10s of slack to work with.
+const INVALID_PARAMS_RETRY_DELAY_MS = 500;
 // Cache hygiene: force a full refetch if the cached payload is older than 7 days
 // even when upstream maxDate is unchanged. Protects against window-shift drift
 // (cached aggregates were computed against a window that's now 7+ days offset
@@ -487,7 +492,16 @@ async function _captureErrorBodyAfterTimeout(url, signal, fetchFn) {
 // change, server-side degradation) so we don't burn the container
 // budget on doomed retries.
 let _invalidParamsErrorCount = 0;
-async function fetchWithRetryOnInvalidParams(url, { signal, fetchFn } = {}) {
+
+// Test-only reset (mirrors _resetArcgisDateFieldCache). The counter is
+// module state with a run-scoped threshold, so a test that drives the
+// invalid-params branch would otherwise leak its count into every later
+// test in the same process and could trip the threshold.
+export function _resetInvalidParamsErrorCount() {
+  _invalidParamsErrorCount = 0;
+}
+
+async function fetchWithRetryOnInvalidParams(url, { signal, fetchFn, sleepFn = waitForRetry } = {}) {
   try {
     return await fetchWithTimeout(url, { signal, fetchFn });
   } catch (err) {
@@ -518,7 +532,7 @@ async function fetchWithRetryOnInvalidParams(url, { signal, fetchFn } = {}) {
     // cancelled. The counter still ticks (and trips the threshold for
     // global bail), so degradation visibility isn't lost.
     if (/via proxy after/i.test(msg)) throw err;
-    await new Promise((r) => setTimeout(r, 500));
+    await sleepFn(INVALID_PARAMS_RETRY_DELAY_MS, signal);
     if (signal?.aborted) throw signal.reason ?? err;
     console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);
     return await fetchWithTimeout(url, { signal, fetchFn });
@@ -554,6 +568,7 @@ export async function fetchAllPortRefs({
       (attemptSignal) => fetchWithRetryOnInvalidParams(url, {
         signal: attemptSignal,
         fetchFn,
+        sleepFn,
       }),
       { signal, sleepFn, label: `reference page ${page}` },
     );

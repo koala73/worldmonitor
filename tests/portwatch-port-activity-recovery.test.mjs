@@ -172,6 +172,57 @@ describe('PortWatch reference pagination recovery', () => {
     assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
     assert.equal(sleepCalls.length, 1);
   });
+
+  it('routes the invalid-params retry backoff through the injected sleep', async () => {
+    // The other ArcGIS failure class. Its 500ms backoff lives in
+    // fetchWithRetryOnInvalidParams rather than retryRateLimited, so it has
+    // to reach the same injected sleepFn -- otherwise this branch cannot be
+    // covered without paying real wall-clock on every run.
+    portwatchSeed._resetInvalidParamsErrorCount();
+
+    const requestedOffsets = [];
+    const sleepCalls = [];
+    let offsetOneAttempts = 0;
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+
+      if (offset === 0) {
+        return arcgisJson({
+          features: [{
+            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
+          }],
+          exceededTransferLimit: true,
+        });
+      }
+
+      offsetOneAttempts += 1;
+      if (offsetOneAttempts === 1) {
+        return arcgisJson({
+          error: { message: 'Cannot perform query. Invalid query parameters.' },
+        });
+      }
+      return arcgisJson({
+        features: [{
+          attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 },
+        }],
+        exceededTransferLimit: false,
+      });
+    };
+
+    const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
+      fetchFn,
+      sleepFn: async (...args) => {
+        sleepCalls.push(args);
+      },
+    });
+
+    assert.deepEqual(requestedOffsets, [0, 1, 1]);
+    assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
+    assert.deepEqual(sleepCalls.map(([ms]) => ms), [500]);
+
+    portwatchSeed._resetInvalidParamsErrorCount();
+  });
 });
 
 describe('PortWatch cold-fetch recovery rotation', () => {
