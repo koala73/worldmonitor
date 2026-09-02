@@ -525,6 +525,38 @@ describe('ensureInlineTypedInput (fixture)', () => {
     assert.equal(spec.paths['/has-path'].get.parameters[1].$ref, '#/components/parameters/JmespathParam');
     assert.equal(spec.paths['/has-body'].post.parameters[0].$ref, '#/components/parameters/IdempotencyKeyParam');
   });
+
+  it('inlines the smallest typed $ref, not JmespathParam, when both are present', () => {
+    const spec = {
+      openapi: '3.1.0',
+      paths: {
+        '/both': {
+          get: {
+            parameters: [
+              { $ref: '#/components/parameters/CursorParam' },
+              { $ref: '#/components/parameters/JmespathParam' },
+            ],
+          },
+        },
+      },
+      components: {
+        parameters: {
+          CursorParam: { name: 'cursor', in: 'query', schema: { type: 'string' } },
+          JmespathParam: {
+            name: 'jmespath',
+            in: 'query',
+            description: 'x'.repeat(200),
+            schema: { type: 'string' },
+          },
+        },
+      },
+    };
+
+    const stats = ensureInlineTypedInput(spec);
+    assert.equal(stats.inlined, 1);
+    assert.equal(spec.paths['/both'].get.parameters[0].name, 'cursor');
+    assert.equal(spec.paths['/both'].get.parameters[1].$ref, '#/components/parameters/JmespathParam');
+  });
 });
 
 describe('public OpenAPI dedupe (real bundle)', () => {

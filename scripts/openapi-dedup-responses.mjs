@@ -262,9 +262,16 @@ function requestBodyIsTyped(operation) {
  * look untyped and the spec scores as "partially documented".
  *
  * Keep the `$ref`s for operations that already have an inline typed parameter
- * (path params stay inline) or a typed requestBody, and copy the first
- * referenced Parameter Object back inline for the rest. Prefers `JmespathParam`
- * when present because that is the fleet-wide typed-input stamp on GETs.
+ * (path params stay inline) or a typed requestBody, and copy one referenced
+ * Parameter Object back inline for the rest.
+ *
+ * Prefer the smallest typed component, not `JmespathParam`. The jmespath stamp
+ * is 514 bytes because of its description; expanding it on every GET that
+ * already has a cheaper typed `$ref` (cursor, country, page_size) is what
+ * pushed the served artifact through the three-operation reserve. JSON-only
+ * scanners credit any inline typed schema, including a schema `$ref`, so the
+ * smaller proto input is enough — and is the more useful inline field. Ops
+ * whose only typed `$ref` is still `JmespathParam` keep inlining that copy.
  *
  * Mutates `spec` in place; returns { inlined }.
  */
@@ -291,8 +298,23 @@ export function ensureInlineTypedInput(spec) {
       });
       if (refIndexes.length === 0) continue;
 
-      const preferred = refIndexes.find((index) => /JmespathParam/.test(String(parameters[index].$ref)));
-      const pick = preferred ?? refIndexes[0];
+      let pick = -1;
+      let bestBytes = Infinity;
+      for (const index of refIndexes) {
+        const name = String(parameters[index].$ref).replace('#/components/parameters/', '');
+        const candidate = components[name];
+        if (!candidate || typeof candidate !== 'object' || !parameterIsInlineTyped(candidate)) {
+          continue;
+        }
+        const size = Buffer.byteLength(JSON.stringify(candidate), 'utf8');
+        if (size < bestBytes) {
+          bestBytes = size;
+          pick = index;
+        }
+      }
+      if (pick < 0) {
+        pick = refIndexes[0];
+      }
       const name = String(parameters[pick].$ref).replace('#/components/parameters/', '');
       const target = components[name];
       if (!target || typeof target !== 'object') continue;
