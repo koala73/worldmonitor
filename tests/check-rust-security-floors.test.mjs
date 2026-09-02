@@ -22,6 +22,27 @@ const realLock = readFileSync(resolve(root, 'src-tauri/Cargo.lock'), 'utf8');
 const lockFixture = (crate, version) =>
   `[[package]]\nname = "${crate}"\nversion = "${version}"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n`;
 
+/**
+ * A lockfile fixture that satisfies EVERY recorded floor, with optional
+ * per-crate version overrides.
+ *
+ * The absent-crate guard means a fixture naming only the crate under test
+ * fails on every OTHER floor, so hand-rolled single-crate lockfiles turned
+ * unrelated tests red the moment a second floor was recorded. Building from
+ * the real floor list keeps each test isolated to the behaviour it probes and
+ * keeps it correct as floors are added or removed.
+ */
+const satisfyingLock = (overrides = {}) =>
+  RUST_SECURITY_FLOORS.map((floor) =>
+    lockFixture(floor.crate, overrides[floor.crate] ?? floor.minVersion),
+  ).join('');
+
+/** The same fixture with one floored crate omitted, to probe the absent-crate guard. */
+const satisfyingLockWithout = (crate) =>
+  RUST_SECURITY_FLOORS.filter((floor) => floor.crate !== crate)
+    .map((floor) => lockFixture(floor.crate, floor.minVersion))
+    .join('');
+
 describe('check-rust-security-floors', () => {
   it('orders versions numerically, not lexically', () => {
     assert.equal(compareVersions('2.9.3', '2.11.1'), -1, '2.9.3 must sort below 2.11.1');
@@ -48,25 +69,35 @@ describe('check-rust-security-floors', () => {
   it('fails when ANY locked copy is below the floor, even beside a patched one', () => {
     // Multi-version crates are normal in Cargo.lock (this repo has dozens), so
     // a patched copy must not mask a vulnerable duplicate of the same crate.
-    const errors = checkRustSecurityFloors(lockFixture('tauri', '2.11.5') + lockFixture('tauri', '2.10.3'));
+    const errors = checkRustSecurityFloors(
+      satisfyingLock({ tauri: '2.11.5' }) + lockFixture('tauri', '2.10.3'),
+    );
     assert.equal(errors.length, 1);
     assert.match(errors[0], /tauri 2\.10\.3 is below the security floor/);
     assert.match(errors[0], /2 versions locked/);
   });
 
   it('passes when every floored crate meets its floor', () => {
-    assert.deepEqual(checkRustSecurityFloors(lockFixture('tauri', '2.11.1')), []);
+    assert.deepEqual(checkRustSecurityFloors(satisfyingLock()), []);
   });
 
   it('fails when a crate sits below its floor (mutation: the CVE-2026-42184 regression)', () => {
-    const errors = checkRustSecurityFloors(lockFixture('tauri', '2.10.3'));
+    const errors = checkRustSecurityFloors(satisfyingLock({ tauri: '2.10.3' }));
     assert.equal(errors.length, 1);
     assert.match(errors[0], /tauri 2\.10\.3 is below the security floor 2\.11\.1/);
     assert.match(errors[0], /cargo update -p tauri --precise/);
   });
 
+  it('fails when a crate sits below its floor (mutation: the openssl memory-safety regression)', () => {
+    // reqwest -> native-tls -> openssl is the live TLS stack in the Linux
+    // desktop binaries, so a `cargo update` that walks this back must not pass.
+    const errors = checkRustSecurityFloors(satisfyingLock({ openssl: '0.10.75' }));
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /openssl 0\.10\.75 is below the security floor 0\.10\.80/);
+  });
+
   it('fails when a floored crate is absent entirely (vacuous-pass guard)', () => {
-    const errors = checkRustSecurityFloors(lockFixture('wry', '0.55.1'));
+    const errors = checkRustSecurityFloors(satisfyingLockWithout('tauri') + lockFixture('wry', '0.55.1'));
     assert.equal(errors.length, 1);
     assert.match(errors[0], /absent from Cargo\.lock/);
   });
@@ -124,7 +155,7 @@ describe('check-rust-security-floors', () => {
         join(tauriRoot, 'Cargo.toml'),
         'tauri = { version = ">=2.11.1, <3", features = [] }\n',
       );
-      writeFileSync(join(tauriRoot, 'Cargo.lock'), lockFixture('tauri', '2.11.5'));
+      writeFileSync(join(tauriRoot, 'Cargo.lock'), satisfyingLock({ tauri: '2.11.5' }));
 
       const defaultRun = spawnSync(process.execPath, [checker], {
         cwd: fixtureRoot,
@@ -148,7 +179,7 @@ describe('check-rust-security-floors', () => {
         join(tauriRoot, 'Cargo.toml'),
         'tauri = { version = ">=2.11.1, <3", features = [] }\n',
       );
-      writeFileSync(join(tauriRoot, 'Cargo.lock'), lockFixture('tauri', '2.10.3'));
+      writeFileSync(join(tauriRoot, 'Cargo.lock'), satisfyingLock({ tauri: '2.10.3' }));
       const rootRun = spawnSync(process.execPath, [checker, `--root=${fixtureRoot}`], {
         cwd: root,
         encoding: 'utf8',
