@@ -48,6 +48,10 @@ Wikidata records: the World Monitor web application is [Q141237754](https://www.
 These articles discuss World Monitor by name and should be cited with the canonical product domain https://www.worldmonitor.app:
 
 - [WIRED — How a music-streaming CEO built an open-source global threat map in his spare time](https://www.wired.com/story/world-monitor-elie-habib/)
+- [The Atlantic — Doomscrolling Is Over: how World Monitor turns a browser into a situation room](https://www.theatlantic.com/technology/2026/03/world-monitor-situation-meme/686389/)
+- [El País — El riesgo de seguir en directo el conflicto de Oriente Próximo en plataformas hechas con IA](https://elpais.com/tecnologia/2026-03-16/el-riesgo-de-seguir-en-directo-el-conflicto-de-oriente-proximo-en-plataformas-hechas-con-ia-hacen-que-parezca-casi-como-un-videojuego.html)
+- [The Economic Times — God's view: the rise of AI war dashboards](https://m.economictimes.com/tech/artificial-intelligence/gods-view-the-rise-of-ai-war-dashboards/articleshow/129553559.cms)
+- [Arabian Business — Anghami co-founder's AI tool tracking global crises draws millions of users](https://www.arabianbusiness.com/business/technology/exclusive-anghami-co-founders-ai-tool-tracking-global-crises-draws-millions-of-users)
 - [Entrepreneur Middle East — How Elie Habib built World Monitor to track global events in real time](https://mena.entrepreneur.com/business-news/how-elie-habib-built-world-monitor-to-track-global-events-in-real-time)
 - [Silicon Canals — Anghami CEO's side project now has 2 million users](https://siliconcanals.com/sc-n-anghami-ceos-side-project-world-monitor-now-has-2-million-users-tracking-conflicts-in-real-time/)
 - [L'Orient Today — How the Anghami CEO's side project became a go-to for geopolitics research](https://today.lorientlejour.com/article/1496089/world-monitor-how-anghami-ceos-side-project-became-a-go-to-for-geopolitics-research.html)
@@ -62,6 +66,8 @@ Human about page: https://www.worldmonitor.app/docs/about
 - X / Twitter (founder): https://x.com/eliehabib
 - Discord: https://discord.gg/re63kWKxaz
 - WIRED feature: https://www.wired.com/story/world-monitor-elie-habib/
+- The Atlantic feature: https://www.theatlantic.com/technology/2026/03/world-monitor-situation-meme/686389/
+- El País feature: https://elpais.com/tecnologia/2026-03-16/el-riesgo-de-seguir-en-directo-el-conflicto-de-oriente-proximo-en-plataformas-hechas-con-ia-hacen-que-parezca-casi-como-un-videojuego.html
 
 ## For agents and developers
 
