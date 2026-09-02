@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import * as electricitySeed from '../scripts/seed-electricity-prices.mjs';
 import {
   parseEntsoEPrice,
   buildElectricityIndex,
@@ -10,6 +11,14 @@ import {
   ELECTRICITY_TTL_SECONDS,
   fetchEiaRegion,
 } from '../scripts/seed-electricity-prices.mjs';
+
+const ENTSO_REGION = { region: 'DE', eic: '10Y1001A1001A82H', name: 'Germany' };
+const ENTSO_TODAY = new Date('2026-09-02T00:00:00Z');
+const ENTSO_YESTERDAY = new Date('2026-09-01T00:00:00Z');
+
+function entsoXml(price) {
+  return `<TimeSeries><Period><Point><price.amount>${price}</price.amount></Point></Period></TimeSeries>`;
+}
 
 // ── parseEntsoEPrice ──────────────────────────────────────────────────────────
 
@@ -47,6 +56,94 @@ describe('parseEntsoEPrice', () => {
   it('handles all-negative prices', () => {
     const xml = '<price.amount>-5.00</price.amount><price.amount>-15.00</price.amount>';
     assert.equal(parseEntsoEPrice(xml), -10);
+  });
+});
+
+describe('fetchEntsoERegion transport recovery', () => {
+  it('returns direct XML without calling the proxy', async () => {
+    let proxyCalls = 0;
+    const result = await electricitySeed.fetchEntsoERegion(
+      ENTSO_REGION,
+      'test-token',
+      ENTSO_TODAY,
+      ENTSO_YESTERDAY,
+      {
+        fetchFn: async () => ({ ok: true, text: async () => entsoXml('87.30') }),
+        proxyAuth: 'proxy-auth',
+        proxyFetcher: async () => {
+          proxyCalls += 1;
+          return { buffer: Buffer.from(entsoXml('90.00')) };
+        },
+      },
+    );
+
+    assert.equal(proxyCalls, 0);
+    assert.equal(result.region, 'DE');
+    assert.equal(result.source, 'entso-e');
+    assert.equal(result.priceMwhEur, 87.3);
+  });
+
+  it('uses the proxy once after retryable direct failures', async () => {
+    let directCalls = 0;
+    let proxyCalls = 0;
+    const result = await electricitySeed.fetchEntsoERegion(
+      ENTSO_REGION,
+      'test-token',
+      ENTSO_TODAY,
+      ENTSO_YESTERDAY,
+      {
+        fetchFn: async () => {
+          directCalls += 1;
+          return { ok: false, status: 503 };
+        },
+        proxyAuth: 'proxy-auth',
+        proxyFetcher: async () => {
+          proxyCalls += 1;
+          return { buffer: Buffer.from(entsoXml('91.20')) };
+        },
+      },
+    );
+
+    assert.equal(directCalls, 3, 'must exhaust the existing direct retry path');
+    assert.equal(proxyCalls, 1, 'proxy fallback must stay bounded');
+    assert.equal(result.priceMwhEur, 91.2);
+  });
+
+  it('keeps proxy failure visible when both routes fail', async () => {
+    const warnings = [];
+    const originalWarn = console.warn;
+    console.warn = (...args) => warnings.push(args.join(' '));
+    try {
+      const result = await electricitySeed.fetchEntsoERegion(
+        ENTSO_REGION,
+        'test-token',
+        ENTSO_TODAY,
+        ENTSO_YESTERDAY,
+        {
+          fetchFn: async () => ({ ok: false, status: 503 }),
+          proxyAuth: 'proxy-auth',
+          proxyFetcher: async () => {
+            throw new Error('proxy unavailable');
+          },
+        },
+      );
+
+      assert.equal(result, null);
+      assert.ok(
+        warnings.some((message) => message.includes('proxy unavailable')),
+        `expected proxy failure in warnings, got: ${warnings.join('\n')}`,
+      );
+    } finally {
+      console.warn = originalWarn;
+    }
+  });
+});
+
+describe('ENTSO-E full-snapshot publication floor', () => {
+  it('does not accept an EIA-only result as full-snapshot coverage', () => {
+    const eiaOnlyCount = EIA_REGIONS.length;
+    assert.equal(eiaOnlyCount, 7, 'fixture must represent the complete EIA cohort');
+    assert.equal(electricitySeed.meetsEntsoPublicationFloor(0), false);
   });
 });
 
