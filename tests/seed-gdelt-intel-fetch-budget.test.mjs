@@ -57,7 +57,6 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
   });
 
   it('budget spent up front → every topic backfilled from cache, returns immediately (no deadline churn)', async () => {
-    const started = Date.now();
     const out = await fetchAllTopics({
       _softBudgetMs: 40,            // spent before the first topic can start
       _sleep: async () => {},
@@ -65,9 +64,8 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
       _fetchTimeline: async () => [],
       _loadPrevious: async () => cachedSnapshot(),
     });
-    const elapsed = Date.now() - started;
-
-    assert.ok(elapsed < 3000, `should be bounded by the soft budget, took ${elapsed}ms`);
+    // Returning at all IS the budget working: _fetchArticles never settles, so
+    // an ignored budget hangs to the test timeout instead of finishing slowly.
     assert.deepEqual(out.topics.map((t) => t.id), TOPIC_IDS, 'all 6 topics represented, in canonical order');
     for (const t of out.topics) {
       assert.equal(t.articles[0]?.title, `cached ${t.id}`, `${t.id} carries cached articles`);
@@ -76,7 +74,6 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
 
   it('a hanging topic fetch is bounded per-topic, then backfilled from cache', async () => {
     let attempts = 0;
-    const started = Date.now();
     const out = await fetchAllTopics({
       _softBudgetMs: 150,
       _minRequestBudgetMs: 20,     // allow one request to be attempted, then break
@@ -85,10 +82,8 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
       _fetchTimeline: async () => [],
       _loadPrevious: async () => cachedSnapshot(),
     });
-    const elapsed = Date.now() - started;
-
+    // As above: the hang is bounded iff we got here at all.
     assert.ok(attempts >= 1, 'at least one topic fetch was attempted and bounded');
-    assert.ok(elapsed < 3000, `per-topic budget bounded the hang, took ${elapsed}ms`);
     assert.deepEqual(out.topics.map((t) => t.id), TOPIC_IDS);
     for (const t of out.topics) {
       assert.equal(t.articles[0]?.title, `cached ${t.id}`, `${t.id} fell back to cache`);

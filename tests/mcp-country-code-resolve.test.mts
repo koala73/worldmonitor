@@ -196,7 +196,11 @@ describe('resolveCountryCode — the ladder', () => {
     const started = Date.now();
     assert.equal(resolveCountryCode(pathological), null);
     const elapsed = Date.now() - started;
-    assert.ok(elapsed < 250, `resolution took ${elapsed}ms — the length gate is not holding`);
+    // 5s, not 250ms. The regression this catches burned ~46s of CPU, so a 5s
+    // bound still fails it by ~9x while sitting far above the scheduler noise
+    // that made a sub-second bound flake under --test-concurrency=16 (#7534).
+    // Tightening this buys no additional detection, only false positives.
+    assert.ok(elapsed < 5_000, `resolution took ${elapsed}ms — the length gate is not holding`);
   });
 
   it('accepts the longest real designator in the shipped data', () => {

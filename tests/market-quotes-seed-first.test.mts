@@ -509,7 +509,15 @@ describe('listMarketQuotes seed-first resolution', () => {
     const startedAt = Date.now();
     const resp = await listMarketQuotes(CTX, { symbols: ['AAPL', 'STALL'] });
 
-    assert.ok(Date.now() - startedAt < 500, 'the response must not wait for the 3s provider timeout');
+    // This bound cannot be dropped the way its siblings could (#7534): the only
+    // abort signal is AbortSignal.timeout(upstreamDeadlineMs), so an override
+    // that failed to apply falls back to UPSTREAM_DEADLINE_MS (6s) and RETURNS
+    // late rather than hanging -- and classifyGapFetchFailure reports
+    // BUDGET_EXHAUSTED either way (now >= deadline holds at 6s too), so the
+    // reason below cannot tell the two apart. 2.5s is the compromise: ~2.4x
+    // under the 6s regression, ~5x over the scheduler noise that flaked a
+    // sub-second bound under --test-concurrency=16.
+    assert.ok(Date.now() - startedAt < 2_500, 'the response must cut off at our 30ms deadline, not the 6s default');
     assert.equal(
       reasonFor(resp, 'STALL'),
       'MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED',

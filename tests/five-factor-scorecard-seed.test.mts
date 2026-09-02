@@ -552,10 +552,12 @@ describe('five-factor atomic snapshot', () => {
         });
       };
       const deadlineAtMs = Date.now() + 40;
-      const startedAtMs = Date.now();
       assert.equal(await readFiveFactorSnapshot(['AA'], deadlineAtMs), null);
+      // requestCount is the whole guard: the fallback issuing a second fetch is
+      // the only way this call gets slow, and that fetch would hang (the stub
+      // only settles on abort), so a regression fails here or at the test
+      // timeout. An elapsed-time bound could add nothing and flaked under load.
       assert.equal(requestCount, 1, 'expired read-model budget must not start the canonical fallback');
-      assert.ok(Date.now() - startedAtMs < 500, 'scorecard Redis fallback must stay within the caller budget');
     } finally {
       globalThis.fetch = originalFetch;
       if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;

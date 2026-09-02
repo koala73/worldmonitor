@@ -4,6 +4,7 @@ import { describe, it } from 'node:test';
 
 import {
   HOST_511_RATES,
+  __testing__,
   acquire511Slot,
   create511RateLimiter,
   reset511RateLimiterForTests,
@@ -57,9 +58,13 @@ describe('per-host 511 limiter (#6618 v1)', () => {
     await acquire511Slot('511on.ca');
     await acquire511Slot('511on.ca');
     // BC Open511 is a different host and must not wait on Ontario's 3 tokens.
-    const started = Date.now();
+    // Asserted on bucket state rather than elapsed time: a 50ms bound was
+    // measuring runner scheduling, not bucket separation, and flaked under
+    // --test-concurrency=16 (#7534). Per-host token counts say it directly --
+    // a shared bucket would put Ontario at 4 and leave BC empty.
     await acquire511Slot('api.open511.gov.bc.ca');
-    assert.ok(Date.now() - started < 50, 'BC host must not share the Ontario bucket');
+    assert.equal(__testing__.pendingTokens('511on.ca'), 3, 'Ontario holds only its own 3 tokens');
+    assert.equal(__testing__.pendingTokens('api.open511.gov.bc.ca'), 1, 'BC consumed a token from its own bucket');
   });
 
   it('adapter acquires the Ontario host slot before each fetch', () => {
