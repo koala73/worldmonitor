@@ -37,6 +37,9 @@ retailer:
     # matching than hydration (a 15000 run matched Água Mineral to a 12-pack at
     # R$44.28 instead of the single 1,5L bottle at R$2.89).
     renderWaitMs: 8000
+    # 2026-09-02: Exa recovered current rice and oil pages with matching title,
+    # size, BRL, and same-call R$ evidence. A price-less milk page stayed closed.
+    extractionFallback: exa
 
   rateLimit:
     requestsPerMinute: 10

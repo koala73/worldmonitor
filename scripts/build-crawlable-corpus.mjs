@@ -110,7 +110,7 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
 export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
-export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
+export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
 const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
 const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
 // Public ranking / confidence gates. Keep aligned with
@@ -771,10 +771,70 @@ function formatPercent(value) {
   return `${Math.round(numeric * 100)}%`;
 }
 
-function formatScore(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 'not ranked';
+const OBSERVED_EVIDENCE = Object.freeze({ coverage: true });
+
+// A dimension carries an imputationClass ONLY when observedWeight === 0 -- see the
+// four-class taxonomy in proto/worldmonitor/resilience/v1/resilience.proto and
+// server/worldmonitor/resilience/v1/_shared.ts. So an empty class is the allow-list
+// for "observed", exactly as buildMicrostateEvidenceProfile already requires below.
+// Enumerating the withheld classes instead would fail OPEN on any fifth class
+// (it already omitted 'stable-absence', whose imputed scores run 85-88).
+export function hasObservedValue(value, { coverage, evidenceState = '' } = {}) {
+  const numericValue = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
+  const numericCoverage = Number(coverage);
+  return numericValue !== ''
+    && numericValue != null
+    && Number.isFinite(Number(numericValue))
+    && Number.isFinite(numericCoverage)
+    && numericCoverage > 0
+    && String(evidenceState || '') === '';
+}
+
+function formatObservedNumber(value, evidence, formatter, fallback = '—') {
+  if (!hasObservedValue(value, evidence)) return fallback;
+  const numeric = Number(typeof value === 'string' ? value.replace(/,/g, '') : value);
+  return formatter(numeric);
+}
+
+function formatScoreNumber(numeric) {
   return numeric.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatScore(value, evidence) {
+  return formatObservedNumber(value, evidence, formatScoreNumber);
+}
+
+function dimensionScoreEvidence(dimension) {
+  return {
+    coverage: dimension.coverage,
+    evidenceState: dimension.imputationClass,
+  };
+}
+
+function hasObservedDimensionScore(dimension) {
+  return hasObservedValue(dimension.score, dimensionScoreEvidence(dimension));
+}
+
+function domainScoreEvidence(domain) {
+  return { coverage: domain.dimensions.some(hasObservedDimensionScore) };
+}
+
+// Weakest/strongest claims may only rank entries that actually have a reading.
+// A withheld pillar or domain is not the weakest one, it is no reading at all --
+// ranking it would name it in prose and then print an em dash for its score.
+function observedPillarsOf(pillars) {
+  return pillars.filter((pillar) => hasObservedValue(pillar.score, { coverage: pillar.coverage }));
+}
+
+function observedDomainsOf(domains) {
+  return domains.filter((domain) => hasObservedValue(domain.score, domainScoreEvidence(domain)));
+}
+
+function dimensionEvidenceState(dimension) {
+  const evidenceState = String(dimension.imputationClass || '');
+  if (evidenceState) return humanizeId(evidenceState);
+  if (!hasObservedDimensionScore(dimension)) return 'Unavailable';
+  return humanizeId(dimension.freshness?.staleness || 'observed');
 }
 
 function formatCoordinates(lat, lon) {
@@ -858,8 +918,8 @@ export function countryMetaDescription({
       `${name} instability index`,
     ];
     const facts = [
-      `is ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
-      `scores ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
+      `is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
+      `scores ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
     ];
     const contexts = [
       'with World Monitor country-risk, resilience, advisory, and sanctions context.',
@@ -1874,7 +1934,7 @@ function renderCountryInstabilityIndexPage({
           <caption>Published ${escapeHtml(formatStaticDateTime(ciiRanking.updatedAt))} from the committed crawlable pulse. The table refreshes from the current API after load.</caption>
           <thead><tr><th scope="col">Country</th><th scope="col">CII</th><th scope="col">24h</th><th scope="col">Level</th><th scope="col">Updated</th></tr></thead>
           <tbody data-cii-ranking-body>
-${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(entry.score)}</data></td><td data-cii-trend>${escapeHtml(entry.change24h == null ? 'Stable or unavailable' : entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
+${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(formatScore(entry.score, OBSERVED_EVIDENCE))}</data></td><td data-cii-trend>${escapeHtml(entry.change24h == null ? 'Stable or unavailable' : entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
           </tbody>
         </table></div>
         <div class="tool-meta">
@@ -2010,7 +2070,7 @@ ${hubFaqs.map((faq) => `      <h2>${escapeHtml(faq.question)}</h2>
 ${countries.map((country) => {
     const scorePublished = country.headlineEligible !== false;
     const scoreCell = scorePublished
-      ? `<data value="${escapeHtml(country.overallScore)}">${escapeHtml(formatScore(country.overallScore))}</data>`
+      ? `<data value="${escapeHtml(country.overallScore)}">${escapeHtml(formatScore(country.overallScore, { coverage: scorePublished }))}</data>`
       : '—';
     return `          <tr><td>${country.rank == null ? 'Outside headline ranking' : `#${country.rank}`}</td><td><a href="/countries/${country.slug}/">${escapeHtml(country.name)}</a> <small>${escapeHtml(country.code)}</small></td><td>${scoreCell}</td><td>${escapeHtml(formatPercent(country.dimensionCoverage))}</td><td>${country.lowConfidence ? 'Low' : 'Standard'}</td></tr>`;
   }).join('\n')}
@@ -2313,7 +2373,7 @@ export function describeMicrostateEvidence(country) {
     return `${country.name} is in the microstate and territory cohort, but this snapshot has no observed dimension reading that can support a country-specific evidence interpretation. No overall resilience score or country rank is published.`;
   }
   const readings = profile.supportedDimensions
-    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score)} (${formatPercent(dimension.coverage)})`);
+    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score, dimensionScoreEvidence(dimension))} (${formatPercent(dimension.coverage)})`);
   const readingClause = `${country.name} has ${readings.length} supported dimension readings with observed inputs: ${readings.join('; ')}. Scores use a 0-100 scale; percentages show coverage.`;
   const sourceExamples = selectMicrostateSourceExamples(profile.supportedSourceFamilies);
   const supportedSourceClause = sourceExamples.length > 0
@@ -2431,18 +2491,17 @@ function selectUnrankedInventory(country) {
   return selected;
 }
 
-function formatSignedScore(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 'not available';
-  if (numeric === 0) return '0';
-  return `${numeric > 0 ? '+' : ''}${formatScore(numeric)}`;
+function formatSignedScore(value, evidence) {
+  return formatObservedNumber(value, evidence, (numeric) => (
+    `${numeric > 0 ? '+' : ''}${formatScoreNumber(numeric)}`
+  ), 'not available');
 }
 
 function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
   const ciiFaq = ciiEntry
     ? [{
       question: `What is ${country.name}'s Country Instability Index?`,
-      answer: `${country.name}'s Country Instability Index is ${ciiEntry.score}/100 (${ciiEntry.band}), ${ciiEntry.movementText}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
+      answer: `${country.name}'s Country Instability Index is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}), ${ciiEntry.movementText}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
     }]
     : [];
   const scorePublished = country.headlineEligible !== false;
@@ -2463,9 +2522,14 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
       },
     ];
   }
-  const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
+  const pillars = observedPillarsOf([...country.pillars].sort((left, right) => left.score - right.score));
   const weakest = pillars[0];
   const second = pillars[1];
+  const weakestPillarsAnswer = weakest && second
+    ? `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is lowest at ${formatScore(weakest.score, { coverage: weakest.coverage })}, followed by ${PILLAR_LABELS[second.id] || humanizeId(second.id)} at ${formatScore(second.score, { coverage: second.coverage })}. Their evidence coverage is ${formatPercent(weakest.coverage)} and ${formatPercent(second.coverage)}.`
+    : weakest
+      ? `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is the only pillar with an observed reading, at ${formatScore(weakest.score, { coverage: weakest.coverage })} with ${formatPercent(weakest.coverage)} evidence coverage. The other pillars are withheld because this snapshot has no observed evidence for them.`
+      : `No pillar has an observed reading in this snapshot, so no pillar can be ranked weakest.`;
   const rankText = country.rank == null
     ? 'outside the headline ranking because the snapshot labels its evidence low-confidence'
     : `#${country.rank} of ${rankedCount} ranked countries`;
@@ -2473,15 +2537,15 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
     ...ciiFaq,
     {
       question: `What is ${country.name}'s resilience score?`,
-      answer: `${country.name} scores ${formatScore(country.overallScore)} out of 100 in the ${prettyDate(capturedAt)} structural snapshot and sits ${rankText}. This is a comparative index, not a crisis probability.`,
+      answer: `${country.name} scores ${formatScore(country.overallScore, { coverage: scorePublished })} out of 100 in the ${prettyDate(capturedAt)} structural snapshot and sits ${rankText}. This is a comparative index, not a crisis probability.`,
     },
     {
       question: `Which resilience pillars are weakest for ${country.name}?`,
-      answer: `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is lowest at ${formatScore(weakest.score)}, followed by ${PILLAR_LABELS[second.id] || humanizeId(second.id)} at ${formatScore(second.score)}. Their evidence coverage is ${formatPercent(weakest.coverage)} and ${formatPercent(second.coverage)}.`,
+      answer: weakestPillarsAnswer,
     },
     {
       question: `Is ${country.name}'s resilience score rising or falling?`,
-      answer: `The 30-day reading is ${country.trend || 'unknown'}, with a change of ${formatSignedScore(country.change30d)} points. It is structural and separate from the live instability monitor.`,
+      answer: `The 30-day reading is ${country.trend || 'unknown'}, with a change of ${formatSignedScore(country.change30d, { coverage: scorePublished })} points. It is structural and separate from the live instability monitor.`,
     },
   ];
 }
@@ -2498,17 +2562,22 @@ function describeCountryAvailableEvidenceFaq(country) {
     : describeAvailableEvidence(country);
 }
 
-function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
+export function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
   const scorePublished = country.headlineEligible !== false;
   if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
   }
-  const peerLinks = country.peers.map((peer) => (
-    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${scorePublished ? ` (${escapeHtml(formatScore(peer.overallScore))})` : ''}</a>`
-  )).join(', ');
-  const regionalLinks = country.regionalPeers.map((peer) => (
-    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${scorePublished ? ` (${escapeHtml(formatScore(peer.overallScore))})` : ''}</a>`
-  )).join(', ');
+  // A peer whose own page publishes no headline score gets no parenthetical at all.
+  // Rendering an empty "(—)" would advertise a withheld value instead of omitting it.
+  const peerLink = (peer) => {
+    const score = scorePublished
+      ? formatScore(peer.overallScore, { coverage: peer.headlineEligible !== false })
+      : '—';
+    const suffix = score === '—' ? '' : ` (${escapeHtml(score)})`;
+    return `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${suffix}</a>`;
+  };
+  const peerLinks = country.peers.map(peerLink).join(', ');
+  const regionalLinks = country.regionalPeers.map(peerLink).join(', ');
   const crisisText = country.crisisMemberships.length > 0
     ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
     : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
@@ -2590,47 +2659,76 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
   }
   const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
   const domains = [...country.domains].sort((left, right) => left.score - right.score);
+  const observedPillars = observedPillarsOf(pillars);
+  const observedDomains = observedDomainsOf(domains);
   const [weakestPillar, secondPillar] = pillars;
   const strongestPillar = pillars.at(-1);
   const [weakestDomain] = domains;
-  const strongestDomain = domains.at(-1);
-  const trendSentence = Number.isFinite(Number(country.change30d))
-    ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d)} points.`
+  const trendSentence = hasObservedValue(country.change30d, { coverage: scorePublished })
+    ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d, { coverage: scorePublished })} points.`
     : 'The committed snapshot does not contain a comparable 30-day change.';
   const weakestPillarLabel = PILLAR_LABELS[weakestPillar.id] || humanizeId(weakestPillar.id);
   const secondPillarLabel = PILLAR_LABELS[secondPillar.id] || humanizeId(secondPillar.id);
   const strongestPillarLabel = PILLAR_LABELS[strongestPillar.id] || humanizeId(strongestPillar.id);
   const weakestDomainLabel = DOMAIN_LABELS[weakestDomain.id] || humanizeId(weakestDomain.id);
-  const strongestDomainLabel = DOMAIN_LABELS[strongestDomain.id] || humanizeId(strongestDomain.id);
-  const summary = `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore)} out of 100. ${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score)}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score)}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score)}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score)}. ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
-  const dimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
+  // Every pillar and domain observed is the normal case and keeps the published
+  // wording exactly. Otherwise the claim is rebuilt from observed entries only,
+  // so prose never names a withheld pillar or domain as weakest or strongest.
+  const pillarDomainClause = observedPillars.length === pillars.length
+    && observedDomains.length === domains.length
+    ? `${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score, { coverage: weakestPillar.coverage })}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score, { coverage: secondPillar.coverage })}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score, { coverage: strongestPillar.coverage })}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score, domainScoreEvidence(weakestDomain))}.`
+    : [
+      observedPillars.length > 0
+        ? `Pillars with an observed reading, weakest first: ${observedPillars.map((pillar) => `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} ${formatScore(pillar.score, { coverage: pillar.coverage })}`).join('; ')}. ${pillars.length - observedPillars.length} of ${pillars.length} pillars are withheld for lack of observed evidence.`
+        : `No pillar has an observed reading in this snapshot.`,
+      observedDomains.length > 0
+        ? `${DOMAIN_LABELS[observedDomains[0].id] || humanizeId(observedDomains[0].id)} is the lowest of the ${observedDomains.length} domains with an observed reading, at ${formatScore(observedDomains[0].score, domainScoreEvidence(observedDomains[0]))}.`
+        : `No domain has an observed reading in this snapshot.`,
+    ].join(' ');
+  const topObservedDomain = observedDomains.at(-1);
+  const topDomainSentence = topObservedDomain
+    ? `Top domain: ${DOMAIN_LABELS[topObservedDomain.id] || humanizeId(topObservedDomain.id)}, ${formatScore(topObservedDomain.score, domainScoreEvidence(topObservedDomain))}.`
+    : 'No domain has an observed reading to report as the top domain.';
+  const summary = `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore, { coverage: scorePublished })} out of 100. ${pillarDomainClause} ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
+  const allDimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
     ...dimension,
     domainId: domain.id,
-  }))).sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
+  })));
+  const observedDimensionRows = allDimensionRows
+    .filter(hasObservedDimensionScore)
+    .sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
+  const withheldDimensionRows = allDimensionRows
+    .filter((dimension) => !hasObservedDimensionScore(dimension))
+    .sort((left, right) => left.domainId.localeCompare(right.domainId) || left.id.localeCompare(right.id));
+  const dimensionRows = [...observedDimensionRows, ...withheldDimensionRows];
   const html = `      <article data-country-analysis>
         <h2>${escapeHtml(country.name)} resilience analysis</h2>
         <p>${escapeHtml(summary)}</p>
         <h3>Pillar profile</h3>
         <ul class="routes">
-${pillars.map((pillar) => `          <li><strong>${escapeHtml(PILLAR_LABELS[pillar.id] || humanizeId(pillar.id))}: ${escapeHtml(formatScore(pillar.score))}</strong>; coverage ${escapeHtml(formatPercent(pillar.coverage))}; domains ${pillar.domainIds.map((id) => escapeHtml(DOMAIN_LABELS[id] || humanizeId(id))).join(', ')}.</li>`).join('\n')}
+${pillars.map((pillar) => `          <li><strong>${escapeHtml(PILLAR_LABELS[pillar.id] || humanizeId(pillar.id))}: ${escapeHtml(formatScore(pillar.score, { coverage: pillar.coverage }))}</strong>; coverage ${escapeHtml(formatPercent(pillar.coverage))}; domains ${pillar.domainIds.map((id) => escapeHtml(DOMAIN_LABELS[id] || humanizeId(id))).join(', ')}.</li>`).join('\n')}
         </ul>
         <h3>Six-domain profile</h3>
         <ul class="routes">
 ${domains.map((domain) => {
-    const dimensions = [...domain.dimensions].sort((left, right) => left.score - right.score);
+    const dimensions = domain.dimensions
+      .filter(hasObservedDimensionScore)
+      .sort((left, right) => left.score - right.score);
     const weakest = dimensions[0];
     const strongest = dimensions.at(-1);
-    const dimensionSummary = dimensions.length === 1
-      ? `${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}`
-      : `low ${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}; high ${DIMENSION_LABELS[strongest.id] || humanizeId(strongest.id)} ${formatScore(strongest.score)}`;
-    return `          <li><strong>${escapeHtml(DOMAIN_LABELS[domain.id] || humanizeId(domain.id))}: ${escapeHtml(formatScore(domain.score))}</strong>; weight ${escapeHtml(formatPercent(domain.weight))}; ${escapeHtml(dimensionSummary)}.</li>`;
+    const dimensionSummary = dimensions.length === 0
+      ? 'no observed dimension score'
+      : dimensions.length === 1
+        ? `${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score, dimensionScoreEvidence(weakest))}`
+        : `low ${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score, dimensionScoreEvidence(weakest))}; high ${DIMENSION_LABELS[strongest.id] || humanizeId(strongest.id)} ${formatScore(strongest.score, dimensionScoreEvidence(strongest))}`;
+    return `          <li><strong>${escapeHtml(DOMAIN_LABELS[domain.id] || humanizeId(domain.id))}: ${escapeHtml(formatScore(domain.score, domainScoreEvidence(domain)))}</strong>; weight ${escapeHtml(formatPercent(domain.weight))}; ${escapeHtml(dimensionSummary)}.</li>`;
   }).join('\n')}
         </ul>
-        <h3>Dimension evidence, weakest first</h3>
+        <h3>Dimension evidence, observed scores weakest first</h3>
         <div class="table-scroll"><table>
           <thead><tr><th scope="col">Dimension</th><th scope="col">Domain</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Evidence state</th></tr></thead>
           <tbody>
-${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id))}</td><td>${escapeHtml(DOMAIN_LABELS[dimension.domainId] || humanizeId(dimension.domainId))}</td><td>${escapeHtml(formatScore(dimension.score))}</td><td>${escapeHtml(formatPercent(dimension.coverage))}</td><td>${escapeHtml(humanizeId(dimension.imputationClass || dimension.freshness?.staleness || 'observed'))}</td></tr>`).join('\n')}
+${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id))}</td><td>${escapeHtml(DOMAIN_LABELS[dimension.domainId] || humanizeId(dimension.domainId))}</td><td>${escapeHtml(formatScore(dimension.score, dimensionScoreEvidence(dimension)))}</td><td>${escapeHtml(formatPercent(dimension.coverage))}</td><td>${escapeHtml(dimensionEvidenceState(dimension))}</td></tr>`).join('\n')}
           </tbody>
         </table></div>
         <h3>Comparison set</h3>
@@ -2638,7 +2736,7 @@ ${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_L
         <h3>Tracked crisis context</h3>
         <p>${crisisText}</p>
         <h3>Reading limits</h3>
-        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. Top domain: ${escapeHtml(strongestDomainLabel)}, ${escapeHtml(formatScore(strongestDomain.score))}. Weak pillars reduce the result; compare with coverage and imputation visible.</p>
+        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${escapeHtml(topDomainSentence)} Weak pillars reduce the result; compare with coverage and imputation visible.</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>
 ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
@@ -2688,15 +2786,17 @@ function renderCountryPage({
     ? `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`
     : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because the country does not meet the published ranking eligibility criteria. ${RANKING_ELIGIBILITY_CLAUSE}`;
   const pulse = livePulse?.countries?.[country.code] || null;
-  // Gate on presence, not truthiness: a legitimate score of 0 must still publish.
-  const hasPulse = pulse != null && (pulse.partial === true || pulse.score != null);
+  const hasPulse = pulse != null && (
+    pulse.partial === true
+    || hasObservedValue(pulse.score, { coverage: pulse.partial !== true })
+  );
   const liveState = hasPulse ? (pulse.partial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
     ? (pulse.partial ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current country instability metrics" aria-busy="false">
-          <div class="metric"><span>Instability score</span><strong><span data-live-score>${pulse.partial ? '—' : escapeHtml(pulse.score)}</span><small data-live-band>${pulse.partial ? 'No current score' : escapeHtml(pulse.band)}</small></strong></div>
+          <div class="metric"><span>Instability score</span><strong><span data-live-score>${escapeHtml(formatScore(pulse.score, { coverage: pulse.partial !== true }))}</span><small data-live-band>${pulse.partial ? 'No current score' : escapeHtml(pulse.band)}</small></strong></div>
           <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : ciiEntry?.change24h === null ? 'Stable or unavailable' : pulse.trend)}</strong></div>
           <div class="metric"><span>Travel advisory input</span><strong data-live-advisory>${escapeHtml(pulse.advisory)}</strong></div>
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions>${escapeHtml(pulse.sanctions)}</strong></div>
@@ -2709,7 +2809,7 @@ function renderCountryPage({
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions></strong></div>
         </div>`;
   const ciiAnswer = ciiEntry
-    ? `${escapeHtml(country.name)}'s Country Instability Index is <strong>${escapeHtml(ciiEntry.score)}/100 &middot; ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>.`
+    ? `${escapeHtml(country.name)}'s Country Instability Index is <strong>${escapeHtml(formatScore(ciiEntry.score, OBSERVED_EVIDENCE))}/100 &middot; ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>.`
     : null;
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} ${ciiEntry ? 'Country Instability Index' : 'country risk and resilience'}</h1>
@@ -2741,7 +2841,7 @@ ${liveGrid}
       <h2>Structural resilience snapshot</h2>
       <section class="grid" aria-label="Country resilience metrics">
         <div class="metric"><span>Rank</span><strong>${escapeHtml(country.rank == null ? 'Not ranked' : `#${country.rank}`)}</strong></div>
-        <div class="metric"><span>Overall score</span><strong>${escapeHtml(scorePublished ? formatScore(country.overallScore) : '—')}</strong></div>
+        <div class="metric"><span>Overall score</span><strong>${escapeHtml(formatScore(country.overallScore, { coverage: scorePublished }))}</strong></div>
         <div class="metric"><span>Dimension coverage</span><strong>${escapeHtml(formatPercent(country.dimensionCoverage))}</strong></div>
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
       </section>${scoreDisclosure}
@@ -2769,14 +2869,21 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
     ...(scorePublished ? [
       { '@type': 'PropertyValue', name: 'Overall resilience score', value: country.overallScore, minValue: 0, maxValue: 100 },
       { '@type': 'PropertyValue', name: 'Rank', value: country.rank },
-      { '@type': 'PropertyValue', name: '30-day score change', value: country.change30d, unitText: 'index points' },
-      ...country.pillars.map((pillar) => ({
-        '@type': 'PropertyValue',
-        name: `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} score`,
-        value: pillar.score,
-        minValue: 0,
-        maxValue: 100,
-      })),
+      // Structured data is the surface answer engines cite, so it obeys the same
+      // observed-value rule as the visible page: a withheld value is OMITTED here,
+      // never emitted raw next to an em dash in the HTML.
+      ...(hasObservedValue(country.change30d, { coverage: scorePublished })
+        ? [{ '@type': 'PropertyValue', name: '30-day score change', value: country.change30d, unitText: 'index points' }]
+        : []),
+      ...country.pillars
+        .filter((pillar) => hasObservedValue(pillar.score, { coverage: pillar.coverage }))
+        .map((pillar) => ({
+          '@type': 'PropertyValue',
+          name: `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} score`,
+          value: pillar.score,
+          minValue: 0,
+          maxValue: 100,
+        })),
     ] : []),
   ];
   const resilienceDataset = {
@@ -2956,7 +3063,7 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
   const hubFaqs = [
     {
       question: 'Which maritime chokepoints are most disrupted?',
-      answer: `The published ${formatStaticDateTime(updatedAt)} snapshot gives the highest disruption score to ${formatProseList(mostDisruptedNames)}, each at ${highestScore}/100. The table covers all ${chokepointHubRows.length} tracked waterways and shows each source timestamp. A higher score means more current pressure. It does not confirm that a waterway is closed.`,
+      answer: `The published ${formatStaticDateTime(updatedAt)} snapshot gives the highest disruption score to ${formatProseList(mostDisruptedNames)}, each at ${formatScore(highestScore, OBSERVED_EVIDENCE)}/100. The table covers all ${chokepointHubRows.length} tracked waterways and shows each source timestamp. A higher score means more current pressure. It does not confirm that a waterway is closed.`,
     },
     {
       question: 'How does World Monitor score chokepoint status?',
@@ -2995,7 +3102,7 @@ ${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.quest
         <caption>Published chokepoint status snapshot updated ${escapeHtml(formatStaticDateTime(updatedAt))}</caption>
         <thead><tr><th scope="col">Chokepoint</th><th scope="col">Region</th><th scope="col">Disruption score</th><th scope="col">Status</th><th scope="col">AIS congestion</th><th scope="col">Updated</th></tr></thead>
         <tbody>
-${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-hub-region>${escapeHtml(row.region)}</td><td><data data-hub-score value="${escapeHtml(row.score)}">${escapeHtml(row.score)}</data></td><td data-hub-status>${escapeHtml(row.status)}</td><td data-hub-congestion>${escapeHtml(row.congestion)}</td><td><time data-hub-updated datetime="${escapeHtml(row.asOf)}">${escapeHtml(formatStaticDateTime(row.asOf))}</time></td></tr>`).join('\n')}
+${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-hub-region>${escapeHtml(row.region)}</td><td><data data-hub-score value="${escapeHtml(row.score)}">${escapeHtml(formatScore(row.score, OBSERVED_EVIDENCE))}</data></td><td data-hub-status>${escapeHtml(row.status)}</td><td data-hub-congestion>${escapeHtml(row.congestion)}</td><td><time data-hub-updated datetime="${escapeHtml(row.asOf)}">${escapeHtml(formatStaticDateTime(row.asOf))}</time></td></tr>`).join('\n')}
         </tbody>
       </table></div>
       <p class="source">Sources: ${escapeHtml(snapshotPath)} and ${CHOKEPOINT_REGISTRY_PATH}. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>.</p>`;
@@ -3199,9 +3306,7 @@ function renderChokepointPage({
   relatedItems.push('<a href="/blog/glossary/maritime-chokepoint/">What is a maritime chokepoint?</a>');
 
   const pulse = livePulse?.chokepoints?.[chokepoint.id] || null;
-  // Presence, not truthiness -- a fully calm chokepoint scores 0, which is a
-  // real published value and must not fall back to the loading skeleton.
-  const hasPulse = pulse != null && pulse.disruptionScore != null;
+  const hasPulse = hasObservedValue(pulse?.disruptionScore, { coverage: pulse != null });
   const coverageMetrics = chokepointCoverageMetrics({
     todayTransits: pulse?.todayTransits,
     todayCountsAvailable: pulse?.todayCountsAvailable,
@@ -3227,7 +3332,7 @@ function renderChokepointPage({
     : '        <p data-chokepoint-transits-note hidden></p>';
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
-          <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(pulse.disruptionScore)}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
+          <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(formatScore(pulse.disruptionScore, { coverage: hasPulse }))}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
 ${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', coverageMetrics.navigationalWarnings, coverageMetrics.navigationalWarnings !== null)}
 ${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', coverageMetrics.aisDisruptions, coverageMetrics.aisDisruptions !== null)}
 ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', coverageMetrics.congestion, coverageMetrics.congestion !== null)}
@@ -3449,19 +3554,25 @@ function renderCrisisPage({
     ? (pulse.state === 'partial' ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
   const rowByCode = new Map((pulse?.rows || []).map((row) => [row.code, row]));
-  const formatCount = (value) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+  const countFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+  const formatCount = (value, evidence, fallback = '—') => formatObservedNumber(
+    value,
+    evidence,
+    (numeric) => countFormatter.format(numeric),
+    fallback,
+  );
   const countryRows = crisis.coverage.map((country) => {
     const row = rowByCode.get(country.code);
     const value = row
-      ? `${formatCount(row.events)} events · ${formatCount(row.fatalities)} fatalities · ${row.referencePeriod}`
+      ? `${formatCount(row.events, OBSERVED_EVIDENCE)} events · ${formatCount(row.fatalities, OBSERVED_EVIDENCE)} fatalities · ${row.referencePeriod}`
       : (hasPulse ? 'Unavailable' : 'Waiting for published pulse');
     return `          <li data-crisis-country data-country-code="${escapeHtml(country.code)}" data-country-name="${escapeHtml(country.name)}"><strong>${escapeHtml(country.name)}</strong><br><span data-crisis-country-value>${escapeHtml(value)}</span></li>`;
   }).join('\n');
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current crisis metrics" aria-busy="false">
-          <div class="metric"><span>Recorded events</span><strong data-crisis-events>${escapeHtml(pulse.eventsTotal ?? 'See countries')}</strong></div>
-          <div class="metric"><span>Recorded fatalities</span><strong data-crisis-fatalities>${escapeHtml(pulse.fatalities ?? 'See countries')}</strong></div>
-          <div class="metric"><span>Political violence events</span><strong data-crisis-political>${escapeHtml(pulse.politicalViolenceEvents ?? 'See countries')}</strong></div>
+          <div class="metric"><span>Recorded events</span><strong data-crisis-events>${escapeHtml(formatCount(pulse.eventsTotal, { coverage: hasPulse }, 'See countries'))}</strong></div>
+          <div class="metric"><span>Recorded fatalities</span><strong data-crisis-fatalities>${escapeHtml(formatCount(pulse.fatalities, { coverage: hasPulse }, 'See countries'))}</strong></div>
+          <div class="metric"><span>Political violence events</span><strong data-crisis-political>${escapeHtml(formatCount(pulse.politicalViolenceEvents, { coverage: hasPulse }, 'See countries'))}</strong></div>
           <div class="metric"><span>Reference period</span><strong data-crisis-period>${escapeHtml(pulse.referencePeriod)}</strong></div>
         </div>`
     : `        <p class="tool-note" data-live-fallback>Current monthly conflict metrics load after page enhancement. The tracker scope below remains the dated crawlable reference.</p>
@@ -3670,7 +3781,7 @@ function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, snap
           <h3>${escapeHtml(example.label)}</h3>
           <p>Cell ${escapeHtml(example.cell)}. Domains: ${escapeHtml(example.types.join(', '))}. Events: ${escapeHtml(String(example.totalEvents))}.</p>
           <div class="grid">
-            <div class="metric"><span>${escapeHtml(metricName)}</span><strong>${escapeHtml(String(example.score))}</strong></div>
+            <div class="metric"><span>${escapeHtml(metricName)}</span><strong>${escapeHtml(formatScore(example.score, OBSERVED_EVIDENCE))}</strong></div>
             <div class="metric"><span>Priority</span><strong>${escapeHtml(example.priority)}</strong></div>
           </div>
           <p class="source">Cited from ${escapeHtml(example.source)}. Score = min(100, ${escapeHtml(String(example.typeCount))}×25 + min(25, ${escapeHtml(String(example.totalEvents))}×2)).</p>

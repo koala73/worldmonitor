@@ -386,7 +386,7 @@
           "Chave de licença / API incluída",
           "Fluxos de dados em tempo real",
           "60 requisições/minuto",
-          "1.000 requisições/dia incluídas (REST + MCP combinados)",
+          "1.000 requisições/dia incluídas (REST + MCP combinados; uma chamada MCP ao vivo conta como 2-3)",
           "Notificações por webhook"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Tudo no API Starter",
           "Direitos de redistribuição — incorpore nossos dados no que você vende",
           "300 requisições/minuto",
-          "10.000 requisições/dia incluídas (REST + MCP combinados)",
+          "10.000 requisições/dia incluídas (REST + MCP combinados; uma chamada MCP ao vivo conta como 2-3)",
           "5 licenças Pro — convide usuários com qualquer domínio de e-mail corporativo",
           "Suporte prioritário"
         ],

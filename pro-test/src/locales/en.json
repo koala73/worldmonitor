@@ -72,7 +72,7 @@
           "License / API key included",
           "Real-time data streams",
           "60 requests/minute",
-          "1,000 requests/day included (REST + MCP combined)",
+          "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
           "Webhook notifications"
         ],
         "highlightFeatures": [
@@ -85,7 +85,7 @@
           "Everything in API Starter",
           "Redistribution rights — embed our data in what you sell",
           "300 requests/minute",
-          "10,000 requests/day included (REST + MCP combined)",
+          "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
           "5 Pro licenses — invite users at any corporate email domain",
           "Priority support"
         ],

@@ -903,6 +903,12 @@ function withFetcherTimeout<T>(promise: Promise<T>, key: string, timeoutMs: numb
 export interface CachedFetchOpts {
   timeoutMs?: number;
   cacheFetcherErrors?: boolean;
+  /**
+   * Cache a payload whose only no-store marker is `upstreamUnavailable`.
+   * Use this only when the payload contains useful partial data. Null results
+   * and all other no-store markers keep the normal negative-cache behavior.
+   */
+  cacheUpstreamUnavailablePayloads?: boolean;
 }
 
 /**
@@ -929,6 +935,7 @@ export async function cachedFetchJson<T extends object>(
     : {
         timeoutMs: opts.timeoutMs,
         cacheFetcherErrors: opts.cacheFetcherErrors,
+        cacheUpstreamUnavailablePayloads: opts.cacheUpstreamUnavailablePayloads,
       };
   const result = await cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, coreOpts, 'cachedFetchJson');
   return result.data;
@@ -1071,7 +1078,13 @@ async function cachedFetchJsonCore<T extends object>(
       // the structural detail.
       if (result != null) {
         const noStoreReason = getRpcNoStoreReasonFromPayload(result, { includeAvailableFalse: false });
-        if (noStoreReason) {
+        const cachePartialUpstreamResult = noStoreReason === 'upstream-unavailable'
+          && opts?.cacheUpstreamUnavailablePayloads === true
+          && getRpcNoStoreReasonFromPayload(
+            { ...result, upstreamUnavailable: false },
+            { includeAvailableFalse: false },
+          ) === null;
+        if (noStoreReason && !cachePartialUpstreamResult) {
           upstreamStatus = 0;
           if (opts?.cacheFailures !== false) {
             cacheStatus = 'neg-sentinel';

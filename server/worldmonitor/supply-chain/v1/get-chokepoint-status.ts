@@ -27,10 +27,11 @@ const FLOWS_KEY = 'energy:chokepoint-flows:v1';
 // was removed — those keys are ~500KB each, and reading them on top of the already-large
 // transit-summaries payload was causing Vercel-edge Redis timeouts (1.5s budget) and pinning
 // a silent zero-state cache. Today the ais-relay writer is authoritative for the compact
-// summary; if it's missing we fail-fast via upstreamUnavailable so cachedFetchJson writes
-// NEG_SENTINEL (120s) instead of caching a fake 5-min healthy-but-empty response.
+// summary. When every published source is missing, the handler returns null and
+// cachedFetchJson writes NEG_SENTINEL instead of caching a healthy-looking zero state.
 // See docs/plans/chokepoint-rpc-payload-split.md.
 const REDIS_CACHE_TTL = 300; // 5 min
+const REDIS_NEGATIVE_CACHE_TTL = 120;
 const CHOKEPOINT_SEED_META_KEY = 'seed-meta:supply_chain:chokepoints';
 /** 7-day retain window for last-shortfall diagnostics on seed-meta. */
 const CHOKEPOINT_SEED_META_TTL_SECONDS = 604800;
@@ -444,6 +445,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
 
     const threatScore = (THREAT_LEVEL as Record<string, number>)[cp.threatLevel] ?? 0;
     const ts = summaries[cp.id];
+    const transitMovementAvailable = ts ? (ts.dataAvailable ?? true) : false;
     const anomaly = ts?.anomaly ?? { dropPct: 0, signal: false };
     const anomalyBonus = anomaly.signal ? 10 : 0;
     const disruptionScore = Math.min(100, computeDisruptionScore(threatScore, matchedWarnings.length, maxSeverity) + anomalyBonus);
@@ -460,11 +462,13 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
     if (anomaly.signal) {
       descriptions.push(`Traffic down ${anomaly.dropPct}% vs 30-day baseline, vessels may be transiting dark (AIS off)`);
     }
+    if (descriptions.length === 0) {
+      descriptions.push(sourceCoverageIncomplete || !transitMovementAvailable
+        ? 'No active disruptions reported by available sources; source coverage incomplete'
+        : 'No active disruptions');
+    }
     if (!threatConfigFresh) {
       descriptions.push(THREAT_CONFIG_STALE_NOTE);
-    }
-    if (descriptions.length === 0) {
-      descriptions.push('No active disruptions');
     }
 
     return {
@@ -506,7 +510,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         riskReportAction: ts.riskReportAction,
         // Default true for pre-fix writers (absence = covered). New writers
         // explicitly emit false for canonical zero-state fills.
-        dataAvailable: ts.dataAvailable ?? true,
+        dataAvailable: transitMovementAvailable,
       } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, todayCountsAvailable: false, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
       flowEstimate: flowsData?.[cp.id] ? {
         currentMbd: flowsData[cp.id]!.currentMbd,
@@ -543,19 +547,26 @@ export async function getChokepointStatus(
       async () => {
         const { chokepoints, sourceCoverageIncomplete, hasAnyPublishedSource } = await fetchChokepointData();
         if (!hasAnyPublishedSource) return null;
-        // recordCount reflects the count of chokepoints with REAL upstream data
+        // recordCount reflects the count of chokepoints with complete upstream data
         // (not the canonical shape size — always 13). Lets api/health.js
-        // distinguish 13/13 healthy from partial (e.g., 10/13) via the
-        // minRecordCount threshold. Before this, a partial portwatch failure
-        // showed as OK despite the UI rendering 3 zero-state rows.
-        const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable === true).length;
+        // distinguish 13/13 healthy from a row-local transit shortfall or a
+        // global navigation/AIS outage through the minRecordCount threshold.
+        const coveredCount = chokepoints.filter((c) => (
+          c.transitSummary?.dataAvailable === true
+          && c.navigationalWarningsAvailable === true
+          && c.aisSnapshotAvailable === true
+        )).length;
         // Persist WHICH ones are uncovered alongside the count. recordCount=11
         // says two are missing and never which two, and the upstream usually
         // recovers before anyone looks — on 2026-08-25 the partial ran ~4.5h and
         // was already healthy by the time it was investigated. Bounded by the
         // canonical set, so this cannot grow past 13 short ids.
         const uncoveredIds = chokepoints
-          .filter((c) => c.transitSummary?.dataAvailable !== true)
+          .filter((c) => (
+            c.transitSummary?.dataAvailable !== true
+            || c.navigationalWarningsAvailable !== true
+            || c.aisSnapshotAvailable !== true
+          ))
           .map((c) => c.id);
         // Response-level signal: if any canonical chokepoint lost upstream,
         // flip upstreamUnavailable so clients can show a partial-coverage
@@ -586,6 +597,8 @@ export async function getChokepointStatus(
         })().catch(() => {});
         return response;
       },
+      REDIS_NEGATIVE_CACHE_TTL,
+      { cacheUpstreamUnavailablePayloads: true },
     );
 
     return result ? narrowServedSources(result) : { chokepoints: [], fetchedAt: '', upstreamUnavailable: true };

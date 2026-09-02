@@ -1261,8 +1261,8 @@ function firstHtmlElementAttribute(value, tagName, attribute) {
   return null;
 }
 
-// `className` is optional: the Taiwan MND list keys off `h5.date`, while the
-// Japan MOD homepage marks its titles with a bare `<h5>`.
+// `className` is optional: the Taiwan MND list keys off a `date` element, while
+// the Japan MOD homepage marks its titles with a bare `<h5>`.
 function extractHtmlElementBodies(value, tagNames, className = null, maxMatches = 1) {
   const source = String(value);
   const allowedTags = new Set(tagNames);
@@ -1338,7 +1338,7 @@ export function parseTaiwanMndList(html) {
   for (const anchor of scanHtmlAnchors(html)) {
     const href = quotedHtmlAttribute(anchor.openingTag, 'href');
     if (!href || !/\/News\/PLAAct\/\d+$/i.test(href)) continue;
-    const dateBody = extractHtmlElementBodies(anchor.body, ['h5'], 'date')[0];
+    const dateBody = extractHtmlElementBodies(anchor.body, ['h5', 'div'], 'date')[0];
     const publicationDay = dateBody?.includes('<') ? null : dottedDate(dateBody);
     if (!publicationDay) continue;
     let sourceUrl;
@@ -2619,6 +2619,7 @@ export async function fetchCrossStraitActivitySnapshot({
           ...(previous ? { expectedReportingDay: previous.reportingDay } : {}),
         };
       });
+      if (rows.length === 0) mndErrors.push('MND_LIST_ROWS_MISSING');
       discoveredCount += rows.length;
       for (const row of rows) {
         if (page === 1) {
