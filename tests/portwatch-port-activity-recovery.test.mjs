@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 import * as portwatchSeed from '../scripts/seed-portwatch-port-activity.mjs';
+import { CHROME_UA } from '../scripts/_seed-utils.mjs';
 
 const { orderColdFetchQueue } = portwatchSeed;
 const DAY = 86_400_000;
@@ -40,11 +41,13 @@ describe('PortWatch reference pagination recovery', () => {
     assert.match(arcgisRateLimitFixture._comment, /unconfirmed, not observed absent/);
 
     const requestedOffsets = [];
+    const requestedInits = [];
     const sleepCalls = [];
     let offsetOneAttempts = 0;
-    const fetchFn = async (url) => {
+    const fetchFn = async (url, init) => {
       const offset = Number(new URL(url).searchParams.get('resultOffset'));
       requestedOffsets.push(offset);
+      requestedInits.push(init);
 
       if (offset === 0) {
         return arcgisJson({
@@ -79,6 +82,17 @@ describe('PortWatch reference pagination recovery', () => {
     assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
     assert.equal(sleepCalls.length, 1);
     assert.equal(sleepCalls[0][0], 2_000);
+
+    // The seam is only faithful if it hands the transport what production
+    // hands it. fetchWithTimeout builds these headers and the combined abort
+    // signal itself, so without this assertion the required User-Agent or the
+    // abort wiring could be dropped and every test here would stay green.
+    assert.equal(requestedInits.length, 3);
+    for (const init of requestedInits) {
+      assert.equal(init.headers['User-Agent'], CHROME_UA);
+      assert.equal(init.headers.Accept, 'application/json');
+      assert.ok(init.signal instanceof AbortSignal);
+    }
   });
 
   it('bounds repeated HTTP 200 rate-limit errors to one same-page retry', async () => {
