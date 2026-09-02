@@ -1033,4 +1033,70 @@ describe('SearchAdapter recovery path', () => {
     expect(exa.search).not.toHaveBeenCalled();
     expect(exa.extract).toHaveBeenCalledWith(seedUrl, expect.any(Object), expect.any(Object));
   });
+
+  it.each([
+    ['foreign host', 'https://example.com/produto/144583/pao'],
+    ['wrong path', 'https://www.paodeacucar.com/busca?termo=pao'],
+  ])('ignores an item seed outside the retailer policy: %s', async (_case, unsafeUrl) => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    config.discovery.seeds = [{ id: 'bread_white', url: unsafeUrl, category: 'bread' }];
+    const context = makeContext(config);
+    const adapter = new SearchAdapter({} as unknown as ExaProvider, {} as unknown as FirecrawlProvider);
+
+    const targets = await adapter.discoverTargets(context);
+    const target = targets.find((candidate) => candidate.id === 'bread_white');
+
+    expect(target?.url).toBe(config.baseUrl);
+    expect(target?.metadata?.seedUrl).toBeUndefined();
+    expect(context.logger.warn).toHaveBeenCalledWith(expect.stringContaining('ignored out-of-policy URL'));
+  });
+
+  it('falls back to paid discovery when an item seed has no price', async () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
+    const discoveredUrl = 'https://www.paodeacucar.com/produto/202020/pao-de-forma-branco-500g';
+    config.discovery.seeds = [{ id: 'bread_white', url: seedUrl, category: 'bread' }];
+    const exa = {
+      search: vi.fn().mockResolvedValue([{ url: discoveredUrl }]),
+      extract: vi.fn().mockImplementation(async (url: string) =>
+        url === discoveredUrl
+          ? {
+              data: {
+                productName: 'Pão de Forma Branco Pacote 500g',
+                price: 10.99,
+                currency: 'BRL',
+                inStock: true,
+                sizeText: '500g',
+              },
+              pageContent: 'Pão de Forma Branco Pacote 500g\nR$ 10,99',
+            }
+          : { data: {}, pageContent: 'Produto sem preço' },
+      ),
+    } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Por favor, confirme seu acesso' }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = makeContext(config);
+    const target = (await adapter.discoverTargets(context)).find((candidate) => candidate.id === 'bread_white');
+
+    const result = await adapter.fetchTarget(context, target!);
+    const [product] = await adapter.parseListing(context, result);
+
+    expect(product?.sourceUrl).toBe(discoveredUrl);
+    expect(product?.price).toBe(10.99);
+    expect(exa.search).toHaveBeenCalledOnce();
+  });
+
+  it('ships known Pão product pages for the qualifying basket items', () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seeds = new Map(config.discovery.seeds.map((seed) => [seed.id, seed.url]));
+
+    expect(seeds.size).toBe(9);
+    expect(seeds.get('eggs_12')).toBe('https://www.paodeacucar.com/produto/123706');
+    expect(seeds.get('bread_white')).toBe('https://www.paodeacucar.com/produto/144583/pao');
+    expect(seeds.get('water_1_5l')).toBe(
+      'https://www.paodeacucar.com/produto/99466/agua-mineral-natural-sem-gas-crystal-garrafa-15l',
+    );
+  });
 });

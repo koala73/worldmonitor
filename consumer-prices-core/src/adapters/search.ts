@@ -7,8 +7,8 @@
  *
  * Pin path: if a matching pin exists in ctx.pinnedUrls, discovery is skipped and the
  * configured extraction providers are called directly on the stored URL. On failure,
- * the adapter falls back to the normal Exa discovery flow in the same run so the basket
- * item is never left uncovered.
+ * the adapter tries a configured item seed, then the normal Exa discovery flow in the
+ * same run so the basket item is never left uncovered.
  *
  * Replaces ExaSearchAdapter's fragile regex-on-AI-summary approach.
  * Firecrawl renders JS so dynamic prices (Noon, etc.) are visible.
@@ -314,6 +314,7 @@ export class SearchAdapter implements RetailerAdapter {
     const baskets = loadAllBasketConfigs().filter((b) => b.marketCode === ctx.config.marketCode);
     const domain = new URL(ctx.config.baseUrl).hostname;
     const allowedHosts = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
+    const pathFilters = normalizePathFilters(ctx.config.searchConfig?.urlPathContains);
     // Pins outlive config changes, so a pin stored while a looser policy was
     // live would keep being scraped directly and bypass discovery entirely.
     // The market scope has to apply here too, not just to discovered URLs.
@@ -324,6 +325,17 @@ export class SearchAdapter implements RetailerAdapter {
       for (const item of basket.items) {
         const pinKey = `${basket.slug}:${item.canonicalName}`;
         const pinned = ctx.pinnedUrls?.get(pinKey);
+        const seed = ctx.config.discovery.seeds.find((candidate) => candidate.id === item.id);
+        const seedUrl =
+          seed &&
+          isAllowedHost(seed.url, allowedHosts) &&
+          matchesAnyPathFilter(seed.url, pathFilters) &&
+          matchesRequiredPathSegments(seed.url, requiredSegments)
+            ? seed.url
+            : undefined;
+        if (seed && !seedUrl) {
+          ctx.logger.warn(`  [search:seed] ignored out-of-policy URL for "${item.canonicalName}": ${seed.url}`);
+        }
         const itemConstraints: ItemConstraints = {
           baseUnit: item.baseUnit,
           minBaseQty: item.minBaseQty,
@@ -348,6 +360,7 @@ export class SearchAdapter implements RetailerAdapter {
               currency: ctx.config.currencyCode,
               itemConstraints,
               direct: true,
+              seedUrl,
               pinnedProductId: pinned.productId,
               matchId: pinned.matchId,
             },
@@ -361,7 +374,7 @@ export class SearchAdapter implements RetailerAdapter {
           }
           targets.push({
             id: item.id,
-            url: ctx.config.baseUrl,
+            url: seedUrl ?? ctx.config.baseUrl,
             category: item.category,
             metadata: {
               canonicalName: item.canonicalName,
@@ -370,6 +383,7 @@ export class SearchAdapter implements RetailerAdapter {
               currency: ctx.config.currencyCode,
               itemConstraints,
               direct: false,
+              seedUrl,
             },
           });
         }
@@ -612,21 +626,47 @@ export class SearchAdapter implements RetailerAdapter {
   }
 
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
-    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, pinnedProductId, matchId } = target.metadata as {
+    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, seedUrl, pinnedProductId, matchId } = target.metadata as {
       canonicalName: string;
       domain: string;
       currency: string;
       basketSlug: string;
       itemConstraints?: ItemConstraints;
       direct: boolean;
+      seedUrl?: string;
       pinnedProductId?: string;
       matchId?: string;
     };
     const hostAllowlist = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
     const failures: ExtractionFailure[] = [];
+    const attemptedUrls = new Set<string>();
+
+    const buildFetchResult = (
+      productUrl: string,
+      result: ExtractionSuccess,
+      wasDirect: boolean,
+    ): FetchResult => ({
+      url: productUrl,
+      html: JSON.stringify({
+        extracted: result.extracted,
+        productUrl,
+        canonicalName,
+        basketSlug,
+        itemCategory: target.category,
+        itemConstraints,
+        validator: result.validator,
+        extractionProvider: result.provider,
+        priceEvidence: result.priceEvidence,
+        direct: wasDirect,
+        ...(wasDirect ? { pinnedProductId, matchId } : {}),
+      } satisfies SearchPayload),
+      statusCode: 200,
+      fetchedAt: new Date(),
+    });
 
     // Direct path: skip Exa discovery, call the configured extractor on the pinned URL.
     if (direct) {
+      attemptedUrls.add(target.url);
       try {
         const attempt = await this._extractFromUrl(ctx, target.url, canonicalName, currency, itemConstraints);
         failures.push(...attempt.failures);
@@ -635,34 +675,31 @@ export class SearchAdapter implements RetailerAdapter {
           ctx.logger.info(
             `  [search:pin] ${ctx.config.slug}/${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} provider=${result.provider} from ${target.url}`,
           );
-          return {
-            url: target.url,
-            html: JSON.stringify({
-              extracted: result.extracted,
-              productUrl: target.url,
-              canonicalName,
-              basketSlug,
-              itemCategory: target.category,
-              itemConstraints,
-              validator: result.validator,
-              extractionProvider: result.provider,
-              priceEvidence: result.priceEvidence,
-              direct: true,
-              pinnedProductId,
-              matchId,
-            } satisfies SearchPayload),
-            statusCode: 200,
-            fetchedAt: new Date(),
-          };
+          return buildFetchResult(target.url, result, true);
         }
         ctx.logger.warn(
-          `  [search:pin] ${ctx.config.slug}/${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa`,
+          `  [search:pin] ${ctx.config.slug}/${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), trying configured recovery paths`,
         );
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         failures.push({ provider: 'firecrawl', reason: 'provider-error', detail });
-        ctx.logger.warn(`  [search:pin] ${ctx.config.slug}/${canonicalName}: pin fetch error, falling back to Exa: ${err}`);
+        ctx.logger.warn(`  [search:pin] ${ctx.config.slug}/${canonicalName}: pin fetch error, trying configured recovery paths: ${err}`);
       }
+    }
+
+    if (seedUrl && !attemptedUrls.has(seedUrl)) {
+      attemptedUrls.add(seedUrl);
+      const attempt = await this._extractFromUrl(ctx, seedUrl, canonicalName, currency, itemConstraints);
+      failures.push(...attempt.failures);
+      if (attempt.result) {
+        ctx.logger.info(
+          `  [search:seed] ${ctx.config.slug}/${canonicalName}: price=${attempt.result.extracted.price} ${attempt.result.extracted.currency} provider=${attempt.result.provider} from ${seedUrl}`,
+        );
+        return buildFetchResult(seedUrl, attempt.result, false);
+      }
+      ctx.logger.warn(
+        `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa discovery`,
+      );
     }
 
     // Half-open (#6182): while the skip window lasts, the target fails fast on
@@ -729,7 +766,6 @@ export class SearchAdapter implements RetailerAdapter {
 
     const pathFilters = normalizePathFilters(cfg?.urlPathContains);
     const requiredSegments = cfg?.urlPathMustContain ?? [];
-    const attemptedUrls = direct ? new Set([target.url]) : new Set<string>();
     const filterInPolicy = (results: SearchResult[]) =>
       results
         .map((r) => r.url)
@@ -806,12 +842,12 @@ export class SearchAdapter implements RetailerAdapter {
       // run goes from "0 passed domain check" straight to a thrown error
       // with no record of what Exa actually returned.
       const sample = exaResults.slice(0, 5).map((r) => r.url).filter(Boolean).join(' | ');
-      const excludedPinnedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
+      const repeatedAttemptedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
       ctx.logger.warn(
-        `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
+        `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${repeatedAttemptedUrl ? ', URL already attempted' : ''}). Rejected: ${sample}`,
       );
-      if (excludedPinnedUrl) {
-        throw new Error(`Exa: all ${exaResults.length} results repeated the pinned URL already attempted for "${canonicalName}"`);
+      if (repeatedAttemptedUrl) {
+        throw new Error(`Exa: all ${exaResults.length} results repeated a URL already attempted for "${canonicalName}"`);
       }
       throw new Error(
         `Exa: all ${exaResults.length} results failed host/path check (expected hostnames: ${hostAllowlist.join('|')}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''}${requiredSegments.length ? `, required path: ${requiredSegments.join('+')}` : ''})`,
@@ -864,23 +900,7 @@ export class SearchAdapter implements RetailerAdapter {
       `  [search:extract] ${ctx.config.slug}/${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} provider=${picked.provider} from ${usedUrl}`,
     );
 
-    return {
-      url: usedUrl,
-      html: JSON.stringify({
-        extracted: picked.extracted,
-        productUrl: usedUrl,
-        canonicalName,
-        basketSlug,
-        itemCategory: target.category,
-        itemConstraints,
-        validator: picked.validator,
-        extractionProvider: picked.provider,
-        priceEvidence: picked.priceEvidence,
-        direct: false,
-      } satisfies SearchPayload),
-      statusCode: 200,
-      fetchedAt: new Date(),
-    };
+    return buildFetchResult(usedUrl, picked, false);
   }
 
   async parseListing(ctx: AdapterContext, result: FetchResult): Promise<ParsedProduct[]> {
