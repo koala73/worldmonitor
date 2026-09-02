@@ -1920,6 +1920,72 @@ describe('crawlable corpus generator', () => {
         /<title>North Korea Instability Index &amp; Country Risk \| World Monitor<\/title>/,
       );
 
+      let withheldDimensionRows = 0;
+      for (const country of rankedCountries) {
+        const route = `/countries/${country.slug}/`;
+        const html = read(outDir, `${route.slice(1)}index.html`);
+        const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
+        const rows = [...document.querySelectorAll('[data-country-analysis] table tbody tr')];
+        let reachedWithheldRows = false;
+        let previousObservedScore = Number.NEGATIVE_INFINITY;
+        for (const row of rows) {
+          const cells = [...row.querySelectorAll('td')].map((cell) => cell.textContent.trim());
+          const [dimension, , score, coverage, evidenceState] = cells;
+          const withheld = coverage === '0%'
+            || /^(?:Not applicable|Source failure|Unmonitored)$/i.test(evidenceState);
+          if (withheld) {
+            withheldDimensionRows++;
+            reachedWithheldRows = true;
+            assert.equal(score, '—', `${route} must withhold ${dimension}'s unobserved score`);
+            assert.doesNotMatch(
+              evidenceState,
+              /^(?:Fresh|Stale)$/i,
+              `${route} must not label ${dimension} fresh or stale without coverage`,
+            );
+            assert.doesNotMatch(
+              html,
+              new RegExp(`\\blow ${dimension.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\$&')} \\d`),
+              `${route} prose must not rank withheld dimension ${dimension}`,
+            );
+            continue;
+          }
+          assert.equal(reachedWithheldRows, false, `${route} must sort all observed dimensions before withheld rows`);
+          const numericScore = Number(score);
+          assert.ok(Number.isFinite(numericScore), `${route} observed dimension ${dimension} needs a numeric score`);
+          assert.ok(
+            numericScore >= previousObservedScore,
+            `${route} observed dimensions must remain sorted weakest first`,
+          );
+          previousObservedScore = numericScore;
+        }
+      }
+      assert.ok(withheldDimensionRows > 0, 'the resilience snapshot must exercise withheld dimension rows');
+
+      const luxembourg = read(outDir, 'countries/luxembourg/index.html');
+      assert.match(
+        luxembourg,
+        /<tr><td>Liquid-reserve adequacy<\/td><td>Recovery capacity<\/td><td>0<\/td><td>100%<\/td><td>Fresh<\/td><\/tr>/,
+        'an observed country dimension score of zero must remain publishable',
+      );
+      const panama = read(outDir, 'chokepoints/panama-canal/index.html');
+      assert.match(
+        panama,
+        /data-chokepoint-score>0<\/span>/,
+        'an observed chokepoint score of zero must remain publishable',
+      );
+      const redSeaObservedZero = read(outDir, 'crises/red-sea-security/index.html');
+      assert.match(
+        redSeaObservedZero,
+        /data-country-code="DJ"[\s\S]*?data-crisis-country-value>0 events · 0 fatalities · 2026-08-01<\/span>/,
+        'observed crisis counts of zero must remain publishable',
+      );
+      const convergenceObservedScore = read(outDir, 'tools/signal-convergence/index.html');
+      assert.match(
+        convergenceObservedScore,
+        /<span>Geographic Convergence Score<\/span><strong>87<\/strong>/,
+        'an observed tool score must remain publishable',
+      );
+
       const taiwan = read(outDir, 'countries/taiwan/index.html');
       assert.match(
         taiwan,
