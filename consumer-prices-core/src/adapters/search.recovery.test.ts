@@ -221,6 +221,12 @@ describe('SearchAdapter recovery path', () => {
         pageContent: 'Arroz Branco Tipo 1 1kg\nR$ 6,29',
         reason: 'price-evidence-missing',
       },
+      {
+        name: 'integer with no page content',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: 529, currency: 'BRL', sizeText: '1kg' },
+        pageContent: undefined,
+        reason: 'price-evidence-missing',
+      },
     ])('rejects the Carrefour Brazil $name fallback shape', async ({ data, pageContent, reason }) => {
       const config = loadRetailerConfig('carrefour_br');
       const url = 'https://mercado.carrefour.com.br/arroz-branco-tipo-1-1-kg-123/p';

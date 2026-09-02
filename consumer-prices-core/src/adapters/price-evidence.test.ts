@@ -13,6 +13,11 @@ describe('normalizeExaBrlMinorUnitPrice', () => {
     expect(normalizeExaBrlMinorUnitPrice(529, 'R$ 529,00\nR$ 5,29')).toBe(529);
     expect(normalizeExaBrlMinorUnitPrice(5.29, 'R$ 5,29')).toBe(5.29);
   });
+
+  it('preserves decimal proof when the same value also appears without decimals', () => {
+    expect(normalizeExaBrlMinorUnitPrice(500, 'R$ 5,00\nR$ 5')).toBe(5);
+    expect(normalizeExaBrlMinorUnitPrice(500, 'R$ 5\nR$ 5,00')).toBe(5);
+  });
 });
 
 describe('priceEvidenceOnPage', () => {

@@ -44,7 +44,7 @@ export function normalizeExaBrlMinorUnitPrice(price: number, content: string | n
     const value = fraction ? whole + Number(fraction) / 100 : whole;
     if (!Number.isFinite(value)) continue;
     explicitValues.set(value, {
-      hasDecimal: fraction !== undefined,
+      hasDecimal: fraction !== undefined || explicitValues.get(value)?.hasDecimal === true,
       minorUnits: whole * 100 + Number(fraction ?? '00'),
     });
   }

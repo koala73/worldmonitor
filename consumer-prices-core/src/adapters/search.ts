@@ -517,6 +517,10 @@ export class SearchAdapter implements RetailerAdapter {
         continue;
       }
       if (priceEvidence === 'no-content') {
+        if (provider === 'exa' && currency.toUpperCase() === 'BRL' && Number.isInteger(price)) {
+          failures.push({ provider, reason: 'price-evidence-missing', detail: `${price} has no page content` });
+          continue;
+        }
         ctx.logger.warn(
           `  [search:price-evidence] ${ctx.config.slug}/${canonicalName}: no page content from ${provider} — evidence gate skipped`,
         );
