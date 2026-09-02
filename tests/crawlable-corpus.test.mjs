@@ -31,6 +31,15 @@ import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
+// Same later-of-inputs clock as scripts/build-crawlable-corpus.mjs. A pinned
+// calendar date fails when freeze:crawlable-live-pulse commits a later UTC day.
+function laterDate(...values) {
+  return values
+    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
+    .sort()
+    .at(-1) ?? null;
+}
+
 function read(outDir, path) {
   return readFileSync(join(outDir, path), 'utf8');
 }
@@ -1085,6 +1094,10 @@ describe('crawlable corpus generator', () => {
   it('builds a non-trivial static corpus with canonical raw HTML pages', async () => {
     const outDir = mkdtempSync(join(tmpdir(), 'wm-crawlable-corpus-'));
     try {
+      const clock = await loadCorpusData({ rootDir: repoRoot });
+      const countriesLastmod = clock.lastmod.countries;
+      const ciiCountriesLastmod = clock.lastmod.ciiCountries;
+      const ciiIndexLastmod = clock.lastmod.countryInstabilityIndex;
       const manifest = await buildCorpus({
         rootDir: repoRoot,
         outDir,
@@ -1347,7 +1360,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /<link rel="alternate" hreflang="x-default" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.match(norway, /<link rel="alternate" hreflang="en" href="https:\/\/www\.worldmonitor\.app\/countries\/norway\/">/);
       assert.doesNotMatch(norway, /hreflang="zh/, 'English crawlable corpus pages must not advertise zh alternates');
-      assert.match(norway, /<meta name="lastmod" content="2026-08-31">/);
+      assert.match(norway, new RegExp(`<meta name="lastmod" content="${countriesLastmod}">`));
       assert.ok(norway.includes(`Source: ${manifest.sources.resilienceSnapshot}`));
       assert.match(
         norway,
@@ -1378,7 +1391,7 @@ describe('crawlable corpus generator', () => {
       assert.match(norway, /data-live-band>No current score/);
       assert.match(norway, /data-live-trend>Unavailable/);
       const ukraine = read(outDir, 'countries/ukraine/index.html');
-      assert.match(ukraine, /<meta name="lastmod" content="2026-09-01">/);
+      assert.match(ukraine, new RegExp(`<meta name="lastmod" content="${ciiCountriesLastmod}">`));
       assert.match(ukraine, /<title>Ukraine Instability Index &amp; Country Risk \| World Monitor<\/title>/);
       assert.match(ukraine, /<h1>Ukraine Country Instability Index<\/h1>/);
       assert.match(ukraine, /Ukraine's Country Instability Index is <strong>\d+\/100 &middot; [^<]+<\/strong>/);
@@ -1411,18 +1424,25 @@ describe('crawlable corpus generator', () => {
         true,
         'only country pages with a published CII score may target Country Instability Index',
       );
+      const ciiTargetedSet = new Set(ciiTargetedCountryPages);
+      const genericCountryPages = manifest.sections.countries.routes.filter(
+        (route) => !ciiTargetedSet.has(route),
+      );
+      assert.equal(genericCountryPages.length, 165);
+      // Compare by page family, not by counting a distinct calendar date.
+      // After freeze:crawlable-live-pulse the generic and CII clocks can coincide.
       assert.equal(
-        manifest.sections.countries.routes.filter((route) => (
-          /<meta name="lastmod" content="2026-08-31">/.test(
+        genericCountryPages.every((route) => (
+          new RegExp(`<meta name="lastmod" content="${countriesLastmod}">`).test(
             read(outDir, `${route.slice(1)}index.html`),
           )
-        )).length,
-        165,
-        'the 165 generic country pages must retain the generic content clock',
+        )),
+        true,
+        'generic country pages must use the generic content clock',
       );
       assert.equal(
         ciiTargetedCountryPages.every((route) => (
-          /<meta name="lastmod" content="2026-09-01">/.test(
+          new RegExp(`<meta name="lastmod" content="${ciiCountriesLastmod}">`).test(
             read(outDir, `${route.slice(1)}index.html`),
           )
         )),
@@ -1437,7 +1457,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(ciiIndex, /<title>Country Instability Index: Live Rankings \| World Monitor<\/title>/);
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
-      assert.match(ciiIndex, /<meta name="lastmod" content="2026-09-01">/);
+      assert.match(ciiIndex, new RegExp(`<meta name="lastmod" content="${ciiIndexLastmod}">`));
       assert.match(ciiIndex, /data-cii-methodology-version="v8"/);
       assert.match(
         ciiIndex,
@@ -2820,9 +2840,25 @@ describe('crawlable corpus generator', () => {
     // Family lastmods use material + page versions + pulse where the HTML
     // publishes pulse values. CORPUS_GENERATOR_CONTENT_VERSION stays out
     // (#7463). Research lastmod is the report dateModified, not a rebuild stamp.
-    assert.equal(data.lastmod.countries, '2026-08-31');
+    // Do not pin a calendar date: freeze:crawlable-live-pulse advances capturedAt.
+    assert.equal(
+      data.lastmod.countries,
+      laterDate(
+        data.resilience.capturedAt,
+        data.livePulse.capturedAt,
+        gitFileLastmod(repoRoot, data.sources.countryRegions),
+        '2026-08-31',
+      ),
+    );
     assert.equal(data.lastmod.research, '2026-07-27');
-    assert.equal(data.lastmod.chokepoints, '2026-09-01');
+    assert.equal(
+      data.lastmod.chokepoints,
+      laterDate(
+        ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
+        data.livePulse.capturedAt,
+        '2026-09-01',
+      ),
+    );
     assert.equal(
       data.lastmod.sources,
       sourcePageLastmod({
