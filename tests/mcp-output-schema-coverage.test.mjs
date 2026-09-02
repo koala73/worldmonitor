@@ -20,6 +20,7 @@ import { strict as assert } from 'node:assert';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import Ajv2020 from 'ajv/dist/2020.js';
 
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
@@ -31,12 +32,31 @@ import {
   extractRegulatoryAction,
 } from '../scripts/seed-cross-source-signals.mjs';
 import { PHYSICAL_DIVERGENCE_CONTRACT } from '../shared/physical-divergence-contract.js';
+import { jsonResponse } from '../api/_json-response.js';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
 
 async function freshMod() {
   return import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+}
+
+function collectInvalidToolSchemas(tools) {
+  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  const failures = [];
+
+  for (const tool of tools) {
+    for (const field of ['inputSchema', 'outputSchema']) {
+      const schema = tool[field];
+      if (!schema || typeof schema !== 'object') {
+        failures.push(`${tool.name}.${field}: missing or non-object schema`);
+      } else if (!ajv.validateSchema(schema)) {
+        failures.push(`${tool.name}.${field}: ${ajv.errorsText(ajv.errors)}`);
+      }
+    }
+  }
+
+  return failures;
 }
 
 describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
@@ -495,7 +515,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.deepEqual(missing, [], `tools on the wire missing outputSchema:\n  ${missing.join('\n  ')}`);
   });
 
-  it('tools/list preserves nested union types in get_supply_vulnerabilities outputSchema', async () => {
+  it('tools/list emits valid inputSchema and outputSchema values for every tool', async () => {
     const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -504,13 +524,32 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.equal(res.status, 200);
 
     const body = await res.json();
-    const tool = body.result?.tools?.find((entry) => entry.name === 'get_supply_vulnerabilities');
-    assert.ok(tool, 'get_supply_vulnerabilities missing from tools/list');
-    const inputs = tool.outputSchema.properties.vulnerabilities.items.properties.components
-      .properties.transitExposure.properties.chokepoints.items.properties.inputs.items.properties;
+    const failures = collectInvalidToolSchemas(body.result?.tools ?? []);
 
-    assert.deepEqual(inputs.value.type, ['number', 'null']);
-    assert.deepEqual(inputs.year.type, ['integer', 'null']);
+    assert.deepEqual(failures, [], `tools/list emitted invalid JSON Schemas:\n  ${failures.join('\n  ')}`);
+  });
+
+  it('jsonResponse preserves scalar-array schema types at the MCP tools/list depth limit', async () => {
+    let outputSchema = { type: ['string', 'null'] };
+    for (let depth = 0; depth < 16; depth += 1) {
+      outputSchema = { type: 'array', items: outputSchema };
+    }
+
+    const res = jsonResponse({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        tools: [{
+          name: 'nested_scalar_array',
+          inputSchema: { type: 'object' },
+          outputSchema,
+        }],
+      },
+    }, 200);
+    const body = await res.json();
+    const failures = collectInvalidToolSchemas(body.result.tools);
+
+    assert.deepEqual(failures, [], `tools/list emitted invalid JSON Schemas:\n  ${failures.join('\n  ')}`);
   });
 
   // --------------------------------------------------------------------
