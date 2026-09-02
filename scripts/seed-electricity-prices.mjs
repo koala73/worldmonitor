@@ -147,7 +147,12 @@ export async function fetchEntsoERegion(region, token, today, yesterday, {
         500,
       );
     } catch (directErr) {
-      if (!proxyAuth) throw directErr;
+      if (!proxyAuth) {
+        // Without PROXY_URL the fallback is inert; say so, or the log line is
+        // byte-identical to the pre-fallback outage and reads as "proxy blocked too".
+        console.warn(`[electricity] ENTSO-E ${region.region} direct failed (${directErr.message}); no proxy configured (PROXY_URL unset), skipping proxy fallback`);
+        throw directErr;
+      }
       console.warn(`[electricity] ENTSO-E ${region.region} direct failed (${directErr.message}); retrying via proxy`);
       try {
         const { buffer } = await proxyFetcher(url, proxyAuth, {
@@ -316,10 +321,10 @@ export async function main() {
     // Check EU coverage threshold — preserve EU snapshot but still write US data
     if (!meetsEntsoPublicationFloor(entsoResults.length)) {
       const euKeys = ENTSO_E_REGIONS.map((r) => r.region);
-      await preservePreviousSnapshot(
-        `Only ${entsoResults.length} ENTSO-E regions returned valid prices (min: ${MIN_ENTSO_REGIONS})`,
-        euKeys,
-      );
+      const reason = entsoToken
+        ? `Only ${entsoResults.length} ENTSO-E regions returned valid prices (min: ${MIN_ENTSO_REGIONS})`
+        : `ENTSO_E_TOKEN not set — ENTSO-E skipped, floor of ${MIN_ENTSO_REGIONS} regions cannot be met`;
+      await preservePreviousSnapshot(reason, euKeys);
       if (eiaResults.length > 0) {
         const usCommands = eiaResults.map((entry) => [
           'SET', `${ELECTRICITY_KEY_PREFIX}${entry.region}`, JSON.stringify(entry), 'EX', ELECTRICITY_TTL_SECONDS,
@@ -334,11 +339,8 @@ export async function main() {
       return;
     }
 
+    // The publication floor above guarantees allRegions.length >= MIN_ENTSO_REGIONS here.
     const allRegions = [...entsoResults, ...eiaResults];
-    if (allRegions.length === 0) {
-      console.warn('[electricity] No data from any source — skipping write');
-      return;
-    }
 
     const index = buildElectricityIndex(entsoResults, dateStr);
     const metaPayload = {
