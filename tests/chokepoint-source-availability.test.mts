@@ -6,6 +6,7 @@ import { listNavigationalWarnings } from '../server/worldmonitor/maritime/v1/lis
 import { getChokepointStatus } from '../server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts';
 
 const originalFetch = globalThis.fetch;
+const originalDateNow = Date.now;
 const ENV_KEYS = ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'WS_RELAY_URL'] as const;
 const originalEnv = new Map<string, string | undefined>();
 
@@ -41,6 +42,7 @@ beforeEach(() => {
 
 afterEach(() => {
   globalThis.fetch = originalFetch;
+  Date.now = originalDateNow;
   for (const key of ENV_KEYS) {
     const value = originalEnv.get(key);
     if (value === undefined) delete process.env[key];
@@ -144,6 +146,7 @@ describe('chokepoint source availability', () => {
   });
 
   it('keeps AIS rows and advisories when NGA and transit data are unavailable', async () => {
+    Date.now = () => Date.parse('2026-03-05T00:00:00.000Z');
     const harness = redisHarness(async (url) => {
       if (url.includes('msi.nga.mil')) return new Response('unavailable', { status: 503 });
       if (url.startsWith('https://relay.test/ais/snapshot')) {
@@ -178,6 +181,14 @@ describe('chokepoint source availability', () => {
     assert.equal(hormuz?.aisDisruptions, 1);
     assert.equal(hormuz?.congestionLevel, 'high');
     assert.match(hormuz?.description || '', /Active conflict/);
+    const quietRow = response.chokepoints.find((row) => row.description.includes('source coverage incomplete'));
+    assert.ok(quietRow, 'quiet rows must qualify the all-clear when any source is unavailable');
+    assert.doesNotMatch(quietRow.description, /^No active disruptions$/);
+
+    const cachedResponse = await getChokepointStatus({} as never, {});
+    assert.equal(cachedResponse.chokepoints.length, 13, 'partial rows must survive the outer cache');
+    assert.equal(cachedResponse.upstreamUnavailable, true);
+    assert.equal(cachedResponse.chokepoints.find((row) => row.id === 'hormuz_strait')?.aisDisruptions, 1);
 
     await new Promise<void>((resolve) => setImmediate(resolve));
     const meta = JSON.parse(harness.values.get('seed-meta:supply_chain:chokepoints') || '{}');
