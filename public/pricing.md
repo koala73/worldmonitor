@@ -60,7 +60,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Best for: Developers and teams that want programmatic access to World Monitor intelligence data
 - Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
 - License: Commercial license for your organization — build internal tools and reporting on the data; redistributing it to your own customers requires API Business
-- Starter limit: 1,000 requests/day
+- Starter limit: 1,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
 - Starter webhooks: 5 webhook rules
 
 ## API Business
@@ -71,7 +71,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Best for: Teams with high-volume programmatic workloads that outgrow the Starter quota
 - Includes: Everything in API Starter, redistribution rights, 5 Pro licenses — invite users at any corporate email domain and priority support
 - License: Commercial license for your customers — embed WorldMonitor data in what you sell; the 5 bundled Pro seats may be assigned to users at any corporate email domain
-- Limits: 300 requests/minute, 10,000 requests/day
+- Limits: 300 requests/minute, 10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
 - Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://worldmonitor.app/pro
 
 ## Enterprise
@@ -150,7 +150,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "features": [
         "REST API",
         "license / API key included",
-        "1,000 requests/day starter limit",
+        "1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)",
         "1,000 dashboard-AI requests/day",
         "webhooks",
         "structured JSON",
@@ -165,7 +165,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "features": [
         "Everything in API Starter",
         "300 requests/minute",
-        "10,000 requests/day",
+        "10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)",
         "10,000 dashboard-AI requests/day",
         "5 Pro licenses — invite users at any corporate email domain",
         "commercial license — for your customers",

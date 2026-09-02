@@ -72,7 +72,7 @@
           "Leseni / ufunguo wa API wajumuishwa",
           "Mtiririko wa data wa halisi wa wakati",
           "Mahitaji 60 kwa dakika",
-          "Ombi 1,000 kwa siku limetengeza (REST + MCP pamoja)",
+          "Ombi 1,000 kwa siku zilizoingizwa (REST + MCP pamoja; simu ya MCP hai huhesabu kama 2-3)",
           "Arifa za Webhook"
         ],
         "highlightFeatures": [
@@ -85,7 +85,7 @@
           "Kila kitu katika API Starter",
           "Haki za kusambaza tena — kubadilisha data yetu katika kile unachouza",
           "Ombi 300 kwa dakika",
-          "Ombi 10,000 kwa siku limetengeza (REST + MCP pamoja)",
+          "Ombi 10,000 kwa siku zilizoingizwa (REST + MCP pamoja; simu ya MCP hai huhesabu kama 2-3)",
           "Leseni 5 za Pro — waalike watumiaji wenye kikoa chochote cha barua pepe cha shirika",
           "Msaada wa kipaumbele"
         ],
