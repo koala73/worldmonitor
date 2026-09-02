@@ -1751,6 +1751,34 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.crises.routes,
         ...manifest.sections.research.routes,
       ]);
+      // The hub asserted four scoring inputs flatly — "combines active
+      // navigational warnings, AIS signal disruptions, congestion, and transit
+      // counts" — while the detail pages it indexes withheld three of them, so
+      // the entry point contradicted the corpus (#7530). The answer must state
+      // the coverage this snapshot actually has.
+      {
+        const hub = read(outDir, 'chokepoints/index.html');
+        const congestionPublished = clock.chokepoints
+          .filter((chokepoint) => (
+            clock.livePulse.chokepoints?.[chokepoint.id]?.aisSnapshotAvailable === true
+          )).length;
+        const total = clock.chokepoints.length;
+        const expected = congestionPublished === total
+          ? `all ${total} waterways publish an AIS congestion reading`
+          : congestionPublished === 0
+            ? `none of the ${total} waterways publish an AIS congestion reading`
+            : `${congestionPublished} of ${total} waterways publish an AIS congestion reading`;
+        assert.ok(
+          hub.includes(expected),
+          `the chokepoint hub must state its real AIS congestion coverage; expected "${expected}"`,
+        );
+        assert.match(
+          hub,
+          /withheld rather than published as a measured zero or a calm reading/,
+          'the hub must state the withholding rule it shares with the detail pages',
+        );
+      }
+
       // No page may describe an absence in prose. "No additional status note
       // was supplied." was frozen into the snapshot for chokepoints whose
       // upstream sent no note and rendered as real body text in <main> on 7 of

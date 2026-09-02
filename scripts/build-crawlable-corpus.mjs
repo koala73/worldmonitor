@@ -137,7 +137,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-01';
+export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-02';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -3103,6 +3103,23 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
   const mostDisruptedNames = chokepointHubRows
     .filter((row) => row.score === highestScore)
     .map((row) => row.chokepoint.displayName);
+  // State the coverage this snapshot actually has. The answer used to assert
+  // four scoring inputs flatly while the detail pages withheld three of them,
+  // so the hub contradicted the pages it indexes (#7530).
+  const congestionPublished = chokepointHubRows.filter((row) => row.aisSnapshotAvailable).length;
+  const congestionCoverageClause = congestionPublished === chokepointHubRows.length
+    ? `in this snapshot all ${chokepointHubRows.length} waterways publish an AIS congestion reading`
+    : congestionPublished === 0
+      ? `in this snapshot the AIS snapshot is unavailable, so none of the ${chokepointHubRows.length} waterways publish an AIS congestion reading`
+      : `in this snapshot ${congestionPublished} of ${chokepointHubRows.length} waterways publish an AIS congestion reading`;
+  // The committed EIA series covers 7 of the 13 tracked waterways. Publish the
+  // EIA row name alongside ours wherever the registry maps them differently
+  // (Dover Strait draws on the Danish Straits row), so the substitution is
+  // visible rather than implied.
+  const oilTransitRows = chokepointHubRows
+    .map((row) => ({ row, eia: EIA_OIL_TRANSIT_BASELINES.byRegistryId[row.chokepoint.id] }))
+    .filter(({ eia }) => eia)
+    .sort((left, right) => right.eia.mbd - left.eia.mbd);
   const hubFaqs = [
     {
       question: 'Which maritime chokepoints are most disrupted?',
@@ -3110,7 +3127,11 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
     },
     {
       question: 'How does World Monitor score chokepoint status?',
-      answer: 'World Monitor combines active navigational warnings, AIS signal disruptions, AIS congestion, and transit counts into a 0-100 disruption score. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.',
+      answer: `World Monitor scores each waterway 0-100 from four independent sources: NGA navigational warnings, the AIS snapshot, relay transit counts, and PortWatch week-over-week movement. Each source controls only its own values, so a source that is unavailable is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.`,
+    },
+    {
+      question: 'Why do some chokepoint pages show fewer metrics than others?',
+      answer: 'A metric appears only when the source behind it reported for that snapshot. Navigational warnings, AIS disruptions and AIS congestion each depend on their own feed, and every transit-derived value — including week-over-week movement — is withheld when the day\'s transit count is unavailable. Withheld values are hidden rather than shown as an em dash or a zero, so a sparse page means missing evidence, not a calm waterway. Published revisions to these rules are in the corrections log.',
     },
   ];
   const datasetId = `${absoluteUrl(baseUrl, path)}#status-dataset`;
@@ -3148,7 +3169,30 @@ ${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.quest
 ${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-hub-region>${escapeHtml(row.region)}</td><td><data data-hub-score value="${escapeHtml(row.score)}">${escapeHtml(formatScore(row.score, OBSERVED_EVIDENCE))}</data></td><td data-hub-status>${escapeHtml(row.status)}</td><td data-hub-congestion>${escapeHtml(row.congestion)}</td><td><time data-hub-updated datetime="${escapeHtml(row.asOf)}">${escapeHtml(formatStaticDateTime(row.asOf))}</time></td></tr>`).join('\n')}
         </tbody>
       </table></div>
-      <p class="source">Sources: ${escapeHtml(snapshotPath)} and ${CHOKEPOINT_REGISTRY_PATH}. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>.</p>`;
+      <h2>How much oil moves through each waterway</h2>
+      <p>Disruption scores describe current pressure, not importance. The committed ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)} series gives a volume baseline for ${oilTransitRows.length} of the ${chokepointHubRows.length} tracked waterways, which is what separates a high score on a marginal strait from a high score on a corridor that moves a fifth of seaborne oil. Where our name and the EIA row differ, both are shown — the Dover Strait page draws on the EIA Danish Straits row.</p>
+      <div class="table-scroll"><table data-chokepoint-oil-transit>
+        <caption>Crude oil and petroleum liquids transiting each waterway, ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)}, ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))}</caption>
+        <thead><tr><th scope="col">Chokepoint</th><th scope="col">EIA series row</th><th scope="col">Million barrels per day</th></tr></thead>
+        <tbody>
+${oilTransitRows.map(({ row, eia }) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-oil-eia-name>${escapeHtml(eia.eiaName)}</td><td><data data-oil-mbd value="${escapeHtml(String(eia.mbd))}">${escapeHtml(String(eia.mbd))}</data></td></tr>`).join('\n')}
+        </tbody>
+      </table></div>
+      <p class="source">Baseline source: ${escapeHtml(EIA_OIL_TRANSIT_BASELINES_PATH)}. The remaining ${chokepointHubRows.length - oilTransitRows.length} tracked waterways have no row in that series; their pages say so rather than estimating one.</p>
+      <h2>Why each waterway is tracked</h2>
+      <dl data-chokepoint-context>
+${chokepointHubRows.map((row) => {
+    const blurb = CHOKEPOINT_CONTENT[row.chokepoint.id]?.blurb || '';
+    const opening = blurb.match(/^[\s\S]*?\.(?=\s|$)/)?.[0]?.trim() || '';
+    return `        <dt><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></dt>
+        <dd>${escapeHtml(opening || `${row.chokepoint.displayName} is a tracked maritime chokepoint in the ${row.region} corridor.`)}</dd>`;
+  }).join('\n')}
+      </dl>
+      <h2>How this list is scoped</h2>
+      <p>The ${chokepointHubRows.length} waterways come from a committed registry, not from whatever is in the news. Each has a detail page carrying the same four-source status block, the modelled corridors that route through it, and its alternatives when it is unavailable. A waterway enters the registry because traffic there has no cheap substitute — the test is substitutability, not incident count — so the list changes rarely and changes are recorded in the corrections log.</p>
+      <h2>What these pages are not</h2>
+      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Transit counts are a relay observation of vessels seen, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
+      <p class="source">Sources: ${escapeHtml(snapshotPath)} and ${CHOKEPOINT_REGISTRY_PATH}. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>. Published revisions: <a href="/docs/corrections">corrections log</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
