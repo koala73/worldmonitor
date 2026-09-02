@@ -376,6 +376,7 @@
       "scripts/shared/mineral-country-aliases.json",
       "scripts/shared/mineral-production-parse.mjs",
       "scripts/shared/supply-vulnerability-commodities.json",
+      "scripts/shared/supply-vulnerability-coverage.mjs",
       "scripts/shared/supply-vulnerability-score.mjs"
     ],
     "cronSchedule": "0 4 * * *",
