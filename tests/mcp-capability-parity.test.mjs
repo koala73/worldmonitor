@@ -32,6 +32,7 @@ import { readFileSync } from 'node:fs';
 
 import { BASE_URL } from './helpers/mcp-pro-deps.mjs';
 import { resolveMcpBudget } from '../api/mcp/quota.ts';
+import { MCP_DEFAULT_BURST_PER_MINUTE, resolveMcpBurstPerMinute } from '../api/mcp/auth.ts';
 import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 
 const originalFetch = globalThis.fetch;
@@ -271,6 +272,33 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
         `server-card must mirror the caps the handler enforces (API_RATE_LIMIT_ENFORCE=${restEnforced})`,
       );
     }
+
+    // Same derivation for the burst ceiling, which had the identical failure
+    // mode: one hardcoded `slidingWindow(60)` throttled API Business to a fifth
+    // of the 300/min it sells, and a literal table here would have agreed with
+    // the price list rather than with the limiter.
+    const burstFor = (planKey) => {
+      const planLimits = PRODUCT_CATALOG[planKey]?.features?.planLimits;
+      assert.ok(planLimits, `${planKey} must exist in the catalog`);
+      return resolveMcpBurstPerMinute(planLimits.mcpBurstRequestsPerMinute);
+    };
+    assert.deepEqual(
+      card.rateLimits?.perMinuteByPlan,
+      {
+        pro: burstFor('pro_monthly'),
+        proBusiness: burstFor('pro_business_monthly'),
+        apiStarter: burstFor('api_starter'),
+        apiBusiness: burstFor('api_business'),
+        enterprise: burstFor('enterprise'),
+      },
+      'server-card must mirror the per-minute ceilings applyPerMinuteLimit actually applies',
+    );
+    assert.equal(
+      card.rateLimits?.perMinute,
+      MCP_DEFAULT_BURST_PER_MINUTE,
+      'the scalar perMinute is the documented DEFAULT — it must be the one the code falls back to',
+    );
+
     const notes = card.rateLimits?.notes;
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
     assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
