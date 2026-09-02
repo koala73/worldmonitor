@@ -248,6 +248,40 @@ describe('SearchAdapter recovery path', () => {
       expect((error as SearchTargetError).failures.map((failure) => failure.reason)).toContain(reason);
     });
 
+    it('rejects a package quantity before BRL minor-unit normalization', async () => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/pao-de-forma-500-g-123/p';
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url }]),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: 'Pão de Forma 500g',
+            price: 500,
+            currency: 'BRL',
+            sizeText: '500g',
+          },
+          pageContent: 'Pão de Forma 500g\nProdutos recomendados\nR$ 5,00',
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const target = makeBrazilTarget(config, {
+        id: 'bread_500g',
+        category: 'bread',
+        canonicalName: 'Pão de Forma 500g',
+        baseUnit: 'g',
+        minBaseQty: 450,
+        maxBaseQty: 550,
+      });
+
+      const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures.map((failure) => failure.reason)).toContain('quantity-as-price');
+    });
+
     it('keeps the out-of-range Carrefour chicken visible to the direct-pin rejection gate', async () => {
       const config = loadRetailerConfig('carrefour_br');
       const url = 'https://mercado.carrefour.com.br/produto/frango-inteiro-resfriado-com-osso-carrefour-kg-15787';

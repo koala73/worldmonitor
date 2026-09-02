@@ -487,6 +487,10 @@ export class SearchAdapter implements RetailerAdapter {
       if (provider === 'exa' && currency.toUpperCase() === 'BRL') {
         const normalizedPrice = normalizeExaBrlMinorUnitPrice(price, pageContent);
         if (normalizedPrice !== price) {
+          if (looksLikeQuantityAsPrice(price, data.sizeText, validationConstraints, canonicalName)) {
+            failures.push({ provider, reason: 'quantity-as-price', detail: `${price} for ${data.sizeText}` });
+            continue;
+          }
           ctx.logger.info(
             `  [search:price-normalized] ${ctx.config.slug}/${canonicalName}: Exa BRL minor units ${price} -> ${normalizedPrice}`,
           );
