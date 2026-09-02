@@ -36,6 +36,20 @@ const FINAL_PAGE = {
   exceededTransferLimit: false,
 };
 
+// Drive one reference page whose second offset always returns `body`, and
+// return the message fetchWithTimeout's parser threw for it.
+async function rejectedRefsError(body) {
+  const fetchFn = async (url) => {
+    const offset = Number(new URL(url).searchParams.get('resultOffset'));
+    return arcgisJson(offset === 0 ? FIRST_PAGE : body);
+  };
+  const err = await portwatchSeed
+    .fetchAllPortRefs({ fetchFn, sleepFn: async () => {} })
+    .then(() => null, (e) => e);
+  assert.ok(err, 'expected fetchAllPortRefs to reject');
+  return err.message;
+}
+
 function cachedCountry(iso2, cacheWrittenAt = 0) {
   return {
     iso2,
@@ -158,15 +172,16 @@ describe('PortWatch reference pagination recovery', () => {
 
     assert.deepEqual(requestedOffsets, [0, 1, 1]);
     assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
-    assert.equal(sleepCalls.length, 1);
+    assert.deepEqual(sleepCalls.map(([ms]) => ms), [2_000]);
   });
 
-  it('routes the invalid-params retry backoff through the injected sleep', async () => {
+  it('routes the invalid-params retry backoff through the injected sleep', async (t) => {
     // The other ArcGIS failure class. Its 500ms backoff lives in
     // fetchWithRetryOnInvalidParams rather than retryRateLimited, so it has
     // to reach the same injected sleepFn -- otherwise this branch cannot be
     // covered without paying real wall-clock on every run.
     portwatchSeed._resetInvalidParamsErrorCount();
+    t.after(() => portwatchSeed._resetInvalidParamsErrorCount());
 
     const requestedOffsets = [];
     const sleepCalls = [];
@@ -198,8 +213,24 @@ describe('PortWatch reference pagination recovery', () => {
     assert.deepEqual(requestedOffsets, [0, 1, 1]);
     assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
     assert.deepEqual(sleepCalls.map(([ms]) => ms), [500]);
+  });
 
-    portwatchSeed._resetInvalidParamsErrorCount();
+  // The three rungs of the error ladder, pinned separately. The retry
+  // classifier reads the thrown message, and `{"code":429}` stringifies to
+  // something that still matches /\b429\b/ -- so a test that only proves a
+  // retry fired cannot tell `?? code` from `?? JSON.stringify`. These assert
+  // the message itself, on codes that do NOT trip a retry.
+  it('prefers message over code, and code over the stringified envelope', async () => {
+    const messageAndCode = await rejectedRefsError({
+      error: { code: 400, message: 'Cannot perform query. Bad field.' },
+    });
+    assert.equal(messageAndCode, 'ArcGIS error: Cannot perform query. Bad field.');
+
+    const codeOnly = await rejectedRefsError({ error: { code: 400 } });
+    assert.equal(codeOnly, 'ArcGIS error: 400');
+
+    const neither = await rejectedRefsError({ error: { details: ['nope'] } });
+    assert.equal(neither, 'ArcGIS error: {"details":["nope"]}');
   });
 });
 

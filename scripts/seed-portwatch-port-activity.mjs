@@ -216,10 +216,9 @@ const BATCH_BACKOFF_MS = 5_000;
 const BATCH_LOG_EVERY = 5;
 const RATE_LIMIT_RETRY_DELAY_MS = 2_000;
 const MAX_RATE_LIMIT_RETRIES = 1;
-// Backoff for the OTHER ArcGIS failure class (see
-// fetchWithRetryOnInvalidParams). Deliberately much shorter than the
-// rate-limit delay: it retries inside the per-country budget already
-// spent on direct+proxy, so it has ~10s of slack to work with.
+// Backoff for the OTHER ArcGIS failure class. Much shorter than the
+// rate-limit delay because it retries inside an already-spent per-country
+// budget — see the slack derivation in fetchWithRetryOnInvalidParams.
 const INVALID_PARAMS_RETRY_DELAY_MS = 500;
 // Cache hygiene: force a full refetch if the cached payload is older than 7 days
 // even when upstream maxDate is unchanged. Protects against window-shift drift
@@ -260,6 +259,14 @@ export function createArcgisProxyError(reason, errInfo) {
   return error;
 }
 
+// ArcGIS error envelopes are inconsistent: usually `message`, sometimes only
+// `code` (see PR #3681), and in principle neither. One ladder shared by all
+// three parsers — direct, proxy, and diagnostic capture — so they cannot
+// drift apart.
+function arcgisErrorInfo(err) {
+  return err?.message ?? err?.code ?? JSON.stringify(err);
+}
+
 // Retry an ArcGIS request through the Decodo proxy. Used as the fallback
 // path when the direct request returns 429 OR silently times out — both
 // are signals that ArcGIS is rate-limiting our seed-server IP. Returns the
@@ -280,7 +287,7 @@ async function arcgisProxyRetry(url, reason, { signal } = {}) {
     // Greptile PR #3681 review P2: ArcGIS can return `{"error":{"code":400}}`
     // with no message field. Fall back to code, then JSON.stringify so the
     // thrown error message stays informative on unexpected error shapes.
-    const errInfo = proxied.error.message ?? proxied.error.code ?? JSON.stringify(proxied.error);
+    const errInfo = arcgisErrorInfo(proxied.error);
     throw createArcgisProxyError(reason, errInfo);
   }
   return proxied;
@@ -313,7 +320,9 @@ async function fetchWithTimeout(url, {
   //                       branches reaches the real proxy transport, not
   //                       fetchFn. (loadEnvFile is inert under a test
   //                       runtime, so that path fails closed with "no proxy
-  //                       configured" rather than dialing out.)
+  //                       configured" — unless PROXY_URL is exported in
+  //                       the ambient environment, which
+  //                       resolveProxyForConnect reads directly.)
   const combined = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs);
@@ -382,7 +391,7 @@ async function fetchWithTimeout(url, {
       const captured = await _captureErrorBodyAfterTimeout(url, signal, fetchFn);
       if (captured?.error) {
         _bodyCaptureSuccessCount += 1;
-        throw new Error(`ArcGIS error: ${captured.error.message ?? captured.error.code ?? JSON.stringify(captured.error)}`);
+        throw new Error(`ArcGIS error: ${arcgisErrorInfo(captured.error)}`);
       }
       if (captured?.body) {
         _bodyCaptureSuccessCount += 1;
@@ -402,12 +411,11 @@ async function fetchWithTimeout(url, {
   }
   if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
   const body = await resp.json();
-  // Match the proxy parser's ladder (see arcgisProxyRetry): ArcGIS can return
-  // `{"error":{"code":400}}` with no message field, and a raw interpolation
-  // would throw "ArcGIS error: undefined" — unusable in logs and invisible to
-  // both the rate-limit classifier and the invalid-params circuit breaker,
-  // which read this message.
-  if (body.error) throw new Error(`ArcGIS error: ${body.error.message ?? body.error.code ?? JSON.stringify(body.error)}`);
+  // A raw `body.error.message` interpolation threw "ArcGIS error: undefined"
+  // for a message-less envelope — unusable in logs, and invisible to both
+  // the rate-limit classifier and the invalid-params circuit breaker, which
+  // read this message.
+  if (body.error) throw new Error(`ArcGIS error: ${arcgisErrorInfo(body.error)}`);
   return body;
 }
 
@@ -651,7 +659,7 @@ export function _resetArcgisDateFieldCache() {
 // twice per country — once for each aggregation window (last30, prev30) —
 // in parallel so heavy countries no longer have to serialise through both
 // windows inside a single 90s cap.
-async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { signal, dateField } = {}) {
+async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { signal, dateField, sleepFn = waitForRetry } = {}) {
   // Defensive: callers should always thread dateField through, but if a
   // future caller forgets, fall back to the resolver (idempotent + cached).
   const df = dateField || (await resolveArcgisDateField({ signal }));
@@ -689,7 +697,7 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { sign
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, { signal });
+    body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, { signal, sleepFn });
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
