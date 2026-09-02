@@ -23,6 +23,7 @@ import {
   describeHeadlineIneligibilityReason,
   GENERATED_DIRS,
   gitFileLastmod,
+  hasObservedValue,
   laterDate,
   loadCorpusData,
   resolveChokepointObservation,
@@ -919,6 +920,23 @@ describe('crawlable corpus generator', () => {
     assert.equal(datasetTemporalCoverage(''), undefined);
     assert.equal(datasetTemporalCoverage('2026-08-29T00:00:00Z'), undefined);
     assert.equal(datasetTemporalCoverage('schema-edit'), undefined);
+  });
+
+  it('uses one observed-value contract for every numeric page family', () => {
+    const cases = [
+      ['country zero coverage', 50, { coverage: 0 }, false],
+      ['country not-applicable zero', 0, { coverage: 1, evidenceState: 'not-applicable' }, false],
+      ['country fallback midpoint', 50, { coverage: 0.3, evidenceState: 'unmonitored' }, false],
+      ['country source failure score', 61, { coverage: 0.21, evidenceState: 'source-failure' }, false],
+      ['country observed zero', 0, { coverage: 1 }, true],
+      ['chokepoint observed zero', '0', { coverage: true }, true],
+      ['crisis observed zero', 0, { coverage: true }, true],
+      ['tool observed score', 87, { coverage: true }, true],
+    ];
+
+    for (const [label, value, evidence, expected] of cases) {
+      assert.equal(hasObservedValue(value, evidence), expected, label);
+    }
   });
 
   it('dates chokepoint observations without git history', () => {
