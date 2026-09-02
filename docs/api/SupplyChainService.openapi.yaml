@@ -172,8 +172,8 @@ paths:
                                       "affectedRoutes":
                                           - "example"
                                       "aisDisruptions": 1
+                                      "aisSnapshotAvailable": true
                                       "congestionLevel": "example"
-                                      "description": "Example WorldMonitor observation."
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "upstreamUnavailable": false
                             schema:
@@ -5007,6 +5007,9 @@ components:
                     format: int32
                 congestionLevel:
                     type: string
+                    description: |-
+                        AIS-derived congestion level. "normal" is an observed AIS level, not a
+                         default. Empty when ais_snapshot_available is false.
                 affectedRoutes:
                     type: array
                     items:
@@ -5044,6 +5047,16 @@ components:
                          This is a FREE field (no PRO gate) — it exposes the existing server-internal
                          threatLevel from ChokepointConfig, making it available to clients for badges
                          and bypass corridor scoring.
+                navigationalWarningsAvailable:
+                    type: boolean
+                    description: |-
+                        True when the NGA navigational-warning source returned a valid response,
+                         including a valid empty list. Missing legacy values fail closed.
+                aisSnapshotAvailable:
+                    type: boolean
+                    description: |-
+                        True when the AIS snapshot source returned a valid response. This owns
+                         both ais_disruptions and congestion_level. Missing legacy values fail closed.
         DirectionalDwt:
             type: object
             properties:

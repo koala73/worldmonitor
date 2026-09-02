@@ -18468,6 +18468,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "dataAvailable": true
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -27757,8 +27758,8 @@ paths:
                                       "affectedRoutes":
                                           - "example"
                                       "aisDisruptions": 1
+                                      "aisSnapshotAvailable": true
                                       "congestionLevel": "example"
-                                      "description": "Example WorldMonitor observation."
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "upstreamUnavailable": false
                             schema:
@@ -46459,6 +46460,11 @@ components:
                         $ref: '#/components/schemas/worldmonitor_maritime_v1_NavigationalWarning'
                 pagination:
                     $ref: '#/components/schemas/worldmonitor_core_v1_PaginationResponse'
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when NGA returned a valid response, including a valid empty list.
+                         False means warnings are withheld because the fetch or payload failed.
             description: ListNavigationalWarningsResponse contains navigational warnings matching the request.
         worldmonitor_maritime_v1_NavigationalWarning:
             type: object
@@ -52816,6 +52822,9 @@ components:
                     format: int32
                 congestionLevel:
                     type: string
+                    description: |-
+                        AIS-derived congestion level. "normal" is an observed AIS level, not a
+                         default. Empty when ais_snapshot_available is false.
                 affectedRoutes:
                     type: array
                     items:
@@ -52853,6 +52862,16 @@ components:
                          This is a FREE field (no PRO gate) — it exposes the existing server-internal
                          threatLevel from ChokepointConfig, making it available to clients for badges
                          and bypass corridor scoring.
+                navigationalWarningsAvailable:
+                    type: boolean
+                    description: |-
+                        True when the NGA navigational-warning source returned a valid response,
+                         including a valid empty list. Missing legacy values fail closed.
+                aisSnapshotAvailable:
+                    type: boolean
+                    description: |-
+                        True when the AIS snapshot source returned a valid response. This owns
+                         both ais_disruptions and congestion_level. Missing legacy values fail closed.
         worldmonitor_supply_chain_v1_DirectionalDwt:
             type: object
             properties:

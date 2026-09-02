@@ -2826,7 +2826,10 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
       score = Number(rawScore);
     }
     const status = publishedPulseLabel(pulse?.status, CHOKEPOINT_HUB_STATUS_LABELS);
-    const congestion = publishedPulseLabel(pulse?.congestion, CHOKEPOINT_HUB_CONGESTION_LABELS);
+    const aisSnapshotAvailable = pulse?.aisSnapshotAvailable === true;
+    const congestion = aisSnapshotAvailable
+      ? publishedPulseLabel(pulse?.congestion, CHOKEPOINT_HUB_CONGESTION_LABELS)
+      : 'Not reported';
     const asOf = String(pulse?.asOf || '').trim();
     const asOfMs = Date.parse(asOf);
     const capturedAtMs = livePulse?.capturedAtMs;
@@ -2851,6 +2854,7 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
       score,
       status,
       congestion,
+      aisSnapshotAvailable,
       asOf,
     };
   });
@@ -2858,7 +2862,7 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
 
 function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snapshotPath }) {
   const path = '/chokepoints/';
-  const description = `Track current disruption scores, status, congestion, and update times for the ${chokepoints.length} maritime chokepoints in the World Monitor public status snapshot.`;
+  const description = `Track current disruption scores, status, AIS congestion, and update times for the ${chokepoints.length} maritime chokepoints in the World Monitor public status snapshot.`;
   const chokepointHubRows = buildChokepointHubRows(chokepoints, livePulse);
   const updatedAt = chokepointHubRows
     .map((row) => row.asOf)
@@ -2875,7 +2879,7 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
     },
     {
       question: 'How does World Monitor score chokepoint status?',
-      answer: 'World Monitor combines active warnings, AIS signal disruptions, congestion, and transit counts into a 0-100 disruption score. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.',
+      answer: 'World Monitor combines active navigational warnings, AIS signal disruptions, AIS congestion, and transit counts into a 0-100 disruption score. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.',
     },
   ];
   const datasetId = `${absoluteUrl(baseUrl, path)}#status-dataset`;
@@ -2894,7 +2898,9 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
         additionalProperty: [
           { '@type': 'PropertyValue', name: 'Disruption score', value: row.score, minValue: 0, maxValue: 100 },
           { '@type': 'PropertyValue', name: 'Status', value: row.status },
-          { '@type': 'PropertyValue', name: 'Congestion', value: row.congestion },
+          ...(row.aisSnapshotAvailable
+            ? [{ '@type': 'PropertyValue', name: 'AIS congestion', value: row.congestion }]
+            : []),
         ],
       },
     };
@@ -2906,7 +2912,7 @@ ${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.quest
       <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
       <div class="table-scroll"><table data-chokepoint-status>
         <caption>Published chokepoint status snapshot updated ${escapeHtml(formatStaticDateTime(updatedAt))}</caption>
-        <thead><tr><th scope="col">Chokepoint</th><th scope="col">Region</th><th scope="col">Disruption score</th><th scope="col">Status</th><th scope="col">Congestion</th><th scope="col">Updated</th></tr></thead>
+        <thead><tr><th scope="col">Chokepoint</th><th scope="col">Region</th><th scope="col">Disruption score</th><th scope="col">Status</th><th scope="col">AIS congestion</th><th scope="col">Updated</th></tr></thead>
         <tbody>
 ${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-hub-region>${escapeHtml(row.region)}</td><td><data data-hub-score value="${escapeHtml(row.score)}">${escapeHtml(row.score)}</data></td><td data-hub-status>${escapeHtml(row.status)}</td><td data-hub-congestion>${escapeHtml(row.congestion)}</td><td><time data-hub-updated datetime="${escapeHtml(row.asOf)}">${escapeHtml(formatStaticDateTime(row.asOf))}</time></td></tr>`).join('\n')}
         </tbody>
@@ -2949,7 +2955,7 @@ ${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.
         variableMeasured: [
           { '@type': 'PropertyValue', name: 'Disruption score', minValue: 0, maxValue: 100, unitText: 'index points' },
           { '@type': 'PropertyValue', name: 'Status' },
-          { '@type': 'PropertyValue', name: 'Congestion' },
+          { '@type': 'PropertyValue', name: 'AIS congestion' },
         ],
         distribution: dataDownload(absoluteUrl(baseUrl, path), 'text/html'),
         mainEntity: { '@id': itemListId },
@@ -3059,6 +3065,10 @@ ${faqs.map((faq) => `        <details data-chokepoint-faq><summary>${escapeHtml(
   return { html, faqs };
 }
 
+function optionalChokepointMetric(label, attribute, value, available) {
+  return `          <div class="metric"${available ? '' : ' hidden'}><span>${escapeHtml(label)}</span><strong ${attribute}>${available ? escapeHtml(value) : ''}</strong></div>`;
+}
+
 function renderChokepointPage({
   chokepoint,
   baseUrl,
@@ -3114,12 +3124,19 @@ function renderChokepointPage({
   const coverageMetrics = chokepointCoverageMetrics({
     todayTransits: pulse?.todayTransits,
     todayCountsAvailable: pulse?.todayCountsAvailable,
-    warnings: pulse?.warnings,
+    navigationalWarnings: pulse?.navigationalWarnings,
+    navigationalWarningsAvailable: pulse?.navigationalWarningsAvailable === true,
+    aisDisruptions: pulse?.aisDisruptions,
+    aisSnapshotAvailable: pulse?.aisSnapshotAvailable === true,
+    congestionLevel: pulse?.congestion,
     weekMovement: pulse?.weekMovement ?? null,
   });
   const transitsLabel = coverageMetrics.todayTransits;
   const transitsWithheld = hasPulse && transitsLabel == null;
-  const pulsePartial = pulse?.partial === true || transitsWithheld;
+  const pulsePartial = pulse?.partial === true
+    || transitsWithheld
+    || coverageMetrics.navigationalWarnings === null
+    || coverageMetrics.aisDisruptions === null;
   const liveState = hasPulse ? (pulsePartial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
     ? (pulsePartial ? 'Published partial pulse' : 'Published pulse')
@@ -3130,8 +3147,9 @@ function renderChokepointPage({
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(pulse.disruptionScore)}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
-          <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion>${escapeHtml(pulse.congestion)}</strong></div>
-          <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings>${escapeHtml(coverageMetrics.warnings)}</strong></div>
+${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', coverageMetrics.navigationalWarnings, coverageMetrics.navigationalWarnings !== null)}
+${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', coverageMetrics.aisDisruptions, coverageMetrics.aisDisruptions !== null)}
+${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', coverageMetrics.congestion, coverageMetrics.congestion !== null)}
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (transitsWithheld ? '—' : 'Unavailable'))}</strong></div>
         </div>
@@ -3140,8 +3158,9 @@ ${transitsNote}`
     : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
         <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score></span><small data-chokepoint-band></small></strong></div>
-          <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion></strong></div>
-          <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings></strong></div>
+${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', '', false)}
+${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', '', false)}
+${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', false)}
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits></strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement></strong></div>
         </div>

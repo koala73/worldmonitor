@@ -57,6 +57,8 @@ export interface ChokepointInfo {
   transitSummary?: TransitSummary;
   flowEstimate?: FlowEstimate;
   warRiskTier: WarRiskTier;
+  navigationalWarningsAvailable: boolean;
+  aisSnapshotAvailable: boolean;
 }
 
 export interface DirectionalDwt {
