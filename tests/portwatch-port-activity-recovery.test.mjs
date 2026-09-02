@@ -248,6 +248,19 @@ describe('PortWatch activity observation recovery', () => {
     );
   });
 
+  it('keeps ArcGIS string and epoch max dates as observed values', () => {
+    const parse = portwatchSeed.parseMaxDateObservation;
+
+    assert.deepEqual(
+      parse({ features: [{ attributes: { max_date: '2026-08-28' } }] }),
+      { status: 'observed', maxDate: '2026-08-28' },
+    );
+    assert.deepEqual(
+      parse({ features: [{ attributes: { max_date: Date.parse('2026-08-28T00:00:00Z') } }] }),
+      { status: 'observed', maxDate: '2026-08-28' },
+    );
+  });
+
   it('retries an unverified empty country through the proxy path', async () => {
     const recover = portwatchSeed.fetchCountryActivityWithRecovery;
     assert.equal(typeof recover, 'function');
