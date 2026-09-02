@@ -1,6 +1,6 @@
 import type { AppContext, AppModule } from '@/app/app-context';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import { enqueuePanelCall } from '@/app/pending-panel-data';
+import { enqueuePanelCall, invokePanelMethod } from '@/app/pending-panel-data';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import { runHydrationTier, type HydrationTask } from '@/app/hydration-scheduler';
 import { yieldToMain } from '@/utils/after-paint';
@@ -450,13 +450,10 @@ export class DataLoaderManager implements AppModule {
   public updateSearchIndex: () => void = () => {};
 
   private callPanel(key: string, method: string, ...args: unknown[]): void {
-    const panel = this.ctx.panels[key];
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const obj = panel as any;
-    if (obj && typeof obj[method] === 'function') {
-      obj[method](...args);
-      return;
-    }
+    // Panel update methods are async; invokePanelMethod keeps a rejection
+    // observable instead of letting it escape to onunhandledrejection
+    // (WORLDMONITOR-11N).
+    if (invokePanelMethod(this.ctx.panels[key], key, method, args)) return;
     enqueuePanelCall(key, method, args);
   }
 
