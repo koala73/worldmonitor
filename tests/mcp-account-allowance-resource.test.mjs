@@ -10,7 +10,9 @@ import {
   freeAccountLastActivityKey,
   freeAccountRequestsKey,
 } from '../api/mcp/free-account-allowance.ts';
-import { dailyCounterKey } from '../server/_shared/pro-mcp-token.ts';
+import { SHARED_API_BUDGET } from '../api/mcp/quota.ts';
+import { apiKeyDailyKey } from '../server/_shared/api-key-rate-limit.ts';
+import { dailyCounterKey, envPrefix } from '../server/_shared/pro-mcp-token.ts';
 import {
   BASE_URL,
   HMAC_SECRET,
@@ -113,12 +115,66 @@ describe('authenticated MCP allowance resource', () => {
     assert.equal(status.limit, 50);
     assert.equal(status.remaining, 43);
     assert.equal(status.requestWindows, null);
+    assert.equal(status.sharedWithRestApi, false, 'Pro has no REST budget to share this number with');
     const expectedReset = new Date(Date.UTC(
       now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1,
     )).toISOString();
     assert.equal(status.resetsAt, expectedReset);
     assert.ok(observed.some(([op, observedKey]) => op === 'GET' && observedKey === key));
     assert.equal(observed.some(([op]) => op === 'INCR'), false, 'status reads must be quota-exempt');
+  });
+
+  // `used` stops being "calls this agent made" the moment the counter is the
+  // REST meter, and nothing in the old payload said so. The flag is what lets
+  // an agent tell "I have spent my budget" from "my budget was spent".
+  const apiStarterDeps = (startedAt) => makeProDeps({
+    getEntitlements: async () => ({
+      planKey: 'api_starter',
+      features: {
+        tier: 2,
+        mcpAccess: true,
+        planLimits: { mcpCallsPerDay: SHARED_API_BUDGET, apiRequestsPerDay: 1000 },
+      },
+      validUntil: startedAt + 86_400_000,
+    }),
+  });
+
+  it('an ENFORCED API tier reports that REST spends the same number', async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const observed = [];
+    const startedAt = Date.now();
+    const now = new Date(startedAt);
+    const key = `${envPrefix()}${apiKeyDailyKey(PRO_USER_ID, now)}`;
+    const { deps } = apiStarterDeps(startedAt);
+    deps.redisPipeline = pipelineFrom({ [key]: '640' }, observed);
+
+    const res = await mcpHandler(proReq('POST', readBody(305)), deps);
+    assert.equal(res.status, 200);
+    const status = JSON.parse((await res.json()).result.contents[0].text);
+    assert.equal(status.used, 640);
+    assert.equal(status.limit, 1000);
+    assert.equal(status.remaining, 360);
+    assert.equal(status.sharedWithRestApi, true);
+    assert.ok(
+      observed.some(([op, observedKey]) => op === 'GET' && observedKey === key),
+      'the flag must describe the counter that was actually read',
+    );
+  });
+
+  it('the SAME plan in shadow mode reads its own counter and says so', async () => {
+    delete process.env.API_RATE_LIMIT_ENFORCE;
+    const observed = [];
+    const startedAt = Date.now();
+    const now = new Date(startedAt);
+    const key = dailyCounterKey(PRO_USER_ID, now);
+    const { deps } = apiStarterDeps(startedAt);
+    deps.redisPipeline = pipelineFrom({ [key]: '12' }, observed);
+
+    const res = await mcpHandler(proReq('POST', readBody(306)), deps);
+    const status = JSON.parse((await res.json()).result.contents[0].text);
+    assert.equal(status.used, 12);
+    assert.equal(status.limit, 1000, 'the sold number never moves with the flag');
+    assert.equal(status.sharedWithRestApi, false);
   });
 
   it('reports the free-account call and request-window counters without consuming either', async () => {
@@ -161,6 +217,7 @@ describe('authenticated MCP allowance resource', () => {
     );
     const expiresAt = Date.parse(status.requestWindows.expiresAt);
     assert.ok(expiresAt >= startedAt + 599_000 && expiresAt <= Date.now() + 600_100);
+    assert.equal(status.sharedWithRestApi, false, 'the free counter is never the REST meter');
     assert.equal(observed.length, 1, 'free-account status must use one coherent Redis read');
     assert.equal(observed[0][0], 'EVAL');
     assert.equal(observed.some(([op]) => op === 'INCR' || op === 'DECR' || op === 'SET'), false);

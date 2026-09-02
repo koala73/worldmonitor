@@ -156,11 +156,15 @@ const STORY_ALIAS_PUBLISH_SCRIPT = [
 
 // PINNED COPY of shared/mcp-quota-reserve-script.mjs. The script atomically
 // reserves a Pro MCP daily-quota slot, rolls back only the rejecting request,
-// and clamps failed-rollback residue without dropping below a higher successful
-// same-day allowance.
+// and — when the caller enables the clamp via ARGV[4] — clamps failed-rollback
+// residue without dropping below a higher successful same-day allowance.
+// Regenerate this block from the source array literal; do not hand-edit it.
 const MCP_QUOTA_RESERVE_SCRIPT = [
   'local ttl = tonumber(ARGV[2])',
-  "local n = redis.call('INCR', KEYS[1])",
+  'local weight = tonumber(ARGV[3])',
+  'if weight == nil or weight < 1 then weight = 1 end',
+  'local clamp_enabled = tonumber(ARGV[4]) ~= 0',
+  "local n = redis.call('INCRBY', KEYS[1], weight)",
   'if ttl ~= nil and ttl > 0 then',
   "  redis.call('EXPIRE', KEYS[1], ttl)",
   'end',
@@ -194,7 +198,7 @@ const MCP_QUOTA_RESERVE_SCRIPT = [
   '',
   'local limit = tonumber(limit_raw)',
   'if limit == nil or limit < 0 then',
-  "  redis.call('DECR', KEYS[1])",
+  "  redis.call('DECRBY', KEYS[1], weight)",
   '  return {-1, 0}',
   'end',
   '',
@@ -203,17 +207,19 @@ const MCP_QUOTA_RESERVE_SCRIPT = [
   '  return {1, n}',
   'end',
   '',
-  "n = redis.call('DECR', KEYS[1])",
-  'local seen = read_floor()',
-  'if seen ~= -1 then',
-  '  local clamp_to = limit',
-  '  if seen ~= nil and seen > clamp_to then clamp_to = seen end',
-  '  if n > clamp_to then',
-  "    redis.call('SET', KEYS[1], clamp_to)",
-  '    if ttl ~= nil and ttl > 0 then',
-  "      redis.call('EXPIRE', KEYS[1], ttl)",
+  "n = redis.call('DECRBY', KEYS[1], weight)",
+  'if clamp_enabled then',
+  '  local seen = read_floor()',
+  '  if seen ~= -1 then',
+  '    local clamp_to = limit',
+  '    if seen ~= nil and seen > clamp_to then clamp_to = seen end',
+  '    if n > clamp_to then',
+  "      redis.call('SET', KEYS[1], clamp_to)",
+  '      if ttl ~= nil and ttl > 0 then',
+  "        redis.call('EXPIRE', KEYS[1], ttl)",
+  '      end',
+  '      n = clamp_to',
   '    end',
-  '    n = clamp_to',
   '  end',
   'end',
   'return {0, n}',

@@ -49,7 +49,7 @@ import type {
 import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
-import { resolveDailyLimit } from '../quota';
+import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, type McpBudget } from '../quota';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
 import {
@@ -60,7 +60,6 @@ import {
   freeAccountLastActivityKey,
   freeAccountRequestsKey,
 } from '../free-account-allowance';
-import { dailyCounterKey } from '../../../server/_shared/pro-mcp-token';
 import { CHOKEPOINT_SLUGS } from './slugs';
 
 // ---------------------------------------------------------------------------
@@ -149,7 +148,7 @@ export async function buildAccountAllowanceResourceResponse(
   deps: McpHandlerDeps,
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
-  mcpDailyLimit?: number | null,
+  budget?: McpBudget,
   freeAccountAllowance = false,
   nowMs = Date.now(),
 ): Promise<Response> {
@@ -170,7 +169,7 @@ export async function buildAccountAllowanceResourceResponse(
   )).toISOString();
   const limit = freeAccountAllowance
     ? FREE_ACCOUNT_CALLS_PER_DAY
-    : resolveDailyLimit(mcpDailyLimit);
+    : resolveDailyLimit(budget?.limit);
 
   const commands: Array<Array<string | number>> = freeAccountAllowance
     ? [[
@@ -181,7 +180,7 @@ export async function buildAccountAllowanceResourceResponse(
         freeAccountRequestsKey(context.userId, nowMs),
         freeAccountLastActivityKey(context.userId, nowMs),
       ]]
-    : [['GET', dailyCounterKey(context.userId, now)]];
+    : [['GET', budgetCounterKey(budget, context.userId, now)]];
 
   let result: Array<{ result?: unknown; error?: unknown }> | null;
   try {
@@ -263,6 +262,12 @@ export async function buildAccountAllowanceResourceResponse(
     remaining,
     resetsAt,
     requestWindows,
+    // Whose traffic `used` counts. On an API plan with REST enforcement on,
+    // this budget IS the REST meter, so `used` includes requests the agent
+    // never made and it must not read the number as its own tool history. A
+    // boolean rather than the counter name: the agent can act on "someone else
+    // spends this too", and the Redis key is ours to move.
+    sharedWithRestApi: !freeAccountAllowance && isSharedRestCounter(budget),
   });
   return rpcOk(id, {
     contents: [{ uri: MCP_ALLOWANCE_RESOURCE_URI, mimeType: 'application/json', text }],
@@ -482,7 +487,7 @@ export async function buildResourceResponse(
   // Forwarded verbatim to the dispatcher so a template read is capped at the
   // caller's PLAN allowance, exactly like the equivalent tools/call. Dropping
   // it here would reopen the quota asymmetry this path exists to close.
-  mcpDailyLimit?: number | null,
+  budget?: McpBudget,
   freeAccountAllowance?: boolean,
   // Forwarded so a denial raised inside the dispatcher carries the same
   // WWW-Authenticate as the equivalent tools/call (#6716).
@@ -538,7 +543,7 @@ export async function buildResourceResponse(
     innerBody,
     corsHeaders,
     ctx,
-    mcpDailyLimit,
+    budget,
     freeAccountAllowance,
     resourceMetadataUrl,
   );

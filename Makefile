@@ -106,6 +106,9 @@ generate: clean ## Generate code from proto definitions
 	@# would let `buf generate` fall through to a stale copy of the
 	@# others on PATH, recreating the mixed-version failure mode. Keep
 	@# this list in sync with proto/buf.gen.yaml.
+	@#
+	@# `buf` stays on the caller's PATH (never PLUGIN_DIR). CI must put
+	@# GOPATH/bin on PATH after `make install-buf` — see proto-check.yml.
 	cd $(PROTO_DIR) && \
 		PLUGIN_DIR=$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi) && \
 		[ -n "$$PLUGIN_DIR" ] || { echo 'Could not resolve Go install dir from GOBIN/GOPATH — refusing to run buf generate without a pinned plugin location.' >&2; exit 1; } && \

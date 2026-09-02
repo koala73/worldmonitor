@@ -245,22 +245,47 @@ describe('api/mcp — user API keys on /mcp (#4859) + pre-check hardening (#4860
     assert.equal(userKeyCalls, 0, 'env-key hit must short-circuit before the Convex-backed resolver');
   });
 
-  it('_execute downstream fetch carries the user key header, never internal-HMAC headers', async () => {
-    const { deps } = makeUserKeyDeps();
+  it('_execute downstream fetch is HMAC-signed and never forwards the dashboard key', async () => {
+    const { deps, pipe } = makeUserKeyDeps();
     const captured = [];
     globalThis.fetch = async (url, init) => {
       captured.push(new Request(url, init));
       return new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
     };
-    await mcpHandler(userKeyReq(callBody('get_country_risk', { country_code: 'US' })), deps);
+    const res = await mcpHandler(userKeyReq(callBody('get_country_risk', { country_code: 'US' })), deps);
+    assert.equal(res.status, 200);
+    assert.equal(pipe.count, 1, 'dedicated MCP counter still charges one slot at the edge');
     // Filter to the sibling REST fetch: an earlier test in this file may have
     // instantiated the module-memoized Upstash rate limiter, whose Redis POST
-    // is also captured here and legitimately carries no key header.
+    // is also captured here and legitimately carries no auth header.
     const apiFetches = captured.filter((r) => new URL(r.url).pathname.startsWith('/api/'));
     assert.ok(apiFetches.length > 0, 'RPC tool must fetch the downstream REST endpoint');
+    const { verifyInternalMcpRequest } = await import(`../server/_shared/mcp-internal-hmac.ts?t=${Date.now()}`);
     for (const dsReq of apiFetches) {
-      assert.equal(dsReq.headers.get('x-worldmonitor-key'), USER_KEY, 'downstream must authenticate as the key owner');
-      assert.equal(dsReq.headers.get('x-wm-mcp-internal'), null, 'internal HMAC headers are pro-context only');
+      assert.equal(dsReq.headers.get('x-worldmonitor-key'), null, 'raw dashboard key must not reach the gateway meter');
+      assert.ok(dsReq.headers.get('x-wm-mcp-internal'), 'user_key downstream must use the internal HMAC path');
+      assert.equal(dsReq.headers.get('x-wm-mcp-user-id'), USER_KEY_USER_ID);
+      assert.ok(
+        await verifyInternalMcpRequest(dsReq, HMAC_SECRET),
+        'signed user_key fetch must verify so the gateway skips the API-key daily meter',
+      );
     }
+  });
+
+  it('MCP_INTERNAL_HMAC_SECRET unset on user_key path → 503 Retry-After before dispatch', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    const { deps, pipe } = makeUserKeyDeps();
+    let downstreamCalls = 0;
+    globalThis.fetch = async () => {
+      downstreamCalls += 1;
+      return new Response(JSON.stringify({ ok: 1 }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+    };
+    const res = await mcpHandler(userKeyReq(callBody('get_country_risk', { country_code: 'US' })), deps);
+    assert.equal(res.status, 503, 'preflight must surface as 503');
+    assert.equal(res.headers.get('Retry-After'), '5');
+    const body = await res.json();
+    assert.equal(body.error?.code, -32603);
+    assert.equal(pipe.count, 0, 'no quota reservation on HMAC-secret preflight rejection');
+    assert.equal(downstreamCalls, 0, 'must not dispatch a credentialed downstream without a signing secret');
   });
 });
