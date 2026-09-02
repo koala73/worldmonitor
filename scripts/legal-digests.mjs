@@ -35,12 +35,14 @@ const SAME_DAY = process.argv.includes('--same-day');
  * The body a reader is bound by: frontmatter (title/description metadata) and
  * MDX review comments are stripped, so an editorial note or an SEO description
  * tweak does not force a version bump, while any change to the visible text
- * does.
+ * does. Mintlify `{#id}` on a heading is the same class of non-visible syntax:
+ * it restores an in-page anchor without remapping acceptances onto new wording.
  */
 export function normalizeLegalBody(mdx) {
   return mdx
     .replace(/^---\n[\s\S]*?\n---\n/, '')
     .replace(/\{\/\*[\s\S]*?\*\/\}/g, '')
+    .replace(/^(#{1,6} .+?) \{#[^\s}]+\}$/gm, '$1')
     .split('\n')
     .map((line) => line.replace(/\s+$/, ''))
     .join('\n')
