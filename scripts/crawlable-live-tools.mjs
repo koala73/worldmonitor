@@ -60,16 +60,38 @@ export function publishedTransitCountLabel(value, { allowZero = false } = {}) {
 export function chokepointCoverageMetrics({
   todayTransits,
   todayCountsAvailable,
-  warnings,
+  navigationalWarnings,
+  navigationalWarningsAvailable,
+  aisDisruptions,
+  aisSnapshotAvailable,
+  congestionLevel,
   weekMovement,
 }) {
   const transitLabel = todayCountsAvailable === false
     ? null
     : publishedTransitCountLabel(todayTransits, { allowZero: todayCountsAvailable === true });
-  if (transitLabel === null) {
-    return { todayTransits: null, todayCountsAvailable, warnings: '—', weekMovement: null };
-  }
-  return { todayTransits: transitLabel, todayCountsAvailable, warnings, weekMovement };
+  const warningCount = Math.max(0, nonNegativeNumber(navigationalWarnings) ?? 0);
+  const disruptionCount = Math.max(0, nonNegativeNumber(aisDisruptions) ?? 0);
+  const warningLabel = typeof navigationalWarnings === 'string' && navigationalWarnings.trim()
+    ? navigationalWarnings.trim()
+    : `${formatNumber(warningCount, 0)} ${warningCount === 1 ? 'warning' : 'warnings'}`;
+  const disruptionLabel = typeof aisDisruptions === 'string' && aisDisruptions.trim()
+    ? aisDisruptions.trim()
+    : `${formatNumber(disruptionCount, 0)} AIS ${disruptionCount === 1 ? 'disruption' : 'disruptions'}`;
+  return {
+    todayTransits: transitLabel,
+    todayCountsAvailable,
+    navigationalWarnings: navigationalWarningsAvailable === true
+      ? warningLabel
+      : null,
+    aisDisruptions: aisSnapshotAvailable === true
+      ? disruptionLabel
+      : null,
+    congestion: aisSnapshotAvailable === true
+      ? (humanizeToken(congestionLevel) || 'Not reported')
+      : null,
+    weekMovement,
+  };
 }
 
 export function withheldTransitCountSentence(displayName) {
@@ -338,8 +360,6 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     'Chokepoint status',
     MAX_LIVE_SNAPSHOT_AGE_MS,
   );
-  const activeWarnings = Math.max(0, nonNegativeNumber(row.activeWarnings) ?? 0);
-  const aisDisruptions = Math.max(0, nonNegativeNumber(row.aisDisruptions) ?? 0);
   const transit = row.transitSummary;
   // dataAvailable is PortWatch history presence, so it gates wowChangePct --
   // but NOT today's count, which comes from the relay's AIS window. Gating the
@@ -351,7 +371,11 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   const coverageMetrics = chokepointCoverageMetrics({
     todayTransits: nonNegativeNumber(transit?.todayTotal),
     todayCountsAvailable: transit?.todayCountsAvailable,
-    warnings: `${formatNumber(activeWarnings, 0)} ${activeWarnings === 1 ? 'warning' : 'warnings'} · ${formatNumber(aisDisruptions, 0)} AIS ${aisDisruptions === 1 ? 'disruption' : 'disruptions'}`,
+    navigationalWarnings: row.activeWarnings,
+    navigationalWarningsAvailable: row.navigationalWarningsAvailable === true,
+    aisDisruptions: row.aisDisruptions,
+    aisSnapshotAvailable: row.aisSnapshotAvailable === true,
+    congestionLevel: row.congestionLevel,
     weekMovement: weekMovement === null
       ? null
       : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
@@ -360,14 +384,19 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   return {
     disruptionScore: formatNumber(score, 0),
     status,
-    congestion: humanizeToken(row.congestionLevel) || 'Not reported',
-    warnings: coverageMetrics.warnings,
+    congestion: coverageMetrics.congestion,
+    navigationalWarnings: coverageMetrics.navigationalWarnings,
+    aisDisruptions: coverageMetrics.aisDisruptions,
     description: String(row.description || '').trim() || 'No additional status note was supplied.',
     todayTransits: coverageMetrics.todayTransits,
     todayCountsAvailable: coverageMetrics.todayCountsAvailable,
     weekMovement: coverageMetrics.weekMovement,
     fetchedAt,
-    partial: payload.upstreamUnavailable === true || !transitAvailable || coverageMetrics.todayTransits === null,
+    partial: payload.upstreamUnavailable === true
+      || !transitAvailable
+      || coverageMetrics.todayTransits === null
+      || coverageMetrics.navigationalWarnings === null
+      || coverageMetrics.aisDisruptions === null,
   };
 }
 
@@ -798,6 +827,15 @@ function setText(root, selector, value) {
   if (element) element.textContent = value;
 }
 
+function setOptionalMetric(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const metric = element.closest('.metric');
+  const available = value !== null && value !== undefined;
+  element.textContent = available ? value : '';
+  if (metric) metric.hidden = !available;
+}
+
 function formatDateTime(timestamp) {
   if (timestamp === null) return 'Time unavailable';
   return new Intl.DateTimeFormat('en-US', {
@@ -1130,8 +1168,9 @@ export async function loadChokepoint(tool) {
     if (!isCurrentRequest(tool, state)) return;
     setText(tool, '[data-chokepoint-score]', view.disruptionScore);
     setText(tool, '[data-chokepoint-band]', view.status);
-    setText(tool, '[data-chokepoint-congestion]', view.congestion);
-    setText(tool, '[data-chokepoint-warnings]', view.warnings);
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', view.congestion);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', view.navigationalWarnings);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);
     setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? '—');
     setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (view.todayTransits === null ? '—' : 'Unavailable'));
     setText(tool, '[data-chokepoint-description]', view.description);
@@ -1158,8 +1197,9 @@ export async function loadChokepoint(tool) {
     }
     setText(tool, '[data-chokepoint-score]', '—');
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
-    setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
-    setText(tool, '[data-chokepoint-warnings]', 'Unavailable');
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', null);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', null);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', null);
     // Total fetch failure: match the sibling cells. An em dash here is the
     // "withheld, see the note" signal, and the note is hidden in this branch,
     // so it would read as an unexplained blank next to four "Unavailable"s.

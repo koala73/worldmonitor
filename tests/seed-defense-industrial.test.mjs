@@ -11,10 +11,13 @@ import {
   fetchSipriSupplierDependencies,
   mapSipriEntityToIso2,
   selectSweepImporters,
+  SIPRI_SWEEP_CHUNK,
   SIPRI_SWEEP_HORIZON_MS,
+  SIPRI_ZERO_REGRESSION_MIN,
   parseSipriSupplierCsv,
   parseWbIndicatorPage,
 } from '../scripts/_defense-industrial-source.mjs';
+import { fetchSupplierSnapshot } from '../scripts/_arms-suppliers-sweep.mjs';
 
 const wbFixture = JSON.parse(readFileSync(new URL('./fixtures/defense-industrial/wb-ms-mil.json', import.meta.url), 'utf8'));
 const sipriFixture = readFileSync(new URL('./fixtures/defense-industrial/sipri-importer.csv', import.meta.url), 'utf8');
@@ -115,7 +118,16 @@ describe('defense-industrial source parsing', () => {
   it('rejects an all-empty complete SIPRI cohort and does not create a completion marker', async () => {
     await assert.rejects(
       () => buildSipriSupplierSnapshot({
-        fetchSipri: async () => ({ importers: {}, failedImporters: [], windowEndYear: 2025 }),
+        fetchSipri: async () => ({
+          importers: {
+            UA: {
+              suppliers: [],
+              window: { startYear: 2021, endYear: 2025 },
+            },
+          },
+          failedImporters: [],
+          windowEndYear: 2025,
+        }),
         minimumCompleteImporterCount: 1,
       }),
       /holds only 0 positive importer rows/,
@@ -170,6 +182,58 @@ describe('defense-industrial deployment wiring', () => {
     assert.match(supplierSeeder, /contentMeta:\s*supplierContentMeta/);
     assert.match(supplierSeeder, /transform:\s*buildArmsSupplierCompletion/);
     assert.match(supplierSeeder, /maxContentAgeMin:\s*800 \* 24 \* 60/);
+  });
+
+  it('passes both production sweep inputs without the callback contract', async () => {
+    // Executed, not regex-matched: a positional source regex reds on a
+    // behaviour-identical property reorder and stays green if the caller passes
+    // the pair and then ignores it.
+    let received = null;
+    await fetchSupplierSnapshot({
+      readCanonical: async () => ({ importers: { FR: { suppliers: [], window: { endYear: 2025 } } } }),
+      buildSnapshot: async ({ fetchSipri }) => { await fetchSipri({ fetchFn: async () => new Response('{}') }); return {}; },
+      fetchSipri: async (options) => { received = options; return { importers: {} }; },
+    });
+
+    assert.deepEqual({
+      previousSnapshot: received.previousSnapshot,
+      maxSweepImporters: received.maxSweepImporters,
+    }, {
+      previousSnapshot: { importers: { FR: { suppliers: [], window: { endYear: 2025 } } } },
+      maxSweepImporters: SIPRI_SWEEP_CHUNK,
+    });
+  });
+
+  it('does not reintroduce the removed selectImporters callback', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    for (const file of ['scripts/seed-defense-industrial-suppliers.mjs', 'scripts/_arms-suppliers-sweep.mjs']) {
+      assert.equal(
+        /selectImporters:/.test(readFileSync(join(root, file), 'utf8')),
+        false,
+        `${file} must not pass the removed selectImporters callback`,
+      );
+    }
+  });
+
+  it('propagates a previous-snapshot read failure instead of sweeping as a first run', async () => {
+    // The failure this names is the one redisGet's default degrade-to-null hides:
+    // a snapshot that reads as absent is indistinguishable from a first run, and
+    // a first run republishes one 56-row slice over the ~200-row canonical key.
+    let sweepStarted = false;
+    await assert.rejects(
+      () => fetchSupplierSnapshot({
+        readCanonical: async () => { throw new Error('Redis GET failed: HTTP 503'); },
+        buildSnapshot: async () => { sweepStarted = true; return {}; },
+      }),
+      /HTTP 503/,
+    );
+    assert.equal(sweepStarted, false, 'no sweep may start when the previous snapshot could not be read');
+  });
+
+  it('reads the canonical snapshot in strict mode so an HTTP error cannot look absent', () => {
+    const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+    const supplierSeeder = readFileSync(join(root, 'scripts/seed-defense-industrial-suppliers.mjs'), 'utf8');
+    assert.match(supplierSeeder, /readCanonicalValue\(key,\s*\{\s*strict:\s*true\s*\}\)/);
   });
 });
 
@@ -289,6 +353,37 @@ describe('SIPRI chunked sweep (#6806)', () => {
   const candidates = [{ iso2: 'FR' }, { iso2: 'DE' }, { iso2: 'JP' }, { iso2: 'BR' }];
 
   const DAY = 24 * 3600_000;
+  const importerCodes = [...new Set(Object.values(JSON.parse(
+    readFileSync(new URL('../scripts/shared/country-names.json', import.meta.url), 'utf8'),
+  )))].slice(0, 60);
+  const importerCatalog = (count = importerCodes.length) => Array.from(
+    { length: Math.max(150, count * 3) },
+    (_, index) => ({
+      EntityId: 1000 + (index % count),
+      Name: importerCodes[index % count],
+    }),
+  );
+  const makeSipriFetch = ({
+    importerCount = importerCodes.length,
+    onImporter = () => {},
+    importerResponse = () => new Response(JSON.stringify({
+      bytes: Buffer.from(sipriFixture).toString('base64'),
+    })),
+  } = {}) => async (url) => {
+    if (String(url).includes('getMaxYear')) return new Response('2025');
+    if (String(url).includes('getAllCountriesTrimmed')) {
+      return new Response(JSON.stringify(importerCatalog(importerCount)));
+    }
+    onImporter();
+    return importerResponse();
+  };
+  const previousSnapshot = (staleCount) => ({
+    importers: Object.fromEntries(importerCodes.map((iso2, index) => [iso2, {
+      suppliers: [{ supplierIso2: 'US', tivShare: 1 }],
+      window: { startYear: 2021, endYear: 2025 },
+      fetchedAt: iso(NOW - (index < staleCount ? 11 * DAY : DAY)),
+    }])),
+  });
 
   it('selects only rows outside the horizon, oldest first, and never a current one', () => {
     const previous = {
@@ -420,7 +515,11 @@ describe('SIPRI chunked sweep (#6806)', () => {
     // would reject every healthy sweep tick.
     const previous = {
       importers: Object.fromEntries(
-        Array.from({ length: 30 }, (_, i) => [`X${i}`, { suppliers: [], window: { endYear: 2025 }, fetchedAt: iso(NOW - 3600_000) }]),
+        Array.from({ length: 30 }, (_, i) => [`X${i}`, {
+          suppliers: [{ supplierIso2: 'US', tivShare: 1 }],
+          window: { endYear: 2025 },
+          fetchedAt: iso(NOW - 3600_000),
+        }]),
       ),
     };
     const snapshot = await buildSipriSupplierSnapshot({
@@ -428,7 +527,12 @@ describe('SIPRI chunked sweep (#6806)', () => {
       minimumCompleteImporterCount: 25,
       now: () => new Date(NOW),
       fetchSipri: async () => ({
-        importers: { FR: { suppliers: [], window: { endYear: 2025 } } },
+        importers: {
+          FR: {
+            suppliers: [{ supplierIso2: 'US', tivShare: 1 }],
+            window: { endYear: 2025 },
+          },
+        },
         failedImporters: [],
         windowEndYear: 2025,
         sweep: { catalogCount: 31, attempted: 1, fetched: 1, unfetched: 30 },
@@ -436,6 +540,329 @@ describe('SIPRI chunked sweep (#6806)', () => {
     });
     assert.equal(Object.keys(snapshot.importers).length, 31);
     assert.equal(snapshot.stage.status, 'partial');
+  });
+
+  it('the final stale set below the cap completes the sweep and writes the marker', async () => {
+    const previous = previousSnapshot(2);
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch(),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      attempted: 2,
+      unfetched: 0,
+      completion: { completedAt: iso(NOW), windowEndYear: 2025 },
+    });
+  });
+
+  it('a fully current production sweep starts no requests and completes', async () => {
+    let served = 0;
+    const previous = previousSnapshot(0);
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({ onImporter: () => { served += 1; } }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      served,
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      served: 0,
+      attempted: 0,
+      unfetched: 0,
+      completion: { completedAt: iso(NOW), windowEndYear: 2025 },
+    });
+  });
+
+  it('selects exactly the cap without reporting a deferred importer', async () => {
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch(),
+      previousSnapshot: previousSnapshot(56),
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+
+    assert.deepEqual({
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+    }, {
+      attempted: 56,
+      unfetched: 0,
+    });
+  });
+
+  it('reports stale importers deferred above the sweep limit', async () => {
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch(),
+      previousSnapshot: previousSnapshot(importerCodes.length),
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+
+    assert.deepEqual({
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+    }, {
+      attempted: 56,
+      unfetched: 4,
+    });
+  });
+
+  for (const [missing, sweepOptions] of [
+    ['previousSnapshot', { maxSweepImporters: 56 }],
+    ['maxSweepImporters', { previousSnapshot: {} }],
+  ]) {
+    it(`rejects production sweep inputs without ${missing}`, async () => {
+      await assert.rejects(
+        () => fetchSipriSupplierDependencies({
+          fetchFn: makeSipriFetch(),
+          concurrency: 1,
+          delayMs: 0,
+          ...sweepOptions,
+        }),
+        /previousSnapshot.*maxSweepImporters.*together/,
+      );
+    });
+  }
+
+  for (const maxSweepImporters of [-1, 0, 1.5, Number.POSITIVE_INFINITY]) {
+    it(`rejects an invalid sweep cap of ${maxSweepImporters}`, async () => {
+      await assert.rejects(
+        () => fetchSipriSupplierDependencies({
+          fetchFn: makeSipriFetch(),
+          previousSnapshot: {},
+          maxSweepImporters,
+        }),
+        /maxSweepImporters must be a positive safe integer/,
+      );
+    });
+  }
+
+  it('counts cap deferrals and only requests started before the soft budget', async () => {
+    let served = 0;
+    let clock = NOW;
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        onImporter: () => {
+          served += 1;
+          clock += 10_000;
+        },
+      }),
+      previousSnapshot: previousSnapshot(importerCodes.length),
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      softBudgetMs: 15_000,
+      now: () => clock,
+    });
+
+    assert.deepEqual({
+      served,
+      attempted: result.sweep.attempted,
+      unfetched: result.sweep.unfetched,
+    }, {
+      served: 2,
+      attempted: 2,
+      unfetched: 58,
+    });
+  });
+
+  it('keeps a started request failure separate from unfetched and eligible for retry', async () => {
+    const previous = previousSnapshot(1);
+    const malformedCsv = 'Supplier,2021-2025\n"United States,10';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(malformedCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.equal(result.sweep.attempted, 1);
+    assert.equal(result.sweep.unfetched, 0);
+    assert.equal(result.failedImporters.length, 1);
+    assert.equal(snapshot.stage.status, 'partial');
+    assert.deepEqual(buildArmsSupplierCompletion(snapshot), {});
+    assert.deepEqual(
+      selectSweepImporters([{ iso2: importerCodes[0] }], snapshot, 2025, NOW)
+        .map((importer) => importer.iso2),
+      [importerCodes[0]],
+    );
+  });
+
+  it('records a successful zero-transfer importer as current before completing the sweep', async () => {
+    const previous = previousSnapshot(1);
+    const headerOnlyCsv = 'Supplier,2021-2025\n';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(headerOnlyCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+    const importerIso2 = importerCodes[0];
+
+    assert.deepEqual(result.importers[importerIso2].suppliers, []);
+    assert.equal(result.sweep.fetched, 1);
+    assert.equal(result.sweep.unfetched, 0);
+    assert.deepEqual(snapshot.importers[importerIso2].suppliers, []);
+    assert.equal(snapshot.importers[importerIso2].retained, false);
+    assert.equal(snapshot.importers[importerIso2].fetchedAt, iso(NOW));
+    assert.deepEqual(
+      selectSweepImporters([{ iso2: importerIso2 }], snapshot, 2025, NOW),
+      [],
+    );
+    assert.deepEqual(
+      buildArmsSupplierCompletion(snapshot),
+      { completedAt: iso(NOW), windowEndYear: 2025 },
+    );
+  });
+
+  it('tags a floor rejection non-retryable so withRetry cannot re-run the slice', async () => {
+    // runSeed wraps the fetcher in withRetry; an untagged throw re-runs all 56
+    // POSTs against a throttled host shared with seed-defense-industrial, and
+    // fetchPhaseTimeoutMs aborts the second attempt partway anyway.
+    await assert.rejects(
+      () => buildSipriSupplierSnapshot({
+        fetchSipri: async () => ({
+          importers: { UA: { suppliers: [], window: { endYear: 2025 } } },
+          failedImporters: [],
+          windowEndYear: 2025,
+        }),
+        minimumCompleteImporterCount: 1,
+      }),
+      (error) => error.nonRetryable === true && /positive importer rows/.test(error.message),
+    );
+  });
+
+  it('withholds a collapsed zero-supplier cohort instead of publishing wiped rows', async () => {
+    // Every attempted importer previously HAD suppliers and now parses clean
+    // with none. That is upstream degradation, not 56 countries simultaneously
+    // ceasing arms imports, so the slice must be withheld and retried.
+    const previous = previousSnapshot(importerCodes.length);
+    const headerOnlyCsv = 'Supplier,2021-2025\n';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(headerOnlyCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      published: Object.keys(result.importers).length,
+      failed: result.failedImporters.length,
+      status: snapshot.stage.status,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      published: 0,
+      failed: 56,
+      status: 'partial',
+      completion: {},
+    });
+    // Last-good data survived and the withheld importers stay selectable.
+    assert.deepEqual(snapshot.importers[importerCodes[0]].suppliers, [{ supplierIso2: 'US', tivShare: 1 }]);
+    assert.equal(snapshot.importers[importerCodes[0]].retained, true);
+    assert.equal(
+      selectSweepImporters([{ iso2: importerCodes[0] }], snapshot, 2025, NOW).length,
+      1,
+    );
+  });
+
+  it('still publishes a zero-transfer refresh below the cohort-collapse floor', async () => {
+    // The counterpart to the test above: a handful of genuine zero-transfer
+    // importers must still become current, or the #7524 fix regresses and they
+    // stay stale forever.
+    const staleCount = SIPRI_ZERO_REGRESSION_MIN - 1;
+    const previous = previousSnapshot(staleCount);
+    const headerOnlyCsv = 'Supplier,2021-2025\n';
+    const result = await fetchSipriSupplierDependencies({
+      fetchFn: makeSipriFetch({
+        importerResponse: () => new Response(JSON.stringify({
+          bytes: Buffer.from(headerOnlyCsv).toString('base64'),
+        })),
+      }),
+      previousSnapshot: previous,
+      maxSweepImporters: 56,
+      concurrency: 1,
+      delayMs: 0,
+      now: () => NOW,
+    });
+    const snapshot = await buildSipriSupplierSnapshot({
+      previousSnapshot: previous,
+      fetchSipri: async () => result,
+      now: () => new Date(NOW),
+    });
+
+    assert.deepEqual({
+      published: Object.keys(result.importers).length,
+      failed: result.failedImporters.length,
+      unfetched: result.sweep.unfetched,
+      completion: buildArmsSupplierCompletion(snapshot),
+    }, {
+      published: staleCount,
+      failed: 0,
+      unfetched: 0,
+      completion: { completedAt: iso(NOW), windowEndYear: 2025 },
+    });
+    assert.equal(snapshot.importers[importerCodes[0]].retained, false);
   });
 
   it('the soft budget returns partial progress instead of losing the tick', async () => {

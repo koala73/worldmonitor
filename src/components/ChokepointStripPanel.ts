@@ -102,7 +102,7 @@ export class ChokepointStripPanel extends Panel {
       const color = statusColor(cp.status);
       const short = shortName(cp.id) || cp.name;
       const flow = formatFlow(cp);
-      const warnings = cp.activeWarnings > 0
+      const warnings = cp.navigationalWarningsAvailable === true && cp.activeWarnings > 0
         ? safeHtml`<span class="cp-chip-warn">${cp.activeWarnings}</span>`
         : safeHtml``;
       return safeHtml`
@@ -115,7 +115,10 @@ export class ChokepointStripPanel extends Panel {
         </div>`;
     }));
 
-    const nAis = ordered.reduce((sum, cp) => sum + (cp.aisDisruptions ?? 0), 0);
+    const nAis = ordered.reduce(
+      (sum, cp) => sum + (cp.aisSnapshotAvailable === true ? cp.aisDisruptions : 0),
+      0,
+    );
     const footer: SafeHtml = unsafeRawHtml(attributionFooterHtml({
       sourceType: 'ais',
       method: t('components.chokepointStrip.attribution.method'),

@@ -854,7 +854,11 @@ describe('durable last-good wiring (#7084)', () => {
       'unavailable',
     );
     assert.equal(result, 'unavailable');
-    assert.ok(Date.now() - started < 150, 'the absolute deadline must bound every unresolved tail');
+    // Tolerant but retained (#7534 review): a timer scheduled seconds late
+    // rather than at the injected 20ms still returns 'unavailable' well inside
+    // the 120s suite timeout, so the assertion above cannot see it. 2s catches
+    // that while sitting far above the load noise a 150ms bound was measuring.
+    assert.ok(Date.now() - started < 2_000, 'the absolute deadline must bound every unresolved tail');
   });
 
   it('fresh and cached serving fail CLOSED when revocations are unreadable', async () => {

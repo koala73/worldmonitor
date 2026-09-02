@@ -978,7 +978,7 @@ describe('crawlable corpus generator', () => {
         ...data.livePulse,
         chokepoints: {
           ...data.livePulse.chokepoints,
-          [firstChokepoint.id]: { ...validPulse, congestion: 'Elevated' },
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Elevated', aisSnapshotAvailable: true },
         },
       }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
       'Elevated',
@@ -988,10 +988,16 @@ describe('crawlable corpus generator', () => {
         ...data.livePulse,
         chokepoints: {
           ...data.livePulse.chokepoints,
-          [firstChokepoint.id]: { ...validPulse, congestion: 'Not reported' },
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Not reported', aisSnapshotAvailable: true },
         },
       }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
       'Not reported',
+    );
+    assert.equal(
+      buildChokepointHubRows(data.chokepoints, data.livePulse)
+        .find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      'Not reported',
+      'legacy pulses without the AIS availability flag must fail closed',
     );
 
     for (const [label, pulse] of [
@@ -1002,10 +1008,10 @@ describe('crawlable corpus generator', () => {
       ['status below score band', { ...validPulse, disruptionScore: '70', status: 'Green' }],
       ['status above score band', { ...validPulse, disruptionScore: '5', status: 'Red' }],
       ['status in adjacent score band', { ...validPulse, disruptionScore: '19', status: 'Yellow' }],
-      ['object congestion', { ...validPulse, congestion: { level: 'Normal' } }],
-      ['numeric congestion', { ...validPulse, congestion: 3 }],
-      ['unknown congestion', { ...validPulse, congestion: 'Severe' }],
-      ['lowercase congestion', { ...validPulse, congestion: 'normal' }],
+      ['object congestion', { ...validPulse, congestion: { level: 'Normal' }, aisSnapshotAvailable: true }],
+      ['numeric congestion', { ...validPulse, congestion: 3, aisSnapshotAvailable: true }],
+      ['unknown congestion', { ...validPulse, congestion: 'Severe', aisSnapshotAvailable: true }],
+      ['lowercase congestion', { ...validPulse, congestion: 'normal', aisSnapshotAvailable: true }],
     ]) {
       const invalidLivePulse = {
         ...data.livePulse,
@@ -2469,7 +2475,10 @@ describe('crawlable corpus generator', () => {
         assert.ok(row.querySelector('[data-hub-region]')?.textContent.trim());
         assert.equal(Number(row.querySelector('[data-hub-score]')?.textContent), Number(pulse.disruptionScore));
         assert.equal(row.querySelector('[data-hub-status]')?.textContent.trim(), pulse.status);
-        assert.equal(row.querySelector('[data-hub-congestion]')?.textContent.trim(), pulse.congestion);
+        assert.equal(
+          row.querySelector('[data-hub-congestion]')?.textContent.trim(),
+          pulse.aisSnapshotAvailable === true ? pulse.congestion : 'Not reported',
+        );
         assert.equal(row.querySelector('time[data-hub-updated]')?.getAttribute('datetime'), pulse.asOf);
       }
       assert.ok(
@@ -2528,7 +2537,12 @@ describe('crawlable corpus generator', () => {
         );
         assert.equal(properties['Disruption score'], Number(visibleRow.querySelector('[data-hub-score]').textContent));
         assert.equal(properties.Status, visibleRow.querySelector('[data-hub-status]').textContent.trim());
-        assert.equal(properties.Congestion, visibleRow.querySelector('[data-hub-congestion]').textContent.trim());
+        const itemPulse = corpusData.livePulse.chokepoints[corpusData.chokepoints[index].id];
+        if (itemPulse?.aisSnapshotAvailable === true) {
+          assert.equal(properties['AIS congestion'], visibleRow.querySelector('[data-hub-congestion]').textContent.trim());
+        } else {
+          assert.equal(properties['AIS congestion'], undefined);
+        }
       }
       const chokepointFaqHeadings = [...chokepointsDocument.querySelectorAll('h2[data-chokepoint-hub-faq]')];
       const chokepointQuestions = chokepointFaqHeadings
@@ -2552,7 +2566,7 @@ describe('crawlable corpus generator', () => {
         ['negative score', { ...validPulse, disruptionScore: -1 }],
         ['score above 100', { ...validPulse, disruptionScore: 101 }],
         ['missing status', { ...validPulse, status: '' }],
-        ['missing congestion', { ...validPulse, congestion: '' }],
+        ['missing observed AIS congestion', { ...validPulse, congestion: '', aisSnapshotAvailable: true }],
         ['impossible timestamp', { ...validPulse, asOf: '2026-02-31T13:37:22.049Z' }],
       ]) {
         const invalidLivePulse = {
@@ -2873,6 +2887,23 @@ describe('crawlable corpus generator', () => {
         hormuz,
         /World Monitor is not currently publishing a transit count for Strait of Hormuz for this period/,
       );
+      const hormuzDocument = htmlDocument(
+        hormuz,
+        'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/',
+      );
+      for (const selector of [
+        '[data-chokepoint-warnings]',
+        '[data-chokepoint-ais-disruptions]',
+        '[data-chokepoint-congestion]',
+      ]) {
+        const metric = hormuzDocument.querySelector(selector)?.closest('.metric');
+        assert.ok(metric, `${selector} must remain in SSR for hydration recovery`);
+        assert.equal(metric.hidden, true, `${selector} must be hidden when its legacy flag is absent`);
+      }
+      assert.match(hormuz, /<span>Navigational warnings<\/span>/);
+      assert.match(hormuz, /<span>AIS disruptions<\/span>/);
+      assert.match(hormuz, /<span>AIS congestion<\/span>/);
+      assert.match(hormuz, /data-chokepoint-movement>\+12\.9% vs prior week</);
       assert.doesNotMatch(
         hormuz,
         /AIS-derived feed has no data/,
@@ -3095,10 +3126,6 @@ describe('crawlable corpus generator', () => {
           );
           assert.doesNotMatch(page, noteRe, `${meta.name} publishes a count and must not carry the withhold note`);
           assert.ok(
-            page.includes(`data-chokepoint-warnings>${pulse.warnings}<`),
-            `${meta.name} has a supplied count and must keep pulse warnings visible`,
-          );
-          assert.ok(
             page.includes(`data-chokepoint-movement>${pulse.weekMovement ?? 'Unavailable'}<`),
             `${meta.name} has a supplied count and must keep week movement visible`,
           );
@@ -3110,17 +3137,23 @@ describe('crawlable corpus generator', () => {
             /data-chokepoint-transits>0</,
             `${meta.name} must not render a numeric 0 for an unsupplied transit count`,
           );
-          assert.match(
-            page,
-            /data-chokepoint-warnings>—</,
-            `${meta.name} must withhold warnings and AIS when its transit count is unavailable`,
-          );
-          assert.match(
-            page,
-            /data-chokepoint-movement>—</,
-            `${meta.name} must withhold week-over-week movement when its transit count is unavailable`,
+          assert.ok(
+            page.includes(`data-chokepoint-movement>${pulse.weekMovement ?? '—'}<`),
+            `${meta.name} must keep week movement independent from today's count`,
           );
           assert.match(page, noteRe);
+        }
+        const pageDocument = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
+        for (const selector of [
+          '[data-chokepoint-warnings]',
+          '[data-chokepoint-ais-disruptions]',
+          '[data-chokepoint-congestion]',
+        ]) {
+          assert.equal(
+            pageDocument.querySelector(selector)?.closest('.metric')?.hidden,
+            true,
+            `${meta.name} legacy source flag must fail closed for ${selector}`,
+          );
         }
       }
       assert.equal(

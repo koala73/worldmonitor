@@ -21,7 +21,7 @@
       "type": "skill-md",
       "description": "Retrieve live disruption status for the 13 monitored maritime chokepoints (Suez, Hormuz, Malacca, Bab el-Mandeb, Panama, and more). Use when the user asks whether a strait or canal is disrupted, congested, or safe for shipping right now.",
       "url": "https://worldmonitor.app/.well-known/agent-skills/check-chokepoint-status/SKILL.md",
-      "digest": "sha256:391be720d0b8d036df44bc6b73f5a66c6f8160aeb2cd4b59de250349f49de74a"
+      "digest": "sha256:7e03c4087a0978e65cbeda24aaeff9b45e2b66eca6c9ef57119b5b7296010938"
     },
     {
       "name": "check-country-risk",

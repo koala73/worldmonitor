@@ -95,7 +95,10 @@ describe('freeze crawlable live pulse coverage gates', () => {
         disruptionScore: 10,
         status: 'green',
         activeWarnings: 0,
+        navigationalWarningsAvailable: true,
         aisDisruptions: 0,
+        aisSnapshotAvailable: true,
+        congestionLevel: 'normal',
         transitSummary: {
           dataAvailable: true,
           todayTotal: 0,
@@ -200,7 +203,11 @@ describe('freeze crawlable live pulse coverage gates', () => {
         Object.values(snapshot.chokepoints).every((pulse) => (
           pulse.todayTransits === '0'
           && pulse.todayCountsAvailable === true
-          && pulse.warnings === '0 warnings · 0 AIS disruptions'
+          && pulse.navigationalWarnings === '0 warnings'
+          && pulse.navigationalWarningsAvailable === true
+          && pulse.aisDisruptions === '0 AIS disruptions'
+          && pulse.aisSnapshotAvailable === true
+          && pulse.congestion === 'Normal'
           && pulse.weekMovement === '0% vs prior week'
         )),
       );

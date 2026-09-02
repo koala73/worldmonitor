@@ -8,7 +8,7 @@ import type {
 import { CHROME_UA } from '../../../_shared/constants';
 import { cachedFetchJson } from '../../../_shared/redis';
 
-const REDIS_CACHE_KEY = 'maritime:navwarnings:v1';
+const REDIS_CACHE_KEY = 'maritime:navwarnings:v2';
 const REDIS_CACHE_TTL = 3600; // 1 hr — NGA broadcasts update daily
 
 // ========================================================================
@@ -34,17 +34,24 @@ function parseNgaDate(dateStr: unknown): number {
   return Date.UTC(year, month, day, hours, minutes);
 }
 
-async function fetchNgaWarnings(area?: string): Promise<NavigationalWarning[]> {
+async function fetchNgaWarnings(area?: string): Promise<NavigationalWarning[] | null> {
   try {
     const response = await fetch(NGA_WARNINGS_URL, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
       signal: AbortSignal.timeout(15000),
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) return null;
 
     const data = await response.json();
-    const rawWarnings: any[] = Array.isArray(data) ? data : (data?.broadcast_warn ?? []);
+    const rawWarnings: any[] | null = Array.isArray(data)
+      ? data
+      : Array.isArray(data?.broadcast_warn)
+        ? data.broadcast_warn
+        : null;
+    if (rawWarnings === null || rawWarnings.some((warning) => !warning || typeof warning !== 'object')) {
+      return null;
+    }
 
     let warnings: NavigationalWarning[] = rawWarnings.map((w: any): NavigationalWarning => ({
       id: `${w.navArea || ''}-${w.msgYear || ''}-${w.msgNumber || ''}`,
@@ -68,7 +75,7 @@ async function fetchNgaWarnings(area?: string): Promise<NavigationalWarning[]> {
 
     return warnings;
   } catch {
-    return [];
+    return null;
   }
 }
 
@@ -84,10 +91,14 @@ export async function listNavigationalWarnings(
     const cacheKey = `${REDIS_CACHE_KEY}:${req.area || 'all'}`;
     const result = await cachedFetchJson<ListNavigationalWarningsResponse>(cacheKey, REDIS_CACHE_TTL, async () => {
       const warnings = await fetchNgaWarnings(req.area);
-      return warnings.length > 0 ? { warnings, pagination: undefined } : null;
+      return warnings === null
+        ? null
+        : { warnings, pagination: undefined, dataAvailable: true };
     });
-    return result || { warnings: [], pagination: undefined };
+    return result
+      ? { ...result, dataAvailable: result.dataAvailable === true }
+      : { warnings: [], pagination: undefined, dataAvailable: false };
   } catch {
-    return { warnings: [], pagination: undefined };
+    return { warnings: [], pagination: undefined, dataAvailable: false };
   }
 }

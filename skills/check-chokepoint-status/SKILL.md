@@ -36,17 +36,25 @@ GET https://worldmonitor.app/api/supply-chain/v1/get-chokepoint-status
 {
   "chokepoints": [
     {
-      "id": "hormuz",
+      "id": "hormuz_strait",
       "name": "Strait of Hormuz",
       "lat": 26.57,
       "lon": 56.25,
       "disruptionScore": 42,
-      "status": "elevated",
-      "activeWarnings": ["…"],
-      "congestionLevel": "moderate",
+      "status": "yellow",
+      "activeWarnings": 2,
+      "navigationalWarningsAvailable": true,
+      "congestionLevel": "elevated",
       "affectedRoutes": ["…"],
       "description": "…",
-      "aisDisruptions": ["…"],
+      "aisDisruptions": 1,
+      "aisSnapshotAvailable": true,
+      "transitSummary": {
+        "todayTotal": 0,
+        "todayCountsAvailable": true,
+        "wowChangePct": -4.2,
+        "dataAvailable": true
+      },
       "directions": ["…"]
     }
   ],
@@ -55,7 +63,14 @@ GET https://worldmonitor.app/api/supply-chain/v1/get-chokepoint-status
 }
 ```
 
-**Degradation contract:** an empty `chokepoints` array with `upstreamUnavailable: true` means the seed snapshot is unavailable or degraded — it does NOT mean zero disruptions. Treat it as "no data", never as "all clear".
+**Degradation contract:** `upstreamUnavailable: true` can accompany useful chokepoint rows when one source is missing. Use each source's availability flag before interpreting its values:
+
+- `navigationalWarningsAvailable: false` means `activeWarnings` is withheld, not a measured zero.
+- `aisSnapshotAvailable: false` means `aisDisruptions` and `congestionLevel` are withheld. `"normal"` is valid only when this flag is true.
+- `transitSummary.todayCountsAvailable: false` means the `today*` counts are withheld, not measured zeros.
+- `transitSummary.dataAvailable: false` means PortWatch movement and history are unavailable; it does not change the relay's `today*` availability.
+
+An empty `chokepoints` array with `upstreamUnavailable: true` means every publishable source is unavailable. Treat it as "no data", never as "all clear".
 
 ## Worked example
 

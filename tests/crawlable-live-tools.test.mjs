@@ -63,7 +63,9 @@ describe('crawlable live intelligence view models', () => {
           status: 'red',
           congestionLevel: 'high',
           activeWarnings: 3,
+          navigationalWarningsAvailable: true,
           aisDisruptions: 2,
+          aisSnapshotAvailable: true,
           description: 'Shipping warning activity is elevated.',
           transitSummary: {
             dataAvailable: false,
@@ -77,7 +79,8 @@ describe('crawlable live intelligence view models', () => {
       disruptionScore: '72',
       status: 'Red',
       congestion: 'High',
-      warnings: '—',
+      navigationalWarnings: '3 warnings',
+      aisDisruptions: '2 AIS disruptions',
       description: 'Shipping warning activity is elevated.',
       todayTransits: null,
       todayCountsAvailable: undefined,
@@ -98,8 +101,8 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(responsePartial.todayTransits, '11');
     assert.equal(responsePartial.weekMovement, '+2.5% vs prior week');
     assert.equal(
-      responsePartial.warnings,
-      '3 warnings · 2 AIS disruptions',
+      responsePartial.navigationalWarnings,
+      '3 warnings',
       'complete transit coverage must keep formatted warnings visible',
     );
     assert.equal(responsePartial.partial, true);
@@ -119,6 +122,37 @@ describe('crawlable live intelligence view models', () => {
       ),
       /stale/i,
     );
+  });
+
+  it('keeps chokepoint source coverage independent', () => {
+    const view = chokepointStatusViewModel({
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [{
+        id: 'hormuz_strait',
+        disruptionScore: 72,
+        status: 'red',
+        congestionLevel: 'normal',
+        activeWarnings: 3,
+        navigationalWarningsAvailable: true,
+        aisDisruptions: 0,
+        aisSnapshotAvailable: false,
+        description: 'Active conflict.',
+        transitSummary: {
+          dataAvailable: true,
+          todayTotal: 0,
+          todayCountsAvailable: false,
+          wowChangePct: 12.9,
+        },
+      }],
+    }, 'hormuz_strait', NOW);
+
+    assert.equal(view.navigationalWarnings, '3 warnings');
+    assert.equal(view.aisDisruptions, null);
+    assert.equal(view.congestion, null);
+    assert.equal(view.todayTransits, null);
+    assert.equal(view.weekMovement, '+12.9% vs prior week');
+    assert.equal(view.partial, true);
   });
 
   it('normalizes and ranks a complete current CII response', () => {
@@ -245,8 +279,10 @@ describe('crawlable live intelligence view models', () => {
 
     const view = chokepointStatusViewModel(payload, 'hormuz_strait', NOW);
     assert.equal(view.todayTransits, null);
-    assert.equal(view.weekMovement, null);
-    assert.equal(view.warnings, '—');
+    assert.equal(view.weekMovement, '+12.9% vs prior week');
+    assert.equal(view.navigationalWarnings, null);
+    assert.equal(view.aisDisruptions, null);
+    assert.equal(view.congestion, null);
     assert.equal(view.partial, true);
     assert.notEqual(view.todayTransits, '0');
   });
@@ -261,6 +297,7 @@ describe('crawlable live intelligence view models', () => {
           <div class="metric"><strong><span data-chokepoint-score>70</span><small data-chokepoint-band>Red</small></strong></div>
           <div class="metric"><strong data-chokepoint-congestion>Normal</strong></div>
           <div class="metric"><strong data-chokepoint-warnings>0 warnings</strong></div>
+          <div class="metric"><strong data-chokepoint-ais-disruptions>0 AIS disruptions</strong></div>
           <div class="metric"><strong data-chokepoint-transits>0</strong></div>
           <div class="metric"><strong data-chokepoint-movement>+12.9% vs prior week</strong></div>
         </div>
@@ -286,7 +323,9 @@ describe('crawlable live intelligence view models', () => {
               status: 'red',
               congestionLevel: 'normal',
               activeWarnings: 0,
+              navigationalWarningsAvailable: true,
               aisDisruptions: 0,
+              aisSnapshotAvailable: true,
               description: 'Active conflict.',
               transitSummary: {
                 dataAvailable: true,
@@ -308,28 +347,42 @@ describe('crawlable live intelligence view models', () => {
 
     assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '0');
     assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+12.9% vs prior week');
-    assert.equal(tool.querySelector('[data-chokepoint-warnings]').textContent, '0 warnings · 0 AIS disruptions');
+    assert.equal(tool.querySelector('[data-chokepoint-warnings]').textContent, '0 warnings');
+    assert.equal(tool.querySelector('[data-chokepoint-ais-disruptions]').textContent, '0 AIS disruptions');
     assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, true);
     assert.equal(tool.querySelector('[data-chokepoint-transits-note]').textContent, '');
   });
 
   it('derives the coverage tuple from explicit availability with a legacy fallback', () => {
-    const tuple = { warnings: '2 warnings', weekMovement: '+3% vs prior week' };
+    const tuple = {
+      navigationalWarnings: '2 warnings',
+      navigationalWarningsAvailable: true,
+      aisDisruptions: '0 AIS disruptions',
+      aisSnapshotAvailable: true,
+      congestionLevel: 'normal',
+      weekMovement: '+3% vs prior week',
+    };
+    const projected = {
+      navigationalWarnings: '2 warnings',
+      aisDisruptions: '0 AIS disruptions',
+      congestion: 'Normal',
+      weekMovement: '+3% vs prior week',
+    };
     assert.deepEqual(
       chokepointCoverageMetrics({ ...tuple, todayTransits: 0, todayCountsAvailable: true }),
-      { ...tuple, todayTransits: '0', todayCountsAvailable: true },
+      { ...projected, todayTransits: '0', todayCountsAvailable: true },
     );
     assert.deepEqual(
       chokepointCoverageMetrics({ ...tuple, todayTransits: 9, todayCountsAvailable: false }),
-      { todayTransits: null, todayCountsAvailable: false, warnings: '—', weekMovement: null },
+      { ...projected, todayTransits: null, todayCountsAvailable: false },
     );
     assert.deepEqual(
-      chokepointCoverageMetrics({ ...tuple, todayTransits: 0 }),
-      { todayTransits: null, todayCountsAvailable: undefined, warnings: '—', weekMovement: null },
+      chokepointCoverageMetrics({ ...tuple, navigationalWarningsAvailable: undefined, aisSnapshotAvailable: undefined, todayTransits: 0 }),
+      { todayTransits: null, todayCountsAvailable: undefined, navigationalWarnings: null, aisDisruptions: null, congestion: null, weekMovement: '+3% vs prior week' },
     );
     assert.deepEqual(
       chokepointCoverageMetrics({ ...tuple, todayTransits: 9 }),
-      { ...tuple, todayTransits: '9', todayCountsAvailable: undefined },
+      { ...projected, todayTransits: '9', todayCountsAvailable: undefined },
     );
   });
 
@@ -341,8 +394,9 @@ describe('crawlable live intelligence view models', () => {
         <span class="live-status" data-live-status>Published pulse</span>
         <div class="grid" data-live-grid>
           <div class="metric"><strong><span data-chokepoint-score>—</span><small data-chokepoint-band></small></strong></div>
-          <div class="metric"><strong data-chokepoint-congestion>—</strong></div>
-          <div class="metric"><strong data-chokepoint-warnings>—</strong></div>
+          <div class="metric" hidden><strong data-chokepoint-congestion></strong></div>
+          <div class="metric" hidden><strong data-chokepoint-warnings></strong></div>
+          <div class="metric" hidden><strong data-chokepoint-ais-disruptions></strong></div>
           <div class="metric"><strong data-chokepoint-transits>—</strong></div>
           <div class="metric"><strong data-chokepoint-movement>—</strong></div>
         </div>
@@ -368,7 +422,9 @@ describe('crawlable live intelligence view models', () => {
               status: 'red',
               congestionLevel: 'high',
               activeWarnings: 3,
+              navigationalWarningsAvailable: true,
               aisDisruptions: 2,
+              aisSnapshotAvailable: true,
               description: 'Elevated shipping warnings.',
               transitSummary: {
                 dataAvailable: true,
@@ -390,8 +446,12 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(tool.querySelector('[data-chokepoint-transits]').textContent, '11');
     assert.equal(
       tool.querySelector('[data-chokepoint-warnings]').textContent,
-      '3 warnings · 2 AIS disruptions',
+      '3 warnings',
     );
+    assert.equal(tool.querySelector('[data-chokepoint-ais-disruptions]').textContent, '2 AIS disruptions');
+    assert.equal(tool.querySelector('[data-chokepoint-warnings]').closest('.metric').hidden, false);
+    assert.equal(tool.querySelector('[data-chokepoint-ais-disruptions]').closest('.metric').hidden, false);
+    assert.equal(tool.querySelector('[data-chokepoint-congestion]').closest('.metric').hidden, false);
     assert.equal(tool.querySelector('[data-chokepoint-movement]').textContent, '+2.5% vs prior week');
     assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, true);
   });

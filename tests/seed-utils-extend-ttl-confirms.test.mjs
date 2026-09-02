@@ -154,3 +154,43 @@ test('extendExistingTtl: does NOT retry when response is OK but a key is missing
   assert.equal(ok, false);
   assert.equal(calls, 1, 'missing-key no-op is a real condition, not a transient error');
 });
+
+// allowMissingKeys (#7524 review). `allExtended` gates runSeed's RETRY exit(1)
+// and its preservationSucceeded diagnostic, so a key whose absence is EXPECTED
+// -- a completion marker not written until a multi-tick sweep finishes -- must
+// not read as a preservation failure. The #5364 contract still holds for every
+// key outside the list, and for an unconfirmed result even inside it.
+
+test('allowMissingKeys: a confirmed no-op on a listed key does not fail the verdict', async () => {
+  mockPipeline([{ result: 1 }, { result: 0 }]);
+  const result = await extendExistingTtlDetailed(['alive', 'optional'], 1800, {
+    allowMissingKeys: ['optional'],
+  });
+  assert.equal(result.allExtended, true);
+  assert.deepEqual(result.extendedKeys, ['alive']);
+  assert.deepEqual(result.missingKeys, ['optional']);
+});
+
+test('allowMissingKeys: a no-op on an UNLISTED key still fails the verdict', async () => {
+  mockPipeline([{ result: 0 }, { result: 0 }]);
+  const result = await extendExistingTtlDetailed(['required', 'optional'], 1800, {
+    allowMissingKeys: ['optional'],
+  });
+  assert.equal(result.allExtended, false);
+});
+
+test('allowMissingKeys: an UNCONFIRMED result on a listed key still fails the verdict', async () => {
+  // "We could not read the result" is not "it is expectedly absent".
+  mockPipeline([{ result: 1 }, { result: null }]);
+  const result = await extendExistingTtlDetailed(['alive', 'optional'], 1800, {
+    allowMissingKeys: ['optional'],
+  });
+  assert.equal(result.allExtended, false);
+  assert.deepEqual(result.unconfirmedKeys, ['optional']);
+});
+
+test('allowMissingKeys: omitting the option keeps the strict #5364 contract', async () => {
+  mockPipeline([{ result: 1 }, { result: 0 }]);
+  const result = await extendExistingTtlDetailed(['alive', 'optional'], 1800);
+  assert.equal(result.allExtended, false);
+});

@@ -90,7 +90,7 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
     const name = document.createElement('div');
     name.className = 'wm-embed-cp-name';
     name.textContent = shortName(cp.id) || cp.name;
-    if (cp.activeWarnings > 0) {
+    if (cp.navigationalWarningsAvailable === true && cp.activeWarnings > 0) {
       const warn = document.createElement('span');
       warn.className = 'wm-embed-cp-warn';
       warn.textContent = String(cp.activeWarnings);

@@ -323,7 +323,8 @@ function makeInternalCtx(): { request: Request; pathParams: Record<string, strin
 
 interface ChokepointFetchResult {
   chokepoints: ChokepointInfo[];
-  upstreamUnavailable: boolean;
+  sourceCoverageIncomplete: boolean;
+  hasAnyPublishedSource: boolean;
 }
 
 interface FlowEstimateEntry { currentMbd: number; baselineMbd: number; flowRatio: number; disrupted: boolean; source: string; hazardAlertLevel: string | null; hazardAlertName: string | null }
@@ -389,22 +390,22 @@ function narrowServedSources(response: GetChokepointStatusResponse): GetChokepoi
   if (!Array.isArray(response?.chokepoints)) return response;
   return {
     ...response,
-    chokepoints: response.chokepoints.map((cp) => (
-      cp.flowEstimate
-        ? { ...cp, flowEstimate: { ...cp.flowEstimate, source: toFlowSource(cp.flowEstimate.source) } }
-        : cp
-    )),
+    chokepoints: response.chokepoints.map((cp) => ({
+      ...cp,
+      navigationalWarningsAvailable: cp.navigationalWarningsAvailable === true,
+      aisSnapshotAvailable: cp.aisSnapshotAvailable === true,
+      ...(cp.flowEstimate
+        ? { flowEstimate: { ...cp.flowEstimate, source: toFlowSource(cp.flowEstimate.source) } }
+        : {}),
+    })),
   };
 }
 
 async function fetchChokepointData(): Promise<ChokepointFetchResult> {
   const ctx = makeInternalCtx();
 
-  let navFailed = false;
-  let vesselFailed = false;
-
   const [navResult, vesselResult, transitSummariesData, flowsData] = await Promise.all([
-    listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => { navFailed = true; return { warnings: [], pagination: undefined }; }),
+    listNavigationalWarnings(ctx, { area: '', pageSize: 0, cursor: '' }).catch((): ListNavigationalWarningsResponse => ({ warnings: [], pagination: undefined, dataAvailable: false })),
     // All-zero bbox = "no filter, full snapshot" per the new bbox extractor
     // in get-vessel-snapshot.ts. Previously this passed (-90, -180, 90, 180)
     // because the handler ignored bbox entirely; the new 10° max-bbox guard
@@ -412,10 +413,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
     // call doesn't need bbox filtering — it wants the global density +
     // disruption surface — so pass zeros and skip both candidate and tanker
     // payload tiers.
-    getVesselSnapshot(ctx, { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates: false, includeTankers: false }).catch((): GetVesselSnapshotResponse => {
-      vesselFailed = true;
-      return { snapshot: undefined, fetchedAt: 0, dataAvailable: false };
-    }),
+    getVesselSnapshot(ctx, { neLat: 0, neLon: 0, swLat: 0, swLon: 0, includeCandidates: false, includeTankers: false }).catch((): GetVesselSnapshotResponse => ({ snapshot: undefined, fetchedAt: 0, dataAvailable: false })),
     getCachedJson(TRANSIT_SUMMARIES_KEY, true).catch(() => null) as Promise<TransitSummariesPayload | null>,
     getCachedJson(FLOWS_KEY, true).catch(() => null) as Promise<Record<string, FlowEstimateEntry> | null>,
   ]);
@@ -425,17 +423,12 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
 
   const warnings = navResult.warnings || [];
   const disruptions: AisDisruption[] = vesselResult.snapshot?.disruptions || [];
+  const navigationalWarningsAvailable = navResult.dataAvailable === true;
+  const aisSnapshotAvailable = vesselResult.dataAvailable === true;
 
-  // Treat a missing compact summary as upstream-unavailable so the outer
-  // cachedFetchJson caches NEG_SENTINEL (120s neg TTL) rather than pinning a
-  // healthy-but-zero response for the full REDIS_CACHE_TTL (5min). Before this
-  // gate, a single Redis read timeout silently published 13 zero-state
-  // chokepoints to supply_chain:chokepoints:v4 and the panel stayed empty
-  // until that cache expired. See docs/plans/chokepoint-rpc-payload-split.md.
-  const upstreamUnavailable = transitSummariesMissing
-    || (navFailed && vesselFailed)
-    || (navFailed && disruptions.length === 0)
-    || (vesselFailed && warnings.length === 0);
+  const sourceCoverageIncomplete = transitSummariesMissing
+    || !navigationalWarningsAvailable
+    || !aisSnapshotAvailable;
   const warningsByChokepoint = groupWarningsByChokepoint(warnings);
   const disruptionsByChokepoint = groupDisruptionsByChokepoint(disruptions);
   const threatConfigFresh = isThreatConfigFresh();
@@ -456,7 +449,9 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
     const disruptionScore = Math.min(100, computeDisruptionScore(threatScore, matchedWarnings.length, maxSeverity) + anomalyBonus);
     const status = scoreToStatus(disruptionScore);
 
-    const congestionLevel = maxSeverity >= 3 ? 'high' : maxSeverity >= 2 ? 'elevated' : maxSeverity >= 1 ? 'low' : 'normal';
+    const congestionLevel = aisSnapshotAvailable
+      ? (maxSeverity >= 3 ? 'high' : maxSeverity >= 2 ? 'elevated' : maxSeverity >= 1 ? 'low' : 'normal')
+      : '';
 
     const descriptions: string[] = [];
     if (cp.threatDescription) {
@@ -482,6 +477,8 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       activeWarnings: matchedWarnings.length,
       aisDisruptions: matchedDisruptions.length,
       congestionLevel,
+      navigationalWarningsAvailable,
+      aisSnapshotAvailable,
       affectedRoutes: cp.routes,
       description: descriptions.join('; '),
       directions: cp.directions,
@@ -524,7 +521,15 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
     };
   });
 
-  return { chokepoints, upstreamUnavailable };
+  const hasAnyPublishedSource = navigationalWarningsAvailable
+    || aisSnapshotAvailable
+    || chokepoints.some((cp) => (
+      cp.transitSummary?.dataAvailable === true
+      || cp.transitSummary?.todayCountsAvailable === true
+      || cp.flowEstimate !== undefined
+    ));
+
+  return { chokepoints, sourceCoverageIncomplete, hasAnyPublishedSource };
 }
 
 export async function getChokepointStatus(
@@ -536,21 +541,21 @@ export async function getChokepointStatus(
       REDIS_CACHE_KEY,
       REDIS_CACHE_TTL,
       async () => {
-        const { chokepoints, upstreamUnavailable } = await fetchChokepointData();
-        if (upstreamUnavailable) return null;
+        const { chokepoints, sourceCoverageIncomplete, hasAnyPublishedSource } = await fetchChokepointData();
+        if (!hasAnyPublishedSource) return null;
         // recordCount reflects the count of chokepoints with REAL upstream data
         // (not the canonical shape size — always 13). Lets api/health.js
         // distinguish 13/13 healthy from partial (e.g., 10/13) via the
         // minRecordCount threshold. Before this, a partial portwatch failure
         // showed as OK despite the UI rendering 3 zero-state rows.
-        const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable !== false).length;
+        const coveredCount = chokepoints.filter((c) => c.transitSummary?.dataAvailable === true).length;
         // Persist WHICH ones are uncovered alongside the count. recordCount=11
         // says two are missing and never which two, and the upstream usually
         // recovers before anyone looks — on 2026-08-25 the partial ran ~4.5h and
         // was already healthy by the time it was investigated. Bounded by the
         // canonical set, so this cannot grow past 13 short ids.
         const uncoveredIds = chokepoints
-          .filter((c) => c.transitSummary?.dataAvailable === false)
+          .filter((c) => c.transitSummary?.dataAvailable !== true)
           .map((c) => c.id);
         // Response-level signal: if any canonical chokepoint lost upstream,
         // flip upstreamUnavailable so clients can show a partial-coverage
@@ -559,7 +564,7 @@ export async function getChokepointStatus(
         const response = {
           chokepoints,
           fetchedAt: new Date().toISOString(),
-          upstreamUnavailable: upstreamUnavailable || partialCoverage,
+          upstreamUnavailable: sourceCoverageIncomplete || partialCoverage,
         };
         // Operator-facing only: api/health.js classifies this probe from
         // minRecordCount and is deliberately left alone. Routing it through

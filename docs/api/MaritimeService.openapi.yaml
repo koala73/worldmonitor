@@ -249,6 +249,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "dataAvailable": true
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -755,6 +756,11 @@ components:
                         $ref: '#/components/schemas/NavigationalWarning'
                 pagination:
                     $ref: '#/components/schemas/PaginationResponse'
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when NGA returned a valid response, including a valid empty list.
+                         False means warnings are withheld because the fetch or payload failed.
             description: ListNavigationalWarningsResponse contains navigational warnings matching the request.
         NavigationalWarning:
             type: object
