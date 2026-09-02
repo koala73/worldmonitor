@@ -121,6 +121,37 @@ describe('crawlable live intelligence view models', () => {
     );
   });
 
+  it('keeps chokepoint source coverage independent', () => {
+    const view = chokepointStatusViewModel({
+      fetchedAt: new Date(NOW - 60_000).toISOString(),
+      upstreamUnavailable: false,
+      chokepoints: [{
+        id: 'hormuz_strait',
+        disruptionScore: 72,
+        status: 'red',
+        congestionLevel: 'normal',
+        activeWarnings: 3,
+        navigationalWarningsAvailable: true,
+        aisDisruptions: 0,
+        aisSnapshotAvailable: false,
+        description: 'Active conflict.',
+        transitSummary: {
+          dataAvailable: true,
+          todayTotal: 0,
+          todayCountsAvailable: false,
+          wowChangePct: 12.9,
+        },
+      }],
+    }, 'hormuz_strait', NOW);
+
+    assert.equal(view.navigationalWarnings, '3 warnings');
+    assert.equal(view.aisDisruptions, null);
+    assert.equal(view.congestion, null);
+    assert.equal(view.todayTransits, null);
+    assert.equal(view.weekMovement, '+12.9% vs prior week');
+    assert.equal(view.partial, true);
+  });
+
   it('normalizes and ranks a complete current CII response', () => {
     const view = ciiRankingViewModel({
       ciiScores: [
