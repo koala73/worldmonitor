@@ -445,6 +445,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
 
     const threatScore = (THREAT_LEVEL as Record<string, number>)[cp.threatLevel] ?? 0;
     const ts = summaries[cp.id];
+    const transitMovementAvailable = ts ? (ts.dataAvailable ?? true) : false;
     const anomaly = ts?.anomaly ?? { dropPct: 0, signal: false };
     const anomalyBonus = anomaly.signal ? 10 : 0;
     const disruptionScore = Math.min(100, computeDisruptionScore(threatScore, matchedWarnings.length, maxSeverity) + anomalyBonus);
@@ -465,7 +466,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
       descriptions.push(THREAT_CONFIG_STALE_NOTE);
     }
     if (descriptions.length === 0) {
-      descriptions.push(sourceCoverageIncomplete
+      descriptions.push(sourceCoverageIncomplete || !transitMovementAvailable
         ? 'No active disruptions reported by available sources; source coverage incomplete'
         : 'No active disruptions');
     }
@@ -509,7 +510,7 @@ async function fetchChokepointData(): Promise<ChokepointFetchResult> {
         riskReportAction: ts.riskReportAction,
         // Default true for pre-fix writers (absence = covered). New writers
         // explicitly emit false for canonical zero-state fills.
-        dataAvailable: ts.dataAvailable ?? true,
+        dataAvailable: transitMovementAvailable,
       } : { todayTotal: 0, todayTanker: 0, todayCargo: 0, todayOther: 0, todayCountsAvailable: false, wowChangePct: 0, history: [], riskLevel: '', incidentCount7d: 0, disruptionPct: 0, riskSummary: '', riskReportAction: '', dataAvailable: false },
       flowEstimate: flowsData?.[cp.id] ? {
         currentMbd: flowsData[cp.id]!.currentMbd,
