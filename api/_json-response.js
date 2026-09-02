@@ -1,24 +1,21 @@
 function sanitizeJsonValue(value, depth = 0) {
-  if (depth > 20) return '[truncated]';
-
   if (value instanceof Error) {
     return { error: value.message };
   }
+
+  if (!value || typeof value !== 'object') return value;
+  if (depth > 20) return '[truncated]';
 
   if (Array.isArray(value)) {
     return value.map(item => sanitizeJsonValue(item, depth + 1));
   }
 
-  if (value && typeof value === 'object') {
-    const clone = {};
-    for (const [key, nested] of Object.entries(value)) {
-      if (key === 'stack' || key === 'stackTrace' || key === 'cause') continue;
-      clone[key] = sanitizeJsonValue(nested, depth + 1);
-    }
-    return clone;
+  const clone = {};
+  for (const [key, nested] of Object.entries(value)) {
+    if (key === 'stack' || key === 'stackTrace' || key === 'cause') continue;
+    clone[key] = sanitizeJsonValue(nested, depth + 1);
   }
-
-  return value;
+  return clone;
 }
 
 export function jsonResponse(body, status, headers = {}) {
