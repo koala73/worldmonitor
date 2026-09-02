@@ -1,10 +1,22 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
 
 import * as portwatchSeed from '../scripts/seed-portwatch-port-activity.mjs';
 
 const { orderColdFetchQueue } = portwatchSeed;
 const DAY = 86_400_000;
+const arcgisRateLimitFixture = JSON.parse(await readFile(
+  new URL('./fixtures/portwatch-arcgis-too-many-requests.json', import.meta.url),
+  'utf8',
+));
+
+function arcgisJson(body) {
+  return new Response(JSON.stringify(body), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 function cachedCountry(iso2, cacheWrittenAt = 0) {
   return {
@@ -19,46 +31,86 @@ function cachedCountry(iso2, cacheWrittenAt = 0) {
 }
 
 describe('PortWatch reference pagination recovery', () => {
-  it('retries a rate-limited page without restarting pagination', async () => {
+  it('parses and retries a rate-limited HTTP 200 page without restarting pagination', async () => {
+    assert.equal(typeof arcgisRateLimitFixture.error, 'object');
+    assert.equal(
+      arcgisRateLimitFixture.error.message,
+      'Unable to perform query. Too many requests.',
+    );
+    assert.match(arcgisRateLimitFixture._comment, /unconfirmed, not observed absent/);
+
     const requestedOffsets = [];
     const sleepCalls = [];
     let offsetOneAttempts = 0;
-    const fetchPage = async (url) => {
+    const fetchFn = async (url) => {
       const offset = Number(new URL(url).searchParams.get('resultOffset'));
       requestedOffsets.push(offset);
 
       if (offset === 0) {
-        return {
+        return arcgisJson({
           features: [{
             attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
           }],
           exceededTransferLimit: true,
-        };
+        });
       }
 
       offsetOneAttempts += 1;
       if (offsetOneAttempts === 1) {
-        throw new Error('ArcGIS error: Unable to perform query. Too many requests.');
+        return arcgisJson(arcgisRateLimitFixture);
       }
-      return {
+      return arcgisJson({
         features: [{
           attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 },
         }],
         exceededTransferLimit: false,
-      };
+      });
     };
 
     const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
-      fetchPage,
+      fetchFn,
       sleepFn: async (...args) => {
         sleepCalls.push(args);
       },
     });
 
     assert.deepEqual(requestedOffsets, [0, 1, 1]);
-    assert.ok(refsByIso3.get('USA') instanceof Map);
-    assert.ok(refsByIso3.get('CYP') instanceof Map);
+    assert.deepEqual([...refsByIso3.get('USA').keys()], ['us-lax']);
+    assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
     assert.equal(sleepCalls.length, 1);
+    assert.equal(sleepCalls[0][0], 2_000);
+  });
+
+  it('bounds repeated HTTP 200 rate-limit errors to one same-page retry', async () => {
+    const requestedOffsets = [];
+    const sleepCalls = [];
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+      if (offset === 0) {
+        return arcgisJson({
+          features: [{
+            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
+          }],
+          exceededTransferLimit: true,
+        });
+      }
+      return arcgisJson(arcgisRateLimitFixture);
+    };
+
+    await assert.rejects(
+      portwatchSeed.fetchAllPortRefs({
+        fetchFn,
+        sleepFn: async (...args) => {
+          sleepCalls.push(args);
+        },
+      }),
+      /ArcGIS error: Unable to perform query\. Too many requests\./,
+    );
+
+    assert.deepEqual(requestedOffsets, [0, 1, 1]);
+    assert.equal(sleepCalls.length, 1);
+    assert.equal(sleepCalls[0][0], 2_000);
   });
 });
 
