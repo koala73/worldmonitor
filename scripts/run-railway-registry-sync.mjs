@@ -4,6 +4,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 import { createRailwayCliEnv } from './railway-cli.mjs';
+import { CONFIGURATION_DRIFT_EXIT_CODE } from './audit-railway-watch-paths.mjs';
 
 const AUDIT_PATH = fileURLToPath(new URL('./audit-railway-watch-paths.mjs', import.meta.url));
 const DEFAULT_RETRY_DELAYS_MS = Object.freeze([5_000, 15_000]);
@@ -86,6 +87,16 @@ function sleep(delayMs) {
   return new Promise((resolve) => setTimeout(resolve, delayMs));
 }
 
+function describeChildFailure(result) {
+  if (result?.error) {
+    const message = result.error instanceof Error ? result.error.message : String(result.error);
+    return `spawn error: ${message}`;
+  }
+  if (result?.signal) return `signal ${result.signal}`;
+  if (Number.isInteger(result?.status)) return `exit ${result.status}`;
+  return 'unknown child-process result';
+}
+
 export async function runRailwayRegistrySync({
   mode,
   env = process.env,
@@ -100,21 +111,32 @@ export async function runRailwayRegistrySync({
   }
 
   const attempts = retryDelaysMs.length + 1;
+  let lastFailure = 'not started';
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     const result = spawnImpl(process.execPath, [AUDIT_PATH, ...policy.args], {
       env: registrySyncChildEnv(env),
       stdio: 'inherit',
     });
     if (!result.error && !result.signal && result.status === 0) return;
+    lastFailure = describeChildFailure(result);
+    if (!result.error && !result.signal && result.status === CONFIGURATION_DRIFT_EXIT_CODE) {
+      throw new Error(
+        `Railway registry sync ${mode} reported configuration drift (${lastFailure}); verdicts are not retried`,
+      );
+    }
     if (attempt === attempts) break;
     const delayMs = retryDelaysMs[attempt - 1];
-    console.error(`Railway registry sync ${mode} attempt ${attempt} failed; retrying in ${delayMs}ms.`);
+    console.error(
+      `Railway registry sync ${mode} attempt ${attempt} failed (${lastFailure}); retrying in ${delayMs}ms.`,
+    );
     await sleepImpl(delayMs);
   }
-  throw new Error(`Railway registry sync ${mode} failed after ${attempts} attempts`);
+  throw new Error(
+    `Railway registry sync ${mode} failed after ${attempts} attempts (last failure: ${lastFailure})`,
+  );
 }
 
-if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
+if (import.meta.main) {
   try {
     const mode = parseRegistrySyncArgs(process.argv.slice(2));
     await runRailwayRegistrySync({ mode });

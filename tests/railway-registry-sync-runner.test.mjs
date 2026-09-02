@@ -1,15 +1,22 @@
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, rmSync, symlinkSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { describe, it } from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   parseRegistrySyncArgs,
   runRailwayRegistrySync,
 } from '../scripts/run-railway-registry-sync.mjs';
+import { CONFIGURATION_DRIFT_EXIT_CODE } from '../scripts/audit-railway-watch-paths.mjs';
 
 const baseEnv = {
   PATH: '/usr/bin',
   RAILWAY_PROJECT_ID: 'project-1',
 };
+const runnerPath = fileURLToPath(new URL('../scripts/run-railway-registry-sync.mjs', import.meta.url));
 
 describe('Railway registry sync runner', () => {
   it('accepts one closed apply or verify mode', () => {
@@ -119,8 +126,41 @@ describe('Railway registry sync runner', () => {
         },
         sleepImpl: async () => {},
       }),
-      /verify failed after 3 attempts/,
+      /verify failed after 3 attempts \(last failure: exit 1\)/,
     );
     assert.equal(calls, 3);
+  });
+
+  it('does not retry a configuration-drift verdict', async () => {
+    let calls = 0;
+    const sleeps = [];
+    await assert.rejects(
+      runRailwayRegistrySync({
+        mode: 'verify',
+        env: { ...baseEnv, RAILWAY_API_TOKEN: 'viewer' },
+        retryDelaysMs: [5, 15],
+        spawnImpl: () => {
+          calls += 1;
+          return { status: CONFIGURATION_DRIFT_EXIT_CODE, signal: null, error: null };
+        },
+        sleepImpl: async (delayMs) => sleeps.push(delayMs),
+      }),
+      /reported configuration drift \(exit 2\); verdicts are not retried/,
+    );
+    assert.equal(calls, 1);
+    assert.deepEqual(sleeps, []);
+  });
+
+  it('runs its CLI entrypoint through a symlink', () => {
+    const directory = mkdtempSync(join(tmpdir(), 'railway-registry-sync-'));
+    const symlinkPath = join(directory, 'registry-sync.mjs');
+    try {
+      symlinkSync(runnerPath, symlinkPath);
+      const result = spawnSync(process.execPath, [symlinkPath], { encoding: 'utf8' });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /--mode is required/);
+    } finally {
+      rmSync(directory, { recursive: true, force: true });
+    }
   });
 });

@@ -33,13 +33,23 @@ jobs:
       name: ingestion-acceptance-production
       deployment: false
     steps:
-      - name: Start config-reconciliation run budget
-        run: echo "RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
-
       - id: checkout
         uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
+
+      - id: admit-current-main
+        name: Admit only the current main revision
+        run: |
+          current_main_sha="$(git ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 { print $1 }')"
+          if [[ ! "$current_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve the current main revision"
+            exit 1
+          fi
+          if [[ "$GITHUB_SHA" != "$current_main_sha" ]]; then
+            echo "::error::Refusing stale registry sync: checkout=$GITHUB_SHA current-main=$current_main_sha"
+            exit 1
+          fi
 
       - id: setup-node
         uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -56,13 +66,41 @@ jobs:
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: node scripts/run-railway-registry-sync.mjs --mode apply
 
+      - id: start-viewer-budget
+        name: Start Viewer verification budget
+        if: >-
+          always()
+          && steps.checkout.outcome == 'success'
+          && steps.admit-current-main.outcome == 'success'
+          && steps.setup-node.outcome == 'success'
+          && steps.install-railway.outcome == 'success'
+        run: echo "RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
       - name: Verify live configuration with the Viewer identity
         if: >-
           always()
           && steps.checkout.outcome == 'success'
+          && steps.admit-current-main.outcome == 'success'
           && steps.setup-node.outcome == 'success'
           && steps.install-railway.outcome == 'success'
+          && steps.start-viewer-budget.outcome == 'success'
         env:
           RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_VIEWER_API_TOKEN }}
           RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
         run: node scripts/run-railway-registry-sync.mjs --mode verify
+
+      - name: Explain a failed reconciliation
+        if: failure()
+        run: |
+          {
+            echo '### Railway Registry Sync did not converge'
+            echo
+            echo 'Use the failed step and its drift list to choose the repair:'
+            echo
+            echo '- **Stale revision:** run the workflow from the current `main`; never re-run an older workflow attempt.'
+            echo '- **Registry-managed drift:** fix the registry or the reconciler, then run the current `main` workflow.'
+            echo '- **Source branch, check-suite, or required-variable drift:** repair the named Railway service setting; the registry patch cannot write these fields.'
+            echo '- **CLI or observation failure:** restore Railway access, then run the current `main` workflow.'
+            echo
+            echo 'Do not run a local production `--apply` from a stale checkout.'
+          } >> "$GITHUB_STEP_SUMMARY"

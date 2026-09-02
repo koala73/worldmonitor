@@ -42,6 +42,7 @@ export {
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 const DEFAULT_ENVIRONMENT = 'production';
 export const DEPLOYMENT_CONFIG_RUN_BUDGET_MS = 15 * 60 * 1000;
+export const CONFIGURATION_DRIFT_EXIT_CODE = 2;
 
 export function resolveDeploymentConfigDeadlineAt({
   jobStartedAtMs,
@@ -646,7 +647,10 @@ async function main() {
 
   if (drift.length === 0) return;
   if (!apply) {
-    process.exitCode = 1;
+    // Keep a policy verdict distinct from an observation/runtime failure. The
+    // registry-sync runner must not spend its retry budget re-reading a stable
+    // mismatch as though it were a transient CLI failure.
+    process.exitCode = CONFIGURATION_DRIFT_EXIT_CODE;
     return;
   }
 

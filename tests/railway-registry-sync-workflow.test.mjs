@@ -61,6 +61,7 @@ describe('Railway Registry Sync workflow', () => {
     const job = workflow.jobs.reconcile;
     assert.equal(job.needs, undefined);
     assert.equal(job['continue-on-error'], undefined);
+    assert.equal(job['timeout-minutes'], 20);
     assert.deepEqual(job.environment, {
       name: 'ingestion-acceptance-production',
       deployment: false,
@@ -81,8 +82,10 @@ describe('Railway Registry Sync workflow', () => {
     const verify = stepNamed(job, 'Verify live configuration with the Viewer identity');
     assert.match(verify.if, /^always\(\)/);
     assert.match(verify.if, /steps\.checkout\.outcome == 'success'/);
+    assert.match(verify.if, /steps\.admit-current-main\.outcome == 'success'/);
     assert.match(verify.if, /steps\.setup-node\.outcome == 'success'/);
     assert.match(verify.if, /steps\.install-railway\.outcome == 'success'/);
+    assert.match(verify.if, /steps\.start-viewer-budget\.outcome == 'success'/);
     assert.deepEqual(verify.env, {
       RAILWAY_API_TOKEN: '${{ secrets.RAILWAY_PRODUCTION_VIEWER_API_TOKEN }}',
       RAILWAY_PROJECT_ID: '${{ vars.RAILWAY_PROJECT_ID }}',
@@ -97,14 +100,53 @@ describe('Railway Registry Sync workflow', () => {
     assert.doesNotMatch(verify.run, /RAILWAY_TOKEN|RECONCILE_DEPLOY/);
   });
 
-  it('applies before the independent Viewer readback', () => {
+  it('rejects a stale checkout before setup or production credentials', () => {
+    const jobSteps = steps(workflow.jobs.reconcile);
+    const checkoutIndex = jobSteps.findIndex((step) => step.id === 'checkout');
+    const admission = jobSteps.find((step) => step.id === 'admit-current-main');
+    const admissionIndex = jobSteps.indexOf(admission);
+    const setupIndex = jobSteps.findIndex((step) => step.id === 'setup-node');
+    const apply = stepNamed(workflow.jobs.reconcile, 'Reconcile registry-managed Railway configuration');
+
+    assert.ok(checkoutIndex < admissionIndex);
+    assert.ok(admissionIndex < setupIndex);
+    assert.ok(admissionIndex < jobSteps.indexOf(apply));
+    assert.match(admission.run, /git ls-remote --exit-code origin refs\/heads\/main/);
+    assert.match(admission.run, /\$GITHUB_SHA.*\$current_main_sha/);
+    assert.match(admission.run, /Refusing stale registry sync/);
+    assert.equal(admission.env, undefined);
+  });
+
+  it('starts a fresh read budget after apply and before Viewer verification', () => {
     const jobSteps = steps(workflow.jobs.reconcile);
     const apply = stepNamed(workflow.jobs.reconcile, 'Reconcile registry-managed Railway configuration');
+    const budget = stepNamed(workflow.jobs.reconcile, 'Start Viewer verification budget');
     const verify = stepNamed(workflow.jobs.reconcile, 'Verify live configuration with the Viewer identity');
-    assert.equal(jobSteps[0].name, 'Start config-reconciliation run budget');
-    assert.match(jobSteps[0].run, /RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS/);
-    assert.ok(jobSteps.indexOf(apply) < jobSteps.indexOf(verify));
-    assert.match(source, /Start config-reconciliation run budget/);
-    assert.doesNotMatch(source, /Name the operator sync command|run node scripts\/audit-railway-watch-paths\.mjs --apply/);
+    assert.ok(jobSteps.indexOf(apply) < jobSteps.indexOf(budget));
+    assert.ok(jobSteps.indexOf(budget) < jobSteps.indexOf(verify));
+    assert.match(budget.run, /RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS/);
+    assert.match(budget.if, /^always\(\)/);
+    assert.match(budget.if, /steps\.admit-current-main\.outcome == 'success'/);
+  });
+
+  it('calls the guarded runner instead of the audit apply entrypoint', () => {
+    const directAuditApply = steps(workflow.jobs.reconcile).filter((step) => (
+      typeof step.run === 'string'
+      && /node\s+scripts\/audit-railway-watch-paths\.mjs[^\n]*--apply/.test(step.run)
+    ));
+    assert.deepEqual(directAuditApply, []);
+    assert.equal(
+      steps(workflow.jobs.reconcile).some((step) => step.name === 'Name the operator sync command'),
+      false,
+    );
+  });
+
+  it('gives repair guidance after any failed reconciliation', () => {
+    const summary = stepNamed(workflow.jobs.reconcile, 'Explain a failed reconciliation');
+    assert.equal(summary.if, 'failure()');
+    assert.match(summary.run, /Stale revision/);
+    assert.match(summary.run, /Source branch, check-suite, or required-variable drift/);
+    assert.match(summary.run, /GITHUB_STEP_SUMMARY/);
+    assert.equal(summary.env, undefined);
   });
 });

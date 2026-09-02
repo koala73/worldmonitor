@@ -259,11 +259,13 @@ The `Railway Registry Sync` workflow
 (`.github/workflows/railway-registry-sync.yml`) owns this transition. It runs
 after a push to `main` changes the registry, fleet identity, audit, a shared
 Railway helper, the runner, or the workflow. The apply step uses the dedicated
-mutation token and the exact merged checkout. It changes only registry-managed
-fields. The final step uses the separate Viewer identity and fails unless live
-Railway matches the repository.
-Both modes retry twice after the first failure. The production concurrency group
-never cancels an in-flight apply.
+mutation token only after the checkout SHA is confirmed as the current `main`
+revision. This rejects a stale re-run before it can restore an older registry.
+The apply changes only registry-managed fields. The final step starts a fresh
+read budget, uses the separate Viewer identity, and fails unless live Railway
+matches the repository. Operational failures retry twice after the first
+failure; a confirmed drift verdict fails immediately. The production
+concurrency group never cancels an in-flight apply.
 
 The workflow runs the configuration audit only. The deployment-history check is
 legitimately red for the first minutes after a merge, so including it here would

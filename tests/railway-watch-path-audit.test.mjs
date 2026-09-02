@@ -54,6 +54,23 @@ describe('audit service identity boundary', () => {
       () => selectAuditServices(replaced, expected, { apply: true, deploymentOnly: false }),
       /has service id svc-replacement; expected svc-a/,
     );
+
+    const withUnrosteredRepositoryService = [
+      ...inventory,
+      {
+        id: 'svc-extra',
+        name: 'seed-extra',
+        source: { repo: 'koala73/worldmonitor', image: null },
+      },
+    ];
+    assert.throws(
+      () => selectAuditServices(
+        withUnrosteredRepositoryService,
+        expected,
+        { apply: true, deploymentOnly: false },
+      ),
+      /unexpected repository service.*seed-extra/i,
+    );
   });
 
   it('keeps the non-mutating environment-config audit independent of the roster', () => {
