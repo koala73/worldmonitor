@@ -196,11 +196,15 @@ describe('resolveCountryCode — the ladder', () => {
     const started = Date.now();
     assert.equal(resolveCountryCode(pathological), null);
     const elapsed = Date.now() - started;
-    // 5s, not 250ms. The regression this catches burned ~46s of CPU, so a 5s
-    // bound still fails it by ~9x while sitting far above the scheduler noise
-    // that made a sub-second bound flake under --test-concurrency=16 (#7534).
-    // Tightening this buys no additional detection, only false positives.
-    assert.ok(elapsed < 5_000, `resolution took ${elapsed}ms — the length gate is not holding`);
+    // What this still guards, measured 2026-09-02 (#7534): NOT the length gate.
+    // Deleting `trimmed.length > MAX_DESIGNATOR_LENGTH` resolves this same input
+    // in 8ms, because the parenthetical regex `^([^(]*)\s*\(([^)]*)\)$` uses
+    // negated classes and is linear -- the quadratic form that burned ~46s is
+    // long gone. So this is a ReDoS canary for a FUTURE catastrophic pattern,
+    // which would cost seconds-to-minutes and fail any sane bound.
+    // 5s, not 250ms: a sub-second bound detects nothing extra and flaked under
+    // --test-concurrency=16, where it measured runner scheduling instead.
+    assert.ok(elapsed < 5_000, `resolution took ${elapsed}ms — a catastrophic-backtracking pattern has been reintroduced`);
   });
 
   it('accepts the longest real designator in the shipped data', () => {
