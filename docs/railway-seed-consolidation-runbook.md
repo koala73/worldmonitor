@@ -34,15 +34,17 @@ The normal deployment architecture is intentionally small:
 |---|---|---|
 | Merge safety | GitHub protected `main` | Require a PR, current-base checks with `strict=true`, administrator enforcement, zero required human approvals, and no bypass actors. |
 | Service selection | Railway's native watch paths, backed by `scripts/railway-services.json`, its closure audit, and the exact identity roster in `scripts/railway-native-autodeploy-fleet.json` | A source migration may change `source.checkSuites` only. It must not change watch paths, fleet identity, or another service field. |
+| Desired configuration sync | Main-only `Railway Registry Sync` workflow | Apply registry-managed watch paths, Dockerfile paths, and cron schedules from the exact merged checkout. Verify through the separate Viewer identity. |
 | Deployment creation | Railway's native GitHub integration on explicit branch `main` | No GitHub Actions workflow dispatches, retries, leases, or repairs a normal deployment. |
 | Drift detection | One six-hourly, read-only Railway workflow after the monitor migration | Missing, detached, replaced, unexpected, unknown, failed, skipped, overdue, or contradictory state is red. The monitor has no mutation token, dispatch permission, retry, reviewer, or acceptance baseline. |
 | Recovery | Operator diagnosis followed by an explicit Railway action or batch rollback | Recovery is never automatic and never turns missing evidence green. Seed/ingestion freshness remains a separate acceptance surface. |
 
 The permanent monitor uses a credential issued to a dedicated Railway
-`VIEWER` identity. The legacy token names described later in this rollback
-section are not proof of read-only capability and are deleted with the old
-control plane; never reuse a deploy-capable project token for the target
-monitor.
+`VIEWER` identity. `Railway Registry Sync` uses the separate
+`RAILWAY_RECONCILE_DEPLOY_TOKEN_V2` project token only for its bounded config
+patch. Other legacy token names described later are not proof of read-only
+capability and are deleted with the old control plane. Never reuse a
+deploy-capable project token for the target monitor.
 
 During the bounded rollback window, **Railway Deploy Trigger (Manual Rollback
 Only)** and **Railway Deploy Trigger Watchdog (Manual Rollback Only)** retain
@@ -229,12 +231,14 @@ live settings with:
 node scripts/audit-railway-watch-paths.mjs
 ```
 
-To reconcile only drifted seeders and verify the read-back:
+For breakglass repair, reconcile only drifted seeders and verify the read-back:
 
 ```bash
 node scripts/audit-railway-watch-paths.mjs --apply
 ```
 
+Run the breakglass command only from a clean checkout whose `HEAD` equals current
+`origin/main`. A stale checkout can remove dependencies that a newer merge added.
 The apply mode changes only drifted `build.watchPatterns`,
 `build.dockerfilePath` and `deploy.cronSchedule` fields, uses one environment
 config commit, and waits for
@@ -244,23 +248,26 @@ publisher, while still auditing their watch paths and required environment.
 Run the audit after adding or replacing a standalone seeder, changing a bundle
 dependency, or changing a production cron.
 
-**Editing `watchPatterns` is not complete until the apply runs.** Widening a
-service's closure in the registry does not touch Railway: until an operator
-applies it, Railway keeps filtering pushes against the old list and answers a
-matching commit with `No changes to watched files`, so the service silently
-keeps running older code. #6928 widened `ais-relay` without syncing, and
-Railway refused `6821a584e` (#7196) for it a day before anyone noticed (#7256).
+**Editing `watchPatterns` is not complete until the live read-back matches.**
+Widening a service's closure in the registry does not touch Railway. Until the
+main-only reconciler applies it, Railway keeps filtering pushes against the old
+list and can answer a matching commit with `No changes to watched files`.
+#6928 widened `ais-relay` without syncing, and Railway refused `6821a584e`
+(#7196) for it a day before anyone noticed (#7256).
 
 The `Railway Registry Sync` workflow
-(`.github/workflows/railway-registry-sync.yml`) is the reminder. It runs the
-deployment-only audit on every push to `main` that touches
-`scripts/railway-services.json` and fails within minutes, naming the drifted
-services and the apply command. It is read-only — the Viewer token cannot
-apply — so it reports the gap and leaves the sync to the operator. It runs the
-configuration audit only: the deployment-history check is legitimately red for
-the first minutes after a merge, so including it there would alarm on ordinary
-build lag. Drift that no registry edit caused, such as a hand edit in the
-Railway dashboard, stays the six-hourly monitor's job.
+(`.github/workflows/railway-registry-sync.yml`) owns this transition. It runs
+after a push to `main` changes the registry, fleet identity, audit, runner, or
+workflow. The apply step uses the dedicated mutation token and the exact merged
+checkout. It changes only registry-managed fields. The final step uses the
+separate Viewer identity and fails unless live Railway matches the repository.
+Both modes retry twice after the first failure. The production concurrency group
+never cancels an in-flight apply.
+
+The workflow runs the configuration audit only. The deployment-history check is
+legitimately red for the first minutes after a merge, so including it here would
+alarm on ordinary build lag. Drift that no registry edit caused, such as a hand
+edit in the Railway dashboard, stays the six-hourly monitor's job.
 
 The audit only proves the trigger config matches the registry. Proving a merge
 actually reached production is the separate
@@ -269,23 +276,25 @@ actually reached production is the separate
 The six-hourly `Railway Native Deploy Health` workflow performs this audit in
 deployment-only mode and runs the deployment-history check from the same
 Viewer projection. `Railway Registry Sync` reuses the same environment and
-Viewer token for its push-triggered configuration audit. `Seed Freshness
-Monitor` owns ingestion acceptance only.
+Viewer token only for its final independent read. `Seed Freshness Monitor` owns
+ingestion acceptance only.
 Create the dedicated GitHub Actions environment
 `ingestion-acceptance-production`, restrict its deployment branch policy to
 `main`, and configure:
 
+- environment secret `RAILWAY_RECONCILE_DEPLOY_TOKEN_V2`: the production project
+  token used only by the registry-sync apply step and the dormant rollback path;
 - environment secret `RAILWAY_PRODUCTION_VIEWER_API_TOKEN`: an account token for
   a dedicated Railway identity whose project role is Viewer;
 - environment variable `RAILWAY_PROJECT_ID`: the `world-monitor` project ID.
 
-Do not define the Viewer token as a repository or organization secret:
+Do not define either token as a repository or organization secret.
 `workflow_dispatch` can target another ref, while the environment's server-side
-branch policy keeps the production credential unavailable there. The workflow
-references the environment with deployment tracking disabled and maps the token
-to `RAILWAY_API_TOKEN` only on the combined read step. It never links a checkout,
-requests variables, or passes `--apply`. Missing or inaccessible context fails
-the monitor rather than silently skipping the live audit. See
+branch policy keeps both production credentials unavailable there. The workflow
+references the environment with deployment tracking disabled. It maps the
+mutation token to `RAILWAY_TOKEN` only on the apply step and maps the Viewer
+token to `RAILWAY_API_TOKEN` only on the final read. Missing or inaccessible
+context fails the workflow rather than silently skipping the live audit. See
 [Deploy-drift check](#deploy-drift-check) for the exact workflow contract.
 
 ### Legacy reconciliation control plane (rollback window only)

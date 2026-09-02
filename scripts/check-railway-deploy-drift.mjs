@@ -852,7 +852,7 @@ async function main() {
   // What each service's container can be affected by. The registry is the
   // repository's declaration and the live config is what Railway is actually
   // filtering on; resolveServiceClosure unions them, because between a merged
-  // registry edit and the audit's --apply each knows a path the other does not.
+  // registry edit and verified registry sync each knows a path the other does not.
   const registry = JSON.parse(readFileSync(REGISTRY_URL, 'utf8'));
   const registryByService = new Map(registry.map((entry) => [entry.service, entry]));
   // The dedicated Viewer cannot see environment-variable values. Read only the
