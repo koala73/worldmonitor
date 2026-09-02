@@ -146,7 +146,7 @@ Content-Type: application/json
 
 每分钟与每日上限触发条件共用此代码；由 HTTP 状态码区分。
 
-**每分钟节流 —— HTTP 200。** 滑动窗口限流器按旧版运营方（`env_`）密钥、按用户（该用户的 OAuth 令牌与控制面板签发的 `wm_…` key 合计为一份额度，不可叠加）或按 IP（用于匿名公开发现）键控。按用户的阈值由 `planLimits.mcpBurstRequestsPerMinute` 按套餐解析：Pro、Pro Business 与 API Starter 为 **60 次 / 分钟**，API Business 为 **300**，Enterprise 为 **1,000**；权益无法读取时回退为 60，即宁可落在更低的上限上。运营方密钥限流器和匿名发现限流器保持固定的 **60 次 / 分钟**。已鉴权请求在鉴权之后受限。无凭证的公开发现方法（`initialize`、`notifications/initialized`、`tools/list`、`resources/list`、`resources/templates/list`）与匿名公开资源读取无需鉴权即可服务，但仍会经过匿名发现限流器。无凭证的数据 / 配额方法，或该公开集合之外的元数据方法，**不**使用匿名发现 —— 它们以 `-32001` / HTTP 401 故障关闭。以 HTTP 200 内的 JSON-RPC 错误返回，因为限流器位于任何按 id 关联的上游。在 Upstash 瞬时错误时**故障开放** —— 限流器后端的偶发延迟尖峰不会拖垮整个 API。
+**每分钟节流 —— HTTP 200。** 滑动窗口限流器按旧版运营方（`env_`）密钥、按用户（该用户的 OAuth 令牌与控制面板签发的 `wm_…` key 合计为一份额度，不可叠加）或按 IP（用于匿名公开发现）键控。按用户的阈值由 `planLimits.mcpBurstRequestsPerMinute` 按套餐解析：Pro、Pro Business 与 API Starter 为 **60 次 / 分钟**，API Business 为 **300**，Enterprise 为 **1,000**；当该值缺失、或不是大于等于 1 的有限数时一律回退为 60，即宁可落在更低的上限上。元数据方法与免费层方法是付费调用方拿不到套餐速率的唯一情形：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估（`api/mcp/handler.ts:842` 调用 `applyPerMinuteLimit` 时不传上限）。两者用的是同一个按用户的池，因此在 API Business 上，`tools/list` 的突发会在 60 处被拒，而 `tools/call` 仍可跑到 300。运营方密钥限流器和匿名发现限流器保持固定的 **60 次 / 分钟**。已鉴权请求在鉴权之后受限。无凭证的公开发现方法（`initialize`、`notifications/initialized`、`tools/list`、`resources/list`、`resources/templates/list`）与匿名公开资源读取无需鉴权即可服务，但仍会经过匿名发现限流器。无凭证的数据 / 配额方法，或该公开集合之外的元数据方法，**不**使用匿名发现 —— 它们以 `-32001` / HTTP 401 故障关闭。以 HTTP 200 内的 JSON-RPC 错误返回，因为限流器位于任何按 id 关联的上游。在 Upstash 瞬时错误时**故障开放** —— 限流器后端的偶发延迟尖峰不会拖垮整个 API。
 
 当每分钟限流器拒绝时，handler 会发出一条持久的 `mcp.rate_limit_hit` 遥测事件，其身份形态经过允许列表过滤。套餐限制扫描器用该事件做持续突发通知；它不会从原始 Upstash 限流器内部推断面向客户的 MCP 突发通知。
 
@@ -158,7 +158,7 @@ Content-Type: application/json
 | OAuth bearer 或控制面板签发的 `wm_…` key  | `Rate limit exceeded. Max <limit> requests per minute per user.`                    | `api/mcp/auth.ts` `applyPerMinuteLimit` 按用户分支      |
 | 匿名发现路径上无凭证 | `Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.` | `api/mcp/auth.ts` `applyAnonDiscoveryLimit`             |
 
-按用户字符串里的 `<limit>` 是你自己套餐的突发额度，不是常量。Pro、Pro Business 与 API Starter 为 **60**，API Business 为 **300**，Enterprise 为 **1,000**；权益无法读取时回退为 **60**。需要该数值时可从 message 中解析，或查阅[套餐与限制](/zh/mcp-overview#plans--limits)。另外两个字符串确实固定为 60，因为旧版运营方密钥限流器和匿名发现限流器都不按套餐解析。
+按用户字符串里的 `<limit>` 是你自己套餐的突发额度，不是常量。Pro、Pro Business 与 API Starter 为 **60**，API Business 为 **300**，Enterprise 为 **1,000**；权益无法读取、以及在预检查之前被服务的元数据方法，都回退为 **60**。需要该数值时可从 message 中解析，或查阅[套餐与限制](/zh/mcp-overview#plans--limits)。另外两个字符串确实固定为 60，因为旧版运营方密钥限流器和匿名发现限流器都不按套餐解析。
 
 示例负载（按用户变体，API Business —— env_key 客户端得到相同信封形状，但使用 API-key 的 message 字符串）：
 
