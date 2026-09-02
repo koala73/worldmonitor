@@ -27,9 +27,9 @@ export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth 
 
 ## 发现工具
 
-在深入逐工具参考之前，两种机制使发现工具的成本低于从头到尾阅读本页。如果您从 REST 路由而非工具名称开始，请使用 [API 覆盖表](/zh/mcp-overview#api-coverage)；逐工具的 **API 端点** 行表示确切的 `_apiPaths` 声明，而 `none directly` 表示该工具返回数据但不声明等价的 REST 路由。
+在深入逐工具参考之前，两种机制使发现工具的成本低于从头到尾阅读本页。如果您从 REST 路由而非工具名称开始，请使用 [API 覆盖表](/zh/mcp-overview#api-覆盖)；逐工具的 **API 端点** 行表示确切的 `_apiPaths` 声明，而 `none directly` 表示该工具返回数据但不声明等价的 REST 路由。
 
-MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们会修改状态、传递 LLM 成本、在缓存未命中时获取付费/高基数上游，或需要手动缓存键映射。[API 覆盖部分](/zh/mcp-overview#api-coverage) 列出了强制类别并链接了当前的跟进追踪。
+MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们会修改状态、传递 LLM 成本、在缓存未命中时获取付费/高基数上游，或需要手动缓存键映射。[API 覆盖部分](/zh/mcp-overview#api-覆盖) 列出了强制类别并链接了当前的跟进追踪。
 
 ### `describe_tool` — 按需获取完整未压缩定义
 

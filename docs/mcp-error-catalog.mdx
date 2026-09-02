@@ -192,7 +192,7 @@ The `message` text identifies which limiter fired. Three distinct strings:
 | OAuth bearer or dashboard `wm_…` key      | `Rate limit exceeded. Max <limit> requests per minute per user.`                    | `api/mcp/auth.ts` `applyPerMinuteLimit` per-user branch |
 | No credential on anonymous discovery path | `Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.` | `api/mcp/auth.ts` `applyAnonDiscoveryLimit`             |
 
-`<limit>` in the per-user string is your own plan's burst, not a constant. It is **60** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise, and **60** when the entitlement cannot be read. Parse the number out of the message if you want it, or read it from the [plans table](/mcp-overview#plans--limits). The other two strings are genuinely fixed at 60, because neither the legacy operator-key limiter nor the anonymous discovery limiter is plan-resolved.
+`<limit>` in the per-user string is your own plan's burst, not a constant. It is **60** on Pro, Pro Business and API Starter, **300** on API Business, **1,000** on Enterprise, and **60** when the entitlement cannot be read. Parse the number out of the message if you want it, or read it from the [plans table](/mcp-overview#plans-&-limits). The other two strings are genuinely fixed at 60, because neither the legacy operator-key limiter nor the anonymous discovery limiter is plan-resolved.
 
 Example payload (per-user variant, API Business):
 

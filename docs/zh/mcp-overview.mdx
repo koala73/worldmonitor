@@ -145,7 +145,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 | **API Business** | ✅ 是 | OAuth **或** `wm_…` key | **每 UTC 日 10,000 个单位**，与 REST 共享，按工具权重扣减 | 每用户每分钟 **300** 次 | 更高的 REST/API 吞吐量。 |
 | **Enterprise** | ✅ 是 | OAuth **或** `wm_…` key | 两道门均不设上限 | 每分钟 **1,000** 次 | 可提供自定义 SLA。 |
 
-每分钟限流为所有付费套餐抵御突发流量风暴。旧版运营方密钥客户端固定为每密钥每分钟 60 次。OAuth 和控制面板签发的 key 使用上表中各自套餐的突发额度。**限流器在方法分发之前运行，因此每个已认证方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入该突发额度。** 元数据方法与免费层方法是套餐速率的唯一例外：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估。两者用的是同一个按用户的池，因此在 API Business 或 Enterprise 上，`tools/list` 的突发会在 60 处被拒，而数据调用仍可跑到该套餐的上限。匿名 `get_sources` 调用改用独立的失败关闭上限：每个 IP 每分钟 10 次。每日配额上限是有选择的，仅由需要订阅且承载数据的 `tools/call` 和 `resources/read` 预留消耗，OAuth 与控制面板签发的 `wm_…` key 一视同仁（参见上方的[每日额度（Pro 套餐）](#每日额度（pro-套餐）)，以及[错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)中关于两种限制的完整方法豁免表）。
+每分钟限流为所有付费套餐抵御突发流量风暴。旧版运营方密钥客户端固定为每密钥每分钟 60 次。OAuth 和控制面板签发的 key 使用上表中各自套餐的突发额度。**限流器在方法分发之前运行，因此每个已认证方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入该突发额度。** 元数据方法与免费层方法是套餐速率的唯一例外：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估。两者用的是同一个按用户的池，因此在 API Business 或 Enterprise 上，`tools/list` 的突发会在 60 处被拒，而数据调用仍可跑到该套餐的上限。匿名 `get_sources` 调用改用独立的失败关闭上限：每个 IP 每分钟 10 次。每日配额上限是有选择的，仅由需要订阅且承载数据的 `tools/call` 和 `resources/read` 预留消耗，OAuth 与控制面板签发的 `wm_…` key 一视同仁（参见上方的[每日额度（Pro 套餐）](#每日额度（pro-套餐）)，以及[错误目录](/zh/mcp-error-catalog#32029-——-被限流（每分钟或每日）)中关于两种限制的完整方法豁免表）。
 
 OAuth 和控制面板签发的 key 的突发额度按用户计算，因此一个拥有 3 个 Claude 安装或多个 `wm_…` key 的用户，共享一个按其套餐速率的池。旧版运营方密钥按 key 计算。
 
@@ -447,7 +447,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 | `worldmonitor://chokepoints/{slug}/status` | 咽喉要道过境摘要和风险叙述。`{slug}` 是已发布的 kebab-case 咽喉要道 slug 之一，例如 `suez`、`strait-of-hormuz` 或 `bab-el-mandeb`。 |
 | `worldmonitor://markets/{symbol}/quote` | 单一符号的市场报价切片。`{symbol}` 是大写，例如 `AAPL`、`GC=F` 或 `BTC-USD`。 |
 
-`resources/list` 和 `resources/templates/list` 是元数据，不消耗每日额度。对模板实例化的 `resources/read` 有意消耗与等价 `tools/call` 相同的调用者适用额度；它通过同一个分发器路由，因此承载数据的资源无法绕过免费账户上限或订阅配额。对公开具体资源和 `worldmonitor://account/mcp-allowance` 的 `resources/read` 不计额度。与每个 MCP 方法一样，所有这些仍计入你所在套餐的每分钟突发额度。有关每分钟限流与每日额度耗尽之间确切的 `-32029` 状态/头差异，请参阅 [MCP 错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)。
+`resources/list` 和 `resources/templates/list` 是元数据，不消耗每日额度。对模板实例化的 `resources/read` 有意消耗与等价 `tools/call` 相同的调用者适用额度；它通过同一个分发器路由，因此承载数据的资源无法绕过免费账户上限或订阅配额。对公开具体资源和 `worldmonitor://account/mcp-allowance` 的 `resources/read` 不计额度。与每个 MCP 方法一样，所有这些仍计入你所在套餐的每分钟突发额度。有关每分钟限流与每日额度耗尽之间确切的 `-32029` 状态/头差异，请参阅 [MCP 错误目录](/zh/mcp-error-catalog#32029-——-被限流（每分钟或每日）)。
 
 ### MCP Apps（交互式 UI）
 

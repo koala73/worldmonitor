@@ -158,7 +158,7 @@ Content-Type: application/json
 | OAuth bearer 或控制面板签发的 `wm_…` key  | `Rate limit exceeded. Max <limit> requests per minute per user.`                    | `api/mcp/auth.ts` `applyPerMinuteLimit` 按用户分支      |
 | 匿名发现路径上无凭证 | `Rate limit exceeded. Max 60 unauthenticated discovery requests per minute per IP.` | `api/mcp/auth.ts` `applyAnonDiscoveryLimit`             |
 
-按用户字符串里的 `<limit>` 是你自己套餐的突发额度，不是常量。Pro、Pro Business 与 API Starter 为 **60**，API Business 为 **300**，Enterprise 为 **1,000**；权益无法读取、以及在预检查之前被服务的元数据方法，都回退为 **60**。需要该数值时可从 message 中解析，或查阅[套餐与限制](/zh/mcp-overview#plans--limits)。另外两个字符串确实固定为 60，因为旧版运营方密钥限流器和匿名发现限流器都不按套餐解析。
+按用户字符串里的 `<limit>` 是你自己套餐的突发额度，不是常量。Pro、Pro Business 与 API Starter 为 **60**，API Business 为 **300**，Enterprise 为 **1,000**；权益无法读取、以及在预检查之前被服务的元数据方法，都回退为 **60**。需要该数值时可从 message 中解析，或查阅[套餐与限制](/zh/mcp-overview#套餐与限制)。另外两个字符串确实固定为 60，因为旧版运营方密钥限流器和匿名发现限流器都不按套餐解析。
 
 示例负载（按用户变体，API Business —— env_key 客户端得到相同信封形状，但使用 API-key 的 message 字符串）：
 
