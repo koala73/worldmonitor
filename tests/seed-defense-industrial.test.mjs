@@ -765,6 +765,23 @@ describe('SIPRI chunked sweep (#6806)', () => {
     );
   });
 
+  it('tags a floor rejection non-retryable so withRetry cannot re-run the slice', async () => {
+    // runSeed wraps the fetcher in withRetry; an untagged throw re-runs all 56
+    // POSTs against a throttled host shared with seed-defense-industrial, and
+    // fetchPhaseTimeoutMs aborts the second attempt partway anyway.
+    await assert.rejects(
+      () => buildSipriSupplierSnapshot({
+        fetchSipri: async () => ({
+          importers: { UA: { suppliers: [], window: { endYear: 2025 } } },
+          failedImporters: [],
+          windowEndYear: 2025,
+        }),
+        minimumCompleteImporterCount: 1,
+      }),
+      (error) => error.nonRetryable === true && /positive importer rows/.test(error.message),
+    );
+  });
+
   it('withholds a collapsed zero-supplier cohort instead of publishing wiped rows', async () => {
     // Every attempted importer previously HAD suppliers and now parses clean
     // with none. That is upstream degradation, not 56 countries simultaneously
