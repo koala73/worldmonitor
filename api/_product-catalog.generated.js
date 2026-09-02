@@ -101,7 +101,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
-      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined), Webhook notifications, Commercial license — for your organization"
+      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial license — for your organization"
     },
     {
       "planKey": "api_starter_annual",
@@ -131,7 +131,7 @@ export const PUBLIC_PRODUCT_FACTS = {
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included (REST + MCP combined), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
     },
     {
       "planKey": "api_business_annual",
@@ -301,7 +301,7 @@ export const TIER_CONFIG = {
       "License / API key included",
       "Real-time data streams",
       "60 requests/minute",
-      "1,000 requests/day included (REST + MCP combined)",
+      "1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "Webhook notifications"
     ],
     "highlightFeatures": [
@@ -325,7 +325,7 @@ export const TIER_CONFIG = {
       "Everything in API Starter",
       "Redistribution rights — embed our data in what you sell",
       "300 requests/minute",
-      "10,000 requests/day included (REST + MCP combined)",
+      "10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3)",
       "5 Pro licenses — invite users at any corporate email domain",
       "Priority support"
     ],
