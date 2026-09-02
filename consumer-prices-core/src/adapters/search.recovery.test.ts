@@ -79,6 +79,11 @@ function makeBrazilTarget(
   };
 }
 
+/** Number of times a provider mock was called for one URL. */
+function callsFor(fn: ReturnType<typeof vi.fn>, url: string): number {
+  return fn.mock.calls.filter(([calledUrl]) => calledUrl === url).length;
+}
+
 describe('SearchAdapter recovery path', () => {
   it('falls back to Exa when Firecrawl confuses quantity with price', async () => {
     const exa = {
@@ -1081,7 +1086,6 @@ describe('SearchAdapter recovery path', () => {
 
     expect(product?.sourceUrl).toBe(discoveredUrl);
     expect(product?.rawPayload.direct).toBe(false);
-    const callsFor = (fn: ReturnType<typeof vi.fn>, url: string) => fn.mock.calls.filter(([calledUrl]) => calledUrl === url).length;
     expect(callsFor(firecrawlExtract, seedUrl)).toBe(1);
     expect(callsFor(exaExtract, seedUrl)).toBe(1);
     expect(exaSearch).toHaveBeenCalledOnce();
@@ -1175,11 +1179,101 @@ describe('SearchAdapter recovery path', () => {
     const context = makeContext(config);
     const target = (await adapter.discoverTargets(context)).find((candidate) => candidate.id === 'bread_white');
 
-    await expect(adapter.fetchTarget(context, target!)).rejects.toThrow(/repeated a URL already attempted/);
+    const error = await adapter.fetchTarget(context, target!).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SearchTargetError);
+    expect((error as SearchTargetError).message).toMatch(/repeated a URL already attempted/);
+    // The seed rung's classified failures ride along for scrape-run attribution.
+    expect((error as SearchTargetError).failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'firecrawl', reason: 'missing-price' }),
+        expect.objectContaining({ provider: 'exa', reason: 'missing-price' }),
+      ]),
+    );
     // The seed rung paid for the page once; discovery must not pay for it again.
     expect(exaExtract).toHaveBeenCalledTimes(1);
     expect(exaExtract).toHaveBeenCalledWith(seedUrl, expect.any(Object), expect.any(Object));
     expect(exaSearch).toHaveBeenCalled();
+  });
+
+  it.each([
+    ['only out-of-policy pages', [{ url: 'https://www.paodeacucar.com/busca?termo=pao' }], /host\/path check/],
+    ['no pages at all', [], /no pages found/],
+  ])('carries seed failures into the discovery error when Exa returns %s', async (_case, draw, message) => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
+    config.discovery.seeds = [{ id: 'bread_white', url: seedUrl, category: 'bread' }];
+    const adapter = new SearchAdapter(
+      {
+        search: vi.fn().mockResolvedValue(draw),
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto sem preço' }),
+      } as unknown as ExaProvider,
+      { extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Por favor, confirme seu acesso' }) } as unknown as FirecrawlProvider,
+    );
+    const context = makeContext(config);
+    const target = (await adapter.discoverTargets(context)).find((candidate) => candidate.id === 'bread_white');
+
+    const error = await adapter.fetchTarget(context, target!).catch((caught: unknown) => caught);
+    expect(error).toBeInstanceOf(SearchTargetError);
+    expect((error as SearchTargetError).message).toMatch(message);
+    expect((error as SearchTargetError).rejectedCount).toBe(0);
+    expect((error as SearchTargetError).failures).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ provider: 'firecrawl', reason: 'missing-price' }),
+        expect.objectContaining({ provider: 'exa', reason: 'missing-price' }),
+      ]),
+    );
+  });
+
+  // #7: a seed is an asserted attribution with no disable lifecycle, so a page
+  // that drifted off the basket item must fall through to discovery instead of
+  // becoming a permanent candidate-only hit.
+  it('rejects a seed page the validator fails and falls back to paid discovery', async () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
+    const discoveredUrl = 'https://www.paodeacucar.com/produto/202020/pao-de-forma-branco-500g';
+    config.discovery.seeds = [{ id: 'bread_white', url: seedUrl, category: 'bread' }];
+    const exaSearch = vi.fn().mockResolvedValue([{ url: discoveredUrl }]);
+    const exaExtract = vi.fn().mockImplementation(async (url: string) =>
+      url === seedUrl
+        ? {
+            // Passes title, currency and price evidence, but 170g sits outside
+            // the 450-550g window for the 500g basket item.
+            data: {
+              productName: 'Pão de Forma Branco Pacote 170g',
+              price: 5.49,
+              currency: 'BRL',
+              inStock: true,
+              sizeText: '170g',
+            },
+            pageContent: 'Pão de Forma Branco Pacote 170g\nR$ 5,49',
+          }
+        : {
+            data: {
+              productName: 'Pão de Forma Branco Pacote 500g',
+              price: 10.99,
+              currency: 'BRL',
+              inStock: true,
+              sizeText: '500g',
+            },
+            pageContent: 'Pão de Forma Branco Pacote 500g\nR$ 10,99',
+          },
+    );
+    const adapter = new SearchAdapter(
+      { search: exaSearch, extract: exaExtract } as unknown as ExaProvider,
+      { extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Por favor, confirme seu acesso' }) } as unknown as FirecrawlProvider,
+    );
+    const context = makeContext(config);
+    const target = (await adapter.discoverTargets(context)).find((candidate) => candidate.id === 'bread_white');
+
+    const result = await adapter.fetchTarget(context, target!);
+    const [product] = await adapter.parseListing(context, result);
+
+    expect(product?.sourceUrl).toBe(discoveredUrl);
+    expect(product?.price).toBe(10.99);
+    expect(product?.rawPayload.validator).toMatchObject({ ok: true });
+    expect(exaSearch).toHaveBeenCalledOnce();
+    expect(callsFor(exaExtract, seedUrl)).toBe(1);
+    expect(context.logger.warn).toHaveBeenCalledWith(expect.stringContaining('rejected by validator'));
   });
 
   it('falls back to paid discovery when an item seed has no price', async () => {

@@ -713,15 +713,27 @@ export class SearchAdapter implements RetailerAdapter {
       try {
         const attempt = await this._extractFromUrl(ctx, seedUrl, canonicalName, currency, itemConstraints);
         failures.push(...attempt.failures);
-        if (attempt.result) {
+        if (attempt.result && !attempt.result.validator.ok) {
+          // A pin's validator rejects are counted downstream and eventually
+          // disable the pin; a seed has no such lifecycle and is re-read from
+          // config every run. Accepting a drifted seed page here would make it
+          // a permanent candidate-only hit that never re-enters discovery, so
+          // the seed rung applies the verdict even for shadow-mode retailers.
+          const reasons = attempt.result.validator.reasons.join(',') || 'unknown';
+          failures.push({ provider: attempt.result.provider, reason: 'validator-rejected', detail: reasons });
+          ctx.logger.warn(
+            `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page rejected by validator (${reasons}), falling back to Exa discovery`,
+          );
+        } else if (attempt.result) {
           ctx.logger.info(
             `  [search:seed] ${ctx.config.slug}/${canonicalName}: price=${attempt.result.extracted.price} ${attempt.result.extracted.currency} provider=${attempt.result.provider} from ${seedUrl}`,
           );
           return buildFetchResult(seedUrl, attempt.result, false);
+        } else {
+          ctx.logger.warn(
+            `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa discovery`,
+          );
         }
-        ctx.logger.warn(
-          `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa discovery`,
-        );
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         failures.push({ provider: 'firecrawl', reason: 'provider-error', detail });
@@ -833,8 +845,12 @@ export class SearchAdapter implements RetailerAdapter {
       }
     }
 
+    // Discovery dead-ends throw SearchTargetError so the pin and seed rungs'
+    // classified failures reach the scrape run's failure attribution instead
+    // of being filed as unknown-error. `failures` is empty when nothing ran
+    // before discovery, which scrape.ts already treats as unattributed.
     if (exaResults.length === 0) {
-      throw new Error(`Exa: no pages found for "${canonicalName}" on ${domain}`);
+      throw new SearchTargetError(`Exa: no pages found for "${canonicalName}" on ${domain}`, 0, failures);
     }
     // Discovery may legitimately need a wide net (a retailer whose live route
     // ranks low), but extraction cost must not scale with it — each extra
@@ -866,10 +882,16 @@ export class SearchAdapter implements RetailerAdapter {
         `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${repeatedAttemptedUrl ? ', URL already attempted' : ''}). Rejected: ${sample}`,
       );
       if (repeatedAttemptedUrl) {
-        throw new Error(`Exa: all ${exaResults.length} results repeated a URL already attempted for "${canonicalName}"`);
+        throw new SearchTargetError(
+          `Exa: all ${exaResults.length} results repeated a URL already attempted for "${canonicalName}"`,
+          0,
+          failures,
+        );
       }
-      throw new Error(
+      throw new SearchTargetError(
         `Exa: all ${exaResults.length} results failed host/path check (expected hostnames: ${hostAllowlist.join('|')}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''}${requiredSegments.length ? `, required path: ${requiredSegments.join('+')}` : ''})`,
+        0,
+        failures,
       );
     }
 
