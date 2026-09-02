@@ -135,6 +135,7 @@ describe('chokepoint source availability', () => {
   it('marks malformed NGA payloads unavailable instead of treating them as empty', async () => {
     const malformedPayloads = [
       { area: 'malformed-envelope', body: { broadcast_warn: {} } },
+      { area: 'malformed-live-envelope', body: { 'broadcast-warn': {} } },
       { area: 'malformed-entry', body: [null] },
     ];
 
@@ -266,6 +267,48 @@ describe('chokepoint source availability', () => {
     const meta = JSON.parse(harness.values.get('seed-meta:supply_chain:chokepoints') || '{}');
     assert.equal(meta.recordCount, 0, 'health must count rows with complete source coverage');
     assert.equal(meta.uncoveredChokepoints?.length, 13);
+  });
+
+  it('reports complete health coverage for the live NGA response envelope', async () => {
+    const harness = redisHarness(async (url) => {
+      if (url.includes('msi.nga.mil')) {
+        return Response.json({
+          'broadcast-warn': [{
+            msgYear: 2026,
+            msgNumber: 321,
+            navArea: 'P',
+            subregion: '62',
+            text: 'PERSIAN GULF. STRAIT OF HORMUZ. NAVIGATIONAL HAZARD.',
+            issueDate: '021200Z SEP 2026',
+            authority: 'NGA NAVSAFETY',
+          }],
+        });
+      }
+      if (url.startsWith('https://relay.test/ais/snapshot')) {
+        return Response.json({
+          density: [],
+          disruptions: [],
+          snapshotAt: Date.now(),
+          status: { connected: true, vessels: 10, messages: 20 },
+        });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    harness.values.set('supply_chain:transit-summaries:v1', JSON.stringify({
+      summaries: completeTransitSummaries(),
+    }));
+    globalThis.fetch = harness.fetchImpl as typeof fetch;
+
+    const response = await getChokepointStatus({} as never, {});
+
+    assert.equal(response.chokepoints.length, 13);
+    assert.equal(response.upstreamUnavailable, false);
+    assert.ok(response.chokepoints.every((row) => row.navigationalWarningsAvailable === true));
+
+    await new Promise<void>((resolve) => setImmediate(resolve));
+    const meta = JSON.parse(harness.values.get('seed-meta:supply_chain:chokepoints') || '{}');
+    assert.equal(meta.recordCount, 13);
+    assert.equal(meta.uncoveredChokepoints, undefined);
   });
 
   it('qualifies quiet rows that are missing from a partial transit payload', async () => {

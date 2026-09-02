@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/maritime/v1/service_server';
 
 import { CHROME_UA } from '../../../_shared/constants';
+import { parseNgaBroadcastWarnings } from '../../../_shared/nga-broadcast-warnings';
 import { cachedFetchJson } from '../../../_shared/redis';
 
 const REDIS_CACHE_KEY = 'maritime:navwarnings:v2';
@@ -44,16 +45,10 @@ async function fetchNgaWarnings(area?: string): Promise<NavigationalWarning[] | 
     if (!response.ok) return null;
 
     const data = await response.json();
-    const rawWarnings: any[] | null = Array.isArray(data)
-      ? data
-      : Array.isArray(data?.broadcast_warn)
-        ? data.broadcast_warn
-        : null;
-    if (rawWarnings === null || rawWarnings.some((warning) => !warning || typeof warning !== 'object')) {
-      return null;
-    }
+    const rawWarnings = parseNgaBroadcastWarnings(data);
+    if (rawWarnings === null) return null;
 
-    let warnings: NavigationalWarning[] = rawWarnings.map((w: any): NavigationalWarning => ({
+    let warnings: NavigationalWarning[] = rawWarnings.map((w): NavigationalWarning => ({
       id: `${w.navArea || ''}-${w.msgYear || ''}-${w.msgNumber || ''}`,
       title: `NAVAREA ${w.navArea || ''} ${w.msgNumber || ''}/${w.msgYear || ''}`,
       text: w.text || '',
