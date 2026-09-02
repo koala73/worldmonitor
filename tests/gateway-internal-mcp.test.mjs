@@ -41,6 +41,12 @@ const HMAC_SECRET = 'test-internal-hmac-secret-32bytes-padding-xxxxxxxxxxxxxxxxx
 const PRO_USER_ID = 'user_pro_abc';
 const FREE_USER_ID = 'user_free_xyz';
 const TIER1_NO_MCP_USER_ID = 'user_pro_legacy';
+// Positive control for the internal-MCP meter exemption: an API-tier owner
+// whose raw dashboard key DOES enter the per-account daily meter. Without it
+// the exemption assertion passes with the exemption deleted, because the Pro
+// fixture above has `apiAccess: false` and never reaches that layer at all.
+const API_KEY_OWNER_ID = 'user_api_starter_meter';
+const USER_API_KEY = `wm_${'ab12cd34'.repeat(5)}`;
 
 const CONVEX_SITE = 'https://fake.convex.site';
 const CONVEX_SECRET = 'fake-convex-shared-secret';
@@ -112,6 +118,31 @@ function entitlementForUser(userId) {
       validUntil: Date.now() + 86_400_000,
     };
   }
+  if (userId === API_KEY_OWNER_ID) {
+    // apiAccess + a positive burst and daily allowance are what admit a caller
+    // to the per-account meter at all (`server/gateway.ts` gates on
+    // `apiAccess && apiRateLimit > 0`).
+    return {
+      planKey: 'api_starter',
+      features: {
+        tier: 2,
+        apiAccess: true,
+        apiRateLimit: 60,
+        apiDailyAllowance: 1000,
+        maxDashboards: 25,
+        prioritySupport: false,
+        exportFormats: ['csv', 'json', 'pdf'],
+        mcpAccess: true,
+        planLimits: {
+          apiRequestsPerDay: 1000,
+          apiBurstRequestsPerMinute: 60,
+          mcpCallsPerDay: 'shared-api-budget',
+          mcpBurstRequestsPerMinute: 60,
+        },
+      },
+      validUntil: Date.now() + 86_400_000,
+    };
+  }
   return null;
 }
 
@@ -148,6 +179,13 @@ function installFetchStub(opts = {}) {
           replayCacheKeys.set(key, nowMs + ttlSeconds * 1000);
           return { result: 'OK' };
         }
+        // @upstash/ratelimit auto-pipelines, so its sliding-window decision
+        // arrives here rather than on the single-command endpoint. It reads
+        // `[remaining, limit]` back; a bare 0 is not iterable and surfaces as a
+        // limiter outage, which the FAIL-CLOSED guards answer with a 503 before
+        // the request ever reaches the per-account meter.
+        const verb = String(cmd?.[0] ?? '').toUpperCase();
+        if (verb === 'EVALSHA' || verb === 'EVAL') return { result: [1, 1] };
         return { result: 0 };
       });
       return new Response(JSON.stringify(results), {
@@ -156,7 +194,21 @@ function installFetchStub(opts = {}) {
       });
     }
     if (typeof url === 'string' && url === 'https://redis.test/') {
-      return new Response(JSON.stringify({ result: 'OK' }), {
+      // Single-command endpoint. @upstash/ratelimit's sliding window runs its
+      // decision as one EVALSHA/EVAL and reads `[remaining, limit]` back; every
+      // other single command in this suite only needs an OK. Without the array
+      // the limiter throws, and the FAIL-CLOSED guards (the wm_ pre-auth IP
+      // budget, for one) answer 503 before the request reaches the meter.
+      const command = init?.body ? JSON.parse(String(init.body)) : [];
+      const verb = String(command?.[0] ?? '').toUpperCase();
+      return new Response(
+        JSON.stringify({ result: verb === 'EVALSHA' || verb === 'EVAL' ? [1, 1] : 'OK' }),
+        { status: 200, headers: { 'Content-Type': 'application/json' } },
+      );
+    }
+    if (typeof url === 'string' && url.includes('/api/internal-validate-api-key')) {
+      // One dashboard key, owned by the API-tier fixture above.
+      return new Response(JSON.stringify({ userId: API_KEY_OWNER_ID }), {
         status: 200,
         headers: { 'Content-Type': 'application/json' },
       });
@@ -332,8 +384,8 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     );
   });
 
-  it('HMAC-signed user_key request cannot increment rl:apikey:day even when REST enforcement is on', async () => {
-    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+  /** Record every `rl:apikey:day` INCR the gateway sends while `fn` runs. */
+  async function withDailyMeterRecorder(fn) {
     const dailyIncrements = [];
     const previousFetch = globalThis.fetch;
     globalThis.fetch = async (input, init) => {
@@ -348,7 +400,15 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
       }
       return previousFetch(input, init);
     };
+    try {
+      return { result: await fn(), dailyIncrements };
+    } finally {
+      globalThis.fetch = previousFetch;
+    }
+  }
 
+  it('HMAC-signed user_key request cannot increment rl:apikey:day even when REST enforcement is on', async () => {
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
     const { buildAuthHeaders } = await import(`../api/mcp/auth.ts?t=${Date.now()}`);
     const url = 'https://example.test/api/news/v1/summarize-article';
     const body = JSON.stringify({ provider: 'auto', mode: 'brief' });
@@ -361,13 +421,52 @@ describe('gateway internal-MCP HMAC verify — happy paths', () => {
     assert.equal(headers['X-WorldMonitor-Key'], undefined, 'signer must not attach the dashboard key');
 
     const handler = makeGateway();
-    const res = await handler(new Request(url, {
+    const { result: res, dailyIncrements } = await withDailyMeterRecorder(() => handler(new Request(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...headers },
       body,
-    }));
+    })));
     assert.equal(res.status, 200, `signed user_key request should pass, body=${await res.clone().text()}`);
     assert.deepEqual(dailyIncrements, [], 'internal-MCP path must not re-enter the shared daily meter');
+  });
+
+  it('same route, same owner: the raw dashboard key IS metered and the signed one is not', async () => {
+    // The assertion above is vacuous on its own. Its fixture user has
+    // `apiAccess: false`, so the request never reaches the per-account meter
+    // for reasons that have nothing to do with the internal-MCP exemption — it
+    // stays green with that exemption deleted. This runs the SAME route for an
+    // owner who genuinely is metered, so the recorder is proven able to observe
+    // an increment before absence is read as evidence.
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const url = 'https://example.test/api/news/v1/list-feed-digest';
+    const handler = makeGateway();
+
+    const raw = await withDailyMeterRecorder(() => handler(new Request(url, {
+      method: 'GET',
+      headers: { 'X-WorldMonitor-Key': USER_API_KEY },
+    })));
+    assert.equal(raw.result.status, 200, `raw user_key request should pass, body=${await raw.result.clone().text()}`);
+    assert.equal(
+      raw.dailyIncrements.length,
+      1,
+      `the metered door charges exactly once per request; got ${JSON.stringify(raw.dailyIncrements)}`,
+    );
+    assert.match(raw.dailyIncrements[0], new RegExp(`rl:apikey:day:${API_KEY_OWNER_ID}:`));
+
+    const { buildAuthHeaders } = await import(`../api/mcp/auth.ts?t=${Date.now()}`);
+    const headers = await buildAuthHeaders(
+      { kind: 'user_key', apiKey: USER_API_KEY, userId: API_KEY_OWNER_ID },
+      'GET',
+      url,
+      null,
+    );
+    const signed = await withDailyMeterRecorder(() => handler(new Request(url, { method: 'GET', headers })));
+    assert.equal(signed.result.status, 200, `signed user_key request should pass, body=${await signed.result.clone().text()}`);
+    assert.deepEqual(
+      signed.dailyIncrements,
+      [],
+      'the same owner, the same route, signed instead of raw: the internal-MCP path must not re-enter the meter',
+    );
   });
 
   it('same signed internal-MCP request succeeds once, then replay is rejected before handler trust', async () => {

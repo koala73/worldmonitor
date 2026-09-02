@@ -31,6 +31,8 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
 import { BASE_URL } from './helpers/mcp-pro-deps.mjs';
+import { resolveMcpBudget } from '../api/mcp/quota.ts';
+import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -241,17 +243,34 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     const card = JSON.parse(
       readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
     );
-    assert.deepEqual(
-      card.rateLimits?.dailyByPlan,
-      {
-        pro: 50,
-        proBusiness: 250,
-        apiStarter: 1000,
-        apiBusiness: 10000,
-        enterprise: null,
-      },
-      'server-card must mirror the MCP daily caps enforced by the handler',
-    );
+    // Derived from the resolver enforcement calls, never restated as literals.
+    // A literal table is what let the card publish 1,000/day while
+    // `resolveMcpBudget` returned 50 — the number was true of the price list
+    // and false of the meter, and a hardcoded expectation agreed with the card
+    // rather than with the code. Read in BOTH flag states, because the card is
+    // static and the ceiling it names must not depend on a deploy variable.
+    for (const restEnforced of [false, true]) {
+      const enforcedFor = (planKey) => {
+        const planLimits = PRODUCT_CATALOG[planKey]?.features?.planLimits;
+        assert.ok(planLimits, `${planKey} must exist in the catalog`);
+        return resolveMcpBudget(
+          planLimits.mcpCallsPerDay,
+          planLimits.apiRequestsPerDay,
+          restEnforced,
+        ).limit;
+      };
+      assert.deepEqual(
+        card.rateLimits?.dailyByPlan,
+        {
+          pro: enforcedFor('pro_monthly'),
+          proBusiness: enforcedFor('pro_business_monthly'),
+          apiStarter: enforcedFor('api_starter'),
+          apiBusiness: enforcedFor('api_business'),
+          enterprise: enforcedFor('enterprise'),
+        },
+        `server-card must mirror the caps the handler enforces (API_RATE_LIMIT_ENFORCE=${restEnforced})`,
+      );
+    }
     const notes = card.rateLimits?.notes;
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
     assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
