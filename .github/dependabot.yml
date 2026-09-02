@@ -33,3 +33,66 @@ updates:
       # Hold the Node base image at the current LTS major (24). See PR #4709.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+
+  # Every npm manifest in the repo. Without this block Dependabot raises alerts
+  # but can never open a fix PR for them, which is how 69 open advisories
+  # accumulated while `security-audit.yml` stayed green — the gate only blocks on
+  # high-severity PRODUCTION findings, so everything below that floor piles up
+  # unattended. Omitted on purpose:
+  #   /docker            — its manifest is `runtime-package.json`, a non-standard
+  #                        name Dependabot cannot discover. Covered by the audit
+  #                        matrix instead.
+  #   /cli               — declares no dependencies at all.
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/blog-site"
+      - "/consumer-prices-core"
+      - "/docker/umami/runtime"
+      - "/pro-test"
+      - "/scripts"
+      - "/workers/api-cors-preflight"
+      - "/workers/railway-reconcile-control"
+    schedule:
+      interval: "weekly"
+    # Eight directories on one shared budget. Security fixes arrive as a single
+    # grouped PR per directory, so the limit is spent on those rather than on a
+    # queue of routine bumps.
+    open-pull-requests-limit: 5
+    groups:
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      npm-minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Majors stay a deliberate, reviewed step — the same policy the Node base
+      # image above already follows. Astro 6 -> 7 and wrangler 3 -> 4 are the two
+      # live examples: both are real upgrades with their own blast radius, not
+      # something to take from an unattended weekly PR.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+
+  # The desktop app. Nothing else audits src-tauri/Cargo.lock — there is no
+  # `cargo audit` or `cargo-deny` step anywhere under .github/ — while
+  # build-desktop.yml ships signed binaries for five platforms, two of them Linux,
+  # where reqwest -> native-tls -> openssl is the live TLS implementation.
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 3
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]
+      cargo-minor-and-patch:
+        applies-to: version-updates
+        patterns: ["*"]
+        update-types: ["minor", "patch"]
+    ignore:
+      # Tauri majors in particular are migrations, not bumps.
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
