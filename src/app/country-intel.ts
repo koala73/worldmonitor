@@ -5,7 +5,6 @@ import { getRpcBaseUrl } from '@/services/rpc-client';
 import { getCountryDefenseIndustrialBase } from '@/services/defense-industrial';
 import { premiumFetch } from '@/services/premium-fetch';
 import { IS_EMBEDDED_PREVIEW } from '@/utils/embedded-preview';
-import type { TimelineEvent } from '@/components/CountryTimeline';
 import { CountryTimeline } from '@/components/CountryTimeline';
 import type {
   CountryDeepDiveEconomicIndicator,
@@ -16,6 +15,8 @@ import type {
 import { reverseGeocode } from '@/utils/reverse-geocode';
 import { yieldToMain } from '@/utils/after-paint';
 import { effectivePubDateMs } from '@/services/feed-date';
+import type { CountryCoverageEvent } from '@/services/country-coverage';
+import { reconcileCountryTimelineIncidents } from '@/services/country-timeline-events';
 import {
   getCountryAtCoordinates,
   getCountryCentroid,
@@ -136,6 +137,8 @@ export class CountryIntelManager implements AppModule {
   private lastHadPremium = false;
   private countryPremiumSectionsToken = 0;
   private countryBriefPageLoading: Promise<boolean> | null = null;
+  private currentCoverageEvents: CountryCoverageEvent[] = [];
+  private coverageAbortController: AbortController | null = null;
 
   constructor(ctx: AppContext) {
     this.ctx = ctx;
@@ -163,6 +166,7 @@ export class CountryIntelManager implements AppModule {
 
   destroy(): void {
     this.briefRequestToken++;
+    this.abortCountryCoverage();
     this.pendingBriefRequest = null;
     if (this._fwDebounce) { clearTimeout(this._fwDebounce); this._fwDebounce = null; }
     this.ctx.countryTimeline?.destroy();
@@ -220,8 +224,21 @@ export class CountryIntelManager implements AppModule {
       return null;
     }
     const request = { token: ++this.briefRequestToken, owner };
+    this.abortCountryCoverage();
     this.pendingBriefRequest = request;
     return request;
+  }
+
+  private abortCountryCoverage(): void {
+    this.coverageAbortController?.abort();
+    this.coverageAbortController = null;
+  }
+
+  private startCountryCoverageRequest(): AbortSignal {
+    this.abortCountryCoverage();
+    const controller = new AbortController();
+    this.coverageAbortController = controller;
+    return controller.signal;
   }
 
   private clearBriefRequest(request: PendingCountryBriefRequest): void {
@@ -321,6 +338,7 @@ export class CountryIntelManager implements AppModule {
 
     this.ctx.countryBriefPage.onClose(() => {
       this.briefRequestToken++;
+      this.abortCountryCoverage();
       this.ctx.map?.clearCountryHighlight();
       this.ctx.map?.setRenderPaused(false);
       this.ctx.countryTimeline?.destroy();
@@ -417,6 +435,7 @@ export class CountryIntelManager implements AppModule {
       if (token !== this.briefRequestToken || this.ctx.isDestroyed || this.ctx.countryBriefPage !== page) return;
 
       page.show(country, code, score, signals);
+      this.currentCoverageEvents = [];
       pageShown = true;
       this.visibleBriefOwner = request.owner;
       this.clearBriefRequest(request);
@@ -556,6 +575,33 @@ export class CountryIntelManager implements AppModule {
         return effectivePubDateMs(b) - effectivePubDateMs(a);
       });
       page.updateNews(filteredNews.slice(0, 10));
+      const countrySearchTerms = CountryIntelManager.getCountrySearchTerms(country, code);
+      const hasCountryTerm = (headline: string): boolean => (
+        CountryIntelManager.firstMentionPosition(headline, countrySearchTerms) !== Infinity
+      );
+      const coverageSignal = this.startCountryCoverageRequest();
+      void import('@/services/country-coverage')
+        .then(({ fetchCountryCoverage }) => fetchCountryCoverage(country, countrySearchTerms, { signal: coverageSignal }))
+        .then((coverage) => {
+          if (
+            coverageSignal.aborted
+            || token !== this.briefRequestToken
+            || this.ctx.countryBriefPage?.getCode() !== code
+          ) return;
+          const countryHeadlines = coverage.headlines.filter(item => (
+            CountryIntelManager.isCountryHeadline(item.title, country, code)
+          ));
+          if (countryHeadlines.length > 0) page.updateNews(countryHeadlines);
+          this.currentCoverageEvents = coverage.timelineEvents.filter(event => hasCountryTerm(event.label));
+          this.mountCountryTimeline(code, country, this.currentCoverageEvents);
+        })
+        .catch((error) => {
+          if (
+            coverageSignal.aborted
+            || (error && typeof error === 'object' && 'name' in error && error.name === 'AbortError')
+          ) return;
+          console.warn('[CountryBrief] country coverage fetch failed:', error);
+        });
 
       if (getCountryCentroid(code, ME_STRIKE_BOUNDS)) page.updateInfrastructure(code);
       void Promise.all([
@@ -1147,6 +1193,15 @@ export class CountryIntelManager implements AppModule {
       });
   }
 
+  refreshOpenTimeline(): void {
+    const page = this.ctx.countryBriefPage;
+    if (!page?.isVisible()) return;
+    const code = page.getCode();
+    if (!code || code === '__loading__' || code === '__error__') return;
+    const country = page.getName() ?? CountryIntelManager.resolveCountryName(code);
+    this.mountCountryTimeline(code, country, this.currentCoverageEvents);
+  }
+
   private async fetchCountryIntelBrief(code: string, contextSnapshot: string, framework = ''): Promise<CountryIntelBriefResult> {
     const lang = getCurrentLanguage();
     const params = new URLSearchParams({ country_code: code, lang });
@@ -1310,14 +1365,18 @@ export class CountryIntelManager implements AppModule {
     }
   }
 
-  private mountCountryTimeline(code: string, country: string): void {
+  private mountCountryTimeline(
+    code: string,
+    country: string,
+    coverageEvents: CountryCoverageEvent[] = [],
+  ): void {
     this.ctx.countryTimeline?.destroy();
     this.ctx.countryTimeline = null;
 
     const mount = this.ctx.countryBriefPage?.getTimelineMount();
     if (!mount) return;
 
-    const events: TimelineEvent[] = [];
+    const structuredEvents: CountryCoverageEvent[] = [];
     const countryLower = country.toLowerCase();
     const hasGeoShape = hasCountryGeometry(code) || !!CountryIntelManager.COUNTRY_BOUNDS[code];
     const inCountry = (lat: number, lon: number) => hasGeoShape && this.isInCountry(lat, lon, code);
@@ -1326,7 +1385,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.intelligenceCache.protests?.events) {
       for (const e of this.ctx.intelligenceCache.protests.events) {
         if (e.country?.toLowerCase() === countryLower || inCountry(e.lat, e.lon)) {
-          events.push({
+          structuredEvents.push({
             timestamp: new Date(e.time).getTime(),
             lane: 'protest',
             label: e.title || `${e.eventType} in ${e.city || e.country}`,
@@ -1339,7 +1398,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.intelligenceCache.earthquakes) {
       for (const eq of this.ctx.intelligenceCache.earthquakes) {
         if (inCountry(eq.location?.latitude ?? 0, eq.location?.longitude ?? 0) || eq.place?.toLowerCase().includes(countryLower)) {
-          events.push({
+          structuredEvents.push({
             timestamp: eq.occurredAt,
             lane: 'natural',
             label: `M${eq.magnitude.toFixed(1)} ${eq.place}`,
@@ -1352,7 +1411,7 @@ export class CountryIntelManager implements AppModule {
     if (this.ctx.intelligenceCache.military) {
       for (const f of this.ctx.intelligenceCache.military.flights) {
         if (hasGeoShape ? this.isInCountry(f.lat, f.lon, code) : f.operatorCountry?.toUpperCase() === code) {
-          events.push({
+          structuredEvents.push({
             timestamp: new Date(f.lastSeen).getTime(),
             lane: 'military',
             label: `${f.callsign} (${f.aircraftModel || f.aircraftType})`,
@@ -1362,7 +1421,7 @@ export class CountryIntelManager implements AppModule {
       }
       for (const v of this.ctx.intelligenceCache.military.vessels) {
         if (hasGeoShape ? this.isInCountry(v.lat, v.lon, code) : v.operatorCountry?.toUpperCase() === code) {
-          events.push({
+          structuredEvents.push({
             timestamp: new Date(v.lastAisUpdate).getTime(),
             lane: 'military',
             label: `${v.name} (${v.vesselType})`,
@@ -1375,7 +1434,7 @@ export class CountryIntelManager implements AppModule {
     const ciiData = getCountryData(code);
     if (ciiData?.conflicts) {
       for (const c of ciiData.conflicts) {
-        events.push({
+        structuredEvents.push({
           timestamp: new Date(c.time).getTime(),
           lane: 'conflict',
           label: `${c.eventType}: ${c.location || c.country}`,
@@ -1387,7 +1446,7 @@ export class CountryIntelManager implements AppModule {
     for (const e of this.getCountryStrikes(code, hasGeoShape)) {
       const rawTs = Number(e.timestamp) || 0;
       const ts = rawTs < 1e12 ? rawTs * 1000 : rawTs;
-      events.push({
+      structuredEvents.push({
         timestamp: ts,
         lane: 'conflict',
         label: e.title || `Strike: ${e.locationName}`,
@@ -1395,8 +1454,15 @@ export class CountryIntelManager implements AppModule {
       });
     }
 
+    const isVisibleEvent = (event: CountryCoverageEvent): boolean => (
+      Number.isFinite(event.timestamp) && event.timestamp >= sevenDaysAgo
+    );
+    const events = reconcileCountryTimelineIncidents(
+      coverageEvents.filter(isVisibleEvent),
+      structuredEvents.filter(isVisibleEvent),
+    );
     this.ctx.countryTimeline = new CountryTimeline(mount);
-    this.ctx.countryTimeline.render(events.filter(e => e.timestamp >= sevenDaysAgo));
+    this.ctx.countryTimeline.render(events);
   }
 
   async getCountrySignals(code: string, country: string): Promise<CountryBriefSignals> {
@@ -1849,6 +1915,7 @@ export class CountryIntelManager implements AppModule {
     TR: ['turkey', 'turkish', 'ankara', 'erdogan', 'türkiye'],
     US: ['united states', 'US', 'u.s.', 'u.s', 'american', 'washington', 'pentagon', 'white house'],
     GB: ['united kingdom', 'british', 'london', 'uk '],
+    FR: ['france', 'french', 'paris'],
     BR: ['brazil', 'brazilian', 'brasilia', 'lula', 'bolsonaro'],
     AE: ['united arab emirates', 'uae', 'emirati', 'dubai', 'abu dhabi'],
   };

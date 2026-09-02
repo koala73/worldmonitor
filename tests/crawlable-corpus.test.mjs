@@ -10,35 +10,37 @@ import { Window } from 'happy-dom';
 
 import {
   buildCiiRankingEntries,
+  buildChokepointHubRows,
   buildCorpus,
+  CHOKEPOINT_PAGE_CONTENT_VERSION,
   CHOKEPOINT_PAGE_LASTMOD_PATHS,
+  CII_COUNTRY_PAGE_CONTENT_VERSION,
   chokepointMetaDescription,
   countryMetaDescription,
+  COUNTRY_PAGE_CONTENT_VERSION,
+  DATASET_SCHEMA_CONTENT_VERSION,
   datasetTemporalCoverage,
   describeHeadlineIneligibilityReason,
   GENERATED_DIRS,
   gitFileLastmod,
+  laterDate,
   loadCorpusData,
   resolveChokepointObservation,
+  resolveLatestLivePulseSnapshotPath,
   SOURCE_CATALOG_LASTMOD_PATHS,
   sourcePageLastmod,
   withSchemaContext,
 } from '../scripts/build-crawlable-corpus.mjs';
+import {
+  MAX_FUTURE_SKEW_MS,
+  MAX_LIVE_SNAPSHOT_AGE_MS,
+} from '../scripts/crawlable-live-tools.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import { buildSourceCatalog, sourceProviderDisplayName } from '../scripts/crawlable-sources-page.mjs';
 import { resolveSourceOrigin, sourceOriginLabel } from '../scripts/source-origin.mjs';
 import { rawCatalogProviderNames, rawManifestActiveEntries } from './helpers/raw-catalog-providers.mjs';
 
 const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
-
-// Same later-of-inputs clock as scripts/build-crawlable-corpus.mjs. A pinned
-// calendar date fails when freeze:crawlable-live-pulse commits a later UTC day.
-function laterDate(...values) {
-  return values
-    .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
-    .sort()
-    .at(-1) ?? null;
-}
 
 function read(outDir, path) {
   return readFileSync(join(outDir, path), 'utf8');
@@ -888,6 +890,28 @@ describe('crawlable corpus generator', () => {
     );
   });
 
+  it('rejects a chokepoint pulse key that is not in the registry', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(data.chokepoints, data.livePulse),
+      'the committed pulse must match the registry exactly',
+    );
+    const livePulse = structuredClone(data.livePulse);
+    const [firstChokepoint] = data.chokepoints;
+    livePulse.chokepoints.obsolete_strait = { ...livePulse.chokepoints[firstChokepoint.id] };
+
+    assert.throws(
+      () => buildChokepointHubRows(data.chokepoints, livePulse),
+      /unexpected obsolete_strait/,
+    );
+    const missingPulse = structuredClone(data.livePulse);
+    delete missingPulse.chokepoints[firstChokepoint.id];
+    assert.throws(
+      () => buildChokepointHubRows(data.chokepoints, missingPulse),
+      new RegExp(`missing ${firstChokepoint.id}`),
+    );
+  });
+
   it('emits temporalCoverage only from a committed observation interval', () => {
     assert.equal(datasetTemporalCoverage('2026-05-28'), '2026-05-28');
     assert.equal(datasetTemporalCoverage('2026-01-01/2026-01-31'), '2026-01-01/2026-01-31');
@@ -908,6 +932,60 @@ describe('crawlable corpus generator', () => {
     assert.equal(newerRegistry.volumeObservedAt, '2026-03-14');
   });
 
+  it('rejects invalid chokepoint hub status and congestion before publication', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const [firstChokepoint] = data.chokepoints;
+    const validPulse = data.livePulse.chokepoints[firstChokepoint.id];
+    assert.ok(validPulse, 'committed pulse must include the first registry chokepoint');
+    assert.equal(
+      buildChokepointHubRows(data.chokepoints, {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Elevated' },
+        },
+      }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      'Elevated',
+    );
+    assert.equal(
+      buildChokepointHubRows(data.chokepoints, {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: { ...validPulse, congestion: 'Not reported' },
+        },
+      }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      'Not reported',
+    );
+
+    for (const [label, pulse] of [
+      ['object status', { ...validPulse, status: { label: 'Yellow' } }],
+      ['numeric status', { ...validPulse, status: 42 }],
+      ['unknown status', { ...validPulse, status: 'Orange' }],
+      ['lowercase status', { ...validPulse, status: 'yellow' }],
+      ['status below score band', { ...validPulse, disruptionScore: '70', status: 'Green' }],
+      ['status above score band', { ...validPulse, disruptionScore: '5', status: 'Red' }],
+      ['status in adjacent score band', { ...validPulse, disruptionScore: '19', status: 'Yellow' }],
+      ['object congestion', { ...validPulse, congestion: { level: 'Normal' } }],
+      ['numeric congestion', { ...validPulse, congestion: 3 }],
+      ['unknown congestion', { ...validPulse, congestion: 'Severe' }],
+      ['lowercase congestion', { ...validPulse, congestion: 'normal' }],
+    ]) {
+      const invalidLivePulse = {
+        ...data.livePulse,
+        chokepoints: {
+          ...data.livePulse.chokepoints,
+          [firstChokepoint.id]: pulse,
+        },
+      };
+      assert.throws(
+        () => buildChokepointHubRows(data.chokepoints, invalidLivePulse),
+        new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+        `${label} must fail the chokepoint hub build`,
+      );
+    }
+  });
+
   it('tracks every material chokepoint page input in its lastmod clock', () => {
     assert.deepEqual(CHOKEPOINT_PAGE_LASTMOD_PATHS, [
       'src/config/chokepoint-registry.ts',
@@ -915,6 +993,45 @@ describe('crawlable corpus generator', () => {
       'scripts/chokepoint-page-content.mjs',
       'scripts/chokepoint-eia-baselines.mjs',
     ]);
+  });
+
+  // laterDate is imported rather than re-implemented, so the family-clock
+  // assertions below share one implementation with the builder. These literal
+  // cases are what keeps that from being circular: a regression in laterDate
+  // itself fails here, before it can agree with itself elsewhere.
+  it('folds a set of dates to the latest valid one', () => {
+    assert.equal(laterDate('2026-01-02', '2026-03-04', '2026-02-03'), '2026-03-04');
+    assert.equal(laterDate('2026-03-04', '2026-01-02'), '2026-03-04');
+    assert.equal(laterDate('2026-01-02', null, undefined), '2026-01-02');
+    assert.equal(laterDate('2026-01-02', 'not-a-date', '2026-01-02T05:00:00Z'), '2026-01-02');
+    assert.equal(laterDate('2026-01-02', '2026-01-02'), '2026-01-02');
+    assert.equal(laterDate(null, undefined, ''), null);
+    assert.equal(laterDate(), null);
+  });
+
+  it('picks the newest live-pulse snapshot among several candidates', () => {
+    const fixtureRoot = mkdtempSync(join(tmpdir(), 'wm-pulse-resolve-'));
+    try {
+      const snapshotDir = join(fixtureRoot, 'docs', 'snapshots');
+      mkdirSync(snapshotDir, { recursive: true });
+      const today = new Date().toISOString().slice(0, 10);
+      const sections = {
+        countries: [], chokepoints: [], crises: [], signalConvergence: { capturedAt: today },
+      };
+      for (const capturedAt of ['2026-01-05', today, '2026-01-09']) {
+        writeFileSync(
+          join(snapshotDir, `crawlable-live-pulse-${capturedAt}.json`),
+          JSON.stringify({ capturedAt, ...sections }),
+        );
+      }
+      assert.equal(
+        resolveLatestLivePulseSnapshotPath(fixtureRoot),
+        join('docs', 'snapshots', `crawlable-live-pulse-${today}.json`),
+        'the resolver must pick the highest-dated snapshot, not the first or last written',
+      );
+    } finally {
+      rmSync(fixtureRoot, { recursive: true, force: true });
+    }
   });
 
   it('advances the sources lastmod when the shared page template changes', () => {
@@ -1424,36 +1541,34 @@ describe('crawlable corpus generator', () => {
         true,
         'only country pages with a published CII score may target Country Instability Index',
       );
-      const ciiTargetedSet = new Set(ciiTargetedCountryPages);
-      const genericCountryPages = manifest.sections.countries.routes.filter(
-        (route) => !ciiTargetedSet.has(route),
-      );
-      assert.equal(genericCountryPages.length, 165);
-      // Compare by page family, not by counting a distinct calendar date.
-      // After freeze:crawlable-live-pulse the generic and CII clocks can coincide.
+      // Compare against the live country clock, not a calendar date:
+      // freeze:crawlable-live-pulse advances capturedAt every run.
       assert.equal(
-        genericCountryPages.every((route) => (
+        manifest.sections.countries.routes.every((route) => (
           new RegExp(`<meta name="lastmod" content="${countriesLastmod}">`).test(
             read(outDir, `${route.slice(1)}index.html`),
           )
         )),
         true,
-        'generic country pages must use the generic content clock',
-      );
-      assert.equal(
-        ciiTargetedCountryPages.every((route) => (
-          new RegExp(`<meta name="lastmod" content="${ciiCountriesLastmod}">`).test(
-            read(outDir, `${route.slice(1)}index.html`),
-          )
-        )),
-        true,
-        'only the 31 CII-targeted country pages use the CII content clock',
+        'all country pages must use the current country content clock',
       );
 
       const ciiIndex = read(outDir, 'country-instability-index/index.html');
       const ciiDocument = htmlDocument(
         ciiIndex,
         'https://www.worldmonitor.app/country-instability-index/',
+      );
+      const methodologyDoc = readFileSync(
+        join(repoRoot, 'docs/methodology/cii-risk-scores.mdx'),
+        'utf8',
+      );
+      assert.match(
+        methodologyDoc,
+        /^description: "Editorial methodology behind the Country Instability Index\b/m,
+      );
+      assert.match(
+        methodologyDoc,
+        /^The Country Instability Index answers one operational question:$/m,
       );
       assert.match(ciiIndex, /<title>Country Instability Index: Live Rankings \| World Monitor<\/title>/);
       assert.match(ciiIndex, /<h1>Country Instability Index<\/h1>/);
@@ -1462,6 +1577,21 @@ describe('crawlable corpus generator', () => {
       assert.match(
         ciiIndex,
         /CII v8 currently monitors 31 countries and reports approximate 24-hour movement when available\./,
+      );
+      const ciiQuestion = 'Which countries are most unstable right now?';
+      const ciiQuestionHeading = [...ciiDocument.querySelectorAll('h2')]
+        .find((heading) => heading.textContent.trim() === ciiQuestion);
+      assert.ok(ciiQuestionHeading, `CII hub needs the exact H2 "${ciiQuestion}"`);
+      const ciiAnswer = ciiQuestionHeading.nextElementSibling?.textContent.trim() || '';
+      assert.ok(
+        proseWordCount(ciiAnswer) >= 40 && proseWordCount(ciiAnswer) <= 60,
+        `CII hub answer is ${proseWordCount(ciiAnswer)} words, need 40-60`,
+      );
+      assert.ok(
+        ciiQuestionHeading.compareDocumentPosition(
+          ciiDocument.querySelector('table[data-cii-ranking]'),
+        ) & 4,
+        'CII hub FAQ answer must appear before the ranking table',
       );
       assert.equal(ciiDocument.querySelectorAll('[data-cii-country]').length, 31);
       assert.equal(
@@ -1480,6 +1610,18 @@ describe('crawlable corpus generator', () => {
       const ciiCollection = ciiLd.find((entry) => entry['@type'] === 'CollectionPage');
       const ciiDataset = ciiLd.find((entry) => entry['@type'] === 'Dataset');
       const ciiItemList = ciiLd.find((entry) => entry['@type'] === 'ItemList');
+      const ciiFaq = ciiLd.find((entry) => entry['@type'] === 'FAQPage');
+      assert.equal(ciiFaq?.mainEntity?.[0]?.name, ciiQuestion);
+      assert.equal(ciiFaq?.mainEntity?.[0]?.acceptedAnswer?.text, ciiAnswer);
+      for (const entry of ciiItemList.itemListElement.slice(0, 3)) {
+        assert.match(ciiAnswer, new RegExp(`\\b${entry.name}\\b`));
+      }
+      const ciiUpdatedText = ciiDocument
+        .querySelector('time[data-cii-ranking-updated][datetime]')
+        ?.textContent.trim()
+        .replace(/^Latest published score /, '');
+      assert.ok(ciiUpdatedText && ciiAnswer.includes(ciiUpdatedText));
+      assert.doesNotMatch(ciiAnswer, /\btoday\b/i);
       assert.deepEqual(ciiCollection?.mainEntity, {
         '@id': 'https://www.worldmonitor.app/country-instability-index/#dataset',
       });
@@ -1550,6 +1692,18 @@ describe('crawlable corpus generator', () => {
 
       const corpusData = await loadCorpusData({ rootDir: repoRoot });
       const countryByCode = new Map(corpusData.countries.map((country) => [country.code, country]));
+      const microstateCohort = JSON.parse(readFileSync(
+        join(repoRoot, 'server/worldmonitor/resilience/v1/cohorts/microstate-territories.json'),
+        'utf8',
+      ));
+      const microstateCodes = new Set((microstateCohort.iso2 || []).map((code) => String(code).toUpperCase()));
+      for (const country of corpusData.countries) {
+        assert.equal(
+          country.microstateTerritory,
+          microstateCodes.has(country.code),
+          `${country.code} must match microstate cohort membership`,
+        );
+      }
       const vercelConfig = JSON.parse(readFileSync(join(repoRoot, 'vercel.json'), 'utf8'));
       const redirectPairs = new Set(
         vercelConfig.redirects.map((redirect) => `${redirect.source} -> ${redirect.destination}`),
@@ -1942,7 +2096,7 @@ describe('crawlable corpus generator', () => {
         /below the ranking threshold|input coverage is below/i,
       );
 
-      const unrankedSampleCodes = ['AD', 'SM', 'SY', 'TV', 'TW'];
+      const unrankedSampleCodes = ['AD', 'MO', 'SM', 'SY', 'TV', 'TW'];
       const unrankedArticles = [];
       const rankedNames = new Set(
         corpusData.countries.filter((country) => country.rank != null).map((country) => country.name),
@@ -1955,8 +2109,35 @@ describe('crawlable corpus generator', () => {
         const document = htmlDocument(html, `https://www.worldmonitor.app${route}`);
         const analysis = document.querySelector('[data-country-analysis]');
         assert.ok(analysis, `${route} must render unpublished analysis`);
+        const mainText = document.querySelector('main')?.textContent || '';
+        if (['TV', 'SM', 'MO'].includes(code)) {
+          const evidenceQuestion = `What evidence is available for ${country.name}?`;
+          const evidenceFaq = [...document.querySelectorAll('[data-country-faq]')]
+            .find((node) => node.querySelector('summary')?.textContent === evidenceQuestion);
+          assert.ok(evidenceFaq, `${route} must show a microstate evidence FAQ`);
+          assert.match(evidenceFaq.textContent || '', /supported dimension readings with observed inputs, including/);
+          assert.doesNotMatch(evidenceFaq.textContent || '', /Observed feeds/);
+          const faqLabel = {
+            TV: 'State continuity',
+            SM: 'Liquid-reserve adequacy',
+            MO: 'Import concentration',
+          }[code];
+          assert.match(evidenceFaq.textContent || '', new RegExp(faqLabel));
+          assert.doesNotMatch(evidenceFaq.textContent || '', /overall score[^.]*\d|country rank[^.]*\d/i);
+          const faqPage = jsonLdObjects(html).find((entry) => entry['@type'] === 'FAQPage');
+          const faqAnswer = faqPage?.mainEntity?.find((entry) => entry.name === evidenceQuestion);
+          assert.match(faqAnswer?.acceptedAnswer?.text || '', /supported dimension readings with observed inputs, including/);
+          assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /Observed feeds/);
+          assert.match(faqAnswer?.acceptedAnswer?.text || '', new RegExp(faqLabel));
+          assert.doesNotMatch(faqAnswer?.acceptedAnswer?.text || '', /overall score[^.]*\d|country rank[^.]*\d/i);
+        }
         analysis.querySelectorAll('[data-country-faq]').forEach((node) => node.remove());
-        unrankedArticles.push({ route, text: analysis.textContent || '' });
+        unrankedArticles.push({
+          code,
+          route,
+          text: analysis.textContent || '',
+          mainText,
+        });
         assert.match(html, /Nearest ranked comparators:/);
         assert.doesNotMatch(html, new RegExp(`\\b${code} · `));
         for (const peer of country.peers) {
@@ -1966,6 +2147,29 @@ describe('crawlable corpus generator', () => {
       const syria = read(outDir, 'countries/syria/index.html');
       assert.match(syria, /Macro-fiscal position/);
       assert.match(syria, /IMF/);
+      const expectedMicrostateReadings = {
+        TV: { id: 'borderSecurity', label: 'Border security', source: 'UCDP' },
+        SM: { id: 'liquidReserveAdequacy', label: 'Liquid-reserve adequacy', source: 'World Bank' },
+        MO: { id: 'importConcentration', label: 'Import concentration', source: 'UN Comtrade' },
+      };
+      for (const code of ['TV', 'SM', 'MO']) {
+        const country = countryByCode.get(code);
+        const html = read(outDir, `countries/${country.slug}/index.html`);
+        const evidence = unpublishedHeadingParagraph(html, 'What the snapshot does cover');
+        const expected = expectedMicrostateReadings[code];
+        const dimension = country.domains
+          .flatMap((domain) => domain.dimensions || [])
+          .find((candidate) => candidate.id === expected.id);
+        assert.ok(dimension, `${code} fixture must retain ${expected.id}`);
+        const expectedReading = `${expected.label} ${Number(dimension.score).toFixed(1).replace(/\.0$/, '')} (${Math.round(Number(dimension.coverage) * 100)}%)`;
+        assert.ok(evidence.includes(expectedReading), `${code} must publish ${expectedReading}`);
+        assert.match(evidence, /supported dimension readings with observed inputs:/);
+        assert.match(evidence, /Scores use a 0-100 scale; percentages show coverage/);
+        assert.match(evidence, new RegExp(`Possible dimension inputs for ${country.name}:`));
+        assert.match(evidence, new RegExp(`Possible dimension inputs for ${country.name}:.*${expected.source}`));
+        assert.doesNotMatch(evidence, /Observed feeds/);
+        assert.match(evidence, /not a published overall score or a country rank/);
+      }
       const andorra = read(outDir, 'countries/andorra/index.html');
       assert.doesNotMatch(andorra, /<summary>What is Andorra&#39;s Country Instability Index\?<\/summary>/);
       assert.equal(countryByCode.get('AD')?.lowConfidence, false);
@@ -2009,6 +2213,19 @@ describe('crawlable corpus generator', () => {
           assert.ok(
             share >= 0.4,
             `${unrankedArticles[left].route} and ${unrankedArticles[right].route} unranked pair must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
+          );
+        }
+      }
+      const microstateMainPages = unrankedArticles.filter(({ code }) => ['TV', 'SM', 'MO'].includes(code));
+      for (let left = 0; left < microstateMainPages.length; left += 1) {
+        for (let right = left + 1; right < microstateMainPages.length; right += 1) {
+          const share = pairwiseUniqueShare(
+            microstateMainPages[left].mainText,
+            microstateMainPages[right].mainText,
+          );
+          assert.ok(
+            share >= 0.4,
+            `${microstateMainPages[left].route} and ${microstateMainPages[right].route} main content must be at least 40% unique, got ${(share * 100).toFixed(1)}%`,
           );
         }
       }
@@ -2083,13 +2300,143 @@ describe('crawlable corpus generator', () => {
       assertDataCatalogPresent(norway, '/countries/norway/');
 
       const chokepointsIndex = read(outDir, 'chokepoints/index.html');
-      // The "N routes" / raw-id card subtitles are gone; cards now describe what each waterway connects.
-      assert.doesNotMatch(chokepointsIndex, /\d+ routes?<\/span>/, 'chokepoint index must not expose raw "N routes" counts');
-      assert.doesNotMatch(chokepointsIndex, /hormuz_strait &middot;/, 'chokepoint index must not expose raw canonical ids');
-      assert.match(chokepointsIndex, /Persian Gulf ↔ Gulf of Oman/, 'chokepoint cards should show the human region');
-      assertDefaultSpeakable(
-        jsonLdObjects(chokepointsIndex).find((entry) => entry['@type'] === 'CollectionPage'),
-        'chokepoints hub CollectionPage',
+      const chokepointsDocument = htmlDocument(
+        chokepointsIndex,
+        'https://www.worldmonitor.app/chokepoints/',
+      );
+      const chokepointRows = [...chokepointsDocument.querySelectorAll(
+        'table[data-chokepoint-status] tbody tr',
+      )];
+      assert.equal(chokepointRows.length, corpusData.chokepoints.length);
+      for (const chokepoint of corpusData.chokepoints) {
+        const pulse = corpusData.livePulse.chokepoints[chokepoint.id];
+        const row = chokepointRows.find((candidate) => (
+          candidate.querySelector('a')?.getAttribute('href') === `/chokepoints/${chokepoint.slug}/`
+        ));
+        assert.ok(row, `chokepoint hub is missing ${chokepoint.displayName}`);
+        assert.ok(row.querySelector('[data-hub-region]')?.textContent.trim());
+        assert.equal(Number(row.querySelector('[data-hub-score]')?.textContent), Number(pulse.disruptionScore));
+        assert.equal(row.querySelector('[data-hub-status]')?.textContent.trim(), pulse.status);
+        assert.equal(row.querySelector('[data-hub-congestion]')?.textContent.trim(), pulse.congestion);
+        assert.equal(row.querySelector('time[data-hub-updated]')?.getAttribute('datetime'), pulse.asOf);
+      }
+      assert.ok(
+        chokepointRows.some((row) => row.querySelector('[data-hub-score]')?.textContent.trim() === '0'),
+        'chokepoint hub must publish a numeric zero score',
+      );
+      assert.match(chokepointsIndex, /Persian Gulf ↔ Gulf of Oman/);
+      assert.ok(chokepointsIndex.includes(corpusData.sources.livePulseSnapshot));
+      assert.ok(chokepointsIndex.includes(corpusData.sources.chokepointRegistry));
+      assert.doesNotMatch(chokepointsIndex, /\b\d+ routes?\b/i, 'chokepoint index must not expose raw "N routes" counts');
+      for (const chokepoint of corpusData.chokepoints.filter((entry) => entry.id.includes('_'))) {
+        assert.ok(!chokepointsIndex.includes(chokepoint.id), `chokepoint hub must not expose raw id ${chokepoint.id}`);
+      }
+      const chokepointsLd = jsonLdObjects(chokepointsIndex);
+      const chokepointCollection = chokepointsLd.find((entry) => entry['@type'] === 'CollectionPage');
+      const chokepointDataset = chokepointsLd.find((entry) => entry['@type'] === 'Dataset');
+      const chokepointItemList = chokepointsLd.find((entry) => entry['@type'] === 'ItemList');
+      const chokepointFaq = chokepointsLd.find((entry) => entry['@type'] === 'FAQPage');
+      const chokepointCatalog = chokepointsLd.find((entry) => entry['@type'] === 'DataCatalog');
+      assert.ok(chokepointDataset && chokepointItemList && chokepointFaq && chokepointCatalog);
+      assertDefaultSpeakable(chokepointCollection, 'chokepoints hub CollectionPage');
+      assert.deepEqual(chokepointCollection.mainEntity, {
+        '@id': 'https://www.worldmonitor.app/chokepoints/#status-dataset',
+      });
+      assert.deepEqual(chokepointDataset.mainEntity, {
+        '@id': 'https://www.worldmonitor.app/chokepoints/#status-list',
+      });
+      assert.equal(chokepointItemList['@id'], 'https://www.worldmonitor.app/chokepoints/#status-list');
+      assert.equal(chokepointItemList.numberOfItems, corpusData.chokepoints.length);
+      assert.equal(chokepointItemList.itemListElement.length, corpusData.chokepoints.length);
+      assert.equal(chokepointItemList.itemListOrder, 'https://schema.org/ItemListUnordered');
+      assert.deepEqual(chokepointDataset.creator, {
+        '@id': 'https://www.worldmonitor.app/#organization',
+        '@type': 'Organization',
+        name: 'World Monitor',
+        url: 'https://www.worldmonitor.app/',
+      });
+      assert.ok(chokepointDataset.license);
+      assert.equal(chokepointDataset.datePublished, corpusData.livePulse.capturedAt);
+      const latestChokepointUpdate = Object.values(corpusData.livePulse.chokepoints)
+        .map((pulse) => pulse.asOf)
+        .sort()
+        .at(-1);
+      assert.equal(chokepointDataset.dateModified, latestChokepointUpdate);
+      assert.equal(chokepointDataset.temporalCoverage, corpusData.livePulse.capturedAt);
+      assert.ok(chokepointDataset.measurementTechnique);
+      assert.ok(chokepointDataset.variableMeasured.length >= 3);
+      assert.equal(chokepointDataset.distribution['@type'], 'DataDownload');
+      assert.equal(chokepointDataset.includedInDataCatalog['@id'], chokepointCatalog['@id']);
+      for (const [index, listEntry] of chokepointItemList.itemListElement.entries()) {
+        const visibleRow = chokepointRows[index];
+        assert.equal(listEntry.url, visibleRow.querySelector('a').href);
+        assert.equal(listEntry.item.url, visibleRow.querySelector('a').href);
+        const properties = Object.fromEntries(
+          listEntry.item.additionalProperty.map((property) => [property.name, property.value]),
+        );
+        assert.equal(properties['Disruption score'], Number(visibleRow.querySelector('[data-hub-score]').textContent));
+        assert.equal(properties.Status, visibleRow.querySelector('[data-hub-status]').textContent.trim());
+        assert.equal(properties.Congestion, visibleRow.querySelector('[data-hub-congestion]').textContent.trim());
+      }
+      const chokepointFaqHeadings = [...chokepointsDocument.querySelectorAll('h2[data-chokepoint-hub-faq]')];
+      const chokepointQuestions = chokepointFaqHeadings
+        .map((heading) => heading.textContent.trim());
+      assert.ok(chokepointQuestions.length >= 2 && chokepointQuestions.every((question) => question.endsWith('?')));
+      assert.equal(chokepointFaq.mainEntity.length, chokepointQuestions.length);
+      for (const question of chokepointQuestions) {
+        const heading = chokepointFaqHeadings
+          .find((candidate) => candidate.textContent.trim() === question);
+        const visibleAnswer = heading.nextElementSibling?.textContent.trim();
+        const schemaQuestion = chokepointFaq.mainEntity.find((entry) => entry.name === question);
+        assert.equal(schemaQuestion?.acceptedAnswer?.text, visibleAnswer);
+      }
+
+      const [firstChokepoint] = corpusData.chokepoints;
+      const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];
+      for (const [label, pulse] of [
+        ['null score', { ...validPulse, disruptionScore: null }],
+        ['empty score', { ...validPulse, disruptionScore: '' }],
+        ['non-decimal score', { ...validPulse, disruptionScore: '40 points' }],
+        ['negative score', { ...validPulse, disruptionScore: -1 }],
+        ['score above 100', { ...validPulse, disruptionScore: 101 }],
+        ['missing status', { ...validPulse, status: '' }],
+        ['missing congestion', { ...validPulse, congestion: '' }],
+        ['impossible timestamp', { ...validPulse, asOf: '2026-02-31T13:37:22.049Z' }],
+      ]) {
+        const invalidLivePulse = {
+          ...corpusData.livePulse,
+          chokepoints: {
+            ...corpusData.livePulse.chokepoints,
+            [firstChokepoint.id]: pulse,
+          },
+        };
+        assert.throws(
+          () => buildChokepointHubRows(corpusData.chokepoints, invalidLivePulse),
+          new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+          `${label} must fail the chokepoint hub build`,
+        );
+      }
+      const missingPulse = {
+        ...corpusData.livePulse,
+        chokepoints: { ...corpusData.livePulse.chokepoints },
+      };
+      delete missingPulse.chokepoints[firstChokepoint.id];
+      assert.throws(
+        () => buildChokepointHubRows(corpusData.chokepoints, missingPulse),
+        new RegExp(`missing ${firstChokepoint.id}`),
+        'a missing registry member must fail the chokepoint hub build',
+      );
+      const extraPulse = {
+        ...corpusData.livePulse,
+        chokepoints: {
+          ...corpusData.livePulse.chokepoints,
+          obsolete_strait: validPulse,
+        },
+      };
+      assert.throws(
+        () => buildChokepointHubRows(corpusData.chokepoints, extraPulse),
+        /unexpected obsolete_strait/,
+        'an extra pulse key must fail the chokepoint hub build',
       );
 
       const sourcesPage = read(outDir, 'sources/index.html');
@@ -2406,12 +2753,12 @@ describe('crawlable corpus generator', () => {
       assert.ok(hormuzDataset, 'chokepoint page must expose a Dataset mainEntity');
       assert.equal(
         hormuzDataset.dateModified,
-        '2026-09-01',
+        laterDate(corpusData.lastmod.chokepoints, DATASET_SCHEMA_CONTENT_VERSION.chokepoint),
         'chokepoint page template change must advance Dataset dateModified with page lastmod',
       );
       assert.equal(
         pageLastmod(hormuz),
-        '2026-09-01',
+        corpusData.lastmod.chokepoints,
         'chokepoint transit-withhold template change must advance page lastmod',
       );
       assertSourceDerivedTemporalCoverage(hormuzDataset, {
@@ -2667,19 +3014,19 @@ describe('crawlable corpus generator', () => {
       });
       assert.equal(
         redSeaDataset.dateModified,
-        '2026-09-01',
+        laterDate(corpus.lastmod.crises, DATASET_SCHEMA_CONTENT_VERSION.crisis),
         'changed crisis Dataset schema must advance only the crisis family stamp',
       );
       assert.equal(
         pageLastmod(redSea),
-        '2026-09-01',
+        corpus.lastmod.crises,
         'crisis page lastmod must advance with its changed Dataset schema',
       );
       assert.equal(
         sitemapEntries.find((entry) => (
           new URL(entry.loc).pathname === '/crises/red-sea-security/'
         ))?.lastmod,
-        '2026-09-01',
+        corpus.lastmod.crises,
         'crisis sitemap lastmod must advance with its changed Dataset schema',
       );
       assert.equal(redSeaDataset.isAccessibleForFree, true);
@@ -2761,8 +3108,9 @@ describe('crawlable corpus generator', () => {
       const convergenceDataset = collectDatasets(convergencePage)[0];
       assert.equal(convergenceDataset['@id'], 'https://www.worldmonitor.app/tools/signal-convergence/#signal-convergence-dataset');
       assert.equal(convergenceDataset.url, 'https://www.worldmonitor.app/tools/signal-convergence/');
-      assert.equal(convergenceDataset.identifier, 'signal-convergence-2026-08-30');
-      assert.equal(convergenceDataset.datePublished, '2026-08-30');
+      const convergenceCapturedAt = corpus.livePulse.signalConvergence.capturedAt;
+      assert.equal(convergenceDataset.identifier, `signal-convergence-${convergenceCapturedAt}`);
+      assert.equal(convergenceDataset.datePublished, convergenceCapturedAt);
       assert.equal(convergenceDataset.spatialCoverage, 'Worldwide');
       assert.equal(convergenceDataset.variableMeasured[1].value, 3);
       assert.equal(convergenceDataset.variableMeasured[2].value, 3);
@@ -2818,6 +3166,45 @@ describe('crawlable corpus generator', () => {
     }
   });
 
+  it('uses the same chokepoint timestamp window as the freeze producer', async () => {
+    const corpusData = await loadCorpusData({ rootDir: repoRoot });
+    const [firstChokepoint] = corpusData.chokepoints;
+    const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];
+    const capturedAtMs = corpusData.livePulse.capturedAtMs;
+    const isoFromCapture = (offsetMs) => new Date(capturedAtMs + offsetMs).toISOString();
+    const withAsOf = (asOf) => ({
+      ...corpusData.livePulse,
+      chokepoints: {
+        ...corpusData.livePulse.chokepoints,
+        [firstChokepoint.id]: { ...validPulse, asOf },
+      },
+    });
+    const invalidFor = (asOf, label) => {
+      assert.throws(
+        () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(asOf)),
+        new RegExp(`Chokepoint hub pulse is invalid for ${firstChokepoint.id}`),
+        label,
+      );
+    };
+
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(corpusData.chokepoints, withAsOf(isoFromCapture(-47 * 60 * 60 * 1000))),
+      'a fetchedAt 47 hours before capturedAtMs must remain accepted',
+    );
+    invalidFor(
+      isoFromCapture(-MAX_LIVE_SNAPSHOT_AGE_MS - 1),
+      'a fetchedAt older than 48 hours before capturedAtMs must fail',
+    );
+    invalidFor(
+      isoFromCapture(MAX_FUTURE_SKEW_MS + 1),
+      'a fetchedAt beyond the 5-minute future-skew limit must fail',
+    );
+    assert.doesNotThrow(
+      () => buildChokepointHubRows(corpusData.chokepoints, corpusData.livePulse),
+      'committed same-day asOf values must remain accepted',
+    );
+  });
+
   it('loads deterministic source data without network access', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
     assert.match(
@@ -2835,7 +3222,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(data.sources.sourceOrigin, 'scripts/source-origin.mjs');
     assert.deepEqual(data.sources.sourceCatalogInputs, SOURCE_CATALOG_LASTMOD_PATHS);
     assert.equal(data.sources.sharedPageTemplate, 'scripts/build-crawlable-corpus.mjs');
-    assert.equal(data.resilience.capturedAt, '2026-08-29');
+    assert.match(data.resilience.capturedAt, /^\d{4}-\d{2}-\d{2}$/);
     assert.ok(data.sources.resilienceSnapshot.includes(data.resilience.capturedAt));
     // Family lastmods use material + page versions + pulse where the HTML
     // publishes pulse values. CORPUS_GENERATOR_CONTENT_VERSION stays out
@@ -2847,8 +3234,17 @@ describe('crawlable corpus generator', () => {
         data.resilience.capturedAt,
         data.livePulse.capturedAt,
         gitFileLastmod(repoRoot, data.sources.countryRegions),
-        '2026-08-31',
+        COUNTRY_PAGE_CONTENT_VERSION,
       ),
+      'countries lastmod must fold snapshot, pulse, regions and the page content version',
+    );
+    // #7518 set COUNTRY_PAGE_CONTENT_VERSION and CII_COUNTRY_PAGE_CONTENT_VERSION
+    // to the same date, so the two clocks coincide by value. Pin the DERIVATION
+    // instead, which stays falsifiable if either constant moves.
+    assert.equal(
+      data.lastmod.ciiCountries,
+      laterDate(data.lastmod.countries, CII_COUNTRY_PAGE_CONTENT_VERSION),
+      'the CII country clock must derive from the generic country clock',
     );
     assert.equal(data.lastmod.research, '2026-07-27');
     assert.equal(
@@ -2856,8 +3252,9 @@ describe('crawlable corpus generator', () => {
       laterDate(
         ...CHOKEPOINT_PAGE_LASTMOD_PATHS.map((path) => gitFileLastmod(repoRoot, path)),
         data.livePulse.capturedAt,
-        '2026-09-01',
+        CHOKEPOINT_PAGE_CONTENT_VERSION,
       ),
+      'chokepoints lastmod must fold every material page input, the pulse and the content version',
     );
     assert.equal(
       data.lastmod.sources,

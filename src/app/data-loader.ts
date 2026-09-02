@@ -325,6 +325,7 @@ const IRAN_ATTACKS_ENABLED = import.meta.env.VITE_ENABLE_IRAN_ATTACKS === 'true'
 export interface DataLoaderCallbacks {
   renderCriticalBanner: (postures: TheaterPostureSummary[]) => void;
   refreshOpenCountryBrief: () => void;
+  refreshOpenCountryTimeline?: () => void;
 }
 
 type HydrationTier = 1 | 2 | 3 | 4;
@@ -3071,6 +3072,7 @@ export class DataLoaderManager implements AppModule {
       this.ctx.statusPanel?.updateApi('USGS', { status: 'error' });
       dataFreshness.recordError('usgs', String(earthquakeResult.reason));
     }
+    this.callbacks.refreshOpenCountryTimeline?.();
 
     const imdEvents = imdResult.status === 'fulfilled' ? imdResult.value.cycloneEvents : [];
     if (eonetResult.status === 'fulfilled') {
@@ -3289,6 +3291,7 @@ export class DataLoaderManager implements AppModule {
       try {
         const protestData = await fetchProtestEvents();
         this.ctx.intelligenceCache.protests = protestData;
+        this.callbacks.refreshOpenCountryTimeline?.();
         ingestProtests(protestData.events);
         await runSignalAggregator(this.ctx.statusPanel, 'protests', (aggregator) => aggregator.ingestProtests(protestData.events));
         const protestCount = protestData.sources.acled + protestData.sources.gdelt;
@@ -3319,6 +3322,7 @@ export class DataLoaderManager implements AppModule {
         const conflictData = await fetchConflictEvents();
         this.ctx.intelligenceCache.conflicts = conflictData.events;
         ingestConflictsForCountryData(conflictData.events);
+        this.callbacks.refreshOpenCountryTimeline?.();
         if (conflictData.count > 0) dataFreshness.recordUpdate('acled_conflict', conflictData.count);
       } catch (error) {
         console.error('[Intelligence] Conflict events fetch failed:', error);
@@ -3344,6 +3348,7 @@ export class DataLoaderManager implements AppModule {
           vessels: vesselData.vessels,
           vesselClusters: vesselData.clusters,
         };
+        this.callbacks.refreshOpenCountryTimeline?.();
         fetchUSNIFleetReport().then((report) => {
           if (report) this.ctx.intelligenceCache.usniFleet = report;
         }).catch(() => {});
@@ -3759,6 +3764,7 @@ export class DataLoaderManager implements AppModule {
     try {
       const protestData = await fetchProtestEvents();
       this.ctx.intelligenceCache.protests = protestData;
+      this.callbacks.refreshOpenCountryTimeline?.();
       this.ctx.map?.setProtests(protestData.events);
       this.ctx.map?.setLayerReady('protests', protestData.events.length > 0);
       ingestProtests(protestData.events);
@@ -3885,6 +3891,7 @@ export class DataLoaderManager implements AppModule {
         vessels: vesselData.vessels,
         vesselClusters: vesselData.clusters,
       };
+      this.callbacks.refreshOpenCountryTimeline?.();
       fetchUSNIFleetReport().then((report) => {
         if (report) this.ctx.intelligenceCache.usniFleet = report;
       }).catch(() => {});

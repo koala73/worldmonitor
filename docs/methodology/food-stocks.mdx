@@ -43,7 +43,14 @@ which is the single most common way this dataset gets misread.
 
 USDA Production, Supply and Distribution (PSD) is the source for balances and stocks. Public domain, monthly release cycle, global coverage by commodity and country.
 
-FAOSTAT is applied after PSD as a production-only gap fill for commodity-country pairs the balance sheet missed. Those rows expose `source: "faostat"`; every stocks field on them is a placeholder, not a USDA/PSD measurement, and they do not carry a stocks-to-use ratio.
+When PSD has no complete country balance, FAOSTAT Food Balances supplies one
+same-year pair: `Production Quantity` and `Domestic supply quantity`. The scorer
+uses domestic supply as consumption and converts both quantities with the same
+commodity calorie table. A complete PSD pair always wins.
+
+FAOSTAT rows expose `source: "faostat"`. Their ending stocks and stocks-to-use
+ratio are unavailable. The seeder ignores stock variation and does not use it
+to estimate stocks.
 
 ## Commodities
 
@@ -73,7 +80,13 @@ Consequences:
 
 ## Availability
 
-Rows use explicit presence flags rather than numeric fields alone. `hasEndingStocks` and `hasStocksToUse` say whether `endingStocksTmt` and `stocksToUse` are measured values. FAOSTAT production-only fill rows can carry placeholder zeroes for `endingStocksTmt`, `totalUseTmt`, and `stocksToUse` while those stock flags are false. A commodity a country does not report is absent from the response. Zero stocks and no coverage are opposite readings, and callers must not infer one from the other.
+Rows use explicit presence flags rather than numeric fields alone.
+`hasEndingStocks` and `hasStocksToUse` say whether `endingStocksTmt` and
+`stocksToUse` are measured values. A FAOSTAT row carries the Food Balances
+domestic-supply quantity in both `consumptionTmt` and `totalUseTmt`. Its stock
+numbers are protocol placeholder zeroes, and both stock flags are false. A
+commodity that a country does not report is absent. Zero stocks and no coverage
+are opposite readings, and callers must not infer one from the other.
 
 ## Cadence
 

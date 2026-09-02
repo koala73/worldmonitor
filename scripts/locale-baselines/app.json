@@ -1828,7 +1828,7 @@
   "countryBrief.fiveFactorScorecard.unavailable": "Five-factor scorecard unavailable.",
   "countryBrief.foodStocks": "Food stocks",
   "countryBrief.foodStocksCommodity": "Commodity",
-  "countryBrief.foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT fills production only where PSD has no country coverage.",
+  "countryBrief.foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
   "countryBrief.foodStocksMarketingYear": "Marketing year",
   "countryBrief.foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
   "countryBrief.foodStocksRatio": "Stocks-to-use",

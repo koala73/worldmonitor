@@ -118,29 +118,203 @@ export async function fetchPredictions(opts?: { region?: string }): Promise<Pred
   return markets.slice(0, 15);
 }
 
-const COUNTRY_SEARCH_ALIASES: Record<string, string[]> = {
-  US: ['American', 'Trump', 'Biden', 'Congress', 'White House', 'Federal Reserve', 'The Fed', 'Fed rate', 'Fed chair', 'Fed cut', 'Fed hike', 'US recession', 'US GDP', 'US election', 'US tariff', 'US president', 'US presidency'],
-  GB: ['UK', 'Britain', 'British'],
-  KR: ['South Korean'],
-  KP: ['DPRK', 'Pyongyang', 'Kim Jong'],
-  AE: ['UAE', 'Dubai', 'Abu Dhabi', 'Emirati'],
-  SA: ['Saudi', 'MBS'],
-};
-
-function countrySearchTerms(country: string, countryCode: string): string[] {
-  return [country, ...(COUNTRY_SEARCH_ALIASES[countryCode] ?? [])];
+interface CountryMetadata {
+  name?: string;
+  keywords?: string[];
 }
 
-function matchesCountryTerms(title: string, terms: string[]): boolean {
-  return terms.some((term) => {
-    const escaped = term.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    return new RegExp(`\\b${escaped}\\b`, 'i').test(title);
-  });
+interface PredictionCountryLanguage {
+  terms?: string[];
+  excludedBaseTerms?: string[];
+  requiredContext?: string[];
+  excludedPhrases?: string[];
+}
+
+interface PredictionCountryLanguageFile {
+  countries?: Record<string, PredictionCountryLanguage>;
+  termShadows?: Record<string, { term: string; specificCountryCode: string }>;
+}
+
+interface CountrySearchMatcher {
+  countryCode: string;
+  names: string[];
+  terms: string[];
+  requiredContext: string[];
+  excludedPhrases: string[];
+}
+
+interface CountryTermShadow {
+  term: string;
+  specificCountryCode: string;
+}
+
+interface CountryTermOccurrence {
+  countryCode: string;
+  start: number;
+  end: number;
+  term: string;
+}
+
+interface CountrySearchIndex {
+  matchers: CountrySearchMatcher[];
+  shadows: Record<string, CountryTermShadow>;
+}
+
+function normalizeCountryText(value: string): string {
+  const words = value
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+  return words ? ` ${words} ` : '';
+}
+
+function compileCountrySearchMatcher(
+  countryCode: string,
+  displayNames: string[],
+  metadata: CountryMetadata,
+  language: PredictionCountryLanguage,
+): CountrySearchMatcher {
+  const names = [...new Set(displayNames
+    .map((name) => String(name ?? '').trim())
+    .filter(Boolean))];
+  const normalizedNames = new Set(names.map((name) => name.toLowerCase()));
+  const excludedBaseTerms = new Set(language.excludedBaseTerms ?? []);
+  const terms = [...new Set([
+    ...(metadata.keywords ?? []).filter((term) => !excludedBaseTerms.has(term.toLowerCase())),
+    ...(language.terms ?? []),
+  ]
+    .map((term) => String(term).trim())
+    .filter((term) => term && !normalizedNames.has(term.toLowerCase())))];
+
+  return {
+    countryCode,
+    names: names.map(normalizeCountryText),
+    terms: terms.map(normalizeCountryText),
+    requiredContext: (language.requiredContext ?? []).map(normalizeCountryText),
+    excludedPhrases: (language.excludedPhrases ?? []).map(normalizeCountryText),
+  };
+}
+
+async function loadCountrySearchIndex(country: string, countryCode: string): Promise<CountrySearchIndex> {
+  const [{ default: countryCodes }, { default: predictionCountryLanguage }] = await Promise.all([
+    import('../../../scripts/data/country-codes.json'),
+    import('../../../scripts/shared/prediction-country-language.json'),
+  ]);
+  const countryMetadata = countryCodes as Record<string, CountryMetadata>;
+  const languageFile = predictionCountryLanguage as PredictionCountryLanguageFile;
+  const countryLanguage = languageFile.countries ?? {};
+  const matchers = Object.entries(countryMetadata).map(([code, metadata]) => (
+    compileCountrySearchMatcher(
+      code,
+      code === countryCode ? [country, metadata.name ?? ''] : [metadata.name ?? ''],
+      metadata,
+      countryLanguage[code] ?? {},
+    )
+  ));
+  if (!countryMetadata[countryCode]) {
+    matchers.push(compileCountrySearchMatcher(
+      countryCode,
+      [country],
+      {},
+      countryLanguage[countryCode] ?? {},
+    ));
+  }
+  const shadows = Object.fromEntries(
+    Object.entries(languageFile.termShadows ?? {}).map(([code, shadow]) => [
+      code,
+      { specificCountryCode: shadow.specificCountryCode, term: normalizeCountryText(shadow.term) },
+    ]),
+  );
+  return { matchers, shadows };
+}
+
+function termOccurrences(
+  normalizedTitle: string,
+  term: string,
+  countryCode: string,
+): CountryTermOccurrence[] {
+  if (!term) return [];
+  const matches: CountryTermOccurrence[] = [];
+  let start = normalizedTitle.indexOf(term);
+  while (start >= 0) {
+    matches.push({ countryCode, start, end: start + term.length, term });
+    start = normalizedTitle.indexOf(term, start + 1);
+  }
+  return matches;
+}
+
+function occurrenceFallsWithin(
+  normalizedTitle: string,
+  candidate: CountryTermOccurrence,
+  enclosingTerm: string,
+): boolean {
+  if (!enclosingTerm) return false;
+  let start = normalizedTitle.indexOf(enclosingTerm);
+  while (start >= 0) {
+    if (start <= candidate.start && start + enclosingTerm.length >= candidate.end) return true;
+    start = normalizedTitle.indexOf(enclosingTerm, start + 1);
+  }
+  return false;
+}
+
+function associatedCountryCodes(
+  title: string,
+  matchers: CountrySearchMatcher[],
+  shadows: Record<string, CountryTermShadow>,
+): Set<string> {
+  const normalizedTitle = normalizeCountryText(title);
+  const rawMatches: CountryTermOccurrence[] = [];
+  const matcherByCountryCode = new Map(matchers.map((matcher) => [matcher.countryCode, matcher]));
+
+  for (const matcher of matchers) {
+    const hasRequiredContext = matcher.requiredContext.length === 0
+      || matcher.requiredContext.some((term) => normalizedTitle.includes(term));
+    if (hasRequiredContext) {
+      for (const name of matcher.names) {
+        rawMatches.push(...termOccurrences(normalizedTitle, name, matcher.countryCode));
+      }
+    }
+    for (const term of matcher.terms) {
+      rawMatches.push(...termOccurrences(normalizedTitle, term, matcher.countryCode));
+    }
+  }
+
+  const associated = new Set<string>();
+  for (const candidate of rawMatches) {
+    const shadow = shadows[candidate.countryCode];
+    const shadowedByCountryContext = Boolean(
+      shadow
+      && candidate.term === shadow.term
+      && rawMatches.some((other) => other.countryCode === shadow.specificCountryCode),
+    );
+    const matcher = matcherByCountryCode.get(candidate.countryCode);
+    const shadowedByPhrase = (matcher?.excludedPhrases ?? [])
+      .some((phrase) => occurrenceFallsWithin(normalizedTitle, candidate, phrase));
+    const embeddedInSpecificCountry = rawMatches.some((other) => (
+      other.countryCode !== candidate.countryCode
+      && other.term.length > candidate.term.length
+      && other.start <= candidate.start
+      && other.end >= candidate.end
+    ));
+    if (shadowedByCountryContext || shadowedByPhrase || embeddedInSpecificCountry) continue;
+    associated.add(candidate.countryCode);
+  }
+  return associated;
+}
+
+function matchesCountryTerms(
+  title: string,
+  countryCode: string,
+  matchers: CountrySearchMatcher[],
+  shadows: Record<string, CountryTermShadow>,
+): boolean {
+  return associatedCountryCodes(title, matchers, shadows).has(countryCode);
 }
 
 export async function fetchCountryMarkets(country: string, countryCode: string): Promise<PredictionMarket[]> {
   const normalizedCode = countryCode.trim().toUpperCase();
-  const terms = countrySearchTerms(country, normalizedCode);
   if (/^[A-Z]{2}$/.test(normalizedCode)) {
     const response = await client.listPredictionMarkets({
       category: `country:${normalizedCode}`,
@@ -161,9 +335,10 @@ export async function fetchCountryMarkets(country: string, countryCode: string):
   // model line) would be unreachable without it.
   const hydrated = getHydratedData('predictions') as BootstrapPredictionData | undefined;
   if (hydrated) {
+    const { matchers, shadows } = await loadCountrySearchIndex(country, normalizedCode);
     const buckets = [...(hydrated.geopolitical ?? []), ...(hydrated.tech ?? []), ...(hydrated.finance ?? [])];
     const filtered = buckets
-      .filter(m => !isExpired(m.endDate) && matchesCountryTerms(m.title, terms))
+      .filter(m => !isExpired(m.endDate) && matchesCountryTerms(m.title, normalizedCode, matchers, shadows))
       .filter((market, index, all) => all.findIndex((candidate) => candidate.url === market.url) === index)
       .sort((a, b) => (b.volume ?? 0) - (a.volume ?? 0))
       .slice(0, 5);

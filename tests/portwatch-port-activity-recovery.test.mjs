@@ -18,6 +18,50 @@ function cachedCountry(iso2, cacheWrittenAt = 0) {
   };
 }
 
+describe('PortWatch reference pagination recovery', () => {
+  it('retries a rate-limited page without restarting pagination', async () => {
+    const requestedOffsets = [];
+    const sleepCalls = [];
+    let offsetOneAttempts = 0;
+    const fetchPage = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+
+      if (offset === 0) {
+        return {
+          features: [{
+            attributes: { portid: 'us-lax', ISO3: 'USA', lat: 33.7, lon: -118.2 },
+          }],
+          exceededTransferLimit: true,
+        };
+      }
+
+      offsetOneAttempts += 1;
+      if (offsetOneAttempts === 1) {
+        throw new Error('ArcGIS error: Unable to perform query. Too many requests.');
+      }
+      return {
+        features: [{
+          attributes: { portid: 'cy-lca', ISO3: 'CYP', lat: 34.9, lon: 33.6 },
+        }],
+        exceededTransferLimit: false,
+      };
+    };
+
+    const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
+      fetchPage,
+      sleepFn: async (...args) => {
+        sleepCalls.push(args);
+      },
+    });
+
+    assert.deepEqual(requestedOffsets, [0, 1, 1]);
+    assert.ok(refsByIso3.get('USA') instanceof Map);
+    assert.ok(refsByIso3.get('CYP') instanceof Map);
+    assert.equal(sleepCalls.length, 1);
+  });
+});
+
 describe('PortWatch cold-fetch recovery rotation', () => {
   it('attempts all 174 countries within six 30-country runs', () => {
     const countries = Array.from({ length: 174 }, (_, index) =>

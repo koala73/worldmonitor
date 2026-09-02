@@ -482,6 +482,18 @@ describe('main.js eager diet — country-intel uses the shared signal aggregatio
       'country-intel should use the shared lazy-services getSignalAggregator helper',
     );
   });
+
+  it('loads country coverage only after a country brief opens', () => {
+    const coverageModule = '@/services/country-coverage';
+    assert.ok(
+      !valueImportSpecifiers(withoutComments).includes(coverageModule),
+      'country coverage must stay out of the eager App graph',
+    );
+    assert.ok(
+      dynamicImportSpecifiers(withoutComments).includes(coverageModule),
+      'country-intel should lazy-load country coverage after opening a brief',
+    );
+  });
 });
 
 describe('main.js eager diet — review feedback guards', () => {

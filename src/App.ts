@@ -1530,6 +1530,7 @@ export class App {
     this.dataLoader = new DataLoaderManager(this.state, {
       renderCriticalBanner: (postures) => this.panelLayout.renderCriticalBanner(postures),
       refreshOpenCountryBrief: () => this.countryIntel.refreshOpenBrief(),
+      refreshOpenCountryTimeline: () => this.countryIntel.refreshOpenTimeline(),
     });
 
     this.panelLayout = new PanelLayoutManager(this.state, {
