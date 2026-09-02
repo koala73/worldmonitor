@@ -984,4 +984,53 @@ describe('SearchAdapter recovery path', () => {
     expect(nativeTarget?.metadata?.direct).toBe(true);
     expect(nativeTarget?.url).toBe('https://minutes.noon.com/saudi-en/now-product/eggs-1');
   });
+
+  it('tries an item seed after a stale pin before paid discovery', async () => {
+    const config = loadRetailerConfig('pao_de_acucar_br');
+    const seedUrl = 'https://www.paodeacucar.com/produto/144583/pao';
+    config.discovery.seeds = [{ id: 'bread_white', url: seedUrl, category: 'bread' }];
+    const stalePinUrl = 'https://www.paodeacucar.com/produto/999999/suco-de-laranja-1l';
+    const exa = {
+      search: vi.fn().mockResolvedValue([]),
+      extract: vi.fn().mockImplementation(async (url: string) =>
+        url === seedUrl
+          ? {
+              data: {
+                productName: 'Pão de Forma Panco Premium Pacote 500g',
+                price: 11.49,
+                currency: 'BRL',
+                inStock: true,
+                sizeText: '500g',
+              },
+              pageContent: 'Pão de Forma Panco Premium Pacote 500g\nR$ 11,49',
+            }
+          : { data: {}, pageContent: 'Suco de laranja' },
+      ),
+    } as unknown as ExaProvider;
+    const firecrawl = {
+      extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Por favor, confirme seu acesso' }),
+    } as unknown as FirecrawlProvider;
+    const adapter = new SearchAdapter(exa, firecrawl);
+    const context = {
+      ...makeContext(config),
+      pinnedUrls: new Map([
+        [
+          'essentials-br:Pão de Forma Branco 500g',
+          { sourceUrl: stalePinUrl, productId: 'stale-product', matchId: 'stale-match' },
+        ],
+      ]),
+    } as AdapterContext;
+    const targets = await adapter.discoverTargets(context);
+    const target = targets.find((candidate) => candidate.id === 'bread_white');
+    expect(target).toBeDefined();
+
+    const result = await adapter.fetchTarget(context, target!);
+    const [product] = await adapter.parseListing(context, result);
+
+    expect(product?.sourceUrl).toBe(seedUrl);
+    expect(product?.price).toBe(11.49);
+    expect(product?.rawPayload.direct).toBe(false);
+    expect(exa.search).not.toHaveBeenCalled();
+    expect(exa.extract).toHaveBeenCalledWith(seedUrl, expect.any(Object), expect.any(Object));
+  });
 });
