@@ -71,13 +71,15 @@ describe('chokepoint source availability', () => {
   it('uses append-only proto fields and the private NGA v2 cache key', async () => {
     const maritimeProto = await readFile('proto/worldmonitor/maritime/v1/list_navigational_warnings.proto', 'utf8');
     const supplyChainProto = await readFile('proto/worldmonitor/supply_chain/v1/supply_chain_data.proto', 'utf8');
-    const handler = await readFile('server/worldmonitor/maritime/v1/list-navigational-warnings.ts', 'utf8');
+    const maritimeHandler = await readFile('server/worldmonitor/maritime/v1/list-navigational-warnings.ts', 'utf8');
+    const cableHealthHandler = await readFile('server/worldmonitor/infrastructure/v1/get-cable-health.ts', 'utf8');
 
     assert.match(maritimeProto, /bool data_available = 3;/);
     assert.match(supplyChainProto, /bool navigational_warnings_available = 17;/);
     assert.match(supplyChainProto, /bool ais_snapshot_available = 18;/);
     assert.match(supplyChainProto, /"normal" is an observed AIS level/);
-    assert.match(handler, /maritime:navwarnings:v2/);
+    assert.match(maritimeHandler, /maritime:navwarnings:v2/);
+    assert.match(cableHealthHandler, /cable-health-nga-warnings-v2/);
   });
 
   it('marks a successful empty NGA response available and caches it', async () => {
