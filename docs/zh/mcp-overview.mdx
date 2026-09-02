@@ -21,7 +21,7 @@ WorldMonitor 将其情报栈作为 [Model Context Protocol](https://modelcontext
 
 所有付费套餐共享同一个 MCP 服务器和同样的实时工具目录，但计量方式分两种。**Pro 与 Pro Business** 没有 REST 额度，因此其 MCP 调用使用专属的每日计数器，每个 UTC 日分别为 **50** 次和 **250** 次消耗配额的 `tools/call` / `resources/read` 调用，每次调用计一个单位。**API Starter 与 API Business** 没有单独的 MCP 额度，其 MCP 调用与 REST 请求消耗同一份每日额度（每天 1,000 和 10,000），并按工具权重扣减：缓存读取计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 与 `get_airspace` 各从两个来源取数，计 3 个单位。OAuth 与 `wm_…` 两道门解析出的是同一份额度，因此你用哪种凭据都不会改变上限。Enterprise 的 OAuth 可以不设上限，只有部署许可名单中明确列出的旧版运营方密钥才跳过每日预留。每个已认证上下文还会经过按套餐设定的每分钟突发限流器：Pro、Pro Business 与 API Starter 为 **60 次请求/分钟**，API Business 为 **300**，Enterprise 为 **1,000**。`get_sources` 和元数据辅助工具 `describe_tool` 豁免每日配额。完整权重表见 [MCP 调用计入 API 套餐额度](/zh/usage-rate-limits#mcp-调用计入-api-套餐额度)。
 
-Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-sign-in-flow)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
+Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / claude.ai —— 参见下方的 [Pro 登录流程](#pro-登录流程)。API Starter+ 用户可继续在授权页粘贴 `wm_…` key（原始流程），也可使用与 Pro 相同的 OAuth 路径。
 
 ## 端点
 
@@ -123,7 +123,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 - 达到上限会返回 JSON-RPC 错误 `-32029` 以及 HTTP `429`，并附带指向下一个 UTC 午夜的 `Retry-After` 头。
 - 该上限是硬性限制：接近边界时的并发 `tools/call` 或 `resources/read` 请求使用原子 Redis 预留，因此恰好跨越该上限的那次调用会被拒绝。
 
-需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项，以及大得多的每日额度（每天 1,000 和 10,000 个单位），该额度由它们的 MCP 调用与 REST 请求共享，每分钟突发分别为每用户 60 次和 300 次。缓存读取的 MCP 调用计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 与 `get_airspace` 计 3 个单位，因此批量任务走 REST 仍然更划算。Enterprise 则完全取消每日上限。参见[套餐与限制](#plans--limits)。
+需要更高吞吐量的脚本化访问？**API Starter** 和 **API Business** 增加了 `wm_…` key 选项，以及大得多的每日额度（每天 1,000 和 10,000 个单位），该额度由它们的 MCP 调用与 REST 请求共享，每分钟突发分别为每用户 60 次和 300 次。缓存读取的 MCP 调用计 1 个单位，向下游实时取数计 2 个单位，`get_country_brief` 与 `get_airspace` 计 3 个单位，因此批量任务走 REST 仍然更划算。Enterprise 则完全取消每日上限。参见[套餐与限制](#套餐与限制)。
 
 ### 已连接的 MCP 客户端
 
@@ -145,7 +145,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 | **API Business** | ✅ 是 | OAuth **或** `wm_…` key | **每 UTC 日 10,000 个单位**，与 REST 共享，按工具权重扣减 | 每用户每分钟 **300** 次 | 更高的 REST/API 吞吐量。 |
 | **Enterprise** | ✅ 是 | OAuth **或** `wm_…` key | 两道门均不设上限 | 每分钟 **1,000** 次 | 可提供自定义 SLA。 |
 
-每分钟限流为所有付费套餐抵御突发流量风暴。旧版运营方密钥客户端固定为每密钥每分钟 60 次。OAuth 和控制面板签发的 key 使用上表中各自套餐的突发额度。**限流器在方法分发之前运行，因此每个已认证方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入该突发额度。** 元数据方法与免费层方法是套餐速率的唯一例外：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估。两者用的是同一个按用户的池，因此在 API Business 或 Enterprise 上，`tools/list` 的突发会在 60 处被拒，而数据调用仍可跑到该套餐的上限。匿名 `get_sources` 调用改用独立的失败关闭上限：每个 IP 每分钟 10 次。每日配额上限是有选择的，仅由需要订阅且承载数据的 `tools/call` 和 `resources/read` 预留消耗，OAuth 与控制面板签发的 `wm_…` key 一视同仁（参见上方的[每日额度（Pro 套餐）](#daily-limit-pro-tier)，以及[错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)中关于两种限制的完整方法豁免表）。
+每分钟限流为所有付费套餐抵御突发流量风暴。旧版运营方密钥客户端固定为每密钥每分钟 60 次。OAuth 和控制面板签发的 key 使用上表中各自套餐的突发额度。**限流器在方法分发之前运行，因此每个已认证方法（包括 `initialize`、`tools/list`、`prompts/list`、`resources/list`、`describe_tool` 等）都计入该突发额度。** 元数据方法与免费层方法是套餐速率的唯一例外：它们在权益预检查之前就已被服务，限流器手上没有套餐可读，因此按 60 评估。两者用的是同一个按用户的池，因此在 API Business 或 Enterprise 上，`tools/list` 的突发会在 60 处被拒，而数据调用仍可跑到该套餐的上限。匿名 `get_sources` 调用改用独立的失败关闭上限：每个 IP 每分钟 10 次。每日配额上限是有选择的，仅由需要订阅且承载数据的 `tools/call` 和 `resources/read` 预留消耗，OAuth 与控制面板签发的 `wm_…` key 一视同仁（参见上方的[每日额度（Pro 套餐）](#每日额度（pro-套餐）)，以及[错误目录](/zh/mcp-error-catalog#-32029--rate-limited-per-minute-or-daily)中关于两种限制的完整方法豁免表）。
 
 OAuth 和控制面板签发的 key 的突发额度按用户计算，因此一个拥有 3 个 Claude 安装或多个 `wm_…` key 的用户，共享一个按其套餐速率的池。旧版运营方密钥按 key 计算。
 
@@ -407,7 +407,7 @@ npx @modelcontextprotocol/inspector https://worldmonitor.app/mcp
 - [#4525](https://github.com/koala73/worldmonitor/issues/4525) —— 延后的纯读取 MCP 覆盖候选项。
 - [#4526](https://github.com/koala73/worldmonitor/issues/4526) —— 手动映射和 fetch-on-miss 分诊。
 
-有关完整的实时工具目录，请参见上方的[工具目录](#tool-catalog)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
+有关完整的实时工具目录，请参见上方的[工具目录](#工具目录)；有关各工具详情，请参阅 [MCP 工具参考](/zh/mcp-tools-reference)。
 
 ## Prompt 与资源
 

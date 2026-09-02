@@ -12,7 +12,7 @@ WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) �
 - **Pro**——使用你的 WorldMonitor 账户登录，无需管理密钥。每个 UTC 日 50 次配额消耗调用。
 - **API Starter / Business / Enterprise**——在你的客户端中粘贴用户签发的 `wm_…` 密钥，或使用与 Pro 相同的 OAuth 流程。控制面板签发的密钥共享每用户每分钟 60 次的限流桶，并使用每个 UTC 日 50 次配额消耗调用的默认值。OAuth 额度按套餐解析；API Starter 和 API Business 当前使用相同默认值，企业 OAuth 可以不设上限。REST/API 套餐额度保持独立。
 
-在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级或生成密钥。本指南的其余部分假设使用 Claude Desktop + OAuth（最简单的路径）；如果你更愿意将 `wm_…` 密钥粘贴到 `curl` 脚本中，请跳到底部的[服务端 curl](#server-side-curl)。
+在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级或生成密钥。本指南的其余部分假设使用 Claude Desktop + OAuth（最简单的路径）；如果你更愿意将 `wm_…` 密钥粘贴到 `curl` 脚本中，请跳到底部的[服务端 curl](#服务端-curl)。
 
 ## 2. 将服务器添加到 Claude Desktop
 

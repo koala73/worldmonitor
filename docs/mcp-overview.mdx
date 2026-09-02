@@ -123,7 +123,7 @@ If you'd rather paste an API key (Starter+ / scripted clients), expand "Use API 
 - Hitting the cap returns JSON-RPC error `-32029` plus HTTP `429` with a `Retry-After` header pointing at the next UTC midnight.
 - The cap is hard. Concurrent `tools/call` or `resources/read` requests near the boundary use an atomic Redis reservation, so exactly the call that crosses the limit rejects.
 
-Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus a much larger daily budget (1,000 and 10,000 units/day) that their MCP calls and REST requests share, at 60 and 300 requests/minute/user. A cached MCP read costs 1 unit and a live downstream fetch costs 2, and `get_country_brief` and `get_airspace` cost 3, so batch workloads still go further over REST. Enterprise lifts the daily cap entirely. See [Plans & limits](#plans--limits).
+Need higher-volume scripted access? **API Starter** and **API Business** add a `wm_…` key option plus a much larger daily budget (1,000 and 10,000 units/day) that their MCP calls and REST requests share, at 60 and 300 requests/minute/user. A cached MCP read costs 1 unit and a live downstream fetch costs 2, and `get_country_brief` and `get_airspace` cost 3, so batch workloads still go further over REST. Enterprise lifts the daily cap entirely. See [Plans & limits](#plans-&-limits).
 
 ### Connected MCP clients
 
