@@ -27,6 +27,7 @@ import {
   companyMonitoringXDemotionReasonValidator,
   companyMonitoringXStorageStateValidator,
 } from "./companyMonitoring/validators";
+import { SHARED_API_BUDGET } from "./config/productCatalog";
 
 // Subscription status enum — maps Dodo statuses to our internal set
 const subscriptionStatus = v.union(
@@ -799,9 +800,12 @@ export default defineSchema({
       planLimits: v.optional(v.object({
         apiRequestsPerDay: v.union(v.number(), v.null()),
         apiBurstRequestsPerMinute: v.union(v.number(), v.null()),
-        // `"shared-api-budget"` = the plan has no MCP allowance of its own; its
-        // MCP calls charge `apiRequestsPerDay` (see productCatalog.SHARED_API_BUDGET).
-        mcpCallsPerDay: v.union(v.number(), v.null(), v.literal("shared-api-budget")),
+        // `SHARED_API_BUDGET` = the plan has no MCP allowance of its own; its
+        // MCP calls charge `apiRequestsPerDay`. Imported rather than retyped:
+        // this validator is what ACCEPTS the marker on every entitlement write,
+        // so a renamed constant that left a stale string literal here would
+        // typecheck and then reject the webhook's write at runtime.
+        mcpCallsPerDay: v.union(v.number(), v.null(), v.literal(SHARED_API_BUDGET)),
         // Optional for entitlement rows written before the dashboard-AI
         // dimension existed; the read-time catalog merge supplies it.
         dashboardAiCallsPerDay: v.optional(v.union(v.number(), v.null())),
