@@ -57,6 +57,7 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
   });
 
   it('budget spent up front → every topic backfilled from cache, returns immediately (no deadline churn)', async () => {
+    const started = Date.now();
     const out = await fetchAllTopics({
       _softBudgetMs: 40,            // spent before the first topic can start
       _sleep: async () => {},
@@ -64,9 +65,13 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
       _fetchTimeline: async () => [],
       _loadPrevious: async () => cachedSnapshot(),
     });
-    // Returning at all IS the budget working: _fetchArticles never settles, so
-    // an ignored budget hangs to the test timeout instead of finishing slowly.
     assert.deepEqual(out.topics.map((t) => t.id), TOPIC_IDS, 'all 6 topics represented, in canonical order');
+    // Tolerant but retained (#7534 review): if the spent-budget check stopped
+    // preventing topics from STARTING, each hanging fetch would be cut off by
+    // the per-topic bound instead and this returns late with byte-identical
+    // output. 5s is ~125x the injected 40ms budget, so only a real regression
+    // reaches it -- unlike the 3s bound, which flaked measuring runner load.
+    assert.ok(Date.now() - started < 5_000, 'the spent budget must stop topics starting at all');
     for (const t of out.topics) {
       assert.equal(t.articles[0]?.title, `cached ${t.id}`, `${t.id} carries cached articles`);
     }
@@ -74,6 +79,7 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
 
   it('a hanging topic fetch is bounded per-topic, then backfilled from cache', async () => {
     let attempts = 0;
+    const started = Date.now();
     const out = await fetchAllTopics({
       _softBudgetMs: 150,
       _minRequestBudgetMs: 20,     // allow one request to be attempted, then break
@@ -82,8 +88,11 @@ describe('seed-gdelt-intel fetchAllTopics soft budget (issue #4864)', () => {
       _fetchTimeline: async () => [],
       _loadPrevious: async () => cachedSnapshot(),
     });
-    // As above: the hang is bounded iff we got here at all.
     assert.ok(attempts >= 1, 'at least one topic fetch was attempted and bounded');
+    // Tolerant but retained (#7534 review): a per-topic cutoff that fired tens
+    // of seconds late instead of at the injected 150ms budget produces the same
+    // fallback output and the same `attempts`, so nothing else here sees it.
+    assert.ok(Date.now() - started < 5_000, 'the per-topic budget must bound the hang, not merely end it');
     assert.deepEqual(out.topics.map((t) => t.id), TOPIC_IDS);
     for (const t of out.topics) {
       assert.equal(t.articles[0]?.title, `cached ${t.id}`, `${t.id} fell back to cache`);
