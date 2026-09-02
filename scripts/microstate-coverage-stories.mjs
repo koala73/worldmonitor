@@ -72,7 +72,7 @@ const MICROSTATE_COVERAGE_STORIES = Object.freeze({
       { id: 'externalDebtCoverage', imputationClass: 'unmonitored', sources: ['World Bank'] },
     ],
     build: (facts) => ({
-      introduction: `San Marino has many observed European inputs, yet four dimension gaps leave a narrow but material break in this edition. The page therefore shows the measurements that exist and withholds the aggregate.`,
+      introduction: `San Marino has many observed European inputs, yet ${facts.gapCount} dimension gaps leave a narrow but material break in this edition. The page therefore shows the measurements that exist and withholds the aggregate.`,
       gap: `Very small sovereign states do not receive a complete standalone record across these provider systems. For San Marino, UN Comtrade does not contribute an import-concentration observation. The social-cohesion feed from IEP, UNHCR, and UCDP is marked source unavailable in this snapshot. Reporters Without Borders supplies no information-environment value, and the World Bank debt slot is unmonitored. Those gaps leave coverage at ${facts.coverage}, ${facts.shortfall} under the ${facts.coverageFloor}% floor.`,
       evidence: `San Marino retains ${facts.readingCount} dimension measurements backed by observed data: ${facts.readings}. Source families on the covered side include ${facts.sourceExamples}. These lines stay separate because the publication rule blocks an overall number.`,
       comparatorLead: 'European ranked pages provide the comparison frame.',

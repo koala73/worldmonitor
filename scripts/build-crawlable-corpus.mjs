@@ -2408,24 +2408,26 @@ function microstateCoverageStoryFacts(country) {
   const coveragePercent = Math.round(Number(country.dimensionCoverage) * 100);
   const coverageFloor = Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100);
   const readings = profile.supportedDimensions
-    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score)} (${formatPercent(dimension.coverage)})`);
+    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score, dimensionScoreEvidence(dimension))} (${formatPercent(dimension.coverage)})`);
   const highlightedDimensions = profile.supportedDimensions
     .slice(-3)
     .map(dimensionLabel);
   const shortfallPoints = coverageFloor - coveragePercent;
+  const gaps = activeCountryDimensions(country)
+    .filter(isCoverageGap)
+    .map((dimension) => ({
+      id: dimension.id,
+      imputationClass: String(dimension.imputationClass || ''),
+      sources: dimensionSources(dimension),
+    }));
   return {
     code: country.code,
     coverage: formatPercent(country.dimensionCoverage),
     coverageFloor,
     coveragePercent,
     crisisRegistrySize: country.crisisRegistrySize,
-    gaps: activeCountryDimensions(country)
-      .filter(isCoverageGap)
-      .map((dimension) => ({
-        id: dimension.id,
-        imputationClass: String(dimension.imputationClass || ''),
-        sources: dimensionSources(dimension),
-      })),
+    gapCount: gaps.length,
+    gaps,
     imputationShare: formatPercent(country.imputationShare),
     readingCount: readings.length,
     readings: readings.join('; '),
@@ -2441,11 +2443,16 @@ export function buildMicrostateCoverageStory({
   methodologyFormula,
 }) {
   if (country.microstateTerritory !== true) return null;
-  return buildMicrostateCoverageStoryContent({
+  const story = buildMicrostateCoverageStoryContent({
     ...microstateCoverageStoryFacts(country),
     capturedDate: prettyDate(capturedAt),
     methodologyFormula,
   });
+  if (!story) return null;
+  return {
+    ...story,
+    crisis: formatCrisisContext(country, { noMembershipText: story.crisis }),
+  };
 }
 
 export function dimensionInventoryNote(country, dimension) {
@@ -2562,6 +2569,20 @@ function describeCountryAvailableEvidenceFaq(country) {
     : describeAvailableEvidence(country);
 }
 
+function formatCrisisContext(country, { links = false, noMembershipText = null } = {}) {
+  const countryName = links ? escapeHtml(country.name) : country.name;
+  if (country.crisisMemberships.length > 0) {
+    const memberships = country.crisisMemberships
+      .map((crisis) => links
+        ? `<a href="/crises/${escapeHtml(crisis.slug)}/">${escapeHtml(crisis.shortTitle)}</a>`
+        : crisis.shortTitle)
+      .join(', ');
+    return `The crisis registry links ${countryName} to ${memberships}. Tracker scopes are fixed and do not cover every crisis.`;
+  }
+  if (noMembershipText != null) return links ? escapeHtml(noMembershipText) : noMembershipText;
+  return `${countryName} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
+}
+
 export function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
   const scorePublished = country.headlineEligible !== false;
   if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
@@ -2578,12 +2599,13 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
   };
   const peerLinks = country.peers.map(peerLink).join(', ');
   const regionalLinks = country.regionalPeers.map(peerLink).join(', ');
-  const crisisText = country.crisisMemberships.length > 0
-    ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
-    : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
   const coverageStory = !scorePublished
     ? buildMicrostateCoverageStory({ country, capturedAt, methodologyFormula })
     : null;
+  const crisisText = formatCrisisContext(country, {
+    links: true,
+    noMembershipText: coverageStory?.crisis ?? null,
+  });
   const faqs = coverageStory?.faqs || countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
     const inventory = selectUnrankedInventory(country);
@@ -2608,7 +2630,7 @@ ${inventoryItems}
         <h3>Nearest ranked comparators</h3>
         <p>${escapeHtml(coverageStory.comparatorLead)} Nearest ranked comparators: ${comparatorLinks}. ${escapeHtml(coverageStory.comparatorTail)}</p>
         <h3>Tracked crisis context</h3>
-        <p>${escapeHtml(coverageStory.crisis)}</p>
+        <p>${crisisText}</p>
         <h3>Reading limits</h3>
         <p>${escapeHtml(coverageStory.limits)}</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>

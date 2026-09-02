@@ -57,11 +57,11 @@ export function maskedSentences(value, countryNames) {
   const countryRe = new RegExp(countryPattern, 'giu');
   const segments = String(value || '')
     .replace(/\s+/g, ' ')
+    .replace(/[\p{N}]+(?:[.,:/-][\p{N}]+)*/gu, '<number>')
     .match(/[^.!?]+(?:[.!?]+|$)/g) || [];
   return segments
     .map((sentence) => sentence
       .replace(countryRe, '<country>')
-      .replace(/[\p{N}]+(?:[.,:/-][\p{N}]+)*/gu, '<number>')
       .toLocaleLowerCase('en-US')
       .replace(/[^\p{L}<>’'\s-]/gu, ' ')
       .replace(/\s+/g, ' ')
@@ -86,6 +86,26 @@ function readCountryMain(corpusDir, country) {
   };
 }
 
+function readPublishedFloorCountry(corpusDir, country) {
+  const page = readCountryMain(corpusDir, country);
+  const snapshot = JSON.parse(readFileSync(
+    resolve(corpusDir, `countries/${country.slug}/resilience.json`),
+    'utf8',
+  ));
+  if (
+    snapshot.countryCode !== country.code
+    || snapshot.headlineEligible !== true
+    || !Number.isInteger(snapshot.rank)
+    || snapshot.rank < 1
+    || !Number.isFinite(snapshot.overallScore)
+  ) {
+    throw new Error(
+      `${page.route} must be a headline-eligible ranked page with a published overall score`,
+    );
+  }
+  return page;
+}
+
 function pairMetric(left, right) {
   return {
     codes: [left.code, right.code],
@@ -100,7 +120,7 @@ export function auditMicrostateCorpusSimilarity({
   cohort = DEFAULT_MICROSTATE_COHORT,
 } = {}) {
   if (!corpusDir) throw new Error('corpusDir is required');
-  const floorPages = floorPair.map((country) => readCountryMain(corpusDir, country));
+  const floorPages = floorPair.map((country) => readPublishedFloorCountry(corpusDir, country));
   const cohortPages = cohort.map((country) => readCountryMain(corpusDir, country));
   const floor = pairMetric(floorPages[0], floorPages[1]);
   const threshold = floor.jaccard + 0.05;
