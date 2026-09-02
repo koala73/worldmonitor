@@ -3812,7 +3812,7 @@ describe('crawlable corpus generator', () => {
       assert.match(changelogIndex, /methodology_version is now v8/);
       assert.match(
         changelogIndex,
-        /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/,
+        /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/,
       );
       assert.match(changelogPage2, /<link rel="prev" href="https:\/\/www\.worldmonitor\.app\/reference\/changelog\/">/);
       assert.match(changelogPage2, /name="robots" content="noindex, follow"/);

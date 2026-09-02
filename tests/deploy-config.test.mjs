@@ -806,7 +806,7 @@ describe('crawlable content corpus deployment contracts', () => {
       writeFixturePage(
         publicDir,
         'reference/changelog/index.html',
-        '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
+        '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
       );
       writeFixturePage(
         publicDir,
