@@ -11,6 +11,13 @@
 // a user_key 50/day rejection cannot SET away a Pro Business 250/day charge on
 // the same key.
 //
+// The clamp is only sound while this script is the ONLY writer of KEYS[1].
+// On the shared REST key it is not: `reserveDailyMeter` INCRs and issues its
+// rejection DECR as a separate round-trip, entirely outside this EVAL, so a
+// REST rollback can land after a clamp has already written the limit and push
+// the counter below real accepted usage. ARGV[4] lets the caller turn the SET
+// off for exactly that counter; the rejection itself is unaffected.
+//
 // docker/redis-rest-proxy.mjs carries a byte-identical pinned copy because it
 // allowlists EVAL scripts by exact text. Keep the two copies in sync.
 //
@@ -19,6 +26,9 @@
 // ARGV[1] = finite limit, or empty for unlimited (meter only)
 // ARGV[2] = TTL seconds
 // ARGV[3] = weight — units this call charges (absent/invalid → 1)
+// ARGV[4] = residue clamp: `0` disables the SET, anything else (absent or
+//           unparseable included) leaves it ON, so a caller from before this
+//           argument keeps today's behaviour
 //
 // The weight is why a shared REST/MCP budget can be one counter: a cache-read
 // tool charges 1 like a REST request, and a tool that fans out downstream
@@ -33,6 +43,7 @@ export const MCP_QUOTA_RESERVE_SCRIPT = [
   'local ttl = tonumber(ARGV[2])',
   'local weight = tonumber(ARGV[3])',
   'if weight == nil or weight < 1 then weight = 1 end',
+  'local clamp_enabled = tonumber(ARGV[4]) ~= 0',
   "local n = redis.call('INCRBY', KEYS[1], weight)",
   'if ttl ~= nil and ttl > 0 then',
   "  redis.call('EXPIRE', KEYS[1], ttl)",
@@ -77,16 +88,18 @@ export const MCP_QUOTA_RESERVE_SCRIPT = [
   'end',
   '',
   "n = redis.call('DECRBY', KEYS[1], weight)",
-  'local seen = read_floor()',
-  'if seen ~= -1 then',
-  '  local clamp_to = limit',
-  '  if seen ~= nil and seen > clamp_to then clamp_to = seen end',
-  '  if n > clamp_to then',
-  "    redis.call('SET', KEYS[1], clamp_to)",
-  '    if ttl ~= nil and ttl > 0 then',
-  "      redis.call('EXPIRE', KEYS[1], ttl)",
+  'if clamp_enabled then',
+  '  local seen = read_floor()',
+  '  if seen ~= -1 then',
+  '    local clamp_to = limit',
+  '    if seen ~= nil and seen > clamp_to then clamp_to = seen end',
+  '    if n > clamp_to then',
+  "      redis.call('SET', KEYS[1], clamp_to)",
+  '      if ttl ~= nil and ttl > 0 then',
+  "        redis.call('EXPIRE', KEYS[1], ttl)",
+  '      end',
+  '      n = clamp_to',
   '    end',
-  '    n = clamp_to',
   '  end',
   'end',
   'return {0, n}',

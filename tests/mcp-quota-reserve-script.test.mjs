@@ -147,9 +147,13 @@ function reserve({ argv, initial = {} }) {
   return { status, count, redis };
 }
 
-/** Reserve `weight` units against `limit` with the counter pre-seeded to `used`. */
-const charge = (weight, limit, used, floor) => reserve({
-  argv: [limit === null ? '' : limit, PRO_DAILY_QUOTA_TTL_SECONDS, weight],
+/**
+ * Reserve `weight` units against `limit` with the counter pre-seeded to `used`.
+ * `clamp` omitted means ARGV[4] is genuinely absent, which is what a caller
+ * from before the flag sends.
+ */
+const charge = (weight, limit, used, floor, clamp) => reserve({
+  argv: [limit === null ? '' : limit, PRO_DAILY_QUOTA_TTL_SECONDS, weight, clamp],
   initial: {
     ...(used ? { [COUNTER_KEY]: used } : {}),
     ...(floor === undefined ? {} : { [FLOOR_KEY]: floor }),
@@ -278,4 +282,84 @@ describe('MCP quota reserve script — the ARGV[3] weight guard', () => {
     assert.equal(status, 0);
     assert.equal(redis.count, 50, 'a -5 DECRBY on rollback would hand back 5 free calls');
   });
+});
+
+describe('MCP quota reserve script — the ARGV[4] residue clamp switch', () => {
+  // The clamp SETs the counter to the enforced limit, which is only sound while
+  // this script is the counter's ONLY writer. On the dedicated MCP counter it
+  // is. On the shared REST key `reserveDailyMeter` INCRs and DECRs outside this
+  // EVAL, so a REST rollback landing after a clamp would push the counter below
+  // real usage. `reserveQuota` therefore passes 0 for the shared key only.
+  //
+  // Rejection is NOT what the flag governs: both arms must still refuse, roll
+  // the weight back, and report the post-rollback count.
+  const residue = (clamp) => charge(3, 250, 280, 250, clamp);
+
+  it('DOES clamp on the dedicated counter (ARGV[4] = 1)', () => {
+    const { status, count, redis } = residue(1);
+    assert.equal(status, 0);
+    assert.equal(count, 250);
+    assert.equal(redis.count, 250, 'residue above the enforced limit is written back down');
+    assert.deepEqual(
+      redis.commands.filter((c) => c[0] === 'SET' && c[1] === COUNTER_KEY),
+      [['SET', COUNTER_KEY, '250']],
+    );
+  });
+
+  it('does NOT clamp on the shared REST key (ARGV[4] = 0)', () => {
+    const { status, count, redis } = residue(0);
+    assert.equal(status, 0, 'the rejection is unaffected by the clamp switch');
+    assert.equal(count, 280, 'the reported count is the post-rollback total, un-clamped');
+    assert.equal(redis.count, 280, 'a concurrent REST DECR must not land after a SET');
+    assert.deepEqual(
+      redis.commands.filter((c) => c[0] === 'SET' && c[1] === COUNTER_KEY),
+      [],
+      'the counter must never be SET when the clamp is disabled',
+    );
+  });
+
+  it('rolls the weight back in full on both arms', () => {
+    for (const clamp of [0, 1]) {
+      const { redis } = charge(3, 1000, 999, 1000, clamp);
+      assert.deepEqual(
+        redis.commands.filter((c) => c[0] === 'DECRBY'),
+        [['DECRBY', COUNTER_KEY, '3']],
+        `clamp=${clamp} must still undo its own INCRBY`,
+      );
+    }
+  });
+
+  it('a disabled clamp does not read the floor key at all', () => {
+    const { redis } = residue(0);
+    assert.deepEqual(
+      redis.commands.filter((c) => c[0] === 'GET'),
+      [],
+      'skipping the SET must also skip the read that only fed it',
+    );
+  });
+
+  it('the clamp still records the floor on a SUCCESSFUL shared-key reserve', () => {
+    // The switch governs the reject path only. A successful reserve must keep
+    // writing the floor, or a later dedicated-counter rejection would clamp
+    // against a floor this call never recorded.
+    const { status, redis } = charge(3, 1000, 10, undefined, 0);
+    assert.equal(status, 1);
+    assert.equal(redis.floor, 1000);
+  });
+
+  for (const [label, argv4] of [
+    ['ABSENT', undefined],
+    ['empty', ''],
+    ['unparseable', 'no'],
+    ['1', 1],
+    ['-1', -1],
+  ]) {
+    it(`an ARGV[4] of ${label} leaves the clamp ENABLED`, () => {
+      // Fail-safe direction: only an explicit 0 gives up the residue
+      // correction, so a caller that has not been taught the argument keeps
+      // exactly today's behaviour.
+      const { redis } = residue(argv4);
+      assert.equal(redis.count, 250, `ARGV[4]=${JSON.stringify(argv4)} must not disable the clamp`);
+    });
+  }
 });

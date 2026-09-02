@@ -301,6 +301,25 @@ describe('reserveQuota charges the tool weight only against an api allowance', (
     assert.deepEqual(decrby.map((cmd) => cmd[2]), [3]);
   });
 
+  it('gives up the residue clamp on the shared REST key, and only there', async () => {
+    // The script's clamp SETs the counter down to the enforced limit, which is
+    // sound only where the script is the counter's ONLY writer. REST's
+    // `reserveDailyMeter` INCRs and rolls back outside the EVAL, so on the
+    // shared key that DECR can land after the SET and push the counter below
+    // real usage. ARGV[4] is that switch; the rejection is unaffected.
+    const clampFlagFor = async (budget) => {
+      const pipe = makePipelineMock({ initialCount: 10 });
+      await reserveQuota('u1', pipe.pipeline, budget, 2);
+      const evalCmd = pipe.ops.flat().find((cmd) => cmd[0] === 'EVAL');
+      assert.ok(evalCmd, 'the reservation must go through exactly one EVAL');
+      return evalCmd[8];
+    };
+    assert.equal(await clampFlagFor({ allowance: 'api', counter: 'api', limit: 1000 }), 0);
+    assert.equal(await clampFlagFor({ allowance: 'api', counter: 'mcp', limit: 1000 }), 1);
+    assert.equal(await clampFlagFor({ allowance: 'mcp', limit: 50 }), 1);
+    assert.equal(await clampFlagFor(undefined), 1);
+  });
+
   it('rollback on a dedicated allowance decrements the ONE unit it charged', async () => {
     const pipe = makePipelineMock({ initialCount: 0 });
     const res = await reserveQuota('u1', pipe.pipeline, { allowance: 'mcp', limit: 50 }, 3);

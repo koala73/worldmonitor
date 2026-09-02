@@ -132,6 +132,20 @@ export function resolveMcpBudget(
 }
 
 /**
+ * Whether this budget is metered on the REST meter rather than MCP's own
+ * counter — i.e. whether REST requests the agent never made spend it too.
+ *
+ * One predicate, three consumers: it picks the Redis key below, it decides
+ * whether the reservation may clamp residue (the shared key has a second
+ * writer, `reserveDailyMeter`, whose rollback is not inside the EVAL), and it
+ * is what the allowance resource and the -32029 denial publish so a caller can
+ * tell whose traffic exhausted the number.
+ */
+export function isSharedRestCounter(budget: McpBudget | undefined): boolean {
+  return budget?.allowance === 'api' && budget.counter === 'api';
+}
+
+/**
  * The daily counter a budget charges. Exported because the settings reader
  * (`api/user/mcp-quota.ts`) and the `account/mcp-allowance` resource must READ
  * the counter this module WRITES; a second copy of this choice would be exactly
@@ -143,7 +157,7 @@ export function resolveMcpBudget(
  * inside `dailyCounterKey`.
  */
 export function budgetCounterKey(budget: McpBudget | undefined, userId: string, date?: Date): string {
-  if (budget?.allowance !== 'api' || budget.counter !== 'api') return dailyCounterKey(userId, date);
+  if (!isSharedRestCounter(budget)) return dailyCounterKey(userId, date);
   const key = apiKeyDailyKey(userId, date);
   return key ? `${envPrefix()}${key}` : key;
 }
@@ -187,6 +201,16 @@ export async function reserveQuota(
   const floorKey = dailyQuotaFloorKey(userId);
   if (!key || !floorKey) return { ok: false, reason: 'redis-unavailable' };
 
+  // The script's residue clamp SETs the counter down, which is only sound while
+  // the script is the counter's only writer. On the dedicated MCP counter it
+  // is. On the shared REST key it is not: `reserveDailyMeter` INCRs and issues
+  // its rejection DECR as a separate round-trip, so that DECR can land after
+  // the clamp and push the counter BELOW real accepted usage — free calls, in
+  // the direction that costs us money. Rejection is unaffected either way; only
+  // the residue correction is given up, and residue on the shared key already
+  // heals at the daily rollover.
+  const clampResidue = isSharedRestCounter(budget) ? 0 : 1;
+
   let pipeResult: Array<{ result?: unknown; error?: unknown }> | null;
   try {
     pipeResult = await pipeline([[
@@ -198,6 +222,7 @@ export async function reserveQuota(
       limit === null ? '' : limit,
       PRO_DAILY_QUOTA_TTL_SECONDS,
       weight,
+      clampResidue,
     ]]);
   } catch {
     pipeResult = null;
