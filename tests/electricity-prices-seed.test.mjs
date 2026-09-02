@@ -7,9 +7,11 @@ import {
   EIA_REGIONS,
   ELECTRICITY_INDEX_KEY,
   ELECTRICITY_KEY_PREFIX,
+  ELECTRICITY_META_KEY,
   ELECTRICITY_TTL_SECONDS,
   fetchEiaRegion,
   fetchEntsoERegion,
+  main,
   meetsEntsoPublicationFloor,
 } from '../scripts/seed-electricity-prices.mjs';
 
@@ -138,14 +140,111 @@ describe('fetchEntsoERegion transport recovery', () => {
       console.warn = originalWarn;
     }
   });
+
+  it('contains direct failure when no proxy is configured', async () => {
+    let directCalls = 0;
+    let proxyCalls = 0;
+    const result = await fetchEntsoERegion(
+      ENTSO_REGION,
+      'test-token',
+      ENTSO_TODAY,
+      ENTSO_YESTERDAY,
+      {
+        fetchFn: async () => {
+          directCalls += 1;
+          return { ok: false, status: 503 };
+        },
+        proxyAuth: null,
+        proxyFetcher: async () => {
+          proxyCalls += 1;
+          return { buffer: Buffer.from(entsoXml('90.00')) };
+        },
+      },
+    );
+
+    assert.equal(directCalls, 3);
+    assert.equal(proxyCalls, 0);
+    assert.equal(result, null);
+  });
 });
 
 describe('ENTSO-E full-snapshot publication floor', () => {
-  it('does not accept an EIA-only result as full-snapshot coverage', () => {
-    const eiaOnlyCount = EIA_REGIONS.length;
-    assert.equal(eiaOnlyCount, 7, 'fixture must represent the complete EIA cohort');
-    assert.equal(meetsEntsoPublicationFloor(0), false);
+  it('requires at least seven ENTSO-E regions', () => {
+    assert.equal(meetsEntsoPublicationFloor(6), false);
+    assert.equal(meetsEntsoPublicationFloor(7), true);
   });
+
+  it('preserves full-snapshot freshness and rejects a failed degraded EIA write', async () => {
+    const originalFetch = globalThis.fetch;
+    const originalEnv = {
+      ENTSO_E_TOKEN: process.env.ENTSO_E_TOKEN,
+      EIA_API_KEY: process.env.EIA_API_KEY,
+      UPSTASH_REDIS_REST_URL: process.env.UPSTASH_REDIS_REST_URL,
+      UPSTASH_REDIS_REST_TOKEN: process.env.UPSTASH_REDIS_REST_TOKEN,
+    };
+    const pipelines = [];
+
+    delete process.env.ENTSO_E_TOKEN;
+    process.env.EIA_API_KEY = 'test-key';
+    process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example';
+    process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+    globalThis.fetch = async (url, init = {}) => {
+      const href = String(url);
+      if (href.startsWith('https://api.eia.gov/')) {
+        return new Response(JSON.stringify({ response: { data: [{ value: 10_000 }] } }), {
+          status: 200,
+        });
+      }
+
+      const command = JSON.parse(init.body);
+      if (href.endsWith('/pipeline')) {
+        pipelines.push(command);
+        if (command[0]?.[0] === 'SET') {
+          return new Response(JSON.stringify([
+            { error: 'ERR write failed' },
+            ...command.slice(1).map(() => ({ result: 'OK' })),
+          ]), { status: 200 });
+        }
+        return new Response(JSON.stringify(command.map(() => ({ result: 1 }))), { status: 200 });
+      }
+
+      return new Response(JSON.stringify({ result: command[0] === 'SET' ? 'OK' : 1 }), {
+        status: 200,
+      });
+    };
+
+    try {
+      await assert.rejects(main(), /Redis pipeline: 1\/7 commands failed/);
+    } finally {
+      globalThis.fetch = originalFetch;
+      for (const [key, value] of Object.entries(originalEnv)) {
+        if (value == null) delete process.env[key];
+        else process.env[key] = value;
+      }
+    }
+
+    const setPipeline = pipelines.find((pipeline) => pipeline[0]?.[0] === 'SET');
+    assert.ok(setPipeline, 'expected a degraded EIA write');
+    const setKeys = setPipeline.map((command) => command[1]);
+    assert.equal(EIA_REGIONS.length, 7, 'fixture must represent the complete EIA cohort');
+    assert.deepEqual(
+      setKeys,
+      EIA_REGIONS.map((region) => `${ELECTRICITY_KEY_PREFIX}${region.region}`),
+    );
+    assert.equal(setKeys.includes(ELECTRICITY_INDEX_KEY), false);
+    assert.equal(setKeys.includes(ELECTRICITY_META_KEY), false);
+    assert.ok(
+      pipelines.some((pipeline) => {
+        const expireKeys = pipeline
+          .filter((command) => command[0] === 'EXPIRE')
+          .map((command) => command[1]);
+        return expireKeys.includes(ELECTRICITY_INDEX_KEY)
+          && expireKeys.includes(ELECTRICITY_META_KEY);
+      }),
+      'expected the prior full snapshot and freshness metadata to retain their TTL',
+    );
+  });
+
 });
 
 // ── buildElectricityIndex ─────────────────────────────────────────────────────

@@ -324,7 +324,11 @@ export async function main() {
         const usCommands = eiaResults.map((entry) => [
           'SET', `${ELECTRICITY_KEY_PREFIX}${entry.region}`, JSON.stringify(entry), 'EX', ELECTRICITY_TTL_SECONDS,
         ]);
-        await redisPipeline(usCommands);
+        const results = await redisPipeline(usCommands);
+        const failures = results.filter((r) => r?.error || r?.result === 'ERR');
+        if (failures.length > 0) {
+          throw new Error(`Redis pipeline: ${failures.length}/${usCommands.length} commands failed`);
+        }
         console.log(`[electricity] EU below threshold but wrote ${eiaResults.length} US regions`);
       }
       return;
