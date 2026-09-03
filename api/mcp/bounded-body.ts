@@ -1,4 +1,4 @@
-type BoundedBodyResponse = {
+type BoundedBodySource = {
   body?: ReadableStream<Uint8Array> | null;
   headers?: { get(name: string): string | null };
   text?: () => Promise<string>;
@@ -29,61 +29,66 @@ export class ResponseBodyTooLargeError extends Error {
   }
 }
 
+async function readBoundedBody(
+  source: BoundedBodySource,
+  maxBytes: number,
+  createTooLargeError: (maxBytes: number) => Error,
+): Promise<Uint8Array> {
+  if (!Number.isFinite(maxBytes) || maxBytes < 0) {
+    throw new TypeError('maxBytes must be a non-negative finite number');
+  }
+
+  const contentLengthRaw = source.headers?.get('content-length');
+  if (contentLengthRaw !== null && contentLengthRaw !== undefined && contentLengthRaw !== '') {
+    const contentLength = Number(contentLengthRaw);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      if (source.body) await source.body.cancel().catch(() => {});
+      throw createTooLargeError(maxBytes);
+    }
+  }
+
+  if (!source.body) return new Uint8Array();
+
+  const reader = source.body.getReader();
+  const body = new Uint8Array(Math.floor(maxBytes));
+  let total = 0;
+  let cancelled = false;
+  const cancel = async () => {
+    if (cancelled) return;
+    cancelled = true;
+    await reader.cancel().catch(() => {});
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      if (total + value.byteLength > maxBytes) {
+        await cancel();
+        throw createTooLargeError(maxBytes);
+      }
+      body.set(value, total);
+      total += value.byteLength;
+    }
+  } catch (error) {
+    await cancel();
+    throw error;
+  }
+
+  return body.slice(0, total);
+}
+
 /**
  * Read an upstream response with exact raw-byte accounting. An advertised
  * oversize response is rejected before the stream is pulled; a chunked or
  * understated response is cancelled as soon as it crosses the cap.
  */
 export async function readBoundedResponseBody(
-  response: BoundedBodyResponse,
+  response: BoundedBodySource,
   maxBytes: number,
 ): Promise<Uint8Array> {
-  if (!Number.isFinite(maxBytes) || maxBytes < 0) {
-    throw new TypeError('maxBytes must be a non-negative finite number');
-  }
-
-  const contentLengthRaw = response.headers?.get('content-length');
-  if (contentLengthRaw !== null && contentLengthRaw !== undefined && contentLengthRaw !== '') {
-    const contentLength = Number(contentLengthRaw);
-    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-      if (response.body) {
-        await response.body.cancel().catch(() => {});
-      }
-      throw new ResponseBodyTooLargeError(maxBytes);
-    }
-  }
-
-  if (!response.body) return new Uint8Array();
-
-  const reader = response.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value || value.byteLength === 0) continue;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => {});
-        throw new ResponseBodyTooLargeError(maxBytes);
-      }
-      chunks.push(value);
-    }
-  } catch (error) {
-    if (!(error instanceof ResponseBodyTooLargeError)) {
-      await reader.cancel().catch(() => {});
-    }
-    throw error;
-  }
-
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
+  return readBoundedBody(response, maxBytes, (limit) => new ResponseBodyTooLargeError(limit));
 }
 
 /**
@@ -91,7 +96,7 @@ export async function readBoundedResponseBody(
  * untrusted error bodies; the unread tail is discarded, never copied.
  */
 export async function readBoundedResponseText(
-  response: BoundedBodyResponse,
+  response: BoundedBodySource,
   maxBytes: number,
 ): Promise<string> {
   const reader = response.body?.getReader();
@@ -134,50 +139,5 @@ export async function readBoundedRequestBody(
   request: Request,
   maxBytes: number,
 ): Promise<Uint8Array> {
-  if (!Number.isFinite(maxBytes) || maxBytes < 0) {
-    throw new TypeError('maxBytes must be a non-negative finite number');
-  }
-
-  const contentLengthRaw = request.headers.get('content-length');
-  if (contentLengthRaw !== null && contentLengthRaw !== '') {
-    const contentLength = Number(contentLengthRaw);
-    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
-      if (request.body) {
-        await request.body.cancel().catch(() => {});
-      }
-      throw new RequestBodyTooLargeError(maxBytes);
-    }
-  }
-
-  if (!request.body) return new Uint8Array();
-
-  const reader = request.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      if (!value || value.byteLength === 0) continue;
-      total += value.byteLength;
-      if (total > maxBytes) {
-        await reader.cancel().catch(() => {});
-        throw new RequestBodyTooLargeError(maxBytes);
-      }
-      chunks.push(value);
-    }
-  } catch (err) {
-    if (!(err instanceof RequestBodyTooLargeError)) {
-      await reader.cancel().catch(() => {});
-    }
-    throw err;
-  }
-
-  const body = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    body.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return body;
+  return readBoundedBody(request, maxBytes, (limit) => new RequestBodyTooLargeError(limit));
 }

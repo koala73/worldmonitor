@@ -230,6 +230,26 @@ describe('readBoundedResponseBody', () => {
     assert.deepEqual(body, payload);
   });
 
+  it('assembles a response split into one-byte fragments', async () => {
+    const expected = new Uint8Array(4096);
+    for (let index = 0; index < expected.length; index += 1) expected[index] = index % 251;
+    let offset = 0;
+    const stream = new ReadableStream({
+      pull(controller) {
+        if (offset === expected.length) {
+          controller.close();
+          return;
+        }
+        controller.enqueue(expected.subarray(offset, offset + 1));
+        offset += 1;
+      },
+    });
+
+    const body = await readBoundedResponseBody(new Response(stream), expected.length);
+
+    assert.deepEqual(body, expected);
+  });
+
   it('rejects an advertised Content-Length over the cap without reading', async () => {
     let pulls = 0;
     let cancelled = false;

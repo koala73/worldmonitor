@@ -21,7 +21,7 @@ function describePath(toolName, schemaName, path) {
 
 function collectTypeFailures(value, location, failures) {
   if (typeof value === 'string') {
-    if (!JSON_SCHEMA_TYPES.has(value)) {
+    if (value !== '[truncated]' && !JSON_SCHEMA_TYPES.has(value)) {
       failures.push(`${location}: invalid JSON Schema type ${JSON.stringify(value)}`);
     }
     return;
@@ -49,33 +49,110 @@ function collectTypeFailures(value, location, failures) {
     } else {
       seen.add(member);
     }
-    if (!JSON_SCHEMA_TYPES.has(member)) {
+    if (member !== '[truncated]' && !JSON_SCHEMA_TYPES.has(member)) {
       failures.push(`${location}[${index}]: invalid JSON Schema type ${JSON.stringify(member)}`);
     }
   }
 }
 
-function collectValueFailures(value, location, failures) {
-  if (value === '[truncated]') {
-    failures.push(`${location}: contains the forbidden [truncated] wire sentinel`);
-    return;
-  }
-  if (Array.isArray(value)) {
-    for (let index = 0; index < value.length; index += 1) {
-      collectValueFailures(value[index], `${location}[${index}]`, failures);
+function collectSentinelFailures(value, location, failures) {
+  const stack = [{ value, location }];
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (current.value === '[truncated]') {
+      failures.push(`${current.location}: contains the forbidden [truncated] wire sentinel`);
+    } else if (Array.isArray(current.value)) {
+      for (let index = current.value.length - 1; index >= 0; index -= 1) {
+        stack.push({ value: current.value[index], location: `${current.location}[${index}]` });
+      }
+    } else if (current.value !== null && typeof current.value === 'object') {
+      const entries = Object.entries(current.value);
+      for (let index = entries.length - 1; index >= 0; index -= 1) {
+        const [key, nested] = entries[index];
+        stack.push({ value: nested, location: `${current.location}.${key}` });
+      }
     }
-    return;
   }
-  if (value === null || typeof value !== 'object') return;
+}
 
-  for (const [key, nested] of Object.entries(value)) {
-    const nestedLocation = `${location}.${key}`;
-    if (key === 'type') {
-      collectTypeFailures(nested, nestedLocation, failures);
+const SCHEMA_MAP_KEYWORDS = [
+  '$defs',
+  'definitions',
+  'dependentSchemas',
+  'dependencies',
+  'patternProperties',
+  'properties',
+];
+const SCHEMA_VALUE_KEYWORDS = [
+  'additionalItems',
+  'additionalProperties',
+  'contains',
+  'contentSchema',
+  'else',
+  'if',
+  'items',
+  'not',
+  'propertyNames',
+  'then',
+  'unevaluatedItems',
+  'unevaluatedProperties',
+];
+const SCHEMA_ARRAY_KEYWORDS = ['allOf', 'anyOf', 'oneOf', 'prefixItems'];
+
+function collectSchemaTypeFailures(rootSchema, rootLocation, failures) {
+  const stack = [{ schema: rootSchema, location: rootLocation }];
+  const pushSchema = (schema, location) => {
+    if (schema === true || schema === false) return;
+    if (schema !== null && typeof schema === 'object' && !Array.isArray(schema)) {
+      stack.push({ schema, location });
+    }
+  };
+  const pushSchemaValue = (schema, location) => {
+    if (Array.isArray(schema)) {
+      for (let index = schema.length - 1; index >= 0; index -= 1) {
+        pushSchema(schema[index], `${location}[${index}]`);
+      }
     } else {
-      collectValueFailures(nested, nestedLocation, failures);
+      pushSchema(schema, location);
+    }
+  };
+
+  while (stack.length > 0) {
+    const { schema, location } = stack.pop();
+    if (Object.prototype.hasOwnProperty.call(schema, 'type')) {
+      collectTypeFailures(schema.type, `${location}.type`, failures);
+    }
+
+    for (const keyword of SCHEMA_MAP_KEYWORDS) {
+      const schemas = schema[keyword];
+      if (schemas === null || typeof schemas !== 'object' || Array.isArray(schemas)) continue;
+      for (const [name, childSchema] of Object.entries(schemas)) {
+        pushSchema(childSchema, `${location}.${keyword}.${name}`);
+      }
+    }
+    for (const keyword of SCHEMA_VALUE_KEYWORDS) {
+      pushSchemaValue(schema[keyword], `${location}.${keyword}`);
+    }
+    for (const keyword of SCHEMA_ARRAY_KEYWORDS) {
+      const schemas = schema[keyword];
+      if (!Array.isArray(schemas)) continue;
+      for (let index = schemas.length - 1; index >= 0; index -= 1) {
+        pushSchema(schemas[index], `${location}.${keyword}[${index}]`);
+      }
     }
   }
+}
+
+export function collectRequiredCapabilityFailures(capabilities) {
+  if (capabilities === null || typeof capabilities !== 'object' || Array.isArray(capabilities)
+    || !Object.prototype.hasOwnProperty.call(capabilities, 'tools')) {
+    return ['initialize.capabilities.tools: required capability is missing'];
+  }
+  if (capabilities.tools === null || typeof capabilities.tools !== 'object'
+    || Array.isArray(capabilities.tools)) {
+    return ['initialize.capabilities.tools: capability must be an object'];
+  }
+  return [];
 }
 
 /**
@@ -99,7 +176,8 @@ export function collectToolSchemaWireFailures(tools) {
         failures.push(`${location} at $: expected a non-empty schema object`);
         continue;
       }
-      collectValueFailures(schema, location, failures);
+      collectSentinelFailures(schema, location, failures);
+      collectSchemaTypeFailures(schema, location, failures);
     }
   }
   return failures;

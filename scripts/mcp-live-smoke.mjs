@@ -64,7 +64,10 @@
 // Usage: node scripts/mcp-live-smoke.mjs
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
 
-import { collectToolSchemaWireFailures } from './mcp-schema-wire-check.mjs';
+import {
+  collectRequiredCapabilityFailures,
+  collectToolSchemaWireFailures,
+} from './mcp-schema-wire-check.mjs';
 
 const HOSTS = (process.env.MCP_SMOKE_HOSTS ?? 'https://worldmonitor.app,https://www.worldmonitor.app')
   .split(',').map((h) => h.trim()).filter(Boolean);
@@ -192,6 +195,10 @@ async function walkHost(host) {
   // 2. Derived capability walk. Catalog listings are fetched once per host
   //    and reused by their sub-walks (request-budget discipline, see header).
   const capabilities = init.capabilities ?? {};
+  for (const detail of collectRequiredCapabilityFailures(capabilities)) {
+    checks += 1;
+    fail(host, 'required capability', detail);
+  }
   let promptsList = null;
   let resourcesList = null;
   for (const capability of Object.keys(capabilities)) {

@@ -1,7 +1,11 @@
 import { strict as assert } from 'node:assert';
 import { describe, it } from 'node:test';
 
-import { collectToolSchemaWireFailures } from '../scripts/mcp-schema-wire-check.mjs';
+import {
+  collectRequiredCapabilityFailures,
+  collectToolSchemaWireFailures,
+} from '../scripts/mcp-schema-wire-check.mjs';
+import { TOOL_LIST_RESPONSE } from '../api/mcp/registry/index.ts';
 
 describe('collectToolSchemaWireFailures', () => {
   it('accepts valid type strings and union arrays at arbitrary depth', () => {
@@ -13,6 +17,29 @@ describe('collectToolSchemaWireFailures', () => {
       inputSchema: { type: 'object' },
       outputSchema,
     }]), []);
+  });
+
+  it('accepts schema properties named type without treating their names as keywords', () => {
+    const tools = [{
+      name: 'property_named_type',
+      inputSchema: { type: 'object' },
+      outputSchema: {
+        type: 'object',
+        properties: {
+          type: { type: 'string' },
+          metadata: {
+            type: 'object',
+            examples: [{ type: 'domain-value' }],
+          },
+        },
+      },
+    }];
+
+    assert.deepEqual(collectToolSchemaWireFailures(tools), []);
+  });
+
+  it('accepts the complete first-party tool catalog', () => {
+    assert.deepEqual(collectToolSchemaWireFailures(TOOL_LIST_RESPONSE), []);
   });
 
   it('reports every invalid type keyword with its tool and JSON path', () => {
@@ -46,6 +73,19 @@ describe('collectToolSchemaWireFailures', () => {
     assert.ok(failures.some((failure) => failure.includes('empty_tool.inputSchema')));
   });
 
+  it('reports truncation sentinels inside annotation data', () => {
+    const failures = collectToolSchemaWireFailures([{
+      name: 'truncated_annotation',
+      inputSchema: { type: 'object' },
+      outputSchema: {
+        type: 'object',
+        examples: [{ type: '[truncated]' }],
+      },
+    }]);
+
+    assert.ok(failures.some((failure) => failure.includes('examples[0].type')));
+  });
+
   it('reports empty and duplicate type arrays', () => {
     const failures = collectToolSchemaWireFailures([{
       name: 'bad_unions',
@@ -58,5 +98,15 @@ describe('collectToolSchemaWireFailures', () => {
 
     assert.ok(failures.some((failure) => failure.includes('type array must not be empty')));
     assert.ok(failures.some((failure) => failure.includes('duplicate JSON Schema type')));
+  });
+});
+
+describe('collectRequiredCapabilityFailures', () => {
+  it('requires the production tools capability', () => {
+    assert.deepEqual(collectRequiredCapabilityFailures({ tools: {} }), []);
+    assert.deepEqual(
+      collectRequiredCapabilityFailures({ prompts: {} }),
+      ['initialize.capabilities.tools: required capability is missing'],
+    );
   });
 });
