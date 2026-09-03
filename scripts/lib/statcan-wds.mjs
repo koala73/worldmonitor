@@ -102,6 +102,10 @@ export function parseVectorSeries(doc, vectorId) {
     const points = [];
     for (const pt of Array.isArray(object.vectorDataPoint) ? object.vectorDataPoint : []) {
       const refPer = typeof pt?.refPer === 'string' ? pt.refPer : null;
+      // Missing/suppressed observations are not measured zeros. Retain numeric
+      // strings, but do not let Number(null), Number('') or Number(false) invent data.
+      if (typeof pt?.value !== 'number'
+        && !(typeof pt?.value === 'string' && pt.value.trim() !== '')) continue;
       const value = typeof pt?.value === 'number' ? pt.value : Number(pt?.value);
       if (!refPer || !/^\d{4}-\d{2}-\d{2}$/.test(refPer) || !Number.isFinite(value)) continue;
       points.push({
