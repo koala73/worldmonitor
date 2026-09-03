@@ -161,6 +161,19 @@ async function settleBeforeDeadline<T>(
   }
 }
 
+function finishSuccessfulDigestAttempt(
+  variant: string,
+  lang: string,
+  slot: ReturnType<typeof beginDigestAttempt>,
+): null {
+  completeDigestAttempt(variant, lang, slot);
+  // Publication remains inside the shared in-flight promise. Clear the build
+  // identity before that phase starts so an outer response timeout cannot
+  // relabel a completed build as `build-error` and overwrite its canonical
+  // publication with a negative sentinel.
+  return null;
+}
+
 type DigestFeedEntry = { attemptId: string; category: string; feed: ServerFeed };
 
 /**
@@ -2042,7 +2055,7 @@ export async function listFeedDigest(
             const result = await buildDigest(variant, lang, (await revokedPromise).urls);
             const totalItems = Object.values(result.categories).reduce((sum, b) => sum + b.items.length, 0);
             if (totalItems > 0) {
-              completeDigestAttempt(variant, lang, leaderSlot);
+              leaderSlot = finishSuccessfulDigestAttempt(variant, lang, leaderSlot);
               return result;
             }
             leaderFailure = publishFailedAttempt(
@@ -2056,15 +2069,17 @@ export async function listFeedDigest(
             completeDigestAttempt(variant, lang, leaderSlot);
             return null;
           } catch (err) {
-            leaderFailure = publishFailedAttempt(
-              variant,
-              lang,
-              digestCacheKey,
-              leaderSlot,
-              'build-error',
-              30,
-            );
-            completeDigestAttempt(variant, lang, leaderSlot);
+            if (leaderSlot) {
+              leaderFailure = publishFailedAttempt(
+                variant,
+                lang,
+                digestCacheKey,
+                leaderSlot,
+                'build-error',
+                30,
+              );
+              completeDigestAttempt(variant, lang, leaderSlot);
+            }
             throw err;
           }
         },
@@ -3170,6 +3185,7 @@ export const __testing__ = {
   fallbackDigestCache,
   markFallbackCoverageStale,
   settleBeforeDeadline,
+  finishSuccessfulDigestAttempt,
   lastGoodStoreTesting,
   beginDigestAttempt,
   completeDigestAttempt,

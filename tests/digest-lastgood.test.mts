@@ -1017,6 +1017,25 @@ describe('durable last-good wiring (#7084)', () => {
     assert.ok(Date.now() - started < 2_000, 'the absolute deadline must bound every unresolved tail');
   });
 
+  it('a completed build is not relabeled as failed when publication crosses the response deadline', async () => {
+    reset();
+    let slot = mod.__testing__.beginDigestAttempt('full', 'en', new Date(NOW).toISOString());
+    slot = mod.__testing__.finishSuccessfulDigestAttempt('full', 'en', slot);
+
+    const publication = await mod.__testing__.settleBeforeDeadline(
+      new Promise(() => {}),
+      Date.now() + 20,
+      'unavailable',
+    );
+    assert.equal(publication, 'unavailable');
+    assert.equal(slot, null, 'successful build completion must clear the pending leader identity');
+    assert.equal(
+      stub.transactionCalls.length,
+      0,
+      'a publication timeout must not write a build-error attempt or canonical sentinel',
+    );
+  });
+
   it('fresh and cached serving fail CLOSED when revocations are unreadable', async () => {
     reset();
     stub.pipeline = async () => [{ error: 'ERR' }];
