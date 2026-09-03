@@ -84,6 +84,42 @@ for (const { url, origin } of PUBLIC_CORS_PROBES) {
   });
 }
 
+// api/mcp-proxy runs on Vercel's Node runtime (GHSA-887j socket pin). #4749
+// shipped it with the Web handler signature and every request — the OPTIONS
+// preflight included — 500'd in production while the mocked suite stayed
+// green (#4754). These probes hit www.worldmonitor.app, which Vercel serves
+// directly (the Worker above is bound to api.worldmonitor.app/* only), so the
+// answers are the function's own: a 204 preflight and the auth gate's 401
+// prove the (req, res) entry point ran end to end on a real deployment.
+// Nothing here proves anything until it is run against that deployment.
+const MCP_PROXY_URL = 'https://www.worldmonitor.app/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp';
+
+test('OPTIONS /api/mcp-proxy answers 204 with no body from the Node-runtime entry point', { skip: !SHOULD_RUN }, async () => {
+  const resp = await fetch(MCP_PROXY_URL, {
+    method: 'OPTIONS',
+    headers: {
+      Origin: ORIGIN,
+      'User-Agent': BROWSER_UA,
+      'Access-Control-Request-Method': 'POST',
+      'Access-Control-Request-Headers': 'content-type,x-worldmonitor-key',
+    },
+  });
+  const body = await resp.text();
+  assert.equal(resp.status, 204, `preflight should be 204 No Content; got ${resp.status} ${body.slice(0, 200)}`);
+  assert.equal(body, '', 'a 204 must carry no body');
+  assert.equal(resp.headers.get('access-control-allow-origin'), ORIGIN, 'ACAO must echo the dashboard origin');
+  assert.equal(resp.headers.get('access-control-allow-credentials'), 'true');
+  assert.match(resp.headers.get('cache-control') || '', /\bno-store\b/, 'proxy responses are never cacheable');
+});
+
+test("GET /api/mcp-proxy without credentials answers the function's own 401 JSON, not a runtime 500", { skip: !SHOULD_RUN }, async () => {
+  const resp = await fetch(MCP_PROXY_URL, { headers: { Origin: ORIGIN, 'User-Agent': BROWSER_UA } });
+  const body = await resp.text();
+  assert.equal(resp.status, 401, `expected the auth gate's 401; got ${resp.status} ${body.slice(0, 200)}`);
+  assert.deepEqual(JSON.parse(body), { error: 'Pro authentication required' });
+  assert.match(resp.headers.get('cache-control') || '', /\bno-store\b/);
+});
+
 for (const url of ENDPOINTS) {
   test(`OPTIONS ${url} returns ACAC: true for ${ORIGIN}`, { skip: !SHOULD_RUN }, async () => {
     const resp = await fetch(url, {

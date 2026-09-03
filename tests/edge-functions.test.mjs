@@ -110,15 +110,35 @@ describe('Edge Function shared helpers resolve', () => {
   });
 });
 
+// Routes that deliberately run on Vercel's Node runtime and may therefore
+// import node: built-ins. Adding one is a conspicuous diff on purpose: #4749
+// exempted itself from this guard with a predicate tweak buried in a test
+// edit. The allowlist and the file's own `runtime: 'nodejs'` declaration must
+// agree in BOTH directions (asserted below), and every listed route is held
+// to the (req, res) entry contract by scripts/enforce-runtime-handler-contract.mjs.
+const NODE_RUNTIME_ROUTES = new Set([
+  'mcp-proxy.ts', // GHSA-887j: node:https socket pin to the DoH-vetted address
+]);
+
+describe('Node-runtime route allowlist', () => {
+  it('lists exactly the api/ sources that declare runtime: nodejs', () => {
+    const declared = allApiFiles
+      .filter(({ path }) => declaresNodeRuntime(readFileSync(path, 'utf-8')))
+      .map(({ name }) => name)
+      .sort();
+    assert.deepEqual(
+      declared,
+      [...NODE_RUNTIME_ROUTES].sort(),
+      'NODE_RUNTIME_ROUTES and the runtime declarations under api/ have drifted — a Node-runtime route must be added to (or removed from) the allowlist in the same change',
+    );
+  });
+});
+
 describe('Edge Function no node: built-ins', () => {
   for (const { name, path } of allApiFiles) {
-    it(`${name} does not import node: built-ins unless it declares runtime: 'nodejs'`, () => {
+    it(`${name} does not import node: built-ins unless it is an allowlisted Node-runtime route`, () => {
+      if (NODE_RUNTIME_ROUTES.has(name)) return;
       const src = readFileSync(path, 'utf-8');
-      // A route that opts into the Node runtime (api/mcp-proxy.ts, for the
-      // GHSA-887j socket pin) may use node: built-ins. What it must NOT do
-      // is keep the Web handler signature — scripts/enforce-node-runtime-
-      // handler-shape.mjs holds those files to the (req, res) contract.
-      if (declaresNodeRuntime(src)) return;
       const match = src.match(/from\s+['"]node:(\w+)['"]/);
       assert.ok(
         !match,
