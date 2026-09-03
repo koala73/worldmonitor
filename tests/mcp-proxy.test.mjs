@@ -123,6 +123,7 @@ let handler;
 const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
 
 const PUBLIC_TEST_ADDRESS = '93.184.216.34';
+const MCP_PROXY_RESPONSE_CAP_BYTES = 1024 * 1024;
 
 function setResolveHostnameForTest(resolver) {
   if (typeof resolver === 'function') {
@@ -481,6 +482,55 @@ describe('api/mcp-proxy', () => {
       assert.equal(data.tools[0].name, 'search');
     });
 
+    it('preserves deep schemas and reserved property names from third-party servers', async () => {
+      let deep = { type: ['number', 'null'] };
+      for (let depth = 0; depth < 24; depth += 1) deep = { type: 'array', items: deep };
+      const sampleTools = [{
+        name: 'foreign_tool',
+        inputSchema: { type: 'object' },
+        outputSchema: {
+          type: 'object',
+          required: ['cause'],
+          properties: {
+            cause: { type: 'string' },
+            stack: { type: 'string' },
+            stackTrace: { type: 'array', items: { type: 'string' } },
+            deep,
+          },
+        },
+      }];
+      globalThis.fetch = makeMcpFetch({ tools: sampleTools });
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 200);
+      assert.deepEqual((await res.json()).tools, sampleTools);
+    });
+
+    it('rejects oversized streamable JSON before parsing it', async () => {
+      globalThis.fetch = async (_url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'initialize') {
+          const payload = JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              protocolVersion: '2025-03-26',
+              capabilities: {},
+              padding: 'x'.repeat(MCP_PROXY_RESPONSE_CAP_BYTES),
+            },
+          });
+          return new Response(payload, { headers: { 'Content-Type': 'application/json' } });
+        }
+        return makeMcpFetch({ tools: [] })(_url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
+    });
+
     it('returns empty tools array when server returns none', async () => {
       globalThis.fetch = makeMcpFetch({ tools: [] });
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
@@ -734,6 +784,26 @@ describe('api/mcp-proxy', () => {
       assert.deepEqual(data.result, callResult);
     });
 
+    it('preserves deep results and reserved property names from third-party servers', async () => {
+      let deep = { leaf: true };
+      for (let depth = 0; depth < 24; depth += 1) deep = { nested: deep };
+      const callResult = {
+        cause: 'domain-value',
+        stack: 'domain-stack',
+        stackTrace: ['domain-trace'],
+        deep,
+      };
+      globalThis.fetch = makeMcpFetch({ callResult });
+
+      const res = await handler(makePostRequest({
+        serverUrl: 'https://mcp.example.com/mcp',
+        toolName: 'foreign_tool',
+      }));
+
+      assert.equal(res.status, 200);
+      assert.deepEqual((await res.json()).result, callResult);
+    });
+
     it('returns 422 when tools/call returns non-ok status', async () => {
       globalThis.fetch = makeMcpFetch({ callStatus: 403 });
       const res = await handler(makePostRequest({
@@ -915,6 +985,32 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 200);
       const data = await res.json();
       assert.equal(data.tools[0].name, 'web_search');
+    });
+
+    it('rejects oversized streamable HTTP SSE before parsing it', async () => {
+      globalThis.fetch = async (_url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'initialize') {
+          const message = {
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              protocolVersion: '2025-03-26',
+              capabilities: {},
+              padding: 'x'.repeat(MCP_PROXY_RESPONSE_CAP_BYTES),
+            },
+          };
+          return new Response(`data: ${JSON.stringify(message)}\n\n`, {
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+        return makeMcpFetch({ tools: [] })(_url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
     });
   });
 

@@ -3,9 +3,14 @@ import { describe, it } from 'node:test';
 import { strict as assert } from 'node:assert';
 import {
   readBoundedRequestBody,
+  readBoundedResponseBody,
   RequestBodyTooLargeError,
+  ResponseBodyTooLargeError,
 } from '../api/mcp/bounded-body.ts';
-import { MAX_JSON_RPC_BODY_BYTES } from '../api/mcp/body-limits.ts';
+import {
+  MAX_JSON_RPC_BODY_BYTES,
+  MAX_MCP_PROXY_RESPONSE_BYTES,
+} from '../api/mcp/body-limits.ts';
 
 describe('readBoundedRequestBody', () => {
   it('exports the shared 256 KiB MCP JSON-RPC body cap', () => {
@@ -210,5 +215,64 @@ describe('readBoundedRequestBody', () => {
         `maxBytes=${String(bad)} must be a TypeError`,
       );
     }
+  });
+});
+
+describe('readBoundedResponseBody', () => {
+  it('exports the 1 MiB MCP proxy response cap', () => {
+    assert.equal(MAX_MCP_PROXY_RESPONSE_BYTES, 1024 * 1024);
+  });
+
+  it('accepts a response whose size equals the cap', async () => {
+    const payload = new Uint8Array(32).fill(7);
+    const body = await readBoundedResponseBody(new Response(payload), 32);
+
+    assert.deepEqual(body, payload);
+  });
+
+  it('rejects an advertised Content-Length over the cap without reading', async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const body = new ReadableStream({
+      pull(controller) {
+        pulls += 1;
+        controller.enqueue(new Uint8Array(8));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+    const response = {
+      body,
+      headers: new Headers({ 'Content-Length': '33' }),
+    };
+
+    await assert.rejects(
+      () => readBoundedResponseBody(response, 32),
+      ResponseBodyTooLargeError,
+    );
+    assert.equal(pulls, 0);
+    assert.equal(cancelled, true);
+  });
+
+  it('cancels a chunked response as soon as it exceeds the cap', async () => {
+    let cancelled = false;
+    let pulls = 0;
+    const stream = new ReadableStream({
+      pull(controller) {
+        pulls += 1;
+        if (pulls > 3) return controller.close();
+        controller.enqueue(new Uint8Array(12));
+      },
+      cancel() {
+        cancelled = true;
+      },
+    });
+
+    await assert.rejects(
+      () => readBoundedResponseBody(new Response(stream), 20),
+      ResponseBodyTooLargeError,
+    );
+    assert.equal(cancelled, true);
   });
 });

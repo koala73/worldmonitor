@@ -42,7 +42,13 @@ async function freshMod() {
 }
 
 function collectInvalidToolSchemas(tools) {
-  const ajv = new Ajv2020({ allErrors: true, strict: false });
+  const ajv = new Ajv2020({
+    allErrors: true,
+    allowUnionTypes: true,
+    strict: true,
+    strictRequired: false,
+    validateFormats: false,
+  });
   const failures = [];
 
   for (const tool of tools) {
@@ -50,8 +56,12 @@ function collectInvalidToolSchemas(tools) {
       const schema = tool[field];
       if (!schema || typeof schema !== 'object') {
         failures.push(`${tool.name}.${field}: missing or non-object schema`);
-      } else if (!ajv.validateSchema(schema)) {
-        failures.push(`${tool.name}.${field}: ${ajv.errorsText(ajv.errors)}`);
+      } else {
+        try {
+          ajv.compile(schema);
+        } catch (error) {
+          failures.push(`${tool.name}.${field}: ${error instanceof Error ? error.message : String(error)}`);
+        }
       }
     }
   }
@@ -504,6 +514,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     const tools = body.result?.tools ?? [];
+    assert.deepEqual(tools, mod.TOOL_LIST_RESPONSE, 'tools/list must preserve the registry wire value exactly');
     assert.deepEqual(
       tools.map((tool) => tool.name).sort(),
       mod.__testing__.TOOL_REGISTRY.map((tool) => tool.name).sort(),
@@ -559,18 +570,13 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.deepEqual(nestedSchema.type, ['string', 'null']);
   });
 
-  it('jsonResponse still truncates nested values beyond the depth limit', async () => {
+  it('jsonResponse preserves nested values beyond the former depth limit', async () => {
     let value = [{ nested: true }];
     for (let depth = 0; depth < 21; depth += 1) {
       value = { nested: value };
     }
 
-    let body = await jsonResponse(value, 200).json();
-    for (let depth = 0; depth < 21; depth += 1) {
-      body = body.nested;
-    }
-
-    assert.equal(body, '[truncated]');
+    assert.deepEqual(await jsonResponse(value, 200).json(), value);
   });
 
   // --------------------------------------------------------------------
