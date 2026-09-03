@@ -402,13 +402,23 @@ async function listComments(runGh, repository, prNumber) {
   }
 }
 
+async function main() {
+  const result = await publishPrMediaEvidence(parseArgs(process.argv.slice(2)));
+  process.stdout.write(`${JSON.stringify(result)}\n`);
+}
+
 const invokedDirectly = Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
 if (invokedDirectly) {
-  try {
-    const result = await publishPrMediaEvidence(parseArgs(process.argv.slice(2)));
-    process.stdout.write(`${JSON.stringify(result)}\n`);
-  } catch (error) {
-    process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
-    process.exitCode = 1;
-  }
+  // Terminal success marker. Emitted from .then() so it can ONLY print after main() has fully
+  // resolved — a throw anywhere inside, including a late publish step, skips it. Any marker
+  // written INSIDE main() would print before later work and could vouch for a run that then
+  // died (exactly how #6092 stayed invisible). Format mirrors runSeed() so the crash
+  // diagnostic recognises it; without it a clean run is indistinguishable from a silent death.
+  const __runStartedAt = Date.now();
+  main()
+    .then(() => console.log(`\n=== Done (${Date.now() - __runStartedAt}ms) ===`))
+    .catch((error) => {
+      process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
+      process.exitCode = 1;
+    });
 }
