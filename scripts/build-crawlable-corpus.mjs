@@ -2684,7 +2684,12 @@ export function describeInventoryScope(country) {
   const { total, shown, omittedClauses } = unrankedInventoryScope(country);
   if (omittedClauses.length === 0) return null;
   const omittedTail = omittedClauses.map((clause) => `; ${clause.count} ${clause.text}`).join('');
-  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${omittedTail}.`;
+  // "weakest evidence first", not "lowest coverage first": the pool is grouped
+  // -- not-applicable slots, then coverage gaps, then partial coverage, each
+  // ascending -- so a 30% gap precedes a 15% observed reading and the stricter
+  // claim was false on 6 of 26 pages. #7530's own commit body described the
+  // order as weakest-first; only the published wording over-claimed (#7609).
+  return `Showing ${shown} of ${total} active dimensions, weakest evidence first${omittedTail}.`;
 }
 
 // Dimensions the page can call supported readings. The microstate branch

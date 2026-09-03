@@ -503,7 +503,7 @@ describe('unranked evidence inventory scope', () => {
     const scope = describeInventoryScope(countryFixture({}, [...partial(13), ...full(3)]));
     assert.equal(
       scope,
-      'Showing 12 of 16 active dimensions, lowest coverage first; 3 more at full coverage; 1 omitted for brevity.',
+      'Showing 12 of 16 active dimensions, weakest evidence first; 3 more at full coverage; 1 omitted for brevity.',
     );
     const [shown, total, ...omitted] = [...scope.matchAll(/\d+/g)].map(([value]) => Number(value));
     assert.equal(shown + omitted.reduce((sum, count) => sum + count, 0), total);
@@ -512,14 +512,14 @@ describe('unranked evidence inventory scope', () => {
   it('reports the cap bucket even when nothing sits at full coverage', () => {
     assert.equal(
       describeInventoryScope(countryFixture({}, partial(13))),
-      'Showing 12 of 13 active dimensions, lowest coverage first; 1 omitted for brevity.',
+      'Showing 12 of 13 active dimensions, weakest evidence first; 1 omitted for brevity.',
     );
   });
 
   it('reports the full-coverage bucket alone when the cap drops nothing', () => {
     assert.equal(
       describeInventoryScope(countryFixture({}, [...partial(2), ...full(2)])),
-      'Showing 2 of 4 active dimensions, lowest coverage first; 2 more at full coverage.',
+      'Showing 2 of 4 active dimensions, weakest evidence first; 2 more at full coverage.',
     );
   });
 
@@ -644,7 +644,7 @@ describe('unranked evidence inventory build assertion', () => {
     // What describeInventoryScope would emit if `${omittedTail}` were deleted.
     assert.throws(
       () => assertUnrankedInventoryIntegrity(country, {
-        inventoryScope: 'Showing 12 of 16 active dimensions, lowest coverage first.',
+        inventoryScope: 'Showing 12 of 16 active dimensions, weakest evidence first.',
       }),
       /PW publishes an inventory scope note a reader cannot add up to its 16 active dimensions/,
     );

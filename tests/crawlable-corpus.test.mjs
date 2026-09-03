@@ -1543,7 +1543,7 @@ describe('crawlable corpus generator', () => {
     assert.equal(describeInventoryScope(country([0.2, 0.4, 0.9])), null, 'nothing omitted');
     assert.equal(
       describeInventoryScope(country([0.2, 0.4, 1, 1])),
-      'Showing 2 of 4 active dimensions, lowest coverage first; 2 more at full coverage.',
+      'Showing 2 of 4 active dimensions, weakest evidence first; 2 more at full coverage.',
     );
   });
 
@@ -1910,7 +1910,7 @@ describe('crawlable corpus generator', () => {
           if (!section) continue;
           const shown = (section[1].match(/<li>/g) || []).length;
           const note = section[1].match(
-            /data-inventory-scope>Showing (\d+) of (\d+) active dimensions, lowest coverage first/,
+            /data-inventory-scope>Showing (\d+) of (\d+) active dimensions, weakest evidence first/,
           );
           if (!note) continue;
           checkedTruncated += 1;
