@@ -143,21 +143,21 @@ describe('VIA Rail live parser (#6615)', () => {
   });
 });
 
-describe('VIA Rail live ingest (404 / shape-break / last-good)', () => {
-  it('404 → sourceState unavailable, not SEED_ERROR, and does not persist', async () => {
+describe('VIA Rail live ingest (source failure / shape-break / last-good)', () => {
+  it('records a cold 404 as a configured-source failure and does not persist', async () => {
     const persisted = [];
-    const unavailable = [];
+    const sourceMeta = [];
     const decision = await ingestViaRailLive({
       fetchImpl: async () => stubResponse('not found', { status: 404 }),
       readLastGood: async () => null,
       persist: async (snapshot) => { persisted.push(snapshot); },
-      writeUnavailableMeta: async (meta) => { unavailable.push(meta); },
+      writeSourceMeta: async (meta) => { sourceMeta.push(meta); },
     });
     assert.equal(decision.persist, false);
-    assert.equal(decision.sourceState, 'unavailable');
+    assert.equal(decision.sourceState, 'stale');
     assert.equal(decision.reason, 'http_404');
     assert.equal(persisted.length, 0);
-    assert.deepEqual(unavailable, [{ reason: 'http_404' }]);
+    assert.deepEqual(sourceMeta, [{ sourceState: 'stale', reason: 'http_404' }]);
     const classified = healthTesting.classifyKey(
       'viarailLive',
       VIA_RAIL_LIVE_KEY,
@@ -168,50 +168,50 @@ describe('VIA Rail live ingest (404 / shape-break / last-good)', () => {
         keyMetaValues: new Map([[VIA_RAIL_LIVE_META_KEY, JSON.stringify({
           fetchedAt: Date.now(),
           recordCount: 0,
-          sourceState: 'unavailable',
+          sourceState: 'stale',
         })]]),
         keyMetaErrors: new Map(),
         now: Date.now(),
       },
     );
-    assert.equal(classified.status, 'NOT_CONFIGURED');
-    assert.equal(healthTesting.STATUS_COUNTS[classified.status], 'ok');
-    assert.notEqual(classified.status, 'SEED_ERROR');
-    assert.notEqual(healthTesting.STATUS_COUNTS[classified.status], 'crit');
+    assert.equal(classified.status, 'SEED_ERROR');
+    assert.equal(healthTesting.STATUS_COUNTS[classified.status], 'warn');
+    assert.notEqual(classified.status, 'NOT_CONFIGURED');
   });
 
-  it('shape-break 200 does not persist and keeps last-good', async () => {
+  it('a positionless 200 does not persist or refresh last-good metadata', async () => {
     const lastGood = parseViaRailLive(fixture);
     const persisted = [];
-    const unavailable = [];
+    const sourceMeta = [];
     const decision = await ingestViaRailLive({
-      fetchImpl: async () => stubResponse({ status: 'ok', trains: [] }),
+      fetchImpl: async () => stubResponse(noLivePositionsFixture),
       readLastGood: async () => lastGood,
       persist: async (snapshot) => { persisted.push(snapshot); },
-      writeUnavailableMeta: async (meta) => { unavailable.push(meta); },
+      writeSourceMeta: async (meta) => { sourceMeta.push(meta); },
     });
     assert.equal(decision.persist, false);
     assert.equal(decision.keepLastGood, true);
     assert.equal(decision.sourceState, null);
+    assert.equal(decision.reason, 'no_live_positions');
     assert.equal(persisted.length, 0, 'degraded 200 must not poison last-good');
-    assert.equal(unavailable.length, 0, 'last-good health stays in place');
+    assert.equal(sourceMeta.length, 0, 'last-good freshness metadata stays in place');
     assert.equal(validateViaRailLiveSnapshot(lastGood), true);
   });
 
   it('resolveViaRailLivePublish treats failure as skip, not miss', () => {
     const lastGood = parseViaRailLive(fixture);
     const broken = resolveViaRailLivePublish(
-      { ok: false, sourceState: 'unavailable', reason: 'shape_break' },
+      { ok: false, sourceState: 'stale', reason: 'no_live_positions' },
       lastGood,
     );
     assert.equal(broken.persist, false);
     assert.equal(broken.keepLastGood, true);
     const cold = resolveViaRailLivePublish(
-      { ok: false, sourceState: 'unavailable', reason: 'http_404' },
+      { ok: false, sourceState: 'stale', reason: 'http_404' },
       null,
     );
     assert.equal(cold.persist, false);
-    assert.equal(cold.sourceState, 'unavailable');
+    assert.equal(cold.sourceState, 'stale');
   });
 });
 
@@ -283,7 +283,8 @@ describe('VIA Rail live registration (no bootstrap / seeder import / ais-relay)'
     assert.match(parser, /\(\.\.\.args\) => globalThis\.fetch\(\.\.\.args\)/);
     assert.match(seeder, /loadEnvFile/);
     assert.match(seeder, /runSeed/);
-    assert.match(seeder, /sourceState: 'unavailable'/);
+    assert.match(seeder, /sourceState: decision\.sourceState/);
+    assert.doesNotMatch(seeder, /sourceState: 'unavailable'/);
     assert.doesNotMatch(seeder, /SEED_ERROR/);
     assert.doesNotMatch(seeder, /ais-relay/);
     assert.doesNotMatch(parser, /ais-relay/);

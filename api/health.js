@@ -1422,10 +1422,10 @@ const SEED_META = {
   intelHistoryIngestConflictAcled:       { key: 'seed-meta:intel-history:conflict:acled-intel',            maxStaleMin: 38 },  // mirrors acledIntel
   intelHistoryIngestMilitaryCrossStrait: { key: 'seed-meta:intel-history:military:cross-strait-activity',  maxStaleMin: 720 }, // mirrors crossStraitActivity
   intelHistoryIngestEnergyIntelligence:  { key: 'seed-meta:intel-history:energy:intelligence',             maxStaleMin: 720 }, // mirrors energyIntelligence
-  // Unofficial tsimobile.viarail.ca JSON. Optional: 404/shape-break writes
-  // sourceState unavailable (NOT_CONFIGURED) rather than SEED_ERROR. 15min
-  // cron; 45 = 3x cadence. EMPTY_DATA_OK so an unconfigured deploy is STALE_SEED
-  // (warn), not EMPTY (crit), until the first producer tick.
+  // Unofficial tsimobile.viarail.ca JSON. The source needs no credentials, so
+  // fetch/shape failures write sourceState stale and surface as SEED_ERROR when
+  // no last-good value exists. 15min cron; 45 = 3x cadence. EMPTY_DATA_OK makes
+  // a pre-first-publish absence STALE_SEED (warn), not EMPTY (crit).
   viarailLive: {
     key: 'seed-meta:transit:viarail-live',
     maxStaleMin: 45,
