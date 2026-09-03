@@ -318,13 +318,18 @@ describe('freeze crawlable live pulse coverage gates', () => {
         digestItem({ title: 'No link', link: '' }),
         digestItem({ title: 'Insecure link', link: 'http://example.test/a' }),
         digestItem({ title: 'No publication time', publishedAt: 0 }),
+        digestItem({
+          title: 'Aggregator redirect - New Lines Magazine',
+          link: 'https://news.google.com/rss/articles/CBMifzFBVV95cUx',
+        }),
         digestItem({ title: 'Keeps its provenance' }),
       ],
     });
     await assert.rejects(
       runFreeze(),
       /captured only 1 of 4 headlines/,
-      'an item missing masthead, https URL, or publication time is not publishable',
+      'an item missing masthead, https URL, or publication time is not publishable, '
+      + 'and an aggregator redirect is not a verifiable article link',
     );
   });
 

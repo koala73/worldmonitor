@@ -51,6 +51,12 @@ const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 // #7608 failure mode with a stale date on it. Gate instead.
 const HEADLINE_CAPTURE_COUNT = 4;
 
+// Aggregator hosts whose article links are opaque, expiring redirects rather
+// than the publisher's own URL. A frozen row is published for up to
+// MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS, and "verifiable" has to mean a reader can
+// see the outlet in the URL and still reach the piece next week.
+const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
+
 // Operator-facing review-hygiene text the chokepoint status contract appends
 // (THREAT_CONFIG_STALE_NOTE in server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts).
 // It is useful in the live tool but must not be frozen into the crawlable corpus,
@@ -260,10 +266,10 @@ function crisisRecord(view) {
 //
 // A row reaches the homepage with a masthead beside it, so it must carry
 // everything a reader needs to check that attribution: the outlet, an https
-// article URL, and the publication time. #7608 shipped four invented headlines
-// under real Reuters/FT/AP/BBC bylines because the strip's fallback was
-// hand-written prose with none of those. An item missing any of the three is
-// dropped here rather than published unverifiable.
+// article URL on the publisher's own host, and the publication time. #7608
+// shipped four invented headlines under real Reuters/FT/AP/BBC bylines because
+// the strip's fallback was hand-written prose with none of those. An item
+// missing any of them is dropped here rather than published unverifiable.
 //
 // Ranking mirrors the browser path in pro-test/src/services/teasers.ts, so the
 // frozen rows are the same ones a live fetch would replace them with.
@@ -279,6 +285,7 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
       const publishedAt = Number(item?.publishedAt);
       if (!title || !source || !url.startsWith('https://')) return null;
       if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
+      if (AGGREGATOR_LINK_HOSTS.has(URL.parse(url)?.hostname ?? '')) return null;
       return {
         row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
         importanceScore: Number(item?.importanceScore) || 0,
