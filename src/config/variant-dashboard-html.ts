@@ -178,7 +178,7 @@ function removeJsonLdTypes(html: string, expectedTypes: readonly string[]): stri
 // Derive a variant subdomain dashboard page from the built full-variant
 // dashboard.html. Only identity/meta surfaces change: title/description/
 // keywords/subject/classification metas, canonical + English discovery links,
-// og/twitter cards, the WebApplication JSON-LD block, and the visually
+// og/twitter cards, the SoftwareApplication JSON-LD block, and the visually
 // hidden <h1>.
 export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: string): string {
   const meta: VariantMeta | undefined = VARIANT_META[variant];
@@ -240,35 +240,35 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
     'og/twitter image',
   );
 
-  // WebApplication JSON-LD block: id, name, url, screenshot, featureList.
+  // SoftwareApplication JSON-LD block: id, name, url, screenshot, featureList.
   html = replaceCounted(
     html,
-    /("@type": "WebApplication",[\s\S]{0,200}?"@id": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,200}?"@id": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(`${meta.url}#software`)}`,
     ONE,
-    'WebApplication id',
+    'SoftwareApplication id',
   );
   html = replaceCounted(
     html,
-    /("@type": "WebApplication",[\s\S]{0,300}?"name": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,300}?"name": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(meta.siteName)}`,
     ONE,
-    'WebApplication name',
+    'SoftwareApplication name',
   );
   html = replaceCounted(
     html,
-    /("@type": "WebApplication",[\s\S]{0,600}?"url": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,600}?"url": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(meta.url)}`,
     ONE,
-    'WebApplication url',
+    'SoftwareApplication url',
   );
-  html = replaceCounted(html, /("screenshot": )"[^"]*"/g, (_m, a) => `${a}${JSON.stringify(ogImage)}`, ONE, 'WebApplication screenshot');
+  html = replaceCounted(html, /("screenshot": )"[^"]*"/g, (_m, a) => `${a}${JSON.stringify(ogImage)}`, ONE, 'SoftwareApplication screenshot');
   html = replaceCounted(
     html,
     /("featureList": )\[[\s\S]*?\]/g,
     (_m, a) => `${a}${JSON.stringify(meta.features, null, 8).replace(/\n/g, '\n      ')}`,
     ONE,
-    'WebApplication featureList',
+    'SoftwareApplication featureList',
   );
 
   html = removeJsonLdTypes(html, ['WebSite', 'WebPage', 'BreadcrumbList']);
@@ -278,10 +278,10 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   // instead of redeclaring those nodes (#7459c).
   html = replaceCounted(
     html,
-    // /g so replaceCounted can observe a SECOND WebApplication block and throw.
+    // /g so replaceCounted can observe a SECOND SoftwareApplication block and throw.
     // Without it String.replace stops at the first match, count can never exceed
     // 1, and the ONE bound's max half is unenforceable.
-    /(<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*\{[\s\S]*?"@type": "WebApplication"[\s\S]*?<\/script>)/g,
+    /(<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*\{[\s\S]*?"@type": "SoftwareApplication"[\s\S]*?<\/script>)/g,
     (_m, script) => `${script}\n    ${variantWebPageJsonLd(meta)}\n    ${variantBreadcrumbJsonLd(meta)}`,
     ONE,
     'variant WebPage and BreadcrumbList',

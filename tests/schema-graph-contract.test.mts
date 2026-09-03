@@ -5,6 +5,10 @@ import { describe, it } from 'node:test';
 import middleware from '../middleware';
 import { WORLD_MONITOR_ORG } from '../scripts/build-crawlable-corpus.mjs';
 import {
+  SOFTWARE_SHARED_PROPERTIES,
+  WEBSITE_SHARED_PROPERTIES,
+} from '../src/config/schema-graph-ids';
+import {
   WEB_DASHBOARD_VARIANTS,
   renderVariantDashboardHtml,
 } from '../src/config/variant-dashboard-html';
@@ -90,7 +94,7 @@ describe('canonical schema graph', () => {
     assert.equal(blocksOfType(proBlocks, 'Organization').length, 0, '/pro must reference the canonical Organization');
     assert.equal(blocksOfType(dashboardBlocks, 'Organization').length, 0, '/dashboard must reference the canonical Organization');
 
-    const dashboardApp = blocksOfType(dashboardBlocks, 'WebApplication')[0];
+    const dashboardApp = blocksOfType(dashboardBlocks, 'SoftwareApplication')[0];
     const dashboardSite = blocksOfType(dashboardBlocks, 'WebSite')[0];
     const proApp = blocksOfType(proBlocks, 'SoftwareApplication')[0];
     const welcomeApp = blocksOfType(welcomeBlocks, 'SoftwareApplication')[0];
@@ -130,7 +134,7 @@ describe('canonical schema graph', () => {
 
   it('connects the canonical dashboard page to its product graph and visible SEO content', () => {
     const blocks = jsonLdBlocks(read('index.html'));
-    const application = blocksOfType(blocks, 'WebApplication')[0];
+    const application = blocksOfType(blocks, 'SoftwareApplication')[0];
     const webSite = blocksOfType(blocks, 'WebSite')[0];
     const webPage = blocksOfType(blocks, 'WebPage')[0];
     const crumbs = blocksOfType(blocks, 'BreadcrumbList')[0];
@@ -160,7 +164,7 @@ describe('canonical schema graph', () => {
     const proBlocks = jsonLdBlocks(read('pro-test/index.html'));
     const welcomeBlocks = jsonLdBlocks(read('pro-test/welcome.html'));
     const productNodes = [
-      ['dashboard', blocksOfType(dashboardBlocks, 'WebApplication')[0]],
+      ['dashboard', blocksOfType(dashboardBlocks, 'SoftwareApplication')[0]],
       ['Pro', blocksOfType(proBlocks, 'SoftwareApplication')[0]],
       ['welcome', blocksOfType(welcomeBlocks, 'SoftwareApplication')[0]],
     ] as const;
@@ -181,13 +185,49 @@ describe('canonical schema graph', () => {
     );
   });
 
+  // #7611: pinning the `@id` strings and the cross-node references still left
+  // every surface free to build its own body under a shared identity, so a
+  // consumer merging by `@id` received two `applicationCategory` values for one
+  // entity. schema-graph-ids.ts owns the properties that must not diverge; each
+  // emitter has to reproduce them byte for byte.
+  it('serves one set of #software and #website property values across every surface (#7611)', () => {
+    const pinned: Array<[string, Record<string, unknown>, string[]]> = [
+      [SOFTWARE_ID, SOFTWARE_SHARED_PROPERTIES, withoutUnbuiltProPaths([
+        'index.html',
+        'pro-test/index.html',
+        'pro-test/welcome.html',
+        'public/pro/index.html',
+        'public/pro/welcome.html',
+      ])],
+      [WEBSITE_ID, WEBSITE_SHARED_PROPERTIES, withoutUnbuiltProPaths([
+        'index.html',
+        'pro-test/welcome.html',
+        'public/pro/welcome.html',
+      ])],
+    ];
+
+    for (const [id, expected, paths] of pinned) {
+      for (const path of paths) {
+        const node = jsonLdBlocks(read(path)).find((block) => block['@id'] === id);
+        assert.ok(node, `${path} must declare ${id}`);
+        for (const [property, value] of Object.entries(expected)) {
+          assert.deepEqual(
+            node[property],
+            value,
+            `${path} ${id} "${property}" must match schema-graph-ids.ts`,
+          );
+        }
+      }
+    }
+  });
+
   it('serves every variant dashboard identically to browsers and AI crawlers', () => {
     const dashboardHtml = read('index.html');
 
     for (const variant of WEB_DASHBOARD_VARIANTS) {
       const renderedBlocks = jsonLdBlocks(renderVariantDashboardHtml(dashboardHtml, variant));
-      const application = blocksOfType(renderedBlocks, 'WebApplication')[0];
-      assert.ok(application, `${variant} must retain its WebApplication schema`);
+      const application = blocksOfType(renderedBlocks, 'SoftwareApplication')[0];
+      assert.ok(application, `${variant} must retain its SoftwareApplication schema`);
       assert.equal(blocksOfType(renderedBlocks, 'Organization').length, 0, `${variant} must not redeclare Organization`);
       assert.equal(blocksOfType(renderedBlocks, 'WebSite').length, 0, `${variant} must not claim the canonical WebSite`);
       assert.deepEqual(application.publisher, { '@id': ORGANIZATION_ID });
