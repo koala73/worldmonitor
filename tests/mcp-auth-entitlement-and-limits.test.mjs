@@ -864,3 +864,72 @@ describe('api/mcp/auth.ts — applyAnonDiscoveryLimit (#5379 Gap 10)', () => {
     assert.equal(calls[1].key, 'rl:mcp:anon:ip:8.8.8.8');
   });
 });
+
+// ---------------------------------------------------------------------------
+// WORLDMONITOR-ZR — a `transient` verdict is a fail-soft degrade, not a defect.
+// `validateProMcpToken` returns it for a Convex 5xx, network error, timeout, or
+// malformed body, and the caller is handed a retryable 503 + `Retry-After`.
+// Reporting that at Sentry's default `error` level paged on-call for routine
+// upstream blips (6 events across 5 releases in 17 days, every one isolated) —
+// the exact condition api/user-prefs.ts and api/_rate-limit.js already
+// downgrade. The asymmetry with the sibling `catch` is load-bearing, so it is
+// pinned here too: a THROWN validator is an unexpected defect and must keep
+// paging.
+//
+// `captureSilentError` self-disables without a DSN (`_envelopeUrl` / `_key` are
+// unset under test), so the level is not observable at runtime here. Pin it
+// from source text — the same lever tests/rate-limit.test.mts uses on the
+// rate-limit capture, for exactly this reason.
+// ---------------------------------------------------------------------------
+describe('api/mcp/auth.ts — a transient Convex verdict degrades, it does not page (WORLDMONITOR-ZR)', () => {
+  it('a transient validate verdict still fails closed on a retryable 503', async () => {
+    const { deps } = makeProDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, false, 'a transient verdict never grants the call');
+    assert.equal(res.response.status, 503);
+    assert.equal(res.response.headers.get('Retry-After'), '5', 'the client is told to back off');
+  });
+
+  it('the happy path is untouched by the downgrade', async () => {
+    const { deps } = makeProDeps();
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true, 'a valid grant still passes the gate');
+  });
+
+  it('the transient capture carries level: warning, and the thrown-validator catch does NOT', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(new URL('../api/mcp/auth.ts', import.meta.url), 'utf8');
+
+    const transientAt = src.indexOf("validation.ok === 'transient'");
+    assert.ok(transientAt > 0, 'the transient branch still exists');
+
+    const branch = src.slice(transientAt);
+    const transientCapture = branch.slice(
+      branch.indexOf('captureSilentError'),
+      branch.indexOf('return {'),
+    );
+    assert.match(
+      transientCapture,
+      /level:\s*'warning'/,
+      'the fail-soft transient verdict must not page on-call at error level',
+    );
+
+    // Preservation: the sibling `catch` reports an UNEXPECTED rejection of the
+    // validator. If a future widening drags it to `warning` too, a genuine
+    // defect on the gated Pro path goes quiet.
+    const validateAt = src.indexOf('deps.validateProMcpToken(context.mcpTokenId)');
+    const catchAt = src.indexOf('} catch (err) {', validateAt);
+    assert.ok(
+      validateAt > 0 && catchAt > validateAt && catchAt < transientAt,
+      'the guarded await and its catch still bracket the transient branch — if this '
+        + 'fails the slice below is meaningless, not merely failing',
+    );
+    const thrownCapture = src.slice(catchAt, transientAt);
+    assert.match(thrownCapture, /captureSilentError\(err,/, 'the catch still reports');
+    assert.doesNotMatch(
+      thrownCapture,
+      /level:\s*'warning'/,
+      'a THROWN validator is a defect, not the fail-soft path — it must keep paging',
+    );
+  });
+});

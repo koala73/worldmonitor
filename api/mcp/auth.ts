@@ -554,8 +554,27 @@ export async function validateProMcpAuthorization(
     ) };
   }
   if (validation && 'ok' in validation && validation.ok === 'transient') {
+    // `transient` is the validator's own fail-soft verdict — a Convex 5xx,
+    // network error, timeout, or malformed body (see `ProMcpValidateUnion`).
+    // The caller already gets a retryable 503 + `Retry-After`, so the request
+    // is degraded, not defective, and the same union's other consumer
+    // (api/oauth/token.ts) treats it as routine enough to capture nothing at
+    // all. Capture at `warning` so a sustained Convex outage still escalates by
+    // volume without routine blips paging on-call at `error` (WORLDMONITOR-ZR:
+    // 6 events / 5 releases / 17 days, all isolated). Mirrors the
+    // SERVICE_UNAVAILABLE precedent in api/user-prefs.ts and the identical call
+    // in api/_rate-limit.js.
+    //
+    // A missing CONVEX_SITE_URL / CONVEX_SERVER_SHARED_SECRET also lands here
+    // (getConvexEnv() → null). That is deliberately NOT split out: the same
+    // misconfiguration breaks every other Convex-backed surface — checkout, the
+    // gateway, entitlements, briefs — which alarm far louder than this gate.
+    //
+    // The `catch` above stays at `error`: a THROWN validator is an unexpected
+    // defect, not this fail-soft path.
     captureSilentError(new Error('Pro MCP token validation temporarily unavailable'), {
       tags: { route: 'api/mcp', step: 'pro-token-validate' },
+      level: 'warning',
       ctx,
     });
     return { ok: false, response: new Response(
