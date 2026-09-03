@@ -198,6 +198,46 @@ describe('GEO residue #7463', () => {
   });
 });
 
+describe('GEO residue #7616 (U1 agent surfaces)', () => {
+  function latestRankedCount() {
+    const snapshots = readdirSync(join(repoRoot, 'docs/snapshots'))
+      .filter((name) => /^resilience-ranking-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+      .sort();
+    assert.ok(snapshots.length > 0, 'a published resilience snapshot must exist');
+    const snapshot = JSON.parse(read(`docs/snapshots/${snapshots[ snapshots.length - 1]}`));
+    assert.ok(Array.isArray(snapshot.items) && snapshot.items.length > 0);
+    return snapshot.items.length;
+  }
+
+  it('links the real documentation file, not the dead DOCUMENTATION.md blob path', () => {
+    const generated = buildLlmsFullText({ rootDir: repoRoot });
+    for (const [label, body] of [['public/llms.txt', read('public/llms.txt')], ['generated llms-full', generated]]) {
+      assert.doesNotMatch(
+        body,
+        /docs\/DOCUMENTATION\.md/,
+        `${label} must not reference the dead DOCUMENTATION.md blob path`,
+      );
+      assert.match(
+        body,
+        /\(https:\/\/github\.com\/koala73\/worldmonitor\/blob\/main\/docs\/documentation\.mdx\)/,
+        `${label} must link the real documentation.mdx location`,
+      );
+    }
+  });
+
+  it('states coverage with the two-part definition pinned to the live snapshot', () => {
+    const ranked = latestRankedCount();
+    const standard = new RegExp(`live in 190\\+ countries[^.]*structural resilience ranked for ${ranked}`);
+    for (const file of ['public/llms.txt', 'index.html', 'docs/about.mdx']) {
+      assert.match(read(file), standard, `${file} must carry the standard coverage definition`);
+    }
+    for (const file of ['public/llms.txt', 'public/llms-full.txt', 'index.html', 'docs/about.mdx']) {
+      assert.doesNotMatch(read(file), /across 190\+ countries/, `${file} must not use the legacy reach phrasing`);
+      assert.doesNotMatch(read(file), /used in 190\+ countries/, `${file} must not use the legacy reach phrasing`);
+    }
+  });
+});
+
 describe('GEO residue #7463 filesystem', () => {
   it('does not duplicate the MCP registry server.json under well-known', () => {
     const names = readdirSync(join(repoRoot, 'public/.well-known/mcp'));
