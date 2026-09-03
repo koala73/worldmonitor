@@ -1,12 +1,21 @@
 #!/usr/bin/env node
 // Freeze last-known-good crawlable live-pulse values for country risk,
-// chokepoint status, crisis HAPI summaries, and the top news headlines. Writes
+// chokepoint status, crisis HAPI summaries, the top news headlines, and
+// per-country recent developments (digest headlines matched per country,
+// plus the intel brief and timeline where a service key unlocks the
+// tier-gated routes). Writes
 // docs/snapshots/crawlable-live-pulse-<YYYY-MM-DD>.json.
 //
 // Usage:
 //   API_BASE=https://www.worldmonitor.app node scripts/freeze-crawlable-live-pulse.mjs
+//   WORLDMONITOR_API_KEY=<tier-1+ key> API_BASE=... node scripts/freeze-crawlable-live-pulse.mjs
 //
-// Uses the anonymous wm-session mint path (same contract as live-tools.js).
+// Uses the anonymous wm-session mint path (same contract as live-tools.js),
+// upgraded with X-WorldMonitor-Key when a service key is configured — the
+// weekly cron provides it via the WORLDMONITOR_API_KEY secret, mirroring the
+// resilience-snapshot workflow. Without a key the brief/timeline captures are
+// skipped per country (recorded, never fabricated) and the freeze still
+// publishes digest headlines.
 // Builds remain deterministic: the corpus generator only reads the committed
 // snapshot and never fetches live data.
 
@@ -19,10 +28,24 @@ import {
   crisisTrackerViewModel,
   liveRiskViewModel,
 } from './crawlable-live-tools.mjs';
+import { loadEnvFile } from './_seed-utils.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const REPO_ROOT = path.resolve(__dirname, '..');
+
+// Tier-gated captures (intel brief, intel timeline) need a service key; the
+// anonymous wm-session the cron mints otherwise gets a 401 on those routes
+// (ENDPOINT_ENTITLEMENTS tier 1). Same pattern as
+// scripts/freeze-resilience-ranking.mjs: key when available, graceful
+// headlines-only degradation when absent. Inert under test runners.
+loadEnvFile(import.meta.url, {
+  only: ['WORLDMONITOR_API_KEY', 'WM_API_KEY'],
+});
+
+function serviceApiKey() {
+  return process.env.WM_API_KEY || process.env.WORLDMONITOR_API_KEY || '';
+}
 
 const API_BASE = (process.env.API_BASE || 'https://www.worldmonitor.app').replace(/\/$/, '');
 const USER_AGENT = process.env.USER_AGENT
@@ -50,6 +73,21 @@ const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 // four means the card would keep whatever it rendered last -- which is the
 // #7608 failure mode with a stale date on it. Gate instead.
 const HEADLINE_CAPTURE_COUNT = 4;
+
+// Per-country "Recent developments" cap (#7615): 3-5 dated, attributed,
+// linked headlines per country page. Below 3 the section is thin; above 5 the
+// frozen snapshot bloats for no crawlable gain.
+const COUNTRY_HEADLINE_LIMIT = 5;
+
+// Timeline depth per country (#7615: "where populated"). A dated event
+// sequence, not the whole history store — the corpus renders these as a short
+// list, and each record carries its own occurredAt.
+const COUNTRY_TIMELINE_LIMIT = 10;
+
+// Brief context budget (#7615). The dashboard sends 3800 chars of grounding
+// (src/app/country-intel.ts); the freeze builds the same `Source [n]` block
+// from the same digest so citation indexes align with the frozen sources.
+const BRIEF_CONTEXT_MAX_CHARS = 3800;
 
 // Operator-facing review-hygiene text the chokepoint status contract appends
 // (THREAT_CONFIG_STALE_NOTE in server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts).
@@ -142,12 +180,16 @@ async function mintSession(apiBase = API_BASE) {
   return token;
 }
 
-async function authedGet(pathname, token, apiBase = API_BASE) {
+async function authedGet(pathname, token, apiBase = API_BASE, { serviceKey = '' } = {}) {
   const base = normalizeApiBase(apiBase);
-  return fetchJson(`${base}${pathname}`, {
-    headers: { Cookie: `wm-session=${token}` },
-    apiBase: base,
-  });
+  // Service-key callers pass the tier-gated routes (intel brief, timeline)
+  // that reject the anonymous session with a 401. Same either/or contract as
+  // freeze-resilience-ranking.mjs: key when configured, session cookie
+  // otherwise — never both, so a keyed freeze cannot mint session state.
+  const headers = serviceKey
+    ? { 'X-WorldMonitor-Key': serviceKey }
+    : { Cookie: `wm-session=${token}` };
+  return fetchJson(`${base}${pathname}`, { headers, apiBase: base });
 }
 
 async function resolveLatestResilienceSnapshot() {
@@ -256,6 +298,75 @@ function crisisRecord(view) {
   };
 }
 
+// Normalize one get-country-intel-brief response into the frozen shape, or
+// return null when the response carries no publishable brief. An LLM outage
+// surfaces as an empty brief (the handler returns `empty` on failure), which
+// must degrade into developmentsErrors — freezing an empty string would let
+// the corpus render a "Recent developments" section with no developments.
+function briefRecord(payload) {
+  const text = String(payload?.brief || '').trim();
+  if (!text) return null;
+  const generatedMs = Number(payload?.generatedAt);
+  const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+  return {
+    text,
+    model: String(payload?.model || ''),
+    generatedAt: Number.isFinite(generatedMs) && generatedMs > 0
+      ? new Date(generatedMs).toISOString()
+      : null,
+    // A source without a parseable publication time is dropped here, not
+    // frozen: the corpus requires a canonical ISO instant on every rendered
+    // row and throws for the whole build on a violation, so one rotten
+    // upstream date must never reach it (per-item isolation, same rule as
+    // the digest path).
+    sources: sources
+      .map((source) => {
+        const title = String(source?.title || '').trim();
+        const outlet = String(source?.source || '').trim();
+        const url = String(source?.url || '').trim();
+        if (!title || !outlet || !url.startsWith('https://')) return null;
+        const publishedMs = new Date(String(source?.publishedAt || '')).getTime();
+        if (!Number.isFinite(publishedMs)) return null;
+        return {
+          title,
+          source: outlet,
+          url,
+          publishedAt: new Date(publishedMs).toISOString(),
+        };
+      })
+      .filter((source) => source !== null)
+      .slice(0, 6),
+  };
+}
+
+// Normalize one get-intel-timeline record. `upstreamUnavailable: true` is a
+// valid empty state (the handler's contract for a store failure), not an
+// error — the corpus simply omits the timeline for that country.
+function timelineRecord(record) {
+  const title = String(record?.title || '').trim();
+  const occurredMs = Number(record?.occurredAt);
+  if (!title || !Number.isFinite(occurredMs) || occurredMs <= 0) return null;
+  const sourceUrl = String(record?.sourceUrl || '').trim();
+  const summary = String(record?.summary || '').replace(/\s+/g, ' ').trim();
+  return {
+    title,
+    summary: summary.length > 400 ? `${summary.slice(0, 399).trim()}...` : summary,
+    sourceUrl: sourceUrl.startsWith('https://') ? sourceUrl : null,
+    occurredAt: new Date(occurredMs).toISOString(),
+    domain: String(record?.domain || ''),
+  };
+}
+
+function emptyDevelopments(freezeStartedAt, briefSkipped) {
+  return {
+    headlines: [],
+    brief: null,
+    timeline: [],
+    briefSkipped,
+    capturedAt: new Date(freezeStartedAt).toISOString(),
+  };
+}
+
 // Reduce a ListFeedDigest response to the publishable headline rows.
 //
 // A row reaches the homepage with a masthead beside it, so it must carry
@@ -293,6 +404,104 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
     ))
     .slice(0, limit)
     .map((entry) => entry.row);
+}
+
+// Country matching mirrors the server's shared grounding
+// (server/worldmonitor/intelligence/v1/_country-brief-context.ts):
+// display NAME matches case-insensitively on word boundaries, while the ISO
+// code matches ONLY as an uppercase token in the raw text. Codes like IN, US
+// or NO collide with ordinary English words — a case-insensitive code match
+// swept "rally in Europe" into India's brief (post-#4898 review). This copy is
+// deliberately local: the freeze is plain .mjs and must not import server TS.
+function escapeMatchRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function countryDisplayName(code) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized)) return '';
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(normalized);
+    if (!name || name.toUpperCase() === normalized || name.toLowerCase() === 'unknown region') return '';
+    return name;
+  } catch {
+    return '';
+  }
+}
+
+function matchesCountryText(text, code, name) {
+  if (name) {
+    const term = name.trim().toLowerCase();
+    if (term && new RegExp(`(^|[^a-z0-9])${escapeMatchRegExp(term)}(?=$|[^a-z0-9])`, 'i').test(text)) {
+      return true;
+    }
+  }
+  // Raw text, NOT lowercased — the uppercase-token code match depends on the
+  // original casing surviving to this point.
+  return new RegExp(`(^|[^A-Za-z0-9])${escapeMatchRegExp(code)}(?=$|[^A-Za-z0-9])`).test(text);
+}
+
+// Per-country slice of ONE digest fetch (#7615). The global top headlines
+// above and every country's developments below derive from the same payload —
+// one capture path, shared with #7608, not two. Rows carry the same
+// publishability bar (masthead, https URL, publication time); ranking mirrors
+// the browser path so frozen rows match what live would show.
+function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMIT) {
+  const normalized = String(code || '').trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(normalized) || !Array.isArray(digestItems)) return [];
+  const name = countryDisplayName(normalized);
+  return digestItems
+    .map((item) => {
+      const title = String(item?.title || '').trim();
+      const source = String(item?.source || '').trim();
+      const url = String(item?.link || '').trim();
+      const publishedAt = Number(item?.publishedAt);
+      if (!title || !source || !url.startsWith('https://')) return null;
+      if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
+      const text = `${title} ${typeof item?.snippet === 'string' ? item.snippet : ''}`;
+      if (!matchesCountryText(text, normalized, name)) return null;
+      return {
+        row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
+        importanceScore: Number(item?.importanceScore) || 0,
+        publishedAtMs: publishedAt,
+      };
+    })
+    .filter((entry) => entry !== null)
+    .sort((a, b) => (
+      b.importanceScore - a.importanceScore
+      || b.publishedAtMs - a.publishedAtMs
+      || a.row.title.localeCompare(b.row.title)
+    ))
+    .slice(0, limit)
+    .map((entry) => entry.row);
+}
+
+// Brief grounding block in the server's `Source [n]` format
+// (_country-brief-context.ts briefSourceContextLines). The brief endpoint
+// verifies citation indexes against entry sources, so the block and the
+// frozen sources below must describe the same rows in the same order.
+//
+// Titles are whitespace-collapsed before composing EITHER section. Digest
+// titles are untrusted RSS: a newline in a title forges an extra headline
+// line the brief reads as a real story, and a crafted `Source [n]:` line
+// parses into sources[] server-side (the #5857 gap the server closes with
+// sanitizeForPromptLine). JSON.stringify already keeps the Source lines
+// single-line; the Headlines: lines need the same treatment here.
+function buildBriefContext(headlines, maxChars = BRIEF_CONTEXT_MAX_CHARS) {
+  // cleanTitle applies ONLY to the Headlines: lines. The Source JSON keeps
+  // the exact frozen title (JSON.stringify already neutralizes newlines, and
+  // exact parity keeps citation indexes aligned with the frozen rows).
+  const cleanTitle = (headline) => String(headline.title || '').replace(/\s+/g, ' ').trim();
+  const lines = headlines.map((headline, index) => {
+    const payload = { title: headline.title, source: headline.source, url: headline.url };
+    if (headline.publishedAt) payload.publishedAt = headline.publishedAt;
+    return `Source [${index + 1}]: ${JSON.stringify(payload)}`;
+  });
+  // Dash-prefixed: a hostile title shaped like `Source [9]: {...}` must never
+  // parse as a source line server-side (parseCountryBriefSources scans
+  // /^Source \[\d+\]:/mg over the whole context block).
+  const headlineLines = headlines.map((headline) => `- ${cleanTitle(headline)}`);
+  return [...lines, 'Headlines:', ...headlineLines].join('\n').slice(0, maxChars);
 }
 
 function signalConvergenceReference(capturedAt) {
@@ -348,11 +557,17 @@ export async function freezeCrawlableLivePulse({
   // Injectable so the coverage gates can be exercised without a 20+ second
   // inter-request delay; production callers keep the throttled default.
   requestGapMs = REQUEST_GAP_MS,
+  // Tier-gated captures (intel brief, timeline) authenticate with this key.
+  // Default reads the operator environment (WORLDMONITOR_API_KEY secret in the
+  // weekly cron); tests inject a stub value. Empty means headlines-only.
+  serviceKey = serviceApiKey(),
 } = {}) {
   const base = normalizeApiBase(apiBase);
   const freezeStartedAt = Date.now();
   const capturedAt = isoDate(freezeStartedAt);
-  const token = await mintSession(base);
+  const keyed = serviceKey.trim().length > 0;
+  const token = keyed ? '' : await mintSession(base);
+  const authOpts = keyed ? { serviceKey } : {};
   const { relativePath: resilienceSnapshotPath, codes } = await resolveLatestResilienceSnapshot();
   const crises = await loadCrises();
   const chokepointIds = await loadChokepointIds();
@@ -365,6 +580,7 @@ export async function freezeCrawlableLivePulse({
         `/api/intelligence/v1/get-country-risk?country_code=${encodeURIComponent(code)}`,
         token,
         base,
+        authOpts,
       );
       const view = liveRiskViewModel(payload, freezeStartedAt);
       countries[code] = countryRecord(view, payload, freezeStartedAt);
@@ -380,7 +596,7 @@ export async function freezeCrawlableLivePulse({
   let chokepointPayload = null;
   const chokepointErrors = [];
   try {
-    chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token, base);
+    chokepointPayload = await authedGet('/api/supply-chain/v1/get-chokepoint-status', token, base, authOpts);
   } catch (error) {
     chokepointErrors.push({
       id: '*',
@@ -410,6 +626,7 @@ export async function freezeCrawlableLivePulse({
             `/api/conflict/v1/get-humanitarian-summary?country_code=${encodeURIComponent(country.code)}`,
             token,
             base,
+            authOpts,
           );
           results.push({ code: country.code, payload });
         } catch (error) {
@@ -429,16 +646,99 @@ export async function freezeCrawlableLivePulse({
 
   // Guarded like every other network step: a digest outage degrades into the
   // coverage gate below instead of discarding the country/chokepoint work.
+  // The raw items are ALSO the per-country developments source below — one
+  // digest fetch feeds the global strip (#7608) and every country page
+  // (#7615), never two.
   const headlineErrors = [];
   let headlines = [];
+  let digestItems = [];
   try {
-    const digest = await authedGet('/api/news/v1/list-feed-digest?variant=full&lang=en', token, base);
+    const digest = await authedGet('/api/news/v1/list-feed-digest?variant=full&lang=en', token, base, authOpts);
     headlines = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
+    const categories = digest && typeof digest === 'object' ? digest.categories : null;
+    if (categories && typeof categories === 'object') {
+      digestItems = Object.values(categories)
+        .flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []));
+    }
   } catch (error) {
     headlineErrors.push({
       id: '*',
       message: error instanceof Error ? error.message : String(error),
     });
+  }
+
+  // Per-country recent developments (#7615). Headlines match from the digest
+  // fetched above; the brief and timeline ride the tier-gated routes, so they
+  // run only with a service key. Briefs additionally require grounding: an
+  // ungrounded brief is energy-data prose with no events, which is the defect
+  // this enrichment removes rather than replicates.
+  const developmentsErrors = [];
+  const headlinesByCode = new Map();
+  for (const code of Object.keys(countries)) {
+    headlinesByCode.set(code, selectCountryHeadlines(digestItems, code, COUNTRY_HEADLINE_LIMIT));
+  }
+  // Provenance cross-check (#7615): a brief source renders headline-grade on
+  // the page, so its URL must have been in the frozen digest generation. The
+  // server re-grounds from its own live digest read at brief time; anything
+  // outside this run's frozen generation (rotation, hallucination) is dropped
+  // rather than published unverifiable. Trailing-slash-insensitive: the
+  // server normalizes URLs through `new URL().toString()` while the digest
+  // carries them raw.
+  const digestUrls = new Set();
+  for (const item of digestItems) {
+    const raw = String(item?.link || '').trim();
+    if (!raw) continue;
+    digestUrls.add(raw);
+    digestUrls.add(raw.endsWith('/') ? raw.slice(0, -1) : `${raw}/`);
+  }
+  for (const code of Object.keys(countries)) {
+    const countryHeadlines = headlinesByCode.get(code) || [];
+    const briefSkipped = !keyed
+      ? 'no-service-key'
+      : countryHeadlines.length === 0 ? 'no-grounding' : null;
+    const developments = {
+      ...emptyDevelopments(freezeStartedAt, briefSkipped),
+      headlines: countryHeadlines,
+    };
+    if (briefSkipped === null) {
+      try {
+        const context = buildBriefContext(countryHeadlines);
+        const briefPayload = await authedGet(
+          `/api/intelligence/v1/get-country-intel-brief?country_code=${encodeURIComponent(code)}&lang=en&context=${encodeURIComponent(context)}`,
+          token,
+          base,
+          authOpts,
+        );
+        const brief = briefRecord(briefPayload);
+        if (brief) {
+          brief.sources = brief.sources.filter((source) => digestUrls.has(source.url));
+          developments.brief = brief;
+        } else {
+          developmentsErrors.push({ code, stage: 'brief', message: 'response carried no publishable brief text' });
+        }
+      } catch (error) {
+        developmentsErrors.push({ code, stage: 'brief', message: error instanceof Error ? error.message : String(error) });
+      }
+      await sleep(requestGapMs);
+    }
+    if (keyed) {
+      try {
+        const timelinePayload = await authedGet(
+          `/api/intelligence/v1/get-intel-timeline?country=${encodeURIComponent(code)}&limit=${COUNTRY_TIMELINE_LIMIT}`,
+          token,
+          base,
+          authOpts,
+        );
+        const records = Array.isArray(timelinePayload?.records) ? timelinePayload.records : [];
+        developments.timeline = records
+          .map(timelineRecord)
+          .filter((record) => record !== null);
+      } catch (error) {
+        developmentsErrors.push({ code, stage: 'timeline', message: error instanceof Error ? error.message : String(error) });
+      }
+      await sleep(requestGapMs);
+    }
+    countries[code].developments = developments;
   }
 
   const geoLeaders = Object.entries(countries)
@@ -475,12 +775,24 @@ export async function freezeCrawlableLivePulse({
       crisisErrorCount: crisisErrors.length,
       headlineCount: headlines.length,
       headlineErrorCount: headlineErrors.length,
+      headlineCountryCount: Object.values(countries)
+        .filter((row) => (row.developments?.headlines?.length || 0) > 0).length,
+      briefCountryCount: Object.values(countries)
+        .filter((row) => row.developments?.brief != null).length,
+      briefMatchedCount: Object.values(countries)
+        .filter((row) => row.developments?.briefSkipped !== 'no-grounding'
+          && (row.developments?.headlines?.length || 0) > 0).length,
+      timelineCountryCount: Object.values(countries)
+        .filter((row) => (row.developments?.timeline?.length || 0) > 0).length,
+      serviceKeyPresent: keyed,
+      developmentsErrorCount: developmentsErrors.length,
     },
     errors: {
       countries: countryErrors,
       chokepoints: chokepointErrors,
       crises: crisisErrors,
       headlines: headlineErrors,
+      developments: developmentsErrors,
     },
   };
 
@@ -516,6 +828,30 @@ export async function freezeCrawlableLivePulse({
     );
   }
 
+  // Brief gate (#7615): with a service key, every headline-matched country is
+  // owed a brief attempt. Tolerance mirrors the country shortfall above — a
+  // few LLM failures must not red the weekly run — but zero briefs means the
+  // key is wrong-tiered, the route moved, or the model is down, and shipping
+  // that silently would revert every enriched page to headlines-only.
+  // Without a key there is nothing to gate: briefSkipped=no-service-key is
+  // the documented degraded state, not a failure.
+  if (keyed && snapshot.coverage.briefMatchedCount > 0) {
+    if (snapshot.coverage.briefCountryCount === 0) {
+      throw new Error(
+        `Pulse freeze captured briefs for 0 of ${snapshot.coverage.briefMatchedCount} headline-matched countries`
+        + firstCaptureCause(developmentsErrors),
+      );
+    }
+    const minBriefs = Math.max(1, snapshot.coverage.briefMatchedCount - MAX_COUNTRY_CAPTURE_SHORTFALL);
+    if (snapshot.coverage.briefCountryCount < minBriefs) {
+      throw new Error(
+        `Pulse freeze captured briefs for only ${snapshot.coverage.briefCountryCount} of ${snapshot.coverage.briefMatchedCount} headline-matched countries; `
+        + `expected at least ${minBriefs}`
+        + firstCaptureCause(developmentsErrors),
+      );
+    }
+  }
+
   const basename = OUTPUT_BASENAME || `crawlable-live-pulse-${capturedAt}.json`;
   const outPath = path.join(rootDir, 'docs', 'snapshots', basename);
   await fs.writeFile(outPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
@@ -531,15 +867,30 @@ if (isMain) {
         `[freeze-crawlable-live-pulse] countries=${snapshot.coverage.countryCount} `
         + `chokepoints=${snapshot.coverage.chokepointCount} `
         + `crises=${snapshot.coverage.crisisCount} `
-        + `headlines=${snapshot.coverage.headlineCount}`,
+        + `headlines=${snapshot.coverage.headlineCount} `
+        + `headlineCountries=${snapshot.coverage.headlineCountryCount} `
+        + `briefCountries=${snapshot.coverage.briefCountryCount} `
+        + `timelineCountries=${snapshot.coverage.timelineCountryCount} `
+        + `keyed=${snapshot.coverage.serviceKeyPresent}`,
       );
       if (
         snapshot.coverage.countryErrorCount
         || snapshot.coverage.chokepointErrorCount
         || snapshot.coverage.crisisErrorCount
         || snapshot.coverage.headlineErrorCount
+        || snapshot.coverage.developmentsErrorCount
       ) {
         console.warn('[freeze-crawlable-live-pulse] partial errors recorded in snapshot.errors');
+      }
+      // Loud by design: a keyless cron (missing/expired WORLDMONITOR_API_KEY)
+      // is green but headlines-only — indistinguishable from healthy without
+      // this line. The weekly workflow declares the secret; if this warning
+      // appears there, the enrichment is silently off.
+      if (!snapshot.coverage.serviceKeyPresent) {
+        console.warn(
+          '[freeze-crawlable-live-pulse] no service key configured: tier-gated brief/timeline captures skipped '
+          + '(briefSkipped=no-service-key). Set WORLDMONITOR_API_KEY for full enrichment.',
+        );
       }
     })
     .catch((error) => {
@@ -548,4 +899,11 @@ if (isMain) {
     });
 }
 
-export { normalizeApiBase, mintSession, authedGet };
+export {
+  normalizeApiBase,
+  mintSession,
+  authedGet,
+  selectCountryHeadlines,
+  buildBriefContext,
+  countryDisplayName,
+};
