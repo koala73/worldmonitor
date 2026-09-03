@@ -1,7 +1,6 @@
 import Papa from 'papaparse';
 
 import {
-  CHROME_UA,
   loadSharedConfig,
 } from './_seed-utils.mjs';
 
@@ -17,6 +16,8 @@ export const HAPI_HDX_METADATA_TIMEOUT_MS = 60_000;
 export const HAPI_HDX_SNAPSHOT_TIMEOUT_MS = 120_000;
 
 const ISO2_TO_ISO3 = loadSharedConfig('iso2-to-iso3.json');
+const HAPI_APP_IDENTIFIER_CONFIG = loadSharedConfig('hapi-app-identifier.json');
+const HAPI_HDX_USER_AGENT = `${HAPI_APP_IDENTIFIER_CONFIG.application}/1.0`;
 const ISO3_TO_ISO2 = new Map(
   Object.entries(ISO2_TO_ISO3).map(([iso2, iso3]) => [String(iso3).toUpperCase(), iso2]),
 );
@@ -227,7 +228,7 @@ export async function fetchHapiHdxSnapshotRows({
   const requestOptions = (accept, timeoutMs) => ({
     headers: {
       Accept: accept,
-      'User-Agent': CHROME_UA,
+      'User-Agent': HAPI_HDX_USER_AGENT,
     },
     signal: createTimeoutSignal(timeoutMs),
   });

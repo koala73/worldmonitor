@@ -207,7 +207,7 @@ describe('get_five_factor_scorecard MCP tool', () => {
           unavailableReason: { const: 'scorecard-snapshot-unavailable' },
           methodologyVersion: { const: '' },
           computedAt: { const: '' },
-          scorecards: { maxItems: 0 },
+          scorecards: { type: 'array', maxItems: 0 },
         },
       },
     ]);

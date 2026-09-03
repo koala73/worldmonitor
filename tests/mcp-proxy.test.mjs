@@ -6,6 +6,7 @@
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach, before } from 'node:test';
 import { invokeNodeHandler, makeFakeNodeRequest, makeMcpFetch } from './helpers/node-http-shapes.mjs';
+import { MAX_MCP_PROXY_JSON_DEPTH } from '../api/mcp/bounded-json.ts';
 
 // validateApiKey runs with forceKey:true on this endpoint (PR #3768 review
 // finding — wms_ session tokens are anonymous and freely mintable via
@@ -134,6 +135,7 @@ const TEST_NODE_REQUEST_KEY = Symbol.for('worldmonitor.mcpProxy.nodeRequestForTe
 
 const PUBLIC_TEST_ADDRESS = '93.184.216.34';
 const PUBLIC_TEST_ADDRESS_V6 = '2606:2800:220:1:248:1893:25c8:1946';
+const MCP_PROXY_RESPONSE_CAP_BYTES = 1024 * 1024;
 
 function setResolveHostnameForTest(resolver) {
   if (typeof resolver === 'function') {
@@ -519,6 +521,98 @@ describe('api/mcp-proxy', () => {
       assert.equal(data.tools[0].name, 'search');
     });
 
+    it('preserves deep schemas and reserved property names from third-party servers', async () => {
+      let deep = { type: ['number', 'null'] };
+      for (let depth = 0; depth < 24; depth += 1) deep = { type: 'array', items: deep };
+      const sampleTools = [{
+        name: 'foreign_tool',
+        inputSchema: { type: 'object' },
+        outputSchema: {
+          type: 'object',
+          required: ['cause'],
+          properties: {
+            cause: { type: 'string' },
+            stack: { type: 'string' },
+            stackTrace: { type: 'array', items: { type: 'string' } },
+            deep,
+          },
+        },
+      }];
+      globalThis.fetch = makeMcpFetch({ tools: sampleTools });
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 200);
+      assert.deepEqual((await res.json()).tools, sampleTools);
+    });
+
+    it('rejects a deeply nested streamable response before parsing it', async () => {
+      const depth = 10_000;
+      const deepSchema = '{"nested":'.repeat(depth) + 'true' + '}'.repeat(depth);
+      const payload = `{"jsonrpc":"2.0","id":2,"result":{"tools":[{"name":"deep_tool","inputSchema":{"type":"object"},"outputSchema":${deepSchema}}]}}`;
+      assert.ok(new TextEncoder().encode(payload).byteLength < MCP_PROXY_RESPONSE_CAP_BYTES);
+
+      globalThis.fetch = async (url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'tools/list') {
+          return new Response(payload, { headers: { 'Content-Type': 'application/json' } });
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_DEPTH} nesting levels`,
+      );
+    });
+
+    it('cancels the ignored streamable initialized response body', async () => {
+      let cancelled = false;
+      globalThis.fetch = async (url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'notifications/initialized') {
+          return new Response(new ReadableStream({
+            cancel() {
+              cancelled = true;
+            },
+          }), { status: 202 });
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 200);
+      assert.equal(cancelled, true);
+    });
+
+    it('rejects oversized streamable JSON before parsing it', async () => {
+      globalThis.fetch = async (_url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'initialize') {
+          const payload = JSON.stringify({
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              protocolVersion: '2025-03-26',
+              capabilities: {},
+              padding: 'x'.repeat(MCP_PROXY_RESPONSE_CAP_BYTES),
+            },
+          });
+          return new Response(payload, { headers: { 'Content-Type': 'application/json' } });
+        }
+        return makeMcpFetch({ tools: [] })(_url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
+    });
+
     it('returns empty tools array when server returns none', async () => {
       globalThis.fetch = makeMcpFetch({ tools: [] });
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
@@ -828,6 +922,31 @@ describe('api/mcp-proxy', () => {
       assert.match(data.error, /serverUrl/i);
     });
 
+    it('rejects a request whose tool arguments exceed the JSON nesting limit', async () => {
+      let toolArgs = { leaf: true };
+      for (let depth = 0; depth < MAX_MCP_PROXY_JSON_DEPTH; depth += 1) {
+        toolArgs = { nested: toolArgs };
+      }
+      let fetchCalled = false;
+      globalThis.fetch = async () => {
+        fetchCalled = true;
+        return new Response('{}');
+      };
+
+      const res = await handler(makePostRequest({
+        serverUrl: 'https://mcp.example.com/mcp',
+        toolName: 'deep_tool',
+        toolArgs,
+      }));
+
+      assert.equal(res.status, 400);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_DEPTH} nesting levels`,
+      );
+      assert.equal(fetchCalled, false);
+    });
+
     it('returns 400 when toolName is missing', async () => {
       const res = await handler(makePostRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 400);
@@ -948,6 +1067,26 @@ describe('api/mcp-proxy', () => {
       assert.deepEqual(data.result, callResult);
     });
 
+    it('preserves deep results and reserved property names from third-party servers', async () => {
+      let deep = { leaf: true };
+      for (let depth = 0; depth < 24; depth += 1) deep = { nested: deep };
+      const callResult = {
+        cause: 'domain-value',
+        stack: 'domain-stack',
+        stackTrace: ['domain-trace'],
+        deep,
+      };
+      globalThis.fetch = makeMcpFetch({ callResult });
+
+      const res = await handler(makePostRequest({
+        serverUrl: 'https://mcp.example.com/mcp',
+        toolName: 'foreign_tool',
+      }));
+
+      assert.equal(res.status, 200);
+      assert.deepEqual((await res.json()).result, callResult);
+    });
+
     it('returns 422 when tools/call returns non-ok status', async () => {
       globalThis.fetch = makeMcpFetch({ callStatus: 403 });
       const res = await handler(makePostRequest({
@@ -1032,6 +1171,160 @@ describe('api/mcp-proxy', () => {
       assert.ok(connectCalled, 'Expected SSE connect to be called');
       // Result is 422 (stream closed before endpoint or RPC error) — not a node: DNS failure
       assert.ok([200, 422, 504].includes(res.status), `Unexpected status: ${res.status}`);
+    });
+
+    it('rejects and cancels a legacy SSE stream after its cumulative raw bytes exceed the cap', async () => {
+      let cancelled = false;
+      globalThis.fetch = async (_url, opts) => {
+        if (!opts?.body) {
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(MCP_PROXY_RESPONSE_CAP_BYTES + 1));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+        throw new Error('oversized legacy SSE must fail before an endpoint POST');
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+
+      assert.equal(res.status, 422);
+      assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
+      assert.equal(cancelled, true);
+    });
+
+    it('retains a terminal legacy SSE overflow that occurs after endpoint discovery', async () => {
+      let endpointPosts = 0;
+      globalThis.fetch = async (_url, opts) => {
+        if (!opts?.body) {
+          const encoder = new TextEncoder();
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(encoder.encode('event: endpoint\ndata: /messages\n\n'));
+              controller.enqueue(new Uint8Array(MCP_PROXY_RESPONSE_CAP_BYTES + 1));
+            },
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+        endpointPosts += 1;
+        return new Response(null, { status: 202 });
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+
+      assert.equal(res.status, 422);
+      assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
+      // On Edge the SSE body was read straight off the fetch Response, so the
+      // overflow chunk landed in the same microtask run as the endpoint event
+      // and connect() never returned. The Node transport bridges the body
+      // through an IncomingMessage, so a chunk that follows the endpoint event
+      // arrives one macrotask later — after connect() has resolved and the
+      // initialize POST is already in flight. That single dispatch goes to the
+      // origin whose address was already vetted and pinned, and its response is
+      // discarded. What must still hold, and does, is that the terminal error
+      // fails the call and stops the session: initialize is the ONLY POST, so
+      // neither notifications/initialized nor tools/list ever reaches the wire.
+      assert.equal(endpointPosts, 1, 'a terminal stream error must stop the session at the first POST');
+    });
+
+    it('cancels ignored legacy SSE acknowledgement bodies', async () => {
+      const encoder = new TextEncoder();
+      let sseController;
+      let cancelledAcks = 0;
+      globalThis.fetch = async (_url, opts) => {
+        if (!opts?.body) {
+          const stream = new ReadableStream({
+            start(controller) {
+              sseController = controller;
+              controller.enqueue(encoder.encode('event: endpoint\ndata: /messages\n\n'));
+            },
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+
+        const body = JSON.parse(opts.body);
+        if (body.id === 1) {
+          sseController.enqueue(encoder.encode(`data: ${JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: { protocolVersion: '2025-03-26', capabilities: {} },
+          })}\n\n`));
+        } else if (body.id === 2) {
+          sseController.enqueue(encoder.encode(`data: ${JSON.stringify({
+            jsonrpc: '2.0',
+            id: 2,
+            result: { tools: [] },
+          })}\n\n`));
+        }
+
+        return new Response(new ReadableStream({
+          cancel() {
+            cancelledAcks += 1;
+          },
+        }), { status: 202 });
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+
+      assert.equal(res.status, 200);
+      assert.equal(cancelledAcks, 3);
+    });
+
+    it('rejects an over-deep JSON message on legacy SSE', async () => {
+      const encoder = new TextEncoder();
+      let sseController;
+      const deepResult = '{"nested":'.repeat(MAX_MCP_PROXY_JSON_DEPTH + 1)
+        + 'true'
+        + '}'.repeat(MAX_MCP_PROXY_JSON_DEPTH + 1);
+      globalThis.fetch = async (_url, opts) => {
+        if (!opts?.body) {
+          const stream = new ReadableStream({
+            start(controller) {
+              sseController = controller;
+              controller.enqueue(encoder.encode('event: endpoint\ndata: /messages\n\n'));
+            },
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+
+        const body = JSON.parse(opts.body);
+        if (body.id === 1) {
+          sseController.enqueue(encoder.encode(`data: ${JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: { protocolVersion: '2025-03-26', capabilities: {} },
+          })}\n\n`));
+        } else if (body.id === 2) {
+          sseController.enqueue(encoder.encode(
+            `data: {"jsonrpc":"2.0","id":2,"result":${deepResult}}\n\n`,
+          ));
+        }
+        return new Response(null, { status: 202 });
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+
+      assert.equal(res.status, 422);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_DEPTH} nesting levels`,
+      );
     });
   });
 
@@ -1129,6 +1422,32 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 200);
       const data = await res.json();
       assert.equal(data.tools[0].name, 'web_search');
+    });
+
+    it('rejects oversized streamable HTTP SSE before parsing it', async () => {
+      globalThis.fetch = async (_url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'initialize') {
+          const message = {
+            jsonrpc: '2.0',
+            id: body.id,
+            result: {
+              protocolVersion: '2025-03-26',
+              capabilities: {},
+              padding: 'x'.repeat(MCP_PROXY_RESPONSE_CAP_BYTES),
+            },
+          };
+          return new Response(`data: ${JSON.stringify(message)}\n\n`, {
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+        return makeMcpFetch({ tools: [] })(_url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
     });
   });
 

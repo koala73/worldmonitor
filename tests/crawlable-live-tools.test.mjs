@@ -88,6 +88,27 @@ describe('crawlable live intelligence view models', () => {
       fetchedAt: NOW - 60_000,
       partial: true,
     });
+    // An absent upstream note yields null, never a placeholder sentence. The
+    // generator turns null into `<p data-chokepoint-description hidden>`; a
+    // sentence would be published as real body prose in <main>, and "No
+    // additional status note was supplied." was the only live-section text 7 of
+    // the 13 chokepoint pages carried (#7530).
+    assert.equal(
+      chokepointStatusViewModel(payload, 'suez', NOW).description,
+      null,
+      'a row with no description must report null, not a placeholder sentence',
+    );
+    assert.equal(
+      chokepointStatusViewModel({
+        ...payload,
+        chokepoints: payload.chokepoints.map((row) => (
+          row.id === 'suez' ? { ...row, description: '   ' } : row
+        )),
+      }, 'suez', NOW).description,
+      null,
+      'a whitespace-only description must report null too',
+    );
+
     const responsePartial = chokepointStatusViewModel({
       ...payload,
       upstreamUnavailable: true,

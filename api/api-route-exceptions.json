@@ -73,6 +73,13 @@
       "removal_issue": null
     },
     {
+      "path": "api/mcp/bounded-json.ts",
+      "category": "internal-helper",
+      "reason": "MCP proxy JSON nesting guard for untrusted request bodies, streamable responses, and legacy SSE messages (#7556). Pure helper module for the external-protocol MCP proxy — exports no route.",
+      "owner": "@SebastienMelki",
+      "removal_issue": null
+    },
+    {
       "path": "api/mcp/body-limits.ts",
       "category": "internal-helper",
       "reason": "Leaf MCP JSON-RPC POST body-size constant (#7406). Kept outside api/mcp/constants.ts so Edge facades (docs-mcp, mcp-proxy) can import the number without the MCP upgrade/attribution module graph. Pure constant module — exports no route.",

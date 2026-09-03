@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import {
@@ -58,6 +59,14 @@ describe('company-monitoring classifier rollout gate', () => {
       providerRoute: 'pinned-route',
       expectedResolvedProvider: 'Pinned Provider',
     }), undefined);
+  });
+});
+
+describe('company-monitoring X budget wiring', () => {
+  it('installs the curated daily hold before the worker can reserve X Posts', () => {
+    const source = readFileSync(new URL('../scripts/company-monitoring-worker.mjs', import.meta.url), 'utf8');
+    assert.match(source, /DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS/);
+    assert.match(source, /createXPostBudget\(\{[\s\S]*dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*\}\)/);
   });
 });
 

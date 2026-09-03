@@ -1622,8 +1622,11 @@ function healthSummaryDocSources(pages = null) {
 //   - `total` equals the registry size. True of any response, whatever its status.
 //   - the buckets sum to `total`. `summary.warn` is already net of onDemandWarn
 //     (api/health.js computes `realWarnCount = counts.warn - counts.onDemandWarn`),
-//     and staleContent/rolloutPending are documented SUBSETS of warn, so the
-//     partition is exactly ok + warn + onDemandWarn + crit. This is what caught
+//     and rolloutPending is a documented SUBSET of warn, so the partition is
+//     exactly ok + warn + onDemandWarn + crit. staleContent is diagnostic: a
+//     graced entry counts in `ok`, so it is NOT a subset of warn — but every
+//     STALE_CONTENT entry still lands in exactly one of ok/warn, which keeps
+//     `staleContent <= ok + warn` a real bound worth enforcing. This is what caught
 //     the pre-#6300 api-platform.mdx body, which showed a concrete "HEALTHY"
 //     alongside 5 warns.
 function validateHealthSummaryDocs(stats, docs = null) {
@@ -1663,12 +1666,20 @@ function validateHealthSummaryDocs(stats, docs = null) {
           `${where}: ok + warn + onDemandWarn + crit = ${partition}, which must equal total (${counts.total})`,
         );
       }
-      for (const subset of ['staleContent', 'rolloutPending']) {
-        if (counts[subset] > counts.warn) {
-          failures.push(
-            `${where}: ${subset} (${counts[subset]}) is documented as a subset of warn (${counts.warn})`,
-          );
-        }
+      if (counts.rolloutPending > counts.warn) {
+        failures.push(
+          `${where}: rolloutPending (${counts.rolloutPending}) is documented as a subset of warn (${counts.warn})`,
+        );
+      }
+      // staleContent is no longer a subset of warn (a graced entry counts in
+      // ok), but it is still bounded: STATUS_COUNTS maps STALE_CONTENT to warn
+      // and healthStatusBucket only ever overrides that to ok, so an example
+      // claiming more stale-content diagnoses than there are ok+warn keys is
+      // arithmetically impossible and must not ship.
+      if (counts.staleContent > counts.ok + counts.warn) {
+        failures.push(
+          `${where}: staleContent (${counts.staleContent}) exceeds ok + warn (${counts.ok + counts.warn}), which is impossible`,
+        );
       }
     });
   }

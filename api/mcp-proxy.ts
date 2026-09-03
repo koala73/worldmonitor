@@ -8,8 +8,14 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
-import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
-import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
+import {
+  readBoundedRequestBody,
+  readBoundedResponseBody,
+  RequestBodyTooLargeError,
+  ResponseBodyTooLargeError,
+} from './mcp/bounded-body';
+import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
+import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 // Node runtime, not Edge (GHSA-887j): the upstream socket is pinned to the
@@ -482,31 +488,39 @@ async function postJson(target, body, headers, sessionId) {
   });
 }
 
+async function cancelResponseBody(response) {
+  await response.body?.cancel().catch(() => {});
+}
+
 async function parseJsonRpcResponse(resp) {
+  const body = await readBoundedResponseBody(resp, MAX_MCP_PROXY_RESPONSE_BYTES);
+  const text = new TextDecoder().decode(body);
   const ct = resp.headers.get('content-type') || '';
   if (ct.includes('text/event-stream')) {
-    const text = await resp.text();
     const lines = text.split('\n');
     for (const line of lines) {
       if (line.startsWith('data: ')) {
         try {
-          const parsed = JSON.parse(line.slice(6));
+          const parsed = parseMcpProxyJson(line.slice(6));
           if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
-        } catch { /* skip */ }
+        } catch (error) {
+          if (error instanceof McpProxyJsonDepthError) throw error;
+        }
       }
     }
     throw new Error('No result found in SSE response');
   }
-  return resp.json();
+  return parseMcpProxyJson(text);
 }
 
 async function sendInitialized(target, headers, sessionId) {
   try {
-    await postJson(target, {
+    const response = await postJson(target, {
       jsonrpc: '2.0',
       method: 'notifications/initialized',
       params: {},
     }, headers, sessionId);
+    await cancelResponseBody(response);
   } catch (error) {
     if (error instanceof McpProxySsrfError) throw error;
     /* non-fatal */
@@ -577,6 +591,7 @@ class SseSession {
     this._endpointDeferred = makeDeferred();
     this._pending = new Map(); // rpc id -> deferred
     this._reader = null;
+    this._terminalError = null;
   }
 
   async connect() {
@@ -601,19 +616,34 @@ class SseSession {
     const dec = new TextDecoder();
     let buf = '';
     let eventType = '';
+    let bytesRead = 0;
     const reader = this._reader;
+
+    const rejectSession = async (error) => {
+      this._terminalError = error;
+      this._endpointDeferred.reject(error);
+      for (const [, deferred] of this._pending) deferred.reject(error);
+      this._pending.clear();
+      await reader.cancel().catch(() => {});
+    };
 
     (async () => {
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
-            // Stream closed — if endpoint never arrived, reject so connect() throws
-            if (!this._endpointUrl) {
-              this._endpointDeferred.reject(new Error('SSE stream closed before endpoint event'));
-            }
-            for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
+            const error = new Error(
+              this._endpointUrl ? 'SSE stream closed' : 'SSE stream closed before endpoint event',
+            );
+            this._terminalError = error;
+            this._endpointDeferred.reject(error);
+            for (const [, d] of this._pending) d.reject(error);
+            this._pending.clear();
             break;
+          }
+          bytesRead += value?.byteLength ?? 0;
+          if (bytesRead > MAX_MCP_PROXY_RESPONSE_BYTES) {
+            throw new ResponseBodyTooLargeError(MAX_MCP_PROXY_RESPONSE_BYTES);
           }
           buf += dec.decode(value, { stream: true });
           const lines = buf.split('\n');
@@ -654,25 +684,27 @@ class SseSession {
                 this._endpointDeferred.resolve();
               } else {
                 try {
-                  const msg = JSON.parse(data);
+                  const msg = parseMcpProxyJson(data);
                   if (msg.id !== undefined) {
                     const d = this._pending.get(msg.id);
                     if (d) { this._pending.delete(msg.id); d.resolve(msg); }
                   }
-                } catch { /* skip non-JSON data lines */ }
+                } catch (error) {
+                  if (error instanceof McpProxyJsonDepthError) throw error;
+                }
               }
               eventType = '';
             }
           }
         }
       } catch (err) {
-        this._endpointDeferred.reject(err);
-        for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
+        await rejectSession(err);
       }
     })();
   }
 
   async send(id, method, params) {
+    if (this._terminalError) throw this._terminalError;
     const deferred = makeDeferred();
     // The timer below can reject this before the POST has even returned (the
     // POST carries its own timeout of the same length). Keep the rejection
@@ -694,6 +726,7 @@ class SseSession {
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
         signal: AbortSignal.timeout(SSE_RPC_TIMEOUT_MS),
       });
+      await cancelResponseBody(postResp);
       if (!postResp.ok) {
         this._pending.delete(id);
         throw new Error(`${method} POST HTTP ${postResp.status}`);
@@ -705,16 +738,17 @@ class SseSession {
   }
 
   async notify(method, params) {
-    await pinnedFetch(this._endpointTarget(), {
+    const response = await pinnedFetch(this._endpointTarget(), {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),
       signal: AbortSignal.timeout(5_000),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (response) await cancelResponseBody(response);
   }
 
   close() {
-    try { this._reader?.cancel(); } catch { /* ignore */ }
+    this._reader?.cancel().catch(() => {});
   }
 }
 
@@ -796,10 +830,13 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   let body;
   try {
     const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
-    body = JSON.parse(new TextDecoder().decode(bodyBytes));
+    body = parseMcpProxyJson(new TextDecoder().decode(bodyBytes));
   } catch (err) {
     if (err instanceof RequestBodyTooLargeError) {
       return jsonResponse({ error: err.message }, 413, cors);
+    }
+    if (err instanceof McpProxyJsonDepthError) {
+      return jsonResponse({ error: err.message }, 400, cors);
     }
     return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
   }

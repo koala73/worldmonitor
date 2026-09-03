@@ -986,6 +986,30 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // future first-party WebAuthn call site would keep a source-mapped
           // .ts frame and still surface (WORLDMONITOR-11B).
           || /An unknown error occurred while talking to the credential manager/.test(msg)
+          // The overlapping-request half of the same WebAuthn surface. Chrome
+          // serialises `navigator.credentials` requests per page and rejects
+          // the second one with `OperationError: A request is already
+          // pending.`; the documented triggers are a double-clicked sign-in
+          // button and a submit issued while a conditional-mediation passkey
+          // autofill request is still open (keycloak/keycloak#41037;
+          // w3c/webauthn#1790 records that the spec leaves the overlap
+          // undefined and that Chrome errors). Clerk's sign-in UI opens exactly
+          // that conditional request, which is the same third-party origin as
+          // the CredMan entry above, and it arrives the same way — an unhandled
+          // rejection out of the Clerk bundle with zero captured frames.
+          //
+          // Kept HERE rather than in `ignoreErrors`, unlike the marketing
+          // copy in `pro-test/src/sentry-filter-policy.ts`, because the two
+          // surfaces have different licences: the marketing bundle calls no
+          // WebAuthn API at all, but this one does — `createPasskey()` in
+          // src/services/passkeys.ts drives `user.createPasskey()`. That path
+          // cannot leak today (it wraps the call in try/catch and returns a
+          // classified outcome), but a future first-party double-invoke is
+          // precisely the bug worth seeing, and it would keep a source-mapped
+          // .ts frame. `!hasFirstParty` is what preserves it (WORLDMONITOR-11T,
+          // observed on `/pro`; the same class reaches this surface through the
+          // dashboard's own Clerk sign-in).
+          || /^(?:Error: )?OperationError: A request is already pending\.$/.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (

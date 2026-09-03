@@ -387,7 +387,9 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     congestion: coverageMetrics.congestion,
     navigationalWarnings: coverageMetrics.navigationalWarnings,
     aisDisruptions: coverageMetrics.aisDisruptions,
-    description: String(row.description || '').trim() || 'No additional status note was supplied.',
+    // null, never a placeholder sentence — see publishableDescription in
+    // scripts/freeze-crawlable-live-pulse.mjs (#7530).
+    description: String(row.description || '').trim() || null,
     todayTransits: coverageMetrics.todayTransits,
     todayCountsAvailable: coverageMetrics.todayCountsAvailable,
     weekMovement: coverageMetrics.weekMovement,
@@ -836,6 +838,17 @@ function setOptionalMetric(root, selector, value) {
   if (metric) metric.hidden = !available;
 }
 
+// The status note is optional prose, not a labelled metric: hide the paragraph
+// itself rather than leaving an empty <p> or writing a placeholder sentence
+// into it (#7530).
+function setOptionalDescription(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const text = value === null || value === undefined ? '' : String(value);
+  element.textContent = text;
+  element.hidden = text === '';
+}
+
 function formatDateTime(timestamp) {
   if (timestamp === null) return 'Time unavailable';
   return new Intl.DateTimeFormat('en-US', {
@@ -863,7 +876,9 @@ function setToolState(tool, state, status) {
     fallback.hidden = revealValues;
   }
   for (const description of tool.querySelectorAll('[data-chokepoint-description]')) {
-    if (revealValues) description.hidden = false;
+    // Only reveal a note that has text. The status note is optional (#7530),
+    // so an unconditional reveal would surface an empty paragraph.
+    if (revealValues && description.textContent.trim()) description.hidden = false;
   }
   for (const control of tool.querySelectorAll('[data-live-refresh]')) {
     control.disabled = state === 'loading';
@@ -1173,7 +1188,7 @@ export async function loadChokepoint(tool) {
     setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);
     setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? '—');
     setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (view.todayTransits === null ? '—' : 'Unavailable'));
-    setText(tool, '[data-chokepoint-description]', view.description);
+    setOptionalDescription(tool, '[data-chokepoint-description]', view.description);
     const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
     if (transitsNote) {
       if (view.todayTransits == null) {
@@ -1210,7 +1225,7 @@ export async function loadChokepoint(tool) {
       transitsNote.hidden = true;
       transitsNote.textContent = '';
     }
-    setText(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
+    setOptionalDescription(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
     setTime(tool, '[data-live-updated]', null, 'Snapshot');
     setToolState(tool, 'error', 'Temporarily unavailable');
   }
