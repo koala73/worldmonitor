@@ -129,6 +129,10 @@ const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTe
 const PUBLIC_TEST_ADDRESS = '93.184.216.34';
 const MCP_PROXY_RESPONSE_CAP_BYTES = 1024 * 1024;
 
+function repeatedEmptyObjects(count) {
+  return '{}' + ',{}'.repeat(count - 1);
+}
+
 function setResolveHostnameForTest(resolver) {
   if (typeof resolver === 'function') {
     globalThis[TEST_RESOLVER_KEY] = resolver;
@@ -537,7 +541,7 @@ describe('api/mcp-proxy', () => {
     it('rejects a broad streamable response before parsing it', async () => {
       const prefix = '{"jsonrpc":"2.0","id":2,"result":{"tools":[';
       const suffix = ']}}';
-      const tools = '{}' + ',{}'.repeat(MAX_MCP_PROXY_JSON_CONTAINERS - 1);
+      const tools = repeatedEmptyObjects(MAX_MCP_PROXY_JSON_CONTAINERS);
       const payload = `${prefix}${tools}${suffix}`;
       assert.ok(new TextEncoder().encode(payload).byteLength < MCP_PROXY_RESPONSE_CAP_BYTES);
 
@@ -1129,6 +1133,48 @@ describe('api/mcp-proxy', () => {
         `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_DEPTH} nesting levels`,
       );
     });
+
+    it('rejects a broad JSON message on legacy SSE', async () => {
+      const encoder = new TextEncoder();
+      let sseController;
+      const broadResult = `[${repeatedEmptyObjects(MAX_MCP_PROXY_JSON_CONTAINERS)}]`;
+      globalThis.fetch = async (_url, opts) => {
+        if (!opts?.body) {
+          const stream = new ReadableStream({
+            start(controller) {
+              sseController = controller;
+              controller.enqueue(encoder.encode('event: endpoint\ndata: /messages\n\n'));
+            },
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+
+        const body = JSON.parse(opts.body);
+        if (body.id === 1) {
+          sseController.enqueue(encoder.encode(`data: ${JSON.stringify({
+            jsonrpc: '2.0',
+            id: 1,
+            result: { protocolVersion: '2025-03-26', capabilities: {} },
+          })}\n\n`));
+        } else if (body.id === 2) {
+          sseController.enqueue(encoder.encode(
+            `data: {"jsonrpc":"2.0","id":2,"result":${broadResult}}\n\n`,
+          ));
+        }
+        return new Response(null, { status: 202 });
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+
+      assert.equal(res.status, 422);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_CONTAINERS} object or array containers`,
+      );
+    });
   });
 
   // ── SSE SSRF protection ───────────────────────────────────────────────────
@@ -1225,6 +1271,38 @@ describe('api/mcp-proxy', () => {
       assert.equal(res.status, 200);
       const data = await res.json();
       assert.equal(data.tools[0].name, 'web_search');
+    });
+
+    it('rejects a broad streamable HTTP SSE message before parsing it', async () => {
+      const broadTools = `[${repeatedEmptyObjects(MAX_MCP_PROXY_JSON_CONTAINERS)}]`;
+      globalThis.fetch = async (_url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'initialize') {
+          const message = {
+            jsonrpc: '2.0',
+            id: body.id,
+            result: { protocolVersion: '2025-03-26', capabilities: {} },
+          };
+          return new Response(`data: ${JSON.stringify(message)}\n\n`, {
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+        if (body.method === 'tools/list') {
+          return new Response(
+            `data: {"jsonrpc":"2.0","id":2,"result":{"tools":${broadTools}}}\n\n`,
+            { headers: { 'Content-Type': 'text/event-stream' } },
+          );
+        }
+        return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_CONTAINERS} object or array containers`,
+      );
     });
 
     it('rejects oversized streamable HTTP SSE before parsing it', async () => {

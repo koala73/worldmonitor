@@ -13,7 +13,7 @@ import {
   ResponseBodyTooLargeError,
 } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
-import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
+import { McpProxyJsonLimitError, parseMcpProxyJson } from './mcp/bounded-json';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
@@ -299,7 +299,7 @@ async function parseJsonRpcResponse(resp) {
           const parsed = parseMcpProxyJson(line.slice(6));
           if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
         } catch (error) {
-          if (error instanceof McpProxyJsonDepthError) throw error;
+          if (error instanceof McpProxyJsonLimitError) throw error;
         }
       }
     }
@@ -479,7 +479,7 @@ class SseSession {
                     if (d) { this._pending.delete(msg.id); d.resolve(msg); }
                   }
                 } catch (error) {
-                  if (error instanceof McpProxyJsonDepthError) throw error;
+                  if (error instanceof McpProxyJsonLimitError) throw error;
                 }
               }
               eventType = '';
@@ -622,7 +622,7 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
     if (err instanceof RequestBodyTooLargeError) {
       return jsonResponse({ error: err.message }, 413, cors);
     }
-    if (err instanceof McpProxyJsonDepthError) {
+    if (err instanceof McpProxyJsonLimitError) {
       return jsonResponse({ error: err.message }, 400, cors);
     }
     return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
