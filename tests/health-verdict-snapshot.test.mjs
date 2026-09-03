@@ -14,6 +14,7 @@ const {
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY: HEALTH_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
+  hasExpiredActivationGrace,
   snapshotTtlSeconds,
 } = __testing__;
 const realFetch = globalThis.fetch;
@@ -547,6 +548,7 @@ test('snapshot TTL is clamped down to the nearest activation deadline', () => {
 
   // Content deadline on a per-check entry.
   assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(30_000) } } }, now), 30);
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'STALE_CONTENT', staleContentGraceUntil: at(20_000) } } }, now), 20);
   // Rollout deadline, which only counts on a ROLLOUT_PENDING entry.
   assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'ROLLOUT_PENDING', rolloutPendingUntil: at(10_000) } } }, now), 10);
   // Compact shape: deadlines live under `summary`, because a graced check is OK
@@ -562,6 +564,22 @@ test('snapshot TTL is clamped down to the nearest activation deadline', () => {
   );
   // Beyond the base TTL the base TTL still caps it.
   assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(600_000) } } }, now), 60);
+});
+
+test('stale-content grace invalidates full and compact snapshots at the exact deadline', () => {
+  const now = Date.parse('2026-09-03T12:00:00.000Z');
+  const deadline = new Date(now).toISOString();
+  const full = {
+    checks: { temporalAnomalies: { status: 'STALE_CONTENT', staleContentGraceUntil: deadline } },
+  };
+  const compact = {
+    problems: { temporalAnomalies: { status: 'STALE_CONTENT', staleContentGraceUntil: deadline } },
+  };
+
+  assert.equal(hasExpiredActivationGrace(full, now - 1), false);
+  assert.equal(hasExpiredActivationGrace(compact, now - 1), false);
+  assert.equal(hasExpiredActivationGrace(full, now), true);
+  assert.equal(hasExpiredActivationGrace(compact, now), true);
 });
 
 test('snapshot TTL floors rather than rounds, so the key dies before the deadline', () => {

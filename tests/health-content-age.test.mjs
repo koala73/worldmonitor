@@ -17,7 +17,19 @@ import assert from 'node:assert/strict';
 
 import { __testing__ } from '../api/health.js';
 
-const { readSeedMeta, classifyKey, STATUS_COUNTS } = __testing__;
+const {
+  readSeedMeta,
+  classifyKey,
+  STATUS_COUNTS,
+  STALE_CONTENT_GRACE_MS,
+  STALE_CONTENT_GRACE_STATE_KEY,
+  staleContentGraceStatePlan,
+  parseStaleContentGraceUntil,
+  staleContentGraceUntilMs,
+  healthStatusBucket,
+  computeOverallStatus,
+  buildCompactVerdictSnapshot,
+} = __testing__;
 
 // Reusable setup: minimal classifyKey ctx + helper to build a seed-meta map.
 const NOW = 1700000000000;       // freeze "now" for deterministic age math
@@ -27,8 +39,15 @@ const ONE_DAY_MS = 24 * ONE_HOUR_MS;
 
 // Helpers ──────────────────────────────────────────────────────────────────
 
-function makeCtx({ keyStrens = new Map(), keyErrors = new Map(), keyMetaValues = new Map(), keyMetaErrors = new Map() } = {}) {
-  return { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, now: NOW };
+function makeCtx({
+  keyStrens = new Map(),
+  keyErrors = new Map(),
+  keyMetaValues = new Map(),
+  keyMetaErrors = new Map(),
+  staleContentNullGraceUntilMs = new Map(),
+  now = NOW,
+} = {}) {
+  return { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, staleContentNullGraceUntilMs, now };
 }
 
 // Returns the JSON-string a Redis GET would yield for a meta key (matches what
@@ -341,4 +360,124 @@ test('opted-in entry with null newestItemAt surfaces contentAgeMin: null', () =>
   assert.equal(entry.status, 'STALE_CONTENT', 'null newestItemAt → STALE_CONTENT');
   assert.equal(entry.contentAgeMin, null, 'contentAgeMin: null surfaced explicitly');
   assert.equal(entry.maxContentAgeMin, 12960);
+});
+
+// ── Finite STALE_CONTENT grace ──────────────────────────────────────────
+
+test('just-over-budget content stays diagnostically stale without making health non-healthy during grace', () => {
+  const maxContentAgeMin = 9 * 24 * 60;
+  const newestItemAt = NOW - (maxContentAgeMin + 1) * ONE_MIN_MS;
+  const freshnessBoundary = newestItemAt + maxContentAgeMin * ONE_MIN_MS;
+  const graceUntil = freshnessBoundary + 3 * ONE_HOUR_MS;
+  const ctx = makeCtx({
+    keyStrens: new Map([['health:disease-outbreaks:v1', 100]]),
+    keyMetaValues: new Map([['seed-meta:health:disease-outbreaks', metaValueOf({
+      fetchedAt: NOW - 10 * ONE_MIN_MS,
+      recordCount: 50,
+      newestItemAt,
+      maxContentAgeMin,
+    })]]),
+  });
+
+  const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
+  assert.equal(STALE_CONTENT_GRACE_MS, 3 * ONE_HOUR_MS);
+  assert.equal(entry.status, 'STALE_CONTENT');
+  assert.equal(entry.staleContentGraceUntil, new Date(graceUntil).toISOString());
+  assert.equal(healthStatusBucket(entry, NOW), 'ok');
+
+  const counts = { ok: 1, warn: 0, onDemandWarn: 0, staleContent: 1, rolloutPending: 0, crit: 0 };
+  assert.deepEqual(computeOverallStatus(counts, 1), {
+    overall: 'HEALTHY',
+    realWarnCount: 0,
+    critCount: 0,
+  });
+
+  const compact = buildCompactVerdictSnapshot({
+    status: 'HEALTHY',
+    summary: { total: 1, ...counts },
+    checkedAt: new Date(NOW).toISOString(),
+    checks: { diseaseOutbreaks: entry },
+  });
+  assert.deepEqual(compact.problems, { diseaseOutbreaks: entry }, 'grace must not hide the diagnostic');
+});
+
+test('null newestItemAt keeps the first Redis deadline when fresh seeder metadata arrives again', () => {
+  const nullContentAge = {
+    newestItemAt: null,
+    contentAgeMin: null,
+    maxContentAgeMin: 2 * ONE_DAY_MS / ONE_MIN_MS,
+    contentStale: true,
+  };
+  const firstPlan = staleContentGraceStatePlan(
+    new Map([['temporalAnomalies', nullContentAge]]),
+    NOW,
+    STALE_CONTENT_GRACE_STATE_KEY,
+  );
+  const firstDeadline = NOW + 3 * ONE_HOUR_MS;
+  assert.deepEqual(firstPlan.commands, [
+    ['HSETNX', STALE_CONTENT_GRACE_STATE_KEY, 'temporalAnomalies', String(firstDeadline)],
+    ['HGET', STALE_CONTENT_GRACE_STATE_KEY, 'temporalAnomalies'],
+  ]);
+
+  const nextNow = NOW + ONE_HOUR_MS;
+  const repeatedPlan = staleContentGraceStatePlan(
+    new Map([['temporalAnomalies', nullContentAge]]),
+    nextNow,
+    STALE_CONTENT_GRACE_STATE_KEY,
+  );
+  assert.equal(repeatedPlan.commands[0][3], String(nextNow + 3 * ONE_HOUR_MS), 'later evaluation proposes a later candidate');
+
+  const resolved = parseStaleContentGraceUntil(
+    [{ result: 0 }, { result: String(firstDeadline) }],
+    repeatedPlan.nullContentNames,
+  );
+  assert.equal(resolved.get('temporalAnomalies'), firstDeadline, 'HGET result keeps the original finite deadline');
+  assert.equal(staleContentGraceUntilMs(nullContentAge, resolved.get('temporalAnomalies'), nextNow), firstDeadline);
+});
+
+test('stale-content grace ends exactly at its deadline and future timestamps are never graced', () => {
+  const nullContentAge = {
+    newestItemAt: null,
+    contentAgeMin: null,
+    maxContentAgeMin: 60,
+    contentStale: true,
+  };
+  const deadline = NOW + 3 * ONE_HOUR_MS;
+  assert.equal(staleContentGraceUntilMs(nullContentAge, deadline, deadline - 1), deadline);
+  assert.equal(staleContentGraceUntilMs(nullContentAge, deadline, deadline), null);
+  assert.equal(
+    healthStatusBucket({ status: 'STALE_CONTENT', staleContentGraceUntil: new Date(deadline).toISOString() }, deadline),
+    'warn',
+  );
+
+  const futureContentAge = {
+    newestItemAt: NOW + ONE_HOUR_MS,
+    contentAgeMin: -60,
+    maxContentAgeMin: 60,
+    contentStale: true,
+  };
+  assert.equal(staleContentGraceUntilMs(futureContentAge, null, NOW), null);
+});
+
+test('recovered content clears only its null-timestamp state field', () => {
+  const plan = staleContentGraceStatePlan(new Map([
+    ['temporalAnomalies', {
+      newestItemAt: null,
+      contentAgeMin: null,
+      maxContentAgeMin: 60,
+      contentStale: true,
+    }],
+    ['diseaseOutbreaks', {
+      newestItemAt: NOW - ONE_HOUR_MS,
+      contentAgeMin: 60,
+      maxContentAgeMin: 120,
+      contentStale: false,
+    }],
+  ]), NOW, STALE_CONTENT_GRACE_STATE_KEY);
+
+  assert.deepEqual(plan.commands.at(-1), [
+    'HDEL',
+    STALE_CONTENT_GRACE_STATE_KEY,
+    'diseaseOutbreaks',
+  ]);
 });
