@@ -31,6 +31,11 @@ import {
   requestCompanyMonitoringClassification,
 } from './lib/company-monitoring-classifier-client.mjs';
 import { isMainModule } from './lib/main-module.mjs';
+import { defaultRedisEval } from './lib/_upstash-pipeline.mjs';
+import {
+  createXPostBudget,
+  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+} from './lib/x-post-budget.cjs';
 
 export const COMPANY_MONITORING_WORKER_HEALTH_KEY = 'company-monitoring:worker-health:v1';
 export const COMPANY_MONITORING_WORKER_META_KEY = 'seed-meta:company-monitoring:worker';
@@ -676,6 +681,10 @@ async function main() {
   }
 
   const client = new ConvexHttpClient(convexUrl, { fetch: createConvexFetch() });
+  const xPostBudget = createXPostBudget({
+    evalCommand: defaultRedisEval,
+    dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  });
   const executeClaim = createCompanyMonitoringExecutor({
     exaExecutor: createExaCohortExecutor({
       apiKeys: (process.env.EXA_API_KEYS ?? '').split(/[\n,]+/),
@@ -685,6 +694,7 @@ async function main() {
       bearerToken: process.env.X_BEARER_TOKEN,
       storageMode: process.env.X_POST_STORAGE_MODE,
       requestCostUsdMicros: Number(process.env.X_RECENT_SEARCH_REQUEST_COST_USD_MICROS ?? 0),
+      withReturnedPosts: xPostBudget.withReturnedPosts,
     }),
   });
   const classifierApiKey = process.env.OPENROUTER_API_KEY;

@@ -15,6 +15,7 @@
 const REQUIRED_DEPS = [
   'xState',
   'xNewsAccounts',
+  'xPostBudget',
   'loadXAccounts',
   'upstashGet',
   'upstashSetNx',
@@ -34,6 +35,7 @@ function createXPollCycle(deps = {}) {
     // was when these three functions lived next to it.
     xState,
     xNewsAccounts,
+    xPostBudget,
     loadXAccounts,
     upstashGet,
     upstashSetNx,
@@ -78,14 +80,16 @@ function createXPollCycle(deps = {}) {
     // turned into permanent data loss. The onFailure callback is the only place
     // the distinction survives, so latch it here.
     let readFailed = false;
-    const snapshot = await upstashGet(X_FEED_CACHE_KEY, (reason) => {
-      readFailed = true;
-      warn(`[Relay] X snapshot hydration failed: ${reason}`);
-    });
-    const pollState = await upstashGet(X_FEED_POLL_STATE_KEY, (reason) => {
-      readFailed = true;
-      warn(`[Relay] X poll-state hydration failed: ${reason}`);
-    });
+    const [snapshot, pollState] = await Promise.all([
+      upstashGet(X_FEED_CACHE_KEY, (reason) => {
+        readFailed = true;
+        warn(`[Relay] X snapshot hydration failed: ${reason}`);
+      }),
+      upstashGet(X_FEED_POLL_STATE_KEY, (reason) => {
+        readFailed = true;
+        warn(`[Relay] X poll-state hydration failed: ${reason}`);
+      }),
+    ]);
     if (readFailed) {
       // Fail closed. pollOnce retries hydration and skips the cycle while this is
       // set, so we never publish from a state we could not fully read.
@@ -101,8 +105,10 @@ function createXPollCycle(deps = {}) {
     if (!hydrated) return false;
     xState.cursorByAccountId = hydrated.cursorByAccountId;
     xState.accountIdByHandle = hydrated.accountIdByHandle;
-    xState.catchupByAccountId = hydrated.catchupByAccountId;
     xState.lastPolledAtByHandle = hydrated.lastPolledAtByHandle;
+    xState.lastDeletionAuditAt = hydrated.lastDeletionAuditAt;
+    xState.lastCycleUsage = hydrated.lastCycleUsage;
+    xState.postBudget = hydrated.postBudget;
     xState.items = hydrated.items;
     xState.lookupOffset = hydrated.lookupOffset;
     xState.accountOffset = hydrated.accountOffset;
@@ -220,14 +226,16 @@ function createXPollCycle(deps = {}) {
       // posts. Publishing from it drops them permanently: the cursor map we just
       // read has already advanced past their ids, so they are never re-fetched.
       let stateReadFailed = false;
-      const freshPollState = await upstashGet(X_FEED_POLL_STATE_KEY, (reason) => {
-        stateReadFailed = true;
-        warn(`[Relay] X poll-state re-read failed: ${reason}`);
-      });
-      const freshSnapshot = await upstashGet(X_FEED_CACHE_KEY, (reason) => {
-        stateReadFailed = true;
-        warn(`[Relay] X snapshot re-read failed: ${reason}`);
-      });
+      const [freshPollState, freshSnapshot] = await Promise.all([
+        upstashGet(X_FEED_POLL_STATE_KEY, (reason) => {
+          stateReadFailed = true;
+          warn(`[Relay] X poll-state re-read failed: ${reason}`);
+        }),
+        upstashGet(X_FEED_CACHE_KEY, (reason) => {
+          stateReadFailed = true;
+          warn(`[Relay] X snapshot re-read failed: ${reason}`);
+        }),
+      ]);
       if (stateReadFailed) {
         xState.lastError = 'Redis re-read failed under the lock; skipped cycle rather than risk a cursor rewind or item loss';
         return;
@@ -270,6 +278,7 @@ function createXPollCycle(deps = {}) {
         now,
         maxFeedItems: X_MAX_FEED_ITEMS,
         maxTextChars: X_MAX_TEXT_CHARS,
+        withReturnedPosts: (request) => xPostBudget.withReturnedPosts(request),
         signal,
       });
 
@@ -297,8 +306,10 @@ function createXPollCycle(deps = {}) {
         generation: xState.generation + 1,
         cursorByAccountId: next.cursorByAccountId,
         accountIdByHandle: next.accountIdByHandle,
-        catchupByAccountId: next.catchupByAccountId,
         lastPolledAtByHandle: next.lastPolledAtByHandle,
+        lastDeletionAuditAt: next.lastDeletionAuditAt || 0,
+        lastCycleUsage: next.lastCycleUsage || null,
+        postBudget: next.postBudget || null,
         items: next.items,
         lookupOffset: next.lookupOffset || 0,
         accountOffset: next.accountOffset || 0,
@@ -314,13 +325,16 @@ function createXPollCycle(deps = {}) {
       };
 
       const elapsed = ((pollCompletedAt - pollStart) / 1000).toFixed(1);
-      log(`[Relay] X poll: ${next.accountsPolled}/${accounts.length} accounts, ${next.newCount} new posts, ${candidate.items.length} total, ${next.accountsFailed} errors (${elapsed}s)`);
+      const usage = next.lastCycleUsage || {};
+      const budget = next.postBudget || {};
+      log(`[Relay] X poll: ${next.accountsPolled}/${accounts.length} accounts, ${next.newCount} new Posts, ${candidate.items.length} total, ${next.accountsFailed} errors, requests ${usage.requestsUsed || 0}/${usage.requestLimit || 0}, Posts ${usage.postsRead || 0}/${usage.postReadLimit || 0}, day ${budget.dailyUsed || 0}/${budget.dailyLimit || 0}, month ${budget.monthlyUsed || 0}/${budget.monthlyLimit || 0} (${elapsed}s)`);
 
       // Publish BEFORE committing. Advancing xState first left this process's
       // cursors ahead of Redis whenever the lease-guarded EVAL failed, so /x here
       // served data no other replica could see and the seed-meta key silently went
       // unrefreshed. On failure we keep the previous state and re-poll the same
-      // window next cycle; mergeAndDedup makes that idempotent.
+      // window next cycle. The paid timeline response stays in Redis as a
+      // receipt, so the next replica replays it without calling X again.
       const published = await publish(accounts.length, {
         cycleComplete: next.cycleComplete,
         accountsPolled: next.accountsPolled,
@@ -332,6 +346,12 @@ function createXPollCycle(deps = {}) {
         return;
       }
       Object.assign(xState, candidate);
+      if (next.receiptAcks?.length) {
+        const acknowledged = await xPostBudget.ackReceipts(next.receiptAcks);
+        if (!acknowledged) {
+          warn('[Relay] X receipt acknowledgement failed; the next cycle will replay it without calling X');
+        }
+      }
     } finally {
       await upstashReleaseLockIfOwner(X_FEED_POLL_LOCK_KEY, lockOwner);
     }
