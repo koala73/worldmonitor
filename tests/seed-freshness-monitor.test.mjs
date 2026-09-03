@@ -176,6 +176,7 @@ describe('scheduled seed freshness monitor', () => {
 
   it('softens only active bounded stale-content grace entries', () => {
     const now = Date.parse('2026-09-03T09:00:00.000Z');
+    assert.equal(MAX_STALE_CONTENT_GRACE_MS, healthTesting.STALE_CONTENT_GRACE_MS);
     const problem = {
       status: 'STALE_CONTENT',
       contentAgeMin: null,

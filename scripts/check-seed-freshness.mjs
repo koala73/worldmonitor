@@ -64,19 +64,37 @@ export function isOnDemandProblem(problem) {
 // this, a single bad `rolloutPendingUntil` — a registry bug, a bad merge, a
 // tampered response — would silence these keys in CI effectively forever.
 export const MAX_ROLLOUT_WINDOW_MS = 24 * 60 * 60 * 1000;
+export const MAX_STALE_CONTENT_GRACE_MS = 3 * 60 * 60 * 1000;
+
+function hasActiveBoundedDeadline(raw, now, maxWindowMs) {
+  const until = Date.parse(raw ?? '');
+  if (!Number.isFinite(until)) return false;
+  if (until - now > maxWindowMs) return false;
+  return now < until;
+}
 
 export function isRolloutPendingProblem(problem, now = Date.now()) {
   if (problem?.status !== 'ROLLOUT_PENDING') return false;
-  const until = Date.parse(problem?.rolloutPendingUntil ?? '');
-  if (!Number.isFinite(until)) return false;
-  if (until - now > MAX_ROLLOUT_WINDOW_MS) return false;
-  return now < until;
+  return hasActiveBoundedDeadline(problem.rolloutPendingUntil, now, MAX_ROLLOUT_WINDOW_MS);
+}
+
+export function isStaleContentGraceProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'STALE_CONTENT') return false;
+  return hasActiveBoundedDeadline(
+    problem.staleContentGraceUntil,
+    now,
+    MAX_STALE_CONTENT_GRACE_MS,
+  );
 }
 
 export function findOperationalProblems(payload, now = Date.now()) {
   validateCompactHealthPayload(payload);
   return Object.entries(payload.problems ?? {})
-    .filter(([, problem]) => !isOnDemandProblem(problem) && !isRolloutPendingProblem(problem, now))
+    .filter(([, problem]) => (
+      !isOnDemandProblem(problem)
+      && !isRolloutPendingProblem(problem, now)
+      && !isStaleContentGraceProblem(problem, now)
+    ))
     .map(([name, problem]) => ({
       name,
       status: problem?.status ?? 'UNKNOWN',
