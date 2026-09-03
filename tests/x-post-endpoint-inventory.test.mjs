@@ -30,11 +30,12 @@ const approved = new Map([
     wrappers: [
       /async function apiGet[\s\S]{0,300}assertXPostBudgetAdmission\(/,
       /postBudget\.withReturnedPosts\([\s\S]{0,800}execute: \([^)]*postBudgetAdmission[^)]*\) => apiGet\(/,
+      /consumer: 'account-verifier',[\s\S]{0,300}coverageTotal: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]{0,300}coverageId: `timeline:\$\{account\.accountId\}`,[\s\S]{0,300}coverageUnitPosts/,
     ],
   }],
 ]);
 const runtimeExtension = /\.(?:cjs|js|mjs|rs|ts|tsx)$/;
-const postEndpoint = /\/2\/tweets\/search\/recent|\/2\/tweets|\/2\/users\/[^\s'"`]+\/tweets/g;
+const postEndpoint = /\/2\/(?:tweets\/(?:search\/(?:recent|all|stream)|sample\/stream)|tweets\/[^\s'"`/?]+\/quote_tweets|tweets\/[^\s'"`/?]+|tweets|users\/[^\s'"`/?]+\/(?:timelines\/reverse_chronological|tweets|mentions|liked_tweets|bookmarks)|lists\/[^\s'"`/?]+\/tweets|spaces\/[^\s'"`/?]+\/tweets)/g;
 
 function endpointLiterals(source) {
   return [...source.matchAll(postEndpoint)].map((match) => match[0]);

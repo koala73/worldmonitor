@@ -283,6 +283,13 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.equal(xNews.clampPollIntervalMs(10 * 60 * 1000), 10 * 60 * 1000);
   });
 
+  it('rejects an empty account id before it can form an unclassified Post route', () => {
+    assert.throws(
+      () => xNews.buildUserTimelineUrl({ accountId: '', maxResults: 10 }),
+      /accountId is invalid/,
+    );
+  });
+
   it('honors Retry-After on 429', () => {
     const headers = new Headers({ 'retry-after': '12' });
     assert.equal(xNews.compute429BackoffMs(headers, 0), 12_000);
@@ -818,6 +825,7 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     });
     assert.equal(state.lookupOffset, 0);
     assert.equal(state.items.filter((item) => item.contentState === 'deleted').length, 0);
+    assert.equal(state.lastDeletionAuditAt, 0, 'a failed audit must remain eligible for retry');
   });
 
   it('returns partial state when an admitted deletion audit throws', async () => {
@@ -1028,6 +1036,36 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.match(state.lastError, /Post budget/);
   });
 
+  it('defers only the account whose paid receipt is still in flight', async () => {
+    const accounts = [
+      { handle: 'Reuters', accountId: '1652541', maxMessages: 10 },
+      { handle: 'AP', accountId: '51241574', maxMessages: 10 },
+      { handle: 'BBCWorld', accountId: '742143', maxMessages: 10 },
+    ];
+    let fetches = 0;
+    const state = await xNews.pollXFeed({
+      accounts,
+      state: { items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => {
+        fetches += 1;
+        return Response.json({ meta: { result_count: 0 } });
+      },
+      withReturnedPosts: async (request) => request.coverageId === 'timeline:1652541'
+        ? { allowed: false, reason: 'receipt_inflight' }
+        : testReturnedPostBudget(request),
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(fetches, 2);
+    assert.equal(state.accountsAttempted, 3);
+    assert.equal(state.accountsPolled, 2);
+    assert.equal(state.accountsFailed, 0);
+    assert.equal(state.cycleComplete, false);
+    assert.match(state.lastError, /receipt_inflight/);
+  });
+
   it('settles a timeline reservation with the number of Posts actually returned', async () => {
     const operations = [];
     const state = await xNews.pollXFeed({
@@ -1228,6 +1266,7 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
         const result = await testReturnedPostBudget(request);
         throw Object.assign(new Error('upstream failed'), { result });
       },
+      maxFailedAccounts: 2,
       wait: async () => {},
       lookupDeletions: false,
     });
@@ -1722,6 +1761,26 @@ describe('cycleComplete failure tolerance (#6654)', () => {
     const overBudget = await poll(accounts, xNews.MAX_TOLERATED_FAILED_ACCOUNTS + 1);
     assert.equal(overBudget.cycleComplete, false, 'a systemic failure must still degrade the source');
     assert.equal(overBudget.accountsFailed, xNews.MAX_TOLERATED_FAILED_ACCOUNTS + 1);
+  });
+
+  it('stops a systemic ordinary failure after the tolerance boundary', async () => {
+    const accounts = roster(64);
+    let requests = 0;
+    const state = await xNews.pollXFeed({
+      accounts,
+      state: { items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => {
+        requests += 1;
+        return new Response('upstream failed', { status: 503 });
+      },
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(requests, xNews.MAX_TOLERATED_FAILED_ACCOUNTS + 1);
+    assert.equal(state.accountsFailed, xNews.MAX_TOLERATED_FAILED_ACCOUNTS + 1);
+    assert.equal(state.cycleComplete, false);
   });
 
   it('keeps zero tolerance on a roster too small for the fraction', async () => {

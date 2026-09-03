@@ -716,6 +716,7 @@ function buildUserByUsernameUrl(handle) {
 
 function buildUserTimelineUrl({ accountId, sinceId, maxResults, paginationToken, startTime }) {
   const id = normalizeAccountId(accountId);
+  if (!id) throw new Error('X timeline accountId is invalid');
   const url = new URL(`/2/users/${encodeURIComponent(id)}/tweets`, X_API_ORIGIN);
   url.searchParams.set('max_results', String(Math.max(5, Math.min(100, maxResults || DEFAULT_MAX_MESSAGES))));
   url.searchParams.set('tweet.fields', 'created_at,lang,public_metrics,referenced_tweets,attachments,edit_history_tweet_ids');
@@ -993,6 +994,7 @@ async function pollXFeed({
   const newItems = [];
   for (const account of orderedAccounts) {
     if (nextState.rateLimitedUntil) break;
+    if (nextState.accountsFailed > failureBudget) break;
     if (requestsUsed >= cycleRequestBudget) {
       // Same shape as the rate-limit break: stop admitting work and leave the
       // untouched accounts to the rotation below, which starts the next cycle
@@ -1082,7 +1084,12 @@ async function pollXFeed({
       });
       if (outcome?.allowed !== true) {
         budgetTruncated = true;
-        nextState.lastError = `X Post budget ${outcome?.reason || 'unavailable'}; deferred ${orderedAccounts.length - nextState.accountsPolled} accounts`;
+        const reason = outcome?.reason || 'unavailable';
+        if (reason === 'receipt_inflight' || reason === 'already_run') {
+          nextState.lastError = `X Post budget ${reason}; deferred @${account.handle}`;
+          continue;
+        }
+        nextState.lastError = `X Post budget ${reason}; deferred ${orderedAccounts.length - nextState.accountsPolled} accounts`;
         break;
       }
 
@@ -1203,10 +1210,7 @@ async function pollXFeed({
           coverageId: 'deletion-audit',
           coverageUnitPosts: DEFAULT_DELETION_AUDIT_MAX_POSTS,
           oncePerDay: true,
-          execute: (admission, postBudgetAdmission) => {
-            nextState.lastDeletionAuditAt = utcDayStartMs(admission?.reservation?.period?.day, now());
-            return countedFetch(url, { postBudgetAdmission });
-          },
+          execute: (_admission, postBudgetAdmission) => countedFetch(url, { postBudgetAdmission }),
         });
         if (outcome?.allowed !== true) {
           if (outcome?.reason === 'already_run') {
@@ -1224,8 +1228,11 @@ async function pollXFeed({
             budgetTruncated = true;
             nextState.cycleComplete = false;
             nextState.lastError = 'X Post budget settlement failed after deletion audit; retained the full reservation';
-          }
-          if (response.status === 429) {
+          } else if (!response) {
+            budgetTruncated = true;
+            nextState.cycleComplete = false;
+            nextState.lastError = 'deletion lookup returned no response';
+          } else if (response.status === 429) {
             recordRateLimit(nextState, response.headers, now);
             nextState.lastError = 'rate limited during deletion lookup';
             nextState.cycleComplete = false;
@@ -1237,10 +1244,11 @@ async function pollXFeed({
             nextState.cycleComplete = false;
           } else if (response.status === 200) {
             if (Number.isSafeInteger(outcome.returnedPosts)) {
+              nextState.lastDeletionAuditAt = utcDayStartMs(outcome?.status?.day, now());
               const missing = collectDeletedTweetIds(body, ids);
               if (missing.length) nextState.items = tombstonePosts(nextState.items, missing, now());
               nextState.lookupOffset = activeIds.length ? (offset + ids.length) % activeIds.length : 0;
-            } else if (settlementConfirmed) {
+            } else {
               nextState.cycleComplete = false;
               nextState.lastError = 'deletion lookup returned an unreadable Post resource payload';
             }

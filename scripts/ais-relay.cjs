@@ -54,6 +54,7 @@ const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
 const {
   createXPostBudget,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  xPostBudgetServiceStatus,
 } = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
@@ -11832,7 +11833,7 @@ const server = http.createServer(async (req, res) => {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
     }, JSON.stringify({
-      status: postBudget.available ? 'ok' : 'degraded',
+      status: xPostBudgetServiceStatus(postBudget),
       xFeed: {
         enabled: X_ENABLED,
         accounts: xState.accounts?.length || 0,

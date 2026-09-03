@@ -82,6 +82,7 @@ describe('X relay wiring contract', () => {
     assert.match(statusRoute, /lastCycleUsage/);
     assert.match(statusRoute, /lastDeletionAuditAt/);
     assert.match(statusRoute, /postBudget/);
+    assert.match(statusRoute, /status: xPostBudgetServiceStatus\(postBudget\)/);
 
     const feedStart = relay.indexOf("pathname === '/x'");
     const rssStart = relay.indexOf("pathname.startsWith('/rss')", feedStart);

@@ -141,21 +141,38 @@ const budgetKeys = (
   inflightKey,
 ];
 
-const settleKeys = (reservationKey = RESERVATION_KEY) => [
+const settleKeys = (
+  reservationKey = RESERVATION_KEY,
+  onceKey = ONCE_KEY,
+  coverageMarkerKey = COVERAGE_MARKER_KEY,
+) => [
   DAY_KEY,
   MONTH_KEY,
   reservationKey,
   COVERAGE_HOLD_KEY,
   RECEIPT_KEY,
   INFLIGHT_KEY,
+  onceKey,
+  coverageMarkerKey,
 ];
-const settleArgs = (actual, receiptJson = '', receiptHash = '-', hasReceipt = false) => [
-  actual,
-  DAY_EXPIRES_AT,
-  hasReceipt ? 1 : 0,
-  receiptJson,
-  receiptHash,
-];
+const settleArgs = (actual, receiptJson = '', receiptHash = '-', options = {}) => {
+  const normalized = typeof options === 'boolean'
+    ? { hasReceiptScope: options, storeReceipt: options }
+    : options;
+  return [
+    actual,
+    DAY_EXPIRES_AT,
+    normalized.hasReceiptScope ? 1 : 0,
+    receiptJson,
+    receiptHash,
+    normalized.storeReceipt ? 1 : 0,
+    normalized.hasOnce ? 1 : 0,
+    normalized.completeOnce ? 1 : 0,
+    normalized.hasCoverageUnit ? 1 : 0,
+    normalized.completeCoverage ? 1 : 0,
+    normalized.coverageUnit ?? 0,
+  ];
+};
 
 describe('X Post budget Lua, executed', () => {
   it('admits a reservation that lands exactly on both limits', () => {
@@ -230,12 +247,51 @@ describe('X Post budget Lua, executed', () => {
   it('claims the deletion audit once per UTC day without charging a second replica', () => {
     const redis = makeRedis();
     const first = runScript(RESERVE_LUA, budgetKeys('reservation:a', 'coverage:audit'), reserveArgs(25, 25, 25, true), redis, 6);
+    const settled = runScript(
+      SETTLE_LUA,
+      settleKeys('reservation:a', ONCE_KEY, 'coverage:audit'),
+      settleArgs(25, '', '-', {
+        hasOnce: true,
+        completeOnce: true,
+        hasCoverageUnit: true,
+        completeCoverage: true,
+        coverageUnit: 25,
+      }),
+      redis,
+      6,
+    );
     const second = runScript(RESERVE_LUA, budgetKeys('reservation:b', 'coverage:audit'), reserveArgs(25, 25, 25, true), redis, 6);
-    assert.deepEqual(first, [1, 25, 25, 0, 0, '']);
+    assert.deepEqual(first, [1, 25, 25, 0, 25, '']);
+    assert.deepEqual(settled, [1, 25, 25, 25, 25, 0]);
     assert.deepEqual(second, [0, 25, 25, 3, 0, '']);
     assert.equal(redis.store.get(DAY_KEY), '25');
     assert.equal(redis.store.get(MONTH_KEY), '25');
     assert.equal(redis.store.has('reservation:b'), false);
+  });
+
+  it('releases failed once-per-day work for retry but keeps its coverage protected', () => {
+    const redis = makeRedis();
+    runScript(RESERVE_LUA, budgetKeys('reservation:a', 'coverage:audit'), reserveArgs(25, 25, 25, true), redis, 6);
+    const settled = runScript(
+      SETTLE_LUA,
+      settleKeys('reservation:a', ONCE_KEY, 'coverage:audit'),
+      settleArgs(0, '', '-', {
+        hasOnce: true,
+        completeOnce: false,
+        hasCoverageUnit: true,
+        completeCoverage: false,
+        coverageUnit: 25,
+      }),
+      redis,
+      6,
+    );
+    assert.deepEqual(settled, [1, 0, 0, 25, 0, 25]);
+    assert.equal(redis.store.has(ONCE_KEY), false);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '25');
+    assert.deepEqual(
+      runScript(RESERVE_LUA, budgetKeys('reservation:b', 'coverage:audit'), reserveArgs(25, 25, 25, true), redis, 6),
+      [1, 25, 25, 0, 25, ''],
+    );
   });
 
   it('reads day and month counters without changing them', () => {
@@ -253,8 +309,21 @@ describe('X Post budget Lua, executed', () => {
       redis,
       6,
     );
-    assert.deepEqual(first, [1, 590, 590, 0, 10, '']);
-    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '10');
+    assert.deepEqual(first, [1, 590, 590, 0, 20, '']);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '20');
+
+    const settled = runScript(
+      SETTLE_LUA,
+      settleKeys('reservation:first', ONCE_KEY, 'coverage:timeline-a'),
+      settleArgs(10, '', '-', {
+        hasCoverageUnit: true,
+        completeCoverage: true,
+        coverageUnit: 10,
+      }),
+      redis,
+      6,
+    );
+    assert.deepEqual(settled, [1, 590, 590, 10, 10, 10]);
 
     const company = runScript(
       RESERVE_LUA,
@@ -272,7 +341,7 @@ describe('X Post budget Lua, executed', () => {
       redis,
       6,
     );
-    assert.deepEqual(second, [1, 600, 600, 0, 0, ''], 'a new replica can consume the remaining protected unit');
+    assert.deepEqual(second, [1, 600, 600, 0, 10, ''], 'a new replica can consume the remaining protected unit');
   });
 
   it('installs the curated hold before another consumer can spend after midnight', () => {
@@ -295,7 +364,21 @@ describe('X Post budget Lua, executed', () => {
       redis,
       6,
     );
-    assert.deepEqual(curated, [1, 10, 10, 0, 587, '']);
+    assert.deepEqual(curated, [1, 10, 10, 0, 597, '']);
+    assert.deepEqual(
+      runScript(
+        SETTLE_LUA,
+        settleKeys('reservation:curated', ONCE_KEY, 'coverage:timeline-a'),
+        settleArgs(10, '', '-', {
+          hasCoverageUnit: true,
+          completeCoverage: true,
+          coverageUnit: 10,
+        }),
+        redis,
+        6,
+      ),
+      [1, 10, 10, 10, 10, 587],
+    );
   });
 
   it('stores a paid page with settlement, replays it without charging, and acknowledges once', () => {
@@ -346,6 +429,21 @@ describe('X Post budget Lua, executed', () => {
     assert.equal(redis.store.has(RECEIPT_KEY), false);
     assert.equal(runScript(ACK_RECEIPTS_LUA, [RECEIPT_KEY], [receiptJson], redis, null), 1,
       'acknowledgement is idempotent when a retry sees a missing receipt');
+  });
+
+  it('settles a failed response at zero and releases its receipt in-flight lock', () => {
+    const redis = makeRedis();
+    runScript(RESERVE_LUA, budgetKeys(), reserveArgs(10, 0, 0, false, true), redis, 6);
+    const settled = runScript(
+      SETTLE_LUA,
+      settleKeys(),
+      settleArgs(0, '', '-', { hasReceiptScope: true, storeReceipt: false }),
+      redis,
+      6,
+    );
+    assert.deepEqual(settled, [1, 0, 0, 10, 0, 0]);
+    assert.equal(redis.store.has(INFLIGHT_KEY), false);
+    assert.equal(redis.store.has(RECEIPT_KEY), false);
   });
 
   it('does not let a stale acknowledgement delete a newer receipt', () => {

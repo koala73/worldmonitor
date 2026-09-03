@@ -155,10 +155,14 @@ for (const account of accounts) {
   }
 
   if (checkTimelines && !actual.protected) {
+    const coverageUnitPosts = Math.max(5, Math.min(100, Number(account.maxMessages) || 10));
     const outcome = await postBudget.withReturnedPosts({
       consumer: 'account-verifier',
       operation: 'timeline',
       requestedPosts: 5,
+      coverageTotal: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      coverageId: `timeline:${account.accountId}`,
+      coverageUnitPosts,
       execute: (_admission, postBudgetAdmission) => apiGet(`/2/users/${account.accountId}/tweets?max_results=5&tweet.fields=id`, {
         postBudgetAdmission,
       }),

@@ -11,6 +11,7 @@ import {
   DEFAULT_X_POST_DAILY_LIMIT,
   DEFAULT_X_POST_MONTHLY_LIMIT,
   X_POST_COST_USD_MICROS,
+  xPostBudgetServiceStatus,
 } from '../scripts/lib/x-post-budget.cjs';
 
 const NOW = Date.parse('2026-09-02T12:00:00.000Z');
@@ -20,6 +21,9 @@ describe('X Post transport admission', () => {
     assert.equal(isXPostReturningUrl('https://api.x.com/2/tweets'), true);
     assert.equal(isXPostReturningUrl('https://api.x.com/2/tweets/search/recent'), true);
     assert.equal(isXPostReturningUrl('https://api.x.com/2/users/123/tweets'), true);
+    assert.equal(isXPostReturningUrl('https://api.x.com/2/users/123/timelines/reverse_chronological'), true);
+    assert.equal(isXPostReturningUrl('https://api.x.com/2/spaces/1DXxyRYNejbKM/tweets'), true);
+    assert.equal(isXPostReturningUrl('https://api.x.com/2/users//tweets'), false);
     assert.equal(isXPostReturningUrl('https://api.x.com/2/users/123'), false);
     assert.equal(isXPostReturningUrl('https://example.com/2/tweets'), false);
   });
@@ -60,6 +64,12 @@ describe('X Post transport admission', () => {
 });
 
 describe('shared X returned-Post budget', () => {
+  it('reports budget exhaustion without reporting the service as healthy', () => {
+    assert.equal(xPostBudgetServiceStatus({ available: true, exhausted: false }), 'ok');
+    assert.equal(xPostBudgetServiceStatus({ available: true, exhausted: true }), 'degraded');
+    assert.equal(xPostBudgetServiceStatus({ available: false, exhausted: false }), 'degraded');
+  });
+
   it('owns the reserve, request, raw-count settlement sequence', async () => {
     const calls = [];
     const budget = createXPostBudget({
@@ -114,6 +124,35 @@ describe('shared X returned-Post budget', () => {
     assert.equal(outcome.reason, 'unsettled_response');
     assert.equal(evalCalls, 1, 'an unsafe response must not run the refund script');
     assert.equal(outcome.status.dailyUsed, 10);
+  });
+
+  it('settles a completed non-success response at zero without publishing a replay receipt', async () => {
+    const calls = [];
+    const budget = createXPostBudget({
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        return calls.length === 1 ? [1, 10, 10, 0, 0, ''] : [1, 0, 0, 10, 0, 0];
+      },
+      now: () => NOW,
+      idFactory: () => 'failed-response',
+    });
+
+    const outcome = await budget.withReturnedPosts({
+      consumer: 'curated-feed',
+      operation: 'timeline',
+      requestedPosts: 10,
+      receiptScope: 'timeline:1652541',
+      execute: async () => ({ response: { ok: false, status: 503 }, body: null }),
+      receiptFromResult: () => ({ version: 1, body: 'must not be replayed' }),
+    });
+
+    assert.equal(outcome.allowed, true);
+    assert.equal(outcome.completed, true);
+    assert.equal(outcome.returnedPosts, 0);
+    assert.equal(outcome.receipt, undefined);
+    assert.equal(outcome.receiptAck, undefined);
+    assert.equal(outcome.status.dailyUsed, 0);
+    assert.equal(calls.length, 2, 'a known failed response must run settlement');
   });
 
   it('returns a pending paid receipt without executing another X request', async () => {
@@ -212,10 +251,28 @@ describe('shared X returned-Post budget', () => {
     assert.deepEqual(calls[0].args, [receipt.expected]);
   });
 
+  it('reports a conflicting settlement separately from an invalid count', async () => {
+    const budget = createXPostBudget({
+      evalCommand: async () => [-2, 3, 3, 0, 3, 0],
+      now: () => NOW,
+    });
+    const settlement = await budget.settle({
+      id: 'conflict',
+      reservedPosts: 10,
+      period: {
+        day: '2026-09-02',
+        month: '2026-09',
+        dayExpiresAtSeconds: 1_788_566_400,
+      },
+    }, 4);
+    assert.equal(settlement.settled, false);
+    assert.equal(settlement.reason, 'settlement_conflict');
+  });
+
   it('reserves day and month capacity atomically and settles unused capacity', async () => {
     const calls = [];
     const responses = [
-      [1, 10, 110, 0, 562],
+      [1, 10, 110, 0, 572],
       [1, 3, 103, 10, 3, 562],
       [3, 103, 562],
     ];
@@ -334,6 +391,26 @@ describe('shared X returned-Post budget', () => {
     assert.equal(denied.allowed, false);
     assert.equal(calls[0].args[1], String(DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS));
     assert.equal(calls[0].args[9], '0');
+  });
+
+  it('never configures a coverage hold above the daily hard cap', async () => {
+    const calls = [];
+    const budget = createXPostBudget({
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        return [0, 0, 0, 1, 100];
+      },
+      dailyLimit: 100,
+      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      now: () => NOW,
+    });
+
+    await budget.reserve({
+      consumer: 'company-monitoring',
+      operation: 'recent-search',
+      requestedPosts: 10,
+    });
+    assert.equal(calls[0].args[1], '100');
   });
 
   it('fails closed when the shared Redis budget cannot be read', async () => {
