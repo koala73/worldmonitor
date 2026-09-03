@@ -82,13 +82,26 @@ const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 // could ship on six-week-old data — the freshness overstatement in #7530.
 //
 // Still 45 because tightening it today would red the product build with no way
-// to clear it: on 2026-09-02 /api/supply-chain/v1/get-chokepoint-status returns
-// `{"chokepoints":[],"upstreamUnavailable":true}` on every attempt, so
-// `npm run freeze:crawlable-live-pulse` cannot capture its 13 chokepoints and
-// NO refresh can succeed. Drop this to 10 once a refresh has actually landed.
-// The cron moved to weekly in the same change, so the gap closes on its own the
-// moment the upstream recovers; the guard in tests/crawlable-corpus.test.mjs
-// asserts the ceiling still clears the cadence.
+// to clear it: no freeze can currently succeed.
+//
+//   2026-09-02: /api/supply-chain/v1/get-chokepoint-status returned
+//   `{"chokepoints":[],"upstreamUnavailable":true}` on every attempt, so the 13
+//   chokepoints could not be captured. RESOLVED 2026-09-03.
+//
+//   2026-09-03: the freeze now reaches the country leg and fails there instead,
+//   capturing 168 of 196 (gate needs >= 191). Top-level `advisoryLevel` on
+//   /api/intelligence/v1/get-country-risk is now `""` for EVERY country — even
+//   AF and SY, which the 2026-08-30 snapshot recorded as "Do Not Travel", and
+//   which still carry `cii.advisoryLevel: "do-not-travel"` nested one level
+//   down. liveRiskViewModel reads the top-level field, so the ~28 countries
+//   with no CII block and no sanctions lose their only sub-signal and fail
+//   closed. The Aug-30 snapshot captured 196/196 with 0 errors and a full
+//   advisory spread (75/67/26/21), so this is a regression, not a cold feed.
+//
+// Drop this to 10 once a refresh has actually landed. The cron moved to weekly
+// in the same change, so the gap closes on its own once the upstream is fixed;
+// the guard in tests/crawlable-corpus.test.mjs asserts the ceiling still clears
+// the cadence.
 export const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
