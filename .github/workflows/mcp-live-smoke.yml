@@ -21,14 +21,25 @@ name: MCP Live Smoke
 #   - schedule (every 6h): catches prod-layer drift (CDN rules, deploy config,
 #     host-split) on a cadence operators can act on. The probes are ~40 cheap
 #     requests per run — well under the anon 60/min/IP MCP limit.
-#   - successful Vercel Production deployment: validates the deployed commit,
-#     after its production aliases are ready.
+#   - successful Vercel Production deployment: re-probes production once a
+#     deployed commit is live. See the smoke step below for what a green run
+#     does and does not attribute to that specific deployment.
+#   - push to main touching the script/workflow: validates edits on merge.
+#     Kept alongside deployment_status because scripts/vercel-ignore.sh does
+#     NOT list these paths as web-relevant, so a smoke-only merge produces no
+#     Vercel build and therefore no deployment_status event at all.
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run
 # could neither exercise its own changes nor fail for reasons the PR caused.
 
 on:
   deployment_status:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/mcp-live-smoke.mjs'
+      - 'scripts/mcp-schema-wire-check.mjs'
+      - '.github/workflows/mcp-live-smoke.yml'
   schedule:
     - cron: '23 */6 * * *'
   workflow_dispatch:
@@ -36,8 +47,14 @@ on:
 permissions:
   contents: read
 
+# Keyed per deployment environment so the many ineligible deployment_status
+# events this repo emits (Vercel Preview, Railway, Mintlify docs) cannot enter
+# the production queue. GitHub cancels the PREVIOUSLY PENDING run in a group
+# when a new one is queued — even with cancel-in-progress: false — so a shared
+# static group lets an unrelated preview deploy silently evict a queued
+# production smoke, which reads as neither pass nor fail.
 concurrency:
-  group: mcp-live-smoke-production
+  group: mcp-live-smoke-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
   cancel-in-progress: false
 
 jobs:
@@ -61,5 +78,19 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      - run: npm ci --ignore-scripts --omit=optional
-      - run: node scripts/mcp-live-smoke.mjs
+      # Named so a reader of a failed run can tell a CI/dependency failure from
+      # a real production regression: only the smoke step below is a prod signal.
+      - name: Install locked dependencies (setup — a failure here is CI, not production)
+        run: npm ci --ignore-scripts --omit=optional
+      # Probes the production ALIASES, never the checked-out SHA's own bits: the
+      # `ref:` above pins which copy of this checker runs, not what it measures.
+      # That is deliberate — CDN rules, host-split and deploy config only exist
+      # at the alias — but it bounds what a green run proves. A run that queued
+      # behind another, or one following a rollback, can measure a build later
+      # or earlier than the commit that triggered it, so treat green as "the
+      # production surface is healthy now", NOT as "this deployment is good".
+      # Probing the deployment's immutable environment_url would close that gap
+      # but is not reachable anonymously — Vercel deployment protection 302s it
+      # to vercel.com/sso-api, so it would need VERCEL_AUTOMATION_BYPASS_SECRET.
+      - name: Live MCP production smoke
+        run: node scripts/mcp-live-smoke.mjs

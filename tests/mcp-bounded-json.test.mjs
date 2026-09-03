@@ -6,6 +6,7 @@ import {
   MAX_MCP_PROXY_JSON_DEPTH,
   McpProxyJsonContainerError,
   McpProxyJsonDepthError,
+  createMcpProxyJsonBudget,
   parseMcpProxyJson,
 } from '../api/mcp/bounded-json.ts';
 
@@ -42,6 +43,28 @@ describe('parseMcpProxyJson', () => {
       () => parseMcpProxyJson(emptyObjectArray(MAX_MCP_PROXY_JSON_CONTAINERS + 1)),
       McpProxyJsonContainerError,
     );
+  });
+
+  it('spends one shared budget across calls so frames cannot each get a fresh limit', () => {
+    const budget = createMcpProxyJsonBudget();
+    const half = Math.floor(MAX_MCP_PROXY_JSON_CONTAINERS / 2);
+
+    // Each call is individually under the limit; together they exceed it.
+    parseMcpProxyJson(emptyObjectArray(half), budget);
+    assert.equal(budget.containers, half);
+
+    assert.throws(
+      () => parseMcpProxyJson(emptyObjectArray(MAX_MCP_PROXY_JSON_CONTAINERS), budget),
+      McpProxyJsonContainerError,
+    );
+  });
+
+  it('gives each caller a fresh budget when none is supplied', () => {
+    const text = emptyObjectArray(MAX_MCP_PROXY_JSON_CONTAINERS);
+
+    // A whole-document parse is unaffected by what an earlier call spent.
+    assert.equal(parseMcpProxyJson(text).length, MAX_MCP_PROXY_JSON_CONTAINERS - 1);
+    assert.equal(parseMcpProxyJson(text).length, MAX_MCP_PROXY_JSON_CONTAINERS - 1);
   });
 
   it('ignores structural characters inside escaped JSON strings', () => {

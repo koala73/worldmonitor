@@ -562,6 +562,35 @@ describe('api/mcp-proxy', () => {
       );
     });
 
+    it('rejects containers split across several SSE frames of one response', async () => {
+      // The budget is cumulative per RESPONSE, not per `data:` line. With a
+      // per-call counter each frame below sits under the limit while the
+      // response as a whole parses ~4x it, staying under the 1 MiB byte cap —
+      // the payload class the budget exists to reject.
+      const perFrame = Math.floor(MAX_MCP_PROXY_JSON_CONTAINERS / 2);
+      const frame = (id) =>
+        `data: {"jsonrpc":"2.0","id":${id},"note":[${repeatedEmptyObjects(perFrame)}]}`;
+      // Four half-budget frames: no single frame trips a per-frame counter.
+      const payload = [frame(90), frame(91), frame(92), frame(93)].join('\n\n');
+      assert.ok(new TextEncoder().encode(payload).byteLength < MCP_PROXY_RESPONSE_CAP_BYTES);
+
+      globalThis.fetch = async (url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'tools/list') {
+          return new Response(payload, { headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_CONTAINERS} object or array containers`,
+      );
+    });
+
     it('cancels the ignored streamable initialized response body', async () => {
       let cancelled = false;
       globalThis.fetch = async (url, opts) => {
@@ -761,6 +790,31 @@ describe('api/mcp-proxy', () => {
       assert.equal(
         (await res.json()).error,
         `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_DEPTH} nesting levels`,
+      );
+      assert.equal(fetchCalled, false);
+    });
+
+    it('rejects a request whose tool arguments exceed the JSON container limit', async () => {
+      // The request-body parse (api/mcp-proxy.ts handleCallTool) is a fourth
+      // parseMcpProxyJson call site, and the only one that answers 400 rather
+      // than 422 — the upstream-response tests cannot cover it.
+      const toolArgs = JSON.parse(`[${repeatedEmptyObjects(MAX_MCP_PROXY_JSON_CONTAINERS)}]`);
+      let fetchCalled = false;
+      globalThis.fetch = async () => {
+        fetchCalled = true;
+        return new Response('{}');
+      };
+
+      const res = await handler(makePostRequest({
+        serverUrl: 'https://mcp.example.com/mcp',
+        toolName: 'broad_tool',
+        toolArgs,
+      }));
+
+      assert.equal(res.status, 400);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_CONTAINERS} object or array containers`,
       );
       assert.equal(fetchCalled, false);
     });
