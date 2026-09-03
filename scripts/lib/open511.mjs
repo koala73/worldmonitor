@@ -54,7 +54,8 @@ function hostnameOf(baseUrl) {
 }
 
 function finiteCoord(value) {
-  if (value == null || value === '') return null;
+  if (typeof value !== 'number'
+    && !(typeof value === 'string' && value.trim() !== '')) return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
@@ -96,6 +97,7 @@ function pairFrom(value) {
   const lon = finiteCoord(value[0]);
   const lat = finiteCoord(value[1]);
   if (lon == null || lat == null) return null;
+  if (lon < -180 || lon > 180 || lat < -90 || lat > 90) return null;
   return [lon, lat];
 }
 
