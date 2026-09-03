@@ -68,8 +68,9 @@ service InfrastructureService {
     };
   }
 
-  // RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
+  // RecordBaselineSnapshot is deprecated and DISABLED. Client-supplied shared baseline writes are rejected.
   rpc RecordBaselineSnapshot(RecordBaselineSnapshotRequest) returns (RecordBaselineSnapshotResponse) {
+    option deprecated = true;
     option (sebuf.http.config) = {path: "/record-baseline-snapshot"};
   }
 

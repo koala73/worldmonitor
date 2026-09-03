@@ -111,7 +111,7 @@ import { displayPubDateMs, effectivePubDateMs } from '@/services/feed-date';
 import { mlWorker } from '@/services/ml-worker';
 import { clusterNewsHybrid } from '@/services/clustering';
 import { ingestProtests, ingestFlights, ingestVessels, ingestEarthquakes, detectGeoConvergence, geoConvergenceToSignal } from '@/services/geo-convergence';
-import { updateAndCheck, consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
+import { consumeServerAnomalies, fetchLiveAnomalies } from '@/services/temporal-baseline';
 import { fetchAllFires, flattenFires, computeRegionStats, toMapFires } from '@/services/wildfires';
 import type { TheaterPostureSummary } from '@/services/military-surge';
 import { fetchCachedTheaterPosture } from '@/services/cached-theater-posture';
@@ -3356,14 +3356,6 @@ export class DataLoaderManager implements AppModule {
           aggregator.ingestVessels(vesselData.vessels);
         });
         dataFreshness.recordUpdate('opensky', flightData.flights.length);
-        updateAndCheck([
-          { type: 'military_flights', region: 'global', count: flightData.flights.length },
-          { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-        ]).then(async anomalies => {
-          if (anomalies.length > 0) {
-            await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-          }
-        }).catch(() => { });
         if (this.ctx.mapLayers.military) {
           this.ctx.map?.setMilitaryFlights(flightData.flights, flightData.clusters);
           this.ctx.map?.setMilitaryVessels(vesselData.vessels, vesselData.clusters);
@@ -3650,13 +3642,6 @@ export class DataLoaderManager implements AppModule {
       this.ctx.map?.setAisData(disruptions, density);
       this.ctx.intelligenceCache.aisDisruptions = disruptions;
       await runSignalAggregator(this.ctx.statusPanel, 'AIS disruptions', (aggregator) => aggregator.ingestAisDisruptions(disruptions));
-      updateAndCheck([
-        { type: 'ais_gaps', region: 'global', count: disruptions.length },
-      ]).then(async anomalies => {
-        if (anomalies.length > 0) {
-          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-        }
-      }).catch(() => { });
 
       const hasData = disruptions.length > 0 || density.length > 0;
       this.ctx.map?.setLayerReady('ais', hasData);
@@ -3900,14 +3885,6 @@ export class DataLoaderManager implements AppModule {
         aggregator.ingestFlights(flightData.flights);
         aggregator.ingestVessels(vesselData.vessels);
       });
-      updateAndCheck([
-        { type: 'military_flights', region: 'global', count: flightData.flights.length },
-        { type: 'vessels', region: 'global', count: vesselData.vessels.length },
-      ]).then(async anomalies => {
-        if (anomalies.length > 0) {
-          await runSignalAggregator(this.ctx.statusPanel, 'temporal anomalies', (aggregator) => aggregator.ingestTemporalAnomalies(anomalies));
-        }
-      }).catch(() => { });
       this.ctx.map?.updateMilitaryForEscalation(flightData.flights, vesselData.vessels);
       if (!isInLearningMode()) {
         await this.runMilitarySurgeAnalysis(flightData.flights);

@@ -654,7 +654,7 @@ export const RATE_LIMIT_MUTATION_FALLBACK_EXEMPT: Record<string, RateLimitPolicy
   },
   '/api/infrastructure/v1/record-baseline-snapshot': {
     reason:
-      'Redis-only write (setCachedJson) with no external provider or LLM call; if Redis is degraded the write itself cannot land, so the fail-open fallback carries no spend/abuse risk.',
+      'Deprecated compatibility route that rejects client-supplied baseline writes before Redis; the fail-open fallback cannot admit a mutation.',
   },
   '/api/v2/shipping/webhooks': {
     reason:
