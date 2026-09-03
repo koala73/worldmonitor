@@ -985,6 +985,45 @@ describe('marketing ignoreErrors — injected-script classes (2026-09-02 triage)
     assert.deepEqual(offenders, [],
       'the marketing surface now calls WebAuthn — re-derive the WORLDMONITOR-11Q rule');
   });
+
+  it('drops the overlapping WebAuthn request rejection (WORLDMONITOR-11T)', () => {
+    // Verbatim production value: Chrome 151 / Windows on `/pro`, zero frames,
+    // breadcrumbs running Clerk's `GET /v1/environment` -> `GET /v1/client` ->
+    // a button click -> `POST /v1/client/sign_ins`. Chrome rejects a second
+    // `navigator.credentials` request while one is outstanding, which is what a
+    // double-clicked sign-in button (or a submit over Clerk's conditional
+    // passkey autofill) produces.
+    assert.equal(isIgnored('Error', 'OperationError: A request is already pending.'), true);
+    // Some engines fold the type into the value.
+    assert.equal(isIgnored('Error', 'Error: OperationError: A request is already pending.'), true);
+  });
+
+  it('keeps other OperationError messages so a real one still reports', () => {
+    assert.equal(isIgnored('Error', 'OperationError: The operation failed.'), false);
+  });
+
+  it('keeps a message that merely contains the pending-request phrase', () => {
+    // The entry is anchored at both ends for the reason the `Error invoking`
+    // entry spells out: `ignoreErrors` is frame-blind, so an unanchored pattern
+    // would drop this even riding a `/pro/assets/*.js` frame.
+    assert.equal(
+      isIgnored('Error', 'Checkout aborted: a request is already pending. Retry in 5s'),
+      false,
+    );
+  });
+
+  it('pins the marketing surface as OperationError-free, the rule\'s second licence', () => {
+    // Independent of the WebAuthn-free scan above: `OperationError` is a
+    // browser-minted DOMException name, and `timeout-signal.ts`'s `TimeoutError`
+    // is the only DOMException this bundle constructs. If first-party code ever
+    // mints an `OperationError`, the frame-blind entry has to be re-derived.
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /OperationError|A request is already pending/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [],
+      'the marketing surface now mints OperationError — re-derive the WORLDMONITOR-11T rule');
+  });
 });
 
 describe('marketingBeforeSend — leaked fetch abort (WORLDMONITOR-11M)', () => {
