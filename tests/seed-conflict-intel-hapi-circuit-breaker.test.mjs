@@ -161,7 +161,7 @@ test('HAPI HDX gives snapshot downloads a longer bounded deadline than metadata'
 
 test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => {
   let metadataCalls = 0;
-  let metadataUserAgent;
+  const requestUserAgents = [];
   const csv = hapiCsv(
     'SDN,,,,,,,,,0,political_violence,12,3,2026-07-01,2026-07-31,dataset,resource,,',
   );
@@ -169,10 +169,10 @@ test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => 
     nowMs: NOW,
     countryCodes: ['SD'],
     fetchFn: async (input, options) => {
+      requestUserAgents.push(options.headers['User-Agent']);
       if (String(input).includes('/api/3/action/package_show')) {
         metadataCalls += 1;
-        metadataUserAgent = options.headers['User-Agent'];
-        if (metadataUserAgent !== 'wm-crisis-tracker/1.0') {
+        if (options.headers['User-Agent'] !== 'wm-crisis-tracker/1.0') {
           return new Response('', {
             status: 202,
             headers: {
@@ -188,7 +188,7 @@ test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => 
   });
 
   assert.equal(metadataCalls, 1);
-  assert.equal(metadataUserAgent, 'wm-crisis-tracker/1.0');
+  assert.deepEqual(requestUserAgents, ['wm-crisis-tracker/1.0', 'wm-crisis-tracker/1.0']);
   assert.equal(rows.length, 1);
   assert.equal(rows[0].location_code, 'SDN');
 });
