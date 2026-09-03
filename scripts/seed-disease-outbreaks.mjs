@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, httpRetryError, runSeed, withRetry } from './_seed-utils.mjs';
+import { isMainModule } from './lib/main-module.mjs';
 // Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
 // The 2026-04 webpack rebuild changed the TGH bundle from the legacy
 // `var a=[{Alert_ID:"..."}]` shape (unquoted keys) to `eval("var res = [...]")`
@@ -259,7 +259,7 @@ async function main() {
   });
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (isMainModule(import.meta.url, process.argv[1])) {
   main().catch((err) => {
     const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
     console.error('FATAL:', (err.message || err) + _cause);

@@ -66,6 +66,24 @@ test('WHO adapter retries one transient timeout and returns the recovered record
   assert.equal(outbreaks[0].title, WHO_RESPONSE.value[0].Title);
 });
 
+for (const status of [429, 503]) {
+  test(`WHO adapter retries transient HTTP ${status} and returns the recovered record`, async () => {
+    let calls = 0;
+    const outbreaks = await fetchWhoDonApi({
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) return jsonResponse({}, status);
+        return jsonResponse(WHO_RESPONSE);
+      },
+      retryDelayMs: 0,
+    });
+
+    assert.equal(calls, 2);
+    assert.equal(outbreaks.length, 1);
+    assert.equal(outbreaks[0].title, WHO_RESPONSE.value[0].Title);
+  });
+}
+
 test('WHO adapter does not retry a permanent HTTP 403', async () => {
   let calls = 0;
   const outbreaks = await fetchWhoDonApi({
