@@ -8,11 +8,10 @@
  * bundle's 570s wall budget with margin. Use this bounded worker / on-demand
  * fetch instead.
  *
- * Licence: the applicable Ontario or Toronto Open Government Licence plus TPS
- * item constraints. Credit TPS without crests. No endorsement. Coordinates
- * are deliberately offset — do not snap or geocode further. Do not join for
- * reidentification. One EVENT_UNIQUE_ID can have several offence/victim rows;
- * keep them all.
+ * Source rights and attribution are recorded in scripts/source-attribution.mjs.
+ * Credit TPS without crests. No endorsement. Coordinates are deliberately
+ * offset — do not snap or geocode further. Do not join for reidentification.
+ * One EVENT_UNIQUE_ID can have several offence/victim rows; keep them all.
  *
  * This is not live CAD (#6682) and must not be labelled as live_dispatch.
  */
@@ -51,11 +50,12 @@ export const TPS_MCI_CATALOG_ITEM = '0a239a5563a344a3bbf8452504ed8d68';
 export const TPS_CALLS_CATALOG_ITEM = 'bfffadee-e6e5-4404-8455-e67e9ea11ba7';
 export const TPS_CALLS_PACKAGE_NAME = 'police-annual-statistical-report-calls-for-service-attended';
 export const TPS_CALLS_RESOURCE_NAME = 'Calls for Service Attended';
+export const TPS_CALLS_PUBLIC_PAGE = 'https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/';
 export const TPS_MCI_LAYER_URL = 'https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/Major_Crime_Indicators_Open_Data/FeatureServer/0';
 export const TPS_MCI_QUERY_URL = `${TPS_MCI_LAYER_URL}/query`;
-export const TPS_CALLS_PACKAGE_URL = `https://${TPS_TORONTO_CKAN_HOST}/api/3/action/package_show`;
+export const TPS_CALLS_PACKAGE_URL = 'https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show';
 export const TPS_CALLS_LAYER_URL = `${TPS_CALLS_PACKAGE_URL}?id=${TPS_CALLS_PACKAGE_NAME}`;
-export const TPS_CALLS_QUERY_URL = `https://${TPS_TORONTO_CKAN_HOST}/api/3/action/datastore_search`;
+export const TPS_CALLS_QUERY_URL = 'https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/datastore_search';
 
 export const TPS_MCI_PAGE_CAP = 2000;
 export const TPS_CALLS_PAGE_CAP = 1000;
@@ -76,7 +76,7 @@ export const TPS_DEFAULT_MCI_MAX_PAGES = 3;
 export const TPS_DEFAULT_CALLS_MAX_PAGES = 12;
 export const TPS_DEFAULT_MCI_LOOKBACK_DAYS = 90;
 export const TPS_OGL_ATTRIBUTION = 'Contains information licensed under the Open Government Licence - Ontario.';
-export const TPS_TORONTO_OGL_ATTRIBUTION = 'Contains information licensed under the Open Government Licence - Toronto.';
+export const TPS_CALLS_ATTRIBUTION = `Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. ${TPS_CALLS_PUBLIC_PAGE}`;
 
 export const TPS_MCI_REQUIRED_FIELDS = Object.freeze([
   'EVENT_UNIQUE_ID',
@@ -302,7 +302,7 @@ export function buildTpsCallsSnapshot({
     canonicalKey: TPS_CALLS_KEY,
     layerUrl: TPS_CALLS_LAYER_URL,
     catalogItem: TPS_CALLS_CATALOG_ITEM,
-    attribution: TPS_TORONTO_OGL_ATTRIBUTION,
+    attribution: TPS_CALLS_ATTRIBUTION,
     official: true,
     live: false,
     incidentPoint: false,

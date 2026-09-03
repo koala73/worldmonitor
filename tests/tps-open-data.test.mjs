@@ -9,6 +9,7 @@ import {
   TPS_CALLS_REQUIRED_FIELDS,
   TPS_CALLS_RESOURCE_NAME,
   TPS_CALLS_SERVICE_ITEM_ID,
+  TPS_CALLS_ATTRIBUTION,
   TPS_CALLS_SEMANTIC,
   TPS_MCI_KEY,
   TPS_MCI_MAX_CONTENT_AGE_MIN,
@@ -17,7 +18,6 @@ import {
   TPS_MCI_SERVICE_ITEM_ID,
   TPS_MCI_SEMANTIC,
   TPS_OGL_ATTRIBUTION,
-  TPS_TORONTO_OGL_ATTRIBUTION,
   buildTpsCallsSnapshot,
   buildTpsMciSnapshot,
   fetchTpsCallsAttended,
@@ -389,7 +389,8 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
     assert.equal(callsMeta.newestContentYear, 2025);
     assert.equal(callsMeta.dataLastEditDate, 1784654305769);
     assert.equal(callsMeta.newestItemAt, Math.min(1784654305769, Date.UTC(2025, 11, 31)));
-    assert.equal(calls.attribution, TPS_TORONTO_OGL_ATTRIBUTION);
+    assert.equal(calls.attribution, TPS_CALLS_ATTRIBUTION);
+    assert.doesNotMatch(calls.attribution, /Open Government Licence/);
     assert.equal(tpsContentMeta(buildTpsMciSnapshot({ records: [], editingInfo: { dataLastEditDate: 1 } })), null);
     assert.equal(TPS_MCI_MAX_CONTENT_AGE_MIN, 120 * 24 * 60);
     assert.equal(TPS_CALLS_MAX_CONTENT_AGE_MIN, 400 * 24 * 60);

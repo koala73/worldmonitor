@@ -98,6 +98,7 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
     assert.equal(result.aggregates[0]?.incidentPoint, false);
     assert.equal(result.degraded, true);
     assert.equal(result.newestContentYear, 2025);
+    assert.equal(result.attribution, 'Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/');
   });
 
   it('reports an unpublished on-demand key as unavailable and rejects unknown datasets', async () => {

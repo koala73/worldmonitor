@@ -2315,6 +2315,20 @@
       ]
     },
     {
+      "host": "ckan0.cf.opendata.inter.prod-toronto.ca",
+      "provider": "City of Toronto Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "CKAN package_show for police-annual-statistical-report-calls-for-service-attended (package id bfffadee-e6e5-4404-8455-e67e9ea11ba7) returned license_id=notspecified, license_title=\"License not specified\", and isopen=false on 2026-09-03. The portal dataset page displays Open Government Licence - Toronto, but that claim is not data-bound to the CKAN package metadata.",
+      "attribution": "Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
+    },
+    {
       "host": "climate.copernicus.eu",
       "provider": "climate.copernicus.eu",
       "kind": "structured",
@@ -2840,7 +2854,7 @@
       "provider": "Toronto Police Service Open Data",
       "kind": "structured",
       "observed": true,
-      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.",
+      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) requires: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer description on https://data.tps.ca/.",
       "attribution": "Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.",
       "status": "reviewed",
       "references": [
@@ -6737,6 +6751,20 @@
       "license": "Provider terms for this upstream API/dataset; verify before redistribution",
       "attribution": "Credit open.alberta.ca and link to the original upstream API/dataset.",
       "status": "excluded"
+    },
+    {
+      "host": "open.toronto.ca",
+      "provider": "City of Toronto Open Data",
+      "kind": "structured",
+      "observed": true,
+      "license": "CKAN package_show for police-annual-statistical-report-calls-for-service-attended (package id bfffadee-e6e5-4404-8455-e67e9ea11ba7) returned license_id=notspecified, license_title=\"License not specified\", and isopen=false on 2026-09-03. The portal dataset page displays Open Government Licence - Toronto, but that claim is not data-bound to the CKAN package metadata.",
+      "attribution": "Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/",
+      "status": "terms-review",
+      "references": [
+        {
+          "path": "scripts/lib/tps-open-data.mjs"
+        }
+      ]
     },
     {
       "host": "opendata.adsb.fi",
@@ -13882,7 +13910,7 @@
       "provider": "Toronto Police Service Open Data",
       "kind": "structured",
       "observed": true,
-      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.",
+      "license": "Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) requires: \"Contains information licensed under the Open Government Licence - Ontario.\" Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer description on https://data.tps.ca/.",
       "attribution": "Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.",
       "status": "reviewed",
       "references": [
