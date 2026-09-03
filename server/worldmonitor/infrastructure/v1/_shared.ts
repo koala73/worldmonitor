@@ -18,40 +18,6 @@ export {
 
 export const VALID_BASELINE_TYPES = filterParamContracts.infrastructureTemporalBaselineTypes;
 
-// `region` is interpolated straight into a Redis key that lives for 90 days, so
-// an open value set is unbounded key creation by anyone who can reach the
-// endpoint. Every caller in the tree submits 'global' (the three sites in
-// src/app/data-loader.ts, and the server-side v2 rebuild), so an allowlist
-// costs nothing today and bounds the keyspace. Widen it deliberately when a
-// real per-region caller arrives.
-export const VALID_BASELINE_REGIONS: ReadonlySet<string> = new Set(['global']);
-
-// A baseline count is a cardinality, so it is finite, non-negative, and far
-// below anything a dashboard load can legitimately report. The previous check
-// rejected only NaN, which let Infinity through: one infinite sample poisons
-// the Welford mean and variance permanently, and the resulting NaN serialises
-// to null, breaking every later read of that key.
-export const MAX_BASELINE_COUNT = 1_000_000;
-
-// One sample per type/region per hour, matching the cadence the server-side v2
-// rebuild already throttles itself to (list-temporal-anomalies.ts). This is
-// what makes a baseline a time series rather than a popularity contest: before
-// it, every page load added another sample, so the statistics tracked visitor
-// volume and a single caller could drive the mean by repeating a request.
-export const BASELINE_SAMPLE_INTERVAL_SECONDS = 3600;
-
-/**
- * Marker key claiming this interval's single sample for a baseline key.
- *
- * SET NX on this key is also the concurrency control for the baseline itself:
- * whoever claims the interval is the only writer until it expires, so the
- * read-modify-write that follows cannot interleave with another request for
- * the same baseline and lose an update.
- */
-export function makeBaselineSampleClaimKey(baselineKey: string): string {
-  return `${baselineKey}:sample`;
-}
-
 // ========================================================================
 // Temporal baseline helpers
 // ========================================================================
@@ -357,35 +323,3 @@ export function temporalAnomaliesReadableContentMeta(
 export const BASELINE_SAMPLE_INTERVAL_MS = 60 * 60 * 1000;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
-
-
-// ========================================================================
-// Upstash Redis MGET helper (edge-compatible)
-// getCachedJson / setCachedJson are imported from ../../../_shared/redis.ts
-// ========================================================================
-
-import { unwrapEnvelope } from '../../../_shared/seed-envelope';
-
-export async function mgetJson(keys: string[]): Promise<(unknown | null)[]> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return keys.map(() => null);
-  try {
-    const resp = await fetch(`${url}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(['MGET', ...keys]),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!resp.ok) return keys.map(() => null);
-    const data = (await resp.json()) as { result?: (string | null)[] };
-    // Envelope-aware: several of these count-source keys (wildfire:fires:v1,
-    // news:insights:v1) are contract-mode canonical keys post-PR-2.
-    return (data.result || []).map(v => v ? unwrapEnvelope(JSON.parse(v)).data : null);
-  } catch {
-    return keys.map(() => null);
-  }
-}
