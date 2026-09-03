@@ -453,6 +453,11 @@ describe('durable last-good wiring (#7084)', () => {
     stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };
     await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
     assert.equal(evalCalls().length, 1, 'a fresh build is exactly when the snapshot should be refreshed');
+    const command = evalCalls()[0] as string[];
+    assert.equal(command[2], '3', 'canonical and durable publication must share one atomic script');
+    assert.equal(command[3], lastGoodKey('full', 'en'));
+    assert.equal(command[5], 'news:digest:v1:full:en');
+    assert.equal(Number(command[11]), 900);
   });
 
   it('a coalesced FOLLOWER of a build does not repeat the publication', async () => {

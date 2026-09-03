@@ -15,7 +15,7 @@ import {
   runRedisTransaction,
   setCachedJson,
 } from '../../../_shared/redis';
-import { REVOKED_URLS_KEY } from '../../../_shared/digest-revocations';
+import { REVOKED_URLS_KEY, readRevokedUrlSet } from '../../../_shared/digest-revocations';
 import { getUsageScope } from '../../../_shared/usage';
 import {
   ATTEMPT_META_TTL_S,
@@ -36,6 +36,7 @@ import {
 // Private wire value used by cachedFetchJsonWithMeta. This write is kept here
 // because the attempt row and sentinel must become visible atomically.
 const DIGEST_NEGATIVE_SENTINEL = '__WM_NEG__';
+const DIGEST_CACHE_TTL_S = 900;
 
 export interface FailedDigestAttempt {
   readonly at: string;
@@ -262,6 +263,7 @@ export async function publishAcceptedSnapshot(
   variant: string,
   lang: string,
   data: ListFeedDigestResponse,
+  canonicalDigestKey?: string,
 ): Promise<void> {
   if (!isEligibleScope(variant, lang) || !isAcceptableDigest(data)) return;
   const now = Date.now();
@@ -269,14 +271,56 @@ export async function publishAcceptedSnapshot(
   const acceptedAt = Number.isFinite(generatedAtMs) ? generatedAtMs : now;
   try {
     if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
+      const revoked = await readRevokedUrlSet();
+      if (!revoked.readable) {
+        console.warn(`[digest-publication] source unavailable variant=${variant} lang=${lang}`);
+        return;
+      }
+      const candidateRichness = measureServableRichness(data, revoked.urls);
       const read = await readAcceptedSnapshot<ListFeedDigestResponse>(variant, lang);
-      if (!read.readable) return;
+      if (!read.readable) {
+        console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
+        return;
+      }
       const current = read.snapshot;
-      const { categoryCount, itemCount } = measureServableRichness(data, new Set());
-      const decision = shouldReplaceAccepted(current, { categoryCount, itemCount }, now);
-      if (!decision.replace) return;
-      const meta: AcceptedSnapshotMeta = { acceptedAt, categoryCount, itemCount };
-      await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
+      const currentCanonical = canonicalDigestKey
+        ? await readCachedJson(canonicalDigestKey)
+        : { status: 'miss' as const };
+      if (currentCanonical.status === 'error') {
+        console.warn(`[digest-publication] canonical read unavailable variant=${variant} lang=${lang}`);
+        return;
+      }
+      const canonicalValue = currentCanonical.status === 'hit'
+        && currentCanonical.value && typeof currentCanonical.value === 'object'
+        ? currentCanonical.value as ListFeedDigestResponse
+        : null;
+      const canonicalGeneratedAt = canonicalValue ? Date.parse(canonicalValue.generatedAt ?? '') : NaN;
+      const canonicalMeta = canonicalValue && Number.isFinite(canonicalGeneratedAt)
+        ? {
+            acceptedAt: canonicalGeneratedAt,
+            ...measureServableRichness(canonicalValue, revoked.urls),
+          }
+        : null;
+      const decision = shouldReplaceAccepted(current, candidateRichness, now);
+      const canonicalDecision = canonicalMeta
+        ? shouldReplaceAccepted(canonicalMeta, candidateRichness, now)
+        : null;
+      if (!decision.replace || canonicalDecision && !canonicalDecision.replace) {
+        console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
+        return;
+      }
+      const meta: AcceptedSnapshotMeta = { acceptedAt, ...candidateRichness };
+      const durableWritten = await setCachedJson(lastGoodKey(variant, lang), { ...meta, data }, LASTGOOD_TTL_S);
+      if (!durableWritten) {
+        console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
+        return;
+      }
+      if (canonicalDigestKey) {
+        const canonicalWritten = await setCachedJson(canonicalDigestKey, data, DIGEST_CACHE_TTL_S);
+        if (!canonicalWritten) {
+          console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
+        }
+      }
       return;
     }
 
@@ -284,28 +328,34 @@ export async function publishAcceptedSnapshot(
     // stored JSON verbatim. Sending the wrapped `{ acceptedAt, data }` and
     // letting Lua rebuild it meant a cjson decode/encode round trip, which
     // silently rewrote every empty array in the body as `{}`.
-    const results = await runRedisPipeline([[
-      'EVAL',
-      DIGEST_LASTGOOD_PUBLISH_SCRIPT,
-      '2',
-      lastGoodKey(variant, lang),
-      REVOKED_URLS_KEY,
+    const keys = canonicalDigestKey
+      ? [lastGoodKey(variant, lang), REVOKED_URLS_KEY, canonicalDigestKey]
+      : [lastGoodKey(variant, lang), REVOKED_URLS_KEY];
+    const args = [
       String(now),
       String(LASTGOOD_MAX_AGE_MS),
       String(acceptedAt),
       String(LASTGOOD_TTL_S),
       JSON.stringify(data),
+      ...(canonicalDigestKey ? [String(DIGEST_CACHE_TTL_S)] : []),
+    ];
+    const results = await runRedisPipeline([[
+      'EVAL',
+      DIGEST_LASTGOOD_PUBLISH_SCRIPT,
+      String(keys.length),
+      ...keys,
+      ...args,
     ]]);
     const outcome = results[0];
     if (!outcome || outcome.error) {
-      console.warn(`[digest-lastgood] guarded publish unavailable variant=${variant} lang=${lang}`);
+      console.warn(`[digest-publication] publish unavailable variant=${variant} lang=${lang}`);
     } else if (outcome.result === 0) {
-      console.log(`[digest-lastgood] kept live snapshot (not-narrower) variant=${variant} lang=${lang}`);
+      console.log(`[digest-publication] candidate rejected by acceptance gate variant=${variant} lang=${lang}`);
     } else if (outcome.result === -1) {
-      console.log(`[digest-lastgood] candidate rejected after revocations variant=${variant} lang=${lang}`);
+      console.log(`[digest-publication] candidate rejected after revocations variant=${variant} lang=${lang}`);
     }
   } catch (err) {
-    console.warn('[digest-lastgood] publish failed:', err);
+    console.warn('[digest-publication] publish failed:', err);
     captureSilentError(err, {
       tags: { surface: 'news', component: 'digest-lastgood', stage: 'publish', variant, lang },
       fingerprint: ['digest-lastgood', 'publish-failed'],

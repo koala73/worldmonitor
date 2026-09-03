@@ -2073,6 +2073,7 @@ export async function listFeedDigest(
           // The fetcher publishes attempt + sentinel atomically. Letting the
           // generic wrapper write its own sentinel first would detach identity.
           cacheFailures: false,
+          cachePositiveResult: false,
           shouldFetch: () => shouldStartDigestAttempt(digestCacheKey),
         },
       ),
@@ -2138,7 +2139,7 @@ export async function listFeedDigest(
     if (source === 'fresh' && leader) {
       if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
         await settleBeforeDeadline(
-          publishAcceptedSnapshot(variant, lang, fresh),
+          publishAcceptedSnapshot(variant, lang, fresh, digestCacheKey),
           responseDeadlineAt,
           undefined,
         );

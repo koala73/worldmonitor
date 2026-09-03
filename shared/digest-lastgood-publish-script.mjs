@@ -28,9 +28,11 @@
 // floor emptied — as `{}`, which then threw out of the serve-time revocation
 // filter and out of the browser's own `.map`.
 //
-// KEYS[1] = snapshot body key, KEYS[2] = revoked URL set.
-// ARGV: 1=nowMs 2=maxAgeMs 3=candidateAcceptedAt 4=ttlSeconds
-//       5=candidateDataJson (the digest body alone, verbatim).
+// KEYS[1] = durable snapshot body key, KEYS[2] = revoked URL set,
+// KEYS[3] = optional canonical digest key.
+// ARGV: 1=nowMs 2=maxAgeMs 3=candidateAcceptedAt 4=durableTtlSeconds
+//       5=candidateDataJson (the digest body alone, verbatim)
+//       6=optional canonicalTtlSeconds.
 // Returns 1 when written, 0 when the live snapshot was kept, -1 when the
 // candidate has no servable items.
 export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
@@ -55,6 +57,9 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   'local candidate = nil',
   'if okCandidate then candidate = countData(candidateData) end',
   'if not candidate or candidate.categories < 1 or candidate.items < 1 then return -1 end',
+  'local function isNarrower(nextData, currentData)',
+  '  return nextData.categories < currentData.categories or nextData.items < currentData.items',
+  'end',
   "local currentRaw = redis.call('GET', KEYS[1])",
   'if currentRaw then',
   '  local okCurrent, snapshot = pcall(cjson.decode, currentRaw)',
@@ -63,7 +68,17 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   '    if current then',
   '      local delta = tonumber(ARGV[1]) - (tonumber(snapshot.acceptedAt) or 0)',
   '      local live = delta >= 0 and delta <= tonumber(ARGV[2])',
-  '      if live and (candidate.categories < current.categories or candidate.items < current.items) then return 0 end',
+  '      if live and isNarrower(candidate, current) then return 0 end',
+  '    end',
+  '  end',
+  'end',
+  'if KEYS[3] then',
+  "  local canonicalRaw = redis.call('GET', KEYS[3])",
+  '  if canonicalRaw then',
+  '    local okCanonical, canonicalData = pcall(cjson.decode, canonicalRaw)',
+  '    if okCanonical then',
+  '      local currentCanonical = countData(canonicalData)',
+  '      if currentCanonical and isNarrower(candidate, currentCanonical) then return 0 end',
   '    end',
   '  end',
   'end',
@@ -77,5 +92,6 @@ export const DIGEST_LASTGOOD_PUBLISH_SCRIPT = [
   "  .. ',\"itemCount\":' .. string.format('%.0f', candidate.items)",
   '  .. \',"data":\' .. ARGV[5] .. \'}\'',
   "redis.call('SET', KEYS[1], stored, 'EX', ARGV[4])",
+  "if KEYS[3] then redis.call('SET', KEYS[3], ARGV[5], 'EX', ARGV[6]) end",
   'return 1',
 ].join('\n');

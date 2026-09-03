@@ -996,6 +996,7 @@ type CachedFetchWithMetaOpts = CachedFetchOpts & {
   usage?: UsageHook;
   shouldFetch?: () => boolean;
   cacheFailures?: boolean;
+  cachePositiveResult?: boolean;
   inflightKey?: string;
   isCallerLocalError?: (error: unknown) => boolean;
 };
@@ -1093,10 +1094,13 @@ async function cachedFetchJsonCore<T extends object>(
           }
         } else {
           upstreamStatus = 200;
-          const wrote = await setCachedJson(key, result, ttlSeconds);
+          const wrote = opts?.cachePositiveResult === false
+            ? true
+            : await setCachedJson(key, result, ttlSeconds);
           // See cachedFetchJson(): this short in-process bridge is only for
           // remote Redis outages, not local sidecar cache writes.
-          if (hadCacheReadError || (!wrote && hasRemoteRedisConfig())) {
+          if (opts?.cachePositiveResult !== false
+            && (hadCacheReadError || (!wrote && hasRemoteRedisConfig()))) {
             armLocalPositiveFallback(key, result, ttlSeconds);
           }
         }

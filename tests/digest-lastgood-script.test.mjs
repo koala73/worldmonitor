@@ -19,6 +19,7 @@ import { LASTGOOD_MAX_AGE_MS, LASTGOOD_TTL_S } from '../server/worldmonitor/news
 
 const NOW = Date.UTC(2026, 7, 22, 12, 0, 0);
 const BODY_KEY = 'news:digest:lastgood:v1:full:en';
+const CANONICAL_KEY = 'news:digest:v1:full:en';
 const REVOKED_KEY = 'news:digest:revoked-urls:v1';
 
 /**
@@ -170,6 +171,13 @@ const publish = ({ data, acceptedAt = NOW, now = NOW, initial = {} }) =>
     redis: makeRedis(initial),
   });
 
+const publishCanonicalAndLastGood = ({ data, acceptedAt = NOW, now = NOW, initial = {} }) =>
+  runScript({
+    keys: [BODY_KEY, REVOKED_KEY, CANONICAL_KEY],
+    argv: [now, LASTGOOD_MAX_AGE_MS, acceptedAt, LASTGOOD_TTL_S, JSON.stringify(data), 900],
+    redis: makeRedis(initial),
+  });
+
 const bodyOf = (links, extra = {}) => ({
   categories: { politics: { items: links.map((link) => ({ link, tickers: [] })) } },
   ...extra,
@@ -178,6 +186,94 @@ const bodyOf = (links, extra = {}) => ({
 const snapshot = (data, acceptedAt) => JSON.stringify({ acceptedAt, categoryCount: 1, itemCount: 1, data });
 
 describe('durable last-good publish gate — executed, not described (#7084)', () => {
+  it('publishes one rich candidate to both canonical and durable keys', () => {
+    const data = bodyOf(['https://a.test/1']);
+    const { result, redis } = publishCanonicalAndLastGood({ data });
+    assert.equal(result, 1);
+    assert.equal(redis.store.get(CANONICAL_KEY), JSON.stringify(data));
+    assert.equal(JSON.parse(redis.store.get(BODY_KEY)).data.categories.politics.items.length, 1);
+    assert.equal(redis.ttls.get(CANONICAL_KEY), 900);
+    assert.equal(redis.ttls.get(BODY_KEY), LASTGOOD_TTL_S);
+  });
+
+  it('keeps the canonical snapshot when the durable incumbent is absent', () => {
+    const rich = {
+      categories: {
+        politics: { items: [{ link: 'https://a.test/1' }] },
+        tech: { items: [{ link: 'https://b.test/1' }] },
+      },
+    };
+    const narrow = bodyOf(['https://c.test/1']);
+    const first = publishCanonicalAndLastGood({ data: rich });
+    const canonicalOnly = Object.fromEntries(first.redis.store);
+    delete canonicalOnly[BODY_KEY];
+
+    const second = publishCanonicalAndLastGood({
+      data: narrow,
+      now: NOW + 60_000,
+      acceptedAt: NOW + 60_000,
+      initial: canonicalOnly,
+    });
+    assert.equal(second.result, 0, 'the canonical incumbent must share the acceptance gate');
+    assert.equal(second.redis.store.get(CANONICAL_KEY), JSON.stringify(rich));
+    assert.equal(second.redis.store.has(BODY_KEY), false);
+  });
+
+  it('keeps both accepted snapshots when a non-empty candidate is materially narrower', () => {
+    const rich = {
+      categories: {
+        politics: { items: [{ link: 'https://a.test/1' }] },
+        tech: { items: [{ link: 'https://b.test/1' }] },
+      },
+    };
+    const narrow = bodyOf(['https://c.test/1']);
+    const first = publishCanonicalAndLastGood({ data: rich });
+    assert.equal(first.result, 1);
+
+    const second = publishCanonicalAndLastGood({
+      data: narrow,
+      now: NOW + 60_000,
+      acceptedAt: NOW + 60_000,
+      initial: Object.fromEntries(first.redis.store),
+    });
+    assert.equal(second.result, 0, 'the shared decision must reject a live narrower candidate');
+    assert.equal(second.redis.store.get(CANONICAL_KEY), JSON.stringify(rich));
+    assert.deepEqual(JSON.parse(second.redis.store.get(BODY_KEY)).data, rich);
+  });
+
+  it('updates both snapshots for a valid candidate after a rejected one', () => {
+    const rich = {
+      categories: {
+        politics: { items: [{ link: 'https://a.test/1' }] },
+        tech: { items: [{ link: 'https://b.test/1' }] },
+      },
+    };
+    const narrow = bodyOf(['https://c.test/1']);
+    const update = {
+      categories: {
+        politics: { items: [{ link: 'https://d.test/1' }] },
+        tech: { items: [{ link: 'https://e.test/1' }] },
+      },
+    };
+    const first = publishCanonicalAndLastGood({ data: rich });
+    const rejected = publishCanonicalAndLastGood({
+      data: narrow,
+      now: NOW + 60_000,
+      acceptedAt: NOW + 60_000,
+      initial: Object.fromEntries(first.redis.store),
+    });
+    assert.equal(rejected.result, 0);
+    const accepted = publishCanonicalAndLastGood({
+      data: update,
+      now: NOW + 120_000,
+      acceptedAt: NOW + 120_000,
+      initial: Object.fromEntries(rejected.redis.store),
+    });
+    assert.equal(accepted.result, 1);
+    assert.equal(accepted.redis.store.get(CANONICAL_KEY), JSON.stringify(update));
+    assert.deepEqual(JSON.parse(accepted.redis.store.get(BODY_KEY)).data, update);
+  });
+
   it('writes when there is no incumbent, and stores the body BYTE-FOR-BYTE', () => {
     const data = bodyOf(['https://a.test/1']);
     const { result, redis } = publish({ data });
