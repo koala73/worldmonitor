@@ -5,7 +5,10 @@
 // this is expected; use tsx (the project's standard test runner).
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach, before } from 'node:test';
-import { MAX_MCP_PROXY_JSON_DEPTH } from '../api/mcp/bounded-json.ts';
+import {
+  MAX_MCP_PROXY_JSON_CONTAINERS,
+  MAX_MCP_PROXY_JSON_DEPTH,
+} from '../api/mcp/bounded-json.ts';
 
 // validateApiKey runs with forceKey:true on this endpoint (PR #3768 review
 // finding — wms_ session tokens are anonymous and freely mintable via
@@ -528,6 +531,30 @@ describe('api/mcp-proxy', () => {
       assert.equal(
         (await res.json()).error,
         `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_DEPTH} nesting levels`,
+      );
+    });
+
+    it('rejects a broad streamable response before parsing it', async () => {
+      const prefix = '{"jsonrpc":"2.0","id":2,"result":{"tools":[';
+      const suffix = ']}}';
+      const tools = '{}' + ',{}'.repeat(MAX_MCP_PROXY_JSON_CONTAINERS - 1);
+      const payload = `${prefix}${tools}${suffix}`;
+      assert.ok(new TextEncoder().encode(payload).byteLength < MCP_PROXY_RESPONSE_CAP_BYTES);
+
+      globalThis.fetch = async (url, opts) => {
+        const body = opts?.body ? JSON.parse(opts.body) : {};
+        if (body.method === 'tools/list') {
+          return new Response(payload, { headers: { 'Content-Type': 'application/json' } });
+        }
+        return makeMcpFetch({ tools: [] })(url, opts);
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.equal(
+        (await res.json()).error,
+        `MCP proxy JSON exceeds ${MAX_MCP_PROXY_JSON_CONTAINERS} object or array containers`,
       );
     });
 

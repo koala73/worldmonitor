@@ -99,6 +99,29 @@ describe('collectToolSchemaWireFailures', () => {
     assert.ok(failures.some((failure) => failure.includes('type array must not be empty')));
     assert.ok(failures.some((failure) => failure.includes('duplicate JSON Schema type')));
   });
+
+  it('reports schema defects outside type keywords', () => {
+    const invalidSchemas = [
+      { type: 'object', required: 'value', properties: { value: { type: 'string' } } },
+      { type: 'array', minItems: -1, items: { type: 'string' } },
+      { type: 'array', uniqueItems: 'yes', items: { type: 'string' } },
+      { type: 'string', pattern: '[' },
+      { type: 'string', enum: [] },
+    ];
+
+    for (const [index, outputSchema] of invalidSchemas.entries()) {
+      const failures = collectToolSchemaWireFailures([{
+        name: `invalid_schema_${index}`,
+        inputSchema: { type: 'object' },
+        outputSchema,
+      }]);
+
+      assert.ok(
+        failures.some((failure) => failure.includes(`invalid_schema_${index}.outputSchema`)),
+        `schema ${index} must fail strict compilation`,
+      );
+    }
+  });
 });
 
 describe('collectRequiredCapabilityFailures', () => {
