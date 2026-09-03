@@ -4770,6 +4770,68 @@ describe('GEO residue #7616 (U2b changelog lastmod)', () => {
     );
   });
 });
+
+describe('GEO residue #7616 (U5 sources DataCatalog)', () => {
+  const renderSources = async () => {
+    const { renderSourcesIndex } = await import('../scripts/crawlable-sources-page.mjs');
+    const { dataCatalogLd } = await import('../scripts/build-crawlable-corpus.mjs');
+    const escapeHtml = (value) => String(value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const absoluteUrl = (base, path) => `${String(base).replace(/\/+$/, '')}${path}`;
+    const helpers = {
+      absoluteUrl,
+      breadcrumbLd: () => '',
+      dataCatalogLd,
+      escapeHtml,
+      pageDocument: ({ jsonLd, body }) => JSON.stringify({ jsonLd, body }),
+      withUtmSource: (url, source) => `${url}?utm_source=${source}`,
+    };
+    return renderSourcesIndex({
+      sourceStats: { providerCount: 747, activeHosts: 760, structuredHosts: 331, feedHosts: 461 },
+      sourceCatalog: [],
+      catalogDatasets: [
+        {
+          '@type': 'Dataset',
+          name: 'Ukraine war tracker',
+          description: 'Monthly country-level conflict summaries for the Ukraine war corpus entry, with bounded coverage and provenance.',
+          url: 'https://www.worldmonitor.app/crises/ukraine-war/',
+          creator: { '@id': 'https://www.worldmonitor.app/#organization', '@type': 'Organization', name: 'World Monitor' },
+          license: 'https://www.worldmonitor.app/docs/terms',
+          distribution: [{ '@type': 'DataDownload', contentUrl: 'https://www.worldmonitor.app/crises/ukraine-war/tracker.json' }],
+        },
+      ],
+      baseUrl: 'https://www.worldmonitor.app',
+      lastmod: '2026-09-03',
+      helpers,
+    });
+  };
+
+  it('emits a DataCatalog node with datasets, modification date, and provider count', async () => {
+    const { jsonLd } = JSON.parse(await renderSources());
+    const nodes = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
+    const catalog = nodes.find((node) => node?.['@type'] === 'DataCatalog');
+    assert.ok(catalog, 'sources page must emit a DataCatalog node');
+    assert.ok(Array.isArray(catalog.dataset) && catalog.dataset.length > 0, 'DataCatalog must list datasets');
+    assert.equal(catalog.dateModified, '2026-09-03', 'DataCatalog date must track the page lastmod');
+    const measured = catalog.variableMeasured ?? catalog.additionalProperty;
+    assert.equal(measured?.['@type'], 'PropertyValue', 'provider count must be a PropertyValue');
+    assert.equal(measured?.value, 747, 'PropertyValue must carry the live provider count');
+  });
+
+  it('shows a visible catalog date with live counts and an extractable data-source answer', async () => {
+    const { body } = JSON.parse(await renderSources());
+    assert.match(
+      body,
+      /Catalog last updated 2026-09-03 · 747 active providers across 760 source hosts/,
+      'visible catalog line must show the date with live counts',
+    );
+    assert.match(body, /<h2[^>]*>Where does World Monitor get its data\?<\/h2>/);
+    const answer = body.match(/<h2[^>]*>Where does World Monitor get its data\?<\/h2>\s*<p>([\s\S]*?)<\/p>/);
+    assert.ok(answer, 'the data-source question needs an extractable answer paragraph');
+    const words = answer[1].replace(/<[^>]+>/g, '').trim().split(/\s+/).length;
+    assert.ok(words >= 40 && words <= 60, `answer must be 40-60 words, got ${words}`);
+  });
+});
 describe('GEO residue #7616 (U2a citations and prose)', () => {
   const repo = (path) => readFileSync(join(repoRoot, path), 'utf8');
 

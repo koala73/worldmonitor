@@ -509,7 +509,7 @@ function dataCatalogId(baseUrl) {
   return `${normalizeBaseUrl(baseUrl)}/${DATA_CATALOG_FRAGMENT}`;
 }
 
-function dataCatalogLd(baseUrl) {
+export function dataCatalogLd(baseUrl) {
   return {
     '@context': SCHEMA_ORG_CONTEXT_URL,
     '@type': 'DataCatalog',
@@ -4702,17 +4702,51 @@ export async function buildCorpus({
     }
   }
 
+  // Flagship downloadable datasets for the /sources/ DataCatalog node: every
+  // entry resolves to a generated download the corpus writes, so the catalog
+  // never advertises a dataset without a distribution.
+  const convergenceMetricName = data.livePulse.signalConvergence.metricName || 'Geographic Convergence Score';
+  const sourcesCatalogDatasets = [
+    ...data.crises.map((crisis) => {
+      const pagePath = `/crises/${crisis.slug}/`;
+      return {
+        '@type': 'Dataset',
+        name: crisis.title,
+        description: crisis.description,
+        url: absoluteUrl(baseUrl, pagePath),
+        creator: { ...WORLD_MONITOR_ORG },
+        license: DATASET_LICENSE,
+        distribution: [
+          dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(pagePath, CRISIS_DATASET_DOWNLOAD))),
+        ],
+      };
+    }),
+    {
+      '@type': 'Dataset',
+      name: `${convergenceMetricName} reference`,
+      description: `World Monitor's ${convergenceMetricName} (0-100) names when protests, military flights, naval vessels, and earthquakes co-occur in the same 1° cell.`,
+      url: absoluteUrl(baseUrl, '/tools/signal-convergence/'),
+      creator: { ...WORLD_MONITOR_ORG },
+      license: DATASET_LICENSE,
+      distribution: [
+        dataDownload(absoluteUrl(baseUrl, datasetDownloadHref('/tools/signal-convergence/', CONVERGENCE_DATASET_DOWNLOAD))),
+      ],
+    },
+  ];
+
   writeGeneratedFile(
     outDir,
     'sources/index.html',
     renderSourcesIndex({
       sourceStats: data.sourceStats,
       sourceCatalog: data.sourceCatalog,
+      catalogDatasets: sourcesCatalogDatasets,
       baseUrl,
       lastmod: data.lastmod.sources,
       helpers: {
         absoluteUrl,
         breadcrumbLd,
+        dataCatalogLd,
         escapeHtml,
         pageDocument,
         withUtmSource,
