@@ -34,6 +34,7 @@
     "security:vite-env-secrets": "node scripts/check-vite-env-secrets.mjs",
     "agent:preflight": "node scripts/agent-preflight.mjs",
     "agent:pr-snapshot": "node scripts/agent-pr-snapshot.mjs",
+    "agent:attach-pr-evidence": "node scripts/publish-pr-media-evidence.mjs",
     "worktree:bootstrap": "node scripts/bootstrap-worktree.mjs",
     "worktree:bootstrap:test-only": "node scripts/bootstrap-worktree.mjs --ignore-scripts",
     "worktree:env": "node scripts/bootstrap-worktree.mjs --skip-install",
