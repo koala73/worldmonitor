@@ -100,12 +100,12 @@ export const MONITORED_WORKFLOWS = Object.freeze([
     // The YAML key is `deploy` but the job carries `name: Wrangler deploy`,
     // which is what the jobs API returns.
     deployJobName: 'Wrangler deploy',
-    // The workflow's own path filter covers workers/railway-reconcile-control/**
-    // plus its own file and test. A push touching ONLY those paths must
-    // deploy; a deploy job skipped there is an unexpected skip, which alarms.
+    // Keep this list equal to the workflow's path filter and deployment fence.
+    // A push touching ONLY these paths must deploy; a skipped deploy alarms.
     skipProofPaths: null,
     triggerPaths: Object.freeze([
       'workers/railway-reconcile-control/**',
+      'scripts/railway-reconcile-control-client.mjs',
       '.github/workflows/deploy-railway-reconcile-control.yml',
       'tests/deploy-railway-reconcile-control-workflow.test.mjs',
     ]),
