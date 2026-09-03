@@ -28,10 +28,6 @@ function currentNgaDate() {
   return `${day}${time}Z ${month} ${now.getUTCFullYear()}`;
 }
 
-function responseBody(response: GetCableHealthResponse) {
-  return JSON.stringify(response);
-}
-
 describe('getCableHealth cache publication', { concurrency: 1 }, () => {
   beforeEach(() => {
     for (const key of ['UPSTASH_REDIS_REST_URL', 'UPSTASH_REDIS_REST_TOKEN', 'VERCEL_ENV', 'VERCEL_GIT_COMMIT_SHA']) {

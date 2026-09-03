@@ -440,7 +440,7 @@ export async function getCableHealth(
       // Write seed-meta on every successful response (cache hit or fresh) so the
       // 30-min warm-ping keeps seed-meta within the 90-min health.js stale window.
       // recordCount reflects the actual cable count — previous Math.max(count, 1)
-      // misrepresented empty responses as having 1 record; now fallback path
+      // misrepresented empty responses as having 1 record; fallback path
       // below keeps the canonical key populated (strlen > 10) so health.js
       // reads hasData=true without needing a fake recordCount floor.
       const count = result.cables ? Object.keys(result.cables).length : 0;
