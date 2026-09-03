@@ -4,11 +4,13 @@ function sanitizeJsonValue(value, depth = 0) {
   }
 
   if (!value || typeof value !== 'object') return value;
-  if (depth > 20) return '[truncated]';
 
   if (Array.isArray(value)) {
+    if (depth > 20 && value.some(item => item !== null && typeof item === 'object')) return '[truncated]';
     return value.map(item => sanitizeJsonValue(item, depth + 1));
   }
+
+  if (depth > 20) return '[truncated]';
 
   const clone = {};
   for (const [key, nested] of Object.entries(value)) {

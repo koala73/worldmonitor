@@ -524,7 +524,9 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.equal(res.status, 200);
 
     const body = await res.json();
-    const failures = collectInvalidToolSchemas(body.result?.tools ?? []);
+    const tools = body.result?.tools;
+    assert.ok(Array.isArray(tools) && tools.length > 0, 'tools/list must emit a non-empty tools array');
+    const failures = collectInvalidToolSchemas(tools);
 
     assert.deepEqual(failures, [], `tools/list emitted invalid JSON Schemas:\n  ${failures.join('\n  ')}`);
   });
@@ -548,8 +550,27 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     }, 200);
     const body = await res.json();
     const failures = collectInvalidToolSchemas(body.result.tools);
+    let nestedSchema = body.result.tools[0].outputSchema;
+    for (let depth = 0; depth < 16; depth += 1) {
+      nestedSchema = nestedSchema.items;
+    }
 
     assert.deepEqual(failures, [], `tools/list emitted invalid JSON Schemas:\n  ${failures.join('\n  ')}`);
+    assert.deepEqual(nestedSchema.type, ['string', 'null']);
+  });
+
+  it('jsonResponse still truncates nested values beyond the depth limit', async () => {
+    let value = [{ nested: true }];
+    for (let depth = 0; depth < 21; depth += 1) {
+      value = { nested: value };
+    }
+
+    let body = await jsonResponse(value, 200).json();
+    for (let depth = 0; depth < 21; depth += 1) {
+      body = body.nested;
+    }
+
+    assert.equal(body, '[truncated]');
   });
 
   // --------------------------------------------------------------------
