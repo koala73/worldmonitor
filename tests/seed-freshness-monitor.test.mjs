@@ -11,6 +11,10 @@ import {
   findOperationalProblems,
   formatAcceptanceReport,
   isOnDemandProblem,
+  findGracedStaleContent,
+  isStaleContentGraceProblem,
+  MAX_STALE_CONTENT_GRACE_MS,
+  STALE_CONTENT_GRACE_SKEW_SLACK_MS,
   validateAcceptanceBaseline,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
@@ -169,6 +173,78 @@ describe('scheduled seed freshness monitor', () => {
     assert.deepEqual(
       findOperationalProblems(payload).map((p) => p.name),
       ['emptyFeed', 'failedFeed', 'frozenFeed', 'wildfire'],
+    );
+  });
+
+  it('softens only active bounded stale-content grace entries', () => {
+    const now = Date.parse('2026-09-03T09:00:00.000Z');
+    // The ceiling must cover the publisher's whole legal window and then some:
+    // it is compared against a different machine's clock, so a bare equality
+    // would turn a few seconds of skew into a spurious blocking alert.
+    assert.equal(
+      MAX_STALE_CONTENT_GRACE_MS,
+      healthTesting.STALE_CONTENT_GRACE_MS + STALE_CONTENT_GRACE_SKEW_SLACK_MS,
+    );
+    assert.ok(MAX_STALE_CONTENT_GRACE_MS > healthTesting.STALE_CONTENT_GRACE_MS);
+    const problem = {
+      status: 'STALE_CONTENT',
+      contentAgeMin: null,
+      maxContentAgeMin: 2880,
+      staleContentGraceUntil: new Date(now + healthTesting.STALE_CONTENT_GRACE_MS).toISOString(),
+    };
+
+    assert.equal(isStaleContentGraceProblem(problem, now), true);
+    assert.deepEqual(findOperationalProblems({
+      status: 'HEALTHY',
+      problems: { temporalAnomalies: problem },
+    }, now), []);
+
+    for (const [label, candidate] of [
+      ['exact deadline', { ...problem, staleContentGraceUntil: new Date(now).toISOString() }],
+      ['missing deadline', { status: 'STALE_CONTENT' }],
+      ['malformed deadline', { ...problem, staleContentGraceUntil: 'not-a-date' }],
+      ['excessive deadline', {
+        ...problem,
+        staleContentGraceUntil: new Date(now + MAX_STALE_CONTENT_GRACE_MS + 1).toISOString(),
+      }],
+      ['deadline beyond what the publisher can mint, even with slack', {
+        ...problem,
+        staleContentGraceUntil: new Date(now + 24 * 60 * 60 * 1000).toISOString(),
+      }],
+      ['wrong status', { ...problem, status: 'STALE_SEED' }],
+    ]) {
+      assert.equal(isStaleContentGraceProblem(candidate, now), false, label);
+      assert.equal(findOperationalProblems({
+        status: 'WARNING',
+        problems: { temporalAnomalies: candidate },
+      }, now).length, 1, label);
+    }
+  });
+
+  it('keeps graced stale-content entries visible even though they do not block', () => {
+    // A green run must still be able to say WHICH feeds are mid-grace. Filtering
+    // them out of the operational list is correct; dropping them from the run's
+    // output entirely would make grace indistinguishable from health.
+    const now = Date.parse('2026-09-03T09:00:00.000Z');
+    const graceUntil = new Date(now + 60 * 60 * 1000).toISOString();
+    const payload = {
+      status: 'HEALTHY',
+      problems: {
+        temporalAnomalies: { status: 'STALE_CONTENT', staleContentGraceUntil: graceUntil },
+        expired: {
+          status: 'STALE_CONTENT',
+          staleContentGraceUntil: new Date(now - 1).toISOString(),
+        },
+      },
+    };
+
+    assert.deepEqual(findGracedStaleContent(payload, now), [
+      { name: 'temporalAnomalies', status: 'STALE_CONTENT', graceUntil },
+    ]);
+    // The expired one is not "in grace" — it is a real operational problem.
+    assert.deepEqual(
+      findOperationalProblems(payload, now).map((p) => p.name),
+      ['expired'],
     );
   });
 

@@ -354,7 +354,7 @@ describe('Railway Native Deploy Health workflow', () => {
     const drift = workflow.jobs.monitor;
     const driftCheckout = steps(drift).find((step) => step.uses?.startsWith('actions/checkout@'));
     assert.ok(driftCheckout);
-    assert.equal(driftCheckout.uses, 'actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10');
+    assert.equal(driftCheckout.uses, 'actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803');
     assert.equal(driftCheckout.with?.['fetch-depth'], 0);
     assert.equal(driftCheckout.with?.filter, 'blob:none');
     assert.equal(driftCheckout.with?.ref, undefined);

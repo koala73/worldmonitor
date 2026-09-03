@@ -209,7 +209,16 @@ export default async function handler(req, ctx) {
           relayResponse = await fetchViaRailway(feedUrl, timeout);
         } catch (relayError) {
           console.error('RSS proxy relay retry error:', feedUrl, relayError instanceof Error ? relayError.message : String(relayError));
-          captureSilentError(relayError, { tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl }, ctx });
+          // Skip Sentry on timeout, exactly as the outer catch does for the
+          // direct leg. fetchViaRailway aborts on the same feed timeout budget,
+          // and this retry is a best-effort SECOND attempt whose failure the
+          // caller never sees — the original non-ok direct response is returned
+          // either way. Capturing it reported routine upstream latency at error
+          // level (WORLDMONITOR-11G); #7438 made the same call for
+          // api/telegram-feed.js. Real relay failures still report.
+          if (relayError?.name !== 'AbortError') {
+            captureSilentError(relayError, { tags: { route: 'api/rss-proxy', step: 'relay-retry', feed: feedUrl }, ctx });
+          }
         }
         if (relayResponse?.ok) {
           response = relayResponse;

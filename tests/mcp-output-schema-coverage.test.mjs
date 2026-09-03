@@ -20,6 +20,7 @@ import { strict as assert } from 'node:assert';
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
+import Ajv2020 from 'ajv/dist/2020.js';
 
 import { validate } from './helpers/json-schema-mini.mjs';
 import {
@@ -31,12 +32,41 @@ import {
   extractRegulatoryAction,
 } from '../scripts/seed-cross-source-signals.mjs';
 import { PHYSICAL_DIVERGENCE_CONTRACT } from '../shared/physical-divergence-contract.js';
+import { jsonResponse } from '../api/_json-response.js';
 
 const VALID_KEY = 'wm_test_key_output_schema';
 const originalEnv = { ...process.env };
 
 async function freshMod() {
   return import(`../api/mcp.ts?t=${Date.now()}-${Math.random()}`);
+}
+
+function collectInvalidToolSchemas(tools) {
+  const ajv = new Ajv2020({
+    allErrors: true,
+    allowUnionTypes: true,
+    strict: true,
+    strictRequired: false,
+    validateFormats: false,
+  });
+  const failures = [];
+
+  for (const tool of tools) {
+    for (const field of ['inputSchema', 'outputSchema']) {
+      const schema = tool[field];
+      if (!schema || typeof schema !== 'object') {
+        failures.push(`${tool.name}.${field}: missing or non-object schema`);
+      } else {
+        try {
+          ajv.compile(schema);
+        } catch (error) {
+          failures.push(`${tool.name}.${field}: ${error instanceof Error ? error.message : String(error)}`);
+        }
+      }
+    }
+  }
+
+  return failures;
 }
 
 describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
@@ -484,6 +514,7 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
     assert.equal(res.status, 200);
     const body = await res.json();
     const tools = body.result?.tools ?? [];
+    assert.deepEqual(tools, mod.TOOL_LIST_RESPONSE, 'tools/list must preserve the registry wire value exactly');
     assert.deepEqual(
       tools.map((tool) => tool.name).sort(),
       mod.__testing__.TOOL_REGISTRY.map((tool) => tool.name).sort(),
@@ -493,6 +524,59 @@ describe('api/mcp.ts — per-tool outputSchema coverage (v1.7.0)', () => {
       || !t.outputSchema.properties || Object.keys(t.outputSchema.properties).length === 0)
       .map(t => t.name);
     assert.deepEqual(missing, [], `tools on the wire missing outputSchema:\n  ${missing.join('\n  ')}`);
+  });
+
+  it('tools/list emits valid inputSchema and outputSchema values for every tool', async () => {
+    const res = await mod.default(new Request('https://worldmonitor.app/mcp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }),
+    }));
+    assert.equal(res.status, 200);
+
+    const body = await res.json();
+    const tools = body.result?.tools;
+    assert.ok(Array.isArray(tools) && tools.length > 0, 'tools/list must emit a non-empty tools array');
+    const failures = collectInvalidToolSchemas(tools);
+
+    assert.deepEqual(failures, [], `tools/list emitted invalid JSON Schemas:\n  ${failures.join('\n  ')}`);
+  });
+
+  it('jsonResponse preserves scalar-array schema types at the MCP tools/list depth limit', async () => {
+    let outputSchema = { type: ['string', 'null'] };
+    for (let depth = 0; depth < 16; depth += 1) {
+      outputSchema = { type: 'array', items: outputSchema };
+    }
+
+    const res = jsonResponse({
+      jsonrpc: '2.0',
+      id: 1,
+      result: {
+        tools: [{
+          name: 'nested_scalar_array',
+          inputSchema: { type: 'object' },
+          outputSchema,
+        }],
+      },
+    }, 200);
+    const body = await res.json();
+    const failures = collectInvalidToolSchemas(body.result.tools);
+    let nestedSchema = body.result.tools[0].outputSchema;
+    for (let depth = 0; depth < 16; depth += 1) {
+      nestedSchema = nestedSchema.items;
+    }
+
+    assert.deepEqual(failures, [], `tools/list emitted invalid JSON Schemas:\n  ${failures.join('\n  ')}`);
+    assert.deepEqual(nestedSchema.type, ['string', 'null']);
+  });
+
+  it('jsonResponse preserves nested values beyond the former depth limit', async () => {
+    let value = [{ nested: true }];
+    for (let depth = 0; depth < 21; depth += 1) {
+      value = { nested: value };
+    }
+
+    assert.deepEqual(await jsonResponse(value, 200).json(), value);
   });
 
   // --------------------------------------------------------------------

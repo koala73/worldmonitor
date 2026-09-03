@@ -9,6 +9,7 @@ import {
   buildDemographicsPayload,
   demographicsContentMeta,
   demographicsStageCoverageMeta,
+  fetchWppStage,
   parseIlostatWorkforceCsv,
   parseWorldBankEducation,
   parseWppCapability,
@@ -23,6 +24,26 @@ import { resolveSourceOrigin } from '../scripts/source-origin.mjs';
 
 const fixture = (name) => readFileSync(new URL(`./fixtures/demographics-capability/${name}`, import.meta.url), 'utf8');
 const repoFile = (name) => readFileSync(new URL(`../${name}`, import.meta.url), 'utf8');
+
+function wppResponse(url, currentYear = 2026) {
+  const requestUrl = String(url);
+  const locations = requestUrl.match(/\/locations\/([^/]+)\//)?.[1].split(',').map(Number) || [];
+  const shared = { variantId: 4, sexId: 3 };
+  const rows = requestUrl.includes('/indicators/70/')
+    ? locations.flatMap((locationId) => [
+      { ...shared, locationId, indicatorId: 70, ageId: 40, timeLabel: currentYear, value: 1_000_000 },
+      { ...shared, locationId, indicatorId: 70, ageId: 40, timeLabel: currentYear + 10, value: 900_000 },
+    ])
+    : locations.flatMap((locationId) => [
+      { ...shared, locationId, indicatorId: 67, ageId: 188, timeLabel: currentYear, value: 40 },
+      { ...shared, locationId, indicatorId: 84, ageId: 1005, timeLabel: currentYear, value: 20 },
+      { ...shared, locationId, indicatorId: 86, ageId: 1015, timeLabel: currentYear, value: 50 },
+    ]);
+  return new Response(JSON.stringify(rows), {
+    status: 200,
+    headers: { 'Content-Type': 'application/json' },
+  });
+}
 
 describe('demographics capability source parsers (#6437)', () => {
   it('parses real WPP JSON without turning null into zero', () => {
@@ -75,6 +96,49 @@ describe('demographics capability source parsers (#6437)', () => {
       country.manufacturingEmploymentSharePercent = { value: 10 };
     }
     assert.equal(validateDemographicsStageCoverage(countries, 'ilostat').trainedIndustrialWorkforcePeople, 150);
+  });
+
+  it('recovers after two consecutive HTTP 502 responses from one WPP page', async () => {
+    const targetPage = '/indicators/67,84,86/locations/100,104,';
+    let targetPageRequests = 0;
+    const result = await fetchWppStage({
+      currentYear: 2026,
+      fetchImpl: async (url) => {
+        if (String(url).includes(targetPage)) {
+          targetPageRequests += 1;
+          if (targetPageRequests <= 2) return new Response('Bad Gateway', { status: 502 });
+        }
+        return wppResponse(url);
+      },
+    });
+
+    assert.equal(targetPageRequests, 3);
+    const recordCount = Object.keys(result.countries).length;
+    assert.ok(recordCount >= 229);
+    assert.equal(validateDemographicsStageCoverage(result.countries, 'wpp').medianAgeYears, recordCount);
+  });
+
+  it('identifies the exact WPP page when its HTTP failure is exhausted', async () => {
+    const failedPage = '/indicators/70/locations/288,292,';
+    let failedPageRequests = 0;
+    await assert.rejects(
+      fetchWppStage({
+        currentYear: 2026,
+        fetchImpl: async (url) => {
+          if (String(url).includes(failedPage)) {
+            failedPageRequests += 1;
+            return new Response('Bad Gateway', { status: 502 });
+          }
+          return wppResponse(url);
+        },
+      }),
+      (error) => {
+        assert.match(error.message, /HTTP 502/);
+        assert.match(error.message, new RegExp(failedPage));
+        return true;
+      },
+    );
+    assert.equal(failedPageRequests, 4);
   });
 });
 

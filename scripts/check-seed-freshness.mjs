@@ -64,19 +64,69 @@ export function isOnDemandProblem(problem) {
 // this, a single bad `rolloutPendingUntil` — a registry bug, a bad merge, a
 // tampered response — would silence these keys in CI effectively forever.
 export const MAX_ROLLOUT_WINDOW_MS = 24 * 60 * 60 * 1000;
+// Mirrors STALE_CONTENT_GRACE_MS in api/health.js (the publisher), plus slack.
+// tests/seed-freshness-monitor.test.mjs pins the relationship so the two cannot
+// silently drift apart.
+//
+// The slack is load-bearing, not padding. The publisher stamps a deadline at
+// most exactly one window ahead of ITS clock; this gate compares that value
+// against a DIFFERENT machine's clock. With a bare 3h ceiling the entire
+// tolerance for skew is network latency, so a CI runner a few seconds behind
+// Vercel would reject a perfectly legitimate grace and report it as blocking.
+// Five minutes absorbs realistic skew while still refusing the thing the
+// ceiling exists to refuse: a registry bug or tampered response claiming a
+// window far longer than the publisher can legally mint.
+export const STALE_CONTENT_GRACE_SKEW_SLACK_MS = 5 * 60 * 1000;
+export const MAX_STALE_CONTENT_GRACE_MS = 3 * 60 * 60 * 1000 + STALE_CONTENT_GRACE_SKEW_SLACK_MS;
+
+function hasActiveBoundedDeadline(raw, now, maxWindowMs) {
+  const until = Date.parse(raw ?? '');
+  if (!Number.isFinite(until)) return false;
+  if (until - now > maxWindowMs) return false;
+  return now < until;
+}
 
 export function isRolloutPendingProblem(problem, now = Date.now()) {
   if (problem?.status !== 'ROLLOUT_PENDING') return false;
-  const until = Date.parse(problem?.rolloutPendingUntil ?? '');
-  if (!Number.isFinite(until)) return false;
-  if (until - now > MAX_ROLLOUT_WINDOW_MS) return false;
-  return now < until;
+  return hasActiveBoundedDeadline(problem.rolloutPendingUntil, now, MAX_ROLLOUT_WINDOW_MS);
+}
+
+export function isStaleContentGraceProblem(problem, now = Date.now()) {
+  if (problem?.status !== 'STALE_CONTENT') return false;
+  return hasActiveBoundedDeadline(
+    problem.staleContentGraceUntil,
+    now,
+    MAX_STALE_CONTENT_GRACE_MS,
+  );
+}
+
+/**
+ * Sources that are diagnosed STALE_CONTENT but still inside their bounded grace.
+ *
+ * These are deliberately NOT operational failures yet — that is the whole point
+ * of the grace — but filtering them out of the run entirely would make a green
+ * report indistinguishable from one where nothing is wrong at all. Surfacing
+ * them separately keeps "three feeds are mid-grace, alerting at 14:05Z" visible
+ * to whoever reads the run.
+ */
+export function findGracedStaleContent(payload, now = Date.now()) {
+  return Object.entries(payload.problems ?? {})
+    .filter(([, problem]) => isStaleContentGraceProblem(problem, now))
+    .map(([name, problem]) => ({
+      name,
+      status: problem?.status ?? 'UNKNOWN',
+      graceUntil: problem?.staleContentGraceUntil ?? null,
+    }));
 }
 
 export function findOperationalProblems(payload, now = Date.now()) {
   validateCompactHealthPayload(payload);
   return Object.entries(payload.problems ?? {})
-    .filter(([, problem]) => !isOnDemandProblem(problem) && !isRolloutPendingProblem(problem, now))
+    .filter(([, problem]) => (
+      !isOnDemandProblem(problem)
+      && !isRolloutPendingProblem(problem, now)
+      && !isStaleContentGraceProblem(problem, now)
+    ))
     .map(([name, problem]) => ({
       name,
       status: problem?.status ?? 'UNKNOWN',
@@ -430,6 +480,11 @@ async function main() {
   if (outputPath) writeFileSync(outputPath, `${JSON.stringify(observation, null, 2)}\n`);
   const { report } = observation;
   for (const line of report.info) console.log(line);
+  // Non-blocking, but never silent: a green run should still say which feeds
+  // are mid-grace and when they start counting as warnings.
+  for (const graced of findGracedStaleContent(payload)) {
+    console.log(`in grace: ${graced.name} (${graced.status}, alerting at ${graced.graceUntil})`);
+  }
   for (const line of report.errors) console.error(line);
   if (report.failed) process.exitCode = 1;
 }

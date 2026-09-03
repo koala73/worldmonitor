@@ -11,6 +11,8 @@ import { Readable } from 'node:stream';
 import {
   HMAC_SECRET,
   PRO_BEARER,
+  PRO_TOKEN_ID,
+  PRO_USER_ID,
   makeProDeps,
 } from './helpers/mcp-pro-deps.mjs';
 
@@ -222,6 +224,151 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     });
     assert.equal(revoked.status, 401, 'GET replay must revalidate the Pro token before serving buffered events');
     assert.equal((await revoked.json()).error?.code, -32001);
+  });
+
+  // ── GHSA-5j39-mmw6-cqw6: replay buffers are bound to their owner ──────────
+  //
+  // The replay path authenticated the reconnecting caller and checked
+  // entitlement and per-minute limits, then looked the buffer up by the
+  // caller-supplied Mcp-Session-Id and Last-Event-ID alone. Nothing compared
+  // the authenticated principal against the principal that stored the buffer.
+
+  const SECOND_BEARER = 'pro-bearer-second-principal';
+  const SECOND_USER_ID = 'user_pro_second';
+  const SECOND_TOKEN_ID = 'k57mcptokenid2nd';
+
+  function admitTwoPrincipals() {
+    deps.resolveBearerToContext = async (token) => {
+      if (token === PRO_BEARER) return { kind: 'pro', userId: PRO_USER_ID, mcpTokenId: PRO_TOKEN_ID };
+      if (token === SECOND_BEARER) return { kind: 'pro', userId: SECOND_USER_ID, mcpTokenId: SECOND_TOKEN_ID };
+      return null;
+    };
+    deps.validateProMcpToken = async (id) => {
+      if (id === PRO_TOKEN_ID) return { userId: PRO_USER_ID };
+      if (id === SECOND_TOKEN_ID) return { userId: SECOND_USER_ID };
+      return null;
+    };
+  }
+
+  async function openBufferedStream(bearer) {
+    const res = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ Authorization: `Bearer ${bearer}` }),
+      body: JSON.stringify(initBody(1)),
+    });
+    if (res.status !== 200) {
+      assert.fail(`initialize failed: ${res.status} ${(await res.text()).slice(0, 300)}`);
+    }
+    const sessionId = res.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'initialize must mint a session id');
+    const [event] = await readAllSseEvents(res);
+    assert.ok(event?.id, 'initialize must buffer one replayable event');
+    return { sessionId, eventId: event.id };
+  }
+
+  function replayAs(bearer, { sessionId, eventId }) {
+    return fetch(server.url, {
+      method: 'GET',
+      headers: {
+        Accept: 'text/event-stream',
+        Authorization: `Bearer ${bearer}`,
+        'Mcp-Session-Id': sessionId,
+        'Last-Event-ID': eventId,
+      },
+    });
+  }
+
+  it('refuses to replay a stream belonging to a different principal', async () => {
+    admitTwoPrincipals();
+    const victim = await openBufferedStream(PRO_BEARER);
+
+    const attacker = await replayAs(SECOND_BEARER, victim);
+
+    // This returned 200 before the owner binding. The replay slice is always
+    // empty, so no tool output crossed, but 200-vs-404 still confirmed that
+    // another principal's (session, stream) pair existed.
+    assert.equal(attacker.status, 404, 'a different principal must not replay this session');
+    assert.match(
+      (await attacker.json()).error?.message ?? '',
+      /different server instance/,
+      'an owner mismatch must be indistinguishable from an ordinary replay miss',
+    );
+  });
+
+  it('still replays for the principal that stored the stream', async () => {
+    admitTwoPrincipals();
+    const owner = await openBufferedStream(PRO_BEARER);
+
+    const reconnect = await replayAs(PRO_BEARER, owner);
+    assert.equal(reconnect.status, 200, 'the owner must still resume its own stream');
+    assert.equal((await readAllSseEvents(reconnect)).length, 0, 'nothing follows the delivered response');
+  });
+
+  it('does not let a foreign principal evict the owner\'s buffered stream', async () => {
+    admitTwoPrincipals();
+    const victim = await openBufferedStream(PRO_BEARER);
+
+    // Only `initialize` mints a session id onto the response, so every later
+    // call reads it off the request instead. That made the session bucket
+    // reachable by anyone who knew the id: past the per-session stream cap,
+    // foreign writes evicted the owner's own buffered stream. The write path
+    // now refuses a session owned by someone else, so the cap is never reached.
+    for (let i = 0; i < 30; i++) {
+      const foreign = await fetch(server.url, {
+        method: 'POST',
+        headers: mcpHeaders({
+          Authorization: `Bearer ${SECOND_BEARER}`,
+          'Mcp-Session-Id': victim.sessionId,
+        }),
+        body: JSON.stringify(rpcBody(200 + i, 'ping')),
+      });
+      assert.equal(foreign.status, 200, 'the foreign ping itself is a legitimate request');
+      await foreign.text();
+    }
+
+    const reconnect = await replayAs(PRO_BEARER, victim);
+    assert.equal(reconnect.status, 200, 'foreign writes must not evict the owner\'s buffer');
+    assert.equal((await readAllSseEvents(reconnect)).length, 0);
+  });
+
+  it('binds a JSON-initialized session before the first SSE write', async () => {
+    admitTwoPrincipals();
+    const initialize = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Accept: 'application/json, text/event-stream;q=0',
+        Authorization: `Bearer ${PRO_BEARER}`,
+      }),
+      body: JSON.stringify(initBody(2)),
+    });
+    assert.equal(initialize.status, 200);
+    const sessionId = initialize.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'JSON initialize must mint an owner-bound session id');
+    await initialize.json();
+
+    const foreign = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Authorization: `Bearer ${SECOND_BEARER}`,
+        'Mcp-Session-Id': sessionId,
+      }),
+      body: JSON.stringify(rpcBody(3, 'ping')),
+    });
+    const [foreignEvent] = await readAllSseEvents(foreign);
+    assert.ok(foreignEvent?.id, 'the foreign caller still receives its live response');
+    const foreignReplay = await replayAs(SECOND_BEARER, { sessionId, eventId: foreignEvent.id });
+    assert.equal(foreignReplay.status, 404, 'a foreign first writer must not claim the initialized session');
+
+    const owner = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ 'Mcp-Session-Id': sessionId }),
+      body: JSON.stringify(rpcBody(4, 'ping')),
+    });
+    const [ownerEvent] = await readAllSseEvents(owner);
+    assert.ok(ownerEvent?.id, 'the initializer must still buffer its later SSE response');
+    const ownerReplay = await replayAs(PRO_BEARER, { sessionId, eventId: ownerEvent.id });
+    assert.equal(ownerReplay.status, 200, 'the initializer must own the replay bucket');
+    assert.equal((await readAllSseEvents(ownerReplay)).length, 0);
   });
 
   it('emits the JSON-RPC result as the FIRST SSE event so strict handshake scanners parse it', async () => {
