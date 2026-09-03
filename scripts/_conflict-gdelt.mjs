@@ -25,7 +25,10 @@ export const GDELT_MAX_ARTICLES_PER_COUNTRY = 250;
 export function gdeltSeenDateToIso(seendate) {
   const s = String(seendate || '').replace(/[^0-9]/g, '');
   if (s.length < 8) return '';
-  return `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
+  const ms = Date.parse(`${iso}T00:00:00Z`);
+  // Date.parse normalizes dates such as February 31 into the next month.
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 10) === iso ? iso : '';
 }
 
 // Same stamp family, full precision: GDELT 14-digit timestamp → epoch ms, NaN
@@ -36,10 +39,11 @@ export function gdeltSeenDateToIso(seendate) {
 export function gdeltSeenDateToMs(value) {
   const digits = String(value || '').replace(/[^0-9]/g, '');
   if (digits.length < 14) return Number.NaN;
-  return Date.parse(
-    `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
-      + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}Z`,
-  );
+  const iso = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(6, 8)}`
+    + `T${digits.slice(8, 10)}:${digits.slice(10, 12)}:${digits.slice(12, 14)}`;
+  const ms = Date.parse(`${iso}Z`);
+  // Also reject clock rollover (24:00:00), rather than changing the observation day.
+  return Number.isFinite(ms) && new Date(ms).toISOString().slice(0, 19) === iso ? ms : Number.NaN;
 }
 
 export function buildGdeltConflictUrl(cc, name = GDELT_COUNTRY_NAMES[cc], maxRecords = GDELT_MAX_ARTICLES_PER_COUNTRY) {
