@@ -304,8 +304,24 @@ export async function fetchAll({ feeds = ADVISORY_FEEDS, doFetch = fetch } = {})
   return report;
 }
 
-function validate(data) {
-  return Array.isArray(data?.advisories) && data.advisories.length > 0;
+// `advisories.length > 0` alone is not enough. The ~20 health and news feeds
+// (WHO, CDC, ECDC, embassy bulletins) emit `level: 'info'`, which
+// buildByCountryMap skips, so they satisfy that bound while contributing
+// nothing to the level index. When the travel-advisory feeds failed and the
+// news feeds did not, the seed published a report with an empty `byCountry` and
+// production served `advisoryLevel: ""` for every country — the same symptom
+// this file's header describes, recurring because the earlier fix addressed the
+// truncation CAUSE and left the OUTCOME unguarded (#7530).
+//
+// `byCountry` is the reason this key exists: it is the sole source of
+// GetCountryRiskResponse.advisoryLevel and of the CII scorer's advisory input.
+// A report without one must fail the seed so the previous value lives out its
+// TTL, rather than publishing an index that blanks every advisory tile.
+export function validateAdvisoryReport(data) {
+  if (!Array.isArray(data?.advisories) || data.advisories.length === 0) return false;
+  const byCountry = data.byCountry;
+  if (!byCountry || typeof byCountry !== 'object' || Array.isArray(byCountry)) return false;
+  return Object.keys(byCountry).length > 0;
 }
 
 export function declareRecords(data) {
@@ -315,7 +331,7 @@ export function declareRecords(data) {
 const isMain = process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/^.*[\\/]/, ''));
 if (isMain) {
   runSeed('intelligence', 'advisories', CANONICAL_KEY, fetchAll, {
-    validateFn: validate,
+    validateFn: validateAdvisoryReport,
     ttlSeconds: TTL,
     recordCount: (d) => d?.advisories?.length || 0,
     sourceVersion: 'rss-feeds',
