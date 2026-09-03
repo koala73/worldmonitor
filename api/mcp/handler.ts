@@ -260,15 +260,14 @@ function evictOldestSseStream(exceptSessionId?: string): boolean {
 }
 
 /**
- * Streams map for `sessionId`, or null when the session belongs to someone
- * else. Returning null rather than reassigning the bucket is the point: a
- * caller who supplies another principal's Mcp-Session-Id must not be able to
- * add streams to it, because the per-session cap would then evict the owner's
- * buffered streams.
+ * Claims `sessionId` for `owner`, or returns null when another owner already
+ * claimed it. `initialize` calls this before content negotiation so a JSON
+ * response cannot leave the server-minted session open to a foreign first
+ * writer.
  */
-function sessionStreamsForWrite(sessionId: string, owner: string): Map<string, StoredSseStream> | null {
+function claimSseSession(sessionId: string, owner: string): StoredSseSession | null {
   const existing = mcpSseStreamsBySession.get(sessionId);
-  if (existing) return existing.owner === owner ? existing.streams : null;
+  if (existing) return existing.owner === owner ? existing : null;
 
   const session: StoredSseSession = { owner, streams: new Map() };
   mcpSseStreamsBySession.set(sessionId, session);
@@ -276,7 +275,11 @@ function sessionStreamsForWrite(sessionId: string, owner: string): Map<string, S
     const oldestSessionId = mcpSseStreamsBySession.keys().next().value;
     if (oldestSessionId) deleteSseSession(oldestSessionId);
   }
-  return session.streams;
+  return session;
+}
+
+function sessionStreamsForWrite(sessionId: string, owner: string): Map<string, StoredSseStream> | null {
+  return claimSseSession(sessionId, owner)?.streams ?? null;
 }
 
 function storeSseStream(sessionId: string, streamId: string, events: StoredSseEvent[], owner: string): boolean {
@@ -957,6 +960,10 @@ async function mcpHandlerInner(
   switch (method) {
     case 'initialize': {
       const sessionId = crypto.randomUUID();
+      // Bind the server-minted session before content negotiation can return a
+      // JSON response. Otherwise a different principal that learns the session
+      // id can make the first SSE write and claim the replay bucket.
+      if (sseOwner) claimSseSession(sessionId, sseOwner);
       const clientRequestedVersion = (body.params as { protocolVersion?: unknown } | null | undefined)?.protocolVersion;
       const negotiatedVersion = negotiateProtocolVersion(clientRequestedVersion);
       // `tools_array_bytes` is the bare TOOL_LIST_RESPONSE stringify, not the

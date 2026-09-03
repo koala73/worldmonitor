@@ -331,6 +331,46 @@ describe('api/mcp.ts — transport conformance over real HTTP', () => {
     assert.equal((await readAllSseEvents(reconnect)).length, 0);
   });
 
+  it('binds a JSON-initialized session before the first SSE write', async () => {
+    admitTwoPrincipals();
+    const initialize = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Accept: 'application/json, text/event-stream;q=0',
+        Authorization: `Bearer ${PRO_BEARER}`,
+      }),
+      body: JSON.stringify(initBody(2)),
+    });
+    assert.equal(initialize.status, 200);
+    const sessionId = initialize.headers.get('mcp-session-id');
+    assert.ok(sessionId, 'JSON initialize must mint an owner-bound session id');
+    await initialize.json();
+
+    const foreign = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({
+        Authorization: `Bearer ${SECOND_BEARER}`,
+        'Mcp-Session-Id': sessionId,
+      }),
+      body: JSON.stringify(rpcBody(3, 'ping')),
+    });
+    const [foreignEvent] = await readAllSseEvents(foreign);
+    assert.ok(foreignEvent?.id, 'the foreign caller still receives its live response');
+    const foreignReplay = await replayAs(SECOND_BEARER, { sessionId, eventId: foreignEvent.id });
+    assert.equal(foreignReplay.status, 404, 'a foreign first writer must not claim the initialized session');
+
+    const owner = await fetch(server.url, {
+      method: 'POST',
+      headers: mcpHeaders({ 'Mcp-Session-Id': sessionId }),
+      body: JSON.stringify(rpcBody(4, 'ping')),
+    });
+    const [ownerEvent] = await readAllSseEvents(owner);
+    assert.ok(ownerEvent?.id, 'the initializer must still buffer its later SSE response');
+    const ownerReplay = await replayAs(PRO_BEARER, { sessionId, eventId: ownerEvent.id });
+    assert.equal(ownerReplay.status, 200, 'the initializer must own the replay bucket');
+    assert.equal((await readAllSseEvents(ownerReplay)).length, 0);
+  });
+
   it('emits the JSON-RPC result as the FIRST SSE event so strict handshake scanners parse it', async () => {
     // orank's `mcp-server` handshake check (and any non-SDK scanner) reads the
     // FIRST SSE event of a POST initialize and JSON.parse()s its `data`. A
