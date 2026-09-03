@@ -170,6 +170,26 @@ function reasonCodesFor(transport, content) {
   return reasons;
 }
 
+export function normalizeChinaProblemIdentity(entries) {
+  const problems = entries
+    .filter((entry) => entry?.launchStatus === 'launched' && entry?.status !== 'healthy')
+    .map((entry) => ({
+      id: typeof entry.id === 'string' ? entry.id : '',
+      status: typeof entry.status === 'string' ? entry.status : '',
+      reasonCodes: [...new Set(
+        Array.isArray(entry.reasonCodes)
+          ? entry.reasonCodes.filter((reason) => typeof reason === 'string')
+          : [],
+      )].sort(),
+    }))
+    .sort((left, right) => {
+      const leftKey = JSON.stringify(left);
+      const rightKey = JSON.stringify(right);
+      return leftKey < rightKey ? -1 : leftKey > rightKey ? 1 : 0;
+    });
+  return problems.length > 0 ? JSON.stringify(problems) : null;
+}
+
 export function evaluateChinaCoverage({
   entries = CHINA_COVERAGE_ENTRIES,
   data = {},
@@ -234,7 +254,10 @@ export function evaluateChinaCoverage({
   // at 17:03:23 and its snapshot published `status: healthy` at 17:05:26 — a
   // two-minute miss that cost ~50 minutes of CHINA_DEGRADED, with 13 of the
   // surrounding 16 monitor runs clean.
-  const previousStreak = Number.isInteger(previous?.degradedStreak) && previous.degradedStreak > 0
+  const degradedProblemKey = normalizeChinaProblemIdentity(evaluated);
+  const previousStreak = Number.isInteger(previous?.degradedStreak)
+    && previous.degradedStreak > 0
+    && previous.degradedProblemKey === degradedProblemKey
     ? previous.degradedStreak
     : 0;
   const degradedStreak = status === 'healthy' ? 0 : previousStreak + 1;
@@ -244,6 +267,7 @@ export function evaluateChinaCoverage({
     countryCode: 'CN',
     status,
     degradedStreak,
+    degradedProblemKey,
     evaluatedAt: new Date(now).toISOString(),
     counts,
     entries: evaluated,

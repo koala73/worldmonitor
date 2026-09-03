@@ -14,6 +14,7 @@ import {
   chinaCoverageReadCommands,
   evaluateChinaCoverage,
   formatChinaCoverageHuman,
+  normalizeChinaProblemIdentity,
   readChinaCoverageInputs,
 } from '../scripts/china-coverage-health.mjs';
 import { chinaCoverageActivationCommand } from '../scripts/seed-china-coverage-health.mjs';
@@ -49,6 +50,25 @@ function singleEntry(overrides = {}) {
 
 function evaluate(entry, data = {}, meta = {}) {
   return evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW });
+}
+
+function degradedEntry(id) {
+  return singleEntry({
+    id,
+    transport: { ...singleEntry().transport, key: `seed-meta:${id}` },
+    content: { ...singleEntry().content, key: `data:${id}` },
+  });
+}
+
+function evaluateDegraded(id, previous = null) {
+  const entry = degradedEntry(id);
+  return evaluateChinaCoverage({
+    entries: [entry],
+    data: { [`data:${id}`]: { rows: [{ countryCode: 'US', observedAt: '2026-07-13T11:30:00Z' }] } },
+    meta: { [`seed-meta:${id}`]: { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+    now: NOW,
+    previous,
+  });
 }
 
 describe('China coverage manifest', () => {
@@ -554,8 +574,9 @@ describe('China coverage degraded streak', () => {
 
   it('increments while the degradation persists', () => {
     const [entry, data, meta] = degradedInputs();
+    const first = evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW });
     const second = evaluateChinaCoverage({
-      entries: [entry], data, meta, now: NOW, previous: { degradedStreak: 1 },
+      entries: [entry], data, meta, now: NOW, previous: first,
     });
     assert.equal(second.degradedStreak, 2);
     const third = evaluateChinaCoverage({
@@ -585,6 +606,51 @@ describe('China coverage degraded streak', () => {
       const result = evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW, previous });
       assert.equal(result.degradedStreak, 1, `previous=${JSON.stringify(previous)} must restart the streak`);
     }
+  });
+
+  it('does not combine different problem identities into one confirmation', () => {
+    const corporate = evaluateDegraded('corporate');
+    const news = evaluateDegraded('news', corporate);
+
+    assert.equal(corporate.degradedStreak, 1);
+    assert.equal(news.degradedStreak, 1);
+    assert.notEqual(news.degradedProblemKey, corporate.degradedProblemKey);
+  });
+
+  it('confirms the same normalized problem identity twice', () => {
+    const first = evaluateDegraded('corporate');
+    const second = evaluateDegraded('corporate', first);
+
+    assert.equal(second.degradedStreak, 2);
+    assert.equal(second.degradedProblemKey, first.degradedProblemKey);
+  });
+
+  it('normalizes problem ordering before storing the identity', () => {
+    const first = normalizeChinaProblemIdentity([
+      { id: 'news', launchStatus: 'launched', status: 'degraded', reasonCodes: ['B', 'A'] },
+      { id: 'corporate', launchStatus: 'launched', status: 'degraded', reasonCodes: ['C'] },
+    ]);
+    const second = normalizeChinaProblemIdentity([
+      { id: 'corporate', launchStatus: 'launched', status: 'degraded', reasonCodes: ['C'] },
+      { id: 'news', launchStatus: 'launched', status: 'degraded', reasonCodes: ['A', 'B', 'A'] },
+    ]);
+
+    assert.equal(second, first);
+  });
+
+  it('clears the problem identity on a healthy run', () => {
+    const first = evaluateDegraded('corporate');
+    const healthy = evaluateChinaCoverage({
+      entries: [degradedEntry('corporate')],
+      data: { 'data:corporate': { rows: [{ countryCode: 'CN', observedAt: new Date(NOW - 60_000).toISOString(), value: 42 }] } },
+      meta: { 'seed-meta:corporate': { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+      now: NOW,
+      previous: first,
+    });
+
+    assert.equal(healthy.status, 'healthy');
+    assert.equal(healthy.degradedStreak, 0);
+    assert.equal(healthy.degradedProblemKey, null);
   });
 });
 

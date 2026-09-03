@@ -2196,6 +2196,11 @@ const chinaSummary = (over = {}) => ({
     status: 'degraded',
     reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
   }],
+  degradedProblemKey: JSON.stringify([{
+    id: 'market.china-stock-connect',
+    status: 'degraded',
+    reasonCodes: ['CHINA_COVERAGE_PARTIAL'],
+  }]),
   ...over,
 });
 
@@ -2248,7 +2253,7 @@ test('china coverage: a summary with no streak field alarms as before', () => {
   // Rollout safety. Every summary written before the producer shipped the field
   // has no streak; absent evidence must not read as evidence of health, or the
   // rollout window would silence a genuine outage.
-  const projected = projectChinaCoverageStatus(chinaSummary());
+  const projected = projectChinaCoverageStatus(chinaSummary({ degradedStreak: undefined, degradedProblemKey: undefined }));
   assert.equal(projected.status, 'CHINA_DEGRADED');
 });
 
