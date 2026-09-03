@@ -482,7 +482,9 @@
       "screenshotAlt": "World Monitor live intelligence dashboard — global map with conflict, shipping and market layers",
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
-      "positioningLink": "WorldMonitor is not an open-source Palantir"
+      "positioningLink": "WorldMonitor is not an open-source Palantir",
+      "whatIsTitle": "What is World Monitor?",
+      "whatIsBody": "World Monitor is a free, open-source dashboard that streams geopolitics, markets, shipping, aviation, infrastructure, and cyber signals onto one live world map. It correlates separate feeds into a single operating picture and flags convergence before headlines, with every figure sourced and every method documented."
     },
     "tasks": {
       "eyebrow": "Start with the question",
@@ -600,11 +602,11 @@
       "title": "How deep is the World Monitor data model?",
       "sub": "Every number below is live in the dashboard today — not a roadmap.",
       "s1v": "Shared",
-      "s1l": "Map layers",
+      "s1l": "Map layer types",
       "s2v": "Curated",
-      "s2l": "Curated feeds",
+      "s2l": "News & OSINT feeds",
       "s3v": "Attributed",
-      "s3l": "Sources",
+      "s3l": "Attributed providers",
       "s4v": "Live",
       "s4l": "Chokepoints · live AIS",
       "s5v": "Tier-1",

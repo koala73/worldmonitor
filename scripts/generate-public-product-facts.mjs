@@ -20,6 +20,8 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { PRODUCT_CATALOG, PUBLIC_PRODUCT_METADATA } from '../convex/config/productCatalog.ts';
 import { TOOL_REGISTRY, toolAccess } from '../api/mcp/registry/index.ts';
+import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions.ts';
+import { loadManifest, scanUpstreamHosts, sourceAttributionStats } from './source-attribution.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 const CHECK = process.argv.includes('--check');
@@ -143,7 +145,25 @@ const facts = {
   },
   currency: PUBLIC_PRODUCT_METADATA.currency,
   plans,
+  heroProofStats: buildHeroProofStats(),
 };
+
+/**
+ * Definitional homepage proof figures, measured rather than hardcoded:
+ * mapLayers counts non-sunset layers in the full-variant catalog, feeds and
+ * providers come from the validated attribution inventory, and alertOrigins
+ * is the definitional count of independent alert-origin systems (kept literal
+ * and pinned by tests/public-product-facts.test.mjs).
+ */
+function buildHeroProofStats() {
+  const stats = sourceAttributionStats(scanUpstreamHosts(ROOT), loadManifest(ROOT));
+  return {
+    mapLayers: getCompleteLayerCatalogKeys('full').length,
+    feeds: stats.feedHosts,
+    providers: stats.providerCount,
+    alertOrigins: 5,
+  };
+}
 
 const catalogBundle = {
   _generated: facts._generated,
