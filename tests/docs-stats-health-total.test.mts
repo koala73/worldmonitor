@@ -186,11 +186,28 @@ describe('/api/health probed-key count doc gate (#6300)', () => {
     );
   });
 
-  it('catches a subset counter exceeding the warn bucket it is a subset of', () => {
+  it('allows graced stale-content diagnostics outside warn but keeps rolloutPending inside warn', () => {
+    assert.deepEqual(
+      validateHealthSummaryDocs(REAL_STATS, {
+        'docs/health-endpoints.mdx': docWithSummary({
+          total: REAL_TOTAL,
+          ok: REAL_TOTAL - 2,
+          warn: 2,
+          staleContent: 5,
+        }),
+      }),
+      [],
+    );
+
     const failures = validateHealthSummaryDocs(REAL_STATS, {
-      'docs/health-endpoints.mdx': docWithSummary({ total: REAL_TOTAL, ok: REAL_TOTAL - 2, warn: 2, staleContent: 5 }),
+      'docs/health-endpoints.mdx': docWithSummary({
+        total: REAL_TOTAL,
+        ok: REAL_TOTAL - 2,
+        warn: 2,
+        rolloutPending: 5,
+      }),
     });
-    assert.ok(failures.some((f) => /staleContent \(5\) is documented as a subset/.test(f)), failures.join(' | '));
+    assert.ok(failures.some((f) => /rolloutPending \(5\) is documented as a subset/.test(f)), failures.join(' | '));
   });
 
   it('fails when a known page silently drops its example', () => {

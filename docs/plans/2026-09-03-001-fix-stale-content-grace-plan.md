@@ -68,7 +68,7 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 
 ### Scope Boundaries
 
-- In scope: `api/health.js`, focused health tests, and this plan.
+- In scope: `api/health.js`, focused health tests, the health endpoint documentation, its documentation validator, and this plan.
 - Out of scope: changing source freshness budgets, changing seeder schedules, changing producer timestamp extraction, adding a health status, deploying the pull request, or changing unrelated rollout-grace policies.
 
 ## Planning Contract
@@ -137,10 +137,23 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 - Verification: Run the focused commands in the Verification Contract.
 - Dependencies: U1.
 
+### U3. Keep the documented summary contract accurate
+
+- Goal: Document that `summary.staleContent` remains diagnostic and can exceed `summary.warn` while one or more entries are inside grace.
+- Requirements: R3-R5.
+- Files: `docs/health-endpoints.mdx`, `docs/zh/health-endpoints.mdx`, `scripts/docs-stats.mjs`, `tests/docs-stats-health-total.test.mts`.
+- Approach: Update both language variants. Narrow the existing subset validator so it continues to enforce `rolloutPending <= warn` but permits graced stale-content diagnostics outside the warning bucket.
+- Test scenarios:
+  - A valid partition with `staleContent > warn` passes.
+  - `rolloutPending > warn` still fails.
+- Verification: Run `node_modules/.bin/tsx --test tests/docs-stats-health-total.test.mts`.
+- Dependencies: U2.
+
 ## Verification Contract
 
 - Red proof: `node --test tests/health-content-age.test.mjs tests/health-verdict-snapshot.test.mjs` must fail on the new grace assertions before U2.
 - Focused green proof: `node --test tests/health-content-age.test.mjs tests/health-verdict-snapshot.test.mjs tests/health-verdict-compact-snapshot.test.mjs`.
+- Documentation contract: `node_modules/.bin/tsx --test tests/docs-stats-health-total.test.mts`.
 - API gate: `npm run typecheck:api`.
 - Architecture gate: `npm run lint:boundaries`.
 - Diff hygiene: `git diff --check` and `git status --short`.
