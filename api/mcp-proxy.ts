@@ -15,6 +15,23 @@ import {
 import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
 import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { captureSilentError } from './_sentry-edge.js';
+import {
+  buildRequestEvent,
+  deriveAcceptLanguage,
+  deriveCountry,
+  deriveExecutionRegion,
+  deriveHost,
+  deriveIp,
+  deriveIpCity,
+  deriveIpRegion,
+  deriveReferer,
+  deriveReqBytes,
+  deriveRequestId,
+  deriveSentryTraceId,
+  deriveUserAgent,
+  emitUsageEvents,
+} from '../server/_shared/usage';
 
 export const config = { runtime: 'edge' };
 
@@ -62,6 +79,86 @@ function logProxyCall(entry: {
     ts: new Date().toISOString(),
     ...entry,
   });
+}
+
+// Map a terminal proxy status onto the closed RequestReason union. Mirrors
+// server/gateway.ts: `reason` names why WE short-circuited, and anything that
+// reached its natural outcome emits 'ok' with the real status alongside — so
+// an upstream 504/422 is `ok`/504, not a made-up rejection label.
+//
+// Exported as a test seam. This file is `@ts-nocheck`, so a typo here would
+// NOT be caught by tsc against the RequestReason union — it would ship a row
+// Axiom queries can never match. tests/mcp-proxy.test.mjs pins every branch.
+export function proxyReasonFor(status: number): string {
+  if (status === 403) return 'origin_403';
+  if (status === 401) return 'auth_401';
+  if (status === 429) return 'rate_limit_429';
+  if (status === 405) return 'method_not_allowed';
+  if (status === 400 || status === 413) return 'malformed_request';
+  return 'ok';
+}
+
+/**
+ * Emit one wm_api_usage RequestEvent per proxied call.
+ *
+ * Before this, `logProxyCall` was the ONLY record of a proxy request and it is
+ * `console.log` — Vercel runtime logs are a live tail with no historical query,
+ * so `/api/mcp-proxy` had ZERO rows in Axiom and its failure rate could not be
+ * asked about after the fact. That is the same hole #4866 closed for `/mcp`;
+ * this reuses the gateway's builders so rows are byte-compatible and joinable
+ * on customer_id. `logProxyCall` stays: it carries target_host/header_names,
+ * which the usage envelope has no field for, and existing log-ingest tooling
+ * parses its shape.
+ *
+ * OPTIONS preflights are deliberately NOT emitted — a static 204 that cannot
+ * fail would double row volume for no diagnostic value. /mcp skips them too
+ * (McpUsage.skip).
+ */
+function emitProxyUsage(req, status: number, durationMs: number, ctx): void {
+  if (!ctx) return;
+  try {
+    emitUsageEvents(ctx, [buildRequestEvent({
+      requestId: deriveRequestId(req),
+      domain: 'mcp',
+      route: '/api/mcp-proxy',
+      method: req.method,
+      status,
+      // Measured from handler entry, so this INCLUDES the auth/rate-limit
+      // gates — unlike logProxyCall's `started`, which begins after auth.
+      // The usage row is the end-to-end caller-visible latency.
+      durationMs,
+      reqBytes: deriveReqBytes(req),
+      // Not tracked: the proxy streams upstream bodies through bounded readers
+      // and jsonResponse sets no content-length, so there is no byte count to
+      // report without buffering a second time. Size questions belong to
+      // MAX_MCP_PROXY_RESPONSE_BYTES, not to this row.
+      resBytes: 0,
+      // The proxy gate is isCallerPremium, which does not hand back an
+      // identity — so there is no customer to attribute. Join on ip instead.
+      customerId: null,
+      principalId: null,
+      authKind: 'anon',
+      tier: 0,
+      planKey: null,
+      country: deriveCountry(req),
+      ipCity: deriveIpCity(req),
+      ipRegion: deriveIpRegion(req),
+      executionRegion: deriveExecutionRegion(req),
+      executionPlane: 'vercel-edge',
+      originKind: 'mcp',
+      cacheTier: 'no-store',
+      ip: deriveIp(req),
+      userAgent: deriveUserAgent(req),
+      uaHash: null,
+      referer: deriveReferer(req),
+      acceptLanguage: deriveAcceptLanguage(req),
+      host: deriveHost(req),
+      sentryTraceId: deriveSentryTraceId(req),
+      reason: proxyReasonFor(status),
+    })]);
+  } catch {
+    // Telemetry must never change the caller's outcome.
+  }
 }
 
 const TIMEOUT_MS = 15_000;
@@ -639,11 +736,15 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   return jsonResponse({ result }, 200, cors);
 }
 
-export default async function handler(req) {
-  if (isDisallowedOrigin(req))
+export default async function handler(req, ctx) {
+  const startedAt = Date.now();
+  if (isDisallowedOrigin(req)) {
+    emitProxyUsage(req, 403, Date.now() - startedAt, ctx);
     return new Response('Forbidden', { status: 403, headers: withProxyNoStore() });
+  }
 
   const cors = withProxyNoStore(getCorsHeaders(req, 'GET, POST, OPTIONS'));
+  // No emit: see emitProxyUsage — a static 204 preflight carries no signal.
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
@@ -670,8 +771,10 @@ export default async function handler(req) {
   // premiumFetch (not plain fetch) so the renderer attaches the Bearer
   // for Pro users; /api/mcp-proxy is now in PREMIUM_RPC_PATHS for that
   // path-gated injection.
-  if (!(await isCallerPremium(req)))
+  if (!(await isCallerPremium(req))) {
+    emitProxyUsage(req, 401, Date.now() - startedAt, ctx);
     return jsonResponse({ error: 'Pro authentication required' }, 401, cors);
+  }
 
   const started = Date.now();
   const ip = getClientIp(req);
@@ -694,6 +797,7 @@ export default async function handler(req) {
       status: 429,
       duration_ms: Date.now() - started,
     });
+    emitProxyUsage(req, 429, Date.now() - startedAt, ctx);
     // JSON-RPC -32029 mirrors api/mcp.ts; HTTP 429 + Retry-After follows the
     // shared rate-limit response shape.
     return new Response(
@@ -728,6 +832,23 @@ export default async function handler(req) {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isTimeout = msg.includes('TimeoutError') || msg.includes('timed out');
+    // Until now this catch swallowed EVERY handler fault into a 422/422-shaped
+    // JSON body with no Sentry event, so a genuine proxy defect was visible
+    // only to the caller who hit it. Capture it.
+    //
+    // An upstream timeout is the remote MCP server being slow, not our defect,
+    // so it reports at `warning` — the same call api/telegram-feed.js (#7438)
+    // and api/rss-proxy.js (#7588) already make for relay timeouts. Everything
+    // else stays at `error`.
+    //
+    // targetHost is caller-supplied, so it rides in `extra`, never a tag —
+    // an attacker-controlled tag value would shred Sentry's tag cardinality.
+    captureSilentError(err, {
+      tags: { route: 'api/mcp-proxy', step: 'proxy-dispatch' },
+      extra: { target_host: meta.targetHost, target_path: meta.targetPath, method: req.method },
+      ...(isTimeout ? { level: 'warning' as const } : {}),
+      ctx,
+    });
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
     response = jsonResponse({ error: isTimeout ? 'MCP server timed out' : msg }, isTimeout ? 504 : 422, cors);
   }
@@ -741,6 +862,7 @@ export default async function handler(req) {
     status: response.status,
     duration_ms: Date.now() - started,
   });
+  emitProxyUsage(req, response.status, Date.now() - startedAt, ctx);
 
   return response;
 }
