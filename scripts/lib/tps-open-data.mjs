@@ -8,10 +8,11 @@
  * bundle's 570s wall budget with margin. Use this bounded worker / on-demand
  * fetch instead.
  *
- * Licence: Open Government Licence - Ontario plus TPS item constraints.
- * Credit TPS without crests. No endorsement. Coordinates are deliberately
- * offset — do not snap or geocode further. Do not join for reidentification.
- * One EVENT_UNIQUE_ID can have several offence/victim rows; keep them all.
+ * Licence: the applicable Ontario or Toronto Open Government Licence plus TPS
+ * item constraints. Credit TPS without crests. No endorsement. Coordinates
+ * are deliberately offset — do not snap or geocode further. Do not join for
+ * reidentification. One EVENT_UNIQUE_ID can have several offence/victim rows;
+ * keep them all.
  *
  * This is not live CAD (#6682) and must not be labelled as live_dispatch.
  */
@@ -40,17 +41,21 @@ export {
 };
 
 export const TPS_ARCGIS_HOST = 'services.arcgis.com';
+export const TPS_TORONTO_CKAN_HOST = 'ckan0.cf.opendata.inter.prod-toronto.ca';
 export const TPS_OPEN_DATA_HOST = 'www.tps.ca';
 export const TPS_PORTAL_HOST = 'data.tps.ca';
 export const TPS_ALLOWED_HOSTS = Object.freeze([TPS_ARCGIS_HOST]);
 export const TPS_OPEN_DATA_PAGE = 'https://www.tps.ca/data-maps/open-data/';
 export const TPS_PORTAL_URL = 'https://data.tps.ca/';
 export const TPS_MCI_CATALOG_ITEM = '0a239a5563a344a3bbf8452504ed8d68';
-export const TPS_CALLS_CATALOG_ITEM = '46c7581a136445c78831acb657a4fb0d';
+export const TPS_CALLS_CATALOG_ITEM = 'bfffadee-e6e5-4404-8455-e67e9ea11ba7';
+export const TPS_CALLS_PACKAGE_NAME = 'police-annual-statistical-report-calls-for-service-attended';
+export const TPS_CALLS_RESOURCE_NAME = 'Calls for Service Attended';
 export const TPS_MCI_LAYER_URL = 'https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/Major_Crime_Indicators_Open_Data/FeatureServer/0';
-export const TPS_CALLS_LAYER_URL = 'https://services.arcgis.com/S9th0jAJ7bqgIRjw/arcgis/rest/services/Calls_for_Service_Attended_(ASR_CS_TBL_003)/FeatureServer/0';
 export const TPS_MCI_QUERY_URL = `${TPS_MCI_LAYER_URL}/query`;
-export const TPS_CALLS_QUERY_URL = `${TPS_CALLS_LAYER_URL}/query`;
+export const TPS_CALLS_PACKAGE_URL = `https://${TPS_TORONTO_CKAN_HOST}/api/3/action/package_show`;
+export const TPS_CALLS_LAYER_URL = `${TPS_CALLS_PACKAGE_URL}?id=${TPS_CALLS_PACKAGE_NAME}`;
+export const TPS_CALLS_QUERY_URL = `https://${TPS_TORONTO_CKAN_HOST}/api/3/action/datastore_search`;
 
 export const TPS_MCI_PAGE_CAP = 2000;
 export const TPS_CALLS_PAGE_CAP = 1000;
@@ -71,6 +76,7 @@ export const TPS_DEFAULT_MCI_MAX_PAGES = 3;
 export const TPS_DEFAULT_CALLS_MAX_PAGES = 12;
 export const TPS_DEFAULT_MCI_LOOKBACK_DAYS = 90;
 export const TPS_OGL_ATTRIBUTION = 'Contains information licensed under the Open Government Licence - Ontario.';
+export const TPS_TORONTO_OGL_ATTRIBUTION = 'Contains information licensed under the Open Government Licence - Toronto.';
 
 export const TPS_MCI_REQUIRED_FIELDS = Object.freeze([
   'EVENT_UNIQUE_ID',
@@ -116,6 +122,21 @@ export function isAllowedTpsHost(url, allowedHosts = TPS_ALLOWED_HOSTS) {
     return parsed.protocol === 'https:'
       && allowedHosts.includes(parsed.hostname.toLowerCase())
       && parsed.pathname.startsWith('/S9th0jAJ7bqgIRjw/')
+      && (parsed.port === '' || parsed.port === '443')
+      && parsed.username === ''
+      && parsed.password === '';
+  } catch {
+    return false;
+  }
+}
+
+export function isAllowedTpsCkanUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return parsed.protocol === 'https:'
+      && parsed.hostname.toLowerCase() === TPS_TORONTO_CKAN_HOST
+      && (parsed.pathname === '/api/3/action/package_show'
+        || parsed.pathname === '/api/3/action/datastore_search')
       && (parsed.port === '' || parsed.port === '443')
       && parsed.username === ''
       && parsed.password === '';
@@ -281,7 +302,7 @@ export function buildTpsCallsSnapshot({
     canonicalKey: TPS_CALLS_KEY,
     layerUrl: TPS_CALLS_LAYER_URL,
     catalogItem: TPS_CALLS_CATALOG_ITEM,
-    attribution: TPS_OGL_ATTRIBUTION,
+    attribution: TPS_TORONTO_OGL_ATTRIBUTION,
     official: true,
     live: false,
     incidentPoint: false,
@@ -406,30 +427,43 @@ function buildObjectIdsUrl(baseUrl, { where }) {
   return url.toString();
 }
 
-function buildQueryUrl(baseUrl, {
+function buildQueryForm({
   objectIds,
   pageSize,
   outFields,
   orderByFields,
   returnGeometry,
 }) {
-  const url = new URL(baseUrl);
-  url.searchParams.set('objectIds', objectIds.join(','));
-  url.searchParams.set('outFields', outFields);
-  url.searchParams.set('returnGeometry', returnGeometry ? 'true' : 'false');
-  url.searchParams.set('outSR', '4326');
-  url.searchParams.set('resultRecordCount', String(pageSize));
-  url.searchParams.set('orderByFields', orderByFields);
-  url.searchParams.set('f', 'json');
-  return url.toString();
+  const form = new URLSearchParams();
+  form.set('objectIds', objectIds.join(','));
+  form.set('outFields', outFields);
+  form.set('returnGeometry', returnGeometry ? 'true' : 'false');
+  form.set('outSR', '4326');
+  form.set('resultRecordCount', String(pageSize));
+  form.set('orderByFields', orderByFields);
+  form.set('f', 'json');
+  return form;
 }
 
-async function fetchArcGisJson(url, { fetchImpl, timeoutMs, maxBytes, label }) {
-  if (!isAllowedTpsHost(url)) throw new TpsOpenDataError(`host_not_allowlisted:${label}`);
+async function fetchTpsJson(url, {
+  fetchImpl,
+  timeoutMs,
+  maxBytes,
+  label,
+  isAllowedUrl,
+  form = null,
+}) {
+  if (!isAllowedUrl(url)) throw new TpsOpenDataError(`host_not_allowlisted:${label}`);
   let resp;
   try {
     resp = await fetchImpl(url, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+      method: form ? 'POST' : 'GET',
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': CHROME_UA,
+        ...(form ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
+      },
+      ...(form ? { body: form.toString() } : {}),
       signal: AbortSignal.timeout(timeoutMs),
       redirect: 'error',
     });
@@ -442,6 +476,10 @@ async function fetchArcGisJson(url, { fetchImpl, timeoutMs, maxBytes, label }) {
   }
   if (!resp.ok) throw new TpsOpenDataError(`http_${resp.status}:${label}`, { status: resp.status });
   return readLimitedJson(resp, maxBytes, label);
+}
+
+function fetchArcGisJson(url, options) {
+  return fetchTpsJson(url, { ...options, isAllowedUrl: isAllowedTpsHost });
 }
 
 function featureObjectId(feature, objectIdField) {
@@ -520,14 +558,20 @@ export async function queryArcGisPages({
   const features = [];
   for (let page = 0; page * pageSize < objectIds.length; page += 1) {
     const pageIds = objectIds.slice(page * pageSize, (page + 1) * pageSize);
-    const url = buildQueryUrl(queryUrl, {
+    const form = buildQueryForm({
       objectIds: pageIds,
       pageSize,
       outFields,
       orderByFields,
       returnGeometry,
     });
-    const body = await fetchArcGisJson(url, { fetchImpl, timeoutMs, maxBytes, label });
+    const body = await fetchArcGisJson(queryUrl, {
+      fetchImpl,
+      timeoutMs,
+      maxBytes,
+      label,
+      form,
+    });
     if (body?.error) throw new TpsOpenDataError(`upstream_error:${label}:${body.error?.message || 'error'}`);
     const pageFeatures = extractFeatures(body);
     if (!Array.isArray(pageFeatures)) throw new TpsOpenDataError(`schema_drift:${label}:features_not_array`);
@@ -555,19 +599,165 @@ export async function queryArcGisPages({
   };
 }
 
+async function fetchTpsCkanJson(url, {
+  fetchImpl,
+  timeoutMs,
+  maxBytes,
+  label,
+}) {
+  return fetchTpsJson(url, {
+    fetchImpl,
+    timeoutMs,
+    maxBytes,
+    label,
+    isAllowedUrl: isAllowedTpsCkanUrl,
+  });
+}
+
+function ckanTimestampToEpoch(value) {
+  const timestamp = textOrNull(value);
+  if (!timestamp) return null;
+  const normalized = /(?:z|[+-]\d\d:\d\d)$/i.test(timestamp) ? timestamp : `${timestamp}Z`;
+  const parsed = Date.parse(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function resolveTpsCallsPackage(body) {
+  if (!body || typeof body !== 'object') {
+    throw new TpsOpenDataError('malformed_json:calls:package');
+  }
+  if (body.success !== true || !body.result || typeof body.result !== 'object') {
+    throw new TpsOpenDataError('upstream_error:calls:package');
+  }
+  const packageId = textOrNull(body.result.id);
+  if (packageId !== TPS_CALLS_SERVICE_ITEM_ID) {
+    throw new TpsOpenDataError(`service_item_mismatch:calls:${packageId || 'missing'}`);
+  }
+  const packageName = textOrNull(body.result.name);
+  if (packageName !== TPS_CALLS_PACKAGE_NAME) {
+    throw new TpsOpenDataError(`package_name_mismatch:calls:${packageName || 'missing'}`);
+  }
+  if (!Array.isArray(body.result.resources)) {
+    throw new TpsOpenDataError('schema_drift:calls:resources_not_array');
+  }
+  const resources = body.result.resources.filter((resource) => (
+    resource?.datastore_active === true
+    && textOrNull(resource?.name) === TPS_CALLS_RESOURCE_NAME
+    && textOrNull(resource?.format)?.toUpperCase() === 'JSON'
+  ));
+  if (resources.length === 0) throw new TpsOpenDataError('schema_drift:calls:active_resource_missing');
+  if (resources.length > 1) throw new TpsOpenDataError('schema_drift:calls:active_resource_ambiguous');
+  const resourceId = textOrNull(resources[0].id);
+  if (!resourceId) throw new TpsOpenDataError('schema_drift:calls:resource_id_missing');
+  const dataLastEditDate = ckanTimestampToEpoch(body.result.metadata_modified);
+  if (dataLastEditDate == null) {
+    throw new TpsOpenDataError('schema_drift:calls:metadata_modified_invalid');
+  }
+  return {
+    resourceId,
+    editingInfo: { dataLastEditDate, lastEditDate: dataLastEditDate },
+  };
+}
+
+function interpretTpsCallsPage(body, { resourceId, expectedTotal }) {
+  if (!body || typeof body !== 'object') {
+    throw new TpsOpenDataError('malformed_json:calls');
+  }
+  if (body.success !== true || !body.result || typeof body.result !== 'object') {
+    throw new TpsOpenDataError('upstream_error:calls');
+  }
+  if (body.result.resource_id !== resourceId) {
+    throw new TpsOpenDataError('schema_drift:calls:resource_id_mismatch');
+  }
+  const total = finiteNumber(body.result.total);
+  if (!Number.isInteger(total) || total < 0) {
+    throw new TpsOpenDataError('schema_drift:calls:invalid_total');
+  }
+  if (expectedTotal != null && total !== expectedTotal) {
+    throw new TpsOpenDataError('pagination_incomplete:calls:total_changed');
+  }
+  if (!Array.isArray(body.result.fields)) {
+    throw new TpsOpenDataError('schema_drift:calls:fields_not_array');
+  }
+  const fields = body.result.fields.map((field) => textOrNull(field?.id)).filter(Boolean);
+  const missing = ['_id', ...TPS_CALLS_REQUIRED_FIELDS].filter((field) => !fields.includes(field));
+  if (missing.length) {
+    throw new TpsOpenDataError(`schema_drift:calls:datastore_missing_${missing.join(',')}`);
+  }
+  if (!Array.isArray(body.result.records)) {
+    throw new TpsOpenDataError('schema_drift:calls:records_not_array');
+  }
+  return { total, records: body.result.records };
+}
+
+async function queryTpsCallsPages({
+  resourceId,
+  pageSize,
+  maxPages,
+  fetchImpl,
+  timeoutMs = TPS_REQUEST_TIMEOUT_MS,
+  maxBytes = MAX_PAYLOAD_BYTES,
+}) {
+  const rows = [];
+  const objectIds = new Set();
+  let total = null;
+  let pages = 0;
+
+  for (let page = 0; page < maxPages; page += 1) {
+    const offset = page * pageSize;
+    const url = new URL(TPS_CALLS_QUERY_URL);
+    url.searchParams.set('resource_id', resourceId);
+    url.searchParams.set('limit', String(pageSize));
+    url.searchParams.set('offset', String(offset));
+    url.searchParams.set('sort', 'EVENT_YEAR desc, _id asc');
+    const body = await fetchTpsCkanJson(url.toString(), {
+      fetchImpl,
+      timeoutMs,
+      maxBytes,
+      label: 'calls',
+    });
+    const interpreted = interpretTpsCallsPage(body, { resourceId, expectedTotal: total });
+    total = interpreted.total;
+    if (total > pageSize * maxPages) {
+      throw new TpsOpenDataError(`pagination_incomplete:calls:max_pages_${maxPages}`);
+    }
+    const expectedRows = Math.min(pageSize, Math.max(0, total - offset));
+    if (interpreted.records.length !== expectedRows) {
+      throw new TpsOpenDataError('pagination_incomplete:calls:partial_page');
+    }
+    for (const row of interpreted.records) {
+      const objectId = finiteNumber(row?._id);
+      if (!Number.isInteger(objectId) || objectIds.has(objectId)) {
+        throw new TpsOpenDataError('schema_drift:calls:invalid_object_id');
+      }
+      objectIds.add(objectId);
+      rows.push({ attributes: { ...row, ObjectId: objectId } });
+    }
+    pages += 1;
+    if (rows.length === total) break;
+  }
+
+  if (total == null || rows.length !== total) {
+    throw new TpsOpenDataError(`pagination_incomplete:calls:max_pages_${maxPages}`);
+  }
+  return {
+    features: sortArcGisFeatures(rows, 'EVENT_YEAR DESC,ObjectId'),
+    truncated: false,
+    pages,
+  };
+}
+
 export async function fetchTpsLayerMetadata(layerUrl, {
   fetchImpl = DEFAULT_FETCH,
   timeoutMs = TPS_REQUEST_TIMEOUT_MS,
 } = {}) {
   const url = `${layerUrl}?f=pjson`;
-  if (!isAllowedTpsHost(url)) throw new TpsOpenDataError('host_not_allowlisted:metadata');
-  const resp = await fetchImpl(url, {
-    headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(timeoutMs),
-    redirect: 'error',
+  const body = await fetchArcGisJson(url, {
+    fetchImpl,
+    timeoutMs,
+    maxBytes: MAX_PAYLOAD_BYTES,
+    label: 'metadata',
   });
-  if (!resp.ok) throw new TpsOpenDataError(`http_${resp.status}:metadata`, { status: resp.status });
-  const body = await readLimitedJson(resp, MAX_PAYLOAD_BYTES, 'metadata');
   return {
     maxRecordCount: finiteNumber(body.maxRecordCount),
     editingInfo: body.editingInfo ?? null,
@@ -637,33 +827,25 @@ export async function fetchTpsCallsAttended({
   metadata = null,
 } = {}) {
   try {
-    const layerMeta = metadata ?? await fetchTpsLayerMetadata(TPS_CALLS_LAYER_URL, { fetchImpl });
-    if (layerMeta.serviceItemId !== TPS_CALLS_SERVICE_ITEM_ID) {
-      throw new TpsOpenDataError(`service_item_mismatch:calls:${layerMeta.serviceItemId || 'missing'}`);
-    }
-    if (layerMeta.maxRecordCount != null && pageSize > layerMeta.maxRecordCount) {
-      throw new TpsOpenDataError(`page_exceeds_cap:calls:${layerMeta.maxRecordCount}`);
-    }
-    const missing = TPS_CALLS_REQUIRED_FIELDS.filter((field) => layerMeta.fields.length && !layerMeta.fields.includes(field));
-    if (missing.length) {
-      throw new TpsOpenDataError(`schema_drift:calls:layer_missing_${missing.join(',')}`);
-    }
-    const paged = await queryArcGisPages({
-      queryUrl: TPS_CALLS_QUERY_URL,
+    const packageUrl = new URL(TPS_CALLS_PACKAGE_URL);
+    packageUrl.searchParams.set('id', TPS_CALLS_PACKAGE_NAME);
+    const packageBody = metadata ?? await fetchTpsCkanJson(packageUrl.toString(), {
+      fetchImpl,
+      timeoutMs: TPS_REQUEST_TIMEOUT_MS,
+      maxBytes: MAX_PAYLOAD_BYTES,
+      label: 'calls:package',
+    });
+    const packageMeta = resolveTpsCallsPackage(packageBody);
+    const paged = await queryTpsCallsPages({
+      resourceId: packageMeta.resourceId,
       pageSize: Math.min(pageSize, TPS_CALLS_PAGE_CAP),
       maxPages,
-      where: '1=1',
-      outFields: [...TPS_CALLS_REQUIRED_FIELDS, 'ObjectId', 'INDEX_'].join(','),
-      orderByFields: 'EVENT_YEAR DESC,ObjectId',
-      objectIdField: 'ObjectId',
-      returnGeometry: false,
       fetchImpl,
-      label: 'calls',
     });
     const records = parseTpsCallsFeatures(paged.features);
     const snapshot = buildTpsCallsSnapshot({
       records,
-      editingInfo: layerMeta.editingInfo,
+      editingInfo: packageMeta.editingInfo,
       fetchedAt: new Date(now).toISOString(),
     });
     if (!validateTpsCallsSnapshot(snapshot)) {
