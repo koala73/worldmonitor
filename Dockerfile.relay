@@ -11,13 +11,13 @@
 # Derive inventory metrics from the immutable build context. This stage uses
 # only Node builtins; the relay's production dependency install stays intact.
 # .dockerignore excludes local environment and credential files.
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43 AS inventory-builder
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS inventory-builder
 
 WORKDIR /workspace
 COPY . .
 RUN node scripts/generate-inventory-facts.mjs
 
-FROM node:24-alpine@sha256:d32cdf619f63fe0471182d08996dd516c6275bb5fd31ae06e55a570bd9e1ad43
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
 
 # curl required by OREF polling (Node.js JA3 fingerprint blocked by Akamai; curl passes)
 RUN apk add --no-cache curl
