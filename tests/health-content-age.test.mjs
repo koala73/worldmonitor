@@ -23,6 +23,7 @@ const {
   STATUS_COUNTS,
   STALE_CONTENT_GRACE_MS,
   STALE_CONTENT_GRACE_STATE_KEY,
+  staleContentGraceEvidence,
   staleContentGraceStatePlan,
   parseStaleContentGraceUntil,
   staleContentGraceUntilMs,
@@ -44,10 +45,10 @@ function makeCtx({
   keyErrors = new Map(),
   keyMetaValues = new Map(),
   keyMetaErrors = new Map(),
-  staleContentNullGraceUntilMs = new Map(),
+  staleContentStateGraceUntilMs = new Map(),
   now = NOW,
 } = {}) {
-  return { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, staleContentNullGraceUntilMs, now };
+  return { keyStrens, keyErrors, keyMetaValues, keyMetaErrors, staleContentStateGraceUntilMs, now };
 }
 
 // Returns the JSON-string a Redis GET would yield for a meta key (matches what
@@ -409,7 +410,7 @@ test('null newestItemAt keeps the first Redis deadline when fresh seeder metadat
     contentStale: true,
   };
   const firstPlan = staleContentGraceStatePlan(
-    new Map([['temporalAnomalies', nullContentAge]]),
+    new Map([['temporalAnomalies', staleContentGraceEvidence(nullContentAge, null, NOW)]]),
     NOW,
     STALE_CONTENT_GRACE_STATE_KEY,
   );
@@ -421,7 +422,7 @@ test('null newestItemAt keeps the first Redis deadline when fresh seeder metadat
 
   const nextNow = NOW + ONE_HOUR_MS;
   const repeatedPlan = staleContentGraceStatePlan(
-    new Map([['temporalAnomalies', nullContentAge]]),
+    new Map([['temporalAnomalies', staleContentGraceEvidence(nullContentAge, null, nextNow)]]),
     nextNow,
     STALE_CONTENT_GRACE_STATE_KEY,
   );
@@ -429,10 +430,17 @@ test('null newestItemAt keeps the first Redis deadline when fresh seeder metadat
 
   const resolved = parseStaleContentGraceUntil(
     [{ result: 0 }, { result: String(firstDeadline) }],
-    repeatedPlan.nullContentNames,
+    repeatedPlan.stateBackedNames,
   );
   assert.equal(resolved.get('temporalAnomalies'), firstDeadline, 'HGET result keeps the original finite deadline');
-  assert.equal(staleContentGraceUntilMs(nullContentAge, resolved.get('temporalAnomalies'), nextNow), firstDeadline);
+  assert.equal(
+    staleContentGraceUntilMs(
+      staleContentGraceEvidence(nullContentAge, null, nextNow),
+      resolved.get('temporalAnomalies'),
+      nextNow,
+    ),
+    firstDeadline,
+  );
 });
 
 test('stale-content grace ends exactly at its deadline and future timestamps are never graced', () => {
@@ -443,8 +451,9 @@ test('stale-content grace ends exactly at its deadline and future timestamps are
     contentStale: true,
   };
   const deadline = NOW + 3 * ONE_HOUR_MS;
-  assert.equal(staleContentGraceUntilMs(nullContentAge, deadline, deadline - 1), deadline);
-  assert.equal(staleContentGraceUntilMs(nullContentAge, deadline, deadline), null);
+  const nullEvidence = staleContentGraceEvidence(nullContentAge, null, NOW);
+  assert.equal(staleContentGraceUntilMs(nullEvidence, deadline, deadline - 1), deadline);
+  assert.equal(staleContentGraceUntilMs(nullEvidence, deadline, deadline), null);
   assert.equal(
     healthStatusBucket({ status: 'STALE_CONTENT', staleContentGraceUntil: new Date(deadline).toISOString() }, deadline),
     'warn',
@@ -456,23 +465,26 @@ test('stale-content grace ends exactly at its deadline and future timestamps are
     maxContentAgeMin: 60,
     contentStale: true,
   };
-  assert.equal(staleContentGraceUntilMs(futureContentAge, null, NOW), null);
+  assert.equal(
+    staleContentGraceUntilMs(staleContentGraceEvidence(futureContentAge, null, NOW), null, NOW),
+    null,
+  );
 });
 
 test('recovered content clears only its null-timestamp state field', () => {
   const plan = staleContentGraceStatePlan(new Map([
-    ['temporalAnomalies', {
+    ['temporalAnomalies', staleContentGraceEvidence({
       newestItemAt: null,
       contentAgeMin: null,
       maxContentAgeMin: 60,
       contentStale: true,
-    }],
-    ['diseaseOutbreaks', {
+    }, null, NOW)],
+    ['diseaseOutbreaks', staleContentGraceEvidence({
       newestItemAt: NOW - ONE_HOUR_MS,
       contentAgeMin: 60,
       maxContentAgeMin: 120,
       contentStale: false,
-    }],
+    }, null, NOW)],
   ]), NOW, STALE_CONTENT_GRACE_STATE_KEY);
 
   assert.deepEqual(plan.commands.at(-1), [

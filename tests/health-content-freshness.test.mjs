@@ -83,7 +83,7 @@ function classifyPortwatch(meta, { activated = true, now = NOW, staleContentDead
       activationStates: activated === null
         ? new Map()
         : new Map([['portwatchContentFreshness', activated]]),
-      staleContentNullGraceUntilMs: staleContentDeadline === null
+      staleContentStateGraceUntilMs: staleContentDeadline === null
         ? new Map()
         : new Map([['portwatchPortActivity', staleContentDeadline]]),
     },

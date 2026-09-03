@@ -1692,34 +1692,70 @@ function parseFredRatesRolloutUntil(results) {
   return Number.isSafeInteger(until) && until > 0 ? until : null;
 }
 
-function staleContentGraceStatePlan(contentAgesByName, now, stateKey = STALE_CONTENT_GRACE_STATE_KEY) {
+function staleContentGraceEvidence(contentAge, contentFreshness, now) {
+  if (!contentAge && !contentFreshness) return null;
+
+  let observedAt;
+  let budgetMinutes;
+  if (contentAge?.contentStale) {
+    observedAt = contentAge.newestItemAt;
+    budgetMinutes = contentAge.maxContentAgeMin;
+  } else if (contentFreshness?.usable && contentFreshness.contentStale) {
+    observedAt = contentFreshness.criticalOldestObservedAt;
+    budgetMinutes = contentFreshness.budgetMinutes;
+  } else {
+    // An unusable required block is COVERAGE_DEGRADED, not proof that content
+    // recovered. Preserve any earlier state until a usable fresh check exists.
+    if (contentFreshness && !contentFreshness.usable) return null;
+    return { contentStale: false, graceEligible: false, boundaryMs: null };
+  }
+
+  if (observedAt === null) {
+    return { contentStale: true, graceEligible: true, boundaryMs: null };
+  }
+  if (!Number.isFinite(observedAt) || observedAt > now) {
+    return { contentStale: true, graceEligible: false, boundaryMs: null };
+  }
+
+  const boundaryMs = observedAt + budgetMinutes * 60_000;
+  if (!Number.isSafeInteger(boundaryMs)) {
+    return { contentStale: true, graceEligible: false, boundaryMs: null };
+  }
+  // A per-entity count can go stale before its oldest timestamp reaches the
+  // age boundary. That event needs the same one-time clock as a null timestamp.
+  return boundaryMs <= now
+    ? { contentStale: true, graceEligible: true, boundaryMs }
+    : { contentStale: true, graceEligible: true, boundaryMs: null };
+}
+
+function staleContentGraceStatePlan(graceEvidenceByName, now, stateKey = STALE_CONTENT_GRACE_STATE_KEY) {
   const commands = [];
-  const nullContentNames = [];
+  const stateBackedNames = [];
   const recoveredNames = [];
 
-  for (const [name, contentAge] of contentAgesByName) {
-    if (!contentAge) continue;
-    if (contentAge.contentStale && contentAge.newestItemAt === null) {
+  for (const [name, evidence] of graceEvidenceByName) {
+    if (!evidence) continue;
+    if (evidence.contentStale && evidence.graceEligible && evidence.boundaryMs === null) {
       const candidateUntil = now + STALE_CONTENT_GRACE_MS;
       commands.push(
         ['HSETNX', stateKey, name, String(candidateUntil)],
         ['HGET', stateKey, name],
       );
-      nullContentNames.push(name);
-    } else if (!contentAge.contentStale) {
+      stateBackedNames.push(name);
+    } else if (!evidence.contentStale) {
       recoveredNames.push(name);
     }
   }
 
   if (recoveredNames.length > 0) commands.push(['HDEL', stateKey, ...recoveredNames]);
-  return { commands, nullContentNames };
+  return { commands, stateBackedNames };
 }
 
-function parseStaleContentGraceUntil(results, nullContentNames) {
+function parseStaleContentGraceUntil(results, stateBackedNames) {
   const deadlines = new Map();
   if (!Array.isArray(results)) return deadlines;
 
-  for (let i = 0; i < nullContentNames.length; i++) {
+  for (let i = 0; i < stateBackedNames.length; i++) {
     const setResult = results[i * 2];
     const getResult = results[i * 2 + 1];
     const claimed = Number(setResult?.result);
@@ -1731,23 +1767,20 @@ function parseStaleContentGraceUntil(results, nullContentNames) {
       || !Number.isSafeInteger(until)
       || until <= 0
     ) continue;
-    deadlines.set(nullContentNames[i], until);
+    deadlines.set(stateBackedNames[i], until);
   }
   return deadlines;
 }
 
-function staleContentGraceUntilMs(contentAge, nullContentUntil, now) {
-  if (!contentAge?.contentStale) return null;
-  if (contentAge.newestItemAt === null) {
-    return Number.isSafeInteger(nullContentUntil) && nullContentUntil > now
-      ? nullContentUntil
+function staleContentGraceUntilMs(evidence, stateBackedUntil, now) {
+  if (!evidence?.contentStale || !evidence.graceEligible) return null;
+  if (evidence.boundaryMs === null) {
+    return Number.isSafeInteger(stateBackedUntil) && stateBackedUntil > now
+      ? stateBackedUntil
       : null;
   }
-  if (contentAge.newestItemAt > now) return null;
 
-  const until = contentAge.newestItemAt
-    + contentAge.maxContentAgeMin * 60_000
-    + STALE_CONTENT_GRACE_MS;
+  const until = evidence.boundaryMs + STALE_CONTENT_GRACE_MS;
   return Number.isSafeInteger(until) && until > now ? until : null;
 }
 
@@ -2669,7 +2702,11 @@ function classifyKey(name, redisKey, opts, ctx) {
     entry.contentFreshnessPendingUntil = new Date(contentFreshnessActivationWindow.untilMs).toISOString();
   }
   const staleContentGraceUntil = status === 'STALE_CONTENT'
-    ? staleContentGraceUntilMs(contentAge, ctx.staleContentNullGraceUntilMs?.get(name), now)
+    ? staleContentGraceUntilMs(
+        staleContentGraceEvidence(contentAge, contentFreshness, now),
+        ctx.staleContentStateGraceUntilMs?.get(name),
+        now,
+      )
     : null;
   if (staleContentGraceUntil !== null) {
     entry.staleContentGraceUntil = new Date(staleContentGraceUntil).toISOString();
@@ -3503,7 +3540,7 @@ export async function handleHealth(req, ctx, options = {}) {
     keyMetaValues.set(allMetaKeys[i], r?.result ?? null);
   }
   applyCanadaAlertsSeedMetaFallback(keyMetaValues, keyMetaErrors, usedCanadaAlertsFallback);
-  const contentAgesByName = new Map();
+  const graceEvidenceByName = new Map();
   for (const [name, seedCfg] of Object.entries(SEED_META)) {
     const seedMeta = readSeedMeta(
       seedCfg,
@@ -3511,16 +3548,20 @@ export async function handleHealth(req, ctx, options = {}) {
       keyMetaErrors,
       gracePlanningNow,
     );
-    contentAgesByName.set(name, seedMeta.contentAge);
+    graceEvidenceByName.set(name, staleContentGraceEvidence(
+      seedMeta.contentAge,
+      seedMeta.contentFreshness,
+      gracePlanningNow,
+    ));
   }
-  const graceStatePlan = staleContentGraceStatePlan(contentAgesByName, gracePlanningNow);
-  let staleContentNullGraceUntilMs = new Map();
+  const graceStatePlan = staleContentGraceStatePlan(graceEvidenceByName, gracePlanningNow);
+  let staleContentStateGraceUntilMs = new Map();
   if (graceStatePlan.commands.length > 0) {
     try {
       const graceResults = await redisPipeline(graceStatePlan.commands, 4_000);
-      staleContentNullGraceUntilMs = parseStaleContentGraceUntil(
+      staleContentStateGraceUntilMs = parseStaleContentGraceUntil(
         graceResults,
-        graceStatePlan.nullContentNames,
+        graceStatePlan.stateBackedNames,
       );
     } catch {
       // Grace is optional. An unreadable deadline keeps the existing warning.
@@ -3572,7 +3613,7 @@ export async function handleHealth(req, ctx, options = {}) {
     seedMetaByName,
     activationStates,
     rolloutPendingUntilMs,
-    staleContentNullGraceUntilMs,
+    staleContentStateGraceUntilMs,
     educationPayloadReadFailed: Boolean(educationPayloadResult?.error),
     educationPayloadRankableCount,
     now: evaluationNow,
@@ -3754,6 +3795,7 @@ export const __testing__ = {
   parseFredRatesRolloutUntil,
   STALE_CONTENT_GRACE_MS,
   STALE_CONTENT_GRACE_STATE_KEY,
+  staleContentGraceEvidence,
   staleContentGraceStatePlan,
   parseStaleContentGraceUntil,
   staleContentGraceUntilMs,
