@@ -28,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   MAX_ADVISORY_FEED_BYTES,
+  MIN_ADVISORY_COUNTRY_COVERAGE,
   buildByCountryMap,
   capPerSource,
   fetchAll,
@@ -48,6 +49,11 @@ const STATE_DEPT = {
   url: 'https://travel.state.gov/_res/rss/TAsTWs.xml',
   levelParser: 'us',
 };
+
+const COUNTRY_CODES = [...new Set(Object.values(JSON.parse(readFileSync(
+  resolve(dirname(fileURLToPath(import.meta.url)), '../scripts/shared/country-names.json'),
+  'utf8',
+))))];
 
 function rssFor(items) {
   const body = items.map(i =>
@@ -260,11 +266,28 @@ describe('advisory report validation fails closed on an empty level index', () =
     assert.equal(validateAdvisoryReport(null), false);
   });
 
-  it('accepts a report that carries both a news list and a level index', () => {
+  it('rejects a degraded but nonempty level index', () => {
     assert.equal(
       validateAdvisoryReport({
         advisories: [newsItem, levelItem],
-        byCountry: buildByCountryMap([newsItem, levelItem]),
+        byCountry: { SY: 'do-not-travel' },
+      }),
+      false,
+      'one surviving travel level must not replace a complete country index',
+    );
+  });
+
+  it('accepts a report that carries both a news list and a level index', () => {
+    const byCountry = Object.fromEntries(
+      COUNTRY_CODES.slice(0, MIN_ADVISORY_COUNTRY_COVERAGE).map((country) => [
+        country,
+        'caution',
+      ]),
+    );
+    assert.equal(
+      validateAdvisoryReport({
+        advisories: [newsItem, levelItem],
+        byCountry,
       }),
       true,
     );

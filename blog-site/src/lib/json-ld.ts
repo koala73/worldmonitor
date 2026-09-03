@@ -18,6 +18,10 @@ export const SCHEMA_ORG_CONTEXT = 'https://schema.org';
 
 const SCHEMA_ORG_CONTEXT_URLS = new Set(['https://schema.org', 'http://schema.org']);
 
+type WithResolvableSchemaContext<T extends Record<string, unknown>> = Omit<T, '@context'> & {
+  '@context': unknown;
+};
+
 /**
  * Mirrors jsonLdContextIsResolvable in tests/crawlable-corpus.test.mjs: a
  * context resolves when it is the schema.org URL, an array containing one, or
@@ -40,11 +44,13 @@ export function jsonLdContextIsResolvable(context: unknown): boolean {
  * replaced, not merged around: spreading the node after the stamp would let its
  * own broken value win, which is the case this exists to prevent.
  */
-export function withSchemaContext<T extends Record<string, unknown>>(node: T): T {
+export function withSchemaContext<T extends Record<string, unknown>>(
+  node: T,
+): WithResolvableSchemaContext<T> {
   if (jsonLdContextIsResolvable(node['@context'])) return node;
   const { '@context': unresolvable, ...rest } = node;
   void unresolvable;
-  return { '@context': SCHEMA_ORG_CONTEXT, ...rest } as unknown as T;
+  return { '@context': SCHEMA_ORG_CONTEXT, ...rest };
 }
 
 /**

@@ -3110,6 +3110,24 @@ describe('crawlable corpus generator', () => {
         const schemaQuestion = chokepointFaq.mainEntity.find((entry) => entry.name === question);
         assert.equal(schemaQuestion?.acceptedAnswer?.text, visibleAnswer);
       }
+      const sparseMetricsAnswer = chokepointFaq.mainEntity.find(
+        (entry) => entry.name === 'Why do some chokepoint pages show fewer metrics than others?',
+      )?.acceptedAnswer?.text;
+      assert.match(
+        sparseMetricsAnswer,
+        /The daily transit count and PortWatch week-over-week movement each depend on their own source availability/,
+        'the hub FAQ must describe transit-count and PortWatch movement availability independently',
+      );
+      assert.doesNotMatch(
+        sparseMetricsAnswer,
+        /every transit-derived value[^.]+is withheld when the day's transit count is unavailable/,
+        'the hub FAQ must not claim PortWatch movement depends on the daily transit count',
+      );
+      assert.match(
+        sparseMetricsAnswer,
+        /Unavailable values can appear as an em dash or be hidden/,
+        'the hub FAQ must describe both missing-value renderings used by chokepoint pages',
+      );
 
       const [firstChokepoint] = corpusData.chokepoints;
       const validPulse = corpusData.livePulse.chokepoints[firstChokepoint.id];

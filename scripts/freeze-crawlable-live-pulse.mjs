@@ -50,6 +50,7 @@ const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 // It is useful in the live tool but must not be frozen into the crawlable corpus,
 // where it becomes indexed, quotable page content.
 const INTERNAL_NOTE_RE = /\s*;?\s*Threat baseline last reviewed[^;]*?review recommended\.?/gi;
+const NO_ACTIVE_DISRUPTIONS_DESCRIPTION = 'No active disruptions';
 
 // Returns null, never a placeholder sentence. "No additional status note was
 // supplied." used to be frozen here and rendered as a real <p> in <main> — an
@@ -61,7 +62,7 @@ function publishableDescription(value) {
     .replace(INTERNAL_NOTE_RE, '')
     .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
     .trim();
-  return cleaned || null;
+  return cleaned && cleaned !== NO_ACTIVE_DISRUPTIONS_DESCRIPTION ? cleaned : null;
 }
 
 // Every capture gate below reports a bare count. That number says a refresh

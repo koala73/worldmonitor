@@ -165,6 +165,24 @@ describe('blog SEO and GEO corpus contract', () => {
       );
     });
 
+    it('does not claim a replaced context retains the caller narrow type', () => {
+      assert.doesNotMatch(
+        jsonLdSource,
+        /withSchemaContext<T extends Record<string, unknown>>\(node: T\): T/,
+        'a replacement can change @context and must not be typed as the original T',
+      );
+      assert.doesNotMatch(
+        jsonLdSource,
+        /as unknown as T/,
+        'the replacement return type must not be forced back to T',
+      );
+      assert.match(
+        jsonLdSource,
+        /type WithResolvableSchemaContext<T extends Record<string, unknown>> = Omit<T, '@context'> & \{[\s\S]*'@context': unknown;/,
+        'the result type must retain other fields while widening the replaced context',
+      );
+    });
+
     it('escapes a closing script tag so a block cannot break out', async () => {
       const { stringifyJsonLd } = await import(pathToFileURL(jsonLdModule).href);
       const serialised = stringifyJsonLd({ '@type': 'Thing', name: '</script><img>' });
