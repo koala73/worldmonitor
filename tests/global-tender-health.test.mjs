@@ -142,6 +142,38 @@ test('NOT_CONFIGURED stays out of the failure log even when the fleet is degrade
   assert.equal(STATUS_COUNTS.EMPTY_ON_DEMAND, 'warn');
 });
 
+test('graced stale content stays in compact diagnostics but out of the failure log', () => {
+  const now = Date.parse('2026-09-03T12:00:00Z');
+  const checks = {
+    temporalAnomalies: {
+      status: 'STALE_CONTENT',
+      staleContentGraceUntil: new Date(now + 60_000).toISOString(),
+    },
+    defensePatents: { status: 'EMPTY', records: 0 },
+  };
+
+  const { problemKeys, sigKeys } = __testing__.collectFailureLogProblems(checks, now);
+  assert.deepEqual(problemKeys, ['defensePatents:EMPTY']);
+  assert.deepEqual(sigKeys, ['defensePatents:EMPTY']);
+
+  const body = __testing__.healthResponseBody({
+    status: 'DEGRADED',
+    checkedAt: new Date(now).toISOString(),
+    summary: { total: 2, ok: 1, warn: 0, crit: 1 },
+    checks,
+  }, true);
+  assert.equal(body.problems.temporalAnomalies.status, 'STALE_CONTENT');
+
+  const expired = { ...checks, temporalAnomalies: {
+    ...checks.temporalAnomalies,
+    staleContentGraceUntil: new Date(now).toISOString(),
+  } };
+  assert.deepEqual(
+    __testing__.collectFailureLogProblems(expired, now).sigKeys,
+    ['defensePatents:EMPTY', 'temporalAnomalies:STALE_CONTENT'],
+  );
+});
+
 // Guard the exemption's blast radius: only 'unavailable' (= never configured) is
 // exempt. A source that was configured and then broke must still warn.
 test('a source that actually failed still reports SEED_ERROR', () => {
