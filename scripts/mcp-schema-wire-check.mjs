@@ -1,3 +1,5 @@
+import Ajv2020 from 'ajv/dist/2020.js';
+
 const JSON_SCHEMA_TYPES = new Set([
   'null',
   'boolean',
@@ -99,6 +101,24 @@ const SCHEMA_VALUE_KEYWORDS = [
 ];
 const SCHEMA_ARRAY_KEYWORDS = ['allOf', 'anyOf', 'oneOf', 'prefixItems'];
 
+const schemaCompiler = new Ajv2020({
+  allErrors: true,
+  allowUnionTypes: true,
+  strict: true,
+  strictRequired: false,
+  validateFormats: false,
+});
+
+function collectSchemaCompilationFailure(schema, location, failures) {
+  try {
+    schemaCompiler.compile(schema);
+  } catch (error) {
+    failures.push(`${location} at $: ${error instanceof Error ? error.message : String(error)}`);
+  } finally {
+    schemaCompiler.removeSchema(schema);
+  }
+}
+
 function collectSchemaTypeFailures(rootSchema, rootLocation, failures) {
   const stack = [{ schema: rootSchema, location: rootLocation }];
   const pushSchema = (schema, location) => {
@@ -156,9 +176,10 @@ export function collectRequiredCapabilityFailures(capabilities) {
 }
 
 /**
- * Return every schema defect that can make a strict MCP client reject the
- * tools/list response. This stays dependency-free so the production smoke can
- * run from a clean checkout without npm install.
+ * Return schema defects that can make a strict MCP client reject the tools/list
+ * response. Focused checks identify wire corruption; AJV compiles the complete
+ * schema with the same settings as the first-party catalog test
+ * (tests/mcp-output-schema-coverage.test.mjs).
  */
 export function collectToolSchemaWireFailures(tools) {
   const failures = [];
@@ -176,8 +197,13 @@ export function collectToolSchemaWireFailures(tools) {
         failures.push(`${location} at $: expected a non-empty schema object`);
         continue;
       }
-      collectSentinelFailures(schema, location, failures);
-      collectSchemaTypeFailures(schema, location, failures);
+      const schemaFailures = [];
+      collectSentinelFailures(schema, location, schemaFailures);
+      collectSchemaTypeFailures(schema, location, schemaFailures);
+      if (schemaFailures.length === 0) {
+        collectSchemaCompilationFailure(schema, location, schemaFailures);
+      }
+      failures.push(...schemaFailures);
     }
   }
   return failures;

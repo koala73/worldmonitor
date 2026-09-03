@@ -905,6 +905,10 @@ async function xSubjectsForClaim(
       if (claimPage.length > 100) {
         throw new ConvexError("COMPANY_MONITORING_X_SUBJECT_CLAIMS_INVALID");
       }
+      const independentDomainClaims = claimPage.filter((claim) =>
+        claimHasIndependentDomainAuthority(claim, now)
+      );
+      const xHandleClaims = claimPage.filter((claim) => claim.type === "x_handle");
       let currentIdentity = storedIdentity;
       const boundDomainClaim = storedIdentity
         ? claimPage.find((claim) => claim.claimId === storedIdentity.domainClaimId)
@@ -946,6 +950,16 @@ async function xSubjectsForClaim(
           state: "authority_lost",
         });
       }
+      if (
+        (demotionReason || independentDomainClaims.length === 0 || xHandleClaims.length === 0) &&
+        company.coverageState !== "identity_unresolved"
+      ) {
+        await ctx.db.patch(company._id, {
+          coverageState: "identity_unresolved",
+          snapshotGeneration: company.snapshotGeneration + 1,
+          updatedAt: now,
+        });
+      }
       const claimValue = (claim: Doc<"companyMonitoringClaims">) => ({
         claimId: claim.claimId,
         value: claim.value,
@@ -954,10 +968,8 @@ async function xSubjectsForClaim(
         companyId: company.companyId,
         name: company.name,
         domicileCountry: company.domicileCountry,
-        domains: claimPage
-          .filter((claim) => claimHasIndependentDomainAuthority(claim, now))
-          .map(claimValue),
-        xHandles: claimPage.filter((claim) => claim.type === "x_handle").map(claimValue),
+        domains: independentDomainClaims.map(claimValue),
+        xHandles: xHandleClaims.map(claimValue),
         trackedPosts: reconciliationEvidence
           .map((evidence) => ({
             postId: evidence.postId,
@@ -1607,10 +1619,42 @@ function xReceipt(payload: XIngestion) {
   };
 }
 
+/**
+ * Patch a company's coverageState for identity resolution outcomes (#7044).
+ *
+ * `identity_unresolved` marks a company whose independent identity binding does
+ * not exist (resolution failed or a held binding demoted), so it can never be
+ * rendered as a quiet result. Clearing (undefined) means resolved-and-scanned:
+ * observationState carries the result from there. Every change advances the
+ * company row's own snapshotGeneration — that is the freshness signal
+ * company-scoped reads compare against, so a coverage flip without the bump
+ * would stay invisible to snapshot-gated consumers.
+ */
+async function patchCompanyCoverageForIdentity(
+  ctx: MutationCtx,
+  ownerAccountId: string,
+  companyId: string,
+  coverageState: "identity_unresolved" | undefined,
+  now: number,
+): Promise<void> {
+  const company = await ctx.db
+    .query("companyMonitoringCompanies")
+    .withIndex("by_account_companyId", (q) =>
+      q.eq("ownerAccountId", ownerAccountId).eq("companyId", companyId))
+    .unique();
+  if (!company) return;
+  if (company.coverageState === coverageState) return;
+  await ctx.db.patch(company._id, {
+    coverageState,
+    snapshotGeneration: company.snapshotGeneration + 1,
+    updatedAt: now,
+  });
+}
 async function applyXIdentities(
   ctx: MutationCtx,
   work: Work,
   identities: XIngestion["identities"],
+  completeCompanyIds: string[],
   now: number,
 ) {
   for (const observation of [...identities].sort((left, right) =>
@@ -1675,6 +1719,27 @@ async function applyXIdentities(
     };
     if (existing) await ctx.db.replace(existing._id, row);
     else await ctx.db.insert("companyMonitoringXIdentities", row);
+    // Coverage follows the identity outcome (#7044): an authoritative binding
+    // resolves the company (clears any prior identity_unresolved); a demoted
+    // row means resolution failed, which is exactly the unresolved state.
+    await patchCompanyCoverageForIdentity(
+      ctx,
+      work.ownerAccountId,
+      observation.companyId,
+      state === "authoritative" ? undefined : "identity_unresolved",
+      now,
+    );
+  }
+  const observedCompanyIds = new Set(identities.map((identity) => identity.companyId));
+  for (const companyId of [...completeCompanyIds].sort()) {
+    if (observedCompanyIds.has(companyId)) continue;
+    await patchCompanyCoverageForIdentity(
+      ctx,
+      work.ownerAccountId,
+      companyId,
+      "identity_unresolved",
+      now,
+    );
   }
 }
 
@@ -1881,9 +1946,18 @@ async function applyXIngestion(
   work: Work,
   payload: XIngestion,
   obligations: Obligation[],
+  identityResolutionComplete: boolean,
   now: number,
 ) {
-  await applyXIdentities(ctx, work, payload.identities, now);
+  await applyXIdentities(
+    ctx,
+    work,
+    payload.identities,
+    identityResolutionComplete
+      ? obligations.map((obligation) => obligation.companyId)
+      : [],
+    now,
+  );
   const normalizedPosts = await applyXPosts(ctx, work, payload.posts, now);
   await syncNormalizedXEvidence(ctx, work, normalizedPosts, obligations, now);
 }
@@ -2175,7 +2249,14 @@ async function finalizeWorkHandler(
     xValidation.payload &&
     (receipt.reason === "complete" || receipt.reason === "partial" || receipt.reason === "capped")
   ) {
-    await applyXIngestion(ctx, work, xValidation.payload, obligations, now);
+    await applyXIngestion(
+      ctx,
+      work,
+      xValidation.payload,
+      obligations,
+      receipt.reason === "complete",
+      now,
+    );
   }
   if (
     exaValidation.payload &&

@@ -1202,7 +1202,7 @@ export default defineSchema({
     domicileCountry: v.optional(v.union(v.literal("US"), v.literal("GB"))),
     customerReference: v.optional(v.string()),
     lifecycle: v.union(v.literal("active"), v.literal("paused"), v.literal("removed")),
-    coverageState: v.optional(v.literal("awaiting_first_scan")),
+    coverageState: v.optional(v.union(v.literal("awaiting_first_scan"), v.literal("identity_unresolved"))),
     observationState: v.optional(v.literal("unknown")),
     // Any new deletion tombstone advances this version and makes downstream
     // derived state stale until the later recomputation slice consumes it.

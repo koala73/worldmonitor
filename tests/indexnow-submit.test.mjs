@@ -469,4 +469,12 @@ describe('IndexNow submission', () => {
     assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host worldmonitor\.app/);
     assert.match(workflow, /node scripts\/seo-indexnow-submit\.mjs --host www\.worldmonitor\.app/);
   });
+
+  it('isolates concurrency by deployment environment before eligibility filtering', () => {
+    assert.equal(workflowDoc.concurrency?.['cancel-in-progress'], false);
+    assert.equal(
+      workflowDoc.concurrency?.group,
+      "indexnow-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}",
+    );
+  });
 });

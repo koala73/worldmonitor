@@ -13,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: indexnow-production
+  group: indexnow-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
   cancel-in-progress: false
 
 jobs:

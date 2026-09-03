@@ -16,7 +16,7 @@ import {
   ResponseBodyTooLargeError,
 } from './mcp/bounded-body';
 import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
-import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
+import { McpProxyJsonLimitError, createMcpProxyJsonBudget, parseMcpProxyJson } from './mcp/bounded-json';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 // Node runtime, not Edge (GHSA-887j): the upstream socket is pinned to the
@@ -60,6 +60,11 @@ function logProxyCall(entry: {
   header_names: string[];
   status: number;
   duration_ms: number;
+  // Set only when the handler threw. `status` alone cannot separate a rejected
+  // limit from any other upstream failure — every non-timeout error answers 422
+  // — so operators need the class name to query for a specific failure mode
+  // (e.g. a rise in McpProxyJsonContainerError after a budget change).
+  error_name?: string;
 }): void {
   // Structured audit log (#3805). Mirrors the `[name] { ...fields }` shape
   // used by api/cache-purge.js so the existing log-ingest tooling parses it
@@ -548,13 +553,14 @@ async function parseJsonRpcResponse(resp) {
   const ct = resp.headers.get('content-type') || '';
   if (ct.includes('text/event-stream')) {
     const lines = text.split('\n');
+    const responseJsonBudget = createMcpProxyJsonBudget();
     for (const line of lines) {
       if (line.startsWith('data: ')) {
         try {
-          const parsed = parseMcpProxyJson(line.slice(6));
+          const parsed = parseMcpProxyJson(line.slice(6), responseJsonBudget);
           if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
         } catch (error) {
-          if (error instanceof McpProxyJsonDepthError) throw error;
+          if (error instanceof McpProxyJsonLimitError) throw error;
         }
       }
     }
@@ -667,6 +673,7 @@ class SseSession {
     let buf = '';
     let eventType = '';
     let bytesRead = 0;
+    const sessionJsonBudget = createMcpProxyJsonBudget();
     const reader = this._reader;
 
     const rejectSession = async (error) => {
@@ -734,13 +741,19 @@ class SseSession {
                 this._endpointDeferred.resolve();
               } else {
                 try {
-                  const msg = parseMcpProxyJson(data);
+                  const msg = parseMcpProxyJson(data, sessionJsonBudget);
                   if (msg.id !== undefined) {
                     const d = this._pending.get(msg.id);
                     if (d) { this._pending.delete(msg.id); d.resolve(msg); }
                   }
                 } catch (error) {
-                  if (error instanceof McpProxyJsonDepthError) throw error;
+                  // Terminal by design: `budget` is cumulative for the whole
+                  // session, so exceeding it means this server has spent its
+                  // entire parse allowance, not that one frame was unlucky.
+                  // Dropping the frame would leave the budget exhausted and
+                  // fail the next legitimate RPC with a less obvious error, so
+                  // fail fast here instead.
+                  if (error instanceof McpProxyJsonLimitError) throw error;
                 }
               }
               eventType = '';
@@ -885,7 +898,7 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
     if (err instanceof RequestBodyTooLargeError) {
       return jsonResponse({ error: err.message }, 413, cors);
     }
-    if (err instanceof McpProxyJsonDepthError) {
+    if (err instanceof McpProxyJsonLimitError) {
       return jsonResponse({ error: err.message }, 400, cors);
     }
     return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
@@ -985,6 +998,7 @@ export async function handleProxyRequest(req: Request): Promise<Response> {
   }
 
   let response: Response;
+  let errorName: string | undefined;
   try {
     if (req.method === 'GET') {
       response = await handleListTools(req, cors, meta);
@@ -996,6 +1010,10 @@ export async function handleProxyRequest(req: Request): Promise<Response> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     const isTimeout = msg.includes('TimeoutError') || msg.includes('timed out');
+    // `.name`, not `.constructor.name` — the latter is mangled in the minified
+    // api/ bundles, so it would silently stop matching after any rebuild. Each
+    // error class assigns `.name` as a string literal, which survives.
+    errorName = err instanceof Error ? err.name : undefined;
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
     response = jsonResponse({ error: isTimeout ? 'MCP server timed out' : msg }, isTimeout ? 504 : 422, cors);
   }
@@ -1007,6 +1025,7 @@ export async function handleProxyRequest(req: Request): Promise<Response> {
     method: req.method,
     header_names: meta.headerNames,
     status: response.status,
+    ...(errorName ? { error_name: errorName } : {}),
     duration_ms: Date.now() - started,
   });
 
