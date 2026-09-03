@@ -549,14 +549,6 @@ if changed '^(src/|api/|scripts/enforce-premium-fetch\.mjs$)'; then
   npm run lint:premium-fetch || exit 1
 fi
 
-if changed '^(api/|scripts/enforce-runtime-handler-contract\.mjs$|scripts/check-edge-function-bundles\.mjs$)'; then
-  # A Node-runtime api/ route (runtime:'nodejs', or no runtime declared) must
-  # default-export a (req, res) handler — #4749 shipped the Web signature
-  # under runtime:'nodejs', 500'd every request and was reverted (#4754).
-  echo "Running runtime handler contract check..."
-  npm run lint:runtime-handler-contract || exit 1
-fi
-
 if changed '^(api/|server/|src/generated/|scripts/check-edge-function-bundles\.mjs$)'; then
   # Edge RPC entries under api/ bundle-import server/gateway, domain handlers,
   # and generated stubs — a server-only Node-ism breaks the Vercel bundle with

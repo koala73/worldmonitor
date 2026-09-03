@@ -13,7 +13,6 @@ import { fileURLToPath } from 'node:url';
 import { after, describe, test } from 'node:test';
 import {
   checkEdgeFunctionBundles,
-  declaresNodeRuntime,
   isolatedGitEnv,
   listEdgeFunctionEntries,
 } from '../scripts/check-edge-function-bundles.mjs';
@@ -154,112 +153,6 @@ describe('edge function candidate discovery', () => {
     await assert.rejects(
       checkEdgeFunctionBundles({ root }),
       /Could not resolve "node:crypto"/,
-    );
-  });
-
-  test('bundles a route that declares runtime nodejs with the node platform, where node: built-ins resolve', async () => {
-    // api/mcp-proxy.ts (GHSA-887j socket pin) imports node:https on purpose.
-    // The browser bundle would reject it; the node-platform bundle must still
-    // run so an unresolvable import in its graph fails the gate.
-    const root = makeRepo();
-    write(
-      root,
-      'api/pinned.ts',
-      "import https from 'node:https';\n" +
-        "export const config = { runtime: 'nodejs' };\n" +
-        'export default function handler(req, res) { res.end(String(typeof https.request)); }\n',
-    );
-    write(root, 'api/pinned-broken.ts', "export const config = { runtime: 'nodejs' };\nimport './does-not-exist.js';\n");
-    git(root, ['add', 'api/pinned.ts']);
-
-    const entries = await checkEdgeFunctionBundles({ root });
-    assert.ok(entries.includes('api/pinned.ts'));
-
-    git(root, ['add', 'api/pinned-broken.ts']);
-    await assert.rejects(
-      checkEdgeFunctionBundles({ root }),
-      /Could not resolve "\.\/does-not-exist\.js"/,
-    );
-  });
-
-  test('declaresNodeRuntime keys on the static runtime declaration only', () => {
-    assert.equal(declaresNodeRuntime("export const config = { runtime: 'nodejs' };"), true);
-    assert.equal(declaresNodeRuntime('export const config = { runtime: "nodejs" };'), true);
-    assert.equal(declaresNodeRuntime("export const config = { runtime: 'edge' };"), false);
-    assert.equal(declaresNodeRuntime('export default function handler(req, res) {}'), false);
-
-    // The four cases above also pass for a plain /runtime\s*:\s*['"]nodejs['"]/
-    // match over the raw text, so on their own they do not pin the "static
-    // declaration only" claim in this test's name. These do: an Edge route
-    // that merely MENTIONS the Node runtime must stay Edge, or the bundle gate
-    // puts it on esbuild's node platform and its node: imports resolve against
-    // a runtime that rejects them at load. api/mcp-proxy.ts carries exactly
-    // such a comment alongside its real declaration.
-    assert.equal(
-      declaresNodeRuntime("// #4749 shipped this under runtime: 'nodejs' and 500'd\nexport const config = { runtime: 'edge' };"),
-      false,
-      'a comment mentioning the Node runtime must not reclassify an Edge route',
-    );
-    assert.equal(
-      declaresNodeRuntime("export const config = { runtime: 'edge' };\nconst REMEDY = \"write runtime: 'nodejs' as a literal\";"),
-      false,
-      'an unrelated string literal must not reclassify an Edge route',
-    );
-    assert.equal(
-      declaresNodeRuntime("const config = { runtime: 'nodejs' };"),
-      false,
-      'Vercel reads the EXPORTED config; an unexported local of the same name is not a declaration',
-    );
-  });
-
-  test('CI bundles a Node-runtime route even though it is not on the legacy TS allowlist', async () => {
-    // The legacy allowlist predates the platform:'node' branch and names only
-    // api/mcp.ts, so without this exception the branch a Node-runtime route
-    // takes is exercised on the pushing developer's machine and never in CI —
-    // the merge gate would be blind to an unresolvable import in its graph.
-    const root = makeRepo();
-    write(
-      root,
-      'api/pinned-ci.ts',
-      "export const config = { runtime: 'nodejs' };\n" +
-        "import './missing-in-ci.js';\n" +
-        'export default function handler(req, res) { res.end(); }\n',
-    );
-    write(root, 'api/edge-only.ts', "export const config = { runtime: 'edge' };\nexport default function handler() { return new Response('ok'); }\n");
-    git(root, ['add', 'api/pinned-ci.ts', 'api/edge-only.ts']);
-
-    const ciEntries = listEdgeFunctionEntries(root, { caller: 'ci' });
-    assert.ok(ciEntries.includes('api/pinned-ci.ts'), 'a Node-runtime route must be bundled in CI');
-    assert.ok(
-      !ciEntries.includes('api/edge-only.ts'),
-      'the exception is scoped to Node-runtime routes; other top-level TS still follows the legacy allowlist',
-    );
-
-    await assert.rejects(
-      checkEdgeFunctionBundles({ root, caller: 'ci' }),
-      /Could not resolve "\.\/missing-in-ci\.js"/,
-    );
-  });
-
-  test('a comment mentioning the Node runtime leaves an Edge route on the browser bundle', async () => {
-    // End-to-end counterpart to the unit assertions above: the platform choice
-    // is what actually disarms the node:-import guard, so prove it at the gate
-    // and not only at the classifier.
-    const root = makeRepo();
-    write(
-      root,
-      'api/edge-mentions-node.js',
-      "// The GHSA-887j pin needs runtime: 'nodejs'; this route does not.\n" +
-        "import crypto from 'node:crypto';\n" +
-        "export const config = { runtime: 'edge' };\n" +
-        'export default function handler() { return new Response(String(typeof crypto)); }\n',
-    );
-    git(root, ['add', 'api/edge-mentions-node.js']);
-
-    await assert.rejects(
-      checkEdgeFunctionBundles({ root }),
-      /Could not resolve "node:crypto"/,
-      'the route must still be bundled for the browser platform, where node: built-ins do not resolve',
     );
   });
 });

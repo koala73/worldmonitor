@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { declaresNodeRuntime, listTrackedApiSourceFiles } from '../scripts/check-edge-function-bundles.mjs';
+import { listTrackedApiSourceFiles } from '../scripts/check-edge-function-bundles.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -110,39 +110,14 @@ describe('Edge Function shared helpers resolve', () => {
   });
 });
 
-// Routes that deliberately run on Vercel's Node runtime and may therefore
-// import node: built-ins. Adding one is a conspicuous diff on purpose: #4749
-// exempted itself from this guard with a predicate tweak buried in a test
-// edit. The allowlist and the file's own `runtime: 'nodejs'` declaration must
-// agree in BOTH directions (asserted below), and every listed route is held
-// to the (req, res) entry contract by scripts/enforce-runtime-handler-contract.mjs.
-const NODE_RUNTIME_ROUTES = new Set([
-  'mcp-proxy.ts', // GHSA-887j: node:https socket pin to the DoH-vetted address
-]);
-
-describe('Node-runtime route allowlist', () => {
-  it('lists exactly the api/ sources that declare runtime: nodejs', () => {
-    const declared = allApiFiles
-      .filter(({ path }) => declaresNodeRuntime(readFileSync(path, 'utf-8')))
-      .map(({ name }) => name)
-      .sort();
-    assert.deepEqual(
-      declared,
-      [...NODE_RUNTIME_ROUTES].sort(),
-      'NODE_RUNTIME_ROUTES and the runtime declarations under api/ have drifted — a Node-runtime route must be added to (or removed from) the allowlist in the same change',
-    );
-  });
-});
-
 describe('Edge Function no node: built-ins', () => {
   for (const { name, path } of allApiFiles) {
-    it(`${name} does not import node: built-ins unless it is an allowlisted Node-runtime route`, () => {
-      if (NODE_RUNTIME_ROUTES.has(name)) return;
+    it(`${name} does not import node: built-ins (unsupported in Vercel Edge Runtime)`, () => {
       const src = readFileSync(path, 'utf-8');
       const match = src.match(/from\s+['"]node:(\w+)['"]/);
       assert.ok(
         !match,
-        `${name}: imports node:${match?.[1]} without runtime: 'nodejs' — Vercel Edge Runtime does not support node: built-in modules. Use an edge-compatible alternative, or declare the Node runtime deliberately and export a (req, res) handler.`,
+        `${name}: imports node:${match?.[1]} — Vercel Edge Runtime does not support node: built-in modules. Use an edge-compatible alternative.`,
       );
     });
   }

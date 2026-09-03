@@ -125,14 +125,12 @@ Detected by hostname (`tech.worldmonitor.app` → tech, `finance.worldmonitor.ap
 
 ### Edge Functions
 
-The `api/` directory holds two kinds of endpoints, deployed as Vercel Edge Functions except for the routes on the Node-runtime allowlist:
+The `api/` directory holds two kinds of endpoints, both deployed as Vercel Edge Functions:
 
 - **Domain intelligence gateways** — generated from proto contracts and backed by handlers under `server/worldmonitor/**`. The per-domain thin entry points (`api/<domain>/v<N>/[rpc].ts`) are produced via `createDomainGateway` (`server/gateway.ts`) and esbuild-bundled, so the *deployed* artifact is self-contained even though the source composes server-side modules.
 - **Operational endpoints** — hand-written for concerns that don't fit the contract model: auth/session, checkout and customer portal, MCP, bootstrap/health, notifications, cache invalidation, and user workflows (e.g. `api/create-checkout.ts`, `api/customer-portal.ts`, `api/mcp.ts`, `api/user-prefs.ts`).
 
-Edge functions are bundled per file: each deployed function may not pull in unrelated modules at runtime, a constraint enforced by `tests/edge-functions.test.mjs` and the pre-push esbuild bundle check.
-
-A route may opt into Vercel's **Node runtime** with `export const config = { runtime: 'nodejs' }` when it needs a `node:` built-in the Edge runtime cannot provide. `api/mcp-proxy.ts` is the one such route today: GHSA-887j requires pinning the upstream socket to the DoH-vetted address through `node:https`'s `lookup` hook, which Edge `fetch()` cannot do. Node-runtime routes are governed by three gates that must agree: the `NODE_RUNTIME_ROUTES` allowlist in `tests/edge-functions.test.mjs` (cross-checked against the runtime declarations in both directions, and the only thing that exempts a route from the `node:` import ban), `npm run lint:runtime-handler-contract` (a Node route default-exports `(req, res)`; an Edge route never does — the mismatch that broke #4749 and forced the #4754 revert), and the node-platform branch of the esbuild bundle check. All three classify a file from the parsed `export const config` declaration via `scripts/lib/api-route-runtime.mjs`. Hand-written endpoints that genuinely cannot be proto-defined are listed in `api/api-route-exceptions.json` and enforced by `npm run lint:api-contract`.
+Edge functions are bundled per file: each deployed function may not pull in unrelated modules at runtime, a constraint enforced by `tests/edge-functions.test.mjs` and the pre-push esbuild bundle check. Hand-written endpoints that genuinely cannot be proto-defined are listed in `api/api-route-exceptions.json` and enforced by `npm run lint:api-contract`.
 
 ### Shared Helpers
 
@@ -357,7 +355,7 @@ Playwright specs in `e2e/*.spec.ts` test theme toggling, circuit breaker persist
 
 ### Edge Function Guardrails
 
-`tests/edge-functions.test.mjs` validates that all non-helper `api/*.js` files are self-contained: no `node:` built-in imports (except for routes on the `NODE_RUNTIME_ROUTES` allowlist), no cross-directory `../server/` or `../src/` imports. The pre-push hook also runs an esbuild bundle check on each endpoint.
+`tests/edge-functions.test.mjs` validates that all non-helper `api/*.js` files are self-contained: no `node:` built-in imports, no cross-directory `../server/` or `../src/` imports. The pre-push hook also runs an esbuild bundle check on each endpoint.
 
 ### Pre-Push Hook
 
@@ -367,10 +365,9 @@ Runs before every `git push`:
 2. CJS syntax validation
 3. Edge function esbuild bundle check
 4. Edge function import guardrail test
-5. Runtime handler contract check (`npm run lint:runtime-handler-contract`)
-6. Markdown lint
-7. MDX lint (Mintlify compatibility)
-8. Version sync check
+5. Markdown lint
+6. MDX lint (Mintlify compatibility)
+7. Version sync check
 
 **Source files**: `tests/`, `e2e/`, `playwright.config.ts`, `.husky/pre-push`
 
