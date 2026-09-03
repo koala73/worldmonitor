@@ -84,7 +84,7 @@
     "postinstall": "npm run inventory:facts && cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline",
     "prebuild:blog": "npm run product:facts",
     "build:blog": "npm run build:blog:raw",
-    "build:blog:raw": "cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",
+    "build:blog:raw": "cd blog-site && npm run build && cd .. && node scripts/copy-blog-build.mjs",
     "build:crawlable-corpus": "node --import tsx scripts/build-crawlable-corpus.mjs",
     "audit:microstate-corpus": "node scripts/audit-microstate-corpus-similarity.mjs --check",
     "build:llms-full": "node --import tsx scripts/build-llms-full.mjs",
