@@ -3162,7 +3162,7 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
   const hubFaqs = [
     {
       question: 'Which maritime chokepoints are most disrupted?',
-      answer: `The published ${formatStaticDateTime(updatedAt)} snapshot gives the highest disruption score to ${formatProseList(mostDisruptedNames)}, each at ${formatScore(highestScore, OBSERVED_EVIDENCE)}/100. The table covers all ${chokepointHubRows.length} tracked waterways and shows each source timestamp. A higher score means more current pressure. It does not confirm that a waterway is closed.`,
+      answer: `The published ${formatStaticDateTime(updatedAt)} snapshot gives the highest disruption score to ${formatProseList(mostDisruptedNames)}, each at ${formatScore(highestScore, OBSERVED_EVIDENCE)}/100. The table covers all ${chokepointHubRows.length} tracked waterways and shows each source timestamp. A higher score means more current pressure. Passage status follows the same bands the detail pages publish: Green means open, Yellow means restricted, and Red means effectively closed.`,
     },
     {
       question: 'How does World Monitor score chokepoint status?',

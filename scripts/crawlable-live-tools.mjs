@@ -132,30 +132,32 @@ function chokepointBandLabel(score) {
   return 'Red';
 }
 
-// Segments of the live status note that are NOT geopolitical baseline
-// evidence, so they must never be quoted as the threat weight: absence and
-// partial-coverage phrasing, the transit-anomaly signal (it describes observed
-// traffic collapse, not the baseline — and it is rendered verbatim in the
-// page's description paragraph anyway), and operator review-hygiene text.
-// The live API always sends a non-empty description, so without this filter
-// every calm waterway would read as threat-driven. Anything left after
-// dropping these is the threat-baseline description behind the scorer's
-// threat weight; every non-normal threat level carries one, so an empty
-// remainder means a normal baseline with no anomaly signal.
-const NON_THREAT_DESCRIPTION_PATTERNS = [
+// Segments of the live status note that are NEITHER the threat baseline NOR
+// the anomaly signal: absence/coverage phrasing and operator review-hygiene
+// text. The live API always sends a non-empty description, so without this
+// filter every calm waterway would read as threat-driven.
+const NON_SCORE_DESCRIPTION_PATTERNS = [
   /no active disruptions/i,
   /source coverage incomplete/i,
-  /traffic down \d+% vs .*baseline/i,
   /threat baseline last reviewed/i,
 ];
 
-function threatBaselineDescription(description) {
-  const kept = String(description || '')
+// The transit-anomaly signal (+10 score bonus) is observed traffic collapse,
+// not baseline — surface it as its own clause, never as the threat weight.
+const ANOMALY_DESCRIPTION_PATTERN = /traffic down \d+% vs .*baseline.*/i;
+
+function splitScoreDescription(description) {
+  const segments = String(description || '')
     .split(';')
     .map((segment) => segment.trim())
-    .filter((segment) => segment
-      && !NON_THREAT_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(segment)));
-  return kept.length ? kept.join('; ') : null;
+    .filter(Boolean);
+  const anomaly = segments.find((segment) => ANOMALY_DESCRIPTION_PATTERN.test(segment)) ?? null;
+  const threatSegments = segments.filter((segment) => segment !== anomaly
+    && !NON_SCORE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(segment)));
+  return {
+    threat: threatSegments.length ? threatSegments.join('; ') : null,
+    anomaly,
+  };
 }
 
 function chokepointArticleName(displayName) {
@@ -182,10 +184,10 @@ export function chokepointOpenStatusSentence({ displayName, score, asOfText, tod
 
 // Score-driver sentence for /chokepoints/* pages (#7613): names what set the
 // score — the baseline geopolitical threat weight, the observed snapshot
-// inputs, or both — so the number is attributable rather than bare. Only the
-// threat-baseline segments of the status note count as baseline evidence (see
-// threatBaselineDescription); a null remainder means a normal baseline with no
-// anomaly signal, so the score is entirely observed in that case.
+// signals, or both — so the number is attributable rather than bare. Only the
+// warning count, AIS severity, and anomaly signal feed the formula (see
+// splitScoreDescription); transit counts and congestion readings are context,
+// so they get their own sentence rather than posing as inputs.
 export function chokepointScoreDriverSentence({
   score,
   bandLabel,
@@ -201,19 +203,18 @@ export function chokepointScoreDriverSentence({
   const formatted = Number.isInteger(numeric) ? String(numeric) : String(Math.round(numeric * 10) / 10);
   const warnings = String(warningsLabel || '').trim() || null;
   const ais = String(aisLabel || '').trim() || null;
-  const congestion = String(congestionLabel || '').trim() || null;
+  const inputs = `${warnings ?? 'navigational warnings unavailable'} and ${ais ?? 'AIS disruptions unavailable'} observed in this snapshot`;
+  const { threat, anomaly } = splitScoreDescription(description);
+  const anomalyClause = anomaly ? `, plus the published transit anomaly — ${anomaly}` : '';
+  const congestion = String(congestionLabel || '').trim();
   const transit = todayTransits == null || String(todayTransits).trim() === ''
-    ? 'no published transit count'
-    : `${String(todayTransits).trim()} published transits`;
-  const observed = `${warnings ?? 'navigational warnings unavailable'}, `
-    + `${ais ?? 'AIS disruptions unavailable'}, `
-    + `${congestion ? `${congestion} congestion` : 'congestion not reported'}, `
-    + `and ${transit}`;
-  const threat = threatBaselineDescription(description);
+    ? 'no transit count is published for this snapshot'
+    : `the published transit count is ${String(todayTransits).trim()}`;
+  const context = `Congestion is ${congestion || 'not reported'}; ${transit}.`;
   if (threat) {
-    return `The score of ${formatted} (${band}) builds on the baseline geopolitical threat weight — ${threat} — plus this snapshot's observed inputs: ${observed}.`;
+    return `The score of ${formatted} (${band}) builds on the baseline geopolitical threat weight — ${threat} — with ${inputs}${anomalyClause}. ${context}`;
   }
-  return `The score of ${formatted} (${band}) comes from this snapshot's observed inputs — ${observed} — with no additional geopolitical threat baseline.`;
+  return `The score of ${formatted} (${band}) comes from ${inputs}${anomalyClause}, with no additional geopolitical threat baseline. ${context}`;
 }
 
 function humanizeToken(value, prefixes = []) {

@@ -675,7 +675,7 @@ describe('crawlable live intelligence view models', () => {
     }), null, 'an unusable score must fall back to the unavailable note');
   });
 
-  it('attributes the score to the threat baseline and observed inputs (#7613)', () => {
+  it('attributes the score to the threat baseline and scoring signals (#7613)', () => {
     assert.equal(
       chokepointScoreDriverSentence({
         score: '70',
@@ -688,7 +688,8 @@ describe('crawlable live intelligence view models', () => {
       }),
       'The score of 70 (Red) builds on the baseline geopolitical threat weight'
       + ' — Active conflict — Iran-Israel war; Iranian naval blockade risk and mines reported in Persian Gulf'
-      + " — plus this snapshot's observed inputs: 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count.",
+      + ' — with 0 warnings and 0 AIS disruptions observed in this snapshot.'
+      + ' Congestion is Normal; no transit count is published for this snapshot.',
     );
     assert.equal(
       chokepointScoreDriverSentence({
@@ -700,9 +701,9 @@ describe('crawlable live intelligence view models', () => {
         congestionLabel: 'Normal',
         todayTransits: null,
       }),
-      "The score of 0 (Green) comes from this snapshot's observed inputs"
-      + ' — 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count'
-      + ' — with no additional geopolitical threat baseline.',
+      'The score of 0 (Green) comes from 0 warnings and 0 AIS disruptions observed in this snapshot,'
+      + ' with no additional geopolitical threat baseline.'
+      + ' Congestion is Normal; no transit count is published for this snapshot.',
     );
     assert.equal(chokepointScoreDriverSentence({
       score: null,
@@ -733,14 +734,14 @@ describe('crawlable live intelligence view models', () => {
           congestionLabel: 'Normal',
           todayTransits: null,
         }),
-        "The score of 0 (Green) comes from this snapshot's observed inputs"
-        + ' — 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count'
-        + ' — with no additional geopolitical threat baseline.',
+        'The score of 0 (Green) comes from 0 warnings and 0 AIS disruptions observed in this snapshot,'
+        + ' with no additional geopolitical threat baseline.'
+        + ' Congestion is Normal; no transit count is published for this snapshot.',
         `must not quote as threat: ${description}`,
       );
     }
-    // Threat plus anomaly quotes only the threat; the anomaly is observed
-    // traffic and is already rendered verbatim in the description paragraph.
+    // Threat plus anomaly quotes the threat as baseline and surfaces the
+    // anomaly (+10 bonus) as its own clause — never as the threat weight.
     assert.equal(
       chokepointScoreDriverSentence({
         score: 80,
@@ -753,7 +754,9 @@ describe('crawlable live intelligence view models', () => {
       }),
       'The score of 80 (Red) builds on the baseline geopolitical threat weight'
       + ' — Active conflict — blockade risk'
-      + " — plus this snapshot's observed inputs: 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count.",
+      + ' — with 0 warnings and 0 AIS disruptions observed in this snapshot,'
+      + ' plus the published transit anomaly — Traffic down 55% vs 30-day baseline, vessels may be transiting dark (AIS off).'
+      + ' Congestion is Normal; no transit count is published for this snapshot.',
     );
   });
 
