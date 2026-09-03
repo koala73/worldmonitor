@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 
+import { pathToFileURL } from 'node:url';
 import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
 // Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
 // The 2026-04 webpack rebuild changed the TGH bundle from the legacy
@@ -25,8 +26,6 @@ import {
   ALERT_LEVEL_METHODOLOGY_VERSION,
 } from './_disease-outbreaks-helpers.mjs';
 
-loadEnvFile(import.meta.url);
-
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
 
@@ -51,11 +50,11 @@ const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
  * Fetch WHO Disease Outbreak News via their JSON API (RSS feed is dead since 2024).
  * Returns normalized items array.
  */
-async function fetchWhoDonApi() {
+export async function fetchWhoDonApi({ fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
   try {
-    const resp = await fetch(WHO_DON_API, {
+    const resp = await fetchImpl(WHO_DON_API, {
       headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15000),
+      signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) { console.warn(`[Disease] WHO DON API HTTP ${resp.status}`); return []; }
     const data = await resp.json();
@@ -217,32 +216,39 @@ export function declareRecords(data) {
   return Array.isArray(data?.outbreaks) ? data.outbreaks.length : 0;
 }
 
-runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'who-api-cdc-ont-v6',
+async function main() {
+  loadEnvFile(import.meta.url);
+  await runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'who-api-cdc-ont-v6',
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 2880,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
 
-  // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
-  //
-  // 9-day budget chosen so the 2026-05-04 incident — where the cache held
-  // 50 outbreaks all 11+ days old — would have correctly tripped STALE_CONTENT
-  // in /api/health. WHO Disease Outbreak News publishes 1-2/week (typical gap
-  // 3-5d), CDC HAN is sporadic but rarely silent for a full week, and TGH
-  // (post-#3593) provides daily ProMED items. 9 days tolerates a single quiet
-  // WHO/CDC week without paging on normal cadence.
-  //
-  // diseaseContentMeta + diseasePublishTransform live in
-  // `_disease-outbreaks-helpers.mjs` so the test suite imports the same code
-  // the seeder runs (no drift). See helpers module header for their semantics.
-  contentMeta: diseaseContentMeta,
-  maxContentAgeMin: DISEASE_MAX_CONTENT_AGE_MIN,
-  publishTransform: diseasePublishTransform,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
-  console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
+    //
+    // 9-day budget chosen so the 2026-05-04 incident — where the cache held
+    // 50 outbreaks all 11+ days old — would have correctly tripped STALE_CONTENT
+    // in /api/health. WHO Disease Outbreak News publishes 1-2/week (typical gap
+    // 3-5d), CDC HAN is sporadic but rarely silent for a full week, and TGH
+    // (post-#3593) provides daily ProMED items. 9 days tolerates a single quiet
+    // WHO/CDC week without paging on normal cadence.
+    //
+    // diseaseContentMeta + diseasePublishTransform live in
+    // `_disease-outbreaks-helpers.mjs` so the test suite imports the same code
+    // the seeder runs (no drift). See helpers module header for their semantics.
+    contentMeta: diseaseContentMeta,
+    maxContentAgeMin: DISEASE_MAX_CONTENT_AGE_MIN,
+    publishTransform: diseasePublishTransform,
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  main().catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
