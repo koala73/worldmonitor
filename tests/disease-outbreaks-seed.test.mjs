@@ -58,6 +58,7 @@ test('WHO adapter retries one transient timeout and returns the recovered record
       if (calls === 1) throw Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
       return jsonResponse(WHO_RESPONSE);
     },
+    retryDelayMs: 0,
   });
 
   assert.equal(calls, 2);
@@ -85,6 +86,7 @@ test('WHO adapter returns no records after both transient attempts fail', async 
       calls += 1;
       throw Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
     },
+    retryDelayMs: 0,
   });
 
   assert.equal(calls, 2);

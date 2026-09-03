@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
 import { pathToFileURL } from 'node:url';
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, httpRetryError, runSeed, withRetry } from './_seed-utils.mjs';
 // Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
 // The 2026-04 webpack rebuild changed the TGH bundle from the legacy
 // `var a=[{Alert_ID:"..."}]` shape (unquoted keys) to `eval("var res = [...]")`
@@ -50,14 +50,24 @@ const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
  * Fetch WHO Disease Outbreak News via their JSON API (RSS feed is dead since 2024).
  * Returns normalized items array.
  */
-export async function fetchWhoDonApi({ fetchImpl = globalThis.fetch, timeoutMs = 15000 } = {}) {
+export async function fetchWhoDonApi({
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 15000,
+  retryDelayMs = 1000,
+} = {}) {
   try {
-    const resp = await fetchImpl(WHO_DON_API, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(timeoutMs),
-    });
-    if (!resp.ok) { console.warn(`[Disease] WHO DON API HTTP ${resp.status}`); return []; }
-    const data = await resp.json();
+    const data = await withRetry(async () => {
+      const resp = await fetchImpl(WHO_DON_API, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!resp.ok) {
+        const error = httpRetryError(resp);
+        await resp.body?.cancel().catch(() => {});
+        throw error;
+      }
+      return resp.json();
+    }, 1, retryDelayMs);
     const items = data?.value;
     if (!Array.isArray(items)) { console.warn('[Disease] WHO DON API: unexpected response shape'); return []; }
     // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
@@ -65,6 +75,10 @@ export async function fetchWhoDonApi({ fetchImpl = globalThis.fetch, timeoutMs =
     return items.map((item) => whoNormalizeItem(item))
       .filter(i => i.title && Number.isFinite(i.publishedMs));
   } catch (e) {
+    if (Number.isFinite(e?.status)) {
+      console.warn(`[Disease] WHO DON API HTTP ${e.status}`);
+      return [];
+    }
     console.warn('[Disease] WHO DON API fetch error:', e?.message || e);
     return [];
   }
