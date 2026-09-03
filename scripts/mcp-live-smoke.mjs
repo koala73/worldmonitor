@@ -64,6 +64,8 @@
 // Usage: node scripts/mcp-live-smoke.mjs
 //   MCP_SMOKE_HOSTS=https://a,https://b  overrides the default host list.
 
+import { collectToolSchemaWireFailures } from './mcp-schema-wire-check.mjs';
+
 const HOSTS = (process.env.MCP_SMOKE_HOSTS ?? 'https://worldmonitor.app,https://www.worldmonitor.app')
   .split(',').map((h) => h.trim()).filter(Boolean);
 const TIMEOUT_MS = 15_000;
@@ -204,7 +206,13 @@ async function walkHost(host) {
     for (const method of methods) {
       if (method === 'tools/list') {
         const r = await rpc(host, 'tools/list', {});
-        if (r && !(Array.isArray(r.tools) && r.tools.length > 0)) fail(host, 'tools/list', 'empty catalog');
+        if (r && !(Array.isArray(r.tools) && r.tools.length > 0)) {
+          fail(host, 'tools/list', 'empty catalog');
+        } else if (r) {
+          for (const detail of collectToolSchemaWireFailures(r.tools)) {
+            fail(host, 'tools/list schema wire', detail);
+          }
+        }
       } else if (method === 'prompts/list') {
         promptsList = await rpc(host, 'prompts/list', {});
         if (promptsList && !(Array.isArray(promptsList.prompts) && promptsList.prompts.length > 0)) {

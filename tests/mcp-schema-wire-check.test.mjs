@@ -38,9 +38,25 @@ describe('collectToolSchemaWireFailures', () => {
     const failures = collectToolSchemaWireFailures([
       { name: 'truncated_tool', inputSchema: { type: 'object' }, outputSchema: { items: '[truncated]' } },
       { name: 'missing_tool', inputSchema: { type: 'object' } },
+      { name: 'empty_tool', inputSchema: {}, outputSchema: { type: 'object' } },
     ]);
 
     assert.ok(failures.some((failure) => failure.includes('truncated_tool.outputSchema.items')));
     assert.ok(failures.some((failure) => failure.includes('missing_tool.outputSchema')));
+    assert.ok(failures.some((failure) => failure.includes('empty_tool.inputSchema')));
+  });
+
+  it('reports empty and duplicate type arrays', () => {
+    const failures = collectToolSchemaWireFailures([{
+      name: 'bad_unions',
+      inputSchema: { type: [] },
+      outputSchema: {
+        type: 'object',
+        properties: { value: { type: ['string', 'string'] } },
+      },
+    }]);
+
+    assert.ok(failures.some((failure) => failure.includes('type array must not be empty')));
+    assert.ok(failures.some((failure) => failure.includes('duplicate JSON Schema type')));
   });
 });

@@ -6,8 +6,13 @@ import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
-import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-body';
-import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
+import {
+  readBoundedRequestBody,
+  readBoundedResponseBody,
+  RequestBodyTooLargeError,
+  ResponseBodyTooLargeError,
+} from './mcp/bounded-body';
+import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
 export const config = { runtime: 'edge' };
@@ -278,9 +283,10 @@ async function postJson(url, body, headers, sessionId) {
 }
 
 async function parseJsonRpcResponse(resp) {
+  const body = await readBoundedResponseBody(resp, MAX_MCP_PROXY_RESPONSE_BYTES);
+  const text = new TextDecoder().decode(body);
   const ct = resp.headers.get('content-type') || '';
   if (ct.includes('text/event-stream')) {
-    const text = await resp.text();
     const lines = text.split('\n');
     for (const line of lines) {
       if (line.startsWith('data: ')) {
@@ -292,7 +298,7 @@ async function parseJsonRpcResponse(resp) {
     }
     throw new Error('No result found in SSE response');
   }
-  return resp.json();
+  return JSON.parse(text);
 }
 
 async function sendInitialized(serverUrl, headers, sessionId) {
@@ -390,7 +396,15 @@ class SseSession {
     const dec = new TextDecoder();
     let buf = '';
     let eventType = '';
+    let bytesRead = 0;
     const reader = this._reader;
+
+    const rejectSession = async (error) => {
+      this._endpointDeferred.reject(error);
+      for (const [, deferred] of this._pending) deferred.reject(error);
+      this._pending.clear();
+      await reader.cancel().catch(() => {});
+    };
 
     (async () => {
       try {
@@ -402,7 +416,12 @@ class SseSession {
               this._endpointDeferred.reject(new Error('SSE stream closed before endpoint event'));
             }
             for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
+            this._pending.clear();
             break;
+          }
+          bytesRead += value?.byteLength ?? 0;
+          if (bytesRead > MAX_MCP_PROXY_RESPONSE_BYTES) {
+            throw new ResponseBodyTooLargeError(MAX_MCP_PROXY_RESPONSE_BYTES);
           }
           buf += dec.decode(value, { stream: true });
           const lines = buf.split('\n');
@@ -455,8 +474,7 @@ class SseSession {
           }
         }
       } catch (err) {
-        this._endpointDeferred.reject(err);
-        for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
+        await rejectSession(err);
       }
     })();
   }
@@ -501,7 +519,7 @@ class SseSession {
   }
 
   close() {
-    try { this._reader?.cancel(); } catch { /* ignore */ }
+    this._reader?.cancel().catch(() => {});
   }
 }
 

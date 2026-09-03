@@ -889,6 +889,33 @@ describe('api/mcp-proxy', () => {
       // Result is 422 (stream closed before endpoint or RPC error) — not a node: DNS failure
       assert.ok([200, 422, 504].includes(res.status), `Unexpected status: ${res.status}`);
     });
+
+    it('rejects and cancels a legacy SSE stream after its cumulative raw bytes exceed the cap', async () => {
+      let cancelled = false;
+      globalThis.fetch = async (_url, opts) => {
+        if (!opts?.body) {
+          const stream = new ReadableStream({
+            start(controller) {
+              controller.enqueue(new Uint8Array(MCP_PROXY_RESPONSE_CAP_BYTES + 1));
+            },
+            cancel() {
+              cancelled = true;
+            },
+          });
+          return new Response(stream, {
+            status: 200,
+            headers: { 'Content-Type': 'text/event-stream' },
+          });
+        }
+        throw new Error('oversized legacy SSE must fail before an endpoint POST');
+      };
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+
+      assert.equal(res.status, 422);
+      assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
+      assert.equal(cancelled, true);
+    });
   });
 
   // ── SSE SSRF protection ───────────────────────────────────────────────────

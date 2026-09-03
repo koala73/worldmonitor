@@ -1,5 +1,6 @@
 type BoundedBodyResponse = {
   body?: ReadableStream<Uint8Array> | null;
+  headers?: { get(name: string): string | null };
   text?: () => Promise<string>;
 };
 
@@ -16,6 +17,73 @@ export class RequestBodyTooLargeError extends Error {
     this.name = 'RequestBodyTooLargeError';
     this.maxBytes = maxBytes;
   }
+}
+
+export class ResponseBodyTooLargeError extends Error {
+  readonly maxBytes: number;
+
+  constructor(maxBytes: number) {
+    super(`MCP server response exceeds ${maxBytes} bytes`);
+    this.name = 'ResponseBodyTooLargeError';
+    this.maxBytes = maxBytes;
+  }
+}
+
+/**
+ * Read an upstream response with exact raw-byte accounting. An advertised
+ * oversize response is rejected before the stream is pulled; a chunked or
+ * understated response is cancelled as soon as it crosses the cap.
+ */
+export async function readBoundedResponseBody(
+  response: BoundedBodyResponse,
+  maxBytes: number,
+): Promise<Uint8Array> {
+  if (!Number.isFinite(maxBytes) || maxBytes < 0) {
+    throw new TypeError('maxBytes must be a non-negative finite number');
+  }
+
+  const contentLengthRaw = response.headers?.get('content-length');
+  if (contentLengthRaw !== null && contentLengthRaw !== undefined && contentLengthRaw !== '') {
+    const contentLength = Number(contentLengthRaw);
+    if (Number.isFinite(contentLength) && contentLength > maxBytes) {
+      if (response.body) {
+        await response.body.cancel().catch(() => {});
+      }
+      throw new ResponseBodyTooLargeError(maxBytes);
+    }
+  }
+
+  if (!response.body) return new Uint8Array();
+
+  const reader = response.body.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      if (!value || value.byteLength === 0) continue;
+      total += value.byteLength;
+      if (total > maxBytes) {
+        await reader.cancel().catch(() => {});
+        throw new ResponseBodyTooLargeError(maxBytes);
+      }
+      chunks.push(value);
+    }
+  } catch (error) {
+    if (!(error instanceof ResponseBodyTooLargeError)) {
+      await reader.cancel().catch(() => {});
+    }
+    throw error;
+  }
+
+  const body = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    body.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return body;
 }
 
 /**
