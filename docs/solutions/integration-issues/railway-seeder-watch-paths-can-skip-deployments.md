@@ -214,10 +214,10 @@ real production verdicts:
   it makes the matcher disagree with Railway on every scripts-rooted service
   that lists `shared/**`.
 - **Registry ∪ live, never one or the other.** The registry is edited in a PR
-  and only reaches Railway when someone runs the audit with `--apply`, so
-  between those two events each source knows a path the other does not. The
-  remaining 3 apparent refusals sat in exactly that window. A union is wrong
-  only in the direction that builds too much.
+  and reaches Railway when the main-only registry-sync workflow applies it.
+  Between the merge and verified convergence, each source can know a path the
+  other does not. The remaining 3 apparent refusals sat in exactly that window.
+  A union is wrong only in the direction that builds too much.
 
 Everything uncertain resolves to "this change reaches the service": an
 unsupported glob shape, a commit git cannot reach, a service neither source
@@ -479,12 +479,12 @@ the condition it is meant to observe.
   do not treat it as unreliable either. It matches accurately; it just cannot
   see outside the service's build context, and a pattern pointing outside that
   context (`shared/**` on a `rootDirectory: scripts` service) is dead weight.
-- Run `node scripts/audit-railway-watch-paths.mjs` after adding or replacing a
-  Railway seeder, changing its imports, or changing its cron. Keep the registry
-  dependency-closure test green.
+- Keep the registry dependency-closure test green after adding or replacing a
+  Railway seeder, changing its imports, or changing its cron. The main-only
+  registry-sync workflow applies and independently verifies the merged state.
 - Never narrow a seeder's watch paths in the Railway dashboard. Add its closure
-  to the registry instead — a dashboard-only narrowing is drift the audit will
-  push back to the broad contract on the next `--apply`.
+  to the registry instead. The scheduled audit reports dashboard-only drift,
+  and the next registry-sync run pushes it back to the declared contract.
 - Run `node scripts/check-railway-deploy-drift.mjs` whenever a merge looks like
   it did not take effect; `--json` gives the machine-readable form. A
   `REJECTED_PUSH` verdict names the SHAs Railway refused **and the reason it
