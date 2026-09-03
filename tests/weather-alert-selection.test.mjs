@@ -369,6 +369,26 @@ describe('weather_alert notification location payload', () => {
     );
   });
 
+  it('omits rings containing invalid interior positions even when their endpoints close', () => {
+    for (const position of [null, [], [-99], ['-99', 41], [-99, null],
+      [NaN, 41], [-99, Infinity], [false, 41]]) {
+      const ring = [[-100, 40], [-99, 40], position, [-100, 41], [-100, 40]];
+      assert.deepEqual(
+        weatherAlertNotifyLocation({ centroid: [-99.5, 40.5], coordinates: ring }),
+        { lat: 40.5, lon: -99.5 },
+      );
+    }
+  });
+
+  it('retains valid warned areas when another ring has invalid coordinates', () => {
+    const valid = POLYGON.coordinates[0];
+    const invalid = [[-100, 40], [-99, 40], [NaN, 41], [-100, 40]];
+    assert.deepEqual(
+      weatherAlertNotifyLocation({ centroid: [-99.5, 40.5], rings: [invalid, valid] }),
+      { lat: 40.5, lon: -99.5, geometry: { type: 'Polygon', coordinates: [valid] } },
+    );
+  });
+
   it('rejects a non-numeric centroid rather than coercing it to 0,0', () => {
     // Number(null) === 0 and Number.isFinite(0) is true, so a bare isFinite
     // check publishes 0,0 in the Gulf of Guinea — the exact value the

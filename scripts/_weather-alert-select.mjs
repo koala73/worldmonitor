@@ -145,7 +145,11 @@ function isClosedLinearRing(ring) {
   // Polygon. A real ring has at least 3 distinct vertices.
   const distinct = new Set();
   for (const position of ring) {
-    if (Array.isArray(position)) distinct.add(`${position[0]},${position[1]}`);
+    // A closed ring can still contain malformed interior vertices. In
+    // particular NaN/Infinity serialize as null in webhook GeoJSON.
+    if (!Array.isArray(position)
+      || !Number.isFinite(position[0]) || !Number.isFinite(position[1])) return false;
+    distinct.add(`${position[0]},${position[1]}`);
   }
   return distinct.size >= 3;
 }
