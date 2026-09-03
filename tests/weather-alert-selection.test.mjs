@@ -632,6 +632,34 @@ describe('WMO SWIC adapter on weather:alerts:v1', () => {
     assert.equal(location.geometry, undefined);
   });
 
+  it('falls back to the country when SWIC point coordinates are not numeric values', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    for (const bad of ['', '  ', false, true, [], [12], {}, null]) {
+      const [alert] = selectSwicAlerts([swicItem({ extras: { lat: bad, lon: bad } })], members);
+      assert.equal(alert.geometryPrecision, 'country');
+      assert.deepEqual(alert.centroid, [78.96, 20.59]);
+    }
+  });
+
+  it('drops unplaceable SWIC alerts instead of coercing missing member coordinates to zero', () => {
+    for (const bad of ['', '  ', false, true, [], [12], {}, null]) {
+      const members = indexSwicMembers([{ ra: 2, members: [swicMember({ lat: bad, lng: bad })] }]);
+      assert.deepEqual(selectSwicAlerts([swicItem()], members), []);
+    }
+  });
+
+  it('retains genuine zero coordinates and numeric strings in SWIC point and country locations', () => {
+    for (const coordinate of [0, '0', ' 12.5 ']) {
+      const [point] = selectSwicAlerts([swicItem({ extras: { lat: coordinate, lon: coordinate } })]);
+      assert.equal(point.geometryPrecision, 'point');
+      assert.deepEqual(point.centroid, [Number(coordinate), Number(coordinate)]);
+      const members = indexSwicMembers([{ ra: 2, members: [swicMember({ lat: coordinate, lng: coordinate })] }]);
+      const [country] = selectSwicAlerts([swicItem()], members);
+      assert.equal(country.geometryPrecision, 'country');
+      assert.deepEqual(country.centroid, point.centroid);
+    }
+  });
+
   it('normalizes offset-free SWIC timestamps to explicit UTC instants', () => {
     const originalTimezone = process.env.TZ;
     process.env.TZ = 'America/New_York';

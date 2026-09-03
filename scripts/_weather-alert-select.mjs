@@ -613,19 +613,27 @@ export function requireSwicItems(data) {
   return data.items;
 }
 
+function swicCoordinate(value) {
+  // SWIC can supply numeric strings, but empty strings, null and booleans
+  // are missing data rather than coordinates on the equator/prime meridian.
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value);
+  return NaN;
+}
+
 function swicCentroid(item, member) {
   const coords = extractCoordinates(item?.geometry);
   if (coords.length) {
     return { coordinates: coords, centroid: calculateCentroid(coords), geometryPrecision: 'polygon' };
   }
-  const itemLat = Number(item?.lat ?? item?.latitude);
-  const itemLon = Number(item?.lon ?? item?.lng ?? item?.longitude);
+  const itemLat = swicCoordinate(item?.lat ?? item?.latitude);
+  const itemLon = swicCoordinate(item?.lon ?? item?.lng ?? item?.longitude);
   if (Number.isFinite(itemLat) && Number.isFinite(itemLon)
     && itemLat >= -90 && itemLat <= 90 && itemLon >= -180 && itemLon <= 180) {
     return { coordinates: [], centroid: [itemLon, itemLat], geometryPrecision: 'point' };
   }
-  const memberLat = Number(member?.lat);
-  const memberLon = Number(member?.lng ?? member?.lon);
+  const memberLat = swicCoordinate(member?.lat);
+  const memberLon = swicCoordinate(member?.lng ?? member?.lon);
   if (Number.isFinite(memberLat) && Number.isFinite(memberLon)
     && memberLat >= -90 && memberLat <= 90 && memberLon >= -180 && memberLon <= 180) {
     return { coordinates: [], centroid: [memberLon, memberLat], geometryPrecision: 'country' };
