@@ -92,8 +92,12 @@ jobs:
         # The version is printed below and the checker carries a canary on a
         # punctuation-sensitive slug, which is the actual protection.
         run: |
-          npm i -g mint@4.2.860
-          mint export --output "$RUNNER_TEMP/docs-export.zip"
+          npm i -g mint@4.2.866
+          if ! mint export --output "$RUNNER_TEMP/docs-export.zip"; then
+            echo "::warning::Mint export failed once; retrying once."
+            rm -f "$RUNNER_TEMP/docs-export.zip"
+            mint export --output "$RUNNER_TEMP/docs-export.zip"
+          fi
           echo "renderer: $(cat ~/.mintlify/previews/shared/mint/mint-version.txt 2>/dev/null || echo unknown)"
       - name: Unpack export
         run: unzip -q "$RUNNER_TEMP/docs-export.zip" -d "$RUNNER_TEMP/docs-export"
