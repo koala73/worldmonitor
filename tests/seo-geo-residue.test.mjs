@@ -10,6 +10,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildLlmsFullText, redactInternalApiOrigins } from '../scripts/build-llms-full.mjs';
+import { parseSitemapDocument } from '../scripts/verify-sitemaps.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -194,7 +195,7 @@ describe('GEO residue #7463', () => {
   it('regenerates llms-full when the monthly resilience snapshot refreshes', () => {
     const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
     assert.match(workflow, /npm run build:llms-full/);
-    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/llms-full\.txt/);
+    assert.match(workflow, /git add "\$snapshot_path" public\/sitemap\.xml public\/sitemap-main\.xml public\/llms-full\.txt/);
   });
 });
 
@@ -235,6 +236,51 @@ describe('GEO residue #7616 (U1 agent surfaces)', () => {
       assert.doesNotMatch(read(file), /across 190\+ countries/, `${file} must not use the legacy reach phrasing`);
       assert.doesNotMatch(read(file), /used in 190\+ countries/, `${file} must not use the legacy reach phrasing`);
     }
+  });
+});
+
+describe('GEO residue #7616 (U3 sitemap index)', () => {
+  it('serves a root sitemap index listing exactly the three robots-declared sitemaps', () => {
+    const index = parseSitemapDocument(read('public/sitemap.xml'));
+    assert.equal(index.type, 'index', 'public/sitemap.xml must be a sitemap index, not a URL set');
+    assert.deepEqual(
+      [...index.locations].sort(),
+      [
+        'https://www.worldmonitor.app/blog/sitemap-index.xml',
+        'https://www.worldmonitor.app/docs/sitemap.xml',
+        'https://www.worldmonitor.app/sitemap-main.xml',
+      ],
+      'the root index must expose the local, blog, and docs sitemaps and nothing else',
+    );
+  });
+
+  it('keeps the local URL set in sitemap-main.xml without blog/docs overlap', () => {
+    const urlset = parseSitemapDocument(read('public/sitemap-main.xml'));
+    assert.equal(urlset.type, 'urlset');
+    assert.ok(
+      urlset.locations.includes('https://www.worldmonitor.app/dashboard'),
+      'sitemap-main.xml must list the dashboard route',
+    );
+    assert.ok(
+      urlset.locations.every((loc) => !loc.includes('/blog/') && !loc.includes('/docs/')),
+      'sitemap-main.xml must not overlap the blog or docs inventories',
+    );
+  });
+
+  it('measures the local member lastmod and never fabricates foreign lastmod', () => {
+    const source = read('public/sitemap.xml');
+    const local = source.match(/<sitemap>\s*<loc>https:\/\/www\.worldmonitor\.app\/sitemap-main\.xml<\/loc>\s*(<lastmod>(\d{4}-\d{2}-\d{2})<\/lastmod>)?\s*<\/sitemap>/);
+    assert.ok(local?.[2], 'the local index member must carry a measured lastmod date');
+    assert.doesNotMatch(
+      source,
+      /blog\/sitemap-index\.xml<\/loc>\s*<lastmod>/,
+      'the blog member must not carry a fabricated lastmod',
+    );
+    assert.doesNotMatch(
+      source,
+      /docs\/sitemap\.xml<\/loc>\s*<lastmod>/,
+      'the docs member must not carry a fabricated lastmod',
+    );
   });
 });
 

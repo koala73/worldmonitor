@@ -47,10 +47,25 @@ function uniqueSorted(urls) {
 
 function getRootSitemapUrls() {
   const source = readFileSync(ROOT_SITEMAP, 'utf8');
-  const urls = [...source.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+  // /sitemap.xml is the root index: submissions follow the local URL set it
+  // lists, never the index-member URLs themselves.
+  const urlsetSource = /<sitemapindex[\s>]/i.test(source)
+    ? readLocalIndexMember(source)
+    : source;
+  const urls = [...urlsetSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
     .map((match) => decodeXml(match[1].trim()));
   if (urls.length === 0) throw new Error(`${ROOT_SITEMAP.pathname} contains no canonical URLs`);
   return urls;
+}
+
+function readLocalIndexMember(indexSource) {
+  const member = [...indexSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+    .map((match) => decodeXml(match[1].trim()))
+    .find((loc) => loc.endsWith('/sitemap-main.xml'));
+  if (!member) {
+    throw new Error(`${ROOT_SITEMAP.pathname} index lists no local sitemap-main.xml member`);
+  }
+  return readFileSync(new URL('../public/sitemap-main.xml', import.meta.url), 'utf8');
 }
 
 const ROOT_SITEMAP_URLS = getRootSitemapUrls();

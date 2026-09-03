@@ -249,9 +249,13 @@ async function fetchSitemapTree(rootSitemaps, fetchImpl, origin) {
 
     if (parsed.type === 'index') {
       for (const childUrl of parsed.locations) {
-        const childError = validateSitemapDocumentUrl(childUrl, { origin, owner });
+        // Index members are validated against their own owning family: the
+        // root index legitimately points at the blog and docs sitemaps, which
+        // would fail an inherited root-owner check.
+        const childOwner = sitemapOwner(childUrl);
+        const childError = validateSitemapDocumentUrl(childUrl, { origin, owner: childOwner });
         if (childError) inventoryErrors.push(childError);
-        else pending.push({ url: childUrl, owner });
+        else pending.push({ url: childUrl, owner: childOwner });
       }
     } else {
       for (const loc of parsed.locations) {

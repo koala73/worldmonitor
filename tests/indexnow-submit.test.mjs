@@ -166,7 +166,7 @@ describe('IndexNow submission', () => {
   });
 
   it('keeps IndexNow coverage aligned with the committed root sitemap and blog corpus', () => {
-    const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+    const sitemap = readFileSync(new URL('../public/sitemap-main.xml', import.meta.url), 'utf8');
     const sitemapUrls = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
       .map((match) => match[1].trim());
     const wwwSitemapUrls = sitemapUrls.filter((url) => new URL(url).hostname === 'www.worldmonitor.app');
@@ -202,14 +202,14 @@ describe('IndexNow submission', () => {
   });
 
   it('submits every canonical URL the sitemap publishes, for every host', () => {
-    const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+    const sitemap = readFileSync(new URL('../public/sitemap-main.xml', import.meta.url), 'utf8');
     const sitemapUrls = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((match) => match[1].trim());
     assert.ok(sitemapUrls.length > 0, 'sitemap parse produced no URLs');
 
     for (const url of sitemapUrls) {
       const host = new URL(url).hostname;
       const batch = indexNow.INDEXNOW_BATCHES.find((candidate) => candidate.host === host);
-      assert.ok(batch, `${host} appears in public/sitemap.xml but has no INDEXNOW_BATCHES entry`);
+      assert.ok(batch, `${host} appears in public/sitemap-main.xml but has no INDEXNOW_BATCHES entry`);
       assert.ok(
         batch.urls.includes(url),
         `${url} is published in the sitemap but is not in the ${host} batch, so it is never submitted`,
@@ -221,7 +221,7 @@ describe('IndexNow submission', () => {
     // Three links, each pinned by execution or exact equality rather than a
     // regex over the YAML: the gate emits the derived hosts, the submit step
     // consumes that exact output, and the loop invokes --host for each one.
-    const emitted = (await runRelevanceGate(['public/sitemap.xml'])).variant_hosts;
+    const emitted = (await runRelevanceGate(['public/sitemap-main.xml'])).variant_hosts;
     assert.equal(
       emitted,
       indexNow.INDEXNOW_VARIANT_HOSTS.join(' '),
@@ -273,7 +273,7 @@ describe('IndexNow submission', () => {
       indexNow.INDEXNOW_BATCHES.find(({ host }) => host === indexNow.INDEXNOW_VARIANT_HOSTS[0]).keyLocation,
     ).pathname.slice(1);
     const resubmits = [
-      'public/sitemap.xml',
+      'public/sitemap-main.xml',
       'scripts/build-sitemap.mjs',
       'middleware.ts',
       'src/config/variant-meta.ts',

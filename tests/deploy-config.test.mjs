@@ -34,7 +34,7 @@ const webMcpCancellationE2eSource = readFileSync(
   'utf-8',
 );
 const testWorkflowSource = readFileSync(resolve(__dirname, '../.github/workflows/test.yml'), 'utf-8');
-const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
+const sitemapSource = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
 const robotsSource = readFileSync(resolve(__dirname, '../public/robots.www.txt'), 'utf-8');
 const mainSource = readFileSync(resolve(__dirname, '../src/main.ts'), 'utf-8');
 const zodCspSource = readFileSync(resolve(__dirname, '../src/bootstrap/zod-csp.ts'), 'utf-8');
@@ -46,7 +46,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|sitemap-main\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -526,7 +526,7 @@ describe('crawlable content corpus deployment contracts', () => {
       );
       assert.ok(
         script.indexOf('npm run build:sitemap') < script.indexOf('vite build'),
-        scriptName + ' must update public/sitemap.xml before Vite copies public/ into dist/'
+        scriptName + ' must update the public sitemap index and urlset before Vite copies public/ into dist/'
       );
       // public/pro/ is a BUILD PRODUCT, not committed bytes (#6898). Vercel's
       // build command is `npm run build:full`, so if that chain stops running
@@ -563,7 +563,7 @@ describe('crawlable content corpus deployment contracts', () => {
       );
       assert.ok(
         source.indexOf('npm run build:sitemap') < source.indexOf('npx vite build'),
-        name + ' must update public/sitemap.xml before Vite copies public/ into dist/'
+        name + ' must update the public sitemap index and urlset before Vite copies public/ into dist/'
       );
       // Unlike /blog (deliberately skipped in the images), docker/nginx.conf.template
       // routes `location ^~ /pro` and `/pro/assets/`, so a self-hosted image that
@@ -1352,20 +1352,20 @@ describe('welcome landing page routing', () => {
   });
 
   it('sitemap lists dashboard routes and does not list legacy /welcome', () => {
-    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
+    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
     assert.ok(
       sitemap.includes('<loc>https://www.worldmonitor.app/dashboard</loc>'),
-      'public/sitemap.xml must list https://www.worldmonitor.app/dashboard'
+      'public/sitemap-main.xml must list https://www.worldmonitor.app/dashboard'
     );
     for (const host of ['tech', 'finance', 'commodity', 'happy', 'energy']) {
       assert.ok(
         sitemap.includes(`<loc>https://${host}.worldmonitor.app/dashboard</loc>`),
-        `public/sitemap.xml must list https://${host}.worldmonitor.app/dashboard`
+        `public/sitemap-main.xml must list https://${host}.worldmonitor.app/dashboard`
       );
     }
     assert.ok(
       !sitemap.includes('<loc>https://www.worldmonitor.app/welcome</loc>'),
-      'public/sitemap.xml must not list legacy https://www.worldmonitor.app/welcome'
+      'public/sitemap-main.xml must not list legacy https://www.worldmonitor.app/welcome'
     );
   });
 
@@ -4298,11 +4298,11 @@ describe('markdown canonical Link headers (#4999)', () => {
   }
 
   it('every sitemap-listed .md URL has the canonical Link header rule', () => {
-    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
+    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
     const mdUrls = [...sitemap.matchAll(/<loc>https:\/\/www\.worldmonitor\.app(\/[^<]+\.md)<\/loc>/g)].map((m) => m[1]);
-    assert.ok(mdUrls.length > 0, 'expected .md entries in sitemap.xml');
+    assert.ok(mdUrls.length > 0, 'expected .md entries in sitemap-main.xml');
     for (const path of mdUrls) {
-      assert.ok(MD_PAGES.includes(path), `${path} is in sitemap.xml but has no canonical Link header rule — add it to vercel.json and this test`);
+      assert.ok(MD_PAGES.includes(path), `${path} is in sitemap-main.xml but has no canonical Link header rule — add it to vercel.json and this test`);
     }
   });
 });
@@ -4359,7 +4359,7 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
     // web-search discovery surfaces (candidate fixes #1/#3 of the issue) — assert
     // them directly so a dropped sitemap entry or blog cross-link is caught here,
     // not only via the reverse #4999 sitemap->MD_PAGES sweep.
-    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap.xml'), 'utf-8');
+    const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
     const blogPost = readFileSync(
       resolve(__dirname, '../blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md'),
       'utf-8'
@@ -4372,7 +4372,7 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       }
       assert.ok(
         sitemap.includes(`https://www.worldmonitor.app${page.path}`),
-        `sitemap.xml must register ${page.path} on the www host`
+        `sitemap-main.xml must register ${page.path} on the www host`
       );
       assert.ok(blogPost.includes(page.path), `the developer blog post must cross-link ${page.path}`);
     }
