@@ -42,9 +42,14 @@ const PERSON_ENTITY_SAME_AS = [
 
 const read = (path: string) => readFileSync(new URL(`../${path}`, import.meta.url), 'utf8');
 
+// Single quotes, mixed case, and whitespace around `=` are all valid on the
+// type attribute. A double-quote-only matcher lets a conflicting block hide
+// from the producer discovery below simply by being written differently, so
+// match the same shape the rest of the repo's JSON-LD readers accept.
 function jsonLdBlocks(html: string): Record<string, any>[] {
-  return [...html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
-    .map((match) => JSON.parse(match[1]));
+  return [...html.matchAll(
+    /<script\b(?=[^>]*\btype\s*=\s*["']application\/ld\+json["'])[^>]*>([\s\S]*?)<\/script>/gi,
+  )].map((match) => JSON.parse(match[1]));
 }
 
 function blocksOfType(blocks: Record<string, any>[], type: string): Record<string, any>[] {
@@ -128,10 +133,18 @@ function jsonLdDocumentPaths(): string[] {
 }
 
 // Properties a consumer merges by UNION rather than reading as one value, so
-// they may legitimately differ per surface: the dashboard lists its own
-// alternateName/keywords, /pro advertises the Business and API tiers on top of
-// the shared offers, and featureList is rewritten per variant by
-// variant-dashboard-html.ts. Everything else on a shared `@id` must agree.
+// they may legitimately hold DIFFERENT values per surface: the dashboard lists
+// its own alternateName/keywords, /pro advertises the Business and API tiers on
+// top of the shared offers, and featureList is rewritten per variant by
+// variant-dashboard-html.ts.
+//
+// Every other property must agree wherever two surfaces both state it. Note
+// that this is about conflicting VALUES, not presence: a surface may still omit
+// a property entirely (welcome.html carries no `isPartOf`, index.html no
+// `datePublished`), and the check below only compares surfaces that both carry
+// it. Two stated values for one `@id` is the contradiction #7611 is about, so
+// `isPartOf`, `datePublished` and `dateModified` deliberately stay OUT of this
+// set even though they are absent on one surface each.
 const MAY_DIVERGE_ACROSS_SURFACES = new Set(['alternateName', 'featureList', 'keywords', 'offers']);
 
 describe('canonical schema graph', () => {

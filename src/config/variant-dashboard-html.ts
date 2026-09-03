@@ -241,28 +241,35 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   );
 
   // SoftwareApplication JSON-LD block: id, name, url, screenshot, featureList.
+  // Each anchor requires the property to sit at the node's own indentation
+  // (newline + exactly six spaces). A bare `"url": ` anchor matches the FIRST
+  // textual url after the type, which a valid reordering that moves `offers`
+  // ahead of it turns into `offers[0].url` — one match, so the ONE bound accepts
+  // it and the wrong field is silently rewritten. Nested entries sit at ten
+  // spaces, so this anchor cannot reach them: a reorder now matches zero times
+  // and replaceCounted throws instead.
   html = replaceCounted(
     html,
-    /("@type": "SoftwareApplication",[\s\S]{0,200}?"@id": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,200}?\n {6}"@id": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(`${meta.url}#software`)}`,
     ONE,
     'SoftwareApplication id',
   );
   html = replaceCounted(
     html,
-    /("@type": "SoftwareApplication",[\s\S]{0,300}?"name": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,300}?\n {6}"name": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(meta.siteName)}`,
     ONE,
     'SoftwareApplication name',
   );
   html = replaceCounted(
     html,
-    /("@type": "SoftwareApplication",[\s\S]{0,600}?"url": )"[^"]*"/g,
+    /("@type": "SoftwareApplication",[\s\S]{0,600}?\n {6}"url": )"[^"]*"/g,
     (_m, a) => `${a}${JSON.stringify(meta.url)}`,
     ONE,
     'SoftwareApplication url',
   );
-  html = replaceCounted(html, /("screenshot": )"[^"]*"/g, (_m, a) => `${a}${JSON.stringify(ogImage)}`, ONE, 'SoftwareApplication screenshot');
+  html = replaceCounted(html, /(\n {6}"screenshot": )"[^"]*"/g, (_m, a) => `${a}${JSON.stringify(ogImage)}`, ONE, 'SoftwareApplication screenshot');
   html = replaceCounted(
     html,
     /("featureList": )\[[\s\S]*?\]/g,
