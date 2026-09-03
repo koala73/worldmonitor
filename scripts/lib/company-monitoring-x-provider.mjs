@@ -5,6 +5,7 @@ import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
 const { isBlockedResolvedAddress } = require('./notification-webhook-ssrf.cjs');
+const { assertXPostBudgetAdmission } = require('./x-post-budget.cjs');
 
 const X_HANDLE = /^[A-Za-z0-9_]{1,15}$/;
 const X_ACCOUNT_ID = /^[1-9]\d{1,18}$/;
@@ -748,6 +749,7 @@ export function createXRecentSearchExecutor(options = {}) {
   const fetchComplianceEvents = options.fetchComplianceEvents;
   const now = options.now ?? Date.now;
   const storageMode = options.storageMode === 'full_text' ? 'full_text' : 'metadata_only';
+  const withReturnedPosts = options.withReturnedPosts;
   const requestCostUsdMicros = checkedNonNegativeInteger(options.requestCostUsdMicros);
   const timeoutMs = checkedNonNegativeInteger(options.timeoutMs, DEFAULT_TIMEOUT_MS);
 
@@ -788,7 +790,8 @@ export function createXRecentSearchExecutor(options = {}) {
       requestCount += 1;
       return callTimeoutMs;
     };
-    const xJson = async (url, { reserve = 0 } = {}) => {
+    const xResponse = async (url, { reserve = 0, postBudgetAdmission } = {}) => {
+      assertXPostBudgetAdmission(url, postBudgetAdmission);
       const callTimeoutMs = reserveRequest(reserve);
       let response;
       try {
@@ -808,14 +811,52 @@ export function createXRecentSearchExecutor(options = {}) {
         }
         throw new XProviderError('provider_unavailable', `X request failed: ${error?.message ?? String(error)}`);
       }
-      if (!response?.ok) {
-        throw new XProviderError(xProviderReason(response?.status ?? 503), `X returned HTTP ${response?.status ?? 503}`);
-      }
+      let body;
       try {
-        return await response.json();
+        body = await response.json();
       } catch {
+        if (!response?.ok) return { response, body: null };
         throw new XProviderError('request_rejected', 'X returned malformed JSON');
       }
+      return { response, body };
+    };
+    const requireSuccessfulXResponse = (result) => {
+      if (!result?.response?.ok) {
+        throw new XProviderError(
+          xProviderReason(result?.response?.status ?? 503),
+          `X returned HTTP ${result?.response?.status ?? 503}`,
+        );
+      }
+      return result.body;
+    };
+    const xJson = async (url, options = {}) => {
+      const result = await xResponse(url, options);
+      return requireSuccessfulXResponse(result);
+    };
+    const xPostsJson = async (url, { operation, requestedPosts, reserve = 0 }) => {
+      if (typeof withReturnedPosts !== 'function') {
+        throw new XProviderPartialError('Shared X Post budget is unavailable');
+      }
+      let outcome;
+      try {
+        outcome = await withReturnedPosts({
+          consumer: 'company-monitoring',
+          operation,
+          requestedPosts,
+          execute: (_admission, postBudgetAdmission) => xResponse(url, {
+            reserve,
+            postBudgetAdmission,
+          }),
+        });
+      } catch (error) {
+        if (error instanceof XProviderError) throw error;
+        throw new XProviderPartialError('Shared X Post budget is unavailable');
+      }
+      if (!outcome?.allowed) throw new XProviderPartialError('Shared X Post budget denied the request');
+      const result = outcome.result;
+      const body = requireSuccessfulXResponse(result);
+      if (!outcome.completed) throw new XProviderPartialError('X Post usage could not be settled');
+      return body;
     };
 
     const profileCache = new Map();
@@ -1006,7 +1047,11 @@ export function createXRecentSearchExecutor(options = {}) {
         trackedUrl.searchParams.set('tweet.fields', 'author_id,created_at,edit_history_tweet_ids,withheld');
         trackedUrl.searchParams.set('expansions', 'author_id');
         trackedUrl.searchParams.set('user.fields', 'id,name,username,protected,verified');
-        const trackedBody = await xJson(trackedUrl, { reserve: Math.max(1, packs.length) });
+        const trackedBody = await xPostsJson(trackedUrl, {
+          operation: 'tracked-post-lookup',
+          requestedPosts: trackedPosts.length,
+          reserve: Math.max(1, packs.length),
+        });
         const normalizedTracked = normalizeXRecentSearchPage(trackedBody, {
           bindings: complianceBindings,
           permittedStorage: storageMode,
@@ -1102,6 +1147,7 @@ export function createXRecentSearchExecutor(options = {}) {
     try {
       packLoop: for (let packIndex = 0; packIndex < packs.length; packIndex += 1) {
         const pack = packs[packIndex];
+        const packBindings = bindings.filter((binding) => pack.accountIds.includes(binding.accountId));
         let nextToken;
         do {
           const remaining = work.resultCap - postMap.size;
@@ -1113,14 +1159,18 @@ export function createXRecentSearchExecutor(options = {}) {
           url.searchParams.set('query', pack.query);
           url.searchParams.set('start_time', new Date(availableStart).toISOString());
           url.searchParams.set('end_time', new Date(work.windowEnd).toISOString());
-          url.searchParams.set('max_results', String(Math.max(10, Math.min(100, remaining))));
+          const maxResults = Math.max(10, Math.min(100, remaining));
+          url.searchParams.set('max_results', String(maxResults));
           url.searchParams.set('tweet.fields', 'author_id,created_at,edit_history_tweet_ids,withheld');
           url.searchParams.set('expansions', 'author_id');
           url.searchParams.set('user.fields', 'id,name,username,protected,verified');
           if (nextToken) url.searchParams.set('next_token', nextToken);
-          const body = await xJson(url);
+          const body = await xPostsJson(url, {
+            operation: 'recent-search',
+            requestedPosts: maxResults,
+          });
           const normalized = normalizeXRecentSearchPage(body, {
-            bindings: bindings.filter((binding) => pack.accountIds.includes(binding.accountId)),
+            bindings: packBindings,
             permittedStorage: storageMode,
             observedAt: checkedAt,
           });

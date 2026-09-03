@@ -1,5 +1,7 @@
 'use strict';
 
+const { assertXPostBudgetAdmission, MAX_RECEIPT_BYTES } = require('./x-post-budget.cjs');
+
 /**
  * Curated X news-account monitoring (Track A / #6654).
  *
@@ -20,31 +22,12 @@ const DEFAULT_MAX_TEXT_CHARS = 800;
 const DEFAULT_MAX_MESSAGES = 10;
 const DEFAULT_STAGGER_MS = 200;
 const MAX_TWEET_LOOKUP_IDS = 100;
+const DELETION_AUDIT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+const DEFAULT_DELETION_AUDIT_MAX_POSTS = 25;
 const MAX_429_BACKOFF_MS = 15 * 60 * 1000;
 // 1000 * 2**10 = 1_024_000ms, the first power of two at or above the 15-min
 // ceiling — so the exponential can actually reach MAX_429_BACKOFF_MS.
 const MAX_429_BACKOFF_EXPONENT = 10;
-const DEFAULT_MAX_TIMELINE_PAGES = 10;
-// A cold start (no cursor for this account) walks back `start_time` = 24h with
-// no since_id, so an active account pages until the cap. At 64 accounts that is
-// up to 64 * DEFAULT_MAX_TIMELINE_PAGES timeline requests in ONE cycle, ~10x the
-// ~64/cycle the spend model is sized for — and it re-triggers on every relay
-// outage longer than the poll-state TTL, not just the first deploy.
-// One page is all a cold start needs: the newest page establishes the cursor
-// (see "establishes since_id from newest pages when the first poll hits the page
-// cap"), and the next cycle pages forward normally from there. Backfilling 24h
-// of history was never the goal — this is an early-signal feed.
-const DEFAULT_COLD_START_TIMELINE_PAGES = 1;
-// The per-account page cap bounds one account and nothing in aggregate. The
-// realistic trigger is outage catch-up, not an organic burst: the poll-state key
-// lives 90 minutes, so any outage between the poll interval and that TTL leaves
-// every cursor intact, every account takes the WARM branch at the full page
-// limit, and one cycle can spend ~640 timeline requests against a model sized
-// for ~64. Two requests per account is the worst honest cycle we ever expect —
-// the very first poll, where 47 of the 64 accounts also need a username lookup,
-// costs 111 — so the budget absorbs a cold start while cutting the catch-up
-// spike ~5x. Timeline pages, username lookups and the deletion lookup all draw
-// on it: they bill the same shared X quota.
 const DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT = 2;
 // `cycleComplete === false` becomes sourceState 'degraded' in ais-relay, which
 // api/health.js reports as xFeed SEED_ERROR. Demanding zero failures let ONE
@@ -207,7 +190,9 @@ function normalizeXPost(tweet, account, options = {}) {
   const handle = normalizeHandle(account?.handle);
   if (!postId || !handle) return null;
   const textRaw = toText(tweet?.text);
-  const createdAt = tweet?.created_at ? new Date(tweet.created_at).toISOString() : new Date().toISOString();
+  const createdAtMs = tweet?.created_at ? Date.parse(String(tweet.created_at)) : Date.now();
+  if (!Number.isFinite(createdAtMs)) return null;
+  const createdAt = new Date(createdAtMs).toISOString();
   const metrics = tweet?.public_metrics && typeof tweet.public_metrics === 'object' ? tweet.public_metrics : {};
   const referenced = Array.isArray(tweet?.referenced_tweets) ? tweet.referenced_tweets : [];
   const isReply = referenced.some((ref) => ref && ref.type === 'replied_to');
@@ -237,6 +222,132 @@ function normalizeXPost(tweet, account, options = {}) {
     storageState: 'metadata_only',
     contentState: 'active',
   };
+}
+
+function compactTimelineItem(item) {
+  if (!item) return null;
+  return {
+    postId: item.postId,
+    ts: item.ts,
+    text: item.text.slice(0, DEFAULT_MAX_TEXT_CHARS),
+    lang: item.lang,
+    hasMedia: item.hasMedia,
+    isReply: item.isReply,
+    isQuote: item.isQuote,
+    likeCount: item.likeCount,
+    replyCount: item.replyCount,
+    repostCount: item.repostCount,
+  };
+}
+
+function expandTimelineItem(item, account) {
+  if (!item) return null;
+  const handle = normalizeHandle(account?.handle);
+  return {
+    id: `${handle}:${item.postId}`,
+    postId: item.postId,
+    source: 'x',
+    account: handle,
+    accountId: normalizeAccountId(account?.accountId) || '',
+    accountTitle: account?.label || handle,
+    sourceName: account?.sourceName || account?.label || handle,
+    url: permalinkFor(handle, item.postId),
+    ts: item.ts,
+    text: item.text,
+    topic: account?.topic || 'other',
+    tags: [account?.region].filter(Boolean),
+    lang: item.lang,
+    hasMedia: item.hasMedia,
+    isReply: item.isReply,
+    isQuote: item.isQuote,
+    likeCount: item.likeCount,
+    replyCount: item.replyCount,
+    repostCount: item.repostCount,
+    earlySignal: true,
+    storageState: 'metadata_only',
+    contentState: 'active',
+  };
+}
+
+function truncateJsonString(value, maxPayloadBytes) {
+  const characters = Array.from(value);
+  let low = 0;
+  let high = characters.length;
+  while (low < high) {
+    const middle = Math.ceil((low + high) / 2);
+    const bytes = Buffer.byteLength(JSON.stringify(characters.slice(0, middle).join(''))) - 2;
+    if (bytes <= maxPayloadBytes) low = middle;
+    else high = middle - 1;
+  }
+  return characters.slice(0, low).join('');
+}
+
+function fitTimelineReceipt(receipt) {
+  if (Buffer.byteLength(JSON.stringify(receipt)) <= MAX_RECEIPT_BYTES) return receipt;
+  const bounded = {
+    ...receipt,
+    posts: receipt.posts.map((post) => ({
+      ...post,
+      item: post.item ? { ...post.item, text: '' } : null,
+    })),
+  };
+  let remainingBytes = MAX_RECEIPT_BYTES - Buffer.byteLength(JSON.stringify(bounded));
+  if (remainingBytes < 0) return null;
+  const textPosts = receipt.posts.filter((post) => post.item);
+  let remainingPosts = textPosts.length;
+  for (let index = 0; index < receipt.posts.length; index += 1) {
+    const source = receipt.posts[index];
+    if (!source.item) continue;
+    const textBudget = Math.floor(remainingBytes / remainingPosts);
+    const text = truncateJsonString(source.item.text, textBudget);
+    bounded.posts[index].item.text = text;
+    remainingBytes -= Buffer.byteLength(JSON.stringify(text)) - 2;
+    remainingPosts -= 1;
+  }
+  return bounded;
+}
+
+function buildTimelineReceipt({ account, accountId, sinceId, body, maxTextChars }) {
+  const normalizedAccountId = normalizeAccountId(accountId);
+  const normalizedSinceId = normalizeAccountId(sinceId) || '';
+  if (!normalizedAccountId || !body || typeof body !== 'object' || Array.isArray(body)) return null;
+  const boundAccount = { ...account, accountId: normalizedAccountId };
+  const posts = (Array.isArray(body.data) ? body.data : []).slice(0, 100).map((tweet) => ({
+    id: normalizeAccountId(tweet?.id) || '',
+    item: compactTimelineItem(normalizeXPost(tweet, boundAccount, { maxTextChars })),
+  }));
+  return fitTimelineReceipt({
+    version: 1,
+    accountId: normalizedAccountId,
+    sinceId: normalizedSinceId,
+    posts,
+    resourceError: (describeResourceError(body) || '').slice(0, 500),
+  });
+}
+
+function normalizeTimelineReceipt(receipt, expectedAccountId) {
+  if (!receipt || receipt.version !== 1 || typeof receipt !== 'object' || Array.isArray(receipt)) return null;
+  const accountId = normalizeAccountId(receipt.accountId);
+  const sinceId = normalizeAccountId(receipt.sinceId) || '';
+  const posts = receipt.posts;
+  const resourceError = receipt.resourceError;
+  if (accountId !== normalizeAccountId(expectedAccountId)
+    || !Array.isArray(posts) || posts.length > 100
+    || typeof resourceError !== 'string' || resourceError.length > 500
+    || posts.some((post) => !post || typeof post !== 'object' || Array.isArray(post)
+      || (post.id !== '' && !normalizeAccountId(post.id))
+      || (post.item !== null && (!post.item || typeof post.item !== 'object' || Array.isArray(post.item)
+        || normalizeAccountId(post.item.postId) !== post.id
+        || !Number.isFinite(Date.parse(post.item.ts))
+        || typeof post.item.text !== 'string' || post.item.text.length > DEFAULT_MAX_TEXT_CHARS
+        || typeof post.item.lang !== 'string'
+        || typeof post.item.hasMedia !== 'boolean'
+        || typeof post.item.isReply !== 'boolean'
+        || typeof post.item.isQuote !== 'boolean'
+        || !Number.isFinite(post.item.likeCount)
+        || !Number.isFinite(post.item.replyCount)
+        || !Number.isFinite(post.item.repostCount))))) return null;
+  return { version: 1, accountId, sinceId, posts, resourceError };
 }
 
 function derivedAlertFacts(item) {
@@ -344,33 +455,57 @@ function copyPolledAtMap(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
   for (const [handle, at] of Object.entries(value)) {
     const normalizedHandle = normalizeHandle(handle);
-    const ms = Math.max(0, Number(at) || 0);
+    const ms = toMs(at);
     if (normalizedHandle && ms > 0) result[normalizedHandle] = ms;
   }
   return result;
 }
 
-function copyCatchupMap(value) {
-  const result = Object.create(null);
-  if (!value || typeof value !== 'object' || Array.isArray(value)) return result;
-  for (const [rawAccountId, rawCatchup] of Object.entries(value)) {
-    const accountId = normalizeAccountId(rawAccountId);
-    if (!accountId || !rawCatchup || typeof rawCatchup !== 'object' || Array.isArray(rawCatchup)) continue;
-    const sinceId = normalizeAccountId(rawCatchup.sinceId);
-    const paginationToken = String(rawCatchup.paginationToken || '').trim();
-    const newestPostId = normalizeAccountId(rawCatchup.newestPostId) || sinceId;
-    if (sinceId && paginationToken) {
-      result[accountId] = { sinceId, paginationToken, newestPostId };
-    }
-  }
-  return result;
+function toMs(value) {
+  return Math.max(0, Number(value) || 0);
+}
+
+function toCount(value) {
+  return Math.max(0, Math.floor(Number(value) || 0));
+}
+
+function normalizeLastCycleUsage(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  return {
+    requestsUsed: toCount(value.requestsUsed),
+    requestLimit: toCount(value.requestLimit),
+    postsRead: toCount(value.postsRead),
+    postReadLimit: toCount(value.postReadLimit),
+  };
+}
+
+function normalizePostBudget(value) {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const numeric = (name) => toCount(value[name]);
+  return {
+    available: value.available === true,
+    day: typeof value.day === 'string' ? value.day : '',
+    month: typeof value.month === 'string' ? value.month : '',
+    dailyLimit: numeric('dailyLimit'),
+    dailyUsed: numeric('dailyUsed'),
+    dailyRemaining: numeric('dailyRemaining'),
+    dailyCoverageHeld: numeric('dailyCoverageHeld'),
+    dailySpendableRemaining: numeric('dailySpendableRemaining'),
+    monthlyLimit: numeric('monthlyLimit'),
+    monthlyUsed: numeric('monthlyUsed'),
+    monthlyRemaining: numeric('monthlyRemaining'),
+    monthlyCostUsdMicros: numeric('monthlyCostUsdMicros'),
+    projectedMonthlyPosts: numeric('projectedMonthlyPosts'),
+    projectedMonthlyCostUsdMicros: numeric('projectedMonthlyCostUsdMicros'),
+    exhausted: value.exhausted === true,
+  };
 }
 
 function normalizeCoverage(value, expectedAccounts = 0) {
-  const expected = Math.max(0, Math.floor(Number(value?.expected ?? expectedAccounts) || 0));
-  const polled = Math.max(0, Math.floor(Number(value?.polled) || 0));
-  const failed = Math.max(0, Math.floor(Number(value?.failed) || 0));
-  const attempted = Math.max(0, Math.floor(Number(value?.attempted) || 0));
+  const expected = toCount(value?.expected ?? expectedAccounts);
+  const polled = toCount(value?.polled);
+  const failed = toCount(value?.failed);
+  const attempted = toCount(value?.attempted);
   return {
     expected,
     polled,
@@ -392,8 +527,10 @@ function buildXPollState(state, { expectedAccounts = 0 } = {}) {
     generation: Math.max(0, Math.floor(Number(state?.generation) || 0)),
     cursorByAccountId: copyCursorMap(state?.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(state?.accountIdByHandle),
-    catchupByAccountId: copyCatchupMap(state?.catchupByAccountId),
     lastPolledAtByHandle: copyPolledAtMap(state?.lastPolledAtByHandle),
+    lastDeletionAuditAt: Math.max(0, Number(state?.lastDeletionAuditAt) || 0),
+    lastCycleUsage: normalizeLastCycleUsage(state?.lastCycleUsage),
+    postBudget: normalizePostBudget(state?.postBudget),
     lookupOffset: Math.max(0, Math.floor(Number(state?.lookupOffset) || 0)),
     accountOffset: Math.max(0, Math.floor(Number(state?.accountOffset) || 0)),
     lastPollAt,
@@ -437,8 +574,10 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
     generation: Math.max(0, Math.floor(Number(validSnapshot ? snapshot.generation : pollState.generation) || 0)),
     cursorByAccountId: copyCursorMap(pollState.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(pollState.accountIdByHandle),
-    catchupByAccountId: copyCatchupMap(pollState.catchupByAccountId),
     lastPolledAtByHandle: copyPolledAtMap(pollState.lastPolledAtByHandle),
+    lastDeletionAuditAt: Math.max(0, Number(pollState.lastDeletionAuditAt) || 0),
+    lastCycleUsage: normalizeLastCycleUsage(pollState.lastCycleUsage),
+    postBudget: normalizePostBudget(pollState.postBudget),
     items: validSnapshot ? snapshot.items.filter((item) => item && typeof item === 'object').slice(0, itemLimit) : [],
     lookupOffset: Math.max(0, Math.floor(Number(pollState.lookupOffset) || 0)),
     accountOffset: Math.max(0, Math.floor(Number(pollState.accountOffset) || 0)),
@@ -456,7 +595,7 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
  *
  * Split by who owns each field:
  *
- * - Cursors, id map, catchup and offsets come from REDIS. It is the shared
+ * - Cursors, id map, audit state and offsets come from REDIS. It is the shared
  *   source of truth across replicas, and buildXPollState writes the whole cursor
  *   map back — so starting from stale in-process values is what rewinds a peer's
  *   since_id.
@@ -474,16 +613,16 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
  * serving state (items, coverage) with poll bookkeeping.
  */
 function mergeRefreshedPollState(current, refreshed) {
-  const toMs = (value) => Math.max(0, Number(value) || 0);
-  const toCount = (value) => Math.max(0, Math.floor(Number(value) || 0));
   const currentDeadline = toMs(current?.rateLimitedUntil);
   const currentCause = normalizeBackoffCause(current?.backoffCause);
   if (!refreshed || typeof refreshed !== 'object') {
     return {
       cursorByAccountId: { ...(current?.cursorByAccountId || {}) },
       accountIdByHandle: { ...(current?.accountIdByHandle || {}) },
-      catchupByAccountId: { ...(current?.catchupByAccountId || {}) },
       lastPolledAtByHandle: { ...(current?.lastPolledAtByHandle || {}) },
+      lastDeletionAuditAt: toMs(current?.lastDeletionAuditAt),
+      lastCycleUsage: normalizeLastCycleUsage(current?.lastCycleUsage),
+      postBudget: normalizePostBudget(current?.postBudget),
       lookupOffset: toCount(current?.lookupOffset),
       accountOffset: toCount(current?.accountOffset),
       rateLimitedUntil: currentDeadline,
@@ -502,7 +641,6 @@ function mergeRefreshedPollState(current, refreshed) {
   return {
     cursorByAccountId: copyCursorMap(refreshed.cursorByAccountId),
     accountIdByHandle: copyAccountIdMap(refreshed.accountIdByHandle),
-    catchupByAccountId: copyCatchupMap(refreshed.catchupByAccountId),
     // Merge, never replace: a cycle only stamps the accounts it actually
     // attempted, so a bare copy of the refreshed map would forget every handle
     // this cycle skipped and make them all due again next tick — reinstating the
@@ -511,6 +649,9 @@ function mergeRefreshedPollState(current, refreshed) {
       ...(current?.lastPolledAtByHandle || {}),
       ...(refreshed.lastPolledAtByHandle || {}),
     }),
+    lastDeletionAuditAt: Math.max(toMs(current?.lastDeletionAuditAt), toMs(refreshed.lastDeletionAuditAt)),
+    lastCycleUsage: normalizeLastCycleUsage(refreshed.lastCycleUsage ?? current?.lastCycleUsage),
+    postBudget: normalizePostBudget(refreshed.postBudget ?? current?.postBudget),
     lookupOffset: toCount(refreshed.lookupOffset),
     accountOffset: toCount(refreshed.accountOffset),
     rateLimitedUntil,
@@ -692,7 +833,12 @@ function buildTweetsLookupUrl(ids) {
   return { url, ids: unique };
 }
 
-async function xFetchJson(fetchImpl, url, bearerToken, { timeoutMs = 15_000, signal } = {}) {
+async function xFetchJson(fetchImpl, url, bearerToken, {
+  timeoutMs = 15_000,
+  signal,
+  postBudgetAdmission,
+} = {}) {
+  assertXPostBudgetAdmission(url, postBudgetAdmission);
   const timeoutSignal = AbortSignal.timeout(timeoutMs);
   const response = await fetchImpl(url, {
     method: 'GET',
@@ -716,6 +862,25 @@ function sleep(ms, wait = (delay) => new Promise((resolve) => setTimeout(resolve
   return wait(ms);
 }
 
+function timelinePostLimit(account) {
+  return Math.max(5, Math.min(100, Number(account?.maxMessages) || DEFAULT_MAX_MESSAGES));
+}
+
+function deletionAuditIsDue(lastDeletionAuditAt, nowMs) {
+  const last = Math.max(0, Number(lastDeletionAuditAt) || 0);
+  return last === 0 || nowMs < last || (nowMs - last) >= DELETION_AUDIT_INTERVAL_MS;
+}
+
+function dailyCoveragePostLimit(accounts, includeDeletionAudit) {
+  const accountCoverage = accounts.reduce((total, account) => total + timelinePostLimit(account), 0);
+  return accountCoverage + (includeDeletionAudit ? DEFAULT_DELETION_AUDIT_MAX_POSTS : 0);
+}
+
+function utcDayStartMs(day, fallback) {
+  const value = Date.parse(`${day}T00:00:00.000Z`);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 /**
  * One poll cycle: resolve missing account IDs, fetch since_id timelines,
  * merge/dedup, then optionally tombstone IDs missing from a lookup.
@@ -731,8 +896,7 @@ async function pollXFeed({
   maxTextChars = DEFAULT_MAX_TEXT_CHARS,
   staggerMs = DEFAULT_STAGGER_MS,
   lookupDeletions = true,
-  maxTimelinePages = DEFAULT_MAX_TIMELINE_PAGES,
-  coldStartMaxTimelinePages = DEFAULT_COLD_START_TIMELINE_PAGES,
+  withReturnedPosts,
   maxCycleRequests = null,
   maxFailedAccounts = null,
   signal,
@@ -743,11 +907,12 @@ async function pollXFeed({
   const nextState = {
     cursorByAccountId: { ...(state?.cursorByAccountId || {}) },
     accountIdByHandle: { ...(state?.accountIdByHandle || {}) },
-    catchupByAccountId: copyCatchupMap(state?.catchupByAccountId),
     lastPolledAtByHandle: copyPolledAtMap(state?.lastPolledAtByHandle),
     items: Array.isArray(state?.items) ? [...state.items] : [],
     lookupOffset: Number(state?.lookupOffset) || 0,
     accountOffset: Number(state?.accountOffset) || 0,
+    lastDeletionAuditAt: Math.max(0, Number(state?.lastDeletionAuditAt) || 0),
+    postBudget: normalizePostBudget(state?.postBudget),
     lastError: null,
     rateLimitedUntil: activeBackoffDeadline,
     rateLimitAttempt: Math.max(0, Math.floor(Number(state?.rateLimitAttempt) || 0)),
@@ -765,6 +930,7 @@ async function pollXFeed({
   }
 
   const configuredAccounts = Array.isArray(accounts) ? accounts : [];
+  const dailyCoverageLimit = dailyCoveragePostLimit(configuredAccounts, lookupDeletions);
   const startingOffset = configuredAccounts.length
     ? ((nextState.accountOffset % configuredAccounts.length) + configuredAccounts.length) % configuredAccounts.length
     : 0;
@@ -778,19 +944,8 @@ async function pollXFeed({
   // cycle permanently incomplete, holding the feed at partial coverage forever.
   // A not-due account is walked past, counted, and costs no request.
   const pollCycleNow = now();
-  const pageLimit = Math.max(1, Math.floor(Number(maxTimelinePages) || DEFAULT_MAX_TIMELINE_PAGES));
-  // Never exceed an explicitly-requested page limit, even for a cold start.
-  const coldStartPageLimit = Math.min(
-    pageLimit,
-    Math.max(1, Math.floor(Number(coldStartMaxTimelinePages) || DEFAULT_COLD_START_TIMELINE_PAGES)),
-  );
-  // One budget for the whole cycle. An explicit override wins outright, the way
-  // an explicit page limit does; the derived value carries a floor of one
-  // account's full window plus the deletion lookup, because a budget smaller
-  // than that would let the head of the rotation starve every cycle and no
-  // catchup window would ever drain.
   const cycleRequestBudget = maxCycleRequests == null
-    ? Math.max(pageLimit + 1, configuredAccounts.length * DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT)
+    ? Math.max(2, configuredAccounts.length * DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT)
     : Math.max(1, Math.floor(Number(maxCycleRequests) || 0));
   const failureBudget = maxFailedAccounts == null
     ? Math.min(
@@ -800,12 +955,40 @@ async function pollXFeed({
     : Math.max(0, Math.floor(Number(maxFailedAccounts) || 0));
   let requestsUsed = 0;
   let budgetTruncated = false;
+  let postsRead = 0;
+  let postReadLimit = 0;
+  const receiptAcks = [];
   // Every X call in the cycle goes through here: timeline pages, username
   // lookups and the deletion lookup all bill the same quota, so all three must
   // draw on one counter for the budget to mean anything.
-  const countedFetch = (url) => {
+  const countedFetch = (url, options = {}) => {
     requestsUsed += 1;
-    return xFetchJson(fetchImpl, url, bearerToken, { signal });
+    return xFetchJson(fetchImpl, url, bearerToken, { signal, ...options });
+  };
+  const executePostRead = async ({ execute, ...budgetRequest }) => {
+    if (typeof withReturnedPosts !== 'function') {
+      return { allowed: false, reason: 'budget_unavailable' };
+    }
+    let outcome;
+    try {
+      outcome = await withReturnedPosts({
+        ...budgetRequest,
+        consumer: 'curated-feed',
+        coverageTotal: dailyCoverageLimit,
+        execute: async (admission, postBudgetAdmission) => {
+          postReadLimit += budgetRequest.requestedPosts;
+          return execute(admission, postBudgetAdmission);
+        },
+      });
+    } catch (error) {
+      if (error?.xPostBudgetStatus) nextState.postBudget = normalizePostBudget(error.xPostBudgetStatus);
+      throw error;
+    }
+    if (outcome?.status) nextState.postBudget = normalizePostBudget(outcome.status);
+    if (outcome?.completed === true && Number.isSafeInteger(outcome.returnedPosts)) {
+      postsRead += outcome.returnedPosts;
+    }
+    return outcome || { allowed: false, reason: 'budget_unavailable' };
   };
   const newItems = [];
   for (const account of orderedAccounts) {
@@ -867,121 +1050,104 @@ async function pollXFeed({
         nextState.accountIdByHandle[account.handle] = accountId;
       }
 
-      // Keep the original cursor fixed throughout pagination. Advancing it
-      // mid-window would skip older pages if the later request fails.
-      const catchup = nextState.catchupByAccountId[accountId];
-      const sinceId = catchup?.sinceId || nextState.cursorByAccountId[accountId];
-      let paginationToken = catchup?.paginationToken || '';
-      let pageCount = 0;
-      let completeWindow = false;
-      let pageFailed = false;
-      let budgetStopped = false;
-      const accountItems = [];
-      let newestPostId = catchup?.newestPostId || sinceId || '';
+      if (requestsUsed >= cycleRequestBudget) {
+        budgetTruncated = true;
+        nextState.lastError = `cycle request budget ${cycleRequestBudget} exhausted before timeline @${account.handle}`;
+        break;
+      }
+
+      const sinceId = nextState.cursorByAccountId[accountId];
+      const maxResults = timelinePostLimit(account);
       const boundAccount = { ...account, accountId };
-      // A cold start only needs enough pages to establish the cursor; a resumed
-      // window pages normally. Keeps the first cycle near the per-cycle spend
-      // budget instead of ~10x it.
-      const effectivePageLimit = sinceId ? pageLimit : coldStartPageLimit;
-      while (pageCount < effectivePageLimit) {
-        if (requestsUsed >= cycleRequestBudget) {
-          budgetStopped = true;
-          break;
-        }
-        const url = buildUserTimelineUrl({
+      const url = buildUserTimelineUrl({
+        accountId,
+        sinceId,
+        maxResults,
+        startTime: sinceId ? '' : new Date(now() - 24 * 60 * 60 * 1000).toISOString(),
+      });
+      const outcome = await executePostRead({
+        operation: 'timeline',
+        requestedPosts: maxResults,
+        coverageId: `timeline:${accountId || attemptedHandle}`,
+        coverageUnitPosts: maxResults,
+        receiptScope: `timeline:${accountId}`,
+        receiptFromResult: ({ result }) => buildTimelineReceipt({
+          account: boundAccount,
           accountId,
           sinceId,
-          maxResults: account.maxMessages || DEFAULT_MAX_MESSAGES,
-          paginationToken,
-          startTime: sinceId ? '' : new Date(now() - 24 * 60 * 60 * 1000).toISOString(),
-        });
-        const { response, body } = await countedFetch(url);
-        if (response.status === 429) {
-          recordRateLimit(nextState, response.headers, now);
-          nextState.lastError = `rate limited polling @${account.handle}`;
-          break;
-        }
-        if (isAuthFailureStatus(response.status)) {
-          recordAuthFailure(nextState, response.status, `polling @${account.handle}`, now);
-          break;
-        }
-        // Accounts with a pinned id skip the lookup entirely, so a breaker on
-        // only that leg would leave this one burning the whole roster.
-        if (isCreditsExhaustedStatus(response.status)) {
-          // recordCreditsExhausted sets rateLimitedUntil, which the check after
-          // this page loop already uses to stop admitting accounts — no separate
-          // flag, and the catch-up hand-off is shared with the rate-limit path.
-          recordCreditsExhausted(nextState, `polling @${account.handle}`, now);
-          break;
-        }
-        if (!response.ok) {
-          nextState.accountsFailed += 1;
-          nextState.lastError = `timeline @${account.handle} failed: HTTP ${response.status}`;
-          pageFailed = true;
-          break;
-        }
-        // A 200 carrying only `errors` means the account itself is unreadable
-        // (protected / suspended / renamed away). Falling through would record
-        // an empty-but-complete window and retire the account silently.
-        const resourceError = describeResourceError(body);
-        if (resourceError) {
-          nextState.accountsFailed += 1;
-          nextState.lastError = `timeline @${account.handle} unreadable: ${resourceError}`;
-          pageFailed = true;
-          break;
-        }
-        const tweets = Array.isArray(body?.data) ? body.data : [];
-        for (const tweet of tweets) {
-          const item = normalizeXPost(tweet, boundAccount, { maxTextChars });
-          if (!item) continue;
-          accountItems.push(item);
-          if (!newestPostId || BigInt(item.postId) > BigInt(newestPostId)) newestPostId = item.postId;
-        }
-        paginationToken = typeof body?.meta?.next_token === 'string' ? body.meta.next_token : '';
-        pageCount += 1;
-        if (!paginationToken) {
-          completeWindow = true;
-          break;
-        }
-      }
-      if (nextState.rateLimitedUntil) {
-        if (sinceId && paginationToken) {
-          nextState.catchupByAccountId[accountId] = { sinceId, paginationToken, newestPostId };
-          newItems.push(...accountItems);
-        }
-        break;
-      }
-      if (budgetStopped) {
-        // Mirror of the rate-limit break: hand the unfinished window to catchup
-        // so the next cycle resumes exactly here instead of re-paging it, then
-        // stop admitting accounts. Deferred work is NOT a failure, so
-        // accountsFailed stays untouched — this account is attempted-but-not-
-        // polled, which coverage already reports accurately.
-        if (sinceId && paginationToken) {
-          nextState.catchupByAccountId[accountId] = { sinceId, paginationToken, newestPostId };
-          newItems.push(...accountItems);
-        }
+          body: result?.body,
+          maxTextChars,
+        }),
+        execute: (_admission, postBudgetAdmission) => countedFetch(url, { postBudgetAdmission }),
+      });
+      if (outcome?.allowed !== true) {
         budgetTruncated = true;
-        nextState.lastError = `cycle request budget ${cycleRequestBudget} exhausted mid-window on @${account.handle}; resuming next cycle`;
+        nextState.lastError = `X Post budget ${outcome?.reason || 'unavailable'}; deferred ${orderedAccounts.length - nextState.accountsPolled} accounts`;
         break;
       }
-      if (pageFailed) {
-        if (sinceId && paginationToken) {
-          nextState.catchupByAccountId[accountId] = { sinceId, paginationToken, newestPostId };
-          newItems.push(...accountItems);
-        }
-        await sleep(staggerMs, wait);
-        continue;
+
+      const receipt = normalizeTimelineReceipt(outcome.receipt, accountId);
+      const response = outcome.result?.response || (receipt
+        ? { ok: true, status: 200, headers: new Headers() }
+        : null);
+      const settlementConfirmed = outcome.completed === true;
+      if (!response) {
+        budgetTruncated = true;
+        nextState.lastError = 'X Post receipt was unavailable after settlement; stopped polling';
+        break;
       }
-      if (!completeWindow && sinceId) {
-        nextState.catchupByAccountId[accountId] = { sinceId, paginationToken, newestPostId };
-        newItems.push(...accountItems);
+      if (response.status === 429) {
+        recordRateLimit(nextState, response.headers, now);
+        nextState.lastError = `rate limited polling @${account.handle}`;
+        break;
+      }
+      if (isAuthFailureStatus(response.status)) {
+        recordAuthFailure(nextState, response.status, `polling @${account.handle}`, now);
+        break;
+      }
+      if (isCreditsExhaustedStatus(response.status)) {
+        recordCreditsExhausted(nextState, `polling @${account.handle}`, now);
+        break;
+      }
+      if (!response.ok) {
         nextState.accountsFailed += 1;
-        nextState.lastError = `timeline @${account.handle} exceeded ${pageLimit} page limit`;
+        nextState.lastError = `timeline @${account.handle} failed: HTTP ${response.status}`;
         await sleep(staggerMs, wait);
         continue;
       }
-      delete nextState.catchupByAccountId[accountId];
+      if (!settlementConfirmed) {
+        budgetTruncated = true;
+        nextState.lastError = 'X Post budget settlement failed; retained the full reservation and stopped polling';
+        break;
+      }
+      if (!receipt || !outcome.receiptAck) {
+        budgetTruncated = true;
+        nextState.lastError = 'X Post receipt was invalid after settlement; stopped polling';
+        break;
+      }
+      receiptAcks.push(outcome.receiptAck);
+      const resourceError = receipt.resourceError;
+      if (resourceError) {
+        nextState.accountsFailed += 1;
+        nextState.lastError = `timeline @${account.handle} unreadable: ${resourceError}`;
+        await sleep(staggerMs, wait);
+        continue;
+      }
+
+      const accountItems = [];
+      let newestPostId = sinceId || receipt.sinceId || '';
+      if (receipt.sinceId && BigInt(receipt.sinceId) > BigInt(newestPostId)) {
+        newestPostId = receipt.sinceId;
+      }
+      for (const post of receipt.posts) {
+        const rawPostId = normalizeAccountId(post.id);
+        if (rawPostId && (!newestPostId || BigInt(rawPostId) > BigInt(newestPostId))) {
+          newestPostId = rawPostId;
+        }
+        const item = expandTimelineItem(post.item, boundAccount);
+        if (!item) continue;
+        accountItems.push(item);
+      }
       newItems.push(...accountItems);
       if (newestPostId) nextState.cursorByAccountId[accountId] = newestPostId;
       nextState.accountsPolled += 1;
@@ -1013,41 +1179,78 @@ async function pollXFeed({
     && !budgetTruncated
     && !nextState.rateLimitedUntil;
 
-  // The deletion lookup bills the same quota, so it only runs while the budget
-  // still has room. A truncated cycle is already `complete: false`, so skipping
-  // it never changes the health verdict.
-  if (lookupDeletions && nextState.items.length && !nextState.rateLimitedUntil && requestsUsed < cycleRequestBudget) {
+  if (
+    lookupDeletions
+    && deletionAuditIsDue(nextState.lastDeletionAuditAt, pollCycleNow)
+    && nextState.items.length
+    && !nextState.rateLimitedUntil
+    && requestsUsed < cycleRequestBudget
+  ) {
     const activeIds = nextState.items
       .filter((item) => item.contentState !== 'deleted')
       .map((item) => item.postId)
       .filter(Boolean);
-    const offset = Number(state?.lookupOffset) || 0;
+    const offset = nextState.lookupOffset;
     const rotated = activeIds.length
       ? [...activeIds.slice(offset % activeIds.length), ...activeIds.slice(0, offset % activeIds.length)]
       : [];
     if (rotated.length) {
-      const { url, ids } = buildTweetsLookupUrl(rotated);
+      const { url, ids } = buildTweetsLookupUrl(rotated.slice(0, DEFAULT_DELETION_AUDIT_MAX_POSTS));
       try {
-        const { response, body } = await countedFetch(url);
-        if (response.status === 429) {
-          recordRateLimit(nextState, response.headers, now);
-          nextState.lastError = 'rate limited during deletion lookup';
-          nextState.cycleComplete = false;
-        } else if (isAuthFailureStatus(response.status)) {
-          recordAuthFailure(nextState, response.status, 'during deletion lookup', now);
-          nextState.cycleComplete = false;
-        } else if (isCreditsExhaustedStatus(response.status)) {
-          recordCreditsExhausted(nextState, 'during deletion lookup', now);
-          nextState.cycleComplete = false;
-        } else if (response.status === 200) {
-          const missing = collectDeletedTweetIds(body, ids);
-          if (missing.length) nextState.items = tombstonePosts(nextState.items, missing, now());
-          nextState.lookupOffset = activeIds.length ? (offset + MAX_TWEET_LOOKUP_IDS) % activeIds.length : 0;
+        const outcome = await executePostRead({
+          operation: 'deletion-lookup',
+          requestedPosts: ids.length,
+          coverageId: 'deletion-audit',
+          coverageUnitPosts: DEFAULT_DELETION_AUDIT_MAX_POSTS,
+          oncePerDay: true,
+          execute: (admission, postBudgetAdmission) => {
+            nextState.lastDeletionAuditAt = utcDayStartMs(admission?.reservation?.period?.day, now());
+            return countedFetch(url, { postBudgetAdmission });
+          },
+        });
+        if (outcome?.allowed !== true) {
+          if (outcome?.reason === 'already_run') {
+            nextState.lastDeletionAuditAt = utcDayStartMs(outcome?.status?.day, now());
+            nextState.cycleComplete = nextState.cycleComplete && !budgetTruncated;
+          } else {
+            budgetTruncated = true;
+            nextState.cycleComplete = false;
+            nextState.lastError = `X Post budget ${outcome?.reason || 'unavailable'}; deletion audit deferred`;
+          }
         } else {
-          nextState.cycleComplete = false;
-          nextState.lastError = `deletion lookup failed: HTTP ${response.status}`;
+          const { response, body } = outcome.result || {};
+          const settlementConfirmed = outcome.completed === true;
+          if (!settlementConfirmed) {
+            budgetTruncated = true;
+            nextState.cycleComplete = false;
+            nextState.lastError = 'X Post budget settlement failed after deletion audit; retained the full reservation';
+          }
+          if (response.status === 429) {
+            recordRateLimit(nextState, response.headers, now);
+            nextState.lastError = 'rate limited during deletion lookup';
+            nextState.cycleComplete = false;
+          } else if (isAuthFailureStatus(response.status)) {
+            recordAuthFailure(nextState, response.status, 'during deletion lookup', now);
+            nextState.cycleComplete = false;
+          } else if (isCreditsExhaustedStatus(response.status)) {
+            recordCreditsExhausted(nextState, 'during deletion lookup', now);
+            nextState.cycleComplete = false;
+          } else if (response.status === 200) {
+            if (Number.isSafeInteger(outcome.returnedPosts)) {
+              const missing = collectDeletedTweetIds(body, ids);
+              if (missing.length) nextState.items = tombstonePosts(nextState.items, missing, now());
+              nextState.lookupOffset = activeIds.length ? (offset + ids.length) % activeIds.length : 0;
+            } else if (settlementConfirmed) {
+              nextState.cycleComplete = false;
+              nextState.lastError = 'deletion lookup returned an unreadable Post resource payload';
+            }
+          } else {
+            nextState.cycleComplete = false;
+            nextState.lastError = `deletion lookup failed: HTTP ${response.status}`;
+          }
         }
       } catch (error) {
+        budgetTruncated = true;
         nextState.cycleComplete = false;
         nextState.lastError = `deletion lookup failed: ${error?.message || String(error)}`;
       }
@@ -1059,6 +1262,13 @@ async function pollXFeed({
     nextState.backoffCause = null;
   }
   nextState.requestsUsed = requestsUsed;
+  nextState.receiptAcks = receiptAcks;
+  nextState.lastCycleUsage = {
+    requestsUsed,
+    requestLimit: cycleRequestBudget,
+    postsRead,
+    postReadLimit,
+  };
   nextState.items = purgeExpiredTombstones(nextState.items, now(), TOMBSTONE_TTL_MS);
   return nextState;
 }
@@ -1071,8 +1281,8 @@ module.exports = {
   MAX_POLL_INTERVAL_MS,
   TOMBSTONE_TTL_MS,
   DEFAULT_MAX_FEED_ITEMS,
-  DEFAULT_MAX_TIMELINE_PAGES,
-  DEFAULT_COLD_START_TIMELINE_PAGES,
+  DELETION_AUDIT_INTERVAL_MS,
+  DEFAULT_DELETION_AUDIT_MAX_POSTS,
   DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT,
   MAX_TOLERATED_FAILED_ACCOUNTS,
   TOLERATED_FAILED_ACCOUNT_FRACTION,
@@ -1109,5 +1319,6 @@ module.exports = {
   buildUserByUsernameUrl,
   buildUserTimelineUrl,
   buildTweetsLookupUrl,
+  xFetchJson,
   pollXFeed,
 };

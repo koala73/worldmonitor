@@ -51,6 +51,10 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
+const {
+  createXPostBudget,
+  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+} = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
   buildClassifyDigestUrl,
@@ -2110,12 +2114,16 @@ const X_FEED_POLL_LOCK_TTL_SECONDS = Math.ceil((X_POLL_INTERVAL_MS + 120_000) / 
 // X_POLL_STUCK_AFTER_MS < X_POLL_INTERVAL_MS < X_FEED_POLL_LOCK_TTL_SECONDS * 1000
 // cannot drift the way two independently tuned literals can.
 const X_POLL_STUCK_AFTER_MS = X_POLL_INTERVAL_MS - 60_000;
+const xPostBudget = createXPostBudget({
+  evalCommand: upstashEval,
+  dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+});
 
 const xState = {
   accounts: [],
   cursorByAccountId: Object.create(null),
   accountIdByHandle: Object.create(null),
-  catchupByAccountId: Object.create(null),
+  lastPolledAtByHandle: Object.create(null),
   items: [],
   lookupOffset: 0,
   accountOffset: 0,
@@ -2130,6 +2138,9 @@ const xState = {
   rateLimitedUntil: 0,
   rateLimitAttempt: 0,
   backoffCause: null,
+  lastDeletionAuditAt: 0,
+  lastCycleUsage: null,
+  postBudget: null,
   // True when a Redis read failed, so last-good state is present but unreadable.
   // Blocks polling/publishing until a clean read (see the cycle's hydrate()).
   hydrationFailed: false,
@@ -2180,6 +2191,7 @@ function loadXAccounts() {
 const xPollCycle = createXPollCycle({
   xState,
   xNewsAccounts,
+  xPostBudget,
   loadXAccounts,
   upstashGet,
   upstashSetNx,
@@ -11627,7 +11639,10 @@ const server = http.createServer(async (req, res) => {
   // prevention (rate limiting), not data protection. Cloudflare WAF provides edge-level protection.
   const isPublicRoute = pathname === '/health' || pathname === '/' || isRssRoute || pathname.startsWith('/widget-agent');
   if (!isPublicRoute) {
-    if (!isAuthorizedRequest(req)) {
+    const authorized = pathname === '/status'
+      ? Boolean(RELAY_SHARED_SECRET) && isAuthorizedRequest(req)
+      : isAuthorizedRequest(req);
+    if (!authorized) {
       const routeGroup = getRouteGroup(pathname);
       if (routeGroup === 'snapshot') incrementRelayMetric('aisSnapshotUnauthorizedClient');
       else if (routeGroup === 'opensky') recordRelayOutcome('opensky', 'authRejection');
@@ -11809,6 +11824,31 @@ const server = http.createServer(async (req, res) => {
         // allowVercelPreviewOrigins removed per #3802. See note above.
         enabled: !AUTH_EFFECTIVELY_DISABLED,
         sharedSecretEnabled: !!RELAY_SHARED_SECRET,
+      },
+    }));
+  } else if (pathname === '/status') {
+    const postBudget = await xPostBudget.status();
+    return sendCompressed(req, res, postBudget.available ? 200 : 503, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({
+      status: postBudget.available ? 'ok' : 'degraded',
+      xFeed: {
+        enabled: X_ENABLED,
+        accounts: xState.accounts?.length || 0,
+        items: xState.items?.length || 0,
+        lastPollAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        lastError: xState.lastError || null,
+        coverage: xState.lastCoverage,
+        lastHealthyAt: xState.lastHealthyAt ? new Date(xState.lastHealthyAt).toISOString() : null,
+        pollInFlight: xPollGuard.isInFlight(),
+        rateLimitedUntil: xState.rateLimitedUntil ? new Date(xState.rateLimitedUntil).toISOString() : null,
+        backoffCause: xState.backoffCause || null,
+        lastDeletionAuditAt: xState.lastDeletionAuditAt
+          ? new Date(xState.lastDeletionAuditAt).toISOString()
+          : null,
+        lastCycleUsage: xState.lastCycleUsage,
+        postBudget,
       },
     }));
   } else if (pathname === '/metrics') {

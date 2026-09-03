@@ -61,15 +61,33 @@ describe('X relay wiring contract', () => {
     // the executable tests in x-poll-cycle.test.mjs would be exercising a module
     // production never actually wires up.
     assert.match(relay, /const \{ createXPollCycle \} = require\('\.\/lib\/x-poll-cycle\.cjs'\)/);
+    assert.match(relay, /createXPostBudget,[\s\S]*DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*require\('\.\/lib\/x-post-budget\.cjs'\)/);
+    assert.match(relay, /createXPostBudget\(\{[\s\S]*dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*\}\)/);
     assert.match(relay, /const xPollCycle = createXPollCycle\(\{/);
     for (const dep of [
-      'xState', 'xNewsAccounts', 'loadXAccounts',
+      'xState', 'xNewsAccounts', 'xPostBudget', 'loadXAccounts',
       'upstashGet', 'upstashSetNx', 'upstashPublishXIfLockOwner', 'upstashReleaseLockIfOwner',
       'getPollGeneration', 'scheduleRetry',
       'X_FEED_CACHE_KEY', 'X_FEED_POLL_STATE_KEY', 'X_FEED_POLL_LOCK_KEY', 'X_FEED_META_KEY',
     ]) {
       assert.match(relay, new RegExp(`\\n\\s+${dep}[,:]`), `cycle must receive ${dep}`);
     }
+  });
+
+  it('keeps budget data on the authenticated status route and out of the feed response', () => {
+    const statusStart = relay.indexOf("pathname === '/status'");
+    const metricsStart = relay.indexOf("pathname === '/metrics'", statusStart);
+    assert.ok(statusStart >= 0 && metricsStart > statusStart, 'the authenticated /status route must exist');
+    const statusRoute = relay.slice(statusStart, metricsStart);
+    assert.match(statusRoute, /lastCycleUsage/);
+    assert.match(statusRoute, /lastDeletionAuditAt/);
+    assert.match(statusRoute, /postBudget/);
+
+    const feedStart = relay.indexOf("pathname === '/x'");
+    const rssStart = relay.indexOf("pathname.startsWith('/rss')", feedStart);
+    assert.ok(feedStart >= 0 && rssStart > feedStart, 'the /x feed route must exist');
+    const feedRoute = relay.slice(feedStart, rssStart);
+    assert.doesNotMatch(feedRoute, /postBudget|lastCycleUsage|lastDeletionAuditAt/);
   });
 
   it('hydrates once before scheduling the first poll', () => {

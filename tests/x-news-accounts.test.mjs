@@ -7,7 +7,49 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
-const xNews = require('../scripts/lib/x-news-accounts.cjs');
+const xNewsModule = require('../scripts/lib/x-news-accounts.cjs');
+const {
+  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  DEFAULT_X_POST_DAILY_LIMIT,
+  MAX_RECEIPT_BYTES,
+  createXPostBudget,
+  RESERVE_LUA,
+  SETTLE_LUA,
+  STATUS_LUA,
+} = require('../scripts/lib/x-post-budget.cjs');
+const testReturnedPostBudget = async (
+  request,
+  admissionOverride = undefined,
+  budgetNow = Date.parse('2026-09-02T12:00:00.000Z'),
+) => {
+  const budget = createXPostBudget({
+    evalCommand: async (script, _keys, args) => {
+      if (script === RESERVE_LUA) return [1, request.requestedPosts, request.requestedPosts, 0, 0, ''];
+      if (script === SETTLE_LUA) {
+        const actual = Number(args[0]);
+        return [1, actual, actual, request.requestedPosts, actual, 0];
+      }
+      if (script === STATUS_LUA) return [0, 0, 0];
+      throw new Error('unexpected test budget script');
+    },
+    now: () => budgetNow,
+    idFactory: () => 'test-reservation',
+  });
+  return budget.withReturnedPosts({
+    ...request,
+    execute: (admission, postBudgetAdmission) => request.execute(
+      admissionOverride ?? admission,
+      postBudgetAdmission,
+    ),
+  });
+};
+const xNews = {
+  ...xNewsModule,
+  pollXFeed: (options = {}) => xNewsModule.pollXFeed({
+    withReturnedPosts: testReturnedPostBudget,
+    ...options,
+  }),
+};
 const registry = JSON.parse(readFileSync(join(__dirname, '../data/x-accounts.json'), 'utf8'));
 
 describe('data/x-accounts.json registry (#6654)', () => {
@@ -37,6 +79,21 @@ describe('data/x-accounts.json registry (#6654)', () => {
     assert.equal(new Set(all.map((account) => account.handle.toLowerCase())).size, 64);
     assert.equal(full.length, 56);
     assert.equal(tech.length, 8);
+  });
+
+  it('fits one maximum page per account and one deletion audit inside the daily cap', () => {
+    const coverage = xNews.loadXAccounts(registry)
+      .reduce((total, account) => total + Math.max(5, Math.min(100, Number(account.maxMessages) || 10)), 0);
+    assert.equal(coverage, 572);
+    assert.equal(
+      coverage + xNews.DEFAULT_DELETION_AUDIT_MAX_POSTS,
+      DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      'the shared first-request hold must match the production registry',
+    );
+    assert.ok(
+      coverage + xNews.DEFAULT_DELETION_AUDIT_MAX_POSTS <= DEFAULT_X_POST_DAILY_LIMIT,
+      'registry growth must not make fair daily coverage impossible',
+    );
   });
 
   it('pins a verified numeric accountId on every enabled account', () => {
@@ -124,6 +181,15 @@ describe('normalizeXPost / dedup (#6654)', () => {
     assert.equal(item.storageState, 'metadata_only');
     assert.equal(item.contentState, 'active');
     assert.deepEqual(item.tags, ['global']);
+  });
+
+  it('rejects a Post with an invalid timestamp instead of throwing', () => {
+    const item = xNews.normalizeXPost({
+      id: '1234567890123456789',
+      text: 'Malformed upstream timestamp',
+      created_at: 'not-a-date',
+    }, account);
+    assert.equal(item, null);
   });
 
   it('dedups by account:postId and keeps the newest first', () => {
@@ -475,7 +541,7 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.match(state.lastError, /rate limited/);
   });
 
-  it('pages one fixed since_id window before advancing its cursor', async () => {
+  it('reads one fixed since_id page before advancing its cursor', async () => {
     const calls = [];
     const fetchImpl = async (url) => {
       const parsed = new URL(url);
@@ -498,17 +564,16 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
       bearerToken: 'test-token',
       fetchImpl,
       wait: async () => {},
+      lookupDeletions: false,
     });
     const timelineCalls = calls.filter((url) => url.pathname.endsWith('/tweets') && url.pathname !== '/2/tweets');
-    assert.equal(timelineCalls.length, 2);
+    assert.equal(timelineCalls.length, 1);
     assert.equal(timelineCalls[0].searchParams.get('since_id'), '100');
-    assert.equal(timelineCalls[1].searchParams.get('since_id'), '100');
-    assert.equal(timelineCalls[1].searchParams.get('pagination_token'), 'page-2');
     assert.equal(state.cursorByAccountId['1652541'], '102');
     assert.equal(state.cycleComplete, true);
   });
 
-  it('does not advance the cursor when the timeline page limit truncates a window', async () => {
+  it('advances the cursor even when the newest page advertises older history', async () => {
     const state = await xNews.pollXFeed({
       accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
       state: { cursorByAccountId: { '1652541': '100' }, items: [] },
@@ -521,14 +586,14 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
       wait: async () => {},
       lookupDeletions: false,
     });
-    assert.equal(state.cursorByAccountId['1652541'], '100');
-    assert.equal(state.accountsFailed, 1);
-    assert.equal(state.cycleComplete, false);
+    assert.equal(state.cursorByAccountId['1652541'], '102');
+    assert.equal(state.accountsFailed, 0);
+    assert.equal(state.cycleComplete, true);
     assert.equal(state.items.length, 1);
     assert.equal(state.items[0].postId, '102');
   });
 
-  it('resumes a capped later window on the next poll before advancing since_id', async () => {
+  it('never resumes the older page advertised by a prior response', async () => {
     const timelineTokens = [];
     const fetchImpl = async (url) => {
       const parsed = new URL(url);
@@ -556,8 +621,8 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
       wait: async () => {},
       lookupDeletions: false,
     });
-    assert.equal(first.cursorByAccountId['1652541'], '100');
-    assert.equal(first.catchupByAccountId['1652541'].paginationToken, 'page-2');
+    assert.equal(first.cursorByAccountId['1652541'], '105');
+    assert.equal(first.catchupByAccountId, undefined);
     assert.equal(first.items[0].postId, '105');
 
     const second = await xNews.pollXFeed({
@@ -569,10 +634,10 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
       wait: async () => {},
       lookupDeletions: false,
     });
-    assert.deepEqual(timelineTokens, ['', 'page-2']);
+    assert.deepEqual(timelineTokens, ['', '']);
     assert.equal(second.cursorByAccountId['1652541'], '105');
-    assert.equal(second.catchupByAccountId['1652541'], undefined);
-    assert.deepEqual(second.items.map((item) => item.postId).sort(), ['104', '105']);
+    assert.equal(second.catchupByAccountId, undefined);
+    assert.deepEqual(second.items.map((item) => item.postId), ['105']);
     assert.equal(second.cycleComplete, true);
   });
 
@@ -606,11 +671,9 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.equal(state.cycleComplete, true);
   });
 
-  it('bounds a cold-start cycle to one page per account, but pages a resumed window fully', async () => {
-    // Regression: a cold start (no cursor) walked back 24h with no since_id and
-    // paged to DEFAULT_MAX_TIMELINE_PAGES. Across 64 accounts that is ~640
-    // timeline requests in one cycle against a ~64/cycle spend model, and it
-    // re-triggers after any outage longer than the poll-state TTL.
+  it('bounds both cold and warm accounts to one newest page', async () => {
+    // Regression: a cold start walked multiple pages for each account and
+    // re-triggered after the poll state expired.
     const pagesPerAccount = new Map();
     const fetchImpl = async (url) => {
       const parsed = new URL(url);
@@ -638,10 +701,8 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.deepEqual([...pagesPerAccount.values()], [1, 1], 'cold start must not page past the cold-start cap');
     assert.equal(cold.accountsPolled, 2);
     assert.equal(cold.accountsFailed, 0);
-    // The cursor is still established, so the next cycle resumes normally.
     assert.ok(cold.cursorByAccountId['1652541']);
 
-    // A warm account with a cursor still pages up to the full limit.
     pagesPerAccount.clear();
     await xNews.pollXFeed({
       accounts: [accounts[0]],
@@ -652,10 +713,10 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
       lookupDeletions: false,
       maxTimelinePages: 4,
     });
-    assert.equal(pagesPerAccount.get('1652541'), 4, 'a resumed window still pages to the full limit');
+    assert.equal(pagesPerAccount.get('1652541'), 1, 'a resumed window must not page into history');
   });
 
-  it('never exceeds an explicitly requested page limit on a cold start', async () => {
+  it('ignores legacy page-count overrides on a cold start', async () => {
     let pages = 0;
     await xNews.pollXFeed({
       accounts: [{ handle: 'Reuters', accountId: '1652541' }],
@@ -670,7 +731,7 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
       maxTimelinePages: 1,
       coldStartMaxTimelinePages: 9,
     });
-    assert.equal(pages, 1, 'explicit maxTimelinePages must still bound a cold start');
+    assert.equal(pages, 1, 'legacy overrides must not restore historical pagination');
   });
 
   it('tombstones only resource-not-found lookup errors', async () => {
@@ -759,6 +820,54 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.equal(state.items.filter((item) => item.contentState === 'deleted').length, 0);
   });
 
+  it('returns partial state when an admitted deletion audit throws', async () => {
+    const account = { handle: 'Reuters', accountId: '1652541', label: 'Reuters', sourceName: 'Reuters' };
+    const items = ['10', '20'].map((id) => xNews.normalizeXPost({
+      id, text: `post ${id}`, created_at: '2026-09-02T09:00:00.000Z',
+    }, account));
+    let postReads = 0;
+    const state = await xNews.pollXFeed({
+      accounts: [account],
+      state: { cursorByAccountId: { '1652541': '100' }, items },
+      bearerToken: 'test-token',
+      fetchImpl: async (url) => new URL(url).pathname === '/2/tweets'
+        ? Promise.reject(new Error('socket reset'))
+        : Response.json({ meta: { result_count: 0 } }),
+      withReturnedPosts: async (request) => {
+        postReads += 1;
+        return testReturnedPostBudget(request);
+      },
+      now: () => Date.parse('2026-09-02T12:00:00.000Z'),
+      wait: async () => {},
+    });
+
+    assert.equal(postReads, 2);
+    assert.equal(state.cycleComplete, false);
+    assert.equal(state.lookupOffset, 0);
+    assert.match(state.lastError, /socket reset/);
+  });
+
+  it('does not advance deletion coverage after an ambiguous HTTP 200 response', async () => {
+    const account = { handle: 'Reuters', accountId: '1652541', label: 'Reuters', sourceName: 'Reuters' };
+    const items = ['10', '20'].map((id) => xNews.normalizeXPost({
+      id, text: `post ${id}`, created_at: '2026-09-02T09:00:00.000Z',
+    }, account));
+    const state = await xNews.pollXFeed({
+      accounts: [account],
+      state: { cursorByAccountId: { '1652541': '100' }, items, lookupOffset: 1 },
+      bearerToken: 'test-token',
+      fetchImpl: async (url) => new URL(url).pathname === '/2/tweets'
+        ? Response.json({ data: 'not-an-array' })
+        : Response.json({ meta: { result_count: 0 } }),
+      now: () => Date.parse('2026-09-02T12:00:00.000Z'),
+      wait: async () => {},
+    });
+
+    assert.equal(state.lookupOffset, 1);
+    assert.equal(state.cycleComplete, false);
+    assert.match(state.lastError, /settlement failed/);
+  });
+
   it('does not advance lookupOffset after a non-200 success response', async () => {
     const account = { handle: 'Reuters', accountId: '1652541', label: 'Reuters', sourceName: 'Reuters', topic: 'breaking' };
     const items = ['10', '20'].map((id) => xNews.normalizeXPost({ id, text: `post ${id}` }, account));
@@ -834,6 +943,404 @@ describe('since_id poll loop + 429 backoff (#6654)', () => {
     assert.equal(state.accountsAttempted, 2);
     assert.equal(state.cycleComplete, false);
   });
+
+  it('reads one newest page after an outage and never resumes historical pagination', async () => {
+    const timelineCalls = [];
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: {
+        cursorByAccountId: { '1652541': '100' },
+        catchupByAccountId: {
+          '1652541': { sinceId: '90', paginationToken: 'stale-page', newestPostId: '99' },
+        },
+        items: [],
+      },
+      bearerToken: 'test-token',
+      maxTimelinePages: 10,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        timelineCalls.push(parsed);
+        return new Response(JSON.stringify({
+          data: [{ id: '110', text: 'newest' }],
+          meta: { next_token: 'older-history' },
+        }), { status: 200 });
+      },
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(timelineCalls.length, 1);
+    assert.equal(timelineCalls[0].searchParams.get('since_id'), '100');
+    assert.equal(timelineCalls[0].searchParams.get('pagination_token'), null);
+    assert.equal(state.cursorByAccountId['1652541'], '110');
+    assert.equal(state.catchupByAccountId, undefined);
+    assert.equal(state.accountsFailed, 0);
+    assert.equal(state.cycleComplete, true);
+  });
+
+  it('advances past a paid Post with an invalid timestamp', async () => {
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: { cursorByAccountId: { '1652541': '100' }, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => Response.json({
+        data: [{ id: '110', text: 'bad timestamp', created_at: 'not-a-date' }],
+      }),
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(state.cursorByAccountId['1652541'], '110');
+    assert.equal(state.items.length, 0);
+    assert.equal(state.accountsFailed, 0);
+    assert.equal(state.lastCycleUsage.postsRead, 1);
+  });
+
+  it('does not call X when the shared returned-Post budget denies admission', async () => {
+    let fetches = 0;
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: { cursorByAccountId: { '1652541': '100' }, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => {
+        fetches += 1;
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      },
+      withReturnedPosts: async () => ({
+        allowed: false,
+        reason: 'daily_limit',
+        status: {
+          available: true,
+          dailyLimit: 600,
+          dailyUsed: 600,
+          dailyRemaining: 0,
+          monthlyLimit: 20_000,
+          exhausted: true,
+        },
+      }),
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(fetches, 0);
+    assert.equal(state.postBudget.exhausted, true);
+    assert.equal(state.postBudget.dailyRemaining, 0);
+    assert.match(state.lastError, /Post budget/);
+  });
+
+  it('settles a timeline reservation with the number of Posts actually returned', async () => {
+    const operations = [];
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: { cursorByAccountId: { '1652541': '100' }, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => new Response(JSON.stringify({
+        data: [{ id: '101', text: 'one' }, { id: '102', text: 'two' }],
+      }), { status: 200 }),
+      withReturnedPosts: async (request) => {
+        operations.push(request);
+        return {
+          ...await testReturnedPostBudget(request),
+          status: { available: true, dailyUsed: 2, dailyRemaining: 598 },
+        };
+      },
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(operations.length, 1);
+    assert.equal(operations[0].requestedPosts, 10);
+    assert.equal(operations[0].consumer, 'curated-feed');
+    assert.equal(operations[0].operation, 'timeline');
+    assert.equal(state.lastCycleUsage.postsRead, 2);
+    assert.equal(state.lastCycleUsage.postReadLimit, 10);
+    assert.equal(state.postBudget.dailyUsed, 2);
+  });
+
+  it('replays a settled timeline receipt without calling X again', async () => {
+    const receipt = {
+      version: 1,
+      accountId: '1652541',
+      sinceId: '100',
+      posts: [{
+        id: '1999999999999999999',
+        item: xNews.normalizeXPost({
+          id: '1999999999999999999',
+          text: 'saved paid Post',
+          created_at: '2026-09-02T11:59:00.000Z',
+        }, { handle: 'Reuters', accountId: '1652541' }),
+      }],
+      resourceError: '',
+    };
+    let fetches = 0;
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: { cursorByAccountId: { '1652541': '100' }, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => {
+        fetches += 1;
+        throw new Error('receipt replay must not call X');
+      },
+      withReturnedPosts: async (request) => ({
+        allowed: true,
+        completed: true,
+        reusedReceipt: true,
+        returnedPosts: 0,
+        receipt,
+        receiptAck: { key: `test:x-post-budget:receipt:${request.receiptScope}`, expected: JSON.stringify(receipt) },
+        status: { available: true, dailyUsed: 1, dailyRemaining: 599 },
+      }),
+      now: () => Date.parse('2026-09-02T12:05:00.000Z'),
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(fetches, 0);
+    assert.equal(state.items.length, 1);
+    assert.equal(state.items[0].postId, '1999999999999999999');
+    assert.equal(state.cursorByAccountId['1652541'], '1999999999999999999');
+    assert.equal(state.lastCycleUsage.postsRead, 0, 'replay does not record a second paid Post');
+    assert.equal(state.receiptAcks.length, 1);
+  });
+
+  it('settles an oversized raw Post page with a bounded replay receipt', async () => {
+    let receiptBytes = 0;
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: { cursorByAccountId: { '1652541': '100' }, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => Response.json({
+        data: [{
+          id: '101',
+          text: 'x'.repeat(MAX_RECEIPT_BYTES + 1),
+          created_at: '2026-09-02T11:59:00.000Z',
+        }],
+      }),
+      withReturnedPosts: async (request) => {
+        const outcome = await testReturnedPostBudget(request);
+        receiptBytes = Buffer.byteLength(JSON.stringify(outcome.receipt));
+        return outcome;
+      },
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.ok(receiptBytes <= MAX_RECEIPT_BYTES);
+    assert.equal(state.items[0].text.length, 800);
+    assert.equal(state.cursorByAccountId['1652541'], '101');
+    assert.equal(state.receiptAcks.length, 1);
+  });
+
+  it('settles a full 100-Post page inside the receipt limit with the real budget wrapper', async () => {
+    let evalCalls = 0;
+    let receiptBytes = 0;
+    const budget = createXPostBudget({
+      evalCommand: async () => {
+        evalCalls += 1;
+        return evalCalls === 1 ? [1, 100, 100, 0, 0, ''] : [1, 100, 100, 100, 100, 0];
+      },
+      now: () => Date.parse('2026-09-02T12:00:00.000Z'),
+      idFactory: () => 'full-page',
+    });
+    const posts = Array.from({ length: 100 }, (_, index) => ({
+      id: String(101 + index),
+      text: 'x'.repeat(800),
+      created_at: '2026-09-02T11:59:00.000Z',
+    }));
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 100 }],
+      state: { cursorByAccountId: { '1652541': '100' }, items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => Response.json({ data: posts }),
+      withReturnedPosts: async (request) => {
+        const outcome = await budget.withReturnedPosts(request);
+        receiptBytes = Buffer.byteLength(JSON.stringify(outcome.receipt));
+        return outcome;
+      },
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(evalCalls, 2);
+    assert.ok(receiptBytes <= MAX_RECEIPT_BYTES);
+    assert.equal(state.items.length, 100);
+    assert.equal(state.cursorByAccountId['1652541'], '200');
+    assert.equal(state.lastCycleUsage.postsRead, 100);
+    assert.equal(state.receiptAcks.length, 1);
+  });
+
+  it('cannot rewind a newer cursor with an older receipt', async () => {
+    const receipt = {
+      version: 1,
+      accountId: '1652541',
+      sinceId: '100',
+      posts: [{
+        id: '150',
+        item: xNews.normalizeXPost(
+          { id: '150', text: 'older saved Post', created_at: '2026-09-02T11:59:00.000Z' },
+          { handle: 'Reuters', accountId: '1652541' },
+        ),
+      }],
+      resourceError: '',
+    };
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: {
+        cursorByAccountId: { '1652541': '200' },
+        items: [],
+      },
+      bearerToken: 'test-token',
+      fetchImpl: async () => { throw new Error('receipt replay must not call X'); },
+      withReturnedPosts: async () => ({
+        allowed: true,
+        completed: true,
+        reusedReceipt: true,
+        returnedPosts: 0,
+        receipt,
+        receiptAck: { key: 'test:x-post-budget:receipt:timeline', expected: JSON.stringify(receipt) },
+      }),
+      now: () => Date.parse('2026-09-02T12:05:00.000Z'),
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(state.cursorByAccountId['1652541'], '200');
+    assert.equal(state.items[0].postId, '150');
+  });
+
+  it('gives every timeline a durable coverage identity and the full daily hold', async () => {
+    const reservations = [];
+    const state = await xNews.pollXFeed({
+      accounts: [
+        { handle: 'Reuters', accountId: '1652541', maxMessages: 10 },
+        { handle: 'AP', accountId: '51241574', maxMessages: 10 },
+      ],
+      state: { items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => new Response('upstream failed', { status: 503 }),
+      withReturnedPosts: async (request) => {
+        reservations.push({
+          requestedPosts: request.requestedPosts,
+          coverageTotal: request.coverageTotal,
+          coverageId: request.coverageId,
+          coverageUnitPosts: request.coverageUnitPosts,
+        });
+        const result = await testReturnedPostBudget(request);
+        throw Object.assign(new Error('upstream failed'), { result });
+      },
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.deepEqual(reservations, [
+      { requestedPosts: 10, coverageTotal: 20, coverageId: 'timeline:1652541', coverageUnitPosts: 10 },
+      { requestedPosts: 10, coverageTotal: 20, coverageId: 'timeline:51241574', coverageUnitPosts: 10 },
+    ]);
+    assert.equal(state.accountsAttempted, 2);
+  });
+
+  it('stops after an admitted timeline cannot settle', async () => {
+    let fetches = 0;
+    const state = await xNews.pollXFeed({
+      accounts: [
+        { handle: 'Reuters', accountId: '1652541', maxMessages: 10 },
+        { handle: 'AP', accountId: '51241574', maxMessages: 10 },
+      ],
+      state: { items: [] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => {
+        fetches += 1;
+        return Response.json({ data: [{ id: '101', created_at: '2026-09-02T11:00:00.000Z' }] });
+      },
+      withReturnedPosts: async (request) => ({
+        ...await testReturnedPostBudget(request),
+        completed: false,
+        status: { available: true, dailyLimit: 600, dailyUsed: 10, dailyRemaining: 590 },
+      }),
+      wait: async () => {},
+      lookupDeletions: false,
+    });
+
+    assert.equal(fetches, 1);
+    assert.equal(state.accountsAttempted, 1);
+    assert.deepEqual(state.cursorByAccountId, {});
+    assert.match(state.lastError, /settlement failed/);
+    assert.equal(state.cycleComplete, false);
+  });
+
+  it('runs at most one 25-Post deletion audit in each UTC day', async () => {
+    const nowMs = Date.parse('2026-09-02T12:00:00.000Z');
+    const priorItems = Array.from({ length: 30 }, (_, index) => ({
+      id: `Reuters:${100 + index}`,
+      postId: String(100 + index),
+      contentState: 'active',
+    }));
+    const calls = [];
+    const state = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: {
+        cursorByAccountId: { '1652541': '200' },
+        items: priorItems,
+        lastDeletionAuditAt: nowMs - 60 * 60 * 1000,
+      },
+      bearerToken: 'test-token',
+      now: () => nowMs,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        calls.push(parsed);
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      },
+      wait: async () => {},
+    });
+    assert.equal(calls.filter((url) => url.pathname === '/2/tweets').length, 0);
+    assert.equal(state.lastDeletionAuditAt, nowMs - 60 * 60 * 1000);
+
+    calls.length = 0;
+    const nextDay = nowMs + 24 * 60 * 60 * 1000;
+    const next = await xNews.pollXFeed({
+      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
+      state: { ...state, lastPolledAtByHandle: {} },
+      bearerToken: 'test-token',
+      now: () => nextDay,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        calls.push(parsed);
+        return new Response(JSON.stringify({ data: [] }), { status: 200 });
+      },
+      withReturnedPosts: (request) => testReturnedPostBudget(request, undefined, nextDay),
+      wait: async () => {},
+    });
+    const deletionCall = calls.find((url) => url.pathname === '/2/tweets');
+    assert.ok(deletionCall);
+    assert.equal(deletionCall.searchParams.get('ids').split(',').length, 25);
+    assert.equal(next.lastDeletionAuditAt, Date.parse('2026-09-03T00:00:00.000Z'));
+  });
+
+  it('records the Redis reservation day when a deletion audit crosses midnight', async () => {
+    const pollStartedAt = Date.parse('2026-09-02T23:59:59.900Z');
+    const reservationDay = '2026-09-03';
+    const account = { handle: 'Reuters', accountId: '1652541', label: 'Reuters', sourceName: 'Reuters' };
+    const item = xNews.normalizeXPost({
+      id: '10', text: 'post 10', created_at: '2026-09-02T09:00:00.000Z',
+    }, account);
+    const state = await xNews.pollXFeed({
+      accounts: [account],
+      state: { cursorByAccountId: { '1652541': '100' }, items: [item] },
+      bearerToken: 'test-token',
+      fetchImpl: async () => Response.json({ meta: { result_count: 0 } }),
+      withReturnedPosts: async (request) => {
+        const admission = { reservation: { period: { day: reservationDay } } };
+        return {
+          ...await testReturnedPostBudget(request, admission),
+          status: { available: true, day: reservationDay, dailyUsed: 0, dailyRemaining: 600 },
+        };
+      },
+      now: () => pollStartedAt,
+      wait: async () => {},
+    });
+
+    assert.equal(state.lastDeletionAuditAt, Date.parse('2026-09-03T00:00:00.000Z'));
+  });
 });
 
 describe('per-cycle request budget (#6654)', () => {
@@ -855,10 +1362,9 @@ describe('per-cycle request budget (#6654)', () => {
     meta: { next_token: 'always-more' },
   }), { status: 200 });
 
-  it('caps a catch-up cycle at the aggregate budget instead of pages-per-account', async () => {
-    // Regression: pages were capped PER ACCOUNT with no cycle-wide counter, so
-    // 64 accounts x DEFAULT_MAX_TIMELINE_PAGES spent ~640 timeline requests in
-    // ONE cycle against a model sized for ~64.
+  it('reads exactly one newest page for every warm account', async () => {
+    // Regression: each of 64 accounts could read multiple timeline pages in
+    // one cycle.
     const accounts = catchupAccounts();
     let requests = 0;
     const state = await xNews.pollXFeed({
@@ -869,17 +1375,14 @@ describe('per-cycle request budget (#6654)', () => {
       wait: async () => {},
       lookupDeletions: false,
     });
-    const budget = accounts.length * xNews.DEFAULT_CYCLE_REQUESTS_PER_ACCOUNT;
-    assert.equal(requests, budget, 'the cycle must stop at the aggregate budget');
-    assert.equal(state.requestsUsed, budget);
-    assert.ok(requests < accounts.length * xNews.DEFAULT_MAX_TIMELINE_PAGES, 'must be far under the per-account worst case');
-    // Ends cleanly and partially, never by throwing.
-    assert.equal(state.cycleComplete, false);
-    assert.ok(state.accountsAttempted < accounts.length, 'the remaining accounts are deferred, not attempted');
-    assert.match(state.lastError, /budget/);
+    assert.equal(requests, accounts.length);
+    assert.equal(state.requestsUsed, accounts.length);
+    assert.equal(state.cycleComplete, true);
+    assert.equal(state.accountsAttempted, accounts.length);
+    assert.equal(state.catchupByAccountId, undefined);
   });
 
-  it('defers the truncated remainder through catchup and resumes it next cycle', async () => {
+  it('advances every warm cursor and discards pagination tokens', async () => {
     const accounts = catchupAccounts();
     const first = await xNews.pollXFeed({
       accounts,
@@ -889,32 +1392,10 @@ describe('per-cycle request budget (#6654)', () => {
       wait: async () => {},
       lookupDeletions: false,
     });
-    // The account stopped mid-window keeps its cursor and hands the page token
-    // to catchup, so nothing is re-paged and nothing is lost.
-    const stopped = accounts[first.accountsAttempted - 1];
-    assert.ok(first.catchupByAccountId[stopped.accountId], 'the mid-window account resumes from a catchup token');
-    assert.equal(first.cursorByAccountId[stopped.accountId], '500', 'a truncated window must not advance since_id');
-    assert.equal(first.accountOffset, first.accountsAttempted, 'the rotation starts beyond the last attempted account');
-
-    const seen = [];
-    const second = await xNews.pollXFeed({
-      accounts,
-      state: first,
-      bearerToken: 'test-token',
-      fetchImpl: async (url) => { seen.push(new URL(url).pathname); return endlessPages(url); },
-      wait: async () => {},
-      lookupDeletions: false,
-    });
-    // Like the 429 break, the rotation starts BEYOND the account that consumed
-    // the quota — otherwise one account with a deep backlog would eat the budget
-    // every cycle and starve the other 63. Its catchup token simply waits for
-    // the rotation to come back around.
-    assert.equal(seen[0], `/2/users/${accounts[first.accountsAttempted].accountId}/tweets`, 'the deferred accounts run next');
-    assert.deepEqual(
-      second.catchupByAccountId[stopped.accountId],
-      first.catchupByAccountId[stopped.accountId],
-      'the deferred window survives untouched until its turn',
-    );
+    assert.equal(first.accountsAttempted, accounts.length);
+    assert.equal(first.accountOffset, 0);
+    assert.equal(first.catchupByAccountId, undefined);
+    for (const account of accounts) assert.equal(first.cursorByAccountId[account.accountId], '900');
   });
 
   it('leaves an ordinary cold start and steady state untouched', async () => {
@@ -946,20 +1427,27 @@ describe('per-cycle request budget (#6654)', () => {
     assert.equal(cold.cycleComplete, true);
   });
 
-  it('never counts a budget deferral as an account failure', async () => {
+  it('never counts a request-budget deferral as an account failure', async () => {
+    const accounts = [
+      { handle: 'Reuters', accountId: '1652541', maxMessages: 10 },
+      { handle: 'AP', accountId: '51241574', maxMessages: 10 },
+    ];
     const state = await xNews.pollXFeed({
-      accounts: [{ handle: 'Reuters', accountId: '1652541', maxMessages: 10 }],
-      state: { cursorByAccountId: { 1652541: '100' }, items: [] },
+      accounts,
+      state: { cursorByAccountId: { 1652541: '100', 51241574: '100' }, items: [] },
       bearerToken: 'test-token',
       fetchImpl: endlessPages,
       wait: async () => {},
       lookupDeletions: false,
-      maxCycleRequests: 3,
+      maxCycleRequests: 1,
     });
-    assert.equal(state.requestsUsed, 3, 'an explicit budget binds literally');
+    assert.equal(state.requestsUsed, 1, 'an explicit request budget binds literally');
     assert.equal(state.accountsFailed, 0, 'deferred work is not failed work');
-    assert.equal(state.cursorByAccountId['1652541'], '100');
-    assert.equal(state.catchupByAccountId['1652541'].paginationToken, 'always-more');
+    assert.equal(state.accountsPolled, 1);
+    assert.equal(state.accountsAttempted, 1);
+    assert.equal(state.cursorByAccountId['1652541'], '900');
+    assert.equal(state.cursorByAccountId['51241574'], '100');
+    assert.equal(state.catchupByAccountId, undefined);
   });
 
   it('does not mark an account polled when the budget ran out before its first page', async () => {
@@ -1353,6 +1841,9 @@ describe('versioned X feed snapshot', () => {
       backoffCause: xNews.X_BACKOFF_CAUSES.CREDITS,
       lastPollAt: 1_755_521_200_000,
       lastHealthyAt: 1_755_521_200_000,
+      lastDeletionAuditAt: 1_755_520_000_000,
+      lastCycleUsage: { requestsUsed: 65, requestLimit: 128, postsRead: 300, postReadLimit: 597 },
+      postBudget: { available: true, day: '2026-08-18', month: '2026-08', dailyLimit: 600, dailyUsed: 300 },
       lastCoverage: { expected: 64, polled: 64, failed: 0, attempted: 64, complete: true },
     };
     const snapshot = xNews.buildXFeedSnapshot(state, { enabled: true, expectedAccounts: 64 });
@@ -1364,7 +1855,10 @@ describe('versioned X feed snapshot', () => {
     assert.equal(hydrated.generation, 7);
     assert.equal(hydrated.cursorByAccountId['1652541'], '101');
     assert.equal(hydrated.accountOffset, 9);
-    assert.equal(hydrated.catchupByAccountId['1652541'].paginationToken, 'page-3');
+    assert.equal(hydrated.catchupByAccountId, undefined);
+    assert.equal(hydrated.lastDeletionAuditAt, 1_755_520_000_000);
+    assert.equal(hydrated.lastCycleUsage.postsRead, 300);
+    assert.equal(hydrated.postBudget.dailyUsed, 300);
     assert.equal(hydrated.rateLimitedUntil, 1_755_521_260_000);
     assert.equal(hydrated.rateLimitAttempt, 3);
     assert.equal(hydrated.backoffCause, xNews.X_BACKOFF_CAUSES.CREDITS);

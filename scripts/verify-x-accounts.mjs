@@ -17,10 +17,12 @@
  *
  * Usage:
  *   X_BEARER_TOKEN=... node scripts/verify-x-accounts.mjs [--json] [--include-disabled]
+ *   X_BEARER_TOKEN=... UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=... \
+ *     node scripts/verify-x-accounts.mjs --timelines
  *
  * Cost: one User read per account (~$0.010, 24h-deduped). It does NOT read
- * timelines by default, so it does not bill post reads; pass --timelines to
- * additionally prove each timeline is actually readable.
+ * timelines by default, so it does not bill Post reads. The --timelines mode
+ * requires Redis and uses the same shared returned-Post cap as production.
  *
  * Exit 0 = every checked account verified. Exit 1 = at least one mismatch.
  */
@@ -28,6 +30,13 @@
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { defaultRedisEval } from './lib/_upstash-pipeline.mjs';
+import {
+  createXPostBudget,
+  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  assertXPostBudgetAdmission,
+  isXPostReturningUrl,
+} from './lib/x-post-budget.cjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REGISTRY = join(__dirname, '../data/x-accounts.json');
@@ -43,6 +52,17 @@ if (!token) {
   console.error('X_BEARER_TOKEN is not set — cannot verify against the official API.');
   process.exit(2);
 }
+if (checkTimelines && (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN)) {
+  console.error('--timelines requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN so Post reads use the shared cap.');
+  process.exit(2);
+}
+
+const postBudget = checkTimelines
+  ? createXPostBudget({
+      evalCommand: defaultRedisEval,
+      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+    })
+  : null;
 
 const registry = JSON.parse(readFileSync(REGISTRY, 'utf8'));
 const accounts = [];
@@ -71,17 +91,20 @@ function resourceError(body) {
   return 'empty response with no data, no errors, and no result_count';
 }
 
-async function apiGet(path) {
-  const response = await fetch(new URL(path, X_API_ORIGIN), {
+async function apiGet(path, { postBudgetAdmission } = {}) {
+  const url = new URL(path, X_API_ORIGIN);
+  assertXPostBudgetAdmission(url, postBudgetAdmission);
+  const response = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(20_000),
   });
   if (response.status === 429) {
+    if (isXPostReturningUrl(url)) return { response, status: response.status, body: null };
     const reset = Number(response.headers.get('x-rate-limit-reset') || 0) * 1000;
     const waitMs = Math.max(5_000, reset - Date.now());
     process.stderr.write(`rate limited; waiting ${Math.round(waitMs / 1000)}s\n`);
     await sleep(waitMs);
-    return apiGet(path);
+    return apiGet(path, { postBudgetAdmission });
   }
   let body = null;
   try {
@@ -89,7 +112,7 @@ async function apiGet(path) {
   } catch {
     body = null;
   }
-  return { status: response.status, body };
+  return { response, status: response.status, body };
 }
 
 const findings = [];
@@ -132,7 +155,33 @@ for (const account of accounts) {
   }
 
   if (checkTimelines && !actual.protected) {
-    const timeline = await apiGet(`/2/users/${account.accountId}/tweets?max_results=5&tweet.fields=id`);
+    const outcome = await postBudget.withReturnedPosts({
+      consumer: 'account-verifier',
+      operation: 'timeline',
+      requestedPosts: 5,
+      execute: (_admission, postBudgetAdmission) => apiGet(`/2/users/${account.accountId}/tweets?max_results=5&tweet.fields=id`, {
+        postBudgetAdmission,
+      }),
+    });
+    if (!outcome.allowed) {
+      findings.push({
+        handle,
+        level: 'error',
+        kind: 'post-budget-denied',
+        message: `shared X Post budget ${outcome.reason || 'unavailable'}`,
+      });
+      break;
+    }
+    if (!outcome.completed) {
+      findings.push({
+        handle,
+        level: 'error',
+        kind: 'post-budget-unsettled',
+        message: 'timeline response could not be settled; the full reservation was retained',
+      });
+      break;
+    }
+    const timeline = outcome.result;
     const timelineFailure = resourceError(timeline.body);
     if (timelineFailure) {
       findings.push({ handle, level: 'error', kind: 'unreadable-timeline', message: timelineFailure });

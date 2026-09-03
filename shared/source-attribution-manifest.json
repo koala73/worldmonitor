@@ -1464,6 +1464,9 @@
           "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
+          "path": "scripts/lib/x-post-budget.cjs"
+        },
+        {
           "path": "scripts/verify-x-accounts.mjs"
         }
       ]
