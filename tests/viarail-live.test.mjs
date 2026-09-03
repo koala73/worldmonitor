@@ -25,6 +25,7 @@ import {
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (path) => readFileSync(resolve(root, path), 'utf8');
 const fixture = JSON.parse(read('tests/fixtures/viarail-live/allData.json'));
+const noLivePositionsFixture = JSON.parse(read('tests/fixtures/viarail-live/no-live-positions.json'));
 
 function stubResponse(payload, {
   url = VIA_RAIL_LIVE_URL,
@@ -69,6 +70,17 @@ describe('VIA Rail live parser (#6615)', () => {
     assert.equal(delayed.diffMin, 16);
   });
 
+  it('classifies a recognized positionless response separately from a shape break', () => {
+    assert.throws(
+      () => parseViaRailLive(noLivePositionsFixture, { fetchedAt: 1_700_000_000_000 }),
+      { reason: 'no_live_positions' },
+    );
+    assert.throws(
+      () => parseViaRailLive({ unknown: { times: [{ diffMin: 4 }] } }),
+      { reason: 'shape_break' },
+    );
+  });
+
   it('keeps bilingual alerts when the unofficial payload includes them', () => {
     const snapshot = parseViaRailLive(fixture);
     const withAlerts = snapshot.trains.find((train) => train.alerts.length > 0);
@@ -92,7 +104,7 @@ describe('VIA Rail live parser (#6615)', () => {
         () => parseViaRailLive({
           '37': { from: 'MTRL', to: 'TRTO', lat: absent, lng: absent, times: [{ diffMin: 4 }] },
         }, { fetchedAt: 1_700_000_000_000 }),
-        { reason: 'shape_break' },
+        { reason: 'no_live_positions' },
         `lat/lng ${JSON.stringify(absent)} must not publish as 0,0`,
       );
     }
