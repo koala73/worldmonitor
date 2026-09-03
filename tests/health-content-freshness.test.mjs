@@ -73,7 +73,7 @@ function portwatchCtx(meta, now = NOW) {
 // `activated` is three-valued (#6095): true = marker read and present, false =
 // marker read and absent (the only state that earns grace), null = the marker
 // read failed, so its state is unknown and it is missing from the map entirely.
-function classifyPortwatch(meta, { activated = true, now = NOW } = {}) {
+function classifyPortwatch(meta, { activated = true, now = NOW, staleContentDeadline = null } = {}) {
   return classifyKey(
     'portwatchPortActivity',
     PORTWATCH_DATA_KEY,
@@ -83,6 +83,9 @@ function classifyPortwatch(meta, { activated = true, now = NOW } = {}) {
       activationStates: activated === null
         ? new Map()
         : new Map([['portwatchContentFreshness', activated]]),
+      staleContentNullGraceUntilMs: staleContentDeadline === null
+        ? new Map()
+        : new Map([['portwatchPortActivity', staleContentDeadline]]),
     },
   );
 }
@@ -226,6 +229,23 @@ describe('portwatchPortActivity classification', () => {
 
     assert.equal(entry.status, 'STALE_CONTENT');
     assert.equal(entry.staleContentGraceUntil, new Date(graceUntil).toISOString());
+    assert.equal(healthStatusBucket(entry, NOW), 'ok');
+  });
+
+  it('uses one stored deadline when stale counts trip before the per-entity time boundary', () => {
+    const firstObservedDeadline = NOW + STALE_CONTENT_GRACE_MS;
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      freshCount: 173,
+      staleCount: 1,
+      staleCountries: ['CN'],
+      criticalFreshCount: 1,
+      criticalStaleCountries: ['CN'],
+      criticalOldestObservedAt: NOW - 60 * MINUTE_MS,
+      criticalOldestAgeMinutes: 60,
+    })), { staleContentDeadline: firstObservedDeadline });
+
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.equal(entry.staleContentGraceUntil, new Date(firstObservedDeadline).toISOString());
     assert.equal(healthStatusBucket(entry, NOW), 'ok');
   });
 
