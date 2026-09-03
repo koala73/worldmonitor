@@ -41,6 +41,10 @@ import {
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
 } from '../scripts/crawlable-live-tools.mjs';
+import {
+  COMPARISON_MATRIX_COLUMNS,
+  COMPARISON_PAGES,
+} from '../scripts/build-comparison-pages.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import {
   auditMicrostateCorpusSimilarity,
@@ -1721,6 +1725,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
+      assert.equal(manifest.sections.comparisons.count, 9);
       assert.equal(manifest.sections.sources.count, 1);
       assert.equal(manifest.generatorContentVersion, '2026-09-01');
       const sitemapEntries = buildSitemapEntries({
@@ -1754,6 +1759,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.research.routes,
         manifest.sections.useCases.index,
         ...manifest.sections.useCases.routes,
+        manifest.sections.comparisons.index,
+        ...manifest.sections.comparisons.routes,
         manifest.sections.changelog.index,
         ...manifest.sections.changelog.routes,
         manifest.sections.sources.index,
@@ -4049,6 +4056,63 @@ describe('crawlable corpus generator', () => {
         breakingNewsLd.some((entry) => entry['@type'] === 'HowTo'),
         'HowTo-shaped use-case pages must emit HowTo JSON-LD (#7462)',
       );
+      const compareHub = read(outDir, 'compare/index.html');
+      const compareHubLd = jsonLdObjects(compareHub);
+      assertDefaultSpeakable(
+        compareHubLd.find((entry) => entry['@type'] === 'CollectionPage'),
+        'compare hub CollectionPage',
+      );
+      assert.match(compareHub, /<h1>Compare World Monitor<\/h1>/);
+      for (const page of COMPARISON_PAGES) {
+        assert.match(compareHub, new RegExp('href="' + page.path.replaceAll('/', '\/') + '"'));
+      }
+      assert.match(compareHub, /href="\/blog\/posts\/worldmonitor-vs-traditional-intelligence-tools\/"/);
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        const ld = jsonLdObjects(html);
+        const h1 = html.match(/<h1>([^<]+)<\/h1>/)?.[1] ?? '';
+        assert.ok(
+          h1.toLowerCase().includes(page.h1.toLowerCase()),
+          page.slug + ' H1 must contain its own h1 string',
+        );
+        assert.match(html, /<title>[^<]*World Monitor[^<]*<\/title>/);
+        assert.ok(
+          ld.some((entry) => entry['@type'] === 'WebPage'),
+          page.slug + ' must emit WebPage JSON-LD',
+        );
+        assert.ok(
+          ld.some((entry) => entry['@type'] === 'FAQPage'),
+          page.slug + ' must emit FAQPage JSON-LD (#7610)',
+        );
+        if (page.itemList) {
+          const itemList = ld.find((entry) => entry['@type'] === 'ItemList');
+          assert.ok(itemList, page.slug + ' must emit ranked ItemList JSON-LD (#7610)');
+          assert.equal(itemList.numberOfItems, page.itemList.length);
+        }
+        assert.match(
+          html,
+          /When to choose them instead/,
+          page.slug + ' must include a concession section (#7610 non-negotiable rule)',
+        );
+        for (const cell of COMPARISON_MATRIX_COLUMNS) {
+          const headerCell = cell.replaceAll('&', '&amp;');
+          assert.match(html, new RegExp('<th>' + headerCell + '</th>'), page.slug + ' matrix must contain header cell: ' + cell);
+        }
+        assert.doesNotMatch(html, /id="app"/);
+        for (const competitor of page.competitors) {
+          assert.match(html, new RegExp(competitor.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')), page.slug + ' must name competitor: ' + competitor);
+        }
+      }
+      const liveuamapPage = read(outDir, 'compare/liveuamap-alternatives/index.html');
+      assert.match(liveuamapPage, /Multi-domain fusion/i);
+      assert.match(liveuamapPage, /maritime/i);
+      const riskDashboards = read(outDir, 'compare/best-geopolitical-risk-dashboards/index.html');
+      assert.match(riskDashboards, /Update latency at zero price/i);
+      const acledPage = read(outDir, 'compare/worldmonitor-vs-acled/index.html');
+      assert.match(acledPage, /wins on historical depth/i);
+      assert.match(acledPage, /complement/i);
+      const gdeltPage = read(outDir, 'compare/worldmonitor-vs-gdelt/index.html');
+      assert.match(gdeltPage, /wins on archive depth/i);
       assert.match(toolsIndex, /href="\/tools\/natural-hazard-pulse\/"/);
       assert.match(toolsIndex, /href="\/tools\/airspace-disruption-checker\/"/);
       assert.match(toolsIndex, /href="\/tools\/signal-convergence\/"/);

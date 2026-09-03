@@ -1,5 +1,5 @@
 ---
-title: "World Monitor vs. Traditional Intelligence Tools"
+title: "World Monitor vs Bloomberg, Palantir, Dataminr, and Recorded Future"
 description: "Compare World Monitor to Bloomberg, Palantir, Dataminr, and Recorded Future. Free, open-source multi-domain intelligence vs. six-figure enterprise platforms."
 metaTitle: "World Monitor vs Bloomberg, Palantir, Dataminr"
 keywords: "Bloomberg Terminal alternative free, Palantir alternative open source, Dataminr alternative, intelligence platform comparison, free OSINT alternative"
@@ -150,6 +150,8 @@ Transparency matters. Here's what you won't get:
 - You need enterprise compliance (SOC2, FedRAMP)
 - You need to ingest proprietary organizational data
 - You need guaranteed SLAs and dedicated support
+
+For tool-by-tool comparisons that name each competitor and concede what it wins, see the [World Monitor comparison hub](/compare/).
 
 ## The Open Source Moat
 
