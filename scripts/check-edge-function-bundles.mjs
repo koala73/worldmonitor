@@ -9,6 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
+import { declaresNodeRuntime as declaresNodeRuntimeFromSource } from './lib/api-route-runtime.mjs';
 import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
@@ -106,7 +107,13 @@ function collectEdgeFunctionEntries(root, options = {}) {
     // Nested TS gateways are checked through their importing top-level
     // entrypoints and API typecheck. CI keeps the legacy explicit allowlist,
     // while pre-push broadens to every tracked top-level TS entrypoint.
-    return topLevelTsAllowlist === null || topLevelTsAllowlist.has(file);
+    if (topLevelTsAllowlist === null || topLevelTsAllowlist.has(file)) return true;
+    // ...with one exception the legacy allowlist predates: a Node-runtime route
+    // is the only thing that takes the platform:'node' bundle branch below, so
+    // leaving it out of CI means that branch — and any unresolvable import in
+    // its graph — is only ever checked on the pushing developer's machine.
+    const absolute = path.join(root, file);
+    return existsSync(absolute) && declaresNodeRuntimeFromSource(readFileSync(absolute, 'utf8'), file);
   });
 
   if (!skipMissingWorktreeEntries) {
@@ -127,16 +134,17 @@ export function listEdgeFunctionEntries(root = process.cwd(), options = {}) {
 /**
  * A route that opts into Vercel's Node runtime (`export const config =
  * { runtime: 'nodejs' }`) may import node: built-ins and is bundled with
- * esbuild's node platform below. Shared with tests/edge-functions.test.mjs
- * and scripts/enforce-runtime-handler-contract.mjs so the three gates
- * classify a file the same way. Routes that declare nothing keep the
- * browser bundle: Vercel defaults them to Node, but the existing ones
- * (api/story.js, api/og-story.js) are platform-neutral and the stricter
- * bundle is the useful signal.
+ * esbuild's node platform below. Re-exported from scripts/lib/api-route-runtime.mjs
+ * so this gate, scripts/enforce-runtime-handler-contract.mjs and the
+ * NODE_RUNTIME_ROUTES drift assertion in tests/edge-functions.test.mjs all
+ * classify a file from the same parsed declaration — a text match also fires
+ * on comments and unrelated string literals, which would put an Edge route on
+ * the node platform and let its node: imports resolve. Routes that declare
+ * nothing keep the browser bundle: Vercel defaults them to Node, but the
+ * existing ones (api/story.js, api/og-story.js) are platform-neutral and the
+ * stricter bundle is the useful signal.
  */
-export function declaresNodeRuntime(source) {
-  return /runtime\s*:\s*['"]nodejs['"]/.test(source);
-}
+export { declaresNodeRuntime } from './lib/api-route-runtime.mjs';
 
 export async function checkEdgeFunctionBundles({ root = process.cwd(), ...options } = {}) {
   const { trackedEntries, entries, missingWorktreeEntries } = collectEdgeFunctionEntries(root, options);
@@ -156,7 +164,7 @@ export async function checkEdgeFunctionBundles({ root = process.cwd(), ...option
   // resolve node:https". They still get a bundle check — with the platform
   // they actually run on — so an unresolvable import in their graph fails
   // the gate the same way it does for edge routes.
-  const nodeEntries = entries.filter((file) => declaresNodeRuntime(readFileSync(path.join(root, file), 'utf8')));
+  const nodeEntries = entries.filter((file) => declaresNodeRuntimeFromSource(readFileSync(path.join(root, file), 'utf8'), file));
   const edgeEntries = entries.filter((file) => !nodeEntries.includes(file));
 
   const outdir = await mkdtemp(path.join(os.tmpdir(), 'worldmonitor-edge-bundles-'));

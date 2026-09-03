@@ -5,6 +5,7 @@
 // this is expected; use tsx (the project's standard test runner).
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach, before } from 'node:test';
+import { Readable } from 'node:stream';
 import { invokeNodeHandler, makeFakeNodeRequest, makeMcpFetch } from './helpers/node-http-shapes.mjs';
 import { MAX_MCP_PROXY_JSON_DEPTH } from '../api/mcp/bounded-json.ts';
 
@@ -908,6 +909,89 @@ describe('api/mcp-proxy', () => {
       let all;
       lookup('mcp.example.com', { all: true }, (error, addresses) => { all = { error, addresses }; });
       assert.deepEqual(all, { error: null, addresses: [{ address: '203.0.113.9', family: 4 }] });
+    });
+  });
+
+  // ── Pinned transport hygiene ──────────────────────────────────────────────
+
+  describe('Pinned transport hygiene', () => {
+    it('drains the upstream body when a dispatch returns a non-2xx', async () => {
+      // On Edge an unread fetch Response body was the platform's problem. Raw
+      // node:https hands back a live IncomingMessage: throwing without
+      // cancelling leaves the pinned socket open for the rest of the
+      // invocation, and this function reuses instances.
+      let cancelled = false;
+      globalThis.fetch = async () => new Response(
+        new ReadableStream({
+          start(controller) { controller.enqueue(new TextEncoder().encode('{"jsonrpc":"2.0"}')); },
+          cancel() { cancelled = true; },
+        }),
+        { status: 503, headers: { 'Content-Type': 'application/json' } },
+      );
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+      assert.equal(res.status, 422);
+      assert.match((await res.json()).error, /Initialize failed: HTTP 503/);
+      assert.equal(cancelled, true, 'a non-2xx upstream body must be cancelled before the throw');
+    });
+
+    it('does not echo raw node:https connection detail to the caller', async () => {
+      // node:https reports 'connect ECONNREFUSED <addr>:<port>' and TLS
+      // internals in error.message; handleProxyRequest puts err.message
+      // straight in the 422 body. Edge's fetch() only ever surfaced a flat
+      // 'fetch failed' and kept the detail on .cause.
+      const errors = [];
+      const originalConsoleError = console.error;
+      console.error = (...args) => { errors.push(args); };
+      try {
+        globalThis.fetch = async () => {
+          const err = new Error('connect ECONNREFUSED 93.184.216.34:443');
+          err.code = 'ECONNREFUSED';
+          throw err;
+        };
+        const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+
+        assert.equal(res.status, 422);
+        const { error } = await res.json();
+        assert.equal(error, 'MCP server connection failed');
+        assert.ok(!error.includes('93.184.216.34'), 'the connected address must not reach the caller');
+        assert.ok(!error.includes('ECONNREFUSED'), 'the syscall error code must not reach the caller');
+      } finally {
+        console.error = originalConsoleError;
+      }
+      // The detail is still recoverable server-side.
+      const logged = errors.find(([tag, entry]) => tag === '[mcp-proxy]' && entry?.event === 'mcp_proxy_upstream_transport_error');
+      assert.ok(logged, 'the concrete transport failure must be logged server-side');
+      assert.match(logged[1].message, /ECONNREFUSED 93\.184\.216\.34:443/);
+    });
+
+    it('still answers 504 when a transport failure is a timeout', async () => {
+      // The opaque-message rule above must not swallow the 504 classification:
+      // handleProxyRequest keys it off the message text.
+      globalThis.fetch = async () => { throw new Error('Socket timed out'); };
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 504);
+      assert.match((await res.json()).error, /timed out/i);
+    });
+
+    it('attaches an error listener before draining a null-body upstream response', async () => {
+      // A Node stream that emits 'error' with no listener throws an uncaught
+      // exception; on the Node runtime that kills the process (Edge only
+      // logged it). The 204/205/304 branch resumes the stream to drain it, so
+      // it must listen first. Without the listener this test crashes the
+      // runner rather than failing.
+      const incoming = new Readable({ read() {} });
+      incoming.statusCode = 204;
+      incoming.headers = {};
+
+      const response = proxyTesting.webResponseFromIncoming(incoming, undefined);
+      assert.equal(response.status, 204);
+      assert.equal(response.body, null);
+      assert.ok(incoming.listenerCount('error') >= 1, 'the drained stream must have an error listener');
+
+      incoming.emit('error', new Error('socket hang up'));
+      await new Promise((resolve) => setImmediate(resolve));
     });
   });
 

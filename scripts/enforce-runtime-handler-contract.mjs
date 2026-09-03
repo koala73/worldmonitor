@@ -35,10 +35,21 @@ import path from 'node:path';
 import ts from 'typescript';
 import { isMainModule } from './lib/main-module.mjs';
 import {
-  declaresNodeRuntime,
+  hasModifier,
+  lineOf,
+  parseApiRouteSource,
+  propertyName,
+  readRuntimeConfig,
+  unwrapExpression,
+} from './lib/api-route-runtime.mjs';
+import {
   listEdgeFunctionEntries,
   listTrackedApiSourceFiles,
 } from './check-edge-function-bundles.mjs';
+
+// Kept as a named export: tests/enforce-runtime-handler-contract.test.mjs and
+// the bundle gate both read the runtime through this module.
+export { readRuntimeConfig };
 
 /** Named exports that flip @vercel/node into web-handler dispatch. */
 export const WEB_HANDLER_EXPORT_NAMES = new Set(['GET', 'HEAD', 'OPTIONS', 'POST', 'PUT', 'DELETE', 'PATCH', 'fetch']);
@@ -46,65 +57,7 @@ export const WEB_HANDLER_EXPORT_NAMES = new Set(['GET', 'HEAD', 'OPTIONS', 'POST
 const RESOLVE_EXTENSIONS = ['.ts', '.mts', '.tsx', '.js', '.mjs', '.cjs'];
 const MAX_REEXPORT_DEPTH = 4;
 
-function parseSource(source, filePath) {
-  const kind = /\.(ts|mts|tsx)$/.test(filePath) ? ts.ScriptKind.TS : ts.ScriptKind.JS;
-  return ts.createSourceFile(filePath, source, ts.ScriptTarget.Latest, true, kind);
-}
-
-function hasModifier(node, kind) {
-  return Boolean(node.modifiers?.some((modifier) => modifier.kind === kind));
-}
-
-function lineOf(sourceFile, node) {
-  return sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile)).line + 1;
-}
-
-function unwrapExpression(expression) {
-  let current = expression;
-  while (
-    ts.isParenthesizedExpression(current)
-    || ts.isAsExpression(current)
-    || ts.isTypeAssertionExpression(current)
-    || (ts.isSatisfiesExpression && ts.isSatisfiesExpression(current))
-  ) {
-    current = current.expression;
-  }
-  return current;
-}
-
-function propertyName(node) {
-  if (ts.isIdentifier(node) || ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)) return node.text;
-  return null;
-}
-
-/**
- * `export const config = { runtime: '...' }` as Vercel's static-config reader
- * sees it. `runtime: null` with `literal: false` means the value is not a
- * string literal and the gate cannot classify the file.
- */
-export function readRuntimeConfig(sourceFile) {
-  for (const statement of sourceFile.statements) {
-    if (!ts.isVariableStatement(statement) || !hasModifier(statement, ts.SyntaxKind.ExportKeyword)) continue;
-    for (const declaration of statement.declarationList.declarations) {
-      if (!ts.isIdentifier(declaration.name) || declaration.name.text !== 'config') continue;
-      const line = lineOf(sourceFile, declaration);
-      const initializer = declaration.initializer ? unwrapExpression(declaration.initializer) : null;
-      if (!initializer || !ts.isObjectLiteralExpression(initializer)) {
-        return { declared: true, runtime: null, literal: false, line };
-      }
-      for (const property of initializer.properties) {
-        if (!ts.isPropertyAssignment(property) || propertyName(property.name) !== 'runtime') continue;
-        const value = unwrapExpression(property.initializer);
-        if (ts.isStringLiteral(value) || ts.isNoSubstitutionTemplateLiteral(value)) {
-          return { declared: true, runtime: value.text, literal: true, line };
-        }
-        return { declared: true, runtime: null, literal: false, line };
-      }
-      return { declared: true, runtime: null, literal: true, line };
-    }
-  }
-  return { declared: false, runtime: null, literal: true, line: null };
-}
+const parseSource = parseApiRouteSource;
 
 function describeFunction(fn, sourceFile) {
   return {
@@ -347,7 +300,7 @@ export function listRouteFiles(root) {
   for (const file of listTrackedApiSourceFiles(root)) {
     if (path.posix.basename(file).includes('.test.')) continue;
     if (!existsSync(path.join(root, file))) continue;
-    if (declaresNodeRuntime(readFileSync(path.join(root, file), 'utf8'))) files.add(file);
+    if (readRuntimeConfig(parseSource(readFileSync(path.join(root, file), 'utf8'), file)).runtime === 'nodejs') files.add(file);
   }
   return [...files].filter((file) => existsSync(path.join(root, file))).sort();
 }

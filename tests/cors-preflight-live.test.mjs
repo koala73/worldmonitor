@@ -92,7 +92,13 @@ for (const { url, origin } of PUBLIC_CORS_PROBES) {
 // answers are the function's own: a 204 preflight and the auth gate's 401
 // prove the (req, res) entry point ran end to end on a real deployment.
 // Nothing here proves anything until it is run against that deployment.
-const MCP_PROXY_URL = 'https://www.worldmonitor.app/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp';
+// These probes are the merge gate for the Edge to Node move, and a merge gate
+// has to be pointable at the PREVIEW deployment being merged — production
+// still runs the old function. Default to production so an unqualified
+// LIVE_SMOKE=1 run keeps checking the live site:
+//   LIVE_SMOKE=1 LIVE_SMOKE_BASE=https://<preview>.vercel.app npm run test:data -- tests/cors-preflight-live.test.mjs
+const SMOKE_BASE = (process.env.LIVE_SMOKE_BASE || 'https://www.worldmonitor.app').replace(/\/+$/, '');
+const MCP_PROXY_URL = `${SMOKE_BASE}/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp`;
 
 test('OPTIONS /api/mcp-proxy answers 204 with no body from the Node-runtime entry point', { skip: !SHOULD_RUN }, async () => {
   const resp = await fetch(MCP_PROXY_URL, {

@@ -241,6 +241,37 @@ function mapAbortError(error, signal) {
   return error;
 }
 
+// handleProxyRequest echoes `err.message` to the caller in its 422 body. Edge's
+// fetch() threw a flat `TypeError: fetch failed` and kept the detail on
+// `cause`; raw node:https throws 'connect ECONNREFUSED 93.184.216.34:443',
+// 'Client network socket disconnected before secure TLS connection was
+// established', hostname mismatches and so on — connection-level detail the
+// proxy never used to expose. Collapse everything that is not a timeout or an
+// SSRF rejection to one fixed string and log the specifics server-side, the
+// same split throwBlockedAddress already uses for blocked addresses.
+const UPSTREAM_TRANSPORT_FAILURE_MESSAGE = 'MCP server connection failed';
+
+function opaqueUpstreamError(error) {
+  if (error instanceof McpProxySsrfError) return error;
+  const raw = error instanceof Error ? error.message : String(error);
+  // handleProxyRequest classifies a 504 by matching 'timed out' / 'TimeoutError'
+  // in the message, so a timeout that arrives as a plain Error (an upstream
+  // socket timeout rather than our own AbortSignal) must keep that
+  // classification — normalised to the canonical text, not passed through raw.
+  const isTimeout = error instanceof McpProxyTimeoutError
+    || raw.includes('timed out')
+    || raw.includes('TimeoutError')
+    || error?.code === 'ETIMEDOUT';
+  if (isTimeout) return new McpProxyTimeoutError('MCP upstream request timed out');
+  console.error('[mcp-proxy]', {
+    event: 'mcp_proxy_upstream_transport_error',
+    ts: new Date().toISOString(),
+    code: error?.code,
+    message: raw,
+  });
+  return new Error(UPSTREAM_TRANSPORT_FAILURE_MESSAGE);
+}
+
 function choosePinnedAddress(resolvedAddresses) {
   // Prefer an A answer (Vercel Node functions egress over IPv4), else the first
   // AAAA. Every candidate was classified by assertServerUrlSafe; re-checking
@@ -305,7 +336,7 @@ function incomingBodyStream(incoming, signal) {
       incoming.on('error', (error) => {
         if (finished) return;
         finished = true;
-        controller.error(mapAbortError(error, signal));
+        controller.error(opaqueUpstreamError(mapAbortError(error, signal)));
       });
     },
     pull() {
@@ -324,7 +355,13 @@ function webResponseFromIncoming(incoming, signal) {
   const status = Number.isInteger(rawStatus) && rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 502;
   const headers = headersFromIncoming(incoming);
   if (status === 204 || status === 205 || status === 304) {
-    incoming.resume(); // drain — null-body statuses cannot carry a Response body
+    // Drain — null-body statuses cannot carry a Response body. The listener is
+    // not optional: a Node stream that emits 'error' with none attached throws
+    // an uncaught exception, and on this runtime that kills the process (on
+    // Edge it was only logged). The caller gets the same null-body Response
+    // either way, so a socket that dies mid-drain is nothing to report.
+    incoming.on('error', () => {});
+    incoming.resume();
     return new Response(null, { status, headers });
   }
   return new Response(incomingBodyStream(incoming, signal), { status, headers });
@@ -351,27 +388,35 @@ async function pinnedFetch(target, init = {}) {
     const fail = (error) => {
       if (settled) return;
       settled = true;
-      reject(mapAbortError(error, signal));
+      reject(opaqueUpstreamError(mapAbortError(error, signal)));
     };
-    const req = request({
-      protocol: 'https:',
-      hostname: url.hostname,
-      port: url.port || 443,
-      path: `${url.pathname}${url.search}`,
-      method: init.method ?? 'GET',
-      headers,
-      family,
-      lookup: pinnedLookup(pinnedAddress, family),
-      agent: PINNED_UPSTREAM_AGENT,
-      signal,
-    }, (incoming) => {
-      if (settled) {
-        incoming.destroy();
-        return;
-      }
-      settled = true;
-      resolve(webResponseFromIncoming(incoming, signal));
-    });
+    let req;
+    try {
+      req = request({
+        protocol: 'https:',
+        hostname: url.hostname,
+        port: url.port || 443,
+        path: `${url.pathname}${url.search}`,
+        method: init.method ?? 'GET',
+        headers,
+        family,
+        lookup: pinnedLookup(pinnedAddress, family),
+        agent: PINNED_UPSTREAM_AGENT,
+        signal,
+      }, (incoming) => {
+        if (settled) {
+          incoming.destroy();
+          return;
+        }
+        settled = true;
+        resolve(webResponseFromIncoming(incoming, signal));
+      });
+    } catch (error) {
+      // https.request validates header names/values synchronously and throws
+      // ERR_INVALID_HTTP_TOKEN / ERR_INVALID_CHAR outside the 'error' event.
+      fail(error);
+      return;
+    }
     req.on('error', fail);
     if (body) req.write(body);
     req.end();
@@ -452,6 +497,10 @@ export const __testing__ = {
   PINNED_UPSTREAM_AGENT,
   HOP_BY_HOP_FORWARD_HEADERS,
   isForbiddenForwardHeader,
+  // Exposed so a test can prove the null-body drain path attaches its 'error'
+  // listener: an unlistened Node stream error is an uncaught exception, and on
+  // this runtime that kills the process.
+  webResponseFromIncoming,
 };
 
 function buildHeaders(customHeaders) {
@@ -530,7 +579,7 @@ async function sendInitialized(target, headers, sessionId) {
 async function mcpListTools(target, customHeaders) {
   const headers = buildHeaders(customHeaders);
   const initResp = await postJson(target, buildInitPayload(), headers, null);
-  if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) { await cancelResponseBody(initResp); throw new Error(`Initialize failed: HTTP ${initResp.status}`); }
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
@@ -538,7 +587,7 @@ async function mcpListTools(target, customHeaders) {
   const listResp = await postJson(target, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
   }, headers, sessionId);
-  if (!listResp.ok) throw new Error(`tools/list failed: HTTP ${listResp.status}`);
+  if (!listResp.ok) { await cancelResponseBody(listResp); throw new Error(`tools/list failed: HTTP ${listResp.status}`); }
   const listData = await parseJsonRpcResponse(listResp);
   if (listData.error) throw new Error(`tools/list error: ${listData.error.message}`);
   return listData.result?.tools || [];
@@ -547,7 +596,7 @@ async function mcpListTools(target, customHeaders) {
 async function mcpCallTool(target, toolName, toolArgs, customHeaders) {
   const headers = buildHeaders(customHeaders);
   const initResp = await postJson(target, buildInitPayload(), headers, null);
-  if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) { await cancelResponseBody(initResp); throw new Error(`Initialize failed: HTTP ${initResp.status}`); }
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
@@ -556,7 +605,7 @@ async function mcpCallTool(target, toolName, toolArgs, customHeaders) {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: toolName, arguments: toolArgs || {} },
   }, headers, sessionId);
-  if (!callResp.ok) throw new Error(`tools/call failed: HTTP ${callResp.status}`);
+  if (!callResp.ok) { await cancelResponseBody(callResp); throw new Error(`tools/call failed: HTTP ${callResp.status}`); }
   const callData = await parseJsonRpcResponse(callResp);
   if (callData.error) throw new Error(`tools/call error: ${callData.error.message}`);
   return callData.result;
@@ -599,7 +648,7 @@ class SseSession {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
     });
-    if (!resp.ok) throw new Error(`SSE connect HTTP ${resp.status}`);
+    if (!resp.ok) { await cancelResponseBody(resp); throw new Error(`SSE connect HTTP ${resp.status}`); }
     this._reader = resp.body.getReader();
     this._startReadLoop();
     await this._endpointDeferred.promise;
@@ -995,6 +1044,11 @@ function requestBodyStream(req) {
       req.on('data', (chunk) => {
         if (finished) return;
         controller.enqueue(chunk); // Buffer is a Uint8Array
+        // Same backpressure as incomingBodyStream. readBoundedRequestBody's cap
+        // bounds what it COPIES, not what this queue holds: without the pause
+        // the whole body accumulates here regardless of the cap, and the reject
+        // only fires once the consumer has read past it.
+        if (controller.desiredSize !== null && controller.desiredSize <= 0) req.pause();
       });
       req.on('end', () => {
         if (finished) return;
@@ -1007,11 +1061,14 @@ function requestBodyStream(req) {
         controller.error(error);
       });
     },
+    pull() {
+      req.resume();
+    },
     cancel() {
       finished = true;
       req.destroy();
     },
-  });
+  }, new ByteLengthQueuingStrategy({ highWaterMark: 64 * 1024 }));
 }
 
 function toWebRequest(req: IncomingMessage): Request {
