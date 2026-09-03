@@ -14,6 +14,7 @@ const {
   HEALTH_VERDICT_SNAPSHOT_TTL_SECONDS,
   HEALTH_VERDICT_REFRESH_LOCK_KEY: HEALTH_REFRESH_LOCK_KEY,
   HEALTH_VERDICT_REFRESH_WAIT_MS,
+  hasExpiredActivationGrace,
   snapshotTtlSeconds,
 } = __testing__;
 const realFetch = globalThis.fetch;
@@ -547,6 +548,7 @@ test('snapshot TTL is clamped down to the nearest activation deadline', () => {
 
   // Content deadline on a per-check entry.
   assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(30_000) } } }, now), 30);
+  assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'STALE_CONTENT', staleContentGraceUntil: at(20_000) } } }, now), 20);
   // Rollout deadline, which only counts on a ROLLOUT_PENDING entry.
   assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'ROLLOUT_PENDING', rolloutPendingUntil: at(10_000) } } }, now), 10);
   // Compact shape: deadlines live under `summary`, because a graced check is OK
@@ -562,6 +564,22 @@ test('snapshot TTL is clamped down to the nearest activation deadline', () => {
   );
   // Beyond the base TTL the base TTL still caps it.
   assert.equal(snapshotTtlSeconds({ checks: { a: { status: 'OK', contentFreshnessPendingUntil: at(600_000) } } }, now), 60);
+});
+
+test('stale-content grace invalidates full and compact snapshots at the exact deadline', () => {
+  const now = Date.parse('2026-09-03T12:00:00.000Z');
+  const deadline = new Date(now).toISOString();
+  const full = {
+    checks: { temporalAnomalies: { status: 'STALE_CONTENT', staleContentGraceUntil: deadline } },
+  };
+  const compact = {
+    problems: { temporalAnomalies: { status: 'STALE_CONTENT', staleContentGraceUntil: deadline } },
+  };
+
+  assert.equal(hasExpiredActivationGrace(full, now - 1), false);
+  assert.equal(hasExpiredActivationGrace(compact, now - 1), false);
+  assert.equal(hasExpiredActivationGrace(full, now), true);
+  assert.equal(hasExpiredActivationGrace(compact, now), true);
 });
 
 test('snapshot TTL floors rather than rounds, so the key dies before the deadline', () => {
@@ -594,4 +612,167 @@ test('a malformed or already-passed deadline collapses the TTL to its floor', ()
       `${label} must behave identically on the compact shape`,
     );
   }
+});
+
+// ── Stale-content grace, end to end through handleHealth (#7577 review) ──
+//
+// The grace helpers are unit-tested next door. These tests exist because those
+// unit tests would ALL still pass if the wiring in handleHealth were deleted:
+// nothing else proves the claim pipeline is issued, that its reply reaches the
+// response, or that a failed claim falls back to a plain warning.
+
+const GRACE_STATE_KEY = __testing__.STALE_CONTENT_GRACE_STATE_KEY;
+const GRACE_MS = __testing__.STALE_CONTENT_GRACE_MS;
+const TEMPORAL_META_KEY = 'seed-meta:temporal:anomalies';
+
+// A registry sweep where exactly one source has fresh seeder metadata but no
+// usable item timestamp — the undatable STALE_CONTENT shape.
+function sweepFetch({ graceStore = new Map(), onCommands = () => {}, failGraceClaim = false } = {}) {
+  return async (_url, init) => {
+    const commands = JSON.parse(init.body);
+    onCommands(commands);
+
+    if (failGraceClaim && commands.some(([op]) => op === 'HSETNX')) {
+      return new Response('upstream exploded', { status: 500 });
+    }
+
+    const results = commands.map((command) => {
+      const [op, key, field, value] = command;
+      if (op === 'STRLEN') return { result: 100 };
+      if (op === 'LLEN') return { result: 1 };
+      if (op === 'EXISTS') return { result: 0 };
+      if (op === 'HSETNX') {
+        if (graceStore.has(field)) return { result: 0 };
+        graceStore.set(field, value);
+        return { result: 1 };
+      }
+      if (op === 'HGET') return { result: graceStore.get(field) ?? null };
+      if (op === 'HDEL') return { result: 1 };
+      if (op === 'PEXPIRE') return { result: 1 };
+      if (op === 'GET' && key === TEMPORAL_META_KEY) {
+        return {
+          result: JSON.stringify({
+            fetchedAt: Date.now() - 4 * 60 * 1000,
+            recordCount: 12,
+            newestItemAt: null,
+            maxContentAgeMin: 2880,
+          }),
+        };
+      }
+      if (op === 'GET') {
+        return { result: JSON.stringify({ fetchedAt: Date.now(), recordCount: 1 }) };
+      }
+      return { result: 'OK' };
+    });
+    return new Response(JSON.stringify(results), { status: 200 });
+  };
+}
+
+async function sweepCompactBody(fetchImpl) {
+  globalThis.fetch = fetchImpl;
+  const response = await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
+  return response.json();
+}
+
+test('handleHealth claims, publishes, and reuses one stale-content deadline', async () => {
+  const graceStore = new Map();
+  const pipelines = [];
+  const body = await sweepCompactBody(sweepFetch({
+    graceStore,
+    onCommands: (c) => pipelines.push(c),
+  }));
+
+  const claim = pipelines.find((commands) => commands.some(([op]) => op === 'HSETNX'));
+  assert.ok(claim, 'the sweep must actually issue the grace claim');
+  assert.deepEqual(
+    claim.filter(([op]) => op === 'HSETNX').map(([, key, field]) => [key, field]),
+    [[GRACE_STATE_KEY, 'temporalAnomalies']],
+  );
+  // The hash must carry a lifetime, or a retired registry name leaks forever.
+  assert.ok(
+    claim.some(([op, key]) => op === 'PEXPIRE' && key === GRACE_STATE_KEY),
+    'the claim pipeline must refresh the hash TTL',
+  );
+  // The recovery clear is dispatched separately so it never blocks the response.
+  assert.ok(
+    !claim.some(([op]) => op === 'HDEL'),
+    'cleanup must not ride along in the awaited claim pipeline',
+  );
+
+  const problem = body.problems?.temporalAnomalies;
+  assert.equal(problem?.status, 'STALE_CONTENT');
+  assert.equal(problem.staleContentGraceUntil, new Date(Number(graceStore.get('temporalAnomalies'))).toISOString());
+  assert.equal(body.summary.staleContent, 1, 'the diagnosis stays counted');
+  // The graced entry is counted in `ok`, not `warn` — measured against the same
+  // sweep with the claim failing, so this compares like with like rather than
+  // against a hand-written expectation about the rest of the mock registry.
+  const strict = await sweepCompactBody(sweepFetch({ failGraceClaim: true }));
+  assert.equal(
+    body.summary.warn,
+    strict.summary.warn - 1,
+    'grace must move exactly this one entry out of the warning bucket',
+  );
+  assert.equal(body.summary.staleContent, strict.summary.staleContent, 'the census is unchanged either way');
+
+  // A later sweep must READ BACK the same anchor, never mint a new one.
+  const pinned = graceStore.get('temporalAnomalies');
+  const second = await sweepCompactBody(sweepFetch({ graceStore }));
+  assert.equal(graceStore.get('temporalAnomalies'), pinned, 'HSETNX must not overwrite the anchor');
+  assert.equal(
+    second.problems?.temporalAnomalies?.staleContentGraceUntil,
+    new Date(Number(pinned)).toISOString(),
+  );
+});
+
+test('handleHealth falls back to a plain warning when the grace claim fails', async () => {
+  // redisPipeline resolves null rather than throwing on every failure shape, so
+  // the real fail-closed guard is parseStaleContentGraceUntil refusing a reply
+  // that is not a well-formed array. Prove it end to end.
+  const body = await sweepCompactBody(sweepFetch({ failGraceClaim: true }));
+
+  const problem = body.problems?.temporalAnomalies;
+  assert.equal(problem?.status, 'STALE_CONTENT');
+  assert.equal(
+    problem.staleContentGraceUntil,
+    undefined,
+    'an unreadable deadline must not soften anything',
+  );
+  assert.equal(body.summary.staleContent, 1);
+  assert.ok(body.summary.warn >= 1, 'the entry counts as a warning when grace cannot be proven');
+});
+
+test('handleHealth serves a graced snapshot until its deadline, then sweeps again', async () => {
+  const now = Date.parse('2026-09-03T12:00:00.000Z');
+  Date.now = () => now;
+
+  const graced = {
+    status: 'HEALTHY',
+    summary: { total: 1, ok: 1, warn: 0, onDemandWarn: 0, staleContent: 1, crit: 0 },
+    checkedAt: new Date(now - 1000).toISOString(),
+    problems: {
+      temporalAnomalies: {
+        status: 'STALE_CONTENT',
+        staleContentGraceUntil: new Date(now + 60_000).toISOString(),
+      },
+    },
+  };
+
+  let sweeps = 0;
+  globalThis.fetch = async (_url, init) => {
+    const commands = JSON.parse(init.body);
+    if (commands.some(([op]) => op === 'STRLEN' || op === 'LLEN')) sweeps++;
+    if (commands.length === 1 && commands[0][0] === 'GET' && commands[0][1] === HEALTH_COMPACT_SNAPSHOT_KEY) {
+      return new Response(JSON.stringify([{ result: JSON.stringify(graced) }]), { status: 200 });
+    }
+    return new Response(JSON.stringify(commands.map(() => ({ result: 'OK' }))), { status: 200 });
+  };
+
+  const served = await (await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'))).json();
+  assert.equal(served.checkedAt, graced.checkedAt, 'inside the window the cached verdict is reused');
+  assert.equal(sweeps, 0, 'no sweep while the published grace is still live');
+
+  // At the exact deadline the cached verdict is no longer servable.
+  graced.problems.temporalAnomalies.staleContentGraceUntil = new Date(now).toISOString();
+  await handler(new Request('https://api.worldmonitor.app/api/health?compact=1'));
+  assert.equal(sweeps, 1, 'an expired grace must force a fresh sweep, not serve a stale ok');
 });

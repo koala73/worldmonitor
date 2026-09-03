@@ -979,7 +979,7 @@ const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
         unavailableReason: { const: 'scorecard-snapshot-unavailable' },
         methodologyVersion: { const: '' },
         computedAt: { const: '' },
-        scorecards: { maxItems: 0 },
+        scorecards: { type: 'array' as const, maxItems: 0 },
       },
     },
   ],

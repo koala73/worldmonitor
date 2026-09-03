@@ -285,6 +285,37 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // `!hasFirstParty` gate for exactly that reason), so only the WebAuthn
   // wording — which no first-party call site can reach — is suppressed here.
   /^(?:Error: )?NotSupportedError: The user agent does not support public key credentials\.$/,
+  // The same WebAuthn surface as the entry above, reached from the other
+  // direction: a SECOND credential request issued while one is still
+  // outstanding. WORLDMONITOR-11T is the shape: `Error: OperationError: A
+  // request is already pending.` on Chrome 151 / Windows at `/pro`, arriving
+  // via `onunhandledrejection` with zero frames, breadcrumbs running Clerk's
+  // `GET /v1/environment` -> `GET /v1/client` -> a button click ->
+  // `POST /v1/client/sign_ins`.
+  //
+  // Chrome serialises `navigator.credentials` requests per page and rejects the
+  // overlapping one with this exact sentence. The documented triggers are a
+  // user double-clicking the sign-in button and a submit issued while a
+  // conditional-mediation passkey autofill request is still open
+  // (keycloak/keycloak#41037; w3c/webauthn#1790 records that the spec leaves
+  // the overlap undefined and that Chrome errors). Clerk's sign-in UI opens
+  // exactly that conditional request, so both triggers sit behind the marketing
+  // sign-in button and neither is reachable from this bundle to fix.
+  //
+  // Same licence as the `NotSupportedError` entry above, and it holds twice
+  // over. Only a WebAuthn CALLER can raise the sentence, and this surface has
+  // none - `navigator.credentials` and `PublicKeyCredential` appear in no
+  // `pro-test/src` file, no `shared/` leaf and neither inline script, which the
+  // WebAuthn-free scan that licenses that entry already pins. Independently,
+  // `OperationError` is a browser-minted DOMException name and the only
+  // DOMException this bundle ever constructs is `timeout-signal.ts`'s
+  // `TimeoutError`, so the type alone is unreachable from first-party code.
+  //
+  // Anchored to the whole sentence for the reason the `Error invoking` entry
+  // spells out: `ignoreErrors` is frame-blind, so an unanchored `A request is
+  // already pending` would also drop a first-party message that merely CONTAINS
+  // the phrase while riding a `/pro/assets/*.js` frame.
+  /^(?:Error: )?OperationError: A request is already pending\.$/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */

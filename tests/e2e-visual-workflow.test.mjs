@@ -78,18 +78,34 @@ describe('E2E visual workflow contract', () => {
   });
 
   it('uploads each Playwright run immediately with the #6496 artifact contract', () => {
+    const allRawArtifactNames = [];
     for (const [jobId, job] of Object.entries(visual.jobs)) {
-      const playwrightRuns = jobSteps(job).filter((step) =>
-        /npm run test:e2e:/.test(String(step.run ?? '')),
-      );
+      const steps = jobSteps(job);
+      const playwrightRuns = steps
+        .map((step, index) => ({ index, step }))
+        .filter(({ step }) => /npm run test:e2e:/.test(String(step.run ?? '')));
       assert.ok(playwrightRuns.length > 0, `${jobId} must invoke playwright`);
 
-      const uploads = jobSteps(job).filter((step) => stepUses(step).startsWith('actions/upload-artifact@'));
+      const uploads = steps.filter((step) => stepUses(step).startsWith('actions/upload-artifact@'));
       assert.ok(uploads.length >= playwrightRuns.length, `${jobId} must upload after each playwright run`);
 
-      for (const upload of uploads) {
+      const rawArtifactNames = [];
+      for (const [runOffset, playwrightRun] of playwrightRuns.entries()) {
+        const nextRunIndex = playwrightRuns[runOffset + 1]?.index ?? steps.length;
+        const upload = steps.slice(playwrightRun.index + 1, nextRunIndex).find((step) => {
+          if (!stepUses(step).startsWith('actions/upload-artifact@')) return false;
+          const uploadPath = Array.isArray(step.with?.path)
+            ? step.with.path
+            : String(step.with?.path ?? '').split('\n');
+          return uploadPath.some((entry) => /^test-results\/?$/.test(String(entry).trim()));
+        });
+        assert.ok(upload, `${jobId} must upload raw test-results after Playwright run ${runOffset + 1}`);
         assert.match(String(upload.if), /!cancelled\(\)|always\(\)/);
         assert.match(String(upload.with.name), /github\.run_attempt/);
+        assert.doesNotMatch(String(upload.with.name), /gallery/i, 'gallery upload is not raw test-results evidence');
+        rawArtifactNames.push(String(upload.with.name));
+        allRawArtifactNames.push(String(upload.with.name));
+
         const path = upload.with.path;
         const flattened = Array.isArray(path)
           ? path
@@ -98,12 +114,22 @@ describe('E2E visual workflow contract', () => {
               .map((line) => line.trim())
               .filter(Boolean);
         assert.ok(
-          flattened.some((entry) => entry === 'test-results' || entry === 'test-results/' || entry === 'gallery/'),
-          `${jobId} upload must include test-results or gallery, got ${JSON.stringify(path)}`,
+          flattened.some((entry) => entry === 'test-results' || entry === 'test-results/'),
+          `${jobId} raw upload must include test-results, got ${JSON.stringify(path)}`,
         );
         assert.match(stepUses(upload), /@[0-9a-f]{40}$/i);
       }
+      assert.equal(
+        new Set(rawArtifactNames).size,
+        rawArtifactNames.length,
+        `${jobId} raw Playwright uploads must have distinct names`,
+      );
     }
+    assert.equal(
+      new Set(allRawArtifactNames).size,
+      allRawArtifactNames.length,
+      'raw Playwright uploads must have distinct names across the workflow',
+    );
   });
 
   it('publishes to object storage only when the screenshot bucket is configured', () => {
