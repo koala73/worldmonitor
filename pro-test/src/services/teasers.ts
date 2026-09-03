@@ -19,6 +19,8 @@ import { createTimeoutSignal } from './timeout-signal';
 export interface TeaserHeadline {
   title: string;
   source: string;
+  /** Article URL. A headline rendered beside a masthead must be checkable (#7608). */
+  url: string;
   publishedAt: number;
 }
 
@@ -235,7 +237,7 @@ async function fetchQuotes(): Promise<{ items: TeaserQuote[]; live: boolean } | 
 }
 
 interface FeedDigestResponse {
-  categories?: Record<string, { items?: Array<{ title?: string; source?: string; publishedAt?: number; importanceScore?: number }> }>;
+  categories?: Record<string, { items?: Array<{ title?: string; source?: string; link?: string; publishedAt?: number; importanceScore?: number }> }>;
   generatedAt?: string;
 }
 
@@ -251,7 +253,14 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
   const items = all
     .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
     .slice(0, 4)
-    .map(i => ({ title: i.title as string, source: i.source ?? '', publishedAt: i.publishedAt ?? 0 }));
+    .map(i => ({
+      title: i.title as string,
+      source: i.source ?? '',
+      // Only https links are rendered as links; anything else degrades to plain
+      // text rather than becoming a live href on an untrusted scheme.
+      url: i.link?.startsWith('https://') ? i.link : '',
+      publishedAt: i.publishedAt ?? 0,
+    }));
   // The digest response carries no degraded/stale booleans — its freshness
   // signal is generatedAt. Only claim LIVE when the digest is recent; an
   // unparseable/missing timestamp keeps the badge (matches the other

@@ -218,7 +218,16 @@ export const LiveStrip = () => {
             <ul className="space-y-3">
               {teasers.headlines.items.map((h, i) => (
                 <li key={i} className="text-sm leading-snug">
-                  <span className="line-clamp-2">{h.title}</span>
+                  {/* An <li> is the atomic unit an assistant lifts when it cites this
+                      card, so the masthead must never travel without the article it
+                      belongs to (#7608). Link it when we have the URL. */}
+                  {h.url ? (
+                    <a href={h.url} target="_blank" rel="noreferrer" className="hover:text-wm-green transition-colors">
+                      <span className="line-clamp-2">{h.title}</span>
+                    </a>
+                  ) : (
+                    <span className="line-clamp-2">{h.title}</span>
+                  )}
                   <span className="font-mono text-[10px] uppercase tracking-wider text-wm-muted">
                     {h.source}{h.publishedAt ? ` · ${timeAgo(h.publishedAt)}` : ''}
                   </span>
