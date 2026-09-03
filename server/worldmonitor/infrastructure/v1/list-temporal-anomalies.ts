@@ -5,7 +5,12 @@ import type {
   TemporalAnomaly as TemporalAnomalyProto,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { getCachedJson, readCachedJson, setCachedJson } from '../../../_shared/redis';
+import {
+  getCachedJson,
+  readCachedJson,
+  setCachedJson,
+  setCachedJsonIfAbsent,
+} from '../../../_shared/redis';
 import { resolveFireDetectionTotalCount } from '../../../../src/services/wildfires/payload';
 import {
   BASELINE_TTL,
@@ -54,29 +59,8 @@ function formatMessage(type: string, count: number, mean: number, multiplier: nu
   return `${TYPE_LABELS[type] || type} ${mult} normal for ${WEEKDAY_NAMES[weekday]} (${MONTH_NAMES[month]}) — ${count} vs baseline ${Math.round(mean)}`;
 }
 
-function redisCmd(cmd: string[]): { url: string; token: string; body: string } | null {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return null;
-  return { url, token, body: JSON.stringify(cmd) };
-}
-
 async function tryAcquireLock(): Promise<boolean> {
-  const r = redisCmd(['SET', BASELINE_LOCK_KEY, '1', 'NX', 'EX', String(BASELINE_LOCK_TTL)]);
-  if (!r) return false;
-  try {
-    const resp = await fetch(r.url, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${r.token}`, 'Content-Type': 'application/json' },
-      body: r.body,
-      signal: AbortSignal.timeout(3_000),
-    });
-    if (!resp.ok) return false;
-    const data = (await resp.json()) as { result?: string | null };
-    return data.result === 'OK';
-  } catch {
-    return false;
-  }
+  return setCachedJsonIfAbsent(BASELINE_LOCK_KEY, 1, BASELINE_LOCK_TTL);
 }
 
 /**
