@@ -22,6 +22,8 @@ const {
   SEED_META,
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
+  STALE_CONTENT_GRACE_MS,
+  healthStatusBucket,
 } = __testing__;
 
 const NOW = Date.parse('2026-08-03T14:42:58.000Z');
@@ -210,6 +212,21 @@ describe('portwatchPortActivity classification', () => {
       PORTWATCH_CONTENT_BUDGET_MINUTES + 60,
       'the published age is recomputed against now, not echoed from the producer',
     );
+  });
+
+  it('gives a just-over-budget critical-country observation the finite stale-content grace', () => {
+    const observedAt = NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 1) * MINUTE_MS;
+    const graceUntil = observedAt
+      + PORTWATCH_CONTENT_BUDGET_MINUTES * MINUTE_MS
+      + STALE_CONTENT_GRACE_MS;
+    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+      criticalOldestObservedAt: observedAt,
+      criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES + 1,
+    })));
+
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.equal(entry.staleContentGraceUntil, new Date(graceUntil).toISOString());
+    assert.equal(healthStatusBucket(entry, NOW), 'ok');
   });
 
   it('keeps OK while the re-aged observation is still inside the pinned budget', () => {

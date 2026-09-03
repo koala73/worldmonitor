@@ -42,15 +42,15 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 
 #### Stable missing-timestamp deadline
 
-- R7. When `newestItemAt` is valid, derive the grace deadline from `newestItemAt + maxContentAgeMin + 3 hours` without persistent state.
-- R8. When `newestItemAt` is null, claim one first-observation deadline in Redis with `HSETNX`, then read that stored deadline. A fresh seeder `fetchedAt` must not move it.
-- R9. Clear a source's stored missing-timestamp deadline only after its content-age contract becomes fresh again. A later distinct null incident can then receive a new finite grace.
+- R7. When `newestItemAt` or a per-entity `criticalOldestObservedAt` proves that its configured freshness boundary has passed, derive the grace deadline from that boundary plus three hours without persistent state.
+- R8. When a usable stale assessment has no boundary timestamp, or per-entity stale counts trip before the timestamp boundary, claim one first-observation deadline in Redis with `HSETNX`, then read that stored deadline. A fresh seeder `fetchedAt` must not move it.
+- R9. Clear a source's stored first-observation deadline only after both source-level and per-entity content-age contracts become fresh again. A later distinct undatable incident can then receive a new finite grace.
 - R10. If the optional grace-state read or write fails or returns invalid data, fail closed. Keep the normal `STALE_CONTENT` warning instead of extending or inventing grace.
 
 #### Cache correctness and proof
 
 - R11. A cached full or compact verdict must not survive past `staleContentGraceUntil`. Reuse the existing deadline-aware read guard and snapshot TTL calculation.
-- R12. Add proof-first tests for the just-over-budget timestamp case, the null timestamp that keeps its original deadline across fresh seeder metadata, and the exact expiry boundary.
+- R12. Add proof-first tests for source-level and per-entity just-over-budget timestamps, the null timestamp that keeps its original deadline across fresh seeder metadata, and the exact expiry boundary.
 
 ### Acceptance Examples
 
@@ -58,6 +58,7 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 - AE2. A null `newestItemAt` first observed at 09:00 claims a 12:00 deadline. Seeder metadata written again at 10:00 reads the same stored 12:00 deadline and does not restart the window.
 - AE3. At exactly 12:00, the entry has no active grace and counts as the existing `STALE_CONTENT` warning.
 - AE4. A future-dated `newestItemAt` has no grace and counts as a warning immediately.
+- AE5. A PortWatch critical-country observation just beyond its pinned budget has the same three-hour diagnostic grace as a source-level content-age failure.
 
 ### Success Criteria
 
@@ -76,8 +77,8 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 ### Key Technical Decisions
 
 - KTD1. Keep classification and severity separate. `classifyKey` continues to return `STALE_CONTENT`. A small summary-bucket helper treats only a `STALE_CONTENT` entry with an active `staleContentGraceUntil` as healthy for counting. This preserves diagnostics and all status consumers.
-- KTD2. Use the observation clock when it exists. The deadline for a valid past `newestItemAt` is deterministic and needs no Redis state.
-- KTD3. Persist only the clock that cannot be derived. A versioned Redis hash stores one deadline per source only for null `newestItemAt`. This is the smallest durable state that prevents every fresh seeder write from restarting grace.
+- KTD2. Use the observation clock when it proves the failed boundary. A valid past source-level or per-entity observation has a deterministic deadline and needs no Redis state.
+- KTD3. Persist only the clock that cannot be derived. A versioned Redis hash stores one deadline per source for null timestamps and count-driven per-entity failures that occur before the timestamp boundary. This is the smallest durable state that prevents every fresh seeder write from restarting grace.
 - KTD4. Namespace the grace-state hash with the existing `healthVerdictRedisKey` helper. Production keeps a stable key. Preview deployments remain commit-scoped.
 - KTD5. Keep cached verdicts deadline-safe. Add `staleContentGraceUntil` to the existing expiry guard and nearest-deadline scan instead of adding a second cache mechanism.
 
@@ -108,10 +109,11 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 
 - Goal: Prove the three required failure shapes against the current health behavior before code changes.
 - Requirements: R1-R12, with direct assertions for AE1-AE4.
-- Files: `tests/health-content-age.test.mjs`, `tests/health-verdict-snapshot.test.mjs`.
+- Files: `tests/health-content-age.test.mjs`, `tests/health-content-freshness.test.mjs`, `tests/health-verdict-snapshot.test.mjs`.
 - Approach: Extend the current classifier tests with deterministic clocks. Assert deadline derivation, null-deadline persistence semantics, summary bucket selection, compact problem visibility, and strict boundary handling. Extend snapshot tests so the cache TTL and read guard honor `staleContentGraceUntil` in full and compact shapes.
 - Test scenarios:
   - Content one minute beyond its budget gets a deadline at boundary plus three hours and counts as healthy during grace.
+  - Per-entity critical content one minute beyond its budget gets the same deadline contract.
   - Null content gets the stored first deadline even when a later request proposes a later candidate.
   - The exact deadline counts as warning and invalid state fails closed.
   - Future-dated content is not graced.
@@ -126,6 +128,7 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 - Approach:
   - Add a three-hour constant and a versioned, deployment-scoped Redis hash key.
   - Derive timestamp-based deadlines from the content freshness boundary.
+  - Normalize source-level and per-entity stale evidence before selecting a derived or first-observation deadline.
   - Build `HSETNX` and `HGET` commands for null timestamps, parse only finite stored deadlines, and issue one `HDEL` for recovered sources.
   - Pass resolved null deadlines into `classifyKey` and publish `staleContentGraceUntil` only while status is `STALE_CONTENT` and the deadline is in the future.
   - Count active-grace `STALE_CONTENT` entries in `ok` while retaining the `staleContent` diagnostic subcount and compact problem entry.
