@@ -133,6 +133,11 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
+// Coverage a dimension needs before a page will call it a supported reading. The
+// inventory labels anything with a usable series "observed", so a dimension
+// under this floor is observed and absent from the supported readings at once --
+// which reads as a contradiction unless the page states the floor (#7609).
+export const SUPPORTED_READING_MIN_COVERAGE = 0.5;
 export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-04';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
@@ -2443,12 +2448,15 @@ export function describeCoverageGaps(country) {
   return `${labels} ${verb} no usable observed series.${sourceClause}${failureClause}${unmonitoredClause}`;
 }
 
+function observedEvidenceDimensions(country) {
+  return activeCountryDimensions(country).filter((dimension) => (
+    !isCoverageGap(dimension)
+    && Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
+  ));
+}
+
 export function describeAvailableEvidence(country) {
-  const observed = activeCountryDimensions(country)
-    .filter((dimension) => (
-      !isCoverageGap(dimension)
-      && Number(dimension.coverage) >= 0.5
-    ))
+  const observed = observedEvidenceDimensions(country)
     .sort(compareDimensionsByCoverageDesc)
     .slice(0, AVAILABLE_EVIDENCE_LIMIT);
   if (observed.length === 0) {
@@ -2463,7 +2471,7 @@ function buildMicrostateEvidenceProfile(country) {
     .filter((dimension) => (
       !isCoverageGap(dimension)
       && String(dimension.imputationClass || '') === ''
-      && Number(dimension.coverage) >= 0.5
+      && Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
       && typeof dimension.score === 'number'
       && Number.isFinite(dimension.score)
     ));
@@ -2601,7 +2609,12 @@ export function dimensionInventoryNote(country, dimension) {
   return 'observed';
 }
 
-function selectUnrankedInventory(country) {
+// The inventory pool is weakest-first, so a dimension already at full coverage
+// never enters it, and UNRANKED_INVENTORY_LIMIT then drops the strongest tail of
+// what did. That is three buckets, not two. Partition once and derive every
+// count from the same split, so shown + fullCoverage + droppedByCap === total
+// holds by construction rather than by two filters agreeing (#7609).
+function partitionUnrankedInventory(country) {
   const dimensions = activeCountryDimensions(country);
   const notApplicable = dimensions
     .filter((dimension) => String(dimension.imputationClass || '') === 'not-applicable')
@@ -2614,31 +2627,117 @@ function selectUnrankedInventory(country) {
       && Number(dimension.coverage) < 1
     ))
     .sort(compareDimensionsByCoverageAsc);
-  const selected = [];
-  const seen = new Set();
+  const pool = [];
+  const pooled = new Set();
   for (const dimension of [...notApplicable, ...gaps, ...observed]) {
-    if (seen.has(dimension.id)) continue;
-    seen.add(dimension.id);
-    selected.push(dimension);
-    if (selected.length >= UNRANKED_INVENTORY_LIMIT) break;
+    if (pooled.has(dimension.id)) continue;
+    pooled.add(dimension.id);
+    pool.push(dimension);
   }
-  return selected;
+  return {
+    total: dimensions.length,
+    shown: pool.slice(0, UNRANKED_INVENTORY_LIMIT),
+    droppedByCap: pool.slice(UNRANKED_INVENTORY_LIMIT),
+    fullCoverage: dimensions.filter((dimension) => !pooled.has(dimension.id)),
+  };
+}
+
+function selectUnrankedInventory(country) {
+  return partitionUnrankedInventory(country).shown;
+}
+
+// One clause per non-empty omitted bucket, built from the partition itself, so a
+// bucket cannot be silently dropped from the sentence the way the cap bucket was
+// in #7530 -- assertUnrankedInventoryIntegrity adds up exactly these numbers.
+function unrankedInventoryScope(country) {
+  const { total, shown, fullCoverage, droppedByCap } = partitionUnrankedInventory(country);
+  return {
+    total,
+    shown: shown.length,
+    omittedClauses: [
+      { count: fullCoverage.length, text: 'more at full coverage' },
+      { count: droppedByCap.length, text: 'omitted for brevity' },
+    ].filter((clause) => clause.count > 0),
+  };
 }
 
 // The inventory is weakest-first and capped, so on a country like Tuvalu a
-// reader sees 12 of 23 dimensions -- the 12 worst -- with the 7 at full
-// coverage never entering the pool at all and 2 more dropped by the cap. Listing
-// only the weakest evidence with no note reads as uniformly poor coverage, which
-// is the opposite of what the snapshot says (#7530). State what is shown and
-// what is omitted, and say it only when something actually is omitted.
-export function describeInventoryScope(country, shown) {
-  const dimensions = activeCountryDimensions(country);
-  const total = dimensions.length;
-  const omitted = total - shown;
-  if (omitted <= 0) return null;
-  const complete = dimensions.filter((dimension) => Number(dimension.coverage) === 1).length;
-  const completeClause = complete > 0 ? `; ${complete} more at full coverage` : '';
-  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${completeClause}.`;
+// reader sees 12 of 21 dimensions -- the 12 worst -- with 7 at full coverage
+// never entering the pool at all and 2 more dropped by the cap. Listing only the
+// weakest evidence with no note reads as uniformly poor coverage, which is the
+// opposite of what the snapshot says (#7530). State what is shown and every
+// bucket that is omitted, and say it only when something actually is omitted.
+export function describeInventoryScope(country) {
+  const { total, shown, omittedClauses } = unrankedInventoryScope(country);
+  if (omittedClauses.length === 0) return null;
+  const omittedTail = omittedClauses.map((clause) => `; ${clause.count} ${clause.text}`).join('');
+  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${omittedTail}.`;
+}
+
+// Dimensions the page can call supported readings. The microstate branch
+// enumerates this set exhaustively and counts it out loud; the generic branch
+// prints only the strongest AVAILABLE_EVIDENCE_LIMIT of it and makes no claim to
+// be complete, so the display cap is not part of the set either way.
+function supportedReadingDimensions(country) {
+  return country.microstateTerritory === true
+    ? buildMicrostateEvidenceProfile(country).supportedDimensions
+    : observedEvidenceDimensions(country);
+}
+
+function unsupportedObservedInventory(country) {
+  const supported = new Set(supportedReadingDimensions(country).map((dimension) => dimension.id));
+  return partitionUnrankedInventory(country).shown.filter((dimension) => (
+    dimensionInventoryNote(country, dimension) === 'observed'
+    && !supported.has(dimension.id)
+  ));
+}
+
+// An inventory row reading "Social cohesion: 37% coverage; observed" next to a
+// supported-readings list that omits it is only a contradiction because the
+// threshold between the two is never stated. State it, and name the rows it
+// applies to rather than leaving the reader to work out which ones (#7609).
+export function describeSupportThreshold(country) {
+  const belowThreshold = unsupportedObservedInventory(country)
+    .sort(compareDimensionsByCoverageAsc);
+  if (belowThreshold.length === 0) return null;
+  const labels = formatProseList(belowThreshold.map(dimensionLabel));
+  const verb = belowThreshold.length === 1 ? 'is' : 'are';
+  const pronoun = belowThreshold.length === 1 ? 'it is' : 'they are';
+  const floor = `${Math.round(SUPPORTED_READING_MIN_COVERAGE * 100)}%`;
+  return `${labels} ${verb} observed but below the ${floor} coverage a supported reading needs, so ${pronoun} recorded here but not among the supported readings.`;
+}
+
+// These pages publish an evidence inventory about their own evidence base, so a
+// reader who adds the numbers up has to find them consistent. Fail the build
+// rather than the review: #7530's fix for the missing truncation note is what
+// introduced the arithmetic defect, and no test covered the claim (#7609).
+export function assertUnrankedInventoryIntegrity(country) {
+  const { total, shown, omittedClauses } = unrankedInventoryScope(country);
+  const accounted = omittedClauses.reduce((sum, clause) => sum + clause.count, shown);
+  if (accounted !== total) {
+    throw new Error(
+      `${country.code} evidence inventory scope does not close: ${shown} shown`
+      + `${omittedClauses.map((clause) => ` + ${clause.count} ${clause.text}`).join('')}`
+      + ` = ${accounted}, not the ${total} active dimensions the page claims`,
+    );
+  }
+  const unsupported = unsupportedObservedInventory(country);
+  if (unsupported.length > 0 && describeSupportThreshold(country) == null) {
+    throw new Error(
+      `${country.code} lists ${unsupported.map((dimension) => dimension.id).join(', ')} as observed`
+      + ' outside the supported readings without stating the support threshold',
+    );
+  }
+  const aboveThreshold = unsupported.filter((dimension) => (
+    Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
+  ));
+  if (aboveThreshold.length > 0) {
+    throw new Error(
+      `${country.code} lists ${aboveThreshold.map((dimension) => dimension.id).join(', ')} as observed`
+      + ` at or above the ${Math.round(SUPPORTED_READING_MIN_COVERAGE * 100)}% support threshold`
+      + ' yet omits them from the supported readings, which the threshold note cannot explain',
+    );
+  }
 }
 
 function formatSignedScore(value, evidence) {
@@ -2755,10 +2854,17 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
-    const inventoryScope = describeInventoryScope(country, inventory.length);
-    const inventoryScopeNote = inventoryScope
-      ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
-      : '';
+    assertUnrankedInventoryIntegrity(country);
+    const inventoryScope = describeInventoryScope(country);
+    const supportThreshold = describeSupportThreshold(country);
+    const inventoryPreamble = [
+      inventoryScope
+        ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
+        : '',
+      supportThreshold
+        ? `        <p class="source" data-inventory-support-threshold>${escapeHtml(supportThreshold)}</p>\n`
+        : '',
+    ].join('');
     if (coverageStory) {
       const comparatorLinks = coverageStory.useRegionalComparators ? regionalLinks : peerLinks;
       const html = `      <article data-country-analysis>
@@ -2771,7 +2877,7 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(coverageStory.evidence)}</p>
         <h3>Dimension evidence inventory</h3>
-${inventoryScopeNote}        <ul class="routes">
+${inventoryPreamble}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -2815,7 +2921,7 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(availableEvidence)}</p>
         <h3>Dimension evidence inventory</h3>
-${inventoryScopeNote}        <ul class="routes">
+${inventoryPreamble}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>

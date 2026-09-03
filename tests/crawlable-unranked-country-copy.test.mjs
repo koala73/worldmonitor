@@ -5,7 +5,10 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  assertUnrankedInventoryIntegrity,
   compareUnpublishedRankedPeers,
+  describeInventoryScope,
+  describeSupportThreshold,
   describeMicrostateEvidence,
   describeMicrostateEvidenceSummary,
   countryMetaDescription,
@@ -479,5 +482,122 @@ describe('unranked country copy', () => {
     assert.match(reason, /coverage is 69%/);
     assert.doesNotMatch(reason, /below the 65%/);
     assert.doesNotMatch(reason, /fewer than 200,000|microstate/);
+  });
+});
+
+// The weakest-first inventory splits the active dimensions into three buckets --
+// shown, never pooled because already at full coverage, and dropped by the cap --
+// and #7530 reported only two of them, so the sentence a reader can add up did
+// not close (#7609).
+describe('unranked evidence inventory scope', () => {
+  const partial = (count, offset = 0) => Array.from(
+    { length: count },
+    (_unused, index) => dimension(`partial${offset + index}`, 0.05 + (index * 0.01), '', 50),
+  );
+  const full = (count) => Array.from(
+    { length: count },
+    (_unused, index) => dimension(`full${index}`, 1, '', 80),
+  );
+
+  it('accounts for every active dimension across all three buckets', () => {
+    const scope = describeInventoryScope(countryFixture({}, [...partial(13), ...full(3)]));
+    assert.equal(
+      scope,
+      'Showing 12 of 16 active dimensions, lowest coverage first; 3 more at full coverage; 1 omitted for brevity.',
+    );
+    const [shown, total, ...omitted] = [...scope.matchAll(/\d+/g)].map(([value]) => Number(value));
+    assert.equal(shown + omitted.reduce((sum, count) => sum + count, 0), total);
+  });
+
+  it('reports the cap bucket even when nothing sits at full coverage', () => {
+    assert.equal(
+      describeInventoryScope(countryFixture({}, partial(13))),
+      'Showing 12 of 13 active dimensions, lowest coverage first; 1 omitted for brevity.',
+    );
+  });
+
+  it('reports the full-coverage bucket alone when the cap drops nothing', () => {
+    assert.equal(
+      describeInventoryScope(countryFixture({}, [...partial(2), ...full(2)])),
+      'Showing 2 of 4 active dimensions, lowest coverage first; 2 more at full coverage.',
+    );
+  });
+
+  it('stays silent when the inventory shows every active dimension', () => {
+    assert.equal(describeInventoryScope(countryFixture({}, partial(3))), null);
+  });
+});
+
+// "Observed" in the inventory only means the snapshot holds a usable series; a
+// supported reading also has to clear the coverage threshold. Without that said
+// on the page, a dimension shows up as observed and absent from the supported
+// list at the same time (#7609).
+describe('unranked observed support threshold', () => {
+  it('names the sub-threshold dimension and states the threshold it misses', () => {
+    const note = describeSupportThreshold(countryFixture({ microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]));
+    assert.equal(
+      note,
+      'Social cohesion is observed but below the 50% coverage a supported reading needs,'
+      + ' so it is recorded here but not among the supported readings.',
+    );
+  });
+
+  // The note has to name every affected row, not just the worst one: a reader
+  // checking the inventory against the readings list is checking all of them.
+  it('names every sub-threshold dimension, weakest first', () => {
+    const note = describeSupportThreshold(countryFixture({ microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('energy', 0.15, '', 30),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]));
+    assert.equal(
+      note,
+      'Energy system resilience and Social cohesion are observed but below the 50% coverage'
+      + ' a supported reading needs, so they are recorded here but not among the supported readings.',
+    );
+  });
+
+  it('stays silent when every observed dimension clears the threshold', () => {
+    assert.equal(
+      describeSupportThreshold(countryFixture({ microstateTerritory: true }, [
+        dimension('macroFiscal', 0.8, '', 60),
+        dimension('externalDebtCoverage', 0, 'unmonitored'),
+        dimension('sovereignFiscalBuffer', 0, 'not-applicable'),
+      ])),
+      null,
+    );
+  });
+});
+
+// The durable deliverable of #7609: a page whose inventory contradicts itself
+// must fail the build rather than reach a reader or a quality rater.
+describe('unranked evidence inventory build assertion', () => {
+  it('accepts an inventory whose buckets and observed labels are self-explaining', () => {
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(countryFixture({
+      microstateTerritory: true,
+    }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+      dimension('externalDebtCoverage', 0, 'unmonitored'),
+    ])));
+  });
+
+  it('rejects an observed dimension above the threshold that no supported reading names', () => {
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(countryFixture({
+        name: 'Tuvalu',
+        code: 'TV',
+        microstateTerritory: true,
+      }, [
+        // Clears the coverage threshold, but carries no usable score, so the
+        // exhaustive microstate reading list cannot name it.
+        dimension('socialCohesion', 0.6, '', null),
+        dimension('macroFiscal', 0.8, '', 60),
+      ])),
+      /TV.*socialCohesion/s,
+    );
   });
 });

@@ -1535,21 +1535,14 @@ describe('crawlable corpus generator', () => {
   // directly: a note that appears when nothing is hidden would tell a reader
   // evidence is missing when it is not.
   it('describes the inventory scope only when rows are actually omitted', () => {
-    const dimension = (id, coverage) => ({ id, coverage });
     const country = (coverages) => ({
-      domains: [{ id: 'd', dimensions: coverages.map((c, i) => dimension(`dim${i}`, c)) }],
+      domains: [{ id: 'd', dimensions: coverages.map((coverage, index) => ({ id: `dim${index}`, coverage })) }],
     });
 
-    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 3), null, 'nothing omitted');
-    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 4), null, 'shown exceeds total');
+    assert.equal(describeInventoryScope(country([0.2, 0.4, 0.9])), null, 'nothing omitted');
     assert.equal(
-      describeInventoryScope(country([0.2, 0.4, 1, 1]), 2),
+      describeInventoryScope(country([0.2, 0.4, 1, 1])),
       'Showing 2 of 4 active dimensions, lowest coverage first; 2 more at full coverage.',
-    );
-    assert.equal(
-      describeInventoryScope(country([0.2, 0.4, 0.9]), 2),
-      'Showing 2 of 3 active dimensions, lowest coverage first.',
-      'no full-coverage clause when there is nothing at full coverage',
     );
   });
 
@@ -2484,10 +2477,14 @@ describe('crawlable corpus generator', () => {
         );
         const pageWordCount = words(countryDocument.querySelector('main')?.textContent).length;
         // Upper bound leaves room for the published live-pulse tiles (#7376)
-        // on top of the #7371 country-analysis prose target.
+        // on top of the #7371 country-analysis prose target, and for the
+        // evidence-inventory accounting the unranked tier owes a reader: the
+        // truncation clause and the support-threshold note cost the widest of
+        // those pages ~30 words and pushed Monaco, Taiwan, Nauru, Palau and
+        // Andorra past the old 900 ceiling (#7609).
         assert.ok(
-          pageWordCount >= 600 && pageWordCount <= 900,
-          `${route} main content must contain 600-900 words, got ${pageWordCount}`,
+          pageWordCount >= 600 && pageWordCount <= 950,
+          `${route} main content must contain 600-950 words, got ${pageWordCount}`,
         );
       }
 
@@ -3009,6 +3006,44 @@ describe('crawlable corpus generator', () => {
         for (const peer of country.peers) {
           assert.ok(rankedNames.has(peer.name), `${route} peer ${peer.name} must be ranked`);
         }
+      }
+      // Every unranked page publishes an inventory about its own evidence base,
+      // so that inventory has to survive a reader checking it. Sweep the whole
+      // unranked tier, not a sample: the arithmetic in the scope note must close
+      // over all three buckets, and an "observed" row below the support
+      // threshold must carry the sentence that explains why it is still absent
+      // from the supported readings (#7609).
+      const unrankedCorpusCountries = corpusData.countries
+        .filter((entry) => entry.headlineEligible === false);
+      assert.ok(
+        unrankedCorpusCountries.length >= 20,
+        `expected a non-trivial unranked tier to sweep, got ${unrankedCorpusCountries.length}`,
+      );
+      for (const country of unrankedCorpusCountries) {
+        const route = `/countries/${country.slug}/`;
+        const document = htmlDocument(
+          read(outDir, `${route.slice(1)}index.html`),
+          `https://www.worldmonitor.app${route}`,
+        );
+        const scope = (document.querySelector('[data-inventory-scope]')?.textContent || '').trim();
+        if (scope) {
+          const [shown, total, ...omitted] = [...scope.matchAll(/\d+/g)].map(([value]) => Number(value));
+          assert.equal(
+            shown + omitted.reduce((sum, count) => sum + count, 0),
+            total,
+            `${route} inventory scope note does not account for every active dimension: "${scope}"`,
+          );
+        }
+        const subThresholdObserved = [...document.querySelectorAll('[data-country-analysis] ul.routes li')]
+          .map((node) => (node.textContent || '').trim())
+          .filter((text) => /;\s*observed\.$/.test(text))
+          .filter((text) => Number(text.match(/(\d+)% coverage/)?.[1] ?? 100) < 50);
+        const thresholdNote = (document.querySelector('[data-inventory-support-threshold]')?.textContent || '').trim();
+        assert.equal(
+          subThresholdObserved.length > 0,
+          thresholdNote !== '',
+          `${route} shows ${subThresholdObserved.length} sub-threshold observed rows but ${thresholdNote ? 'explains' : 'never explains'} the support threshold`,
+        );
       }
       const syria = read(outDir, 'countries/syria/index.html');
       assert.match(syria, /Macro-fiscal position/);
