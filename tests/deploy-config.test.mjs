@@ -742,18 +742,46 @@ describe('crawlable content corpus deployment contracts', () => {
   // `/countries/japan/` and `/chokepoints/` both served Vercel's static default
   // `public, max-age=0, must-revalidate`, never the configured max-age=3600,
   // while `/assets/(.*)` — a raw regex group — applied correctly.
-  it('never guards a corpus route with a trailing-slash-blind :path* source', () => {
-    const corpusRules = vercelConfig.headers.filter((entry) => CONTENT_CORPUS_PREFIXES.some(
-      (prefix) => entry.source === `/${prefix}` || entry.source.startsWith(`/${prefix}/`),
-    ));
-    assert.ok(corpusRules.length > 0, 'expected per-family corpus header rules to exist');
-    for (const rule of corpusRules) {
-      assert.doesNotMatch(
-        rule.source,
-        /:[A-Za-z0-9_]+\*/,
-        `${rule.source} uses a :param* catch-all, which never matches the trailing-slash URLs the corpus canonicalises to`,
-      );
-    }
+  // Scoped to CONTENT_CORPUS_PREFIXES on its first pass, this could not see the
+  // same shape surviving on /pro and /docs — `/pro/` was measured in production
+  // serving 200 with `public, max-age=0, must-revalidate` where the rule intends
+  // `private, no-cache` on an authenticated surface. Sweep EVERY header rule
+  // instead, with an explicit allowlist for the sources where the shape is
+  // correct because those URLs never carry a trailing slash.
+  it('never guards a route with a trailing-slash-blind :param* header source', () => {
+    // Mintlify serves /docs/<page> with no trailing slash, so its proxy rewrite
+    // is the one place the shape is right. It is a rewrite, not a header rule,
+    // and is asserted separately — nothing here should need an exemption.
+    const EXEMPT = new Set();
+    const blind = vercelConfig.headers
+      .map((entry) => entry.source)
+      .filter((source) => /:[A-Za-z0-9_]+\*/.test(source) && !EXEMPT.has(source));
+    assert.deepEqual(
+      blind,
+      [],
+      'these header sources use a :param* catch-all, which Vercel compiles in strict mode'
+        + ' and which therefore never matches the trailing-slash form of the URL',
+    );
+
+    // Positive control: the sweep must actually be looking at rules.
+    assert.ok(vercelConfig.headers.length > 50, 'expected the header rule set to be non-trivial');
+    assert.ok(
+      CONTENT_CORPUS_PREFIXES.every((prefix) => vercelConfig.headers.some(
+        (entry) => entry.source === `/${prefix}` || entry.source.startsWith(`/${prefix}/`),
+      )),
+      'every corpus family must still have its own header rule',
+    );
+  });
+
+  it('applies the /pro and /docs header rules to their trailing-slash forms', () => {
+    assert.equal(
+      effectiveCacheControl('/pro/'),
+      'private, no-cache, must-revalidate',
+      '/pro/ is an authenticated surface; a shared cache must not be allowed to store it',
+    );
+    assert.equal(effectiveCacheControl('/pro/welcome/'), 'private, no-cache, must-revalidate');
+    assert.equal(effectiveHeader('/docs/', 'X-Content-Type-Options'), 'nosniff');
+    assert.equal(effectiveHeader('/docs/zh/about/', 'X-Content-Type-Options'), 'nosniff');
   });
 
   it('advertises the edge cache and the RFC 8288 service linkset on every corpus route', () => {
@@ -4568,6 +4596,36 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
           `${path} must land on the www canonical`,
         );
       }
+
+      // The BARE form is the gap this guard missed on its first pass. Because
+      // `:match(.*)` no longer matches `/tools`, that path now escapes the
+      // variant host only via the host-agnostic `/tools` -> `/tools/` hop, and
+      // deleting that hop left the whole suite green while the tracer reported
+      // the page served as a 200 duplicate. Follow the chain to its terminus
+      // instead of asserting a single rule, so whichever rule carries the bare
+      // form, it must still end on www.
+      let path = `/${prefix}`;
+      let landed = null;
+      for (let hop = 0; hop < 4; hop += 1) {
+        const redirect = firstRedirectFor({ host: 'tech.worldmonitor.app', path });
+        assert.ok(
+          redirect,
+          `/${prefix} must not be served as a 200 duplicate on tech.worldmonitor.app`
+            + ` (chain stalled at ${path} after ${hop} hop(s))`,
+        );
+        const destination = String(redirect.destination);
+        if (destination.startsWith('https://www.worldmonitor.app')) {
+          landed = destination;
+          break;
+        }
+        assert.ok(
+          destination.startsWith('/'),
+          `/${prefix} hopped to ${destination}, which is neither www nor a same-host path`,
+        );
+        assert.notEqual(destination, path, `/${prefix} redirect loop at ${path}`);
+        path = destination;
+      }
+      assert.ok(landed, `/${prefix} must reach www.worldmonitor.app within 4 hops`);
     });
   }
 

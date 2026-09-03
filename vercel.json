@@ -392,7 +392,7 @@
       ]
     },
     {
-      "source": "/docs/:path*",
+      "source": "/docs/(.*)",
       "headers": [
         { "key": "X-Content-Type-Options", "value": "nosniff" },
         { "key": "Strict-Transport-Security", "value": "max-age=63072000; includeSubDomains; preload" },
@@ -732,7 +732,7 @@
       ]
     },
     {
-      "source": "/pro/:path*",
+      "source": "/pro/(.*)",
       "headers": [
         { "key": "Cache-Control", "value": "private, no-cache, must-revalidate" }
       ]
