@@ -2016,10 +2016,12 @@ export function parseYahooChart(data, symbol) {
   if (!meta) return null;
 
   const price = meta.regularMarketPrice;
-  const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+  if (!Number.isFinite(price)) return null;
+  const prevClose = [meta.chartPreviousClose, meta.previousClose]
+    .find(value => Number.isFinite(value) && value !== 0) ?? price;
   const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
   const closes = result.indicators?.quote?.[0]?.close;
-  const sparkline = roundSparkline(Array.isArray(closes) ? closes.filter((v) => v != null) : []);
+  const sparkline = roundSparkline(Array.isArray(closes) ? closes.filter(Number.isFinite) : []);
 
   return { symbol, name: symbol, display: symbol, price, change: +change.toFixed(2), sparkline };
 }
