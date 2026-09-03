@@ -68,6 +68,11 @@ describe('company-monitoring X budget wiring', () => {
     assert.match(source, /DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS/);
     assert.match(source, /createXPostBudget\(\{[\s\S]*dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*\}\)/);
   });
+
+  it('limits each newly claimed X work item to 95 returned Posts', () => {
+    const source = readFileSync(new URL('../convex/companyMonitoring/orchestration.ts', import.meta.url), 'utf8');
+    assert.match(source, /RESULT_CAP: Record<Source, number> = \{ exa: 25, x: 95 \}/);
+  });
 });
 
 const ADMISSION_CLAIM = {

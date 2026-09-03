@@ -50,7 +50,7 @@ const {
 } = require('./lib/llm-model-policy.cjs');
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
-const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
+const { createXPollCycle, xPollSlot } = require('./lib/x-poll-cycle.cjs');
 const {
   createXPostBudget,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
@@ -2084,12 +2084,14 @@ function startTelegramPollLoop() {
 
 // ─────────────────────────────────────────────────────────────
 // Curated X news-account monitoring (Track A / #6654)
-// Official X API user-timeline + since_id. Cadence 5–15 min.
-// Requires env: X_BEARER_TOKEN (same Bearer as company-monitoring-worker).
+// One public X List page in each fixed 15-minute UTC slot.
+// Requires the app bearer and the verified public List ID.
 // ─────────────────────────────────────────────────────────────
 const X_BEARER_TOKEN = String(process.env.X_BEARER_TOKEN || '').trim();
-const X_ENABLED = Boolean(X_BEARER_TOKEN);
-const X_POLL_INTERVAL_MS = xNewsAccounts.clampPollIntervalMs(process.env.X_POLL_INTERVAL_MS || xNewsAccounts.DEFAULT_POLL_INTERVAL_MS);
+const X_CURATED_LIST_ID = String(process.env.X_CURATED_LIST_ID || '').trim();
+const X_CURATED_LIST_CONFIGURED = /^[1-9]\d{0,18}$/.test(X_CURATED_LIST_ID);
+const X_ENABLED = Boolean(X_BEARER_TOKEN && X_CURATED_LIST_CONFIGURED);
+const X_POLL_INTERVAL_MS = 15 * 60 * 1000;
 // `Number('abc')` is NaN, and Math.max(50, NaN) is NaN — which reaches
 // mergeAndDedup as `.slice(0, NaN)` and silently publishes an EMPTY feed every
 // cycle with no error anywhere. Coerce non-numeric env values to the default.
@@ -2102,19 +2104,14 @@ const X_FEED_POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';
 const X_FEED_POLL_LOCK_KEY = 'intelligence:x-feed:poll-lock:v1';
 const X_FEED_TTL_SECONDS = 5400;
 const X_FEED_META_TTL_SECONDS = 3600;
-const X_FEED_POLL_LOCK_TTL_SECONDS = Math.ceil((X_POLL_INTERVAL_MS + 120_000) / 1000);
-// The stuck-poll abort has to fire while the Redis lease above is still HELD,
-// and the guard only re-evaluates when a scheduled tick calls it. A threshold at
-// or above the cadence therefore pushes the first evaluation out to 2x the
-// cadence — well past the lease TTL — so between TTL expiry and that tick this
-// replica keeps issuing requests on a lapsed lease while a peer's SETNX
-// succeeds: both drain the shared bearer's quota and both write the whole cursor
-// map. Sitting a minute under the cadence (clamped to 5-15min, so 4-14min here)
-// makes the very next tick abort the run, with the lease still ours to release.
-// Derived from the same constant as the TTL so the invariant
-// X_POLL_STUCK_AFTER_MS < X_POLL_INTERVAL_MS < X_FEED_POLL_LOCK_TTL_SECONDS * 1000
-// cannot drift the way two independently tuned literals can.
-const X_POLL_STUCK_AFTER_MS = X_POLL_INTERVAL_MS - 60_000;
+// Two bounded 15-second X calls plus Redis work fit inside two minutes. A short
+// lease lets another replica recover at the next quarter-hour boundary after an
+// owner crash instead of losing two slots to the old cadence-sized lease.
+const X_FEED_POLL_LOCK_TTL_SECONDS = 120;
+// The process-local guard is checked on each scheduled boundary. If a request
+// somehow outlives the normal timeout, the next boundary aborts that generation
+// before it starts a replacement run.
+const X_POLL_STUCK_AFTER_MS = 60_000;
 const xPostBudget = createXPostBudget({
   evalCommand: upstashEval,
   dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
@@ -2122,18 +2119,20 @@ const xPostBudget = createXPostBudget({
 
 const xState = {
   accounts: [],
-  cursorByAccountId: Object.create(null),
-  accountIdByHandle: Object.create(null),
-  lastPolledAtByHandle: Object.create(null),
   items: [],
   lookupOffset: 0,
-  accountOffset: 0,
   // Persisted snapshot version, published to Redis and to /status. NOT the poll
   // guard's run counter — see xPollGeneration below for why the two must stay
   // apart.
   generation: 0,
   lastPollAt: 0,
   lastHealthyAt: 0,
+  lastAttemptAt: 0,
+  lastProviderSuccessAt: 0,
+  lastAcceptedPublicationAt: 0,
+  lastAttemptSlot: null,
+  lastProviderSuccessSlot: null,
+  lastPublishedSlot: null,
   lastCoverage: null,
   lastError: null,
   rateLimitedUntil: 0,
@@ -2160,18 +2159,15 @@ let xPollGeneration = 0;
 
 function loadXAccounts() {
   const p = path.join(__dirname, '..', 'data', 'x-accounts.json');
-  const set = String(process.env.X_CHANNEL_SET || '').trim().toLowerCase();
   try {
     const raw = JSON.parse(readFileSync(p, 'utf8'));
     const enabledTotal = xNewsAccounts.countEnabledAccounts(raw);
     if (enabledTotal > X_TRACK_A_ACCOUNT_BUDGET) {
       console.warn(`[Relay] X registry has ${enabledTotal} enabled accounts; Track A budget is ~${X_TRACK_A_ACCOUNT_BUDGET}. Re-run spend math before growing the set.`);
     }
-    xState.accounts = set
-      ? xNewsAccounts.loadXAccounts(raw, { set })
-      : xNewsAccounts.loadXAccounts(raw);
+    xState.accounts = xNewsAccounts.loadXAccounts(raw);
     if (!xState.accounts.length) {
-      console.warn(`[Relay] X account set "${set || 'all'}" is empty — no accounts to poll`);
+      console.warn('[Relay] X account registry is empty — no accounts to poll');
     }
     return xState.accounts;
   } catch (e) {
@@ -2206,6 +2202,8 @@ const xPollCycle = createXPollCycle({
   randomId: () => crypto.randomBytes(4).toString('hex'),
   X_ENABLED,
   X_BEARER_TOKEN,
+  X_CURATED_LIST_ID,
+  X_POLL_INTERVAL_MS,
   X_FEED_CACHE_KEY,
   X_FEED_META_KEY,
   X_FEED_POLL_STATE_KEY,
@@ -2234,32 +2232,40 @@ const xPollGuard = createPollGenerationGuard({
 });
 
 function guardedXPoll(retryAfterLeaseConflict = false) {
-  xPollGuard.run({ retryAfterLeaseConflict });
+  return xPollGuard.run({ retryAfterLeaseConflict });
 }
 
 async function startXPollLoop() {
   loadXAccounts();
   await xPollCycle.hydrate();
   if (!X_ENABLED) {
-    console.warn('[Relay] X news-account poll skipped — X_BEARER_TOKEN is not configured on ais-relay');
+    const missing = [
+      !X_BEARER_TOKEN ? 'X_BEARER_TOKEN' : null,
+      !X_CURATED_LIST_CONFIGURED ? 'valid X_CURATED_LIST_ID' : null,
+    ].filter(Boolean);
+    xState.lastError = `X List poll disabled: missing ${missing.join(' and ')}`;
+    console.warn(`[Relay] ${xState.lastError}`);
     return;
   }
+  const slot = xPollSlot(Date.now(), X_POLL_INTERVAL_MS);
   const nextDueAt = Math.max(
-    xState.lastPollAt ? xState.lastPollAt + X_POLL_INTERVAL_MS : 0,
+    xState.lastAttemptSlot === slot.id ? slot.endsAt : Date.now(),
     xState.rateLimitedUntil || 0,
   );
   const startupDelayMs = Math.max(0, nextDueAt - Date.now());
-  const startInterval = () => {
-    guardedXPoll();
-    setInterval(guardedXPoll, X_POLL_INTERVAL_MS).unref?.();
+  const pollAndScheduleNextSlot = () => {
+    const started = guardedXPoll();
+    const activeSlot = xPollSlot(Date.now(), X_POLL_INTERVAL_MS);
+    const delayMs = started ? Math.max(1000, activeSlot.endsAt - Date.now()) : 1000;
+    setTimeout(pollAndScheduleNextSlot, delayMs).unref?.();
   };
   if (startupDelayMs > 0) {
-    const timer = setTimeout(startInterval, startupDelayMs);
+    const timer = setTimeout(pollAndScheduleNextSlot, startupDelayMs);
     timer.unref?.();
   } else {
-    startInterval();
+    pollAndScheduleNextSlot();
   }
-  console.log(`[Relay] X poll loop started (${Math.round(X_POLL_INTERVAL_MS / 60000)} min cadence)`);
+  console.log('[Relay] X List poll loop started (fixed 15-minute UTC slots)');
 }
 
 // ─────────────────────────────────────────────────────────────
@@ -11828,7 +11834,7 @@ const server = http.createServer(async (req, res) => {
       },
     }));
   } else if (pathname === '/status') {
-    const postBudget = await xPostBudget.status();
+    const postBudget = await xPostBudget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
     return sendCompressed(req, res, postBudget.available ? 200 : 503, {
       'Content-Type': 'application/json',
       'Cache-Control': 'no-store',
@@ -11836,9 +11842,21 @@ const server = http.createServer(async (req, res) => {
       status: xPostBudgetServiceStatus(postBudget),
       xFeed: {
         enabled: X_ENABLED,
+        bearerConfigured: Boolean(X_BEARER_TOKEN),
+        listConfigured: X_CURATED_LIST_CONFIGURED,
         accounts: xState.accounts?.length || 0,
         items: xState.items?.length || 0,
         lastPollAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        lastAttemptAt: xState.lastAttemptAt ? new Date(xState.lastAttemptAt).toISOString() : null,
+        lastProviderSuccessAt: xState.lastProviderSuccessAt
+          ? new Date(xState.lastProviderSuccessAt).toISOString()
+          : null,
+        lastAcceptedPublicationAt: xState.lastAcceptedPublicationAt
+          ? new Date(xState.lastAcceptedPublicationAt).toISOString()
+          : null,
+        lastAttemptSlot: xState.lastAttemptSlot,
+        lastProviderSuccessSlot: xState.lastProviderSuccessSlot,
+        lastPublishedSlot: xState.lastPublishedSlot,
         lastError: xState.lastError || null,
         coverage: xState.lastCoverage,
         lastHealthyAt: xState.lastHealthyAt ? new Date(xState.lastHealthyAt).toISOString() : null,

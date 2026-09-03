@@ -4,6 +4,7 @@ import { describe, test } from 'node:test';
 
 import {
   COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS,
+  MAX_COMPANY_MONITORING_X_RETURNED_POSTS,
   assertSafeOfficialUrl,
   compileXRecentSearchPacks,
   createXRecentSearchExecutor as createXRecentSearchExecutorImpl,
@@ -697,7 +698,7 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
     }]);
   });
 
-  test('records retention and pagination-cap gaps instead of advancing reassuring coverage', async () => {
+  test('records retention and a sub-minimum Post allowance instead of advancing reassuring coverage', async () => {
     const tracer = fixture.liveTracers[0];
     const execute = createXRecentSearchExecutor({
       bearerToken: 'x-test-token',
@@ -753,7 +754,7 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
       {
         startAt: CHECKED_AT - 7 * DAY,
         endAt: CHECKED_AT,
-        reason: 'pagination_cap',
+        reason: 'provider_partial',
       },
     ]);
   });
@@ -992,7 +993,7 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
     }]);
   });
 
-  test('caps full-cohort tracked reconciliation and still calls recent search', async () => {
+  test('caps full-cohort tracked reconciliation and skips search below the X minimum page size', async () => {
     const tracers = Array.from({ length: 25 }, (_, index) => cohortTracer(index));
     const subjects = tracers.map((tracer, index) => subjectFor(tracer, {
       currentIdentity: {
@@ -1047,12 +1048,12 @@ describe('Company Monitoring X recent-search packing and compliance normalizatio
     });
 
     const result = await execute(workFor(subjects));
-    assert.equal(reconciledIds, 99);
-    assert.ok(searched > 0);
+    assert.equal(reconciledIds, 94);
+    assert.equal(searched, 0);
     assert.ok(result.xIngestion.requestCount <= 100);
-    assert.equal(result.xIngestion.posts.length, 99);
+    assert.equal(result.xIngestion.posts.length, 94);
     assert.equal(result.coverage, 'partial');
-    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'compliance_unavailable'));
+    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'provider_partial'));
   });
 
   test('keeps a deletion tombstone ahead of recent results at resultCap one', async () => {
@@ -1379,9 +1380,63 @@ describe('Company Monitoring shared X Post budget', () => {
     assert.equal(budgetCalls[0].returnedPosts, trackedPosts.length);
     const searchUrl = xCalls.find((url) => url.pathname === '/2/tweets/search/recent');
     assert.equal(budgetCalls[1].requestedPosts, Number(searchUrl.searchParams.get('max_results')));
+    assert.equal(budgetCalls[1].requestedPosts, 93);
     assert.equal(budgetCalls[1].returnedPosts, 2, 'raw duplicate Posts are charged before normalization');
+    assert.equal(budgetCalls.reduce((sum, call) => sum + call.requestedPosts, 0), MAX_COMPANY_MONITORING_X_RETURNED_POSTS);
     assert.equal(xCalls.filter((url) => url.pathname.includes('/users/')).length, 1);
     assert.equal(budgetCalls.length, 2, 'profile lookups do not consume returned-Post budget');
+  });
+
+  test('clamps persisted 100-Post work and skips recent search below the X minimum page size', async () => {
+    const tracer = fixture.liveTracers[0];
+    const trackedPosts = Array.from({ length: 94 }, (_, index) => ({
+      postId: (6_100_000_000_000_000_000n + BigInt(index)).toString(),
+      authorAccountId: tracer.accountId,
+      contentState: 'active',
+      observedAt: CHECKED_AT - DAY,
+    }));
+    const budgetCalls = [];
+    let recentSearchCalls = 0;
+    const execute = createXRecentSearchExecutorImpl({
+      bearerToken: 'x-test-token',
+      now: () => CHECKED_AT,
+      fetchOfficialPage: async () => ({
+        url: tracer.officialPageUrl,
+        finalUrl: tracer.officialPageUrl,
+        html: tracer.officialHtml,
+      }),
+      withReturnedPosts: async (request) => {
+        budgetCalls.push(request.requestedPosts);
+        return withTestReturnedPostBudget(request);
+      },
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('/users/by/username/')) {
+          return Response.json({ data: xProfileFor(tracer) });
+        }
+        if (url.pathname === '/2/tweets') {
+          return Response.json({
+            data: trackedPosts.map((tracked) => ({
+              id: tracked.postId,
+              author_id: tracked.authorAccountId,
+              created_at: new Date(tracked.observedAt).toISOString(),
+              edit_history_tweet_ids: [tracked.postId],
+            })),
+            includes: { users: [{ id: tracer.accountId, username: tracer.currentHandle }] },
+          });
+        }
+        recentSearchCalls += 1;
+        return Response.json({ data: [], meta: { result_count: 0 } });
+      },
+    });
+
+    const result = await execute(workFor([subjectFor(tracer, { trackedPosts })]));
+    assert.deepEqual(budgetCalls, [94]);
+    assert.equal(recentSearchCalls, 0);
+    assert.equal(result.itemCount, 94);
+    assert.equal(result.hasMore, true);
+    assert.equal(result.coverage, 'partial');
+    assert.ok(result.xIngestion.gaps.some((gap) => gap.reason === 'provider_partial'));
   });
 
   test('does not call a Post endpoint after the shared budget denies it', async () => {

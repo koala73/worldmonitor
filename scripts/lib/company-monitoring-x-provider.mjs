@@ -28,6 +28,7 @@ const DEFAULT_MAX_REDIRECTS = 3;
 const DEFAULT_IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_X_REQUESTS_PER_LEASE = 100;
 export const COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS = 20_000;
+export const MAX_COMPANY_MONITORING_X_RETURNED_POSTS = 95;
 
 export class CompanyMonitoringXSsrfError extends Error {
   constructor(message) {
@@ -776,6 +777,8 @@ export function createXRecentSearchExecutor(options = {}) {
 
     let requestCount = 0;
     let providerPartial = false;
+    const effectiveResultCap = Math.min(work.resultCap, MAX_COMPANY_MONITORING_X_RETURNED_POSTS);
+    let remainingReturnedPosts = effectiveResultCap;
     const remainingCallTimeoutMs = () => {
       if (!Number.isSafeInteger(work.leaseExpiresAt)) return Math.max(1, timeoutMs);
       const remaining = work.leaseExpiresAt - now() - COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS;
@@ -837,6 +840,10 @@ export function createXRecentSearchExecutor(options = {}) {
       if (typeof withReturnedPosts !== 'function') {
         throw new XProviderPartialError('Shared X Post budget is unavailable');
       }
+      if (!Number.isSafeInteger(requestedPosts) || requestedPosts < 1 || requestedPosts > remainingReturnedPosts) {
+        throw new XProviderPartialError('Company Monitoring X Post limit reached');
+      }
+      remainingReturnedPosts -= requestedPosts;
       let outcome;
       try {
         outcome = await withReturnedPosts({
@@ -853,6 +860,12 @@ export function createXRecentSearchExecutor(options = {}) {
         throw new XProviderPartialError('Shared X Post budget is unavailable');
       }
       if (!outcome?.allowed) throw new XProviderPartialError('Shared X Post budget denied the request');
+      if (outcome.completed
+        && Number.isSafeInteger(outcome.returnedPosts)
+        && outcome.returnedPosts >= 0
+        && outcome.returnedPosts <= requestedPosts) {
+        remainingReturnedPosts += requestedPosts - outcome.returnedPosts;
+      }
       const result = outcome.result;
       const body = requireSuccessfulXResponse(result);
       if (!outcome.completed) throw new XProviderPartialError('X Post usage could not be settled');
@@ -1037,7 +1050,7 @@ export function createXRecentSearchExecutor(options = {}) {
     ).filter((tracked) => complianceBindings.some((binding) =>
       binding.companyId === tracked.companyId && binding.accountId === String(tracked.authorAccountId)
     ));
-    const trackedReconciliationCap = Math.min(100, Math.max(1, work.resultCap - 1));
+    const trackedReconciliationCap = Math.min(100, Math.max(1, effectiveResultCap - 1));
     const trackedPosts = allTrackedPosts.slice(0, trackedReconciliationCap);
     if (trackedPosts.length < allTrackedPosts.length) complianceUnavailable = true;
     if (trackedPosts.length > 0) {
@@ -1128,7 +1141,7 @@ export function createXRecentSearchExecutor(options = {}) {
     );
     let retainedComplianceEventCount = 0;
     for (const post of compliancePosts) {
-      if (postMap.size >= work.resultCap) {
+      if (postMap.size >= effectiveResultCap) {
         hasMore = true;
         continue;
       }
@@ -1138,7 +1151,7 @@ export function createXRecentSearchExecutor(options = {}) {
     for (const post of reconciledPosts) {
       const key = `${post.companyId}:${post.postId}`;
       if (postMap.has(key)) continue;
-      if (postMap.size >= work.resultCap) {
+      if (postMap.size >= effectiveResultCap) {
         hasMore = true;
         continue;
       }
@@ -1150,8 +1163,13 @@ export function createXRecentSearchExecutor(options = {}) {
         const packBindings = bindings.filter((binding) => pack.accountIds.includes(binding.accountId));
         let nextToken;
         do {
-          const remaining = work.resultCap - postMap.size;
-          if (remaining <= 0) {
+          const outputRemaining = effectiveResultCap - postMap.size;
+          if (outputRemaining <= 0) {
+            hasMore = true;
+            break packLoop;
+          }
+          if (remainingReturnedPosts < 10) {
+            providerPartial = true;
             hasMore = true;
             break packLoop;
           }
@@ -1159,7 +1177,7 @@ export function createXRecentSearchExecutor(options = {}) {
           url.searchParams.set('query', pack.query);
           url.searchParams.set('start_time', new Date(availableStart).toISOString());
           url.searchParams.set('end_time', new Date(work.windowEnd).toISOString());
-          const maxResults = Math.max(10, Math.min(100, remaining));
+          const maxResults = Math.min(100, remainingReturnedPosts, Math.max(10, outputRemaining));
           url.searchParams.set('max_results', String(maxResults));
           url.searchParams.set('tweet.fields', 'author_id,created_at,edit_history_tweet_ids,withheld');
           url.searchParams.set('expansions', 'author_id');
@@ -1178,19 +1196,19 @@ export function createXRecentSearchExecutor(options = {}) {
           for (const post of normalized.posts) {
             const key = `${post.companyId}:${post.postId}`;
             if (postMap.has(key)) continue;
-            if (postMap.size >= work.resultCap) {
+            if (postMap.size >= effectiveResultCap) {
               hasMore = true;
               break;
             }
             postMap.set(key, post);
           }
           nextToken = normalized.nextToken;
-          if (nextToken && postMap.size >= work.resultCap) {
+          if (nextToken && postMap.size >= effectiveResultCap) {
             hasMore = true;
             break packLoop;
           }
         } while (nextToken);
-        if (packIndex < packs.length - 1 && postMap.size >= work.resultCap) {
+        if (packIndex < packs.length - 1 && postMap.size >= effectiveResultCap) {
           hasMore = true;
           break;
         }
@@ -1203,7 +1221,7 @@ export function createXRecentSearchExecutor(options = {}) {
         return providerErrorResult(error, requestCount, requestCostUsdMicros);
       }
     }
-    if (postMap.size >= work.resultCap) hasMore = true;
+    if (postMap.size >= effectiveResultCap) hasMore = true;
 
     const gaps = [];
     if (availableStart > work.windowStart) {

@@ -1740,6 +1740,30 @@ test('issue #6125: a fresh zero-surge snapshot is healthy, but a stale one still
   assert.equal(stale.records, 0);
 });
 
+test('xFeed accepts a fresh explicit-zero List page but keeps a missing snapshot strict', () => {
+  const name = 'xFeed';
+  const dataKey = STANDALONE_KEYS[name];
+  const metaKey = SEED_META[name].key;
+
+  assert.equal(ZERO_RECORD_DATA_OK_KEYS.has(name), true);
+  assert.equal(classifyKey(name, dataKey, { allowOnDemand: false }, makeCtx()).status, 'EMPTY');
+
+  const fresh = classifyKey(name, dataKey, { allowOnDemand: false }, makeCtx({
+    strens: { [dataKey]: 128 },
+    metaValues: { [metaKey]: seedMeta({ recordCount: 0 }) },
+  }));
+  assert.equal(fresh.status, 'OK');
+
+  const stale = classifyKey(name, dataKey, { allowOnDemand: false }, makeCtx({
+    strens: { [dataKey]: 128 },
+    metaValues: { [metaKey]: seedMeta({
+      recordCount: 0,
+      fetchedAt: NOW - 46 * ONE_MIN_MS,
+    }) },
+  }));
+  assert.equal(stale.status, 'STALE_SEED');
+});
+
 test('HKO warning snapshots are classified through their matching seed-meta key', () => {
   assert.equal(STANDALONE_KEYS.hkoWarnings, 'weather:hko-warnings:v1');
   assert.deepEqual(SEED_META.hkoWarnings, {
