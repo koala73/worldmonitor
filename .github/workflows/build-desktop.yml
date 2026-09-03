@@ -115,7 +115,7 @@ jobs:
           targets: ${{ contains(matrix.platform, 'macos') && 'aarch64-apple-darwin,x86_64-apple-darwin' || (matrix.label == 'Linux-ARM64' && 'aarch64-unknown-linux-gnu' || '') }}
 
       - name: Rust cache
-        uses: swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5
+        uses: swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6
         with:
           workspaces: './src-tauri -> target'
           cache-on-failure: true
