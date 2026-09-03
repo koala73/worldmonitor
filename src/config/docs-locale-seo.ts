@@ -13,6 +13,7 @@
  */
 
 import { ORGANIZATION_ID, WEBSITE_ID } from './schema-graph-ids';
+import { DOCS_PAGE_DATES } from './docs-page-dates.generated';
 
 export const DOCS_PUBLIC_ORIGIN = 'https://www.worldmonitor.app';
 export const DOCS_ZH_HREFLANG = 'zh-Hans';
@@ -256,10 +257,74 @@ function pruneWebSites(value: unknown): unknown | null {
   return next;
 }
 
-function rewriteDocsJsonLdValue(value: unknown): unknown | null {
+function rewriteDocsJsonLdValue(value: unknown, pathname?: string): unknown | null {
   const pruned = pruneWebSites(rewriteDocsWebsiteIds(value));
   if (pruned === null) return null;
-  return withDocsArticleAuthor(withDocsSpeakable(pruned));
+  return withDocsArticleNode(withDocsArticleAuthor(withDocsSpeakable(pruned)), pathname);
+}
+
+function collectJsonLdNodes(value: unknown, into: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (Array.isArray(value)) {
+    for (const entry of value) collectJsonLdNodes(entry, into);
+  } else if (value && typeof value === 'object') {
+    into.push(value as Record<string, unknown>);
+    for (const nested of Object.values(value)) collectJsonLdNodes(nested, into);
+  }
+  return into;
+}
+
+function docsSlugForPathname(pathname: string | undefined): string | null {
+  if (!pathname) return null;
+  const match = pathname.match(/^\/docs\/(.+)$/);
+  if (!match) return null;
+  const slug = (match[1] ?? '').replace(/\/$/, '');
+  return slug.length > 0 ? slug : null;
+}
+
+/**
+ * Inject a full Article node when upstream ships a bare WebPage. Every field
+ * is derived, never invented: headline/description/url from the page node,
+ * dateModified from the build-time manifest for this slug, publisher/author
+ * from the canonical Organization. Missing page name or missing manifest date
+ * means no injection — a dateless or nameless Article is worse than none.
+ */
+function withDocsArticleNode(value: unknown, pathname?: string): unknown {
+  const nodes = collectJsonLdNodes(value);
+  if (nodes.some((node) => hasJsonLdType(node, 'Article') || hasJsonLdType(node, 'TechArticle'))) {
+    return value;
+  }
+  const page = nodes.find((node) => hasJsonLdType(node, 'WebPage'));
+  if (!page || typeof page.name !== 'string' || page.name.trim().length === 0) return value;
+  const slug = docsSlugForPathname(pathname);
+  const dateModified = slug ? DOCS_PAGE_DATES[slug] : undefined;
+  if (!dateModified) return value;
+  const pageUrl = typeof page.url === 'string' && page.url.length > 0
+    ? page.url
+    : `${DOCS_PUBLIC_ORIGIN}${pathname ?? '/docs/'}`;
+  const article: Record<string, unknown> = {
+    '@type': ['Article', 'TechArticle'],
+    '@id': `${pageUrl}#article`,
+    headline: page.name,
+    dateModified,
+    publisher: { '@id': ORGANIZATION_ID },
+    author: { '@id': ORGANIZATION_ID },
+  };
+  if (typeof page.description === 'string' && page.description.trim().length > 0) {
+    article.description = page.description;
+  }
+  if (Array.isArray(value)) return [...value, article];
+  if (value && typeof value === 'object' && Array.isArray((value as Record<string, unknown>)['@graph'])) {
+    const host = value as Record<string, unknown>;
+    return { ...host, '@graph': [...(host['@graph'] as unknown[]), article] };
+  }
+  if (value && typeof value === 'object') {
+    const host = value as Record<string, unknown>;
+    return {
+      '@context': host['@context'] ?? 'https://schema.org',
+      '@graph': [host, article],
+    };
+  }
+  return value;
 }
 
 const DEFAULT_DOCS_SPEAKABLE = Object.freeze({
@@ -282,15 +347,15 @@ function withDocsSpeakable(value: unknown): unknown {
 }
 
 /**
- * Mintlify emits the docs page node as `["Article","TechArticle"]` carrying
- * `dateModified` and `publisher` but no `author`. Google requires `author` on
- * Article, so the docs — the site's deepest expertise asset — were
- * rich-result ineligible (#7530).
+ * Live upstream emits the docs page node as a bare WebPage with no Article
+ * (verified against production), so the docs — the site's deepest expertise
+ * asset — were rich-result ineligible. Inject the Article from the page node
+ * plus the build-time date manifest when both exist; never invent either half.
  *
- * The docs are product documentation with no per-page byline, so the canonical
- * Organization is the author. That matches how the research reports attribute
- * themselves (scripts/build-research-reports.mjs) and folds into the same
- * entity graph the WebSite retarget above joins.
+ * When upstream DOES emit an Article/TechArticle node, withDocsArticleAuthor
+ * below still attributes it to the canonical Organization (the docs are
+ * product documentation with no per-page byline, matching how the research
+ * reports attribute themselves in scripts/build-research-reports.mjs).
  *
  * `datePublished` is deliberately NOT synthesised. No per-page publication date
  * exists anywhere: docs/*.mdx frontmatter carries only title and description,
@@ -325,7 +390,7 @@ function withDocsArticleAuthor(value: unknown): unknown {
 export function rewriteDocsEntityGraph(html: string, pathname?: string): string {
   return html.replace(JSON_LD_SCRIPT_RE, (script, body: string) => {
     try {
-      const next = rewriteDocsJsonLdValue(JSON.parse(body));
+      const next = rewriteDocsJsonLdValue(JSON.parse(body), pathname);
       if (next === null) return '';
       // Escape `<` so a `</script>` inside any string value cannot close the
       // element early. JSON.parse turns Mintlify's escaped `<\/script>` back

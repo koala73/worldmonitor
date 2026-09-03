@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import { existsSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import {
   DOCS_PUBLIC_ORIGIN,
   DOCS_UPSTREAM_TIMEOUT_MS,
@@ -13,6 +16,8 @@ import {
   rewriteDocsLocaleHtml,
   shouldTransformDocsUpstreamHtml,
 } from '../src/config/docs-locale-seo.ts';
+
+const repoRoot = resolve(fileURLToPath(new URL('..', import.meta.url)));
 
 describe('docs locale SEO path gating', () => {
   it('accepts document paths and rejects Mintlify assets', () => {
@@ -327,5 +332,87 @@ describe('docs entity-graph rewrite handles alternate vendor shapes (#7459d)', (
   it('leaves an unparseable block untouched rather than dropping it', () => {
     const broken = '<html><head><script type="application/ld+json">{not json</script></head><body></body></html>';
     assert.equal(rewriteDocsEntityGraph(broken), broken);
+  });
+});
+
+// Live upstream emits a bare WebPage with no Article node (verified against
+// production /docs/architecture); the rewrite injects the article from the
+// page node plus the build-time date manifest (#7616 U6).
+describe('docs article injection for bare WebPage output', () => {
+  const ORG_ID = 'https://www.worldmonitor.app/#organization';
+
+  const seed = (page: unknown) =>
+    `<html><head><script type="application/ld+json">${JSON.stringify(page)}</script></head><body></body></html>`;
+
+  const flatNodes = (html: string): Record<string, unknown>[] =>
+    [...html.matchAll(/<script[^>]*type="application\/ld\+json"[^>]*>([\s\S]*?)<\/script>/g)]
+      .flatMap((m) => {
+        const parsed = JSON.parse((m[1] as string).replace(/\\u003c/g, '<')) as unknown;
+        const blocks = Array.isArray(parsed) ? parsed : [parsed];
+        return blocks.flatMap((block) =>
+          Array.isArray((block as Record<string, unknown>)['@graph'])
+            ? (block as Record<string, unknown>)['@graph'] as Record<string, unknown>[]
+            : [block as Record<string, unknown>],
+        );
+      });
+
+  const isArticle = (node: Record<string, unknown>) => {
+    const type = node['@type'];
+    return type === 'Article' || type === 'TechArticle'
+      || (Array.isArray(type) && (type.includes('Article') || type.includes('TechArticle')));
+  };
+
+  it('injects an Article node with manifest date, publisher, and author', async () => {
+    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
+    const html = rewriteDocsEntityGraph(seed({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      '@id': 'https://www.worldmonitor.app/docs/architecture#webpage',
+      name: 'Design Philosophy - World Monitor',
+      url: 'https://www.worldmonitor.app/docs/architecture',
+    }), '/docs/architecture');
+    const article = flatNodes(html).find(isArticle);
+    assert.ok(article, 'a bare WebPage must gain an Article node');
+    assert.equal(article?.dateModified, DOCS_PAGE_DATES['architecture']);
+    assert.deepEqual(article?.publisher, { '@id': ORG_ID });
+    assert.deepEqual(article?.author, { '@id': ORG_ID });
+    assert.equal(article?.datePublished, undefined, 'publication dates are never synthesised');
+  });
+
+  it('never invents an article when the slug has no manifest date', () => {
+    const html = rewriteDocsEntityGraph(seed({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      '@id': 'https://www.worldmonitor.app/docs/no-such-page#webpage',
+      name: 'Nowhere',
+      url: 'https://www.worldmonitor.app/docs/no-such-page',
+    }), '/docs/no-such-page');
+    assert.equal(flatNodes(html).filter(isArticle).length, 0);
+  });
+
+  it('covers every committed docs slug in the date manifest', async () => {
+    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
+    const slugs: string[] = [];
+    const walk = (dir: string, prefix: string) => {
+      for (const entry of readdirSync(join(repoRoot, dir), { withFileTypes: true })) {
+        if (entry.isDirectory()) walk(`${dir}/${entry.name}`, `${prefix}${entry.name}/`);
+        else if (entry.name.endsWith('.mdx')) slugs.push(`${prefix}${entry.name.slice(0, -'.mdx'.length)}`);
+      }
+    };
+    walk('docs', '');
+    for (const slug of slugs) {
+      assert.match(
+        DOCS_PAGE_DATES[slug] ?? '',
+        /^\d{4}-\d{2}-\d{2}$/,
+        `date manifest must carry a real date for docs/${slug}.mdx — run npm run docs:dates`,
+      );
+    }
+    for (const slug of Object.keys(DOCS_PAGE_DATES)) {
+      assert.equal(
+        existsSync(join(repoRoot, `docs/${slug}.mdx`)),
+        true,
+        `date manifest must not retain removed page docs/${slug}.mdx`,
+      );
+    }
   });
 });
