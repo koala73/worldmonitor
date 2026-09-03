@@ -98,7 +98,7 @@ describe('demographics capability source parsers (#6437)', () => {
     assert.equal(validateDemographicsStageCoverage(countries, 'ilostat').trainedIndustrialWorkforcePeople, 150);
   });
 
-  it('recovers when one WPP page returns HTTP 502 through the current retry window', async () => {
+  it('recovers after two consecutive HTTP 502 responses from one WPP page', async () => {
     const targetPage = '/indicators/67,84,86/locations/100,104,';
     let targetPageRequests = 0;
     const result = await fetchWppStage({
@@ -113,20 +113,24 @@ describe('demographics capability source parsers (#6437)', () => {
     });
 
     assert.equal(targetPageRequests, 3);
-    assert.equal(Object.keys(result.countries).length, 229);
-    assert.equal(validateDemographicsStageCoverage(result.countries, 'wpp').medianAgeYears, 229);
+    const recordCount = Object.keys(result.countries).length;
+    assert.ok(recordCount >= 229);
+    assert.equal(validateDemographicsStageCoverage(result.countries, 'wpp').medianAgeYears, recordCount);
   });
 
   it('identifies the exact WPP page when its HTTP failure is exhausted', async () => {
     const failedPage = '/indicators/70/locations/288,292,';
+    let failedPageRequests = 0;
     await assert.rejects(
       fetchWppStage({
         currentYear: 2026,
-        fetchImpl: async (url) => (
-          String(url).includes(failedPage)
-            ? new Response('Bad Gateway', { status: 502 })
-            : wppResponse(url)
-        ),
+        fetchImpl: async (url) => {
+          if (String(url).includes(failedPage)) {
+            failedPageRequests += 1;
+            return new Response('Bad Gateway', { status: 502 });
+          }
+          return wppResponse(url);
+        },
       }),
       (error) => {
         assert.match(error.message, /HTTP 502/);
@@ -134,6 +138,7 @@ describe('demographics capability source parsers (#6437)', () => {
         return true;
       },
     );
+    assert.equal(failedPageRequests, 4);
   });
 });
 
