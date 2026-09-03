@@ -50,6 +50,7 @@ jobs:
       - run: npm run sync:bootstrap-tier-keys:check
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
+      - run: npm run lint:runtime-handler-contract
       - run: npm run security:vite-env-secrets
       - name: Markdown lint
         run: npm run lint:md

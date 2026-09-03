@@ -128,7 +128,7 @@ export function listEdgeFunctionEntries(root = process.cwd(), options = {}) {
  * A route that opts into Vercel's Node runtime (`export const config =
  * { runtime: 'nodejs' }`) may import node: built-ins and is bundled with
  * esbuild's node platform below. Shared with tests/edge-functions.test.mjs
- * and scripts/enforce-node-runtime-handler-shape.mjs so the three gates
+ * and scripts/enforce-runtime-handler-contract.mjs so the three gates
  * classify a file the same way. Routes that declare nothing keep the
  * browser bundle: Vercel defaults them to Node, but the existing ones
  * (api/story.js, api/og-story.js) are platform-neutral and the stricter
