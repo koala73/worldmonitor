@@ -11,6 +11,8 @@ import {
   findOperationalProblems,
   formatAcceptanceReport,
   isOnDemandProblem,
+  isStaleContentGraceProblem,
+  MAX_STALE_CONTENT_GRACE_MS,
   validateAcceptanceBaseline,
   validateCompactHealthPayload,
 } from '../scripts/check-seed-freshness.mjs';
@@ -170,6 +172,39 @@ describe('scheduled seed freshness monitor', () => {
       findOperationalProblems(payload).map((p) => p.name),
       ['emptyFeed', 'failedFeed', 'frozenFeed', 'wildfire'],
     );
+  });
+
+  it('softens only active bounded stale-content grace entries', () => {
+    const now = Date.parse('2026-09-03T09:00:00.000Z');
+    const problem = {
+      status: 'STALE_CONTENT',
+      contentAgeMin: null,
+      maxContentAgeMin: 2880,
+      staleContentGraceUntil: new Date(now + MAX_STALE_CONTENT_GRACE_MS).toISOString(),
+    };
+
+    assert.equal(isStaleContentGraceProblem(problem, now), true);
+    assert.deepEqual(findOperationalProblems({
+      status: 'HEALTHY',
+      problems: { temporalAnomalies: problem },
+    }, now), []);
+
+    for (const [label, candidate] of [
+      ['exact deadline', { ...problem, staleContentGraceUntil: new Date(now).toISOString() }],
+      ['missing deadline', { status: 'STALE_CONTENT' }],
+      ['malformed deadline', { ...problem, staleContentGraceUntil: 'not-a-date' }],
+      ['excessive deadline', {
+        ...problem,
+        staleContentGraceUntil: new Date(now + MAX_STALE_CONTENT_GRACE_MS + 1).toISOString(),
+      }],
+      ['wrong status', { ...problem, status: 'STALE_SEED' }],
+    ]) {
+      assert.equal(isStaleContentGraceProblem(candidate, now), false, label);
+      assert.equal(findOperationalProblems({
+        status: 'WARNING',
+        problems: { temporalAnomalies: candidate },
+      }, now).length, 1, label);
+    }
   });
 
   it('treats every non-on-demand health problem as an operational failure', () => {

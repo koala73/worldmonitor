@@ -68,7 +68,7 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 
 ### Scope Boundaries
 
-- In scope: `api/health.js`, focused health tests, the health endpoint documentation, its documentation validator, and this plan.
+- In scope: `api/health.js`, focused health tests, the health endpoint documentation and validator, the scheduled seed-freshness monitor, and this plan.
 - Out of scope: changing source freshness budgets, changing seeder schedules, changing producer timestamp extraction, adding a health status, deploying the pull request, or changing unrelated rollout-grace policies.
 
 ## Planning Contract
@@ -149,11 +149,25 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 - Verification: Run `node_modules/.bin/tsx --test tests/docs-stats-health-total.test.mts`.
 - Dependencies: U2.
 
+### U4. Keep the scheduled production monitor aligned
+
+- Goal: Prevent the scheduled seed-freshness monitor from treating an active, bounded stale-content grace entry as blocking.
+- Requirements: R3-R5 and R10-R12.
+- Files: `scripts/check-seed-freshness.mjs`, `tests/seed-freshness-monitor.test.mjs`.
+- Approach: Reuse the monitor's deadline-validation pattern. Soften only `STALE_CONTENT` entries with a parseable future `staleContentGraceUntil` no more than three hours away. Missing, malformed, excessive, or expired deadlines remain blocking.
+- Test scenarios:
+  - An active bounded deadline is diagnostic but not operationally blocking.
+  - The exact deadline is blocking.
+  - Missing, malformed, excessive, and wrong-status deadlines remain blocking.
+- Verification: Run `node_modules/.bin/tsx --test tests/seed-freshness-monitor.test.mjs`.
+- Dependencies: U2.
+
 ## Verification Contract
 
 - Red proof: `node --test tests/health-content-age.test.mjs tests/health-verdict-snapshot.test.mjs` must fail on the new grace assertions before U2.
 - Focused green proof: `node --test tests/health-content-age.test.mjs tests/health-verdict-snapshot.test.mjs tests/health-verdict-compact-snapshot.test.mjs`.
 - Documentation contract: `node_modules/.bin/tsx --test tests/docs-stats-health-total.test.mts`.
+- Monitor contract: `node_modules/.bin/tsx --test tests/seed-freshness-monitor.test.mjs`.
 - API gate: `npm run typecheck:api`.
 - Architecture gate: `npm run lint:boundaries`.
 - Diff hygiene: `git diff --check` and `git status --short`.
