@@ -138,6 +138,63 @@ describe('issue #7377 GEO content credibility', () => {
     assert.match(pressNav, /In the press/);
   });
 
+  // The four agent-facing press lists drifted: docs/about.mdx carried The
+  // Economic Times and Arabian Business that public/llms.txt and
+  // public/world-monitor.md never had, and neither pair had The Atlantic or
+  // El Pais (#7530). Nothing compared them, so each addition only ever landed
+  // wherever the author happened to be editing. Compare the URL SETS, not the
+  // presence of a few pinned links.
+  it('(c2) keeps every agent-facing press list carrying the same outlets', () => {
+    const sections = {
+      'public/llms.txt': ['## In the press', /^## /m],
+      'public/world-monitor.md': ['## Press mentions that name World Monitor', /^## /m],
+      'docs/about.mdx': ['## In the press', /^## /m],
+      'docs/zh/about.mdx': ['## 媒体报道', /^## /m],
+    };
+
+    const urlsIn = (relative, heading) => {
+      const source = read(relative);
+      const start = source.indexOf(heading);
+      assert.ok(start >= 0, `${relative} must carry a "${heading}" section`);
+      const rest = source.slice(start + heading.length);
+      const end = rest.search(/^## /m);
+      const body = end === -1 ? rest : rest.slice(0, end);
+      //外部 press URLs only — the "Human about page" row is a self-link.
+      return new Set(
+        [...body.matchAll(/\((https?:\/\/[^)]+)\)/g)]
+          .map((match) => match[1])
+          .filter((url) => !url.includes('worldmonitor.app')),
+      );
+    };
+
+    const bySurface = Object.fromEntries(
+      Object.entries(sections).map(([relative, [heading]]) => [relative, urlsIn(relative, heading)]),
+    );
+
+    const [reference, ...others] = Object.keys(bySurface);
+    for (const surface of others) {
+      assert.deepEqual(
+        [...bySurface[surface]].sort(),
+        [...bySurface[reference]].sort(),
+        `${surface} press list must carry the same outlets as ${reference}`,
+      );
+    }
+
+    // And the shared module is what the rendered surfaces read, so it must not
+    // fall behind the prose lists either.
+    for (const url of bySurface[reference]) {
+      assert.ok(
+        PRESS_LINKS.some((link) => link.url === url),
+        `shared/press.ts PRESS_LINKS is missing ${url}, which the press lists cite`,
+      );
+    }
+    assert.equal(
+      PRESS_LINKS.length,
+      bySurface[reference].size,
+      'PRESS_LINKS and the press lists must cite the same number of outlets',
+    );
+  });
+
   // (d) pinned a "by Someone.ceo" studio byline into the header/footer lockups.
   // Dropped deliberately: stacking it under the wordmark made two sub-24px
   // links 16px apart and scored 0 on axe target-size (#7382). The byline

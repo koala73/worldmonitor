@@ -30,7 +30,7 @@ export class ViaRailLiveUnavailableError extends Error {
     this.name = 'ViaRailLiveUnavailableError';
     this.reason = reason;
     this.status = status;
-    this.sourceState = 'unavailable';
+    this.sourceState = 'stale';
     if (cause !== undefined) this.cause = cause;
   }
 }
@@ -148,19 +148,16 @@ function parseTrain(id, raw) {
   };
 }
 
-/**
- * A snapshot is publishable only when it carries at least one live lat/lng
- * pair AND at least one per-station numeric diffMin. A 200 with the wrong
- * shape must not overwrite last-good.
- */
-export function validateViaRailLiveSnapshot(snapshot) {
-  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return false;
-  if (snapshot.schemaVersion !== VIA_RAIL_LIVE_SCHEMA_VERSION) return false;
-  if (!Array.isArray(snapshot.trains) || snapshot.trains.length === 0) return false;
+function classifyViaRailLiveSnapshot(snapshot) {
+  if (!snapshot || typeof snapshot !== 'object' || Array.isArray(snapshot)) return 'shape_break';
+  if (snapshot.schemaVersion !== VIA_RAIL_LIVE_SCHEMA_VERSION) return 'shape_break';
+  if (!Array.isArray(snapshot.trains) || snapshot.trains.length === 0) return 'shape_break';
   let hasPosition = false;
   let hasDiffMin = false;
+  let hasRecognizedRoute = false;
   for (const train of snapshot.trains) {
-    if (!train || typeof train !== 'object') return false;
+    if (!train || typeof train !== 'object') return 'shape_break';
+    if (textOrNull(train.from) && textOrNull(train.to)) hasRecognizedRoute = true;
     if (finiteNumber(train.lat) != null && finiteNumber(train.lng) != null) hasPosition = true;
     if (Array.isArray(train.stations)) {
       for (const stop of train.stations) {
@@ -168,7 +165,18 @@ export function validateViaRailLiveSnapshot(snapshot) {
       }
     }
   }
-  return hasPosition && hasDiffMin;
+  if (hasPosition && hasDiffMin) return 'publishable';
+  if (!hasPosition && hasDiffMin && hasRecognizedRoute) return 'no_live_positions';
+  return 'shape_break';
+}
+
+/**
+ * A snapshot is publishable only when it carries at least one live lat/lng
+ * pair AND at least one per-station numeric diffMin. A 200 with no live
+ * positions or the wrong shape must not overwrite last-good.
+ */
+export function validateViaRailLiveSnapshot(snapshot) {
+  return classifyViaRailLiveSnapshot(snapshot) === 'publishable';
 }
 
 export function parseViaRailLive(raw, { fetchedAt = Date.now() } = {}) {
@@ -186,8 +194,9 @@ export function parseViaRailLive(raw, { fetchedAt = Date.now() } = {}) {
     fetchedAt,
     trains,
   };
-  if (!validateViaRailLiveSnapshot(snapshot)) {
-    throw new ViaRailLiveUnavailableError('shape_break');
+  const snapshotState = classifyViaRailLiveSnapshot(snapshot);
+  if (snapshotState !== 'publishable') {
+    throw new ViaRailLiveUnavailableError(snapshotState);
   }
   return snapshot;
 }
@@ -231,8 +240,8 @@ async function readBoundedBody(response, maxBytes) {
 }
 
 /**
- * Fetch + parse. Never throws SEED_ERROR — 404 and shape-break resolve to
- * `{ ok: false, sourceState: 'unavailable' }`.
+ * Fetch + parse. Failures resolve to a configured-source stale result so a
+ * caller can preserve last-good without disguising the failure as unconfigured.
  */
 export async function fetchViaRailLive({
   fetchImpl = DEFAULT_FETCH,
@@ -243,7 +252,7 @@ export async function fetchViaRailLive({
   now = Date.now(),
 } = {}) {
   if (!isAllowedViaRailLiveHost(url, allowedHosts)) {
-    return { ok: false, sourceState: 'unavailable', reason: 'host_not_allowlisted' };
+    return { ok: false, sourceState: 'stale', reason: 'host_not_allowlisted' };
   }
   let response;
   try {
@@ -258,28 +267,28 @@ export async function fetchViaRailLive({
   } catch (err) {
     const message = `${err?.message || err}`;
     if (/redirect/i.test(message) || err?.cause?.code === 'UNDICI_REDIRECT') {
-      return { ok: false, sourceState: 'unavailable', reason: 'redirect_rejected' };
+      return { ok: false, sourceState: 'stale', reason: 'redirect_rejected' };
     }
     return {
       ok: false,
-      sourceState: 'unavailable',
+      sourceState: 'stale',
       reason: 'fetch_failed',
       error: message,
     };
   }
   if (response.redirected) {
-    return { ok: false, sourceState: 'unavailable', reason: 'redirect_rejected' };
+    return { ok: false, sourceState: 'stale', reason: 'redirect_rejected' };
   }
   if (typeof response.url === 'string' && response.url && !isAllowedViaRailLiveHost(response.url, allowedHosts)) {
-    return { ok: false, sourceState: 'unavailable', reason: 'host_not_allowlisted' };
+    return { ok: false, sourceState: 'stale', reason: 'host_not_allowlisted' };
   }
   if (response.status === 404) {
-    return { ok: false, sourceState: 'unavailable', reason: 'http_404', status: 404 };
+    return { ok: false, sourceState: 'stale', reason: 'http_404', status: 404 };
   }
   if (!response.ok) {
     return {
       ok: false,
-      sourceState: 'unavailable',
+      sourceState: 'stale',
       reason: `http_${response.status}`,
       status: response.status,
     };
@@ -289,31 +298,30 @@ export async function fetchViaRailLive({
     text = await readBoundedBody(response, maxBytes);
   } catch (err) {
     if (err instanceof ViaRailLiveUnavailableError) {
-      return { ok: false, sourceState: 'unavailable', reason: err.reason };
+      return { ok: false, sourceState: 'stale', reason: err.reason };
     }
-    return { ok: false, sourceState: 'unavailable', reason: 'read_failed' };
+    return { ok: false, sourceState: 'stale', reason: 'read_failed' };
   }
   let raw;
   try {
     raw = JSON.parse(text);
   } catch {
-    return { ok: false, sourceState: 'unavailable', reason: 'shape_break' };
+    return { ok: false, sourceState: 'stale', reason: 'shape_break' };
   }
   try {
     const snapshot = parseViaRailLive(raw, { fetchedAt: now });
     return { ok: true, snapshot };
   } catch (err) {
     if (err instanceof ViaRailLiveUnavailableError) {
-      return { ok: false, sourceState: 'unavailable', reason: err.reason };
+      return { ok: false, sourceState: 'stale', reason: err.reason };
     }
-    return { ok: false, sourceState: 'unavailable', reason: 'shape_break' };
+    return { ok: false, sourceState: 'stale', reason: 'shape_break' };
   }
 }
 
 /**
- * Decide whether to publish. Failure ≠ miss: last-good is kept. A 404 or
- * shape-break with no last-good is `sourceState: 'unavailable'` so health
- * grades NOT_CONFIGURED rather than SEED_ERROR / EMPTY.
+ * Decide whether to publish. Failure ≠ miss: last-good is kept. A failed
+ * configured source with no last-good is stale so health exposes the failure.
  */
 export function resolveViaRailLivePublish(fetchResult, lastGood) {
   if (fetchResult?.ok && validateViaRailLiveSnapshot(fetchResult.snapshot)) {
@@ -330,7 +338,7 @@ export function resolveViaRailLivePublish(fetchResult, lastGood) {
   return {
     persist: false,
     keepLastGood: false,
-    sourceState: 'unavailable',
+    sourceState: 'stale',
     reason: fetchResult?.reason || 'shape_break',
   };
 }
@@ -339,7 +347,7 @@ export async function ingestViaRailLive({
   fetchImpl = DEFAULT_FETCH,
   readLastGood = async () => null,
   persist = async () => {},
-  writeUnavailableMeta = async () => {},
+  writeSourceMeta = async () => {},
   url = VIA_RAIL_LIVE_URL,
   allowedHosts = VIA_RAIL_LIVE_ALLOWED_HOSTS,
   now = Date.now(),
@@ -351,8 +359,8 @@ export async function ingestViaRailLive({
     await persist(decision.snapshot);
     return decision;
   }
-  if (decision.sourceState === 'unavailable') {
-    await writeUnavailableMeta({ reason: decision.reason });
+  if (decision.sourceState) {
+    await writeSourceMeta({ sourceState: decision.sourceState, reason: decision.reason });
   }
   return decision;
 }

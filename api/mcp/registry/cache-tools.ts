@@ -16,6 +16,7 @@ import {
 import { getSourceTier } from '../../../server/_shared/source-tiers';
 import { FLOW_SOURCE_WIRE_VALUES, narrowFlowSource } from '../../../server/_shared/flow-source';
 import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
+import { torontoSafetySourceById } from '../../../shared/toronto-safety.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
 // @ts-expect-error — generated Edge-safe JS mirror; authored types live in shared/bootstrap-tier-keys.d.ts
 import { BOOTSTRAP_CACHE_KEYS } from '../../_bootstrap-tier-keys.js';
@@ -436,6 +437,16 @@ export const CACHE_TOOLS: ToolDef[] = [
       ));
       const requested = argNum(params.limit);
       capNested(data, 'annual_aggregates', 'records', Math.min(Math.max(requested ?? 50, 1), 100));
+      // Attribution is a licence assertion, so it comes from the descriptor —
+      // never from whatever snapshot happens to be cached. A pre-CKAN blob
+      // still carries the retired OGL-Ontario claim until it is overwritten.
+      const aggregates = (data as Record<string, unknown>).annual_aggregates;
+      if (aggregates && typeof aggregates === 'object') {
+        const descriptor = torontoSafetySourceById('tps-calls-attended');
+        if (descriptor?.attribution) {
+          (aggregates as Record<string, unknown>).attribution = descriptor.attribution;
+        }
+      }
       return data;
     },
     _cacheKeys: ['safety:toronto:tps-calls-attended:v1'],

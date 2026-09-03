@@ -75,9 +75,16 @@ const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 // The committed pulse is published as "Current signal". Nothing re-runs the
 // freeze automatically except .github/workflows/crawlable-pulse-refresh.yml, so
 // bound the age here: a forgotten or failed refresh must red the build rather
-// than silently republish months-old numbers under a current-state heading.
-// Sized to clear the monthly refresh cadence with slack.
-const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
+// than silently republish stale numbers under a current-state heading.
+//
+// Sized to clear the WEEKLY refresh cadence with slack: the cron freezes every
+// Monday, so this leaves ~3 days to merge a refresh PR before the build reds.
+// It was 45 days against a monthly cron, which let pages headed "Approx.
+// 24-hour movement" ship on data up to six weeks old — the freshness
+// overstatement in #7530. The ceiling and the cron are one contract: relaxing
+// either without the other reopens the gap, and a guard in
+// tests/crawlable-corpus.test.mjs asserts they still agree.
+export const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 10;
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
 const MICROSTATE_TERRITORIES_PATH = 'server/worldmonitor/resilience/v1/cohorts/microstate-territories.json';
@@ -125,7 +132,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-01';
+export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-02';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -890,15 +897,25 @@ function signalMetaDescriptionCandidates({ subjects, signals }) {
   return candidates;
 }
 
-function selectMetaDescription(candidates, fallbackCandidates) {
+// `subject` names the page so a failure is actionable. Without it the build
+// dies with a bare "No meta description candidate fits 155-160 characters"
+// across 250 pages and says nothing about which one or how close it came.
+function selectMetaDescription(candidates, fallbackCandidates, subject) {
   const selected = longestEligibleMetaDescription(candidates);
   if (selected?.length >= META_DESCRIPTION_MIN) return selected;
 
   const fallback = longestEligibleMetaDescription(fallbackCandidates?.() ?? []);
   if (fallback?.length >= META_DESCRIPTION_MIN) return fallback;
 
+  const lengths = [...candidates, ...(fallbackCandidates?.() ?? [])]
+    .map((candidate) => candidate.length)
+    .sort((left, right) => left - right);
+  const near = lengths.length > 0
+    ? ` Candidate lengths ranged ${lengths[0]}-${lengths.at(-1)} over ${lengths.length} candidate(s).`
+    : ' No candidates were generated.';
   throw new Error(
-    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`,
+    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`
+    + `${subject ? ` for ${subject}` : ''}.${near}`,
   );
 }
 
@@ -921,18 +938,25 @@ export function countryMetaDescription({
       `is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
       `scores ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
     ];
+    // Graded long-to-short. The window is a narrow 155-160, so a long country
+    // name plus a long movement clause can push EVERY candidate over: "United
+    // Arab Emirates" made all 24 land in 162-196 and reds the whole build
+    // (#7530). The short tail is what keeps a 20-character name in range.
     const contexts = [
       'with World Monitor country-risk, resilience, advisory, and sanctions context.',
       'with World Monitor risk, resilience, advisory, and sanctions context.',
+      'alongside World Monitor risk, resilience, advisory, and sanctions context.',
       'with World Monitor country-risk, resilience, and security context.',
       'with World Monitor country-risk and resilience context.',
-      'alongside World Monitor risk, resilience, advisory, and sanctions context.',
       'alongside World Monitor country-risk and resilience context.',
+      'with World Monitor risk, resilience and sanctions context.',
+      'with World Monitor risk and resilience context.',
+      'with World Monitor risk context.',
     ];
     const candidates = subjects.flatMap((subject) => facts.flatMap(
       (fact) => contexts.map((context) => `${subject} ${fact}, ${context}`),
     ));
-    return selectMetaDescription(candidates);
+    return selectMetaDescription(candidates, undefined, `${name} (CII country)`);
   }
 
   const subjects = [
@@ -995,7 +1019,7 @@ export function countryMetaDescription({
       'risk trends',
       'public data',
     ],
-  }));
+  }), `${name} (ranked country)`);
 }
 
 export function chokepointMetaDescription(name) {
@@ -1033,7 +1057,7 @@ export function chokepointMetaDescription(name) {
       'shipping signals',
       'public data',
     ],
-  }));
+  }), `${name} (chokepoint)`);
 }
 
 function metricTile(label, value) {
@@ -2504,6 +2528,22 @@ function selectUnrankedInventory(country) {
   return selected;
 }
 
+// The inventory is weakest-first and capped, so on a country like Tuvalu a
+// reader sees 12 of 23 dimensions -- the 12 worst -- with the 7 at full
+// coverage never entering the pool at all and 2 more dropped by the cap. Listing
+// only the weakest evidence with no note reads as uniformly poor coverage, which
+// is the opposite of what the snapshot says (#7530). State what is shown and
+// what is omitted, and say it only when something actually is omitted.
+export function describeInventoryScope(country, shown) {
+  const dimensions = activeCountryDimensions(country);
+  const total = dimensions.length;
+  const omitted = total - shown;
+  if (omitted <= 0) return null;
+  const complete = dimensions.filter((dimension) => Number(dimension.coverage) === 1).length;
+  const completeClause = complete > 0 ? `; ${complete} more at full coverage` : '';
+  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${completeClause}.`;
+}
+
 function formatSignedScore(value, evidence) {
   return formatObservedNumber(value, evidence, (numeric) => (
     `${numeric > 0 ? '+' : ''}${formatScoreNumber(numeric)}`
@@ -2618,6 +2658,10 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
+    const inventoryScope = describeInventoryScope(country, inventory.length);
+    const inventoryScopeNote = inventoryScope
+      ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
+      : '';
     if (coverageStory) {
       const comparatorLinks = coverageStory.useRegionalComparators ? regionalLinks : peerLinks;
       const html = `      <article data-country-analysis>
@@ -2630,7 +2674,7 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(coverageStory.evidence)}</p>
         <h3>Dimension evidence inventory</h3>
-        <ul class="routes">
+${inventoryScopeNote}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -2674,7 +2718,7 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(availableEvidence)}</p>
         <h3>Dimension evidence inventory</h3>
-        <ul class="routes">
+${inventoryScopeNote}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -3091,6 +3135,23 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
   const mostDisruptedNames = chokepointHubRows
     .filter((row) => row.score === highestScore)
     .map((row) => row.chokepoint.displayName);
+  // State the coverage this snapshot actually has. The answer used to assert
+  // four scoring inputs flatly while the detail pages withheld three of them,
+  // so the hub contradicted the pages it indexes (#7530).
+  const congestionPublished = chokepointHubRows.filter((row) => row.aisSnapshotAvailable).length;
+  const congestionCoverageClause = congestionPublished === chokepointHubRows.length
+    ? `in this snapshot all ${chokepointHubRows.length} waterways publish an AIS congestion reading`
+    : congestionPublished === 0
+      ? `in this snapshot the AIS snapshot is unavailable, so none of the ${chokepointHubRows.length} waterways publish an AIS congestion reading`
+      : `in this snapshot ${congestionPublished} of ${chokepointHubRows.length} waterways publish an AIS congestion reading`;
+  // The committed EIA series covers 7 of the 13 tracked waterways. Publish the
+  // EIA row name alongside ours wherever the registry maps them differently
+  // (Dover Strait draws on the Danish Straits row), so the substitution is
+  // visible rather than implied.
+  const oilTransitRows = chokepointHubRows
+    .map((row) => ({ row, eia: EIA_OIL_TRANSIT_BASELINES.byRegistryId[row.chokepoint.id] }))
+    .filter(({ eia }) => eia)
+    .sort((left, right) => right.eia.mbd - left.eia.mbd);
   const hubFaqs = [
     {
       question: 'Which maritime chokepoints are most disrupted?',
@@ -3098,7 +3159,11 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
     },
     {
       question: 'How does World Monitor score chokepoint status?',
-      answer: 'World Monitor combines active navigational warnings, AIS signal disruptions, AIS congestion, and transit counts into a 0-100 disruption score. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.',
+      answer: `World Monitor scores each waterway 0-100 from four independent sources: NGA navigational warnings, the AIS snapshot, relay transit counts, and PortWatch week-over-week movement. Each source controls only its own values, so a source that is unavailable is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.`,
+    },
+    {
+      question: 'Why do some chokepoint pages show fewer metrics than others?',
+      answer: 'A metric appears only when the source behind it reported for that snapshot. Navigational warnings, AIS disruptions and AIS congestion each depend on their own feed. The daily transit count and PortWatch week-over-week movement each depend on their own source availability, so either can appear without the other. Unavailable values can appear as an em dash or be hidden, depending on the metric, so a sparse page means missing evidence, not a calm waterway. Published revisions to these rules are in the corrections log.',
     },
   ];
   const datasetId = `${absoluteUrl(baseUrl, path)}#status-dataset`;
@@ -3136,7 +3201,30 @@ ${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.quest
 ${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-hub-region>${escapeHtml(row.region)}</td><td><data data-hub-score value="${escapeHtml(row.score)}">${escapeHtml(formatScore(row.score, OBSERVED_EVIDENCE))}</data></td><td data-hub-status>${escapeHtml(row.status)}</td><td data-hub-congestion>${escapeHtml(row.congestion)}</td><td><time data-hub-updated datetime="${escapeHtml(row.asOf)}">${escapeHtml(formatStaticDateTime(row.asOf))}</time></td></tr>`).join('\n')}
         </tbody>
       </table></div>
-      <p class="source">Sources: ${escapeHtml(snapshotPath)} and ${CHOKEPOINT_REGISTRY_PATH}. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>.</p>`;
+      <h2>How much oil moves through each waterway</h2>
+      <p>Disruption scores describe current pressure, not importance. The committed ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)} series gives a volume baseline for ${oilTransitRows.length} of the ${chokepointHubRows.length} tracked waterways, which is what separates a high score on a marginal strait from a high score on a corridor that moves a fifth of seaborne oil. Where our name and the EIA row differ, both are shown — the Dover Strait page draws on the EIA Danish Straits row.</p>
+      <div class="table-scroll"><table data-chokepoint-oil-transit>
+        <caption>Crude oil and petroleum liquids transiting each waterway, ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)}, ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))}</caption>
+        <thead><tr><th scope="col">Chokepoint</th><th scope="col">EIA series row</th><th scope="col">Million barrels per day</th></tr></thead>
+        <tbody>
+${oilTransitRows.map(({ row, eia }) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-oil-eia-name>${escapeHtml(eia.eiaName)}</td><td><data data-oil-mbd value="${escapeHtml(String(eia.mbd))}">${escapeHtml(String(eia.mbd))}</data></td></tr>`).join('\n')}
+        </tbody>
+      </table></div>
+      <p class="source">Baseline source: ${escapeHtml(EIA_OIL_TRANSIT_BASELINES_PATH)}. The remaining ${chokepointHubRows.length - oilTransitRows.length} tracked waterways have no row in that series; their pages say so rather than estimating one.</p>
+      <h2>Why each waterway is tracked</h2>
+      <dl data-chokepoint-context>
+${chokepointHubRows.map((row) => {
+    const blurb = CHOKEPOINT_CONTENT[row.chokepoint.id]?.blurb || '';
+    const opening = blurb.match(/^[\s\S]*?\.(?=\s|$)/)?.[0]?.trim() || '';
+    return `        <dt><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></dt>
+        <dd>${escapeHtml(opening || `${row.chokepoint.displayName} is a tracked maritime chokepoint in the ${row.region} corridor.`)}</dd>`;
+  }).join('\n')}
+      </dl>
+      <h2>How this list is scoped</h2>
+      <p>The ${chokepointHubRows.length} waterways come from a committed registry, not from whatever is in the news. Each has a detail page carrying the same four-source status block, the modelled corridors that route through it, and its alternatives when it is unavailable. A waterway enters the registry because traffic there has no cheap substitute — the test is substitutability, not incident count — so the list changes rarely and changes are recorded in the corrections log.</p>
+      <h2>What these pages are not</h2>
+      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Transit counts are a relay observation of vessels seen, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
+      <p class="source">Sources: ${escapeHtml(snapshotPath)} and ${CHOKEPOINT_REGISTRY_PATH}. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>. Published revisions: <a href="/docs/corrections">corrections log</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -3277,11 +3365,29 @@ ${analysisParagraphs.map((paragraph) => `        <p>${escapeHtml(paragraph)}</p>
         ${chokepointRouteTable({ chokepoint, routes, capturedAt, volumeObservedAt })}
         <h3>How to read this page</h3>
         <p>The crawlable Dataset is the ${datedCapture} registry-and-route snapshot under the <a href="/docs/methodology/chokepoints">chokepoint disruption methodology</a>. Live pulse tiles are a separately frozen observation and are not copied into this Dataset. Modelled corridor volumes are dated ${volumeObservedAt ? timeMarkup(volumeObservedAt) : 'with the committed trade-route table'}.</p>
-        <p class="snapshot-note">Template revision ${escapeHtml(CHOKEPOINT_PAGE_CONTENT_VERSION)}. Reference observation ${capturedAt ? timeMarkup(capturedAt) : 'unspecified'}. This note is a methodology-revision stamp, not a live AIS clock.</p>
+        <p class="snapshot-note">Template revision ${escapeHtml(CHOKEPOINT_PAGE_CONTENT_VERSION)}. Reference observation ${capturedAt ? timeMarkup(capturedAt) : 'unspecified'}. This note is a methodology-revision stamp, not a live AIS clock. Published revisions that affect this page are in the <a href="/docs/corrections">corrections log</a>.</p>
         <h3>Questions about ${escapeHtml(chokepoint.displayName)}</h3>
 ${faqs.map((faq) => `        <details data-chokepoint-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
   return { html, faqs };
+}
+
+// The upstream status note is optional. A snapshot without one must publish no
+// paragraph at all — until #7530 an absent note froze as "No additional status
+// note was supplied." and rendered as real body prose in <main> on 7 of the 13
+// chokepoint pages, where it was frequently the only sentence the live section
+// contributed.
+// Snapshots frozen before that change still carry the sentence verbatim, so
+// treat it as the absence it always described rather than waiting for a
+// refresh to age it out.
+export const LEGACY_ABSENT_STATUS_NOTE = 'No additional status note was supplied.';
+
+function chokepointDescriptionParagraph(description) {
+  const raw = typeof description === 'string' ? description.trim() : '';
+  const text = raw === LEGACY_ABSENT_STATUS_NOTE ? '' : raw;
+  return text
+    ? `        <p data-chokepoint-description>${escapeHtml(text)}</p>`
+    : '        <p data-chokepoint-description hidden></p>';
 }
 
 function optionalChokepointMetric(label, attribute, value, available) {
@@ -3370,7 +3476,7 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', cover
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (transitsWithheld ? '—' : 'Unavailable'))}</strong></div>
         </div>
-        <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>
+${chokepointDescriptionParagraph(pulse.description)}
 ${transitsNote}`
     : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
         <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">

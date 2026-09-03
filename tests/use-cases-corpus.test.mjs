@@ -269,7 +269,7 @@ describe('use-cases corpus (#6849, #6850, #6851)', () => {
         html,
         new RegExp(`rel="canonical" href="https://www\\.worldmonitor\\.app${canonical.replaceAll('/', '\\/')}"`),
       );
-      assert.match(html, /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1"/);
+      assert.match(html, /name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1"/);
       const [ld] = jsonLdObjects(html);
       assert.notEqual(ld['@type'], 'BlogPosting');
       assert.match(html, new RegExp(`<meta name="lastmod" content="${EXPECTED_USE_CASES_LASTMOD}">`));

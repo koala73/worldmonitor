@@ -180,12 +180,6 @@ export function collectRequiredCapabilityFailures(capabilities) {
  * response. Focused checks identify wire corruption; AJV compiles the complete
  * schema with the same settings as the first-party catalog test
  * (tests/mcp-output-schema-coverage.test.mjs).
- *
- * AJV runs only when the focused checks found nothing for that schema, so the
- * failure list names the single most specific defect rather than stacking a
- * generic compilation error on top of a known truncation sentinel. A schema
- * carrying both therefore reports the sentinel first, and the AJV-only defect
- * surfaces on the next run once that is fixed.
  */
 export function collectToolSchemaWireFailures(tools) {
   const failures = [];

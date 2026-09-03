@@ -78,8 +78,6 @@ jobs:
         with:
           node-version: '24'
           cache: 'npm'
-      # Named so a reader of a failed run can tell a CI/dependency failure from
-      # a real production regression: only the smoke step below is a prod signal.
       - name: Install locked dependencies (setup — a failure here is CI, not production)
         run: npm ci --ignore-scripts --omit=optional
       # Probes the production ALIASES, never the checked-out SHA's own bits: the

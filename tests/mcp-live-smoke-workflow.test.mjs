@@ -4,12 +4,6 @@ import { describe, it } from 'node:test';
 
 import YAML from 'yaml';
 
-// Parsed, not regexed. Substring assertions over the raw YAML cannot see the
-// SHAPE of the gate: they match each clause of the job `if:` independently, so
-// flipping its leading `||` to `&&` — which makes every event skip the job and
-// silently retires this check forever — leaves them all green. Sibling workflow
-// tests (indexnow-submit, postmerge-deploy-monitor, proto-codegen) parse for
-// the same reason.
 const workflowPath = new URL('../.github/workflows/mcp-live-smoke.yml', import.meta.url);
 const source = readFileSync(workflowPath, 'utf8');
 const workflow = YAML.parse(source);
@@ -54,8 +48,6 @@ describe('MCP live smoke workflow', () => {
   });
 
   it('gates deployment_status runs on the whole predicate, not its parts', () => {
-    // Asserted as ONE string: the connective is the part a per-clause check
-    // cannot see, and it is the part whose inversion kills the workflow.
     assert.equal(
       normalize(smoke.if),
       normalize(`
@@ -70,34 +62,31 @@ describe('MCP live smoke workflow', () => {
   });
 
   it('evaluates the gate correctly for every event this repo emits', () => {
-    // A tiny evaluator for the one expression shape above, so the gate is
-    // proven by behaviour rather than by string equality alone.
-    const runs = ({ event_name, state, environment, creator }) =>
+    const deploymentGateAllows = ({ event_name, state, environment, creator }) =>
       event_name !== 'deployment_status'
       || (state === 'success' && environment === 'Production' && creator === 'vercel[bot]');
 
-    assert.equal(runs({ event_name: 'schedule' }), true);
-    assert.equal(runs({ event_name: 'workflow_dispatch' }), true);
-    assert.equal(runs({ event_name: 'push' }), true);
+    assert.equal(deploymentGateAllows({ event_name: 'schedule' }), true);
+    assert.equal(deploymentGateAllows({ event_name: 'workflow_dispatch' }), true);
+    assert.equal(deploymentGateAllows({ event_name: 'push' }), true);
     assert.equal(
-      runs({ event_name: 'deployment_status', state: 'success', environment: 'Production', creator: 'vercel[bot]' }),
+      deploymentGateAllows({ event_name: 'deployment_status', state: 'success', environment: 'Production', creator: 'vercel[bot]' }),
       true,
     );
-    // The ineligible events this repo actually emits, all of which must skip.
     assert.equal(
-      runs({ event_name: 'deployment_status', state: 'success', environment: 'Preview', creator: 'vercel[bot]' }),
+      deploymentGateAllows({ event_name: 'deployment_status', state: 'success', environment: 'Preview', creator: 'vercel[bot]' }),
       false,
     );
     assert.equal(
-      runs({ event_name: 'deployment_status', state: 'success', environment: 'staging - docs', creator: 'mintlify[bot]' }),
+      deploymentGateAllows({ event_name: 'deployment_status', state: 'success', environment: 'staging - docs', creator: 'mintlify[bot]' }),
       false,
     );
     assert.equal(
-      runs({ event_name: 'deployment_status', state: 'success', environment: 'world-monitor / production', creator: 'railway-app[bot]' }),
+      deploymentGateAllows({ event_name: 'deployment_status', state: 'success', environment: 'world-monitor / production', creator: 'railway-app[bot]' }),
       false,
     );
     assert.equal(
-      runs({ event_name: 'deployment_status', state: 'failure', environment: 'Production', creator: 'vercel[bot]' }),
+      deploymentGateAllows({ event_name: 'deployment_status', state: 'failure', environment: 'Production', creator: 'vercel[bot]' }),
       false,
     );
   });

@@ -9,6 +9,7 @@ on:
     branches: [main]
     paths:
       - 'workers/railway-reconcile-control/**'
+      - 'scripts/railway-reconcile-control-client.mjs'
       - '.github/workflows/deploy-railway-reconcile-control.yml'
       - 'tests/deploy-railway-reconcile-control-workflow.test.mjs'
   workflow_dispatch:
@@ -56,19 +57,43 @@ jobs:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
         with:
           persist-credentials: false
+          fetch-depth: 0
+          filter: blob:none
+      - name: Fence stale main deployment
+        run: |
+          set -euo pipefail
+          repo_root="$(git rev-parse --show-toplevel)"
+          deploy_paths=(
+            'workers/railway-reconcile-control/**'
+            'scripts/railway-reconcile-control-client.mjs'
+            '.github/workflows/deploy-railway-reconcile-control.yml'
+            'tests/deploy-railway-reconcile-control-workflow.test.mjs'
+          )
+          git -C "$repo_root" fetch --no-tags origin '+refs/heads/main:refs/remotes/origin/main'
+          current_main_sha="$(git -C "$repo_root" rev-parse --verify 'refs/remotes/origin/main^{commit}')"
+          if ! git -C "$repo_root" merge-base --is-ancestor "$GITHUB_SHA" "$current_main_sha"; then
+            echo "::error::Refusing to deploy because the event SHA is not an ancestor of current main."
+            exit 1
+          fi
+          diff_status=0
+          git -C "$repo_root" diff --quiet --no-renames \
+            "$GITHUB_SHA" "$current_main_sha" -- "${deploy_paths[@]}" || diff_status=$?
+          if [ "$diff_status" -gt 1 ]; then
+            echo "::error::Unable to prove that the reconcile-control deployment closure is unchanged."
+            exit 1
+          fi
+          if [ "$diff_status" -eq 1 ]; then
+            echo "::error::Refusing to deploy a superseded reconcile-control revision."
+            exit 1
+          fi
+          if [ "$current_main_sha" != "$GITHUB_SHA" ]; then
+            echo "::notice::Current main advanced only outside the reconcile-control deployment closure."
+          fi
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
         with:
           node-version: '24'
       - name: Install
         run: npm ci --ignore-scripts --no-audit --no-fund
-      - name: Fence stale main deployment
-        run: |
-          set -euo pipefail
-          git fetch --no-tags origin main
-          if [ "$(git rev-parse origin/main)" != "$GITHUB_SHA" ]; then
-            echo "::error::Refusing to deploy a superseded control-plane SHA."
-            exit 1
-          fi
       - name: Set control-plane secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}

@@ -49,7 +49,6 @@ describe('parseMcpProxyJson', () => {
     const budget = createMcpProxyJsonBudget();
     const half = Math.floor(MAX_MCP_PROXY_JSON_CONTAINERS / 2);
 
-    // Each call is individually under the limit; together they exceed it.
     parseMcpProxyJson(emptyObjectArray(half), budget);
     assert.equal(budget.containers, half);
 
@@ -62,7 +61,6 @@ describe('parseMcpProxyJson', () => {
   it('gives each caller a fresh budget when none is supplied', () => {
     const text = emptyObjectArray(MAX_MCP_PROXY_JSON_CONTAINERS);
 
-    // A whole-document parse is unaffected by what an earlier call spent.
     assert.equal(parseMcpProxyJson(text).length, MAX_MCP_PROXY_JSON_CONTAINERS - 1);
     assert.equal(parseMcpProxyJson(text).length, MAX_MCP_PROXY_JSON_CONTAINERS - 1);
   });

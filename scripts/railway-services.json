@@ -634,6 +634,7 @@
       "scripts/china-coverage-health.mjs",
       "scripts/china-coverage-manifest.mjs",
       "scripts/lib/llm-telemetry.cjs",
+      "scripts/lib/main-module.mjs",
       "scripts/nixpacks.toml",
       "scripts/package-lock.json",
       "scripts/package.json",

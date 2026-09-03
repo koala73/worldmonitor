@@ -26,7 +26,6 @@ const mocks = vi.hoisted(() => ({
   isInLearningMode: vi.fn(() => true),
   getCachedScores: vi.fn(() => null),
   getSignalAggregator: vi.fn(),
-  updateAndCheck: vi.fn(),
   enrichEventsWithExposure: vi.fn(),
 }));
 
@@ -120,11 +119,6 @@ vi.mock('@/services/cached-risk-scores', async (importOriginal) => ({
 vi.mock('@/app/lazy-services', async (importOriginal) => ({
   ...await importOriginal<typeof import('@/app/lazy-services')>(),
   getSignalAggregator: mocks.getSignalAggregator,
-}));
-
-vi.mock('@/services/temporal-baseline', async (importOriginal) => ({
-  ...await importOriginal<typeof import('@/services/temporal-baseline')>(),
-  updateAndCheck: mocks.updateAndCheck,
 }));
 
 vi.mock('@/services/population-exposure', async (importOriginal) => ({
@@ -265,7 +259,6 @@ describe('DataLoaderManager cache-to-timeline callbacks', () => {
       ingestFlights: vi.fn(),
       ingestVessels: vi.fn(),
     });
-    mocks.updateAndCheck.mockReset().mockResolvedValue([]);
     mocks.enrichEventsWithExposure.mockReset().mockResolvedValue([]);
     vesselsModule.fetchMilitaryVessels.mockReset().mockResolvedValue({ vessels: [], clusters: [] });
   });

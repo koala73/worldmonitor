@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, httpRetryError, runSeed, withRetry } from './_seed-utils.mjs';
+import { isMainModule } from './lib/main-module.mjs';
 // Reuse the battle-tested schema-anchored parser from seed-vpd-tracker.mjs.
 // The 2026-04 webpack rebuild changed the TGH bundle from the legacy
 // `var a=[{Alert_ID:"..."}]` shape (unquoted keys) to `eval("var res = [...]")`
@@ -24,8 +25,6 @@ import {
   DISEASE_MAX_CONTENT_AGE_MIN,
   ALERT_LEVEL_METHODOLOGY_VERSION,
 } from './_disease-outbreaks-helpers.mjs';
-
-loadEnvFile(import.meta.url);
 
 const CANONICAL_KEY = 'health:disease-outbreaks:v1';
 const CACHE_TTL = 259200; // 72h (3 days) — 3× daily cron interval per gold standard; survives 2 consecutive missed runs
@@ -51,14 +50,24 @@ const RSS_MAX_BYTES = 500_000; // guard against oversized responses before regex
  * Fetch WHO Disease Outbreak News via their JSON API (RSS feed is dead since 2024).
  * Returns normalized items array.
  */
-async function fetchWhoDonApi() {
+export async function fetchWhoDonApi({
+  fetchImpl = globalThis.fetch,
+  timeoutMs = 15000,
+  retryDelayMs = 1000,
+} = {}) {
   try {
-    const resp = await fetch(WHO_DON_API, {
-      headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!resp.ok) { console.warn(`[Disease] WHO DON API HTTP ${resp.status}`); return []; }
-    const data = await resp.json();
+    const data = await withRetry(async () => {
+      const resp = await fetchImpl(WHO_DON_API, {
+        headers: { Accept: 'application/json', 'User-Agent': CHROME_UA },
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (!resp.ok) {
+        const error = httpRetryError(resp);
+        await resp.body?.cancel().catch(() => {});
+        throw error;
+      }
+      return resp.json();
+    }, 1, retryDelayMs);
     const items = data?.value;
     if (!Array.isArray(items)) { console.warn('[Disease] WHO DON API: unexpected response shape'); return []; }
     // Per-item synthetic-tag normalization lives in _disease-outbreaks-helpers.mjs
@@ -66,6 +75,10 @@ async function fetchWhoDonApi() {
     return items.map((item) => whoNormalizeItem(item))
       .filter(i => i.title && Number.isFinite(i.publishedMs));
   } catch (e) {
+    if (Number.isFinite(e?.status)) {
+      console.warn(`[Disease] WHO DON API HTTP ${e.status}`);
+      return [];
+    }
     console.warn('[Disease] WHO DON API fetch error:', e?.message || e);
     return [];
   }
@@ -217,32 +230,39 @@ export function declareRecords(data) {
   return Array.isArray(data?.outbreaks) ? data.outbreaks.length : 0;
 }
 
-runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
-  validateFn: validate,
-  ttlSeconds: CACHE_TTL,
-  sourceVersion: 'who-api-cdc-ont-v6',
+async function main() {
+  loadEnvFile(import.meta.url);
+  await runSeed('health', 'disease-outbreaks', CANONICAL_KEY, fetchDiseaseOutbreaks, {
+    validateFn: validate,
+    ttlSeconds: CACHE_TTL,
+    sourceVersion: 'who-api-cdc-ont-v6',
 
-  declareRecords,
-  schemaVersion: 1,
-  maxStaleMin: 2880,
+    declareRecords,
+    schemaVersion: 1,
+    maxStaleMin: 2880,
 
-  // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
-  //
-  // 9-day budget chosen so the 2026-05-04 incident — where the cache held
-  // 50 outbreaks all 11+ days old — would have correctly tripped STALE_CONTENT
-  // in /api/health. WHO Disease Outbreak News publishes 1-2/week (typical gap
-  // 3-5d), CDC HAN is sporadic but rarely silent for a full week, and TGH
-  // (post-#3593) provides daily ProMED items. 9 days tolerates a single quiet
-  // WHO/CDC week without paging on normal cadence.
-  //
-  // diseaseContentMeta + diseasePublishTransform live in
-  // `_disease-outbreaks-helpers.mjs` so the test suite imports the same code
-  // the seeder runs (no drift). See helpers module header for their semantics.
-  contentMeta: diseaseContentMeta,
-  maxContentAgeMin: DISEASE_MAX_CONTENT_AGE_MIN,
-  publishTransform: diseasePublishTransform,
-}).catch((err) => {
-  const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
-  console.error('FATAL:', (err.message || err) + _cause);
-  process.exit(1);
-});
+    // ── Content-age contract (Sprint 2 of the 2026-05-04 health-readiness plan) ──
+    //
+    // 9-day budget chosen so the 2026-05-04 incident — where the cache held
+    // 50 outbreaks all 11+ days old — would have correctly tripped STALE_CONTENT
+    // in /api/health. WHO Disease Outbreak News publishes 1-2/week (typical gap
+    // 3-5d), CDC HAN is sporadic but rarely silent for a full week, and TGH
+    // (post-#3593) provides daily ProMED items. 9 days tolerates a single quiet
+    // WHO/CDC week without paging on normal cadence.
+    //
+    // diseaseContentMeta + diseasePublishTransform live in
+    // `_disease-outbreaks-helpers.mjs` so the test suite imports the same code
+    // the seeder runs (no drift). See helpers module header for their semantics.
+    contentMeta: diseaseContentMeta,
+    maxContentAgeMin: DISEASE_MAX_CONTENT_AGE_MIN,
+    publishTransform: diseasePublishTransform,
+  });
+}
+
+if (isMainModule(import.meta.url, process.argv[1])) {
+  main().catch((err) => {
+    const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : '';
+    console.error('FATAL:', (err.message || err) + _cause);
+    process.exit(1);
+  });
+}
