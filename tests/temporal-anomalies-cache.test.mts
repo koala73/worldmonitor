@@ -13,6 +13,7 @@ import {
   temporalAnomaliesContentMeta,
   temporalAnomaliesReadableContentMeta,
 } from '../server/worldmonitor/infrastructure/v1/_shared.ts';
+import { __resetKeyPrefixCacheForTests } from '../server/_shared/redis.ts';
 import { listTemporalAnomalies } from '../server/worldmonitor/infrastructure/v1/list-temporal-anomalies.ts';
 
 /**
@@ -29,15 +30,28 @@ async function runWithRedisStub(
     lockGranted = true,
     failedPostKeys = [],
     failedGetKeys = [],
-  }: { lockGranted?: boolean; failedPostKeys?: string[]; failedGetKeys?: string[] } = {},
+    vercelEnv,
+    vercelSha,
+  }: {
+    lockGranted?: boolean;
+    failedPostKeys?: string[];
+    failedGetKeys?: string[];
+    vercelEnv?: string;
+    vercelSha?: string;
+  } = {},
 ) {
   const originalFetch = globalThis.fetch;
   const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
   const originalToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  const originalVercelEnv = process.env.VERCEL_ENV;
+  const originalVercelSha = process.env.VERCEL_GIT_COMMIT_SHA;
   const calls: { method: string; key: string; recordCount?: number; value?: unknown }[] = [];
 
   process.env.UPSTASH_REDIS_REST_URL = 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+  if (vercelEnv !== undefined) process.env.VERCEL_ENV = vercelEnv;
+  if (vercelSha !== undefined) process.env.VERCEL_GIT_COMMIT_SHA = vercelSha;
+  __resetKeyPrefixCacheForTests();
   globalThis.fetch = (async (input: unknown, init: { method?: string; body?: string } = {}) => {
     if (init.method === 'POST') {
       // Writes POST to `${url}/` with the command in the BODY (`['SET', key, ...]`),
@@ -83,6 +97,11 @@ async function runWithRedisStub(
     globalThis.fetch = originalFetch;
     process.env.UPSTASH_REDIS_REST_URL = originalUrl;
     process.env.UPSTASH_REDIS_REST_TOKEN = originalToken;
+    if (originalVercelEnv === undefined) delete process.env.VERCEL_ENV;
+    else process.env.VERCEL_ENV = originalVercelEnv;
+    if (originalVercelSha === undefined) delete process.env.VERCEL_GIT_COMMIT_SHA;
+    else process.env.VERCEL_GIT_COMMIT_SHA = originalVercelSha;
+    __resetKeyPrefixCacheForTests();
   }
 }
 
@@ -474,6 +493,25 @@ describe('temporal anomalies cache freshness', () => {
     assert.equal(
       calls.filter((c) => c.method === 'POST' && c.key !== 'baseline:lock').length, 0,
       'a lock loser must not publish a snapshot, a baseline, or a freshness stamp',
+    );
+  });
+
+  it('uses the preview namespace for the rebuild lock', async () => {
+    const prefix = 'preview:deadbeef:';
+    const stale = freshSnapshot(TEMPORAL_ANOMALIES_REBUILD_AFTER_MS + 60_000);
+    const { response, calls } = await runWithRedisStub(
+      { [`${prefix}temporal:anomalies:v1`]: stale },
+      {
+        lockGranted: false,
+        vercelEnv: 'preview',
+        vercelSha: 'deadbeefcafebabe',
+      },
+    );
+
+    assert.deepEqual(response, stale);
+    assert.ok(
+      calls.some((c) => c.method === 'POST' && c.key === `${prefix}baseline:lock`),
+      'preview rebuilds must not contend on the production lock key',
     );
   });
 
