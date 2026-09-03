@@ -77,32 +77,14 @@ const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 // bound the age here: a forgotten or failed refresh must red the build rather
 // than silently republish stale numbers under a current-state heading.
 //
-// TARGET: 10 days, to match the weekly refresh cron with ~3 days of slack. At
-// 45 against the former monthly cron, pages headed "Approx. 24-hour movement"
-// could ship on six-week-old data — the freshness overstatement in #7530.
-//
-// Still 45 because tightening it today would red the product build with no way
-// to clear it: no freeze can currently succeed.
-//
-//   2026-09-02: /api/supply-chain/v1/get-chokepoint-status returned
-//   `{"chokepoints":[],"upstreamUnavailable":true}` on every attempt, so the 13
-//   chokepoints could not be captured. RESOLVED 2026-09-03.
-//
-//   2026-09-03: the freeze now reaches the country leg and fails there instead,
-//   capturing 168 of 196 (gate needs >= 191). Top-level `advisoryLevel` on
-//   /api/intelligence/v1/get-country-risk is now `""` for EVERY country — even
-//   AF and SY, which the 2026-08-30 snapshot recorded as "Do Not Travel", and
-//   which still carry `cii.advisoryLevel: "do-not-travel"` nested one level
-//   down. liveRiskViewModel reads the top-level field, so the ~28 countries
-//   with no CII block and no sanctions lose their only sub-signal and fail
-//   closed. The Aug-30 snapshot captured 196/196 with 0 errors and a full
-//   advisory spread (75/67/26/21), so this is a regression, not a cold feed.
-//
-// Drop this to 10 once a refresh has actually landed. The cron moved to weekly
-// in the same change, so the gap closes on its own once the upstream is fixed;
-// the guard in tests/crawlable-corpus.test.mjs asserts the ceiling still clears
-// the cadence.
-export const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
+// Sized to clear the WEEKLY refresh cadence with slack: the cron freezes every
+// Monday, so this leaves ~3 days to merge a refresh PR before the build reds.
+// It was 45 days against a monthly cron, which let pages headed "Approx.
+// 24-hour movement" ship on data up to six weeks old — the freshness
+// overstatement in #7530. The ceiling and the cron are one contract: relaxing
+// either without the other reopens the gap, and a guard in
+// tests/crawlable-corpus.test.mjs asserts they still agree.
+export const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 10;
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
 const MICROSTATE_TERRITORIES_PATH = 'server/worldmonitor/resilience/v1/cohorts/microstate-territories.json';
@@ -915,15 +897,25 @@ function signalMetaDescriptionCandidates({ subjects, signals }) {
   return candidates;
 }
 
-function selectMetaDescription(candidates, fallbackCandidates) {
+// `subject` names the page so a failure is actionable. Without it the build
+// dies with a bare "No meta description candidate fits 155-160 characters"
+// across 250 pages and says nothing about which one or how close it came.
+function selectMetaDescription(candidates, fallbackCandidates, subject) {
   const selected = longestEligibleMetaDescription(candidates);
   if (selected?.length >= META_DESCRIPTION_MIN) return selected;
 
   const fallback = longestEligibleMetaDescription(fallbackCandidates?.() ?? []);
   if (fallback?.length >= META_DESCRIPTION_MIN) return fallback;
 
+  const lengths = [...candidates, ...(fallbackCandidates?.() ?? [])]
+    .map((candidate) => candidate.length)
+    .sort((left, right) => left - right);
+  const near = lengths.length > 0
+    ? ` Candidate lengths ranged ${lengths[0]}-${lengths.at(-1)} over ${lengths.length} candidate(s).`
+    : ' No candidates were generated.';
   throw new Error(
-    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`,
+    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`
+    + `${subject ? ` for ${subject}` : ''}.${near}`,
   );
 }
 
@@ -946,18 +938,25 @@ export function countryMetaDescription({
       `is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
       `scores ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
     ];
+    // Graded long-to-short. The window is a narrow 155-160, so a long country
+    // name plus a long movement clause can push EVERY candidate over: "United
+    // Arab Emirates" made all 24 land in 162-196 and reds the whole build
+    // (#7530). The short tail is what keeps a 20-character name in range.
     const contexts = [
       'with World Monitor country-risk, resilience, advisory, and sanctions context.',
       'with World Monitor risk, resilience, advisory, and sanctions context.',
+      'alongside World Monitor risk, resilience, advisory, and sanctions context.',
       'with World Monitor country-risk, resilience, and security context.',
       'with World Monitor country-risk and resilience context.',
-      'alongside World Monitor risk, resilience, advisory, and sanctions context.',
       'alongside World Monitor country-risk and resilience context.',
+      'with World Monitor risk, resilience and sanctions context.',
+      'with World Monitor risk and resilience context.',
+      'with World Monitor risk context.',
     ];
     const candidates = subjects.flatMap((subject) => facts.flatMap(
       (fact) => contexts.map((context) => `${subject} ${fact}, ${context}`),
     ));
-    return selectMetaDescription(candidates);
+    return selectMetaDescription(candidates, undefined, `${name} (CII country)`);
   }
 
   const subjects = [
@@ -1020,7 +1019,7 @@ export function countryMetaDescription({
       'risk trends',
       'public data',
     ],
-  }));
+  }), `${name} (ranked country)`);
 }
 
 export function chokepointMetaDescription(name) {
@@ -1058,7 +1057,7 @@ export function chokepointMetaDescription(name) {
       'shipping signals',
       'public data',
     ],
-  }));
+  }), `${name} (chokepoint)`);
 }
 
 function metricTile(label, value) {

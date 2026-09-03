@@ -1311,9 +1311,21 @@ describe('crawlable corpus generator', () => {
       }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
       'Not reported',
     );
+    // Construct the legacy shape explicitly. This used to pass `data.livePulse`
+    // straight through and relied on the COMMITTED snapshot predating the
+    // #7535 availability flags — so the moment a refresh landed, the fixture
+    // stopped being legacy and the assertion inverted (#7530, and the same
+    // class as #7533). Strip the flag instead of hoping the snapshot lacks it.
+    const { aisSnapshotAvailable: _dropped, ...legacyPulse } = validPulse;
+    assert.ok(
+      !('aisSnapshotAvailable' in legacyPulse),
+      'the legacy fixture must actually lack the availability flag',
+    );
     assert.equal(
-      buildChokepointHubRows(data.chokepoints, data.livePulse)
-        .find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
+      buildChokepointHubRows(data.chokepoints, {
+        ...data.livePulse,
+        chokepoints: { ...data.livePulse.chokepoints, [firstChokepoint.id]: legacyPulse },
+      }).find((row) => row.chokepoint.id === firstChokepoint.id)?.congestion,
       'Not reported',
       'legacy pulses without the AIS availability flag must fail closed',
     );
@@ -1419,10 +1431,10 @@ describe('crawlable corpus generator', () => {
       MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS > cadenceDays,
       `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle reds the build`,
     );
-    // No upper bound asserted yet: the ceiling is deliberately still 45 while
-    // the chokepoint upstream that every freeze depends on is down, so a
-    // `<= cadence * 2` assertion would red the suite for a documented reason.
-    // Tighten this alongside the constant once a refresh has landed.
+    assert.ok(
+      MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS <= cadenceDays * 2,
+      `the ${MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS}-day ceiling tolerates more than two missed ${cadenceDays}-day refreshes; pages advertising 24-hour movement would ship on data that old`,
+    );
 
     if (cadenceDays <= 7) {
       assert.match(
@@ -2149,37 +2161,49 @@ describe('crawlable corpus generator', () => {
       });
       assert.equal(ciiItemList?.numberOfItems, 31);
       assert.equal(ciiItemList?.itemListElement?.length, 31);
-      const aeRankingItem = ciiItemList.itemListElement.find(
-        (entry) => entry.item?.name === 'United Arab Emirates',
+      // Pick both countries FROM the pulse by the property under test. These
+      // were hardcoded to United Arab Emirates (stable) and Afghanistan
+      // (moving), which is a live value: the first refresh gave the UAE a
+      // numeric movement and inverted the assertion (#7530, same class as
+      // #7533). The invariant is "ambiguous movement publishes no number",
+      // not "the UAE is ambiguous".
+      const movementOf = (name) => ciiItemList.itemListElement
+        .find((entry) => entry.item?.name === name)?.item?.additionalProperty
+        ?.find((property) => property.name === 'Approximate 24-hour movement');
+      const ciiByName = new Map(
+        clock.ciiRanking.entries.map((entry) => [entry.country.name, entry]),
       );
-      const afRankingItem = ciiItemList.itemListElement.find(
-        (entry) => entry.item?.name === 'Afghanistan',
-      );
-      assert.equal(
-        aeRankingItem.item.additionalProperty.find(
-          (property) => property.name === 'Approximate 24-hour movement',
-        ),
-        undefined,
-        'ambiguous stable movement must not publish a numeric JSON-LD value',
-      );
-      assert.equal(
-        afRankingItem.item.additionalProperty.find(
-          (property) => property.name === 'Approximate 24-hour movement',
-        )?.value,
-        2,
-      );
+      const stableName = clock.ciiRanking.entries
+        .find((entry) => entry.change24h == null)?.country?.name;
+      const movingName = clock.ciiRanking.entries
+        .find((entry) => typeof entry.change24h === 'number')?.country?.name;
 
-      const unitedArabEmirates = read(outDir, 'countries/united-arab-emirates/index.html');
-      assert.match(unitedArabEmirates, /stable or unavailable over approximately 24 hours/);
-      assert.match(unitedArabEmirates, /data-live-trend>Stable or unavailable<\/strong>/);
-      const aeCiiDataset = jsonLdObjects(unitedArabEmirates)
-        .flatMap((entry) => collectDatasets(entry))
-        .find((entry) => entry['@id']?.endsWith('#cii-dataset'));
+      if (stableName) {
+        assert.equal(
+          movementOf(stableName),
+          undefined,
+          `ambiguous stable movement must not publish a numeric JSON-LD value (${stableName})`,
+        );
+        const stableSlug = clock.countries.find((entry) => entry.name === stableName)?.slug;
+        const stablePage = read(outDir, `countries/${stableSlug}/index.html`);
+        assert.match(stablePage, /stable or unavailable over approximately 24 hours/);
+        assert.match(stablePage, /data-live-trend>Stable or unavailable<\/strong>/);
+        const stableCiiDataset = jsonLdObjects(stablePage)
+          .flatMap((entry) => collectDatasets(entry))
+          .find((entry) => entry['@id']?.endsWith('#cii-dataset'));
+        assert.equal(
+          stableCiiDataset.variableMeasured.find(
+            (property) => property.name === 'Approximate 24-hour movement',
+          ),
+          undefined,
+        );
+      }
+
+      assert.ok(movingName, 'expected at least one CII country with a numeric 24-hour movement');
       assert.equal(
-        aeCiiDataset.variableMeasured.find(
-          (property) => property.name === 'Approximate 24-hour movement',
-        ),
-        undefined,
+        movementOf(movingName)?.value,
+        ciiByName.get(movingName).change24h,
+        `${movingName} must publish its own movement value`,
       );
 
       const ukraineLd = jsonLdObjects(ukraine);
@@ -2592,7 +2616,26 @@ describe('crawlable corpus generator', () => {
       assert.match(taiwan, /Nearest ranked comparators:/);
       assert.match(taiwan, /Taiwan is included separately in the rankable universe/);
       assert.doesNotMatch(taiwan, /special administrative region/);
-      assert.match(taiwan, /Taiwan instability index scores 48\/100 \(Normal\)/);
+      // Derive the score and band from the pulse. Pinning "48/100 (Normal)"
+      // made this assertion a hostage to the live CII: it goes red on the next
+      // refresh for a reason that has nothing to do with the contract under
+      // test, which is that the sentence is rendered at all (#7530, #7533).
+      {
+        const taiwanCii = clock.ciiRanking.entries.find(
+          (entry) => entry.country.name === 'Taiwan',
+        );
+        assert.ok(taiwanCii, 'Taiwan must be in the CII ranking');
+        // Assert the CII figure and band are published, not one exact phrasing.
+        // countryMetaDescription picks the longest candidate that fits the
+        // 155-160 window, so the winning subject/verb pair legitimately changes
+        // when the score's digit count changes.
+        assert.match(
+          taiwan,
+          new RegExp(`${taiwanCii.score}\\/100 \\(${taiwanCii.band}\\)`),
+          `Taiwan must publish its CII score and band (${taiwanCii.score}/100 ${taiwanCii.band})`,
+        );
+        assert.match(taiwan, /[Ii]nstability [Ii]ndex/);
+      }
       assert.doesNotMatch(taiwan, /\bTW · /);
       assert.doesNotMatch(
         taiwan,
@@ -3402,19 +3445,37 @@ describe('crawlable corpus generator', () => {
         hormuz,
         'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/',
       );
-      for (const selector of [
-        '[data-chokepoint-warnings]',
-        '[data-chokepoint-ais-disruptions]',
-        '[data-chokepoint-congestion]',
+      // Visibility follows the pulse's availability flags, not a fixed
+      // expectation. This asserted `hidden === true` unconditionally, which was
+      // only true while the committed snapshot predated the #7535 flags; the
+      // first refresh that carried them inverted it (#7530, same class as
+      // #7533). The contract is that a tile is present in SSR for hydration and
+      // hidden exactly when its own source is unavailable.
+      const hormuzPulse = clock.livePulse.chokepoints.hormuz_strait;
+      for (const [selector, available] of [
+        ['[data-chokepoint-warnings]', hormuzPulse.navigationalWarningsAvailable === true],
+        ['[data-chokepoint-ais-disruptions]', hormuzPulse.aisSnapshotAvailable === true],
+        ['[data-chokepoint-congestion]', hormuzPulse.aisSnapshotAvailable === true],
       ]) {
         const metric = hormuzDocument.querySelector(selector)?.closest('.metric');
         assert.ok(metric, `${selector} must remain in SSR for hydration recovery`);
-        assert.equal(metric.hidden, true, `${selector} must be hidden when its legacy flag is absent`);
+        assert.equal(
+          metric.hidden,
+          !available,
+          `${selector} must be hidden exactly when its source is unavailable`
+            + ` (available=${available})`,
+        );
       }
       assert.match(hormuz, /<span>Navigational warnings<\/span>/);
       assert.match(hormuz, /<span>AIS disruptions<\/span>/);
       assert.match(hormuz, /<span>AIS congestion<\/span>/);
-      assert.match(hormuz, /data-chokepoint-movement>\+12\.9% vs prior week</);
+      assert.match(
+        hormuz,
+        new RegExp(`data-chokepoint-movement>${
+          String(clock.livePulse.chokepoints.hormuz_strait.weekMovement).replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+        }<`),
+        'week-over-week movement must render the pulse value verbatim',
+      );
       assert.doesNotMatch(
         hormuz,
         /AIS-derived feed has no data/,
@@ -3655,15 +3716,20 @@ describe('crawlable corpus generator', () => {
           assert.match(page, noteRe);
         }
         const pageDocument = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
-        for (const selector of [
-          '[data-chokepoint-warnings]',
-          '[data-chokepoint-ais-disruptions]',
-          '[data-chokepoint-congestion]',
+        // Each source governs only its own tile, and the tile is hidden exactly
+        // when that source is unavailable. This asserted `hidden === true`
+        // unconditionally, which held only while the committed snapshot
+        // predated the #7535 flags (#7530, same class as #7533).
+        for (const [selector, available] of [
+          ['[data-chokepoint-warnings]', pulse.navigationalWarningsAvailable === true],
+          ['[data-chokepoint-ais-disruptions]', pulse.aisSnapshotAvailable === true],
+          ['[data-chokepoint-congestion]', pulse.aisSnapshotAvailable === true],
         ]) {
           assert.equal(
             pageDocument.querySelector(selector)?.closest('.metric')?.hidden,
-            true,
-            `${meta.name} legacy source flag must fail closed for ${selector}`,
+            !available,
+            `${meta.name} must hide ${selector} exactly when its source is unavailable`
+              + ` (available=${available})`,
           );
         }
       }
