@@ -159,6 +159,25 @@ describe('third-party headline text survives the prerender splice', () => {
     }
   });
 
+  it('critical CSS never selects on a substring of a feed-supplied href', () => {
+    // The inline critical CSS is UNLAYERED, so it wins the cascade until the
+    // deferred stylesheet loads. `main` now contains headline anchors pointing
+    // at third-party article URLs, so a `[href*="..."]` substring match there
+    // lets a story slug inherit hero-CTA styling for that window.
+    const source = readFileSync(resolve(repoRoot, 'pro-test/prerender.mjs'), 'utf8');
+    const cssStart = source.indexOf('const CRITICAL_CSS');
+    const cssEnd = source.indexOf('].join(', cssStart);
+    assert.ok(cssStart !== -1 && cssEnd > cssStart, 'CRITICAL_CSS block moved -- update this guard');
+    const css = source.slice(cssStart, cssEnd);
+    const substringHrefRules = css.match(/a\[href\*=/g) ?? [];
+    assert.deepEqual(
+      substringHrefRules,
+      [],
+      'use an exact [href="..."] match: a substring match in `main` can be satisfied by a '
+      + 'third-party headline URL',
+    );
+  });
+
   it('the function form leaves the same headline verbatim', () => {
     const page = '<html><body><div id="root"></div></body></html>';
     const marker = '<div id="root"></div>';

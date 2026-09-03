@@ -1548,7 +1548,11 @@ describe('welcome landing page routing', () => {
     // when the rule it exists to protect is deleted outright.
     for (const required of [
       'main a[data-umami-event-target="welcome-hero"]',
-      'main a[href*="moments"]',
+      // Exact, not `[href*="moments"]`: since #7608 `main` also carries headline
+      // anchors whose href is a third-party article URL, and a substring match
+      // would paint any story slug containing "moments" as a hero CTA until the
+      // deferred stylesheet lands.
+      'main a[href="#moments"]',
       'nav[data-wm-nav] a[aria-label*="Launch"]',
     ]) {
       assert.ok(scanned.has(required), `critical CSS must still style the welcome CTA via ${required}`);

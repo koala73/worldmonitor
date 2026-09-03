@@ -108,7 +108,13 @@ const CRITICAL_CSS = [
   // this rule matching nothing and paint the primary CTA unstyled above the
   // fold. deploy-config.test.mjs fails if any selector here stops matching a
   // prerendered anchor.
-  'main a[data-umami-event-target="welcome-hero"],main a[href*="moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href*="moments"]{background:transparent;color:#f3f4f6}',
+  // `[href="#moments"]`, not `[href*="moments"]`. The hero CTA is an exact
+  // fragment link (welcome/Hero.tsx), and since #7608 `main` also contains
+  // headline anchors whose href is a third-party article URL — a substring
+  // match would paint any story slug containing "moments" as a full-width
+  // uppercase CTA button until the deferred stylesheet lands. Same element,
+  // same painted result, no reach into feed-supplied hrefs.
+  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href="#moments"]{background:transparent;color:#f3f4f6}',
   '@media (min-width:640px){nav[data-wm-nav]>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
   '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
   '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}}',
