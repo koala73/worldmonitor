@@ -220,6 +220,51 @@ function rewriteBuiltAssetUrls(markup) {
 
 const welcomeContent = await renderWelcomeRoot();
 
+// GitHub star InteractionCounter: populated from the committed freeze
+// snapshot, never hardcoded and never fetched at build time (offline builds
+// stay deterministic). Refresh via `npm run freeze:github-stars`.
+const GITHUB_STARS_TOKEN = '"%GITHUB_STARS_INTERACTION%"';
+// Pages whose committed template carries the token. A missing token on one of
+// these is a dropped counter, not an optional page — fail the build.
+const GITHUB_STARS_PAGES = ['welcome.html'];
+
+function latestGithubStarsSnapshot() {
+  const snapshotsDir = resolve(__dirname, '../docs/snapshots');
+  const files = readdirSync(snapshotsDir)
+    .filter((name) => /^github-stars-\d{4}-\d{2}-\d{2}\.json$/.test(name))
+    .sort();
+  if (files.length === 0) {
+    console.error('[prerender] ERROR: No docs/snapshots/github-stars-*.json snapshot. Run npm run freeze:github-stars.');
+    process.exit(1);
+  }
+  const snapshot = JSON.parse(readFileSync(resolve(snapshotsDir, files[files.length - 1]), 'utf8'));
+  if (!Number.isInteger(snapshot.stargazers_count) || snapshot.stargazers_count < 0) {
+    console.error('[prerender] ERROR: Star snapshot carries no integer stargazers_count.');
+    process.exit(1);
+  }
+  return snapshot;
+}
+
+function injectGithubStars(html, file) {
+  if (!html.includes(GITHUB_STARS_TOKEN)) {
+    if (GITHUB_STARS_PAGES.includes(file)) {
+      console.error('[prerender] ERROR: welcome.html lost the GitHub stars injection token. Restore "interactionStatistic" or update injectGithubStars().');
+      process.exit(1);
+    }
+    return html;
+  }
+  const snapshot = latestGithubStarsSnapshot();
+  return html.replaceAll(
+    GITHUB_STARS_TOKEN,
+    JSON.stringify({
+      '@type': 'InteractionCounter',
+      interactionType: 'https://schema.org/LikeAction',
+      name: 'GitHub stars',
+      userInteractionCount: snapshot.stargazers_count,
+    }),
+  );
+}
+
 const PAGES = [
   { file: 'index.html', content: '', rootAttributes: '' },
   {
@@ -239,6 +284,7 @@ for (const { file, content, rootAttributes } of PAGES) {
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
   html = inlineCriticalCss(html, file);
+  html = injectGithubStars(html, file);
   const emptyRoot = '<div id="root"></div>';
   if (content || rootAttributes) {
     if (!html.includes(emptyRoot)) {

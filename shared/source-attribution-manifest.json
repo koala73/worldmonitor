@@ -827,6 +827,9 @@
           "path": "scripts/dispatch-stale-railway-reconcile.mjs"
         },
         {
+          "path": "scripts/freeze-github-stars.mjs"
+        },
+        {
           "path": "scripts/resolve-railway-reconcile-control.mjs"
         },
         {
