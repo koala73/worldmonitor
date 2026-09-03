@@ -324,7 +324,7 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
         <li><a href="/blog/posts/country-instability-index-methodology-explained/">CII methodology</a></li>
         <li><a href="/docs/methodology/country-resilience-index">CRI methodology</a></li>
       </ul>
-      <p class="source">Canonical treatment (#6849): this page owns the evergreen task framing. <a href="/countries/">/countries/</a> remains the live evidence surface. The blog workflow article remains distinct supporting editorial — not a duplicate indexable procedure.</p>`;
+      <p class="source">Canonical treatment: this page owns the evergreen task framing. <a href="/countries/">/countries/</a> remains the live evidence surface. The blog workflow article remains distinct supporting editorial — not a duplicate indexable procedure.</p>`;
 
   const pageUrl = absoluteUrl(baseUrl, path);
   const workflowSteps = [
@@ -511,7 +511,7 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
         <li><a href="/countries/">Country risk and resilience corpus</a></li>
         <li><a href="/docs/natural-disasters">Natural disaster tracking</a></li>
       </ul>
-      <p class="source">Canonical treatment (#6850): this page owns the evergreen verification procedure. The <a href="/blog/posts/verify-breaking-news-osint-workflow-journalists/">OSINT blog article</a> remains dated supporting editorial with minute-by-minute narrative — not a duplicate indexable task page. No redirect.</p>`;
+      <p class="source">Canonical treatment: this page owns the evergreen verification procedure. The <a href="/blog/posts/verify-breaking-news-osint-workflow-journalists/">OSINT blog article</a> remains dated supporting editorial with minute-by-minute narrative — not a duplicate indexable task page. No redirect.</p>`;
 
   const pageUrl = absoluteUrl(baseUrl, path);
   const workflowSteps = [
@@ -711,7 +711,7 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
         <li><a href="/blog/posts/tracking-global-trade-routes-chokepoints-freight-costs/">Trade routes and chokepoints article</a></li>
         <li><a href="/docs/methodology/chokepoints">Chokepoint methodology</a></li>
       </ul>
-      <p class="source">Canonical treatment (#6851): this page owns the evergreen supply-chain monitoring workflow. <a href="/chokepoints/">/chokepoints/</a> and commodity surfaces remain factual evidence. The <a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">supply-chain blog article</a> remains distinct supporting editorial — no redirect.</p>`;
+      <p class="source">Canonical treatment: this page owns the evergreen supply-chain monitoring workflow. <a href="/chokepoints/">/chokepoints/</a> and commodity surfaces remain factual evidence. The <a href="/blog/posts/monitor-global-supply-chains-and-commodity-disruptions/">supply-chain blog article</a> remains distinct supporting editorial — no redirect.</p>`;
 
   const pageUrl = absoluteUrl(baseUrl, path);
   const workflowSteps = [

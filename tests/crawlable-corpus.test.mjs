@@ -4752,3 +4752,38 @@ describe('country recent developments', () => {
     assert.ok(!('dateModified' in plainWebPage), 'no items means no dateModified claim');
   });
 });
+describe('GEO residue #7616 (U2a citations and prose)', () => {
+  const repo = (path) => readFileSync(join(repoRoot, path), 'utf8');
+
+  it('links crisis scope sources to a resolvable location, not a bare repo path', () => {
+    const generator = repo('scripts/build-crawlable-corpus.mjs');
+    assert.doesNotMatch(
+      generator,
+      /Scope source: \$\{CRISIS_REGISTRY_PATH\}/,
+      'crisis scope citations must link a resolvable URL, not interpolate the bare repo path',
+    );
+    assert.match(
+      generator,
+      /github\.com\/koala73\/worldmonitor\/blob\/main\/shared\/crawlable-crises\.json/,
+      'crisis scope citations must point at the versioned registry location',
+    );
+  });
+
+  it('keeps internal issue numbers out of rendered corpus prose', () => {
+    assert.doesNotMatch(
+      repo('scripts/build-use-cases.mjs'),
+      /Canonical treatment \(\#\d+\)/,
+      'the verify-news canonical note must not leak its internal issue number',
+    );
+    assert.match(
+      repo('scripts/build-use-cases.mjs'),
+      /Canonical treatment:/,
+      'the verify-news canonical note must keep its substance',
+    );
+    assert.doesNotMatch(
+      repo('shared/research-reports/strait-of-hormuz-transit-report-2026-07.mjs'),
+      /Issue #\d+/,
+      'published report justification must not leak internal issue numbers',
+    );
+  });
+});

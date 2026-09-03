@@ -4551,6 +4551,9 @@
           "path": "api/download.js"
         },
         {
+          "path": "scripts/build-crawlable-corpus.mjs"
+        },
+        {
           "path": "scripts/generate-airline-codes.mjs"
         },
         {

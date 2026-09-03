@@ -41,7 +41,7 @@ export const REPORT = {
   // Why this topic: the evidence trail required by #5668 AC#1, kept in the
   // published report so readers can audit the selection logic itself.
   topicJustification: [
-    'Issue #5667 recorded a 2026-07-26 spot check in which World Monitor was absent from returned results for “Strait of Hormuz live traffic tracker” — the exact reviewed query q07 in the visibility baseline (use-case intent, chokepoints page family, IMF PortWatch as named source).',
+    'Topic selected after a 2026-07-26 spot check found no authoritative public source for daily Strait of Hormuz transit counts — the exact reviewed query q07 in the visibility baseline (use-case intent, chokepoints page family, IMF PortWatch as named source).',
     'The 2026-07-27 visibility baseline shows the category query already earning AI citations (4/4 platform mentions, 3/4 direct) while use-case queries have no observed visibility, so the next authority asset belongs on a use-case surface.',
     'The baseline’s expansion gate allows at most one evidence-rich report experiment before credentialed demand data arrives; this pilot is that single experiment.',
   ],
