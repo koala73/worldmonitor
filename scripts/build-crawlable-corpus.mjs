@@ -2636,11 +2636,22 @@ function partitionUnrankedInventory(country) {
     pooled.add(dimension.id);
     pool.push(dimension);
   }
+  // fullCoverage is what the page captions "more at full coverage", so define it
+  // by that claim, not by "whatever escaped the pool". A dimension with unusable
+  // coverage fails the pool's `coverage < 1` test too, and defining this bucket
+  // by exclusion would publish it as complete while the arithmetic still closed
+  // -- the gate green on a page that lies, which is the #7609 failure exactly.
+  const unpooled = dimensions.filter((dimension) => !pooled.has(dimension.id));
   return {
-    total: dimensions.length,
+    // A duplicate id is one dimension counted twice, not two: the pool dedupes,
+    // so counting rows here would inflate the published "of N" and fire the
+    // closure check with a message blaming the wrong thing.
+    total: new Set(dimensions.map((dimension) => dimension.id)).size,
+    rowCount: dimensions.length,
     shown: pool.slice(0, UNRANKED_INVENTORY_LIMIT),
     droppedByCap: pool.slice(UNRANKED_INVENTORY_LIMIT),
-    fullCoverage: dimensions.filter((dimension) => !pooled.has(dimension.id)),
+    fullCoverage: unpooled.filter((dimension) => Number(dimension.coverage) >= 1),
+    unclassified: unpooled.filter((dimension) => !(Number(dimension.coverage) >= 1)),
   };
 }
 
@@ -2718,6 +2729,28 @@ export function describeSupportThreshold(country) {
 // rather than the review: #7530's fix for the missing truncation note is what
 // introduced the arithmetic defect, and no test covered the claim (#7609).
 export function assertUnrankedInventoryIntegrity(country, rendered = {}) {
+  // Order matters: name the true cause before the closure check, which would
+  // otherwise report every one of these as generic arithmetic drift.
+  const partition = partitionUnrankedInventory(country);
+  if (partition.rowCount !== partition.total) {
+    throw new Error(
+      `${country.code} repeats a dimension id across its domains, so the inventory`
+      + ` would publish ${partition.rowCount} rows as ${partition.total} distinct dimensions`,
+    );
+  }
+  if (partition.unclassified.length > 0) {
+    throw new Error(
+      `${country.code} would publish ${partition.unclassified.map((dimension) => (
+        `${dimension.id} (coverage ${dimension.coverage})`
+      )).join(', ')} as "at full coverage" without reaching full coverage`,
+    );
+  }
+  if (partition.droppedByCap.length > 0 && partition.shown.length !== UNRANKED_INVENTORY_LIMIT) {
+    throw new Error(
+      `${country.code} omits ${partition.droppedByCap.length} dimensions for brevity while showing`
+      + ` only ${partition.shown.length} of the ${UNRANKED_INVENTORY_LIMIT} the cap allows`,
+    );
+  }
   const { total, shown, omittedClauses } = unrankedInventoryScope(country);
   const accounted = omittedClauses.reduce((sum, clause) => sum + clause.count, shown);
   if (accounted !== total) {

@@ -607,6 +607,31 @@ describe('unranked evidence inventory build assertion', () => {
   // nothing but coverage. That asymmetry is what makes the throw above reachable
   // on one branch and unreachable on the other -- pin it, or a later attempt to
   // "unify" the two definitions silently changes which pages can fail the build.
+  // These three shapes all close the arithmetic, so the closure check alone
+  // stays green while the page publishes something false. Each guard names its
+  // own cause rather than reporting generic drift.
+  it('rejects a dimension that would publish as "at full coverage" without reaching it', () => {
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(countryFixture({ code: 'ZZ' }, [
+        dimension('macroFiscal', 0.4, '', 50),
+        // Not a gap, not not-applicable, and `coverage < 1` is false for NaN, so
+        // it escapes the weakest-first pool the same way a complete dimension does.
+        dimension('energy', undefined, '', 60),
+      ])),
+      /ZZ would publish energy \(coverage undefined\) as "at full coverage" without reaching full coverage/,
+    );
+  });
+
+  it('rejects a duplicate dimension id rather than inflating the published total', () => {
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(countryFixture({ code: 'ZZ' }, [
+        dimension('macroFiscal', 0.4, '', 50),
+        dimension('macroFiscal', 0.6, '', 60),
+      ])),
+      /ZZ repeats a dimension id across its domains, so the inventory would publish 2 rows as 1 distinct dimensions/,
+    );
+  });
+
   // #7530 broke the page by dropping a bucket from the SENTENCE while the data
   // behind it stayed correct. A gate that only re-reads the partition is blind
   // to exactly that edit, so it has to read the published string too. These two
