@@ -1310,15 +1310,27 @@ describe('api/mcp-proxy', () => {
       assert.equal((await res.json()).error, `MCP server response exceeds ${MCP_PROXY_RESPONSE_CAP_BYTES} bytes`);
       // On Edge the SSE body was read straight off the fetch Response, so the
       // overflow chunk landed in the same microtask run as the endpoint event
-      // and connect() never returned. The Node transport bridges the body
-      // through an IncomingMessage, so a chunk that follows the endpoint event
-      // arrives one macrotask later — after connect() has resolved and the
-      // initialize POST is already in flight. That single dispatch goes to the
-      // origin whose address was already vetted and pinned, and its response is
-      // discarded. What must still hold, and does, is that the terminal error
-      // fails the call and stops the session: initialize is the ONLY POST, so
-      // neither notifications/initialized nor tools/list ever reaches the wire.
-      assert.equal(endpointPosts, 1, 'a terminal stream error must stop the session at the first POST');
+      // and connect() never returned — this asserted zero POSTs. The Node
+      // transport bridges the body through an IncomingMessage, so a chunk that
+      // follows the endpoint event arrives one macrotask later, after connect()
+      // resolved and the initialize POST is already in flight. That dispatch
+      // goes to the origin whose address was already vetted and pinned, and its
+      // response is discarded.
+      //
+      // Assert the invariant, not the count: WHICH methods escaped is what the
+      // guard is for, and a count of 1 would still pass if a future change let
+      // `tools/list` out instead of `initialize`. The terminal error must stop
+      // the session, so `initialize` is the only method that reaches the wire —
+      // neither notifications/initialized nor tools/list follows it.
+      const escapedMethods = pinnedRequests
+        .filter((request) => request.body)
+        .map((request) => JSON.parse(request.body).method);
+      assert.deepEqual(
+        escapedMethods,
+        ['initialize'],
+        'a terminal stream error must stop the session after the first dispatch',
+      );
+      assert.equal(endpointPosts, escapedMethods.length, 'every dispatch the module made reached the fake upstream');
     });
 
     it('cancels ignored legacy SSE acknowledgement bodies', async () => {
