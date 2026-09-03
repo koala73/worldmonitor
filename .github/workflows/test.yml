@@ -203,6 +203,12 @@ jobs:
         run: node scripts/docs-stats.mjs --check
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
+      - name: Homepage teaser strip matches the committed pulse snapshot
+        # Belongs in this always-on job, not `unit`: a PR that touches only
+        # docs/snapshots/ sets changes.code=false and skips `unit` entirely, so
+        # the snapshot could move out from under the generated teaser strip
+        # without any gate running. Pure Node builtins, no install required.
+        run: node scripts/build-welcome-teasers.mjs --check
       - name: Every entitlement gate is classified
         # Fails when a new free-vs-paid gate ships without a capability id or a
         # documented exclusion (exit 1), or when the tree is missing a source the

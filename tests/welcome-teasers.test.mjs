@@ -84,6 +84,45 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
     }
   });
 
+  it('counts both halves of "N of M disrupted" across the full capture', () => {
+    // The numerator used to be derived in the client from the five rendered
+    // rows while the denominator came from the full set, so the prerender
+    // published "5 of 13" against a real 7 of 13.
+    assert.equal(
+      committed.chokepointDisrupted,
+      Object.values(snapshot.chokepoints).filter((c) => c.status.toLowerCase() !== 'green').length,
+      'the disrupted count must span every captured chokepoint, not the display slice',
+    );
+    assert.ok(
+      committed.chokepointDisrupted >= committed.chokepoints.filter((c) => c.status !== 'green').length,
+      'the full-capture numerator can never be smaller than the rendered rows',
+    );
+  });
+
+  it('never publishes a trend the snapshot did not assert', () => {
+    for (const row of committed.cii) {
+      const frozen = snapshot.countries[row.region];
+      const label = String(frozen.trend || '');
+      if (!label || label.startsWith('Stable or unavailable')) {
+        assert.equal(
+          row.trend,
+          'TREND_DIRECTION_UNSPECIFIED',
+          `${row.region}: the upstream said it does not know, so the strip must not claim a direction`,
+        );
+      } else {
+        assert.match(row.trend, /^TREND_DIRECTION_(RISING|FALLING|STABLE)$/);
+      }
+    }
+  });
+
+  it('publishes only countries the capture actually scored', () => {
+    for (const row of committed.cii) {
+      const frozen = snapshot.countries[row.region];
+      assert.notEqual(frozen.partial, true, `${row.region} was a partial capture and must not be published`);
+      assert.notEqual(frozen.score, null, `${row.region} has no score to publish`);
+    }
+  });
+
   it('chokepoint status matches the snapshot, so the strip cannot invert a crisis', () => {
     const slugByDisplayName = new Map(
       CHOKEPOINT_REGISTRY.map((entry) => [entry.displayName, entry.id]),
@@ -124,11 +163,14 @@ describe('welcome teaser generator refuses unpublishable input', () => {
     return {
       capturedAt: '2026-09-03',
       countries: {
-        UA: { score: '98', trend: 'Rising +12' },
-        RU: { score: '78', trend: 'Falling -3' },
-        IL: { score: '69', trend: 'Stable' },
-        IR: { score: '63', trend: 'Rising +2' },
-        PK: { score: '70', trend: '' },
+        UA: { partial: false, score: '98', trend: 'Rising +12' },
+        RU: { partial: false, score: '78', trend: 'Falling -3' },
+        IL: { partial: false, score: '69', trend: 'Stable or unavailable' },
+        IR: { partial: false, score: '63', trend: 'Rising +2' },
+        PK: { partial: false, score: '70', trend: '' },
+        // A partial capture: no score, no trend. Number(null) is 0, which is
+        // finite, so a plain isFinite filter would publish this at 0.
+        AD: { partial: true, score: null, trend: null },
       },
       chokepoints: {
         hormuz_strait: { disruptionScore: '70', status: 'Red' },
@@ -150,22 +192,34 @@ describe('welcome teaser generator refuses unpublishable input', () => {
     };
   }
 
-  it('rejects a snapshot with no headline capture rather than keeping the old ones', () => {
-    assert.throws(
-      () => buildWelcomeTeasers(snapshotFixture({ headlines: [] }), 'docs/snapshots/x.json'),
-      /no headlines/i,
-      'an empty capture must fail the generator, not silently republish stale headlines',
-    );
+  it('publishes an empty card rather than headlines the capture cannot vouch for', () => {
+    // The freeze records and warns about a shortfall instead of throwing, so a
+    // news outage costs the strip its rows, not the corpus its country refresh.
+    // Showing nothing is the honest floor; showing something invented is #7608.
+    const built = buildWelcomeTeasers(snapshotFixture({ headlines: [] }), 'docs/snapshots/x.json');
+    assert.deepEqual(built.headlines, []);
+    assert.equal(built.cii.length, 5, 'the rest of the strip still publishes');
   });
 
   it('rejects a headline that lost its masthead, link, or publication time', () => {
-    for (const [field, value] of [['source', ''], ['url', 'http://example.test/a'], ['publishedAt', '']]) {
+    const unpublishable = [
+      ['source', ''],
+      ['url', 'http://example.test/a'],
+      ['publishedAt', ''],
+      // An aggregator redirect is the freeze's fourth rule; re-checking it here
+      // is what makes headlineRow's "a hand-edited snapshot cannot publish an
+      // unattributable headline" comment true rather than aspirational.
+      ['url', 'https://news.google.com/rss/articles/CBMifzFBVV95cUx'],
+      // pro-test/prerender.mjs hard-fails the deploy on the literal "undefined".
+      ['title', 'Publisher CMS emitted undefined in the slug'],
+    ];
+    for (const [field, value] of unpublishable) {
       const fixture = snapshotFixture();
       fixture.headlines[0][field] = value;
       assert.throws(
         () => buildWelcomeTeasers(fixture, 'docs/snapshots/x.json'),
         /unpublishable headline/i,
-        `a headline missing ${field} must not reach the homepage`,
+        `a headline with ${field}=${JSON.stringify(value)} must not reach the homepage`,
       );
     }
   });
@@ -175,8 +229,38 @@ describe('welcome teaser generator refuses unpublishable input', () => {
     const byRegion = new Map(built.cii.map((row) => [row.region, row.trend]));
     assert.equal(byRegion.get('UA'), 'TREND_DIRECTION_RISING');
     assert.equal(byRegion.get('RU'), 'TREND_DIRECTION_FALLING');
-    assert.equal(byRegion.get('IL'), 'TREND_DIRECTION_STABLE');
-    assert.equal(byRegion.get('PK'), 'TREND_DIRECTION_STABLE');
+    // "Stable or unavailable" and an absent trend are the upstream saying it
+    // does not know. Publishing either as STABLE claims a measurement that was
+    // never made — the same shape of invented certainty as #7608 itself.
+    assert.equal(byRegion.get('IL'), 'TREND_DIRECTION_UNSPECIFIED');
+    assert.equal(byRegion.get('PK'), 'TREND_DIRECTION_UNSPECIFIED');
+    assert.equal(byRegion.get('AD'), undefined, 'a partial capture has no score to publish');
+  });
+
+  it('rejects a trend label the canonical parser does not recognise', () => {
+    const fixture = snapshotFixture();
+    fixture.countries.UA.trend = 'Plummeting a lot';
+    assert.throws(
+      () => buildWelcomeTeasers(fixture, 'docs/snapshots/x.json'),
+      /Invalid CII movement label/,
+      'an unrecognised label must red the generator, not fall through to a confident direction',
+    );
+  });
+
+  it('rejects a chokepoint whose status or score is unpublishable', () => {
+    // These are the two fields #7608 was actually about. An unknown status
+    // renders a grey dot beside a real waterway, and a non-finite score
+    // serialises to null, renders as 0, and makes the severity comparator
+    // return NaN — so "worst first" silently degrades to snapshot key order.
+    for (const patch of [{ status: 'amber' }, { status: '' }, { disruptionScore: undefined }, { disruptionScore: '250' }]) {
+      const fixture = snapshotFixture();
+      Object.assign(fixture.chokepoints.hormuz_strait, patch);
+      assert.throws(
+        () => buildWelcomeTeasers(fixture, 'docs/snapshots/x.json'),
+        /hormuz_strait/,
+        `a chokepoint with ${JSON.stringify(patch)} must not reach the homepage`,
+      );
+    }
   });
 
   it('resolves chokepoint slugs to their registry display names', () => {
@@ -186,6 +270,7 @@ describe('welcome teaser generator refuses unpublishable input', () => {
       ['Strait of Hormuz', 'Bab el-Mandeb', 'Suez Canal', 'Panama Canal', 'Strait of Malacca'],
     );
     assert.equal(built.chokepointTotal, 6, 'the denominator counts every captured chokepoint, not the top five');
+    assert.equal(built.chokepointDisrupted, 3, 'the numerator spans the full capture too, not the top five');
   });
 
   it('rejects a chokepoint slug the registry does not define', () => {

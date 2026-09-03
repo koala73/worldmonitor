@@ -50,7 +50,7 @@
     {
       "region": "MX",
       "combinedScore": 70,
-      "trend": "TREND_DIRECTION_STABLE"
+      "trend": "TREND_DIRECTION_UNSPECIFIED"
     }
   ],
   "chokepoints": [
@@ -80,6 +80,7 @@
       "disruptionScore": 30
     }
   ],
+  "chokepointDisrupted": 7,
   "chokepointTotal": 13,
   "quotes": [
     {

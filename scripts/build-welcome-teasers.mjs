@@ -33,6 +33,8 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { resolveLatestLivePulseSnapshotPath } from './build-crawlable-corpus.mjs';
+import { parseCiiMovement } from './crawlable-live-tools.mjs';
+import { isVerifiableArticleUrl } from './freeze-crawlable-live-pulse.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), '..');
@@ -40,6 +42,7 @@ const REPO_ROOT = resolve(dirname(__filename), '..');
 export const TEASERS_OUTPUT_PATH = 'pro-test/src/generated/teasers.json';
 
 // The strip renders five rows per data card and four headlines.
+const CHOKEPOINT_STATUSES = new Set(['green', 'yellow', 'red']);
 const CII_ROWS = 5;
 const CHOKEPOINT_ROWS = 5;
 const HEADLINE_ROWS = 4;
@@ -75,10 +78,21 @@ const SAMPLE_QUOTES = [
 
 // The snapshot stores CII movement as operator prose ("Rising +12"); the strip
 // renders a trend glyph keyed off the proto enum suffix.
+//
+// parseCiiMovement is the canonical parser for this exact string shape and
+// throws on anything it does not recognise, so an unexpected label reds the
+// generator instead of being published as a confident direction. The one thing
+// it treats as a value rather than an error is "Stable or unavailable" -- the
+// upstream saying it does not know -- which must NOT become a published
+// "stable" claim, so it maps to UNSPECIFIED. LiveStrip's trendGlyph already
+// renders the neutral glyph for any unrecognised suffix.
 function trendDirection(trend) {
-  const value = String(trend || '');
-  if (/^Rising/i.test(value)) return 'TREND_DIRECTION_RISING';
-  if (/^Falling/i.test(value)) return 'TREND_DIRECTION_FALLING';
+  const raw = String(trend || '').trim();
+  if (!raw || raw.startsWith('Stable or unavailable')) return 'TREND_DIRECTION_UNSPECIFIED';
+  const { change24h } = parseCiiMovement(raw);
+  if (change24h === null) return 'TREND_DIRECTION_UNSPECIFIED';
+  if (change24h > 0) return 'TREND_DIRECTION_RISING';
+  if (change24h < 0) return 'TREND_DIRECTION_FALLING';
   return 'TREND_DIRECTION_STABLE';
 }
 
@@ -87,27 +101,42 @@ function headlineRow(headline, index) {
   const source = String(headline?.source || '').trim();
   const url = String(headline?.url || '').trim();
   const publishedAt = Date.parse(headline?.publishedAt);
-  // The freeze already enforces this; re-enforcing it here means a hand-edited
-  // snapshot cannot put an unattributable headline on the homepage either.
-  if (!title || !source || !url.startsWith('https://') || !Number.isFinite(publishedAt)) {
+  // The freeze already enforces all of this; re-enforcing it here means a
+  // hand-edited snapshot cannot put an unattributable headline on the homepage
+  // either. isVerifiableArticleUrl is imported from the freeze rather than
+  // restated, so the two sides cannot drift into enforcing different rules.
+  if (!title || !source || !isVerifiableArticleUrl(url) || !Number.isFinite(publishedAt)) {
     throw new Error(
       `unpublishable headline at index ${index}: every row needs a title, a masthead, `
-      + `an https article URL and a publication time (got ${JSON.stringify(headline)})`,
+      + `a verifiable https article URL and a publication time (got ${JSON.stringify(headline)})`,
+    );
+  }
+  // pro-test/prerender.mjs hard-fails the deploy when the SSR markup contains
+  // the literal "undefined" (its locale-key guard). Headline text is third-party
+  // now, so catch it here -- a broken publisher permalink reds this generator,
+  // not the weekly refresh's build step.
+  if (`${title} ${url}`.includes('undefined')) {
+    throw new Error(
+      `unpublishable headline at index ${index}: contains the literal "undefined", which trips `
+      + 'the prerender deploy guard in pro-test/prerender.mjs',
     );
   }
   return { title, source, url, publishedAt };
 }
 
 export function buildWelcomeTeasers(snapshot, snapshotPath) {
+  // An empty capture publishes an empty card. That is the honest degradation:
+  // the freeze records and warns about a shortfall rather than throwing (a news
+  // outage must not cost the corpus its country refresh), and showing nothing
+  // beats showing rows this snapshot cannot vouch for -- which is #7608.
   const headlines = Array.isArray(snapshot?.headlines) ? snapshot.headlines : [];
-  if (headlines.length === 0) {
-    throw new Error(
-      `${snapshotPath} contains no headlines. Re-run \`npm run freeze:crawlable-live-pulse\` — `
-      + 'the strip must not republish headlines this capture cannot vouch for.',
-    );
-  }
 
   const cii = Object.entries(snapshot.countries)
+    // A partial capture carries `score: null`, and Number(null) is 0 -- which is
+    // finite, so a plain isFinite filter would publish those countries at 0
+    // rather than exclude them. Number('') is 0 and finite for the same reason.
+    // Reject an absent score explicitly, before any numeric coercion.
+    .filter(([, row]) => row?.partial !== true && String(row?.score ?? '').trim() !== '')
     .map(([region, row]) => ({
       region,
       combinedScore: Number(row?.score),
@@ -125,11 +154,26 @@ export function buildWelcomeTeasers(snapshot, snapshotPath) {
         + 'does not define — the strip would publish a raw identifier as a place name',
       );
     }
-    return {
-      name,
-      status: String(row?.status || '').toLowerCase(),
-      disruptionScore: Number(row?.disruptionScore),
-    };
+    const status = String(row?.status || '').toLowerCase();
+    const disruptionScore = Number(row?.disruptionScore);
+    // #7608 was an inverted status/score pair reaching the prerender. Refuse the
+    // shapes that would publish a wrong one silently: an unknown status renders
+    // a grey dot beside a real waterway, and a non-finite score serialises to
+    // null, renders as 0, and makes the severity comparator return NaN -- which
+    // is falsy, so the "worst first" ordering degrades to snapshot key order.
+    if (!CHOKEPOINT_STATUSES.has(status)) {
+      throw new Error(
+        `${snapshotPath} holds chokepoint "${slug}" with status "${row?.status}", which is not one of `
+        + `${[...CHOKEPOINT_STATUSES].join('/')} — the strip would publish an unreadable severity`,
+      );
+    }
+    if (!Number.isFinite(disruptionScore) || disruptionScore < 0 || disruptionScore > 100) {
+      throw new Error(
+        `${snapshotPath} holds chokepoint "${slug}" with disruptionScore "${row?.disruptionScore}", `
+        + 'which is not a 0-100 number — the strip would publish it as 0 and mis-sort the card',
+      );
+    }
+    return { name, status, disruptionScore };
   });
 
   return {
@@ -138,8 +182,11 @@ export function buildWelcomeTeasers(snapshot, snapshotPath) {
     chokepoints: [...chokepointRows]
       .sort((a, b) => b.disruptionScore - a.disruptionScore || a.name.localeCompare(b.name))
       .slice(0, CHOKEPOINT_ROWS),
-    // "N of M disrupted" counts across every captured chokepoint, not the
-    // top-five slice the card renders (mirrors fetchChokepoints in teasers.ts).
+    // Both halves of "N of M disrupted" are counted across every captured
+    // chokepoint. Deriving the numerator in the client from the five rendered
+    // rows published "5 of 13" against a real 7 of 13 (mirrors fetchChokepoints
+    // in teasers.ts, which counts across the full set).
+    chokepointDisrupted: chokepointRows.filter((row) => row.status !== 'green').length,
     chokepointTotal: chokepointRows.length,
     quotes: SAMPLE_QUOTES,
   };

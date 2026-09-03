@@ -59,7 +59,7 @@ jobs:
               --base main \
               --head "$branch" \
               --title "chore(corpus): refresh crawlable live pulse ${period}" \
-              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
+              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, and the homepage welcome-teaser strip (#7608)."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -121,4 +121,4 @@ jobs:
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
-            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
+            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, and the homepage welcome-teaser strip (#7608)."

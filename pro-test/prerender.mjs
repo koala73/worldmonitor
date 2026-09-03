@@ -158,7 +158,8 @@ function inlineCriticalCss(html, file) {
     '    <script nonce="' + STATIC_SCRIPT_NONCE + '">' + DEFERRED_STYLES_SCRIPT + '</script>',
     '    <noscript><link rel="stylesheet" href="' + href + '"' + crossorigin + '></noscript>',
   ].join('\n');
-  return html.replace(stylesheetTag, criticalTags);
+  // Function replacement, for the same $-expansion reason as the #root splice below.
+  return html.replace(stylesheetTag, () => criticalTags);
 }
 
 async function renderWelcomeRoot() {
@@ -204,7 +205,7 @@ function rewriteBuiltAssetUrls(markup) {
       console.error(`[prerender] ERROR: Could not find SSR asset URL for ${filenamePrefix}${extension} in welcome markup.`);
       process.exit(1);
     }
-    rewritten = rewritten.replace(sourceAssetPattern, builtHref);
+    rewritten = rewritten.replace(sourceAssetPattern, () => builtHref);
   }
 
   // Catch any OTHER dev-only asset URL — a newly added asset import the rewrite
@@ -245,7 +246,15 @@ for (const { file, content, rootAttributes } of PAGES) {
       console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
       process.exit(1);
     }
-    html = html.replace(emptyRoot, `<div id="root"${rootAttributes}>${content}</div>`);
+    // Replacer FUNCTION, not a replacement string: `String.prototype.replace`
+    // expands `$$`, `$&`, `` $` `` and `$'` in a string replacement. Since #7608
+    // the SSR markup carries headline text from ~461 third-party RSS feeds, so
+    // those sequences are no longer ours to rule out. React escapes `'` to
+    // `&#x27;`, which turns a title containing `$'` into a literal `$&` — that
+    // splices a SECOND `<div id="root">` into the page and hydration mounts on
+    // the wrong one; a backtick (which React does not escape) splices the whole
+    // preceding document. A function replacement is taken literally.
+    html = html.replace(emptyRoot, () => `<div id="root"${rootAttributes}>${content}</div>`);
   } else if (!html.includes('<div id="root">')) {
     console.error(`[prerender] ERROR: ${file} has no #root mount point.`);
     process.exit(1);

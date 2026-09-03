@@ -222,7 +222,7 @@ export const LiveStrip = () => {
                       card, so the masthead must never travel without the article it
                       belongs to (#7608). Link it when we have the URL. */}
                   {h.url ? (
-                    <a href={h.url} target="_blank" rel="noreferrer" className="hover:text-wm-green transition-colors">
+                    <a href={h.url} target="_blank" rel="noopener noreferrer nofollow" className="hover:text-wm-green transition-colors">
                       <span className="line-clamp-2">{h.title}</span>
                     </a>
                   ) : (

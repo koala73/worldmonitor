@@ -134,9 +134,12 @@ describe('freeze crawlable live pulse coverage gates', () => {
 
   // Shaped like /api/news/v1/list-feed-digest: category buckets of NewsItem,
   // each carrying the masthead (`source`) and the article URL (`link`).
-  function digestPayload(items) {
+  function digestPayload(items, coverage = { state: 'complete', servedStale: false }) {
     return {
       generatedAt: new Date().toISOString(),
+      // The real ListFeedDigest response always carries this block; a stub
+      // without it cannot exercise the stale/degraded path at all.
+      coverage: { itemsServed: items.length, ...coverage },
       categories: { politics: { items } },
     };
   }
@@ -182,6 +185,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
       digestItem({ title: 'Headline four', importanceScore: 60 }),
       digestItem({ title: 'Headline five', importanceScore: 50 }),
     ],
+    digestCoverage = { state: 'complete', servedStale: false },
   } = {}) {
     let countriesServed = 0;
     globalThis.fetch = async (url) => {
@@ -207,7 +211,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
       }
-      if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems));
+      if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems, digestCoverage));
       throw new Error(`unexpected request: ${href}`);
     };
   }
@@ -302,16 +306,28 @@ describe('freeze crawlable live pulse coverage gates', () => {
     assert.equal(snapshot.coverage.headlineCount, 4);
   });
 
-  it('rejects a freeze whose headline capture came back empty', async () => {
+  // A thin headline capture must cost the strip its rows, never the snapshot.
+  // The headline step runs last, just before the only write, so throwing here
+  // would discard ~196 captured countries — and two such runs in a row would
+  // push the snapshot past the corpus build's 10-day ceiling and hard-fail
+  // every country, chokepoint and crisis page.
+  it('keeps the country capture when the digest yields no publishable headline', async () => {
     stubFetch({ digestItems: [] });
-    await assert.rejects(
-      runFreeze(),
-      /captured only 0 of 4 headlines/,
-      'an empty digest must red the freeze, not republish the previous headlines',
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(snapshot.headlines, [], 'an empty capture publishes nothing, never stale rows');
+    assert.equal(snapshot.coverage.headlineCount, 0);
+    assert.ok(
+      snapshot.coverage.countryCount > 100,
+      'the country capture must survive a headline shortfall',
+    );
+    assert.match(
+      snapshot.errors.headlines[0].message,
+      /only 0 of 4 digest items were publishable/,
+      'the shortfall must be recorded with its cause, not silently dropped',
     );
   });
 
-  it('rejects digest items that cannot be attributed or verified', async () => {
+  it('records why unattributable digest items were rejected', async () => {
     stubFetch({
       digestItems: [
         digestItem({ title: 'No masthead', source: '' }),
@@ -325,12 +341,17 @@ describe('freeze crawlable live pulse coverage gates', () => {
         digestItem({ title: 'Keeps its provenance' }),
       ],
     });
-    await assert.rejects(
-      runFreeze(),
-      /captured only 1 of 4 headlines/,
-      'an item missing masthead, https URL, or publication time is not publishable, '
-      + 'and an aggregator redirect is not a verifiable article link',
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(
+      snapshot.headlines.map((h) => h.title),
+      ['Keeps its provenance'],
+      'only the item with a masthead, a verifiable https link and a publication time survives',
     );
+    // A bare count says a refresh went thin but never why. The request itself
+    // succeeded here, so without per-reason tallies the operator sees nothing.
+    assert.match(snapshot.errors.headlines[0].message, /noSource=1/);
+    assert.match(snapshot.errors.headlines[0].message, /unverifiableUrl=3/);
+    assert.match(snapshot.errors.headlines[0].message, /noPublishedAt=1/);
   });
 
   it('survives a digest outage without discarding the country work', async () => {
@@ -340,11 +361,21 @@ describe('freeze crawlable live pulse coverage gates', () => {
       if (String(url).includes('list-feed-digest')) throw new Error('offline');
       return outer(url);
     };
-    await assert.rejects(
-      runFreeze(),
-      /captured only 0 of 4 headlines; first error \(\*\): offline/,
-      'a digest outage must degrade into the coverage gate, not an uncaught throw',
-    );
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(snapshot.headlines, []);
+    assert.equal(snapshot.errors.headlines[0].message, 'offline');
+    assert.ok(snapshot.coverage.countryCount > 100, 'a news outage must not cost the corpus its refresh');
+  });
+
+  // Four well-formed rows off a six-hour-old last-good replay are
+  // indistinguishable from a complete capture unless the digest's own verdict
+  // survives into the artifact.
+  it('carries the digest own stale verdict into the snapshot', async () => {
+    stubFetch({ digestCoverage: { state: 'stale', servedStale: true } });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.coverage.headlineCount, 4);
+    assert.equal(snapshot.coverage.headlineDigestState, 'stale');
+    assert.equal(snapshot.coverage.headlineServedStale, true);
   });
 
   it('omits the upstream no-active-disruptions boilerplate from frozen chokepoints', async () => {

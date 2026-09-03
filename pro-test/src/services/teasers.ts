@@ -53,10 +53,27 @@ export interface TeaserState {
 
 const FETCH_TIMEOUT_MS = 5000;
 
+// Mirrors AGGREGATOR_LINK_HOSTS in scripts/freeze-crawlable-live-pulse.mjs.
+// pro-test is an isolated package and cannot import from scripts/, so this list
+// is duplicated on purpose — keep the two in step. An aggregator redirect is an
+// opaque, expiring URL: the masthead beside it is real but the link does not
+// let a reader verify the story, which is the whole point of showing it (#7608).
+const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
+
+function articleUrl(link: string | undefined): string {
+  if (!link?.startsWith('https://')) return '';
+  try {
+    return AGGREGATOR_LINK_HOSTS.has(new URL(link).hostname) ? '' : link;
+  } catch {
+    return '';
+  }
+}
+
 interface FallbackShape {
   headlines: TeaserHeadline[];
   cii: TeaserCiiScore[];
   chokepoints: TeaserChokepoint[];
+  chokepointDisrupted: number;
   chokepointTotal: number;
   quotes: TeaserQuote[];
 }
@@ -71,8 +88,12 @@ export function getFallbackTeasers(): TeaserState {
     cii: { items: fallback.cii, live: false },
     chokepoints: {
       items: fallback.chokepoints,
+      // Both halves come from the full capture. Counting `disrupted` off
+      // `fallback.chokepoints` — the five rows the card renders — published
+      // "5 of 13" into the prerender against a real 7 of 13, because the
+      // numerator was capped by the display slice and the denominator was not.
       total: fallback.chokepointTotal,
-      disrupted: fallback.chokepoints.filter(isDisrupted).length,
+      disrupted: fallback.chokepointDisrupted,
       live: false,
     },
     quotes: { items: fallback.quotes, live: false },
@@ -251,14 +272,22 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
     .filter(i => typeof i.title === 'string' && i.title.length > 0);
   if (!all.length) return null;
   const items = all
-    .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
+    // Same three-level ordering as selectFrozenHeadlines in
+    // scripts/freeze-crawlable-live-pulse.mjs. Sorting on importance alone
+    // leaves ties to array order, so a tie at the fourth slot could swap which
+    // headline the live fetch shows versus the frozen row it replaces.
+    .sort((a, b) => (
+      (b.importanceScore ?? 0) - (a.importanceScore ?? 0)
+      || (b.publishedAt ?? 0) - (a.publishedAt ?? 0)
+      || (a.title ?? '').localeCompare(b.title ?? '')
+    ))
     .slice(0, 4)
     .map(i => ({
       title: i.title as string,
       source: i.source ?? '',
-      // Only https links are rendered as links; anything else degrades to plain
-      // text rather than becoming a live href on an untrusted scheme.
-      url: i.link?.startsWith('https://') ? i.link : '',
+      // Anything not a verifiable https article URL degrades to plain text
+      // rather than becoming a live href (LiveStrip renders a <span> for '').
+      url: articleUrl(i.link),
       publishedAt: i.publishedAt ?? 0,
     }));
   // The digest response carries no degraded/stale booleans — its freshness
