@@ -459,6 +459,16 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
     // first-party frame here would mean a NEW call site, which the "lets
     // through" arm of this loop keeps visible.
     ['NotReadableError: An unknown error occurred while talking to the credential manager.', 'Error'],
+    // The overlapping-request half of the same WebAuthn surface
+    // (WORLDMONITOR-11T: Chrome 151 / Windows, /pro, zero frames, breadcrumbs
+    // ending at Clerk's `POST /v1/client/sign_ins`). Chrome serialises
+    // `navigator.credentials` per page and rejects the second request with this
+    // sentence when the sign-in button is double-clicked or submitted while
+    // Clerk's conditional passkey autofill is still open. Both value shapes:
+    // production carried the bare sentence with `type: 'Error'`, and some
+    // engines fold the type into the value.
+    ['OperationError: A request is already pending.', 'Error'],
+    ['Error: OperationError: A request is already pending.', 'Error'],
   ];
 
   for (const [msg, type] of zeroFrameErrors) {
@@ -488,6 +498,14 @@ describe('zero-frame async-rejection patterns (timeout / DOMException / OOM / DO
       [{ filename: '<anonymous>', lineno: 1 }, { filename: '<anonymous>', lineno: 1 }],
     );
     assert.equal(beforeSend(event), null);
+  });
+
+  it('keeps a pending-request message that is not the whole browser sentence', () => {
+    // The entry is anchored at both ends precisely so a first-party message
+    // that merely CONTAINS the phrase still reports, even with no frames at all
+    // — the blind spot an unanchored substring would open.
+    const event = makeEvent('Checkout aborted: a request is already pending. Retry in 5s', 'Error', []);
+    assert.ok(beforeSend(event) !== null);
   });
 
   it('lets through an appendChild parse failure attributed to a first-party script loader', () => {
