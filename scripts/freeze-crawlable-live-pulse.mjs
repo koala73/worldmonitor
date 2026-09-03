@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Freeze last-known-good crawlable live-pulse values for country risk,
-// chokepoint status, and crisis HAPI summaries. Writes
+// chokepoint status, crisis HAPI summaries, and the top news headlines. Writes
 // docs/snapshots/crawlable-live-pulse-<YYYY-MM-DD>.json.
 //
 // Usage:
@@ -41,9 +41,15 @@ const HTTP_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_TIMEOUT_MS', 20_000);
 const OUTPUT_BASENAME = process.env.PULSE_FREEZE_OUTPUT_BASENAME || '';
 
 // Countries the upstream may legitimately fail to serve in a single run before
-// the freeze is considered too thin to publish. Chokepoints and crises are small
-// enough sets that partial capture is never acceptable.
+// the freeze is considered too thin to publish. Chokepoints, crises and
+// headlines are small enough sets that partial capture is never acceptable.
 const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
+
+// The welcome strip's headline card renders exactly four rows, and
+// scripts/build-welcome-teasers.mjs derives them from this capture. Fewer than
+// four means the card would keep whatever it rendered last -- which is the
+// #7608 failure mode with a stale date on it. Gate instead.
+const HEADLINE_CAPTURE_COUNT = 4;
 
 // Operator-facing review-hygiene text the chokepoint status contract appends
 // (THREAT_CONFIG_STALE_NOTE in server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts).
@@ -250,6 +256,45 @@ function crisisRecord(view) {
   };
 }
 
+// Reduce a ListFeedDigest response to the publishable headline rows.
+//
+// A row reaches the homepage with a masthead beside it, so it must carry
+// everything a reader needs to check that attribution: the outlet, an https
+// article URL, and the publication time. #7608 shipped four invented headlines
+// under real Reuters/FT/AP/BBC bylines because the strip's fallback was
+// hand-written prose with none of those. An item missing any of the three is
+// dropped here rather than published unverifiable.
+//
+// Ranking mirrors the browser path in pro-test/src/services/teasers.ts, so the
+// frozen rows are the same ones a live fetch would replace them with.
+export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
+  const categories = payload && typeof payload === 'object' ? payload.categories : null;
+  if (!categories || typeof categories !== 'object') return [];
+  return Object.values(categories)
+    .flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []))
+    .map((item) => {
+      const title = String(item?.title || '').trim();
+      const source = String(item?.source || '').trim();
+      const url = String(item?.link || '').trim();
+      const publishedAt = Number(item?.publishedAt);
+      if (!title || !source || !url.startsWith('https://')) return null;
+      if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
+      return {
+        row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
+        importanceScore: Number(item?.importanceScore) || 0,
+        publishedAtMs: publishedAt,
+      };
+    })
+    .filter((entry) => entry !== null)
+    .sort((a, b) => (
+      b.importanceScore - a.importanceScore
+      || b.publishedAtMs - a.publishedAtMs
+      || a.row.title.localeCompare(b.row.title)
+    ))
+    .slice(0, limit)
+    .map((entry) => entry.row);
+}
+
 function signalConvergenceReference(capturedAt) {
   // Methodology-cited reference examples from docs/geographic-convergence.mdx.
   // These make the Geographic Convergence Score crawlable and attributable
@@ -382,6 +427,20 @@ export async function freezeCrawlableLivePulse({
     }
   }
 
+  // Guarded like every other network step: a digest outage degrades into the
+  // coverage gate below instead of discarding the country/chokepoint work.
+  const headlineErrors = [];
+  let headlines = [];
+  try {
+    const digest = await authedGet('/api/news/v1/list-feed-digest?variant=full&lang=en', token, base);
+    headlines = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
+  } catch (error) {
+    headlineErrors.push({
+      id: '*',
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
   const geoLeaders = Object.entries(countries)
     .filter(([, row]) => Number.isFinite(row.geoConvergence) && row.geoConvergence > 0)
     .sort((a, b) => b[1].geoConvergence - a[1].geoConvergence)
@@ -402,6 +461,7 @@ export async function freezeCrawlableLivePulse({
     countries,
     chokepoints,
     crises: crisisSnapshots,
+    headlines,
     signalConvergence: {
       ...signalConvergenceReference(capturedAt),
       ciiGeoConvergenceLeaders: geoLeaders,
@@ -413,11 +473,14 @@ export async function freezeCrawlableLivePulse({
       chokepointErrorCount: chokepointErrors.length,
       crisisCount: Object.keys(crisisSnapshots).length,
       crisisErrorCount: crisisErrors.length,
+      headlineCount: headlines.length,
+      headlineErrorCount: headlineErrors.length,
     },
     errors: {
       countries: countryErrors,
       chokepoints: chokepointErrors,
       crises: crisisErrors,
+      headlines: headlineErrors,
     },
   };
 
@@ -446,6 +509,13 @@ export async function freezeCrawlableLivePulse({
     );
   }
 
+  if (headlines.length < HEADLINE_CAPTURE_COUNT) {
+    throw new Error(
+      `Pulse freeze captured only ${headlines.length} of ${HEADLINE_CAPTURE_COUNT} headlines`
+      + firstCaptureCause(headlineErrors),
+    );
+  }
+
   const basename = OUTPUT_BASENAME || `crawlable-live-pulse-${capturedAt}.json`;
   const outPath = path.join(rootDir, 'docs', 'snapshots', basename);
   await fs.writeFile(outPath, `${JSON.stringify(snapshot, null, 2)}\n`, 'utf8');
@@ -460,12 +530,14 @@ if (isMain) {
       console.log(
         `[freeze-crawlable-live-pulse] countries=${snapshot.coverage.countryCount} `
         + `chokepoints=${snapshot.coverage.chokepointCount} `
-        + `crises=${snapshot.coverage.crisisCount}`,
+        + `crises=${snapshot.coverage.crisisCount} `
+        + `headlines=${snapshot.coverage.headlineCount}`,
       );
       if (
         snapshot.coverage.countryErrorCount
         || snapshot.coverage.chokepointErrorCount
         || snapshot.coverage.crisisErrorCount
+        || snapshot.coverage.headlineErrorCount
       ) {
         console.warn('[freeze-crawlable-live-pulse] partial errors recorded in snapshot.errors');
       }

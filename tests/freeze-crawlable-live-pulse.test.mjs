@@ -67,10 +67,32 @@ describe('freeze crawlable live pulse API base routing', () => {
 describe('freeze crawlable live pulse coverage gates', () => {
   const originalFetch = globalThis.fetch;
   const BASE = 'https://staging.worldmonitor.test';
+  const scratchRoots = [];
 
-  afterEach(() => {
+  afterEach(async () => {
     globalThis.fetch = originalFetch;
+    await Promise.all(scratchRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
+
+  // Never let a freeze under test write into the checkout. A coverage gate is
+  // proved by running the freeze BEFORE the gate exists, and without a scratch
+  // root that run overwrites docs/snapshots/ with stub data (hit while building
+  // the #7608 headline gate).
+  async function scratchRoot() {
+    const dir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    await mkdir(join(dir, 'docs', 'snapshots'), { recursive: true });
+    scratchRoots.push(dir);
+    return dir;
+  }
+
+  async function runFreeze(options = {}) {
+    return freezeCrawlableLivePulse({
+      apiBase: BASE,
+      requestGapMs: 0,
+      rootDir: await scratchRoot(),
+      ...options,
+    });
+  }
 
   function jsonResponse(body) {
     return { ok: true, status: 200, text: async () => JSON.stringify(body) };
@@ -110,6 +132,26 @@ describe('freeze crawlable live pulse coverage gates', () => {
     };
   }
 
+  // Shaped like /api/news/v1/list-feed-digest: category buckets of NewsItem,
+  // each carrying the masthead (`source`) and the article URL (`link`).
+  function digestPayload(items) {
+    return {
+      generatedAt: new Date().toISOString(),
+      categories: { politics: { items } },
+    };
+  }
+
+  function digestItem(overrides = {}) {
+    return {
+      title: 'Outside forces fuel Sudan war, new report finds',
+      source: 'UN News',
+      link: 'https://news.un.org/feed/view/en/story/2026/09/1168270',
+      publishedAt: Date.now() - 60 * 60 * 1000,
+      importanceScore: 50,
+      ...overrides,
+    };
+  }
+
   function humanitarianPayload(countryCode) {
     return {
       summary: {
@@ -133,6 +175,13 @@ describe('freeze crawlable live pulse coverage gates', () => {
     dropCountriesAfter = Infinity,
     chokepointIds = null,
     chokepointDescriptions = {},
+    digestItems = [
+      digestItem({ title: 'Headline one', importanceScore: 90 }),
+      digestItem({ title: 'Headline two', importanceScore: 80 }),
+      digestItem({ title: 'Headline three', importanceScore: 70 }),
+      digestItem({ title: 'Headline four', importanceScore: 60 }),
+      digestItem({ title: 'Headline five', importanceScore: 50 }),
+    ],
   } = {}) {
     let countriesServed = 0;
     globalThis.fetch = async (url) => {
@@ -158,6 +207,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
       }
+      if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems));
       throw new Error(`unexpected request: ${href}`);
     };
   }
@@ -165,7 +215,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
   it('rejects a freeze that captured far fewer countries than the corpus renders', async () => {
     stubFetch({ dropCountriesAfter: 100 });
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 100 of \d+ countries/,
       'a 100-country capture must not pass when the corpus renders far more',
     );
@@ -174,7 +224,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
   it('rejects a freeze missing any chokepoint the registry defines', async () => {
     stubFetch({ chokepointIds: ['suez', 'malacca_strait', 'hormuz_strait'] });
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 3 of \d+ chokepoints/,
       'a truncated chokepoint list must fail rather than ship placeholder pages',
     );
@@ -190,7 +240,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
     // The run must fail on the coverage gate (0 chokepoints), NOT on an
     // unhandled rejection from the single unguarded fetch.
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 0 of \d+ chokepoints/,
       'a chokepoint outage must degrade into the coverage gate, not an uncaught throw',
     );
@@ -198,45 +248,103 @@ describe('freeze crawlable live pulse coverage gates', () => {
 
   it('preserves explicit transit-count availability in the frozen snapshot', async () => {
     stubFetch();
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.ok(Object.values(snapshot.chokepoints).length > 0);
-      assert.ok(
-        Object.values(snapshot.chokepoints).every((pulse) => (
-          pulse.todayTransits === '0'
-          && pulse.todayCountsAvailable === true
-          && pulse.navigationalWarnings === '0 warnings'
-          && pulse.navigationalWarningsAvailable === true
-          && pulse.aisDisruptions === '0 AIS disruptions'
-          && pulse.aisSnapshotAvailable === true
-          && pulse.congestion === 'Normal'
-          && pulse.weekMovement === '0% vs prior week'
-        )),
-      );
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.ok(Object.values(snapshot.chokepoints).length > 0);
+    assert.ok(
+      Object.values(snapshot.chokepoints).every((pulse) => (
+        pulse.todayTransits === '0'
+        && pulse.todayCountsAvailable === true
+        && pulse.navigationalWarnings === '0 warnings'
+        && pulse.navigationalWarningsAvailable === true
+        && pulse.aisDisruptions === '0 AIS disruptions'
+        && pulse.aisSnapshotAvailable === true
+        && pulse.congestion === 'Normal'
+        && pulse.weekMovement === '0% vs prior week'
+      )),
+    );
+  });
+
+  // The homepage teaser strip renders whatever this freeze captures into the
+  // SEO prerender, masthead attached. Four invented headlines carrying real
+  // Reuters/FT/AP/BBC bylines shipped that way for months (#7608), so every
+  // gate below exists to make an unattributable or unverifiable headline fail
+  // the freeze rather than reach a crawler.
+  it('captures the top headlines with masthead, article URL and publication time', async () => {
+    const publishedAt = Date.now() - 90 * 60 * 1000;
+    stubFetch({
+      digestItems: [
+        digestItem({ title: 'Third', importanceScore: 30 }),
+        digestItem({
+          title: 'First',
+          source: 'UN News',
+          link: 'https://news.un.org/story/1',
+          publishedAt,
+          importanceScore: 90,
+        }),
+        digestItem({ title: 'Second', importanceScore: 60 }),
+        digestItem({ title: 'Fourth', importanceScore: 20 }),
+        digestItem({ title: 'Fifth', importanceScore: 10 }),
+      ],
+    });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.headlines.length, 4, 'the strip renders exactly four headlines');
+    assert.deepEqual(
+      snapshot.headlines.map((h) => h.title),
+      ['First', 'Second', 'Third', 'Fourth'],
+      'headlines must be ranked by importance, matching the live card',
+    );
+    assert.deepEqual(snapshot.headlines[0], {
+      title: 'First',
+      source: 'UN News',
+      url: 'https://news.un.org/story/1',
+      publishedAt: new Date(publishedAt).toISOString(),
+    });
+    assert.equal(snapshot.coverage.headlineCount, 4);
+  });
+
+  it('rejects a freeze whose headline capture came back empty', async () => {
+    stubFetch({ digestItems: [] });
+    await assert.rejects(
+      runFreeze(),
+      /captured only 0 of 4 headlines/,
+      'an empty digest must red the freeze, not republish the previous headlines',
+    );
+  });
+
+  it('rejects digest items that cannot be attributed or verified', async () => {
+    stubFetch({
+      digestItems: [
+        digestItem({ title: 'No masthead', source: '' }),
+        digestItem({ title: 'No link', link: '' }),
+        digestItem({ title: 'Insecure link', link: 'http://example.test/a' }),
+        digestItem({ title: 'No publication time', publishedAt: 0 }),
+        digestItem({ title: 'Keeps its provenance' }),
+      ],
+    });
+    await assert.rejects(
+      runFreeze(),
+      /captured only 1 of 4 headlines/,
+      'an item missing masthead, https URL, or publication time is not publishable',
+    );
+  });
+
+  it('survives a digest outage without discarding the country work', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('list-feed-digest')) throw new Error('offline');
+      return outer(url);
+    };
+    await assert.rejects(
+      runFreeze(),
+      /captured only 0 of 4 headlines; first error \(\*\): offline/,
+      'a digest outage must degrade into the coverage gate, not an uncaught throw',
+    );
   });
 
   it('omits the upstream no-active-disruptions boilerplate from frozen chokepoints', async () => {
     stubFetch({ chokepointDescriptions: { malacca_strait: 'No active disruptions' } });
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.equal(snapshot.chokepoints.malacca_strait.description, null);
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.chokepoints.malacca_strait.description, null);
   });
 });
