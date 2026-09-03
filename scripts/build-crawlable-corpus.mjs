@@ -384,7 +384,7 @@ export function buildCiiRankingEntries(countries, livePulse) {
       throw new Error(`CII pulse score or band is invalid for ${code}`);
     }
     const asOf = String(pulse.asOf || '').trim();
-    if (!Number.isFinite(Date.parse(asOf))) {
+    if (!isCanonicalIsoInstant(asOf)) {
       throw new Error(`CII pulse timestamp is invalid for ${code}`);
     }
     const methodologyVersion = String(pulse.methodologyVersion || '').trim();

@@ -1194,6 +1194,25 @@ describe('crawlable corpus generator', () => {
     );
   });
 
+  it('rejects a calendar-invalid CII observation timestamp', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const livePulse = structuredClone(data.livePulse);
+    const countryCode = Object.keys(livePulse.countries).find((code) => {
+      const pulse = livePulse.countries[code];
+      return pulse.partial !== true && pulse.score != null && pulse.score !== '';
+    });
+    assert.ok(countryCode, 'expected a publishable CII country');
+    livePulse.countries[countryCode] = {
+      ...livePulse.countries[countryCode],
+      asOf: '2026-02-30T00:00:00.000Z',
+    };
+
+    assert.throws(
+      () => buildCiiRankingEntries(data.countries, livePulse),
+      new RegExp(`CII pulse timestamp is invalid for ${countryCode}`),
+    );
+  });
+
   it('rejects a chokepoint pulse key that is not in the registry', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
     assert.doesNotThrow(
