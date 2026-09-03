@@ -34,7 +34,7 @@ export const SOFTWARE_ID = 'https://www.worldmonitor.app/#software';
 export const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
 
 /**
- * Properties every `#software` emitter must assert identically.
+ * Property VALUES every `#software` emitter must assert identically.
  *
  * `SoftwareApplication` rather than `WebApplication`: the product also ships
  * desktop builds and an Android TV app, which the narrower subtype would
@@ -42,10 +42,13 @@ export const CANONICAL_ORIGIN = 'https://www.worldmonitor.app/';
  * `BusinessApplication` rather than the FinanceApplication / SecurityApplication
  * split it replaces: World Monitor is neither a finance app nor a security app.
  *
- * Only single-valued properties that actually contradicted are pinned. Ones a
- * consumer merges by union -- `alternateName`, `keywords`, `offers`,
- * `featureList` -- stay per-surface, and `featureList` in particular is
- * rewritten per variant by variant-dashboard-html.ts.
+ * This pins the values the product decision turns on. It is deliberately NOT
+ * the whole guard — enumerating properties would only freeze the ones that
+ * happened to be wrong, and the invariant is "one `@id`, one body". The
+ * contract test therefore also asserts that every property two emitters both
+ * carry agrees, pinned or not, exempting only the union-mergeable ones
+ * (`alternateName`, `keywords`, `offers`, `featureList` — the last rewritten
+ * per variant by variant-dashboard-html.ts).
  */
 export const SOFTWARE_SHARED_PROPERTIES = {
   '@type': 'SoftwareApplication',

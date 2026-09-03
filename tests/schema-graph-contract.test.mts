@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
 import middleware from '../middleware';
@@ -74,6 +74,65 @@ function collectNodesOfType(html: string, type: string): Record<string, any>[] {
   jsonLdBlocks(html).forEach(walk);
   return found;
 }
+
+/**
+ * Every node that DECLARES `id` -- carries the identity plus a body -- as
+ * opposed to the bare `{ '@id': ... }` fillers that merely reference it. Walks
+ * nested values so a declaration wrapped in `@graph` is not missed, which a
+ * top-level scan would sail straight past (#7611).
+ */
+function declarationsOf(html: string, id: string): Record<string, any>[] {
+  const found: Record<string, any>[] = [];
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) {
+      value.forEach(walk);
+      return;
+    }
+    if (!value || typeof value !== 'object') return;
+    const node = value as Record<string, any>;
+    if (node['@id'] === id && Object.keys(node).some((key) => key !== '@id' && key !== '@context')) {
+      found.push(node);
+    }
+    Object.values(node).forEach(walk);
+  };
+  jsonLdBlocks(html).forEach(walk);
+  return found;
+}
+
+/**
+ * Every HTML document that could carry JSON-LD: the committed entry points
+ * plus anything generated under public/ (both the crawlable corpus and the
+ * /pro build write there). DISCOVERING this population is the point -- a
+ * hand-listed one cannot notice a NEW surface claiming a canonical `@id`,
+ * which is precisely the bug #7611 fixed. Not covered: blog-site/ Astro
+ * templates and dist/, neither of which declares a canonical product node
+ * today.
+ */
+function jsonLdDocumentPaths(): string[] {
+  const root = new URL('../', import.meta.url);
+  const found: string[] = [];
+  const collect = (relativeDir: string, recurse: boolean): void => {
+    for (const entry of readdirSync(new URL(relativeDir, root), { withFileTypes: true })) {
+      const relativePath = `${relativeDir}${entry.name}`;
+      if (entry.isDirectory()) {
+        if (recurse && entry.name !== 'node_modules') collect(`${relativePath}/`, true);
+      } else if (entry.name.endsWith('.html')) {
+        found.push(relativePath);
+      }
+    }
+  };
+  collect('', false);
+  collect('pro-test/', false);
+  collect('public/', true);
+  return found.sort();
+}
+
+// Properties a consumer merges by UNION rather than reading as one value, so
+// they may legitimately differ per surface: the dashboard lists its own
+// alternateName/keywords, /pro advertises the Business and API tiers on top of
+// the shared offers, and featureList is rewritten per variant by
+// variant-dashboard-html.ts. Everything else on a shared `@id` must agree.
+const MAY_DIVERGE_ACROSS_SURFACES = new Set(['alternateName', 'featureList', 'keywords', 'offers']);
 
 describe('canonical schema graph', () => {
   guardProBuiltOutput();
@@ -185,12 +244,27 @@ describe('canonical schema graph', () => {
     );
   });
 
+  // Double entry (#7611). The surfaces are asserted against
+  // schema-graph-ids.ts below, so the module itself needs a second, independent
+  // statement of the values that carry the product decision -- otherwise a wrong
+  // edit to the module, faithfully copied into every surface, passes. The rest
+  // of the shared node is prose and links, where a silently-mirrored typo is not
+  // a realistic failure; these four are the ones #7611 found actually wrong.
+  it('states the decision-bearing product values independently of the module (#7611)', () => {
+    assert.equal(SOFTWARE_SHARED_PROPERTIES['@type'], 'SoftwareApplication');
+    assert.equal(SOFTWARE_SHARED_PROPERTIES.applicationCategory, 'BusinessApplication');
+    assert.equal(SOFTWARE_SHARED_PROPERTIES.url, CANONICAL_ORIGIN);
+    assert.equal(WEBSITE_SHARED_PROPERTIES.url, CANONICAL_ORIGIN);
+  });
+
   // #7611: pinning the `@id` strings and the cross-node references still left
   // every surface free to build its own body under a shared identity, so a
   // consumer merging by `@id` received two `applicationCategory` values for one
-  // entity. schema-graph-ids.ts owns the properties that must not diverge; each
-  // emitter has to reproduce them byte for byte.
+  // entity. Enumerating the properties that were wrong in Sept 2026 would only
+  // freeze those; the invariant is "one `@id`, one body", so this asserts the
+  // pinned values AND that no unpinned property diverges either.
   it('serves one set of #software and #website property values across every surface (#7611)', () => {
+    const documents = jsonLdDocumentPaths();
     const pinned: Array<[string, Record<string, unknown>, string[]]> = [
       [SOFTWARE_ID, SOFTWARE_SHARED_PROPERTIES, withoutUnbuiltProPaths([
         'index.html',
@@ -206,15 +280,50 @@ describe('canonical schema graph', () => {
       ])],
     ];
 
-    for (const [id, expected, paths] of pinned) {
-      for (const path of paths) {
-        const node = jsonLdBlocks(read(path)).find((block) => block['@id'] === id);
-        assert.ok(node, `${path} must declare ${id}`);
+    for (const [id, expected, required] of pinned) {
+      // Discovered, not hand-listed: a surface that starts declaring the shared
+      // identity is caught here rather than quietly exempted. The hand-listed
+      // paths are the FLOOR -- they also catch a surface dropping the node.
+      const emitters = new Map<string, Record<string, any>>();
+      for (const path of documents) {
+        const html = read(path);
+        if (!html.includes(id)) continue;
+        const declarations = declarationsOf(html, id);
+        if (declarations.length === 0) continue;
+        assert.equal(declarations.length, 1, `${path} must declare ${id} exactly once`);
+        emitters.set(path, declarations[0]);
+      }
+      for (const path of required) {
+        assert.ok(emitters.has(path), `${path} must still declare ${id}`);
+      }
+
+      for (const [path, node] of emitters) {
         for (const [property, value] of Object.entries(expected)) {
           assert.deepEqual(
             node[property],
             value,
             `${path} ${id} "${property}" must match schema-graph-ids.ts`,
+          );
+        }
+      }
+
+      // Every property two emitters both carry must agree, pinned or not.
+      const carriers = new Map<string, Array<[string, unknown]>>();
+      for (const [path, node] of emitters) {
+        for (const [property, value] of Object.entries(node)) {
+          if (MAY_DIVERGE_ACROSS_SURFACES.has(property)) continue;
+          const seen = carriers.get(property) ?? [];
+          seen.push([path, value]);
+          carriers.set(property, seen);
+        }
+      }
+      for (const [property, entries] of carriers) {
+        const [firstPath, firstValue] = entries[0];
+        for (const [path, value] of entries.slice(1)) {
+          assert.deepEqual(
+            value,
+            firstValue,
+            `${id} "${property}" differs between ${firstPath} and ${path}`,
           );
         }
       }
