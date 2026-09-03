@@ -3,6 +3,12 @@ import { describe, expect, it } from 'vitest';
 import { CountryIntelManager } from '@/app/country-intel';
 
 describe('country brief news matching', () => {
+  it('recognizes French demonym headlines for France', () => {
+    expect(
+      CountryIntelManager.isCountryHeadline('French unions announce a national protest', 'France', 'FR'),
+    ).toBe(true);
+  });
+
   it('recognizes the common US and U.S. headline forms', () => {
     expect(
       CountryIntelManager.isCountryHeadline('US announces new sanctions package', 'United States', 'US'),

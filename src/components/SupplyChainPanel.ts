@@ -194,7 +194,8 @@ export class SupplyChainPanel extends Panel {
       : this.mineralProductionData?.commodities?.length
         ? this.mineralProductionData
         : this.mineralsData;
-    const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
+    const unavailableBanner = activeData?.upstreamUnavailable
+      && (this.activeTab === 'chokepoints' || !activeHasData)
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
 
@@ -399,7 +400,14 @@ export class SupplyChainPanel extends Panel {
         const isAffectedByScenario = affectedSet.has(cp.id);
         const statusClass = cp.status === 'red' ? 'status-active' : cp.status === 'yellow' ? 'status-notified' : 'status-terminated';
         const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
-        const aisDisruptions = cp.aisDisruptions ?? (cp.congestionLevel === 'normal' ? 0 : 1);
+        const sourceMetrics = [
+          cp.navigationalWarningsAvailable === true
+            ? `${cp.activeWarnings} ${t('components.supplyChain.warnings')}`
+            : '',
+          cp.aisSnapshotAvailable === true
+            ? `${cp.aisDisruptions} ${t('components.supplyChain.aisDisruptions')}`
+            : '',
+        ].filter(Boolean).join(' · ');
         const ts = cp.transitSummary;
         const wowPct = ts?.wowChangePct ?? 0;
         const hasWow = ts && wowPct !== 0;
@@ -505,8 +513,8 @@ export class SupplyChainPanel extends Panel {
             ${isAffectedByScenario && scenarioResult?.template ? `<div class="sc-metric-row" style="background:#7f1d1d22;padding:4px 6px;border-radius:3px;margin-bottom:4px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
               <span style="color:#fca5a5;font-weight:600">\u26A0 Projected under scenario: ${scenarioResult.template.disruptionPct}% closure for ${scenarioResult.template.durationDays} days${scenarioResult.template.costShockMultiplier > 1 ? ` (+${Math.round((scenarioResult.template.costShockMultiplier - 1) * 100)}% cost)` : ''}</span>
             </div>` : ''}
-            <div class="sc-metric-row">
-              <span>${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}</span>
+            <div class="sc-metric-row"${sourceMetrics || cp.directions?.length ? '' : ' hidden'}>
+              ${sourceMetrics ? `<span>${sourceMetrics}</span>` : ''}
               ${cp.directions?.length ? `<span>${cp.directions.map(d => escapeHtml(d)).join('/')}</span>` : ''}
             </div>
             ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}

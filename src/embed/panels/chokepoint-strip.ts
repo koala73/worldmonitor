@@ -72,6 +72,13 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
   heading.textContent = t('components.chokepointStrip.title');
   wrap.appendChild(heading);
 
+  if (data.upstreamUnavailable) {
+    const warning = document.createElement('div');
+    warning.className = 'wm-embed-cp-warning';
+    warning.textContent = t('components.supplyChain.upstreamUnavailable');
+    wrap.appendChild(warning);
+  }
+
   const strip = document.createElement('div');
   strip.className = 'wm-embed-cp-strip';
   for (const cp of ordered) {
@@ -90,7 +97,7 @@ export async function mountEmbedChokepointStrip(root: HTMLElement, apiKey: strin
     const name = document.createElement('div');
     name.className = 'wm-embed-cp-name';
     name.textContent = shortName(cp.id) || cp.name;
-    if (cp.activeWarnings > 0) {
+    if (cp.navigationalWarningsAvailable === true && cp.activeWarnings > 0) {
       const warn = document.createElement('span');
       warn.className = 'wm-embed-cp-warn';
       warn.textContent = String(cp.activeWarnings);

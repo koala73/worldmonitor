@@ -38,16 +38,22 @@ jobs:
     outputs:
       codegen: ${{ steps.paths.outputs.codegen || steps.non-pr.outputs.codegen }}
       breaking: ${{ steps.paths.outputs.breaking || steps.non-pr.outputs.breaking }}
+      trusted_fork: ${{ steps.paths.outputs.trusted_fork || steps.non-pr.outputs.trusted_fork }}
     steps:
       - name: Classify proto codegen paths
         id: paths
         if: github.event_name == 'pull_request'
         env:
           GH_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_ACTOR: ${{ github.actor }}
           EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
           EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
         run: |
           PR_JSON=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")
           FILES_JSON=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --paginate --slurp)
@@ -67,7 +73,15 @@ jobs:
             exit 1
           fi
 
-          jq -r --arg inputs "$CODEGEN_INPUT_REGEX" --arg outputs "$GENERATED_PATHS" '
+          jq -r \
+            --arg action "$EVENT_ACTION" \
+            --arg actor "$EVENT_ACTOR" \
+            --arg head_repository "$EVENT_HEAD_REPOSITORY" \
+            --arg inputs "$CODEGEN_INPUT_REGEX" \
+            --arg outputs "$GENERATED_PATHS" \
+            --arg pr_author "$PR_AUTHOR" \
+            --arg repository "$REPOSITORY" \
+            --arg repository_owner "$REPOSITORY_OWNER" '
             def is_generated($path; $generated):
               any($generated[];
                 . as $output
@@ -84,6 +98,20 @@ jobs:
             {
               codegen: any($paths[]; . as $path | test($inputs) or is_generated($path; $generated)),
               breaking: any($paths[]; test("^proto(?:/|$)"))
+            } as $classification
+            |
+            $classification + {
+              trusted_fork: (
+                $classification.codegen
+                and $action == "synchronize"
+                and ($actor | length) > 0
+                and ($repository_owner | length) > 0
+                and ($head_repository | length) > 0
+                and ($pr_author | length) > 0
+                and $actor == $repository_owner
+                and $head_repository != $repository
+                and $pr_author != "dependabot[bot]"
+              )
             }
             | to_entries[]
             | "\(.key)=\(.value)"
@@ -95,6 +123,7 @@ jobs:
         run: |
           echo "codegen=false" >> "$GITHUB_OUTPUT"
           echo "breaking=false" >> "$GITHUB_OUTPUT"
+          echo "trusted_fork=false" >> "$GITHUB_OUTPUT"
 
   proto-breaking:
     needs: changes
@@ -104,7 +133,7 @@ jobs:
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
           persist-credentials: false
@@ -128,9 +157,12 @@ jobs:
           key: buf-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
       - name: Install buf
-        run: make install-buf
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
 
       - name: Check for breaking proto changes
         run: make breaking
@@ -139,6 +171,7 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.codegen == 'true' &&
+      needs.changes.outputs.trusted_fork != 'true' &&
       (github.event.pull_request.head.repo.full_name != github.repository ||
       github.event.pull_request.user.login == 'dependabot[bot]')
     runs-on: ubuntu-latest
@@ -156,8 +189,9 @@ jobs:
     needs: changes
     if: >-
       needs.changes.outputs.codegen == 'true' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.event.pull_request.user.login != 'dependabot[bot]'
+      ((github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]') ||
+      needs.changes.outputs.trusted_fork == 'true')
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
@@ -165,8 +199,8 @@ jobs:
     outputs:
       changed: ${{ steps.patch.outputs.changed }}
     steps:
-      - name: Checkout the exact internal PR head without persisted credentials
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Checkout the exact PR head without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
@@ -191,17 +225,44 @@ jobs:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
-      - name: Install buf and protoc plugins
-        run: make install-buf install-plugins
+      # Fork-controlled make can write GITHUB_PATH or GITHUB_ENV. GitHub
+      # applies those files to later steps, so a fake git could hide drift.
+      # Capture trusted make/git first, then keep install, generate, and the
+      # exact-head verdict in this one shell.
+      - name: Install plugins, generate, and judge exact-head freshness
+        id: patch
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
-
-      - name: Run proto generation
-        run: make generate
-
-      - name: Reject generator writes outside generated artifact paths
+          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
         run: |
+          MAKE_BIN=$(command -v make || true)
+          GIT_BIN=$(command -v git || true)
+          if [ -z "$MAKE_BIN" ] || [ -z "$GIT_BIN" ]; then
+            echo "ERROR: trusted make or git is missing from PATH."
+            exit 1
+          fi
+          case "$MAKE_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted make must resolve to an absolute path: $MAKE_BIN"
+              exit 1
+              ;;
+          esac
+          case "$GIT_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted git must resolve to an absolute path: $GIT_BIN"
+              exit 1
+              ;;
+          esac
+
+          GO_BIN="$(go env GOPATH)/bin"
+          echo "$GO_BIN" >> "$GITHUB_PATH"
+          export PATH="$GO_BIN:$PATH"
+          "$MAKE_BIN" install-buf install-plugins
+          "$MAKE_BIN" generate
+
           read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
           EXCLUSIONS=()
           for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
@@ -212,36 +273,41 @@ jobs:
             fi
           done
 
-          if ! git diff --quiet -- . "${EXCLUSIONS[@]}" || \
-             ! git diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
+          if ! "$GIT_BIN" diff --quiet -- . "${EXCLUSIONS[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
             echo "ERROR: make generate modified tracked files outside the generated artifact paths."
-            git diff --stat -- . "${EXCLUSIONS[@]}"
-            git diff --cached --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --cached --stat -- . "${EXCLUSIONS[@]}"
             exit 1
           fi
 
-          UNEXPECTED_UNTRACKED=$(git ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
+          UNEXPECTED_UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
           if [ -n "$UNEXPECTED_UNTRACKED" ]; then
             echo "ERROR: make generate created files outside the generated artifact paths:"
             echo "$UNEXPECTED_UNTRACKED"
             exit 1
           fi
 
-      - name: Prepare generated artifact patch
-        id: patch
-        run: |
-          read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
-          git add -A -- "${GENERATED_PATH_ARRAY[@]}"
-          if git diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
+          "$GIT_BIN" add -A -- "${GENERATED_PATH_ARRAY[@]}"
+          if "$GIT_BIN" diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
             echo "changed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          git diff --cached --binary --full-index -- "${GENERATED_PATH_ARRAY[@]}" > "$RUNNER_TEMP/generated.patch"
+          if [ "$TRUSTED_FORK" = "true" ]; then
+            echo "ERROR: Generated artifacts are stale on the owner-trusted fork head."
+            echo "Regenerate the artifacts and push the reviewed result from the repository owner account."
+            "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            exit 1
+          fi
+
+          "$GIT_BIN" diff --cached --binary --full-index -- "${GENERATED_PATH_ARRAY[@]}" > "$RUNNER_TEMP/generated.patch"
           echo "changed=true" >> "$GITHUB_OUTPUT"
 
       - name: Upload generated artifact patch
-        if: steps.patch.outputs.changed == 'true'
+        if: >-
+          needs.changes.outputs.trusted_fork != 'true' &&
+          steps.patch.outputs.changed == 'true'
         uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.2
         with:
           name: generated-proto-patch
@@ -266,14 +332,14 @@ jobs:
       generated-sha: ${{ steps.commit.outputs.generated-sha }}
     steps:
       - name: Checkout the exact internal PR head without persisted credentials
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           ref: ${{ github.event.pull_request.head.sha }}
           persist-credentials: false
 
       - name: Download generated artifact patch
         if: needs.internal-generate.outputs.changed == 'true'
-        uses: actions/download-artifact@018cc2cf5baa6db3ef3c5f8a56943fffe632ef53 # v4.3.0
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: generated-proto-patch
           path: ${{ runner.temp }}
@@ -350,19 +416,25 @@ jobs:
           echo "generated-sha=$GENERATED_SHA" >> "$GITHUB_OUTPUT"
 
   internal-merge-freshness:
-    needs: [changes, internal-auto-generate]
+    needs: [changes, internal-generate, internal-auto-generate]
     if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.internal-generate.result == 'success' &&
       needs.changes.outputs.codegen == 'true' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
+      ((github.event.pull_request.head.repo.full_name == github.repository &&
       github.event.pull_request.user.login != 'dependabot[bot]' &&
-      needs.internal-auto-generate.outputs.pushed != 'true'
+      needs.internal-auto-generate.result == 'success' &&
+      needs.internal-auto-generate.outputs.pushed != 'true') ||
+      (needs.changes.outputs.trusted_fork == 'true' &&
+      needs.internal-auto-generate.result == 'skipped'))
     runs-on: ubuntu-latest
     timeout-minutes: 25
     permissions:
       contents: read
     steps:
-      - name: Checkout internal PR merge commit
-        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Checkout PR merge commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           persist-credentials: false
 
@@ -386,28 +458,76 @@ jobs:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
-      - name: Install buf and protoc plugins
-        run: make install-buf install-plugins
+      - name: Install plugins, generate, and verify merge-result freshness
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
-
-      - name: Run proto generation against merge commit
-        run: make generate
-
-      - name: Verify generated artifacts are fresh against the merge result
         run: |
+          MAKE_BIN=$(command -v make || true)
+          GIT_BIN=$(command -v git || true)
+          if [ -z "$MAKE_BIN" ] || [ -z "$GIT_BIN" ]; then
+            echo "ERROR: trusted make or git is missing from PATH."
+            exit 1
+          fi
+          case "$MAKE_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted make must resolve to an absolute path: $MAKE_BIN"
+              exit 1
+              ;;
+          esac
+          case "$GIT_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted git must resolve to an absolute path: $GIT_BIN"
+              exit 1
+              ;;
+          esac
+
+          GO_BIN="$(go env GOPATH)/bin"
+          echo "$GO_BIN" >> "$GITHUB_PATH"
+          export PATH="$GO_BIN:$PATH"
+          "$MAKE_BIN" install-buf install-plugins
+          "$MAKE_BIN" generate
+
           read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
-          if ! git diff --exit-code -- "${GENERATED_PATH_ARRAY[@]}"; then
+          EXCLUSIONS=()
+          for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
+            if [[ "$GENERATED_PATH" == */ ]]; then
+              EXCLUSIONS+=(":(exclude,glob)${GENERATED_PATH}**")
+            else
+              EXCLUSIONS+=(":(exclude,literal)$GENERATED_PATH")
+            fi
+          done
+
+          if ! "$GIT_BIN" diff --quiet -- . "${EXCLUSIONS[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
+            echo "ERROR: Merge-result generation modified tracked files outside the generated artifact paths."
+            "$GIT_BIN" diff --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --cached --stat -- . "${EXCLUSIONS[@]}"
+            exit 1
+          fi
+
+          UNEXPECTED_UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
+          if [ -n "$UNEXPECTED_UNTRACKED" ]; then
+            echo "ERROR: Merge-result generation created files outside the generated artifact paths:"
+            echo "$UNEXPECTED_UNTRACKED"
+            exit 1
+          fi
+
+          if ! "$GIT_BIN" diff --quiet -- "${GENERATED_PATH_ARRAY[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
             echo ""
             echo "============================================================"
             echo "ERROR: Generated artifacts are stale against the PR merge result."
             echo "Merge the latest main branch into the PR branch and retry."
             echo "============================================================"
+            "$GIT_BIN" diff --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
             exit 1
           fi
 
-          UNTRACKED=$(git ls-files --others --exclude-standard -- "${GENERATED_PATH_ARRAY[@]}")
+          UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- "${GENERATED_PATH_ARRAY[@]}")
           if [ -n "$UNTRACKED" ]; then
             echo "ERROR: Untracked generated files found against the PR merge result:"
             echo "$UNTRACKED"
@@ -432,6 +552,7 @@ jobs:
           CHANGE_RESULT: ${{ needs.changes.result }}
           CODEGEN_CHANGED: ${{ needs.changes.outputs.codegen }}
           BREAKING_CHANGED: ${{ needs.changes.outputs.breaking }}
+          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
           WRITABLE_INTERNAL_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' }}
           BREAKING_RESULT: ${{ needs.proto-breaking.result }}
           FORK_RESULT: ${{ needs.fork-artifact-check.result }}
@@ -455,20 +576,36 @@ jobs:
             exit 1
           fi
 
-          if [ "$WRITABLE_INTERNAL_PR" != "true" ]; then
-            if [ "$FORK_RESULT" != "success" ]; then
-              echo "ERROR: Read-only PR codegen changes require a trusted internal branch."
+          if [ "$TRUSTED_FORK" = "true" ]; then
+            if [ "$WRITABLE_INTERNAL_PR" = "true" ] || \
+               [ "$FORK_RESULT" != "skipped" ] || \
+               [ "$GENERATE_RESULT" != "success" ] || \
+               [ "$PUBLISH_RESULT" != "skipped" ] || \
+               [ "$MERGE_RESULT" != "success" ]; then
+              echo "ERROR: Owner-trusted fork generation did not complete through the read-only path."
               exit 1
             fi
+            echo "Owner-trusted fork artifacts are fresh at the exact head and merge result."
             exit 0
           fi
 
-          if [ "$GENERATE_RESULT" != "success" ] || [ "$PUBLISH_RESULT" != "success" ]; then
+          if [ "$WRITABLE_INTERNAL_PR" != "true" ]; then
+            echo "ERROR: Fork and Dependabot codegen changes require an owner-trusted head or a trusted internal branch."
+            exit 1
+          fi
+
+          if [ "$FORK_RESULT" != "skipped" ] || \
+             [ "$GENERATE_RESULT" != "success" ] || \
+             [ "$PUBLISH_RESULT" != "success" ]; then
             echo "ERROR: Internal generation or publication did not pass."
             exit 1
           fi
 
           if [ "$GENERATED_PUSHED" = "true" ]; then
+            if [ "$MERGE_RESULT" != "skipped" ]; then
+              echo "ERROR: Merge freshness ran against a superseded internal head."
+              exit 1
+            fi
             echo "Generated artifacts were committed. A follow-up run will validate the new head."
             exit 0
           fi

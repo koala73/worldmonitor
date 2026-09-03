@@ -29,7 +29,9 @@ WorldMonitor 不公布任何"安全线"，因为多少算宽裕，会因商品�
 
 USDA 生产、供应与分配数据库（PSD）是平衡表与库存的数据源。公有领域，月度发布周期，按商品与国家提供全球覆盖。
 
-FAOSTAT 在 PSD 之后作为仅产量的缺口填补，覆盖 PSD 未覆盖的商品-国家组合。这些行的 `source` 为 `"faostat"`；其上的库存字段均为占位符，不是 USDA/PSD 实测值，也不携带库存消费比。
+当 PSD 没有完整的国家平衡表时，FAOSTAT 粮食平衡表提供同一日历年的一对数据：`Production Quantity` 与 `Domestic supply quantity`。记分卡把国内供应量作为消费量，并用同一张商品热量换算表转换两个数量。完整的 PSD 数据始终优先。
+
+FAOSTAT 行的 `source` 为 `"faostat"`。其期末库存和库存消费比不可用。种子程序忽略库存变动，也不使用库存变动估算库存。
 
 ## 商品
 
@@ -59,7 +61,7 @@ FAOSTAT 在 PSD 之后作为仅产量的缺口填补，覆盖 PSD 未覆盖的�
 
 ## 可用性
 
-数据行使用明确的存在性标志，而不是只靠数值字段。`hasEndingStocks` 与 `hasStocksToUse` 表示 `endingStocksTmt` 与 `stocksToUse` 是否为测量值。FAOSTAT 的仅产量填补行可以携带 `endingStocksTmt`、`totalUseTmt` 与 `stocksToUse` 的占位零值，同时这些库存标志为 false。某国未报告的商品在响应中缺席。零库存与无覆盖是相反的解读，调用方不能由一方推断另一方。
+数据行使用明确的存在性标志，而不是只靠数值字段。`hasEndingStocks` 与 `hasStocksToUse` 表示 `endingStocksTmt` 与 `stocksToUse` 是否为测量值。FAOSTAT 行在 `consumptionTmt` 和 `totalUseTmt` 中提供粮食平衡表的国内供应量。库存数值是协议占位零值，两个库存标志均为 false。某国未报告的商品不会出现在响应中。零库存与无覆盖是相反的解读，调用方不能由一方推断另一方。
 
 ## 更新频率
 

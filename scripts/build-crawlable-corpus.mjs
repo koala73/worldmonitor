@@ -44,9 +44,11 @@ import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // side-effect-free in Node (its only module-scope statement is a
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
+  chokepointCoverageMetrics,
   instabilityBand,
+  MAX_FUTURE_SKEW_MS,
+  MAX_LIVE_SNAPSHOT_AGE_MS,
   parseCiiMovement,
-  publishedTransitCountLabel,
   withheldTransitCountSentence,
 } from './crawlable-live-tools.mjs';
 import {
@@ -57,6 +59,7 @@ import {
   TRADE_ROUTES_OBSERVED_AT,
 } from './chokepoint-page-content.mjs';
 import { EIA_OIL_TRANSIT_BASELINES_PATH } from './chokepoint-eia-baselines.mjs';
+import { buildMicrostateCoverageStoryContent } from './microstate-coverage-stories.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -72,11 +75,19 @@ const OBSERVATION_PERIOD_RE = /^\d{4}-\d{2}(-\d{2})?$/;
 // The committed pulse is published as "Current signal". Nothing re-runs the
 // freeze automatically except .github/workflows/crawlable-pulse-refresh.yml, so
 // bound the age here: a forgotten or failed refresh must red the build rather
-// than silently republish months-old numbers under a current-state heading.
-// Sized to clear the monthly refresh cadence with slack.
-const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 45;
+// than silently republish stale numbers under a current-state heading.
+//
+// Sized to clear the WEEKLY refresh cadence with slack: the cron freezes every
+// Monday, so this leaves ~3 days to merge a refresh PR before the build reds.
+// It was 45 days against a monthly cron, which let pages headed "Approx.
+// 24-hour movement" ship on data up to six weeks old — the freshness
+// overstatement in #7530. The ceiling and the cron are one contract: relaxing
+// either without the other reopens the gap, and a guard in
+// tests/crawlable-corpus.test.mjs asserts they still agree.
+export const MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS = 10;
 const COUNTRY_NAMES_PATH = 'shared/country-names.json';
 const COUNTRY_REGIONS_PATH = 'shared/iso2-to-region.json';
+const MICROSTATE_TERRITORIES_PATH = 'server/worldmonitor/resilience/v1/cohorts/microstate-territories.json';
 const CHOKEPOINT_REGISTRY_PATH = 'src/config/chokepoint-registry.ts';
 const TRADE_ROUTES_PATH = 'src/config/trade-routes.ts';
 const GLOSSARY_DATA_PATH = 'blog-site/src/data/glossary.ts';
@@ -105,8 +116,8 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-const COUNTRY_PAGE_CONTENT_VERSION = '2026-08-31';
-const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-01';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
+export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
 const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
 const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
 // Public ranking / confidence gates. Keep aligned with
@@ -121,7 +132,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-01';
+export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-02';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -131,13 +142,13 @@ const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // chokepoint dataset as modified. Country pages are absent by design — their
 // dateModified is pinned to the snapshot capturedAt as a truthful freshness
 // contract (#7391), so their recrawl signal is COUNTRY_PAGE_CONTENT_VERSION.
-const DATASET_SCHEMA_CONTENT_VERSION = {
+export const DATASET_SCHEMA_CONTENT_VERSION = {
   chokepoint: '2026-08-31',
-  crisis: '2026-08-31',
-  tools: '2026-08-31',
+  crisis: '2026-09-01',
+  tools: '2026-09-01',
 };
-const CRISIS_PAGE_CONTENT_VERSION = '2026-08-31';
-const TOOLS_PAGE_CONTENT_VERSION = '2026-08-30';
+export const CRISIS_PAGE_CONTENT_VERSION = '2026-09-01';
+const TOOLS_PAGE_CONTENT_VERSION = '2026-09-01';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
   name: 'World Monitor Terms of Service (27 July 2026)',
@@ -340,6 +351,12 @@ function formatStaticDateTime(iso) {
   }).format(new Date(timestamp));
 }
 
+function isCanonicalIsoInstant(value) {
+  if (typeof value !== 'string') return false;
+  const timestamp = Date.parse(value);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString() === value;
+}
+
 function pulseDateOnly(asOf, fallback) {
   if (typeof asOf === 'string' && /^\d{4}-\d{2}-\d{2}/.test(asOf)) {
     return asOf.slice(0, 10);
@@ -414,7 +431,7 @@ function liveUpdatedMarkup({ asOf, fallbackLabel, prefix = 'Published pulse' }) 
   return `<span data-live-updated>${escapeHtml(fallbackLabel)}</span>`;
 }
 
-function laterDate(...values) {
+export function laterDate(...values) {
   return values
     .filter((value) => /^\d{4}-\d{2}-\d{2}$/.test(value ?? ''))
     .sort()
@@ -614,7 +631,7 @@ function pulseTotals(pulse) {
   };
 }
 
-function crisisDatasetDownload(crisis, pulse = null) {
+function crisisDatasetDownload(crisis, pulse = null, numericTotals = null) {
   return stableJson({
     dataset: 'crisis-tracker',
     slug: crisis.slug,
@@ -629,10 +646,11 @@ function crisisDatasetDownload(crisis, pulse = null) {
       maintainedPulse: {
         state: pulse.state,
         // The pulse carries Intl-formatted display strings ("9,824"); a Dataset
-        // download must be machine-readable, so re-derive the totals from the
-        // raw per-country rows. `eventsTotal === null` stays the marker for
+        // The build loop shares numeric totals with the page schema. The pulse
+        // carries Intl-formatted display strings, so these values stay
+        // machine-readable; `eventsTotal === null` remains the marker for
         // "reference periods differ, combined total withheld".
-        ...pulseTotals(pulse),
+        ...numericTotals,
         referencePeriod: pulse.referencePeriod,
         asOf: pulse.asOf,
         missingCountries: pulse.missingCountries,
@@ -760,10 +778,70 @@ function formatPercent(value) {
   return `${Math.round(numeric * 100)}%`;
 }
 
-function formatScore(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 'not ranked';
+const OBSERVED_EVIDENCE = Object.freeze({ coverage: true });
+
+// A dimension carries an imputationClass ONLY when observedWeight === 0 -- see the
+// four-class taxonomy in proto/worldmonitor/resilience/v1/resilience.proto and
+// server/worldmonitor/resilience/v1/_shared.ts. So an empty class is the allow-list
+// for "observed", exactly as buildMicrostateEvidenceProfile already requires below.
+// Enumerating the withheld classes instead would fail OPEN on any fifth class
+// (it already omitted 'stable-absence', whose imputed scores run 85-88).
+export function hasObservedValue(value, { coverage, evidenceState = '' } = {}) {
+  const numericValue = typeof value === 'string' ? value.replace(/,/g, '').trim() : value;
+  const numericCoverage = Number(coverage);
+  return numericValue !== ''
+    && numericValue != null
+    && Number.isFinite(Number(numericValue))
+    && Number.isFinite(numericCoverage)
+    && numericCoverage > 0
+    && String(evidenceState || '') === '';
+}
+
+function formatObservedNumber(value, evidence, formatter, fallback = '—') {
+  if (!hasObservedValue(value, evidence)) return fallback;
+  const numeric = Number(typeof value === 'string' ? value.replace(/,/g, '') : value);
+  return formatter(numeric);
+}
+
+function formatScoreNumber(numeric) {
   return numeric.toFixed(1).replace(/\.0$/, '');
+}
+
+function formatScore(value, evidence) {
+  return formatObservedNumber(value, evidence, formatScoreNumber);
+}
+
+function dimensionScoreEvidence(dimension) {
+  return {
+    coverage: dimension.coverage,
+    evidenceState: dimension.imputationClass,
+  };
+}
+
+function hasObservedDimensionScore(dimension) {
+  return hasObservedValue(dimension.score, dimensionScoreEvidence(dimension));
+}
+
+function domainScoreEvidence(domain) {
+  return { coverage: domain.dimensions.some(hasObservedDimensionScore) };
+}
+
+// Weakest/strongest claims may only rank entries that actually have a reading.
+// A withheld pillar or domain is not the weakest one, it is no reading at all --
+// ranking it would name it in prose and then print an em dash for its score.
+function observedPillarsOf(pillars) {
+  return pillars.filter((pillar) => hasObservedValue(pillar.score, { coverage: pillar.coverage }));
+}
+
+function observedDomainsOf(domains) {
+  return domains.filter((domain) => hasObservedValue(domain.score, domainScoreEvidence(domain)));
+}
+
+function dimensionEvidenceState(dimension) {
+  const evidenceState = String(dimension.imputationClass || '');
+  if (evidenceState) return humanizeId(evidenceState);
+  if (!hasObservedDimensionScore(dimension)) return 'Unavailable';
+  return humanizeId(dimension.freshness?.staleness || 'observed');
 }
 
 function formatCoordinates(lat, lon) {
@@ -819,15 +897,25 @@ function signalMetaDescriptionCandidates({ subjects, signals }) {
   return candidates;
 }
 
-function selectMetaDescription(candidates, fallbackCandidates) {
+// `subject` names the page so a failure is actionable. Without it the build
+// dies with a bare "No meta description candidate fits 155-160 characters"
+// across 250 pages and says nothing about which one or how close it came.
+function selectMetaDescription(candidates, fallbackCandidates, subject) {
   const selected = longestEligibleMetaDescription(candidates);
   if (selected?.length >= META_DESCRIPTION_MIN) return selected;
 
   const fallback = longestEligibleMetaDescription(fallbackCandidates?.() ?? []);
   if (fallback?.length >= META_DESCRIPTION_MIN) return fallback;
 
+  const lengths = [...candidates, ...(fallbackCandidates?.() ?? [])]
+    .map((candidate) => candidate.length)
+    .sort((left, right) => left - right);
+  const near = lengths.length > 0
+    ? ` Candidate lengths ranged ${lengths[0]}-${lengths.at(-1)} over ${lengths.length} candidate(s).`
+    : ' No candidates were generated.';
   throw new Error(
-    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`,
+    `No meta description candidate fits ${META_DESCRIPTION_MIN}-${META_DESCRIPTION_MAX} characters`
+    + `${subject ? ` for ${subject}` : ''}.${near}`,
   );
 }
 
@@ -847,21 +935,28 @@ export function countryMetaDescription({
       `${name} instability index`,
     ];
     const facts = [
-      `is ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
-      `scores ${ciiEntry.score}/100 (${ciiEntry.band}) ${movementFact}`,
+      `is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
+      `scores ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}) ${movementFact}`,
     ];
+    // Graded long-to-short. The window is a narrow 155-160, so a long country
+    // name plus a long movement clause can push EVERY candidate over: "United
+    // Arab Emirates" made all 24 land in 162-196 and reds the whole build
+    // (#7530). The short tail is what keeps a 20-character name in range.
     const contexts = [
       'with World Monitor country-risk, resilience, advisory, and sanctions context.',
       'with World Monitor risk, resilience, advisory, and sanctions context.',
+      'alongside World Monitor risk, resilience, advisory, and sanctions context.',
       'with World Monitor country-risk, resilience, and security context.',
       'with World Monitor country-risk and resilience context.',
-      'alongside World Monitor risk, resilience, advisory, and sanctions context.',
       'alongside World Monitor country-risk and resilience context.',
+      'with World Monitor risk, resilience and sanctions context.',
+      'with World Monitor risk and resilience context.',
+      'with World Monitor risk context.',
     ];
     const candidates = subjects.flatMap((subject) => facts.flatMap(
       (fact) => contexts.map((context) => `${subject} ${fact}, ${context}`),
     ));
-    return selectMetaDescription(candidates);
+    return selectMetaDescription(candidates, undefined, `${name} (CII country)`);
   }
 
   const subjects = [
@@ -924,7 +1019,7 @@ export function countryMetaDescription({
       'risk trends',
       'public data',
     ],
-  }));
+  }), `${name} (ranked country)`);
 }
 
 export function chokepointMetaDescription(name) {
@@ -962,7 +1057,7 @@ export function chokepointMetaDescription(name) {
       'shipping signals',
       'public data',
     ],
-  }));
+  }), `${name} (chokepoint)`);
 }
 
 function metricTile(label, value) {
@@ -1025,7 +1120,9 @@ function normalizeCountry(item, sourceStatus, seen, reverseNames) {
     identity: {
       commonName,
       officialName,
-      alternateNames: [...new Set(identity.alternateNames || [])],
+      alternateNames: [...new Set((identity.alternateNames || []).map((name) => (
+        name === 'Macao S A R' ? 'Macao SAR' : name
+      )))],
       sameAs,
     },
     rank: sourceStatus === 'ranked' ? Number(item.rank) : null,
@@ -1341,6 +1438,11 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   const livePulseSnapshotPath = resolveLatestLivePulseSnapshotPath(rootDir);
   const resilience = readJson(rootDir, resilienceSnapshotPath);
   const livePulse = readJson(rootDir, livePulseSnapshotPath);
+  const microstateTerritoryCodes = new Set(
+    (readJson(rootDir, MICROSTATE_TERRITORIES_PATH).iso2 || [])
+      .map((code) => String(code || '').toUpperCase())
+      .filter((code) => /^[A-Z]{2}$/.test(code)),
+  );
   const reverseNames = reverseCountryNames(readJson(rootDir, COUNTRY_NAMES_PATH));
   const regionsByCode = readJson(rootDir, COUNTRY_REGIONS_PATH);
   const [
@@ -1375,7 +1477,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     normalizeCountries(resilience, reverseNames),
     regionsByCode,
     crises,
-  );
+  ).map((country) => ({
+    ...country,
+    microstateTerritory: microstateTerritoryCodes.has(country.code),
+  }));
   const ciiRanking = buildCiiRankingEntries(countries, livePulse);
   const countryBounds = normalizeCountryBounds(countryBboxes, countries, reverseNames);
   const chokepoints = normalizeChokepoints(CHOKEPOINT_REGISTRY);
@@ -1396,6 +1501,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     resilience.capturedAt,
     livePulse.capturedAt,
     gitFileLastmod(rootDir, COUNTRY_REGIONS_PATH),
+    gitFileLastmod(rootDir, MICROSTATE_TERRITORIES_PATH),
     COUNTRY_PAGE_CONTENT_VERSION,
   );
   const ciiCountriesLastmod = laterDate(
@@ -1470,6 +1576,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     sources: {
       resilienceSnapshot: resilienceSnapshotPath,
       livePulseSnapshot: livePulseSnapshotPath,
+      microstateTerritories: MICROSTATE_TERRITORIES_PATH,
       countryNames: COUNTRY_NAMES_PATH,
       countryRegions: COUNTRY_REGIONS_PATH,
       chokepointRegistry: CHOKEPOINT_REGISTRY_PATH,
@@ -1536,6 +1643,18 @@ function breadcrumbLd(baseUrl, items) {
   };
 }
 
+function faqPageLd(faqs) {
+  return {
+    '@context': SCHEMA_ORG_CONTEXT_URL,
+    '@type': 'FAQPage',
+    mainEntity: faqs.map((faq) => ({
+      '@type': 'Question',
+      name: faq.question,
+      acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+    })),
+  };
+}
+
 function jsonLdTypes(entry) {
   const type = entry?.['@type'];
   return Array.isArray(type) ? type : type ? [type] : [];
@@ -1589,6 +1708,26 @@ function withPrimaryImage(entry, image) {
   };
 }
 
+// Every top-level JSON-LD block binds its own vocabulary. A root node without
+// `@context` is not a lenient block — it has no vocabulary at all, so `@type`
+// resolves to nothing and schema.org consumers discard it silently rather than
+// erroring. Stamping here rather than at each call site is deliberate: #7491
+// shipped 62 unparseable blocks across the 31 CII-covered country pages (found
+// in #7502) because two hand-written sibling Datasets were promoted out of a
+// `@context`'d parent and nobody re-declared it. A builder that forgets can no
+// longer produce one.
+// Nested nodes inherit the root context and are left untouched.
+export function withSchemaContext(entry) {
+  if (!entry || typeof entry !== 'object') return entry;
+  // A deliberate `@context` is preserved; a missing OR empty one is replaced.
+  // Destructure the dead key out rather than spreading `entry` over the stamp,
+  // or `'@context': null` would be re-applied on top of it and the "cannot
+  // forget" invariant above would hold only for the absent case.
+  if (entry['@context']) return entry;
+  const { '@context': unusable, ...rest } = entry;
+  return { '@context': SCHEMA_ORG_CONTEXT_URL, ...rest };
+}
+
 function pageDocument({
   baseUrl,
   path,
@@ -1623,7 +1762,8 @@ function pageDocument({
   ]
     .filter(Boolean)
     .map((entry) => withPrimaryImage(entry, pageImage))
-    .map((entry) => withSpeakableAndGraph(entry, { canonical, breadcrumbId }));
+    .map((entry) => withSpeakableAndGraph(entry, { canonical, breadcrumbId }))
+    .map((entry) => withSchemaContext(entry));
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
         <a href="/countries/">Countries</a>
@@ -1778,6 +1918,10 @@ function renderCountryInstabilityIndexPage({
   const datasetId = `${absoluteUrl(baseUrl, path)}#dataset`;
   const rankingId = `${absoluteUrl(baseUrl, path)}#ranking`;
   const versionLabel = `CII ${ciiRanking.methodologyVersion}`;
+  const rankingFaq = {
+    question: 'Which countries are most unstable right now?',
+    answer: `As of ${formatStaticDateTime(ciiRanking.updatedAt)}, the highest Country Instability Index scores are ${formatProseList(ciiRanking.entries.slice(0, 3).map((entry) => entry.country.name))}. World Monitor derives this ranking from the committed ${versionLabel} pulse for ${ciiRanking.entries.length} monitored countries. The published table can refresh from the current API after the page loads.`,
+  };
   const itemList = ciiRanking.entries.map((entry, index) => {
     const url = absoluteUrl(baseUrl, `/countries/${entry.country.slug}/`);
     return {
@@ -1800,6 +1944,8 @@ function renderCountryInstabilityIndexPage({
   const body = `      <p class="eyebrow">Current country stress</p>
       <h1>Country Instability Index</h1>
       <p class="lede">The World Monitor Country Instability Index (CII) measures current country-level stress on a 0-100 scale using conflict, unrest, security and information signals. ${escapeHtml(versionLabel)} currently monitors ${ciiRanking.entries.length} countries and reports approximate 24-hour movement when available.</p>
+      <h2>${escapeHtml(rankingFaq.question)}</h2>
+      <p>${escapeHtml(rankingFaq.answer)}</p>
       <section class="live-tool" data-live-cii-ranking data-cii-methodology-version="${escapeHtml(ciiRanking.methodologyVersion)}" data-state="ready" data-published-pulse>
         <div class="tool-head">
           <div>
@@ -1812,7 +1958,7 @@ function renderCountryInstabilityIndexPage({
           <caption>Published ${escapeHtml(formatStaticDateTime(ciiRanking.updatedAt))} from the committed crawlable pulse. The table refreshes from the current API after load.</caption>
           <thead><tr><th scope="col">Country</th><th scope="col">CII</th><th scope="col">24h</th><th scope="col">Level</th><th scope="col">Updated</th></tr></thead>
           <tbody data-cii-ranking-body>
-${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(entry.score)}</data></td><td data-cii-trend>${escapeHtml(entry.change24h == null ? 'Stable or unavailable' : entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
+${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeHtml(entry.code)}"><td><a href="/countries/${entry.country.slug}/">${escapeHtml(entry.country.name)}</a></td><td><data data-cii-score value="${escapeHtml(entry.score)}">${escapeHtml(formatScore(entry.score, OBSERVED_EVIDENCE))}</data></td><td data-cii-trend>${escapeHtml(entry.change24h == null ? 'Stable or unavailable' : entry.trend)}</td><td data-cii-band>${escapeHtml(entry.band)}</td><td><time data-cii-updated datetime="${escapeHtml(entry.asOf)}">${escapeHtml(formatStaticDateTime(entry.asOf))}</time></td></tr>`).join('\n')}
           </tbody>
         </table></div>
         <div class="tool-meta">
@@ -1842,6 +1988,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
         inLanguage: 'en-US',
         mainEntity: { '@id': datasetId },
       },
+      faqPageLd([rankingFaq]),
       {
         '@context': SCHEMA_ORG_CONTEXT_URL,
         '@type': 'Dataset',
@@ -1890,6 +2037,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
 function renderCountriesIndex({ countries, ciiRanking, baseUrl, capturedAt, lastmod, snapshotPath }) {
   const path = '/countries/';
   const description = `Browse World Monitor country risk pages with structural resilience across ${countries.length} countries and high-frequency instability scores for ${ciiRanking.entries.length} Tier-1 countries.`;
+  const datasetId = `${absoluteUrl(baseUrl, path)}#dataset`;
   const rankedCountries = countries
     .filter((country) => Number.isInteger(country.rank))
     .sort((a, b) => a.rank - b.rank);
@@ -1946,7 +2094,7 @@ ${hubFaqs.map((faq) => `      <h2>${escapeHtml(faq.question)}</h2>
 ${countries.map((country) => {
     const scorePublished = country.headlineEligible !== false;
     const scoreCell = scorePublished
-      ? `<data value="${escapeHtml(country.overallScore)}">${escapeHtml(formatScore(country.overallScore))}</data>`
+      ? `<data value="${escapeHtml(country.overallScore)}">${escapeHtml(formatScore(country.overallScore, { coverage: scorePublished }))}</data>`
       : '—';
     return `          <tr><td>${country.rank == null ? 'Outside headline ranking' : `#${country.rank}`}</td><td><a href="/countries/${country.slug}/">${escapeHtml(country.name)}</a> <small>${escapeHtml(country.code)}</small></td><td>${scoreCell}</td><td>${escapeHtml(formatPercent(country.dimensionCoverage))}</td><td>${country.lowConfidence ? 'Low' : 'Standard'}</td></tr>`;
   }).join('\n')}
@@ -1967,16 +2115,9 @@ ${countries.map((country) => {
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
+        mainEntity: { '@id': datasetId },
       },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'FAQPage',
-        mainEntity: hubFaqs.map((faq) => ({
-          '@type': 'Question',
-          name: faq.question,
-          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
-        })),
-      },
+      faqPageLd(hubFaqs),
       {
         '@context': 'https://schema.org',
         '@type': 'ItemList',
@@ -1988,6 +2129,7 @@ ${countries.map((country) => {
       {
         '@context': 'https://schema.org',
         '@type': 'Dataset',
+        '@id': datasetId,
         name: `World Monitor Country Resilience Index snapshot for ${capturedAt}`,
         description,
         url: absoluteUrl(baseUrl, path),
@@ -2218,6 +2360,131 @@ export function describeAvailableEvidence(country) {
   return `Observed evidence is present for ${formatProseList(observed.map((dimension) => `${dimensionLabel(dimension)} (${formatPercent(dimension.coverage)})`))}. Input coverage is ${formatPercent(country.dimensionCoverage)} and imputation share is ${formatPercent(country.imputationShare)}.`;
 }
 
+function buildMicrostateEvidenceProfile(country) {
+  const dimensions = activeCountryDimensions(country);
+  const supportedDimensions = dimensions
+    .filter((dimension) => (
+      !isCoverageGap(dimension)
+      && String(dimension.imputationClass || '') === ''
+      && Number(dimension.coverage) >= 0.5
+      && typeof dimension.score === 'number'
+      && Number.isFinite(dimension.score)
+    ));
+  const gaps = dimensions.filter(isCoverageGap).sort(compareDimensionsByCoverageAsc);
+  const supportedSourceFamilies = [...new Set(supportedDimensions.flatMap(dimensionSources))];
+  const gapSourceFamilies = [...new Set(gaps.flatMap(dimensionSources))];
+  return {
+    supportedDimensions,
+    supportedSourceFamilies,
+    gapOnlySourceFamilies: gapSourceFamilies.filter((source) => !supportedSourceFamilies.includes(source)),
+    overlappingSourceFamilies: gapSourceFamilies.filter((source) => supportedSourceFamilies.includes(source)),
+  };
+}
+
+function formatMicrostateReadings(profile) {
+  return profile.supportedDimensions
+    .map((dimension) => `${dimensionLabel(dimension)} ${formatScore(dimension.score, dimensionScoreEvidence(dimension))} (${formatPercent(dimension.coverage)})`);
+}
+
+function highlightMicrostateDimensions(profile) {
+  return profile.supportedDimensions
+    .slice(-3)
+    .map(dimensionLabel);
+}
+
+function selectMicrostateSourceExamples(sources) {
+  const preferred = ['World Bank', 'UCDP'].filter((source) => sources.includes(source));
+  return [...new Set([
+    ...sources.slice(0, 3),
+    ...preferred,
+    sources.at(-1),
+  ])].filter(Boolean).slice(0, 6);
+}
+
+export function describeMicrostateEvidence(country) {
+  if (country.microstateTerritory !== true) return '';
+  const profile = buildMicrostateEvidenceProfile(country);
+  if (profile.supportedDimensions.length === 0) {
+    return `${country.name} is in the microstate and territory cohort, but this snapshot has no observed dimension reading that can support a country-specific evidence interpretation. No overall resilience score or country rank is published.`;
+  }
+  const readings = formatMicrostateReadings(profile);
+  const readingClause = `${country.name} has ${readings.length} supported dimension readings with observed inputs: ${readings.join('; ')}. Scores use a 0-100 scale; percentages show coverage.`;
+  const sourceExamples = selectMicrostateSourceExamples(profile.supportedSourceFamilies);
+  const supportedSourceClause = sourceExamples.length > 0
+    ? ` Possible dimension inputs for ${country.name}: ${formatProseList(sourceExamples)}.`
+    : '';
+  const gapOnlyClause = profile.gapOnlySourceFamilies.length > 0
+    ? ` Inputs tied only to missing or unmonitored dimensions in ${country.name}: ${formatProseList(profile.gapOnlySourceFamilies)}.`
+    : '';
+  const overlapClause = profile.overlappingSourceFamilies.length > 0
+    ? ` For ${country.name}, some feed families span supported and missing dimensions: ${formatProseList(profile.overlappingSourceFamilies)}.`
+    : '';
+  return `This is a partial evidence snapshot. ${readingClause}${supportedSourceClause}${gapOnlyClause}${overlapClause} These readings are partial evidence, not a published overall score or a country rank.`;
+}
+
+export function describeMicrostateEvidenceSummary(country) {
+  const profile = buildMicrostateEvidenceProfile(country);
+  if (profile.supportedDimensions.length === 0) {
+    return `${country.name} has no observed dimension reading that can support a country-specific evidence interpretation. No overall resilience score or country rank is published.`;
+  }
+  const highlightedDimensions = highlightMicrostateDimensions(profile);
+  const sourceExamples = profile.supportedSourceFamilies.slice(-3);
+  const feedClause = sourceExamples.length > 0
+    ? ` Possible inputs for ${country.name} include ${formatProseList(sourceExamples)}.`
+    : '';
+  return `${country.name} has ${profile.supportedDimensions.length} supported dimension readings with observed inputs, including ${formatProseList(highlightedDimensions)}.${feedClause} These readings are partial evidence, not a published overall score or a country rank.`;
+}
+
+function microstateCoverageStoryFacts(country) {
+  const profile = buildMicrostateEvidenceProfile(country);
+  const coveragePercent = Math.round(Number(country.dimensionCoverage) * 100);
+  const coverageFloor = Math.round(HEADLINE_RANKING_MIN_COVERAGE * 100);
+  const readings = formatMicrostateReadings(profile);
+  const highlightedDimensions = highlightMicrostateDimensions(profile);
+  const shortfallPoints = coverageFloor - coveragePercent;
+  const gaps = activeCountryDimensions(country)
+    .filter(isCoverageGap)
+    .map((dimension) => ({
+      id: dimension.id,
+      imputationClass: String(dimension.imputationClass || ''),
+      sources: dimensionSources(dimension),
+    }));
+  return {
+    code: country.code,
+    coverage: formatPercent(country.dimensionCoverage),
+    coverageFloor,
+    coveragePercent,
+    crisisRegistrySize: country.crisisRegistrySize,
+    gapCount: gaps.length,
+    gaps,
+    imputationShare: formatPercent(country.imputationShare),
+    readingCount: readings.length,
+    readings: readings.join('; '),
+    highlightedDimensions: formatProseList(highlightedDimensions),
+    sourceExamples: formatProseList(selectMicrostateSourceExamples(profile.supportedSourceFamilies)),
+    supportedDimensionIds: profile.supportedDimensions.map((dimension) => dimension.id),
+    shortfall: `${shortfallPoints} ${shortfallPoints === 1 ? 'point' : 'points'}`,
+  };
+}
+
+export function buildMicrostateCoverageStory({
+  country,
+  capturedAt,
+  methodologyFormula,
+}) {
+  if (country.microstateTerritory !== true) return null;
+  const story = buildMicrostateCoverageStoryContent({
+    ...microstateCoverageStoryFacts(country),
+    capturedDate: prettyDate(capturedAt),
+    methodologyFormula,
+  });
+  if (!story) return null;
+  return {
+    ...story,
+    crisis: formatCrisisContext(country, { noMembershipText: story.crisis }),
+  };
+}
+
 export function dimensionInventoryNote(country, dimension) {
   const sources = dimensionSources(dimension);
   const sourceLabel = formatProseList(sources);
@@ -2261,18 +2528,33 @@ function selectUnrankedInventory(country) {
   return selected;
 }
 
-function formatSignedScore(value) {
-  const numeric = Number(value);
-  if (!Number.isFinite(numeric)) return 'not available';
-  if (numeric === 0) return '0';
-  return `${numeric > 0 ? '+' : ''}${formatScore(numeric)}`;
+// The inventory is weakest-first and capped, so on a country like Tuvalu a
+// reader sees 12 of 23 dimensions -- the 12 worst -- with the 7 at full
+// coverage never entering the pool at all and 2 more dropped by the cap. Listing
+// only the weakest evidence with no note reads as uniformly poor coverage, which
+// is the opposite of what the snapshot says (#7530). State what is shown and
+// what is omitted, and say it only when something actually is omitted.
+export function describeInventoryScope(country, shown) {
+  const dimensions = activeCountryDimensions(country);
+  const total = dimensions.length;
+  const omitted = total - shown;
+  if (omitted <= 0) return null;
+  const complete = dimensions.filter((dimension) => Number(dimension.coverage) === 1).length;
+  const completeClause = complete > 0 ? `; ${complete} more at full coverage` : '';
+  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${completeClause}.`;
+}
+
+function formatSignedScore(value, evidence) {
+  return formatObservedNumber(value, evidence, (numeric) => (
+    `${numeric > 0 ? '+' : ''}${formatScoreNumber(numeric)}`
+  ), 'not available');
 }
 
 function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
   const ciiFaq = ciiEntry
     ? [{
       question: `What is ${country.name}'s Country Instability Index?`,
-      answer: `${country.name}'s Country Instability Index is ${ciiEntry.score}/100 (${ciiEntry.band}), ${ciiEntry.movementText}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
+      answer: `${country.name}'s Country Instability Index is ${formatScore(ciiEntry.score, OBSERVED_EVIDENCE)}/100 (${ciiEntry.band}), ${ciiEntry.movementText}, as of ${formatStaticDateTime(ciiEntry.asOf)}.`,
     }]
     : [];
   const scorePublished = country.headlineEligible !== false;
@@ -2285,7 +2567,7 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
       },
       {
         question: `What evidence is available for ${country.name}?`,
-        answer: describeAvailableEvidence(country),
+        answer: describeCountryAvailableEvidenceFaq(country),
       },
       {
         question: `How should readers use ${country.name}'s page?`,
@@ -2293,9 +2575,14 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
       },
     ];
   }
-  const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
+  const pillars = observedPillarsOf([...country.pillars].sort((left, right) => left.score - right.score));
   const weakest = pillars[0];
   const second = pillars[1];
+  const weakestPillarsAnswer = weakest && second
+    ? `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is lowest at ${formatScore(weakest.score, { coverage: weakest.coverage })}, followed by ${PILLAR_LABELS[second.id] || humanizeId(second.id)} at ${formatScore(second.score, { coverage: second.coverage })}. Their evidence coverage is ${formatPercent(weakest.coverage)} and ${formatPercent(second.coverage)}.`
+    : weakest
+      ? `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is the only pillar with an observed reading, at ${formatScore(weakest.score, { coverage: weakest.coverage })} with ${formatPercent(weakest.coverage)} evidence coverage. The other pillars are withheld because this snapshot has no observed evidence for them.`
+      : `No pillar has an observed reading in this snapshot, so no pillar can be ranked weakest.`;
   const rankText = country.rank == null
     ? 'outside the headline ranking because the snapshot labels its evidence low-confidence'
     : `#${country.rank} of ${rankedCount} ranked countries`;
@@ -2303,39 +2590,112 @@ function countryFaqs(country, capturedAt, rankedCount, ciiEntry = null) {
     ...ciiFaq,
     {
       question: `What is ${country.name}'s resilience score?`,
-      answer: `${country.name} scores ${formatScore(country.overallScore)} out of 100 in the ${prettyDate(capturedAt)} structural snapshot and sits ${rankText}. This is a comparative index, not a crisis probability.`,
+      answer: `${country.name} scores ${formatScore(country.overallScore, { coverage: scorePublished })} out of 100 in the ${prettyDate(capturedAt)} structural snapshot and sits ${rankText}. This is a comparative index, not a crisis probability.`,
     },
     {
       question: `Which resilience pillars are weakest for ${country.name}?`,
-      answer: `${PILLAR_LABELS[weakest.id] || humanizeId(weakest.id)} is lowest at ${formatScore(weakest.score)}, followed by ${PILLAR_LABELS[second.id] || humanizeId(second.id)} at ${formatScore(second.score)}. Their evidence coverage is ${formatPercent(weakest.coverage)} and ${formatPercent(second.coverage)}.`,
+      answer: weakestPillarsAnswer,
     },
     {
       question: `Is ${country.name}'s resilience score rising or falling?`,
-      answer: `The 30-day reading is ${country.trend || 'unknown'}, with a change of ${formatSignedScore(country.change30d)} points. It is structural and separate from the live instability monitor.`,
+      answer: `The 30-day reading is ${country.trend || 'unknown'}, with a change of ${formatSignedScore(country.change30d, { coverage: scorePublished })} points. It is structural and separate from the live instability monitor.`,
     },
   ];
 }
 
-function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
+function describeCountryAvailableEvidence(country) {
+  return country.microstateTerritory === true
+    ? describeMicrostateEvidence(country)
+    : describeAvailableEvidence(country);
+}
+
+function describeCountryAvailableEvidenceFaq(country) {
+  return country.microstateTerritory === true
+    ? describeMicrostateEvidenceSummary(country)
+    : describeAvailableEvidence(country);
+}
+
+function formatCrisisContext(country, { links = false, noMembershipText = null } = {}) {
+  const countryName = links ? escapeHtml(country.name) : country.name;
+  if (country.crisisMemberships.length > 0) {
+    const memberships = country.crisisMemberships
+      .map((crisis) => links
+        ? `<a href="/crises/${escapeHtml(crisis.slug)}/">${escapeHtml(crisis.shortTitle)}</a>`
+        : crisis.shortTitle)
+      .join(', ');
+    return `The crisis registry links ${countryName} to ${memberships}. Tracker scopes are fixed and do not cover every crisis.`;
+  }
+  if (noMembershipText != null) return links ? escapeHtml(noMembershipText) : noMembershipText;
+  return `${countryName} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
+}
+
+export function renderCountryAnalysis({ country, capturedAt, methodologyFormula, rankedCount, ciiEntry = null }) {
   const scorePublished = country.headlineEligible !== false;
   if ((country.pillars?.length ?? 0) < 3 || (country.domains?.length ?? 0) < 6) {
     throw new Error(`${country.code} is missing country-analysis pillar or domain details`);
   }
-  const peerLinks = country.peers.map((peer) => (
-    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${scorePublished ? ` (${escapeHtml(formatScore(peer.overallScore))})` : ''}</a>`
-  )).join(', ');
-  const regionalLinks = country.regionalPeers.map((peer) => (
-    `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${scorePublished ? ` (${escapeHtml(formatScore(peer.overallScore))})` : ''}</a>`
-  )).join(', ');
-  const crisisText = country.crisisMemberships.length > 0
-    ? `The crisis registry links ${escapeHtml(country.name)} to ${country.crisisMemberships.map((crisis) => `<a href="/crises/${crisis.slug}/">${escapeHtml(crisis.shortTitle)}</a>`).join(', ')}. Tracker scopes are fixed and do not cover every crisis.`
-    : `${escapeHtml(country.name)} is outside the fixed coverage of the ${country.crisisRegistrySize} crawlable crisis trackers. This marks a registry boundary, not an absence of risk.`;
-  const faqs = countryFaqs(country, capturedAt, rankedCount, ciiEntry);
+  // A peer whose own page publishes no headline score gets no parenthetical at all.
+  // Rendering an empty "(—)" would advertise a withheld value instead of omitting it.
+  const peerLink = (peer) => {
+    const score = scorePublished
+      ? formatScore(peer.overallScore, { coverage: peer.headlineEligible !== false })
+      : '—';
+    const suffix = score === '—' ? '' : ` (${escapeHtml(score)})`;
+    return `<a href="/countries/${peer.slug}/">${escapeHtml(peer.name)}${suffix}</a>`;
+  };
+  const peerLinks = country.peers.map(peerLink).join(', ');
+  const regionalLinks = country.regionalPeers.map(peerLink).join(', ');
+  const coverageStory = !scorePublished
+    ? buildMicrostateCoverageStory({ country, capturedAt, methodologyFormula })
+    : null;
+  const crisisText = formatCrisisContext(country, {
+    links: true,
+    noMembershipText: coverageStory?.crisis ?? null,
+  });
+  const faqs = coverageStory?.faqs || countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
     const inventory = selectUnrankedInventory(country);
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
+    const inventoryScope = describeInventoryScope(country, inventory.length);
+    const inventoryScopeNote = inventoryScope
+      ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
+      : '';
+    if (coverageStory) {
+      const comparatorLinks = coverageStory.useRegionalComparators ? regionalLinks : peerLinks;
+      const html = `      <article data-country-analysis>
+        <h2>${escapeHtml(country.name)} resilience evidence</h2>
+        <p>${escapeHtml(coverageStory.introduction)}</p>
+        <section data-country-coverage-story>
+          <h3>Source inventory gaps</h3>
+          <p>${escapeHtml(coverageStory.gap)}</p>
+        </section>
+        <h3>What the snapshot does cover</h3>
+        <p>${escapeHtml(coverageStory.evidence)}</p>
+        <h3>Dimension evidence inventory</h3>
+${inventoryScopeNote}        <ul class="routes">
+${inventoryItems}
+        </ul>
+        <h3>Nearest ranked comparators</h3>
+        <p>${escapeHtml(coverageStory.comparatorLead)} Nearest ranked comparators: ${comparatorLinks}. ${escapeHtml(coverageStory.comparatorTail)}</p>
+        <h3>Tracked crisis context</h3>
+        <p>${crisisText}</p>
+        <h3>Reading limits</h3>
+        <p>${escapeHtml(coverageStory.limits)}</p>
+        <h3>Questions about ${escapeHtml(country.name)}</h3>
+${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
+      </article>`;
+      // readingGuide and suppressScoreDisclosure make renderCountryPage swap the
+      // shared "How to read this page" block, its snapshot note and the
+      // score-disclosure paragraph for the country-specific reading guide (#7527).
+      return {
+        html,
+        faqs,
+        readingGuide: coverageStory.readingGuide,
+        suppressScoreDisclosure: true,
+      };
+    }
     const officialName = country.identity?.officialName;
     const officialBit = officialName && officialName !== country.name
       ? ` Officially ${officialName}.`
@@ -2347,6 +2707,7 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
       : status === 'un-member'
         ? ` ${country.name} is in the rankable universe as a UN member.`
         : '';
+    const availableEvidence = describeCountryAvailableEvidence(country);
     const html = `      <article data-country-analysis>
         <h2>${escapeHtml(country.name)} resilience analysis</h2>
         <p>${escapeHtml(describeHeadlineIneligibility(country))}${escapeHtml(officialBit)}${escapeHtml(statusBit)} Ranked comparisons use ${escapeHtml(country.regionName)} peers rather than other unpublished pages. The snapshot records ${escapeHtml(country.name)} as ${escapeHtml(country.code)}.</p>
@@ -2355,9 +2716,9 @@ function renderCountryAnalysis({ country, capturedAt, methodologyFormula, ranked
         <h3>Source inventory gaps</h3>
         <p>${escapeHtml(describeCoverageGaps(country))}</p>
         <h3>What the snapshot does cover</h3>
-        <p>${escapeHtml(describeAvailableEvidence(country))}</p>
+        <p>${escapeHtml(availableEvidence)}</p>
         <h3>Dimension evidence inventory</h3>
-        <ul class="routes">
+${inventoryScopeNote}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -2373,47 +2734,76 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
   }
   const pillars = [...country.pillars].sort((left, right) => left.score - right.score);
   const domains = [...country.domains].sort((left, right) => left.score - right.score);
+  const observedPillars = observedPillarsOf(pillars);
+  const observedDomains = observedDomainsOf(domains);
   const [weakestPillar, secondPillar] = pillars;
   const strongestPillar = pillars.at(-1);
   const [weakestDomain] = domains;
-  const strongestDomain = domains.at(-1);
-  const trendSentence = Number.isFinite(Number(country.change30d))
-    ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d)} points.`
+  const trendSentence = hasObservedValue(country.change30d, { coverage: scorePublished })
+    ? `Across the recorded 30-day window, the index is ${country.trend} at ${formatSignedScore(country.change30d, { coverage: scorePublished })} points.`
     : 'The committed snapshot does not contain a comparable 30-day change.';
   const weakestPillarLabel = PILLAR_LABELS[weakestPillar.id] || humanizeId(weakestPillar.id);
   const secondPillarLabel = PILLAR_LABELS[secondPillar.id] || humanizeId(secondPillar.id);
   const strongestPillarLabel = PILLAR_LABELS[strongestPillar.id] || humanizeId(strongestPillar.id);
   const weakestDomainLabel = DOMAIN_LABELS[weakestDomain.id] || humanizeId(weakestDomain.id);
-  const strongestDomainLabel = DOMAIN_LABELS[strongestDomain.id] || humanizeId(strongestDomain.id);
-  const summary = `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore)} out of 100. ${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score)}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score)}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score)}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score)}. ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
-  const dimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
+  // Every pillar and domain observed is the normal case and keeps the published
+  // wording exactly. Otherwise the claim is rebuilt from observed entries only,
+  // so prose never names a withheld pillar or domain as weakest or strongest.
+  const pillarDomainClause = observedPillars.length === pillars.length
+    && observedDomains.length === domains.length
+    ? `${weakestPillarLabel} is the weakest pillar at ${formatScore(weakestPillar.score, { coverage: weakestPillar.coverage })}, with ${secondPillarLabel.toLowerCase()} next at ${formatScore(secondPillar.score, { coverage: secondPillar.coverage })}. ${strongestPillarLabel} is strongest at ${formatScore(strongestPillar.score, { coverage: strongestPillar.coverage })}, while ${weakestDomainLabel} is the lowest of the six underlying domains at ${formatScore(weakestDomain.score, domainScoreEvidence(weakestDomain))}.`
+    : [
+      observedPillars.length > 0
+        ? `Pillars with an observed reading, weakest first: ${observedPillars.map((pillar) => `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} ${formatScore(pillar.score, { coverage: pillar.coverage })}`).join('; ')}. ${pillars.length - observedPillars.length} of ${pillars.length} pillars are withheld for lack of observed evidence.`
+        : `No pillar has an observed reading in this snapshot.`,
+      observedDomains.length > 0
+        ? `${DOMAIN_LABELS[observedDomains[0].id] || humanizeId(observedDomains[0].id)} is the lowest of the ${observedDomains.length} domains with an observed reading, at ${formatScore(observedDomains[0].score, domainScoreEvidence(observedDomains[0]))}.`
+        : `No domain has an observed reading in this snapshot.`,
+    ].join(' ');
+  const topObservedDomain = observedDomains.at(-1);
+  const topDomainSentence = topObservedDomain
+    ? `Top domain: ${DOMAIN_LABELS[topObservedDomain.id] || humanizeId(topObservedDomain.id)}, ${formatScore(topObservedDomain.score, domainScoreEvidence(topObservedDomain))}.`
+    : 'No domain has an observed reading to report as the top domain.';
+  const summary = `${country.name} ranks #${country.rank} of ${rankedCount} countries with an overall resilience score of ${formatScore(country.overallScore, { coverage: scorePublished })} out of 100. ${pillarDomainClause} ${trendSentence} Dimension coverage is ${formatPercent(country.dimensionCoverage)}, and the page labels confidence as ${country.lowConfidence ? 'low' : 'standard'}.`;
+  const allDimensionRows = domains.flatMap((domain) => domain.dimensions.map((dimension) => ({
     ...dimension,
     domainId: domain.id,
-  }))).sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
+  })));
+  const observedDimensionRows = allDimensionRows
+    .filter(hasObservedDimensionScore)
+    .sort((left, right) => left.score - right.score || left.id.localeCompare(right.id));
+  const withheldDimensionRows = allDimensionRows
+    .filter((dimension) => !hasObservedDimensionScore(dimension))
+    .sort((left, right) => left.domainId.localeCompare(right.domainId) || left.id.localeCompare(right.id));
+  const dimensionRows = [...observedDimensionRows, ...withheldDimensionRows];
   const html = `      <article data-country-analysis>
         <h2>${escapeHtml(country.name)} resilience analysis</h2>
         <p>${escapeHtml(summary)}</p>
         <h3>Pillar profile</h3>
         <ul class="routes">
-${pillars.map((pillar) => `          <li><strong>${escapeHtml(PILLAR_LABELS[pillar.id] || humanizeId(pillar.id))}: ${escapeHtml(formatScore(pillar.score))}</strong>; coverage ${escapeHtml(formatPercent(pillar.coverage))}; domains ${pillar.domainIds.map((id) => escapeHtml(DOMAIN_LABELS[id] || humanizeId(id))).join(', ')}.</li>`).join('\n')}
+${pillars.map((pillar) => `          <li><strong>${escapeHtml(PILLAR_LABELS[pillar.id] || humanizeId(pillar.id))}: ${escapeHtml(formatScore(pillar.score, { coverage: pillar.coverage }))}</strong>; coverage ${escapeHtml(formatPercent(pillar.coverage))}; domains ${pillar.domainIds.map((id) => escapeHtml(DOMAIN_LABELS[id] || humanizeId(id))).join(', ')}.</li>`).join('\n')}
         </ul>
         <h3>Six-domain profile</h3>
         <ul class="routes">
 ${domains.map((domain) => {
-    const dimensions = [...domain.dimensions].sort((left, right) => left.score - right.score);
+    const dimensions = domain.dimensions
+      .filter(hasObservedDimensionScore)
+      .sort((left, right) => left.score - right.score);
     const weakest = dimensions[0];
     const strongest = dimensions.at(-1);
-    const dimensionSummary = dimensions.length === 1
-      ? `${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}`
-      : `low ${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score)}; high ${DIMENSION_LABELS[strongest.id] || humanizeId(strongest.id)} ${formatScore(strongest.score)}`;
-    return `          <li><strong>${escapeHtml(DOMAIN_LABELS[domain.id] || humanizeId(domain.id))}: ${escapeHtml(formatScore(domain.score))}</strong>; weight ${escapeHtml(formatPercent(domain.weight))}; ${escapeHtml(dimensionSummary)}.</li>`;
+    const dimensionSummary = dimensions.length === 0
+      ? 'no observed dimension score'
+      : dimensions.length === 1
+        ? `${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score, dimensionScoreEvidence(weakest))}`
+        : `low ${DIMENSION_LABELS[weakest.id] || humanizeId(weakest.id)} ${formatScore(weakest.score, dimensionScoreEvidence(weakest))}; high ${DIMENSION_LABELS[strongest.id] || humanizeId(strongest.id)} ${formatScore(strongest.score, dimensionScoreEvidence(strongest))}`;
+    return `          <li><strong>${escapeHtml(DOMAIN_LABELS[domain.id] || humanizeId(domain.id))}: ${escapeHtml(formatScore(domain.score, domainScoreEvidence(domain)))}</strong>; weight ${escapeHtml(formatPercent(domain.weight))}; ${escapeHtml(dimensionSummary)}.</li>`;
   }).join('\n')}
         </ul>
-        <h3>Dimension evidence, weakest first</h3>
+        <h3>Dimension evidence, observed scores weakest first</h3>
         <div class="table-scroll"><table>
           <thead><tr><th scope="col">Dimension</th><th scope="col">Domain</th><th scope="col">Score</th><th scope="col">Coverage</th><th scope="col">Evidence state</th></tr></thead>
           <tbody>
-${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id))}</td><td>${escapeHtml(DOMAIN_LABELS[dimension.domainId] || humanizeId(dimension.domainId))}</td><td>${escapeHtml(formatScore(dimension.score))}</td><td>${escapeHtml(formatPercent(dimension.coverage))}</td><td>${escapeHtml(humanizeId(dimension.imputationClass || dimension.freshness?.staleness || 'observed'))}</td></tr>`).join('\n')}
+${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_LABELS[dimension.id] || humanizeId(dimension.id))}</td><td>${escapeHtml(DOMAIN_LABELS[dimension.domainId] || humanizeId(dimension.domainId))}</td><td>${escapeHtml(formatScore(dimension.score, dimensionScoreEvidence(dimension)))}</td><td>${escapeHtml(formatPercent(dimension.coverage))}</td><td>${escapeHtml(dimensionEvidenceState(dimension))}</td></tr>`).join('\n')}
           </tbody>
         </table></div>
         <h3>Comparison set</h3>
@@ -2421,7 +2811,7 @@ ${dimensionRows.map((dimension) => `            <tr><td>${escapeHtml(DIMENSION_L
         <h3>Tracked crisis context</h3>
         <p>${crisisText}</p>
         <h3>Reading limits</h3>
-        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. Top domain: ${escapeHtml(strongestDomainLabel)}, ${escapeHtml(formatScore(strongestDomain.score))}. Weak pillars reduce the result; compare with coverage and imputation visible.</p>
+        <p>${escapeHtml(prettyDate(capturedAt))}; method ${escapeHtml(methodologyFormula)}. ${escapeHtml(topDomainSentence)} Weak pillars reduce the result; compare with coverage and imputation visible.</p>
         <h3>Questions about ${escapeHtml(country.name)}</h3>
 ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
@@ -2464,22 +2854,24 @@ function renderCountryPage({
     ? `      <p><strong>Official name:</strong> ${escapeHtml(country.identity.officialName)}. <a href="${escapeHtml(country.identity.sameAs)}">Wikidata identity record</a>.</p>\n`
     : '';
   const scorePublished = country.headlineEligible !== false;
-  const scoreDisclosure = scorePublished
+  const scoreDisclosure = scorePublished || analysis.suppressScoreDisclosure
     ? ''
     : `\n      <p>World Monitor does not publish a resilience score for ${escapeHtml(country.name)} because it does not meet the published ranking eligibility criteria.</p>`;
   const datasetDescription = scorePublished
     ? `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with the overall score, rank, dimension coverage, confidence classification, and scoring methodology used for this page.`
     : `A dated World Monitor Country Resilience Index snapshot for ${country.name}, with dimension coverage, confidence classification, and scoring methodology. No overall score or rank is published because the country does not meet the published ranking eligibility criteria. ${RANKING_ELIGIBILITY_CLAUSE}`;
   const pulse = livePulse?.countries?.[country.code] || null;
-  // Gate on presence, not truthiness: a legitimate score of 0 must still publish.
-  const hasPulse = pulse != null && (pulse.partial === true || pulse.score != null);
+  const hasPulse = pulse != null && (
+    pulse.partial === true
+    || hasObservedValue(pulse.score, { coverage: pulse.partial !== true })
+  );
   const liveState = hasPulse ? (pulse.partial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
     ? (pulse.partial ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current country instability metrics" aria-busy="false">
-          <div class="metric"><span>Instability score</span><strong><span data-live-score>${pulse.partial ? '—' : escapeHtml(pulse.score)}</span><small data-live-band>${pulse.partial ? 'No current score' : escapeHtml(pulse.band)}</small></strong></div>
+          <div class="metric"><span>Instability score</span><strong><span data-live-score>${escapeHtml(formatScore(pulse.score, { coverage: pulse.partial !== true }))}</span><small data-live-band>${pulse.partial ? 'No current score' : escapeHtml(pulse.band)}</small></strong></div>
           <div class="metric"><span>Approx. 24-hour movement</span><strong data-live-trend>${escapeHtml(pulse.partial ? 'Unavailable' : ciiEntry?.change24h === null ? 'Stable or unavailable' : pulse.trend)}</strong></div>
           <div class="metric"><span>Travel advisory input</span><strong data-live-advisory>${escapeHtml(pulse.advisory)}</strong></div>
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions>${escapeHtml(pulse.sanctions)}</strong></div>
@@ -2492,7 +2884,7 @@ function renderCountryPage({
           <div class="metric"><span>OFAC designations in feed</span><strong data-live-sanctions></strong></div>
         </div>`;
   const ciiAnswer = ciiEntry
-    ? `${escapeHtml(country.name)}'s Country Instability Index is <strong>${escapeHtml(ciiEntry.score)}/100 &middot; ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>.`
+    ? `${escapeHtml(country.name)}'s Country Instability Index is <strong>${escapeHtml(formatScore(ciiEntry.score, OBSERVED_EVIDENCE))}/100 &middot; ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>.`
     : null;
   const body = `      <p class="eyebrow">Country &middot; ${escapeHtml(country.code)}</p>
       <h1>${escapeHtml(country.name)} ${ciiEntry ? 'Country Instability Index' : 'country risk and resilience'}</h1>
@@ -2524,15 +2916,16 @@ ${liveGrid}
       <h2>Structural resilience snapshot</h2>
       <section class="grid" aria-label="Country resilience metrics">
         <div class="metric"><span>Rank</span><strong>${escapeHtml(country.rank == null ? 'Not ranked' : `#${country.rank}`)}</strong></div>
-        <div class="metric"><span>Overall score</span><strong>${escapeHtml(scorePublished ? formatScore(country.overallScore) : '—')}</strong></div>
+        <div class="metric"><span>Overall score</span><strong>${escapeHtml(formatScore(country.overallScore, { coverage: scorePublished }))}</strong></div>
         <div class="metric"><span>Dimension coverage</span><strong>${escapeHtml(formatPercent(country.dimensionCoverage))}</strong></div>
         <div class="metric"><span>Confidence</span><strong>${country.lowConfidence ? 'Low' : 'Standard'}</strong></div>
       </section>${scoreDisclosure}
 ${analysis.html}
-      <h2>How to read this page</h2>
+${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
+      <p>${escapeHtml(analysis.readingGuide)} <a href="/docs/methodology/country-resilience-index">Full CRI method</a> · <a href="/docs/corrections">revision log</a>.</p>` : `      <h2>How to read this page</h2>
       <p>The 0-100 index records the ${escapeHtml(prettyDate(capturedAt))} snapshot under ${escapeHtml(methodologyFormula)}. See the <a href="/docs/methodology/country-resilience-index">Country Resilience Index methodology</a> for dimensions, sources and confidence rules. Published revisions that affect ${escapeHtml(country.name)} are in the <a href="/docs/corrections">corrections log</a>.</p>
       <p class="snapshot-note">${escapeHtml(snapshotNote)}</p>
-      <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals.</p>
+      <p>Use this dated reference with the live map for active alerts, conflict, market and energy signals.</p>`}
       <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD))}">${COUNTRY_DATASET_DOWNLOAD}</a>. Source: ${escapeHtml(snapshotPath)}. Captured ${escapeHtml(capturedAt)}. Methodology: <a href="/docs/methodology/country-resilience-index">Country Resilience Index</a>.</p>`;
   const coreTitle = ciiEntry
     ? `${country.name} Instability Index & Country Risk`
@@ -2551,14 +2944,21 @@ ${analysis.html}
     ...(scorePublished ? [
       { '@type': 'PropertyValue', name: 'Overall resilience score', value: country.overallScore, minValue: 0, maxValue: 100 },
       { '@type': 'PropertyValue', name: 'Rank', value: country.rank },
-      { '@type': 'PropertyValue', name: '30-day score change', value: country.change30d, unitText: 'index points' },
-      ...country.pillars.map((pillar) => ({
-        '@type': 'PropertyValue',
-        name: `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} score`,
-        value: pillar.score,
-        minValue: 0,
-        maxValue: 100,
-      })),
+      // Structured data is the surface answer engines cite, so it obeys the same
+      // observed-value rule as the visible page: a withheld value is OMITTED here,
+      // never emitted raw next to an em dash in the HTML.
+      ...(hasObservedValue(country.change30d, { coverage: scorePublished })
+        ? [{ '@type': 'PropertyValue', name: '30-day score change', value: country.change30d, unitText: 'index points' }]
+        : []),
+      ...country.pillars
+        .filter((pillar) => hasObservedValue(pillar.score, { coverage: pillar.coverage }))
+        .map((pillar) => ({
+          '@type': 'PropertyValue',
+          name: `${PILLAR_LABELS[pillar.id] || humanizeId(pillar.id)} score`,
+          value: pillar.score,
+          minValue: 0,
+          maxValue: 100,
+        })),
     ] : []),
   ];
   const resilienceDataset = {
@@ -2632,15 +3032,7 @@ ${analysis.html}
         mainEntity: ciiEntry ? { '@id': ciiDatasetId } : resilienceDataset,
       },
       ...(ciiEntry ? [ciiDataset, resilienceDataset] : []),
-      {
-        '@context': 'https://schema.org',
-        '@type': 'FAQPage',
-        mainEntity: analysis.faqs.map((faq) => ({
-          '@type': 'Question',
-          name: faq.question,
-          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
-        })),
-      },
+      faqPageLd(analysis.faqs),
       dataCatalogLd(baseUrl),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
@@ -2653,23 +3045,186 @@ ${analysis.html}
   });
 }
 
-function renderChokepointsIndex({ chokepoints, baseUrl, lastmod }) {
+const CHOKEPOINT_HUB_STATUS_LABELS = new Set(['Green', 'Yellow', 'Red']);
+const CHOKEPOINT_HUB_CONGESTION_LABELS = new Set([
+  'Low',
+  'Normal',
+  'Elevated',
+  'High',
+  'Not reported',
+]);
+
+function publishedPulseLabel(value, allowed) {
+  if (typeof value !== 'string') return '';
+  const label = value.trim();
+  return allowed.has(label) ? label : '';
+}
+
+function chokepointHubStatusForScore(score) {
+  if (score < 20) return 'Green';
+  if (score < 50) return 'Yellow';
+  return 'Red';
+}
+
+export function buildChokepointHubRows(chokepoints, livePulse) {
+  const registryIds = chokepoints.map((chokepoint) => chokepoint.id);
+  const registryIdSet = new Set(registryIds);
+  const pulseIds = Object.keys(livePulse?.chokepoints || {});
+  const pulseIdSet = new Set(pulseIds);
+  const missingIds = registryIds.filter((id) => !pulseIdSet.has(id));
+  const unexpectedIds = pulseIds.filter((id) => !registryIdSet.has(id));
+  if (missingIds.length > 0 || unexpectedIds.length > 0) {
+    throw new Error(
+      `Chokepoint hub pulse set is invalid: missing ${missingIds.join(', ') || 'none'}; `
+      + `unexpected ${unexpectedIds.join(', ') || 'none'}`,
+    );
+  }
+  return chokepoints.map((chokepoint) => {
+    const pulse = livePulse?.chokepoints?.[chokepoint.id];
+    const rawScore = pulse?.disruptionScore;
+    let score = Number.NaN;
+    if (typeof rawScore === 'number') {
+      score = rawScore;
+    } else if (typeof rawScore === 'string' && /^\d+(?:\.\d+)?$/.test(rawScore)) {
+      score = Number(rawScore);
+    }
+    const status = publishedPulseLabel(pulse?.status, CHOKEPOINT_HUB_STATUS_LABELS);
+    const aisSnapshotAvailable = pulse?.aisSnapshotAvailable === true;
+    const congestion = aisSnapshotAvailable
+      ? publishedPulseLabel(pulse?.congestion, CHOKEPOINT_HUB_CONGESTION_LABELS)
+      : 'Not reported';
+    const asOf = String(pulse?.asOf || '').trim();
+    const asOfMs = Date.parse(asOf);
+    const capturedAtMs = livePulse?.capturedAtMs;
+    if (
+      !pulse
+      || !Number.isFinite(score)
+      || score < 0
+      || score > 100
+      || !status
+      || !congestion
+      || status !== chokepointHubStatusForScore(score)
+      || !isCanonicalIsoInstant(asOf)
+      || !Number.isFinite(capturedAtMs)
+      || asOfMs < capturedAtMs - MAX_LIVE_SNAPSHOT_AGE_MS
+      || asOfMs > capturedAtMs + MAX_FUTURE_SKEW_MS
+    ) {
+      throw new Error(`Chokepoint hub pulse is invalid for ${chokepoint.id}`);
+    }
+    return {
+      chokepoint,
+      region: CHOKEPOINT_CONTENT[chokepoint.id]?.region || 'Strategic maritime waterway',
+      score,
+      status,
+      congestion,
+      aisSnapshotAvailable,
+      asOf,
+    };
+  });
+}
+
+function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snapshotPath }) {
   const path = '/chokepoints/';
-  const description = `The ${chokepoints.length} maritime chokepoints World Monitor tracks — narrow straits and canals where a disruption removes optionality from global trade, energy and food flows.`;
+  const description = `Track current disruption scores, status, AIS congestion, and update times for the ${chokepoints.length} maritime chokepoints in the World Monitor public status snapshot.`;
+  const chokepointHubRows = buildChokepointHubRows(chokepoints, livePulse);
+  const updatedAt = chokepointHubRows
+    .map((row) => row.asOf)
+    .sort((left, right) => Date.parse(left) - Date.parse(right))
+    .at(-1);
+  const highestScore = Math.max(...chokepointHubRows.map((row) => row.score));
+  const mostDisruptedNames = chokepointHubRows
+    .filter((row) => row.score === highestScore)
+    .map((row) => row.chokepoint.displayName);
+  // State the coverage this snapshot actually has. The answer used to assert
+  // four scoring inputs flatly while the detail pages withheld three of them,
+  // so the hub contradicted the pages it indexes (#7530).
+  const congestionPublished = chokepointHubRows.filter((row) => row.aisSnapshotAvailable).length;
+  const congestionCoverageClause = congestionPublished === chokepointHubRows.length
+    ? `in this snapshot all ${chokepointHubRows.length} waterways publish an AIS congestion reading`
+    : congestionPublished === 0
+      ? `in this snapshot the AIS snapshot is unavailable, so none of the ${chokepointHubRows.length} waterways publish an AIS congestion reading`
+      : `in this snapshot ${congestionPublished} of ${chokepointHubRows.length} waterways publish an AIS congestion reading`;
+  // The committed EIA series covers 7 of the 13 tracked waterways. Publish the
+  // EIA row name alongside ours wherever the registry maps them differently
+  // (Dover Strait draws on the Danish Straits row), so the substitution is
+  // visible rather than implied.
+  const oilTransitRows = chokepointHubRows
+    .map((row) => ({ row, eia: EIA_OIL_TRANSIT_BASELINES.byRegistryId[row.chokepoint.id] }))
+    .filter(({ eia }) => eia)
+    .sort((left, right) => right.eia.mbd - left.eia.mbd);
+  const hubFaqs = [
+    {
+      question: 'Which maritime chokepoints are most disrupted?',
+      answer: `The published ${formatStaticDateTime(updatedAt)} snapshot gives the highest disruption score to ${formatProseList(mostDisruptedNames)}, each at ${formatScore(highestScore, OBSERVED_EVIDENCE)}/100. The table covers all ${chokepointHubRows.length} tracked waterways and shows each source timestamp. A higher score means more current pressure. It does not confirm that a waterway is closed.`,
+    },
+    {
+      question: 'How does World Monitor score chokepoint status?',
+      answer: `World Monitor scores each waterway 0-100 from four independent sources: NGA navigational warnings, the AIS snapshot, relay transit counts, and PortWatch week-over-week movement. Each source controls only its own values, so a source that is unavailable is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.`,
+    },
+    {
+      question: 'Why do some chokepoint pages show fewer metrics than others?',
+      answer: 'A metric appears only when the source behind it reported for that snapshot. Navigational warnings, AIS disruptions and AIS congestion each depend on their own feed. The daily transit count and PortWatch week-over-week movement each depend on their own source availability, so either can appear without the other. Unavailable values can appear as an em dash or be hidden, depending on the metric, so a sparse page means missing evidence, not a calm waterway. Published revisions to these rules are in the corrections log.',
+    },
+  ];
+  const datasetId = `${absoluteUrl(baseUrl, path)}#status-dataset`;
+  const itemListId = `${absoluteUrl(baseUrl, path)}#status-list`;
+  const itemListElement = chokepointHubRows.map((row, index) => {
+    const url = absoluteUrl(baseUrl, `/chokepoints/${row.chokepoint.slug}/`);
+    return {
+      '@type': 'ListItem',
+      position: index + 1,
+      name: row.chokepoint.displayName,
+      url,
+      item: {
+        '@type': 'Place',
+        name: row.chokepoint.displayName,
+        url,
+        additionalProperty: [
+          { '@type': 'PropertyValue', name: 'Disruption score', value: row.score, minValue: 0, maxValue: 100 },
+          { '@type': 'PropertyValue', name: 'Status', value: row.status },
+          ...(row.aisSnapshotAvailable
+            ? [{ '@type': 'PropertyValue', name: 'AIS congestion', value: row.congestion }]
+            : []),
+        ],
+      },
+    };
+  });
   const body = `      <p class="eyebrow">Maritime corpus</p>
       <h1>Chokepoints and waterways</h1>
       <p class="lede">${escapeHtml(description)}</p>
-      <div class="grid">
-${chokepoints.map((cp) => {
-    const subtitle = CHOKEPOINT_CONTENT[cp.id]?.region || 'Strategic maritime waterway';
-    return `        <a class="card" href="/chokepoints/${cp.slug}/"><strong>${escapeHtml(cp.displayName)}</strong><br><span>${escapeHtml(subtitle)}</span></a>`;
+${hubFaqs.map((faq) => `      <h2 data-chokepoint-hub-faq>${escapeHtml(faq.question)}</h2>
+      <p>${escapeHtml(faq.answer)}</p>`).join('\n')}
+      <div class="table-scroll"><table data-chokepoint-status>
+        <caption>Published chokepoint status snapshot updated ${escapeHtml(formatStaticDateTime(updatedAt))}</caption>
+        <thead><tr><th scope="col">Chokepoint</th><th scope="col">Region</th><th scope="col">Disruption score</th><th scope="col">Status</th><th scope="col">AIS congestion</th><th scope="col">Updated</th></tr></thead>
+        <tbody>
+${chokepointHubRows.map((row) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-hub-region>${escapeHtml(row.region)}</td><td><data data-hub-score value="${escapeHtml(row.score)}">${escapeHtml(formatScore(row.score, OBSERVED_EVIDENCE))}</data></td><td data-hub-status>${escapeHtml(row.status)}</td><td data-hub-congestion>${escapeHtml(row.congestion)}</td><td><time data-hub-updated datetime="${escapeHtml(row.asOf)}">${escapeHtml(formatStaticDateTime(row.asOf))}</time></td></tr>`).join('\n')}
+        </tbody>
+      </table></div>
+      <h2>How much oil moves through each waterway</h2>
+      <p>Disruption scores describe current pressure, not importance. The committed ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)} series gives a volume baseline for ${oilTransitRows.length} of the ${chokepointHubRows.length} tracked waterways, which is what separates a high score on a marginal strait from a high score on a corridor that moves a fifth of seaborne oil. Where our name and the EIA row differ, both are shown — the Dover Strait page draws on the EIA Danish Straits row.</p>
+      <div class="table-scroll"><table data-chokepoint-oil-transit>
+        <caption>Crude oil and petroleum liquids transiting each waterway, ${escapeHtml(EIA_OIL_TRANSIT_BASELINES.source)}, ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))}</caption>
+        <thead><tr><th scope="col">Chokepoint</th><th scope="col">EIA series row</th><th scope="col">Million barrels per day</th></tr></thead>
+        <tbody>
+${oilTransitRows.map(({ row, eia }) => `          <tr><td><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></td><td data-oil-eia-name>${escapeHtml(eia.eiaName)}</td><td><data data-oil-mbd value="${escapeHtml(String(eia.mbd))}">${escapeHtml(String(eia.mbd))}</data></td></tr>`).join('\n')}
+        </tbody>
+      </table></div>
+      <p class="source">Baseline source: ${escapeHtml(EIA_OIL_TRANSIT_BASELINES_PATH)}. The remaining ${chokepointHubRows.length - oilTransitRows.length} tracked waterways have no row in that series; their pages say so rather than estimating one.</p>
+      <h2>Why each waterway is tracked</h2>
+      <dl data-chokepoint-context>
+${chokepointHubRows.map((row) => {
+    const blurb = CHOKEPOINT_CONTENT[row.chokepoint.id]?.blurb || '';
+    const opening = blurb.match(/^[\s\S]*?\.(?=\s|$)/)?.[0]?.trim() || '';
+    return `        <dt><a href="/chokepoints/${row.chokepoint.slug}/">${escapeHtml(row.chokepoint.displayName)}</a></dt>
+        <dd>${escapeHtml(opening || `${row.chokepoint.displayName} is a tracked maritime chokepoint in the ${row.region} corridor.`)}</dd>`;
   }).join('\n')}
-      </div>
-      <h2>Why chokepoints matter</h2>
-      <p>A <a href="/blog/glossary/maritime-chokepoint/">maritime chokepoint</a> is a narrow passage with no cheap alternative: when one closes or degrades, ships reroute onto longer, costlier paths and freight, insurance, and energy prices move within days. A small number of straits and canals carry a disproportionate share of the world's seaborne oil, LNG, grain, and container traffic, which is why traders, supply-chain teams, and analysts watch them continuously.</p>
-      <h2>How the status badge works</h2>
-      <p>Each chokepoint page combines a static reference — what the waterway connects, which modelled trade routes depend on it — with a live disruption score computed from active warnings, AIS signal disruptions, congestion, and transit counts. The score is a monitoring signal, not an operational closure declaration; the <a href="/docs/methodology/chokepoints">chokepoint methodology</a> documents the inputs and bands. Daily transit counts and baselines come from <a href="https://portwatch.imf.org/">IMF PortWatch</a> data.</p>
-      <p class="source">Source: ${CHOKEPOINT_REGISTRY_PATH}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>.</p>`;
+      </dl>
+      <h2>How this list is scoped</h2>
+      <p>The ${chokepointHubRows.length} waterways come from a committed registry, not from whatever is in the news. Each has a detail page carrying the same four-source status block, the modelled corridors that route through it, and its alternatives when it is unavailable. A waterway enters the registry because traffic there has no cheap substitute — the test is substitutability, not incident count — so the list changes rarely and changes are recorded in the corrections log.</p>
+      <h2>What these pages are not</h2>
+      <p>They are not a navigation product and not an open/closed declaration. A score is a triage signal built from the sources named above; it does not authorise or discourage a transit, and it carries no view on the legality or safety of any particular voyage. Transit counts are a relay observation of vessels seen, not a port authority figure, and the oil volumes above are a ${escapeHtml(String(EIA_OIL_TRANSIT_BASELINES.referenceYear))} annual-average baseline rather than current throughput.</p>
+      <p class="source">Sources: ${escapeHtml(snapshotPath)} and ${CHOKEPOINT_REGISTRY_PATH}. Published ${escapeHtml(prettyDate(livePulse.capturedAt))}. Methodology: <a href="/docs/methodology/chokepoints">chokepoint disruption scoring</a>. Published revisions: <a href="/docs/corrections">corrections log</a>.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -2684,6 +3239,42 @@ ${chokepoints.map((cp) => {
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
+        mainEntity: { '@id': datasetId },
+      },
+      faqPageLd(hubFaqs),
+      {
+        '@context': SCHEMA_ORG_CONTEXT_URL,
+        '@type': 'Dataset',
+        '@id': datasetId,
+        name: `World Monitor maritime chokepoint status snapshot for ${livePulse.capturedAt}`,
+        description,
+        url: absoluteUrl(baseUrl, path),
+        identifier: `world-monitor-chokepoint-status-${livePulse.capturedAt}`,
+        creator: { ...WORLD_MONITOR_ORG },
+        license: DATASET_LICENSE,
+        datePublished: livePulse.capturedAt,
+        dateModified: updatedAt,
+        temporalCoverage: datasetTemporalCoverage(livePulse.capturedAt),
+        spatialCoverage: 'Worldwide',
+        isAccessibleForFree: true,
+        includedInDataCatalog: includedInDataCatalog(baseUrl),
+        measurementTechnique: 'World Monitor chokepoint disruption scoring methodology',
+        variableMeasured: [
+          { '@type': 'PropertyValue', name: 'Disruption score', minValue: 0, maxValue: 100, unitText: 'index points' },
+          { '@type': 'PropertyValue', name: 'Status' },
+          { '@type': 'PropertyValue', name: 'AIS congestion' },
+        ],
+        distribution: dataDownload(absoluteUrl(baseUrl, path), 'text/html'),
+        mainEntity: { '@id': itemListId },
+      },
+      {
+        '@context': SCHEMA_ORG_CONTEXT_URL,
+        '@type': 'ItemList',
+        '@id': itemListId,
+        name: 'Maritime chokepoint status snapshot',
+        numberOfItems: chokepointHubRows.length,
+        itemListOrder: 'https://schema.org/ItemListUnordered',
+        itemListElement,
       },
       dataCatalogLd(baseUrl),
     ],
@@ -2774,11 +3365,33 @@ ${analysisParagraphs.map((paragraph) => `        <p>${escapeHtml(paragraph)}</p>
         ${chokepointRouteTable({ chokepoint, routes, capturedAt, volumeObservedAt })}
         <h3>How to read this page</h3>
         <p>The crawlable Dataset is the ${datedCapture} registry-and-route snapshot under the <a href="/docs/methodology/chokepoints">chokepoint disruption methodology</a>. Live pulse tiles are a separately frozen observation and are not copied into this Dataset. Modelled corridor volumes are dated ${volumeObservedAt ? timeMarkup(volumeObservedAt) : 'with the committed trade-route table'}.</p>
-        <p class="snapshot-note">Template revision ${escapeHtml(CHOKEPOINT_PAGE_CONTENT_VERSION)}. Reference observation ${capturedAt ? timeMarkup(capturedAt) : 'unspecified'}. This note is a methodology-revision stamp, not a live AIS clock.</p>
+        <p class="snapshot-note">Template revision ${escapeHtml(CHOKEPOINT_PAGE_CONTENT_VERSION)}. Reference observation ${capturedAt ? timeMarkup(capturedAt) : 'unspecified'}. This note is a methodology-revision stamp, not a live AIS clock. Published revisions that affect this page are in the <a href="/docs/corrections">corrections log</a>.</p>
         <h3>Questions about ${escapeHtml(chokepoint.displayName)}</h3>
 ${faqs.map((faq) => `        <details data-chokepoint-faq><summary>${escapeHtml(faq.question)}</summary><p>${escapeHtml(faq.answer)}</p></details>`).join('\n')}
       </article>`;
   return { html, faqs };
+}
+
+// The upstream status note is optional. A snapshot without one must publish no
+// paragraph at all — until #7530 an absent note froze as "No additional status
+// note was supplied." and rendered as real body prose in <main> on 7 of the 13
+// chokepoint pages, where it was frequently the only sentence the live section
+// contributed.
+// Snapshots frozen before that change still carry the sentence verbatim, so
+// treat it as the absence it always described rather than waiting for a
+// refresh to age it out.
+export const LEGACY_ABSENT_STATUS_NOTE = 'No additional status note was supplied.';
+
+function chokepointDescriptionParagraph(description) {
+  const raw = typeof description === 'string' ? description.trim() : '';
+  const text = raw === LEGACY_ABSENT_STATUS_NOTE ? '' : raw;
+  return text
+    ? `        <p data-chokepoint-description>${escapeHtml(text)}</p>`
+    : '        <p data-chokepoint-description hidden></p>';
+}
+
+function optionalChokepointMetric(label, attribute, value, available) {
+  return `          <div class="metric"${available ? '' : ' hidden'}><span>${escapeHtml(label)}</span><strong ${attribute}>${available ? escapeHtml(value) : ''}</strong></div>`;
 }
 
 function renderChokepointPage({
@@ -2830,12 +3443,23 @@ function renderChokepointPage({
   relatedItems.push('<a href="/blog/glossary/maritime-chokepoint/">What is a maritime chokepoint?</a>');
 
   const pulse = livePulse?.chokepoints?.[chokepoint.id] || null;
-  // Presence, not truthiness -- a fully calm chokepoint scores 0, which is a
-  // real published value and must not fall back to the loading skeleton.
-  const hasPulse = pulse != null && pulse.disruptionScore != null;
-  const transitsLabel = publishedTransitCountLabel(pulse?.todayTransits);
+  const hasPulse = hasObservedValue(pulse?.disruptionScore, { coverage: pulse != null });
+  const coverageMetrics = chokepointCoverageMetrics({
+    todayTransits: pulse?.todayTransits,
+    todayCountsAvailable: pulse?.todayCountsAvailable,
+    navigationalWarnings: pulse?.navigationalWarnings,
+    navigationalWarningsAvailable: pulse?.navigationalWarningsAvailable === true,
+    aisDisruptions: pulse?.aisDisruptions,
+    aisSnapshotAvailable: pulse?.aisSnapshotAvailable === true,
+    congestionLevel: pulse?.congestion,
+    weekMovement: pulse?.weekMovement ?? null,
+  });
+  const transitsLabel = coverageMetrics.todayTransits;
   const transitsWithheld = hasPulse && transitsLabel == null;
-  const pulsePartial = pulse?.partial === true || transitsWithheld;
+  const pulsePartial = pulse?.partial === true
+    || transitsWithheld
+    || coverageMetrics.navigationalWarnings === null
+    || coverageMetrics.aisDisruptions === null;
   const liveState = hasPulse ? (pulsePartial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
     ? (pulsePartial ? 'Published partial pulse' : 'Published pulse')
@@ -2845,19 +3469,21 @@ function renderChokepointPage({
     : '        <p data-chokepoint-transits-note hidden></p>';
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
-          <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(pulse.disruptionScore)}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
-          <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion>${escapeHtml(pulse.congestion)}</strong></div>
-          <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings>${escapeHtml(pulse.warnings)}</strong></div>
+          <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(formatScore(pulse.disruptionScore, { coverage: hasPulse }))}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
+${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', coverageMetrics.navigationalWarnings, coverageMetrics.navigationalWarnings !== null)}
+${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', coverageMetrics.aisDisruptions, coverageMetrics.aisDisruptions !== null)}
+${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', coverageMetrics.congestion, coverageMetrics.congestion !== null)}
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits>${escapeHtml(transitsLabel ?? '—')}</strong></div>
-          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(pulse.weekMovement ?? 'Unavailable')}</strong></div>
+          <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement>${escapeHtml(coverageMetrics.weekMovement ?? (transitsWithheld ? '—' : 'Unavailable'))}</strong></div>
         </div>
-        <p data-chokepoint-description>${escapeHtml(pulse.description)}</p>
+${chokepointDescriptionParagraph(pulse.description)}
 ${transitsNote}`
     : `        <p class="tool-note" data-live-fallback>Current disruption metrics load after page enhancement. The static waterway and route context below remains the dated crawlable reference.</p>
         <div class="grid" data-live-grid hidden aria-label="Current chokepoint status" aria-busy="true">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score></span><small data-chokepoint-band></small></strong></div>
-          <div class="metric"><span>Congestion</span><strong data-chokepoint-congestion></strong></div>
-          <div class="metric"><span>Warnings and AIS</span><strong data-chokepoint-warnings></strong></div>
+${optionalChokepointMetric('Navigational warnings', 'data-chokepoint-warnings', '', false)}
+${optionalChokepointMetric('AIS disruptions', 'data-chokepoint-ais-disruptions', '', false)}
+${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', false)}
           <div class="metric"><span>Today's transits</span><strong data-chokepoint-transits></strong></div>
           <div class="metric"><span>Week-over-week movement</span><strong data-chokepoint-movement></strong></div>
         </div>
@@ -2979,15 +3605,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
         },
         mainEntity: dataset,
       },
-      {
-        '@context': 'https://schema.org',
-        '@type': 'FAQPage',
-        mainEntity: analysis.faqs.map((faq) => ({
-          '@type': 'Question',
-          name: faq.question,
-          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
-        })),
-      },
+      faqPageLd(analysis.faqs),
       dataCatalogLd(baseUrl),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
@@ -3050,7 +3668,14 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
   });
 }
 
-function renderCrisisPage({ crisis, baseUrl, lastmod, livePulse = null, livePulseSnapshotPath = null }) {
+function renderCrisisPage({
+  crisis,
+  baseUrl,
+  lastmod,
+  livePulse = null,
+  livePulseSnapshotPath = null,
+  publishedTotals,
+}) {
   const path = `/crises/${crisis.slug}/`;
   const dashboardUrl = withUtmSource(absoluteUrl(baseUrl, crisis.dashboardPath), 'seo-crisis');
   const pulse = livePulse?.crises?.[crisis.slug] || null;
@@ -3059,24 +3684,32 @@ function renderCrisisPage({ crisis, baseUrl, lastmod, livePulse = null, livePuls
   // HAPI months; publishing that as a period would put it in the page prose and
   // the Dataset description while temporalCoverage silently drops to undefined.
   const hasPulse = pulse != null && OBSERVATION_PERIOD_RE.test(String(pulse.referencePeriod ?? ''));
+  const publishedPeriod = hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined;
+  const publishedDate = hasPulse ? pulseDateOnly(livePulse.capturedAt, undefined) : undefined;
   const liveState = hasPulse ? pulse.state : 'loading';
   const liveStatus = hasPulse
     ? (pulse.state === 'partial' ? 'Published partial pulse' : 'Published pulse')
     : 'Waiting for live enhancement';
   const rowByCode = new Map((pulse?.rows || []).map((row) => [row.code, row]));
-  const formatCount = (value) => new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 }).format(value);
+  const countFormatter = new Intl.NumberFormat('en-US', { maximumFractionDigits: 0 });
+  const formatCount = (value, evidence, fallback = '—') => formatObservedNumber(
+    value,
+    evidence,
+    (numeric) => countFormatter.format(numeric),
+    fallback,
+  );
   const countryRows = crisis.coverage.map((country) => {
     const row = rowByCode.get(country.code);
     const value = row
-      ? `${formatCount(row.events)} events · ${formatCount(row.fatalities)} fatalities · ${row.referencePeriod}`
+      ? `${formatCount(row.events, OBSERVED_EVIDENCE)} events · ${formatCount(row.fatalities, OBSERVED_EVIDENCE)} fatalities · ${row.referencePeriod}`
       : (hasPulse ? 'Unavailable' : 'Waiting for published pulse');
     return `          <li data-crisis-country data-country-code="${escapeHtml(country.code)}" data-country-name="${escapeHtml(country.name)}"><strong>${escapeHtml(country.name)}</strong><br><span data-crisis-country-value>${escapeHtml(value)}</span></li>`;
   }).join('\n');
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current crisis metrics" aria-busy="false">
-          <div class="metric"><span>Recorded events</span><strong data-crisis-events>${escapeHtml(pulse.eventsTotal ?? 'See countries')}</strong></div>
-          <div class="metric"><span>Recorded fatalities</span><strong data-crisis-fatalities>${escapeHtml(pulse.fatalities ?? 'See countries')}</strong></div>
-          <div class="metric"><span>Political violence events</span><strong data-crisis-political>${escapeHtml(pulse.politicalViolenceEvents ?? 'See countries')}</strong></div>
+          <div class="metric"><span>Recorded events</span><strong data-crisis-events>${escapeHtml(formatCount(pulse.eventsTotal, { coverage: hasPulse }, 'See countries'))}</strong></div>
+          <div class="metric"><span>Recorded fatalities</span><strong data-crisis-fatalities>${escapeHtml(formatCount(pulse.fatalities, { coverage: hasPulse }, 'See countries'))}</strong></div>
+          <div class="metric"><span>Political violence events</span><strong data-crisis-political>${escapeHtml(formatCount(pulse.politicalViolenceEvents, { coverage: hasPulse }, 'See countries'))}</strong></div>
           <div class="metric"><span>Reference period</span><strong data-crisis-period>${escapeHtml(pulse.referencePeriod)}</strong></div>
         </div>`
     : `        <p class="tool-note" data-live-fallback>Current monthly conflict metrics load after page enhancement. The tracker scope below remains the dated crawlable reference.</p>
@@ -3141,19 +3774,44 @@ ${snapshotSection}
   const distribution = [
     dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))),
   ];
-  const variableMeasured = hasPulse
-    ? [
-        'Tracker scope',
-        'Covered countries',
-        'Recorded conflict events',
-        'Recorded fatalities',
-        'Political violence events',
-        'Humanitarian reference period',
-      ]
-    : [
-        'Tracker scope',
-        'Covered countries',
-      ];
+  const variableMeasured = [
+    {
+      '@type': 'PropertyValue',
+      name: 'Tracker scope',
+      value: crisis.shortTitle || crisis.title,
+    },
+    {
+      '@type': 'PropertyValue',
+      name: 'Covered countries',
+      value: crisis.coverage.length,
+      unitText: 'countries',
+    },
+    ...(hasPulse ? [
+      {
+        '@type': 'PropertyValue',
+        name: 'Recorded conflict events',
+        value: publishedTotals.eventsTotal ?? 'Unavailable',
+        unitText: 'events',
+      },
+      {
+        '@type': 'PropertyValue',
+        name: 'Recorded fatalities',
+        value: publishedTotals.fatalities ?? 'Unavailable',
+        unitText: 'fatalities',
+      },
+      {
+        '@type': 'PropertyValue',
+        name: 'Political violence events',
+        value: publishedTotals.politicalViolenceEvents ?? 'Unavailable',
+        unitText: 'events',
+      },
+      {
+        '@type': 'PropertyValue',
+        name: 'Humanitarian reference period',
+        value: pulse.referencePeriod,
+      },
+    ] : []),
+  ];
   const datasetDescription = hasPulse
     ? `A bounded World Monitor crisis tracker for ${crisis.title}, with the maintained ${pulse.referencePeriod} HAPI/HDX country summaries across ${crisis.coverage.map((country) => country.name).join(', ')}.`
     : `A bounded World Monitor crisis tracker reference for ${crisis.title}, defining the maintained geographic scope across ${crisis.coverage.map((country) => country.name).join(', ')}.`;
@@ -3174,18 +3832,23 @@ ${snapshotSection}
         about: coveragePlaces,
         mainEntity: {
           '@type': 'Dataset',
+          '@id': `${absoluteUrl(baseUrl, path)}#crisis-dataset`,
           name: `World Monitor crisis tracker reference: ${crisis.shortTitle || crisis.title}`,
           description: datasetDescription,
+          url: absoluteUrl(baseUrl, path),
+          identifier: `crisis-tracker-${crisis.slug}`,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
+          datePublished: publishedDate,
           dateModified: laterDate(
             hasPulse ? pulseDateOnly(pulse.asOf, lastmod) : lastmod,
             DATASET_SCHEMA_CONTENT_VERSION.crisis,
           ),
-          temporalCoverage: hasPulse ? datasetTemporalCoverage(pulse.referencePeriod) : undefined,
+          temporalCoverage: publishedPeriod,
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured,
+          measurementTechnique: 'Monthly country-level HAPI/HDX humanitarian conflict summaries; combined totals are published only when covered countries share a reference period.',
           spatialCoverage: coverageSpatial.length === 1 ? coverageSpatial[0] : coverageSpatial,
           distribution,
         },
@@ -3247,13 +3910,15 @@ function renderSignalConvergencePage({ signalConvergence, baseUrl, lastmod, snap
   const metricName = signalConvergence.metricName || 'Geographic Convergence Score';
   const description = `World Monitor's ${metricName} (0-100) names when protests, military flights, naval vessels, and earthquakes co-occur in the same 1° cell.`;
   const downloadHref = datasetDownloadHref(path, CONVERGENCE_DATASET_DOWNLOAD);
+  const datasetUrl = absoluteUrl(baseUrl, path);
+  const datasetId = `${datasetUrl}#signal-convergence-dataset`;
   const examples = (signalConvergence.referenceExamples || []).map((example) => (
     `        <article class="card">
           <p class="eyebrow">${escapeHtml(example.kind === 'methodology-example' ? 'Methodology example' : 'Reference')}</p>
           <h3>${escapeHtml(example.label)}</h3>
           <p>Cell ${escapeHtml(example.cell)}. Domains: ${escapeHtml(example.types.join(', '))}. Events: ${escapeHtml(String(example.totalEvents))}.</p>
           <div class="grid">
-            <div class="metric"><span>${escapeHtml(metricName)}</span><strong>${escapeHtml(String(example.score))}</strong></div>
+            <div class="metric"><span>${escapeHtml(metricName)}</span><strong>${escapeHtml(formatScore(example.score, OBSERVED_EVIDENCE))}</strong></div>
             <div class="metric"><span>Priority</span><strong>${escapeHtml(example.priority)}</strong></div>
           </div>
           <p class="source">Cited from ${escapeHtml(example.source)}. Score = min(100, ${escapeHtml(String(example.typeCount))}×25 + min(25, ${escapeHtml(String(example.totalEvents))}×2)).</p>
@@ -3304,24 +3969,30 @@ ${examples}
         inLanguage: 'en-US',
         mainEntity: {
           '@type': 'Dataset',
+          '@id': datasetId,
           name: `World Monitor ${metricName} reference`,
           description,
+          url: datasetUrl,
+          identifier: `signal-convergence-${signalConvergence.capturedAt || 'reference'}`,
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
-          // This reference is a formula plus documentation-derived examples --
-          // it has no observation window, so it carries no temporalCoverage and
-          // is dated from its content version, not the freeze wall clock. The
-          // family schema stamp rides alongside so a Dataset-shape change signals
+          // This reference is a formula plus documentation-derived examples. It
+          // has no observation window, so it carries no temporalCoverage; when
+          // available, datePublished identifies the source snapshot. The family
+          // schema stamp rides alongside so a Dataset-shape change signals
           // recrawl without dragging the page lastmod with it (#7382).
+          datePublished: datasetTemporalCoverage(signalConvergence.capturedAt),
           dateModified: laterDate(lastmod, DATASET_SCHEMA_CONTENT_VERSION.tools),
+          spatialCoverage: 'Worldwide',
           isAccessibleForFree: true,
           includedInDataCatalog: includedInDataCatalog(baseUrl),
           variableMeasured: [
-            { '@type': 'PropertyValue', name: metricName, minValue: 0, maxValue: 100 },
-            'Default minimum domains',
-            'Alert priority thresholds',
+            { '@type': 'PropertyValue', name: metricName, minValue: 0, maxValue: 100, unitText: 'score points' },
+            { '@type': 'PropertyValue', name: 'Default minimum domains', value: signalConvergence.defaultMinDomains ?? 3, minValue: 1 },
+            { '@type': 'PropertyValue', name: 'Alert priority thresholds', value: signalConvergence.thresholds?.length ?? 0, unitText: 'thresholds' },
           ],
           measurementTechnique: 'type_score = event_types × 25; count_boost = min(25, total_events × 2); convergence_score = min(100, type_score + count_boost)',
+          citation: absoluteUrl(baseUrl, '/docs/geographic-convergence'),
           distribution: [dataDownload(absoluteUrl(baseUrl, downloadHref))],
         },
       },
@@ -3610,6 +4281,7 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         count: crisisRoutes.length,
         index: '/crises/',
         routes: crisisRoutes,
+        sourceCapturedAt: data.livePulse.capturedAt,
       },
       tools: {
         count: toolRoutes.length,
@@ -3745,8 +4417,10 @@ export async function buildCorpus({
     'chokepoints/index.html',
     renderChokepointsIndex({
       chokepoints: data.chokepoints,
+      livePulse: data.livePulse,
       baseUrl,
       lastmod: data.lastmod.chokepoints,
+      snapshotPath: data.sources.livePulseSnapshot,
     }),
   );
   for (const chokepoint of data.chokepoints) {
@@ -3854,6 +4528,7 @@ export async function buildCorpus({
   for (const crisis of data.crises) {
     const pagePath = `/crises/${crisis.slug}/`;
     const crisisPulse = data.livePulse.crises?.[crisis.slug] || null;
+    const crisisPulseTotals = crisisPulse ? pulseTotals(crisisPulse) : null;
     writeGeneratedFile(
       outDir,
       routeFile(pagePath),
@@ -3863,12 +4538,13 @@ export async function buildCorpus({
         lastmod: data.lastmod.crises,
         livePulse: data.livePulse,
         livePulseSnapshotPath: data.sources.livePulseSnapshot,
+        publishedTotals: crisisPulseTotals,
       }),
     );
     writeGeneratedFile(
       outDir,
       datasetDownloadFile(pagePath, CRISIS_DATASET_DOWNLOAD),
-      crisisDatasetDownload(crisis, crisisPulse),
+      crisisDatasetDownload(crisis, crisisPulse, crisisPulseTotals),
     );
   }
 

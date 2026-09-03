@@ -22,6 +22,10 @@ const {
   SEED_META,
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
+  STALE_CONTENT_GRACE_MS,
+  staleContentGraceEvidence,
+  applyStaleContentGrace,
+  healthStatusBucket,
 } = __testing__;
 
 const NOW = Date.parse('2026-08-03T14:42:58.000Z');
@@ -84,6 +88,22 @@ function classifyPortwatch(meta, { activated = true, now = NOW } = {}) {
     },
   );
 }
+
+// Runs the real post-classification projection so these tests exercise the same
+// path production does: classify, read back the durable anchor, then publish.
+function gracePortwatch(entry, meta, { now = NOW, staleContentDeadline = null } = {}) {
+  const checks = { portwatchPortActivity: entry };
+  const { keyMetaValues, keyMetaErrors } = portwatchCtx(meta, now);
+  const seedMeta = readSeedMeta(SEED_META.portwatchPortActivity, keyMetaValues, keyMetaErrors, now);
+  applyStaleContentGrace(
+    checks,
+    new Map([['portwatchPortActivity', staleContentGraceEvidence(seedMeta.contentAge, seedMeta.contentFreshness, now)]]),
+    staleContentDeadline === null ? new Map() : new Map([['portwatchPortActivity', staleContentDeadline]]),
+    now,
+  );
+  return entry;
+}
+
 
 // A run exactly like the 12:03 UTC production run: OK, 174 seeded, complete
 // coverage, zero refreshFailures — the transport half is genuinely healthy.
@@ -210,6 +230,40 @@ describe('portwatchPortActivity classification', () => {
       PORTWATCH_CONTENT_BUDGET_MINUTES + 60,
       'the published age is recomputed against now, not echoed from the producer',
     );
+  });
+
+  it('gives a just-over-budget critical-country observation the finite stale-content grace', () => {
+    const observedAt = NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 1) * MINUTE_MS;
+    const graceUntil = observedAt
+      + PORTWATCH_CONTENT_BUDGET_MINUTES * MINUTE_MS
+      + STALE_CONTENT_GRACE_MS;
+    const meta = completeRun(contentFreshnessOf({
+      criticalOldestObservedAt: observedAt,
+      criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES + 1,
+    }));
+    const entry = gracePortwatch(classifyPortwatch(meta), meta, { staleContentDeadline: graceUntil });
+
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.equal(entry.staleContentGraceUntil, new Date(graceUntil).toISOString());
+    assert.equal(healthStatusBucket(entry, NOW), 'ok');
+  });
+
+  it('uses one stored deadline when stale counts trip before the per-entity time boundary', () => {
+    const firstObservedDeadline = NOW + STALE_CONTENT_GRACE_MS;
+    const meta = completeRun(contentFreshnessOf({
+      freshCount: 173,
+      staleCount: 1,
+      staleCountries: ['CN'],
+      criticalFreshCount: 1,
+      criticalStaleCountries: ['CN'],
+      criticalOldestObservedAt: NOW - 60 * MINUTE_MS,
+      criticalOldestAgeMinutes: 60,
+    }));
+    const entry = gracePortwatch(classifyPortwatch(meta), meta, { staleContentDeadline: firstObservedDeadline });
+
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.equal(entry.staleContentGraceUntil, new Date(firstObservedDeadline).toISOString());
+    assert.equal(healthStatusBucket(entry, NOW), 'ok');
   });
 
   it('keeps OK while the re-aged observation is still inside the pinned budget', () => {

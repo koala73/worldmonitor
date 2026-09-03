@@ -8,6 +8,7 @@ import {
 } from './_pool-coverage.js';
 import {
   EDUCATION_MIN_RANKABLE_RECORD_COUNT,
+  SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT,
   parseEducationPayloadRankableRecordCount,
   parseRankableRecordCount,
 } from './_rankable-coverage.js';
@@ -218,7 +219,7 @@ const SEED_DOMAINS = {
     key: 'seed-meta:supply-chain:vulnerability',
     intervalMin: 1440,
     minRecordCount: 110,
-    minRankableRecordCount: 110,
+    minRankableRecordCount: SUPPLY_VULNERABILITY_MIN_RANKABLE_RECORD_COUNT, // matches api/health.js and the producer floor MIN_COUNTRY_COVERAGE * MIN_SCORED_COMMODITIES_PER_RANKABLE_COUNTRY
     requiredRedistributionPolicyVersion: 1,
     activationKey: 'seed-activated:supply-chain:vulnerability',
   },

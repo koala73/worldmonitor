@@ -1,6 +1,8 @@
+import { apiKeyDailyKey } from '../../server/_shared/api-key-rate-limit';
 import {
   dailyCounterKey,
   dailyQuotaFloorKey,
+  envPrefix,
   PRO_DAILY_QUOTA_LIMIT,
   PRO_DAILY_QUOTA_TTL_SECONDS,
 } from '../../server/_shared/pro-mcp-token';
@@ -41,38 +43,123 @@ export function resolveDailyLimit(planDailyLimit?: number | null): number | null
   return PRO_DAILY_QUOTA_LIMIT;
 }
 
-/**
- * Plans whose catalog `mcpCallsPerDay` must NOT drive the daily cap on the
- * pro (OAuth) MCP context. The KTD6 boundary is a PLAN boundary, not a
- * credential boundary: API-tier subscribers can mint pro OAuth tokens too
- * (tier>=1 + mcpAccess), and without this gate their catalog allowance
- * (1000/10000) would leak through the OAuth door while their `user_key`
- * stays hardcoded at 50. Raising API-tier MCP allowances is a deliberate
- * follow-up; until then both credential classes must agree on the cap.
- */
-const API_TIER_MCP_CAPPED_PLAN_KEYS = new Set([
-  'api_starter',
-  'api_starter_annual',
-  'api_business',
-  'api_business_annual',
-]);
+/** Catalog marker for a plan whose MCP calls charge its REST budget. Duplicated
+ *  from `convex/config/productCatalog.ts` rather than imported: the MCP edge
+ *  bundle must not pull the Convex config graph in. The parity test asserts the
+ *  two literals stay equal. */
+export const SHARED_API_BUDGET = 'shared-api-budget';
 
 /**
- * Gate a plan-resolved MCP allowance on plan family: API-tier plans report
- * `undefined` (→ the 50/day default via `resolveDailyLimit`); every other
- * plan's allowance passes through verbatim — pro/pro_business plan-driven
- * numbers, enterprise's `null` (unlimited), free's `0`.
+ * Whether the per-account daily meter REJECTS or merely records.
  *
- * Shared by the enforcement path (`checkMcpEntitlementGate`) and the
- * settings display (`api/user/mcp-quota.ts`) so the number a user reads is
- * the number the reservation applies.
+ * The same flag `server/gateway.ts` reads, and deliberately so: the shared
+ * budget is only a cap when both doors treat it as one. Read at call time
+ * rather than module load so a deploy that flips the flag takes effect without
+ * waiting for an edge instance to recycle.
  */
-export function resolvePlanDrivenMcpAllowance(
-  planKey: string | undefined,
-  mcpCallsPerDay: number | null | undefined,
-): number | null | undefined {
-  if (planKey && API_TIER_MCP_CAPPED_PLAN_KEYS.has(planKey)) return undefined;
-  return mcpCallsPerDay;
+export function isRestEnforcementEnabled(): boolean {
+  return process.env.API_RATE_LIMIT_ENFORCE === 'true';
+}
+
+/**
+ * Which number a plan sold, and where it is counted.
+ *
+ * `allowance` decides the PRICE: `'api'` charges the per-tool weight, so a unit
+ * of work costs the same whichever door it arrives through; `'mcp'` charges one
+ * unit per call, which is what `docs/usage-rate-limits.mdx` sells on the
+ * dedicated counter and what the GHSA-hcq5 no-refund slot assumes.
+ *
+ * `counter` decides the PLACE, and exists only on the `api` arm — so "a
+ * dedicated MCP allowance charged to the shared REST key" has no field to live
+ * in. The three states below are the only ones representable:
+ *
+ *   - `{allowance: 'mcp'}` — Pro 50, Pro Business 250, the free-account
+ *     ceiling, Enterprise `null`. `apiAccess: false` with a zero REST budget,
+ *     so they keep `mcp:pro-usage:…` at one unit per call.
+ *   - `{allowance: 'api', counter: 'mcp'}` — API tiers while
+ *     `API_RATE_LIMIT_ENFORCE` is off: the sold REST number, weighted, on the
+ *     dedicated counter.
+ *   - `{allowance: 'api', counter: 'api'}` — API tiers once the flag flips:
+ *     the same number on `rl:apikey:day:…`, shared with REST.
+ *
+ * This replaces the KTD6 plan-key exception list, which existed only because
+ * the catalog published an MCP number the edge refused to honour — leaving
+ * OAuth and `user_key` free to disagree about the cap.
+ *
+ * When the flag flip becomes permanent, delete `counter` and the shadow branch
+ * in `resolveMcpBudget`: no variant is renamed and no call site moves.
+ */
+export type McpBudget =
+  | { allowance: 'mcp'; limit: number | null }
+  | { allowance: 'api'; counter: 'mcp' | 'api'; limit: number | null };
+
+/**
+ * Resolve which budget a plan's MCP calls charge.
+ *
+ * Shared by enforcement (`checkMcpEntitlementGate`), the settings display
+ * (`api/user/mcp-quota.ts`), and the `account/mcp-allowance` resource so the
+ * number a user reads is the number the reservation applies. An unreadable
+ * entitlement resolves to the dedicated Pro default, never to a shared budget:
+ * a missing limit must never buy a caller a HIGHER cap than the plan default.
+ */
+export function resolveMcpBudget(
+  mcpCallsPerDay: number | null | string | undefined,
+  apiRequestsPerDay?: number | null,
+  restEnforced: boolean = isRestEnforcementEnabled(),
+): McpBudget {
+  if (mcpCallsPerDay === SHARED_API_BUDGET) {
+    // The LIMIT is the sold one either way — Starter 1,000, Business 10,000 —
+    // because that is the number every published surface quotes and the number
+    // enforcement must therefore apply. Only the COUNTER moves with the flag:
+    // while REST runs in shadow the gateway SERVES over-allowance requests and
+    // leaves their increments on `rl:apikey:day:…` (`reserveDailyMeter` only
+    // rolls back when it actually rejects), so that key is a demand signal
+    // sitting far above the limit for exactly the heaviest accounts, not a cap.
+    // Rejecting MCP against it would 429 those accounts for the rest of the UTC
+    // day the moment this ships — the opposite of the advisory behaviour the
+    // flag promises. The dedicated counter carries the same ceiling until the
+    // flag makes the shared budget real for REST and MCP together.
+    return {
+      allowance: 'api',
+      counter: restEnforced ? 'api' : 'mcp',
+      limit: resolveDailyLimit(apiRequestsPerDay),
+    };
+  }
+  return {
+    allowance: 'mcp',
+    limit: resolveDailyLimit(typeof mcpCallsPerDay === 'string' ? undefined : mcpCallsPerDay),
+  };
+}
+
+/**
+ * Whether this budget is metered on the REST meter rather than MCP's own
+ * counter — i.e. whether REST requests the agent never made spend it too.
+ *
+ * One predicate, three consumers: it picks the Redis key below, it decides
+ * whether the reservation may clamp residue (the shared key has a second
+ * writer, `reserveDailyMeter`, whose rollback is not inside the EVAL), and it
+ * is what the allowance resource and the -32029 denial publish so a caller can
+ * tell whose traffic exhausted the number.
+ */
+export function isSharedRestCounter(budget: McpBudget | undefined): boolean {
+  return budget?.allowance === 'api' && budget.counter === 'api';
+}
+
+/**
+ * The daily counter a budget charges. Exported because the settings reader
+ * (`api/user/mcp-quota.ts`) and the `account/mcp-allowance` resource must READ
+ * the counter this module WRITES; a second copy of this choice would be exactly
+ * the drift those surfaces exist to prevent.
+ *
+ * Shared-counter keys are prefixed here because this path talks to the raw
+ * Upstash pipeline. REST's `apiKeyDailyKey` is a logical key — `runRedisPipeline`
+ * adds `envPrefix()` for it. Dedicated MCP keys already carry that prefix
+ * inside `dailyCounterKey`.
+ */
+export function budgetCounterKey(budget: McpBudget | undefined, userId: string, date?: Date): string {
+  if (!isSharedRestCounter(budget)) return dailyCounterKey(userId, date);
+  const key = apiKeyDailyKey(userId, date);
+  return key ? `${envPrefix()}${key}` : key;
 }
 
 function asFiniteNumber(raw: unknown): number | null {
@@ -82,17 +169,47 @@ function asFiniteNumber(raw: unknown): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/**
+ * Charge one `tools/call` against `budget`.
+ *
+ * `toolUnits` is what the tool costs (`toolWeight`), not what it is charged:
+ * only an `api` allowance pays it. A dedicated MCP allowance is one call, one
+ * unit — the number `docs/usage-rate-limits.mdx` sells — so applying the weight
+ * there would double-charge Pro's 50/day, and the price question is answered
+ * here, next to the budget that decides it, rather than at the call site.
+ */
 export async function reserveQuota(
   userId: string,
   pipeline: PipelineFn,
-  planDailyLimit?: number | null,
+  budget?: McpBudget,
+  toolUnits = 1,
 ): Promise<QuotaReserved | QuotaRejected> {
+  const weight = budget?.allowance === 'api' ? toolUnits : 1;
   // `null` = unlimited: the counter still moves (metering is not optional) but
   // the rejection branch below is skipped entirely.
-  const limit = resolveDailyLimit(planDailyLimit);
-  const key = dailyCounterKey(userId);
+  // Normalise even a caller-supplied budget: `resolveMcpBudget` already does
+  // this, but a hand-built budget carrying a garbage limit must still land on
+  // the plan default rather than skipping the check and enforcing `undefined`.
+  const limit = budget ? resolveDailyLimit(budget.limit) : PRO_DAILY_QUOTA_LIMIT;
+  // Once the flag flips, a shared-budget plan charges the REST meter, so an MCP
+  // call and a REST call draw down the same number the customer was sold.
+  // `budgetCounterKey` is the deployment-namespaced form of `apiKeyDailyKey` —
+  // REST prefixes that logical key in `runRedisPipeline`; this raw MCP pipeline
+  // must prefix it here. The floor key is namespaced separately so the clamp
+  // cannot collide with REST.
+  const key = budgetCounterKey(budget, userId);
   const floorKey = dailyQuotaFloorKey(userId);
   if (!key || !floorKey) return { ok: false, reason: 'redis-unavailable' };
+
+  // The script's residue clamp SETs the counter down, which is only sound while
+  // the script is the counter's only writer. On the dedicated MCP counter it
+  // is. On the shared REST key it is not: `reserveDailyMeter` INCRs and issues
+  // its rejection DECR as a separate round-trip, so that DECR can land after
+  // the clamp and push the counter BELOW real accepted usage — free calls, in
+  // the direction that costs us money. Rejection is unaffected either way; only
+  // the residue correction is given up, and residue on the shared key already
+  // heals at the daily rollover.
+  const clampResidue = isSharedRestCounter(budget) ? 0 : 1;
 
   let pipeResult: Array<{ result?: unknown; error?: unknown }> | null;
   try {
@@ -104,6 +221,8 @@ export async function reserveQuota(
       floorKey,
       limit === null ? '' : limit,
       PRO_DAILY_QUOTA_TTL_SECONDS,
+      weight,
+      clampResidue,
     ]]);
   } catch {
     pipeResult = null;
@@ -136,14 +255,14 @@ export async function reserveQuota(
     if (rolledBack) return;
     rolledBack = true;
     try {
-      await pipeline([['DECR', key]]);
+      await pipeline([['DECRBY', key, weight]]);
     } catch {
-      // Best-effort: a transient Redis failure means the counter overshoots
-      // by 1, which is the cost-protection-correct direction.
+      // Best-effort: a transient Redis failure means the counter overshoots by
+      // the charged weight, which is the cost-protection-correct direction.
     }
   };
 
-  if (status === 1 && newCount >= 1) {
+  if (status === 1 && newCount >= weight) {
     return { ok: true, newCount, rollback };
   }
 

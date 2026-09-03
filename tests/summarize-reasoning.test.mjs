@@ -253,13 +253,29 @@ describe('Fix 3: hasReasoningPreamble', () => {
 describe('Fix 4: cache version bump', () => {
   const src = readSrc('src/utils/summary-cache-key.ts');
 
-  it('CACHE_VERSION is v9', () => {
-    // Bumped v8 → v9 on 2026-08-01 (#5969): prompt generation and cache
-    // identity now select the same first five unique, non-empty headlines in
-    // request order, so v8 rows keyed over the old sort-before-cap window
-    // must not be served. (v7 → v8 on 2026-07-06 for the DeepSeek cutover,
-    // #4944; v6 → v7 on 2026-07-05 for pair-dedup, #4914.)
-    assert.match(src, /CACHE_VERSION\s*=\s*'v9'/,
-      'CACHE_VERSION must be v9 to retire rows keyed over the pre-#5969 selection window');
+  it('CACHE_VERSION is v10', () => {
+    // Bumped v9 → v10 on 2026-09-02 (GHSA-9gp4-366w-pcq3): identity moved off
+    // the FNV-1a 52-bit hash, whose invertible steps made a second preimage
+    // cheap enough for an anonymous caller to poison a shared translate row.
+    // Every v9 row must be retired because any of them may already carry
+    // attacker-chosen text. (v8 → v9 on 2026-08-01 for prompt/cache selection
+    // parity, #5969; v7 → v8 on 2026-07-06 for the DeepSeek cutover, #4944;
+    // v6 → v7 on 2026-07-05 for pair-dedup, #4914.)
+    assert.match(src, /CACHE_VERSION\s*=\s*'v10'/,
+      'CACHE_VERSION must be v10 to retire rows keyed with the collidable FNV hash');
+  });
+
+  it('cache identity does not use the collidable FNV hash', () => {
+    // The root cause of GHSA-9gp4 was hashString reaching a cache key built
+    // from attacker-controlled headlines. Reintroducing that import here is
+    // the regression this guards.
+    // Match calls and imports, not prose: the version comment names
+    // hashString when explaining why it was removed.
+    assert.doesNotMatch(src, /\bhashString\s*\(/,
+      'summary-cache-key must derive identity from sha256Hex, never call hashString');
+    assert.doesNotMatch(src, /import\s*\{[^}]*\bhashString\b[^}]*\}/,
+      'summary-cache-key must not import hashString');
+    assert.match(src, /import\s*\{\s*sha256Hex\s*\}\s*from\s*'\.\/hash'/,
+      'summary-cache-key must import sha256Hex from the shared client/server hash module');
   });
 });

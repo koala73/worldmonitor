@@ -33,3 +33,58 @@ updates:
       # Hold the Node base image at the current LTS major (24). See PR #4709.
       - dependency-name: "node"
         update-types: ["version-update:semver-major"]
+
+  # Every npm manifest in the repo. Without this block Dependabot raises alerts
+  # but can never open a fix PR for them, which is how 69 open advisories
+  # accumulated while `security-audit.yml` stayed green — the gate only blocks on
+  # high-severity PRODUCTION findings, so everything below that floor piles up
+  # unattended. Omitted on purpose:
+  #   /docker            — its manifest is `runtime-package.json`, a non-standard
+  #                        name Dependabot cannot discover. Covered by the audit
+  #                        matrix instead.
+  #   /cli               — declares no dependencies at all.
+  - package-ecosystem: "npm"
+    directories:
+      - "/"
+      - "/blog-site"
+      - "/consumer-prices-core"
+      - "/docker/umami/runtime"
+      - "/pro-test"
+      - "/scripts"
+      - "/workers/api-cors-preflight"
+      - "/workers/railway-reconcile-control"
+    schedule:
+      interval: "weekly"
+    # Security updates only, on purpose. open-pull-requests-limit caps VERSION
+    # updates exclusively — security-update PRs are drawn from a separate
+    # internal budget and never consume this one — so 0 switches off routine
+    # weekly bumps across eight directories while leaving advisory fixes, and
+    # the grouping below (which does apply to them), fully intact. Raising this
+    # above 0 is how you would later opt into routine version bumps; do that
+    # deliberately, with an `ignore` rule for semver-major, rather than by
+    # accident. See PR #7554.
+    open-pull-requests-limit: 0
+    groups:
+      # One PR per directory per advisory batch instead of one per package.
+      npm-security:
+        applies-to: security-updates
+        patterns: ["*"]
+
+  # The desktop app. src-tauri/Cargo.lock has no general advisory scan — there
+  # is no `cargo audit` or `cargo-deny` step anywhere under .github/. The one
+  # Rust gate, scripts/check-rust-security-floors.mjs, is a hand-maintained
+  # allow-list of recorded floors and currently covers exactly one crate
+  # (tauri >= 2.11.1), so an advisory against any other crate passes unnoticed.
+  # That matters because build-desktop.yml ships signed binaries for five
+  # platforms, two of them Linux, where reqwest -> native-tls -> openssl is the
+  # live TLS implementation.
+  - package-ecosystem: "cargo"
+    directory: "/src-tauri"
+    schedule:
+      interval: "weekly"
+    # Same reasoning as the npm entry above: security updates only.
+    open-pull-requests-limit: 0
+    groups:
+      cargo-security:
+        applies-to: security-updates
+        patterns: ["*"]

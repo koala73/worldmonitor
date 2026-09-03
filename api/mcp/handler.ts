@@ -42,9 +42,11 @@ import {
 } from './skill-extension/index';
 import { buildUiResourceRead, isUiResourceUri, UI_RESOURCE_LIST_RESPONSE } from './ui/registry';
 import { emitTelemetry, principalIdForLog } from './telemetry';
+import { hashKeySync } from '../../server/_shared/usage-identity';
 import { createMcpUsage, emitMcpRequestEvent, setUsageContext, type McpUsage } from './usage';
 import { utf8ByteLength } from './utils';
 import type { McpAuthContext, McpHandlerDeps } from './types';
+import type { McpBudget } from './quota';
 
 // MCP methods servable WITHOUT authentication. These are the zero-data
 // discovery surface an agent (or an agent-readiness scanner) needs to learn
@@ -145,6 +147,16 @@ type StoredSseStream = {
   bytes: number;
 };
 
+// A replay buffer belongs to exactly one principal. The binding sits on the
+// SESSION rather than on each stream because the session bucket is what a
+// caller can reach by supplying someone else's Mcp-Session-Id, and reaching it
+// is enough to evict the owner's buffered streams even without reading them.
+// One owner check therefore closes both halves of GHSA-5j39-mmw6-cqw6.
+type StoredSseSession = {
+  owner: string;
+  streams: Map<string, StoredSseStream>;
+};
+
 const SSE_CONTENT_TYPE = 'text/event-stream; charset=utf-8';
 // no-store forbids storage outright; no-cache is vacuous alongside it (RFC 9111
 // §5.2) so it is omitted. no-transform is load-bearing for SSE framing. This also
@@ -162,7 +174,7 @@ const MAX_SSE_REPLAY_SESSION_BYTES = 256 * 1024;
 const MAX_SSE_REPLAY_TOTAL_BYTES = 4 * 1024 * 1024;
 const MAX_SSE_SESSIONS = 500;
 const MAX_SSE_STREAMS_PER_SESSION = 25;
-const mcpSseStreamsBySession = new Map<string, Map<string, StoredSseStream>>();
+const mcpSseStreamsBySession = new Map<string, StoredSseSession>();
 let mcpSseReplayBytes = 0;
 
 function getMcpCorsHeaders(methods = 'POST, GET, HEAD, OPTIONS'): Record<string, string> {
@@ -220,9 +232,9 @@ function createSseStream(events: StoredSseEvent[]): ReadableStream<Uint8Array> {
 }
 
 function deleteSseSession(sessionId: string): void {
-  const streams = mcpSseStreamsBySession.get(sessionId);
-  if (!streams) return;
-  for (const stream of streams.values()) mcpSseReplayBytes -= stream.bytes;
+  const session = mcpSseStreamsBySession.get(sessionId);
+  if (!session) return;
+  for (const stream of session.streams.values()) mcpSseReplayBytes -= stream.bytes;
   mcpSseStreamsBySession.delete(sessionId);
 }
 
@@ -233,38 +245,49 @@ function sessionReplayBytes(streams: Map<string, StoredSseStream>): number {
 }
 
 function evictOldestSseStream(exceptSessionId?: string): boolean {
-  for (const [sessionId, streams] of mcpSseStreamsBySession) {
+  for (const [sessionId, session] of mcpSseStreamsBySession) {
     if (sessionId === exceptSessionId) continue;
-    const streamId = streams.keys().next().value;
+    const streamId = session.streams.keys().next().value;
     if (!streamId) continue;
-    const stream = streams.get(streamId);
+    const stream = session.streams.get(streamId);
     if (!stream) continue;
-    streams.delete(streamId);
+    session.streams.delete(streamId);
     mcpSseReplayBytes -= stream.bytes;
-    if (streams.size === 0) mcpSseStreamsBySession.delete(sessionId);
+    if (session.streams.size === 0) mcpSseStreamsBySession.delete(sessionId);
     return true;
   }
   return false;
 }
 
-function sessionStreamsForWrite(sessionId: string): Map<string, StoredSseStream> {
-  let streams = mcpSseStreamsBySession.get(sessionId);
-  if (!streams) {
-    streams = new Map();
-    mcpSseStreamsBySession.set(sessionId, streams);
-    if (mcpSseStreamsBySession.size > MAX_SSE_SESSIONS) {
-      const oldestSessionId = mcpSseStreamsBySession.keys().next().value;
-      if (oldestSessionId) deleteSseSession(oldestSessionId);
-    }
+/**
+ * Claims `sessionId` for `owner`, or returns null when another owner already
+ * claimed it. `initialize` calls this before content negotiation so a JSON
+ * response cannot leave the server-minted session open to a foreign first
+ * writer.
+ */
+function claimSseSession(sessionId: string, owner: string): StoredSseSession | null {
+  const existing = mcpSseStreamsBySession.get(sessionId);
+  if (existing) return existing.owner === owner ? existing : null;
+
+  const session: StoredSseSession = { owner, streams: new Map() };
+  mcpSseStreamsBySession.set(sessionId, session);
+  if (mcpSseStreamsBySession.size > MAX_SSE_SESSIONS) {
+    const oldestSessionId = mcpSseStreamsBySession.keys().next().value;
+    if (oldestSessionId) deleteSseSession(oldestSessionId);
   }
-  return streams;
+  return session;
 }
 
-function storeSseStream(sessionId: string, streamId: string, events: StoredSseEvent[]): boolean {
+function sessionStreamsForWrite(sessionId: string, owner: string): Map<string, StoredSseStream> | null {
+  return claimSseSession(sessionId, owner)?.streams ?? null;
+}
+
+function storeSseStream(sessionId: string, streamId: string, events: StoredSseEvent[], owner: string): boolean {
   const bytes = events.reduce((total, event) => total + utf8ByteLength(formatSseEvent(event)), 0);
   if (bytes > MAX_SSE_REPLAY_RESPONSE_BYTES) return false;
 
-  const streams = sessionStreamsForWrite(sessionId);
+  const streams = sessionStreamsForWrite(sessionId, owner);
+  if (!streams) return false;
   while (
     streams.size >= MAX_SSE_STREAMS_PER_SESSION
     || sessionReplayBytes(streams) + bytes > MAX_SSE_REPLAY_SESSION_BYTES
@@ -283,6 +306,28 @@ function storeSseStream(sessionId: string, streamId: string, events: StoredSseEv
   return true;
 }
 
+/**
+ * Owner identity for a replay buffer, or null for a caller that must not get
+ * one.
+ *
+ * Deliberately not `principalIdForLog`, which collapses every free caller to
+ * 'anon'. That is right for telemetry aggregation and wrong here: one shared
+ * owner string would let uncredentialed callers replay and evict each other's
+ * buffers, which is the defect this binding exists to close. A free caller
+ * carries no principal by construction, so it gets no buffer.
+ *
+ * `pro` and `user_key` both resolve to the same Clerk userId on purpose. They
+ * are one human holding two credential kinds, and a client may legitimately
+ * reconnect across them; splitting them would produce false 404s for the real
+ * owner. `env_key` is keyed on the hashed key so a raw credential never sits
+ * in this map.
+ */
+function sseReplayOwner(context: McpAuthContext | null): string | null {
+  if (!context || context.kind === 'free') return null;
+  if (context.kind === 'env_key') return `env_key:${hashKeySync(context.apiKey)}`;
+  return `user:${context.userId}`;
+}
+
 function parseEventCursor(eventId: string): { streamId: string; sequence: number } | null {
   const separator = eventId.lastIndexOf(':');
   if (separator <= 0) return null;
@@ -291,10 +336,16 @@ function parseEventCursor(eventId: string): { streamId: string; sequence: number
   return { streamId: eventId.slice(0, separator), sequence };
 }
 
-function replayEventsAfter(sessionId: string, lastEventId: string): StoredSseEvent[] | null {
+function replayEventsAfter(sessionId: string, lastEventId: string, owner: string): StoredSseEvent[] | null {
   const cursor = parseEventCursor(lastEventId);
   if (!cursor) return null;
-  const stream = mcpSseStreamsBySession.get(sessionId)?.get(cursor.streamId);
+  const session = mcpSseStreamsBySession.get(sessionId);
+  // An owner mismatch returns null, which the caller renders as the same 404 a
+  // missing cursor produces. Distinguishing the two would confirm that another
+  // principal's (session, stream) pair exists, which is the disclosure the
+  // authorization check is here to prevent.
+  if (!session || session.owner !== owner) return null;
+  const stream = session.streams.get(cursor.streamId);
   if (!stream) return null;
   return stream.events.slice(cursor.sequence + 1);
 }
@@ -331,10 +382,15 @@ function sseHeadersFrom(headers: Headers): Headers {
   return out;
 }
 
-async function maybeStreamJsonRpcResponse(req: Request, response: Response): Promise<Response> {
+async function maybeStreamJsonRpcResponse(req: Request, owner: string | null, response: Response): Promise<Response> {
   if (req.method !== 'POST' || response.status !== 200 || !clientAcceptsSse(req)) return response;
   if (!(response.headers.get('content-type') ?? '').toLowerCase().includes('application/json')) return response;
 
+  // The client-supplied fallback is load-bearing: only `initialize` mints a
+  // session id onto the response, so every later call in the session carries it
+  // on the request instead. It is also what let an uncredentialed caller aim a
+  // write at someone else's bucket, so the value is no longer trusted on its
+  // own — storeSseStream refuses a session owned by a different principal.
   const sessionId = response.headers.get('mcp-session-id') ?? req.headers.get('mcp-session-id');
   if (!sessionId) return response;
 
@@ -355,14 +411,17 @@ async function maybeStreamJsonRpcResponse(req: Request, response: Response): Pro
   // a reconnect after this event yields an empty stream (nothing follows the
   // already-delivered response).
   const events: StoredSseEvent[] = [{ id: `${streamId}:0`, data: responseBody }];
-  storeSseStream(sessionId, streamId, events);
+  // A caller with no principal still gets the live stream, just no replay
+  // buffer: there is no owner to bind it to, and a shared bucket would hand
+  // uncredentialed callers the same read-and-evict primitive.
+  if (owner) storeSseStream(sessionId, streamId, events, owner);
   return new Response(createSseStream(events), {
     status: 200,
     headers: sseHeadersFrom(response.headers),
   });
 }
 
-function handleSseReplay(req: Request, corsHeaders: Record<string, string>, headOnly = false): Response {
+function handleSseReplay(req: Request, corsHeaders: Record<string, string>, owner: string | null, headOnly = false): Response {
   const lastEventId = req.headers.get('last-event-id');
   if (!clientAcceptsSse(req)) {
     return new Response(
@@ -391,7 +450,9 @@ function handleSseReplay(req: Request, corsHeaders: Record<string, string>, head
     );
   }
 
-  const events = replayEventsAfter(sessionId, lastEventId);
+  // No principal means no buffer was ever stored, so there is nothing this
+  // caller can legitimately resume. Falls through to the same 404.
+  const events = owner ? replayEventsAfter(sessionId, lastEventId, owner) : null;
   if (!events) {
     return new Response(
       JSON.stringify({
@@ -435,12 +496,12 @@ async function handleAuthenticatedSseReplay(
     usage.phase = getPreCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
     return getPreCheck.response;
   }
-  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders);
+  const getLimited = await applyPerMinuteLimit(auth.context, corsHeaders, getPreCheck.burstPerMinute);
   if (getLimited) {
     usage.phase = 'limit';
     return getLimited;
   }
-  const replay = handleSseReplay(req, corsHeaders, headOnly);
+  const replay = handleSseReplay(req, corsHeaders, sseReplayOwner(auth.context), headOnly);
   if (replay.status !== 200) usage.phase = 'transport';
   return replay;
 }
@@ -801,7 +862,7 @@ async function mcpHandlerInner(
   let context: McpAuthContext | null = null;
   // Set alongside `context` by the gated branch's pre-check. Stays undefined on
   // the public/anon branch — which never reaches a metered dispatch anyway.
-  let mcpDailyLimit: number | null | undefined;
+  let budget: McpBudget | undefined;
   let freeAccountAllowance = false;
   if (PUBLIC_MCP_METHODS.has(method) || isAnonResourceRead || isFreeTierToolCall) {
     if (hasCredentials(req)) {
@@ -833,6 +894,11 @@ async function mcpHandlerInner(
           return validation.response;
         }
       }
+      // No pre-check runs on the public branch, so there is no entitlement in
+      // hand to read a plan burst from. `applyPerMinuteLimit` defaults to the
+      // common ceiling rather than fetching one: these are metadata and
+      // free-tier methods, and the tighter of the two sold thresholds is the
+      // defensible guess.
       const limited = await applyPerMinuteLimit(context, corsHeaders);
       if (limited) {
         usage.phase = 'limit';
@@ -871,22 +937,33 @@ async function mcpHandlerInner(
       usage.phase = preCheck.response.headers.get('X-Billing-Verification') ? 'billing' : 'precheck';
       return preCheck.response;
     }
-    // Plan-driven daily allowance, resolved from the entitlement the pre-check
-    // already fetched (plan 2026-07-25-001 U3). Carried to the two metered
-    // dispatch sites below; unset for every caller class but `pro`.
-    mcpDailyLimit = preCheck.mcpDailyLimit;
+    // Plan-driven allowances, both resolved from the entitlement the pre-check
+    // already fetched (plan 2026-07-25-001 U3): the daily budget rides down to
+    // the two metered dispatch sites below, and the minute burst is spent right
+    // here. Set for `pro` and `user_key`; the other caller classes have no
+    // entitlement row and fall back to the defaults.
+    budget = preCheck.budget;
     freeAccountAllowance = preCheck.freeAccountAllowance === true;
-    const limited = await applyPerMinuteLimit(context, corsHeaders);
+    const limited = await applyPerMinuteLimit(context, corsHeaders, preCheck.burstPerMinute);
     if (limited) {
       usage.phase = 'limit';
       return limited;
     }
   }
 
+  // Resolved once, after both auth branches have settled `context`, so every
+  // SSE replay buffer this request stores is bound to the principal that
+  // actually passed the gates above.
+  const sseOwner = sseReplayOwner(context);
+
   // Dispatch
   switch (method) {
     case 'initialize': {
       const sessionId = crypto.randomUUID();
+      // Bind the server-minted session before content negotiation can return a
+      // JSON response. Otherwise a different principal that learns the session
+      // id can make the first SSE write and claim the replay bucket.
+      if (sseOwner) claimSseSession(sessionId, sseOwner);
       const clientRequestedVersion = (body.params as { protocolVersion?: unknown } | null | undefined)?.protocolVersion;
       const negotiatedVersion = negotiateProtocolVersion(clientRequestedVersion);
       // `tools_array_bytes` is the bare TOOL_LIST_RESPONSE stringify, not the
@@ -900,7 +977,7 @@ async function mcpHandlerInner(
         tool_count: TOOL_LIST_RESPONSE.length,
         client_user_agent: (req.headers.get('User-Agent') ?? '').slice(0, 256),
       });
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, {
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {
         protocolVersion: negotiatedVersion,
         // `prompts.listChanged: false` and `resources.listChanged: false`
         // are the spec-correct values for our transport — the stateless
@@ -935,9 +1012,9 @@ async function mcpHandlerInner(
     case 'notifications/initialized':
       return new Response(null, { status: 202, headers: withMcpNoStore(corsHeaders) });
     case 'ping':
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, {}, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {}, corsHeaders));
     case 'tools/list':
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { tools: TOOL_LIST_RESPONSE }, corsHeaders));
     case 'tools/call': {
       // context is always set here. tools/call is never a PUBLIC_MCP_METHOD, and
       // since U7 a free-tier call takes the anon branch above but still sets an
@@ -954,12 +1031,12 @@ async function mcpHandlerInner(
         body,
         corsHeaders,
         ctx,
-        mcpDailyLimit,
+        budget,
         freeAccountAllowance,
         resourceMetadataUrl,
       );
       classifyDispatchedUsage(usage, dispatched);
-      return maybeStreamJsonRpcResponse(req, dispatched);
+      return maybeStreamJsonRpcResponse(req, sseOwner, dispatched);
     }
     // Prompts are metadata-class — they ship a workflow template, not data.
     // Symmetric posture with `describe_tool`: quota-exempt (counting template
@@ -967,20 +1044,20 @@ async function mcpHandlerInner(
     // defeats the prompt-discovery point), but the per-minute rate limit
     // applied above still gates abusive loops.
     case 'prompts/list':
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { prompts: PROMPT_LIST_RESPONSE }, corsHeaders));
     case 'prompts/get': {
       const params = body.params as { name?: unknown; arguments?: Record<string, unknown> } | null;
       if (!params || typeof params.name !== 'string') {
-        return maybeStreamJsonRpcResponse(req, rpcError(id, -32602, 'Invalid params: missing prompt name', corsHeaders));
+        return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, -32602, 'Invalid params: missing prompt name', corsHeaders));
       }
       const built = buildPromptResponse(params.name, params.arguments);
-      if (!built.ok) return maybeStreamJsonRpcResponse(req, rpcError(id, built.code, built.message, corsHeaders));
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
+      if (!built.ok) return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, built.code, built.message, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { description: built.description, messages: built.messages }, corsHeaders));
     }
     case 'skills/list':
-      return maybeStreamJsonRpcResponse(req, buildSkillsListResponse(id, body.params, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, buildSkillsListResponse(id, body.params, corsHeaders));
     case 'skills/get':
-      return maybeStreamJsonRpcResponse(req, buildSkillsGetResponse(id, body.params, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, buildSkillsGetResponse(id, body.params, corsHeaders));
     // Resources split by data sensitivity. resources/list + the new
     // resources/templates/list are metadata-class — public catalog-enumeration
     // methods (in PUBLIC_MCP_METHODS, quota-exempt, anon-rate-limited) that
@@ -997,7 +1074,7 @@ async function mcpHandlerInner(
       // data-bearing URI templates are surfaced separately via
       // resources/templates/list (a literal `{iso2}` URI can't resolve, so it
       // must not appear in a list an anonymous validator reads back).
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, {
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {
         resources: [
           ...RESOURCE_LIST_RESPONSE,
           ...UI_RESOURCE_LIST_RESPONSE,
@@ -1007,30 +1084,30 @@ async function mcpHandlerInner(
         ],
       }, corsHeaders));
     case 'resources/templates/list':
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, { resourceTemplates: RESOURCE_TEMPLATE_LIST_RESPONSE }, corsHeaders));
     case 'resources/read':
       if (isSkillResourceRead) {
         if (!skillResourceReadUri) {
-          return maybeStreamJsonRpcResponse(req, rpcError(
+          return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(
             id,
             -32602,
             `Unknown skill resource uri "${resourceReadUri}".`,
             corsHeaders,
           ));
         }
-        return maybeStreamJsonRpcResponse(req, buildSkillResourceRead(id, skillResourceReadUri, corsHeaders));
+        return maybeStreamJsonRpcResponse(req, sseOwner, buildSkillResourceRead(id, skillResourceReadUri, corsHeaders));
       }
       // MCP Apps `ui://` read: a static, data-free HTML app shell served on the
       // public path (no context, no quota, no dispatch). Resolved above into
       // `uiResourceReadUri`.
       if (uiResourceReadUri) {
-        return maybeStreamJsonRpcResponse(req, buildUiResourceRead(id, uiResourceReadUri, corsHeaders));
+        return maybeStreamJsonRpcResponse(req, sseOwner, buildUiResourceRead(id, uiResourceReadUri, corsHeaders));
       }
       // A PUBLIC data resource read (concrete, metadata-only freshness/health
       // probe) is likewise served anonymously + quota-exempt via its direct
       // reader — no data, no dispatchToolsCall, no Pro reservation.
       if (isPublicResourceRead) {
-        return maybeStreamJsonRpcResponse(req, await buildPublicResourceResponse(body, corsHeaders));
+        return maybeStreamJsonRpcResponse(req, sseOwner, await buildPublicResourceResponse(body, corsHeaders));
       }
       // Account allowance status is authenticated but quota-exempt. The gated
       // branch above already resolved identity, durable token validity, and the
@@ -1042,12 +1119,12 @@ async function mcpHandlerInner(
           usage.phase = 'auth';
           return authRequiredResponse(id, resourceMetadataUrl, corsHeaders);
         }
-        return maybeStreamJsonRpcResponse(req, await buildAccountAllowanceResourceResponse(
+        return maybeStreamJsonRpcResponse(req, sseOwner, await buildAccountAllowanceResourceResponse(
           context,
           deps,
           body,
           corsHeaders,
-          mcpDailyLimit,
+          budget,
           freeAccountAllowance,
         ));
       }
@@ -1071,28 +1148,28 @@ async function mcpHandlerInner(
           body,
           corsHeaders,
           ctx,
-          mcpDailyLimit,
+          budget,
           freeAccountAllowance,
           resourceMetadataUrl,
         );
         classifyDispatchedUsage(usage, resourceRes);
-        return maybeStreamJsonRpcResponse(req, resourceRes);
+        return maybeStreamJsonRpcResponse(req, sseOwner, resourceRes);
       }
     case 'logging/setLevel': {
       const level = (body.params as { level?: string } | null)?.level;
       if (typeof level !== 'string' || !MCP_LOG_LEVELS.has(level)) {
-        return maybeStreamJsonRpcResponse(req, rpcError(id, -32602,
+        return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, -32602,
           `Invalid params: level must be one of ${[...MCP_LOG_LEVELS].join(', ')}`,
           corsHeaders,
         ));
       }
-      return maybeStreamJsonRpcResponse(req, rpcOk(id, {}, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcOk(id, {}, corsHeaders));
     }
     default:
       // Cap the echoed method name — an arbitrarily long one would otherwise
       // be reflected verbatim into the pre-auth error body (bandwidth
       // amplification). Mirrors the a2a.ts cap (Greptile #4824).
-      return maybeStreamJsonRpcResponse(req, rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders));
+      return maybeStreamJsonRpcResponse(req, sseOwner, rpcError(id, -32601, `Method not found: ${method.slice(0, 100)}`, corsHeaders));
   }
 }
 

@@ -386,7 +386,7 @@
           "Uključen licencni / API ključ",
           "Tokovi podataka u stvarnom vremenu",
           "60 zahtjeva/minutu",
-          "1.000 zahtjeva/dan uključeno",
+          "1.000 zahtjeva/dan uključeno (REST + MCP kombinovano; live MCP poziv broji kao 2-3)",
           "Webhook obavijesti"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Sve iz API Startera",
           "Prava redistribucije — ugradite naše podatke u ono što prodajete",
           "300 zahtjeva/minutu",
-          "10 000 zahtjeva/dan uključeno",
+          "10.000 zahtjeva/dan uključeno (REST + MCP kombinovano; live MCP poziv broji kao 2-3)",
           "5 Pro licenci — pozovite korisnike s bilo kojom poslovnom domenom e-pošte",
           "Prioritetna podrška"
         ],

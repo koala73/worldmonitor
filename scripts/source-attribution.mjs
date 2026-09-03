@@ -110,6 +110,12 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
     reason: 'The B.C. catalogue record supplies the licence for the ArcGIS evacuation dataset.',
     reviewReference: 'Issue #6659 source-rights probe',
   }),
+  faostat: Object.freeze({
+    provider: 'FAOSTAT',
+    memberHosts: Object.freeze(['api.data.apps.fao.org', 'data.apps.fao.org', 'fenixservices.fao.org']),
+    reason: 'The FAO smart CSV API and query catalog replace the retired Fenix API host for one FAOSTAT dataset identity.',
+    reviewReference: 'Review #20260901 FAOSTAT Food Balances transport migration',
+  }),
   imd: Object.freeze({
     provider: 'India Meteorological Department',
     memberHosts: Object.freeze(['api.imd.gov.in', 'rsmcnewdelhi.imd.gov.in', 'mausam.imd.gov.in']),
@@ -137,8 +143,14 @@ export const PROVIDER_IDENTITY_GROUPS = Object.freeze({
   'tps-open-data': Object.freeze({
     provider: 'Toronto Police Service Open Data',
     memberHosts: Object.freeze(['data.tps.ca', 'www.tps.ca']),
-    reason: 'The TPS Open Data landing page and Public Safety Data Portal licence the Major Crime Indicators and Calls for Service Attended datasets. They are not the live C4S CAD identity.',
-    reviewReference: 'Issue #7012',
+    reason: 'The TPS Open Data landing page and Public Safety Data Portal licence the Major Crime Indicators dataset. They are not the live C4S CAD identity or the current City of Toronto Calls package.',
+    reviewReference: 'Issue #7012 and PR #7576 follow-up',
+  }),
+  'city-of-toronto-open-data': Object.freeze({
+    provider: 'City of Toronto Open Data',
+    memberHosts: Object.freeze(['ckan0.cf.opendata.inter.prod-toronto.ca', 'open.toronto.ca', 'secure.toronto.ca']),
+    reason: 'The public catalog, CKAN API, and CART data host belong to one City of Toronto Open Data identity.',
+    reviewReference: 'Issue #7036 and PR #7576 source migration',
   }),
   'uspto-open-data': Object.freeze({
     provider: 'USPTO Open Data Portal',
@@ -297,8 +309,23 @@ const PROVIDER_OVERRIDES = {
   },
   'secure.toronto.ca': {
     provider: 'City of Toronto Open Data',
+    identityGroup: 'city-of-toronto-open-data',
     license: 'CKAN package_show for road-restrictions: license_id=notspecified, license_title="License not specified" (https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/package_show?id=road-restrictions). Portal dataset page chrome links OGL-Toronto but is not data-bound to this dataset.',
     attribution: 'City of Toronto, Road Restrictions. https://open.toronto.ca/dataset/road-restrictions/',
+    status: 'terms-review',
+  },
+  'ckan0.cf.opendata.inter.prod-toronto.ca': {
+    provider: 'City of Toronto Open Data',
+    identityGroup: 'city-of-toronto-open-data',
+    license: 'CKAN package_show for police-annual-statistical-report-calls-for-service-attended (package id bfffadee-e6e5-4404-8455-e67e9ea11ba7) returned license_id=notspecified, license_title="License not specified", and isopen=false on 2026-09-03. The portal dataset page displays Open Government Licence - Toronto, but that claim is not data-bound to the CKAN package metadata.',
+    attribution: 'Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/',
+    status: 'terms-review',
+  },
+  'open.toronto.ca': {
+    provider: 'City of Toronto Open Data',
+    identityGroup: 'city-of-toronto-open-data',
+    license: 'CKAN package_show for police-annual-statistical-report-calls-for-service-attended (package id bfffadee-e6e5-4404-8455-e67e9ea11ba7) returned license_id=notspecified, license_title="License not specified", and isopen=false on 2026-09-03. The portal dataset page displays Open Government Licence - Toronto, but that claim is not data-bound to the CKAN package metadata.',
+    attribution: 'Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/',
     status: 'terms-review',
   },
   'www.toronto.ca': {
@@ -363,8 +390,23 @@ const PROVIDER_OVERRIDES = {
     attribution: 'USDA Foreign Agricultural Service, Production, Supply and Distribution (PSD).',
     status: 'reviewed',
   },
+  'api.data.apps.fao.org': {
+    provider: 'FAOSTAT',
+    identityGroup: 'faostat',
+    license: 'FAOSTAT CC-BY; attribution to FAO required',
+    attribution: 'FAO. FAOSTAT. https://www.fao.org/faostat/',
+    status: 'reviewed',
+  },
+  'data.apps.fao.org': {
+    provider: 'FAOSTAT',
+    identityGroup: 'faostat',
+    license: 'FAOSTAT CC-BY; attribution to FAO required',
+    attribution: 'FAO. FAOSTAT. https://www.fao.org/faostat/',
+    status: 'reviewed',
+  },
   'fenixservices.fao.org': {
     provider: 'FAOSTAT',
+    identityGroup: 'faostat',
     license: 'FAOSTAT CC-BY; attribution to FAO required',
     attribution: 'FAO. FAOSTAT. https://www.fao.org/faostat/',
     status: 'reviewed',
@@ -517,14 +559,14 @@ const PROVIDER_OVERRIDES = {
   'www.tps.ca': {
     provider: 'Toronto Police Service Open Data',
     identityGroup: 'tps-open-data',
-    license: 'Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: "Contains information licensed under the Open Government Licence - Ontario." Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.',
+    license: 'Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) requires: "Contains information licensed under the Open Government Licence - Ontario." Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer description on https://data.tps.ca/.',
     attribution: 'Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.',
     status: 'reviewed',
   },
   'data.tps.ca': {
     provider: 'Toronto Police Service Open Data',
     identityGroup: 'tps-open-data',
-    license: 'Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) and Calls for Service Attended table (serviceItemId 46c7581a136445c78831acb657a4fb0d) require: "Contains information licensed under the Open Government Licence - Ontario." Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer descriptions on https://data.tps.ca/.',
+    license: 'Custom licence based on the Open Government Licence - Ontario. The Major Crime Indicators FeatureServer (serviceItemId 0a239a5563a344a3bbf8452504ed8d68) requires: "Contains information licensed under the Open Government Licence - Ontario." Credit Toronto Police Service without crests, logos, flags, or official marks. No TPS endorsement. Locations are deliberately offset; do not present them as precise addresses. Do not merge or link the data with other databases for the purpose of identifying a person, business, or organization. Do not fill privacy exclusions from GTA Update, news, radio, or another source. Evidence: https://www.tps.ca/data-maps/open-data/ and the item-level FeatureServer description on https://data.tps.ca/.',
     attribution: 'Contains information licensed under the Open Government Licence - Ontario. Toronto Police Service Open Data (https://www.tps.ca/data-maps/open-data/, https://data.tps.ca/). Coordinates are approximate offset intersection nodes. No TPS endorsement.',
     status: 'reviewed',
   },
@@ -867,13 +909,13 @@ const PROVIDER_OVERRIDES = {
 // a provider-bearing override a separate, explicit lifecycle event instead of
 // something `--write` can silently normalize into the manifest.
 export const PROVIDER_IDENTITY_REVIEW = Object.freeze({
-  sha256: '77fe5d378bb92d98998a2ec5ce74cea31e4bdaf58f50dfe3228bba39f83059f8',
-  reason: 'Group the BGS observation API and required attribution page under one reviewed, redistribution-restricted provider identity for issue #6449.',
+  sha256: '2ce115029a352d9faa4625b542bbd88eb149148821712779c7842bd5df1f1a59',
+  reason: 'Preserve reviewed provider identities and register the current two-host City of Toronto Calls package identity.',
   // A URL cited here is scanned like any other: this file sits inside
   // SOURCE_ROOTS, so citing a host that is not already a registered source
   // invents a provider row for it. The B.C. catalogue URLs above are safe
   // because that host is itself an observed source; parallel.ai is not.
-  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012 and #6682 Toronto safety sources; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, and PR #6447 identity reviews.',
+  reviewReference: 'Issue #6449 BGS provenance review; plus Issue #7371 country corpus identity review; plus Issue #7005 IMD cyclone/marine source-rights probe; plus Issues #7012, #7036, and #6682 Toronto safety sources; plus PR #7576 source migration review; plus Issue #7000 publisher-centric source catalog; plus Issue #7001, Issue #6437, Issue #6622, Issue #6659, PR #6447, and the 2026-09-01 FAOSTAT transport identity review.',
 });
 
 export function providerIdentityDigest(providerOverrides = PROVIDER_OVERRIDES) {

@@ -60,7 +60,7 @@ jobs:
     outputs:
       convex: ${{ steps.diff.outputs.convex }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Need the deployed-baseline tag and the pushed head locally so
           # `git diff` can name the changed files authoritatively. `fetch-depth: 0`
@@ -152,7 +152,7 @@ jobs:
     outputs:
       deployed: ${{ steps.deploy.outcome }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           # Belt and braces with the read-only permission above: no ambient
           # credential in .git/config while third-party install code runs.
@@ -246,7 +246,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
@@ -282,7 +282,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - name: Record the deployed commit
         # Force-moved deliberately — a pointer to the current deployment, not
         # release history. `--force` on the push too: a moved tag is not a

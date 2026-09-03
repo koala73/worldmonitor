@@ -11,7 +11,7 @@
 import { ExaProvider } from '../acquisition/exa.js';
 import { FirecrawlProvider } from '../acquisition/firecrawl.js';
 import { loadRetailerConfig } from '../config/loader.js';
-import { SearchAdapter, SearchTargetError } from './search.js';
+import { SearchAdapter, SearchTargetError, type ExtractionFailure } from './search.js';
 import type { AdapterContext } from './types.js';
 
 const slugs = process.argv.slice(2);
@@ -76,17 +76,24 @@ for (const slug of slugs) {
       rows.push({ slug, item: canonicalName, ok: true, price: p.price, reasonClass: 'ok', detail: `${p.rawTitle} | ${p.rawSizeText ?? '-'} | ${p.sourceUrl}` });
       console.log(`✓ ${canonicalName.padEnd(32)} ${p.price} — ${p.rawTitle}  [${p.rawSizeText ?? 'no size'}]`);
     } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      const failures: readonly ExtractionFailure[] = err instanceof SearchTargetError ? err.failures : [];
       let reasonClass = 'unknown';
-      let detail = err instanceof Error ? err.message : String(err);
-      if (err instanceof SearchTargetError) {
+      let detail = message;
+      if (/failed host\/path check/.test(message)) reasonClass = 'discovery-filter';
+      else if (/repeated a URL already attempted/.test(message)) reasonClass = 'discovery-repeated';
+      else if (/no pages found/.test(message)) reasonClass = 'discovery-empty';
+      if (failures.length > 0) {
         const counts = new Map<string, number>();
-        for (const f of err.failures) counts.set(f.reason, (counts.get(f.reason) ?? 0) + 1);
-        reasonClass = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}×${v}`).join(',');
-        detail = err.failures.map((f) => `${f.provider}:${f.reason}${f.detail ? `(${f.detail})` : ''}`).join(' | ');
-      } else if (/failed host\/path check/.test(detail)) {
-        reasonClass = 'discovery-filter';
-      } else if (/no pages found/.test(detail)) {
-        reasonClass = 'discovery-empty';
+        for (const f of failures) counts.set(f.reason, (counts.get(f.reason) ?? 0) + 1);
+        const byReason = [...counts.entries()].sort((a, b) => b[1] - a[1]).map(([k, v]) => `${k}×${v}`).join(',');
+        const failureDetail = failures.map((f) => `${f.provider}:${f.reason}${f.detail ? `(${f.detail})` : ''}`).join(' | ');
+        if (reasonClass === 'unknown') {
+          reasonClass = byReason;
+          detail = failureDetail;
+        } else {
+          detail = `${message} | before discovery: ${failureDetail}`;
+        }
       }
       rows.push({ slug, item: canonicalName, ok: false, reasonClass, detail });
       console.log(`✗ ${canonicalName.padEnd(32)} ${reasonClass}`);

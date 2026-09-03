@@ -88,7 +88,7 @@ SIPRI 的许可允许衍生合计值，不允许再分发完整数据库，因�
 
 `GET /api/resilience/v1/get-food-stocks?countryCode=WORLD` · MCP `get_food_stocks`
 
-USDA PSD 谷物期末库存、产量、消费量以及库存消费比，按国家与商品划分。`countryCode=WORLD` 返回全球平衡表。`commodity` 接受 `wheat`、`corn`、`rice`、`soybeans`、`barley`、`palmOil`。FAOSTAT 的仅产量行使用库存占位字段，因此在把库存数字当作测量值之前，请先读 `hasEndingStocks` 与 `hasStocksToUse`。
+USDA PSD 谷物期末库存、产量、消费量以及库存消费比，按国家与商品划分。`countryCode=WORLD` 返回全球平衡表。`commodity` 接受 `wheat`、`corn`、`rice`、`soybeans`、`barley`、`palmOil`。当 PSD 没有完整平衡表时，FAOSTAT 粮食平衡表提供同一日历年的产量与国内供应量。FAOSTAT 行没有库存测量值，因此在使用库存数字之前，请先读 `hasEndingStocks` 与 `hasStocksToUse`。
 
 销售年度不是日历年度，且因国家与商品而异。两个国家标注为"2025/26"的数据可能覆盖不同月份——切勿当作同一时期比较。每一行都注明自己的销售年度正是出于此因。
 

@@ -386,7 +386,7 @@
           "Licenc- / API-kulcs mellékelve",
           "Valós idejű adatfolyamok",
           "60 kérés/perc",
-          "1 000 kérés/nap benne foglalt",
+          "1000 kérés/nap (REST + MCP kombinálva; egy élő MCP hívás 2-3-nak számít)",
           "Webhook-értesítések"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Minden az API Starter csomagból",
           "Terjesztési jogok — ágyazza be adatainkat az Ön termékeibe",
           "300 kérés/perc",
-          "10 000 kérés/nap foglalva",
+          "10 000 kérés/nap (REST + MCP kombinálva; egy élő MCP hívás 2-3-nak számít)",
           "5 Pro licenc — hívjon meg felhasználókat bármely vállalati e-mail-domainről",
           "Prioritásos támogatás"
         ],

@@ -214,12 +214,12 @@ const CONCURRENCY = 6;
 // run — negligible against the 570s bundle budget.
 const BATCH_BACKOFF_MS = 5_000;
 const BATCH_LOG_EVERY = 5;
-// A country-level ArcGIS request can be rate-limited even when the run has
-// ample bundle time left. Retry that country once after a short cooldown;
-// the outer per-country timeout remains the hard ceiling for the whole retry
-// sequence, so a slow upstream cannot extend the run indefinitely.
 const RATE_LIMIT_RETRY_DELAY_MS = 2_000;
 const MAX_RATE_LIMIT_RETRIES = 1;
+// Backoff for the OTHER ArcGIS failure class. Much shorter than the
+// rate-limit delay because it retries inside an already-spent per-country
+// budget — see the slack derivation in fetchWithRetryOnInvalidParams.
+const INVALID_PARAMS_RETRY_DELAY_MS = 500;
 // Cache hygiene: force a full refetch if the cached payload is older than 7 days
 // even when upstream maxDate is unchanged. Protects against window-shift drift
 // (cached aggregates were computed against a window that's now 7+ days offset
@@ -259,6 +259,14 @@ export function createArcgisProxyError(reason, errInfo) {
   return error;
 }
 
+// ArcGIS error envelopes are inconsistent: usually `message`, sometimes only
+// `code` (see PR #3681), and in principle neither. One ladder shared by all
+// three parsers — direct, proxy, and diagnostic capture — so they cannot
+// drift apart.
+function arcgisErrorInfo(err) {
+  return err?.message ?? err?.code ?? JSON.stringify(err);
+}
+
 // Retry an ArcGIS request through the Decodo proxy. Used as the fallback
 // path when the direct request returns 429 OR silently times out — both
 // are signals that ArcGIS is rate-limiting our seed-server IP. Returns the
@@ -279,13 +287,22 @@ async function arcgisProxyRetry(url, reason, { signal } = {}) {
     // Greptile PR #3681 review P2: ArcGIS can return `{"error":{"code":400}}`
     // with no message field. Fall back to code, then JSON.stringify so the
     // thrown error message stays informative on unexpected error shapes.
-    const errInfo = proxied.error.message ?? proxied.error.code ?? JSON.stringify(proxied.error);
+    const errInfo = arcgisErrorInfo(proxied.error);
     throw createArcgisProxyError(reason, errInfo);
   }
   return proxied;
 }
 
-async function fetchWithTimeout(url, { signal, timeoutMs = FETCH_TIMEOUT, noProxyFallback = false } = {}) {
+const defaultFetch = (...args) => globalThis.fetch(...args);
+
+async function fetchWithTimeout(url, {
+  signal,
+  timeoutMs = FETCH_TIMEOUT,
+  noProxyFallback = false,
+  forceProxy = false,
+  fetchFn = defaultFetch,
+  proxyRetryFn = arcgisProxyRetry,
+} = {}) {
   // Combine the per-call timeoutMs with the upstream caller signal so an
   // abort propagates into the in-flight fetch AND future pagination iterations.
   //
@@ -296,12 +313,20 @@ async function fetchWithTimeout(url, { signal, timeoutMs = FETCH_TIMEOUT, noProx
   //                       arcgisProxyRetry. Used by preflight so a degraded
   //                       upstream can't burn the container budget on
   //                       best-effort cache-invalidation probes (PR #3711 P1).
+  //   forceProxy       — skip the direct leg for the one bounded recovery
+  //                       after an unverified empty country response.
+  //   fetchFn          — optional direct transport seam for boundary tests.
+  //   proxyRetryFn     — optional proxy transport seam for boundary tests.
+  if (forceProxy) {
+    if (noProxyFallback) throw new Error('ArcGIS forceProxy conflicts with noProxyFallback');
+    return await proxyRetryFn(url, 'unverified empty activity', { signal });
+  }
   const combined = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(timeoutMs)])
     : AbortSignal.timeout(timeoutMs);
   let resp;
   try {
-    resp = await fetch(url, {
+    resp = await fetchFn(url, {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       signal: combined,
     });
@@ -361,10 +386,10 @@ async function fetchWithTimeout(url, { signal, timeoutMs = FETCH_TIMEOUT, noProx
     if (_bodyCaptureSuccessCount < MAX_BODY_CAPTURE_SUCCESSES
         && _bodyCaptureAttemptCount < MAX_BODY_CAPTURE_ATTEMPTS) {
       _bodyCaptureAttemptCount += 1;
-      const captured = await _captureErrorBodyAfterTimeout(url, signal);
+      const captured = await _captureErrorBodyAfterTimeout(url, signal, fetchFn);
       if (captured?.error) {
         _bodyCaptureSuccessCount += 1;
-        throw new Error(`ArcGIS error: ${captured.error.message ?? captured.error.code ?? JSON.stringify(captured.error)}`);
+        throw new Error(`ArcGIS error: ${arcgisErrorInfo(captured.error)}`);
       }
       if (captured?.body) {
         _bodyCaptureSuccessCount += 1;
@@ -374,17 +399,28 @@ async function fetchWithTimeout(url, { signal, timeoutMs = FETCH_TIMEOUT, noProx
       // success — fall through to proxy retry, leaving attempts budget
       // for the next timing-out country in case that one settles faster.
     }
-    return await arcgisProxyRetry(url, `direct ${errName || 'timeout'}`, { signal });
+    return await proxyRetryFn(url, `direct ${errName || 'timeout'}`, { signal });
   }
   if (resp.status === 429) {
     // Preflight (noProxyFallback) treats 429 as a soft failure: throw and
     // let the caller fall through to the expensive per-country path.
     if (noProxyFallback) throw new Error(`ArcGIS HTTP 429 (preflight, no proxy fallback)`);
-    return await arcgisProxyRetry(url, 'HTTP 429 rate-limited', { signal });
+    return await proxyRetryFn(url, 'HTTP 429 rate-limited', { signal });
   }
   if (!resp.ok) throw new Error(`ArcGIS HTTP ${resp.status} for ${url.slice(0, 80)}`);
   const body = await resp.json();
-  if (body.error) throw new Error(`ArcGIS error: ${body.error.message}`);
+  // A raw `body.error.message` interpolation threw "ArcGIS error: undefined"
+  // for a message-less envelope — unusable in logs, and invisible to both
+  // the rate-limit classifier and the invalid-params circuit breaker, which
+  // read this message.
+  if (body.error) {
+    const errInfo = arcgisErrorInfo(body.error);
+    const error = new Error(`ArcGIS error: ${errInfo}`);
+    if (!noProxyFallback && refreshFailureCode(error) === 'rate_limited') {
+      return await proxyRetryFn(url, 'HTTP 200 rate-limited', { signal });
+    }
+    throw error;
+  }
   return body;
 }
 
@@ -421,13 +457,13 @@ const MAX_BODY_CAPTURE_ATTEMPTS = 0;
 // Returns `{error}` if the response body contains an ArcGIS error,
 // `{body}` if it contains a normal response, or null if the re-fetch
 // itself failed (caller falls through to proxy retry as before).
-async function _captureErrorBodyAfterTimeout(url, signal) {
+async function _captureErrorBodyAfterTimeout(url, signal, fetchFn) {
   if (signal?.aborted) return null;
   const captureSignal = signal
     ? AbortSignal.any([signal, AbortSignal.timeout(ERROR_BODY_CAPTURE_EXTRA_MS)])
     : AbortSignal.timeout(ERROR_BODY_CAPTURE_EXTRA_MS);
   try {
-    const resp = await fetch(url, {
+    const resp = await fetchFn(url, {
       headers: { 'User-Agent': CHROME_UA, Accept: 'application/json' },
       signal: captureSignal,
     });
@@ -469,9 +505,24 @@ async function _captureErrorBodyAfterTimeout(url, signal) {
 // change, server-side degradation) so we don't burn the container
 // budget on doomed retries.
 let _invalidParamsErrorCount = 0;
-async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
+
+// Test-only reset (mirrors _resetArcgisDateFieldCache). The counter is
+// module state with a run-scoped threshold, so a test that drives the
+// invalid-params branch would otherwise leak its count into every later
+// test in the same process and could trip the threshold.
+export function _resetInvalidParamsErrorCount() {
+  _invalidParamsErrorCount = 0;
+}
+
+async function fetchWithRetryOnInvalidParams(url, {
+  signal,
+  forceProxy = false,
+  fetchFn,
+  proxyRetryFn,
+  sleepFn = waitForRetry,
+} = {}) {
   try {
-    return await fetchWithTimeout(url, { signal });
+    return await fetchWithTimeout(url, { signal, forceProxy, fetchFn, proxyRetryFn });
   } catch (err) {
     const msg = err?.message || '';
     if (!/Invalid query parameters/i.test(msg)) throw err;
@@ -500,16 +551,21 @@ async function fetchWithRetryOnInvalidParams(url, { signal } = {}) {
     // cancelled. The counter still ticks (and trips the threshold for
     // global bail), so degradation visibility isn't lost.
     if (/via proxy after/i.test(msg)) throw err;
-    await new Promise((r) => setTimeout(r, 500));
+    await sleepFn(INVALID_PARAMS_RETRY_DELAY_MS, signal);
     if (signal?.aborted) throw signal.reason ?? err;
     console.warn(`  [port-activity] retrying after "${msg}" (${_invalidParamsErrorCount}/${INVALID_PARAMS_RETRY_THRESHOLD}): ${url.slice(0, 80)}`);
-    return await fetchWithTimeout(url, { signal });
+    return await fetchWithTimeout(url, { signal, forceProxy, fetchFn, proxyRetryFn });
   }
 }
 
 // Fetch ALL ports globally in one paginated pass, grouped by ISO3.
 // ArcGIS server-cap: advance by actual features.length, never PAGE_SIZE.
-async function fetchAllPortRefs({ signal } = {}) {
+export async function fetchAllPortRefs({
+  signal,
+  fetchFn,
+  proxyRetryFn,
+  sleepFn = waitForRetry,
+} = {}) {
   const byIso3 = new Map();
   let offset = 0;
   let body;
@@ -527,7 +583,16 @@ async function fetchAllPortRefs({ signal } = {}) {
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithRetryOnInvalidParams(`${EP4_BASE}?${params}`, { signal });
+    const url = `${EP4_BASE}?${params}`;
+    body = await retryRateLimited(
+      (attemptSignal) => fetchWithRetryOnInvalidParams(url, {
+        signal: attemptSignal,
+        fetchFn,
+        proxyRetryFn,
+        sleepFn,
+      }),
+      { signal, sleepFn, label: `reference page ${page}` },
+    );
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
@@ -607,11 +672,19 @@ export function _resetArcgisDateFieldCache() {
 // twice per country — once for each aggregation window (last30, prev30) —
 // in parallel so heavy countries no longer have to serialise through both
 // windows inside a single 90s cap.
-async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { signal, dateField } = {}) {
+async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, {
+  signal,
+  dateField,
+  forceProxy = false,
+  fetchFn,
+  proxyRetryFn,
+  sleepFn = waitForRetry,
+} = {}) {
   // Defensive: callers should always thread dateField through, but if a
   // future caller forgets, fall back to the resolver (idempotent + cached).
   const df = dateField || (await resolveArcgisDateField({ signal }));
   let offset = 0;
+  let acceptedRowCount = 0;
   let body;
   do {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
@@ -645,11 +718,18 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { sign
       outSR: '4326',
       f: 'json',
     });
-    body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, { signal });
+    body = await fetchWithRetryOnInvalidParams(`${EP3_BASE}?${params}`, {
+      signal,
+      forceProxy,
+      fetchFn,
+      proxyRetryFn,
+      sleepFn,
+    });
     const features = body.features ?? [];
     for (const f of features) {
       const a = f.attributes;
       if (!a || a.portid == null || a[df] == null) continue;
+      acceptedRowCount += 1;
       const portId = String(a.portid);
       const calls = Number(a.portcalls_tanker ?? 0);
       const imports = Number(a.import_tanker ?? 0);
@@ -680,6 +760,8 @@ async function paginateWindowInto(portAccumMap, _iso3, where, windowKind, { sign
     if (features.length === 0) break;
     offset += features.length;
   } while (body.exceededTransferLimit);
+
+  return acceptedRowCount;
 }
 
 // Parse a "YYYY-MM-DD" string (from ArcGIS outStatistics max(date)) into an
@@ -712,13 +794,10 @@ export function deriveRunAnchorMs(maxDateStrings) {
   return newest;
 }
 
-// A country's own preflight wins. On failure, its last known max date wins
-// over the run anchor because country maxima can publish at different times.
-// fetchMaxDate returns null on ANY failure — including the sporadic HTTP 400 and
-// 504 this FeatureServer emits under load — so without this a transport blip was
-// converted into "assume upstream is current". undefined (not null) is returned
-// when nothing is known, so fetchCountryAccum's `?? Date.now()` still applies for
-// a run where nothing at all answered.
+// A country's own observed max date wins. On a failed preflight, its last known
+// max date wins over the run anchor because country maxima can publish at
+// different times. undefined (not null) is returned when nothing is known, so
+// fetchCountryAccum's `?? Date.now()` still applies when no preflight answered.
 export function resolveCountryAnchorMs(upstreamMaxDate, runAnchorMs, priorAsof) {
   const own = parseMaxDateToAnchor(upstreamMaxDate);
   if (own !== null) return own;
@@ -751,8 +830,15 @@ function parseMaxDateToAnchor(maxDateStr) {
 // ~10 days behind real-time, so the last-7-day window was always empty and
 // anomalySignal always false. Not a feature regression — it was already dead.
 //
-// Returns Map<portId, PortAccum>. Memory per country is O(unique ports) ≈ <200.
-async function fetchCountryAccum(iso3, { signal, anchorEpochMs, dateField } = {}) {
+export async function fetchCountryAccum(iso3, {
+  signal,
+  anchorEpochMs,
+  dateField,
+  forceProxy = false,
+  fetchFn,
+  proxyRetryFn,
+  sleepFn = waitForRetry,
+} = {}) {
   const anchor = anchorEpochMs ?? Date.now();
   const cutoff30 = anchor - 30 * 86400000;
   const cutoff60 = anchor - 60 * 86400000;
@@ -764,31 +850,127 @@ async function fetchCountryAccum(iso3, { signal, anchorEpochMs, dateField } = {}
   // start via resolveArcgisDateField. The `timestamp 'YYYY-MM-DD HH:MM:SS'`
   // literal works on both the esriFieldTypeDateOnly and esriFieldTypeDate
   // shapes ArcGIS may serve.
-  await Promise.all([
+  const [currentWindowRowCount] = await Promise.all([
     paginateWindowInto(
       portAccumMap,
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff30)}`,
       'last30',
-      { signal, dateField: df },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn },
     ),
     paginateWindowInto(
       portAccumMap,
       iso3,
       `ISO3='${iso3}' AND ${df} > ${epochToTimestamp(cutoff60)} AND ${df} <= ${epochToTimestamp(cutoff30)}`,
       'prev30',
-      { signal, dateField: df },
+      { signal, dateField: df, forceProxy, fetchFn, proxyRetryFn, sleepFn },
     ),
   ]);
 
-  return portAccumMap;
+  return { portAccumMap, currentWindowRowCount };
+}
+
+// A direct empty feature set is not proof that a country has no activity.
+// ArcGIS returned empty sets for active countries during the 2026-09-02
+// rate-limit incident. Only an explicit null max-date observation with current
+// EP4 references can publish zero. Every other empty gets one proxy-only retry
+// inside the caller's existing per-country timeout.
+export async function fetchCountryActivityWithRecovery(iso3, {
+  signal,
+  anchorEpochMs,
+  dateField,
+  preflightObservation,
+  refMap,
+  fetchAccumFn = fetchCountryAccum,
+  sleepFn = waitForRetry,
+} = {}) {
+  const currentWindowExpected = preflightObservation?.status === 'observed'
+    && preflightObservation.maxDate !== null;
+  const isUsableActivity = (result) => result?.portAccumMap instanceof Map
+    && result.portAccumMap.size > 0
+    && (!currentWindowExpected || result.currentWindowRowCount > 0);
+
+  const directResult = await retryRateLimited(
+    (attemptSignal) => fetchAccumFn(iso3, {
+      signal: attemptSignal,
+      anchorEpochMs,
+      dateField,
+      forceProxy: false,
+    }),
+    { signal, sleepFn, label: iso3 },
+  );
+  if (isUsableActivity(directResult)) {
+    return { portAccumMap: directResult.portAccumMap, verifiedZero: false };
+  }
+
+  const verifiedZero = directResult?.portAccumMap instanceof Map
+    && directResult.portAccumMap.size === 0
+    && preflightObservation?.status === 'observed'
+    && preflightObservation.maxDate === null
+    && refMap instanceof Map
+    && refMap.size > 0;
+  if (verifiedZero) {
+    return { portAccumMap: new Map(), verifiedZero: true };
+  }
+
+  console.warn(`  [port-activity] ${iso3}: unverified empty activity — retrying via proxy`);
+  const proxiedResult = await retryRateLimited(
+    (attemptSignal) => fetchAccumFn(iso3, {
+      signal: attemptSignal,
+      anchorEpochMs,
+      dateField,
+      forceProxy: true,
+    }),
+    {
+      signal,
+      maxRetries: 0,
+      sleepFn,
+      label: `${iso3} proxy empty recovery`,
+    },
+  );
+  if (isUsableActivity(proxiedResult)) {
+    return { portAccumMap: proxiedResult.portAccumMap, verifiedZero: false };
+  }
+
+  throw Object.assign(new Error('unverified empty activity after proxy retry'), {
+    refreshFailureCode: 'invalid_empty',
+  });
 }
 
 // Cheap preflight: single outStatistics query returning max(date) for one
 // country. Used to skip the expensive fetch when upstream data hasn't
 // advanced since the last cached run. ~1-2s per call at ArcGIS's current
-// steady-state. Returns ISO date string "YYYY-MM-DD" or null on any error
-// (we then fall through to the expensive path, which has its own retry).
+// steady-state. Keeps an explicit null max date separate from a failed or
+// malformed observation so the publication path cannot turn failure into zero.
+export function parseMaxDateObservation(body) {
+  const attrs = body?.features?.[0]?.attributes;
+  if (!attrs || !Object.prototype.hasOwnProperty.call(attrs, 'max_date')) {
+    return { status: 'failed', maxDate: null };
+  }
+  const raw = attrs.max_date;
+  if (raw === null) return { status: 'observed', maxDate: null };
+
+  let maxDate;
+  if (typeof raw === 'number' && Number.isFinite(raw)) {
+    const d = new Date(raw);
+    if (!Number.isNaN(d.getTime())) {
+      maxDate = `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+    }
+  } else if (typeof raw === 'string') {
+    const candidate = raw.slice(0, 10);
+    const parsedCandidate = Date.parse(`${candidate}T00:00:00Z`);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(candidate)
+        && Number.isFinite(parsedCandidate)
+        && new Date(parsedCandidate).toISOString().slice(0, 10) === candidate) {
+      maxDate = candidate;
+    }
+  }
+
+  return maxDate
+    ? { status: 'observed', maxDate }
+    : { status: 'failed', maxDate: null };
+}
+
 async function fetchMaxDate(iso3, { signal, dateField } = {}) {
   const df = dateField || (await resolveArcgisDateField({ signal }));
   const outStats = JSON.stringify([{
@@ -818,19 +1000,9 @@ async function fetchMaxDate(iso3, { signal, dateField } = {}) {
       timeoutMs: PREFLIGHT_FETCH_TIMEOUT,
       noProxyFallback: true,
     });
-    const attrs = body.features?.[0]?.attributes;
-    if (!attrs) return null;
-    const raw = attrs.max_date;
-    if (raw == null) return null;
-    // ArcGIS may return max(date) as epoch ms OR ISO string depending on field type
-    // (esriFieldTypeDate vs esriFieldTypeDateOnly). Normalize to YYYY-MM-DD.
-    if (typeof raw === 'number') {
-      const d = new Date(raw);
-      return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
-    }
-    return String(raw).slice(0, 10);
+    return parseMaxDateObservation(body);
   } catch {
-    return null;
+    return { status: 'failed', maxDate: null };
   }
 }
 
@@ -1202,7 +1374,7 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
   // which is higher than the expensive-fetch CONCURRENCY.
   if (progress) progress.stage = 'preflight';
   const preflightT0 = Date.now();
-  const maxDates = new Array(eligibleIso3.length).fill(null);
+  const preflightObservations = new Array(eligibleIso3.length).fill(null);
   for (let i = 0; i < eligibleIso3.length; i += PREFLIGHT_CONCURRENCY) {
     if (signal?.aborted) throw signal.reason ?? new Error('aborted');
     const slice = eligibleIso3.slice(i, i + PREFLIGHT_CONCURRENCY);
@@ -1211,12 +1383,17 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     );
     for (let j = 0; j < slice.length; j++) {
       const r = settled[j];
-      maxDates[i + j] = r.status === 'fulfilled' ? r.value : null;
+      preflightObservations[i + j] = r.status === 'fulfilled'
+        ? r.value
+        : { status: 'failed', maxDate: null };
     }
   }
   console.log(`  [port-activity] Preflight maxDate for ${eligibleIso3.length} countries (${((Date.now() - preflightT0) / 1000).toFixed(1)}s)`);
 
   // See deriveRunAnchorMs for why Date.now() is not the fallback.
+  const maxDates = preflightObservations.map((observation) =>
+    observation?.status === 'observed' ? observation.maxDate : null,
+  );
   const runAnchorFallbackMs = deriveRunAnchorMs(maxDates);
   if (runAnchorFallbackMs === null) {
     console.warn('  [port-activity] No preflight returned a max date — per-country windows fall back to now, which is only correct if upstream really is current.');
@@ -1233,24 +1410,36 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
   for (let i = 0; i < eligibleIso3.length; i++) {
     const iso3 = eligibleIso3[i];
     const iso2 = iso3ToIso2.get(iso3);
-    const upstreamMaxDate = maxDates[i];
+    const preflightObservation = preflightObservations[i];
+    const upstreamMaxDate = preflightObservation?.status === 'observed'
+      ? preflightObservation.maxDate
+      : null;
     const prev = prevPayloads[i];
     const criticalRefreshDue = isCriticalContentRefreshDue({
       iso2,
       prevPayload: prev,
       now,
     });
+    const observationMatches = preflightObservation?.status === 'observed'
+      && (upstreamMaxDate !== null
+        ? prev?.asof === upstreamMaxDate
+        : prev?.asof === null && prev?.zeroActivity === true);
     const cacheFresh = !criticalRefreshDue
       && prev && typeof prev === 'object'
-      && prev.asof === upstreamMaxDate
-      && upstreamMaxDate != null
+      && observationMatches
       && typeof prev.cacheWrittenAt === 'number'
       && (now - prev.cacheWrittenAt) < MAX_CACHE_AGE_MS;
     if (cacheFresh) {
       countryData.set(iso2, prev);
       cacheHits++;
     } else {
-      needsFetch.push({ iso3, iso2, upstreamMaxDate, prevPayload: prev });
+      needsFetch.push({
+        iso3,
+        iso2,
+        upstreamMaxDate,
+        preflightObservation,
+        prevPayload: prev,
+      });
     }
   }
   console.log(`  [port-activity] Cache: ${cacheHits} hits, ${needsFetch.length} misses`);
@@ -1357,7 +1546,12 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
     const attemptedAt = Date.now();
     if (progress) progress.batchIdx = batchIdx;
 
-    const promises = batch.map(({ iso3, upstreamMaxDate, prevPayload }) => {
+    const promises = batch.map(({
+      iso3,
+      upstreamMaxDate,
+      preflightObservation,
+      prevPayload,
+    }) => {
       // Anchor the rolling windows to upstream max(date) so the aggregate
       // is stable day-over-day when upstream is frozen (required for cache
       // reuse to be semantically correct — see PR #3299 review P1).
@@ -1370,10 +1564,13 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
         prevPayload?.asof,
       );
       const p = withPerCountryTimeout(
-        (childSignal) => retryRateLimited(
-          (attemptSignal) => fetchCountryAccum(iso3, { signal: attemptSignal, anchorEpochMs, dateField }),
-          { signal: childSignal, label: iso3 },
-        ),
+        (childSignal) => fetchCountryActivityWithRecovery(iso3, {
+          signal: childSignal,
+          anchorEpochMs,
+          dateField,
+          preflightObservation,
+          refMap: refsByIso3.get(iso3),
+        }),
         iso3,
       );
       // Eager error flush so a SIGTERM mid-batch captures rejections that
@@ -1391,17 +1588,17 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
         retainFailedAttempt(batch[j], outcome.reason, attemptedAt);
         continue; // diagnostic already recorded via eager .catch
       }
-      const portAccumMap = outcome.value;
-      if (!portAccumMap || portAccumMap.size === 0) {
-        const reason = Object.assign(new Error('empty activity result'), {
-          refreshFailureCode: 'empty_activity',
+      const { portAccumMap, verifiedZero } = outcome.value ?? {};
+      if (!portAccumMap || (portAccumMap.size === 0 && !verifiedZero)) {
+        const reason = Object.assign(new Error('invalid country activity outcome'), {
+          refreshFailureCode: 'invalid_empty',
         });
         errors.push(`${iso3}: ${reason.message}`);
         retainFailedAttempt(batch[j], reason, attemptedAt);
         continue;
       }
       const ports = finalisePortsForCountry(portAccumMap, refsByIso3.get(iso3));
-      if (!ports.length) {
+      if (!ports.length && !verifiedZero) {
         const reason = Object.assign(new Error('empty final port list'), {
           refreshFailureCode: 'empty_ports',
         });
@@ -1413,6 +1610,7 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
       countryData.set(iso2, {
         iso2,
         ports,
+        zeroActivity: verifiedZero,
         fetchedAt: new Date(refreshedAt).toISOString(),
         // Content clock (#6060): advances only when upstream's own max(date)
         // advances, so a forced refetch of FROZEN upstream data cannot reset it
@@ -1420,10 +1618,14 @@ export async function fetchAll(progress, { signal, expectedCountries = [] } = {}
         // observation date when no prior clock exists — stamping `refreshedAt`
         // there would report a frozen upstream as fresh for a full budget
         // window after rollout, since every payload predates this field.
-        contentAsOfChangedAt: contentClockFor(batch[j].prevPayload, upstreamMaxDate, refreshedAt),
-        // Cache fields. `asof` may be null if preflight failed; that's fine —
-        // next run will always be a miss (null !== any string) so we'll
-        // re-fetch and repopulate.
+        // A verified zero is a successful current observation, not a failed
+        // preflight. Refresh its content clock when the seven-day cache expires.
+        contentAsOfChangedAt: verifiedZero
+          ? refreshedAt
+          : contentClockFor(batch[j].prevPayload, upstreamMaxDate, refreshedAt),
+        // Cache fields. `asof` is null for a failed preflight or a verified
+        // zero. Only the verified-zero marker can make a later explicit null
+        // observation reuse this payload.
         asof: upstreamMaxDate,
         cacheWrittenAt: refreshedAt,
         refreshAttemptedAt: attemptedAt,

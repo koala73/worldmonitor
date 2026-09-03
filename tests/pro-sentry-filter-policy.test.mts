@@ -904,3 +904,149 @@ describe('marketing beforeSend — document-URL frames (WORLDMONITOR-115)', () =
     }
   });
 });
+
+// ─── 2026-09-02 triage: marketing-surface gaps the dashboard has covered ──────
+//
+// Four production issues, all `sentry.javascript.react` with a null release and
+// all fired by the browser's own global handlers (`onunhandledrejection` /
+// `onerror`), so no first-party catch was involved and no frame gate had
+// anything to act on. Each is a class `src/bootstrap/sentry-init.ts` has
+// suppressed for months; the two surfaces run separate Sentry clients, which is
+// the same gap that let WORLDMONITOR-15/-102/-107/-108/-10N/-10T/-117/-11F
+// through before it.
+
+describe('marketing ignoreErrors — injected-script classes (2026-09-02 triage)', () => {
+  it('drops a synthetic CustomEvent rejected into onunhandledrejection (WORLDMONITOR-11S)', () => {
+    // Verbatim production value: Safari 26.6.2 / macOS on `/pro`, whose
+    // `extra.__serialized__` was `{type: 'unhandledrejection', isTrusted: false,
+    // target: '[object Window]', …}` — a script-dispatched Event object, not a
+    // browser-fired one.
+    assert.equal(
+      isIgnored('CustomEvent', 'Event `CustomEvent` (type=unhandledrejection) captured as promise rejection'),
+      true,
+    );
+  });
+
+  it('keeps a first-party message that merely mentions CustomEvent', () => {
+    assert.equal(isIgnored('Error', 'CustomEvent listener for wm-session-degraded threw'), false);
+  });
+
+  it('pins the marketing surface as CustomEvent-free, which is what licenses the rule', () => {
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /\bCustomEvent\b/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [],
+      'the marketing surface now constructs a CustomEvent — re-derive the WORLDMONITOR-11S rule');
+  });
+
+  it('drops a javascript-obfuscator `_0x` identifier in both engine phrasings (WORLDMONITOR-11P)', () => {
+    // Verbatim production value: Chrome 152 / Windows on `/`, three
+    // `<anonymous>:1` frames and nothing else.
+    assert.equal(isIgnored('ReferenceError', '_0x58c9 is not defined'), true);
+    // WebKit phrasing of the same missing global — the dashboard has carried
+    // only this half since #4005.
+    assert.equal(isIgnored('ReferenceError', "Can't find variable: _0x4f2a1b"), true);
+  });
+
+  it('keeps a name that merely starts with an underscore-zero-ex prefix', () => {
+    assert.equal(isIgnored('ReferenceError', '_0xy is not defined'), false);
+    assert.equal(isIgnored('ReferenceError', '_0 is not defined'), false);
+  });
+
+  it('pins the marketing surface as `_0x`-free, which is what licenses the rule', () => {
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /_0x[0-9a-f]{4,}/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, []);
+  });
+
+  it('drops the WebAuthn unsupported-agent rejection (WORLDMONITOR-11Q)', () => {
+    // Verbatim production value: Electron 33.4.11 / Windows on `/pro`,
+    // `DOMException.code: 9`, breadcrumbs ending at Clerk's
+    // `POST /v1/client/sign_ins`. Clerk's own sign-in UI offers passkeys; the
+    // Electron shell ships no `PublicKeyCredential`.
+    assert.equal(
+      isIgnored('Error', 'NotSupportedError: The user agent does not support public key credentials.'),
+      true,
+    );
+  });
+
+  it('keeps other NotSupportedError messages so a real one still reports', () => {
+    assert.equal(isIgnored('Error', 'NotSupportedError: The operation is not supported.'), false);
+  });
+
+  it('pins the marketing surface as WebAuthn-free, which is what licenses the rule', () => {
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /navigator\.credentials|PublicKeyCredential/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [],
+      'the marketing surface now calls WebAuthn — re-derive the WORLDMONITOR-11Q rule');
+  });
+
+  it('drops the overlapping WebAuthn request rejection (WORLDMONITOR-11T)', () => {
+    // Verbatim production value: Chrome 151 / Windows on `/pro`, zero frames,
+    // breadcrumbs running Clerk's `GET /v1/environment` -> `GET /v1/client` ->
+    // a button click -> `POST /v1/client/sign_ins`. Chrome rejects a second
+    // `navigator.credentials` request while one is outstanding, which is what a
+    // double-clicked sign-in button (or a submit over Clerk's conditional
+    // passkey autofill) produces.
+    assert.equal(isIgnored('Error', 'OperationError: A request is already pending.'), true);
+    // Some engines fold the type into the value.
+    assert.equal(isIgnored('Error', 'Error: OperationError: A request is already pending.'), true);
+  });
+
+  it('keeps other OperationError messages so a real one still reports', () => {
+    assert.equal(isIgnored('Error', 'OperationError: The operation failed.'), false);
+  });
+
+  it('keeps a message that merely contains the pending-request phrase', () => {
+    // The entry is anchored at both ends for the reason the `Error invoking`
+    // entry spells out: `ignoreErrors` is frame-blind, so an unanchored pattern
+    // would drop this even riding a `/pro/assets/*.js` frame.
+    assert.equal(
+      isIgnored('Error', 'Checkout aborted: a request is already pending. Retry in 5s'),
+      false,
+    );
+  });
+
+  it('pins the marketing surface as OperationError-free, the rule\'s second licence', () => {
+    // Independent of the WebAuthn-free scan above: `OperationError` is a
+    // browser-minted DOMException name, and `timeout-signal.ts`'s `TimeoutError`
+    // is the only DOMException this bundle constructs. If first-party code ever
+    // mints an `OperationError`, the frame-blind entry has to be re-derived.
+    const offenders = marketingFirstPartySources()
+      .filter((f) => !f.rel.includes('sentry-filter-policy'))
+      .filter((f) => /OperationError|A request is already pending/.test(f.code))
+      .map((f) => f.rel);
+    assert.deepEqual(offenders, [],
+      'the marketing surface now mints OperationError — re-derive the WORLDMONITOR-11T rule');
+  });
+});
+
+describe('marketingBeforeSend — leaked fetch abort (WORLDMONITOR-11M)', () => {
+  const ABORTED = 'AbortError: The user aborted a request.';
+
+  it('drops the zero-frame abort rejection', () => {
+    assert.equal(marketingBeforeSend(event(ABORTED)), null);
+    // Chrome also reports it without the type prefix in `value`.
+    assert.equal(marketingBeforeSend(event('The user aborted a request.')), null);
+  });
+
+  it('keeps the same message when a marketing-bundle frame is present', () => {
+    const kept = event(ABORTED, ['/pro/assets/main-Ab12Cd.js']);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps the same message when a source-mapped frame is present', () => {
+    const kept = event(ABORTED, ['src/services/checkout.ts']);
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+
+  it('keeps an unrelated abort-flavoured message', () => {
+    const kept = event('Checkout aborted a request to Dodo');
+    assert.equal(marketingBeforeSend(kept), kept);
+  });
+});

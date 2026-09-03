@@ -12,7 +12,7 @@ WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) �
 - **Pro**——使用你的 WorldMonitor 账户登录，无需管理密钥。每个 UTC 日 50 次配额消耗调用。
 - **API Starter / Business / Enterprise**——在你的客户端中粘贴用户签发的 `wm_…` 密钥，或使用与 Pro 相同的 OAuth 流程。控制面板签发的密钥共享每用户每分钟 60 次的限流桶，并使用每个 UTC 日 50 次配额消耗调用的默认值。OAuth 额度按套餐解析；API Starter 和 API Business 当前使用相同默认值，企业 OAuth 可以不设上限。REST/API 套餐额度保持独立。
 
-在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级或生成密钥。本指南的其余部分假设使用 Claude Desktop + OAuth（最简单的路径）；如果你更愿意将 `wm_…` 密钥粘贴到 `curl` 脚本中，请跳到底部的[服务端 curl](#server-side-curl)。
+在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 升级或生成密钥。本指南的其余部分假设使用 Claude Desktop + OAuth（最简单的路径）；如果你更愿意将 `wm_…` 密钥粘贴到 `curl` 脚本中，请跳到底部的[服务端 curl](#服务端-curl)。
 
 ## 2. 将服务器添加到 Claude Desktop
 
@@ -31,7 +31,7 @@ WorldMonitor 通过 [Model Context Protocol](https://modelcontextprotocol.io) �
 重启 Claude Desktop。第一次在聊天中提到 WorldMonitor 时，Claude 会弹出 OAuth 同意屏幕——点击 **Sign in with WorldMonitor Pro**，在浏览器中进行身份验证，令牌将由 Claude 本地存储。你的文件系统中不会出现任何 API 密钥。
 
 <Tip>
-Cursor、Claude 网页版和 MCP Inspector 使用相同的 URL。每个客户端的确切配置字段请参见[客户端设置](/zh/mcp-overview#client-setup)。
+Cursor、Claude 网页版和 MCP Inspector 使用相同的 URL。每个客户端的确切配置字段请参见[客户端设置](/zh/mcp-overview#客户端配置)。
 </Tip>
 
 ### 替代方案：`mcp-remote` 桥
@@ -131,13 +131,13 @@ Claude 会从 WorldMonitor 工具集中选择 `get_market_data`，不带参数�
 
 - 调用 `tools/list` 获取当前工具名与压缩描述。
 - 当某个 `tools/list` 条目太短而无法自信选择时，调用 `describe_tool` 并传入 `tool_name`。
-- 当你从某个 REST 方法 / 路径出发，想知道是否存在确切的 MCP `_apiPaths` 映射时，请使用 [API 覆盖表](/zh/mcp-overview#api-coverage)。
+- 当你从某个 REST 方法 / 路径出发，想知道是否存在确切的 MCP `_apiPaths` 映射时，请使用 [API 覆盖表](/zh/mcp-overview#api-覆盖)。
 
 ## 刚才发生了什么
 
 MCP 握手在聊天侧是不可见的，但以下是序列，以便你在出现问题时知道去哪里查看：
 
-1. Claude Desktop 读取 `claude_desktop_config.json`，发现 WorldMonitor 服务器，并在首次使用时向 `https://worldmonitor.app/mcp` POST `initialize`。服务器以其能力、协商后的协议版本（默认 `2025-06-18`，与静态服务器卡片一致；固定在 `2025-03-26` 的客户端仍得到 `2025-03-26`）和一个会话级 `instructions` 字符串作为响应，该字符串告诉模型通用的 `jmespath` 参数。通告 `text/event-stream` 的客户端可能以 SSE 形式接收此响应，并带有可恢复的 `Mcp-Session-Id` / `Last-Event-ID` 游标；未通告 SSE 的客户端接收 JSON。推出详情请参见[协议协商](/zh/mcp-overview#protocol-negotiation)和[可流式 HTTP 响应](/zh/mcp-overview#streamable-http-responses)。
+1. Claude Desktop 读取 `claude_desktop_config.json`，发现 WorldMonitor 服务器，并在首次使用时向 `https://worldmonitor.app/mcp` POST `initialize`。服务器以其能力、协商后的协议版本（默认 `2025-06-18`，与静态服务器卡片一致；固定在 `2025-03-26` 的客户端仍得到 `2025-03-26`）和一个会话级 `instructions` 字符串作为响应，该字符串告诉模型通用的 `jmespath` 参数。通告 `text/event-stream` 的客户端可能以 SSE 形式接收此响应，并带有可恢复的 `Mcp-Session-Id` / `Last-Event-ID` 游标；未通告 SSE 的客户端接收 JSON。推出详情请参见[协议协商](/zh/mcp-overview#协议协商)和[可流式 HTTP 响应](/zh/mcp-overview#streamable-http-响应)。
 2. Claude Desktop 调用 `tools/list` 并接收压缩的工具描述（每个工具 `≤120` 字节）。压缩形式保持 `tools/list` 低成本；`describe_tool` 按需返回完整定义。
 3. 当你提出需要实时数据的问题时，Claude 选择一个工具，调用 `tools/call`，并将响应内联到其回复中。包括 `get_world_brief` 在内的缓存工具会返回已接受的快照，不会在请求时调用 LLM；实时 LLM 工具（`analyze_situation` 等）需要 1–4 秒。
 

@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { SearchAdapter, SearchTargetError } from './search.js';
 import type { ExaProvider } from '../acquisition/exa.js';
 import type { FirecrawlProvider } from '../acquisition/firecrawl.js';
-import type { AdapterContext } from './types.js';
+import type { AdapterContext, Target } from './types.js';
 import type { RetailerConfig } from '../config/types.js';
 import { loadRetailerConfig } from '../config/loader.js';
 
@@ -49,6 +49,36 @@ function makeTarget() {
   };
 }
 
+function makeBrazilTarget(
+  config: RetailerConfig,
+  fixture: {
+    id: string;
+    category: string;
+    canonicalName: string;
+    baseUnit: string;
+    minBaseQty: number;
+    maxBaseQty: number;
+  },
+): Target {
+  return {
+    id: fixture.id,
+    url: config.baseUrl,
+    category: fixture.category,
+    metadata: {
+      canonicalName: fixture.canonicalName,
+      domain: new URL(config.baseUrl).hostname,
+      currency: config.currencyCode,
+      basketSlug: 'essentials-br',
+      itemConstraints: {
+        baseUnit: fixture.baseUnit,
+        minBaseQty: fixture.minBaseQty,
+        maxBaseQty: fixture.maxBaseQty,
+      },
+      direct: false,
+    },
+  };
+}
+
 describe('SearchAdapter recovery path', () => {
   it('falls back to Exa when Firecrawl confuses quantity with price', async () => {
     const exa = {
@@ -89,6 +119,219 @@ describe('SearchAdapter recovery path', () => {
     );
     expect(products[0]?.price).toBe(4.95);
     expect(products[0]?.rawPayload.extractionProvider).toBe('exa');
+  });
+
+  describe('Brazil retailer extraction recovery', () => {
+    const fixtures = [
+      {
+        slug: 'pao_de_acucar_br',
+        id: 'rice_1kg',
+        url: 'https://www.paodeacucar.com/produto/102639/arroz-branco-tipo-1-qualita-pacote-1kg',
+        category: 'rice',
+        canonicalName: 'Arroz Branco 1kg',
+        productName: 'Arroz Branco Tipo 1 Qualitá Pacote 1kg',
+        sizeText: '1kg',
+        baseUnit: 'g',
+        minBaseQty: 900,
+        maxBaseQty: 1100,
+        extractedPrice: 5.49,
+        pageContent: 'Arroz Branco Tipo 1 Qualitá Pacote 1kg\nPreço por 1kg - R$ 5,49',
+        expectedPrice: 5.49,
+      },
+      {
+        slug: 'carrefour_br',
+        id: 'rice_1kg',
+        url: 'https://mercado.carrefour.com.br/arroz-branco-longo-fino-tipo-1-tio-joao-1-kg-387606/p',
+        category: 'rice',
+        canonicalName: 'Arroz Branco 1kg',
+        productName: 'Arroz Branco Longo-fino Tipo 1 Tio João 1 Kg',
+        sizeText: '1kg',
+        baseUnit: 'g',
+        minBaseQty: 900,
+        maxBaseQty: 1100,
+        extractedPrice: 529,
+        pageContent: 'Arroz Branco Longo-fino Tipo 1 Tio João 1 Kg\nR$ 6,29\nR$ 5,29\nR$ 5,29',
+        expectedPrice: 5.29,
+      },
+    ] as const;
+
+    it.each(fixtures)('accepts the current $slug fallback shape through its configured safety gates', async (fixture) => {
+      const config = loadRetailerConfig(fixture.slug);
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url: fixture.url }]),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: fixture.productName,
+            price: fixture.extractedPrice,
+            currency: 'BRL',
+            inStock: true,
+            sizeText: fixture.sizeText,
+          },
+          pageContent: fixture.pageContent,
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: fixture.canonicalName,
+            price: null,
+            currency: 'BRL',
+            inStock: false,
+            sizeText: fixture.sizeText,
+          },
+          pageContent: `${fixture.canonicalName}\nProduto indisponível`,
+        }),
+      } as unknown as FirecrawlProvider;
+      const context = makeContext(config);
+      const adapter = new SearchAdapter(exa, firecrawl);
+
+      const result = await adapter.fetchTarget(context, makeBrazilTarget(config, fixture));
+      const [product] = await adapter.parseListing(context, result);
+
+      expect(exa.extract).toHaveBeenCalledOnce();
+      expect(product?.price).toBe(fixture.expectedPrice);
+      expect(product?.rawPayload).toMatchObject({
+        extractionProvider: 'exa',
+        priceEvidence: 'verified',
+      });
+    });
+
+    it.each([
+      {
+        name: 'missing price',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: null, currency: 'BRL', sizeText: '1kg' },
+        pageContent: 'Arroz Branco Tipo 1 1kg\nProduto indisponível',
+        reason: 'missing-price',
+      },
+      {
+        name: 'unrelated product',
+        data: { productName: 'Sabão em Pó 1kg', price: 5.29, currency: 'BRL', sizeText: '1kg' },
+        pageContent: 'Sabão em Pó 1kg\nR$ 5,29',
+        reason: 'title-mismatch',
+      },
+      {
+        name: 'wrong currency',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: 529, currency: 'USD', sizeText: '1kg' },
+        pageContent: 'Arroz Branco Tipo 1 1kg\nR$ 5,29',
+        reason: 'currency-mismatch',
+      },
+      {
+        name: 'unmatched price evidence',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: 529, currency: 'BRL', sizeText: '1kg' },
+        pageContent: 'Arroz Branco Tipo 1 1kg\nR$ 6,29',
+        reason: 'price-evidence-missing',
+      },
+      {
+        name: 'integer with no page content',
+        data: { productName: 'Arroz Branco Tipo 1 1kg', price: 529, currency: 'BRL', sizeText: '1kg' },
+        pageContent: undefined,
+        reason: 'price-evidence-missing',
+      },
+    ])('rejects the Carrefour Brazil $name fallback shape', async ({ data, pageContent, reason }) => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/arroz-branco-tipo-1-1-kg-123/p';
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url }]),
+        extract: vi.fn().mockResolvedValue({ data, pageContent }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const target = makeBrazilTarget(config, {
+        id: 'rice_1kg',
+        category: 'rice',
+        canonicalName: 'Arroz Branco 1kg',
+        baseUnit: 'g',
+        minBaseQty: 900,
+        maxBaseQty: 1100,
+      });
+
+      const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+      expect(exa.extract).toHaveBeenCalledOnce();
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures.map((failure) => failure.reason)).toContain(reason);
+    });
+
+    it('rejects a package quantity before BRL minor-unit normalization', async () => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/pao-de-forma-500-g-123/p';
+      const exa = {
+        search: vi.fn().mockResolvedValue([{ url }]),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: 'Pão de Forma 500g',
+            price: 500,
+            currency: 'BRL',
+            sizeText: '500g',
+          },
+          pageContent: 'Pão de Forma 500g\nProdutos recomendados\nR$ 5,00',
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const adapter = new SearchAdapter(exa, firecrawl);
+      const target = makeBrazilTarget(config, {
+        id: 'bread_500g',
+        category: 'bread',
+        canonicalName: 'Pão de Forma 500g',
+        baseUnit: 'g',
+        minBaseQty: 450,
+        maxBaseQty: 550,
+      });
+
+      const error = await adapter.fetchTarget(makeContext(config), target).catch((caught: unknown) => caught);
+
+      expect(error).toBeInstanceOf(SearchTargetError);
+      expect((error as SearchTargetError).failures.map((failure) => failure.reason)).toContain('quantity-as-price');
+    });
+
+    it('keeps the out-of-range Carrefour chicken visible to the direct-pin rejection gate', async () => {
+      const config = loadRetailerConfig('carrefour_br');
+      const url = 'https://mercado.carrefour.com.br/produto/frango-inteiro-resfriado-com-osso-carrefour-kg-15787';
+      const exa = {
+        search: vi.fn(),
+        extract: vi.fn().mockResolvedValue({
+          data: {
+            productName: 'Frango Inteiro Resfriado com Osso Carrefour 1,5Kg - Carrefour',
+            price: 1790,
+            currency: 'BRL',
+            inStock: false,
+            sizeText: '1,5Kg',
+          },
+          pageContent: 'Frango Inteiro Resfriado com Osso Carrefour 1,5Kg\nR$ 17,90',
+        }),
+      } as unknown as ExaProvider;
+      const firecrawl = {
+        extract: vi.fn().mockResolvedValue({ data: {}, pageContent: 'Produto indisponível' }),
+      } as unknown as FirecrawlProvider;
+      const target = makeBrazilTarget(config, {
+        id: 'chicken_whole_1kg',
+        category: 'chicken',
+        canonicalName: 'Frango Inteiro Resfriado 1kg',
+        baseUnit: 'g',
+        minBaseQty: 800,
+        maxBaseQty: 1200,
+      });
+      target.url = url;
+      target.metadata = { ...target.metadata, direct: true };
+      const context = makeContext(config);
+      const adapter = new SearchAdapter(exa, firecrawl);
+
+      const result = await adapter.fetchTarget(context, target);
+      const [product] = await adapter.parseListing(context, result);
+
+      expect(product?.price).toBe(17.9);
+      expect(product?.rawPayload).toMatchObject({
+        direct: true,
+        validator: { ok: false },
+        extractionProvider: 'exa',
+        priceEvidence: 'verified',
+      });
+      expect(exa.search).not.toHaveBeenCalled();
+    });
   });
 
   it('does not retry a failed pinned URL when Exa returns it again', async () => {

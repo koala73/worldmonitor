@@ -132,6 +132,11 @@ tmp/
 # worktree-drift gate.
 .tmp-seed-freshness-gate-*/
 .tmp-deploy-gate-*/
+# Same trap, different directory: bundle-runner.test.mjs writes its run scripts
+# into the TRACKED scripts/fixtures/ (one per random UUID), so a concurrent
+# `git add -A` commits a temp file that can never exist again.
+scripts/fixtures/_bundle-runner-test-run-*.mjs
+scripts/fixtures/_bundle-fixture-pressure-run.mjs
 .context/
 # Scratch the Umami storage monitor writes on the runner: Railway volume and
 # deployment dumps plus its cached growth baseline. Local runs produce them too.

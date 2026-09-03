@@ -386,7 +386,7 @@
           "Licentie-/API-sleutel inbegrepen",
           "Real-time gegevensstromen",
           "60 aanvragen/minuut",
-          "1.000 aanvragen/dag inbegrepen",
+          "1.000 verzoeken/dag inbegrepen (REST + MCP gecombineerd; een live MCP-aanroep telt als 2-3)",
           "Webhook-meldingen"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "Alles in API Starter",
           "Herverdelingsrechten — integreer onze gegevens in wat u verkoopt",
           "300 verzoeken/minuut",
-          "10.000 verzoeken/dag inbegrepen",
+          "10.000 verzoeken/dag inbegrepen (REST + MCP gecombineerd; een live MCP-aanroep telt als 2-3)",
           "5 Pro-licenties — nodig gebruikers uit met elk zakelijk e-maildomein",
           "Prioritaire ondersteuning"
         ],

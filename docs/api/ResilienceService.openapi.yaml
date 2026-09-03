@@ -268,7 +268,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetFoodStocks
-            description: GetFoodStocks returns per-country and WORLD cereal stocks-to-use from the seeded USDA PSD snapshot. PRO-gated. Requires entitlement tier >= 1.
+            description: Returns seeded PSD cereal balances with FAOSTAT gap fill. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetFoodStocks
             security:
                 - WorldMonitorKey: []
@@ -1422,7 +1422,9 @@ components:
                 totalUseTmt:
                     type: number
                     format: double
-                    description: Total use (consumption + exports) in thousand metric tons.
+                    description: |-
+                        1000 MT. PSD country: consumption + exports. WORLD: consumption.
+                         FAOSTAT: domestic-supply quantity.
                 productionTmt:
                     type: number
                     format: double
@@ -1430,7 +1432,9 @@ components:
                 consumptionTmt:
                     type: number
                     format: double
-                    description: Domestic consumption in thousand metric tons. Zero when unknown.
+                    description: |-
+                        1000 MT. PSD: domestic consumption. FAOSTAT: domestic-supply quantity.
+                         Zero when unknown.
                 importsTmt:
                     type: number
                     format: double
@@ -1444,7 +1448,9 @@ components:
                     description: Unit the raw quantities are stored in, typically "1000 MT".
                 source:
                     type: string
-                    description: 'Provenance: "psd" or "faostat". FAOSTAT rows never carry stocks.'
+                    description: |-
+                        "psd" or "faostat". FAOSTAT Food Balances supplies production and
+                         domestic-supply, but no stocks.
             description: One country (or WORLD) × commodity production/stocks balance from the seeded snapshot.
         GetDemographicsCapabilityRequest:
             type: object

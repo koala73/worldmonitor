@@ -12,6 +12,7 @@ describe('five-factor operational wiring', () => {
       maxStaleMin: 2160,
       minRecordCount: 180,
       minPoolCounts: { population: 150, food: 80, energy: 120, demographics: 150, technology: 110, defense: 30 },
+      poolCountMargin: 10,
       activationKey: 'seed-activated:scorecard:five-factor',
       cutover: {
         mode: 'activation-marker',

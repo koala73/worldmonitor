@@ -125,12 +125,14 @@ Detected by hostname (`tech.worldmonitor.app` → tech, `finance.worldmonitor.ap
 
 ### Edge Functions
 
-The `api/` directory holds two kinds of endpoints, both deployed as Vercel Edge Functions:
+The `api/` directory holds two kinds of endpoints, deployed as Vercel Edge Functions except for the routes on the Node-runtime allowlist:
 
 - **Domain intelligence gateways** — generated from proto contracts and backed by handlers under `server/worldmonitor/**`. The per-domain thin entry points (`api/<domain>/v<N>/[rpc].ts`) are produced via `createDomainGateway` (`server/gateway.ts`) and esbuild-bundled, so the *deployed* artifact is self-contained even though the source composes server-side modules.
 - **Operational endpoints** — hand-written for concerns that don't fit the contract model: auth/session, checkout and customer portal, MCP, bootstrap/health, notifications, cache invalidation, and user workflows (e.g. `api/create-checkout.ts`, `api/customer-portal.ts`, `api/mcp.ts`, `api/user-prefs.ts`).
 
-Edge functions are bundled per file: each deployed function may not pull in unrelated modules at runtime, a constraint enforced by `tests/edge-functions.test.mjs` and the pre-push esbuild bundle check. Hand-written endpoints that genuinely cannot be proto-defined are listed in `api/api-route-exceptions.json` and enforced by `npm run lint:api-contract`.
+Edge functions are bundled per file: each deployed function may not pull in unrelated modules at runtime, a constraint enforced by `tests/edge-functions.test.mjs` and the pre-push esbuild bundle check.
+
+A route may opt into Vercel's **Node runtime** with `export const config = { runtime: 'nodejs' }` when it needs a `node:` built-in the Edge runtime cannot provide. `api/mcp-proxy.ts` is the one such route today: GHSA-887j requires pinning the upstream socket to the DoH-vetted address through `node:https`'s `lookup` hook, which Edge `fetch()` cannot do. Node-runtime routes are governed by three gates that must agree: the `NODE_RUNTIME_ROUTES` allowlist in `tests/edge-functions.test.mjs` (cross-checked against the runtime declarations in both directions, and the only thing that exempts a route from the `node:` import ban), `npm run lint:runtime-handler-contract` (a Node route default-exports `(req, res)`; an Edge route never does — the mismatch that broke #4749 and forced the #4754 revert), and the node-platform branch of the esbuild bundle check. All three classify a file from the parsed `export const config` declaration via `scripts/lib/api-route-runtime.mjs`. Hand-written endpoints that genuinely cannot be proto-defined are listed in `api/api-route-exceptions.json` and enforced by `npm run lint:api-contract`.
 
 ### Shared Helpers
 
@@ -355,7 +357,7 @@ Playwright specs in `e2e/*.spec.ts` test theme toggling, circuit breaker persist
 
 ### Edge Function Guardrails
 
-`tests/edge-functions.test.mjs` validates that all non-helper `api/*.js` files are self-contained: no `node:` built-in imports, no cross-directory `../server/` or `../src/` imports. The pre-push hook also runs an esbuild bundle check on each endpoint.
+`tests/edge-functions.test.mjs` validates that all non-helper `api/*.js` files are self-contained: no `node:` built-in imports (except for routes on the `NODE_RUNTIME_ROUTES` allowlist), no cross-directory `../server/` or `../src/` imports. The pre-push hook also runs an esbuild bundle check on each endpoint.
 
 ### Pre-Push Hook
 
@@ -365,9 +367,10 @@ Runs before every `git push`:
 2. CJS syntax validation
 3. Edge function esbuild bundle check
 4. Edge function import guardrail test
-5. Markdown lint
-6. MDX lint (Mintlify compatibility)
-7. Version sync check
+5. Runtime handler contract check (`npm run lint:runtime-handler-contract`)
+6. Markdown lint
+7. MDX lint (Mintlify compatibility)
+8. Version sync check
 
 **Source files**: `tests/`, `e2e/`, `playwright.config.ts`, `.husky/pre-push`
 
@@ -391,10 +394,11 @@ Runs before every `git push`:
 | `mcp-live-smoke.yml` | 6-hourly cron, push to main (smoke paths), manual | Anonymous strict-client walk of the production MCP surface on apex + www (capability walk, auth wall, OAuth endpoint routing — #4937/#4938 regression net) |
 | `live-api-cache-auth.yml` | 6-hourly cron, push to main (sweep paths), manual | Production cache/auth posture sweep: fake auth stays no-store and is never a cached 200, anonymous public surfaces stay cacheable, MCP/OAuth surfaces stay protocol-valid (#4497 regression net; suite was inert until #5379 wired the gate on, and the step fails if it executes 0 assertions) |
 | `china-decision-parity-live.yml` | 6-hourly cron, push to main (audit paths), manual (optional staging URL) | Live half of the China decision-signal parity audit: probes the deployed composition RPC and the public `chinaDecisionSignals` bootstrap projection for the six-domain contract and a canonical snapshot under one hour old (#5643 — the probe existed but nothing invoked it, and `--require-live` keeps a lost `--url` from passing vacuously) |
+| `tps-open-data-live.yml` | Twice-daily cron, push to main (adapter/suite paths), manual | Live contract probe of the two official Toronto Police open-data sources (ArcGIS MCI + CKAN Calls); fails if fewer than 2 mandatory source probes execute (the suite was inert until this workflow set LIVE_TPS_OPEN_DATA_TESTS=1, and `node --test` exits 0 on an all-skip run) |
 | `security-audit.yml` | PR, push to main, daily cron, manual | Production dependency audits for every tracked `package-lock.json` workspace, failing on unbaselined high/critical advisories |
 | `seed-freshness-monitor.yml` | 15-minute cron, manual | Enforces production ingestion acceptance after a green main gate (HEAD, or the newest gated ancestor when HEAD is undecided or already red); fails on every actionable compact-health problem except explicitly on-demand sources without grading production before Railway deploys or runs |
 | `railway-deploy-drift.yml` | Hourly cron, manual | Runs two independent read-only checks against the exact production fleet: Viewer-safe source/build/deploy configuration drift and deployment/Git-closure drift. It has no mutation, dispatch, retry, approval, or acceptance-baseline path |
-| `railway-registry-sync.yml` | Push to `main` touching `scripts/railway-services.json`, manual | Read-only deployment-only configuration audit that fails within minutes of a registry edit whose live Railway watch paths were never applied (#7256): #6928 widened `ais-relay` without syncing, Railway refused `6821a584e` (#7196) with `No changes to watched files`, and the six-hourly monitor reported it only as 31 consecutive reds. Audits configuration only — the deployment-history check is legitimately red during post-merge build lag |
+| `railway-registry-sync.yml` | Push to `main` touching Railway desired state or reconciler code, manual | Rejects stale workflow re-runs, applies registry-managed production configuration from the current `main` revision with the dedicated mutation token, then verifies it with the separate Viewer identity. Audits configuration only — the deployment-history check is legitimately red during post-merge build lag |
 | `railway-deploy-trigger.yml` | Manual rollback only | Keeps the legacy reconciler quiesced unless an operator explicitly activates the bounded rollback path; it does not own normal Railway deployment creation |
 | `analytics-collector-monitor.yml` | 15-minute cron, manual | Probes the self-hosted Umami collector directly (heartbeat, tracker script, ingest route) and fails when events are being dropped — Railway reported a green deployment through the 4-day #5565 blackout, so deployment status is not trusted here |
 | `umami-storage-monitor.yml` | 15-minute cron, manual | Reads the Umami Postgres Railway volume and the `umami-retention` deployment history without mutation, caches a bounded history, and fails on capacity or projected days-to-full thresholds, or when the retention runner's newest deployment that ran is `CRASHED` |

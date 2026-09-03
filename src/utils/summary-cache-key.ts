@@ -1,9 +1,19 @@
 // IMPORTANT: This module is the canonical cache-key builder shared by both
 // client (src/) and server (server/ via _shared.ts re-export). It imports
-// hashString from src/utils/hash.ts — do NOT swap to server/_shared/hash.ts
+// sha256Hex from src/utils/hash.ts — do NOT swap to server/_shared/hash.ts
 // or client/server cache keys will silently diverge.
-import { hashString } from './hash';
+import { sha256Hex } from './hash';
 
+// Bumped v9 → v10 on 2026-09-02 (GHSA-9gp4-366w-pcq3): the key was derived
+// with hashString, an FNV-1a digest masked to 52 bits. Every step of that
+// hash is invertible, so a meet-in-the-middle second preimage costs seconds
+// of CPU. Because summarize-article in translate mode is neither premium
+// gated nor quota gated and anonymous wms_ tokens are freely mintable, an
+// unauthenticated caller could mint a headline colliding with a real one and
+// seed the shared row that every other user then reads. Identity now comes
+// from SHA-256 over one length-delimited canonical string. The bump retires
+// every v9 row, which is required: any of them may already be poisoned.
+//
 // Bumped v8 → v9 on 2026-08-01 (#5969): prompt generation and cache
 // identity now select the same first five unique, non-empty headlines in
 // request order before the selected pairs are sorted for stable hashing.
@@ -24,7 +34,13 @@ import { hashString } from './hash';
 // DON'T pass `bodies` saw a forced cold-start so the pre-grounding
 // headline-only rows aged out cleanly on first tick after deploy. See
 // docs/plans/2026-04-24-001-fix-rss-description-end-to-end-plan.md U6.
-export const CACHE_VERSION = 'v9';
+export const CACHE_VERSION = 'v10';
+
+// 128 bits of SHA-256. Wide enough that a second preimage is infeasible,
+// short enough that the longest key stays inside the 120-character tail the
+// shared contract allows (shared/openapi-filter-param-contracts.json,
+// newsSummarizeArticleCacheKeyPattern).
+const DIGEST_HEX_CHARS = 32;
 
 const MAX_HEADLINE_LEN = 500;
 export const MAX_SUMMARY_HEADLINES = 5;
@@ -82,20 +98,38 @@ export function canonicalizeSummaryInputs(
 }
 
 /**
+ * Fold every identity-bearing field into one string, then hash it once.
+ *
+ * Each field carries its own length, so no field's content can be read as a
+ * delimiter and no two distinct field lists flatten to the same string.
+ *
+ * Hashing the whole identity once, rather than once per segment, is the point.
+ * With a digest per segment an attacker only has to collide whichever segment
+ * distinguishes the target, so the key is only as strong as its weakest
+ * segment. One digest over everything gives no such shortcut.
+ */
+async function digestIdentity(fields: readonly string[]): Promise<string> {
+  const canonical = fields.map(f => `${f.length}:${f}`).join('|');
+  return (await sha256Hex(canonical)).slice(0, DIGEST_HEX_CHARS);
+}
+
+/**
  * Canonical cache-key builder for SummarizeArticle results. Shared by both
  * client (src/services/summarization.ts) and server (server/worldmonitor/
  * news/v1/_shared.ts re-export as getCacheKey). Client and server MUST call
  * with identical inputs for the cache to align — sanitise any adversarial
  * text (bodies, geoContext) the same way on both sides before calling.
  *
+ * The returned key is `summary:<version>:<mode>:<scope>:<digest>`, where the
+ * digest is 128 bits of SHA-256 over the canonical identity. Callers read the
+ * plaintext prefix (see get-summarize-article-cache.ts, which gates on the
+ * current namespace); nothing parses the digest.
+ *
  * @param bodies Paired 1:1 with headlines (request order, post-sanitize).
- *   - When every body is empty → no `:bd<hash>` segment → key identical to
- *     the headline-only v5 shape (modulo the v5→v6 version bump).
- *   - When any body is non-empty → appends `:bd<hash>` where hash is over
- *     the pair-wise-sorted bodies string.
- *   - In translate mode, bodies are ignored (that path is headline[0]-only).
+ *   In translate mode bodies are ignored, since that path interpolates only
+ *   headlines[0] into the prompt.
  */
-export function buildSummaryCacheKey(
+export async function buildSummaryCacheKey(
   headlines: string[],
   mode: string,
   geoContext?: string,
@@ -103,7 +137,7 @@ export function buildSummaryCacheKey(
   lang?: string,
   systemAppend?: string,
   bodies?: string[],
-): string {
+): Promise<string> {
   const canon = canonicalizeSummaryInputs(headlines, geoContext, bodies);
   const pairs = canon.headlines.map((h, i) => ({ h, b: canon.bodies[i] ?? '' }));
   // Select in request order before sorting. Prompt generation uses the same
@@ -131,36 +165,37 @@ export function buildSummaryCacheKey(
   // ['A','B|C'] both flatten to 'A|B|C', so two genuinely different story
   // windows minted one key and either could be served the other's summary.
   const sortedHeadlines = topPairs.map(p => `${p.h.length}:${p.h}`).join('|');
+  // Bodies ride along pair-wise so a body change reaches identity, and an
+  // all-empty set folds to a fixed string rather than dropping out. Presence
+  // no longer changes the key's SHAPE, only the digest it feeds.
+  const sortedBodies = topPairs.map(p => `${p.b.length}:${p.b}`).join('|');
 
-  const anyBody = topPairs.some(p => p.b.length > 0);
-  // `:bd` (body-digest) rather than `:b` so a future string-match against the
-  // key doesn't collide with the literal `:brief:` mode segment.
-  const bodiesHash = anyBody
-    ? ':bd' + hashString(topPairs.map(p => `${p.b.length}:${p.b}`).join('|'))
-    : '';
-
-  const geoHash = canon.geoContext ? ':g' + hashString(canon.geoContext) : '';
-  const hash = hashString(`${mode}:${sortedHeadlines}`);
   const normalizedVariant = typeof variant === 'string' && variant ? variant.toLowerCase() : 'full';
   const normalizedLang = typeof lang === 'string' && lang ? lang.toLowerCase() : 'en';
-  const fwHash = systemAppend ? ':fw' + hashString(systemAppend).slice(0, 8) : '';
+  const append = typeof systemAppend === 'string' ? systemAppend : '';
 
   if (mode === 'translate') {
-    // translate mode only uses headlines[0]; bodies are never interpolated.
-    // Skip the bodies segment so translate cache identity is not shifted
-    // by unrelated upstream RSS-description changes.
+    // translate mode only uses headlines[0]; bodies are never interpolated,
+    // so they stay out of identity and an unrelated upstream RSS-description
+    // change cannot shift a translation's key.
     //
-    // Key on that single headline only, in REQUEST order. Hashing the whole
-    // sorted window made the key order-insensitive while the prompt is
+    // Key on that single headline in REQUEST order. Hashing the whole sorted
+    // window made the key order-insensitive while the prompt is
     // order-sensitive, so ['Alpha','Beta'] and ['Beta','Alpha'] shared one key
     // but asked for different translations — a hit could return the other
     // headline's text. Keying the exact input also stops unrelated trailing
     // headlines from fragmenting identity for the same translation.
     const firstHeadline = selected[0]?.h ?? '';
-    const translateHash = hashString(`${mode}:${firstHeadline.length}:${firstHeadline}`);
     const targetLang = normalizedVariant || normalizedLang;
-    return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${translateHash}${geoHash}${fwHash}`;
+    const digest = await digestIdentity([
+      CACHE_VERSION, mode, targetLang, firstHeadline, canon.geoContext, append,
+    ]);
+    return `summary:${CACHE_VERSION}:${mode}:${targetLang}:${digest}`;
   }
 
-  return `summary:${CACHE_VERSION}:${mode}:${normalizedVariant}:${normalizedLang}:${hash}${geoHash}${bodiesHash}${fwHash}`;
+  const digest = await digestIdentity([
+    CACHE_VERSION, mode, normalizedVariant, normalizedLang,
+    sortedHeadlines, sortedBodies, canon.geoContext, append,
+  ]);
+  return `summary:${CACHE_VERSION}:${mode}:${normalizedVariant}:${normalizedLang}:${digest}`;
 }

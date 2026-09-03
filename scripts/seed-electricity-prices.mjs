@@ -5,9 +5,11 @@ import {
   CHROME_UA,
   extendExistingTtl,
   getRedisCredentials,
+  httpsProxyFetchRaw,
   loadEnvFile,
   logSeedResult,
   releaseLock,
+  resolveProxyForConnect,
   withRetry,
 } from './_seed-utils.mjs';
 
@@ -110,7 +112,15 @@ async function redisPipeline(commands) {
 
 // ── ENTSO-E fetcher ───────────────────────────────────────────────────────────
 
-async function fetchEntsoERegion(region, token, today, yesterday) {
+export function meetsEntsoPublicationFloor(regionCount) {
+  return regionCount >= MIN_ENTSO_REGIONS;
+}
+
+export async function fetchEntsoERegion(region, token, today, yesterday, {
+  fetchFn = globalThis.fetch,
+  proxyAuth = resolveProxyForConnect(),
+  proxyFetcher = httpsProxyFetchRaw,
+} = {}) {
   const params = new URLSearchParams({
     documentType: 'A44',
     in_Domain: region.eic,
@@ -119,22 +129,43 @@ async function fetchEntsoERegion(region, token, today, yesterday) {
     periodEnd: `${isoDate(today).replace(/-/g, '')}2300`,
     securityToken: token,
   });
+  const url = `https://web-api.tp.entsoe.eu/api?${params.toString()}`;
 
   try {
-    const resp = await withRetry(
-      () =>
-        fetch(`https://web-api.tp.entsoe.eu/api?${params.toString()}`, {
-          headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' },
-          signal: AbortSignal.timeout(20_000),
-        }).then((r) => {
-          if (!r.ok) throw new Error(`ENTSO-E ${region.region} HTTP ${r.status}`);
-          return r.text();
-        }),
-      2,
-      500,
-    );
+    let xml;
+    try {
+      xml = await withRetry(
+        () =>
+          fetchFn(url, {
+            headers: { 'User-Agent': CHROME_UA, Accept: 'application/xml' },
+            signal: AbortSignal.timeout(20_000),
+          }).then((r) => {
+            if (!r.ok) throw new Error(`ENTSO-E ${region.region} HTTP ${r.status}`);
+            return r.text();
+          }),
+        2,
+        500,
+      );
+    } catch (directErr) {
+      if (!proxyAuth) {
+        // Without PROXY_URL the fallback is inert; say so, or the log line is
+        // byte-identical to the pre-fallback outage and reads as "proxy blocked too".
+        console.warn(`[electricity] ENTSO-E ${region.region} direct failed (${directErr.message}); no proxy configured (PROXY_URL unset), skipping proxy fallback`);
+        throw directErr;
+      }
+      console.warn(`[electricity] ENTSO-E ${region.region} direct failed (${directErr.message}); retrying via proxy`);
+      try {
+        const { buffer } = await proxyFetcher(url, proxyAuth, {
+          accept: 'application/xml',
+          timeoutMs: 20_000,
+        });
+        xml = buffer.toString('utf8');
+      } catch (proxyErr) {
+        throw new Error(`direct=${directErr.message}; proxy=${proxyErr.message}`);
+      }
+    }
 
-    const price = parseEntsoEPrice(resp);
+    const price = parseEntsoEPrice(xml);
     if (price == null) {
       console.warn(`[electricity] ENTSO-E ${region.region}: no price.amount in response`);
       return null;
@@ -288,27 +319,28 @@ export async function main() {
     }
 
     // Check EU coverage threshold — preserve EU snapshot but still write US data
-    if (entsoToken && entsoResults.length < MIN_ENTSO_REGIONS) {
+    if (!meetsEntsoPublicationFloor(entsoResults.length)) {
       const euKeys = ENTSO_E_REGIONS.map((r) => r.region);
-      await preservePreviousSnapshot(
-        `Only ${entsoResults.length} ENTSO-E regions returned valid prices (min: ${MIN_ENTSO_REGIONS})`,
-        euKeys,
-      );
+      const reason = entsoToken
+        ? `Only ${entsoResults.length} ENTSO-E regions returned valid prices (min: ${MIN_ENTSO_REGIONS})`
+        : `ENTSO_E_TOKEN not set — ENTSO-E skipped, floor of ${MIN_ENTSO_REGIONS} regions cannot be met`;
+      await preservePreviousSnapshot(reason, euKeys);
       if (eiaResults.length > 0) {
         const usCommands = eiaResults.map((entry) => [
           'SET', `${ELECTRICITY_KEY_PREFIX}${entry.region}`, JSON.stringify(entry), 'EX', ELECTRICITY_TTL_SECONDS,
         ]);
-        await redisPipeline(usCommands);
+        const results = await redisPipeline(usCommands);
+        const failures = results.filter((r) => r?.error || r?.result === 'ERR');
+        if (failures.length > 0) {
+          throw new Error(`Redis pipeline: ${failures.length}/${usCommands.length} commands failed`);
+        }
         console.log(`[electricity] EU below threshold but wrote ${eiaResults.length} US regions`);
       }
       return;
     }
 
+    // The publication floor above guarantees allRegions.length >= MIN_ENTSO_REGIONS here.
     const allRegions = [...entsoResults, ...eiaResults];
-    if (allRegions.length === 0) {
-      console.warn('[electricity] No data from any source — skipping write');
-      return;
-    }
 
     const index = buildElectricityIndex(entsoResults, dateStr);
     const metaPayload = {

@@ -2,8 +2,9 @@
 //
 // Shape contract: one Redis payload at resilience:food-stocks:v1 keyed by ISO-2
 // (plus `_world`). Each country holds per-commodity balances whose clock is the
-// marketing-year label, never a calendar year. FAOSTAT may fill production for
-// countries PSD does not cover; it never overwrites PSD and never invents stocks.
+// marketing-year label, never a calendar year. FAOSTAT Food Balances may fill a
+// production and domestic-supply pair when PSD has no complete country balance
+// and no valid USDA stock evidence. The fallback never invents stocks.
 
 export const FOOD_STOCKS_CANONICAL_KEY = 'resilience:food-stocks:v1';
 export const FOOD_STOCKS_WORLD_KEY = '_world';
@@ -19,12 +20,12 @@ export const FOOD_STOCKS_MAX_CONTENT_AGE_MIN = 120 * 24 * 60;
 export const FOOD_STOCKS_TTL_SECONDS = 90 * 24 * 3600;
 
 export const PSD_COMMODITIES = {
-  wheat: { slug: 'wheat', code: '0410000', name: 'Wheat', unit: '1000 MT', faostatItem: 15 },
-  corn: { slug: 'corn', code: '0440000', name: 'Corn', unit: '1000 MT', faostatItem: 56 },
-  rice: { slug: 'rice', code: '0422110', name: 'Rice, Milled', unit: '1000 MT', faostatItem: 27 },
-  soybeans: { slug: 'soybeans', code: '2222000', name: 'Oilseed, Soybean', unit: '1000 MT', faostatItem: 236 },
-  barley: { slug: 'barley', code: '0430000', name: 'Barley', unit: '1000 MT', faostatItem: 44 },
-  palmOil: { slug: 'palmOil', code: '4243000', name: 'Oil, Palm', unit: '1000 MT', faostatItem: 257 },
+  wheat: { slug: 'wheat', code: '0410000', name: 'Wheat', unit: '1000 MT', faostatBalanceItem: 2511 },
+  corn: { slug: 'corn', code: '0440000', name: 'Corn', unit: '1000 MT', faostatBalanceItem: 2514 },
+  rice: { slug: 'rice', code: '0422110', name: 'Rice, Milled', unit: '1000 MT', faostatBalanceItem: 2807 },
+  soybeans: { slug: 'soybeans', code: '2222000', name: 'Oilseed, Soybean', unit: '1000 MT', faostatBalanceItem: 2555 },
+  barley: { slug: 'barley', code: '0430000', name: 'Barley', unit: '1000 MT', faostatBalanceItem: 2513 },
+  palmOil: { slug: 'palmOil', code: '4243000', name: 'Oil, Palm', unit: '1000 MT', faostatBalanceItem: 2577 },
 };
 
 export const PSD_ATTRIBUTES = {
@@ -228,54 +229,63 @@ function faostatRows(input) {
 }
 
 /**
- * Add FAOSTAT production for countries PSD missed. A null/Error fill is a
- * no-op so a failed FAOSTAT stage cannot damage the PSD snapshot.
+ * Add one FAOSTAT Food Balances pair when PSD has no complete country balance
+ * and no valid USDA stock evidence. A PSD row with finite endingStocks or
+ * stocksToUseRatio is kept even if production is missing. A null or Error fill
+ * is a no-op, so a failed FAOSTAT stage cannot damage the PSD snapshot.
  *
  * @param {Array<Record<string, unknown>>} psdRecords
  * @param {Array<Record<string, unknown>> | Error | null} faostatRecords
  * @param {{ commodity: string }} opts
  */
-export function applyFaostatProductionFill(psdRecords, faostatRecords, opts) {
-  const base = Array.isArray(psdRecords) ? psdRecords.slice() : [];
+export function applyFaostatFoodBalanceFill(psdRecords, faostatRecords, opts) {
+  let base = Array.isArray(psdRecords) ? psdRecords.slice() : [];
   const fill = faostatRows(faostatRecords);
   if (!fill) return base;
 
   const commodity = opts?.commodity;
-  const covered = new Set(
-    base.filter((rec) => rec.commodity === commodity).map((rec) => rec.countryCode),
+  const protectedPsd = new Set(
+    base
+      .filter((rec) => rec.commodity === commodity
+        && ((Number.isFinite(rec.production)
+          && rec.production >= 0
+          && Number.isFinite(rec.consumption)
+          && rec.consumption > 0)
+          || Number.isFinite(rec.endingStocks)
+          || Number.isFinite(rec.stocksToUseRatio)))
+      .map((rec) => rec.countryCode),
   );
-  const fallbackYear = base
-    .filter((rec) => rec.commodity === commodity)
-    .map((rec) => rec.marketingYear)
-    .sort()
-    .at(-1) ?? formatMarketingYear(new Date().getUTCFullYear() - 1);
+
+  const replacements = new Map();
 
   for (const row of fill) {
     const countryCode = normalizePsdCountryCode(row?.countryCode);
     const rowCommodity = row?.commodity || commodity;
     if (!countryCode || rowCommodity !== commodity) continue;
-    if (covered.has(countryCode)) continue;
-    const production = finiteOrNull(Number(row?.production));
-    if (production == null) continue;
-    covered.add(countryCode);
-    base.push({
+    if (protectedPsd.has(countryCode)) continue;
+    const production = finiteOrNull(row?.production);
+    const consumption = finiteOrNull(row?.consumption);
+    const marketingYear = formatMarketingYear(row?.calendarYear);
+    if (production == null || production < 0 || consumption == null || consumption <= 0 || !marketingYear) continue;
+    replacements.set(countryCode, {
       countryCode,
       commodity,
-      marketingYear:
-        formatMarketingYear(row?.marketingYear)
-        || formatMarketingYear(row?.calendarYear)
-        || fallbackYear,
+      marketingYear,
       production,
-      consumption: null,
+      consumption,
       imports: null,
       exports: null,
       endingStocks: null,
       stocksToUseRatio: null,
-      totalUse: 0,
+      totalUse: consumption,
       unit: PSD_COMMODITIES[commodity]?.unit ?? '1000 MT',
       source: 'faostat',
     });
   }
+
+  if (replacements.size === 0) return base;
+  base = base.filter((rec) => rec.commodity !== commodity || !replacements.has(rec.countryCode));
+  base.push(...replacements.values());
   return base;
 }
 
@@ -388,7 +398,7 @@ export function marketingYearEndMs(label, commoditySlug) {
  *    docs/solutions/design-patterns/multi-source-freshness-clock-must-reduce-with-min.md
  *    describes ("which single upstream can stop publishing without changing
  *    newestItemAt?").
- *  - `_world` only, because it is provably PSD-sourced: applyFaostatProductionFill
+ *  - `_world` only, because it is provably PSD-sourced: applyFaostatFoodBalanceFill
  *    skips already-covered countries and resolveIso2 has no WORLD mapping, so no
  *    FAOSTAT row can normalize into it. FAOSTAT rows carry a marketing year
  *    derived from a CALENDAR year 1-3 years back, so reducing over the whole

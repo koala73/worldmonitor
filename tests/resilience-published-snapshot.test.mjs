@@ -76,6 +76,19 @@ describe('published resilience snapshot freshness', () => {
         norway.includes(`Source: ${data.sources.resilienceSnapshot}.`),
         'country page must identify the selected dated snapshot',
       );
+      // Coverage-story pages (Tuvalu, Macau, San Marino) swap the shared snapshot
+      // note for a country-specific reading guide (#7527) but keep the corrections
+      // link and the dated snapshot source line.
+      const tuvalu = readFileSync(join(outDir, 'countries', 'tuvalu', 'index.html'), 'utf8');
+      assert.ok(
+        !tuvalu.includes(data.resilience.snapshotNote),
+        'coverage-story pages omit the shared snapshot note by design',
+      );
+      assert.match(tuvalu, /href="\/docs\/corrections"/);
+      assert.ok(
+        tuvalu.includes(`Source: ${data.sources.resilienceSnapshot}.`),
+        'coverage-story pages must still identify the selected dated snapshot',
+      );
     } finally {
       rmSync(outDir, { recursive: true, force: true });
     }
@@ -97,6 +110,20 @@ describe('published resilience snapshot freshness', () => {
     assert.match(revisions, /first day of each month/);
     assert.match(revisions, /resilience-ranking-2026-08-29/);
     assert.match(revisions, /[Oo]ff-cycle/);
+
+    // The log held one revision while three derived chokepoint fields were
+    // withdrawn across all 13 pages on 2026-09-01 and source availability was
+    // separated on 2026-09-02 — both material, neither logged (#7530). Pin the
+    // rows and their PR references so a withdrawal cannot ship unlogged again.
+    for (const source of [
+      revisions,
+      readFileSync(join(repoRoot, 'docs', 'zh', 'corrections.mdx'), 'utf8'),
+    ]) {
+      assert.match(source, /2026-09-01/);
+      assert.match(source, /2026-09-02/);
+      assert.match(source, /pull\/7515/);
+      assert.match(source, /pull\/7535/);
+    }
   });
 
   it('runs a credentialed monthly capture and opens an idempotent review PR', () => {

@@ -42,6 +42,22 @@ export {
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 const DEFAULT_ENVIRONMENT = 'production';
 export const DEPLOYMENT_CONFIG_RUN_BUDGET_MS = 15 * 60 * 1000;
+export const CONFIGURATION_DRIFT_EXIT_CODE = 2;
+
+/**
+ * Mark an error as a configuration verdict: a deterministic refusal or drift
+ * report that re-running the same audit cannot change. The process exits with
+ * CONFIGURATION_DRIFT_EXIT_CODE for these, so the registry-sync runner spends
+ * its retry budget only on operational failures (CLI, network, deadline).
+ */
+export function markConfigurationVerdict(error) {
+  if (error instanceof Error) error.exitCode = CONFIGURATION_DRIFT_EXIT_CODE;
+  return error;
+}
+
+export function resolveAuditExitCode(error) {
+  return error?.exitCode === CONFIGURATION_DRIFT_EXIT_CODE ? CONFIGURATION_DRIFT_EXIT_CODE : 1;
+}
 
 export function resolveDeploymentConfigDeadlineAt({
   jobStartedAtMs,
@@ -60,6 +76,11 @@ export function validateAuditMode({ apply, deploymentOnly }) {
   if (deploymentOnly && apply) {
     throw new Error('deployment-only audit forbids --apply');
   }
+}
+
+export function selectAuditServices(inventory, expectedServices, { apply, deploymentOnly }) {
+  if (!apply && !deploymentOnly) return inventory;
+  return selectExpectedRepositoryServices(inventory, expectedServices);
 }
 
 function hasOwn(value, key) {
@@ -406,33 +427,33 @@ export function auditRailwayServiceConfig(
 export function buildRailwayServiceConfigPatch(drift) {
   const missing = drift.filter((entry) => entry.missingService);
   if (missing.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       `${missing.map((entry) => entry.service).join(', ')} not present in Railway production; refusing a partial config apply`,
-    );
+    ));
   }
   const missingEnv = drift.filter((entry) => entry.missingRequiredEnv?.length > 0);
   if (missingEnv.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       missingEnv
         .map((entry) => `${entry.service} missing required environment: ${entry.missingRequiredEnv.join(', ')}`)
         .join('; '),
-    );
+    ));
   }
   // Both of these mean the registry's own claims are untrustworthy for this
   // service, so the watch paths derived from them must not be pushed.
   const incomplete = drift.filter((entry) => entry.missingWatchPatterns);
   if (incomplete.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       `${incomplete.map((entry) => entry.service).join(', ')} pins a cron without watchPatterns; refusing a partial config apply`,
-    );
+    ));
   }
   const wrongRoot = drift.filter((entry) => entry.rootDirectory);
   if (wrongRoot.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       wrongRoot
         .map((entry) => `${entry.service} rootDirectory is ${JSON.stringify(entry.rootDirectory.actual)} but deployMode implies ${JSON.stringify(entry.rootDirectory.expected)}`)
         .join('; '),
-    );
+    ));
   }
 
   const services = {};
@@ -599,9 +620,12 @@ async function main() {
   if (deploymentOnly && performance.now() >= deploymentDeadlineAt) {
     throw new Error(DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR);
   }
-  const services = deploymentOnly
-    ? selectExpectedRepositoryServices(inventory, readExpectedRepositoryFleet())
-    : inventory;
+  const validatesFleetIdentity = apply || deploymentOnly;
+  const services = selectAuditServices(
+    inventory,
+    validatesFleetIdentity ? readExpectedRepositoryFleet() : null,
+    { apply, deploymentOnly },
+  );
   const serviceIdsByName = new Map(services.map((service) => [service.name, service.id]));
   const readConfig = deploymentOnly
     ? () => readViewerDeploymentConfig(environment, services, {
@@ -638,7 +662,10 @@ async function main() {
 
   if (drift.length === 0) return;
   if (!apply) {
-    process.exitCode = 1;
+    // Keep a policy verdict distinct from an observation/runtime failure. The
+    // registry-sync runner must not spend its retry budget re-reading a stable
+    // mismatch as though it were a transient CLI failure.
+    process.exitCode = CONFIGURATION_DRIFT_EXIT_CODE;
     return;
   }
 
@@ -661,6 +688,6 @@ async function main() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    process.exitCode = resolveAuditExitCode(error);
   });
 }

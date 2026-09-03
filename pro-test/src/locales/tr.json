@@ -386,7 +386,7 @@
           "Lisans / API anahtarı dahil",
           "Gerçek zamanlı veri akışları",
           "Dakikada 60 istek",
-          "Günde 1.000 istek dahil",
+          "Günde 1.000 istek dahil (REST + MCP birleşik; canlı MCP çağrısı 2-3 olarak sayılır)",
           "Webhook bildirimleri"
         ],
         "highlightFeatures": [
@@ -416,7 +416,7 @@
           "API Starter'daki her şey",
           "Yeniden dağıtım hakları — verilerimizi sattığınız şeye yerleştirin",
           "300 istek/dakika",
-          "10.000 istek/gün dahil",
+          "Günde 10.000 istek dahil (REST + MCP birleşik; canlı MCP çağrısı 2-3 olarak sayılır)",
           "5 Pro lisansı — herhangi bir kurumsal e-posta alan adına sahip kullanıcıları davet edin",
           "Öncelikli destek"
         ],

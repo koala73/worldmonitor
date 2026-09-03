@@ -50,13 +50,30 @@ const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 // It is useful in the live tool but must not be frozen into the crawlable corpus,
 // where it becomes indexed, quotable page content.
 const INTERNAL_NOTE_RE = /\s*;?\s*Threat baseline last reviewed[^;]*?review recommended\.?/gi;
+const NO_ACTIVE_DISRUPTIONS_DESCRIPTION = 'No active disruptions';
 
+// Returns null, never a placeholder sentence. "No additional status note was
+// supplied." used to be frozen here and rendered as a real <p> in <main> — an
+// absence described in prose reads to a crawler as published content, and it
+// was the only body text 7 of 13 chokepoint pages carried (#7530). An absent
+// note has no page representation: the paragraph is emitted `hidden`.
 function publishableDescription(value) {
   const cleaned = String(value || '')
     .replace(INTERNAL_NOTE_RE, '')
     .replace(/^[\s;·—-]+|[\s;·—-]+$/g, '')
     .trim();
-  return cleaned || 'No additional status note was supplied.';
+  return cleaned && cleaned !== NO_ACTIVE_DISRUPTIONS_DESCRIPTION ? cleaned : null;
+}
+
+// Every capture gate below reports a bare count. That number says a refresh
+// failed but never why, so a red scheduled run (or a hand-run freeze) starts
+// from zero — the per-item errors are collected and then dropped on the throw
+// path. Carry the first one into the message.
+function firstCaptureCause(errors) {
+  const first = errors[0];
+  if (!first) return '';
+  const scope = first.id ?? first.code ?? first.slug ?? 'unknown';
+  return `; first error (${scope}): ${first.message}`;
 }
 
 const RESILIENCE_SNAPSHOT_RE = /^resilience-ranking-(\d{4}-\d{2}-\d{2})\.json$/;
@@ -198,9 +215,13 @@ function chokepointRecord(view) {
     disruptionScore: view.disruptionScore,
     status: view.status,
     congestion: view.congestion,
-    warnings: view.warnings,
+    navigationalWarnings: view.navigationalWarnings,
+    navigationalWarningsAvailable: view.navigationalWarnings !== null,
+    aisDisruptions: view.aisDisruptions,
+    aisSnapshotAvailable: view.aisDisruptions !== null,
     description: publishableDescription(view.description),
     todayTransits: view.todayTransits,
+    todayCountsAvailable: view.todayCountsAvailable,
     weekMovement: view.weekMovement,
     partial: view.partial === true,
     asOf: new Date(view.fetchedAt).toISOString(),
@@ -408,17 +429,20 @@ export async function freezeCrawlableLivePulse({
   if (Object.keys(countries).length < minCountries) {
     throw new Error(
       `Pulse freeze captured only ${Object.keys(countries).length} of ${codes.length} countries; `
-      + `expected at least ${minCountries}`,
+      + `expected at least ${minCountries}`
+      + firstCaptureCause(countryErrors),
     );
   }
   if (Object.keys(chokepoints).length < chokepointIds.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(chokepoints).length} of ${chokepointIds.length} chokepoints`,
+      `Pulse freeze captured only ${Object.keys(chokepoints).length} of ${chokepointIds.length} chokepoints`
+      + firstCaptureCause(chokepointErrors),
     );
   }
   if (Object.keys(crisisSnapshots).length < crises.length) {
     throw new Error(
-      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`,
+      `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`
+      + firstCaptureCause(crisisErrors),
     );
   }
 

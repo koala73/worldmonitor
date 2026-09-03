@@ -122,7 +122,6 @@ const LEGACY_HIGH_RISK_DESCRIPTION_GAPS = new Set([
   'SupplyChainService.openapi.json:ChokepointInfo.activeWarnings',
   'SupplyChainService.openapi.json:ChokepointInfo.affectedRoutes',
   'SupplyChainService.openapi.json:ChokepointInfo.aisDisruptions',
-  'SupplyChainService.openapi.json:ChokepointInfo.congestionLevel',
   'SupplyChainService.openapi.json:ChokepointInfo.description',
   'SupplyChainService.openapi.json:ChokepointInfo.directions',
   'SupplyChainService.openapi.json:ChokepointInfo.disruptionScore',

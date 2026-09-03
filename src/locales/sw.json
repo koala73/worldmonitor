@@ -261,7 +261,7 @@
       "unavailable": "Haipatikani"
     },
     "foodStocks": "Hifadhi za chakula",
-    "foodStocksHelp": "Uwiano wa hifadhi na matumizi wa bidhaa za USDA PSD kwa mwaka wa masoko, ukiwa na uwiano wa dunia kwa muktadha. FAOSTAT hujaza uzalishaji pale ambapo PSD haina data ya nchi.",
+    "foodStocksHelp": "Uwiano wa hifadhi na matumizi wa bidhaa za USDA PSD kwa mwaka wa masoko, ukiwa na uwiano wa dunia kwa muktadha. Mizania ya Chakula ya FAOSTAT hutoa uzalishaji na ugavi wa ndani wakati PSD haina mizania kamili ya nchi.",
     "loadingFoodStocks": "Inapakia hifadhi za chakula…",
     "foodStocksUnavailable": "Hifadhi za chakula hazipatikani.",
     "foodStocksProLocked": "Panda hadi PRO kwa uwiano wa hifadhi na matumizi ya bidhaa",

@@ -110,7 +110,13 @@ export function buildDefenseIndustrialResponse(
 ): DefenseIndustrialResponseValue {
   const country = industrial?.countries?.[countryCode];
   const dependency = dependencies?.importers?.[countryCode];
-  if (!country && !dependency) return emptyResponse(countryCode);
+  // Presence is not content. Since the sweep began recording zero-transfer
+  // importers, a row can exist carrying no suppliers at all; treating that as
+  // `available` renders an all-"Not available" panel where a clean empty
+  // response belongs, because the shape has no way to say "checked, genuinely
+  // zero". Gate on supplier content instead.
+  const hasDependency = (dependency?.suppliers?.length || 0) > 0;
+  if (!country && !hasDependency) return emptyResponse(countryCode);
   const suppliers = (dependency?.suppliers || [])
     .filter((entry) => (
       /^[A-Z]{2}$/.test(String(entry.supplierIso2 || ''))

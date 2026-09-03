@@ -29,8 +29,15 @@ export interface BaselineEntry {
   lastUpdated: string;
 }
 
+// The `v1` segment is new as of GHSA-gxj5-54wh-7vgr and deliberately orphans
+// every previously written row. Those rows were accumulated from unvalidated,
+// unauthenticated, once-per-page-load samples, so a mean or variance among
+// them cannot be told apart from a poisoned one. They age out on their own TTL.
+//
+// Not to be confused with makeBaselineKeyV2 below: that is a different
+// pipeline (the locked server-side rebuild), not a later version of this one.
 export function makeBaselineKey(type: string, region: string, weekday: number, month: number): string {
-  return `baseline:${type}:${region}:${weekday}:${month}`;
+  return `baseline:v1:${type}:${region}:${weekday}:${month}`;
 }
 
 export function makeBaselineKeyV2(type: string, region: string, weekday: number, month: number): string {
@@ -316,35 +323,3 @@ export function temporalAnomaliesReadableContentMeta(
 export const BASELINE_SAMPLE_INTERVAL_MS = 60 * 60 * 1000;
 export const BASELINE_LOCK_KEY = 'baseline:lock';
 export const BASELINE_LOCK_TTL = 30;
-
-
-// ========================================================================
-// Upstash Redis MGET helper (edge-compatible)
-// getCachedJson / setCachedJson are imported from ../../../_shared/redis.ts
-// ========================================================================
-
-import { unwrapEnvelope } from '../../../_shared/seed-envelope';
-
-export async function mgetJson(keys: string[]): Promise<(unknown | null)[]> {
-  const url = process.env.UPSTASH_REDIS_REST_URL;
-  const token = process.env.UPSTASH_REDIS_REST_TOKEN;
-  if (!url || !token) return keys.map(() => null);
-  try {
-    const resp = await fetch(`${url}`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(['MGET', ...keys]),
-      signal: AbortSignal.timeout(5_000),
-    });
-    if (!resp.ok) return keys.map(() => null);
-    const data = (await resp.json()) as { result?: (string | null)[] };
-    // Envelope-aware: several of these count-source keys (wildfire:fires:v1,
-    // news:insights:v1) are contract-mode canonical keys post-PR-2.
-    return (data.result || []).map(v => v ? unwrapEnvelope(JSON.parse(v)).data : null);
-  } catch {
-    return keys.map(() => null);
-  }
-}

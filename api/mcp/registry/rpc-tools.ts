@@ -979,7 +979,7 @@ const FIVE_FACTOR_SCORECARD_LIST_OUTPUT_SCHEMA = {
         unavailableReason: { const: 'scorecard-snapshot-unavailable' },
         methodologyVersion: { const: '' },
         computedAt: { const: '' },
-        scorecards: { maxItems: 0 },
+        scorecards: { type: 'array' as const, maxItems: 0 },
       },
     },
   ],
@@ -1514,6 +1514,8 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_country_brief',
+    // Two downstream fetches (brief + news digest for grounding).
+    _weight: 3,
     _outputBudgetBytes: 65536,
     description: 'AI-generated per-country intelligence brief. Produces an LLM-analyzed geopolitical and economic assessment for the given country. Supports analytical frameworks for structured lenses. Returns groundingStories alongside sources: the digest articles used to ground the brief, each with corroborationCount, mentionCount, and lifecycle storyPhase, so an agent can weigh how well-corroborated the underlying reporting is. When the news digest is serving retained (stale) content, that grounding is DROPPED and the brief is generated without it; pass allow_stale=true to ground on the retained snapshot instead. Either way the digestCoverage block reports what the grounding was.',
     inputSchema: {
@@ -1922,16 +1924,19 @@ export const RPC_TOOLS: ToolDef[] = [
               hasEndingStocks: { type: 'boolean', description: 'False when endingStocksTmt is a placeholder rather than a measurement.' },
               totalUseTmt: {
                 type: 'number',
-                description: 'Denominator of stocksToUse. For a country this is consumption + exports; for WORLD it is consumption only, because world exports are internal transfers already counted in the importer\'s consumption.',
+                description: 'PSD country: consumption + exports. WORLD: consumption. FAOSTAT: Food Balances domestic-supply quantity.',
               },
               productionTmt: { type: 'number' },
-              consumptionTmt: { type: 'number' },
+              consumptionTmt: {
+                type: 'number',
+                description: 'PSD domestic consumption or FAOSTAT Food Balances domestic-supply quantity.',
+              },
               importsTmt: { type: 'number' },
               exportsTmt: { type: 'number' },
               unit: { type: 'string', description: 'Always "1000 MT" (thousand metric tons).' },
               source: {
                 type: 'string',
-                description: '"psd" = USDA full balance sheet (stocks are real). "faostat" = production-only gap fill; every stocks field on that row is a 0 placeholder, not a measurement.',
+                description: '"psd" = USDA. "faostat" = FAOSTAT Food Balances production and domestic-supply gap fill. FAOSTAT stock fields are placeholder 0 values when presence flags are false.',
               },
             },
           },
@@ -2349,6 +2354,8 @@ export const RPC_TOOLS: ToolDef[] = [
   },
   {
     name: 'get_airspace',
+    // Two downstream fetches (civilian ADS-B + military aircraft providers).
+    _weight: 3,
     _outputBudgetBytes: 262144,
     description: 'Live ADS-B aircraft over a country. Returns Wingbits-backed civilian flights and identified military aircraft from redistributable providers, with callsigns, positions, altitudes, and headings. Answers questions like "how many planes are over the UAE right now?" or "are there military aircraft over Taiwan?"',
     inputSchema: {

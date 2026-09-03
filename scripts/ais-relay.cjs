@@ -51,6 +51,11 @@ const {
 const xNewsAccounts = require('./lib/x-news-accounts.cjs');
 const { createPollGenerationGuard } = require('./lib/poll-generation-guard.cjs');
 const { createXPollCycle } = require('./lib/x-poll-cycle.cjs');
+const {
+  createXPostBudget,
+  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+  xPostBudgetServiceStatus,
+} = require('./lib/x-post-budget.cjs');
 const { buildClassifyCandidateMap, isStaleDigestReplay } = require('./lib/digest-stale-gate.cjs');
 const {
   buildClassifyDigestUrl,
@@ -180,9 +185,53 @@ const RELAY_GOOGLE_FLIGHTS_RATE_LIMIT_MAX = Number.isFinite(Number(process.env.R
 const RELAY_LOG_THROTTLE_MS = Math.max(1000, Number(process.env.RELAY_LOG_THROTTLE_MS || 10000));
 const ALLOW_VERCEL_PREVIEW_ORIGINS = process.env.ALLOW_VERCEL_PREVIEW_ORIGINS === 'true';
 
-// OpenSky proxy — routes through residential proxy to avoid Railway IP blocks
+// OpenSky route selection — ONE selected route, never a cascade.
+//
+// OpenSky's rate limit is per ACCOUNT (4,000 credits/day, keyed on OPENSKY_CLIENT_ID —
+// see scripts/_opensky-account-cooldown.cjs and
+// docs/solutions/integration-issues/opensky-bbox-area-billing-flat-top-tier.md), NOT per
+// exit IP. A residential exit therefore buys no extra quota, and an automatic
+// proxy-on-failure fallback would spend a SECOND account credit retrying the one error
+// class a different IP cannot fix (429). That is strictly worse on both axes: more paid
+// proxy bytes AND faster quota exhaustion. So the route is selected once, the way
+// _gdelt-fetch.mjs selects its own.
+//
+// `direct` is the default because it is free — OpenSky was 82.5% of the residential
+// proxy bill (24.86 GB / $136.75 of a ~$165 quarter) for no quota benefit. `proxy` is
+// the operator escape hatch for a genuine IP-level rejection, which is counted
+// separately as openskyRouteRejection (403/451) so the health surface can tell
+// "flip the route" apart from "wait for credits".
+const OPENSKY_ROUTE_DEFAULT = 'direct';
+const OPENSKY_ROUTES = Object.freeze(['direct', 'proxy']);
+
+function resolveOpenSkyRoute(raw) {
+  const value = String(raw || '').trim().toLowerCase();
+  if (!value) return OPENSKY_ROUTE_DEFAULT;
+  if (OPENSKY_ROUTES.includes(value)) return value;
+  console.warn(
+    `[Relay] Ignoring unknown OPENSKY_ROUTE="${raw}" — expected ${OPENSKY_ROUTES.join(' or ')}; `
+    + `using "${OPENSKY_ROUTE_DEFAULT}"`,
+  );
+  return OPENSKY_ROUTE_DEFAULT;
+}
+
+const OPENSKY_ROUTE_REQUESTED = resolveOpenSkyRoute(process.env.OPENSKY_ROUTE);
 const OPENSKY_PROXY_AUTH = process.env.OPENSKY_PROXY_AUTH || process.env.PROXY_URL || '';
-const OPENSKY_PROXY_ENABLED = !!OPENSKY_PROXY_AUTH;
+// Fail OPEN to the free route: an unconfigured escape hatch must not take OpenSky down.
+if (OPENSKY_ROUTE_REQUESTED === 'proxy' && !OPENSKY_PROXY_AUTH) {
+  console.warn(
+    '[Relay] OPENSKY_ROUTE=proxy but neither OPENSKY_PROXY_AUTH nor PROXY_URL is set — '
+    + 'using the direct route.',
+  );
+}
+const OPENSKY_PROXY_ENABLED = OPENSKY_ROUTE_REQUESTED === 'proxy' && !!OPENSKY_PROXY_AUTH;
+// The EFFECTIVE route — what requests actually do, which is the only thing an operator
+// can act on. Derived from OPENSKY_PROXY_ENABLED rather than tracked separately so the
+// two can never disagree: `OPENSKY_ROUTE=proxy` with no credential silently falls back
+// to direct, and reporting the REQUESTED value there would send an operator hunting a
+// proxy that was never in the request path — in exactly the misconfiguration this
+// telemetry exists to diagnose. The requested value stays available for the mismatch.
+const OPENSKY_ROUTE = OPENSKY_PROXY_ENABLED ? 'proxy' : 'direct';
 
 const PROXY_URL = process.env.PROXY_URL || ''; // generic residential proxy (US exit) — http://user:pass@host:port or host:port:user:pass (Decodo)
 
@@ -2066,12 +2115,16 @@ const X_FEED_POLL_LOCK_TTL_SECONDS = Math.ceil((X_POLL_INTERVAL_MS + 120_000) / 
 // X_POLL_STUCK_AFTER_MS < X_POLL_INTERVAL_MS < X_FEED_POLL_LOCK_TTL_SECONDS * 1000
 // cannot drift the way two independently tuned literals can.
 const X_POLL_STUCK_AFTER_MS = X_POLL_INTERVAL_MS - 60_000;
+const xPostBudget = createXPostBudget({
+  evalCommand: upstashEval,
+  dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+});
 
 const xState = {
   accounts: [],
   cursorByAccountId: Object.create(null),
   accountIdByHandle: Object.create(null),
-  catchupByAccountId: Object.create(null),
+  lastPolledAtByHandle: Object.create(null),
   items: [],
   lookupOffset: 0,
   accountOffset: 0,
@@ -2086,6 +2139,9 @@ const xState = {
   rateLimitedUntil: 0,
   rateLimitAttempt: 0,
   backoffCause: null,
+  lastDeletionAuditAt: 0,
+  lastCycleUsage: null,
+  postBudget: null,
   // True when a Redis read failed, so last-good state is present but unreadable.
   // Blocks polling/publishing until a clean read (see the cycle's hydrate()).
   hydrationFailed: false,
@@ -2136,6 +2192,7 @@ function loadXAccounts() {
 const xPollCycle = createXPollCycle({
   xState,
   xNewsAccounts,
+  xPostBudget,
   loadXAccounts,
   upstashGet,
   upstashSetNx,
@@ -8218,6 +8275,7 @@ const relayMetricsLifetime = {
   openskyThrottle: 0,
   openskyTimeout: 0,
   openskyAuthRejection: 0,
+  openskyRouteRejection: 0,
   openskyFallback: 0,
   openskyTerminalFailure: 0,
   drops: 0,
@@ -8271,6 +8329,7 @@ function createRelayMetricsBucket() {
     openskyThrottle: 0,
     openskyTimeout: 0,
     openskyAuthRejection: 0,
+    openskyRouteRejection: 0,
     openskyFallback: 0,
     openskyTerminalFailure: 0,
     drops: 0,
@@ -8356,6 +8415,10 @@ const RELAY_OUTCOME_FIELDS = Object.freeze({
     throttle: 'openskyThrottle',
     timeout: 'openskyTimeout',
     authRejection: 'openskyAuthRejection',
+    // OpenSky-only: the exit IP was refused, not the credentials. Every other route
+    // keeps folding 403 into authRejection, so this key is deliberately absent from
+    // their maps — recordRelayOutcome drops an outcome a route does not declare.
+    routeRejection: 'openskyRouteRejection',
     fallback: 'openskyFallback',
     terminalFailure: 'openskyTerminalFailure',
   }),
@@ -8391,6 +8454,23 @@ function recordRelayOutcome(route, outcome, amount = 1) {
   incrementRelayMetric(metricField, amount);
 }
 
+// OpenSky-specific refinement of the shared classifier.
+//
+// classifyUpstreamOutcome collapses 401 and 403 into 'authRejection'. That is right for
+// every other route, but for OpenSky the two say opposite things and imply opposite
+// fixes: 401 = the CREDENTIALS were rejected (rotate OPENSKY_CLIENT_SECRET), 403/451 =
+// the EXIT IP was rejected (flip OPENSKY_ROUTE). Conflating them is exactly why
+// "is the direct route blocked?" could not be answered from telemetry.
+//
+// Deliberately NOT classified as a route rejection: socket errors (ECONNRESET, EPROTO,
+// timeouts). Those are ordinary network noise on either route — EPROTO in particular was
+// the #5074 double-TLS bug, not a block — and labelling them would send an operator to
+// flip the route over a transient blip. Only an explicit refusal from the origin counts.
+function classifyOpenSkyOutcome({ status, error } = {}) {
+  if (status === 403 || status === 451) return 'routeRejection';
+  return classifyUpstreamOutcome({ status, error });
+}
+
 function sampleRelayQueueSize(queueSize) {
   const bucket = getRelayMetricsBucket();
   if (queueSize > bucket.queueMax) bucket.queueMax = queueSize;
@@ -8423,6 +8503,7 @@ function getRelayRollingMetrics() {
     rollup.openskyThrottle += bucket.openskyThrottle;
     rollup.openskyTimeout += bucket.openskyTimeout;
     rollup.openskyAuthRejection += bucket.openskyAuthRejection;
+    rollup.openskyRouteRejection += bucket.openskyRouteRejection;
     rollup.openskyFallback += bucket.openskyFallback;
     rollup.openskyTerminalFailure += bucket.openskyTerminalFailure;
     rollup.drops += bucket.drops;
@@ -8561,6 +8642,16 @@ function getRelayRollingMetrics() {
     aviation: {
       coverage: aviationCoverage,
       minimumServedCoverage: AVIATION_MIN_SERVED_COVERAGE,
+      // Which OpenSky route requests actually take, and whether the origin is refusing
+      // this exit IP. routeRejection (403/451) means "flip OPENSKY_ROUTE";
+      // providerBlocked (429) means the ACCOUNT is out of credits and no route change
+      // can help. `openskyRoute` is the EFFECTIVE route; `openskyRouteRequested` is what
+      // OPENSKY_ROUTE asked for, so the two differing is itself the misconfiguration
+      // signal (proxy requested, no credential, silently serving direct).
+      openskyRoute: OPENSKY_ROUTE,
+      openskyRouteRequested: OPENSKY_ROUTE_REQUESTED,
+      openskyRouteRejection: rollup.openskyRouteRejection,
+      openskyProviderBlocked,
     },
     // Which upstream fed each theater-posture publication cycle, plus empty
     // cycles that were rejected before publication. Kept separate
@@ -9787,7 +9878,17 @@ async function handleUcdpEventsRequest(req, res) {
 const openskyResponseCache = new Map(); // key: sorted query params → { data, gzip, timestamp }
 const openskyNegativeCache = new Map(); // key: cacheKey → { status, timestamp, body, gzip } — prevents retry storms on 429/5xx
 const openskyInFlight = new Map(); // key: cacheKey → Promise (dedup concurrent requests)
-const OPENSKY_CACHE_TTL_MS = Number(process.env.OPENSKY_CACHE_TTL_MS) || 60 * 1000; // 60s default — env-configurable
+// 180s default — env-configurable. This TTL is the only thing standing between the
+// dashboard's poll rate and a PAID upstream fetch: OpenSky is 82.5% of the residential
+// proxy bill (24.86 GB / $136.75 of a ~$165 quarter, per Decodo's per-target report),
+// and it serves /states/all UNCOMPRESSED — identity, gzip, deflate and br all return
+// the same ~1.49 MB, so no Accept-Encoding change can shrink a miss. Fetching less
+// often is the entire lever, hence 60s → 180s. NOTE: production overrides this with
+// OPENSKY_CACHE_TTL_MS on the ais-relay service, so raising the default alone changes
+// nothing in prod — the env var has to move with it. The client-facing Cache-Control
+// stays at 30s so browsers keep revalidating against this in-memory cache, which is
+// free, instead of pinning a 180s-stale copy of their own.
+const OPENSKY_CACHE_TTL_MS = Number(process.env.OPENSKY_CACHE_TTL_MS) || 180 * 1000;
 const OPENSKY_NEGATIVE_CACHE_TTL_MS = Number(process.env.OPENSKY_NEGATIVE_CACHE_TTL_MS) || 30 * 1000; // 30s — env-configurable
 const OPENSKY_CACHE_MAX_ENTRIES = Math.max(10, Number(process.env.OPENSKY_CACHE_MAX_ENTRIES || 128));
 const OPENSKY_NEGATIVE_CACHE_MAX_ENTRIES = Math.max(10, Number(process.env.OPENSKY_NEGATIVE_CACHE_MAX_ENTRIES || 256));
@@ -10371,7 +10472,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
     const negCached = openskyNegativeCache.get(cacheKey);
     if (negCached && Date.now() - negCached.timestamp < OPENSKY_NEGATIVE_CACHE_TTL_MS) {
       incrementRelayMetric('openskyNegativeHit');
-      recordRelayOutcome('opensky', classifyUpstreamOutcome({ status: negCached.status }));
+      recordRelayOutcome('opensky', classifyOpenSkyOutcome({ status: negCached.status }));
       touchCacheEntry(openskyNegativeCache, cacheKey, negCached); // LRU
       return sendPreGzipped(req, res, 200, {
         'Content-Type': 'application/json',
@@ -10424,7 +10525,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
       const dedupNeg = openskyNegativeCache.get(cacheKey);
       if (dedupNeg && Date.now() - dedupNeg.timestamp < OPENSKY_NEGATIVE_CACHE_TTL_MS) {
         incrementRelayMetric('openskyDedupNeg');
-        recordRelayOutcome('opensky', classifyUpstreamOutcome({ status: dedupNeg.status }));
+        recordRelayOutcome('opensky', classifyOpenSkyOutcome({ status: dedupNeg.status }));
         touchCacheEntry(openskyNegativeCache, cacheKey, dedupNeg); // LRU
         return sendPreGzipped(req, res, 200, {
           'Content-Type': 'application/json',
@@ -10478,8 +10579,8 @@ async function handleOpenSkyRequest(req, res, PORT) {
     const result = await openskyQueuedFetch(openskyUrl, token);
     const upstreamStatus = result.status || 502;
     const upstreamOutcome = result.error
-      ? classifyUpstreamOutcome({ status: upstreamStatus, error: result.error })
-      : classifyUpstreamOutcome({ status: upstreamStatus });
+      ? classifyOpenSkyOutcome({ status: upstreamStatus, error: result.error })
+      : classifyOpenSkyOutcome({ status: upstreamStatus });
     recordRelayOutcome('opensky', upstreamOutcome);
 
     if (upstreamStatus === 401) {
@@ -10524,7 +10625,7 @@ async function handleOpenSkyRequest(req, res, PORT) {
       ...responseHeaders,
     }, responseData);
   } catch (err) {
-    recordRelayOutcome('opensky', classifyUpstreamOutcome({ error: err }));
+    recordRelayOutcome('opensky', classifyOpenSkyOutcome({ error: err }));
     if (settleFlight) settleFlight();
     if (!cacheKey) {
       try {
@@ -11539,7 +11640,10 @@ const server = http.createServer(async (req, res) => {
   // prevention (rate limiting), not data protection. Cloudflare WAF provides edge-level protection.
   const isPublicRoute = pathname === '/health' || pathname === '/' || isRssRoute || pathname.startsWith('/widget-agent');
   if (!isPublicRoute) {
-    if (!isAuthorizedRequest(req)) {
+    const authorized = pathname === '/status'
+      ? Boolean(RELAY_SHARED_SECRET) && isAuthorizedRequest(req)
+      : isAuthorizedRequest(req);
+    if (!authorized) {
       const routeGroup = getRouteGroup(pathname);
       if (routeGroup === 'snapshot') incrementRelayMetric('aisSnapshotUnauthorizedClient');
       else if (routeGroup === 'opensky') recordRelayOutcome('opensky', 'authRejection');
@@ -11723,6 +11827,31 @@ const server = http.createServer(async (req, res) => {
         sharedSecretEnabled: !!RELAY_SHARED_SECRET,
       },
     }));
+  } else if (pathname === '/status') {
+    const postBudget = await xPostBudget.status();
+    return sendCompressed(req, res, postBudget.available ? 200 : 503, {
+      'Content-Type': 'application/json',
+      'Cache-Control': 'no-store',
+    }, JSON.stringify({
+      status: xPostBudgetServiceStatus(postBudget),
+      xFeed: {
+        enabled: X_ENABLED,
+        accounts: xState.accounts?.length || 0,
+        items: xState.items?.length || 0,
+        lastPollAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        lastError: xState.lastError || null,
+        coverage: xState.lastCoverage,
+        lastHealthyAt: xState.lastHealthyAt ? new Date(xState.lastHealthyAt).toISOString() : null,
+        pollInFlight: xPollGuard.isInFlight(),
+        rateLimitedUntil: xState.rateLimitedUntil ? new Date(xState.rateLimitedUntil).toISOString() : null,
+        backoffCause: xState.backoffCause || null,
+        lastDeletionAuditAt: xState.lastDeletionAuditAt
+          ? new Date(xState.lastDeletionAuditAt).toISOString()
+          : null,
+        lastCycleUsage: xState.lastCycleUsage,
+        postBudget,
+      },
+    }));
   } else if (pathname === '/metrics') {
     return sendCompressed(req, res, 200, {
       'Content-Type': 'application/json',
@@ -11811,7 +11940,7 @@ const server = http.createServer(async (req, res) => {
     const clientId = process.env.OPENSKY_CLIENT_ID;
     const clientSecret = process.env.OPENSKY_CLIENT_SECRET;
 
-    diag.steps.push({ step: 'env_check', hasClientId: !!clientId, hasClientSecret: !!clientSecret, proxyEnabled: OPENSKY_PROXY_ENABLED });
+    diag.steps.push({ step: 'env_check', hasClientId: !!clientId, hasClientSecret: !!clientSecret, route: OPENSKY_ROUTE, routeRequested: OPENSKY_ROUTE_REQUESTED, proxyEnabled: OPENSKY_PROXY_ENABLED });
     diag.steps.push({
       step: 'auth_state',
       cachedToken: !!openskyToken,
@@ -14002,7 +14131,7 @@ const wss = new WebSocketServer({ server });
 server.listen(PORT, () => {
   const listeningPort = server.address()?.port || PORT;
   relayBoundPort = listeningPort;
-  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky: ${OPENSKY_PROXY_ENABLED ? 'via proxy' : 'direct'})`);
+  console.log(`[Relay] WebSocket relay on port ${listeningPort} (OpenSky route: ${OPENSKY_ROUTE}${OPENSKY_ROUTE_REQUESTED !== OPENSKY_ROUTE ? ` — "${OPENSKY_ROUTE_REQUESTED}" requested but unconfigured` : ''})`);
   if (RELAY_TEST_MODE) {
     if (process.env.RELAY_TEST_THEATER_VESSEL === '1') {
       candidateReports.set('test-military-vessel', {

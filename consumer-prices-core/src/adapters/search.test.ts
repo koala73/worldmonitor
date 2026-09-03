@@ -127,6 +127,15 @@ describe('matchesAnyPathFilter', () => {
     expect(matchesAnyPathFilter('https://x.com/category/foo', ['/product/', '/item/'])).toBe(false);
   });
 
+  it('matches only the pathname and fails closed for malformed URLs', () => {
+    const filters = ['/produto/'];
+
+    expect(matchesAnyPathFilter('https://x.com/busca?next=/produto/144583', filters)).toBe(false);
+    expect(matchesAnyPathFilter('https://x.com/busca#/produto/144583', filters)).toBe(false);
+    expect(matchesAnyPathFilter('https://x.com/produto/144583?next=/busca', filters)).toBe(true);
+    expect(matchesAnyPathFilter('not-a-url/produto/144583', filters)).toBe(false);
+  });
+
   // Documents a known tradeoff for the carrefour_br fix: `/p` over-matches
   // non-product paths like `/promo/`, `/pages/`, `/popular/`, `/help/`.
   // Acceptable because (a) the host check already pins us to the storefront,

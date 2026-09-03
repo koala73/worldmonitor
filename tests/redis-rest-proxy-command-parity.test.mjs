@@ -27,6 +27,12 @@ import {
   PUBLISH_PHYSICAL_PREMIUM_LUA,
   PUBLISH_DIVERGENCE_LUA,
 } from '../scripts/seed-physical-premiums.mjs';
+import {
+  RESERVE_LUA,
+  SETTLE_LUA,
+  ACK_RECEIPTS_LUA,
+  STATUS_LUA,
+} from '../scripts/lib/x-post-budget.cjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(here, '..');
@@ -214,5 +220,18 @@ describe('redis-rest-proxy command gate', () => {
       false,
       'a one-character script variant must stay blocked',
     );
+  });
+
+  it('pins every X Post budget script by exact bytes', () => {
+    const gate = buildGate();
+    for (const script of [RESERVE_LUA, SETTLE_LUA, ACK_RECEIPTS_LUA, STATUS_LUA]) {
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true);
+      assert.equal(accepts(gate, ['EVAL', script, '1', 'budget-key']), true);
+      assert.equal(
+        accepts(gate, ['EVAL', `${script} `, '1', 'budget-key']),
+        false,
+        'a one-character script variant must stay blocked',
+      );
+    }
   });
 });

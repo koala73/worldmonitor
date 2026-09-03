@@ -26,6 +26,7 @@
     "lint:panel-content-writes": "node scripts/enforce-panel-content-writes.mjs",
     "lint:rate-limit-policies": "tsx scripts/enforce-rate-limit-policies.mjs",
     "lint:premium-fetch": "tsx scripts/enforce-premium-fetch.mjs",
+    "lint:runtime-handler-contract": "node scripts/enforce-runtime-handler-contract.mjs",
     "lint:mintlify-slugs": "node scripts/enforce-mintlify-reserved-slugs.mjs",
     "lint:public-docs": "node scripts/check-public-doc-plan-references.mjs",
     "lint:unicode": "node scripts/check-unicode-safety.mjs",
@@ -34,6 +35,7 @@
     "security:vite-env-secrets": "node scripts/check-vite-env-secrets.mjs",
     "agent:preflight": "node scripts/agent-preflight.mjs",
     "agent:pr-snapshot": "node scripts/agent-pr-snapshot.mjs",
+    "agent:attach-pr-evidence": "node scripts/publish-pr-media-evidence.mjs",
     "worktree:bootstrap": "node scripts/bootstrap-worktree.mjs",
     "worktree:bootstrap:test-only": "node scripts/bootstrap-worktree.mjs --ignore-scripts",
     "worktree:env": "node scripts/bootstrap-worktree.mjs --skip-install",
@@ -85,6 +87,7 @@
     "build:blog": "npm run build:blog:raw",
     "build:blog:raw": "cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",
     "build:crawlable-corpus": "node --import tsx scripts/build-crawlable-corpus.mjs",
+    "audit:microstate-corpus": "node scripts/audit-microstate-corpus-similarity.mjs --check",
     "build:llms-full": "node --import tsx scripts/build-llms-full.mjs",
     "build:llms-full:check": "node --import tsx scripts/build-llms-full.mjs --check",
     "build:sitemap": "node scripts/build-sitemap.mjs",
@@ -144,6 +147,7 @@
     "test:e2e:source-live-apply": "cross-env VITE_VARIANT=full playwright test e2e/settings-source-live-apply.spec.ts",
     "test:e2e:ci-smoke": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts e2e/mcp-grant-consent.spec.ts e2e/dashboard-news-request-budget.spec.ts e2e/bootstrap-request-budget.spec.ts e2e/bootstrap-hydration-request-budget.spec.ts e2e/settings-panel-live-apply.spec.ts e2e/settings-source-live-apply.spec.ts e2e/keyword-spike-flow.spec.ts e2e/breaking-news-banner-provenance.spec.ts e2e/a11y-axe-scan.spec.ts e2e/dashboard-lcp-attribution.spec.ts e2e/map-overlay-marker-budget.spec.ts",
     "test:e2e:prehydration": "cross-env VITE_VARIANT=full playwright test e2e/prehydration-shell.spec.ts --project=chromium --grep \"server-rendered welcome page|dashboard shell without JavaScript\"",
+    "test:e2e:pro-cls": "cross-env VITE_VARIANT=full playwright test e2e/pro-critical-css-cls.spec.ts --project=chromium",
     "test:e2e:variant-smoke:full": "cross-env VITE_VARIANT=full playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:tech": "cross-env VITE_VARIANT=tech playwright test e2e/variant-live-smoke.spec.ts",
     "test:e2e:variant-smoke:finance": "cross-env VITE_VARIANT=finance playwright test e2e/variant-live-smoke.spec.ts",
@@ -158,7 +162,7 @@
     "dryrun:resilience": "node --import tsx/esm scripts/dry-run-resilience-rebalance.mjs",
     "test:feeds": "node scripts/validate-rss-feeds.mjs",
     "test:feeds:ci": "node scripts/validate-rss-feeds.mjs --ci",
-    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs src-tauri/open-url-safety.test.mjs api/_cors.test.mjs api/_session.test.mjs api/_api-key.test.mjs api/_user-api-key.test.mjs api/_rate-limit.test.mjs api/_sentry-common.test.mjs api/bootstrap-auth.test.mjs api/wm-session.test.mjs api/product-catalog.test.mjs api/youtube/embed.test.mjs api/cyber-threats.test.mjs api/usni-fleet.test.mjs api/rss-proxy.test.mjs scripts/ais-relay-rss.test.cjs scripts/ais-relay-ingestion.test.cjs scripts/ais-relay-entity-decode.test.cjs scripts/ais-relay-seed-fetchedat.test.cjs scripts/ais-relay-opensky-shared-cooldown.test.cjs api/loaders-xml-wms-regression.test.mjs api/analytics-health.test.mjs api/security/report.test.mjs",
+    "test:sidecar": "node --test src-tauri/sidecar/local-api-server.test.mjs src-tauri/open-url-safety.test.mjs api/_cors.test.mjs api/_session.test.mjs api/_api-key.test.mjs api/_user-api-key.test.mjs api/_rate-limit.test.mjs api/_sentry-common.test.mjs api/bootstrap-auth.test.mjs api/wm-session.test.mjs api/product-catalog.test.mjs api/youtube/embed.test.mjs api/cyber-threats.test.mjs api/usni-fleet.test.mjs api/rss-proxy.test.mjs api/rss-proxy-relay-sentry.test.mjs scripts/ais-relay-rss.test.cjs scripts/ais-relay-ingestion.test.cjs scripts/ais-relay-entity-decode.test.cjs scripts/ais-relay-seed-fetchedat.test.cjs scripts/ais-relay-opensky-shared-cooldown.test.cjs api/loaders-xml-wms-regression.test.mjs api/analytics-health.test.mjs api/security/report.test.mjs",
     "test:e2e:visual:full": "cross-env VITE_VARIANT=full playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual:tech": "cross-env VITE_VARIANT=tech playwright test -g \"matches golden screenshots per layer and zoom\"",
     "test:e2e:visual": "npm run test:e2e:visual:full && npm run test:e2e:visual:tech",
@@ -280,6 +284,7 @@
     "convex": {
       "esbuild": "0.28.1"
     },
+    "js-yaml@4": "$js-yaml",
     "fast-xml-parser": "^5.8.0",
     "serialize-javascript": "^7.0.4",
     "node-forge": "^1.4.0",
@@ -290,9 +295,10 @@
     "ip-address": "^10.3.1",
     "brace-expansion@1": "^1.1.18",
     "brace-expansion@2": "^2.1.4",
+    "brace-expansion@5": "^5.0.9",
     "sharp": "0.35.3",
     "postcss": "8.5.23",
-    "fast-uri": "3.1.5",
+    "fast-uri": "3.1.7",
     "markdown-it": "14.2.0"
   }
 }

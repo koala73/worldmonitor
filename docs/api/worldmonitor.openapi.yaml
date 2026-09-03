@@ -12812,10 +12812,11 @@ paths:
                     minLength: 1
                     maxLength: 255
                     pattern: "^[\\x21-\\x7E]{1,255}$"
+            deprecated: true
             tags:
                 - InfrastructureService
             summary: RecordBaselineSnapshot
-            description: RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
+            description: RecordBaselineSnapshot is deprecated and DISABLED. Client-supplied shared baseline writes are rejected.
             operationId: RecordBaselineSnapshot
             requestBody:
                 content:
@@ -12823,7 +12824,7 @@ paths:
                         example:
                             "updates":
                                 - "count": 1
-                                  "region": "example"
+                                  "region": "global"
                                   "type": "military_flights"
                         schema:
                             $ref: '#/components/schemas/worldmonitor_infrastructure_v1_RecordBaselineSnapshotRequest'
@@ -18467,6 +18468,7 @@ paths:
                     content:
                         application/json:
                             example:
+                                "dataAvailable": true
                                 "pagination":
                                     "nextCursor": "next-page-token"
                                     "totalCount": 1
@@ -25131,7 +25133,7 @@ paths:
             tags:
                 - ResilienceService
             summary: GetFoodStocks
-            description: GetFoodStocks returns per-country and WORLD cereal stocks-to-use from the seeded USDA PSD snapshot. PRO-gated. Requires entitlement tier >= 1.
+            description: Returns seeded PSD cereal balances with FAOSTAT gap fill. PRO-gated. Requires entitlement tier >= 1.
             operationId: GetFoodStocks
             security:
                 - WorldMonitorKey: []
@@ -27756,8 +27758,8 @@ paths:
                                       "affectedRoutes":
                                           - "example"
                                       "aisDisruptions": 1
+                                      "aisSnapshotAvailable": true
                                       "congestionLevel": "example"
-                                      "description": "Example WorldMonitor observation."
                                 "fetchedAt": "2026-01-15T12:00:00Z"
                                 "upstreamUnavailable": false
                             schema:
@@ -42928,7 +42930,7 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/worldmonitor_infrastructure_v1_BaselineUpdate'
-            description: RecordBaselineSnapshotRequest batch-updates baselines using Welford's online algorithm.
+            description: RecordBaselineSnapshotRequest is retained for compatibility. Client writes are disabled.
         worldmonitor_infrastructure_v1_BaselineUpdate:
             type: object
             properties:
@@ -42938,25 +42940,26 @@ components:
                     description: Activity type key.
                 region:
                     type: string
-                    description: Geographic region key, defaults to "global".
+                    description: Geographic region key. Only the global baseline is defined.
+                    const: global
                 count:
                     type: number
                     format: double
-                    description: Observed count value.
+                    description: Submitted count. The disabled endpoint does not persist this value.
             required:
                 - type
-            description: BaselineUpdate is a single metric observation to incorporate into the running baseline.
+            description: BaselineUpdate retains the request shape of the disabled compatibility endpoint.
         worldmonitor_infrastructure_v1_RecordBaselineSnapshotResponse:
             type: object
             properties:
                 updated:
                     type: integer
                     format: int32
-                    description: Number of baselines that were written.
+                    description: Always zero because the endpoint is disabled.
                 error:
                     type: string
                     description: Error message if the request was invalid.
-            description: RecordBaselineSnapshotResponse reports how many baselines were successfully updated.
+            description: RecordBaselineSnapshotResponse reports that no client baseline was updated.
         worldmonitor_infrastructure_v1_GetCableHealthRequest:
             type: object
             description: GetCableHealthRequest requests the current health status of all monitored submarine cables.
@@ -46459,6 +46462,11 @@ components:
                         $ref: '#/components/schemas/worldmonitor_maritime_v1_NavigationalWarning'
                 pagination:
                     $ref: '#/components/schemas/worldmonitor_core_v1_PaginationResponse'
+                dataAvailable:
+                    type: boolean
+                    description: |-
+                        True when NGA returned a valid response, including a valid empty list.
+                         False means warnings are withheld because the fetch or payload failed.
             description: ListNavigationalWarningsResponse contains navigational warnings matching the request.
         worldmonitor_maritime_v1_NavigationalWarning:
             type: object
@@ -51226,7 +51234,9 @@ components:
                 totalUseTmt:
                     type: number
                     format: double
-                    description: Total use (consumption + exports) in thousand metric tons.
+                    description: |-
+                        1000 MT. PSD country: consumption + exports. WORLD: consumption.
+                         FAOSTAT: domestic-supply quantity.
                 productionTmt:
                     type: number
                     format: double
@@ -51234,7 +51244,9 @@ components:
                 consumptionTmt:
                     type: number
                     format: double
-                    description: Domestic consumption in thousand metric tons. Zero when unknown.
+                    description: |-
+                        1000 MT. PSD: domestic consumption. FAOSTAT: domestic-supply quantity.
+                         Zero when unknown.
                 importsTmt:
                     type: number
                     format: double
@@ -51248,7 +51260,9 @@ components:
                     description: Unit the raw quantities are stored in, typically "1000 MT".
                 source:
                     type: string
-                    description: 'Provenance: "psd" or "faostat". FAOSTAT rows never carry stocks.'
+                    description: |-
+                        "psd" or "faostat". FAOSTAT Food Balances supplies production and
+                         domestic-supply, but no stocks.
             description: One country (or WORLD) × commodity production/stocks balance from the seeded snapshot.
         worldmonitor_resilience_v1_GetDemographicsCapabilityRequest:
             type: object
@@ -52810,6 +52824,9 @@ components:
                     format: int32
                 congestionLevel:
                     type: string
+                    description: |-
+                        AIS-derived congestion level. "normal" is an observed AIS level, not a
+                         default. Empty when ais_snapshot_available is false.
                 affectedRoutes:
                     type: array
                     items:
@@ -52847,6 +52864,16 @@ components:
                          This is a FREE field (no PRO gate) — it exposes the existing server-internal
                          threatLevel from ChokepointConfig, making it available to clients for badges
                          and bypass corridor scoring.
+                navigationalWarningsAvailable:
+                    type: boolean
+                    description: |-
+                        True when the NGA navigational-warning source returned a valid response,
+                         including a valid empty list. Missing legacy values fail closed.
+                aisSnapshotAvailable:
+                    type: boolean
+                    description: |-
+                        True when the AIS snapshot source returned a valid response. This owns
+                         both ais_disruptions and congestion_level. Missing legacy values fail closed.
         worldmonitor_supply_chain_v1_DirectionalDwt:
             type: object
             properties:

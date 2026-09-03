@@ -49,6 +49,51 @@ describe('buildCountryMarketIndex', () => {
     assert.deepEqual(index.US.map((entry) => entry.title), [trump.title]);
   });
 
+  it('matches shared country language across countries and providers', () => {
+    const cases = [
+      ['FR', [
+        market('Will the French government survive the confidence vote?', 'polymarket', 20_000),
+        market('Will France hold an early election?', 'kalshi', 10_000),
+      ]],
+      ['DE', [
+        market('Will the German chancellor call an early election?', 'polymarket', 20_000),
+        market('Will Germany enter recession?', 'kalshi', 10_000),
+      ]],
+      ['SA', [
+        market('Will Saudi cut oil production this year?', 'polymarket', 20_000),
+        market('Will Saudi Arabia host the peace talks?', 'kalshi', 10_000),
+      ]],
+      ['GB', [
+        market('Next UK parliamentary by-election called by...?', 'polymarket', 20_000),
+        market('What will Mike Johnson say during his address to the UK Parliament?', 'kalshi', 10_000),
+      ]],
+    ];
+    const index = buildCountryMarketIndex(cases.flatMap(([, markets]) => markets), { now: NOW });
+
+    for (const [countryCode, markets] of cases) {
+      assert.deepEqual(
+        new Set(index[countryCode]?.map((entry) => entry.title)),
+        new Set(markets.map((entry) => entry.title)),
+        countryCode,
+      );
+      assert.deepEqual(
+        new Set(index[countryCode]?.map((entry) => entry.source)),
+        new Set(['polymarket', 'kalshi']),
+        countryCode,
+      );
+    }
+  });
+
+  it('does not match a short country term inside another word', () => {
+    const embeddedTerms = [
+      market('Will luck decide the 2027 Nobel Peace Prize?', 'polymarket', 30_000),
+      market('Will Duke Energy name a new CEO in 2027?', 'kalshi', 25_000),
+    ];
+
+    const embeddedIndex = buildCountryMarketIndex(embeddedTerms, { now: NOW });
+    assert.equal(embeddedIndex.GB, undefined);
+  });
+
   it('ranks a nearer country alias ahead of an exact-name 2045 contract', () => {
     const distant = market(
       'Will Nick Fuentes become President of the United States before 2045?',

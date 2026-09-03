@@ -47,7 +47,7 @@ UI 是状态驱动而非模态 — 激活场景在每个地图渲染器（deck.g
 
 Scenario Engine 是 **PRO**。免费用户看到触发按钮但在激活时被阻止：记录 `scenario-engine` 门控命中事件，地图不重绘。`ScenarioService.RunScenario` 处理器也在边缘强制执行 PRO（`server/worldmonitor/scenario/v1/run-scenario.ts`）。
 
-API 侧的速率限制 — 10 个作业/分钟/IP，一旦待处理队列已超过 100 个作业即施加队列背压 — 记录在 [Scenarios API](/zh/api-scenarios#run-a-scenario) 中。
+API 侧的速率限制 — 10 个作业/分钟/IP，一旦待处理队列已超过 100 个作业即施加队列背压 — 记录在 [Scenarios API](/zh/api-scenarios#运行场景) 中。
 
 ## 自行运行
 
@@ -59,7 +59,7 @@ API 侧的速率限制 — 10 个作业/分钟/IP，一旦待处理队列已超�
 4. 结果到达后，地图重绘，场景横幅前置于面板。横幅始终显示：⚠ 图标、场景名称、受影响最大的 5 个国家及每国影响百分比，以及 **×** 关闭控件。当场景的结果载荷包含模板参数（持续时间、中断百分比、成本冲击乘数）时，横幅额外渲染一个标签行（例如 `14d · +110% cost`）和一行标语，如 *"Simulating 14d / 100% closure / +110% cost on 1 chokepoint. Chokepoint card below shows projected score; map highlights disrupted routes."* 受影响的咽喉要道本身在地图和咽喉要道卡片上高亮，而非在横幅中按名称列出。
 5. 点击横幅上的 **×** 关闭控件（aria-label："Dismiss scenario"）清除场景状态 — 地图重绘回基线，面板重新渲染时不显示投影分数和红色边框标注。
 
-对于脚本化使用，请参见 [`POST /api/scenario/v1/run-scenario`](/zh/api-scenarios#run-a-scenario) — 入队，然后轮询 `GET /api/scenario/v1/get-scenario-status` 直到响应有终止状态（成功为 `"done"`，错误为 `"failed"`）。非终止状态为 `"pending"`（排队）和 `"processing"`（worker 已启动）；两者都可能持续数秒。请参见[状态生命周期表](/zh/api-scenarios#poll-job-status)了解完整合约。
+对于脚本化使用，请参见 [`POST /api/scenario/v1/run-scenario`](/zh/api-scenarios#运行场景) — 入队，然后轮询 `GET /api/scenario/v1/get-scenario-status` 直到响应有终止状态（成功为 `"done"`，错误为 `"failed"`）。非终止状态为 `"pending"`（排队）和 `"processing"`（worker 已启动）；两者都可能持续数秒。请参见[状态生命周期表](/zh/api-scenarios#轮询作业状态)了解完整合约。
 
 ## Scenario Engine 背后的数据
 

@@ -90,7 +90,7 @@ ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（
 
 ### 人口暴露估计
 
-人口暴露估计计算事件特定半径内受影响的人口。完整方法论见 [算法 - 人口暴露](/zh/algorithms#population-exposure-estimation)。
+人口暴露估计计算事件特定半径内受影响的人口。完整方法论见 [算法 - 人口暴露](/zh/algorithms#人口暴露估计)。
 
 ### 安全公告聚合
 
@@ -107,7 +107,7 @@ ACLED 需要鉴权：在 API 项目上设置 `ACLED_EMAIL` + `ACLED_PASSWORD`（
 - **评分加成**：切勿前往 → +15 分，重新考虑 → +10，谨慎前往 → +5。服务端评分器在存在时使用实时 `byCountry` 等级；若部分 Tier-1 国家缺失实时数据，则回退到已发布的 CII 公告表，而非额外添加多源一致加成。
 - **评分下限**：切勿前往强制 CII 最低分为 60；重新考虑强制最低 50。这防止事件数据稀少但有活跃或经策展的公告风险的国家显示虚假的平静评分。
 
-**CII 公告兜底**：评分位移兜底表刻意保持精简，并随 CII 方法论版本化。目前覆盖 AF、MM、SY、UA、YE 为切勿前往；CU、IL、IQ、IR、LB、MX、PK、VE 为重新考虑；RU、TR 为谨慎前往。实时公告源值会覆盖同一国家的兜底值。其依据与各国评分影响见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#advisory-fallback-table)。
+**CII 公告兜底**：评分位移兜底表刻意保持精简，并随 CII 方法论版本化。目前覆盖 AF、MM、SY、UA、YE 为切勿前往；CU、IL、IQ、IR、LB、MX、PK、VE 为重新考虑；RU、TR 为谨慎前往。实时公告源值会覆盖同一国家的兜底值。其依据与各国评分影响见 [CII 风险评分方法论](/zh/methodology/cii-risk-scores#警示兜底表)。
 
 安全公告面板显示公告及其彩色级别徽章和来源国国旗，可按严重性（严重、全部）和发布来源组（US、AU、UK、卫生）筛选。
 

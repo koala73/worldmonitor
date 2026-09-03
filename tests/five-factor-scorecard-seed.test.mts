@@ -555,7 +555,14 @@ describe('five-factor atomic snapshot', () => {
       const startedAtMs = Date.now();
       assert.equal(await readFiveFactorSnapshot(['AA'], deadlineAtMs), null);
       assert.equal(requestCount, 1, 'expired read-model budget must not start the canonical fallback');
-      assert.ok(Date.now() - startedAtMs < 500, 'scorecard Redis fallback must stay within the caller budget');
+      // Deliberately tolerant, and deliberately still here (#7534 review): if the
+      // caller's 40ms budget stopped being forwarded, SCORECARD_READ_DEADLINE_MS
+      // (7s) would abort instead -- the stub still rejects, the call still
+      // returns null, requestCount is still 1, so every other assertion passes
+      // and only elapsed time separates our deadline from an unrelated later
+      // one. 2s is ~3.5x under that 7s regression and ~4x over the scheduler
+      // noise that made the old 500ms bound flake at --test-concurrency=16.
+      assert.ok(Date.now() - startedAtMs < 2_000, 'the caller budget must bound the read, not the 7s default');
     } finally {
       globalThis.fetch = originalFetch;
       if (originalUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;

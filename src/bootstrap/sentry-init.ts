@@ -146,6 +146,24 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /objectStoreNames/,
       /Unexpected identifier 'https'/,
       /Can't find variable: _0x/,
+      // The Chromium/Gecko half of the entry above. javascript-obfuscator names
+      // its identifiers `_0x<hex>`, and a userscript or extension bundle that
+      // reads its own obfuscated global before define throws
+      // `_0x58c9 is not defined` there and `Can't find variable: _0x58c9` on
+      // WebKit — so the entry above has covered only Safari since #4005.
+      // WORLDMONITOR-11P is the other half leaking through (Chrome 152 /
+      // Windows, three `<anonymous>:1` frames and nothing else); it landed on
+      // the marketing surface, which runs a separate Sentry client, and the
+      // same hole exists here.
+      //
+      // Added ALONGSIDE the WebKit entry rather than replacing it: keying on
+      // four-or-more hex digits is what makes the identifier unmistakably
+      // obfuscator output, but it would drop a non-hex `_0x…` name that the
+      // broader Safari-phrasing entry has been suppressing for months. Neither
+      // pattern subsumes the other. Vite's esbuild/terser minifier emits
+      // single-letter and `$`-prefixed names, never a `_0x` prefix, and the
+      // literal appears nowhere in src/, api/, shared/, public/ or index.html.
+      /\b_0x[0-9a-f]{4,}\b/,
       /Can't find variable: video/,
       /hackLocationFailed is not defined/,
       /userScripts is not defined/,
@@ -205,6 +223,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Worker is not a constructor/,
       /_pcmBridgeCallbackHandler/,
       /UCShellJava/,
+      // UC Browser's native JS bridge object, injected into every page by the
+      // in-app WebView's own chrome script and referenced before (or after) the
+      // native side has defined it. Sibling of `UCShellJava` / `ucapi` /
+      // `ucConfig` / `ucbrowser_script` already here, and of the other named
+      // in-app-bridge globals (`zaloJSV2`, `iabjs_unified_bridge`,
+      // `SCDynimacBridge`). The double-underscore-prefixed vendor identifier
+      // appears nowhere in src/, api/, shared/, server/, public/ or index.html,
+      // so it can never come from our bundle, minified or not.
+      //
+      // Matched on the identifier rather than folded into the
+      // `Can.t find variable: (...)` alternation above so BOTH engine phrasings
+      // are covered from one entry — WebKit says `Can't find variable: X`,
+      // Chromium says `X is not defined`, and UC Browser ships on both engines.
+      // WORLDMONITOR-10W (UC Browser 12.2.1 / iOS 17.6.1, single `global code`
+      // frame on the /dashboard document).
+      /__BrowserJSBridgeObj/,
       /Cannot define multiple custom elements/,
       /maxTextureDimension2D/,
       /Container app not found/,
@@ -952,6 +986,30 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // future first-party WebAuthn call site would keep a source-mapped
           // .ts frame and still surface (WORLDMONITOR-11B).
           || /An unknown error occurred while talking to the credential manager/.test(msg)
+          // The overlapping-request half of the same WebAuthn surface. Chrome
+          // serialises `navigator.credentials` requests per page and rejects
+          // the second one with `OperationError: A request is already
+          // pending.`; the documented triggers are a double-clicked sign-in
+          // button and a submit issued while a conditional-mediation passkey
+          // autofill request is still open (keycloak/keycloak#41037;
+          // w3c/webauthn#1790 records that the spec leaves the overlap
+          // undefined and that Chrome errors). Clerk's sign-in UI opens exactly
+          // that conditional request, which is the same third-party origin as
+          // the CredMan entry above, and it arrives the same way — an unhandled
+          // rejection out of the Clerk bundle with zero captured frames.
+          //
+          // Kept HERE rather than in `ignoreErrors`, unlike the marketing
+          // copy in `pro-test/src/sentry-filter-policy.ts`, because the two
+          // surfaces have different licences: the marketing bundle calls no
+          // WebAuthn API at all, but this one does — `createPasskey()` in
+          // src/services/passkeys.ts drives `user.createPasskey()`. That path
+          // cannot leak today (it wraps the call in try/catch and returns a
+          // classified outcome), but a future first-party double-invoke is
+          // precisely the bug worth seeing, and it would keep a source-mapped
+          // .ts frame. `!hasFirstParty` is what preserves it (WORLDMONITOR-11T,
+          // observed on `/pro`; the same class reaches this surface through the
+          // dashboard's own Clerk sign-in).
+          || /^(?:Error: )?OperationError: A request is already pending\.$/.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (
@@ -966,6 +1024,31 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))
         || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
         || /Invalid or unexpected token/.test(msg)
+        // SpiderMonkey's wording for a malformed numeric literal (`3foo`,
+        // `0x1z`) — the Gecko sibling of the `Invalid or unexpected token` /
+        // `Unexpected token` entries above, and of the `literal not terminated
+        // before end of script` and `Octal literals are not allowed in strict
+        // mode` entries already in ignoreErrors. A runtime parse error cannot
+        // come from our own bundle: it is compiled and parsed at build time, and
+        // a genuine first-party SyntaxError keeps a source-mapped .ts frame or
+        // an owned hashed-chunk URL in the message (both preserved by the
+        // `!hasFirstParty` gate). Observed only with the page DOCUMENT url as
+        // the sole frame (`https://www.worldmonitor.app/:1`), which is how
+        // WebKit/Gecko attribute a main-world injected content script —
+        // WORLDMONITOR-10B (Firefox iOS 154.1 / iOS 18.7).
+        || (excType === 'SyntaxError' && /^No identifiers allowed directly after numeric literal$/.test(msg))
+        // SpiderMonkey's wording for a malformed numeric literal (`3foo`,
+        // `0x1z`) — the Gecko sibling of the `Invalid or unexpected token` /
+        // `Unexpected token` entries above, and of the `literal not terminated
+        // before end of script` and `Octal literals are not allowed in strict
+        // mode` entries already in ignoreErrors. A runtime parse error cannot
+        // come from our own bundle: it is compiled and parsed at build time, and
+        // a genuine first-party SyntaxError keeps a source-mapped .ts frame or
+        // an owned hashed-chunk URL in the message (both preserved by the
+        // `!hasFirstParty` gate). Observed only with the page DOCUMENT url as
+        // the sole frame (`https://www.worldmonitor.app/:1`), which is how
+        // WebKit/Gecko attribute a main-world injected content script —
+        // WORLDMONITOR-10B (Firefox iOS 154.1 / iOS 18.7).
         // V8 wording when HTML (or other non-JS) is parsed as a script:
         // Electron / in-app wrappers fetch the SPA document (`/dashboard`)
         // as if it were JS, then report the parse failure against the

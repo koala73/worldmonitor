@@ -2,13 +2,18 @@ name: Refresh Crawlable Live Pulse
 
 # The committed pulse snapshot is published as "Current signal" on every
 # country, chokepoint and crisis page. build-crawlable-corpus.mjs rejects a
-# snapshot older than MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS (45), so this monthly
+# snapshot older than MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS (10), so this weekly
 # refresh is what keeps the corpus buildable as well as truthful.
+#
+# Weekly, not monthly: these pages are headed "Approx. 24-hour movement", and a
+# monthly cron behind a 45-day ceiling let them ship on six-week-old data
+# (#7530). The cadence and that ceiling are one contract — changing either alone
+# reopens the gap, and tests/crawlable-corpus.test.mjs asserts they agree.
 # Mirrors .github/workflows/resilience-snapshot-refresh.yml.
 
 on:
   schedule:
-    - cron: '41 4 2 * *'
+    - cron: '41 4 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -24,24 +29,28 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           fetch-depth: 0
           # workflow_dispatch can target a feature branch; publication must
           # always branch from main so the review PR stays free of unrelated commits.
           ref: refs/heads/main
-      - name: Reconcile the monthly review branch
+      - name: Reconcile the weekly review branch
         id: reconcile
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          period=$(date -u +%Y-%m)
+          # ISO year-week, not year-month: the branch key is what makes the
+          # run idempotent, so a month-keyed name under a weekly cron would
+          # find week 1's PR and skip weeks 2-4 — a weekly schedule that still
+          # refreshes monthly (#7530).
+          period=$(date -u +%G-W%V)
           branch="automation/crawlable-pulse-${period}"
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
           existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
-            echo "Monthly pulse PR #${existing_pr} already exists."
+            echo "Weekly pulse PR #${existing_pr} already exists."
             exit 0
           fi
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
@@ -49,7 +58,7 @@ jobs:
               --base main \
               --head "$branch" \
               --title "chore(corpus): refresh crawlable live pulse ${period}" \
-              --body "Monthly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
+              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -87,7 +96,7 @@ jobs:
             | sort -r \
             | tail -n +2 \
             | xargs -r git rm --quiet
-      - name: Open the monthly pulse PR
+      - name: Open the weekly pulse PR
         if: steps.reconcile.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -105,4 +114,4 @@ jobs:
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
-            --body "Monthly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
+            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."

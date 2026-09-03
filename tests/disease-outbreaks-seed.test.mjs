@@ -19,6 +19,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { fetchWhoDonApi } from '../scripts/seed-disease-outbreaks.mjs';
 import {
   whoNormalizeItem,
   rssNormalizeItem,
@@ -33,6 +34,82 @@ import {
   DISEASE_WARNING_RE,
   ALERT_LEVEL_METHODOLOGY_VERSION,
 } from '../scripts/_disease-outbreaks-helpers.mjs';
+
+const WHO_RESPONSE = {
+  value: [{
+    Title: 'Ebola disease - Country X',
+    ItemDefaultUrl: '/emergencies/disease-outbreak-news/item/2026-DON001',
+    PublicationDateAndTime: '2026-08-28T15:28:00Z',
+  }],
+};
+
+function jsonResponse(body, status = 200) {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { 'content-type': 'application/json' },
+  });
+}
+
+test('WHO adapter retries one transient timeout and returns the recovered record', async () => {
+  let calls = 0;
+  const outbreaks = await fetchWhoDonApi({
+    fetchImpl: async () => {
+      calls += 1;
+      if (calls === 1) throw Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
+      return jsonResponse(WHO_RESPONSE);
+    },
+    retryDelayMs: 0,
+  });
+
+  assert.equal(calls, 2);
+  assert.equal(outbreaks.length, 1);
+  assert.equal(outbreaks[0].title, WHO_RESPONSE.value[0].Title);
+});
+
+for (const status of [429, 503]) {
+  test(`WHO adapter retries transient HTTP ${status} and returns the recovered record`, async () => {
+    let calls = 0;
+    const outbreaks = await fetchWhoDonApi({
+      fetchImpl: async () => {
+        calls += 1;
+        if (calls === 1) return jsonResponse({}, status);
+        return jsonResponse(WHO_RESPONSE);
+      },
+      retryDelayMs: 0,
+    });
+
+    assert.equal(calls, 2);
+    assert.equal(outbreaks.length, 1);
+    assert.equal(outbreaks[0].title, WHO_RESPONSE.value[0].Title);
+  });
+}
+
+test('WHO adapter does not retry a permanent HTTP 403', async () => {
+  let calls = 0;
+  const outbreaks = await fetchWhoDonApi({
+    fetchImpl: async () => {
+      calls += 1;
+      return jsonResponse({}, 403);
+    },
+  });
+
+  assert.equal(calls, 1);
+  assert.deepEqual(outbreaks, []);
+});
+
+test('WHO adapter returns no records after both transient attempts fail', async () => {
+  let calls = 0;
+  const outbreaks = await fetchWhoDonApi({
+    fetchImpl: async () => {
+      calls += 1;
+      throw Object.assign(new Error('request timed out'), { name: 'TimeoutError' });
+    },
+    retryDelayMs: 0,
+  });
+
+  assert.equal(calls, 2);
+  assert.deepEqual(outbreaks, []);
+});
 
 // ── Pre-publish (in-memory) layer ────────────────────────────────────────
 

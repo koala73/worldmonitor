@@ -821,10 +821,11 @@ paths:
                     minLength: 1
                     maxLength: 255
                     pattern: "^[\\x21-\\x7E]{1,255}$"
+            deprecated: true
             tags:
                 - InfrastructureService
             summary: RecordBaselineSnapshot
-            description: RecordBaselineSnapshot batch-updates baseline statistics using Welford's online algorithm.
+            description: RecordBaselineSnapshot is deprecated and DISABLED. Client-supplied shared baseline writes are rejected.
             operationId: RecordBaselineSnapshot
             requestBody:
                 content:
@@ -832,7 +833,7 @@ paths:
                         example:
                             "updates":
                                 - "count": 1
-                                  "region": "example"
+                                  "region": "global"
                                   "type": "military_flights"
                         schema:
                             $ref: '#/components/schemas/RecordBaselineSnapshotRequest'
@@ -1938,7 +1939,7 @@ components:
                     type: array
                     items:
                         $ref: '#/components/schemas/BaselineUpdate'
-            description: RecordBaselineSnapshotRequest batch-updates baselines using Welford's online algorithm.
+            description: RecordBaselineSnapshotRequest is retained for compatibility. Client writes are disabled.
         BaselineUpdate:
             type: object
             properties:
@@ -1948,25 +1949,26 @@ components:
                     description: Activity type key.
                 region:
                     type: string
-                    description: Geographic region key, defaults to "global".
+                    description: Geographic region key. Only the global baseline is defined.
+                    const: global
                 count:
                     type: number
                     format: double
-                    description: Observed count value.
+                    description: Submitted count. The disabled endpoint does not persist this value.
             required:
                 - type
-            description: BaselineUpdate is a single metric observation to incorporate into the running baseline.
+            description: BaselineUpdate retains the request shape of the disabled compatibility endpoint.
         RecordBaselineSnapshotResponse:
             type: object
             properties:
                 updated:
                     type: integer
                     format: int32
-                    description: Number of baselines that were written.
+                    description: Always zero because the endpoint is disabled.
                 error:
                     type: string
                     description: Error message if the request was invalid.
-            description: RecordBaselineSnapshotResponse reports how many baselines were successfully updated.
+            description: RecordBaselineSnapshotResponse reports that no client baseline was updated.
         GetCableHealthRequest:
             type: object
             description: GetCableHealthRequest requests the current health status of all monitored submarine cables.

@@ -1,7 +1,7 @@
 const REQUEST_TIMEOUT_MS = 8_000;
 const MIN_VALID_TIMESTAMP_MS = Date.UTC(2000, 0, 1);
-const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
-const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
+export const MAX_FUTURE_SKEW_MS = 5 * 60 * 1_000;
+export const MAX_LIVE_SNAPSHOT_AGE_MS = 48 * 60 * 60 * 1_000;
 const MAX_AIRSPACE_OBSERVATION_AGE_MS = 24 * 60 * 60 * 1_000;
 const MAX_RENDERED_ROWS = 5;
 
@@ -36,17 +36,11 @@ function formatNumber(value, maximumFractionDigits = 1) {
   }).format(value);
 }
 
-// Today's transits are counts from the relay's in-memory 24h AIS window. That
-// window is empty far more often than it is zero-trafficked, and the seeder
-// cannot tell the two apart (`relayTransit` is only built when
-// `recent.length > 0`), so a count below 1 is unsupplied and must not publish
-// as "0" (#7457 / #7370 class).
-//
 // This module is copied verbatim into public/tools/live-tools.js by
 // build-crawlable-corpus.mjs, so it must stay import-free at module scope. The
 // generator imports THESE exports rather than mirroring them -- a "keep in
 // sync" comment is a contract nothing can fail on.
-export function publishedTransitCountLabel(value) {
+export function publishedTransitCountLabel(value, { allowZero = false } = {}) {
   if (value == null || value === '') return null;
   const numeric = typeof value === 'number'
     ? value
@@ -54,8 +48,50 @@ export function publishedTransitCountLabel(value) {
   // Always re-format the parsed number instead of echoing the input string:
   // a passthrough would publish "1e3" or "0x10" verbatim, and a fraction such
   // as 0.4 clears a `> 0` gate only to render as the "0" this exists to stop.
-  if (!Number.isFinite(numeric) || numeric < 1) return null;
+  if (
+    !Number.isFinite(numeric)
+    || numeric < 0
+    || (numeric > 0 && numeric < 1)
+    || (numeric === 0 && !allowZero)
+  ) return null;
   return formatNumber(numeric, 0);
+}
+
+export function chokepointCoverageMetrics({
+  todayTransits,
+  todayCountsAvailable,
+  navigationalWarnings,
+  navigationalWarningsAvailable,
+  aisDisruptions,
+  aisSnapshotAvailable,
+  congestionLevel,
+  weekMovement,
+}) {
+  const transitLabel = todayCountsAvailable === false
+    ? null
+    : publishedTransitCountLabel(todayTransits, { allowZero: todayCountsAvailable === true });
+  const warningCount = Math.max(0, nonNegativeNumber(navigationalWarnings) ?? 0);
+  const disruptionCount = Math.max(0, nonNegativeNumber(aisDisruptions) ?? 0);
+  const warningLabel = typeof navigationalWarnings === 'string' && navigationalWarnings.trim()
+    ? navigationalWarnings.trim()
+    : `${formatNumber(warningCount, 0)} ${warningCount === 1 ? 'warning' : 'warnings'}`;
+  const disruptionLabel = typeof aisDisruptions === 'string' && aisDisruptions.trim()
+    ? aisDisruptions.trim()
+    : `${formatNumber(disruptionCount, 0)} AIS ${disruptionCount === 1 ? 'disruption' : 'disruptions'}`;
+  return {
+    todayTransits: transitLabel,
+    todayCountsAvailable,
+    navigationalWarnings: navigationalWarningsAvailable === true
+      ? warningLabel
+      : null,
+    aisDisruptions: aisSnapshotAvailable === true
+      ? disruptionLabel
+      : null,
+    congestion: aisSnapshotAvailable === true
+      ? (humanizeToken(congestionLevel) || 'Not reported')
+      : null,
+    weekMovement,
+  };
 }
 
 export function withheldTransitCountSentence(displayName) {
@@ -324,8 +360,6 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
     'Chokepoint status',
     MAX_LIVE_SNAPSHOT_AGE_MS,
   );
-  const activeWarnings = Math.max(0, nonNegativeNumber(row.activeWarnings) ?? 0);
-  const aisDisruptions = Math.max(0, nonNegativeNumber(row.aisDisruptions) ?? 0);
   const transit = row.transitSummary;
   // dataAvailable is PortWatch history presence, so it gates wowChangePct --
   // but NOT today's count, which comes from the relay's AIS window. Gating the
@@ -333,21 +367,38 @@ export function chokepointStatusViewModel(payload, chokepointId, now = Date.now(
   // chokepoint (it dropped two for ~4.5h on 2026-08-25) and then rendered the
   // withhold note over live data. The count carries its own absence.
   const transitAvailable = transit?.dataAvailable === true;
-  const todayTransits = publishedTransitCountLabel(nonNegativeNumber(transit?.todayTotal));
   const weekMovement = transitAvailable ? finiteNumber(transit.wowChangePct) : null;
+  const coverageMetrics = chokepointCoverageMetrics({
+    todayTransits: nonNegativeNumber(transit?.todayTotal),
+    todayCountsAvailable: transit?.todayCountsAvailable,
+    navigationalWarnings: row.activeWarnings,
+    navigationalWarningsAvailable: row.navigationalWarningsAvailable === true,
+    aisDisruptions: row.aisDisruptions,
+    aisSnapshotAvailable: row.aisSnapshotAvailable === true,
+    congestionLevel: row.congestionLevel,
+    weekMovement: weekMovement === null
+      ? null
+      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+  });
 
   return {
     disruptionScore: formatNumber(score, 0),
     status,
-    congestion: humanizeToken(row.congestionLevel) || 'Not reported',
-    warnings: `${formatNumber(activeWarnings, 0)} ${activeWarnings === 1 ? 'warning' : 'warnings'} · ${formatNumber(aisDisruptions, 0)} AIS ${aisDisruptions === 1 ? 'disruption' : 'disruptions'}`,
-    description: String(row.description || '').trim() || 'No additional status note was supplied.',
-    todayTransits,
-    weekMovement: weekMovement === null
-      ? null
-      : `${weekMovement > 0 ? '+' : ''}${formatNumber(weekMovement)}% vs prior week`,
+    congestion: coverageMetrics.congestion,
+    navigationalWarnings: coverageMetrics.navigationalWarnings,
+    aisDisruptions: coverageMetrics.aisDisruptions,
+    // null, never a placeholder sentence — see publishableDescription in
+    // scripts/freeze-crawlable-live-pulse.mjs (#7530).
+    description: String(row.description || '').trim() || null,
+    todayTransits: coverageMetrics.todayTransits,
+    todayCountsAvailable: coverageMetrics.todayCountsAvailable,
+    weekMovement: coverageMetrics.weekMovement,
     fetchedAt,
-    partial: payload.upstreamUnavailable === true || !transitAvailable || todayTransits === null,
+    partial: payload.upstreamUnavailable === true
+      || !transitAvailable
+      || coverageMetrics.todayTransits === null
+      || coverageMetrics.navigationalWarnings === null
+      || coverageMetrics.aisDisruptions === null,
   };
 }
 
@@ -778,6 +829,26 @@ function setText(root, selector, value) {
   if (element) element.textContent = value;
 }
 
+function setOptionalMetric(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const metric = element.closest('.metric');
+  const available = value !== null && value !== undefined;
+  element.textContent = available ? value : '';
+  if (metric) metric.hidden = !available;
+}
+
+// The status note is optional prose, not a labelled metric: hide the paragraph
+// itself rather than leaving an empty <p> or writing a placeholder sentence
+// into it (#7530).
+function setOptionalDescription(root, selector, value) {
+  const element = root.querySelector(selector);
+  if (!element) return;
+  const text = value === null || value === undefined ? '' : String(value);
+  element.textContent = text;
+  element.hidden = text === '';
+}
+
 function formatDateTime(timestamp) {
   if (timestamp === null) return 'Time unavailable';
   return new Intl.DateTimeFormat('en-US', {
@@ -805,7 +876,9 @@ function setToolState(tool, state, status) {
     fallback.hidden = revealValues;
   }
   for (const description of tool.querySelectorAll('[data-chokepoint-description]')) {
-    if (revealValues) description.hidden = false;
+    // Only reveal a note that has text. The status note is optional (#7530),
+    // so an unconditional reveal would surface an empty paragraph.
+    if (revealValues && description.textContent.trim()) description.hidden = false;
   }
   for (const control of tool.querySelectorAll('[data-live-refresh]')) {
     control.disabled = state === 'loading';
@@ -1110,11 +1183,12 @@ export async function loadChokepoint(tool) {
     if (!isCurrentRequest(tool, state)) return;
     setText(tool, '[data-chokepoint-score]', view.disruptionScore);
     setText(tool, '[data-chokepoint-band]', view.status);
-    setText(tool, '[data-chokepoint-congestion]', view.congestion);
-    setText(tool, '[data-chokepoint-warnings]', view.warnings);
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', view.congestion);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', view.navigationalWarnings);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);
     setText(tool, '[data-chokepoint-transits]', view.todayTransits ?? '—');
-    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? 'Unavailable');
-    setText(tool, '[data-chokepoint-description]', view.description);
+    setText(tool, '[data-chokepoint-movement]', view.weekMovement ?? (view.todayTransits === null ? '—' : 'Unavailable'));
+    setOptionalDescription(tool, '[data-chokepoint-description]', view.description);
     const transitsNote = tool.querySelector('[data-chokepoint-transits-note]');
     if (transitsNote) {
       if (view.todayTransits == null) {
@@ -1138,8 +1212,9 @@ export async function loadChokepoint(tool) {
     }
     setText(tool, '[data-chokepoint-score]', '—');
     setText(tool, '[data-chokepoint-band]', 'Unavailable');
-    setText(tool, '[data-chokepoint-congestion]', 'Unavailable');
-    setText(tool, '[data-chokepoint-warnings]', 'Unavailable');
+    setOptionalMetric(tool, '[data-chokepoint-congestion]', null);
+    setOptionalMetric(tool, '[data-chokepoint-warnings]', null);
+    setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', null);
     // Total fetch failure: match the sibling cells. An em dash here is the
     // "withheld, see the note" signal, and the note is hidden in this branch,
     // so it would read as an unexplained blank next to four "Unavailable"s.
@@ -1150,7 +1225,7 @@ export async function loadChokepoint(tool) {
       transitsNote.hidden = true;
       transitsNote.textContent = '';
     }
-    setText(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
+    setOptionalDescription(tool, '[data-chokepoint-description]', 'The live status could not be loaded. Static waterway context remains available below.');
     setTime(tool, '[data-live-updated]', null, 'Snapshot');
     setToolState(tool, 'error', 'Temporarily unavailable');
   }

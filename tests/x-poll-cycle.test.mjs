@@ -5,6 +5,13 @@ import { createRequire } from 'node:module';
 const require = createRequire(import.meta.url);
 const { createXPollCycle } = require('../scripts/lib/x-poll-cycle.cjs');
 const xNewsAccounts = require('../scripts/lib/x-news-accounts.cjs');
+const {
+  createXPostBudget,
+  RESERVE_LUA,
+  SETTLE_LUA,
+  ACK_RECEIPTS_LUA,
+  STATUS_LUA,
+} = require('../scripts/lib/x-post-budget.cjs');
 
 // These three functions used to live inside scripts/ais-relay.cjs, which has no
 // module.exports and no require.main guard — importing it boots the relay — so
@@ -41,7 +48,10 @@ function makeState(overrides = {}) {
     accounts: [ACCOUNT],
     cursorByAccountId: Object.create(null),
     accountIdByHandle: Object.create(null),
-    catchupByAccountId: Object.create(null),
+    lastPolledAtByHandle: Object.create(null),
+    lastDeletionAuditAt: 0,
+    lastCycleUsage: null,
+    postBudget: null,
     items: [],
     lookupOffset: 0,
     accountOffset: 0,
@@ -64,7 +74,21 @@ function pollResult(overrides = {}) {
   return {
     cursorByAccountId: { 1652541: '900' },
     accountIdByHandle: { reuters: '1652541' },
-    catchupByAccountId: {},
+    lastPolledAtByHandle: { Reuters: NOW },
+    lastDeletionAuditAt: NOW,
+    lastCycleUsage: { requestsUsed: 2, requestLimit: 2, postsRead: 1, postReadLimit: 10 },
+    postBudget: {
+      available: true,
+      day: '2023-11-14',
+      month: '2023-11',
+      dailyLimit: 600,
+      dailyUsed: 1,
+      dailyRemaining: 599,
+      monthlyLimit: 20_000,
+      monthlyUsed: 1,
+      monthlyRemaining: 19_999,
+      exhausted: false,
+    },
     items: [],
     lookupOffset: 0,
     accountOffset: 0,
@@ -81,6 +105,49 @@ function pollResult(overrides = {}) {
   };
 }
 
+function createReceiptBudgetDouble() {
+  let dailyUsed = 0;
+  let monthlyUsed = 0;
+  let reservation = null;
+  let receipt = null;
+  return {
+    budget: createXPostBudget({
+      now: () => NOW,
+      idFactory: () => 'integration-reservation',
+      dailyCoveragePosts: 10,
+      evalCommand: async (script, keys, args) => {
+        if (script === RESERVE_LUA) {
+          if (receipt) return [0, dailyUsed, monthlyUsed, 4, 0, receipt];
+          const requested = Number(args[0]);
+          dailyUsed += requested;
+          monthlyUsed += requested;
+          reservation = { key: keys[2], reserved: requested };
+          return [1, dailyUsed, monthlyUsed, 0, 0, ''];
+        }
+        if (script === SETTLE_LUA) {
+          assert.equal(keys[2], reservation?.key);
+          const actual = Number(args[0]);
+          const refund = reservation.reserved - actual;
+          dailyUsed -= refund;
+          monthlyUsed -= refund;
+          receipt = args[3];
+          return [1, dailyUsed, monthlyUsed, reservation.reserved, actual, 0];
+        }
+        if (script === ACK_RECEIPTS_LUA) {
+          if (receipt === args[0]) {
+            receipt = null;
+            return 1;
+          }
+          return 0;
+        }
+        if (script === STATUS_LUA) return [dailyUsed, monthlyUsed, 0];
+        throw new Error('unexpected budget script');
+      },
+    }),
+    status: () => ({ dailyUsed, monthlyUsed, hasReceipt: receipt != null }),
+  };
+}
+
 function createHarness(options = {}) {
   const {
     state = makeState(),
@@ -92,11 +159,17 @@ function createHarness(options = {}) {
     autoFireTimer = true,
     xEnabled = true,
     now = () => NOW,
+    fetchImpl = () => { throw new Error('the cycle must not fetch directly'); },
+    xPostBudget = {
+      withReturnedPosts: async ({ execute }) => execute(),
+      ackReceipts: async () => true,
+      status: async () => ({ available: true, dailyLimit: 600, monthlyLimit: 20_000 }),
+    },
   } = options;
 
   const calls = {
     get: [], setNx: [], publish: [], release: [], poll: [], retry: [], timer: [],
-    timerFns: [], loadAccounts: 0, log: [], warn: [],
+    timerFns: [], loadAccounts: 0, log: [], warn: [], ack: [],
   };
   let getIndex = 0;
   let generation = 1;
@@ -114,6 +187,15 @@ function createHarness(options = {}) {
           itemsAtCall: [...(args.state.items || [])],
         });
         return pollXFeed(args);
+      },
+    },
+    xPostBudget: {
+      ...xPostBudget,
+      ackReceipts: async (receipts) => {
+        calls.ack.push(receipts);
+        return typeof xPostBudget.ackReceipts === 'function'
+          ? xPostBudget.ackReceipts(receipts)
+          : true;
       },
     },
     loadXAccounts: () => { calls.loadAccounts += 1; return state.accounts; },
@@ -153,7 +235,7 @@ function createHarness(options = {}) {
     warn: (message) => calls.warn.push(message),
     now,
     pid: 4242,
-    fetchImpl: () => { throw new Error('the cycle must not fetch directly'); },
+    fetchImpl,
     setTimer: (fn, ms) => {
       calls.timer.push(ms);
       calls.timerFns.push(fn);
@@ -193,6 +275,7 @@ describe('createXPollCycle — baseline cycle (positive control)', () => {
     assert.equal(harness.calls.publish[0].metaKey, META_KEY);
     assert.equal(harness.calls.publish[0].meta.sourceState, 'ok');
     assert.equal(harness.calls.publish[0].meta.fetchedAt, NOW);
+    assert.equal(typeof harness.calls.poll[0].withReturnedPosts, 'function');
     // Commit happens only after a successful publish.
     assert.deepEqual(harness.state.items.map((item) => item.id), ['fresh-1']);
     assert.equal(harness.state.generation, 1);
@@ -211,8 +294,10 @@ describe('createXPollCycle — baseline cycle (positive control)', () => {
     assert.equal(harness.calls.publish.length, 0);
   });
 
-  it('preserves per-account poll stamps through publication and hydration', async () => {
+  it('preserves poll cadence, deletion cadence, cycle use, and budget status through publication and hydration', async () => {
     const stamp = NOW - 1;
+    const usage = { requestsUsed: 2, requestLimit: 2, postsRead: 3, postReadLimit: 10 };
+    const postBudget = { ...pollResult().postBudget, dailyUsed: 3, dailyRemaining: 597 };
     const redis = new Map();
     const persist = ({ snapshot, pollState }) => {
       redis.set(CACHE_KEY, snapshot);
@@ -221,16 +306,27 @@ describe('createXPollCycle — baseline cycle (positive control)', () => {
     };
     const first = createHarness({
       redis,
-      pollXFeed: async () => pollResult({ lastPolledAtByHandle: { slower: stamp } }),
+      pollXFeed: async () => pollResult({
+        lastPolledAtByHandle: { slower: stamp },
+        lastDeletionAuditAt: stamp,
+        lastCycleUsage: usage,
+        postBudget,
+      }),
       publishResult: persist,
     });
 
     await first.cycle.pollOnce({ generation: 1 });
     assert.deepEqual({ ...first.calls.publish[0].pollState.lastPolledAtByHandle }, { slower: stamp });
+    assert.equal(first.calls.publish[0].pollState.lastDeletionAuditAt, stamp);
+    assert.deepEqual(first.calls.publish[0].pollState.lastCycleUsage, usage);
+    assert.equal(first.calls.publish[0].pollState.postBudget.dailyUsed, 3);
 
     const restarted = createHarness({ redis, publishResult: persist });
     assert.equal(await restarted.cycle.hydrate(), true);
     assert.deepEqual({ ...restarted.state.lastPolledAtByHandle }, { slower: stamp });
+    assert.equal(restarted.state.lastDeletionAuditAt, stamp);
+    assert.deepEqual(restarted.state.lastCycleUsage, usage);
+    assert.equal(restarted.state.postBudget.dailyUsed, 3);
   });
 });
 
@@ -332,7 +428,7 @@ describe('createXPollCycle — cursor-rewind and item-loss prevention', () => {
   // lock reads POLL_STATE then CACHE (indexes 2,3).
   for (const [label, failingIndex] of [['poll-state', 2], ['snapshot', 3]]) {
     it(`skips the cycle when the ${label} re-read under the lock fails`, async () => {
-      const harness = createHarness({ failGet: (key, index) => index === failingIndex });
+      const harness = createHarness({ failGet: (_key, index) => index === failingIndex });
 
       await harness.cycle.hydrate();
       assert.equal(harness.state.hydrationFailed, false);
@@ -443,8 +539,12 @@ describe('createXPollCycle — publish before commit', () => {
       publishResult: false,
       pollXFeed: async () => pollResult({
         items: [post('fresh-1', '2026-08-20T10:00:00Z'), existing],
+        receiptAcks: [{ key: 'budget:receipt:reuters', expected: '{"version":1}' }],
         rateLimitedUntil: NOW + 30_000,
         rateLimitAttempt: 2,
+        lastDeletionAuditAt: NOW,
+        lastCycleUsage: { requestsUsed: 1, requestLimit: 2, postsRead: 1, postReadLimit: 10 },
+        postBudget: { ...pollResult().postBudget, dailyUsed: 10, dailyRemaining: 590 },
       }),
     });
 
@@ -455,12 +555,68 @@ describe('createXPollCycle — publish before commit', () => {
     assert.deepEqual({ ...harness.state.cursorByAccountId }, { 1652541: '100' }, 'cursors must not advance past Redis');
     assert.equal(harness.state.generation, 0);
     assert.equal(harness.state.lastPollAt, 0);
+    assert.equal(harness.state.lastDeletionAuditAt, 0);
+    assert.equal(harness.state.lastCycleUsage, null);
+    assert.equal(harness.state.postBudget, null);
     assert.equal(harness.state.lastError, 'lost X poll lease before publication');
     assert.ok(harness.calls.warn.some((line) => /keeping previous state so Redis stays the source of truth/.test(line)));
     // Rate-limit state is protective and is deliberately kept even on failure —
     // dropping it would let the next tick hammer a 429ing upstream.
     assert.equal(harness.state.rateLimitedUntil, NOW + 30_000);
     assert.equal(harness.state.rateLimitAttempt, 2);
+    assert.equal(harness.calls.ack.length, 0, 'a failed publish must retain its paid receipt');
+  });
+
+  it('acknowledges paid receipts only after the snapshot publishes', async () => {
+    const receiptAcks = [{ key: 'budget:receipt:reuters', expected: '{"version":1}' }];
+    const harness = createHarness({
+      pollXFeed: async () => pollResult({ receiptAcks }),
+    });
+
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(harness.calls.publish.length, 1);
+    assert.deepEqual(harness.calls.ack, [receiptAcks]);
+  });
+
+  it('replays a paid page after publish failure without a second X request', async () => {
+    const sharedBudget = createReceiptBudgetDouble();
+    let fetches = 0;
+    let publishAttempts = 0;
+    const harness = createHarness({
+      xPostBudget: sharedBudget.budget,
+      publishResult: () => {
+        publishAttempts += 1;
+        return publishAttempts > 1;
+      },
+      fetchImpl: async () => {
+        fetches += 1;
+        return Response.json({
+          data: [{
+            id: '1999999999999999999',
+            text: 'paid once',
+            created_at: new Date(NOW - 1_000).toISOString(),
+          }],
+        });
+      },
+      pollXFeed: (args) => xNewsAccounts.pollXFeed({
+        ...args,
+        wait: async () => {},
+        staggerMs: 0,
+        lookupDeletions: false,
+      }),
+    });
+
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(fetches, 1);
+    assert.deepEqual({ ...harness.state.cursorByAccountId }, {});
+    assert.deepEqual(sharedBudget.status(), { dailyUsed: 1, monthlyUsed: 1, hasReceipt: true });
+
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(fetches, 1, 'the second cycle must apply the Redis receipt, not call X');
+    assert.equal(harness.state.cursorByAccountId['1652541'], '1999999999999999999');
+    assert.equal(harness.state.items[0].postId, '1999999999999999999');
+    assert.deepEqual(sharedBudget.status(), { dailyUsed: 1, monthlyUsed: 1, hasReceipt: false });
   });
 
   it('reports the publish result through publish() itself', async () => {

@@ -98,7 +98,7 @@ View -> Host: ui/notifications/size-changed
 2. 复用 `api/mcp/ui/shell.ts` 中的 `buildAppHtml()`，除非有协议方面的理由不这样做。
 3. 在 `api/mcp/ui/registry.ts` 中添加规范的 `*_UI_URI` 常量和注册表条目。
 4. 在 `api/mcp/registry/rpc-tools.ts` 或 `api/mcp/registry/cache-tools.ts` 中，恰好为一个后备工具设置 `_uiResourceUri`。
-5. 更新 `docs/mcp-apps.mdx`、简短的 [MCP 概述](/zh/mcp-overview#mcp-apps-interactive-ui)以及 `public/.well-known/mcp/server-card.json`。
+5. 更新 `docs/mcp-apps.mdx`、简短的 [MCP 概述](/zh/mcp-overview#mcp-apps（交互式-ui）)以及 `public/.well-known/mcp/server-card.json`。
 6. 运行 `npm run docs:stats` 以刷新 `docs/generated/stats.json`。
 7. 运行 `npm run docs:check` 以及针对性的 MCP 资源/工具测试。
 

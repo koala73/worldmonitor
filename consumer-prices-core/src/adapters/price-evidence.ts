@@ -27,6 +27,34 @@
  */
 export type PriceEvidence = 'verified' | 'unverified' | 'no-content';
 
+const BRL_PRICE_TOKEN = /R\$\s*((?:\d{1,3}(?:\.\d{3})*|\d+))(?:,(\d{2}))?(?![\d,])/gi;
+
+/**
+ * Exa can drop the Brazilian decimal separator and return the minor-unit
+ * digits as an integer. Correct that shape only when the same response has
+ * one distinct explicit BRL decimal value whose digits prove the conversion.
+ */
+export function normalizeExaBrlMinorUnitPrice(price: number, content: string | null | undefined): number {
+  if (!Number.isInteger(price) || price <= 0 || !content?.trim()) return price;
+
+  const explicitValues = new Map<number, { hasDecimal: boolean; minorUnits: number }>();
+  for (const match of content.matchAll(BRL_PRICE_TOKEN)) {
+    const whole = Number(match[1].replaceAll('.', ''));
+    const fraction = match[2];
+    const value = fraction ? whole + Number(fraction) / 100 : whole;
+    if (!Number.isFinite(value)) continue;
+    explicitValues.set(value, {
+      hasDecimal: fraction !== undefined || explicitValues.get(value)?.hasDecimal === true,
+      minorUnits: whole * 100 + Number(fraction ?? '00'),
+    });
+  }
+
+  if (explicitValues.has(price)) return price;
+
+  const matches = [...explicitValues.entries()].filter(([, token]) => token.hasDecimal && token.minorUnits === price);
+  return matches.length === 1 ? matches[0][0] : price;
+}
+
 /** Max characters between the whole part and the fraction part of a price the
  * page renders as separate elements ("49" … ".79" … "AED"). Markdown flattening
  * inserts blank lines between them; unrelated digits hundreds of characters

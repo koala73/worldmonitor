@@ -221,6 +221,101 @@ export const MARKETING_IGNORE_ERRORS: RegExp[] = [
   // `/pro/assets/*.js` frame. `tests/pro-sentry-filter-policy.test.mts` pins
   // both the suppression and the bare-identifier scan that licenses it.
   /^jQuery is not defined$/,
+  // A synthetic `unhandledrejection` CustomEvent, dispatched by injected script
+  // and swept up by Sentry's global rejection handler. WORLDMONITOR-11S is the
+  // shape: Safari 26.6.2 / macOS on `/pro`, zero frames, and
+  // `extra.__serialized__` = `{type: 'unhandledrejection', isTrusted: false,
+  // target: '[object Window]', currentTarget: '[object Window]', detail: null}`.
+  // `isTrusted: false` is the browser saying the Event was constructed and
+  // dispatched by script — a browser-fired `unhandledrejection` is always
+  // trusted — so the page was handed a fake rejection event.
+  //
+  // The licence is the CONSTRUCTOR, not the frame: Sentry only writes
+  // ``Event `CustomEvent` … captured as promise rejection`` when the rejected
+  // value is a real `CustomEvent` instance, and the marketing surface never
+  // constructs one — `CustomEvent` appears in neither `pro-test/src`, the
+  // `shared/` leaves it imports, nor either inline script (the dashboard DOES
+  // construct them, e.g. `WM_SESSION_DEGRADED_EVENT`, which is why its own copy
+  // of this entry is separately argued). Frame-blind suppression is the only
+  // option available anyway: the event carries `stacktrace: null`, so
+  // `marketingBeforeSend`'s `!hasFirstParty` gate has nothing to act on.
+  //
+  // Anchored to the whole synthetic sentence rather than copying the
+  // dashboard's bare `/Event `CustomEvent`.*captured as promise rejection/`,
+  // for the reason the `Error invoking` entry above spells out. Sibling of the
+  // dashboard's `ProgressEvent` entry (WORLDMONITOR-SQ).
+  /^Event `CustomEvent` \(type=[\w-]+\) captured as promise rejection$/,
+  // javascript-obfuscator's hex-suffixed identifier scheme. WORLDMONITOR-11P is
+  // the shape: `ReferenceError: _0x58c9 is not defined` on Chrome 152 /
+  // Windows at `/`, whose only frames are three `<anonymous>:1` — an injected
+  // userscript or extension bundle referencing its own obfuscated global before
+  // define. Same class as the `mainWorldSdk` / `extDomain` / `crusoe` entries
+  // the dashboard carries.
+  //
+  // Matched on the identifier so BOTH engine phrasings are covered from one
+  // entry — Chromium says `<name> is not defined`, WebKit says `Can't find
+  // variable: <name>` — and on the SHAPE rather than the one observed name,
+  // because the hex suffix is regenerated on every obfuscation run. `_0x`
+  // followed by four or more hex digits is javascript-obfuscator's output
+  // convention and nothing else: Vite's esbuild/terser minifier emits
+  // single-letter and `$`-prefixed names, never a `_0x` prefix, and the literal
+  // appears nowhere in `pro-test/src`, `shared/`, or either inline script.
+  //
+  // The dashboard has carried only the WebKit half (`/Can't find variable:
+  // _0x/`) since #4005; this pass adds the same shape there alongside it.
+  /\b_0x[0-9a-f]{4,}\b/,
+  // WebAuthn on a shell that has no authenticator. WORLDMONITOR-11Q is the
+  // shape: `NotSupportedError: The user agent does not support public key
+  // credentials.` (`DOMException.code: 9`) on Electron 33.4.11 / Windows at
+  // `/pro`, arriving via `onunhandledrejection` with zero frames, breadcrumbs
+  // ending at Clerk's `POST /v1/client/sign_ins`.
+  //
+  // The sentence is emitted by the browser's own `navigator.credentials`
+  // implementation, so only a WebAuthn CALLER can raise it — and the marketing
+  // surface has none: neither `navigator.credentials` nor
+  // `PublicKeyCredential` appears in `pro-test/src`, the `shared/` leaves, or
+  // either inline script. The only passkey on this surface is Clerk's own
+  // sign-in UI (the `Passkey sign-in` string in `locales/*.json` is marketing
+  // copy for it), so the throw belongs to the Clerk SDK on an Electron shell
+  // that ships no authenticator — the same disposition as the `ClerkJS:
+  // Network error` and `[clerk] failed to load` entries on the dashboard.
+  //
+  // Anchored to the whole sentence: bare `NotSupportedError` is generic enough
+  // that our own bundle could raise it (the dashboard keeps it behind a
+  // `!hasFirstParty` gate for exactly that reason), so only the WebAuthn
+  // wording — which no first-party call site can reach — is suppressed here.
+  /^(?:Error: )?NotSupportedError: The user agent does not support public key credentials\.$/,
+  // The same WebAuthn surface as the entry above, reached from the other
+  // direction: a SECOND credential request issued while one is still
+  // outstanding. WORLDMONITOR-11T is the shape: `Error: OperationError: A
+  // request is already pending.` on Chrome 151 / Windows at `/pro`, arriving
+  // via `onunhandledrejection` with zero frames, breadcrumbs running Clerk's
+  // `GET /v1/environment` -> `GET /v1/client` -> a button click ->
+  // `POST /v1/client/sign_ins`.
+  //
+  // Chrome serialises `navigator.credentials` requests per page and rejects the
+  // overlapping one with this exact sentence. The documented triggers are a
+  // user double-clicking the sign-in button and a submit issued while a
+  // conditional-mediation passkey autofill request is still open
+  // (keycloak/keycloak#41037; w3c/webauthn#1790 records that the spec leaves
+  // the overlap undefined and that Chrome errors). Clerk's sign-in UI opens
+  // exactly that conditional request, so both triggers sit behind the marketing
+  // sign-in button and neither is reachable from this bundle to fix.
+  //
+  // Same licence as the `NotSupportedError` entry above, and it holds twice
+  // over. Only a WebAuthn CALLER can raise the sentence, and this surface has
+  // none - `navigator.credentials` and `PublicKeyCredential` appear in no
+  // `pro-test/src` file, no `shared/` leaf and neither inline script, which the
+  // WebAuthn-free scan that licenses that entry already pins. Independently,
+  // `OperationError` is a browser-minted DOMException name and the only
+  // DOMException this bundle ever constructs is `timeout-signal.ts`'s
+  // `TimeoutError`, so the type alone is unreachable from first-party code.
+  //
+  // Anchored to the whole sentence for the reason the `Error invoking` entry
+  // spells out: `ignoreErrors` is frame-blind, so an unanchored `A request is
+  // already pending` would also drop a first-party message that merely CONTAINS
+  // the phrase while riding a `/pro/assets/*.js` frame.
+  /^(?:Error: )?OperationError: A request is already pending\.$/,
 ];
 
 /** Sentry's own hashed SDK chunk — infrastructure, never evidence of our code. */
@@ -244,6 +339,14 @@ const MODULE_LOAD_FAILURE =
  * infinitely, and suppressing this by message alone would hide it.
  */
 const STACK_OVERFLOW = /Maximum call stack size exceeded|too much recursion/i;
+/**
+ * A fetch cancelled by a bare `AbortController.abort()`, in the engine's own
+ * default wording. Deliberately NOT in `MARKETING_IGNORE_ERRORS`: this bundle
+ * aborts fetches itself (`createTimeoutSignal`, the checkout transport, the
+ * entitlement poll), so suppressing the message alone would hide a first-party
+ * abort that genuinely escaped a `.catch`.
+ */
+const LEAKED_ABORT = /^(?:AbortError: )?The user aborted a request\.?$/;
 /**
  * A marketing document frame: `/`, `/pro`, or an absolute URL on any production,
  * preview, or custom host with one of those paths. Query strings, hashes, and a
@@ -359,6 +462,27 @@ export function marketingBeforeSend<T extends PolicyEvent>(event: T): T | null {
   // loop in this bundle — the realistic first-party cause — still pages
   // (WORLDMONITOR-103).
   if (!hasFirstParty && STACK_OVERFLOW.test(msg)) return null;
+
+  // A leaked fetch cancellation. WORLDMONITOR-11M is the shape: `AbortError:
+  // The user aborted a request.` (`DOMException.code: 20`) on Chrome 151 /
+  // macOS at `/`, via `onunhandledrejection` with zero frames.
+  //
+  // The wording is what a bare `controller.abort()` produces — no reason
+  // argument. This bundle's own aborts do not look like that and do not escape:
+  // `createTimeoutSignal` aborts with an explicit `TimeoutError` DOMException
+  // (see `./timeout-signal.ts`, and Chrome's native `AbortSignal.timeout` says
+  // `signal timed out`), and every fetch that carries one — the pricing
+  // catalog, the teaser loaders, the entitlement poll, the checkout transport —
+  // sits inside a `catch`. So on this surface a bare-abort rejection reaching
+  // the global handler comes from the Clerk SDK or an injected script.
+  //
+  // Gated on `!hasFirstParty` rather than suppressed by message, because that
+  // census is a fact about today's call sites, not an invariant: a future
+  // first-party `controller.abort()` that escapes its chain must still page,
+  // and it would ride a `/pro/assets/*.js` frame. Dashboard-side this class is
+  // covered by the standing `(?:AbortError: )?The user aborted a request` entry
+  // in `src/bootstrap/sentry-init.ts`.
+  if (!hasFirstParty && LEAKED_ABORT.test(msg)) return null;
 
   // Safari-masked injected script. The observed event (WORLDMONITOR-110,
   // `TypeError: Attempting to change value of a readonly property.` on iOS

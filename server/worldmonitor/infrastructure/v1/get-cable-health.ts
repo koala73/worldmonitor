@@ -8,6 +8,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
 import { cachedFetchJson, setCachedJson } from '../../../_shared/redis';
+import { parseNgaBroadcastWarnings, type NgaBroadcastWarning } from '../../../_shared/nga-broadcast-warnings';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
@@ -17,7 +18,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 
 const CACHE_KEY = 'cable-health-v1';
 const CACHE_TTL = 1800; // 30 min — matches warm-ping interval; ensures recencyWeight decay is recomputed each cycle
-const NGA_CACHE_KEY = 'cable-health-nga-warnings-v1';
+const NGA_CACHE_KEY = 'cable-health-nga-warnings-v2';
 const NGA_CACHE_TTL = 86400; // 24h — raw NGA warnings are stable; long TTL survives relay downtime without hammering upstream
 
 // In-memory fallback: serves stale data when both Redis and NGA are down
@@ -27,13 +28,7 @@ let fallbackCache: GetCableHealthResponse | null = null;
 // NGA warning types
 // ========================================================================
 
-interface NgaWarning {
-  text?: string;
-  issueDate?: string;
-  navArea?: string;
-  msgYear?: number;
-  msgNumber?: number;
-}
+type NgaWarning = Partial<Pick<NgaBroadcastWarning, 'text' | 'issueDate'>>;
 
 // ========================================================================
 // Cable keywords and patterns
@@ -176,7 +171,7 @@ async function fetchNgaWarnings(): Promise<NgaWarning[] | null> {
     );
     if (!res.ok) return null; // fetch failed — don't cache, let sentinel TTL govern retry
     const data = await res.json();
-    return Array.isArray(data) ? data : (data as { warnings?: NgaWarning[] })?.warnings ?? [];
+    return parseNgaBroadcastWarnings(data);
   } catch {
     return null; // network error — don't poison NGA cache with empty data
   }

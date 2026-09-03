@@ -22,7 +22,7 @@ service ResilienceService {
     option (sebuf.http.config) = {path: "/get-resilience-indicators", method: HTTP_METHOD_GET};
   }
 
-  // GetFoodStocks returns per-country and WORLD cereal stocks-to-use from the seeded USDA PSD snapshot.
+  // Returns seeded PSD cereal balances with FAOSTAT gap fill.
   rpc GetFoodStocks(GetFoodStocksRequest) returns (GetFoodStocksResponse) {
     option (sebuf.http.config) = {path: "/get-food-stocks", method: HTTP_METHOD_GET};
   }

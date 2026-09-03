@@ -208,6 +208,70 @@ describe('redis caching behavior', { concurrency: 1 }, () => {
     }
   });
 
+  it('positive-caches only upstreamUnavailable-only payloads when explicitly enabled', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    const setValues = [];
+
+    globalThis.fetch = async (url, init) => {
+      const raw = String(url);
+      if (raw.includes('/get/')) return jsonResponse({ result: undefined });
+      if (isSetRequest(url, init)) {
+        const parsed = parseSetRequest(url, init);
+        setValues.push(parsed);
+        return jsonResponse({ result: 'OK' });
+      }
+      throw new Error(`Unexpected fetch URL: ${raw}`);
+    };
+
+    try {
+      const partial = { items: [{ id: 'covered' }], upstreamUnavailable: true };
+      assert.deepEqual(
+        await redis.cachedFetchJson(
+          'meta:test:upstream-only',
+          60,
+          async () => partial,
+          120,
+          { cacheUpstreamUnavailablePayloads: true },
+        ),
+        partial,
+      );
+      assert.deepEqual(JSON.parse(setValues.at(-1).value), partial);
+      assert.equal(setValues.at(-1).ttlSeconds, 60);
+
+      const mixedMarkers = [
+        { unavailable: true },
+        { dataAvailable: false },
+        { degraded: true },
+        { error: 'upstream failed' },
+      ];
+      for (const [index, marker] of mixedMarkers.entries()) {
+        const mixed = { ...partial, ...marker };
+        assert.deepEqual(
+          await redis.cachedFetchJson(
+            `meta:test:upstream-mixed:${index}`,
+            60,
+            async () => mixed,
+            120,
+            { cacheUpstreamUnavailablePayloads: true },
+          ),
+          mixed,
+        );
+        assert.equal(JSON.parse(setValues.at(-1).value), '__WM_NEG__');
+        assert.equal(setValues.at(-1).ttlSeconds, 120);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
   it('parses pipeline results and skips malformed entries', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({

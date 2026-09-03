@@ -131,31 +131,6 @@ function stepUrl(pageUrl, name) {
   return `${pageUrl}#${stepSlug(name)}`;
 }
 
-function itemListLd(name, pageUrl, steps) {
-  return {
-    '@context': 'https://schema.org',
-    '@type': 'ItemList',
-    name,
-    numberOfItems: steps.length,
-    itemListElement: steps.map((step, index) => {
-      const url = stepUrl(pageUrl, step.name);
-      return {
-        '@type': 'ListItem',
-        position: index + 1,
-        name: step.name,
-        url,
-        description: step.text,
-        item: {
-          '@type': 'HowToStep',
-          name: step.name,
-          url,
-          text: step.text,
-        },
-      };
-    }),
-  };
-}
-
 function howToLd({ name, description, url, steps }) {
   return {
     '@context': 'https://schema.org',
@@ -409,7 +384,6 @@ function renderCountryRiskUseCase({ tpl, baseUrl, lastmod }) {
         url: pageUrl,
         steps: workflowSteps,
       }),
-      itemListLd('Country-risk end-to-end workflow', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
@@ -601,7 +575,6 @@ function renderVerifyBreakingNewsUseCase({ tpl, baseUrl, lastmod }) {
         url: pageUrl,
         steps: workflowSteps,
       }),
-      itemListLd('Breaking-news verification workflow', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
@@ -814,7 +787,6 @@ function renderSupplyChainDisruptionsUseCase({ tpl, baseUrl, lastmod }) {
         url: pageUrl,
         steps: workflowSteps,
       }),
-      itemListLd('Supply-chain disruption monitoring steps', pageUrl, workflowSteps),
     ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },

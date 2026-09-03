@@ -29,11 +29,41 @@ const CLERK_API_TIMEOUT_MS = 3_000;
 const REDIS_CLAIM_TIMEOUT_MS = 2_000;
 const SLOT_KEY_PREFIX = 'passkey-offer-slots';
 
+/** The upstream a failed reservation was actually talking to. */
+export type PasskeyOfferFailureStep = 'clerk-read' | 'redis-claim' | 'clerk-mirror';
+
 export interface PasskeyOfferDeps {
   resolveUserId(request: Request): Promise<string | null>;
   readMigratedCount(userId: string): Promise<number>;
   reserve(userId: string, migratedCount: number): Promise<PasskeyOfferReservation>;
   persistTerminalCount(userId: string): Promise<void>;
+  /**
+   * Injected so the step/fingerprint attribution below is assertable without a
+   * Sentry DSN. Defaults to `captureSilentError` in the exported handler.
+   */
+  report?(error: unknown, step: PasskeyOfferFailureStep): void;
+}
+
+/**
+ * Stable Sentry grouping key for a passkey-offer upstream failure.
+ *
+ * Why it exists: the minified edge bundle gives every rejection the same
+ * anonymous frames (`(vc/edge/function`, no source map), and BOTH upstreams here
+ * abort through `AbortSignal.timeout`, so a Clerk read timeout, a Redis claim
+ * timeout and an unrelated route's timeout all arrive as
+ * `TimeoutError: The operation was aborted due to timeout` with an identical
+ * stack. Sentry's default stack grouping therefore pooled them into one issue —
+ * WORLDMONITOR-10E held 32 `reserve` events, one `clerk-mirror` and one
+ * `api/fwdstart` `scrape`, so the 2026-08-31 13:31–14:08 burst could not be
+ * attributed to Clerk or to Redis without reading the code. Same derivation as
+ * `mcpErrorFingerprint` (api/mcp/error-fingerprint.ts): scope, subject, then the
+ * stable `err.name` so distinct faults on one upstream stay separable.
+ */
+export function passkeyOfferFingerprint(step: PasskeyOfferFailureStep, err: unknown): string[] {
+  const signature = err instanceof Error
+    ? (err.name || err.constructor.name || 'Error')
+    : 'non-error';
+  return ['passkey-offer', step, signature];
 }
 
 function clerkHeaders(): Record<string, string> {
@@ -90,6 +120,13 @@ export function createRedisSlotStore(userId: string): PasskeyOfferSlotStore {
   };
 }
 
+function defaultReport(error: unknown, step: PasskeyOfferFailureStep): void {
+  captureSilentError(error, {
+    tags: { route: 'api/user/passkey-offer', step },
+    fingerprint: passkeyOfferFingerprint(step, error),
+  });
+}
+
 export async function passkeyOfferHandler(
   request: Request,
   deps: PasskeyOfferDeps,
@@ -117,17 +154,26 @@ export async function passkeyOfferHandler(
     });
   }
 
+  const report = deps.report ?? defaultReport;
+
   let migratedCount: number;
   let reservation: PasskeyOfferReservation;
+  // Names which upstream failed. The two calls below have different owners
+  // (Clerk's API vs Upstash Redis) but identical failure signatures — both abort
+  // via `AbortSignal.timeout`, both surface as `TimeoutError: The operation was
+  // aborted due to timeout` — so a single `step: 'reserve'` tag made a Clerk
+  // outage indistinguishable from a Redis one (WORLDMONITOR-10E).
+  let step: PasskeyOfferFailureStep = 'clerk-read';
   try {
     migratedCount = await deps.readMigratedCount(userId);
+    step = 'redis-claim';
     reservation = await deps.reserve(userId, migratedCount);
   } catch (error) {
     console.warn(
-      '[passkey-offer] reservation failed:',
+      `[passkey-offer] reservation failed at ${step}:`,
       error instanceof Error ? error.message : String(error),
     );
-    captureSilentError(error, { tags: { route: 'api/user/passkey-offer', step: 'reserve' } });
+    report(error, step);
     return new Response(JSON.stringify({ error: 'service_unavailable' }), {
       status: 503,
       headers: { ...jsonHeaders, 'Retry-After': '5' },
@@ -142,7 +188,13 @@ export async function passkeyOfferHandler(
         '[passkey-offer] Clerk terminal mirror failed:',
         error instanceof Error ? error.message : String(error),
       );
-      captureSilentError(error, { tags: { route: 'api/user/passkey-offer', step: 'clerk-mirror' } });
+      // sentry-coverage-ok reported via `report` → `defaultReport` →
+      // captureSilentError. The indirection exists so the step/fingerprint
+      // attribution is assertable without a DSN (see PasskeyOfferDeps.report);
+      // scripts/check-sentry-coverage.mjs only reads the catch body, so it
+      // cannot follow the seam. tests/passkey-offer-api.test.mts pins that this
+      // path reports, and with step 'clerk-mirror'.
+      report(error, 'clerk-mirror');
     }
   }
 
