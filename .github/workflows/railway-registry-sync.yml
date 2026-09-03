@@ -28,7 +28,10 @@ jobs:
   reconcile:
     name: Reconcile registry to live configuration
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    # Apply: three bounded attempts (5 min each) plus 20 s of backoff. Verify:
+    # one 15-minute Viewer read budget plus backoff. Setup: about 3 min. The
+    # workflow test pins this cap against the runner and audit constants.
+    timeout-minutes: 35
     environment:
       name: ingestion-acceptance-production
       deployment: false
@@ -41,7 +44,7 @@ jobs:
       - id: admit-current-main
         name: Admit only the current main revision
         run: |
-          current_main_sha="$(git ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 { print $1 }')"
+          current_main_sha="$(git ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 { print $1 }' || true)"
           if [[ ! "$current_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::Could not resolve the current main revision"
             exit 1

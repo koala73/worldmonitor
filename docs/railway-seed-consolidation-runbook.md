@@ -263,9 +263,12 @@ mutation token only after the checkout SHA is confirmed as the current `main`
 revision. This rejects a stale re-run before it can restore an older registry.
 The apply changes only registry-managed fields. The final step starts a fresh
 read budget, uses the separate Viewer identity, and fails unless live Railway
-matches the repository. Operational failures retry twice after the first
-failure; a confirmed drift verdict fails immediately. The production
-concurrency group never cancels an in-flight apply.
+matches the repository. That read also reports `source.branch` and
+`source.checkSuites` drift, which the apply step never writes: a run that stays
+red on those fields needs the service source repaired in the Railway dashboard,
+not a re-run. Each attempt is bounded, operational failures retry twice after
+the first failure, and a drift verdict or a refused patch fails immediately.
+The production concurrency group never cancels an in-flight apply.
 
 The workflow runs the configuration audit only. The deployment-history check is
 legitimately red for the first minutes after a merge, so including it here would

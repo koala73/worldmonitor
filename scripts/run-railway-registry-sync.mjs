@@ -7,7 +7,17 @@ import { createRailwayCliEnv } from './railway-cli.mjs';
 import { CONFIGURATION_DRIFT_EXIT_CODE } from './audit-railway-watch-paths.mjs';
 
 const AUDIT_PATH = fileURLToPath(new URL('./audit-railway-watch-paths.mjs', import.meta.url));
-const DEFAULT_RETRY_DELAYS_MS = Object.freeze([5_000, 15_000]);
+export const DEFAULT_RETRY_DELAYS_MS = Object.freeze([5_000, 15_000]);
+// One attempt of either mode is cut here so a hung Railway call cannot consume
+// the whole job. Apply mode has no deadline of its own (the audit's 15-minute
+// run budget covers the Viewer read only), so this bound times the attempts
+// plus the retry delays is the apply step's worst case; the workflow's
+// timeout-minutes must cover that, the Viewer budget, and setup, and the
+// workflow test pins that arithmetic.
+export const MODE_ATTEMPT_TIMEOUT_MS = Object.freeze({
+  apply: 5 * 60_000,
+  verify: 16 * 60_000,
+});
 const MODE_POLICY = Object.freeze({
   apply: Object.freeze({
     args: Object.freeze(['--apply', '--environment', 'production']),
@@ -116,6 +126,8 @@ export async function runRailwayRegistrySync({
     const result = spawnImpl(process.execPath, [AUDIT_PATH, ...policy.args], {
       env: registrySyncChildEnv(env),
       stdio: 'inherit',
+      timeout: MODE_ATTEMPT_TIMEOUT_MS[mode],
+      killSignal: 'SIGTERM',
     });
     if (!result.error && !result.signal && result.status === 0) return;
     lastFailure = describeChildFailure(result);

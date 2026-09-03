@@ -7,6 +7,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  MODE_ATTEMPT_TIMEOUT_MS,
   parseRegistrySyncArgs,
   runRailwayRegistrySync,
 } from '../scripts/run-railway-registry-sync.mjs';
@@ -94,6 +95,11 @@ describe('Railway registry sync runner', () => {
     assert.equal(calls[0][2].env.UNRELATED_SECRET, undefined);
     assert.equal(calls[1][2].env.UNRELATED_SECRET, undefined);
     assert.equal(calls[0][2].stdio, 'inherit');
+    assert.equal(calls[1][2].stdio, 'inherit');
+    assert.equal(calls[0][2].timeout, MODE_ATTEMPT_TIMEOUT_MS.apply);
+    assert.equal(calls[1][2].timeout, MODE_ATTEMPT_TIMEOUT_MS.verify);
+    assert.equal(calls[0][2].killSignal, 'SIGTERM');
+    assert.equal(calls[1][2].killSignal, 'SIGTERM');
   });
 
   it('retries a failed idempotent operation and stops after convergence', async () => {
@@ -149,6 +155,52 @@ describe('Railway registry sync runner', () => {
     );
     assert.equal(calls, 1);
     assert.deepEqual(sleeps, []);
+  });
+
+  it('does not retry an apply-mode patch refusal', async () => {
+    let calls = 0;
+    await assert.rejects(
+      runRailwayRegistrySync({
+        mode: 'apply',
+        env: { ...baseEnv, RAILWAY_TOKEN: 'mutation' },
+        retryDelaysMs: [5, 15],
+        spawnImpl: () => {
+          calls += 1;
+          return { status: CONFIGURATION_DRIFT_EXIT_CODE, signal: null, error: null };
+        },
+        sleepImpl: async () => {
+          throw new Error('a refused patch must not be retried');
+        },
+      }),
+      /apply reported configuration drift \(exit 2\); verdicts are not retried/,
+    );
+    assert.equal(calls, 1);
+  });
+
+  it('retries a timed-out or signalled attempt and names each cause', async (t) => {
+    const errorLog = t.mock.method(console, 'error', () => {});
+    const results = [
+      {
+        status: null,
+        signal: 'SIGTERM',
+        error: Object.assign(new Error('spawnSync node ETIMEDOUT'), { code: 'ETIMEDOUT' }),
+      },
+      { status: null, signal: 'SIGKILL', error: null },
+      { status: 0, signal: null, error: null },
+    ];
+
+    await runRailwayRegistrySync({
+      mode: 'apply',
+      env: { ...baseEnv, RAILWAY_TOKEN: 'mutation' },
+      retryDelaysMs: [0, 0],
+      spawnImpl: () => results.shift(),
+      sleepImpl: async () => {},
+    });
+
+    assert.equal(results.length, 0);
+    const logged = errorLog.mock.calls.map((call) => String(call.arguments[0]));
+    assert.match(logged[0], /attempt 1 failed \(spawn error: spawnSync node ETIMEDOUT\)/);
+    assert.match(logged[1], /attempt 2 failed \(signal SIGKILL\)/);
   });
 
   it('runs its CLI entrypoint through a symlink', () => {

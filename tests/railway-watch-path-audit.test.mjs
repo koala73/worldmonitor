@@ -6,11 +6,14 @@ import { fileURLToPath } from 'node:url';
 import { sourceBootstrapsTsx } from './helpers/tsx-bootstrap.mjs';
 
 import {
+  CONFIGURATION_DRIFT_EXIT_CODE,
   auditRailwayServiceConfig,
   buildRailwayEditArgs,
   buildRailwayServiceConfigPatch,
   managedRailwayServices,
+  markConfigurationVerdict,
   readArgument,
+  resolveAuditExitCode,
   selectAuditServices,
   serializeRailwayServiceConfigPatch,
   waitForRailwayServiceConfigConvergence,
@@ -26,6 +29,29 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RAILWAY_SERVICE_REGISTRY = JSON.parse(
   readFileSync(resolve(repoRoot, 'scripts/railway-services.json'), 'utf8'),
 );
+
+// A refusal from the patch builder is a verdict the registry-sync runner must
+// not retry: it carries CONFIGURATION_DRIFT_EXIT_CODE so the audit process
+// exits with it instead of the generic failure status.
+function configurationVerdict(pattern) {
+  return (error) => {
+    assert.match(error.message, pattern);
+    assert.equal(error.exitCode, CONFIGURATION_DRIFT_EXIT_CODE);
+    return true;
+  };
+}
+
+describe('audit exit codes', () => {
+  it('maps verdicts to the drift exit code and everything else to failure', () => {
+    assert.equal(
+      resolveAuditExitCode(markConfigurationVerdict(new Error('refused'))),
+      CONFIGURATION_DRIFT_EXIT_CODE,
+    );
+    assert.equal(resolveAuditExitCode(new Error('railway status timed out')), 1);
+    assert.equal(resolveAuditExitCode(undefined), 1);
+    assert.equal(markConfigurationVerdict('not an error'), 'not an error');
+  });
+});
 
 describe('audit service identity boundary', () => {
   const expected = [{ id: 'svc-a', name: 'seed-a' }];
@@ -606,7 +632,7 @@ describe('Railway operational-config audit', () => {
     assert.equal(drift[0].missingService, true);
     assert.throws(
       () => buildRailwayServiceConfigPatch(drift),
-      /seed-example.*not present in Railway production/,
+      configurationVerdict(/seed-example.*not present in Railway production/),
     );
   });
 
@@ -628,7 +654,7 @@ describe('Railway operational-config audit', () => {
     assert.deepEqual(drift[0].missingRequiredEnv, ['SOURCE_PROXY_URL']);
     assert.throws(
       () => buildRailwayServiceConfigPatch(drift),
-      /seed-example missing required environment: SOURCE_PROXY_URL/,
+      configurationVerdict(/seed-example missing required environment: SOURCE_PROXY_URL/),
     );
 
     const emptyConfig = {
@@ -731,7 +757,7 @@ describe('Railway operational-config audit', () => {
     assert.equal(drift[0].missingWatchPatterns, true);
     assert.throws(
       () => buildRailwayServiceConfigPatch(drift),
-      /seed-example pins a cron without watchPatterns/,
+      configurationVerdict(/seed-example pins a cron without watchPatterns/),
     );
   });
 
@@ -752,7 +778,7 @@ describe('Railway operational-config audit', () => {
     assert.deepEqual(drift[0].rootDirectory, { actual: 'scripts', expected: '' });
     assert.throws(
       () => buildRailwayServiceConfigPatch(drift),
-      /seed-example rootDirectory is "scripts" but deployMode implies ""/,
+      configurationVerdict(/seed-example rootDirectory is "scripts" but deployMode implies ""/),
     );
 
     const matching = [{ ...managedRegistry[0], deployMode: 'nixpacks-root-scripts' }];
