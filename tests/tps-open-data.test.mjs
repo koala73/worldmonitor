@@ -122,6 +122,24 @@ function requestParams(url, init = {}) {
   return init.body == null ? new URL(url).searchParams : new URLSearchParams(init.body);
 }
 
+// The Calls walk is two-phase: one fields=_id sweep that freezes the row
+// identity set, then the offset pages checked against it.
+function isCallsIdsRequest(url) {
+  return new URL(url).searchParams.get('fields') === '_id';
+}
+
+function callsIdsBody(resourceId, ids) {
+  return {
+    success: true,
+    result: {
+      resource_id: resourceId,
+      total: ids.length,
+      fields: [{ id: '_id' }],
+      records: ids.map((_id) => ({ _id })),
+    },
+  };
+}
+
 function stableFetch(features, metadata = null, objectIdField = 'OBJECTID') {
   return async (url, init = {}) => {
     const parsed = new URL(url);
@@ -197,6 +215,7 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
       { _id: 3, INDEX_: '3', ...callsAttrs({ ObjectId: undefined, EVENT_YEAR: 2023 }) },
     ];
     let packageRequests = 0;
+    let idsRequests = 0;
     const offsets = [];
     const fetchImpl = async (url) => {
       const parsed = new URL(url);
@@ -217,6 +236,10 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
       }
       if (parsed.pathname === '/api/3/action/datastore_search') {
         assert.equal(parsed.searchParams.get('resource_id'), resourceId);
+        if (isCallsIdsRequest(url)) {
+          idsRequests += 1;
+          return jsonResponse(callsIdsBody(resourceId, rows.map((row) => row._id)));
+        }
         const offset = Number(parsed.searchParams.get('offset'));
         const limit = Number(parsed.searchParams.get('limit'));
         offsets.push(offset);
@@ -244,6 +267,7 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
     assert.equal(result.snapshot.catalogItem, packageId);
     assert.deepEqual(result.snapshot.records.map((row) => row.objectId), [1, 2, 3]);
     assert.equal(packageRequests, 1);
+    assert.equal(idsRequests, 1);
     assert.deepEqual(offsets, [0, 2]);
   });
 
@@ -253,60 +277,134 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
     assert.equal(isAllowedTpsCkanUrl('https://ckan0.cf.opendata.inter.prod-toronto.ca/api/3/action/status_show'), false);
 
     const wrongPackage = await fetchTpsCallsAttended({
-      metadata: callsPackageBody({ id: 'wrong' }),
+      packageBody: callsPackageBody({ id: 'wrong' }),
       fetchImpl: async () => jsonResponse({}),
     });
     assert.match(wrongPackage.reason, /service_item_mismatch:calls:wrong/);
 
     const missingResource = await fetchTpsCallsAttended({
-      metadata: callsPackageBody({ resources: [] }),
+      packageBody: callsPackageBody({ resources: [] }),
       fetchImpl: async () => jsonResponse({}),
     });
     assert.match(missingResource.reason, /active_resource_missing/);
 
-    const missingField = await fetchTpsCallsAttended({
-      metadata: callsPackageBody(),
-      fetchImpl: async (url) => jsonResponse({
-        success: true,
-        result: {
-          resource_id: new URL(url).searchParams.get('resource_id'),
-          total: 1,
-          fields: [{ id: '_id' }],
-          records: [{ _id: 1, ...callsAttrs({ ObjectId: undefined }) }],
-        },
+    const ambiguousResource = await fetchTpsCallsAttended({
+      packageBody: callsPackageBody({
+        resources: [
+          { id: 'a', name: TPS_CALLS_RESOURCE_NAME, format: 'JSON', datastore_active: true },
+          { id: 'b', name: TPS_CALLS_RESOURCE_NAME, format: 'JSON', datastore_active: true },
+        ],
       }),
+      fetchImpl: async () => jsonResponse({}),
+    });
+    assert.match(ambiguousResource.reason, /active_resource_ambiguous/);
+
+    const missingField = await fetchTpsCallsAttended({
+      packageBody: callsPackageBody(),
+      fetchImpl: async (url) => {
+        const resourceId = new URL(url).searchParams.get('resource_id');
+        if (isCallsIdsRequest(url)) return jsonResponse(callsIdsBody(resourceId, [1]));
+        return jsonResponse({
+          success: true,
+          result: {
+            resource_id: resourceId,
+            total: 1,
+            fields: [{ id: '_id' }],
+            records: [{ _id: 1, ...callsAttrs({ ObjectId: undefined }) }],
+          },
+        });
+      },
     });
     assert.match(missingField.reason, /datastore_missing_EVENT_YEAR/);
 
+    const emptyDatastore = await fetchTpsCallsAttended({
+      packageBody: callsPackageBody(),
+      fetchImpl: async (url) => {
+        const resourceId = new URL(url).searchParams.get('resource_id');
+        return jsonResponse(callsIdsBody(resourceId, []));
+      },
+    });
+    assert.match(emptyDatastore.reason, /pagination_incomplete:calls:empty_datastore/);
+
     const partialPage = await fetchTpsCallsAttended({
-      metadata: callsPackageBody(),
+      packageBody: callsPackageBody(),
       pageSize: 2,
       maxPages: 1,
-      fetchImpl: async (url) => jsonResponse({
-        success: true,
-        result: {
-          resource_id: new URL(url).searchParams.get('resource_id'),
-          total: 2,
-          fields: ['_id', ...TPS_CALLS_REQUIRED_FIELDS].map((fieldId) => ({ id: fieldId })),
-          records: [{ _id: 1, ...callsAttrs({ ObjectId: undefined }) }],
-        },
-      }),
+      fetchImpl: async (url) => {
+        const resourceId = new URL(url).searchParams.get('resource_id');
+        if (isCallsIdsRequest(url)) return jsonResponse(callsIdsBody(resourceId, [1, 2]));
+        return jsonResponse({
+          success: true,
+          result: {
+            resource_id: resourceId,
+            total: 2,
+            fields: ['_id', ...TPS_CALLS_REQUIRED_FIELDS].map((fieldId) => ({ id: fieldId })),
+            records: [{ _id: 1, ...callsAttrs({ ObjectId: undefined }) }],
+          },
+        });
+      },
     });
     assert.match(partialPage.reason, /pagination_incomplete:calls:partial_page/);
 
-    let page = 0;
-    const changedTotal = await fetchTpsCallsAttended({
-      metadata: callsPackageBody(),
+    const duplicateId = await fetchTpsCallsAttended({
+      packageBody: callsPackageBody(),
       pageSize: 1,
       maxPages: 2,
       fetchImpl: async (url) => {
-        page += 1;
+        const resourceId = new URL(url).searchParams.get('resource_id');
+        if (isCallsIdsRequest(url)) return jsonResponse(callsIdsBody(resourceId, [1, 2]));
+        return jsonResponse({
+          success: true,
+          result: {
+            resource_id: resourceId,
+            total: 2,
+            fields: ['_id', ...TPS_CALLS_REQUIRED_FIELDS].map((fieldId) => ({ id: fieldId })),
+            records: [{ _id: 1, ...callsAttrs({ ObjectId: undefined }) }],
+          },
+        });
+      },
+    });
+    assert.match(duplicateId.reason, /schema_drift:calls:invalid_object_id/);
+
+    // A row deleted before the cursor plus one appended keeps total and per-row
+    // uniqueness intact; only the frozen identity set catches the swap.
+    const shiftedRows = await fetchTpsCallsAttended({
+      packageBody: callsPackageBody(),
+      pageSize: 1,
+      maxPages: 2,
+      fetchImpl: async (url) => {
         const parsed = new URL(url);
+        const resourceId = parsed.searchParams.get('resource_id');
+        if (isCallsIdsRequest(url)) return jsonResponse(callsIdsBody(resourceId, [1, 2]));
+        const offset = Number(parsed.searchParams.get('offset'));
+        return jsonResponse({
+          success: true,
+          result: {
+            resource_id: resourceId,
+            total: 2,
+            fields: ['_id', ...TPS_CALLS_REQUIRED_FIELDS].map((fieldId) => ({ id: fieldId })),
+            records: [{ _id: offset === 0 ? 1 : 3, ...callsAttrs({ ObjectId: undefined }) }],
+          },
+        });
+      },
+    });
+    assert.match(shiftedRows.reason, /pagination_incomplete:calls:object_id_set_mismatch/);
+
+    let page = 0;
+    const changedTotal = await fetchTpsCallsAttended({
+      packageBody: callsPackageBody(),
+      pageSize: 1,
+      maxPages: 2,
+      fetchImpl: async (url) => {
+        const parsed = new URL(url);
+        const resourceId = parsed.searchParams.get('resource_id');
+        if (isCallsIdsRequest(url)) return jsonResponse(callsIdsBody(resourceId, [1, 2]));
+        page += 1;
         const id = page;
         return jsonResponse({
           success: true,
           result: {
-            resource_id: parsed.searchParams.get('resource_id'),
+            resource_id: resourceId,
             total: page === 1 ? 2 : 3,
             fields: ['_id', ...TPS_CALLS_REQUIRED_FIELDS].map((fieldId) => ({ id: fieldId })),
             records: [{ _id: id, ...callsAttrs({ ObjectId: undefined }) }],
@@ -531,6 +629,21 @@ describe('TPS Open Data pagination and semantics (#7012, #7036)', () => {
     assert.equal(calls[0].options.contentMeta, tpsContentMeta);
     assert.equal(TPS_ON_DEMAND_SECTIONS.length, 2);
     assert.deepEqual(TPS_ON_DEMAND_SECTIONS.map((section) => section.canonicalKey), [TPS_MCI_KEY, TPS_CALLS_KEY]);
+  });
+
+  it('rejects a pre-CKAN Calls snapshot as last-good so the retired licence cannot be served', () => {
+    const current = buildTpsCallsSnapshot({ records: [], editingInfo: { dataLastEditDate: 1 } });
+    assert.equal(validateTpsCallsSnapshot(current), true);
+    assert.equal(
+      validateTpsCallsSnapshot({ ...current, attribution: TPS_OGL_ATTRIBUTION }),
+      false,
+      'a snapshot still asserting OGL-Ontario must not pass as last-good',
+    );
+    assert.equal(
+      validateTpsCallsSnapshot({ ...current, catalogItem: '46c7581a136445c78831acb657a4fb0d' }),
+      false,
+      'a snapshot pinned to the retired ArcGIS service item must not pass as last-good',
+    );
   });
 
   it('pins each fetched source to its current official identity', async () => {

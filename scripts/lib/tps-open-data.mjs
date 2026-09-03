@@ -331,6 +331,10 @@ export function validateTpsCallsSnapshot(snapshot) {
     && snapshot?.official === true
     && snapshot?.live === false
     && snapshot?.incidentPoint === false
+    // Pin the current source identity so a pre-CKAN snapshot cannot pass as
+    // last-good and keep asserting the retired OGL-Ontario licence.
+    && snapshot?.catalogItem === TPS_CALLS_CATALOG_ITEM
+    && snapshot?.attribution === TPS_CALLS_ATTRIBUTION
     && Array.isArray(snapshot?.records);
 }
 
@@ -487,7 +491,7 @@ function featureObjectId(feature, objectIdField) {
   return Number.isInteger(value) ? value : null;
 }
 
-function sortArcGisFeatures(features, orderByFields) {
+function sortFeatureRows(features, orderByFields) {
   const clauses = String(orderByFields || '').split(',').map((part) => {
     const [field, direction] = part.trim().split(/\s+/);
     return { field, direction: direction?.toUpperCase() === 'DESC' ? -1 : 1 };
@@ -593,7 +597,7 @@ export async function queryArcGisPages({
     throw new TpsOpenDataError(`pagination_incomplete:${label}:object_id_set_mismatch`);
   }
   return {
-    features: sortArcGisFeatures(features, orderByFields),
+    features: sortFeatureRows(features, orderByFields),
     truncated: false,
     pages: Math.ceil(objectIds.length / pageSize),
   };
@@ -627,7 +631,7 @@ function resolveTpsCallsPackage(body) {
     throw new TpsOpenDataError('malformed_json:calls:package');
   }
   if (body.success !== true || !body.result || typeof body.result !== 'object') {
-    throw new TpsOpenDataError('upstream_error:calls:package');
+    throw new TpsOpenDataError(`upstream_error:calls:package:${body.error?.message || 'error'}`);
   }
   const packageId = textOrNull(body.result.id);
   if (packageId !== TPS_CALLS_SERVICE_ITEM_ID) {
@@ -664,7 +668,7 @@ function interpretTpsCallsPage(body, { resourceId, expectedTotal }) {
     throw new TpsOpenDataError('malformed_json:calls');
   }
   if (body.success !== true || !body.result || typeof body.result !== 'object') {
-    throw new TpsOpenDataError('upstream_error:calls');
+    throw new TpsOpenDataError(`upstream_error:calls:${body.error?.message || 'error'}`);
   }
   if (body.result.resource_id !== resourceId) {
     throw new TpsOpenDataError('schema_drift:calls:resource_id_mismatch');
@@ -690,6 +694,67 @@ function interpretTpsCallsPage(body, { resourceId, expectedTotal }) {
   return { total, records: body.result.records };
 }
 
+/**
+ * Freeze the datastore's _id set before paging. Offset paging alone cannot
+ * prove completeness: a row deleted before the cursor plus one appended
+ * elsewhere keeps `total` and per-row uniqueness intact while silently
+ * skipping a real row. This is the CKAN analogue of the MCI path's
+ * returnIdsOnly snapshot, and the set-equality check it enables.
+ */
+async function snapshotTpsCallsIds({
+  resourceId,
+  pageSize,
+  maxPages,
+  fetchImpl,
+  timeoutMs,
+  maxBytes,
+}) {
+  const budget = pageSize * maxPages;
+  const url = new URL(TPS_CALLS_QUERY_URL);
+  url.searchParams.set('resource_id', resourceId);
+  url.searchParams.set('limit', String(budget));
+  url.searchParams.set('offset', '0');
+  url.searchParams.set('fields', '_id');
+  url.searchParams.set('sort', '_id asc');
+  const body = await fetchTpsCkanJson(url.toString(), {
+    fetchImpl,
+    timeoutMs,
+    maxBytes,
+    label: 'calls:ids',
+  });
+  if (!body || typeof body !== 'object') {
+    throw new TpsOpenDataError('malformed_json:calls:ids');
+  }
+  if (body.success !== true || !body.result || typeof body.result !== 'object') {
+    throw new TpsOpenDataError(`upstream_error:calls:ids:${body.error?.message || 'error'}`);
+  }
+  if (body.result.resource_id !== resourceId) {
+    throw new TpsOpenDataError('schema_drift:calls:ids_resource_id_mismatch');
+  }
+  const total = finiteNumber(body.result.total);
+  if (!Number.isInteger(total) || total < 0) {
+    throw new TpsOpenDataError('schema_drift:calls:ids_invalid_total');
+  }
+  if (total > budget) {
+    throw new TpsOpenDataError(`pagination_incomplete:calls:max_pages_${maxPages}`);
+  }
+  if (!Array.isArray(body.result.records)) {
+    throw new TpsOpenDataError('schema_drift:calls:ids_records_not_array');
+  }
+  if (body.result.records.length !== total) {
+    throw new TpsOpenDataError('pagination_incomplete:calls:ids_partial');
+  }
+  const objectIds = new Set();
+  for (const row of body.result.records) {
+    const objectId = finiteNumber(row?._id);
+    if (!Number.isInteger(objectId) || objectIds.has(objectId)) {
+      throw new TpsOpenDataError('schema_drift:calls:invalid_object_id');
+    }
+    objectIds.add(objectId);
+  }
+  return { objectIds, total };
+}
+
 async function queryTpsCallsPages({
   resourceId,
   pageSize,
@@ -700,8 +765,22 @@ async function queryTpsCallsPages({
 }) {
   const rows = [];
   const objectIds = new Set();
-  let total = null;
   let pages = 0;
+
+  const frozen = await snapshotTpsCallsIds({
+    resourceId,
+    pageSize,
+    maxPages,
+    fetchImpl,
+    timeoutMs,
+    maxBytes,
+  });
+  // An empty datastore is upstream churn (a reload or a swapped resource),
+  // never a publishable snapshot. Fail closed so last-good survives.
+  if (frozen.total === 0) {
+    throw new TpsOpenDataError('pagination_incomplete:calls:empty_datastore');
+  }
+  let total = frozen.total;
 
   for (let page = 0; page < maxPages; page += 1) {
     const offset = page * pageSize;
@@ -740,8 +819,18 @@ async function queryTpsCallsPages({
   if (total == null || rows.length !== total) {
     throw new TpsOpenDataError(`pagination_incomplete:calls:max_pages_${maxPages}`);
   }
+  // Count equality is not identity: prove the walk returned exactly the rows
+  // frozen before it started, mirroring the MCI object_id_set_mismatch guard.
+  if (objectIds.size !== frozen.objectIds.size) {
+    throw new TpsOpenDataError('pagination_incomplete:calls:object_id_set_mismatch');
+  }
+  for (const objectId of frozen.objectIds) {
+    if (!objectIds.has(objectId)) {
+      throw new TpsOpenDataError('pagination_incomplete:calls:object_id_set_mismatch');
+    }
+  }
   return {
-    features: sortArcGisFeatures(rows, 'EVENT_YEAR DESC,ObjectId'),
+    features: sortFeatureRows(rows, 'EVENT_YEAR DESC,ObjectId'),
     truncated: false,
     pages,
   };
@@ -824,18 +913,18 @@ export async function fetchTpsCallsAttended({
   pageSize = TPS_CALLS_PAGE_CAP,
   maxPages = TPS_DEFAULT_CALLS_MAX_PAGES,
   now = Date.now(),
-  metadata = null,
+  packageBody = null,
 } = {}) {
   try {
     const packageUrl = new URL(TPS_CALLS_PACKAGE_URL);
     packageUrl.searchParams.set('id', TPS_CALLS_PACKAGE_NAME);
-    const packageBody = metadata ?? await fetchTpsCkanJson(packageUrl.toString(), {
+    const resolvedPackageBody = packageBody ?? await fetchTpsCkanJson(packageUrl.toString(), {
       fetchImpl,
       timeoutMs: TPS_REQUEST_TIMEOUT_MS,
       maxBytes: MAX_PAYLOAD_BYTES,
       label: 'calls:package',
     });
-    const packageMeta = resolveTpsCallsPackage(packageBody);
+    const packageMeta = resolveTpsCallsPackage(resolvedPackageBody);
     const paged = await queryTpsCallsPages({
       resourceId: packageMeta.resourceId,
       pageSize: Math.min(pageSize, TPS_CALLS_PAGE_CAP),

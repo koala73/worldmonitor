@@ -133,6 +133,9 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
 
     const callsData = {
       annual_aggregates: {
+        // A snapshot cached before the CKAN migration still carries the retired
+        // licence claim; the MCP surface must not pass it through.
+        attribution: 'Contains information licensed under the Open Government Licence - Ontario.',
         records: [
           { eventYear: 2025, divisionOriginal: 'D51', divisionFinal: 'D52', neighbourhood158: 'Harbourfront' },
           { eventYear: 2024, divisionOriginal: 'D51', divisionFinal: 'D51', neighbourhood158: 'Downtown' },
@@ -141,5 +144,7 @@ describe('Toronto safety bounded query surfaces (#7012)', () => {
     };
     calls._postFilter(callsData, { year: 2025, division: '52' });
     assert.equal(callsData.annual_aggregates.records.length, 1);
+    assert.doesNotMatch(callsData.annual_aggregates.attribution, /Open Government Licence/);
+    assert.match(callsData.annual_aggregates.attribution, /via City of Toronto Open Data/);
   });
 });
