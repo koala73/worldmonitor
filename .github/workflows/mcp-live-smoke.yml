@@ -14,24 +14,21 @@ name: MCP Live Smoke
 # capability the handshake advertises (200 + id echo required on each hop),
 # asserts the tools/call auth wall answers 401 fast, and probes the declared
 # OAuth endpoints for the #4938 redirect fingerprints with side-effect-free
-# malformed POSTs. Dependency-free — no npm ci.
+# malformed POSTs. The job installs the locked AJV version so it can compile
+# every schema returned by production instead of checking selected keywords.
 #
 # Triggers:
 #   - schedule (every 6h): catches prod-layer drift (CDN rules, deploy config,
 #     host-split) on a cadence operators can act on. The probes are ~40 cheap
 #     requests per run — well under the anon 60/min/IP MCP limit.
-#   - push to main touching the script/workflow: validates edits on merge.
+#   - successful Vercel Production deployment: validates the deployed commit,
+#     after its production aliases are ready.
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run
 # could neither exercise its own changes nor fail for reasons the PR caused.
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - 'scripts/mcp-live-smoke.mjs'
-      - 'scripts/mcp-schema-wire-check.mjs'
-      - '.github/workflows/mcp-live-smoke.yml'
+  deployment_status:
   schedule:
     - cron: '23 */6 * * *'
   workflow_dispatch:
@@ -39,15 +36,30 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: mcp-live-smoke-production
+  cancel-in-progress: false
+
 jobs:
   smoke:
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (
+        github.event.deployment_status.state == 'success' &&
+        github.event.deployment.environment == 'Production' &&
+        github.event.deployment.creator.login == 'vercel[bot]'
+      )
     runs-on: ubuntu-latest
     # ~40 requests × 15s worst-case timeout each ≈ 10min absolute ceiling;
     # nominal runs finish in well under a minute.
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event_name == 'deployment_status' && github.event.deployment.sha || github.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
+          cache: 'npm'
+      - run: npm ci --ignore-scripts --omit=optional
       - run: node scripts/mcp-live-smoke.mjs
