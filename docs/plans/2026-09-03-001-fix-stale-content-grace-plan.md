@@ -42,9 +42,10 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 
 #### Stable missing-timestamp deadline
 
-- R7. When `newestItemAt` or a per-entity `criticalOldestObservedAt` proves that its configured freshness boundary has passed, derive the grace deadline from that boundary plus three hours without persistent state.
-- R8. When a usable stale assessment has no boundary timestamp, or per-entity stale counts trip before the timestamp boundary, claim one first-observation deadline in Redis with `HSETNX`, then read that stored deadline. A fresh seeder `fetchedAt` must not move it.
-- R9. Clear a source's stored first-observation deadline only after both source-level and per-entity content-age contracts become fresh again. A later distinct undatable incident can then receive a new finite grace.
+- R7. Every graced source claims exactly ONE deadline in Redis with `HSETNX` and republishes that stored value on every later sweep. A deadline that is re-derived per sweep is not finite: a source that keeps publishing while staying past its budget would advance its own deadline forever, and a source that changes which evidence shape applies would be granted a second window.
+- R8. The claimed value depends on the evidence available at first observation. A boundary timestamp already in the past is the honest start of the incident, so the deadline is that boundary plus three hours. Otherwise (no usable timestamp, or per-entity counts that tripped before the timestamp boundary) the observation itself is the clock. A fresh seeder `fetchedAt` must never move a claimed deadline.
+- R8b. Claim only for a key that actually classified `STALE_CONTENT`. Several classifier branches outrank it, and a key taking one of those still carries stale content evidence; claiming there would burn the source's single anchor during an incident that publishes no grace.
+- R9. Clear a source's stored deadline only after both source-level and per-entity content-age contracts become fresh again. A later distinct incident can then receive a new finite grace.
 - R10. If the optional grace-state read or write fails or returns invalid data, fail closed. Keep the normal `STALE_CONTENT` warning instead of extending or inventing grace.
 
 #### Cache correctness and proof
@@ -77,10 +78,12 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 ### Key Technical Decisions
 
 - KTD1. Keep classification and severity separate. `classifyKey` continues to return `STALE_CONTENT`. A small summary-bucket helper treats only a `STALE_CONTENT` entry with an active `staleContentGraceUntil` as healthy for counting. This preserves diagnostics and all status consumers.
-- KTD2. Use the observation clock when it proves the failed boundary. A valid past source-level or per-entity observation has a deterministic deadline and needs no Redis state.
-- KTD3. Persist only the clock that cannot be derived. A versioned Redis hash stores one deadline per source for null timestamps and count-driven per-entity failures that occur before the timestamp boundary. This is the smallest durable state that prevents every fresh seeder write from restarting grace.
+- KTD2. The observation clock chooses the CANDIDATE deadline; Redis decides the published one. A past boundary yields `boundary + 3h`, anything else yields `now + 3h`, and `HSETNX` pins whichever candidate arrives first.
+- KTD3. Persist every graced source, not only the underivable ones. Storing a single anchor per source in a versioned Redis hash is what makes the window one-shot: it survives a moving `newestItemAt` and a change of evidence shape, both of which would otherwise mint fresh grace on a source that never recovered. The hash carries a refreshed TTL so retired registry names reap themselves.
+- KTD6. Claim after classification, not before. The claim is gated on the status a key actually received, so an unrelated higher-precedence failure cannot spend the source's one anchor.
 - KTD4. Namespace the grace-state hash with the existing `healthVerdictRedisKey` helper. Production keeps a stable key. Preview deployments remain commit-scoped.
-- KTD5. Keep cached verdicts deadline-safe. Add `staleContentGraceUntil` to the existing expiry guard and nearest-deadline scan instead of adding a second cache mechanism.
+- KTD5. Keep cached verdicts deadline-safe. Add `staleContentGraceUntil` to the existing expiry guard and nearest-deadline scan instead of adding a second cache mechanism. Both readers walk one declared table of softening fields so a future fourth deadline is a single entry rather than another pair of copy-pasted branches.
+- KTD7. Split the Redis work by urgency. The claim decides what this response publishes and must be awaited; the recovery cleanup does not, and is dispatched through `ctx.waitUntil` so it never charges request latency.
 
 ### Assumptions
 
@@ -178,8 +181,9 @@ Both entries were correctly diagnosed as `STALE_CONTENT`, but both immediately i
 
 ## Risks and Dependencies
 
-- The null-timestamp case depends on Redis to remember the first deadline. A failed grace-state operation deliberately produces an immediate warning, not an unbounded healthy state.
-- A timestamp-based source that is already more than three hours beyond its budget when this code deploys receives no retroactive grace. This keeps the window tied to the real content boundary.
+- Grace depends on Redis to remember the first deadline. A failed grace-state operation deliberately produces an immediate warning, not an unbounded healthy state.
+- A source already more than three hours beyond its budget when this code deploys receives no retroactive grace: its first claim is derived from the boundary it already crossed, so the window is already spent. This keeps the window tied to the real content boundary.
+- A flat three-hour window is source-agnostic, so it defers the verdict proportionally longer for the tightest budgets in the fleet (for example a 90-minute content budget). The per-source budget, not this window, remains the mechanism that detects a genuine upstream freeze; the diagnosis and its deadline stay visible in `problems` throughout.
 - A cleanup failure can make a later null incident strict earlier than intended. It cannot extend the grace or hide stale content.
 - No production behavior changes until Vercel deploys a merged commit. This pull request can prove code readiness only.
 

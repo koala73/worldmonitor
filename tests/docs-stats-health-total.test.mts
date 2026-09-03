@@ -210,6 +210,25 @@ describe('/api/health probed-key count doc gate (#6300)', () => {
     assert.ok(failures.some((f) => /rolloutPending \(5\) is documented as a subset/.test(f)), failures.join(' | '));
   });
 
+  it('still rejects a staleContent count larger than the buckets it can occupy', () => {
+    // Grace freed staleContent from being a subset of warn, but not from
+    // arithmetic: every STALE_CONTENT entry lands in ok or warn, so a documented
+    // example claiming more than ok + warn is impossible and must fail the gate.
+    const failures = validateHealthSummaryDocs(REAL_STATS, {
+      'docs/health-endpoints.mdx': docWithSummary({
+        total: REAL_TOTAL,
+        ok: 3,
+        warn: 2,
+        crit: REAL_TOTAL - 5,
+        staleContent: 6,
+      }),
+    });
+    assert.ok(
+      failures.some((f) => /staleContent \(6\) exceeds ok \+ warn \(5\)/.test(f)),
+      failures.join(' | '),
+    );
+  });
+
   it('fails when a known page silently drops its example', () => {
     // Scope is discovered, so a page that stops carrying the anchor would just
     // fall out of it. The floor is what turns that into a failure — asserted

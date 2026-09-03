@@ -27,6 +27,7 @@ const {
   staleContentGraceStatePlan,
   parseStaleContentGraceUntil,
   staleContentGraceUntilMs,
+  applyStaleContentGrace,
   healthStatusBucket,
   computeOverallStatus,
   buildCompactVerdictSnapshot,
@@ -383,6 +384,22 @@ test('just-over-budget content stays diagnostically stale without making health 
   const entry = classifyKey('diseaseOutbreaks', 'health:disease-outbreaks:v1', { allowOnDemand: false }, ctx);
   assert.equal(STALE_CONTENT_GRACE_MS, 3 * ONE_HOUR_MS);
   assert.equal(entry.status, 'STALE_CONTENT');
+  // classifyKey diagnoses; the deadline is projected afterwards, once the
+  // status is known and the durable anchor has been read back.
+  assert.equal(entry.staleContentGraceUntil, undefined);
+
+  const checks = { diseaseOutbreaks: entry };
+  const evidence = staleContentGraceEvidence(
+    { newestItemAt, contentAgeMin: maxContentAgeMin + 1, maxContentAgeMin, contentStale: true },
+    null,
+    NOW,
+  );
+  applyStaleContentGrace(
+    checks,
+    new Map([['diseaseOutbreaks', evidence]]),
+    new Map([['diseaseOutbreaks', graceUntil]]),
+    NOW,
+  );
   assert.equal(entry.staleContentGraceUntil, new Date(graceUntil).toISOString());
   assert.equal(healthStatusBucket(entry, NOW), 'ok');
 
@@ -409,24 +426,28 @@ test('null newestItemAt keeps the first Redis deadline when fresh seeder metadat
     maxContentAgeMin: 2 * ONE_DAY_MS / ONE_MIN_MS,
     contentStale: true,
   };
+  const staleContentChecks = { temporalAnomalies: { status: 'STALE_CONTENT' } };
   const firstPlan = staleContentGraceStatePlan(
     new Map([['temporalAnomalies', staleContentGraceEvidence(nullContentAge, null, NOW)]]),
+    staleContentChecks,
     NOW,
     STALE_CONTENT_GRACE_STATE_KEY,
   );
   const firstDeadline = NOW + 3 * ONE_HOUR_MS;
-  assert.deepEqual(firstPlan.commands, [
+  assert.deepEqual(firstPlan.claimCommands, [
     ['HSETNX', STALE_CONTENT_GRACE_STATE_KEY, 'temporalAnomalies', String(firstDeadline)],
     ['HGET', STALE_CONTENT_GRACE_STATE_KEY, 'temporalAnomalies'],
+    ['PEXPIRE', STALE_CONTENT_GRACE_STATE_KEY, String(2 * STALE_CONTENT_GRACE_MS)],
   ]);
 
   const nextNow = NOW + ONE_HOUR_MS;
   const repeatedPlan = staleContentGraceStatePlan(
     new Map([['temporalAnomalies', staleContentGraceEvidence(nullContentAge, null, nextNow)]]),
+    staleContentChecks,
     nextNow,
     STALE_CONTENT_GRACE_STATE_KEY,
   );
-  assert.equal(repeatedPlan.commands[0][3], String(nextNow + 3 * ONE_HOUR_MS), 'later evaluation proposes a later candidate');
+  assert.equal(repeatedPlan.claimCommands[0][3], String(nextNow + 3 * ONE_HOUR_MS), 'later evaluation proposes a later candidate');
 
   const resolved = parseStaleContentGraceUntil(
     [{ result: 0 }, { result: String(firstDeadline) }],
@@ -485,11 +506,155 @@ test('recovered content clears only its null-timestamp state field', () => {
       maxContentAgeMin: 120,
       contentStale: false,
     }, null, NOW)],
-  ]), NOW, STALE_CONTENT_GRACE_STATE_KEY);
+  ]), {
+    temporalAnomalies: { status: 'STALE_CONTENT' },
+    diseaseOutbreaks: { status: 'OK' },
+  }, NOW, STALE_CONTENT_GRACE_STATE_KEY);
 
-  assert.deepEqual(plan.commands.at(-1), [
+  // The recovery clear is its own command list: nothing in the response depends
+  // on it, so it is dispatched fire-and-forget rather than awaited.
+  assert.deepEqual(plan.cleanupCommands, [[
     'HDEL',
     STALE_CONTENT_GRACE_STATE_KEY,
     'diseaseOutbreaks',
-  ]);
+  ]]);
+  assert.equal(plan.stateBackedNames.length, 1, 'only the still-stale source claims');
+});
+
+// ── Grace is a ONE-SHOT window anchored at first detection (#7577 review) ──
+//
+// The three tests below pin the property the whole feature rests on: a source
+// gets ONE finite window per incident. Each was red before the fix, and each
+// covers a distinct way the deadline used to be re-derived per sweep instead
+// of read back from the single durable anchor.
+
+test('a chronically-late but ADVANCING feed keeps its first deadline instead of sliding', () => {
+  // The failure this pins: `until` used to be recomputed as
+  // `newestItemAt + budget + 3h` on every sweep. A feed that keeps publishing
+  // while staying just past its budget therefore advanced its own deadline
+  // forever and could never reach the warning bucket — a permanent budget
+  // extension wearing a finite window's name.
+  const maxContentAgeMin = 9 * 24 * 60;
+  const staleBy = 30; // minutes past budget, and it STAYS past budget
+
+  const sweepAt = (t) => {
+    const newestItemAt = t - (maxContentAgeMin + staleBy) * ONE_MIN_MS;
+    return staleContentGraceEvidence(
+      { newestItemAt, contentAgeMin: maxContentAgeMin + staleBy, maxContentAgeMin, contentStale: true },
+      null,
+      t,
+    );
+  };
+
+  const firstEvidence = sweepAt(NOW);
+  const firstPlan = staleContentGraceStatePlan(
+    new Map([['diseaseOutbreaks', firstEvidence]]),
+    { diseaseOutbreaks: { status: 'STALE_CONTENT' } },
+    NOW,
+    STALE_CONTENT_GRACE_STATE_KEY,
+  );
+  // A timestamped source must ALSO persist an anchor — that is what stops the slide.
+  assert.deepEqual(firstPlan.stateBackedNames, ['diseaseOutbreaks']);
+  const pinned = Number(firstPlan.claimCommands[0][3]);
+  assert.equal(pinned, NOW - staleBy * ONE_MIN_MS + STALE_CONTENT_GRACE_MS);
+
+  // Two hours later the producer has published again, but the newest item is
+  // still 30 minutes past budget. HSETNX no-ops, so HGET returns the original.
+  const laterNow = NOW + 2 * ONE_HOUR_MS;
+  const resolved = parseStaleContentGraceUntil(
+    [{ result: 0 }, { result: String(pinned) }],
+    ['diseaseOutbreaks'],
+  );
+  assert.equal(
+    staleContentGraceUntilMs(sweepAt(laterNow), resolved.get('diseaseOutbreaks'), laterNow),
+    pinned,
+    'the deadline must not move when the feed publishes a still-late item',
+  );
+
+  // And it genuinely expires: one hour after that, the window is over.
+  const afterNow = NOW + 4 * ONE_HOUR_MS;
+  assert.equal(
+    staleContentGraceUntilMs(sweepAt(afterNow), resolved.get('diseaseOutbreaks'), afterNow),
+    null,
+    'a chronically-late feed must eventually warn',
+  );
+});
+
+test('switching grace modes on a never-recovered source does not mint a second window', () => {
+  // The failure this pins: only the null-timestamp branch used to persist an
+  // anchor. A timestamped source that burned its window and then degraded
+  // further (producer stops emitting usable item timestamps) found no stored
+  // field and claimed a brand-new 3h — roughly 6h of silence on a dead feed.
+  const maxContentAgeMin = 60;
+  const newestItemAt = NOW - (maxContentAgeMin + 1) * ONE_MIN_MS;
+  const timestamped = staleContentGraceEvidence(
+    { newestItemAt, contentAgeMin: maxContentAgeMin + 1, maxContentAgeMin, contentStale: true },
+    null,
+    NOW,
+  );
+  const firstPlan = staleContentGraceStatePlan(
+    new Map([['temporalAnomalies', timestamped]]),
+    { temporalAnomalies: { status: 'STALE_CONTENT' } },
+    NOW,
+    STALE_CONTENT_GRACE_STATE_KEY,
+  );
+  const pinned = Number(firstPlan.claimCommands[0][3]);
+
+  // Hours later the window has expired AND the producer now returns no usable
+  // timestamp at all. The stored anchor must still govern.
+  const laterNow = pinned + ONE_MIN_MS;
+  const undatable = staleContentGraceEvidence(
+    { newestItemAt: null, contentAgeMin: null, maxContentAgeMin, contentStale: true },
+    null,
+    laterNow,
+  );
+  const laterPlan = staleContentGraceStatePlan(
+    new Map([['temporalAnomalies', undatable]]),
+    { temporalAnomalies: { status: 'STALE_CONTENT' } },
+    laterNow,
+    STALE_CONTENT_GRACE_STATE_KEY,
+  );
+  // HSETNX is still issued (it is a no-op against the existing field), and the
+  // HGET reply is what decides — the already-expired original.
+  const resolved = parseStaleContentGraceUntil(
+    [{ result: 0 }, { result: String(pinned) }],
+    laterPlan.stateBackedNames,
+  );
+  assert.equal(
+    staleContentGraceUntilMs(undatable, resolved.get('temporalAnomalies'), laterNow),
+    null,
+    'a mode switch must not resurrect grace on a source that never recovered',
+  );
+});
+
+test('a source whose content is stale but classifies as something else never burns its anchor', () => {
+  // The failure this pins: the claim used to run off seed-meta evidence alone,
+  // before classification. A transient data-key read error classifies the key
+  // REDIS_PARTIAL (an earlier branch than STALE_CONTENT), so the source burned
+  // its one-shot deadline while publishing no grace at all — and arrived at its
+  // real STALE_CONTENT moment with a partly-elapsed window.
+  const evidence = staleContentGraceEvidence(
+    { newestItemAt: null, contentAgeMin: null, maxContentAgeMin: 60, contentStale: true },
+    null,
+    NOW,
+  );
+
+  const notYetStaleContent = staleContentGraceStatePlan(
+    new Map([['temporalAnomalies', evidence]]),
+    { temporalAnomalies: { status: 'REDIS_PARTIAL' } },
+    NOW,
+    STALE_CONTENT_GRACE_STATE_KEY,
+  );
+  assert.deepEqual(notYetStaleContent.claimCommands, [], 'no claim while another status wins');
+  assert.deepEqual(notYetStaleContent.stateBackedNames, []);
+  assert.deepEqual(notYetStaleContent.cleanupCommands, [], 'and no clear either — content is still stale');
+
+  // Once it really is STALE_CONTENT, the full window is available.
+  const nowStaleContent = staleContentGraceStatePlan(
+    new Map([['temporalAnomalies', evidence]]),
+    { temporalAnomalies: { status: 'STALE_CONTENT' } },
+    NOW,
+    STALE_CONTENT_GRACE_STATE_KEY,
+  );
+  assert.equal(Number(nowStaleContent.claimCommands[0][3]), NOW + STALE_CONTENT_GRACE_MS);
 });

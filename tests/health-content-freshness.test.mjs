@@ -23,6 +23,8 @@ const {
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
   STALE_CONTENT_GRACE_MS,
+  staleContentGraceEvidence,
+  applyStaleContentGrace,
   healthStatusBucket,
 } = __testing__;
 
@@ -73,7 +75,7 @@ function portwatchCtx(meta, now = NOW) {
 // `activated` is three-valued (#6095): true = marker read and present, false =
 // marker read and absent (the only state that earns grace), null = the marker
 // read failed, so its state is unknown and it is missing from the map entirely.
-function classifyPortwatch(meta, { activated = true, now = NOW, staleContentDeadline = null } = {}) {
+function classifyPortwatch(meta, { activated = true, now = NOW } = {}) {
   return classifyKey(
     'portwatchPortActivity',
     PORTWATCH_DATA_KEY,
@@ -83,12 +85,25 @@ function classifyPortwatch(meta, { activated = true, now = NOW, staleContentDead
       activationStates: activated === null
         ? new Map()
         : new Map([['portwatchContentFreshness', activated]]),
-      staleContentStateGraceUntilMs: staleContentDeadline === null
-        ? new Map()
-        : new Map([['portwatchPortActivity', staleContentDeadline]]),
     },
   );
 }
+
+// Runs the real post-classification projection so these tests exercise the same
+// path production does: classify, read back the durable anchor, then publish.
+function gracePortwatch(entry, meta, { now = NOW, staleContentDeadline = null } = {}) {
+  const checks = { portwatchPortActivity: entry };
+  const { keyMetaValues, keyMetaErrors } = portwatchCtx(meta, now);
+  const seedMeta = readSeedMeta(SEED_META.portwatchPortActivity, keyMetaValues, keyMetaErrors, now);
+  applyStaleContentGrace(
+    checks,
+    new Map([['portwatchPortActivity', staleContentGraceEvidence(seedMeta.contentAge, seedMeta.contentFreshness, now)]]),
+    staleContentDeadline === null ? new Map() : new Map([['portwatchPortActivity', staleContentDeadline]]),
+    now,
+  );
+  return entry;
+}
+
 
 // A run exactly like the 12:03 UTC production run: OK, 174 seeded, complete
 // coverage, zero refreshFailures — the transport half is genuinely healthy.
@@ -222,10 +237,11 @@ describe('portwatchPortActivity classification', () => {
     const graceUntil = observedAt
       + PORTWATCH_CONTENT_BUDGET_MINUTES * MINUTE_MS
       + STALE_CONTENT_GRACE_MS;
-    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+    const meta = completeRun(contentFreshnessOf({
       criticalOldestObservedAt: observedAt,
       criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES + 1,
-    })));
+    }));
+    const entry = gracePortwatch(classifyPortwatch(meta), meta, { staleContentDeadline: graceUntil });
 
     assert.equal(entry.status, 'STALE_CONTENT');
     assert.equal(entry.staleContentGraceUntil, new Date(graceUntil).toISOString());
@@ -234,7 +250,7 @@ describe('portwatchPortActivity classification', () => {
 
   it('uses one stored deadline when stale counts trip before the per-entity time boundary', () => {
     const firstObservedDeadline = NOW + STALE_CONTENT_GRACE_MS;
-    const entry = classifyPortwatch(completeRun(contentFreshnessOf({
+    const meta = completeRun(contentFreshnessOf({
       freshCount: 173,
       staleCount: 1,
       staleCountries: ['CN'],
@@ -242,7 +258,8 @@ describe('portwatchPortActivity classification', () => {
       criticalStaleCountries: ['CN'],
       criticalOldestObservedAt: NOW - 60 * MINUTE_MS,
       criticalOldestAgeMinutes: 60,
-    })), { staleContentDeadline: firstObservedDeadline });
+    }));
+    const entry = gracePortwatch(classifyPortwatch(meta), meta, { staleContentDeadline: firstObservedDeadline });
 
     assert.equal(entry.status, 'STALE_CONTENT');
     assert.equal(entry.staleContentGraceUntil, new Date(firstObservedDeadline).toISOString());
