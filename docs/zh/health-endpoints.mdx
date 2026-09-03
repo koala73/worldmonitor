@@ -56,7 +56,7 @@ description: "World Monitor 提供两个健康检查端点用于持续监控数�
 }
 ```
 
-`summary` 字段：`total` 是每个探测键的一个条目，并随面板增加而增长 —— 请以你自己响应中的数值为准，而非本页示例。`warn` **不包括**按需为空的键 —— 这些键作为 `onDemandWarn` 单独显示，因此它们不会将总体判定推向 `WARNING`。`staleContent` 是 `warn` 的一个**子集**（种子器新鲜但上游订阅源停止推进），`rolloutPending` 是 `warn` 的另一个**子集**（新部署的 schema 仍处于其有界的「部署先于定时任务」窗口内）。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
+`summary` 字段：`total` 是每个探测键的一个条目，并随面板增加而增长 —— 请以你自己响应中的数值为准，而非本页示例。`warn` **不包括**按需为空的键 —— 这些键作为 `onDemandWarn` 单独显示，因此它们不会将总体判定推向 `WARNING`。`staleContent` 统计所有 `STALE_CONTENT` 诊断。在数据源处于三小时的 `staleContentGraceUntil` 宽限期内时，该值可以大于 `warn`。数据源仍显示在 `problems` 中，但在截止时间前计入 `ok`。`rolloutPending` 是 `warn` 的一个**子集**（新部署的 schema 仍处于其有界的「部署先于定时任务」窗口内）。只有 `crit`（`EMPTY`/`EMPTY_DATA`）会驱动 `DEGRADED`/`UNHEALTHY`。
 
 使用 `?compact=1` 时，`checks` 对象会被 `problems` 替换，仅包含非 OK 的键。
 
@@ -82,7 +82,7 @@ consumer-prices-core 服务会将每个市场的抓取覆盖率快照写入 `con
 | `OK_CASCADE` | 绿色 | 键为空但级联组中的同级键有数据（例如，战区态势后备链） |
 | `NOT_CONFIGURED` | 绿色 | 本部署从未为该可选数据源适配器配置凭据（生产者写入 `sourceState: "unavailable"`，例如未配置 `SAM_GOV_API_KEY` 的全球招标 SAM.gov 适配器）。这不是故障，也不计入问题；添加凭据后的首次运行即转为 `OK` |
 | `STALE_SEED` | 警告 | 数据存在但 `seed-meta` 年龄超过 `maxStaleMin` |
-| `STALE_CONTENT` | 警告 | 种子器新鲜但上游内容停止推进（冻结的订阅源）；计入 `summary.staleContent` |
+| `STALE_CONTENT` | 宽限期后为警告 | 种子器新鲜，但上游内容停止推进或没有可用时间戳。三小时宽限期内仍计入 `summary.staleContent` 并显示在 `problems` 中。`staleContentGraceUntil` 给出截止时间。到达或超过该时间后，它照常计入 `summary.warn`。 |
 | `COVERAGE_PARTIAL` | 警告 | 总记录数或必需子组低于该键声明的覆盖率下限（例如 139/174 个 PortWatch 国家，或某个预测市场池为空） |
 | `COVERAGE_DEGRADED` | 警告 | 生产者自身的覆盖率诊断缺失，或其完成率低于该键的 `minSuccessRate`（例如某个消费价格市场仅完成 12 个零售商页面中的 4 个） |
 | `ROLLOUT_PENDING` | 警告 | 新部署的 schema，其生产者尚未到达首次计划运行。**有界**：健康检查运行时在 Redis 中持久化相对于部署时间的 `rolloutPendingUntil` 截止时间；一旦该时间过去，或生产者写入其持久激活标记，状态即变为 `EMPTY`（严重）。计入 `summary.rolloutPending` |
