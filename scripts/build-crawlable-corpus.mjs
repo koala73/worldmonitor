@@ -116,8 +116,8 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
-export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
+export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
 const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
 const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
 // Public ranking / confidence gates. Keep aligned with
@@ -555,11 +555,12 @@ function stableJson(value) {
   return `${JSON.stringify(value, null, 2)}\n`;
 }
 
-function countryDatasetDownload(country, {
+export function countryDatasetDownload(country, {
   capturedAt,
   methodologyFormula,
   rankedCount,
   snapshotPath,
+  developments = null,
 }) {
   const scorePublished = country.headlineEligible !== false;
   return stableJson({
@@ -579,6 +580,11 @@ function countryDatasetDownload(country, {
     rankedCount,
     source: snapshotPath,
     license: DATASET_LICENSE.url,
+    // Frozen recent developments (#7615): dated, attributed headlines, the
+    // intel brief with its cited sources, and timeline events. Null when the
+    // snapshot captured nothing for this country — the post-enrichment input
+    // for the residual regional-hub consolidation decision.
+    developments: developments && typeof developments === 'object' ? developments : null,
   });
 }
 
@@ -2818,7 +2824,208 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
   return { html, faqs };
 }
 
-function renderCountryPage({
+// "Recent developments in {Country}" (#7615). Every rendered item is a dated,
+// sourced, country-specific frozen row — headline (linked title, outlet,
+// publication time), intel brief (generated text with its cited sources), or
+// timeline event. Rows are validated on the way in: render throws rather than
+// publishing an unattributable item, so a malformed frozen row reds the build
+// instead of reaching a crawler.
+//
+// The movement sentence states co-occurrence, never causation: the frozen
+// numbers moved in the same window the reporting was captured. Asserting that
+// a headline *drove* a score move would be fabrication — only an analyst (or
+// the brief, which cites its sources) may draw that link.
+export function renderCountryDevelopments({ countryName, developments, ciiEntry = null, pulse = null }) {
+  const name = String(countryName || '').trim();
+  if (!name) throw new Error('renderCountryDevelopments requires a country name');
+  const rows = developments && typeof developments === 'object' ? developments : null;
+  const headlines = Array.isArray(rows?.headlines) ? rows.headlines : [];
+  const brief = rows?.brief && typeof rows.brief === 'object' ? rows.brief : null;
+  const timeline = Array.isArray(rows?.timeline) ? rows.timeline : [];
+
+  for (const headline of headlines) assertDevelopmentsHeadline(headline);
+  if (brief) assertDevelopmentsBrief(brief);
+  for (const event of timeline) assertDevelopmentsTimelineEvent(event);
+
+  const movementSentence = describeDevelopmentsMovement({ countryName: name, ciiEntry, pulse });
+  const briefExtraSources = brief
+    ? (Array.isArray(brief.sources) ? brief.sources : [])
+      .filter((source) => source && typeof source.url === 'string'
+        && !headlines.some((headline) => headline.url === source.url))
+    : [];
+  for (const source of briefExtraSources) assertDevelopmentsHeadline(source);
+  const itemCount = headlines.length + briefExtraSources.length + timeline.length + (brief ? 1 : 0);
+
+  // Zero items render nothing at all — not an absence note. A "no items"
+  // paragraph would stamp ~140 pages with the same boilerplate sentence and
+  // push the template share the enrichment is meant to reduce (#7615). The
+  // gap stays visible where it belongs: developments:null in resilience.json,
+  // the post-enrichment input to residual hub consolidation.
+  if (itemCount === 0) return '';
+
+  const parts = [];
+  if (movementSentence) parts.push(`        <p>${movementSentence}</p>`);
+  if (headlines.length > 0 || briefExtraSources.length > 0) {
+    const items = [...headlines, ...briefExtraSources]
+      .map((headline) => `          <li><a href="${escapeHtml(headline.url)}">${escapeHtml(headline.title)}</a> <small>${escapeHtml(headline.source)} · <time datetime="${escapeHtml(headline.publishedAt)}">${escapeHtml(formatStaticDateTime(headline.publishedAt))}</time></small></li>`)
+      .join('\n');
+    parts.push(`        <ul>\n${items}\n        </ul>`);
+  }
+  if (brief) {
+    const briefHtml = escapeHtml(brief.text).replace(/\n/g, '<br>');
+    const generatedLine = brief.generatedAt
+      ? `Brief generated <time datetime="${escapeHtml(brief.generatedAt)}">${escapeHtml(formatStaticDateTime(brief.generatedAt))}</time>`
+      : 'Brief generated from frozen sources';
+    parts.push(`        <div data-intel-brief>\n          <h3>Country brief</h3>\n          <p>${briefHtml}</p>\n          <p class="source">${generatedLine}${brief.model ? ` by ${escapeHtml(brief.model)}` : ''} from ${(Array.isArray(brief.sources) ? brief.sources.length : 0)} cited sources.</p>\n        </div>`);
+  }
+  if (timeline.length > 0) {
+    const events = timeline
+      .map((event) => {
+        const sourceBit = event.sourceUrl ? ` <a href="${escapeHtml(event.sourceUrl)}">source</a>` : '';
+        const summaryBit = event.summary ? ` — ${escapeHtml(event.summary)}` : '';
+        const domainBit = event.domain ? ` <small>${escapeHtml(event.domain)}</small>` : '';
+        return `          <li><strong>${escapeHtml(event.title)}</strong>${summaryBit} <small><time datetime="${escapeHtml(event.occurredAt)}">${escapeHtml(formatStaticDateTime(event.occurredAt))}</time></small>${domainBit}${sourceBit}</li>`;
+      })
+      .join('\n');
+    parts.push(`        <ol data-intel-timeline>\n${events}\n        </ol>`);
+  }
+  const inner = parts.join('\n');
+  return `      <section data-country-developments aria-label="Recent developments in ${escapeHtml(name)}">\n        <h2>Recent developments in ${escapeHtml(name)}</h2>\n${inner}\n      </section>`;
+}
+
+function assertDevelopmentsHeadline(headline) {
+  const valid = headline && typeof headline === 'object'
+    && typeof headline.title === 'string' && headline.title.trim()
+    && typeof headline.source === 'string' && headline.source.trim()
+    && typeof headline.url === 'string' && headline.url.startsWith('https://')
+    && typeof headline.publishedAt === 'string' && isCanonicalIsoInstant(headline.publishedAt);
+  if (!valid) throw new Error('country developments headline is missing title, source, https URL, or ISO publication time');
+}
+
+function assertDevelopmentsBrief(brief) {
+  if (typeof brief.text !== 'string' || !brief.text.trim()) {
+    throw new Error('country developments brief carries no text');
+  }
+}
+
+function assertDevelopmentsTimelineEvent(event) {
+  const valid = event && typeof event === 'object'
+    && typeof event.title === 'string' && event.title.trim()
+    && typeof event.occurredAt === 'string' && isCanonicalIsoInstant(event.occurredAt)
+    && (event.sourceUrl == null || (typeof event.sourceUrl === 'string' && event.sourceUrl.startsWith('https://')));
+  if (!valid) throw new Error('country developments timeline event is missing title, ISO occurrence time, or a valid source URL');
+}
+
+function describeDevelopmentsMovement({ countryName, ciiEntry, pulse }) {
+  const name = escapeHtml(countryName);
+  if (ciiEntry && hasObservedValue(ciiEntry.score, OBSERVED_EVIDENCE)
+    && typeof ciiEntry.asOf === 'string' && isCanonicalIsoInstant(ciiEntry.asOf)) {
+    return `${name}'s Country Instability Index is <strong>${escapeHtml(formatScore(ciiEntry.score, OBSERVED_EVIDENCE))}/100 · ${escapeHtml(ciiEntry.band)}</strong>, ${escapeHtml(ciiEntry.movementText)}, as of <time datetime="${escapeHtml(ciiEntry.asOf)}">${escapeHtml(formatStaticDateTime(ciiEntry.asOf))}</time>. Reporting captured in the same window is listed below.`;
+  }
+  if (pulse && pulse.partial !== true && hasObservedValue(pulse.score, { coverage: true })) {
+    const asOf = typeof pulse.asOf === 'string' && isCanonicalIsoInstant(pulse.asOf) ? pulse.asOf : null;
+    return `${name}'s frozen instability pulse records ${escapeHtml(formatScore(pulse.score, { coverage: true }))} (${escapeHtml(pulse.band || 'unbanded')}), trend ${escapeHtml(pulse.trend || 'unavailable')}${asOf ? `, as of <time datetime="${escapeHtml(asOf)}">${escapeHtml(formatStaticDateTime(asOf))}</time>` : ''}. Reporting captured in the same window is listed below.`;
+  }
+  return '';
+}
+
+// Newest frozen developments instant for WebPage dateModified (#7615:
+// recency machine-readable per country). Null when the country captured no
+// dated items. Never falls back to the harvest clock: an absent date has no
+// page representation, same rule as the pulse asOf contract.
+export function newestDevelopmentsInstant(developments) {
+  const instants = [];
+  if (developments && typeof developments === 'object') {
+    for (const headline of developments.headlines || []) {
+      if (typeof headline?.publishedAt === 'string' && isCanonicalIsoInstant(headline.publishedAt)) {
+        instants.push(headline.publishedAt);
+      }
+    }
+    if (typeof developments.brief?.generatedAt === 'string' && isCanonicalIsoInstant(developments.brief.generatedAt)) {
+      instants.push(developments.brief.generatedAt);
+    }
+    for (const event of developments.timeline || []) {
+      if (typeof event?.occurredAt === 'string' && isCanonicalIsoInstant(event.occurredAt)) {
+        instants.push(event.occurredAt);
+      }
+    }
+  }
+  instants.sort();
+  return instants.length > 0 ? instants.at(-1) : null;
+}
+
+// True when the frozen developments carry at least one dated,
+// sourced, country-specific item: a headline, a brief with text, or a
+// timeline event. The dated-absence note (data-developments-empty) does not
+// count — it is a marker, not an item.
+export function developmentsHasDatedItem(developments) {
+  if (!developments || typeof developments !== 'object') return false;
+  if (Array.isArray(developments.headlines) && developments.headlines.length > 0) return true;
+  if (developments.brief && typeof developments.brief.text === 'string' && developments.brief.text.trim()) return true;
+  return Array.isArray(developments.timeline) && developments.timeline.length > 0;
+}
+
+// Durable guard (#7615): the enrichment must be permanent, not a one-off
+// content pass. After rendering, every frozen developments row for this
+// country must be present in the page HTML — a silent drop (wrong slug, lost
+// prop, over-eager filter) fails the build instead of shipping a page whose
+// snapshot claims items the crawler cannot see.
+export function assertCountryDevelopmentsRendered({ pagePath, html, developments }) {
+  const rows = developments && typeof developments === 'object' ? developments : null;
+  if (!rows || !developmentsHasDatedItem(rows)) return;
+  if (!html.includes('data-country-developments')) {
+    throw new Error(`${pagePath} is missing its recent-developments section`);
+  }
+  for (const headline of rows.headlines || []) {
+    // Anchor-scoped: a bare URL substring passes when the URL merely appears
+    // in prose or another link. The headline must render as a link.
+    if (!html.includes(`href="${escapeHtml(headline.url)}"`)) {
+      throw new Error(`${pagePath} dropped frozen headline ${headline.url}`);
+    }
+  }
+  if (rows.brief && typeof rows.brief.text === 'string' && rows.brief.text.trim()) {
+    // Anchor on the first AND last non-empty lines: every generated brief
+    // opens with the same boilerplate header, so the first line alone cannot
+    // catch a cross-country brief swap. The renderer escapes newlines to
+    // <br>, so raw multi-line slices never appear verbatim.
+    const nonEmpty = rows.brief.text.trim().split('\n').map((line) => line.trim()).filter(Boolean);
+    const anchors = [nonEmpty[0], nonEmpty.at(-1)]
+      .filter((line, index, all) => line && all.indexOf(line) === index)
+      .map((line) => escapeHtml(line.slice(0, 120)));
+    for (const anchor of anchors) {
+      if (!html.includes(anchor)) {
+        throw new Error(`${pagePath} dropped its frozen intel brief`);
+      }
+    }
+  }
+  const briefSources = Array.isArray(rows.brief?.sources) ? rows.brief.sources : [];
+  for (const source of briefSources) {
+    if (typeof source?.url === 'string' && !html.includes(`href="${escapeHtml(source.url)}"`)) {
+      throw new Error(`${pagePath} dropped frozen brief source ${source.url}`);
+    }
+  }
+  for (const event of rows.timeline || []) {
+    if (!html.includes(escapeHtml(event.title))) {
+      throw new Error(`${pagePath} dropped frozen timeline event ${event.title}`);
+    }
+    if (typeof event.occurredAt === 'string' && !html.includes(`datetime="${escapeHtml(event.occurredAt)}"`)) {
+      throw new Error(`${pagePath} dropped the date of frozen timeline event ${event.title}`);
+    }
+  }
+}
+
+// Pipeline tripwire decision (#7615), exported for tests: the per-page guard
+// proves frozen items render; this proves the freeze captured any.
+export function assertDevelopmentsCoverage({ carriesDevelopments, developmentsPageCount }) {
+  if (carriesDevelopments && developmentsPageCount === 0) {
+    throw new Error(
+      'crawlable corpus captured no dated country developments on any country page; '
+      + 'refusing to publish an unenriched corpus',
+    );
+  }
+}
+
+export function renderCountryPage({
   country,
   baseUrl,
   capturedAt,
@@ -2865,6 +3072,7 @@ function renderCountryPage({
     pulse.partial === true
     || hasObservedValue(pulse.score, { coverage: pulse.partial !== true })
   );
+  const developments = pulse && typeof pulse.developments === 'object' ? pulse.developments : null;
   const liveState = hasPulse ? (pulse.partial ? 'partial' : 'ready') : 'loading';
   const liveStatus = hasPulse
     ? (pulse.partial ? 'Published partial pulse' : 'Published pulse')
@@ -2913,6 +3121,7 @@ ${liveGrid}
         <noscript><p>Enable JavaScript to refresh the current API result. ${hasPulse ? 'The published pulse above remains available without JavaScript.' : 'The structural resilience snapshot remains available below.'}</p></noscript>
       </section>
       <a class="cta" href="${escapeHtml(mapUrl)}">Open ${escapeHtml(country.name)} on the live map →</a>
+${renderCountryDevelopments({ countryName: country.name, developments, ciiEntry, pulse })}
       <h2>Structural resilience snapshot</h2>
       <section class="grid" aria-label="Country resilience metrics">
         <div class="metric"><span>Rank</span><strong>${escapeHtml(country.rank == null ? 'Not ranked' : `#${country.rank}`)}</strong></div>
@@ -2933,6 +3142,11 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
   const resilienceDatasetId = `${absoluteUrl(baseUrl, path)}#resilience-dataset`;
   const ciiDatasetId = `${absoluteUrl(baseUrl, path)}#cii-dataset`;
   const resilienceDownload = absoluteUrl(baseUrl, datasetDownloadHref(path, COUNTRY_DATASET_DOWNLOAD));
+  // WebPage dateModified tracks the newest frozen developments item (#7615:
+  // per-country recency, machine-readable). The resilience Dataset node stays
+  // pinned to the snapshot capturedAt per #7391 — a different claim (snapshot
+  // freshness) from this one (newest rendered news item).
+  const developmentsModified = newestDevelopmentsInstant(developments);
   const spatialCoverage = {
     ...countrySpatialCoverage(country, bbox),
     name: country.identity.commonName,
@@ -3003,7 +3217,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
       { '@type': 'PropertyValue', name: 'Instability level', value: ciiEntry.band },
     ],
   } : null;
-  return pageDocument({
+  const html = pageDocument({
     baseUrl,
     path,
     // Keep SERP titles near the ~60-char display budget: drop the brand
@@ -3022,6 +3236,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
         description,
         url: absoluteUrl(baseUrl, path),
         inLanguage: 'en-US',
+        ...(developmentsModified ? { dateModified: developmentsModified } : {}),
         about: {
           '@type': 'Country',
           name: country.identity.commonName,
@@ -3043,6 +3258,8 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
     body,
     scriptSrcs: ['/tools/live-tools.js'],
   });
+  assertCountryDevelopmentsRendered({ pagePath: path, html, developments });
+  return html;
 }
 
 const CHOKEPOINT_HUB_STATUS_LABELS = new Set(['Green', 'Yellow', 'Red']);
@@ -4379,8 +4596,11 @@ export async function buildCorpus({
     }),
   );
   const rankedCount = data.countries.filter((country) => country.rank != null).length;
+  let developmentsPageCount = 0;
   for (const country of data.countries) {
     const pagePath = `/countries/${country.slug}/`;
+    const pulseDevelopments = data.livePulse?.countries?.[country.code]?.developments || null;
+    if (developmentsHasDatedItem(pulseDevelopments)) developmentsPageCount += 1;
     writeGeneratedFile(
       outDir,
       routeFile(pagePath),
@@ -4408,9 +4628,25 @@ export async function buildCorpus({
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
         rankedCount,
         snapshotPath: data.sources.resilienceSnapshot,
+        developments: pulseDevelopments,
       }),
     );
   }
+  // Pipeline tripwire (#7615): the per-page guard proves frozen items render;
+  // this proves the freeze captured any. A zero means the digest match,
+  // brief, and timeline paths all came back empty — enriching nothing while
+  // the build stays green. (Per-page coverage varies with the news cycle, so
+  // the floor is pipeline-alive, not per-page — zero-match countries are the
+  // documented input to residual hub consolidation, not a build failure.)
+  // Snapshots frozen before developments existed carry no `developments` key
+  // at all; the tripwire applies only once the snapshot has the shape, so
+  // older committed snapshots (and the tests pinned to them) keep building.
+  const snapshotCarriesDevelopments = Object.values(data.livePulse?.countries || {})
+    .some((row) => row && typeof row === 'object' && 'developments' in row);
+  assertDevelopmentsCoverage({
+    carriesDevelopments: snapshotCarriesDevelopments,
+    developmentsPageCount,
+  });
 
   writeGeneratedFile(
     outDir,
