@@ -541,7 +541,7 @@ describe('unranked observed support threshold', () => {
     assert.equal(
       note,
       'Social cohesion is observed but below the 50% coverage a supported reading needs,'
-      + ' so it is recorded here but not among the supported readings.',
+      + ' so it is recorded here without counting as supported readings.',
     );
   });
 
@@ -556,7 +556,7 @@ describe('unranked observed support threshold', () => {
     assert.equal(
       note,
       'Energy system resilience and Social cohesion are observed but below the 50% coverage'
-      + ' a supported reading needs, so they are recorded here but not among the supported readings.',
+      + ' a supported reading needs, so they are recorded here without counting as supported readings.',
     );
   });
 
@@ -599,5 +599,56 @@ describe('unranked evidence inventory build assertion', () => {
       ])),
       /TV.*socialCohesion/s,
     );
+  });
+
+  // The two branches define "supported" differently on purpose: the microstate
+  // page counts its readings out loud, so a dimension it cannot score breaks the
+  // count, while a generic page only claims evidence is present and needs
+  // nothing but coverage. That asymmetry is what makes the throw above reachable
+  // on one branch and unreachable on the other -- pin it, or a later attempt to
+  // "unify" the two definitions silently changes which pages can fail the build.
+  // #7530 broke the page by dropping a bucket from the SENTENCE while the data
+  // behind it stayed correct. A gate that only re-reads the partition is blind
+  // to exactly that edit, so it has to read the published string too. These two
+  // pin that the string check is live -- delete it and they go green.
+  it('rejects a scope note that drops a bucket a reader needs to add up', () => {
+    const country = countryFixture({ code: 'PW' }, [
+      ...Array.from({ length: 13 }, (_unused, index) => dimension(`partial${index}`, 0.05 + (index * 0.01), '', 50)),
+      ...Array.from({ length: 3 }, (_unused, index) => dimension(`full${index}`, 1, '', 80)),
+    ]);
+    // What describeInventoryScope would emit if `${omittedTail}` were deleted.
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(country, {
+        inventoryScope: 'Showing 12 of 16 active dimensions, lowest coverage first.',
+      }),
+      /PW publishes an inventory scope note a reader cannot add up to its 16 active dimensions/,
+    );
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(country, {
+      inventoryScope: describeInventoryScope(country),
+    }));
+  });
+
+  it('rejects a threshold note that stops naming the coverage floor', () => {
+    const country = countryFixture({ code: 'TV', microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(country, {
+        supportThreshold: 'Social cohesion is observed but not a supported reading.',
+      }),
+      /TV lists socialCohesion as observed outside the supported readings without publishing the 50% support threshold/,
+    );
+  });
+
+  it('does not reject a scoreless above-threshold dimension on a generic unranked page', () => {
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(countryFixture({
+      name: 'Iraq',
+      code: 'IQ',
+      microstateTerritory: false,
+    }, [
+      dimension('socialCohesion', 0.6, '', null),
+      dimension('macroFiscal', 0.8, '', 60),
+    ])));
   });
 });

@@ -137,6 +137,8 @@ const AVAILABLE_EVIDENCE_LIMIT = 6;
 // inventory labels anything with a usable series "observed", so a dimension
 // under this floor is observed and absent from the supported readings at once --
 // which reads as a contradiction unless the page states the floor (#7609).
+// This floor is published on country pages, so keep it aligned with
+// docs/methodology/country-resilience-index.mdx#supported-readings-on-unranked-country-pages.
 export const SUPPORTED_READING_MIN_COVERAGE = 0.5;
 export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-04';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
@@ -2704,14 +2706,18 @@ export function describeSupportThreshold(country) {
   const verb = belowThreshold.length === 1 ? 'is' : 'are';
   const pronoun = belowThreshold.length === 1 ? 'it is' : 'they are';
   const floor = `${Math.round(SUPPORTED_READING_MIN_COVERAGE * 100)}%`;
-  return `${labels} ${verb} observed but below the ${floor} coverage a supported reading needs, so ${pronoun} recorded here but not among the supported readings.`;
+  // "without counting as supported readings" rather than "not among the
+  // supported readings": only the microstate branch enumerates that list, so on
+  // a generic page the latter points at something the page never renders. The
+  // sentence defines the term it uses, so it stands alone on both branches.
+  return `${labels} ${verb} observed but below the ${floor} coverage a supported reading needs, so ${pronoun} recorded here without counting as supported readings.`;
 }
 
 // These pages publish an evidence inventory about their own evidence base, so a
 // reader who adds the numbers up has to find them consistent. Fail the build
 // rather than the review: #7530's fix for the missing truncation note is what
 // introduced the arithmetic defect, and no test covered the claim (#7609).
-export function assertUnrankedInventoryIntegrity(country) {
+export function assertUnrankedInventoryIntegrity(country, rendered = {}) {
   const { total, shown, omittedClauses } = unrankedInventoryScope(country);
   const accounted = omittedClauses.reduce((sum, clause) => sum + clause.count, shown);
   if (accounted !== total) {
@@ -2721,11 +2727,41 @@ export function assertUnrankedInventoryIntegrity(country) {
       + ` = ${accounted}, not the ${total} active dimensions the page claims`,
     );
   }
+  // Check the sentence, not just the buckets behind it. The reader adds up
+  // rendered numbers, so the regression this gate exists to stop -- #7530
+  // dropping a bucket from the copy -- is invisible to a check that only
+  // re-reads the partition. Parsing the published string is a second derivation.
+  const scope = rendered.inventoryScope === undefined
+    ? describeInventoryScope(country)
+    : rendered.inventoryScope;
+  if (accounted !== shown) {
+    const stated = [...String(scope ?? '').matchAll(/\d+/g)].map(([value]) => Number(value));
+    const [statedShown, statedTotal, ...statedOmitted] = stated;
+    if (
+      statedShown !== shown
+      || statedTotal !== total
+      || statedOmitted.length !== omittedClauses.length
+      || statedOmitted.reduce((sum, count) => sum + count, statedShown) !== statedTotal
+    ) {
+      throw new Error(
+        `${country.code} publishes an inventory scope note a reader cannot add up to`
+        + ` its ${total} active dimensions: "${scope}"`,
+      );
+    }
+  } else if (scope !== null) {
+    throw new Error(
+      `${country.code} publishes an inventory scope note although nothing is omitted: "${scope}"`,
+    );
+  }
+  const floor = `${Math.round(SUPPORTED_READING_MIN_COVERAGE * 100)}%`;
   const unsupported = unsupportedObservedInventory(country);
-  if (unsupported.length > 0 && describeSupportThreshold(country) == null) {
+  const threshold = rendered.supportThreshold === undefined
+    ? describeSupportThreshold(country)
+    : rendered.supportThreshold;
+  if (unsupported.length > 0 && !String(threshold ?? '').includes(floor)) {
     throw new Error(
       `${country.code} lists ${unsupported.map((dimension) => dimension.id).join(', ')} as observed`
-      + ' outside the supported readings without stating the support threshold',
+      + ` outside the supported readings without publishing the ${floor} support threshold`,
     );
   }
   const aboveThreshold = unsupported.filter((dimension) => (
@@ -2734,8 +2770,9 @@ export function assertUnrankedInventoryIntegrity(country) {
   if (aboveThreshold.length > 0) {
     throw new Error(
       `${country.code} lists ${aboveThreshold.map((dimension) => dimension.id).join(', ')} as observed`
-      + ` at or above the ${Math.round(SUPPORTED_READING_MIN_COVERAGE * 100)}% support threshold`
-      + ' yet omits them from the supported readings, which the threshold note cannot explain',
+      + ` at or above the ${floor} support threshold yet omits them from the supported readings.`
+      + ' Either the dimension carries no usable score, or dimensionInventoryNote fell through to'
+      + ' "observed" for an imputationClass it does not recognise; the threshold note explains neither.',
     );
   }
 }
@@ -2854,9 +2891,9 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
-    assertUnrankedInventoryIntegrity(country);
     const inventoryScope = describeInventoryScope(country);
     const supportThreshold = describeSupportThreshold(country);
+    assertUnrankedInventoryIntegrity(country, { inventoryScope, supportThreshold });
     const inventoryPreamble = [
       inventoryScope
         ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
