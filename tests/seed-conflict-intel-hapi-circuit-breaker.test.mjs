@@ -43,7 +43,7 @@ function hapiHdxResource(year) {
   return {
     id: `resource-${year}`,
     format: 'CSV',
-    name: `hdx_hapi_conflict_event_global_${year}.csv`,
+    name: `Global Coordination & Context: Conflict Events (${year})`,
     url: `https://data.humdata.org/dataset/example/resource/resource-${year}/download/hdx_hapi_conflict_event_global_${year}.csv`,
   };
 }
@@ -157,6 +157,40 @@ test('HAPI HDX gives snapshot downloads a longer bounded deadline than metadata'
   assert.deepEqual(timeoutCalls, [60_000, 120_000]);
   assert.strictEqual(fetchSignals[0], timeoutSignals[0]);
   assert.strictEqual(fetchSignals[1], timeoutSignals[1]);
+});
+
+test('HAPI HDX metadata identity avoids the Railway WAF challenge', async () => {
+  let metadataCalls = 0;
+  let metadataUserAgent;
+  const csv = hapiCsv(
+    'SDN,,,,,,,,,0,political_violence,12,3,2026-07-01,2026-07-31,dataset,resource,,',
+  );
+  const rows = await fetchHapiHdxSnapshotRows({
+    nowMs: NOW,
+    countryCodes: ['SD'],
+    fetchFn: async (input, options) => {
+      if (String(input).includes('/api/3/action/package_show')) {
+        metadataCalls += 1;
+        metadataUserAgent = options.headers['User-Agent'];
+        if (metadataUserAgent !== 'wm-crisis-tracker/1.0') {
+          return new Response('', {
+            status: 202,
+            headers: {
+              'Content-Type': 'text/html',
+              'x-amzn-waf-action': 'challenge',
+            },
+          });
+        }
+        return Response.json(hapiHdxMetadata());
+      }
+      return new Response(csv, { headers: { 'Content-Type': 'text/csv' } });
+    },
+  });
+
+  assert.equal(metadataCalls, 1);
+  assert.equal(metadataUserAgent, 'wm-crisis-tracker/1.0');
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].location_code, 'SDN');
 });
 
 test('HAPI bulk rows are grouped by country and only the latest reference period is published', () => {
