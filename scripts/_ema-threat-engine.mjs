@@ -69,7 +69,7 @@ export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents, nowMs =
     const country = normalizeCountry(ev?.country);
     if (!country) continue;
     const ts = Date.parse(ev.event_date);
-    if (Number.isFinite(ts) && ts >= cutoff) {
+    if (Number.isFinite(ts) && ts >= cutoff && ts <= nowMs) {
       counts24h.set(country, (counts24h.get(country) ?? 0) + 1);
     }
   }
@@ -78,7 +78,7 @@ export function computeEmaWindows(priorWindows, acledEvents, ucdpEvents, nowMs =
     const country = normalizeCountry(ev?.country ?? ev?.country_name);
     if (!country) continue;
     const ts = Date.parse(ev.date_start);
-    if (Number.isFinite(ts) && ts >= cutoff) {
+    if (Number.isFinite(ts) && ts >= cutoff && ts <= nowMs) {
       counts24h.set(country, (counts24h.get(country) ?? 0) + 1);
     }
   }
