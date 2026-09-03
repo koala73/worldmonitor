@@ -184,8 +184,18 @@ const sourceToRegExp = (source) => {
         out += source.slice(j, k + 1);
         i = k;
       } else if (source[j] === '*') {
+        // Vercel compiles `source` with path-to-regexp in STRICT mode: a `*`
+        // param is a run of NON-EMPTY segments and no optional trailing slash
+        // is appended. So `/countries/:path*` matches `/countries` and
+        // `/countries/japan`, but neither `/countries/` nor `/countries/japan/`
+        // — and every crawlable-corpus URL canonicalises to the trailing-slash
+        // form. This modelled `(?:/.*)?` until #7530, which matched both forms
+        // and kept the corpus cache assertions green while production served
+        // Vercel's static default on all 250 corpus routes (see the strict-mode
+        // cases in 'vercel.json source matching'). Raw `(.*)` groups are
+        // unaffected — they are copied through verbatim above.
         out = out.replace(/\/$/, '');
-        out += '(?:/.*)?';
+        out += '(?:/[^/]+)*';
         i = j;
       } else {
         out += '[^/]+';
@@ -379,6 +389,56 @@ const getVariantUrls = () => {
   );
 };
 
+
+// `sourceToRegExp` is this suite's model of how Vercel compiles a `source`.
+// Pin its strict-mode semantics directly: while the model was more permissive
+// than Vercel's compiler, every assertion built on it reported a match that
+// production did not make, and ~22 dead corpus cache rules shipped unnoticed
+// (#7530). Each case below was verified against production before being pinned.
+describe('vercel.json source matching', () => {
+  it('models a :param* catch-all as non-empty segments with no trailing slash', () => {
+    const matches = (path) => sourceToRegExp('/countries/:path*').test(path);
+    assert.equal(matches('/countries'), true);
+    assert.equal(matches('/countries/japan'), true);
+    assert.equal(matches('/countries/japan/kanto'), true);
+    // The forms the corpus actually canonicalises to — Vercel does not match
+    // these, which is the whole defect.
+    assert.equal(matches('/countries/'), false);
+    assert.equal(matches('/countries/japan/'), false);
+  });
+
+  it('models a raw regex group as matching the empty string and trailing slashes', () => {
+    const matches = (path) => sourceToRegExp('/countries/(.*)').test(path);
+    // Verified in production against the equivalently shaped `/assets/(.*)`
+    // rule: `/assets/` returns the configured immutable cache header, so the
+    // group does match empty.
+    assert.equal(matches('/countries/'), true);
+    assert.equal(matches('/countries/japan/'), true);
+    assert.equal(matches('/countries/japan'), true);
+    assert.equal(matches('/countries'), false, 'the literal /countries rule covers the bare form');
+  });
+
+  // The load-bearing form for the shared-content 308s: a named param with an
+  // explicit `.*` pattern behaves like the raw group but keeps the `:match`
+  // destination interpolation every other redirect in this file already uses,
+  // so no rule depends on `$1` support we have no in-repo evidence for.
+  it('models a :name(regex) custom matcher like the equivalent raw group', () => {
+    const named = (path) => sourceToRegExp('/countries/:match(.*)').test(path);
+    const raw = (path) => sourceToRegExp('/countries/(.*)').test(path);
+    for (const path of ['/countries/', '/countries/japan', '/countries/japan/', '/countries']) {
+      assert.equal(named(path), raw(path), `${path} must match both forms identically`);
+    }
+    assert.equal(named('/countries/'), true);
+    assert.equal(named('/countries/japan/'), true);
+    assert.equal(named('/countries'), false);
+  });
+
+  it('models a literal source as exact, with no optional trailing slash', () => {
+    assert.equal(sourceToRegExp('/countries').test('/countries'), true);
+    assert.equal(sourceToRegExp('/countries').test('/countries/'), false);
+    assert.equal(sourceToRegExp('/offline.html').test('/offline.html'), true);
+  });
+});
 
 describe('crawlable content corpus deployment contracts', () => {
   const staticCorpusPaths = [
@@ -666,8 +726,85 @@ describe('crawlable content corpus deployment contracts', () => {
     for (const prefix of CONTENT_CORPUS_PREFIXES) {
       const expected = 'public, max-age=3600, must-revalidate';
       assert.equal(getCacheHeaderValue('/' + prefix), expected, '/' + prefix + ' must have a cache policy');
-      assert.equal(getCacheHeaderValue('/' + prefix + '/:path*'), expected, '/' + prefix + '/:path* must have a cache policy');
+      assert.equal(getCacheHeaderValue('/' + prefix + '/(.*)'), expected, '/' + prefix + '/(.*) must have a cache policy');
+      // Both canonical forms. The corpus canonicalises to a trailing slash, so
+      // the second is the only one crawlers ever request (#7530).
+      assert.equal(effectiveCacheControl('/' + prefix + '/example'), expected, '/' + prefix + '/example must not inherit SPA HTML cache headers');
       assert.equal(effectiveCacheControl('/' + prefix + '/example/'), expected, '/' + prefix + '/example/ must not inherit SPA HTML cache headers');
+      assert.equal(effectiveCacheControl('/' + prefix + '/'), expected, '/' + prefix + '/ must not inherit SPA HTML cache headers');
+    }
+  });
+
+  // A `:path*` source cannot match a trailing-slash URL under Vercel's strict
+  // path-to-regexp compilation, so no corpus source may use one: that is the
+  // exact shape that left every corpus cache rule inert in production while
+  // this suite stayed green (#7530). Production evidence at the time:
+  // `/countries/japan/` and `/chokepoints/` both served Vercel's static default
+  // `public, max-age=0, must-revalidate`, never the configured max-age=3600,
+  // while `/assets/(.*)` — a raw regex group — applied correctly.
+  // Scoped to CONTENT_CORPUS_PREFIXES on its first pass, this could not see the
+  // same shape surviving on /pro and /docs — `/pro/` was measured in production
+  // serving 200 with `public, max-age=0, must-revalidate` where the rule intends
+  // `private, no-cache` on an authenticated surface. Sweep EVERY header rule
+  // instead, with an explicit allowlist for the sources where the shape is
+  // correct because those URLs never carry a trailing slash.
+  it('never guards a route with a trailing-slash-blind :param* header source', () => {
+    // Mintlify serves /docs/<page> with no trailing slash, so its proxy rewrite
+    // is the one place the shape is right. It is a rewrite, not a header rule,
+    // and is asserted separately — nothing here should need an exemption.
+    const EXEMPT = new Set();
+    const blind = vercelConfig.headers
+      .map((entry) => entry.source)
+      .filter((source) => /:[A-Za-z0-9_]+\*/.test(source) && !EXEMPT.has(source));
+    assert.deepEqual(
+      blind,
+      [],
+      'these header sources use a :param* catch-all, which Vercel compiles in strict mode'
+        + ' and which therefore never matches the trailing-slash form of the URL',
+    );
+
+    // Positive control: the sweep must actually be looking at rules.
+    assert.ok(vercelConfig.headers.length > 50, 'expected the header rule set to be non-trivial');
+    assert.ok(
+      CONTENT_CORPUS_PREFIXES.every((prefix) => vercelConfig.headers.some(
+        (entry) => entry.source === `/${prefix}` || entry.source.startsWith(`/${prefix}/`),
+      )),
+      'every corpus family must still have its own header rule',
+    );
+  });
+
+  it('applies the /pro and /docs header rules to their trailing-slash forms', () => {
+    assert.equal(
+      effectiveCacheControl('/pro/'),
+      'private, no-cache, must-revalidate',
+      '/pro/ is an authenticated surface; a shared cache must not be allowed to store it',
+    );
+    assert.equal(effectiveCacheControl('/pro/welcome/'), 'private, no-cache, must-revalidate');
+    assert.equal(effectiveHeader('/docs/', 'X-Content-Type-Options'), 'nosniff');
+    assert.equal(effectiveHeader('/docs/zh/about/', 'X-Content-Type-Options'), 'nosniff');
+  });
+
+  it('advertises the edge cache and the RFC 8288 service linkset on every corpus route', () => {
+    const linkset = effectiveHeader('/', 'Link');
+    assert.match(linkset, /rel="api-catalog"/, 'the homepage linkset is the reference value');
+    for (const prefix of CONTENT_CORPUS_PREFIXES) {
+      for (const route of [`/${prefix}`, `/${prefix}/`, `/${prefix}/example/`]) {
+        assert.equal(
+          effectiveHeader(route, 'CDN-Cache-Control'),
+          HTML_ENTRY_EDGE_CACHE,
+          `${route} must advertise the 600s Cloudflare TTL; without it Cloudflare answers DYNAMIC and never caches the page`,
+        );
+        assert.equal(
+          effectiveHeader(route, 'Vercel-CDN-Cache-Control'),
+          HTML_ENTRY_EDGE_CACHE,
+          `${route} must advertise the 600s Vercel TTL`,
+        );
+        assert.equal(
+          effectiveHeader(route, 'Link'),
+          linkset,
+          `${route} must carry the same service linkset as the homepage`,
+        );
+      }
     }
   });
 
@@ -712,7 +849,7 @@ describe('crawlable content corpus deployment contracts', () => {
       writeFixturePage(
         publicDir,
         'reference/changelog/index.html',
-        '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
+        '<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1" /><link rel="canonical" href="https://www.worldmonitor.app/reference/changelog/" /><link rel="next" href="https://www.worldmonitor.app/reference/changelog/page/2/" />'
       );
       writeFixturePage(
         publicDir,
@@ -4086,15 +4223,15 @@ describe('docs host scoping — Mintlify proxy is www-only (#5345)', () => {
   // proxy. The host list is derived from the /dashboard variant rewrites so a
   // new variant subdomain cannot ship outside the docs redirect.
   const docsHostRedirect = vercelConfig.redirects.find(
-    (r) => r.source === '/docs/:match*' && r.has
+    (r) => r.source === '/docs/:match(.*)' && r.has
   );
   const variantHosts = vercelConfig.rewrites
     .filter((r) => r.source === '/dashboard' && r.has)
     .map((r) => (r.has ?? []).find((h) => h.type === 'host')?.value ?? '');
 
   it('redirects subdomain /docs/* to www permanently', () => {
-    assert.ok(docsHostRedirect, 'expected a host-conditioned redirect for /docs/:match*');
-    assert.equal(docsHostRedirect.destination, 'https://www.worldmonitor.app/docs/:match*');
+    assert.ok(docsHostRedirect, 'expected a host-conditioned redirect for /docs/:match(.*)');
+    assert.equal(docsHostRedirect.destination, 'https://www.worldmonitor.app/docs/:match');
     assert.equal(docsHostRedirect.permanent, true);
   });
 
@@ -4383,7 +4520,7 @@ describe('skeleton brand text extraction (#5541)', () => {
 // alternates (or, for RSS, duplicates with no user-selected canonical).
 describe('variant-host canonicalization (#6833–#6836)', () => {
   const docsHostRedirect = vercelConfig.redirects.find(
-    (r) => r.source === '/docs/:match*' && r.has
+    (r) => r.source === '/docs/:match(.*)' && r.has
   );
   const sharedHostValue = (docsHostRedirect?.has ?? []).find((h) => h.type === 'host')?.value ?? '';
   const sharedHostRe = new RegExp(sharedHostValue);
@@ -4423,16 +4560,72 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
 
   for (const prefix of SHARED_WWW_PREFIXES) {
     it(`308s variant/api /${prefix}/* to www (#6833)`, () => {
-      const redirect = hostRedirect(`/${prefix}/:match*`, 'tech');
-      assert.ok(redirect, `expected a host-conditioned 308 for /${prefix}/:match*`);
-      assert.equal(redirect.destination, `https://www.worldmonitor.app/${prefix}/:match*`);
+      const redirect = hostRedirect(`/${prefix}/:match(.*)`, 'tech');
+      assert.ok(redirect, `expected a host-conditioned 308 for /${prefix}/:match(.*)`);
+      assert.equal(redirect.destination, `https://www.worldmonitor.app/${prefix}/:match`);
       assert.equal(redirect.permanent, true);
       const hostValue = (redirect.has ?? []).find((h) => h.type === 'host')?.value;
       assert.equal(
         hostValue,
         sharedHostValue,
-        `/${prefix}/:match* must reuse the /docs host regex so a new variant cannot ship uncovered`
+        `/${prefix}/:match(.*) must reuse the /docs host regex so a new variant cannot ship uncovered`
       );
+    });
+  }
+
+  // The shared corpus canonicalises to a trailing slash, so the trailing-slash
+  // form is the ONLY one a crawler requests. `/${prefix}/:match*` matched
+  // neither `/countries/` nor `/countries/japan/` under Vercel's strict
+  // path-to-regexp, so until #7530 every variant subdomain served the whole
+  // shared corpus as a 200 instead of 308-ing it to www — ~1,250 duplicate
+  // crawlable URLs across five subdomains, held together only by the canonical
+  // tag the pages happen to carry. Assert the canonical form explicitly.
+  for (const prefix of SHARED_WWW_PREFIXES) {
+    it(`308s the trailing-slash form of /${prefix}/ off variant hosts (#7530)`, () => {
+      // Bare `/reference/` is claimed earlier by the host-agnostic hop to
+      // /reference/changelog/, which the shared-content 308 then hands to www.
+      const paths = prefix === 'reference'
+        ? [`/${prefix}/example/`, `/${prefix}/example`]
+        : [`/${prefix}/`, `/${prefix}/example/`, `/${prefix}/example`];
+      for (const path of paths) {
+        const redirect = firstRedirectFor({ host: 'tech.worldmonitor.app', path });
+        assert.ok(redirect, `${path} must 308 off tech.worldmonitor.app, not serve a duplicate 200`);
+        assert.equal(
+          redirect.destination,
+          `https://www.worldmonitor.app/${prefix}/:match`,
+          `${path} must land on the www canonical`,
+        );
+      }
+
+      // The BARE form is the gap this guard missed on its first pass. Because
+      // `:match(.*)` no longer matches `/tools`, that path now escapes the
+      // variant host only via the host-agnostic `/tools` -> `/tools/` hop, and
+      // deleting that hop left the whole suite green while the tracer reported
+      // the page served as a 200 duplicate. Follow the chain to its terminus
+      // instead of asserting a single rule, so whichever rule carries the bare
+      // form, it must still end on www.
+      let path = `/${prefix}`;
+      let landed = null;
+      for (let hop = 0; hop < 4; hop += 1) {
+        const redirect = firstRedirectFor({ host: 'tech.worldmonitor.app', path });
+        assert.ok(
+          redirect,
+          `/${prefix} must not be served as a 200 duplicate on tech.worldmonitor.app`
+            + ` (chain stalled at ${path} after ${hop} hop(s))`,
+        );
+        const destination = String(redirect.destination);
+        if (destination.startsWith('https://www.worldmonitor.app')) {
+          landed = destination;
+          break;
+        }
+        assert.ok(
+          destination.startsWith('/'),
+          `/${prefix} hopped to ${destination}, which is neither www nor a same-host path`,
+        );
+        assert.notEqual(destination, path, `/${prefix} redirect loop at ${path}`);
+        path = destination;
+      }
+      assert.ok(landed, `/${prefix} must reach www.worldmonitor.app within 4 hops`);
     });
   }
 
@@ -4492,7 +4685,7 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     assert.equal(firstRedirectFor({ host: 'api.worldmonitor.app', path: '/' })?.destination, 'https://www.worldmonitor.app/');
     assert.equal(
       firstRedirectFor({ host: tech, path: '/blog/rss.xml' })?.destination,
-      'https://www.worldmonitor.app/blog/:match*'
+      'https://www.worldmonitor.app/blog/:match'
     );
     assert.equal(firstRedirectFor({ host: tech, path: '/pro' })?.destination, 'https://www.worldmonitor.app/pro');
     assert.equal(firstRedirectFor({ host: tech, path: '/pro/' })?.destination, 'https://www.worldmonitor.app/pro');
@@ -4513,9 +4706,9 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
   });
 
   it('places shared-content 308s before host-agnostic trailing-slash redirects (#6833)', () => {
-    const blogIdx = vercelConfig.redirects.findIndex((r) => r.source === '/blog/:match*' && r.has);
+    const blogIdx = vercelConfig.redirects.findIndex((r) => r.source === '/blog/:match(.*)' && r.has);
     const slashIdx = vercelConfig.redirects.findIndex((r) => r.source === '/countries' && !r.has);
-    assert.ok(blogIdx >= 0, 'missing /blog/:match* host 308');
+    assert.ok(blogIdx >= 0, 'missing /blog/:match(.*) host 308');
     assert.ok(slashIdx >= 0, 'missing /countries trailing-slash redirect');
     assert.ok(blogIdx < slashIdx, 'host 308s must run before same-host slash normalization');
   });
@@ -4599,9 +4792,15 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
       firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference/' })?.destination,
       '/reference/changelog/',
     );
+    // Bare `/reference` is normalised on the variant host first, then handed to
+    // www by the shared-content 308 — two hops, same destination.
     assert.equal(
       firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference' })?.destination,
-      'https://www.worldmonitor.app/reference/:match*',
+      '/reference/changelog/',
+    );
+    assert.equal(
+      firstRedirectFor({ host: 'tech.worldmonitor.app', path: '/reference/changelog/' })?.destination,
+      'https://www.worldmonitor.app/reference/:match',
     );
   });
 

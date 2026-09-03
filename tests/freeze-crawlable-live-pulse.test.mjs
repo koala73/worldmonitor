@@ -87,7 +87,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
     };
   }
 
-  function chokepointPayload(ids) {
+  function chokepointPayload(ids, descriptions = {}) {
     return {
       fetchedAt: Date.now(),
       chokepoints: ids.map((id) => ({
@@ -99,6 +99,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
         aisDisruptions: 0,
         aisSnapshotAvailable: true,
         congestionLevel: 'normal',
+        description: descriptions[id],
         transitSummary: {
           dataAvailable: true,
           todayTotal: 0,
@@ -128,7 +129,11 @@ describe('freeze crawlable live pulse coverage gates', () => {
    * `dropCountriesAfter` fails every country request past that index;
    * `chokepointIds` limits which chokepoints the upstream reports.
    */
-  function stubFetch({ dropCountriesAfter = Infinity, chokepointIds = null } = {}) {
+  function stubFetch({
+    dropCountriesAfter = Infinity,
+    chokepointIds = null,
+    chokepointDescriptions = {},
+  } = {}) {
     let countriesServed = 0;
     globalThis.fetch = async (url) => {
       const href = String(url);
@@ -141,11 +146,14 @@ describe('freeze crawlable live pulse coverage gates', () => {
         return jsonResponse(countryPayload());
       }
       if (href.includes('get-chokepoint-status')) {
-        return jsonResponse(chokepointPayload(chokepointIds ?? [
-          'suez', 'malacca_strait', 'hormuz_strait', 'bab_el_mandeb', 'panama',
-          'taiwan_strait', 'cape_of_good_hope', 'gibraltar', 'bosphorus',
-          'korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait',
-        ]));
+        return jsonResponse(chokepointPayload(
+          chokepointIds ?? [
+            'suez', 'malacca_strait', 'hormuz_strait', 'bab_el_mandeb', 'panama',
+            'taiwan_strait', 'cape_of_good_hope', 'gibraltar', 'bosphorus',
+            'korea_strait', 'dover_strait', 'kerch_strait', 'lombok_strait',
+          ],
+          chokepointDescriptions,
+        ));
       }
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
@@ -211,6 +219,22 @@ describe('freeze crawlable live pulse coverage gates', () => {
           && pulse.weekMovement === '0% vs prior week'
         )),
       );
+    } finally {
+      await rm(rootDir, { recursive: true, force: true });
+    }
+  });
+
+  it('omits the upstream no-active-disruptions boilerplate from frozen chokepoints', async () => {
+    stubFetch({ chokepointDescriptions: { malacca_strait: 'No active disruptions' } });
+    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
+    try {
+      const { snapshot } = await freezeCrawlableLivePulse({
+        apiBase: BASE,
+        rootDir,
+        requestGapMs: 0,
+      });
+      assert.equal(snapshot.chokepoints.malacca_strait.description, null);
     } finally {
       await rm(rootDir, { recursive: true, force: true });
     }

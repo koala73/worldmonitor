@@ -83,6 +83,8 @@ describe('Toronto safety qualification wiring (#7012)', () => {
     assert.equal(TPS_CALLS_KEY, calls.canonicalKey);
     assert.equal(TPS_MCI_META_KEY, mci.seedMetaKey);
     assert.equal(TPS_CALLS_META_KEY, calls.seedMetaKey);
+    assert.equal(calls.attribution, 'Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/');
+    assert.equal(calls.sourceUrl, 'https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/');
   });
 
   it('does not add GTA or the on-demand TPS datasets to seed-bundle-canada', () => {
