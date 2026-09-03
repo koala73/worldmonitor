@@ -131,11 +131,11 @@ export function buildContextPrefix(rootDirectory) {
  * bootstrap publisher uses it deliberately).
  *
  * The two sources are UNIONED rather than one winning, because they can
- * legitimately disagree: the registry is edited in a PR and only reaches
- * Railway when someone runs the audit with --apply, so between those two events
- * each source knows a path the other does not. Three of the fleet's apparent
- * refusals were exactly this window. A union is wrong only in the direction
- * that builds too much.
+ * legitimately disagree: the registry is edited in a PR and reaches Railway
+ * when the main-only registry sync applies it. Between merge and verified
+ * convergence each source knows a path the other does not. Three of the fleet's
+ * apparent refusals were exactly this window. A union is wrong only in the
+ * direction that builds too much.
  */
 export function resolveServiceClosure({ registryEntry = null, liveService = null } = {}) {
   const declared = [];
