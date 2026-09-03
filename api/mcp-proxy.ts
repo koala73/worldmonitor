@@ -6,6 +6,7 @@ import https from 'node:https';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
+import { captureSilentError } from './_sentry-node.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
 import {
@@ -1122,11 +1123,17 @@ export default async function handler(req: IncomingMessage, res: ServerResponse)
   try {
     response = await handleProxyRequest(toWebRequest(req));
   } catch (err) {
+    // The one signal that a repeat of #4754 reached production: anything that
+    // escapes handleProxyRequest is a runtime-contract failure, not a bad
+    // request. A console line alone does not page anyone, and the whole point
+    // of this route's runtime move is that its last regression 500'd silently
+    // for 31 minutes.
     console.error('[mcp-proxy]', {
       event: 'mcp_proxy_unhandled',
       ts: new Date().toISOString(),
       message: err instanceof Error ? err.message : String(err),
     });
+    captureSilentError(err, { tags: { route: 'mcp-proxy', event: 'mcp_proxy_unhandled' } });
     response = jsonResponse({ error: 'Internal error' }, 500, withProxyNoStore());
   }
   await writeWebResponse(res, response);
