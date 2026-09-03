@@ -2529,6 +2529,22 @@ function selectUnrankedInventory(country) {
   return selected;
 }
 
+// The inventory is weakest-first and capped, so on a country like Tuvalu a
+// reader sees 12 of 23 dimensions -- the 12 worst -- with the 7 at full
+// coverage never entering the pool at all and 2 more dropped by the cap. Listing
+// only the weakest evidence with no note reads as uniformly poor coverage, which
+// is the opposite of what the snapshot says (#7530). State what is shown and
+// what is omitted, and say it only when something actually is omitted.
+export function describeInventoryScope(country, shown) {
+  const dimensions = activeCountryDimensions(country);
+  const total = dimensions.length;
+  const omitted = total - shown;
+  if (omitted <= 0) return null;
+  const complete = dimensions.filter((dimension) => Number(dimension.coverage) === 1).length;
+  const completeClause = complete > 0 ? `; ${complete} more at full coverage` : '';
+  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${completeClause}.`;
+}
+
 function formatSignedScore(value, evidence) {
   return formatObservedNumber(value, evidence, (numeric) => (
     `${numeric > 0 ? '+' : ''}${formatScoreNumber(numeric)}`
@@ -2643,6 +2659,10 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
+    const inventoryScope = describeInventoryScope(country, inventory.length);
+    const inventoryScopeNote = inventoryScope
+      ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
+      : '';
     if (coverageStory) {
       const comparatorLinks = coverageStory.useRegionalComparators ? regionalLinks : peerLinks;
       const html = `      <article data-country-analysis>
@@ -2655,7 +2675,7 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(coverageStory.evidence)}</p>
         <h3>Dimension evidence inventory</h3>
-        <ul class="routes">
+${inventoryScopeNote}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -2699,7 +2719,7 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(availableEvidence)}</p>
         <h3>Dimension evidence inventory</h3>
-        <ul class="routes">
+${inventoryScopeNote}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>

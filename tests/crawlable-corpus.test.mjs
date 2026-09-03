@@ -22,6 +22,7 @@ import {
   DATASET_SCHEMA_CONTENT_VERSION,
   datasetTemporalCoverage,
   describeHeadlineIneligibilityReason,
+  describeInventoryScope,
   GENERATED_DIRS,
   gitFileLastmod,
   hasObservedValue,
@@ -1432,6 +1433,29 @@ describe('crawlable corpus generator', () => {
     }
   });
 
+  // The corpus fixture has no untruncated unranked country, so the "omit the
+  // note when nothing is omitted" branch is unobservable end-to-end. Pin it
+  // directly: a note that appears when nothing is hidden would tell a reader
+  // evidence is missing when it is not.
+  it('describes the inventory scope only when rows are actually omitted', () => {
+    const dimension = (id, coverage) => ({ id, coverage });
+    const country = (coverages) => ({
+      domains: [{ id: 'd', dimensions: coverages.map((c, i) => dimension(`dim${i}`, c)) }],
+    });
+
+    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 3), null, 'nothing omitted');
+    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 4), null, 'shown exceeds total');
+    assert.equal(
+      describeInventoryScope(country([0.2, 0.4, 1, 1]), 2),
+      'Showing 2 of 4 active dimensions, lowest coverage first; 2 more at full coverage.',
+    );
+    assert.equal(
+      describeInventoryScope(country([0.2, 0.4, 0.9]), 2),
+      'Showing 2 of 3 active dimensions, lowest coverage first.',
+      'no full-coverage clause when there is nothing at full coverage',
+    );
+  });
+
   it('advances the sources lastmod when the shared page template changes', () => {
     const baseline = sourcePageLastmod({
       manifestLastmod: '2026-08-10',
@@ -1776,6 +1800,42 @@ describe('crawlable corpus generator', () => {
           hub,
           /withheld rather than published as a measured zero or a calm reading/,
           'the hub must state the withholding rule it shares with the detail pages',
+        );
+      }
+
+      // The unranked inventory is weakest-first and capped at 12, so a country
+      // like Tuvalu showed its 12 worst dimensions out of 23 with no note —
+      // the 7 at full coverage never enter the pool and 2 more are dropped by
+      // the cap, so the page read as uniformly poor coverage (#7530). Whenever
+      // rows are omitted the page must say so, and the numbers must be the
+      // page's own, not a restatement of the cap.
+      {
+        let checkedTruncated = 0;
+        for (const route of manifest.sections.countries.routes) {
+          const html = read(outDir, `${route.slice(1)}index.html`);
+          const section = html.match(
+            /<h3>Dimension evidence inventory<\/h3>([\s\S]*?)<\/ul>/,
+          );
+          if (!section) continue;
+          const shown = (section[1].match(/<li>/g) || []).length;
+          const note = section[1].match(
+            /data-inventory-scope>Showing (\d+) of (\d+) active dimensions, lowest coverage first/,
+          );
+          if (!note) continue;
+          checkedTruncated += 1;
+          assert.equal(
+            Number(note[1]),
+            shown,
+            `${route} inventory note claims ${note[1]} rows but renders ${shown}`,
+          );
+          assert.ok(
+            Number(note[2]) > shown,
+            `${route} claims to omit dimensions but its total (${note[2]}) is not greater than the ${shown} shown`,
+          );
+        }
+        assert.ok(
+          checkedTruncated > 0,
+          'expected at least one country page whose dimension inventory is truncated',
         );
       }
 
