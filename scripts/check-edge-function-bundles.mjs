@@ -9,7 +9,7 @@
  */
 
 import { execFileSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
+import { existsSync, readFileSync } from 'node:fs';
 import { mkdtemp, rm } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
@@ -124,6 +124,20 @@ export function listEdgeFunctionEntries(root = process.cwd(), options = {}) {
   return collectEdgeFunctionEntries(root, options).entries;
 }
 
+/**
+ * A route that opts into Vercel's Node runtime (`export const config =
+ * { runtime: 'nodejs' }`) may import node: built-ins and is bundled with
+ * esbuild's node platform below. Shared with tests/edge-functions.test.mjs
+ * and scripts/enforce-node-runtime-handler-shape.mjs so the three gates
+ * classify a file the same way. Routes that declare nothing keep the
+ * browser bundle: Vercel defaults them to Node, but the existing ones
+ * (api/story.js, api/og-story.js) are platform-neutral and the stricter
+ * bundle is the useful signal.
+ */
+export function declaresNodeRuntime(source) {
+  return /runtime\s*:\s*['"]nodejs['"]/.test(source);
+}
+
 export async function checkEdgeFunctionBundles({ root = process.cwd(), ...options } = {}) {
   const { trackedEntries, entries, missingWorktreeEntries } = collectEdgeFunctionEntries(root, options);
   if (trackedEntries.length === 0) {
@@ -137,20 +151,31 @@ export async function checkEdgeFunctionBundles({ root = process.cwd(), ...option
     );
   }
 
+  // Node-runtime routes (GHSA-887j socket pin: api/mcp-proxy.ts) legitimately
+  // import node:https and would fail the browser bundle with "Could not
+  // resolve node:https". They still get a bundle check — with the platform
+  // they actually run on — so an unresolvable import in their graph fails
+  // the gate the same way it does for edge routes.
+  const nodeEntries = entries.filter((file) => declaresNodeRuntime(readFileSync(path.join(root, file), 'utf8')));
+  const edgeEntries = entries.filter((file) => !nodeEntries.includes(file));
+
   const outdir = await mkdtemp(path.join(os.tmpdir(), 'worldmonitor-edge-bundles-'));
   try {
-    await build({
-      absWorkingDir: root,
-      entryPoints: entries.map((file) => ({
-        in: file,
-        out: `${file.slice(0, -path.posix.extname(file).length)}-${path.posix.extname(file).slice(1)}`,
-      })),
-      outdir,
-      bundle: true,
-      format: 'esm',
-      platform: 'browser',
-      logLevel: 'error',
-    });
+    for (const [platform, platformEntries] of [['browser', edgeEntries], ['node', nodeEntries]]) {
+      if (platformEntries.length === 0) continue;
+      await build({
+        absWorkingDir: root,
+        entryPoints: platformEntries.map((file) => ({
+          in: file,
+          out: `${file.slice(0, -path.posix.extname(file).length)}-${path.posix.extname(file).slice(1)}`,
+        })),
+        outdir: path.join(outdir, platform),
+        bundle: true,
+        format: 'esm',
+        platform,
+        logLevel: 'error',
+      });
+    }
   } finally {
     await rm(outdir, { recursive: true, force: true });
   }

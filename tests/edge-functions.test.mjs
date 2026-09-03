@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { dirname, resolve, join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
-import { listTrackedApiSourceFiles } from '../scripts/check-edge-function-bundles.mjs';
+import { declaresNodeRuntime, listTrackedApiSourceFiles } from '../scripts/check-edge-function-bundles.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
@@ -112,12 +112,17 @@ describe('Edge Function shared helpers resolve', () => {
 
 describe('Edge Function no node: built-ins', () => {
   for (const { name, path } of allApiFiles) {
-    it(`${name} does not import node: built-ins (unsupported in Vercel Edge Runtime)`, () => {
+    it(`${name} does not import node: built-ins unless it declares runtime: 'nodejs'`, () => {
       const src = readFileSync(path, 'utf-8');
+      // A route that opts into the Node runtime (api/mcp-proxy.ts, for the
+      // GHSA-887j socket pin) may use node: built-ins. What it must NOT do
+      // is keep the Web handler signature — scripts/enforce-node-runtime-
+      // handler-shape.mjs holds those files to the (req, res) contract.
+      if (declaresNodeRuntime(src)) return;
       const match = src.match(/from\s+['"]node:(\w+)['"]/);
       assert.ok(
         !match,
-        `${name}: imports node:${match?.[1]} — Vercel Edge Runtime does not support node: built-in modules. Use an edge-compatible alternative.`,
+        `${name}: imports node:${match?.[1]} without runtime: 'nodejs' — Vercel Edge Runtime does not support node: built-in modules. Use an edge-compatible alternative, or declare the Node runtime deliberately and export a (req, res) handler.`,
       );
     });
   }

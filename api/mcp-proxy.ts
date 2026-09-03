@@ -2,6 +2,8 @@
 // `isCallerPremium` import from server/ (PR #3768 review). Body remains
 // JS-shaped; not annotating types in this commit. Future PR can add
 // types incrementally; behaviour is unchanged.
+import https from 'node:https';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
 import { isCallerPremium } from '../server/_shared/premium-check';
@@ -10,7 +12,12 @@ import { readBoundedRequestBody, RequestBodyTooLargeError } from './mcp/bounded-
 import { MAX_JSON_RPC_BODY_BYTES } from './mcp/body-limits';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
 
-export const config = { runtime: 'edge' };
+// Node runtime, not Edge (GHSA-887j): the upstream socket is pinned to the
+// DoH-vetted address via node:https's `lookup` hook, which the Edge fetch()
+// cannot do. On this runtime Vercel invokes the default export as
+// `handler(req, res)` with a raw IncomingMessage / ServerResponse — see the
+// adapter at the bottom of this file and tests/mcp-proxy-node-entry.test.mjs.
+export const config = { runtime: 'nodejs' };
 
 // Per-IP rate limit for the MCP proxy (issue #3805 defense-in-depth).
 // 30/min/IP is generous for normal MCP polling (most clients refresh every
@@ -20,7 +27,7 @@ export const config = { runtime: 'edge' };
 //
 // PR #3821 r2: source the limit from ENDPOINT_RATE_POLICIES so the
 // `enforce-rate-limit-policies` audit can see this endpoint. mcp-proxy is a
-// top-level Vercel Edge Function (not gateway-routed), so it can't use
+// top-level Vercel Function (not gateway-routed), so it can't use
 // `checkEndpointRateLimit`; we keep `checkScopedRateLimit` for in-handler
 // enforcement but the *policy* lives in the registry. Single source of
 // truth — tweak the limit there, this handler picks it up.
@@ -182,16 +189,187 @@ async function assertServerUrlSafe(url) {
   return { url, resolvedAddresses };
 }
 
-// Vercel Edge fetch does not expose a Node-style lookup/socket hook, so this
-// proxy CANNOT pin the TLS connection to a previously vetted address. There is
-// no way to guarantee that the IP we validated is the IP fetch() ultimately
-// connects to; a DNS answer can change between our resolve and fetch's own
-// resolve. This re-resolve-and-recheck immediately before every outbound
-// dispatch NARROWS that DNS-rebinding window but does not close it. The
-// residual rebind window is an ACCEPTED limitation of the Edge runtime (no
-// socket-level pin available) — documented, not fixed here (P2, issue #5061).
-async function revalidateBeforeFetch(url) {
-  await assertServerUrlSafe(url);
+// --- Pinned upstream transport (GHSA-887j) ---
+//
+// Every request to a caller-supplied MCP server goes through `pinnedFetch`,
+// which connects the socket to the exact address `assertServerUrlSafe` vetted
+// for THIS proxy call. The Edge fetch() re-resolved the hostname at connect
+// time, so an attacker-controlled authoritative resolver (split-horizon or
+// rebinding) could show DoH a public address while the platform resolver
+// handed the socket loopback / link-local / RFC1918. node:https accepts a
+// `lookup` hook; the hostname still drives SNI and certificate validation, so
+// TLS is unchanged — only the socket address is pinned. Redirects are never
+// followed (node:https has no redirect handling): a 3xx comes back as a non-ok
+// response, exactly like the previous `redirect: 'manual'`.
+
+// Test seam replacing `https.request` so the suite can observe the pinned
+// lookup and serve fake upstream responses without a network. Honoured only
+// under the node test runner, like the DNS resolver seam above.
+const TEST_NODE_REQUEST_KEY = Symbol.for('worldmonitor.mcpProxy.nodeRequestForTest');
+
+function getNodeRequestForTest() {
+  if (!process.env.NODE_TEST_CONTEXT) return null;
+  const requestForTest = globalThis[TEST_NODE_REQUEST_KEY];
+  return typeof requestForTest === 'function' ? requestForTest : null;
+}
+
+// Fresh socket per request. A keep-alive pool is keyed by host/port, not by
+// the address a socket was pinned to, so reuse could hand a later call a
+// socket that never went through its own `lookup`.
+const PINNED_UPSTREAM_AGENT = new https.Agent({ keepAlive: false });
+
+// AbortSignal.timeout surfaces from node:https as a generic AbortError whose
+// message says nothing about time; the handler's 504 mapping keys on
+// 'timed out', so translate before it escapes.
+class McpProxyTimeoutError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'TimeoutError';
+  }
+}
+
+function mapAbortError(error, signal) {
+  if (signal?.aborted && signal.reason?.name === 'TimeoutError') {
+    return new McpProxyTimeoutError('MCP upstream request timed out');
+  }
+  return error;
+}
+
+function choosePinnedAddress(resolvedAddresses) {
+  // Prefer an A answer (Vercel Node functions egress over IPv4), else the first
+  // AAAA. Every candidate was classified by assertServerUrlSafe; re-checking
+  // the one we actually connect to keeps the pin self-contained.
+  const pinnedAddress = resolvedAddresses.find((address) => !address.includes(':')) ?? resolvedAddresses[0];
+  if (!pinnedAddress) {
+    throw new McpProxySsrfError('serverUrl DNS resolution returned no addresses');
+  }
+  if (isBlockedResolvedAddress(pinnedAddress)) {
+    throwBlockedAddress(pinnedAddress);
+  }
+  return pinnedAddress;
+}
+
+// `lookup` hook handed to node:https for one request. net.connect uses the
+// single-address callback when `family` is forced (we force it) and the
+// `{ all: true }` address-list shape when autoSelectFamily is in play; answer
+// both so a Node default change cannot silently unpin the socket.
+function pinnedLookup(pinnedAddress, family) {
+  return (_hostname, options, callback) => {
+    const done = typeof options === 'function' ? options : callback;
+    if (options && typeof options === 'object' && options.all) {
+      done(null, [{ address: pinnedAddress, family }]);
+    } else {
+      done(null, pinnedAddress, family);
+    }
+  };
+}
+
+function headersFromIncoming(incoming) {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(incoming.headers ?? {})) {
+    if (value === undefined) continue;
+    try {
+      headers.append(name, Array.isArray(value) ? value.join(', ') : String(value));
+    } catch {
+      /* not representable as a fetch header — drop it */
+    }
+  }
+  return headers;
+}
+
+// Bridge an upstream IncomingMessage into a Web ReadableStream so the existing
+// parsers (`resp.text()`, `resp.json()`, `resp.body.getReader()`) keep working
+// on a Response. Only 'data' / 'end' / 'error' are consulted; an abort
+// mid-body is reported through the stream as the same timeout error the
+// connect phase raises.
+function incomingBodyStream(incoming, signal) {
+  let finished = false;
+  return new ReadableStream({
+    start(controller) {
+      incoming.on('data', (chunk) => {
+        if (finished) return;
+        controller.enqueue(chunk); // Buffer is a Uint8Array
+        if (controller.desiredSize !== null && controller.desiredSize <= 0) incoming.pause();
+      });
+      incoming.on('end', () => {
+        if (finished) return;
+        finished = true;
+        controller.close();
+      });
+      incoming.on('error', (error) => {
+        if (finished) return;
+        finished = true;
+        controller.error(mapAbortError(error, signal));
+      });
+    },
+    pull() {
+      incoming.resume();
+    },
+    cancel() {
+      finished = true;
+      incoming.destroy();
+    },
+  }, new ByteLengthQueuingStrategy({ highWaterMark: 64 * 1024 }));
+}
+
+function webResponseFromIncoming(incoming, signal) {
+  const rawStatus = incoming.statusCode;
+  // Response() only accepts 200-599; anything else from an upstream is a bad gateway.
+  const status = Number.isInteger(rawStatus) && rawStatus >= 200 && rawStatus <= 599 ? rawStatus : 502;
+  const headers = headersFromIncoming(incoming);
+  if (status === 204 || status === 205 || status === 304) {
+    incoming.resume(); // drain — null-body statuses cannot carry a Response body
+    return new Response(null, { status, headers });
+  }
+  return new Response(incomingBodyStream(incoming, signal), { status, headers });
+}
+
+// `target` is the `{ url, resolvedAddresses }` pair assertServerUrlSafe
+// produced for this proxy call. Every dispatch pins to that same vetted
+// answer; nothing re-resolves at connect time.
+async function pinnedFetch(target, init = {}) {
+  const { url, resolvedAddresses } = target;
+  const pinnedAddress = choosePinnedAddress(resolvedAddresses);
+  const family = pinnedAddress.includes(':') ? 6 : 4;
+  const body = init.body === undefined || init.body === null ? null : Buffer.from(String(init.body), 'utf8');
+  const headers = { ...(init.headers ?? {}) };
+  if (body) headers['content-length'] = String(body.byteLength);
+  // Ask for an identity body: raw node:https does not transparently decode a
+  // compressed response the way fetch() did, and the proxy parses the JSON.
+  headers['accept-encoding'] = 'identity';
+  const signal = init.signal;
+  const request = getNodeRequestForTest() ?? https.request;
+
+  return new Promise((resolve, reject) => {
+    let settled = false;
+    const fail = (error) => {
+      if (settled) return;
+      settled = true;
+      reject(mapAbortError(error, signal));
+    };
+    const req = request({
+      protocol: 'https:',
+      hostname: url.hostname,
+      port: url.port || 443,
+      path: `${url.pathname}${url.search}`,
+      method: init.method ?? 'GET',
+      headers,
+      family,
+      lookup: pinnedLookup(pinnedAddress, family),
+      agent: PINNED_UPSTREAM_AGENT,
+      signal,
+    }, (incoming) => {
+      if (settled) {
+        incoming.destroy();
+        return;
+      }
+      settled = true;
+      resolve(webResponseFromIncoming(incoming, signal));
+    });
+    req.on('error', fail);
+    if (body) req.write(body);
+    req.end();
+  });
 }
 
 function buildInitPayload() {
@@ -207,31 +385,68 @@ function buildInitPayload() {
   };
 }
 
+// Returns the vetted `{ url, resolvedAddresses }` target every upstream
+// dispatch of this proxy call pins to, or null when the URL is unusable.
 async function validateServerUrl(raw) {
   let url;
   try { url = new URL(raw); } catch { return null; }
   if (url.protocol !== 'https:') return null;
   try {
-    return (await assertServerUrlSafe(url)).url;
+    return await assertServerUrlSafe(url);
   } catch {
     return null;
   }
 }
 
-// Cloud-metadata gate headers (GHSA-887j, Edge-safe defence-in-depth): GCP
-// `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
-// `X-aws-ec2-metadata-token[-ttl-seconds]`. The proxy never forwards them, so
-// even if a DNS rebind slipped a fetch onto 169.254.169.254 the credential-less
-// request is refused by the metadata service. Matched case-insensitively. (The
-// full socket-pin fix that closes resolve!=connect is a Node-runtime follow-up;
-// this Edge mitigation kills the demonstrated PoC without a runtime switch;
-// the accepted residual and migration trade-off are tracked in issue #5061.)
+// Cloud-metadata gate headers (GHSA-887j defence-in-depth on top of the socket
+// pin): GCP `Metadata-Flavor: Google`, Azure `Metadata: true`, AWS IMDSv2
+// `X-aws-ec2-metadata-token[-ttl-seconds]`. The pin already stops a rebind
+// from reaching 169.254.169.254; never forwarding these means a credentialed
+// metadata request cannot be assembled even if the pin were ever bypassed.
+// Matched case-insensitively.
 const DENIED_FORWARD_HEADERS = new Set([
   'metadata-flavor',
   'metadata',
   'x-aws-ec2-metadata-token',
   'x-aws-ec2-metadata-token-ttl-seconds',
 ]);
+
+// Hop-by-hop, authority and transport-negotiation headers a caller must never
+// set on the upstream request. The Edge runtime's spec-compliant fetch()
+// dropped these silently as forbidden header names; raw node:https writes
+// whatever it is given, so without this list a caller-supplied Host would
+// override the authority the socket was pinned for, and Content-Length /
+// Transfer-Encoding / Connection / TE / Trailer / Upgrade would open request
+// smuggling. `Proxy-*` is matched as a prefix. Accept-Encoding and Expect
+// belong to the transport (identity bodies; no 100-continue stalls). See #5061.
+const HOP_BY_HOP_FORWARD_HEADERS = new Set([
+  'host',
+  'content-length',
+  'transfer-encoding',
+  'connection',
+  'keep-alive',
+  'te',
+  'trailer',
+  'upgrade',
+  'expect',
+  'accept-encoding',
+]);
+
+function isForbiddenForwardHeader(lowerName) {
+  return DENIED_FORWARD_HEADERS.has(lowerName)
+    || HOP_BY_HOP_FORWARD_HEADERS.has(lowerName)
+    || lowerName.startsWith('proxy-');
+}
+
+// Building blocks of the pinned transport, exposed so
+// tests/mcp-proxy-pinned-socket.test.mjs can prove on a real TLS socket that
+// Node honours exactly the lookup hook / agent this module hands node:https.
+export const __testing__ = {
+  pinnedLookup,
+  PINNED_UPSTREAM_AGENT,
+  HOP_BY_HOP_FORWARD_HEADERS,
+  isForbiddenForwardHeader,
+};
 
 function buildHeaders(customHeaders) {
   const h = {
@@ -245,14 +460,7 @@ function buildHeaders(customHeaders) {
         // Strip CRLF to prevent header injection
         const safeKey = k.replace(/[\r\n]/g, '');
         const safeVal = v.replace(/[\r\n]/g, '');
-        // Hop-by-hop / authority headers (Host, Content-Length, Connection, TE,
-        // Trailer, Upgrade, Keep-Alive, Transfer-Encoding, Proxy-*) are NOT
-        // filtered here: on the Edge runtime the spec-compliant `fetch()` treats
-        // them as forbidden header names and silently drops them, so they never
-        // reach the upstream. (The Node-runtime socket-pin follow-up uses raw
-        // `http.request`, which does NOT auto-drop them, so that PR must add an
-        // explicit hop-by-hop filter — see #5061.)
-        if (safeKey && !DENIED_FORWARD_HEADERS.has(safeKey.toLowerCase())) {
+        if (safeKey && !isForbiddenForwardHeader(safeKey.trim().toLowerCase())) {
           h[safeKey] = safeVal;
         }
       }
@@ -263,18 +471,15 @@ function buildHeaders(customHeaders) {
 
 // --- Streamable HTTP transport (MCP 2025-03-26) ---
 
-async function postJson(url, body, headers, sessionId) {
+async function postJson(target, body, headers, sessionId) {
   const h = { ...headers };
   if (sessionId) h['Mcp-Session-Id'] = sessionId;
-  await revalidateBeforeFetch(url);
-  const resp = await fetch(url.toString(), {
+  return pinnedFetch(target, {
     method: 'POST',
     headers: h,
     body: JSON.stringify(body),
-    redirect: 'manual',
     signal: AbortSignal.timeout(TIMEOUT_MS),
   });
-  return resp;
 }
 
 async function parseJsonRpcResponse(resp) {
@@ -295,9 +500,9 @@ async function parseJsonRpcResponse(resp) {
   return resp.json();
 }
 
-async function sendInitialized(serverUrl, headers, sessionId) {
+async function sendInitialized(target, headers, sessionId) {
   try {
-    await postJson(serverUrl, {
+    await postJson(target, {
       jsonrpc: '2.0',
       method: 'notifications/initialized',
       params: {},
@@ -308,15 +513,15 @@ async function sendInitialized(serverUrl, headers, sessionId) {
   }
 }
 
-async function mcpListTools(serverUrl, customHeaders) {
+async function mcpListTools(target, customHeaders) {
   const headers = buildHeaders(customHeaders);
-  const initResp = await postJson(serverUrl, buildInitPayload(), headers, null);
+  const initResp = await postJson(target, buildInitPayload(), headers, null);
   if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
-  await sendInitialized(serverUrl, headers, sessionId);
-  const listResp = await postJson(serverUrl, {
+  await sendInitialized(target, headers, sessionId);
+  const listResp = await postJson(target, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
   }, headers, sessionId);
   if (!listResp.ok) throw new Error(`tools/list failed: HTTP ${listResp.status}`);
@@ -325,15 +530,15 @@ async function mcpListTools(serverUrl, customHeaders) {
   return listData.result?.tools || [];
 }
 
-async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
+async function mcpCallTool(target, toolName, toolArgs, customHeaders) {
   const headers = buildHeaders(customHeaders);
-  const initResp = await postJson(serverUrl, buildInitPayload(), headers, null);
+  const initResp = await postJson(target, buildInitPayload(), headers, null);
   if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
   if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
-  await sendInitialized(serverUrl, headers, sessionId);
-  const callResp = await postJson(serverUrl, {
+  await sendInitialized(target, headers, sessionId);
+  const callResp = await postJson(target, {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: toolName, arguments: toolArgs || {} },
   }, headers, sessionId);
@@ -362,10 +567,11 @@ function makeDeferred() {
 }
 
 class SseSession {
-  constructor(sseUrl, headers) {
-    this._sseUrl = sseUrl;
-    this._originHost = new URL(sseUrl).host;
-    this._originProtocol = new URL(sseUrl).protocol;
+  constructor(target, headers) {
+    this._target = target;
+    this._sseUrl = target.url.toString();
+    this._originHost = target.url.host;
+    this._originProtocol = target.url.protocol;
     this._headers = headers;
     this._endpointUrl = null;
     this._endpointDeferred = makeDeferred();
@@ -374,16 +580,21 @@ class SseSession {
   }
 
   async connect() {
-    await revalidateBeforeFetch(new URL(this._sseUrl));
-    const resp = await fetch(this._sseUrl, {
+    const resp = await pinnedFetch(this._target, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
-      redirect: 'manual',
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
     });
     if (!resp.ok) throw new Error(`SSE connect HTTP ${resp.status}`);
     this._reader = resp.body.getReader();
     this._startReadLoop();
     await this._endpointDeferred.promise;
+  }
+
+  // The endpoint event is only accepted when its host and protocol match the
+  // SSE origin (checked in the read loop), so the addresses vetted for the
+  // origin are the addresses the endpoint POSTs pin to.
+  _endpointTarget() {
+    return { url: new URL(this._endpointUrl), resolvedAddresses: this._target.resolvedAddresses };
   }
 
   _startReadLoop() {
@@ -463,6 +674,12 @@ class SseSession {
 
   async send(id, method, params) {
     const deferred = makeDeferred();
+    // The timer below can reject this before the POST has even returned (the
+    // POST carries its own timeout of the same length). Keep the rejection
+    // observed so a slow POST cannot turn it into an unhandled rejection —
+    // fatal on the Node runtime, where it was merely logged on Edge. The
+    // `await deferred.promise` below still receives it.
+    deferred.promise.catch(() => {});
     this._pending.set(id, deferred);
     const timer = setTimeout(() => {
       if (this._pending.has(id)) {
@@ -471,12 +688,10 @@ class SseSession {
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
-      await revalidateBeforeFetch(new URL(this._endpointUrl));
-      const postResp = await fetch(this._endpointUrl, {
+      const postResp = await pinnedFetch(this._endpointTarget(), {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
-        redirect: 'manual',
         signal: AbortSignal.timeout(SSE_RPC_TIMEOUT_MS),
       });
       if (!postResp.ok) {
@@ -490,12 +705,10 @@ class SseSession {
   }
 
   async notify(method, params) {
-    await revalidateBeforeFetch(new URL(this._endpointUrl));
-    await fetch(this._endpointUrl, {
+    await pinnedFetch(this._endpointTarget(), {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),
-      redirect: 'manual',
       signal: AbortSignal.timeout(5_000),
     }).catch(() => {});
   }
@@ -505,9 +718,9 @@ class SseSession {
   }
 }
 
-async function mcpListToolsSse(serverUrl, customHeaders) {
+async function mcpListToolsSse(target, customHeaders) {
   const headers = buildHeaders(customHeaders);
-  const session = new SseSession(serverUrl.toString(), headers);
+  const session = new SseSession(target, headers);
   try {
     await session.connect();
     const initResp = await session.send(1, 'initialize', {
@@ -525,9 +738,9 @@ async function mcpListToolsSse(serverUrl, customHeaders) {
   }
 }
 
-async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders) {
+async function mcpCallToolSse(target, toolName, toolArgs, customHeaders) {
   const headers = buildHeaders(customHeaders);
-  const session = new SseSession(serverUrl.toString(), headers);
+  const session = new SseSession(target, headers);
   try {
     await session.connect();
     const initResp = await session.send(1, 'initialize', {
@@ -566,16 +779,16 @@ async function handleListTools(req: Request, cors: Record<string, string>, meta:
   const rawServer = url.searchParams.get('serverUrl');
   const rawHeaders = url.searchParams.get('headers');
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
-  const serverUrl = await validateServerUrl(rawServer);
-  if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
+  const target = await validateServerUrl(rawServer);
+  if (!target) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
   let customHeaders = {};
   if (rawHeaders) {
     try { customHeaders = JSON.parse(rawHeaders); } catch { /* ignore */ }
   }
-  captureMeta(serverUrl, customHeaders, meta);
-  const tools = isSseTransport(serverUrl)
-    ? await mcpListToolsSse(serverUrl, customHeaders)
-    : await mcpListTools(serverUrl, customHeaders);
+  captureMeta(target.url, customHeaders, meta);
+  const tools = isSseTransport(target.url)
+    ? await mcpListToolsSse(target, customHeaders)
+    : await mcpListTools(target, customHeaders);
   return jsonResponse({ tools }, 200, cors);
 }
 
@@ -593,16 +806,21 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   const { serverUrl: rawServer, toolName, toolArgs, customHeaders } = body;
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
   if (!toolName) return jsonResponse({ error: 'Missing toolName' }, 400, cors);
-  const serverUrl = await validateServerUrl(rawServer);
-  if (!serverUrl) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
-  captureMeta(serverUrl, customHeaders, meta);
-  const result = isSseTransport(serverUrl)
-    ? await mcpCallToolSse(serverUrl, toolName, toolArgs || {}, customHeaders || {})
-    : await mcpCallTool(serverUrl, toolName, toolArgs || {}, customHeaders || {});
+  const target = await validateServerUrl(rawServer);
+  if (!target) return jsonResponse({ error: 'Invalid serverUrl' }, 400, cors);
+  captureMeta(target.url, customHeaders, meta);
+  const result = isSseTransport(target.url)
+    ? await mcpCallToolSse(target, toolName, toolArgs || {}, customHeaders || {})
+    : await mcpCallTool(target, toolName, toolArgs || {}, customHeaders || {});
   return jsonResponse({ result }, 200, cors);
 }
 
-export default async function handler(req) {
+// Web-shaped proxy handler. Every helper it calls (isDisallowedOrigin,
+// getCorsHeaders, isCallerPremium, readBoundedRequestBody, getClientIp) reads
+// a fetch `Request`; the Node adapter below is the only place that shape is
+// produced from the runtime's IncomingMessage. Exported for tests that want
+// to drive the proxy logic with a `Request` directly.
+export async function handleProxyRequest(req: Request): Promise<Response> {
   if (isDisallowedOrigin(req))
     return new Response('Forbidden', { status: 403, headers: withProxyNoStore() });
 
@@ -706,4 +924,116 @@ export default async function handler(req) {
   });
 
   return response;
+}
+
+// --- Vercel Node runtime entry point ---
+//
+// On the Node runtime Vercel calls a default-exported function as
+// `handler(req, res)` with a raw http.IncomingMessage / http.ServerResponse
+// (@vercel/node serverless-handler: `return listener(req, res)`); the Web
+// `Request => Response` signature is only dispatched for named GET/POST/...
+// exports. #4749 shipped the Web signature under runtime:'nodejs' and 500'd
+// every call at `req.headers.get` — reverted in #4754. This adapter is the
+// only place the two shapes meet: build a `Request` from the IncomingMessage,
+// run the Web handler above, write the `Response` back.
+
+function firstHeaderValue(value) {
+  return Array.isArray(value) ? value[0] : value;
+}
+
+// Bridge the request body on 'data' / 'end' / 'error' only — NOT
+// Readable.toWeb(req). With Vercel's Node helpers enabled (the default),
+// @vercel/node buffers the body before the handler runs and re-exposes it
+// through a PassThrough that intercepts exactly `req.on('data' | 'end')`;
+// Readable.toWeb() also consults stream.finished() / pause() / resume() on the
+// original, already-consumed IncomingMessage and yields an EMPTY stream, so
+// every POST would 400 with "Invalid JSON". The body is still streamed, never
+// buffered here, so readBoundedRequestBody keeps its Content-Length early
+// reject and its streaming byte cap. tests/mcp-proxy-node-entry.test.mjs pins
+// this against a port of that helper shim.
+function requestBodyStream(req) {
+  let finished = false;
+  return new ReadableStream({
+    start(controller) {
+      req.on('data', (chunk) => {
+        if (finished) return;
+        controller.enqueue(chunk); // Buffer is a Uint8Array
+      });
+      req.on('end', () => {
+        if (finished) return;
+        finished = true;
+        controller.close();
+      });
+      req.on('error', (error) => {
+        if (finished) return;
+        finished = true;
+        controller.error(error);
+      });
+    },
+    cancel() {
+      finished = true;
+      req.destroy();
+    },
+  });
+}
+
+function toWebRequest(req: IncomingMessage): Request {
+  const host = firstHeaderValue(req.headers.host) || 'localhost';
+  const proto = String(firstHeaderValue(req.headers['x-forwarded-proto']) || 'https').split(',')[0].trim() || 'https';
+  const url = new URL(req.url || '/', `${proto}://${host}`);
+  // Copy EVERY header: getClientIp reads x-forwarded-for / cf-connecting-ip /
+  // x-wm-edge-proof, isDisallowedOrigin reads origin, isCallerPremium reads
+  // Authorization / X-WorldMonitor-Key, readBoundedRequestBody reads
+  // content-length. Node joins repeated headers itself; the array case is
+  // set-cookie, joined the same way.
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(req.headers)) {
+    if (value === undefined) continue;
+    try {
+      headers.set(name, Array.isArray(value) ? value.join(', ') : value);
+    } catch {
+      /* not representable as a fetch header — drop it */
+    }
+  }
+  const method = (req.method || 'GET').toUpperCase();
+  const init: RequestInit & { duplex?: 'half' } = { method, headers };
+  if (method !== 'GET' && method !== 'HEAD') {
+    init.body = requestBodyStream(req);
+    init.duplex = 'half';
+  }
+  return new Request(url, init);
+}
+
+async function writeWebResponse(res: ServerResponse, response: Response): Promise<void> {
+  const headers: Record<string, string> = {};
+  response.headers.forEach((value, name) => {
+    headers[name] = value;
+  });
+  // A null-body status (the OPTIONS 204) is finished with end() and nothing
+  // else — writing even an empty string to a 204 is a protocol error.
+  const nullBody = response.status === 204 || response.status === 205 || response.status === 304 || response.body === null;
+  if (nullBody) {
+    res.writeHead(response.status, headers);
+    res.end();
+    return;
+  }
+  const body = Buffer.from(await response.arrayBuffer());
+  headers['content-length'] = String(body.byteLength);
+  res.writeHead(response.status, headers);
+  res.end(body);
+}
+
+export default async function handler(req: IncomingMessage, res: ServerResponse): Promise<void> {
+  let response: Response;
+  try {
+    response = await handleProxyRequest(toWebRequest(req));
+  } catch (err) {
+    console.error('[mcp-proxy]', {
+      event: 'mcp_proxy_unhandled',
+      ts: new Date().toISOString(),
+      message: err instanceof Error ? err.message : String(err),
+    });
+    response = jsonResponse({ error: 'Internal error' }, 500, withProxyNoStore());
+  }
+  await writeWebResponse(res, response);
 }

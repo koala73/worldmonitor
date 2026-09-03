@@ -12,80 +12,65 @@
 // way the platform does — plain headers OBJECT, `method`, `url`, and a Node
 // readable body — so the mismatch cannot ship again.
 import { strict as assert } from 'node:assert';
-import { describe, it } from 'node:test';
+import { describe, it, beforeEach, afterEach } from 'node:test';
 import { Readable } from 'node:stream';
+import {
+  applyVercelHelpersBodyShim,
+  makeFakeNodeRequest,
+  makeIncomingMessage,
+  makeMcpFetch,
+  makeServerResponse,
+} from './helpers/node-http-shapes.mjs';
 
 // The route imports server/_shared/premium-check, which loads api/_session.js
 // at module scope; that module throws without a session secret.
 process.env.WM_SESSION_SECRET ||= 'test-secret-must-be-at-least-32-chars-long-xxx';
+const ENTERPRISE_KEY = 'test-enterprise-key-mcp-proxy-node-entry';
+process.env.WORLDMONITOR_VALID_KEYS = ENTERPRISE_KEY;
 
-/**
- * IncomingMessage-shaped request: a Node Readable carrying the raw body
- * chunks, with `method`, `url` (path + query, as Vercel passes it) and a
- * plain, lowercase-keyed `headers` object. Deliberately NOT a `Request` and
- * NOT a `Headers` instance.
- */
-export function makeIncomingMessage({ method, url, headers = {}, body = [] }) {
-  const chunks = body.map((chunk) => (Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk)));
-  const req = Readable.from(chunks);
-  req.method = method;
-  req.url = url;
-  req.headers = headers;
-  req.httpVersion = '1.1';
-  return req;
+const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
+const TEST_NODE_REQUEST_KEY = Symbol.for('worldmonitor.mcpProxy.nodeRequestForTest');
+const PUBLIC_TEST_ADDRESS = '93.184.216.34';
+const originalFetch = globalThis.fetch;
+
+function baseHeaders(extra = {}) {
+  return {
+    host: 'worldmonitor.app',
+    'x-forwarded-proto': 'https',
+    origin: 'https://worldmonitor.app',
+    'x-worldmonitor-key': ENTERPRISE_KEY,
+    ...extra,
+  };
 }
 
-/**
- * ServerResponse-shaped recorder. Captures the status, headers, every
- * `write()` chunk and every `end()` payload so a test can assert that a
- * null-body status (204) is finished with `end()` and no body bytes at all.
- */
-export function makeServerResponse() {
-  const state = {
-    statusCode: null,
-    headers: {},
-    writes: [],
-    endPayloads: [],
-    ended: false,
-  };
-  const res = {
-    statusCode: 200,
-    headersSent: false,
-    setHeader(name, value) {
-      state.headers[String(name).toLowerCase()] = value;
-      return res;
-    },
-    getHeader(name) {
-      return state.headers[String(name).toLowerCase()];
-    },
-    removeHeader(name) {
-      delete state.headers[String(name).toLowerCase()];
-    },
-    writeHead(statusCode, reasonOrHeaders, maybeHeaders) {
-      const headers = typeof reasonOrHeaders === 'object' && reasonOrHeaders !== null
-        ? reasonOrHeaders
-        : maybeHeaders;
-      state.statusCode = statusCode;
-      res.statusCode = statusCode;
-      for (const [name, value] of Object.entries(headers ?? {})) res.setHeader(name, value);
-      res.headersSent = true;
-      return res;
-    },
-    write(chunk) {
-      state.writes.push(chunk);
-      return true;
-    },
-    end(chunk) {
-      if (chunk !== undefined) state.endPayloads.push(chunk);
-      if (state.statusCode === null) state.statusCode = res.statusCode;
-      state.ended = true;
-      return res;
-    },
-  };
-  return { res, state };
+function responseText(state) {
+  return Buffer.concat(
+    [...state.writes, ...state.endPayloads].map((chunk) => (Buffer.isBuffer(chunk) ? chunk : Buffer.from(String(chunk)))),
+  ).toString('utf8');
 }
 
 describe('api/mcp-proxy Node runtime entry point (guard for #4749 / #4754)', () => {
+  let handler;
+  let pinnedRequests;
+
+  beforeEach(async () => {
+    const mod = await import(`../api/mcp-proxy.ts?entry=${Date.now()}`);
+    handler = mod.default;
+    globalThis[TEST_RESOLVER_KEY] = async () => [PUBLIC_TEST_ADDRESS];
+    pinnedRequests = [];
+    globalThis[TEST_NODE_REQUEST_KEY] = makeFakeNodeRequest({ seen: pinnedRequests });
+    globalThis.fetch = makeMcpFetch({
+      tools: [{ name: 'search', description: 'Web search', inputSchema: {} }],
+      callResult: { content: [{ type: 'text', text: 'hello' }] },
+    });
+  });
+
+  afterEach(() => {
+    delete globalThis[TEST_RESOLVER_KEY];
+    delete globalThis[TEST_NODE_REQUEST_KEY];
+    globalThis.fetch = originalFetch;
+  });
+
   it('is not declared as an Edge function — the (req, res) contract below only holds on the Node runtime', async () => {
     const mod = await import('../api/mcp-proxy.ts');
     assert.notEqual(
@@ -96,8 +81,6 @@ describe('api/mcp-proxy Node runtime entry point (guard for #4749 / #4754)', () 
   });
 
   it('answers an OPTIONS preflight from a raw IncomingMessage/ServerResponse pair with 204 and no body', async () => {
-    const mod = await import('../api/mcp-proxy.ts');
-    const handler = mod.default;
     assert.equal(typeof handler, 'function');
 
     const req = makeIncomingMessage({
@@ -123,5 +106,157 @@ describe('api/mcp-proxy Node runtime entry point (guard for #4749 / #4754)', () 
     assert.equal(state.headers['cache-control'], 'no-store');
     assert.equal(state.headers['access-control-allow-origin'], 'https://worldmonitor.app');
     assert.match(String(state.headers['access-control-allow-methods']), /OPTIONS/);
+  });
+
+  it('rebuilds the request URL from host + x-forwarded-proto and serves a GET tools/list as a buffered JSON body', async () => {
+    const req = makeIncomingMessage({
+      method: 'GET',
+      url: '/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp',
+      headers: baseHeaders(),
+    });
+    const { res, state } = makeServerResponse();
+    await handler(req, res);
+
+    assert.equal(state.statusCode, 200);
+    assert.equal(state.headers['content-type'], 'application/json');
+    assert.equal(state.headers['cache-control'], 'no-store');
+    const text = responseText(state);
+    assert.equal(state.headers['content-length'], String(Buffer.byteLength(text)));
+    assert.deepEqual(JSON.parse(text).tools.map((tool) => tool.name), ['search']);
+    assert.equal(pinnedRequests.length, 3, 'initialize, notifications/initialized, tools/list');
+    for (const entry of pinnedRequests) assert.equal(entry.address, PUBLIC_TEST_ADDRESS);
+  });
+
+  it('streams a chunked POST body into the bounded reader (no up-front buffering) and proxies the tool call', async () => {
+    const payload = JSON.stringify({ serverUrl: 'https://mcp.example.com/mcp', toolName: 'search', toolArgs: { q: 'x' } });
+    const req = makeIncomingMessage({
+      method: 'POST',
+      url: '/api/mcp-proxy',
+      headers: baseHeaders({ 'content-type': 'application/json' }),
+      body: [payload.slice(0, 10), payload.slice(10, 40), payload.slice(40)],
+    });
+    const { res, state } = makeServerResponse();
+    await handler(req, res);
+
+    assert.equal(state.statusCode, 200, responseText(state));
+    assert.deepEqual(JSON.parse(responseText(state)).result, { content: [{ type: 'text', text: 'hello' }] });
+  });
+
+  it("parses the POST body after @vercel/node's helpers have consumed the stream (restoreBody shim)", async () => {
+    // Production: helpers are on by default, so the platform drains the
+    // IncomingMessage before the handler runs and re-exposes the bytes only
+    // through `req.on('data' | 'end')`. Readable.toWeb(req) reads an EMPTY
+    // stream in that state (it consults stream.finished() on the drained
+    // original) — which would 400 every real POST while every mocked test
+    // stayed green. The adapter bridges on 'data'/'end' for exactly this.
+    const payload = JSON.stringify({ serverUrl: 'https://mcp.example.com/mcp', toolName: 'search' });
+    const req = makeIncomingMessage({
+      method: 'POST',
+      url: '/api/mcp-proxy',
+      headers: baseHeaders({ 'content-type': 'application/json' }),
+      body: [payload],
+    });
+    const drained = [];
+    for await (const chunk of req) drained.push(chunk);
+    assert.equal(req.readableEnded, true, 'fixture must reproduce the drained IncomingMessage');
+    applyVercelHelpersBodyShim(req, Buffer.concat(drained));
+
+    const { res, state } = makeServerResponse();
+    await handler(req, res);
+
+    assert.equal(state.statusCode, 200, responseText(state));
+    assert.deepEqual(JSON.parse(responseText(state)).result, { content: [{ type: 'text', text: 'hello' }] });
+  });
+
+  it('keeps the Content-Length early reject: an oversized advertised body is refused with 413 before it is read', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
+    const req = makeIncomingMessage({
+      method: 'POST',
+      url: '/api/mcp-proxy',
+      headers: baseHeaders({ 'content-type': 'application/json', 'content-length': String(MAX_JSON_RPC_BODY_BYTES + 1) }),
+      body: ['{"serverUrl":"https://mcp.example.com/mcp"'],
+    });
+    const { res, state } = makeServerResponse();
+    await handler(req, res);
+
+    assert.equal(state.statusCode, 413);
+    assert.equal(JSON.parse(responseText(state)).error, `Request body exceeds ${MAX_JSON_RPC_BODY_BYTES} bytes`);
+    assert.equal(pinnedRequests.length, 0, 'nothing may go upstream for a rejected body');
+  });
+
+  it('keeps the streaming byte cap: a chunked body with no Content-Length is cut off at the cap with 413', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
+    const chunk = Buffer.alloc(64 * 1024, 0x20);
+    const chunks = [];
+    for (let total = 0; total <= MAX_JSON_RPC_BODY_BYTES; total += chunk.byteLength) chunks.push(chunk);
+    const req = makeIncomingMessage({
+      method: 'POST',
+      url: '/api/mcp-proxy',
+      headers: baseHeaders({ 'content-type': 'application/json' }),
+      body: chunks,
+    });
+    const { res, state } = makeServerResponse();
+    await handler(req, res);
+
+    assert.equal(state.statusCode, 413);
+    assert.equal(pinnedRequests.length, 0);
+  });
+
+  it('copies every inbound header into the Web request (origin gate, auth gate, array-valued headers)', async () => {
+    const forbidden = makeIncomingMessage({
+      method: 'GET',
+      url: '/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp',
+      headers: baseHeaders({ origin: 'https://evil.example' }),
+    });
+    const forbiddenRes = makeServerResponse();
+    await handler(forbidden, forbiddenRes.res);
+    assert.equal(forbiddenRes.state.statusCode, 403, 'origin header must reach isDisallowedOrigin');
+
+    const unauthenticated = makeIncomingMessage({
+      method: 'GET',
+      url: '/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp',
+      headers: { host: 'worldmonitor.app', origin: 'https://worldmonitor.app' },
+    });
+    const unauthenticatedRes = makeServerResponse();
+    await handler(unauthenticated, unauthenticatedRes.res);
+    assert.equal(unauthenticatedRes.state.statusCode, 401, 'auth gate must still run through the adapter');
+
+    // Node hands set-cookie through as an array; the adapter must join it
+    // rather than throw on a non-string header value.
+    const arrayValued = makeIncomingMessage({
+      method: 'GET',
+      url: '/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp',
+      headers: baseHeaders({ 'set-cookie': ['a=1', 'b=2'] }),
+    });
+    const arrayValuedRes = makeServerResponse();
+    await handler(arrayValued, arrayValuedRes.res);
+    assert.equal(arrayValuedRes.state.statusCode, 200, responseText(arrayValuedRes.state));
+  });
+
+  it('answers an unexpected failure with a 500 JSON body and no-store instead of leaking an unhandled rejection', async () => {
+    const req = makeIncomingMessage({
+      method: 'GET',
+      // Not a resolvable path/URL pair: `new URL()` throws inside the adapter.
+      url: 'https://exa mple.com/api/mcp-proxy',
+      headers: baseHeaders(),
+    });
+    const { res, state } = makeServerResponse();
+    await handler(req, res);
+
+    assert.equal(state.statusCode, 500);
+    assert.equal(state.headers['cache-control'], 'no-store');
+    assert.deepEqual(JSON.parse(responseText(state)), { error: 'Internal error' });
+  });
+
+  it('does not leave the body unread on a GET (no body stream is attached to a bodiless method)', async () => {
+    const req = makeIncomingMessage({
+      method: 'GET',
+      url: '/api/mcp-proxy?serverUrl=https%3A%2F%2Fmcp.example.com%2Fmcp',
+      headers: baseHeaders(),
+    });
+    assert.ok(req instanceof Readable);
+    const { res, state } = makeServerResponse();
+    await handler(req, res);
+    assert.equal(state.statusCode, 200);
   });
 });

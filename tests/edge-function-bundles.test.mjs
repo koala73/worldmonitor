@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { after, describe, test } from 'node:test';
 import {
   checkEdgeFunctionBundles,
+  declaresNodeRuntime,
   isolatedGitEnv,
   listEdgeFunctionEntries,
 } from '../scripts/check-edge-function-bundles.mjs';
@@ -154,6 +155,38 @@ describe('edge function candidate discovery', () => {
       checkEdgeFunctionBundles({ root }),
       /Could not resolve "node:crypto"/,
     );
+  });
+
+  test('bundles a route that declares runtime nodejs with the node platform, where node: built-ins resolve', async () => {
+    // api/mcp-proxy.ts (GHSA-887j socket pin) imports node:https on purpose.
+    // The browser bundle would reject it; the node-platform bundle must still
+    // run so an unresolvable import in its graph fails the gate.
+    const root = makeRepo();
+    write(
+      root,
+      'api/pinned.ts',
+      "import https from 'node:https';\n" +
+        "export const config = { runtime: 'nodejs' };\n" +
+        'export default function handler(req, res) { res.end(String(typeof https.request)); }\n',
+    );
+    write(root, 'api/pinned-broken.ts', "export const config = { runtime: 'nodejs' };\nimport './does-not-exist.js';\n");
+    git(root, ['add', 'api/pinned.ts']);
+
+    const entries = await checkEdgeFunctionBundles({ root });
+    assert.ok(entries.includes('api/pinned.ts'));
+
+    git(root, ['add', 'api/pinned-broken.ts']);
+    await assert.rejects(
+      checkEdgeFunctionBundles({ root }),
+      /Could not resolve "\.\/does-not-exist\.js"/,
+    );
+  });
+
+  test('declaresNodeRuntime keys on the static runtime declaration only', () => {
+    assert.equal(declaresNodeRuntime("export const config = { runtime: 'nodejs' };"), true);
+    assert.equal(declaresNodeRuntime('export const config = { runtime: "nodejs" };'), true);
+    assert.equal(declaresNodeRuntime("export const config = { runtime: 'edge' };"), false);
+    assert.equal(declaresNodeRuntime('export default function handler(req, res) {}'), false);
   });
 });
 

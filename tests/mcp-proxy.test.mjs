@@ -5,6 +5,7 @@
 // this is expected; use tsx (the project's standard test runner).
 import { strict as assert } from 'node:assert';
 import { describe, it, beforeEach, afterEach, before } from 'node:test';
+import { invokeNodeHandler, makeFakeNodeRequest, makeMcpFetch } from './helpers/node-http-shapes.mjs';
 
 // validateApiKey runs with forceKey:true on this endpoint (PR #3768 review
 // finding — wms_ session tokens are anonymous and freely mintable via
@@ -93,42 +94,60 @@ function assertNoStore(res, label) {
   assert.equal(res.headers.get('Cache-Control'), 'no-store', `${label} must include Cache-Control: no-store`);
 }
 
-// Minimal MCP server stub — returns valid JSON-RPC responses
-function makeMcpFetch({ initStatus = 200, listStatus = 200, callStatus = 200, tools = [], callResult = { content: [] } } = {}) {
+// Minimal MCP server over the older HTTP+SSE transport: the GET opens a
+// stream that announces `/messages` as the endpoint; each JSON-RPC POST is
+// acknowledged with 202 and answered on the stream, so a full
+// connect → initialize → initialized → tools/list session completes.
+function makeSseMcpFetch({ tools = [] } = {}) {
+  let controller = null;
+  const encoder = new TextEncoder();
+  const emit = (text) => controller?.enqueue(encoder.encode(text));
   return async (_url, opts) => {
-    const body = opts?.body ? JSON.parse(opts.body) : {};
-    if (body.method === 'initialize' || body.method === 'notifications/initialized') {
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { protocolVersion: '2025-03-26', capabilities: {}, serverInfo: { name: 'test', version: '1' } } }), {
-        status: initStatus,
-        headers: { 'Content-Type': 'application/json' },
+    if (!opts?.body) {
+      const stream = new ReadableStream({
+        start(c) {
+          controller = c;
+          emit('event: endpoint\ndata: /messages\n\n');
+        },
       });
+      return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
     }
-    if (body.method === 'tools/list') {
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: { tools } }), {
-        status: listStatus,
-        headers: { 'Content-Type': 'application/json' },
-      });
+    const msg = JSON.parse(opts.body);
+    if (msg.id !== undefined) {
+      const result = msg.method === 'initialize'
+        ? { protocolVersion: '2025-03-26', capabilities: {} }
+        : msg.method === 'tools/list' ? { tools } : { content: [] };
+      setTimeout(() => emit(`event: message\ndata: ${JSON.stringify({ jsonrpc: '2.0', id: msg.id, result })}\n\n`), 0);
     }
-    if (body.method === 'tools/call') {
-      return new Response(JSON.stringify({ jsonrpc: '2.0', id: body.id, result: callResult }), {
-        status: callStatus,
-        headers: { 'Content-Type': 'application/json' },
-      });
-    }
-    return new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    return new Response('{}', { status: 202, headers: { 'Content-Type': 'application/json' } });
   };
 }
 
 let handler;
+let proxyTesting;
+// Every upstream request the module made, as recorded by the fake
+// https.request: { options: <node:https options the module assembled>,
+// address: <what its lookup hook answered>, family }.
+let pinnedRequests = [];
 const TEST_RESOLVER_KEY = Symbol.for('worldmonitor.mcpProxy.resolveHostnameForTest');
+const TEST_NODE_REQUEST_KEY = Symbol.for('worldmonitor.mcpProxy.nodeRequestForTest');
 
 const PUBLIC_TEST_ADDRESS = '93.184.216.34';
+const PUBLIC_TEST_ADDRESS_V6 = '2606:2800:220:1:248:1893:25c8:1946';
 
 function setResolveHostnameForTest(resolver) {
   if (typeof resolver === 'function') {
     globalThis[TEST_RESOLVER_KEY] = resolver;
   } else {
     delete globalThis[TEST_RESOLVER_KEY];
+  }
+}
+
+function setNodeRequestForTest(request) {
+  if (typeof request === 'function') {
+    globalThis[TEST_NODE_REQUEST_KEY] = request;
+  } else {
+    delete globalThis[TEST_NODE_REQUEST_KEY];
   }
 }
 
@@ -148,13 +167,27 @@ describe('api/mcp-proxy', () => {
     // mcp-proxy migrated .js → .ts in PR #3768 to unlock the
     // isCallerPremium import from server/. Test must follow the rename.
     const mod = await import(`../api/mcp-proxy.ts?t=${Date.now()}`);
-    handler = mod.default;
+    // The default export is the Node-runtime (req, res) adapter. Every test
+    // below drives it the way Vercel does — IncomingMessage-shaped request,
+    // ServerResponse-shaped writer — through invokeNodeHandler, so the
+    // adapter (header copy, URL rebuild, body streaming, 204 handling) is
+    // exercised on every call, not only in tests/mcp-proxy-node-entry.test.mjs.
+    const nodeHandler = mod.default;
+    handler = (request) => invokeNodeHandler(nodeHandler, request);
+    proxyTesting = mod.__testing__;
     assert.equal(mod.__setMcpProxyResolveHostnameForTest, undefined);
     setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
+    // Upstream MCP traffic leaves through node:https with the socket pinned to
+    // the vetted address. The fake transport records each pin and serves the
+    // response from whatever globalThis.fetch mock the test installed, so the
+    // module's real transport code runs on every upstream call.
+    pinnedRequests = [];
+    setNodeRequestForTest(makeFakeNodeRequest({ seen: pinnedRequests }));
   });
 
   afterEach(() => {
     setResolveHostnameForTest?.(null);
+    setNodeRequestForTest(null);
     globalThis.fetch = originalFetch;
   });
 
@@ -442,22 +475,27 @@ describe('api/mcp-proxy', () => {
       assert.deepEqual(data.tools, []);
     });
 
-    it('ignores the test resolver outside NODE_TEST_CONTEXT', async () => {
+    it('ignores the test resolver and transport seams outside NODE_TEST_CONTEXT', async () => {
       const previousNodeTestContext = process.env.NODE_TEST_CONTEXT;
       delete process.env.NODE_TEST_CONTEXT;
-      setResolvedAddresses(['10.0.0.5']);
-      globalThis.fetch = async (url, opts) => {
+      // The seam says public; the real DoH path (mocked here) says private.
+      // With the seam ignored the DoH answer wins and validation rejects
+      // before any upstream socket is opened — which is also what keeps this
+      // test off the network now that the fake transport seam is ignored too.
+      setResolvedAddresses([PUBLIC_TEST_ADDRESS]);
+      globalThis.fetch = async (url) => {
         const u = new URL(url.toString());
         if (u.hostname === 'cloudflare-dns.com') {
           const type = u.searchParams.get('type');
-          if (type === 'A') return dnsJsonResponse([{ type: 1, data: PUBLIC_TEST_ADDRESS }]);
+          if (type === 'A') return dnsJsonResponse([{ type: 1, data: '10.0.0.5' }]);
           if (type === 'AAAA') return dnsJsonResponse([]);
         }
-        return makeMcpFetch({ tools: [] })(url, opts);
+        throw new Error(`unexpected fetch to ${url}`);
       };
       try {
         const res = await handler(makeGetRequest({ serverUrl: 'https://public-mcp.example/mcp' }));
-        assert.equal(res.status, 200);
+        assert.equal(res.status, 400);
+        assert.equal(pinnedRequests.length, 0, 'a blocked DoH answer must never open an upstream socket');
       } finally {
         if (previousNodeTestContext === undefined) delete process.env.NODE_TEST_CONTEXT;
         else process.env.NODE_TEST_CONTEXT = previousNodeTestContext;
@@ -559,48 +597,223 @@ describe('api/mcp-proxy', () => {
       }
     });
 
-    it('does not automatically follow upstream redirects', async () => {
-      const redirectModes = [];
-      globalThis.fetch = async (url, opts) => {
-        redirectModes.push(opts?.redirect);
-        return makeMcpFetch({ tools: [] })(url, opts);
-      };
-      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+    it('never forwards caller-supplied Host, Content-Length or other hop-by-hop headers to the pinned socket (#5061)', async () => {
+      // On the Edge runtime fetch() silently dropped these as forbidden
+      // header names; raw node:https writes whatever it is given, so the
+      // proxy must filter them itself. Assert on the node:https options the
+      // module assembled — that is what reaches the wire.
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      const res = await handler(makeGetRequest({
+        serverUrl: 'https://mcp.example.com/mcp',
+        headers: JSON.stringify({
+          Authorization: 'Bearer test-key',
+          Host: 'internal.example',
+          host: 'internal.example',
+          ' HOST ': 'internal.example',
+          'Content-Length': '999',
+          'Transfer-Encoding': 'chunked',
+          Connection: 'upgrade',
+          'Keep-Alive': 'timeout=5',
+          TE: 'trailers',
+          Trailer: 'x-extra',
+          Upgrade: 'websocket',
+          Expect: '100-continue',
+          'Accept-Encoding': 'gzip',
+          'Proxy-Authorization': 'Basic secret',
+          'Proxy-Connection': 'keep-alive',
+        }),
+      }));
       assert.equal(res.status, 200);
-      assert.deepEqual(redirectModes, ['manual', 'manual', 'manual']);
+      assert.equal(pinnedRequests.length, 3);
+      for (const { options, body } of pinnedRequests) {
+        const names = Object.keys(options.headers).map((name) => name.trim().toLowerCase());
+        for (const forbidden of [
+          'host', 'transfer-encoding', 'connection', 'keep-alive', 'te', 'trailer',
+          'upgrade', 'expect', 'proxy-authorization', 'proxy-connection',
+        ]) {
+          assert.ok(!names.includes(forbidden), `${forbidden} must never reach node:https`);
+        }
+        assert.equal(names.filter((name) => name === 'content-length').length, 1, 'exactly one Content-Length, the transport\'s own');
+        assert.equal(options.headers['Content-Length'], undefined);
+        assert.equal(options.headers['content-length'], String(Buffer.byteLength(body)));
+        assert.equal(names.filter((name) => name === 'accept-encoding').length, 1);
+        assert.equal(options.headers['accept-encoding'], 'identity', 'the transport owns Accept-Encoding');
+        assert.equal(options.headers.Authorization, 'Bearer test-key', 'legitimate headers still pass through');
+        assert.equal(options.hostname, 'mcp.example.com', 'the pinned authority is the vetted hostname');
+      }
     });
 
-    // NOTE: this validates the per-dispatch re-resolve + classifier path, NOT
-    // true socket-level rebind prevention. Vercel Edge fetch cannot pin the
-    // connection to a vetted IP (P1, issue #4674), so a residual rebind window
-    // between our resolve and fetch's own resolve is an accepted limitation.
-    // What this asserts: when a subsequent re-resolution returns a blocked
-    // address, revalidateBeforeFetch rejects it before the next upstream fetch,
-    // and the caller sees the GENERIC SSRF message (never the internal IP).
-    it('re-resolves and re-checks the same host before each streamable HTTP dispatch (classifier/revalidation path)', async () => {
-      const resolutions = [
-        [PUBLIC_TEST_ADDRESS], // request validation
-        [PUBLIC_TEST_ADDRESS], // initialize POST
-        ['10.0.0.9'],          // notifications/initialized would rebind
-      ];
-      setResolveHostnameForTest(async (hostname) => {
-        assert.equal(hostname, 'mcp.example.com');
-        return resolutions.shift() ?? [PUBLIC_TEST_ADDRESS];
+    it('returns an upstream 3xx as a failed dispatch instead of following it (an unpinned redirect would reopen the SSRF)', async () => {
+      globalThis.fetch = async () => new Response(null, {
+        status: 302,
+        headers: { Location: 'https://10.0.0.7/steal' },
       });
-      let upstreamCalls = 0;
-      globalThis.fetch = async (url, opts) => {
-        upstreamCalls += 1;
-        return makeMcpFetch({ tools: [] })(url, opts);
-      };
-
       const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
       assert.equal(res.status, 422);
       const data = await res.json();
-      // Caller gets a generic message — the resolved internal IP (10.0.0.9)
-      // must never be echoed back (address-oracle SSRF review finding).
-      assert.match(data.error, /host is not allowed/i);
-      assert.doesNotMatch(data.error, /10\.0\.0\.9/, 'must NOT leak the blocked internal IP to the caller');
-      assert.equal(upstreamCalls, 1, 'rebound same-host request must be blocked before the second upstream fetch');
+      assert.match(data.error, /Initialize failed: HTTP 302/);
+      assert.equal(pinnedRequests.length, 1, 'the Location target must never be requested');
+      assert.equal(pinnedRequests[0].options.hostname, 'mcp.example.com');
+    });
+
+    it('pins every dispatch to the address vetted at request validation — a later DNS flip to a private address cannot move the socket', async () => {
+      // This is the resolve-vs-connect gap of GHSA-887j: the hostname is
+      // vetted once per proxy call and every upstream socket is pinned to
+      // that answer. Nothing re-resolves at connect time, so an attacker who
+      // flips DNS after validation (rebinding / split horizon) gains nothing.
+      let resolverCalls = 0;
+      setResolveHostnameForTest(async (hostname) => {
+        assert.equal(hostname, 'mcp.example.com');
+        resolverCalls += 1;
+        return resolverCalls === 1 ? [PUBLIC_TEST_ADDRESS] : ['10.0.0.9'];
+      });
+      globalThis.fetch = makeMcpFetch({ tools: [{ name: 'search', description: '', inputSchema: {} }] });
+
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 200);
+      assert.equal(resolverCalls, 1, 'the hostname is vetted once per proxy call; nothing re-resolves at connect time');
+      assert.equal(pinnedRequests.length, 3, 'initialize, notifications/initialized and tools/list each go upstream');
+      for (const entry of pinnedRequests) {
+        assert.equal(entry.address, PUBLIC_TEST_ADDRESS, 'every socket must connect to the address vetted for this call');
+        assert.equal(entry.options.hostname, 'mcp.example.com');
+      }
+    });
+  });
+
+  // ── Socket pinning (GHSA-887j) ─────────────────────────────────────────────
+
+  describe('Socket pinning (GHSA-887j)', () => {
+    it('pins the streamable HTTP dispatches (initialize, initialized, tools/list) with the hostname kept for TLS', async () => {
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp?token=abc' }));
+      assert.equal(res.status, 200);
+      assert.equal(pinnedRequests.length, 3);
+      for (const { options, address, family, body } of pinnedRequests) {
+        assert.equal(address, PUBLIC_TEST_ADDRESS);
+        assert.equal(family, 4);
+        assert.equal(options.family, 4, 'family is forced so net.connect uses the single-address lookup shape');
+        assert.equal(options.hostname, 'mcp.example.com', 'hostname (not the IP) drives SNI + certificate validation');
+        assert.equal(options.servername, undefined, 'no servername override — node derives it from hostname');
+        assert.equal(options.protocol, 'https:');
+        assert.equal(options.port, 443);
+        assert.equal(options.path, '/mcp?token=abc');
+        assert.equal(options.method, 'POST');
+        assert.equal(options.agent, proxyTesting.PINNED_UPSTREAM_AGENT, 'the dedicated no-keepalive agent');
+        assert.equal(options.agent.keepAlive, false, 'no socket reuse across differently pinned requests');
+        assert.equal(typeof options.lookup, 'function');
+        assert.ok(options.signal instanceof AbortSignal, 'the dispatch timeout rides on the request signal');
+        assert.equal(options.headers['content-length'], String(Buffer.byteLength(body)));
+      }
+      assert.deepEqual(
+        pinnedRequests.map(({ body }) => JSON.parse(body).method),
+        ['initialize', 'notifications/initialized', 'tools/list'],
+      );
+    });
+
+    it('pins the tools/call dispatches on POST too', async () => {
+      globalThis.fetch = makeMcpFetch({ callResult: { content: [] } });
+      const res = await handler(makePostRequest({
+        serverUrl: 'https://mcp.example.com:8443/mcp',
+        toolName: 'search',
+      }));
+      assert.equal(res.status, 200);
+      assert.equal(pinnedRequests.length, 3);
+      for (const { options, address } of pinnedRequests) {
+        assert.equal(address, PUBLIC_TEST_ADDRESS);
+        assert.equal(options.hostname, 'mcp.example.com');
+        assert.equal(options.port, '8443', 'a non-default port is preserved');
+      }
+      assert.deepEqual(
+        pinnedRequests.map(({ body }) => JSON.parse(body).method),
+        ['initialize', 'notifications/initialized', 'tools/call'],
+      );
+    });
+
+    it('pins the SSE transport: connect GET, RPC POSTs and the notification POST all use the vetted address', async () => {
+      globalThis.fetch = makeSseMcpFetch({ tools: [{ name: 'sse_tool', description: '', inputSchema: {} }] });
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+      const text = await res.text();
+      assert.equal(res.status, 200, text);
+      assert.deepEqual(JSON.parse(text).tools.map((tool) => tool.name), ['sse_tool']);
+
+      assert.equal(pinnedRequests.length, 4, 'connect, initialize, notifications/initialized, tools/list');
+      const [connect, ...posts] = pinnedRequests;
+      assert.equal(connect.options.method, 'GET');
+      assert.equal(connect.options.path, '/sse');
+      assert.equal(connect.options.headers.Accept, 'text/event-stream');
+      for (const entry of pinnedRequests) {
+        assert.equal(entry.address, PUBLIC_TEST_ADDRESS);
+        assert.equal(entry.options.hostname, 'mcp.example.com');
+        assert.equal(entry.options.agent, proxyTesting.PINNED_UPSTREAM_AGENT);
+      }
+      for (const post of posts) {
+        assert.equal(post.options.method, 'POST');
+        assert.equal(post.options.path, '/messages', 'endpoint POSTs go to the announced endpoint on the same host');
+      }
+      assert.deepEqual(
+        posts.map(({ body }) => JSON.parse(body).method),
+        ['initialize', 'notifications/initialized', 'tools/list'],
+      );
+    });
+
+    it('prefers a vetted A answer over AAAA and pins with family 4', async () => {
+      setResolvedAddresses([PUBLIC_TEST_ADDRESS_V6, PUBLIC_TEST_ADDRESS]);
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 200);
+      for (const entry of pinnedRequests) {
+        assert.equal(entry.address, PUBLIC_TEST_ADDRESS);
+        assert.equal(entry.family, 4);
+      }
+    });
+
+    it('pins an AAAA-only answer with family 6', async () => {
+      setResolvedAddresses([PUBLIC_TEST_ADDRESS_V6]);
+      globalThis.fetch = makeMcpFetch({ tools: [] });
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }));
+      assert.equal(res.status, 200);
+      assert.equal(pinnedRequests.length, 3);
+      for (const entry of pinnedRequests) {
+        assert.equal(entry.address, PUBLIC_TEST_ADDRESS_V6);
+        assert.equal(entry.family, 6);
+        assert.equal(entry.options.family, 6);
+      }
+    });
+
+    it('maps a request-signal timeout on the pinned transport to 504', async () => {
+      // SSE RPC POSTs run under SSE_RPC_TIMEOUT_MS (200ms under the test
+      // runner). node:https reports the abort as a bare AbortError; the
+      // transport must translate it so the handler's 504 mapping still fires.
+      let sseController = null;
+      globalThis.fetch = async (_url, opts) => {
+        if (!opts?.body) {
+          const stream = new ReadableStream({
+            start(c) {
+              sseController = c;
+              c.enqueue(new TextEncoder().encode('event: endpoint\ndata: /messages\n\n'));
+            },
+          });
+          return new Response(stream, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
+        }
+        // The initialize POST never completes: the request signal fires first.
+        return new Promise(() => {});
+      };
+      const res = await handler(makeGetRequest({ serverUrl: 'https://mcp.example.com/sse' }));
+      try { sseController?.close(); } catch { /* already cancelled by session.close() */ }
+      assert.equal(res.status, 504);
+      const data = await res.json();
+      assert.match(data.error, /timed out/i);
+      assert.equal(pinnedRequests.length, 2, 'connect + the timed-out initialize POST');
+    });
+
+    it('answers both net.connect lookup shapes with the pinned address', () => {
+      const lookup = proxyTesting.pinnedLookup('203.0.113.9', 4);
+      let single;
+      lookup('mcp.example.com', { family: 4 }, (error, address, family) => { single = { error, address, family }; });
+      assert.deepEqual(single, { error: null, address: '203.0.113.9', family: 4 });
+      let all;
+      lookup('mcp.example.com', { all: true }, (error, addresses) => { all = { error, addresses }; });
+      assert.deepEqual(all, { error: null, addresses: [{ address: '203.0.113.9', family: 4 }] });
     });
   });
 
@@ -658,6 +871,7 @@ describe('api/mcp-proxy', () => {
           0,
           'oversized bodies must not reach upstream MCP servers',
         );
+        assert.equal(pinnedRequests.length, 0, 'no upstream socket may be opened for a rejected body');
         const data = await res.json();
         // Exact equality, not a substring match: api/mcp-proxy.ts is under
         // `@ts-nocheck`, so `typecheck:api` cannot verify the RequestBodyTooLargeError
