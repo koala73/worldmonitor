@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import YAML from 'yaml';
+
+import { createTempDir } from './helpers/temp-dir.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const workflowPath = resolve(repoRoot, '.github/workflows/deploy-railway-reconcile-control.yml');
@@ -49,14 +50,13 @@ function commitFixture(root, message) {
   return runGit(root, ['rev-parse', 'HEAD']);
 }
 
-function createFenceFixture() {
-  const root = mkdtempSync(join(tmpdir(), 'wm-reconcile-deploy-fence-'));
+function createFenceFixture(t) {
+  const root = createTempDir('wm-reconcile-deploy-fence-', t);
   runGit(root, ['init', '--quiet', '--initial-branch=main', '.']);
   runGit(root, ['config', 'user.name', 'Reconcile Deploy Fence Fixture']);
   runGit(root, ['config', 'user.email', 'reconcile-fence@wm-fixture.localhost']);
   for (const path of expectedDeployPaths) {
-    const concretePath = path.endsWith('/**') ? `${path.slice(0, -3)}/index.js` : path;
-    writeFixtureFile(root, concretePath, 'base\n');
+    writeFixtureFile(root, concreteDeployPath(path), 'base\n');
   }
   writeFixtureFile(root, 'README.md', 'base\n');
   const eventSha = commitFixture(root, 'event revision');
@@ -73,13 +73,8 @@ function runFence(root, eventSha) {
   });
 }
 
-function withFenceFixture(run) {
-  const fixture = createFenceFixture();
-  try {
-    return run(fixture);
-  } finally {
-    rmSync(fixture.root, { recursive: true, force: true });
-  }
+function withFenceFixture(t, run) {
+  return run(createFenceFixture(t));
 }
 
 function concreteDeployPath(path) {
@@ -200,8 +195,8 @@ describe('Railway reconcile control deployment workflow', () => {
     }
   });
 
-  it('admits the exact event revision and an unrelated descendant of it', () => {
-    withFenceFixture(({ eventSha, root }) => {
+  it('admits the exact event revision and an unrelated descendant of it', (t) => {
+    withFenceFixture(t, ({ eventSha, root }) => {
       const exact = runFence(root, eventSha);
       assert.equal(exact.status, 0, exact.stderr || exact.stdout);
 
@@ -212,9 +207,9 @@ describe('Railway reconcile control deployment workflow', () => {
     });
   });
 
-  it('rejects a descendant change under every deployment trigger path', () => {
+  it('rejects a descendant change under every deployment trigger path', (t) => {
     for (const path of expectedDeployPaths) {
-      withFenceFixture(({ eventSha, root }) => {
+      withFenceFixture(t, ({ eventSha, root }) => {
         writeFixtureFile(root, concreteDeployPath(path), `changed ${path}\n`);
         commitFixture(root, `change ${path}`);
         const result = runFence(root, eventSha);
@@ -223,8 +218,8 @@ describe('Railway reconcile control deployment workflow', () => {
     }
   });
 
-  it('admits a descendant whose deployment paths return to the event tree', () => {
-    withFenceFixture(({ eventSha, root }) => {
+  it('admits a descendant whose deployment paths return to the event tree', (t) => {
+    withFenceFixture(t, ({ eventSha, root }) => {
       const path = concreteDeployPath(expectedDeployPaths[0]);
       writeFixtureFile(root, path, 'temporary change\n');
       commitFixture(root, 'temporary deployment change');
@@ -235,8 +230,8 @@ describe('Railway reconcile control deployment workflow', () => {
     });
   });
 
-  it('rejects divergent history and missing comparison evidence', () => {
-    withFenceFixture(({ eventSha, root }) => {
+  it('rejects divergent history and missing comparison evidence', (t) => {
+    withFenceFixture(t, ({ eventSha, root }) => {
       const tree = runGit(root, ['rev-parse', 'HEAD^{tree}']);
       const divergentSha = runGit(root, ['commit-tree', tree, '-m', 'divergent main']);
       runGit(root, ['update-ref', 'refs/heads/main', divergentSha]);
@@ -244,12 +239,12 @@ describe('Railway reconcile control deployment workflow', () => {
       assert.notEqual(divergent.status, 0, divergent.stdout);
     });
 
-    withFenceFixture(({ root }) => {
+    withFenceFixture(t, ({ root }) => {
       const missing = runFence(root, 'f'.repeat(40));
       assert.notEqual(missing.status, 0, missing.stdout);
     });
 
-    withFenceFixture(({ eventSha, root }) => {
+    withFenceFixture(t, ({ eventSha, root }) => {
       runGit(root, ['remote', 'remove', 'origin']);
       const unreadable = runFence(root, eventSha);
       assert.notEqual(unreadable.status, 0, unreadable.stdout);

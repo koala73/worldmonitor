@@ -59,11 +59,6 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
           filter: blob:none
-      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
-        with:
-          node-version: '24'
-      - name: Install
-        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Fence stale main deployment
         run: |
           set -euo pipefail
@@ -94,6 +89,11 @@ jobs:
           if [ "$current_main_sha" != "$GITHUB_SHA" ]; then
             echo "::notice::Current main advanced only outside the reconcile-control deployment closure."
           fi
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: '24'
+      - name: Install
+        run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Set control-plane secrets
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
