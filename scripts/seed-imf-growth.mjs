@@ -46,7 +46,8 @@ export function weoYears() {
 
 export function latestValue(byYear) {
   for (const year of weoYears()) {
-    const v = Number(byYear?.[year]);
+    // imfSdmxFetchIndicator already normalizes observations to numbers.
+    const v = byYear?.[year];
     if (Number.isFinite(v)) return { value: v, year: Number(year) };
   }
   return null;
