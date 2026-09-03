@@ -18,6 +18,7 @@ import { DIGEST_LASTGOOD_PUBLISH_SCRIPT } from '../shared/digest-lastgood-publis
 import { LASTGOOD_MAX_AGE_MS, LASTGOOD_TTL_S } from '../server/worldmonitor/news/v1/_lastgood.ts';
 
 const NOW = Date.UTC(2026, 7, 22, 12, 0, 0);
+const GENERATED_AT = new Date(NOW).toISOString();
 const BODY_KEY = 'news:digest:lastgood:v1:full:en';
 const CANONICAL_KEY = 'news:digest:v1:full:en';
 const REVOKED_KEY = 'news:digest:revoked-urls:v1';
@@ -174,12 +175,23 @@ const publish = ({ data, acceptedAt = NOW, now = NOW, initial = {} }) =>
 const publishCanonicalAndLastGood = ({ data, acceptedAt = NOW, now = NOW, initial = {} }) =>
   runScript({
     keys: [BODY_KEY, REVOKED_KEY, CANONICAL_KEY],
-    argv: [now, LASTGOOD_MAX_AGE_MS, acceptedAt, LASTGOOD_TTL_S, JSON.stringify(data), 900],
+    argv: [
+      now,
+      LASTGOOD_MAX_AGE_MS,
+      acceptedAt,
+      LASTGOOD_TTL_S,
+      JSON.stringify(data),
+      900,
+      new Date(now - LASTGOOD_MAX_AGE_MS).toISOString(),
+      new Date(now).toISOString(),
+      120,
+    ],
     redis: makeRedis(initial),
   });
 
 const bodyOf = (links, extra = {}) => ({
   categories: { politics: { items: links.map((link) => ({ link, tickers: [] })) } },
+  generatedAt: GENERATED_AT,
   ...extra,
 });
 
@@ -202,6 +214,7 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
         politics: { items: [{ link: 'https://a.test/1' }] },
         tech: { items: [{ link: 'https://b.test/1' }] },
       },
+      generatedAt: GENERATED_AT,
     };
     const narrow = bodyOf(['https://c.test/1']);
     const first = publishCanonicalAndLastGood({ data: rich });
@@ -225,6 +238,7 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
         politics: { items: [{ link: 'https://a.test/1' }] },
         tech: { items: [{ link: 'https://b.test/1' }] },
       },
+      generatedAt: GENERATED_AT,
     };
     const narrow = bodyOf(['https://c.test/1']);
     const first = publishCanonicalAndLastGood({ data: rich });
@@ -241,12 +255,31 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
     assert.deepEqual(JSON.parse(second.redis.store.get(BODY_KEY)).data, rich);
   });
 
+  it('backs off rebuilds when durable rejects and the canonical key is empty', () => {
+    const rich = {
+      categories: {
+        politics: { items: [{ link: 'https://a.test/1' }] },
+        tech: { items: [{ link: 'https://b.test/1' }] },
+      },
+      generatedAt: GENERATED_AT,
+    };
+    const { result, redis } = publishCanonicalAndLastGood({
+      data: bodyOf(['https://c.test/1']),
+      initial: { [BODY_KEY]: snapshot(rich, NOW - 60_000) },
+    });
+    assert.equal(result, 0);
+    assert.equal(redis.store.get(CANONICAL_KEY), JSON.stringify('__WM_NEG__'));
+    assert.equal(redis.ttls.get(CANONICAL_KEY), 120);
+    assert.deepEqual(JSON.parse(redis.store.get(BODY_KEY)).data, rich);
+  });
+
   it('updates both snapshots for a valid candidate after a rejected one', () => {
     const rich = {
       categories: {
         politics: { items: [{ link: 'https://a.test/1' }] },
         tech: { items: [{ link: 'https://b.test/1' }] },
       },
+      generatedAt: GENERATED_AT,
     };
     const narrow = bodyOf(['https://c.test/1']);
     const update = {
@@ -254,6 +287,7 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
         politics: { items: [{ link: 'https://d.test/1' }] },
         tech: { items: [{ link: 'https://e.test/1' }] },
       },
+      generatedAt: new Date(NOW + 120_000).toISOString(),
     };
     const first = publishCanonicalAndLastGood({ data: rich });
     const rejected = publishCanonicalAndLastGood({
@@ -272,6 +306,48 @@ describe('durable last-good publish gate — executed, not described (#7084)', (
     assert.equal(accepted.result, 1);
     assert.equal(accepted.redis.store.get(CANONICAL_KEY), JSON.stringify(update));
     assert.deepEqual(JSON.parse(accepted.redis.store.get(BODY_KEY)).data, update);
+  });
+
+  it('does not let a malformed, future, or expired canonical clock veto replacement', () => {
+    const cases = [
+      { name: 'missing', generatedAt: undefined },
+      { name: 'malformed', generatedAt: 'not-a-date' },
+      { name: 'invalid calendar date', generatedAt: '2026-02-30T12:00:00.000Z' },
+      { name: 'future', generatedAt: new Date(NOW + 1).toISOString() },
+      { name: 'expired', generatedAt: new Date(NOW - LASTGOOD_MAX_AGE_MS - 1).toISOString() },
+    ];
+    for (const testCase of cases) {
+      const rich = {
+        categories: {
+          politics: { items: [{ link: 'https://a.test/1' }] },
+          tech: { items: [{ link: 'https://b.test/1' }] },
+        },
+        ...(testCase.generatedAt === undefined ? {} : { generatedAt: testCase.generatedAt }),
+      };
+      const { result, redis } = publishCanonicalAndLastGood({
+        data: bodyOf(['https://c.test/1']),
+        initial: { [CANONICAL_KEY]: JSON.stringify(rich) },
+      });
+      assert.equal(result, 1, `${testCase.name} canonical content cannot veto a valid candidate`);
+      assert.equal(redis.store.get(CANONICAL_KEY), JSON.stringify(bodyOf(['https://c.test/1'])));
+    }
+  });
+
+  it('does not let a canonical body with no servable items veto replacement', () => {
+    const unusable = {
+      categories: {
+        politics: { items: [] },
+        tech: { items: [] },
+      },
+      generatedAt: GENERATED_AT,
+    };
+    const candidate = bodyOf(['https://c.test/1']);
+    const { result, redis } = publishCanonicalAndLastGood({
+      data: candidate,
+      initial: { [CANONICAL_KEY]: JSON.stringify(unusable) },
+    });
+    assert.equal(result, 1);
+    assert.equal(redis.store.get(CANONICAL_KEY), JSON.stringify(candidate));
   });
 
   it('writes when there is no incumbent, and stores the body BYTE-FOR-BYTE', () => {

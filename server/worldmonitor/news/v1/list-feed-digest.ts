@@ -29,6 +29,7 @@ import {
 import {
   beginDigestAttempt,
   completeDigestAttempt,
+  deferDigestAttempt,
   publishAcceptedSnapshot,
   publishFailedAttempt,
   readAcceptedSnapshot,
@@ -2074,13 +2075,29 @@ export async function listFeedDigest(
           // generic wrapper write its own sentinel first would detach identity.
           cacheFailures: false,
           cachePositiveResult: false,
+          onPositiveResult: async (result) => {
+            if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
+              const publication = await settleBeforeDeadline(
+                publishAcceptedSnapshot(variant, lang, result, digestCacheKey),
+                responseDeadlineAt,
+                'unavailable',
+              );
+              if (publication === 'unavailable') deferDigestAttempt(digestCacheKey, 30);
+            } else {
+              deferDigestAttempt(digestCacheKey, 30);
+              console.warn(
+                `[digest-lastgood] publish skipped (over deadline budget) variant=${variant} lang=${lang} ` +
+                  `elapsed_ms=${Date.now() - requestStart}`,
+              );
+            }
+          },
           shouldFetch: () => shouldStartDigestAttempt(digestCacheKey),
         },
       ),
       responseDeadlineAt,
       { data: null, source: 'skipped', leader: false },
     );
-    const { data: fresh, source, leader } = cachedResult;
+    const { data: fresh, source } = cachedResult;
 
     if (fresh === null) {
       markNoCacheResponse(ctx.request);
@@ -2127,28 +2144,6 @@ export async function listFeedDigest(
       });
       markNoCacheResponse(ctx.request);
       return empty(fresh.coverage?.attemptedAt || attemptedAt, '');
-    }
-    // Only the coalescing LEADER of a real build publishes: followers resolve
-    // with source 'fresh' too, and each would repeat the full ~126KB guarded
-    // write for a body identical to the one the leader just published. The
-    // deadline gate keeps the worst case inside the 25s Edge ceiling: a
-    // maximally slow build (~19s with its own cache writes) plus this
-    // publish's worst case (~6.5s of Redis timeouts) would exceed it, and
-    // the publish is best-effort by contract — skipping it under pressure
-    // loses nothing the next uncontended build will not restore.
-    if (source === 'fresh' && leader) {
-      if (Date.now() - requestStart <= PUBLISH_DEADLINE_CUTOFF_MS) {
-        await settleBeforeDeadline(
-          publishAcceptedSnapshot(variant, lang, fresh, digestCacheKey),
-          responseDeadlineAt,
-          undefined,
-        );
-      } else {
-        console.warn(
-          `[digest-lastgood] publish skipped (over deadline budget) variant=${variant} lang=${lang} ` +
-            `elapsed_ms=${Date.now() - requestStart}`,
-        );
-      }
     }
     // #7084: while ANY revocation is live, stop feeding shared caches. This
     // endpoint is the gateway's `slow` tier (s-maxage=1800, CDN-Cache-Control

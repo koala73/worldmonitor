@@ -179,6 +179,7 @@ describe('durable last-good wiring (#7084)', () => {
     reads: new Map<string, Read>(),
     readCalls: [] as string[],
     writes: [] as Array<{ key: string; value: unknown; ttl: number }>,
+    writeResult: true,
     pipeline: (async () => [{ result: [] }]) as (c: unknown[][]) => Promise<Array<{ result?: unknown; error?: string }>>,
     transaction: (async (commands: unknown[][]) => commands.map(() => ({ result: 'OK' }))) as
       (c: unknown[][]) => Promise<Array<{ result?: unknown; error?: string }>>,
@@ -210,9 +211,9 @@ describe('durable last-good wiring (#7084)', () => {
     const shim = [
       'const s = globalThis.__digestRedisStub;',
       'export async function readCachedJson(k) { s.readCalls.push(k); return s.reads.get(k) ?? { status: "miss" }; }',
-      'export async function setCachedJson(k, v, t) { s.writes.push({ key: k, value: v, ttl: t }); return true; }',
+      'export async function setCachedJson(k, v, t) { s.writes.push({ key: k, value: v, ttl: t }); return s.writeResult; }',
       'export async function cachedFetchJson() { return null; }',
-      'export async function cachedFetchJsonWithMeta() { return s.fetchMeta ?? { data: null, source: "skipped", leader: false }; }',
+      'export async function cachedFetchJsonWithMeta(_k, _t, _f, _n, o) { const r = s.fetchMeta ?? { data: null, source: "skipped", leader: false }; if (r.data && r.source === "fresh" && r.leader) await o?.onPositiveResult?.(r.data); return r; }',
       'export async function getCachedJson() { return null; }',
       'export async function getCachedJsonBatch() { return new Map(); }',
       'export function isRedisConfigured() { return s.redisConfigured !== false; }',
@@ -269,6 +270,7 @@ describe('durable last-good wiring (#7084)', () => {
     stub.reads.clear();
     stub.readCalls.length = 0;
     stub.writes.length = 0;
+    stub.writeResult = true;
     stub.pipeline = async () => [{ result: [] }];
     stub.pipelineCalls.length = 0;
     stub.transaction = async (commands) => commands.map(() => ({ result: 'OK' }));
@@ -334,6 +336,144 @@ describe('durable last-good wiring (#7084)', () => {
     // Must not throw and must not fall back to plain writes.
     await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE));
     assert.equal(stub.writes.filter((w) => w.key === lastGoodKey('full', 'en')).length, 0);
+  });
+
+  it('reports distinct guarded-publication outcomes', async () => {
+    reset();
+    const logs: string[] = [];
+    const warnings: string[] = [];
+    const originalLog = console.log;
+    const originalWarn = console.warn;
+    console.log = (...args) => logs.push(args.map(String).join(' '));
+    console.warn = (...args) => warnings.push(args.map(String).join(' '));
+    try {
+      stub.pipeline = async () => [{ result: 0 }];
+      assert.equal(
+        await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE)),
+        'rejected',
+      );
+
+      stub.pipeline = async () => [{ result: -1 }];
+      assert.equal(
+        await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE)),
+        'rejected',
+      );
+
+      stub.pipeline = async () => [{ error: 'backend unavailable' }];
+      assert.equal(
+        await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE)),
+        'unavailable',
+      );
+
+      stub.pipeline = async () => { throw new Error('transport failed'); };
+      assert.equal(
+        await mod.__testing__.publishAcceptedSnapshot('full', 'en', body(['https://a/1'], COVERAGE)),
+        'unavailable',
+      );
+    } finally {
+      console.log = originalLog;
+      console.warn = originalWarn;
+    }
+
+    assert.ok(logs.some((message) => message.includes('candidate rejected by acceptance gate')));
+    assert.ok(logs.some((message) => message.includes('candidate rejected after revocations')));
+    assert.ok(warnings.some((message) => message.includes('publish unavailable')));
+    assert.ok(warnings.some((message) => message.includes('publish failed: Error: transport failed')));
+  });
+
+  it('applies the same rich-to-narrow-to-valid publication sequence in sidecar mode', async () => {
+    reset();
+    const originalMode = process.env.LOCAL_API_MODE;
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    const canonicalKey = 'news:digest:v1:full:en';
+    const generatedAt = new Date().toISOString();
+    const rich = body(['https://a/1', 'https://a/2'], COVERAGE, generatedAt);
+    const narrow = body(['https://a/3'], COVERAGE, generatedAt);
+    const valid = body(['https://a/3', 'https://a/4', 'https://a/5'], COVERAGE, generatedAt);
+    try {
+      await mod.__testing__.publishAcceptedSnapshot('full', 'en', rich, canonicalKey);
+      assert.deepEqual(stub.writes.map((write) => write.key), [lastGoodKey('full', 'en'), canonicalKey]);
+
+      const richDurable = stub.writes[0]?.value;
+      stub.reads.set(lastGoodKey('full', 'en'), { status: 'hit', value: richDurable });
+      stub.reads.set(canonicalKey, { status: 'hit', value: rich });
+      stub.writes.length = 0;
+
+      await mod.__testing__.publishAcceptedSnapshot('full', 'en', narrow, canonicalKey);
+      assert.equal(stub.writes.length, 0, 'a narrower candidate must not replace either sidecar key');
+
+      await mod.__testing__.publishAcceptedSnapshot('full', 'en', valid, canonicalKey);
+      assert.deepEqual(stub.writes.map((write) => write.key), [lastGoodKey('full', 'en'), canonicalKey]);
+      assert.deepEqual(stub.writes[1]?.value, valid);
+    } finally {
+      if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
+      else process.env.LOCAL_API_MODE = originalMode;
+    }
+  });
+
+  it('sidecar rejection fills an empty canonical key with a short rebuild cooldown', async () => {
+    reset();
+    const originalMode = process.env.LOCAL_API_MODE;
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    const canonicalKey = 'news:digest:v1:full:en';
+    const generatedAt = new Date().toISOString();
+    const rich = body(['https://a/1', 'https://a/2'], COVERAGE, generatedAt);
+    const narrow = body(['https://a/3'], COVERAGE, generatedAt);
+    stub.reads.set(lastGoodKey('full', 'en'), {
+      status: 'hit',
+      value: { acceptedAt: Date.now(), categoryCount: 1, itemCount: 2, data: rich },
+    });
+    try {
+      await mod.__testing__.publishAcceptedSnapshot('full', 'en', narrow, canonicalKey);
+      assert.deepEqual(stub.writes, [{ key: canonicalKey, value: '__WM_NEG__', ttl: 120 }]);
+    } finally {
+      if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
+      else process.env.LOCAL_API_MODE = originalMode;
+    }
+  });
+
+  it('sidecar publication stops before canonical when the durable write fails', async () => {
+    reset();
+    const originalMode = process.env.LOCAL_API_MODE;
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    stub.writeResult = false;
+    try {
+      await mod.__testing__.publishAcceptedSnapshot(
+        'full',
+        'en',
+        body(['https://a/1'], COVERAGE, new Date().toISOString()),
+        'news:digest:v1:full:en',
+      );
+      assert.deepEqual(stub.writes.map((write) => write.key), [lastGoodKey('full', 'en')]);
+    } finally {
+      if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
+      else process.env.LOCAL_API_MODE = originalMode;
+    }
+  });
+
+  it('sidecar replaces a canonical body whose items field is malformed', async () => {
+    reset();
+    const originalMode = process.env.LOCAL_API_MODE;
+    process.env.LOCAL_API_MODE = 'tauri-sidecar';
+    const canonicalKey = 'news:digest:v1:full:en';
+    stub.reads.set(canonicalKey, {
+      status: 'hit',
+      value: {
+        categories: { politics: { items: { bad: true } }, tech: { items: [] } },
+        generatedAt: new Date().toISOString(),
+      },
+    });
+    try {
+      const candidate = body(['https://a/1'], COVERAGE, new Date().toISOString());
+      assert.equal(
+        await mod.__testing__.publishAcceptedSnapshot('full', 'en', candidate, canonicalKey),
+        'accepted',
+      );
+      assert.deepEqual(stub.writes.map((write) => write.key), [lastGoodKey('full', 'en'), canonicalKey]);
+    } finally {
+      if (originalMode === undefined) delete process.env.LOCAL_API_MODE;
+      else process.env.LOCAL_API_MODE = originalMode;
+    }
   });
 
   it('serveLastGood returns null -- never a durable claim -- when Redis is unreadable', async () => {
@@ -458,6 +598,17 @@ describe('durable last-good wiring (#7084)', () => {
     assert.equal(command[3], lastGoodKey('full', 'en'));
     assert.equal(command[5], 'news:digest:v1:full:en');
     assert.equal(Number(command[11]), 900);
+  });
+
+  it('a publication outage defers the next build so the isolate fallback can serve', async () => {
+    reset();
+    stub.fetchMeta = { data: body(['https://a/1'], COVERAGE), source: 'fresh', leader: true };
+    stub.pipeline = async () => [{ error: 'redis unavailable' }];
+    await mod.listFeedDigest(ctx(), { variant: 'full', lang: 'en' });
+    assert.equal(
+      mod.__testing__.lastGoodStoreTesting.failureCooldowns.has('news:digest:v1:full:en'),
+      true,
+    );
   });
 
   it('a coalesced FOLLOWER of a build does not repeat the publication', async () => {

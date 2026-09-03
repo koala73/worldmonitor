@@ -121,6 +121,60 @@ function applySetToStore(store, url, init) {
 }
 
 describe('redis caching behavior', { concurrency: 1 }, () => {
+  it('keeps followers coalesced until the caller-owned positive commit finishes', async () => {
+    const redis = await importRedisFresh();
+    const restoreEnv = withEnv({
+      UPSTASH_REDIS_REST_URL: 'https://redis.test',
+      UPSTASH_REDIS_REST_TOKEN: 'token',
+      VERCEL_ENV: undefined,
+      VERCEL_GIT_COMMIT_SHA: undefined,
+    });
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('/get/')) return jsonResponse({ result: undefined });
+      throw new Error(`Unexpected fetch URL: ${String(url)}`);
+    };
+    let fetcherCalls = 0;
+    let releaseCommit;
+    const commitStarted = Promise.withResolvers();
+    const commitRelease = new Promise((resolvePromise) => { releaseCommit = resolvePromise; });
+    const opts = {
+      cachePositiveResult: false,
+      onPositiveResult: async () => {
+        commitStarted.resolve();
+        await commitRelease;
+      },
+    };
+    try {
+      const fetcher = async () => {
+        fetcherCalls += 1;
+        return { value: 42 };
+      };
+      const leader = redis.cachedFetchJsonWithMeta('commit:test:key', 60, fetcher, 120, opts);
+      await commitStarted.promise;
+      const follower = redis.cachedFetchJsonWithMeta('commit:test:key', 60, fetcher, 120, opts);
+      await new Promise((resolvePromise) => setTimeout(resolvePromise, 0));
+      assert.equal(fetcherCalls, 1);
+      releaseCommit();
+      const [leaderResult, followerResult] = await Promise.all([leader, follower]);
+      assert.equal(leaderResult.leader, true);
+      assert.equal(followerResult.leader, false);
+    } finally {
+      globalThis.fetch = originalFetch;
+      restoreEnv();
+    }
+  });
+
+  it('reports an oversized sidecar cache write as rejected', async () => {
+    const restoreEnv = withEnv({ LOCAL_API_MODE: 'tauri-sidecar' });
+    const redis = await importRedisFresh();
+    try {
+      assert.equal(await redis.setCachedJson('oversized:test:key', 'x'.repeat(1_048_577), 60), false);
+    } finally {
+      restoreEnv();
+    }
+  });
+
   it('coalesces concurrent misses into one upstream fetcher execution', async () => {
     const redis = await importRedisFresh();
     const restoreEnv = withEnv({

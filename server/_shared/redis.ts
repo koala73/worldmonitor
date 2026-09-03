@@ -252,8 +252,7 @@ export async function getCachedEnvelopeJson(key: string, raw = false): Promise<u
 export async function setCachedJson(key: string, value: unknown, ttlSeconds: number, raw = false): Promise<boolean> {
   if (process.env.LOCAL_API_MODE === 'tauri-sidecar') {
     const { sidecarCacheSet } = await import('./sidecar-cache');
-    sidecarCacheSet(key, value, ttlSeconds);
-    return true;
+    return sidecarCacheSet(key, value, ttlSeconds);
   }
 
   const url = process.env.UPSTASH_REDIS_REST_URL;
@@ -448,8 +447,7 @@ export async function prependCachedJsonList(
       const retained = Array.isArray(existing)
         ? existing.filter((item) => JSON.stringify(item) !== encoded)
         : [];
-      sidecarCacheSet(key, [value, ...retained].slice(0, boundedLimit), boundedTtlSeconds);
-      return true;
+      return sidecarCacheSet(key, [value, ...retained].slice(0, boundedLimit), boundedTtlSeconds);
     } catch (err) {
       // sentry-coverage-ok: this helper returns false to its caller, and a
       // history write must never fail the current response it will inform.
@@ -987,16 +985,19 @@ export interface UsageHook {
  * `opts.cacheFailures: false` similarly makes nulls, no-store payloads, and
  * thrown fetches non-cacheable. `opts.inflightKey` lets callers share positive
  * cache entries while isolating provider-local work and failures.
+ * `opts.onPositiveResult` keeps the in-flight slot open for a caller-owned
+ * commit phase after a valid fetch result.
  * `opts.isCallerLocalError` identifies admission failures that belong only to
  * the fetch leader. These errors do not arm shared cache backoff, and an
  * in-flight follower re-enters admission under its own request instead of
  * inheriting any preceding leader's failure.
  */
-type CachedFetchWithMetaOpts = CachedFetchOpts & {
+type CachedFetchWithMetaOpts<T extends object = object> = CachedFetchOpts & {
   usage?: UsageHook;
   shouldFetch?: () => boolean;
   cacheFailures?: boolean;
   cachePositiveResult?: boolean;
+  onPositiveResult?: (result: T) => Promise<void>;
   inflightKey?: string;
   isCallerLocalError?: (error: unknown) => boolean;
 };
@@ -1006,7 +1007,7 @@ export async function cachedFetchJsonWithMeta<T extends object>(
   ttlSeconds: number,
   fetcher: () => Promise<T | null>,
   negativeTtlSeconds = 120,
-  opts?: CachedFetchWithMetaOpts,
+  opts?: CachedFetchWithMetaOpts<T>,
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' | 'skipped'; leader: boolean }> {
   return cachedFetchJsonCore(key, ttlSeconds, fetcher, negativeTtlSeconds, opts, 'cachedFetchJsonWithMeta');
 }
@@ -1024,7 +1025,7 @@ async function cachedFetchJsonCore<T extends object>(
   ttlSeconds: number,
   fetcher: () => Promise<T | null>,
   negativeTtlSeconds: number,
-  opts: CachedFetchWithMetaOpts | undefined,
+  opts: CachedFetchWithMetaOpts<T> | undefined,
   callerName: 'cachedFetchJson' | 'cachedFetchJsonWithMeta',
 ): Promise<{ data: T | null; source: 'cache' | 'fresh' | 'skipped'; leader: boolean }> {
   const cached = await readCachedJson(key);
@@ -1103,6 +1104,7 @@ async function cachedFetchJsonCore<T extends object>(
             && (hadCacheReadError || (!wrote && hasRemoteRedisConfig()))) {
             armLocalPositiveFallback(key, result, ttlSeconds);
           }
+          if (opts?.cachePositiveResult === false) await opts.onPositiveResult?.(result);
         }
       } else {
         upstreamStatus = 0;
