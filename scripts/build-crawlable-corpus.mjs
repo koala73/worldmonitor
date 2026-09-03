@@ -45,6 +45,9 @@ import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
   chokepointCoverageMetrics,
+  chokepointOpenStatusSentence,
+  chokepointPassageStatus,
+  chokepointScoreDriverSentence,
   instabilityBand,
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
@@ -132,7 +135,11 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-02';
+export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-03';
+// Band-to-passage mapping published on every /chokepoints/* page (#7613): the
+// disruption badge bands are green <20, yellow 20-49, red >=50, and the binary
+// the query vocabulary asks for follows directly from the band.
+export const CHOKEPOINT_PASSAGE_MAPPING_NOTE = 'World Monitor maps the disruption band to passage status: Green (score below 20) means open, Yellow (20–49) means restricted, and Red (50 or above) means effectively closed. The disruption score below feeds that mapping; it is not a separate verdict.';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -3159,7 +3166,7 @@ function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snap
     },
     {
       question: 'How does World Monitor score chokepoint status?',
-      answer: `World Monitor scores each waterway 0-100 from four independent sources: NGA navigational warnings, the AIS snapshot, relay transit counts, and PortWatch week-over-week movement. Each source controls only its own values, so a source that is unavailable is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The traffic-light status helps operators triage waterways. It does not declare that a waterway is open or closed. The chokepoint methodology documents the inputs and score bands.`,
+      answer: `World Monitor scores each waterway 0-100 from four independent sources: NGA navigational warnings, the AIS snapshot, relay transit counts, and PortWatch week-over-week movement. Each source controls only its own values, so a source that is unavailable is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The traffic-light status maps to passage status — Green means open, Yellow means restricted, and Red means effectively closed — so each detail page states whether its waterway is open right now. The chokepoint methodology documents the inputs, score bands, and mapping.`,
     },
     {
       question: 'Why do some chokepoint pages show fewer metrics than others?',
@@ -3467,6 +3474,44 @@ function renderChokepointPage({
   const transitsNote = transitsWithheld
     ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName))}</p>`
     : '        <p data-chokepoint-transits-note hidden></p>';
+  // First-screen binary for the open/closed query vocabulary (#7613). The
+  // disruption score stays on the page as the supporting detail below.
+  const passageStatus = hasPulse ? chokepointPassageStatus(pulse.disruptionScore) : null;
+  const openStatusSentence = hasPulse
+    ? chokepointOpenStatusSentence({
+      displayName: chokepoint.displayName,
+      score: pulse.disruptionScore,
+      asOfText: formatStaticDateTime(pulse.asOf),
+      todayTransits: transitsLabel,
+    })
+    : null;
+  // The helper returns plain text shared with the live-refresh path; the
+  // status word is a fixed ASCII token, so wrapping it here cannot disturb
+  // escaping. The exact `is <status> to commercial shipping.` clause is built
+  // by the helper above, which guarantees the replace target is present.
+  const openStatusHtml = openStatusSentence !== null && passageStatus !== null
+    ? escapeHtml(openStatusSentence).replace(
+      `is ${passageStatus} to commercial shipping.`,
+      `is <strong>${passageStatus}</strong> to commercial shipping.`,
+    )
+    : `World Monitor has not published a current passage status for ${escapeHtml(chokepoint.displayName)} yet.`;
+  const scoreDriverSentence = hasPulse
+    ? chokepointScoreDriverSentence({
+      score: pulse.disruptionScore,
+      bandLabel: pulse.status,
+      description: pulse.description,
+      warningsLabel: coverageMetrics.navigationalWarnings,
+      aisLabel: coverageMetrics.aisDisruptions,
+      congestionLabel: coverageMetrics.congestion,
+      todayTransits: transitsLabel,
+    })
+    : null;
+  const openStatusSection = `        <h2>Is ${escapeHtml(chokepoint.displayName)} open right now?</h2>
+        <p data-chokepoint-open-status>${openStatusHtml}</p>
+${scoreDriverSentence !== null
+    ? `        <p data-chokepoint-score-driver>${escapeHtml(scoreDriverSentence)}</p>`
+    : '        <p data-chokepoint-score-driver hidden></p>'}
+        <p class="tool-note" data-chokepoint-status-mapping>${escapeHtml(CHOKEPOINT_PASSAGE_MAPPING_NOTE)}</p>`;
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(formatScore(pulse.disruptionScore, { coverage: hasPulse }))}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
@@ -3494,6 +3539,7 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', f
       <h1>${escapeHtml(chokepoint.displayName)}</h1>
       <p class="lede">${escapeHtml(blurb)}</p>
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="${escapeHtml(chokepoint.id)}" data-chokepoint-name="${escapeHtml(chokepoint.displayName)}" data-state="${liveState}"${hasPulse ? ' data-published-pulse' : ''}>
+${openStatusSection}
         <div class="tool-head">
           <div>
             <p class="eyebrow">Current status</p>
@@ -3501,7 +3547,7 @@ ${optionalChokepointMetric('AIS congestion', 'data-chokepoint-congestion', '', f
           </div>
           <span class="live-status" data-live-status role="status" aria-live="polite">${escapeHtml(liveStatus)}</span>
         </div>
-        <p class="tool-note">The traffic-light badge is a disruption score, not an operational closure declaration. Transit metrics appear only when the current vessel snapshot has coverage.</p>
+        <p class="tool-note">Transit metrics appear only when the current vessel snapshot has coverage.</p>
 ${liveGrid}
         <div class="tool-meta">
           ${liveUpdatedMarkup({

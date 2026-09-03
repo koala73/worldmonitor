@@ -104,6 +104,118 @@ export function withheldTransitCountSentence(displayName) {
   return `World Monitor is not currently publishing a transit count for ${name} for this period.`;
 }
 
+// Strict score coercion: only finite numbers and non-blank numeric strings
+// qualify. A bare Number() would turn null and '' into 0 — a measured calm
+// reading manufactured from an absence.
+function chokepointScoreNumber(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value.replace(/,/g, ''));
+  return Number.NaN;
+}
+
+// Disruption-score band mapped to a commercial passage status (#7613). Bands
+// mirror the traffic-light badge (green <20, yellow 20-49, red >=50) so the
+// open/restricted/closed binary is reproducible rather than editorial.
+export function chokepointPassageStatus(score) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  if (numeric < 20) return 'open';
+  if (numeric < 50) return 'restricted';
+  return 'effectively closed';
+}
+
+function chokepointBandLabel(score) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  if (numeric < 20) return 'Green';
+  if (numeric < 50) return 'Yellow';
+  return 'Red';
+}
+
+// Segments of the live status note that are NOT geopolitical baseline
+// evidence, so they must never be quoted as the threat weight: absence and
+// partial-coverage phrasing, the transit-anomaly signal (it describes observed
+// traffic collapse, not the baseline — and it is rendered verbatim in the
+// page's description paragraph anyway), and operator review-hygiene text.
+// The live API always sends a non-empty description, so without this filter
+// every calm waterway would read as threat-driven. Anything left after
+// dropping these is the threat-baseline description behind the scorer's
+// threat weight; every non-normal threat level carries one, so an empty
+// remainder means a normal baseline with no anomaly signal.
+const NON_THREAT_DESCRIPTION_PATTERNS = [
+  /no active disruptions/i,
+  /source coverage incomplete/i,
+  /traffic down \d+% vs .*baseline/i,
+  /threat baseline last reviewed/i,
+];
+
+function threatBaselineDescription(description) {
+  const kept = String(description || '')
+    .split(';')
+    .map((segment) => segment.trim())
+    .filter((segment) => segment
+      && !NON_THREAT_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(segment)));
+  return kept.length ? kept.join('; ') : null;
+}
+
+function chokepointArticleName(displayName) {
+  const name = String(displayName || '').trim() || 'this chokepoint';
+  return `the ${name}`;
+}
+
+// First-screen binary sentence for /chokepoints/* pages (#7613): states in the
+// user's own words whether the waterway is open, restricted, or effectively
+// closed, then follows with the transit count. Returns null when the score is
+// unusable so callers can fall back to an unavailable note.
+export function chokepointOpenStatusSentence({ displayName, score, asOfText, todayTransits }) {
+  const status = chokepointPassageStatus(score);
+  if (status === null) return null;
+  const name = chokepointArticleName(displayName);
+  const dated = String(asOfText || '').trim();
+  const head = dated ? `As of ${dated}, ${name} is ${status} to commercial shipping.`
+    : `In the latest published snapshot, ${name} is ${status} to commercial shipping.`;
+  const transit = todayTransits == null || String(todayTransits).trim() === ''
+    ? ' No transit count is published for this snapshot.'
+    : ` Today's transit count is ${String(todayTransits).trim()}.`;
+  return `${head}${transit}`;
+}
+
+// Score-driver sentence for /chokepoints/* pages (#7613): names what set the
+// score — the baseline geopolitical threat weight, the observed snapshot
+// inputs, or both — so the number is attributable rather than bare. Only the
+// threat-baseline segments of the status note count as baseline evidence (see
+// threatBaselineDescription); a null remainder means a normal baseline with no
+// anomaly signal, so the score is entirely observed in that case.
+export function chokepointScoreDriverSentence({
+  score,
+  bandLabel,
+  description,
+  warningsLabel,
+  aisLabel,
+  congestionLabel,
+  todayTransits,
+}) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  const band = String(bandLabel || '').trim() || chokepointBandLabel(numeric);
+  const formatted = Number.isInteger(numeric) ? String(numeric) : String(Math.round(numeric * 10) / 10);
+  const warnings = String(warningsLabel || '').trim() || null;
+  const ais = String(aisLabel || '').trim() || null;
+  const congestion = String(congestionLabel || '').trim() || null;
+  const transit = todayTransits == null || String(todayTransits).trim() === ''
+    ? 'no published transit count'
+    : `${String(todayTransits).trim()} published transits`;
+  const observed = `${warnings ?? 'navigational warnings unavailable'}, `
+    + `${ais ?? 'AIS disruptions unavailable'}, `
+    + `${congestion ? `${congestion} congestion` : 'congestion not reported'}, `
+    + `and ${transit}`;
+  const threat = threatBaselineDescription(description);
+  if (threat) {
+    return `The score of ${formatted} (${band}) builds on the baseline geopolitical threat weight — ${threat} — plus this snapshot's observed inputs: ${observed}.`;
+  }
+  return `The score of ${formatted} (${band}) comes from this snapshot's observed inputs — ${observed} — with no additional geopolitical threat baseline.`;
+}
+
 function humanizeToken(value, prefixes = []) {
   let token = String(value || '').trim();
   for (const prefix of prefixes) {
@@ -1183,6 +1295,32 @@ export async function loadChokepoint(tool) {
     if (!isCurrentRequest(tool, state)) return;
     setText(tool, '[data-chokepoint-score]', view.disruptionScore);
     setText(tool, '[data-chokepoint-band]', view.status);
+    const openStatus = tool.querySelector('[data-chokepoint-open-status]');
+    if (openStatus) {
+      const sentence = chokepointOpenStatusSentence({
+        displayName: tool.dataset.chokepointName || '',
+        score: view.disruptionScore,
+        asOfText: formatDateTime(view.fetchedAt),
+        todayTransits: view.todayTransits,
+      });
+      if (sentence !== null) openStatus.textContent = sentence;
+    }
+    const scoreDriver = tool.querySelector('[data-chokepoint-score-driver]');
+    if (scoreDriver) {
+      const sentence = chokepointScoreDriverSentence({
+        score: view.disruptionScore,
+        bandLabel: view.status,
+        description: view.description,
+        warningsLabel: view.navigationalWarnings,
+        aisLabel: view.aisDisruptions,
+        congestionLabel: view.congestion,
+        todayTransits: view.todayTransits,
+      });
+      if (sentence !== null) {
+        scoreDriver.hidden = false;
+        scoreDriver.textContent = sentence;
+      }
+    }
     setOptionalMetric(tool, '[data-chokepoint-congestion]', view.congestion);
     setOptionalMetric(tool, '[data-chokepoint-warnings]', view.navigationalWarnings);
     setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);

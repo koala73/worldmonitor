@@ -6,6 +6,9 @@ import {
   airportDisruptionViewModel,
   ciiRankingViewModel,
   chokepointCoverageMetrics,
+  chokepointOpenStatusSentence,
+  chokepointPassageStatus,
+  chokepointScoreDriverSentence,
   chokepointStatusViewModel,
   crisisTrackerViewModel,
   hasPublishedLivePulse,
@@ -477,6 +480,74 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, true);
   });
 
+  it('refreshes the open/closed sentence and score driver on live update (#7613)', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
+        <h2>Is Strait of Hormuz open right now?</h2>
+        <p data-chokepoint-open-status>As of Sep 2, 2026, the Strait of Hormuz is restricted to commercial shipping.</p>
+        <p data-chokepoint-score-driver>The score of 35 (Yellow) comes from this snapshot's observed inputs.</p>
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid>
+          <div class="metric"><strong><span data-chokepoint-score>35</span><small data-chokepoint-band>Yellow</small></strong></div>
+          <div class="metric"><strong data-chokepoint-transits>—</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>—</strong></div>
+        </div>
+        <p data-chokepoint-description></p>
+        <p data-chokepoint-transits-note hidden></p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+      </section>
+    `;
+
+    const tool = document.querySelector('[data-live-chokepoint]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-chokepoint-status')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+            upstreamUnavailable: false,
+            chokepoints: [{
+              id: 'hormuz_strait',
+              disruptionScore: 70,
+              status: 'red',
+              congestionLevel: 'normal',
+              activeWarnings: 0,
+              navigationalWarningsAvailable: true,
+              aisDisruptions: 0,
+              aisSnapshotAvailable: true,
+              description: 'Active conflict.',
+              transitSummary: {
+                dataAvailable: true,
+                todayTotal: 6,
+                todayCountsAvailable: true,
+                wowChangePct: -14.3,
+              },
+            }],
+          }),
+        };
+      }
+      return anonymousSessionResponse();
+    };
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    assert.match(
+      tool.querySelector('[data-chokepoint-open-status]').textContent,
+      /the Strait of Hormuz is effectively closed to commercial shipping\. Today's transit count is 6\./,
+    );
+    assert.match(
+      tool.querySelector('[data-chokepoint-score-driver]').textContent,
+      /The score of 70 \(Red\) builds on the baseline geopolitical threat weight — Active conflict\./,
+    );
+  });
+
   // The mirror-parity test this replaces could not do its job: of its ten
   // values only `11` reached a formatter, and it renders identically under
   // every variant, so deleting the formatter outright still passed. The mirror
@@ -546,6 +617,144 @@ describe('crawlable live intelligence view models', () => {
     );
     assert.doesNotMatch(note, /AIS/, 'the note must not attribute the gap to a specific feed');
     assert.match(withheldTransitCountSentence(''), /for this chokepoint for this period/);
+  });
+
+  it('maps disruption bands to passage status for the open/closed binary (#7613)', () => {
+    // Bands mirror the traffic-light badge so the binary is reproducible.
+    assert.equal(chokepointPassageStatus(0), 'open');
+    assert.equal(chokepointPassageStatus(19.9), 'open');
+    assert.equal(chokepointPassageStatus(20), 'restricted');
+    assert.equal(chokepointPassageStatus('35'), 'restricted');
+    assert.equal(chokepointPassageStatus(49.9), 'restricted');
+    assert.equal(chokepointPassageStatus(50), 'effectively closed');
+    assert.equal(chokepointPassageStatus('70'), 'effectively closed');
+    assert.equal(chokepointPassageStatus(100), 'effectively closed');
+    assert.equal(chokepointPassageStatus(null), null);
+    assert.equal(chokepointPassageStatus(Number.NaN), null);
+    assert.equal(chokepointPassageStatus(-1), null);
+    assert.equal(chokepointPassageStatus(101), null);
+    assert.equal(chokepointPassageStatus('Red'), null);
+  });
+
+  it('states the open/closed binary first-screen with the transit count (#7613)', () => {
+    assert.equal(
+      chokepointOpenStatusSentence({
+        displayName: 'Strait of Hormuz',
+        score: 70,
+        asOfText: 'Sep 3, 2026, 6:25 AM UTC',
+        todayTransits: null,
+      }),
+      'As of Sep 3, 2026, 6:25 AM UTC, the Strait of Hormuz is effectively closed to commercial shipping.'
+      + ' No transit count is published for this snapshot.',
+    );
+    assert.equal(
+      chokepointOpenStatusSentence({
+        displayName: 'Suez Canal',
+        score: '35',
+        asOfText: 'Sep 3, 2026, 6:25 AM UTC',
+        todayTransits: '2',
+      }),
+      'As of Sep 3, 2026, 6:25 AM UTC, the Suez Canal is restricted to commercial shipping.'
+      + " Today's transit count is 2.",
+    );
+    assert.equal(
+      chokepointOpenStatusSentence({
+        displayName: 'Panama Canal',
+        score: 0,
+        asOfText: 'Sep 3, 2026, 6:25 AM UTC',
+        todayTransits: null,
+      }),
+      'As of Sep 3, 2026, 6:25 AM UTC, the Panama Canal is open to commercial shipping.'
+      + ' No transit count is published for this snapshot.',
+    );
+    assert.equal(chokepointOpenStatusSentence({
+      displayName: 'Strait of Hormuz',
+      score: null,
+      asOfText: 'Sep 3, 2026',
+      todayTransits: null,
+    }), null, 'an unusable score must fall back to the unavailable note');
+  });
+
+  it('attributes the score to the threat baseline and observed inputs (#7613)', () => {
+    assert.equal(
+      chokepointScoreDriverSentence({
+        score: '70',
+        bandLabel: 'Red',
+        description: 'Active conflict — Iran-Israel war; Iranian naval blockade risk and mines reported in Persian Gulf',
+        warningsLabel: '0 warnings',
+        aisLabel: '0 AIS disruptions',
+        congestionLabel: 'Normal',
+        todayTransits: null,
+      }),
+      'The score of 70 (Red) builds on the baseline geopolitical threat weight'
+      + ' — Active conflict — Iran-Israel war; Iranian naval blockade risk and mines reported in Persian Gulf'
+      + " — plus this snapshot's observed inputs: 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count.",
+    );
+    assert.equal(
+      chokepointScoreDriverSentence({
+        score: 0,
+        bandLabel: 'Green',
+        description: null,
+        warningsLabel: '0 warnings',
+        aisLabel: '0 AIS disruptions',
+        congestionLabel: 'Normal',
+        todayTransits: null,
+      }),
+      "The score of 0 (Green) comes from this snapshot's observed inputs"
+      + ' — 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count'
+      + ' — with no additional geopolitical threat baseline.',
+    );
+    assert.equal(chokepointScoreDriverSentence({
+      score: null,
+      bandLabel: 'Red',
+      description: 'Active conflict.',
+      warningsLabel: '0 warnings',
+      aisLabel: '0 AIS disruptions',
+      congestionLabel: 'Normal',
+      todayTransits: null,
+    }), null);
+  });
+
+  it('never quotes absence or coverage notes as the threat baseline (#7613)', () => {
+    // The live API always sends a description, so calm and partial-coverage
+    // waterways must read as observed, not threat-driven.
+    for (const description of [
+      'No active disruptions',
+      'No active disruptions reported by available sources; source coverage incomplete',
+      'Threat baseline last reviewed > 120 days ago — review recommended',
+    ]) {
+      assert.equal(
+        chokepointScoreDriverSentence({
+          score: 0,
+          bandLabel: 'Green',
+          description,
+          warningsLabel: '0 warnings',
+          aisLabel: '0 AIS disruptions',
+          congestionLabel: 'Normal',
+          todayTransits: null,
+        }),
+        "The score of 0 (Green) comes from this snapshot's observed inputs"
+        + ' — 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count'
+        + ' — with no additional geopolitical threat baseline.',
+        `must not quote as threat: ${description}`,
+      );
+    }
+    // Threat plus anomaly quotes only the threat; the anomaly is observed
+    // traffic and is already rendered verbatim in the description paragraph.
+    assert.equal(
+      chokepointScoreDriverSentence({
+        score: 80,
+        bandLabel: 'Red',
+        description: 'Active conflict — blockade risk; Traffic down 55% vs 30-day baseline, vessels may be transiting dark (AIS off)',
+        warningsLabel: '0 warnings',
+        aisLabel: '0 AIS disruptions',
+        congestionLabel: 'Normal',
+        todayTransits: null,
+      }),
+      'The score of 80 (Red) builds on the baseline geopolitical threat weight'
+      + ' — Active conflict — blockade risk'
+      + " — plus this snapshot's observed inputs: 0 warnings, 0 AIS disruptions, Normal congestion, and no published transit count.",
+    );
   });
 
   it('aggregates same-period crisis summaries and names missing coverage', () => {

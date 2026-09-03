@@ -629,7 +629,10 @@ only: hazard enrichment does not change `currentMbd`, `flowRatio`, or the
 ## Score Badge
 
 The public `status` field on `ChokepointInfo` is a traffic-light score badge:
-`green`, `yellow`, or `red`. It is not an operational closure-state label.
+`green`, `yellow`, or `red`. Each band maps to a commercial passage status
+that detail pages publish as a plain first-screen sentence: Green means open,
+Yellow means restricted, and Red means effectively closed. The badge is the
+input to that mapping, not a separate verdict.
 
 The score is:
 
