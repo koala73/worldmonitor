@@ -2477,15 +2477,17 @@ describe('crawlable corpus generator', () => {
           `${route} analysis must contain at least 400 country-specific words, got ${articleWordCount}`,
         );
         const pageWordCount = words(countryDocument.querySelector('main')?.textContent).length;
-        // Upper bound leaves room for the published live-pulse tiles (#7376)
-        // on top of the #7371 country-analysis prose target, and for the
-        // evidence-inventory accounting the unranked tier owes a reader: the
-        // truncation clause and the support-threshold note cost the widest of
-        // those pages ~30 words and pushed Monaco, Taiwan, Nauru, Palau and
-        // Andorra past the old 900 ceiling (#7609).
+        // Upper bound leaves room for the published live-pulse tiles (#7376) on
+        // top of the #7371 country-analysis prose target. Only the unranked tier
+        // gets the wider ceiling: the truncation clause and the support-threshold
+        // note cost the widest of those pages ~30 words and pushed Monaco,
+        // Taiwan, Nauru, Palau and Andorra past 900 (#7609). Ranked pages never
+        // carry that copy -- the heaviest is 841 -- so raising the bound for all
+        // 196 would hand 191 pages 50 words of slack they did not need.
+        const pageWordCeiling = country.headlineEligible === false ? 950 : 900;
         assert.ok(
-          pageWordCount >= 600 && pageWordCount <= 950,
-          `${route} main content must contain 600-950 words, got ${pageWordCount}`,
+          pageWordCount >= 600 && pageWordCount <= pageWordCeiling,
+          `${route} main content must contain 600-${pageWordCeiling} words, got ${pageWordCount}`,
         );
       }
 
@@ -3034,10 +3036,15 @@ describe('crawlable corpus generator', () => {
         const scope = (document.querySelector('[data-inventory-scope]')?.textContent || '').trim();
         if (scope) {
           scopeNotesChecked += 1;
-          const [shown, total, ...omitted] = [...scope.matchAll(/\d+/g)].map(([value]) => Number(value));
+          // Anchored to the words, not to digit order: a flat /\d+/g stream
+          // re-attributes captures the moment the sentence gains a number.
+          const head = scope.match(/^Showing (\d+) of (\d+) active dimensions/);
+          assert.ok(head, `${route} inventory scope note lost its expected shape: "${scope}"`);
+          const atFullCoverage = Number(scope.match(/(\d+) more at full coverage/)?.[1] ?? 0);
+          const omittedForBrevity = Number(scope.match(/(\d+) omitted for brevity/)?.[1] ?? 0);
           assert.equal(
-            shown + omitted.reduce((sum, count) => sum + count, 0),
-            total,
+            Number(head[1]) + atFullCoverage + omittedForBrevity,
+            Number(head[2]),
             `${route} inventory scope note does not account for every active dimension: "${scope}"`,
           );
         }

@@ -2768,13 +2768,20 @@ export function assertUnrankedInventoryIntegrity(country, rendered = {}) {
     ? describeInventoryScope(country)
     : rendered.inventoryScope;
   if (accounted !== shown) {
-    const stated = [...String(scope ?? '').matchAll(/\d+/g)].map(([value]) => Number(value));
-    const [statedShown, statedTotal, ...statedOmitted] = stated;
+    // Anchor each number to the words around it. A flat digit stream would
+    // silently re-attribute captures if the sentence ever gained or reordered a
+    // number, which is the same "read positionally, hope for the best" mistake
+    // the buckets themselves made.
+    const head = String(scope ?? '').match(/^Showing (\d+) of (\d+) active dimensions/);
+    const statedOmitted = omittedClauses.map((clause) => (
+      String(scope ?? '').match(new RegExp(`(\\d+) ${clause.text}`))?.[1]
+    ));
     if (
-      statedShown !== shown
-      || statedTotal !== total
-      || statedOmitted.length !== omittedClauses.length
-      || statedOmitted.reduce((sum, count) => sum + count, statedShown) !== statedTotal
+      !head
+      || Number(head[1]) !== shown
+      || Number(head[2]) !== total
+      || statedOmitted.some((count, index) => Number(count) !== omittedClauses[index].count)
+      || statedOmitted.reduce((sum, count) => sum + Number(count), shown) !== total
     ) {
       throw new Error(
         `${country.code} publishes an inventory scope note a reader cannot add up to`
