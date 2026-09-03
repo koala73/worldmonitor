@@ -122,6 +122,17 @@ Options:
   -h, --help            Show this help text.`);
 }
 
+export function spawnPreflightCommand(file, args, options) {
+  // Windows cannot execute npm's .cmd shim without a shell. Invoke the CLI
+  // with Node instead, preserving argv, cwd, environment and timeout semantics.
+  if (process.platform === 'win32' && file === 'npm') {
+    const npmCli = process.env.npm_execpath
+      || join(dirname(process.execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    return spawnSync(process.execPath, [npmCli, ...args], options);
+  }
+  return spawnSync(file, args, options);
+}
+
 function runCommand(runner, file, args, options = {}) {
   const env = {
     ...process.env,
@@ -192,7 +203,7 @@ function binEntries(packageJson) {
   return Object.entries(packageJson.bin);
 }
 
-export function probeDependencies(rootDir = process.cwd(), runner = spawnSync) {
+export function probeDependencies(rootDir = process.cwd(), runner = spawnPreflightCommand) {
   const dependencyRoots = [
     { label: 'root', path: resolve(rootDir) },
     ...(existsSync(resolve(rootDir, 'blog-site', 'package.json'))
@@ -649,7 +660,7 @@ export function prepareInventoryFacts(
   return { attempted: true, error: null, ok: true, timeoutMs };
 }
 
-export function runAgentPreflight(options = {}, runner = spawnSync) {
+export function runAgentPreflight(options = {}, runner = spawnPreflightCommand) {
   const rootDir = resolve(options.rootDir || process.cwd());
   const skipBootstrap = Boolean(options.skipBootstrap);
   const node = supportedNode(rootDir);

@@ -18,6 +18,7 @@ import {
   prAlignment,
   probeDependencies,
   runAgentPreflight,
+  spawnPreflightCommand,
   supportedNode,
 } from '../scripts/agent-preflight.mjs';
 import { createTempDir } from './helpers/temp-dir.mjs';
@@ -27,6 +28,22 @@ const currentMajor = process.versions.node.split('.')[0];
 const headOid = 'a'.repeat(40);
 
 describe('agent preflight', () => {
+  it('runs the real npm CLI on Windows without a shell', {
+    skip: process.platform !== 'win32',
+  }, () => {
+    const root = makeRoot();
+    writeFileSync(join(root, 'package.json'), JSON.stringify({ name: 'windows-npm-probe' }));
+    const result = spawnPreflightCommand('npm', ['ls', '--depth=0', '--json'], {
+      cwd: root,
+      encoding: 'utf8',
+      env: { ...process.env, npm_config_offline: 'true' },
+      timeout: 30_000,
+    });
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(JSON.parse(result.stdout).name, 'windows-npm-probe');
+  });
+
   it('requires explicit opt-ins for dirty, detached, and stale-main states', () => {
     const options = parseArgs([
       '--allow-dirty',
