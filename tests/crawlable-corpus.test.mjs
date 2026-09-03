@@ -4752,6 +4752,24 @@ describe('country recent developments', () => {
     assert.ok(!('dateModified' in plainWebPage), 'no items means no dateModified claim');
   });
 });
+describe('GEO residue #7616 (U2b changelog lastmod)', () => {
+  it('advertises the newer of the changelog file date and the latest dated release', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const dated = data.changelog
+      .map((release) => release.date)
+      .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ''))
+      .sort();
+    const latestRelease = dated[dated.length - 1];
+    assert.ok(latestRelease, 'changelog must contain a dated release');
+    const fileDate = gitFileLastmod(repoRoot, 'CHANGELOG.md');
+    const expected = fileDate >= latestRelease ? fileDate : latestRelease;
+    assert.equal(
+      data.lastmod.changelog,
+      expected,
+      `changelog lastmod must track file commits (${fileDate}), not freeze at the newest release heading (${latestRelease})`,
+    );
+  });
+});
 describe('GEO residue #7616 (U2a citations and prose)', () => {
   const repo = (path) => readFileSync(join(repoRoot, path), 'utf8');
 
