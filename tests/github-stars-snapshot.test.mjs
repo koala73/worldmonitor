@@ -1,11 +1,12 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { describe, it } from 'node:test';
 
 import {
   latestValidGithubStarsSnapshot,
+  MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS,
   starsInteractionCounter,
 } from '../scripts/github-stars-snapshot.mjs';
 
@@ -32,7 +33,7 @@ describe('github stars snapshot lookup', () => {
       'github-stars-2026-09-03.json': snapshot('2026-09-03', 3),
     });
     try {
-      assert.equal(latestValidGithubStarsSnapshot(dir).stargazers_count, 3);
+      assert.equal(latestValidGithubStarsSnapshot(dir, '2026-09-04').stargazers_count, 3);
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
@@ -44,7 +45,7 @@ describe('github stars snapshot lookup', () => {
       'github-stars-2026-09-03.json': '{not json',
     });
     try {
-      const snapshot = latestValidGithubStarsSnapshot(dir);
+      const snapshot = latestValidGithubStarsSnapshot(dir, '2026-09-04');
       assert.equal(snapshot.stargazers_count, 1);
       assert.equal(snapshot.snapshotFile, 'github-stars-2026-09-01.json');
     } finally {
@@ -112,6 +113,64 @@ describe('github stars snapshot lookup', () => {
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }
+  });
+
+  it('fails closed when the newest valid snapshot is older than the freshness bound', () => {
+    const dir = fixtureDir({
+      'github-stars-2026-07-01.json': snapshot('2026-07-01', 42),
+    });
+    try {
+      // 2026-07-01 is 65 days before 2026-09-04: past the bound, so the
+      // build must red instead of publishing a rotting figure (#7641).
+      assert.throws(
+        () => latestValidGithubStarsSnapshot(dir, '2026-09-04'),
+        /days old \(max \d+\); run npm run freeze:github-stars/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('accepts a snapshot exactly at the freshness bound', () => {
+    const capturedAt = '2026-07-21'; // 45 days before 2026-09-04
+    const dir = fixtureDir({
+      [`github-stars-${capturedAt}.json`]: snapshot(capturedAt, 42),
+    });
+    try {
+      const found = latestValidGithubStarsSnapshot(dir, '2026-09-04');
+      assert.equal(found.stargazers_count, 42);
+      assert.equal(found.snapshotFile, `github-stars-${capturedAt}.json`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  // The refresh cron and the staleness ceiling are one contract (mirrors the
+  // pulse cadence guard in tests/crawlable-corpus.test.mjs): relaxing one
+  // alone silently reopens the rotting-figure gap from #7641.
+  it('keeps the star-snapshot staleness ceiling within reach of the refresh cron', () => {
+    const workflow = readFileSync(
+      new URL('../.github/workflows/github-stars-refresh.yml', import.meta.url),
+      'utf8',
+    );
+    const cron = workflow.match(/^\s*- cron: '([^']+)'/m)?.[1];
+    assert.ok(cron, 'the star refresh workflow must declare a cron schedule');
+
+    const [, , dayOfMonth, month, dayOfWeek] = cron.split(/\s+/);
+    let cadenceDays;
+    if (dayOfMonth === '*' && month === '*' && dayOfWeek !== '*') cadenceDays = 7;
+    else if (dayOfMonth !== '*' && month === '*') cadenceDays = 31;
+    else if (dayOfMonth === '*' && month === '*' && dayOfWeek === '*') cadenceDays = 1;
+    else assert.fail(`unrecognised star refresh cadence: ${cron}`);
+
+    assert.ok(
+      MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS > cadenceDays,
+      `the ${MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS}-day ceiling must exceed the ${cadenceDays}-day refresh cadence, or a healthy refresh cycle reds the build`,
+    );
+    assert.ok(
+      MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS <= cadenceDays * 2,
+      `the ${MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS}-day ceiling tolerates more than two missed ${cadenceDays}-day refreshes; the published figure would rot that long`,
+    );
   });
 
   it('builds the InteractionCounter shape the homepage publishes', () => {
