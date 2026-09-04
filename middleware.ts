@@ -176,7 +176,28 @@ const INDEX_NOISE_QUERY_KEYS = new Set([
   'utm_term',
 ]);
 
-function stripIndexNoiseQuery(url: URL): URL | null {
+/**
+ * The one URL a crawler should be spending its budget on for this request, or
+ * null when it already asked for it.
+ *
+ * Two collapses, applied together so a URL carrying both costs one hop:
+ *
+ *  - Index-noise query keys (`ref`, `wm_referral`, `utm_*`) are dropped. They
+ *    change nothing about document identity (#7380).
+ *  - A legacy root deep link (`/?lat=…&zoom=…&layers=…`) becomes the
+ *    param-free `/dashboard`. That query is map state, and any lat/lon/zoom/
+ *    layer combination is a distinct URL, so forwarding it into the redirect
+ *    published an unbounded redirect space: Search Console's "Page with
+ *    redirect" bucket grew 199 -> 1,271 in three months, 301 of the exported
+ *    URLs being map states (#7660). `/dashboard` is already the rel=canonical
+ *    for every one of them, so a crawler loses nothing by going straight there.
+ *
+ * Humans are deliberately excluded from the second collapse — the params are
+ * what makes a shared or bookmarked legacy link open the view it encodes, and
+ * they still reach `/dashboard` with the state intact below. That split is why
+ * the redirect built from this must carry `Vary: User-Agent` and no-store.
+ */
+function crawlerCanonicalUrl(url: URL): URL | null {
   let changed = false;
   const next = new URL(url);
   for (const key of [...next.searchParams.keys()]) {
@@ -184,6 +205,13 @@ function stripIndexNoiseQuery(url: URL): URL | null {
       next.searchParams.delete(key);
       changed = true;
     }
+  }
+  if (next.pathname === '/' && hasLegacyDashboardRootState(next.searchParams)) {
+    next.pathname = '/dashboard';
+    for (const key of LEGACY_DASHBOARD_ROOT_QUERY_KEYS) {
+      next.searchParams.delete(key);
+    }
+    changed = true;
   }
   return changed ? next : null;
 }
@@ -193,21 +221,23 @@ export default function middleware(request: Request) {
   const path = url.pathname;
   const host = normalizeHost(request.headers.get('host') ?? url.hostname);
 
-  // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380).
-  // Humans still receive the param so referral-capture / analytics can run;
-  // crawlers are 308'd to the clean canonical document URL.
+  // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380), and
+  // map-state deep links as an unbounded redirect space (#7660). Humans still
+  // receive both so referral-capture, analytics, and shared map views keep
+  // working; crawlers are 308'd to the clean canonical document URL.
   if (
     (request.method === 'GET' || request.method === 'HEAD') &&
     !path.startsWith('/api/') &&
     BOT_UA.test(ua)
   ) {
-    const cleaned = stripIndexNoiseQuery(url);
+    const cleaned = crawlerCanonicalUrl(url);
     if (cleaned) {
       // Built by hand rather than via Response.redirect() so the response can
       // carry Vary + no-store. This redirect is decided by User-Agent; a 308
       // is cacheable by default (RFC 9110 §15.4.9). Without those headers a
       // crawler can warm the tagged URL and a shared edge cache can replay
-      // the clean Location to a human, stripping `ref` before referral capture.
+      // the clean Location to a human, stripping `ref` before referral capture
+      // or dropping the map state out of a shared link (#7660).
       return new Response(null, {
         status: 308,
         headers: {
@@ -219,6 +249,10 @@ export default function middleware(request: Request) {
     }
   }
 
+  // Human path for the same legacy root deep links. Crawlers never reach here
+  // — crawlerCanonicalUrl() above already sent them to the param-free
+  // /dashboard — so this branch keeps the query string, which is the whole
+  // point of a shared or bookmarked map link.
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
     const dashboardUrl = new URL(request.url);
     dashboardUrl.pathname = '/dashboard';

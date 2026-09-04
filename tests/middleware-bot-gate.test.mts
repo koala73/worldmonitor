@@ -444,3 +444,65 @@ describe('middleware /mcp — variant subdomains redirect to apex, POST stays', 
     assert.equal(res.headers.get('location'), 'https://worldmonitor.app/mcp');
   });
 });
+
+// #7660: `/?<map state>` 308'd to `/dashboard?<the same map state>`, forwarding
+// the query into its own redirect. Because any lat/lon/zoom/layer combination
+// is a distinct URL, every shared or bookmarked map link became a permanent
+// entry in Search Console's "Page with redirect" bucket — 301 of the 1,000
+// exported URLs, from only 111 distinct param strings, and the bucket grew
+// 199 -> 1,271 in three months.
+//
+// The canonical is already the param-free `/dashboard`, so a crawler loses
+// nothing by being sent straight there. Humans keep the state: those params
+// are what makes a shared legacy root link still open the right view. The
+// collapse is therefore User-Agent-conditioned (the #7380 pattern), which is
+// why the response must carry Vary + no-store — without them a shared cache
+// could replay the crawler's stripped Location to a human.
+describe('legacy root map-state links (#7660)', () => {
+  const MAP_STATE =
+    'lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts%2Cbases';
+  const GOOGLEBOT_UA = 'Mozilla/5.0 (compatible; Googlebot/2.1; +http://www.google.com/bot.html)';
+
+  it('sends a crawler to the param-free /dashboard document', () => {
+    const res = call(`/?${MAP_STATE}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response, 'crawler must be redirected');
+    assert.equal(res.status, 308);
+    assert.equal(
+      res.headers.get('location'),
+      'https://www.worldmonitor.app/dashboard',
+      'the map state must not be forwarded into the redirect'
+    );
+    assert.match(res.headers.get('vary') ?? '', /User-Agent/i);
+    assert.equal(res.headers.get('cache-control'), 'private, no-store');
+  });
+
+  it('collapses attribution params and map state in a single hop', () => {
+    const res = call(`/?ref=affiliate&${MAP_STATE}&utm_source=newsletter`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response);
+    assert.equal(res.headers.get('location'), 'https://www.worldmonitor.app/dashboard');
+  });
+
+  it('keeps the map state for humans', () => {
+    const res = call(`/?${MAP_STATE}`, CHROME_UA);
+    assert.ok(res instanceof Response, 'legacy root deep links must still reach the dashboard');
+    assert.equal(res.status, 308);
+    assert.equal(
+      res.headers.get('location'),
+      `https://www.worldmonitor.app/dashboard?${MAP_STATE}`,
+      'a shared legacy link must still open the view it encodes'
+    );
+  });
+
+  it('leaves /dashboard?<map state> alone for everyone', () => {
+    // The canonical tag already consolidates these and robots.txt keeps
+    // crawlers off them. Redirecting would manufacture the very redirects
+    // this change removes.
+    assert.equal(call(`/dashboard?${MAP_STATE}`, GOOGLEBOT_UA), undefined);
+    assert.equal(call(`/dashboard?${MAP_STATE}`, CHROME_UA), undefined);
+  });
+
+  it('does not touch a param-free root request', () => {
+    assert.equal(call('/', GOOGLEBOT_UA), undefined);
+    assert.equal(call('/', CHROME_UA), undefined);
+  });
+});
