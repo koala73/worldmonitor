@@ -66,13 +66,13 @@ export function makeBaselineKeyV2(type: string, region: string, weekday: number,
  * The v2 baselines start empty for all three (MIN_SAMPLES warm-up), so no
  * pre-existing statistics are silently re-based.
  */
-export const COUNT_SOURCE_KEYS: Record<string, string> = {
+export const COUNT_SOURCE_KEYS = {
   news: 'news:insights:v1',
   satellite_fires: 'wildfire:fires:v1',
   military_flights: 'military:flights:v1',
   vessels: 'theater-posture:sebuf:v1',
   ais_gaps: 'maritime:ais-gaps:v1',
-};
+} satisfies Record<string, string>;
 
 export const TEMPORAL_ANOMALIES_KEY = 'temporal:anomalies:v1';
 
@@ -154,7 +154,8 @@ function reduceTimestamps(timestamps: number[]): TemporalAnomaliesContentAge | n
 function newsContentClock(
   data: unknown,
   skewLimit: number,
-): TemporalAnomaliesContentAge | null | undefined {  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
+): TemporalAnomaliesContentAge | null | undefined {
+  if (data == null || typeof data !== 'object' || Array.isArray(data)) return undefined;
   const payload = data as Record<string, unknown>;
   const timestamps: number[] = [];
   const stories = payload.topStories;
@@ -293,25 +294,22 @@ function gapsContentClock(
   return { newestItemAt: sampledAt, oldestItemAt: sampledAt };
 }
 
-/** Unwrapped count-source payloads as the rebuild reads them from Redis. */
-export interface CountSourcePayloads {
-  news?: unknown;
-  satellite_fires?: unknown;
-  military_flights?: unknown;
-  vessels?: unknown;
-  ais_gaps?: unknown;
-}
+/** Unwrapped count-source payloads as the rebuild reads them from Redis.
+ *  Derived from COUNT_SOURCE_KEYS so a new source cannot forget its slot. */
+export type CountSourcePayloads = {
+  [K in keyof typeof COUNT_SOURCE_KEYS]?: unknown;
+};
 
 /**
  * One content-clock extractor per configured COUNT_SOURCE_KEYS type.
  *
- * Keep this map in lockstep with COUNT_SOURCE_KEYS —
- * tests/temporal-anomalies-cache.test.mts asserts the parity, so a source
- * added to COUNT_SOURCE_KEYS without a clock extractor fails the suite
- * instead of silently exempting itself from the content-age contract.
+ * Typed against CountSourcePayloads (itself derived from COUNT_SOURCE_KEYS)
+ * so adding a source without an extractor is a COMPILE error; the runtime
+ * parity test in tests/temporal-anomalies-cache.test.mts is the behavioral
+ * belt-and-braces on top.
  */
 const CONTENT_CLOCK_EXTRACTORS: Record<
-  string,
+  keyof CountSourcePayloads,
   (data: unknown, skewLimit: number) => TemporalAnomaliesContentAge | null | undefined
 > = {
   news: newsContentClock,
@@ -343,22 +341,8 @@ export function temporalAnomaliesContentMeta(
   sources: CountSourcePayloads,
   nowMs = Date.now(),
 ): TemporalAnomaliesContentAge | null {
-  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
-  const clocks: TemporalAnomaliesContentAge[] = [];
-  for (const [type, extractClock] of Object.entries(CONTENT_CLOCK_EXTRACTORS)) {
-    // Missing configured source → null (fail closed), not undefined (skip).
-    const clock = sources[type as keyof CountSourcePayloads] !== undefined
-      ? extractClock(sources[type as keyof CountSourcePayloads], skewLimit)
-      : null;
-    if (clock === undefined) continue;
-    if (clock === null) return null;
-    clocks.push(clock);
-  }
-  if (clocks.length === 0) return null;
-  return {
-    newestItemAt: Math.min(...clocks.map((clock) => clock.newestItemAt)),
-    oldestItemAt: Math.min(...clocks.map((clock) => clock.oldestItemAt)),
-  };
+  const collected = collectSourceClocks(sources, nowMs + CONTENT_AGE_CLOCK_SKEW_MS, null);
+  return collected.status === 'ok' ? collected.clock : null;
 }
 
 /**
@@ -388,15 +372,30 @@ export function temporalAnomaliesReadableContentMeta(
   sources: CountSourcePayloads,
   nowMs = Date.now(),
 ): TemporalAnomaliesReadableClock {
-  const skewLimit = nowMs + CONTENT_AGE_CLOCK_SKEW_MS;
+  return collectSourceClocks(sources, nowMs + CONTENT_AGE_CLOCK_SKEW_MS, undefined);
+}
+
+/**
+ * The shared collector behind both content-meta functions.
+ *
+ * They differ in exactly ONE input — what an ABSENT configured source means:
+ *   - `null` (strict): a configured source that was not read fail-closes the
+ *     whole clock. Right when absence means "the key is gone".
+ *   - `undefined` (readable): absence is skipped. Right when absence means
+ *     "this one read timed out".
+ * Everything else (per-source extraction, fail-closed on an unhealthy source,
+ * no-signal when nothing is datable, min-reduction) is identical.
+ */
+function collectSourceClocks(
+  sources: CountSourcePayloads,
+  skewLimit: number,
+  absentClock: TemporalAnomaliesContentAge | null | undefined,
+): TemporalAnomaliesReadableClock {
   const clocks: TemporalAnomaliesContentAge[] = [];
   for (const [type, extractClock] of Object.entries(CONTENT_CLOCK_EXTRACTORS)) {
-    // Absent here means "not readable this cycle", which the caller handles —
-    // so absence is skipped rather than fail-closed. That is the ONLY
-    // difference from temporalAnomaliesContentMeta.
     const clock = sources[type as keyof CountSourcePayloads] !== undefined
       ? extractClock(sources[type as keyof CountSourcePayloads], skewLimit)
-      : undefined;
+      : absentClock;
     if (clock === undefined) continue;
     if (clock === null) return { status: 'fail-closed' };
     clocks.push(clock);

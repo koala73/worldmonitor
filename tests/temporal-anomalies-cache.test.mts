@@ -243,12 +243,14 @@ function altSourcesLive(now = Date.now()) {
   };
 }
 
-/** Same three sources as REDIS values (real keys, envelopes wrapped). */
+/** Same three sources as REDIS values (real keys, envelopes wrapped), built
+ *  from the type-keyed fixture so the payload ages have one source of truth. */
 function altSourcesLiveRedis(now = Date.now()) {
+  const live = altSourcesLive(now);
   return {
-    'military:flights:v1': liveFlights(now, 2 * 60_000),
-    'theater-posture:sebuf:v1': redisValueFor('vessels', livePosture(now, 2 * 60_000, 3 * 60_000)),
-    'maritime:ais-gaps:v1': redisValueFor('ais_gaps', liveGaps(now, 2 * 60_000)),
+    'military:flights:v1': live.military_flights,
+    'theater-posture:sebuf:v1': redisValueFor('vessels', live.vessels),
+    'maritime:ais-gaps:v1': redisValueFor('ais_gaps', live.ais_gaps),
   };
 }
 
