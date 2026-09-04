@@ -99,3 +99,43 @@ export function resolveMissionPreview(
   if (!spec || spec.panelKey !== panelKey) return null;
   return { ...spec, missionId: activeMissionId };
 }
+
+/** The surface panel-layout needs from a live preview instance. */
+export interface MissionPreviewHandle {
+  getElement(): HTMLElement;
+  getPreviewId(): string;
+  destroy(): void;
+}
+
+/**
+ * The sync core, extracted so the lifecycle (create / no-op / replace on a
+ * mismatched preview / destroy when no longer targeted) is unit-testable and
+ * the component construction stays injected — services must not import
+ * components (boundary rule), and panel-layout supplies the factory.
+ */
+export function syncPanelPreview(
+  previews: Map<string, MissionPreviewHandle>,
+  key: string,
+  host: HTMLElement,
+  activeMissionId: string | null,
+  create: (spec: MissionPreviewSpec & { missionId: string }) => MissionPreviewHandle,
+): void {
+  const spec = resolveMissionPreview(activeMissionId, key);
+  const existing = previews.get(key);
+  if (!spec) {
+    if (existing) {
+      existing.destroy();
+      previews.delete(key);
+    }
+    return;
+  }
+  if (existing) {
+    if (existing.getPreviewId() === spec.previewId) return;
+    existing.destroy();
+    previews.delete(key);
+  }
+  const preview = create(spec);
+  host.appendChild(preview.getElement());
+  previews.set(key, preview);
+}
+

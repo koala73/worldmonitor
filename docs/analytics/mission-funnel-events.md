@@ -29,11 +29,11 @@ module graph).
 | `mission-picker-shown` | `openMissionPresetPopover` (single emission site) | `trigger`: `auto` \| `manual` \| `agent`; `surface`: `desktop` \| `mobile` | `auto` = deferred first-paint prompt; `agent` = WebMCP entry — exclude from human-funnel reads |
 | `mission-selected` | `applyMissionPreset`, after the preset persists | `missionId` (bucketed), `source`: `user` \| `agent` | `agent` = WebMCP apply |
 | `panel-viewed` | IntersectionObserver in `setupPanelViewTracking` (≥30% visible) | `panelKey` (bucketed) | Global denominator. Deduped **once per panel per tab session** (sessionStorage, KTD5); late-mounted panels join via a MutationObserver. Agent-driven views suppressed by `agent-analytics-privacy` (search flows and agent mission applies) |
-| `pro-preview-viewed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Preview rendered beside free content |
+| `pro-preview-viewed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | First VIEW, not render: emits when the preview first intersects the viewport, once per preview per tab session, and is suppressed for agent-driven mounts (WebMCP mission applies and panel enables use the same per-panel suppression window as `panel-viewed`) |
 | `pro-preview-cta` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Upgrade CTA clicked |
 | `pro-preview-dismissed` | `ProPreviewSection` (Release 1) | `missionId`, `panelKey` | Dismissal persists; the guardrail metric |
 | `checkout-start` | `startCheckout` → `trackCheckoutStart` | `surface` now includes `mission-preview`; `variant`, `deviceClass`; `missionId` (ambient mission context on generic surfaces, preview-attributed on `mission-preview`), optional `panelKey` | Attribution rides the durable pending-conversion entry and the post-sign-in resume intent, so both the replay (`replayed: true`) and the `dashboard-resume` re-emit carry it; entries are re-sanitized on replay (storage is attacker-writable) |
-| `mission-returned-after-purchase` | `ProPreviewSection` return leg (Release 1) | `missionId`, `panelKey` | Completion-side attribution: fires when the buyer lands back on the originating mission/panel |
+| `mission-returned-after-purchase` | checkout-return reconciliation (Release 1) | `missionId`, `panelKey`, `surface` when known | Completion-side attribution, carried on the durable checkout-attempt record (the pending-conversion entry is usually collector-confirmed and cleared before the redirect). `surface: mission-preview` marks preview-originated purchases and is the only case that scrolls back to the originating panel |
 
 The `pro-preview-*` and `mission-returned-after-purchase` names are pinned
 from Release 0 so dashboards can be built ahead of Release 1, which ships
@@ -104,3 +104,12 @@ Fixed now, before any preview is exposed:
    `trigger/source: agent` events and dark-variant missions per the caveat
    above.
 
+### Crisis-desk caveat (KTD7)
+
+crisis-desk's preview is the pre-existing ResilienceWidget locked surface: it
+has **no dismiss affordance**, so threshold 1's dismissal-rate arm cannot fire
+for it — its rollback signal is the `mission-selected` floor only. Its viewed
+events share the global once-per-session dedupe, but unlike the component
+previews it still renders on terminal verification failure (it gates real
+content and must show a verdict), so its funnel rows include outage windows
+the other treated missions structurally exclude.

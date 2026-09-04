@@ -582,30 +582,9 @@ export class ResilienceWidget {
   }
 
   private async openUpgradeFlow(crisisDeskAttribution = false): Promise<void> {
-    const [{ DEFAULT_UPGRADE_PRODUCT }, { isDesktopRuntime }] = await Promise.all([
-      import('@/config/products'),
-      import('@/services/runtime'),
-    ]);
-
-    if (isDesktopRuntime()) {
-      const { openExternalUrl } = await import('@/services/external-navigation');
-      await openExternalUrl('https://worldmonitor.app/pro');
-      return;
-    }
-
-    await import('@/services/checkout')
-      .then((module) => module.startCheckout(
-        DEFAULT_UPGRADE_PRODUCT,
-        undefined,
-        crisisDeskAttribution
-          ? {
-            analyticsSurface: 'mission-preview',
-            analyticsAttribution: { missionId: 'crisis-desk', panelKey: 'cii' },
-          }
-          : undefined,
-      ))
-      .catch(() => {
-        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
-      });
+    const { openUpgradeCheckout } = await import('@/services/upgrade-flow');
+    await openUpgradeCheckout(
+      crisisDeskAttribution ? { missionId: 'crisis-desk', panelKey: 'cii' } : undefined,
+    );
   }
 }

@@ -185,6 +185,63 @@ describe('funnel context fields', () => {
   });
 });
 
+describe('follow-cap funnel wiring (U6)', () => {
+  it('the FREE_CAP branch emits the followed-countries gate-hit before the upgrade trigger', () => {
+    const src = read('src/utils/follow-button.ts');
+    const capIdx = src.indexOf("case 'FREE_CAP':");
+    const gateIdx = src.indexOf("trackGateHit('limits.followed_countries')");
+    const triggerIdx = src.indexOf("_upgradeTrigger('follow-cap')");
+    assert.ok(capIdx >= 0 && gateIdx > capIdx && triggerIdx > gateIdx,
+      'gate-hit emission lost from the follow-cap upgrade moment');
+  });
+});
+
+describe('pro-preview-viewed integrity (review: denominator must not inflate)', () => {
+  afterEach(cleanupWindow);
+
+  it('deduplicates viewed once per preview per tab session', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.resetAnalyticsForTesting();
+    const { calls } = installWindow();
+    analytics.resetProPreviewViewedForTesting();
+
+    analytics.trackProPreviewViewed('osint-newsroom', 'gdelt-intel');
+    analytics.trackProPreviewViewed('osint-newsroom', 'gdelt-intel');
+    analytics.trackProPreviewViewed('crisis-desk', 'cii');
+    analytics.trackProPreviewViewed('crisis-desk', 'cii');
+
+    assert.deepEqual(
+      calls.filter((c) => c.name === 'pro-preview-viewed').map((c) => c.data!.missionId),
+      ['osint-newsroom', 'crisis-desk'],
+      'a second render of the same preview must not re-count',
+    );
+  });
+
+  it('suppresses viewed inside the agent panel-suppression window', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    const privacy = await import('../src/services/agent-analytics-privacy.ts');
+    analytics.resetAnalyticsForTesting();
+    const { calls } = installWindow();
+    analytics.resetProPreviewViewedForTesting();
+
+    privacy.suppressNextAgentPanelView('gdelt-intel');
+    analytics.trackProPreviewViewed('osint-newsroom', 'gdelt-intel');
+    assert.equal(calls.filter((c) => c.name === 'pro-preview-viewed').length, 0,
+      'an agent-mounted preview must not count as a human view');
+  });
+
+  it('mission-returned-after-purchase carries the surface when known', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.resetAnalyticsForTesting();
+    const { calls } = installWindow();
+    analytics.trackMissionReturnedAfterPurchase('osint-newsroom', 'gdelt-intel', 'mission-preview');
+    analytics.trackMissionReturnedAfterPurchase('crisis-desk', 'cii');
+    const events = calls.filter((c) => c.name === 'mission-returned-after-purchase');
+    assert.equal(events[0]!.data!.surface, 'mission-preview');
+    assert.equal('surface' in events[1]!.data!, false);
+  });
+});
+
 describe('closed-vocabulary bucketing', () => {
   afterEach(cleanupWindow);
 
@@ -268,17 +325,20 @@ describe('closed-vocabulary bucketing', () => {
     analytics.resetAnalyticsForTesting();
     const { calls } = installWindow();
     analytics.resetMissionFunnelAnalyticsForTesting();
-    analytics.trackProPreviewViewed('osint-newsroom', 'gdelt-intel');
-    analytics.trackProPreviewCta('osint-newsroom', 'gdelt-intel');
-    analytics.trackProPreviewDismissed('osint-newsroom', 'gdelt-intel');
-    analytics.trackMissionReturnedAfterPurchase('osint-newsroom', 'Crafted Panel!');
+    analytics.resetProPreviewViewedForTesting();
+    // macro pair: gdelt-intel may still sit inside the agent-suppression TTL
+    // armed by the suppression test above (module-level, 5s).
+    analytics.trackProPreviewViewed('macro-market-watch', 'macro-signals');
+    analytics.trackProPreviewCta('macro-market-watch', 'macro-signals');
+    analytics.trackProPreviewDismissed('macro-market-watch', 'macro-signals');
+    analytics.trackMissionReturnedAfterPurchase('macro-market-watch', 'Crafted Panel!');
 
     assert.deepEqual(
       calls.map((c) => c.name),
       ['pro-preview-viewed', 'pro-preview-cta', 'pro-preview-dismissed', 'mission-returned-after-purchase'],
     );
-    assert.equal(calls[0]!.data!.missionId, 'osint-newsroom');
-    assert.equal(calls[0]!.data!.panelKey, 'gdelt-intel');
+    assert.equal(calls[0]!.data!.missionId, 'macro-market-watch');
+    assert.equal(calls[0]!.data!.panelKey, 'macro-signals');
     assert.equal(calls[3]!.data!.panelKey, 'unknown');
   });
 });

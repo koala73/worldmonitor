@@ -28,6 +28,15 @@ export interface CheckoutAttempt {
   referralCode?: string;
   discountCode?: string;
   startedAt: number;
+  /**
+   * Mission attribution for the return leg (plan U4): unlike the
+   * pending-conversion entry — which the collector confirmation empties
+   * before the Dodo redirect on a healthy network — this record survives
+   * until the checkout RETURN clears it, so it is the durable carrier.
+   */
+  missionId?: string;
+  panelKey?: string;
+  analyticsSurface?: string;
 }
 
 export type CheckoutAttemptClearReason =

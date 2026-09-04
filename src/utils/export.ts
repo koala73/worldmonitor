@@ -568,7 +568,7 @@ function escapeMarkdownLinkText(value: string): string {
 function escapeMarkdownInline(value: string): string {
   return sanitizeEvidenceText(value)
     .replace(/\s+/g, ' ')
-    .replace(/([\\`*_{}\[\]()#+\-.!|<>])/g, '\\$1');
+    .replace(/([\\`*_{}[\]()#+\-.!|<>])/g, '\\$1');
 }
 
 function renderQuotedEvidenceBlock(value: string): string[] {

@@ -14,7 +14,7 @@ import { expect, test } from '@playwright/test';
  * (mutation-checked) because entitlement state cannot flip here.
  */
 
-function seedMission(missionId: string | null) {
+function seedMission() {
   return ({ id }: { id: string | null }) => {
     localStorage.setItem('wm-layer-warning-dismissed', 'true');
     localStorage.setItem('worldmonitor-mission-preset-dismissed-v1', '1');
@@ -23,7 +23,7 @@ function seedMission(missionId: string | null) {
 }
 
 test('a treated mission renders one preview after its target panel content', async ({ page }) => {
-  await page.addInitScript(seedMission('supply-chain-risk'), { id: 'supply-chain-risk' });
+  await page.addInitScript(seedMission(), { id: 'supply-chain-risk' });
   await page.goto('/');
 
   const panel = page.locator('[data-panel="supply-chain"]');
@@ -51,7 +51,7 @@ test('a treated mission renders one preview after its target panel content', asy
 });
 
 test('untouched comparison missions render no preview anywhere', async ({ page }) => {
-  await page.addInitScript(seedMission('tech-ai-watch'), { id: 'tech-ai-watch' });
+  await page.addInitScript(seedMission(), { id: 'tech-ai-watch' });
   await page.goto('/');
 
   // Board is up once the panels grid has children.

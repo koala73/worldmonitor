@@ -893,7 +893,13 @@ export async function startCheckout(
       // reported bug alive under the fix.
       navigate: (url) => navigateToWebSurface(url),
       persistIntent: () => savePendingCheckoutIntent(intent),
-      persistAttempt: () => saveCheckoutAttempt({ ...intent, startedAt: Date.now() }),
+      persistAttempt: () => saveCheckoutAttempt({
+        ...intent,
+        startedAt: Date.now(),
+        missionId: behavior?.analyticsAttribution?.missionId,
+        panelKey: behavior?.analyticsAttribution?.panelKey,
+        analyticsSurface: behavior?.analyticsSurface,
+      }),
       openSignIn: () => openSignIn(),
     });
     return false;
@@ -944,6 +950,9 @@ export async function startCheckout(
     referralCode: effectiveReferral,
     discountCode: options?.discountCode,
     startedAt: Date.now(),
+    missionId: behavior?.analyticsAttribution?.missionId,
+    panelKey: behavior?.analyticsAttribution?.panelKey,
+    analyticsSurface: behavior?.analyticsSurface,
   });
   const desktopRuntime = isDesktopRuntime();
   try {

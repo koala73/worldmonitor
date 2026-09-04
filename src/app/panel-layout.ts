@@ -46,9 +46,9 @@ import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents } from '@/services/analytics';
 import { ProPreviewSection } from '@/components/ProPreviewSection';
-import { resolveMissionPreview } from '@/services/mission-preview-registry';
+import { syncPanelPreview } from '@/services/mission-preview-registry';
 import { loadStoredMissionPreset } from '@/services/mission-presets';
-import { peekPendingMissionAttribution, trackMissionReturnedAfterPurchase } from '@/services/analytics';
+import { bucketMissionIdForAnalytics, bucketPanelKeyForAnalytics, peekPendingMissionAttribution, trackMissionReturnedAfterPurchase } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import { sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
@@ -509,13 +509,35 @@ export class PanelLayoutManager implements AppModule {
       // panel. The stored preset re-applies itself on boot; here we finish
       // the leg — scroll+focus the originating panel and emit the
       // completion-side attribution event.
-      const missionReturn = peekPendingMissionAttribution();
+      // The durable carrier is the CheckoutAttempt (still present here — the
+      // clearCheckoutAttempt('success') below runs after this branch). The
+      // pending-conversion peek is only a fallback: the collector usually
+      // confirms and clears that entry BEFORE the Dodo redirect.
+      const attempt = loadCheckoutAttempt();
+      const attemptMission = typeof attempt?.missionId === 'string'
+        ? bucketMissionIdForAnalytics(attempt.missionId)
+        : 'unknown';
+      const missionReturn = attemptMission !== 'unknown'
+        ? {
+          missionId: attemptMission,
+          panelKey: typeof attempt?.panelKey === 'string'
+            ? bucketPanelKeyForAnalytics(attempt.panelKey)
+            : undefined,
+          surface: attempt?.analyticsSurface,
+        }
+        : peekPendingMissionAttribution();
       if (missionReturn) {
-        trackMissionReturnedAfterPurchase(missionReturn.missionId, missionReturn.panelKey ?? 'unknown');
-        if (missionReturn.panelKey) {
+        trackMissionReturnedAfterPurchase(
+          missionReturn.missionId,
+          missionReturn.panelKey && missionReturn.panelKey !== 'unknown' ? missionReturn.panelKey : 'unknown',
+          missionReturn.surface,
+        );
+        // Scroll/focus only for purchases that STARTED from a preview — an
+        // ambient-context purchase should land wherever the user left off.
+        if (missionReturn.surface === 'mission-preview' && missionReturn.panelKey && missionReturn.panelKey !== 'unknown') {
           const targetKey = missionReturn.panelKey;
           window.setTimeout(() => {
-            const el = document.querySelector<HTMLElement>(`[data-panel="${targetKey}"]`);
+            const el = document.querySelector<HTMLElement>(`[data-panel="${CSS.escape(targetKey)}"]`);
             if (!el) return;
             el.scrollIntoView({ block: 'start', behavior: 'smooth' });
             el.tabIndex = -1;
@@ -829,6 +851,10 @@ export class PanelLayoutManager implements AppModule {
 
     // Destroy every registered panel exactly once, including lazy-created
     // and self-fetching panels that own subscriptions, intervals, or aborts.
+    for (const preview of this.missionPreviews.values()) {
+      preview.destroy();
+    }
+    this.missionPreviews.clear();
     for (const panel of Object.values(this.ctx.panels)) {
       destroyOnce(panel);
     }
@@ -2351,25 +2377,23 @@ export class PanelLayoutManager implements AppModule {
    * Attached as a sibling AFTER the panel's content, so the panel's own
    * content re-renders never touch it.
    */
-  private syncMissionPreview(key: string, panel: Panel): void {
-    const spec = resolveMissionPreview(loadStoredMissionPreset()?.id ?? null, key);
-    const existing = this.missionPreviews.get(key);
-    if (!spec) {
-      if (existing) {
-        existing.destroy();
-        this.missionPreviews.delete(key);
-      }
-      return;
-    }
-    if (existing) return;
-    const preview = new ProPreviewSection(spec);
-    panel.getElement().appendChild(preview.getElement());
-    this.missionPreviews.set(key, preview);
+  private syncMissionPreview(key: string, panel: Panel, activeMissionId?: string | null): void {
+    const missionId = activeMissionId !== undefined ? activeMissionId : (loadStoredMissionPreset()?.id ?? null);
+    syncPanelPreview(
+      this.missionPreviews,
+      key,
+      panel.getElement(),
+      missionId,
+      (spec) => new ProPreviewSection(spec),
+    );
   }
 
   private syncAllMissionPreviews(): void {
+    // One preset read for the whole board — this runs on every
+    // applyPanelSettings call, mission or not (hot-path rule).
+    const missionId = loadStoredMissionPreset()?.id ?? null;
     for (const [key, panel] of Object.entries(this.ctx.panels)) {
-      if (panel) this.syncMissionPreview(key, panel);
+      if (panel) this.syncMissionPreview(key, panel, missionId);
     }
   }
 

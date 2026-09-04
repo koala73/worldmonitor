@@ -67,6 +67,8 @@ const NO_CTA_OF_ITS_OWN: Record<string, string> = {
     'retry of a checkout the user already consented to on the CTA that started it',
   'src/utils/follow-button.ts':
     'a programmatic upgrade trigger; the CTA markup belongs to its callers',
+  'src/services/upgrade-flow.ts':
+    'the shared upgrade funnel helper; every CTA that calls it renders its own assent',
 };
 
 const CONSENT_RENDERERS = ['checkoutConsentHtml(', 'createCheckoutConsentElement('];
@@ -104,7 +106,7 @@ describe('every checkout entry point presents the Terms first', () => {
       checkoutCallers.length >= 5,
       `expected several startCheckout() call sites in src/, found ${checkoutCallers.length}: ${checkoutCallers.join(', ')}`,
     );
-    assert.ok(checkoutCallers.includes('src/components/Panel.ts'));
+    assert.ok(checkoutCallers.includes('src/services/upgrade-flow.ts'));
   });
 
   for (const file of checkoutCallers) {

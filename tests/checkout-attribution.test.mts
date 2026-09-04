@@ -197,6 +197,53 @@ describe('mission-attributed checkout-start (U2)', () => {
   });
 });
 
+describe('return-leg attribution (review P1: durable carrier + hardened peek)', () => {
+  afterEach(cleanupWindow);
+
+  it('peek uses only the NEWEST checkout-start and re-buckets on read', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.resetAnalyticsForTesting();
+    const { sessionStorage } = installWindow();
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify([
+      { event: 'checkout-start', data: { productId: 'p', missionId: 'osint-newsroom', panelKey: 'gdelt-intel', surface: 'mission-preview' } },
+      { event: 'checkout-failed', data: { status: 'other' } },
+      { event: 'checkout-start', data: { productId: 'p', surface: 'dashboard' } },
+    ]));
+    // Newest checkout-start carries no missionId -> null, never the older one.
+    assert.equal(analytics.peekPendingMissionAttribution(), null);
+  });
+
+  it('peek drops crafted ids instead of returning them', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    analytics.resetAnalyticsForTesting();
+    const { sessionStorage } = installWindow();
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify([
+      { event: 'checkout-start', data: { productId: 'p', missionId: 'crafted"] *', panelKey: '"]{}', surface: 'evil' } },
+    ]));
+    assert.equal(analytics.peekPendingMissionAttribution(), null, 'crafted missionId must not resolve');
+
+    sessionStorage.setItem(PENDING_KEY, JSON.stringify([
+      { event: 'checkout-start', data: { productId: 'p', missionId: 'osint-newsroom', panelKey: '"]{} evil', surface: 'mission-preview' } },
+    ]));
+    const peeked = analytics.peekPendingMissionAttribution();
+    assert.equal(peeked?.missionId, 'osint-newsroom');
+    assert.equal('panelKey' in (peeked ?? {}), false, 'crafted panelKey must be dropped, not returned');
+    assert.equal(peeked?.surface, 'mission-preview');
+  });
+
+  it('the checkout-attempt record carries the durable attribution copy', async () => {
+    const { readFileSync } = await import('node:fs');
+    const attempt = readFileSync(new URL('../src/services/checkout-attempt.ts', import.meta.url), 'utf8');
+    assert.ok(attempt.includes('missionId?: string'), 'CheckoutAttempt must carry missionId');
+    const checkout = readFileSync(new URL('../src/services/checkout.ts', import.meta.url), 'utf8');
+    assert.equal(
+      (checkout.match(/missionId: behavior\?\.analyticsAttribution\?\.missionId/g) ?? []).length,
+      2,
+      'both saveCheckoutAttempt writes (signed-out intent AND main path) must thread attribution',
+    );
+  });
+});
+
 describe('checkout service threading', () => {
   it('startCheckout passes the attribution through to trackCheckoutStart', async () => {
     const { readFileSync } = await import('node:fs');

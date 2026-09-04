@@ -609,7 +609,7 @@ describe('YahooQuoteSummaryClient', () => {
   });
 
   it('keeps quoteSummary usable after a v7Quote route cooldown', async () => {
-    let now = 1_700_000_000_000;
+    const now = 1_700_000_000_000;
     const calls = [];
     const client = new YahooQuoteSummaryClient({
       directRequest: async (url) => {

@@ -18,7 +18,7 @@ test('ChatAnalystPanel imports the shared yield primitive (R5)', () => {
 });
 
 test('renderMarkdownDeferred yields, guards isConnected, renders, then scrolls (R5)', () => {
-  const m = src.match(/private renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+  const m = src.match(/private renderMarkdownDeferred\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
   assert.ok(m, 'renderMarkdownDeferred helper exists');
   const body = m![0];
   assert.match(body, /yieldToMain\(\)\.then/, 'defers via yieldToMain');
@@ -31,14 +31,14 @@ test('renderMarkdownDeferred yields, guards isConnected, renders, then scrolls (
 });
 
 test('finalizeStreamingBubble does not scroll synchronously before the deferred render (R5)', () => {
-  const m = src.match(/private finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+  const m = src.match(/private finalizeStreamingBubble\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
   assert.ok(m, 'finalizeStreamingBubble exists');
   assert.doesNotMatch(m![0], /this\.scrollToBottom\(\)/,
     'scroll is deferred (handled inside renderMarkdownDeferred), not synchronous here');
 });
 
 test('appendMessage scrolls synchronously only for the synchronous (user) branch (R5)', () => {
-  const m = src.match(/private appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n  \}/);
+  const m = src.match(/private appendMessage\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
   assert.ok(m, 'appendMessage exists');
   assert.match(m![0], /if \(role !== 'assistant'\) this\.scrollToBottom\(\)/,
     'assistant defers its scroll; user scrolls now');

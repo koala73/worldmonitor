@@ -2,8 +2,13 @@ import { type AuthSession, getAuthState, subscribeAuthState } from '@/services/a
 import {
   getEntitlementVerificationStatus,
   onEntitlementChange,
+  onEntitlementVerificationChange,
 } from '@/services/entitlements';
-import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
+import {
+  PanelGateReason,
+  getPanelGateReason,
+  resolveBillingAwareGateReason,
+} from '@/services/panel-gating';
 import { isProTierResolved } from '@/services/widget-store';
 import type { MissionPreviewSpec } from '@/services/mission-preview-registry';
 import {
@@ -71,8 +76,10 @@ export class ProPreviewSection {
   private readonly props: ProPreviewProps;
   private authState: AuthSession;
   private viewedTracked = false;
+  private viewedObserver: IntersectionObserver | null = null;
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeVerification: (() => void) | null = null;
 
   constructor(props: ProPreviewProps) {
     this.props = props;
@@ -87,6 +94,9 @@ export class ProPreviewSection {
       this.render();
     });
     this.unsubscribeEntitlement = onEntitlementChange(() => this.render());
+    // The terminal "no snapshot is coming" verdict arrives ONLY on this
+    // channel (see ResilienceWidget's identical trio of subscriptions).
+    this.unsubscribeVerification = onEntitlementVerificationChange(() => this.render());
     this.render();
   }
 
@@ -94,11 +104,19 @@ export class ProPreviewSection {
     return this.element;
   }
 
+  getPreviewId(): string {
+    return this.props.previewId;
+  }
+
   destroy(): void {
     this.unsubscribeAuth?.();
     this.unsubscribeEntitlement?.();
+    this.unsubscribeVerification?.();
     this.unsubscribeAuth = null;
     this.unsubscribeEntitlement = null;
+    this.unsubscribeVerification = null;
+    this.viewedObserver?.disconnect();
+    this.viewedObserver = null;
     this.element.remove();
   }
 
@@ -114,6 +132,11 @@ export class ProPreviewSection {
     }
     const reason = getPanelGateReason(this.authState, true);
     if (reason === PanelGateReason.NONE) return 'entitled';
+    // #4771: a paying customer in billing limbo (payment on hold, renewal
+    // pending/failed, lapsed) must not be pushed toward a duplicate
+    // checkout. Their dedicated recovery surfaces own that conversation —
+    // a pure upsell simply stays dark.
+    if (resolveBillingAwareGateReason(reason) !== reason) return 'degraded';
     if (isPreviewDismissed(this.props.previewId)) return 'dismissed';
     if (reason === PanelGateReason.ANONYMOUS) return 'anonymous';
     return 'preview';
@@ -135,11 +158,32 @@ export class ProPreviewSection {
       return;
     }
 
-    if (!this.viewedTracked) {
+    this.armViewedTracking();
+    replaceChildren(this.element, ...this.renderPreviewBody(state === 'anonymous'));
+  }
+
+  /**
+   * A render is not a view: the viewed emit waits for the element to actually
+   * intersect the viewport (below-fold mounts stay uncounted), and the
+   * analytics layer session-dedupes and agent-suppresses on top. Environments
+   * without IntersectionObserver emit immediately.
+   */
+  private armViewedTracking(): void {
+    if (this.viewedTracked) return;
+    if (typeof IntersectionObserver === 'undefined') {
       this.viewedTracked = true;
       trackProPreviewViewed(this.props.missionId, this.props.panelKey);
+      return;
     }
-    replaceChildren(this.element, ...this.renderPreviewBody(state === 'anonymous'));
+    if (this.viewedObserver) return;
+    this.viewedObserver = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      this.viewedTracked = true;
+      this.viewedObserver?.disconnect();
+      this.viewedObserver = null;
+      trackProPreviewViewed(this.props.missionId, this.props.panelKey);
+    }, { threshold: 0.3 });
+    this.viewedObserver.observe(this.element);
   }
 
   private renderPreviewBody(anonymous: boolean): HTMLElement[] {
@@ -212,22 +256,10 @@ export class ProPreviewSection {
 
     trackProPreviewCta(this.props.missionId, this.props.panelKey);
     try {
-      const [{ DEFAULT_UPGRADE_PRODUCT }, { isDesktopRuntime }] = await Promise.all([
-        import('@/config/products'),
-        import('@/services/runtime'),
-      ]);
-      if (isDesktopRuntime()) {
-        const { openExternalUrl } = await import('@/services/external-navigation');
-        await openExternalUrl('https://worldmonitor.app/pro');
-        return;
-      }
-      const { startCheckout } = await import('@/services/checkout');
-      await startCheckout(DEFAULT_UPGRADE_PRODUCT, undefined, {
-        analyticsSurface: 'mission-preview',
-        analyticsAttribution: {
-          missionId: this.props.missionId,
-          panelKey: this.props.panelKey,
-        },
+      const { openUpgradeCheckout } = await import('@/services/upgrade-flow');
+      await openUpgradeCheckout({
+        missionId: this.props.missionId,
+        panelKey: this.props.panelKey,
       });
     } catch {
       window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');

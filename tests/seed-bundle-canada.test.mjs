@@ -385,7 +385,7 @@ describe('per-member kill switch (#6711)', () => {
     assert.match(RUNNER_SRC, /names unknown section\(s\)/);
     assert.match(RUNNER_SRC, /Refusing to start/);
     // It must throw, not warn-and-continue.
-    const guard = /const unknownDisabled[\s\S]*?\n  \}/.exec(RUNNER_SRC);
+    const guard = /const unknownDisabled[\s\S]*?\n {2}\}/.exec(RUNNER_SRC);
     assert.ok(guard, 'the unknown-label guard must exist');
     assert.match(guard[0], /throw new Error/);
   });
@@ -401,7 +401,7 @@ describe('per-member kill switch (#6711)', () => {
     // Counting it as ran would let a fully-disabled bundle report a healthy
     // tick; counting it as failed would crash the service on a deliberate
     // operator action.
-    const block = /if \(disabledMembers\.has\(section\.label\)\) \{[\s\S]*?continue;\n    \}/.exec(RUNNER_SRC);
+    const block = /if \(disabledMembers\.has\(section\.label\)\) \{[\s\S]*?continue;\n {4}\}/.exec(RUNNER_SRC);
     assert.ok(block, 'the disable branch must exist');
     assert.match(block[0], /disabled\+\+/);
     assert.equal(/ran\+\+|failed\+\+|gracefulFailed\+\+/.test(block[0]), false);
