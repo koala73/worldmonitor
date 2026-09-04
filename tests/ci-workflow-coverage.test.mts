@@ -366,7 +366,9 @@ describe('MCP live smoke — the production detection net', () => {
       ([, value]) => value.trim(),
     );
     assert.equal(crons.length, 1, 'exactly one schedule entry');
-    const [minute, hour] = crons[0].split(/\s+/);
+    const fields = crons[0].split(/\s+/);
+    assert.equal(fields.length, 5, `schedule must have exactly five fields; got "${crons[0]}"`);
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
     assert.match(
       minute,
       /^\*\/([1-9]|1[0-5])$/,
@@ -374,6 +376,9 @@ describe('MCP live smoke — the production detection net', () => {
         + 'cadence is how a multi-hour outage slips between two runs.',
     );
     assert.equal(hour, '*', 'the hour field must not narrow the schedule back down');
+    assert.equal(dayOfMonth, '*', 'the day-of-month field must not narrow the schedule back down');
+    assert.equal(month, '*', 'the month field must not narrow the schedule back down');
+    assert.equal(dayOfWeek, '*', 'the day-of-week field must not narrow the schedule back down');
   });
 
   // These three literals are the entire gate. GitHub's API returns
@@ -400,13 +405,20 @@ describe('MCP live smoke — the production detection net', () => {
     );
   });
 
-  // A shared static concurrency group lets an unrelated Preview deploy evict a
-  // QUEUED production smoke — GitHub cancels the previously pending run in a
-  // group even with cancel-in-progress: false. An evicted run reads as neither
-  // pass nor fail, which is the worst outcome for a detection net.
-  it('keys concurrency per environment so a preview deploy cannot evict a queued production probe', () => {
-    assert.match(smokeWorkflow, /group:\s*mcp-live-smoke-\$\{\{[^}]*deployment\.environment/);
-    assert.match(smokeWorkflow, /cancel-in-progress:\s*false/);
+  // Workflow-level concurrency lets a pending or in-progress Production event
+  // evict a QUEUED successful-production smoke before the job gate skips it.
+  // An evicted run reads as neither pass nor fail, which is the worst outcome
+  // for a detection net.
+  it('applies concurrency only after the deployment-status gate', () => {
+    const smokeJob = workflowJobBlock(smokeWorkflow, 'smoke');
+    assert.doesNotMatch(
+      smokeWorkflow,
+      /^concurrency:\s*$/m,
+      'workflow-level concurrency applies before the job gate, so a skipped deployment event can evict a queued probe',
+    );
+    assert.match(smokeJob, /^\s{4}concurrency:\s*$/m);
+    assert.match(smokeJob, /group:\s*mcp-live-smoke-\$\{\{[^}]*deployment\.environment/);
+    assert.match(smokeJob, /cancel-in-progress:\s*false/);
   });
 });
 

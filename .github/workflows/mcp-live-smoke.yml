@@ -57,16 +57,6 @@ on:
 permissions:
   contents: read
 
-# Keyed per deployment environment so the many ineligible deployment_status
-# events this repo emits (Vercel Preview, Railway, Mintlify docs) cannot enter
-# the production queue. GitHub cancels the PREVIOUSLY PENDING run in a group
-# when a new one is queued — even with cancel-in-progress: false — so a shared
-# static group lets an unrelated preview deploy silently evict a queued
-# production smoke, which reads as neither pass nor fail.
-concurrency:
-  group: mcp-live-smoke-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
-  cancel-in-progress: false
-
 jobs:
   smoke:
     # Only a live Vercel PRODUCTION deploy should re-probe. Every other
@@ -84,6 +74,13 @@ jobs:
         github.event.deployment.environment == 'Production' &&
         github.event.deployment.creator.login == 'vercel[bot]'
       )
+    # Keep concurrency at job scope so deployment_status events rejected by the
+    # gate above cannot evict a queued production smoke. GitHub cancels the
+    # previously pending job in a group when a new one is queued, even with
+    # cancel-in-progress: false.
+    concurrency:
+      group: mcp-live-smoke-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
+      cancel-in-progress: false
     runs-on: ubuntu-latest
     # ~40 requests × 15s worst-case timeout each ≈ 10min absolute ceiling;
     # nominal runs finish in well under a minute.
