@@ -4210,6 +4210,23 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
         }
       });
     }
+
+    it('blocks nothing we declare in the sitemap', () => {
+      // The failure mode worth guarding: a crawl-budget rule that also deletes
+      // part of the 845-URL declared inventory it exists to protect. Resolved
+      // against every <loc> rather than a sample.
+      const sitemap = readFileSync(resolve(__dirname, '../public/sitemap-main.xml'), 'utf-8');
+      const locs = [...sitemap.matchAll(/<loc>([^<]+)<\/loc>/g)].map((m) => m[1]);
+      assert.ok(locs.length > 100, `expected a populated sitemap, got ${locs.length} entries`);
+      for (const loc of locs) {
+        const { pathname, search } = new URL(loc);
+        assert.equal(
+          isCrawlable('robots.www.txt', `${pathname}${search}`),
+          true,
+          `robots.www.txt blocks a sitemap-declared URL: ${loc}`
+        );
+      }
+    });
   });
 });
 

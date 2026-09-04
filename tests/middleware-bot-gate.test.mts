@@ -505,4 +505,38 @@ describe('legacy root map-state links (#7660)', () => {
     assert.equal(call('/', GOOGLEBOT_UA), undefined);
     assert.equal(call('/', CHROME_UA), undefined);
   });
+
+  // #7660 raised this as a "serious problem if it ever fires": agents.md warns
+  // that default HTTP-library UAs may be challenged with 403, and Search
+  // Console reported 26 URLs "blocked due to access forbidden". The gate is
+  // scoped to /api/* by an early return, so no content path can 403 a search
+  // crawler — but nothing asserted it, and the early return is one edit away
+  // from being reordered.
+  it('never 403s a search crawler on a content path', () => {
+    const CRAWLERS = [
+      GOOGLEBOT_UA,
+      'Mozilla/5.0 (compatible; bingbot/2.0; +http://www.bing.com/bingbot.htm)',
+      'Mozilla/5.0 AppleWebKit/537.36 (KHTML, like Gecko); compatible; GPTBot/1.1; +https://openai.com/gptbot',
+      'Mozilla/5.0 (compatible; ClaudeBot/1.0; +claudebot@anthropic.com)',
+      'Mozilla/5.0 (compatible; PerplexityBot/1.0; +https://perplexity.ai/perplexitybot)',
+    ];
+    const CONTENT_PATHS = [
+      '/',
+      '/dashboard',
+      '/pro',
+      '/countries/iran/',
+      '/chokepoints/strait-of-hormuz/',
+      '/compare/iran-vs-israel/',
+      '/llms.txt',
+      '/sitemap.xml',
+    ];
+    for (const ua of CRAWLERS) {
+      for (const path of CONTENT_PATHS) {
+        const res = call(path, ua);
+        if (res instanceof Response) {
+          assert.notEqual(res.status, 403, `${path} must not 403 a crawler (${ua.slice(0, 40)}…)`);
+        }
+      }
+    }
+  });
 });

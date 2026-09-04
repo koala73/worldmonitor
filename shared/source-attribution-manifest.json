@@ -10140,9 +10140,6 @@
           "path": "scripts/cross-strait-activity/adapters.mjs"
         },
         {
-          "path": "scripts/generate-sandbox-fixtures.mjs"
-        },
-        {
           "path": "scripts/lib/brief-embedding.mjs"
         },
         {

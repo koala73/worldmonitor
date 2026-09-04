@@ -27,6 +27,13 @@
 #     utm_*) multiply every landing page. Every one already carries a
 #     rel=canonical to its param-free document, so blocking the crawl costs
 #     nothing in indexing and stops the redirect chains at source.
+#   * /tmp/ — the docs code fences publish /tmp/*.json shell examples, which
+#     Google crawls and gets a 404 for.
+# The parameter rules are query-scoped (`/*?*`) on purpose: the canonical
+# documents the consolidation points at (/dashboard, /pro, the corpus) must
+# stay crawlable. Every crawl-permitting group below restates them — groups do
+# not inherit, and tests/deploy-config.test.mjs fails on a group that drops one.
+#
 # Deliberately NOT blocked: /docs/_next/. #7660 proposed it, because Mintlify's
 # hashed chunk names change on every redeploy and the previous deploy's assets
 # 404 forever (139 of the exported 404s). Measured before acting: a live
@@ -36,10 +43,6 @@
 # render resource from Googlebot on exactly the pages already stuck in
 # "crawled - currently not indexed". A cheap 404 costs less than a page Google
 # cannot render.
-# The rules are query-scoped (`/*?*`) on purpose: the canonical documents the
-# consolidation points at (/dashboard, /pro, the corpus) must stay crawlable.
-# Every crawl-permitting group below restates them — groups do not inherit, and
-# tests/deploy-config.test.mjs fails on a group that drops one.
 
 User-agent: *
 Content-Signal: ai-train=no, search=yes, ai-input=yes
