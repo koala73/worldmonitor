@@ -192,6 +192,54 @@ describe('installWebApiRedirect on numeric loopback bases', () => {
   }
 });
 
+describe('installWebApiRedirect on deployed WorldMonitor pages', () => {
+  const originalFetch = window.fetch;
+
+  beforeEach(() => {
+    vi.resetModules();
+  });
+
+  afterEach(() => {
+    window.fetch = originalFetch;
+    delete (window as unknown as Record<string, unknown>).__wmWebRedirectPatched;
+    vi.unstubAllEnvs();
+    vi.unstubAllGlobals();
+    vi.resetModules();
+  });
+
+  it('retries an absolute generated RPC request on the page origin after an API-host network failure', async () => {
+    const pageOrigin = 'https://www.worldmonitor.app';
+    const path = '/api/military/v1/list-military-flights?sw_lat=-90&sw_lon=-180&ne_lat=90&ne_lon=180';
+    const seen: string[] = [];
+    window.fetch = (async (input: RequestInfo | URL) => {
+      const target = hrefOf(input);
+      seen.push(target);
+      if (target.startsWith(REMOTE_API)) throw new TypeError('Failed to fetch');
+      return new Response(JSON.stringify({ flights: [{ id: 'flight-1' }] }), { status: 200 });
+    }) as typeof fetch;
+
+    const runtime = await loadRuntimeWith({
+      apiBase: REMOTE_API,
+      hostname: 'www.worldmonitor.app',
+      protocol: 'https:',
+    });
+    Object.assign(window.location, {
+      hostname: 'www.worldmonitor.app',
+      host: 'www.worldmonitor.app',
+      protocol: 'https:',
+      href: `${pageOrigin}/dashboard`,
+      origin: pageOrigin,
+    });
+
+    runtime.installWebApiRedirect();
+
+    const response = await window.fetch(`${REMOTE_API}${path}`);
+
+    expect(await response.json()).toEqual({ flights: [{ id: 'flight-1' }] });
+    expect(seen).toEqual([`${REMOTE_API}${path}`, path]);
+  });
+});
+
 describe('HTTPS loopback uses the web API path, not the sidecar', () => {
   beforeEach(() => {
     vi.resetModules();
