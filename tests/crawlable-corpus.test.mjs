@@ -1725,7 +1725,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
-      assert.equal(manifest.sections.comparisons.count, 9);
+  assert.equal(manifest.sections.comparisons.count, 13);
       assert.equal(manifest.sections.sources.count, 1);
       assert.equal(manifest.generatorContentVersion, '2026-09-01');
       const sitemapEntries = buildSitemapEntries({
@@ -4100,7 +4100,8 @@ describe('crawlable corpus generator', () => {
         }
         assert.doesNotMatch(html, /id="app"/);
         for (const competitor of page.competitors) {
-          assert.match(html, new RegExp(competitor.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')), page.slug + ' must name competitor: ' + competitor);
+          const renderedName = competitor.replaceAll("&", "&amp;").replaceAll("'", "&#39;");
+          assert.match(html, new RegExp(renderedName.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')), page.slug + ' must name competitor: ' + competitor);
         }
       }
       const liveuamapPage = read(outDir, 'compare/liveuamap-alternatives/index.html');
@@ -4113,6 +4114,101 @@ describe('crawlable corpus generator', () => {
       assert.match(acledPage, /complement/i);
       const gdeltPage = read(outDir, 'compare/worldmonitor-vs-gdelt/index.html');
       assert.match(gdeltPage, /wins on archive depth/i);
+
+      // #7610 requires the literal 13-route /compare/ family: hub + 12 children.
+      assert.deepEqual(
+        manifest.sections.comparisons.routes,
+        [
+          '/compare/liveuamap-alternatives/',
+          '/compare/best-geopolitical-risk-dashboards/',
+          '/compare/worldmonitor-vs-liveuamap/',
+          '/compare/worldmonitor-vs-acled/',
+          '/compare/worldmonitor-vs-gdelt/',
+          '/compare/worldmonitor-vs-dataminr/',
+          '/compare/worldmonitor-vs-recorded-future/',
+          '/compare/worldmonitor-vs-deepstatemap/',
+          '/compare/mcp-servers-for-geopolitical-data/',
+          '/compare/chokepoint-monitoring-tools/',
+          '/compare/free-geopolitical-risk-dashboards/',
+          '/compare/travel-risk-intelligence-vs-assistance/',
+        ],
+      );
+      assert.equal(manifest.sections.comparisons.count, 13);
+
+      // Hub master matrix: independent literal expectations, not derived from
+      // the exported rows the renderer itself consumes (#7610).
+      assert.ok(compareHub.includes('<h2>Master comparison matrix</h2>'));
+      assert.ok(compareHub.includes('<th>Product</th>'));
+      assert.ok(compareHub.includes('<th>Price</th>'));
+      for (const vendor of ['Liveuamap', 'ACLED (myACLED)', 'GDELT Cloud', 'Dataminr', 'Recorded Future', 'IMF PortWatch']) {
+        assert.match(compareHub, new RegExp('<td>' + vendor.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&') + '</td>'));
+      }
+      // First data row must carry both a product cell and a real price cell.
+      assert.ok(
+        compareHub.includes('<td>World Monitor</td><td>$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)</td>'),
+        'hub master matrix first row must carry Product and Price cells',
+      );
+
+      // Every matrix row must carry the Product column and a separate Price cell.
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        assert.ok(html.includes('<th>Product</th><th>Price</th>'), page.slug + ' matrix must lead with Product then Price');
+        assert.ok(html.indexOf('<th>Product</th>') < html.indexOf('<th>Price</th>'), page.slug + ' must render Product before Price');
+      }
+
+      // Liveuamap alternatives page: literal competitor set including the two
+      // issue-required additions.
+      const liveuamapCompetitors = COMPARISON_PAGES.find((page) => page.slug === 'liveuamap-alternatives').competitors;
+      assert.deepEqual(
+        liveuamapCompetitors,
+        ['Liveuamap', 'Deep State Map', 'ACLED', 'ConflictZone.io', 'ISW', 'UNOSAT', 'ICG CrisisWatch', 'ConflictRadar'],
+      );
+      assert.match(liveuamapPage, /ICG CrisisWatch/);
+      assert.match(liveuamapPage, /ConflictRadar/);
+
+      // False "no public API" claim must never return (#7610 correction).
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        assert.doesNotMatch(html, /Liveuamap[^.]*no public API/i, page.slug + ' must not claim Liveuamap has no public API');
+      }
+      assert.ok(liveuamapPage.includes('$150'), 'liveuamap alternatives must cite the corrected $150 API price');
+      assert.ok(liveuamapPage.includes('1,000 requests/day'));
+      const vsLiveuamapPage = read(outDir, 'compare/worldmonitor-vs-liveuamap/index.html');
+      assert.ok(vsLiveuamapPage.includes('Does Liveuamap have an API?'), 'head-to-head must carry the corrected API FAQ');
+      assert.ok(vsLiveuamapPage.includes('Yes. Liveuamap sells API access'));
+      assert.ok(vsLiveuamapPage.includes('liveuamap.com/promo/api'));
+
+      // Six-figure enterprise claims must stay attributed or undisclosed.
+      const dataminrPage = read(outDir, 'compare/worldmonitor-vs-dataminr/index.html');
+      const recordedFuturePage = read(outDir, 'compare/worldmonitor-vs-recorded-future/index.html');
+      for (const [label, html] of [['dataminr', dataminrPage], ['recorded-future', recordedFuturePage]]) {
+        const sixFigureMentions = html.split('.').filter((sentence) => sentence.includes('six figures'));
+        assert.ok(sixFigureMentions.length > 0, label + ' page should discuss enterprise pricing');
+        for (const sentence of sixFigureMentions) {
+          assert.match(
+            sentence,
+            /widely reported|undisclosed|negotiated/i,
+            label + ' six-figure claim must be attributed, not asserted as list pricing',
+          );
+        }
+        assert.match(html, /does not publish list pricing/);
+      }
+
+      // Required alternative H2 headings on their pages (#7610).
+      const headingExpectations = [
+        ['worldmonitor-vs-acled', 'ACLED alternative'],
+        ['worldmonitor-vs-dataminr', 'Dataminr alternatives'],
+        ['worldmonitor-vs-recorded-future', 'Recorded Future alternatives'],
+      ];
+      for (const [slug, heading] of headingExpectations) {
+        const html = read(outDir, 'compare/' + slug + '/index.html');
+        assert.match(html, new RegExp('<h2>' + heading + '</h2>'), slug + ' must emit the required H2');
+      }
+
+      // Hub description guard: 90-160 chars, asserted through the exported builder.
+      const hubDescription = compareHubLd.find((entry) => entry['@type'] === 'CollectionPage')?.description;
+      assert.ok(hubDescription, 'compare hub must emit a description');
+      assert.ok(hubDescription.length >= 90 && hubDescription.length <= 160, 'hub description must be 90-160 chars, got ' + hubDescription.length);
       assert.match(toolsIndex, /href="\/tools\/natural-hazard-pulse\/"/);
       assert.match(toolsIndex, /href="\/tools\/airspace-disruption-checker\/"/);
       assert.match(toolsIndex, /href="\/tools\/signal-convergence\/"/);

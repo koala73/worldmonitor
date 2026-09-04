@@ -6,7 +6,7 @@ keywords: "Bloomberg Terminal alternative free, Palantir alternative open source
 audience: "Analysts evaluating tools, budget-conscious teams, procurement decision-makers, open-source advocates"
 heroImage: "/blog/images/blog/worldmonitor-vs-traditional-intelligence-tools.jpg"
 pubDate: "2026-03-11"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-03"
 ---
 
 A [Bloomberg Terminal](https://www.bloomberg.com/professional/products/bloomberg-terminal/) costs $24,000 per year. A [Palantir](https://www.palantir.com/) deployment starts in the millions. [Dataminr](https://www.dataminr.com/) licenses run six figures for enterprise teams. [Recorded Future](https://www.recordedfuture.com/) isn't cheap either.
