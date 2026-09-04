@@ -73,6 +73,8 @@ World Monitor is a real-time global intelligence dashboard built as a TypeScript
 
 **Cloudflare zone config (dashboard-managed, NOT in this repo):** the apex `worldmonitor.app` → `www` 301 is a Cloudflare Dynamic Redirect rule ("apex to www (exclude agent-discoverable paths)") whose exemption list is load-bearing: `/.well-known/*`, `/robots.txt`, `/security.txt`, `/mcp`, `/mcp/*`, and `/oauth/*` are served on the apex, never redirected. Dropping the `/mcp*` exemptions breaks every apex-URL MCP client; dropping `/oauth/*` re-breaks OAuth dynamic client registration — a redirected POST becomes a GET and dies with 405 (issue #4938). When editing the rule, mind expression precedence: `and` binds tighter than `or`, so a new exemption must be added as its own `or` term **inside** the `not (…)` group (appending `and not …` after the last term is a silent no-op). `mcp-live-smoke.yml` probes the MCP/OAuth members of this list (`/mcp`, `/.well-known/oauth-authorization-server`, and the OAuth endpoints it declares) every 6 hours and fails on the redirect fingerprint; the `robots.txt` / `security.txt` exemptions are crawler-facing and have no automated probe.
 
+**Cloudflare cache rules (zone-side, one of them generated here):** the zone's cache phase carries a blanket `Bypass cache - WWW documents` rule that makes every extensionless/HTML path on `www` ineligible for the edge cache. A cache rule outranks origin cache headers, so a correct `CDN-Cache-Control` on a document route buys nothing on its own — that is why the crawlable corpus answered `cf-cache-status: DYNAMIC` on every route for months while `tests/deploy-config.test.mjs` stayed green (issue #7659). Cloudflare evaluates matching cache rules in order and the last one to set a field wins, so eligibility is restored by *appending* a later rule: `WWW entry HTML …` does it for `/` and `/dashboard`, and `WWW corpus HTML …` does it for the `CONTENT_CORPUS_PREFIXES` families. The corpus rule is generated from those prefixes by `scripts/cloudflare-cache-rule.mjs` (`--print` / `--check` / `--apply`) so it cannot drift from the vercel.json header rules it mirrors; `tests/cloudflare-cache-rule.test.mjs` pins its shape offline and `--check` compares it against the live zone.
+
 ---
 
 ## 3. Frontend Architecture
@@ -328,6 +330,8 @@ Every RPC handler with shared cache MUST include request-varying parameters in t
 ### CDN Integration
 
 `CDN-Cache-Control` headers give Cloudflare edge (when enabled) longer TTLs than `Cache-Control`, since CF can revalidate via ETag without full payload transfer.
+
+The header only sets the TTL; it does not make a response cacheable. Cloudflare decides eligibility from its cache rules first, and HTML documents on `www` are bypassed by default (see the cache-rule note in §2). Adding `CDN-Cache-Control` to a new document route therefore has to be paired with a zone rule that re-admits it — for corpus families, by extending `CONTENT_CORPUS_PREFIXES` and re-running `scripts/cloudflare-cache-rule.mjs --apply`.
 
 ### Seed Metadata
 

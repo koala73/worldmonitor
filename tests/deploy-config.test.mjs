@@ -796,7 +796,12 @@ describe('crawlable content corpus deployment contracts', () => {
         assert.equal(
           effectiveHeader(route, 'CDN-Cache-Control'),
           HTML_ENTRY_EDGE_CACHE,
-          `${route} must advertise the 600s Cloudflare TTL; without it Cloudflare answers DYNAMIC and never caches the page`,
+          // Necessary but not sufficient, which #7659 established the hard way:
+          // the header was correct on every family and production still answered
+          // DYNAMIC, because a zone cache rule had already declared the response
+          // ineligible. The other half of the pair is
+          // scripts/cloudflare-cache-rule.mjs (tests/cloudflare-cache-rule.test.mjs).
+          `${route} must advertise the 600s Cloudflare TTL; without it the zone cache rule has no TTL to honour`,
         );
         assert.equal(
           effectiveHeader(route, 'Vercel-CDN-Cache-Control'),

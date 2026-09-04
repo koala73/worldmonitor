@@ -8,6 +8,10 @@
  *   - auth errors must be no-store and dynamic
  *   - anonymous public surfaces remain cacheable
  *   - MCP auth/protocol surfaces remain functional and no-store
+ *
+ * It also carries the corpus edge-cache probe from #7659: the same class of
+ * failure (a Cloudflare cache rule silently overriding correct origin headers)
+ * seen from the opposite direction — content that should be cached and is not.
  */
 
 import { strict as assert } from 'node:assert';
@@ -16,7 +20,14 @@ import { describe, it } from 'node:test';
 const LIVE = process.env.LIVE_API_CACHE_TESTS === '1';
 const API_BASE = stripTrailingSlash(process.env.WM_LIVE_API_BASE_URL || 'https://api.worldmonitor.app');
 const WEB_BASE = stripTrailingSlash(process.env.WM_LIVE_WEB_BASE_URL || 'https://worldmonitor.app');
+// The corpus cache rule is scoped to the www document host; apex only 301s here.
+const WWW_BASE = stripTrailingSlash(process.env.WM_LIVE_WWW_BASE_URL || 'https://www.worldmonitor.app');
 const FAKE_WM_KEY = 'wm_0000000000000000000000000000000000000000';
+/** The shared edge TTL vercel.json advertises on every corpus family. */
+const CORPUS_EDGE_CACHE_CONTROL = 'public, s-maxage=600, stale-while-revalidate=60';
+// One always-present corpus document. Any family member would do; a country page
+// is the shape AI crawlers and Googlebot fetch most.
+const CORPUS_DOCUMENT_URL = `${WWW_BASE}/countries/iran/`;
 // The CDN-shielded weather read. `&public=1` marks a URL whose response is the
 // shared seed payload for EVERY caller, so it can be cached without the cache
 // key ever having to know about credentials (#5386).
@@ -427,6 +438,52 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     assert.equal(authBody.issuer, API_BASE);
     assert.equal(authBody.token_endpoint, `${API_BASE}/oauth/token`);
     markProbeCompleted('oauth-metadata');
+  });
+
+  // The Cloudflare half of the corpus edge-cache pair (#7659). `isSharedCacheHit`
+  // above accepts a Vercel HIT, and the corpus was ALWAYS a Vercel HIT — that is
+  // precisely why this regression survived unseen for months while every offline
+  // assertion stayed green. Only cf-cache-status can see it.
+  //
+  // `DYNAMIC` is the exact fingerprint: Cloudflare reports it when a cache rule
+  // has declared the response ineligible, before origin cache headers get a vote.
+  // An eligible document reports MISS / HIT / EXPIRED / REVALIDATED depending on
+  // which edge server answered, so "not DYNAMIC" is the deterministic form of
+  // "the rule is in force" — demanding a HIT would be a coin flip on a cold POP.
+  it('serves the corpus from the Cloudflare edge, and only its query-free canonical', async () => {
+    const canonical = await fetchText(CORPUS_DOCUMENT_URL);
+    assert.equal(canonical.resp.status, 200, 'corpus document must still be served');
+    assert.equal(
+      canonical.resp.headers.get('cdn-cache-control'),
+      CORPUS_EDGE_CACHE_CONTROL,
+      'corpus document must still advertise the 600s shared TTL the cache rule honours',
+    );
+    const status = cfCacheStatus(canonical.resp).toUpperCase();
+    assert.ok(
+      status && !['DYNAMIC', 'BYPASS'].includes(status),
+      `corpus document is not edge-cacheable (cf-cache-status: ${status || 'absent'});`
+        + ' the "WWW corpus HTML" cache rule is missing, disabled, or no longer sits after the'
+        + ' "Bypass cache - WWW documents" rule — regenerate it with'
+        + ' `node scripts/cloudflare-cache-rule.mjs --apply`',
+    );
+
+    // Negative control, and the safety boundary the rule was scoped around:
+    // middleware.ts answers a bot-UA request carrying utm_*/ref with a 308 to the
+    // clean URL under `Vary: User-Agent`, and Cloudflare honours Vary only for
+    // Accept-Encoding. Query-bearing corpus URLs must therefore stay ineligible,
+    // or a crawler's redirect could be replayed to a human and strip `ref`
+    // before referral capture. This sweep's own UA is not bot-shaped, so the
+    // tagged request gets the page rather than the redirect.
+    const tagged = await fetchText(`${CORPUS_DOCUMENT_URL}?utm_source=live-cache-sweep`);
+    assert.equal(tagged.resp.status, 200, 'the tagged URL must reach the page, not the bot redirect —'
+      + ' otherwise this control passes for the wrong reason');
+    assert.equal(
+      cfCacheStatus(tagged.resp).toUpperCase(),
+      'DYNAMIC',
+      'query-bearing corpus URLs must stay out of the Cloudflare cache — they reach a'
+        + ' User-Agent-dependent redirect that Cloudflare cannot vary on',
+    );
+    markProbeCompleted('corpus-edge-cache');
   });
 
   // The #4497 incident class is a CACHED 200 of private/authenticated data — the

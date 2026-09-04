@@ -26,6 +26,11 @@ name: Live API Cache/Auth Sweep
 #     cleanly for an anonymous caller, and tools/call is a 401 carrying the
 #     OAuth resource_metadata hint.
 #   - OAuth metadata stays discoverable and cacheable on both hosts.
+#   - the crawlable corpus is EDGE-cacheable at Cloudflare, not merely at
+#     Vercel: `cf-cache-status` on a corpus document is anything but DYNAMIC
+#     (the fingerprint of a cache rule declaring it ineligible, #7659), while
+#     its query-bearing form stays DYNAMIC because that URL reaches a
+#     User-Agent-dependent redirect Cloudflare cannot vary on.
 # None of this is reachable from an in-process test: CDN cache status, CF/Vercel
 # rule ordering, and the apex/www host split only exist in production.
 #
@@ -46,9 +51,10 @@ name: Live API Cache/Auth Sweep
 #   - schedule (every 6h, offset from mcp-live-smoke's :23 so the two live
 #     probes don't hit prod from the same runner IP range in the same minute):
 #     the posture this guards is set by CDN rules and deploy config, which drift
-#     independently of commits. ~23 requests per run (2 bootstrap + 2 RPC +
-#     1 premium RPC + 16 MCP + 2 OAuth); 4 runs/day is ~92 requests — negligible,
-#     and the 16 MCP requests land over ~2s, far under the anon 60/min/IP limit.
+#     independently of commits. ~25 requests per run (2 bootstrap + 2 RPC +
+#     1 premium RPC + 16 MCP + 2 OAuth + 2 corpus); 4 runs/day is ~100 requests —
+#     negligible, and the 16 MCP requests land over ~2s, far under the anon
+#     60/min/IP limit.
 #   - push to main touching the suite/workflow: validates edits on merge.
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run could
@@ -70,7 +76,7 @@ permissions:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    # ~23 requests x 15s worst-case per-request timeout (LIVE_API_CACHE_TIMEOUT_MS)
+    # ~25 requests x 15s worst-case per-request timeout (LIVE_API_CACHE_TIMEOUT_MS)
     # is a ~6min absolute ceiling, plus ~1min checkout/setup-node. Nominal runs
     # finish in under 5s.
     timeout-minutes: 10
