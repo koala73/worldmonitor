@@ -214,6 +214,36 @@ describe('cloudflare cache rule drift report', () => {
     assert.match(diff.problems[0], /above a cache-disabling rule at 1/);
   });
 
+  it('does not call Cloudflare’s own key ordering a drift', () => {
+    // Cloudflare re-serialises action_parameters alphabetically, so the rule it
+    // hands back is never key-for-key the object that was PUT. The first
+    // `--check` after this rule went live reported "action_parameters differ"
+    // against a zone that was byte-for-byte correct.
+    const reordered = {
+      ...rule,
+      action_parameters: {
+        browser_ttl: rule.action_parameters.browser_ttl,
+        cache: rule.action_parameters.cache,
+        edge_ttl: {
+          status_code_ttl: rule.action_parameters.edge_ttl.status_code_ttl.map((entry) => ({
+            value: entry.value,
+            status_code_range: entry.status_code_range,
+          })),
+          mode: rule.action_parameters.edge_ttl.mode,
+        },
+      },
+    };
+    assert.equal(diffLiveRuleset([bypass, reordered], rule).status, 'current');
+  });
+
+  it('still catches a genuinely changed cache setting', () => {
+    const weakened = {
+      ...rule,
+      action_parameters: { ...rule.action_parameters, cache: false },
+    };
+    assert.deepEqual(diffLiveRuleset([bypass, weakened], rule).problems, ['action_parameters differ']);
+  });
+
   it('catches a disabled rule and an edited expression', () => {
     const edited = { ...rule, enabled: false, expression: '(http.host eq "example.com")' };
     const diff = diffLiveRuleset([bypass, edited], rule);

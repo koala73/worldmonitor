@@ -142,6 +142,25 @@ export function upsertCorpusCacheRule(rules, rule = buildCorpusCacheRule()) {
 /** Fields Cloudflare owns; echoing them back on a PUT is at best noise. */
 const READ_ONLY_RULE_FIELDS = ['version', 'last_updated', 'ref'];
 
+/**
+ * Deep-compare two values independently of object key order.
+ *
+ * Cloudflare re-serialises `action_parameters` alphabetically, so a plain
+ * `JSON.stringify` comparison reports drift on a rule that was just applied
+ * unchanged — observed on the very first `--check` after this rule landed.
+ */
+export function stableStringify(value) {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+  if (value && typeof value === 'object') {
+    const body = Object.keys(value)
+      .sort()
+      .map((key) => `${JSON.stringify(key)}:${stableStringify(value[key])}`)
+      .join(',');
+    return `{${body}}`;
+  }
+  return JSON.stringify(value) ?? 'null';
+}
+
 /** Strip the server-owned fields from a rule read back out of the zone. */
 export function sanitizeRuleForPut(rule) {
   const copy = { ...rule };
@@ -196,7 +215,10 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
   const problems = [];
   if (live.expression !== rule.expression) problems.push('expression differs');
   if (live.action !== rule.action) problems.push(`action is ${live.action}, expected ${rule.action}`);
-  if (JSON.stringify(live.action_parameters) !== JSON.stringify(rule.action_parameters)) {
+  // Exact rather than subset: an extra field Cloudflare stores that we did not
+  // ask for is a setting nobody in this repo chose, and reporting it once is
+  // cheaper than letting a dashboard edit hide behind a lenient comparison.
+  if (stableStringify(live.action_parameters) !== stableStringify(rule.action_parameters)) {
     problems.push('action_parameters differ');
   }
   if (live.enabled === false) problems.push('the rule is disabled');
