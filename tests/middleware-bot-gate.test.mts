@@ -493,6 +493,27 @@ describe('legacy root map-state links (#7660)', () => {
     );
   });
 
+  it('declares the User-Agent cache key on BOTH branches', () => {
+    // One request URL, two Locations, chosen by User-Agent. A 308 is cacheable
+    // by default (RFC 9110 §15.4.9), so a shared cache that stored either
+    // branch without the key would replay it to the other's client — serving
+    // the crawler the parameterised URL this change exists to keep it off, or
+    // stripping a human's map state. Both directions must be closed.
+    for (const [label, ua] of [
+      ['crawler', GOOGLEBOT_UA],
+      ['human', CHROME_UA],
+    ] as const) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response, `${label} must be redirected`);
+      assert.match(res.headers.get('vary') ?? '', /User-Agent/i, `${label} branch must declare Vary`);
+      assert.equal(
+        res.headers.get('cache-control'),
+        'private, no-store',
+        `${label} branch must not be stored by a shared cache`
+      );
+    }
+  });
+
   it('leaves /dashboard?<map state> alone for everyone', () => {
     // The canonical tag already consolidates these and robots.txt keeps
     // crawlers off them. Redirecting would manufacture the very redirects

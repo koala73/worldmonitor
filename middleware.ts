@@ -253,10 +253,26 @@ export default function middleware(request: Request) {
   // — crawlerCanonicalUrl() above already sent them to the param-free
   // /dashboard — so this branch keeps the query string, which is the whole
   // point of a shared or bookmarked map link.
+  //
+  // Built by hand rather than via Response.redirect() so it can carry Vary. The
+  // same request URL now yields two different Locations depending on the
+  // User-Agent, and a 308 is cacheable by default (RFC 9110 §15.4.9): a shared
+  // cache that stored this one without Vary would replay `/dashboard?<map
+  // state>` to the crawler the branch above exists to keep off that URL. This
+  // is the rule docs/solutions/integration-issues/mcp-crawler-get-and-method-
+  // aware-canonical-redirects.md states: cacheable(response) implies Vary
+  // covers every header the branch read.
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
     const dashboardUrl = new URL(request.url);
     dashboardUrl.pathname = '/dashboard';
-    return Response.redirect(dashboardUrl.toString(), 308);
+    return new Response(null, {
+      status: 308,
+      headers: {
+        Location: dashboardUrl.toString(),
+        Vary: 'User-Agent',
+        'Cache-Control': 'private, no-store',
+      },
+    });
   }
 
   if (request.method === 'GET' || request.method === 'HEAD') {

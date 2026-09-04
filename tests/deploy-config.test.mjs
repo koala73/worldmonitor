@@ -1228,10 +1228,20 @@ describe('welcome landing page routing', () => {
       /dashboardUrl\.pathname = '\/dashboard'/,
       'middleware must move legacy dashboard-state root links to /dashboard',
     );
+    // Hand-built rather than Response.redirect() so the response can carry
+    // Vary (#7660). The same URL now yields two different Locations depending
+    // on the User-Agent, and a 308 is cacheable by default (RFC 9110
+    // §15.4.9) — an unkeyed cache would replay one branch's Location to the
+    // other's client.
     assert.match(
       middlewareSource,
+      /Location: dashboardUrl\.toString\(\),\n\s*Vary: 'User-Agent',\n\s*'Cache-Control': 'private, no-store',/,
+      'the legacy root redirect must preserve the query string AND declare the User-Agent cache key',
+    );
+    assert.doesNotMatch(
+      middlewareSource,
       /Response\.redirect\(dashboardUrl\.toString\(\), 308\)/,
-      'middleware must redirect, preserving the original query string',
+      'Response.redirect() cannot set Vary, so it cannot be used for a UA-conditioned redirect',
     );
   });
 
