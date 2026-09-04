@@ -45,6 +45,10 @@ import { NQ_PULSE_DISCLOSURE } from '@/config/nq-context';
 import { t } from '@/services/i18n';
 import { getCurrentTheme } from '@/utils';
 import { trackCriticalBannerAction, trackCheckoutSuccess, trackCheckoutFailed, trackGateHit, trackMapViewChange, replayPendingCheckoutSuccess, replayPendingProFunnelEvents, replayPendingConversionEvents } from '@/services/analytics';
+import { ProPreviewSection } from '@/components/ProPreviewSection';
+import { resolveMissionPreview } from '@/services/mission-preview-registry';
+import { loadStoredMissionPreset } from '@/services/mission-presets';
+import { peekPendingMissionAttribution, trackMissionReturnedAfterPurchase } from '@/services/analytics';
 import { getStoredMapModePreference } from '@/services/map-mode-preference';
 import { loadWidgets, saveWidget, isProUser, isProTierResolved } from '@/services/widget-store';
 import { sanitizeLockedLayers, shouldSanitizeLockedLayers } from '@/config/map-layer-definitions';
@@ -500,6 +504,25 @@ export class PanelLayoutManager implements AppModule {
       // Funnel (#4931): the purchase-complete signal on the client side.
       // Queued by the analytics facade until Umami loads after first paint.
       trackCheckoutSuccess(returnResult.kind === 'success' ? 'url-return' : 'overlay-flag');
+      // Mission return leg (plan U4/R1): a checkout that started from a
+      // mission preview lands the buyer back on the originating mission and
+      // panel. The stored preset re-applies itself on boot; here we finish
+      // the leg — scroll+focus the originating panel and emit the
+      // completion-side attribution event.
+      const missionReturn = peekPendingMissionAttribution();
+      if (missionReturn) {
+        trackMissionReturnedAfterPurchase(missionReturn.missionId, missionReturn.panelKey ?? 'unknown');
+        if (missionReturn.panelKey) {
+          const targetKey = missionReturn.panelKey;
+          window.setTimeout(() => {
+            const el = document.querySelector<HTMLElement>(`[data-panel="${targetKey}"]`);
+            if (!el) return;
+            el.scrollIntoView({ block: 'start', behavior: 'smooth' });
+            el.tabIndex = -1;
+            el.focus({ preventScroll: true });
+          }, 600);
+        }
+      }
       if (returnedFromAccountCheckout) {
         // Pro Activation Onboarding: capture the plan identity from the attempt
         // record and write the durable pending-onboarding marker BEFORE the
@@ -2163,6 +2186,7 @@ export class PanelLayoutManager implements AppModule {
       }
     });
     this.mobilePanelNav?.refresh();
+    this.syncAllMissionPreviews();
   }
 
   /**
@@ -2317,6 +2341,38 @@ export class PanelLayoutManager implements AppModule {
     }
   }
 
+  private missionPreviews = new Map<string, ProPreviewSection>();
+
+  /**
+   * Keep each mounted panel's Pro preview in sync with the ACTIVE mission
+   * (plan U5). The registry is the only authority: a preview exists exactly
+   * when the active mission's entry targets this panel, so a mission switch,
+   * a reset, or a registry rollback all converge through this one seam.
+   * Attached as a sibling AFTER the panel's content, so the panel's own
+   * content re-renders never touch it.
+   */
+  private syncMissionPreview(key: string, panel: Panel): void {
+    const spec = resolveMissionPreview(loadStoredMissionPreset()?.id ?? null, key);
+    const existing = this.missionPreviews.get(key);
+    if (!spec) {
+      if (existing) {
+        existing.destroy();
+        this.missionPreviews.delete(key);
+      }
+      return;
+    }
+    if (existing) return;
+    const preview = new ProPreviewSection(spec);
+    panel.getElement().appendChild(preview.getElement());
+    this.missionPreviews.set(key, preview);
+  }
+
+  private syncAllMissionPreviews(): void {
+    for (const [key, panel] of Object.entries(this.ctx.panels)) {
+      if (panel) this.syncMissionPreview(key, panel);
+    }
+  }
+
   private mountPanelElement(grid: HTMLElement, key: string, panel: Panel, placeholder?: HTMLElement | null): boolean {
     const el = panel.getElement();
     if (el.parentElement) return false;
@@ -2330,6 +2386,7 @@ export class PanelLayoutManager implements AppModule {
     }
     this.mobilePanelNav?.applyToNewPanel(el);
     panel.notifyConnected();
+    this.syncMissionPreview(key, panel);
     return true;
   }
 

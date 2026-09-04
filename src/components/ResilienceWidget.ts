@@ -5,6 +5,8 @@ import {
   onEntitlementVerificationChange,
 } from '@/services/entitlements';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
+import { loadStoredMissionPreset } from '@/services/mission-presets';
+import { trackProPreviewCta, trackProPreviewViewed } from '@/services/analytics';
 import { isProTierResolved } from '@/services/widget-store';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -268,7 +270,24 @@ export class ResilienceWidget {
     return this.renderScoreCard(this.currentData);
   }
 
+  // KTD7: crisis-desk's Release 1 preview IS this locked surface — it ships
+  // already, so its treated-mission work is instrumentation only. Events are
+  // scoped to the active mission so ordinary locked renders stay unattributed.
+  private crisisDeskPreviewViewedTracked = false;
+
+  private isCrisisDeskMissionActive(): boolean {
+    try {
+      return loadStoredMissionPreset()?.id === 'crisis-desk';
+    } catch {
+      return false;
+    }
+  }
+
   private renderLocked(gateReason: PanelGateReason): HTMLElement {
+    if (this.isCrisisDeskMissionActive() && !this.crisisDeskPreviewViewedTracked) {
+      this.crisisDeskPreviewViewedTracked = true;
+      trackProPreviewViewed('crisis-desk', 'cii');
+    }
     const description = gateReason === PanelGateReason.ANONYMOUS
       ? 'Sign in to unlock premium resilience scores.'
       : 'Upgrade to Pro to unlock resilience scores.';
@@ -287,7 +306,9 @@ export class ResilienceWidget {
             .catch(() => this.showAuthUnavailable());
           return;
         }
-        void this.openUpgradeFlow().catch(() => {
+        const crisisDesk = this.isCrisisDeskMissionActive();
+        if (crisisDesk) trackProPreviewCta('crisis-desk', 'cii');
+        void this.openUpgradeFlow(crisisDesk).catch(() => {
           window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
         });
       },
@@ -560,7 +581,7 @@ export class ResilienceWidget {
     return h('div', { className: 'cdp-empty' }, text);
   }
 
-  private async openUpgradeFlow(): Promise<void> {
+  private async openUpgradeFlow(crisisDeskAttribution = false): Promise<void> {
     const [{ DEFAULT_UPGRADE_PRODUCT }, { isDesktopRuntime }] = await Promise.all([
       import('@/config/products'),
       import('@/services/runtime'),
@@ -573,7 +594,16 @@ export class ResilienceWidget {
     }
 
     await import('@/services/checkout')
-      .then((module) => module.startCheckout(DEFAULT_UPGRADE_PRODUCT))
+      .then((module) => module.startCheckout(
+        DEFAULT_UPGRADE_PRODUCT,
+        undefined,
+        crisisDeskAttribution
+          ? {
+            analyticsSurface: 'mission-preview',
+            analyticsAttribution: { missionId: 'crisis-desk', panelKey: 'cii' },
+          }
+          : undefined,
+      ))
       .catch(() => {
         window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       });

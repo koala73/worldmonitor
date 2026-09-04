@@ -44,7 +44,12 @@ const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // to www in production, and the tracker's data-domains check is an EXACT
 // hostname match (`!domains.includes(hostname)` → disabled) — with only the
 // apex listed, every event from the canonical host was silently dropped.
-const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app';
+// finance re-added 2026-09-04 (option 2, mission-funnel measurement): the
+// finance-only nq-day-trader mission was invisible to the funnel with the
+// tracker self-disabled there. Upstream #4183 still drops 4-8% of /api/send
+// on affected hosts — accepted noise; durable checkout markers already
+// tolerate collector failures. tech/commodity stay out until #4183 ships.
+const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app,finance.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
 const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
 const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
@@ -981,6 +986,23 @@ function sanitizePendingConversionData(
   return out;
 }
 
+/**
+ * Return-leg reader (plan U4): the originating mission/panel of the checkout
+ * that just completed, straight from the durable pending-conversion entry —
+ * read BEFORE the boot replay's collector confirmation can clear it. Values
+ * were bucketed at write time and are re-validated by the caller's tracker.
+ */
+export function peekPendingMissionAttribution(): { missionId: string; panelKey?: string } | null {
+  for (const item of readPendingConversions().reverse()) {
+    if (item.event !== 'checkout-start') continue;
+    const missionId = item.data.missionId;
+    if (typeof missionId !== 'string' || missionId === 'unknown') continue;
+    const panelKey = item.data.panelKey;
+    return { missionId, ...(typeof panelKey === 'string' ? { panelKey } : {}) };
+  }
+  return null;
+}
+
 export function replayPendingConversionEvents(): void {
   for (const item of readPendingConversions()) {
     track(item.event, { ...sanitizePendingConversionData(item.event, item.data), replayed: true });
@@ -1309,6 +1331,7 @@ const KNOWN_MISSION_IDS = new Set([
   'tech-ai-watch',
   'good-news-explorer',
   'nq-day-trader',
+  'country-watcher',
 ]);
 
 /** Unknown mission ids collapse to 'unknown' — closed vocabulary, like productId. */

@@ -39,6 +39,17 @@ The `pro-preview-*` and `mission-returned-after-purchase` names are pinned
 from Release 0 so dashboards can be built ahead of Release 1, which ships
 their emission sites with the preview component.
 
+## Variant coverage caveat
+
+Funnel events exist only for hosts listed in `UMAMI_DOMAINS`
+(`src/services/analytics.ts`) — the tracker self-disables everywhere else.
+As of 2026-09-04 that is the apex, `www`, `happy`, and `finance` (finance
+re-added so the finance-only `nq-day-trader` mission became measurable;
+upstream Umami #4183 still drops ~4-8% of collector writes on affected
+hosts, an accepted noise floor). `tech` and `commodity` remain dark: a
+mission scoped to those variants produces **no funnel data**, and zero
+events from such a mission means "unmeasured", never "unused".
+
 ## Baseline and threshold procedure
 
 Per the strategy doc's pre-registration rule, thresholds are set **after**
@@ -62,3 +73,34 @@ baselines exist — this section records how, not numbers.
    the clean treated-vs-untouched window is weeks 2–4; after Release 2 adds
    universal panels to all missions (week 4+), the contrast becomes
    "preview + panels vs panels-only" — do not pool across that boundary.
+
+## Pre-registered thresholds — set 2026-09-04, before Release 1 exposure
+
+Baseline window: 2026-08-31 through 2026-09-04 (first full days after the
+Release 0 merge), production Umami, `source: user` only.
+
+Measured baselines (daily means): `panel-viewed` ~118k across ~11.5k
+sessions (dedupe mean 1.09 events per session+panel); `mission-picker-shown`
+~1.4k; `mission-selected` ~545 (crisis-desk ~194, osint ~75, supply-chain ~71,
+macro ~61, tech-ai ~59, energy ~46, good-news ~40); `checkout-start` ~85, of
+which ~6.3% carried ambient mission attribution.
+
+Fixed now, before any preview is exposed:
+
+1. **Per-mission rollback** (weekly read; remove that mission's registry
+   entry): dismissal rate `pro-preview-dismissed / pro-preview-viewed`
+   exceeds **50%** over at least **200 viewed**, OR the mission's weekly
+   `mission-selected` (source `user`) falls below **75% of its baseline
+   weekly mean** while untouched missions hold within 10% of theirs.
+2. **Free-experience guardrail** (global): total weekly `mission-selected`
+   drops below **75%** of the baseline weekly mean → pause Release 1
+   entirely, not per mission.
+3. **Day-30 continue bar**: weekly mission-attributed `checkout-start`
+   (surface `mission-preview`, or ambient attribution on a treated mission)
+   reaches at least **150% of the baseline ambient weekly mean** (~38/week
+   → ≥57/week), with the treated-vs-untouched contrast favoring treated.
+4. **Read discipline**: day-30 segments at the Release 2 boundary (weeks
+   2–4 are the clean treated-vs-untouched window) and excludes
+   `trigger/source: agent` events and dark-variant missions per the caveat
+   above.
+

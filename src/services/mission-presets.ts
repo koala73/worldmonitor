@@ -21,7 +21,8 @@ export type MissionPresetId =
   | 'macro-market-watch'
   | 'tech-ai-watch'
   | 'good-news-explorer'
-  | 'nq-day-trader';
+  | 'nq-day-trader'
+  | 'country-watcher';
 
 export type MissionMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 export type MissionTimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -357,6 +358,38 @@ export const MISSION_PRESETS: readonly MissionPreset[] = [
       'centralBanks',
       'economic',
       'outages',
+    ],
+  },
+  {
+    id: 'country-watcher',
+    label: 'Country Watcher',
+    shortLabel: 'Watch',
+    description: 'Track the countries you care about — instability, sanctions, displacement, and risk in one view.',
+    icon: '◉',
+    view: 'global',
+    zoom: 2.2,
+    timeRange: '48h',
+    panels: [
+      'map',
+      'live-news',
+      'cii',
+      'strategic-risk',
+      'sanctions-pressure',
+      'security-advisories',
+      'gdelt-intel',
+      'displacement',
+      'population-exposure',
+      'economic',
+    ],
+    layers: [
+      'conflicts',
+      'hotspots',
+      'protests',
+      'sanctions',
+      'ucdpEvents',
+      'ciiChoropleth',
+      'outages',
+      'natural',
     ],
   },
 ];

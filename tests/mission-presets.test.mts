@@ -644,6 +644,7 @@ describe('mission preset definitions', () => {
         'tech-ai-watch',
         'good-news-explorer',
         'nq-day-trader',
+        'country-watcher',
       ],
     );
   });
@@ -712,11 +713,11 @@ describe('applyMissionPresetToState', () => {
 
   it('lists NQ Day Trader only on finance and rejects it on other variants', () => {
     const financeIds = getMissionPresetsForVariant('finance').map((preset) => preset.id);
-    assert.equal(financeIds.length, 8);
+    assert.equal(financeIds.length, 9);
     assert.ok(financeIds.includes('nq-day-trader'));
     for (const variant of VARIANTS.filter((item) => item !== 'finance')) {
       const ids = getMissionPresetsForVariant(variant).map((preset) => preset.id);
-      assert.equal(ids.length, 7, `${variant} should keep the seven shared missions`);
+      assert.equal(ids.length, 8, `${variant} should keep the eight shared missions`);
       assert.ok(!ids.includes('nq-day-trader'), `${variant} must not offer NQ Day Trader`);
     }
 
@@ -1269,6 +1270,23 @@ describe('mission preset shell integration', () => {
       [{ id: 'mobileMenuMission', mobile: true }],
       'mobile WebMCP opens should use the menu trigger and mobile popover mode',
     );
+  });
+
+  it('defines country-watcher with the verified panel keys and no variant gate', () => {
+    const preset = MISSION_PRESETS.find((p) => p.id === 'country-watcher');
+    assert.ok(preset, 'country-watcher preset missing');
+    // KTD6: keys verified against the FULL catalog — displacement is the
+    // UNHCR panel (there is no `unhcr` key) and there is no `world-news`.
+    assert.deepEqual(preset!.panels, [
+      'map', 'live-news', 'cii', 'strategic-risk', 'sanctions-pressure',
+      'security-advisories', 'gdelt-intel', 'displacement',
+      'population-exposure', 'economic',
+    ]);
+    for (const key of preset!.panels) {
+      if (key === 'map') continue;
+      assert.ok(key in ALL_PANELS, `country-watcher panel '${key}' not in ALL_PANELS`);
+    }
+    assert.equal(preset!.variants, undefined, 'country-watcher must be offered on every variant');
   });
 
   it('tags agent-applied presets and suppresses the panel views they trigger', async () => {
