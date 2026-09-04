@@ -14263,6 +14263,9 @@
           "path": "scripts/generate-sandbox-fixtures.mjs"
         },
         {
+          "path": "scripts/github-stars-snapshot.mjs"
+        },
+        {
           "path": "scripts/mcp-live-smoke.mjs"
         },
         {
