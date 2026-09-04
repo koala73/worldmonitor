@@ -343,9 +343,9 @@ export async function fetchLiveTeasers(): Promise<TeaserState> {
     fetchChokepoints(),
     fetchQuotes(),
   ]);
-  if (headlines) state.headlines = headlines;
-  if (cii) state.cii = cii;
-  if (chokepoints) state.chokepoints = chokepoints;
-  if (quotes) state.quotes = quotes;
+  if (headlines?.live) state.headlines = headlines;
+  if (cii?.live) state.cii = cii;
+  if (chokepoints?.live) state.chokepoints = chokepoints;
+  if (quotes?.live) state.quotes = quotes;
   return state;
 }

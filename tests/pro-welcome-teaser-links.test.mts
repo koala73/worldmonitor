@@ -20,7 +20,7 @@ import { afterEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import i18next from 'i18next';
 
-import { fetchLiveTeasers } from '../pro-test/src/services/teasers.ts';
+import { fetchLiveTeasers, getFallbackTeasers } from '../pro-test/src/services/teasers.ts';
 import { throwOnMissingStaticTranslation } from '../pro-test/src/static-i18n-guard.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -66,6 +66,58 @@ function stubDigest(items: DigestItem[]): void {
           categories: { politics: { items } },
         }),
       };
+    }
+    return { ok: false, status: 503, json: async () => ({}) };
+  }) as unknown as typeof globalThis.fetch;
+}
+
+function stubNonLiveTeasers(): void {
+  globalThis.fetch = (async (url: string | URL) => {
+    const href = String(url);
+    if (href.endsWith('/api/wm-session')) {
+      return { ok: true, status: 200, json: async () => ({ token: 't' }) };
+    }
+    if (href.includes('list-feed-digest')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          generatedAt: new Date(Date.now() - 31 * 60 * 1000).toISOString(),
+          categories: { politics: { items: [digestItem({ title: 'stale live headline' })] } },
+        }),
+      };
+    }
+    if (href.includes('get-risk-scores')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          ciiScores: [{ region: 'Degraded region', combinedScore: 99, trend: 'up' }],
+          degraded: true,
+        }),
+      };
+    }
+    if (href.includes('get-chokepoint-status')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          chokepoints: [{ name: 'Unavailable chokepoint', status: 'red', disruptionScore: 100 }],
+          upstreamUnavailable: true,
+        }),
+      };
+    }
+    if (href.includes('list-market-quotes')) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => ({
+          quotes: [{ symbol: '^GSPC', display: 'S&P 500', price: 9999, change: 1, sparkline: [] }],
+        }),
+      };
+    }
+    if (href.includes('list-commodity-quotes') || href.includes('list-crypto-quotes')) {
+      return { ok: true, status: 200, json: async () => ({ quotes: [] }) };
     }
     return { ok: false, status: 503, json: async () => ({}) };
   }) as unknown as typeof globalThis.fetch;
@@ -123,6 +175,18 @@ describe('live welcome headlines link only to verifiable articles', () => {
     ]);
     const { headlines } = await fetchLiveTeasers();
     assert.deepEqual(headlines.items.map((h) => h.title), ['highest', 'newer', 'older']);
+  });
+});
+
+describe('welcome teaser provenance', () => {
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+  });
+
+  it('keeps the committed snapshot when fetched rows are stale, degraded, unavailable, or partial', async () => {
+    stubNonLiveTeasers();
+    const teasers = await fetchLiveTeasers();
+    assert.deepEqual(teasers, getFallbackTeasers());
   });
 });
 
