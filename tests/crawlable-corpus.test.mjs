@@ -1742,7 +1742,12 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.countries.count, 196);
       assert.equal(manifest.sections.countryInstabilityIndex.count, 1);
       assert.equal(manifest.sections.chokepoints.count, 13);
-      assert.equal(manifest.sections.crises.count, 4);
+      // Derived, not frozen: a frozen count is exactly the drift #7656 removed from
+      // the seeder, where a hand-maintained copy of this registry silently diverged.
+      assert.equal(
+        manifest.sections.crises.count,
+        JSON.parse(read(repoRoot, 'shared/crawlable-crises.json')).length,
+      );
       assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
@@ -4624,7 +4629,11 @@ describe('crawlable corpus generator', () => {
       }),
       'source-page lastmod must include manifest, renderer, origin, catalog-input, and shared-template changes',
     );
-    assert.equal(data.crises.length, 4);
+    assert.equal(
+      data.crises.length,
+      JSON.parse(read(repoRoot, 'shared/crawlable-crises.json')).length,
+      'the loaded crisis set must match the registry, never a frozen count',
+    );
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));
     assert.ok(!data.countryBounds.some((country) => country.code === 'US'));

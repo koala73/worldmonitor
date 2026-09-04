@@ -598,7 +598,7 @@ const SEED_META = {
   // an earlier 720min value left exactly that blind spot). 300 (5h) is ~10x
   // the HAPI refresh interval (headroom for missed/lock-contended ticks) while staying
   // a full hour below the 6h data-expiry floor.
-  humanitarianSummary: { key: 'seed-meta:conflict:humanitarian',  maxStaleMin: 300, minRecordCount: 23 },
+  humanitarianSummary: { key: 'seed-meta:conflict:humanitarian',  maxStaleMin: 300, minRecordCount: 41 },
   chinaCoverage:   { key: 'seed-meta:health:china-coverage',   maxStaleMin: 180 },
   // Always-on loop publishes every few seconds. Five minutes tolerates deploy
   // churn while still detecting a stopped worker well before leases age out.
