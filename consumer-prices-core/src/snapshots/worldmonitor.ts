@@ -302,12 +302,16 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
 // (#2322).
 export const MAX_MOVE_RATIO = 4;
 
-// How many movers each direction publishes, and the sample floor the
-// all-gated check needs before it may fail the run. The two are the same
-// number on purpose: a window that cannot fill one published column is too
-// thin for "every candidate is an artifact" to distinguish a systemic parse
-// break from a market that simply has few priced-both-ends products.
+// How many movers each direction publishes. Presentation only.
 export const MOVERS_PER_DIRECTION = 10;
+
+// How many candidates an all-gated window needs before it is loud enough to
+// fail the run. Deliberately NOT MOVERS_PER_DIRECTION: retuning how many
+// movers the UI shows must not move an alarm threshold. Sample size governs
+// only the severity of an all-gated window, never whether it is trustworthy —
+// too few candidates to tell a systemic parse break from a thin market means
+// stay quiet, not publish anyway.
+export const MIN_PARSE_BREAK_SAMPLE = 10;
 
 export function isPlausiblePriceMove(changePct: number): boolean {
   if (!Number.isFinite(changePct)) return false;
@@ -315,10 +319,16 @@ export function isPlausiblePriceMove(changePct: number): boolean {
   return ratio >= 1 / MAX_MOVE_RATIO && ratio <= MAX_MOVE_RATIO;
 }
 
+// Null means "candidates existed but none survived the plausibility gate", a
+// third outcome distinct from both a real snapshot and an empty window. The
+// caller must skip the write so the last good snapshot lives out its TTL:
+// publishing zero movers here would overwrite it and, because recordCount()
+// floors movers at 1, stamp the envelope OK — a market whose every candidate
+// failed validation would read as fresh, valid and quiet.
 export async function buildMoversSnapshot(
   marketCode: string,
   rangeDays: number,
-): Promise<WMMoversSnapshot> {
+): Promise<WMMoversSnapshot | null> {
   const now = Date.now();
   const range = `${rangeDays}d`;
 
@@ -381,20 +391,22 @@ export async function buildMoversSnapshot(
       `[movers] ${marketCode} ${range}: dropped ${dropped}/${all.length} implausible movers (outside ${1 / MAX_MOVE_RATIO}x-${MAX_MOVE_RATIO}x — likely unit/parse artifacts)`,
     );
   }
-  if (all.length >= MOVERS_PER_DIRECTION && plausible.length === 0) {
-    // A full candidate window with nothing plausible in it means the parser
-    // broke, not that prices held still. Publishing an empty but "healthy"
-    // snapshot would overwrite the last good one and render as a false "no
-    // movers" — fail loudly instead; the publish job's per-snapshot catch
-    // keeps the previous snapshot alive under its TTL (#5445).
-    //
-    // Below the floor that unanimity carries no signal, so a sparse market
-    // falls through to the empty snapshot the zero-row window already
-    // returns instead of exiting the whole job 1 for every other market too.
-    // The dropped-N/N warning above still reports it.
-    throw new Error(
-      `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
+  if (all.length > 0 && plausible.length === 0) {
+    // Nothing here is publishable either way — the caller skips the write and
+    // the last good snapshot stands (#5445). Only the alarm level depends on
+    // how much evidence there is: a full window of artifacts means the parser
+    // broke, so fail the run. Too thin to make that call and the run stays
+    // green, because one chronically sparse market must not exit the whole
+    // publish job 1 while every other market publishes fine.
+    if (all.length >= MIN_PARSE_BREAK_SAMPLE) {
+      throw new Error(
+        `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
+      );
+    }
+    console.warn(
+      `[movers] ${marketCode} ${range}: all ${all.length} candidate(s) gated as implausible — too few to call a parse break; skipping the write and keeping the last good snapshot`,
     );
+    return null;
   }
 
   return {
