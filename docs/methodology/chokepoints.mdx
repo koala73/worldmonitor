@@ -131,9 +131,15 @@ Where:
 - `warningComponent = min(15, activeWarnings * 5)`.
 - `aisComponent = min(15, maxCongestionSeverity * 5)`, where low/elevated/high
   AIS congestion severity maps to 1/2/3.
-- `anomalyBonus = 10` only when transit history shows a 50% or larger traffic
-  drop against the prior 30-day transit-count baseline and the threat level is
-  `war_zone` or `critical`.
+- `anomalyBonus = 10` only when PortWatch daily transit history shows a 50% or
+  larger traffic drop against the prior 30-day transit-count baseline and the
+  threat level is `war_zone` or `critical`.
+
+Those four terms are the whole formula. AIS event counts, relay transit counts,
+and PortWatch week-over-week movement are published as context and never enter
+the score. PortWatch feeds both sides: `anomalyBonus` reads its daily transit
+history through `supply_chain:portwatch:v1`, while the week-over-week figure is
+presentation only.
 
 The score badge thresholds are:
 

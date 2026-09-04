@@ -211,7 +211,9 @@ const stubSources: Record<string, string> = {
     export const openSignIn = () => {};
   `,
   './analytics': `
-    export const trackCheckoutStart = () => {};
+    export const trackCheckoutStart = (_productId, _authed, surface, _attribution, context) => (
+      context ?? { eventSurface: surface, origin: { kind: 'dashboard' } }
+    );
   `,
   './auth-state': `
     export const subscribeAuthState = () => () => {};
@@ -350,7 +352,10 @@ describe('startCheckout on desktop (#5911)', () => {
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.assignedUrls, [], 'the app must not be replaced by /pro');
     assert.deepEqual(harness.invocations, [
-      { command: 'open_url', payload: { url: 'https://worldmonitor.app/pro' } },
+      {
+        command: 'open_url',
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop' },
+      },
     ]);
   });
 
@@ -365,7 +370,10 @@ describe('startCheckout on desktop (#5911)', () => {
     const harness = globalThis.__desktopCheckoutHarness;
     assert.deepEqual(harness.assignedUrls, []);
     assert.deepEqual(harness.invocations, [
-      { command: 'open_url', payload: { url: 'https://worldmonitor.app/pro' } },
+      {
+        command: 'open_url',
+        payload: { url: 'https://worldmonitor.app/pro?wm_checkout_handoff=desktop' },
+      },
     ]);
   });
 

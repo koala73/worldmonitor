@@ -542,7 +542,7 @@ describe('crawlable live intelligence view models', () => {
     );
     assert.match(
       tool.querySelector('[data-chokepoint-score-driver]').textContent,
-      /Configured geopolitical baseline: Active conflict\. Observed score inputs: 0 warnings; maximum AIS severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count \(6\)\./,
+      /Configured geopolitical baseline: Active conflict\. Observed score inputs: 0 warnings; maximum AIS congestion severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count \(6\)\./,
     );
   });
 
@@ -612,7 +612,7 @@ describe('crawlable live intelligence view models', () => {
     assert.doesNotMatch(passage, / is (?:open|restricted|effectively closed) /);
     assert.match(
       tool.querySelector('[data-chokepoint-score-driver]').textContent,
-      /Observed score inputs: maximum AIS severity Low\. Unavailable score inputs: navigational warning count\./,
+      /Observed score inputs: maximum AIS congestion severity Low\. Unavailable score inputs: navigational warning count\./,
     );
   });
 
@@ -687,7 +687,7 @@ describe('crawlable live intelligence view models', () => {
     assert.match(withheldTransitCountSentence(''), /for this chokepoint for this period/);
   });
 
-  it('keeps maximum AIS severity as a score input and AIS event count as context', () => {
+  it('keeps maximum AIS congestion severity as a score input and AIS event count as context', () => {
     const narrative = chokepointEvidenceNarrative({
       displayName: 'Suez Canal',
       score: '35',
@@ -705,7 +705,7 @@ describe('crawlable live intelligence view models', () => {
         + ' The Yellow disruption score is a risk signal; it does not verify unrestricted passage or operational closure.',
       scoreDriver: 'The score of 35 (Yellow) has this evidence basis.'
         + ' Configured geopolitical baseline: JWC Listed Area.'
-        + ' Observed score inputs: 1 warning; maximum AIS severity High.'
+        + ' Observed score inputs: 1 warning; maximum AIS congestion severity High.'
         + ' Context only (not score inputs): AIS event count (7 AIS disruptions); transit count (2).',
     });
     assert.doesNotMatch(narrative.scoreDriver, /Observed score inputs:[^.]*7 AIS disruptions/);
@@ -728,7 +728,7 @@ describe('crawlable live intelligence view models', () => {
     assert.match(narrative.passage, /observed transit count is 12/);
     assert.match(narrative.passage, /cannot verify operational passage status/);
     assert.doesNotMatch(narrative.passage, / is (?:open|restricted|effectively closed) /);
-    assert.match(narrative.scoreDriver, /Observed score inputs: maximum AIS severity Low\./);
+    assert.match(narrative.scoreDriver, /Observed score inputs: maximum AIS congestion severity Low\./);
     assert.match(narrative.scoreDriver, /Unavailable score inputs: navigational warning count\./);
     assert.doesNotMatch(narrative.scoreDriver, /unavailable[^.]*observed/i);
   });
@@ -750,7 +750,7 @@ describe('crawlable live intelligence view models', () => {
     assert.match(narrative.scoreDriver, /Observed score inputs: none available\./);
     assert.match(
       narrative.scoreDriver,
-      /Unavailable score inputs: navigational warning count; maximum AIS severity\./,
+      /Unavailable score inputs: navigational warning count; maximum AIS congestion severity\./,
     );
     assert.match(narrative.scoreDriver, /AIS event count unavailable; transit count unavailable/);
   });
@@ -789,7 +789,7 @@ describe('crawlable live intelligence view models', () => {
     assert.match(anomaly.scoreDriver, /Configured geopolitical baseline: Active conflict — blockade risk\./);
     assert.match(
       anomaly.scoreDriver,
-      /Observed score inputs: 0 warnings; maximum AIS severity Normal; transit anomaly — Traffic down 55%/,
+      /Observed score inputs: 0 warnings; maximum AIS congestion severity Normal; PortWatch daily-transit anomaly: Traffic down 55%/,
     );
     assert.equal(chokepointEvidenceNarrative({ score: null }), null);
   });

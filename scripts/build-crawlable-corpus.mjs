@@ -60,6 +60,8 @@ import {
 import {
   CHOKEPOINT_CONTENT,
   CHOKEPOINT_PAGE_CONTENT_PATH,
+  CHOKEPOINT_SCORE_CONTEXT_ONLY,
+  CHOKEPOINT_SCORE_INPUTS,
   CHOKEPOINT_REGISTRY_OBSERVED_AT,
   EIA_OIL_TRANSIT_BASELINES,
   TRADE_ROUTES_OBSERVED_AT,
@@ -3553,7 +3555,7 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
     },
     {
       question: 'How does World Monitor score chokepoint status?',
-      answer: `World Monitor scores each waterway 0-100 from a configured geopolitical baseline, NGA navigational warnings, maximum AIS severity, and a qualifying traffic anomaly. AIS event counts, relay transit counts, and PortWatch movement are context rather than score inputs. Each source controls only its own values, so unavailable evidence is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The methodology documents the inputs and score bands.`,
+      answer: `World Monitor scores each waterway 0-100 from ${formatProseList(CHOKEPOINT_SCORE_INPUTS.map((input) => input.label))}. ${formatProseList(CHOKEPOINT_SCORE_CONTEXT_ONLY)} are published as context rather than score inputs. Each source controls only its own values, so unavailable evidence is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The methodology documents the inputs and score bands.`,
     },
     {
       question: 'Why do some chokepoint pages show fewer metrics than others?',

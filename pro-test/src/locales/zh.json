@@ -482,7 +482,7 @@
       "plateNote": "从实时地图捕获 — 点击打开\t",
       "trustBuild": "构建应用：\t",
       "positioningLink": "WorldMonitor 不是开源的 Palantir\t",
-      "asOf": "截至2026年8月31日",
+      "asOf": "截至2026年9月4日",
       "whatIsTitle": "World Monitor 是什么？",
       "whatIsBody": "World Monitor 是一款免费的开源仪表板，将地缘政治、市场、海运、航空、基础设施和网络信号实时流式传输到一张世界地图上。它将独立数据源关联到单一作战图景中，在新闻见报前标记汇聚点，所有数据均有来源，所有方法均已记录。"
     },
@@ -491,7 +491,8 @@
       "title": "此页面现在显示的实时数据是什么？",
       "subtitle": "World Monitor 全天候监控的百余个信号中的四个。\t",
       "liveBadge": "实时\t",
-      "sampleBadge": "示例\t",
+      "pulseBadge": "已发布脉动 {{date}}",
+      "refreshNote": "启用 JavaScript 以刷新 — 上方已发布的脉动在未启用时仍可用。",
       "cardHeadlines": "顶部信号\t",
       "cardCii": "不稳定指数",
       "ciiNote": "每个国家 12 个融合信号",

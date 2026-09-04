@@ -104,6 +104,10 @@ disruptionScore = min(
 - `anomalyBonus = 10`，仅当通行历史显示相对于先前 30 天通行计数基线出现 50% 或更大的流量
   下降，且威胁等级为 `war_zone` 或 `critical` 时。
 
+这四项即为公式全部。AIS 事件计数、中继通行计数和 PortWatch 周环比变动均作为背景信息发布，
+不进入评分。PortWatch 同时服务于两侧：`anomalyBonus` 通过 `supply_chain:portwatch:v1`
+读取其每日通行历史，而周环比数字仅用于展示。
+
 评分徽章阈值为：
 
 | 评分范围 | `status` |

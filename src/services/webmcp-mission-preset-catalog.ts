@@ -5,6 +5,7 @@ import {
   getMissionPreset,
   getMissionPresetsForVariant,
   isMissionPresetAvailableForVariant,
+  resolveMissionPresetForVariant,
   type MissionMapView,
   type MissionPresetId,
   type MissionTimeRange,
@@ -118,7 +119,8 @@ export function getMissionPresetPanelMatches(
   const preset = getMissionPreset(presetId);
   if (!preset) return [];
   const allowed = variantPanelSet(variant);
-  return preset.panels.filter((panelId) => panelId !== 'map' && allowed.has(panelId));
+  return resolveMissionPresetForVariant(preset, variant).panels
+    .filter((panelId) => panelId !== 'map' && allowed.has(panelId));
 }
 
 export function isMissionPresetMonitorCompatible(
@@ -167,9 +169,10 @@ export function buildMissionPresetCatalogItem(
   }
 
   const matchingPanels = getMissionPresetPanelMatches(presetId, live.variant);
+  const resolvedPreset = resolveMissionPresetForVariant(preset, live.variant);
   const monitorCompatible = isMissionPresetMonitorCompatible(presetId, live.variant);
   const panelIds = monitorCompatible
-    ? preset.panels.filter((panelId) => panelId === 'map' || matchingPanels.includes(panelId))
+    ? resolvedPreset.panels.filter((panelId) => panelId === 'map' || matchingPanels.includes(panelId))
     : [];
   const entitled = resolveEntitled(matchingPanels, live);
   const reason = unavailableReason({
@@ -187,7 +190,7 @@ export function buildMissionPresetCatalogItem(
         view: preset.view,
         timeRange: preset.timeRange,
         panelCount: panelIds.length,
-        layerCount: preset.layers.length,
+        layerCount: resolvedPreset.layers.length,
       }
       : {
         panelCount: 0,

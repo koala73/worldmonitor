@@ -464,7 +464,7 @@ test('attribution records TFS and TPS licences and credits the agencies', () => 
   assert.match(ATTRIBUTION, /Not Major Crime Indicators \/ YTD/);
   assert.match(ATTRIBUTION, /Open Government Licence/);
   assert.match(ATTRIBUTION, /C4S_Public_NoGO|Calls for Service/);
-  const arcgisOverride = ATTRIBUTION.match(/'services\.arcgis\.com': \{[\s\S]*?\n  \},/);
+  const arcgisOverride = ATTRIBUTION.match(/'services\.arcgis\.com': \{[\s\S]*?\n {2}\},/);
   assert.ok(arcgisOverride, 'services.arcgis.com must have a dedicated provider override');
   assert.doesNotMatch(arcgisOverride[0], /Open Data/);
   assert.doesNotMatch(arcgisOverride[0], /identityGroup/);

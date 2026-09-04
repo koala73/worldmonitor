@@ -482,7 +482,7 @@
       "plateNote": "Được chụp từ bản đồ trực tiếp — bấm để mở",
       "trustBuild": "Xây dựng trên nó:",
       "positioningLink": "WorldMonitor không phải là Palantir mã nguồn mở",
-      "asOf": "Tính đến 31 tháng 8 năm 2026",
+      "asOf": "Tính đến 4 tháng 9 năm 2026",
       "whatIsTitle": "World Monitor là gì?",
       "whatIsBody": "World Monitor là một dashboard miễn phí, mã nguồn mở truyền tín hiệu địa chính trị, thị trường, vận tải biển, hàng không, cơ sở hạ tầng và an ninh mạng lên một bản đồ thế giới trực tiếp. Nó tương quan các nguồn cấp dữ liệu riêng biệt thành một bức tranh hoạt động thống nhất và cảnh báo sự hội tụ trước tiêu đề, với mọi con số được trích dẫn nguồn và mọi phương pháp được ghi chép."
     },
@@ -491,7 +491,8 @@
       "title": "Trang này đang hiển thị dữ liệu trực tiếp nào?",
       "subtitle": "Bốn trong số hơn trăm tín hiệu mà World Monitor theo dõi quanh đồng hồ.",
       "liveBadge": "Trực tiếp",
-      "sampleBadge": "Mẫu",
+      "pulseBadge": "Pulse được xuất bản {{date}}",
+      "refreshNote": "Bật JavaScript để làm mới — pulse đã xuất bản ở trên vẫn có sẵn mà không cần nó.",
       "cardHeadlines": "Tín hiệu hàng đầu",
       "cardCii": "Chỉ số bất ổn định",
       "ciiNote": "12 tín hiệu tích hợp trên mỗi quốc gia",

@@ -4824,7 +4824,9 @@ export class MapComponent {
     const coords = projection.invert(
       projectionPointAtScreenCentre(width, height, this.state.pan),
     );
-    if (!coords) return null;
+    // A 0x0 container (hidden or not yet laid out) makes getProjection scale 0,
+    // and d3 then inverts to [NaN, NaN] rather than null (#7660).
+    if (!coords || !Number.isFinite(coords[0]) || !Number.isFinite(coords[1])) return null;
     return { lon: coords[0], lat: coords[1] };
   }
 

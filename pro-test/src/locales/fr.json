@@ -482,7 +482,7 @@
       "plateNote": "Capturé depuis la carte en direct — cliquez pour l'ouvrir",
       "trustBuild": "Construisez dessus :",
       "positioningLink": "WorldMonitor n'est pas un Palantir open-source",
-      "asOf": "Au 31 août 2026",
+      "asOf": "Au 4 septembre 2026",
       "whatIsTitle": "Qu'est-ce que World Monitor ?",
       "whatIsBody": "World Monitor est un tableau de bord gratuit et open source qui diffuse les signaux géopolitiques, marchés, transports maritimes, aviation, infrastructures et cyber sur une seule carte mondiale en direct. Il corrèle les flux séparés en une image opérationnelle unique et signale les convergences avant les gros titres, chaque chiffre étant sourcé et chaque méthode documentée."
     },
@@ -491,7 +491,8 @@
       "title": "Quelles données en direct cette page affiche-t-elle en ce moment ?",
       "subtitle": "Quatre des plus de cent signaux que World Monitor surveille 24h/24.",
       "liveBadge": "En direct",
-      "sampleBadge": "Exemple",
+      "pulseBadge": "Pulse publié {{date}}",
+      "refreshNote": "Activez JavaScript pour actualiser — le pulse publié ci-dessus reste disponible sans cela.",
       "cardHeadlines": "Signaux principaux",
       "cardCii": "Indice d'instabilité",
       "ciiNote": "12 signaux fusionnés par pays",

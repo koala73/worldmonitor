@@ -53,7 +53,8 @@
 // and both hosts see the same runner IP, so the walk caps its fan-out
 // (MAX_PROMPT_GETS / MAX_RESOURCE_READS) and reuses each catalog listing
 // instead of re-fetching it per sub-walk. Current shape: ≤16 /mcp POSTs per
-// host (≤32 total) + 3 non-/mcp OAuth probes per host — comfortable headroom
+// host (≤32 total) + 3 non-/mcp OAuth probes per host + 2 non-/mcp
+// /api/mcp-proxy probes per host (1 on the apex, which 301s) — headroom
 // under the bucket even as the prompt/resource catalogs grow. The discovery
 // probes (5) add 6 GET/HEAD requests per host that cost NOTHING against the bucket: both
 // the discovery branch and the transport 405 return ahead of
@@ -68,6 +69,7 @@ import {
   collectRequiredCapabilityFailures,
   collectToolSchemaWireFailures,
 } from './mcp-schema-wire-check.mjs';
+import { runMcpProxyProbe } from './mcp-proxy-live-smoke.mjs';
 
 const HOSTS = (process.env.MCP_SMOKE_HOSTS ?? 'https://worldmonitor.app,https://www.worldmonitor.app')
   .split(',').map((h) => h.trim()).filter(Boolean);
@@ -430,6 +432,35 @@ async function probeDiscovery(host) {
   }
 }
 
+// /api/mcp-proxy liveness (issue #7663, GHSA-887j).
+//
+// This is a SEPARATE Vercel function from /mcp with its own runtime config,
+// and it has gone hard-down twice from a runtime/handler mismatch: #4749
+// (reverted by #4754 after 31 minutes) and #7578 (reverted by #7605 after
+// ~3 hours). Both answered FUNCTION_INVOCATION_FAILED on EVERY request,
+// OPTIONS included. Everything else in this script walks the MCP *server*
+// surface and never requests this path, which is why a green 15-minute smoke
+// sat alongside the second outage for three hours. Cadence was never the
+// problem; coverage was.
+//
+// The unauthenticated GET is the discriminating assertion: a healthy deploy
+// answers the handler's OWN 401 JSON, a broken one answers a platform 5xx.
+// That separates "the function ran and rejected me" from "the function
+// crashed at invocation".
+async function probeMcpProxy(host) {
+  // The serverUrl is never fetched: both probes are refused by the auth wall
+  // before URL validation runs. `example.com` rather than a subdomain of it
+  // because the source-attribution inventory treats an unrecognised hostname
+  // literal in scripts/ as an unregistered data source.
+  const url = `${host}/api/mcp-proxy?serverUrl=${encodeURIComponent('https://example.com/mcp')}`;
+  const records = await runMcpProxyProbe(url, timedFetch);
+  for (const record of records) {
+    checks += 1;
+    if (record.ok) ok(host, record.check, record.detail);
+    else fail(host, record.check, record.detail);
+  }
+}
+
 // Variant subdomains: crawler GETs canonicalize to apex, POST never does.
 const VARIANT_HOSTS = (process.env.MCP_SMOKE_VARIANT_HOSTS
   ?? 'tech,finance,commodity,happy,energy')
@@ -524,6 +555,7 @@ async function probeVariantCanonical(host) {
 for (const host of HOSTS) {
   await walkHost(host);
   await probeDiscovery(host);
+  await probeMcpProxy(host);
 }
 
 console.log('\n── variant canonicalization ──');

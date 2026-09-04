@@ -482,7 +482,7 @@
       "plateNote": "실시간 지도에서 캡처됨 — 클릭하여 열기",
       "trustBuild": "기반 구축:",
       "positioningLink": "WorldMonitor는 오픈소스 Palantir이 아닙니다",
-      "asOf": "2026년 8월 31일 기준",
+      "asOf": "2026년 9월 4일 기준",
       "whatIsTitle": "World Monitor란 무엇인가요?",
       "whatIsBody": "World Monitor는 지정학, 시장, 해운, 항공, 인프라, 사이버 신호를 하나의 실시간 세계 지도에 스트리밍하는 무료 오픈소스 대시보드입니다. 별개의 피드를 단일 운영 화면으로 통합하고 뉴스 보도 전에 수렴을 감지하며, 모든 수치는 출처가 명시되고 모든 방법은 기록되어 있습니다."
     },
@@ -491,7 +491,8 @@
       "title": "이 페이지는 지금 어떤 라이브 데이터를 표시하고 있나요?",
       "subtitle": "World Monitor가 24시간 감시하는 수백 개 이상의 신호 중 4개입니다.",
       "liveBadge": "실시간",
-      "sampleBadge": "샘플",
+      "pulseBadge": "{{date}}에 발행된 펄스",
+      "refreshNote": "새로고침하려면 JavaScript를 활성화하세요 — 위의 발행된 펄스는 활성화 없이도 계속 이용 가능합니다.",
       "cardHeadlines": "상위 신호",
       "cardCii": "불안정성 지수",
       "ciiNote": "국가별 12개 신호 융합",

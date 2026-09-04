@@ -649,9 +649,15 @@ Where:
 - `warningComponent = min(15, activeWarnings * 5)`.
 - `aisComponent = min(15, maxCongestionSeverity * 5)`, where low/elevated/high
   AIS congestion severity maps to 1/2/3.
-- `anomalyBonus = 10` only when transit history shows a 50% or larger traffic
-  drop against the prior 30-day transit-count baseline and the threat level is
-  `war_zone` or `critical`.
+- `anomalyBonus = 10` only when PortWatch daily transit history shows a 50% or
+  larger traffic drop against the prior 30-day transit-count baseline and the
+  threat level is `war_zone` or `critical`.
+
+Those four terms are the whole formula. AIS event counts, relay transit counts,
+and PortWatch week-over-week movement are published as context and never enter
+the score. PortWatch feeds both sides: `anomalyBonus` reads its daily transit
+history through `supply_chain:portwatch:v1`, while the week-over-week figure is
+presentation only.
 
 The score badge thresholds are:
 
@@ -839,9 +845,11 @@ The public status badge is a traffic-light score: green, yellow, or red. It is n
 The disruption score combines:
 
 - a baseline geopolitical threat weight
-- active navigational warnings
-- AIS disruption severity
-- a transit anomaly bonus when traffic drops sharply under high-threat conditions
+- active NGA navigational warnings
+- AIS congestion severity
+- a transit anomaly bonus when PortWatch daily transits drop sharply under high-threat conditions
+
+Nothing else moves the number. AIS event counts, relay transit counts, and PortWatch week-over-week movement are published as context rather than score inputs. PortWatch supplies both: the anomaly bonus compares its daily transit history, seven days against the prior thirty, while the week-over-week figure on the page is presentation only.
 
 The score is capped at 100. Green is below 20, yellow is 20 to 49, and red is 50 or higher.
 

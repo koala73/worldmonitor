@@ -7,6 +7,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it } from 'node:test';
 
 import { Window } from 'happy-dom';
+import ts from 'typescript';
+
+import {
+  aisComponent,
+  THREAT_LEVEL,
+  warningComponent,
+} from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 
 import {
   buildCiiRankingEntries,
@@ -50,6 +57,10 @@ import {
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
 } from '../scripts/crawlable-live-tools.mjs';
+import {
+  CHOKEPOINT_SCORE_CONTEXT_ONLY,
+  CHOKEPOINT_SCORE_INPUTS,
+} from '../scripts/chokepoint-page-content.mjs';
 import {
   COMPARISON_HUB_MATRIX_ROWS,
   COMPARISON_MATRIX_COLUMNS,
@@ -3377,8 +3388,22 @@ describe('crawlable corpus generator', () => {
       const scoreAnswer = chokepointFaq.mainEntity.find(
         (entry) => entry.name === 'How does World Monitor score chokepoint status?',
       )?.acceptedAnswer?.text;
-      assert.match(scoreAnswer, /maximum AIS severity/);
-      assert.match(scoreAnswer, /AIS event counts[^.]+are context rather than score inputs/);
+      // Exact clauses, not per-label presence: a hand-written answer that keeps
+      // all four inputs and splices PortWatch movement in as a fifth passes any
+      // containment check, and that is the #7614 defect verbatim.
+      const proseList = (items) => `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+      assert.ok(
+        scoreAnswer.includes(
+          `scores each waterway 0-100 from ${proseList(CHOKEPOINT_SCORE_INPUTS.map((input) => input.label))}.`,
+        ),
+        'the hub FAQ must publish exactly the canonical score inputs, in order',
+      );
+      assert.ok(
+        scoreAnswer.includes(
+          `${proseList([...CHOKEPOINT_SCORE_CONTEXT_ONLY])} are published as context rather than score inputs.`,
+        ),
+        'the hub FAQ must disclose exactly the canonical context-only metrics',
+      );
       assert.doesNotMatch(
         chokepointFaq.mainEntity.map((entry) => entry.acceptedAnswer.text).join(' '),
         /Green means open|Yellow means restricted|Red means effectively closed|maps? to passage status/,
@@ -3725,7 +3750,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(
         hormuz,
-        /Observed score inputs: 0 warnings; maximum AIS severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count unavailable\./,
+        /Observed score inputs: 0 warnings; maximum AIS congestion severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count unavailable\./,
       );
       assert.doesNotMatch(hormuz, /data-chokepoint-status-mapping/);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
@@ -4263,7 +4288,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(compareHub, /<h1>Compare World Monitor<\/h1>/);
       for (const page of COMPARISON_PAGES) {
-        assert.match(compareHub, new RegExp('href="' + page.path.replaceAll('/', '\/') + '"'));
+        assert.match(compareHub, new RegExp('href="' + page.path.replaceAll('/', '/') + '"'));
       }
       assert.match(compareHub, /href="\/blog\/posts\/worldmonitor-vs-traditional-intelligence-tools\/"/);
       for (const page of COMPARISON_PAGES) {
@@ -5213,5 +5238,446 @@ describe('GEO residue #7616 (U2a citations and prose)', () => {
       /Issue #\d+/,
       'published report justification must not leak internal issue numbers',
     );
+  });
+});
+
+describe('chokepoint disruption-score methodology', () => {
+  const repo = (path) => readFileSync(join(repoRoot, path), 'utf8');
+
+  // The join table between one published input and every surface that has to
+  // account for it: the term the server adds, the identifiers that term may be
+  // derived from, the identifier the methodology page documents, and the clause
+  // the detail-page score driver renders. Adding a fifth entry to
+  // CHOKEPOINT_SCORE_INPUTS reds every test below until each surface names it,
+  // which is the drift #7614 was filed for. It lives here rather than beside
+  // the labels so the browser-shipped module stays free of server identifiers.
+  //
+  // Derivation is guarded as tightly as the sum. The anomaly bonus reads
+  // PortWatch daily history, so a maintainer who reaches one field further and
+  // folds in wowChangePct adds a fifth input without touching the score line.
+  const SCORE_TERMS = {
+    threat: {
+      term: 'threatScore',
+      from: ['THREAT_LEVEL', 'Record', 'string', 'number', 'cp', 'threatLevel'],
+      methodologyTerm: 'threatLevelWeight',
+      driverClause: /Configured geopolitical baseline: /,
+      implementationValues: { war_zone: 70, critical: 40, high: 30, elevated: 15, normal: 0 },
+      methodologyClauses: [
+        '| `war_zone` | 70 |',
+        '| `critical` | 40 |',
+        '| `high` | 30 |',
+        '| `elevated` | 15 |',
+        '| `normal` | 0 |',
+      ],
+    },
+    warnings: {
+      term: 'matchedWarnings',
+      from: ['warningsByChokepoint', 'get', 'cp', 'id'],
+      methodologyTerm: 'warningComponent',
+      driverClause: /2 warnings/,
+      methodologyClauses: ['`warningComponent = min(15, activeWarnings * 5)`'],
+    },
+    ais: {
+      term: 'maxSeverity',
+      from: ['matchedDisruptions', 'reduce', 'max', 'd', 'score', 'SEVERITY_SCORE', 'Record',
+        'string', 'number', 'severity', 'Math'],
+      methodologyTerm: 'aisComponent',
+      driverClause: /maximum AIS congestion severity High/,
+      methodologyClauses: ['`aisComponent = min(15, maxCongestionSeverity * 5)`'],
+    },
+    anomaly: {
+      term: 'anomalyBonus',
+      from: ['anomaly', 'signal'],
+      methodologyTerm: 'anomalyBonus',
+      driverClause: /PortWatch daily-transit anomaly: Traffic down 60%/,
+      implementationExpression: 'anomaly.signal ? 10 : 0',
+      methodologyClauses: ['`anomalyBonus = 10`'],
+    },
+  };
+
+  // The score line, verbatim. An identifier scan alone would miss a bare
+  // numeric term (`+ 5`) and any reformatting that hides one, so this is pinned
+  // rather than parsed. Reformatting it is meant to red: the published formula
+  // has to be re-read whenever the real one moves.
+  const SCORE_EXPRESSION = 'Math.min(100, computeDisruptionScore(threatScore, matchedWarnings.length, maxSeverity) + anomalyBonus)';
+
+  // TypeScript syntax that survives the identifier regex but names no value.
+  const NON_IDENTIFIER_KEYWORDS = new Set(['as', 'const', 'return', 'typeof', 'new', 'in', 'of']);
+
+  function chokepointStatusSource() {
+    return repo('server/worldmonitor/supply-chain/v1/get-chokepoint-status.ts');
+  }
+
+  function identifiersIn(expression) {
+    return new Set((expression.match(/[A-Za-z_$][A-Za-z0-9_$]*/g) ?? [])
+      .filter((name) => !NON_IDENTIFIER_KEYWORDS.has(name)));
+  }
+
+  function parsedSource(source) {
+    return ts.createSourceFile('score-contract.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  }
+
+  function functionDeclarationOf(sourceFile, name) {
+    const matches = [];
+    const visit = (node) => {
+      if (ts.isFunctionDeclaration(node) && node.name?.text === name) matches.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    assert.equal(matches.length, 1, `expected one ${name} function declaration`);
+    return matches[0];
+  }
+
+  function variableDeclarationOf(sourceFile, name, functionName = null) {
+    const scope = functionName ? functionDeclarationOf(sourceFile, functionName) : sourceFile;
+    const matches = [];
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+        matches.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(scope);
+    assert.equal(matches.length, 1, `expected one ${name} variable declaration`);
+    assert.ok(matches[0].initializer, `${name} must have an initializer`);
+    return matches[0];
+  }
+
+  function declarationOf(source, name, functionName = null) {
+    const sourceFile = parsedSource(source);
+    return variableDeclarationOf(sourceFile, name, functionName).initializer.getText(sourceFile);
+  }
+
+  function sectionAtLevel(text, heading, level = 2) {
+    const lines = text.split('\n');
+    const marker = `${'#'.repeat(level)} ${heading}`;
+    const start = lines.indexOf(marker);
+    assert.notEqual(start, -1, `expected a "${heading}" section`);
+    let end = lines.length;
+    for (let index = start + 1; index < lines.length; index++) {
+      const match = lines[index].match(/^(#+) /);
+      if (match && match[1].length <= level) {
+        end = index;
+        break;
+      }
+    }
+    return lines.slice(start + 1, end).join('\n').trim();
+  }
+
+  function section(text, heading) {
+    return sectionAtLevel(text, heading, 2);
+  }
+
+  function normalizedProse(text) {
+    return text
+      .replace(/\s+/g, ' ')
+      .replace(/\s+([，。])/g, '$1')
+      .replace(/([，。])\s+/g, '$1')
+      .trim();
+  }
+
+  function formulaTerms(sectionBody) {
+    const formula = sectionBody.match(/```text\n([\s\S]*?)```/);
+    assert.ok(formula, 'the score section must publish the formula in a text block');
+    const expression = formula[1].match(/disruptionScore\s*=\s*min\(\s*100,\s*([\s\S]*?)\s*\)/);
+    assert.ok(expression, 'the score formula must use disruptionScore = min(100, ...)');
+    return expression[1].split('+').map((term) => term.trim());
+  }
+
+  function bulletsUnderHeading(text, heading) {
+    const lines = section(text, heading).split('\n');
+    const start = lines.findIndex((line) => line.startsWith('- '));
+    assert.ok(start !== -1, `expected a bullet list under "${heading}"`);
+    const bullets = [];
+    for (const line of lines.slice(start)) {
+      if (!line.startsWith('- ')) break;
+      bullets.push(line.slice(2).trim());
+    }
+    return bullets;
+  }
+
+  const BLOG_EXPLAINER = 'blog-site/src/content/blog/what-is-a-maritime-chokepoint.md';
+  const METHODOLOGY = 'docs/methodology/chokepoints.mdx';
+  const ZH_METHODOLOGY = 'docs/zh/methodology/chokepoints.mdx';
+  const FINANCE_DATA = 'docs/finance-data.mdx';
+  const ZH_FINANCE_DATA = 'docs/zh/finance-data.mdx';
+  const RELAY = 'scripts/ais-relay.cjs';
+  const SCORE_HEADING = 'How WorldMonitor scores chokepoint status';
+  const englishList = (items) => `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+  const englishContextOnly = englishList(CHOKEPOINT_SCORE_CONTEXT_ONLY);
+  const EN_METHODOLOGY_EXCLUSION = `Those four terms are the whole formula. ${englishContextOnly} are published as context and never enter the score.`;
+  const ZH_METHODOLOGY_EXCLUSION = '这四项即为公式全部。AIS 事件计数、中继通行计数和 PortWatch 周环比变动均作为背景信息发布，不进入评分。';
+  const EN_METHODOLOGY_PROVENANCE = 'PortWatch feeds both sides: `anomalyBonus` reads its daily transit history through `supply_chain:portwatch:v1`, while the week-over-week figure is presentation only.';
+  const ZH_METHODOLOGY_PROVENANCE = 'PortWatch 同时服务于两侧：`anomalyBonus` 通过 `supply_chain:portwatch:v1` 读取其每日通行历史，而周环比数字仅用于展示。';
+  const EN_FINANCE_INPUTS = `Four inputs set the score: ${englishList(CHOKEPOINT_SCORE_INPUTS.map(({ label }) => label))}.`;
+  const EN_FINANCE_PROVENANCE = 'The anomaly bonus adds 10 points when PortWatch daily transit history shows a drop of at least 50% against the prior 30-day baseline and the threat level is `war_zone` or `critical`.';
+  const EN_FINANCE_EXCLUSION = `${englishContextOnly} are context only. They do not change the score.`;
+  const ZH_FINANCE_INPUTS = '评分有四项输入：地缘政治威胁基线权重、活跃 NGA 航行警告、AIS 拥堵严重度，以及 PortWatch 每日通行量在高威胁条件下急剧下降时的通行异常加分。';
+  const ZH_FINANCE_PROVENANCE = '仅当 PortWatch 每日通行历史比之前 30 天基线下降至少 50%，且威胁等级为 `war_zone` 或 `critical` 时，异常加分才增加 10 分。';
+  const ZH_FINANCE_EXCLUSION = 'AIS 事件计数、中继通行计数和 PortWatch 周环比变动仅作背景信息。它们不改变评分。';
+
+  function assertScoreTermSources(statusSource) {
+    for (const [id, { term, from }] of Object.entries(SCORE_TERMS)) {
+      const allowed = new Set([...from, term]);
+      for (const name of identifiersIn(declarationOf(statusSource, term))) {
+        assert.ok(
+          allowed.has(name),
+          `${term} now derives from ${name}, which the published label for "${id}" does not account for`,
+        );
+      }
+    }
+  }
+
+  function assertAnomalyProducer(relaySource) {
+    assert.equal(
+      declarationOf(relaySource, 'history', 'seedTransitSummaries'),
+      'cpData?.history ?? []',
+      'the anomaly history must come from PortWatch daily transit history',
+    );
+    const anomaly = declarationOf(relaySource, 'anomaly', 'seedTransitSummaries');
+    assert.equal(
+      anomaly,
+      'detectTrafficAnomaly(history, threatLevel)',
+      'the anomaly signal must use PortWatch daily history and the canonical threat level',
+    );
+    assert.doesNotMatch(anomaly, /wowChangePct|relayTransit|todayTotal/);
+  }
+
+  function assertNumericScoreContract(statusSource, methodologySections) {
+    assert.deepEqual(THREAT_LEVEL, SCORE_TERMS.threat.implementationValues);
+    assert.deepEqual([0, 1, 2, 3, 10].map(warningComponent), [0, 5, 10, 15, 15]);
+    assert.deepEqual([0, 1, 2, 3, 4].map(aisComponent), [0, 5, 10, 15, 15]);
+    assert.equal(
+      declarationOf(statusSource, 'anomalyBonus'),
+      SCORE_TERMS.anomaly.implementationExpression,
+    );
+    for (const [label, body] of methodologySections) {
+      const text = normalizedProse(body);
+      for (const { methodologyClauses } of Object.values(SCORE_TERMS)) {
+        for (const clause of methodologyClauses) {
+          assert.ok(text.includes(clause), `${label} must publish ${clause}`);
+        }
+      }
+    }
+  }
+
+  function numericMethodologySection(text, scoreHeading, threatHeading) {
+    return `${section(text, scoreHeading)}\n${section(text, threatHeading)}`;
+  }
+
+  function assertFormulaContracts(sections) {
+    const expected = CHOKEPOINT_SCORE_INPUTS.map(({ id }) => SCORE_TERMS[id].methodologyTerm);
+    for (const [label, body] of sections) {
+      assert.deepEqual(
+        formulaTerms(body),
+        expected,
+        `${label} must publish exactly the score terms in CHOKEPOINT_SCORE_INPUTS`,
+      );
+    }
+  }
+
+  function assertExactExclusion(body, expected, label) {
+    assert.ok(
+      normalizedProse(body).includes(expected),
+      `${label} must publish the complete context-only exclusion clause`,
+    );
+  }
+
+  it('adds exactly the declared inputs to the published score', () => {
+    const source = chokepointStatusSource();
+    assert.equal(
+      declarationOf(source, 'disruptionScore'),
+      SCORE_EXPRESSION,
+      'the disruption score is assembled differently than the published formula claims; '
+      + 'restate the inputs in CHOKEPOINT_SCORE_INPUTS (scripts/chokepoint-page-content.mjs) '
+      + 'and update SCORE_TERMS here if a server identifier was only renamed',
+    );
+    const summed = identifiersIn(SCORE_EXPRESSION);
+    for (const { id } of CHOKEPOINT_SCORE_INPUTS) {
+      const declaration = SCORE_TERMS[id];
+      assert.ok(declaration, `score input "${id}" has no entry in SCORE_TERMS`);
+      assert.ok(summed.has(declaration.term), `published input "${id}" does not reach the score`);
+    }
+    assert.equal(
+      Object.keys(SCORE_TERMS).length,
+      CHOKEPOINT_SCORE_INPUTS.length,
+      'SCORE_TERMS covers a term the surfaces no longer publish',
+    );
+    // The score must reach the response unmodified; a second adjustment on the
+    // way out would be a fifth input the score line never shows.
+    assert.match(source, /\n {6}disruptionScore,\n/);
+    // Three of the four terms are collapsed into computeDisruptionScore, so the
+    // call site alone cannot see a fifth input added inside it.
+    const weighted = repo('server/worldmonitor/supply-chain/v1/_scoring.mjs')
+      .match(/export function computeDisruptionScore\([^)]*\) \{([\s\S]*?)\n\}/);
+    assert.ok(weighted, '_scoring.mjs must export computeDisruptionScore');
+    assert.equal(
+      weighted[1].trim(),
+      'return Math.min(100, threatLevel + warningComponent(warningCount) + aisComponent(maxCongestionSeverity));',
+      'the weighted components changed; restate the inputs in CHOKEPOINT_SCORE_INPUTS '
+      + '(scripts/chokepoint-page-content.mjs) before widening this guard',
+    );
+  });
+
+  it('keeps each score term on the evidence its published label names', () => {
+    assertScoreTermSources(chokepointStatusSource());
+    assertAnomalyProducer(repo(RELAY));
+  });
+
+  it('ties every published numeric score rule to the implementation', () => {
+    const llmsFull = repo('public/llms-full.txt');
+    assertNumericScoreContract(chokepointStatusSource(), [
+      [METHODOLOGY, numericMethodologySection(repo(METHODOLOGY), 'Score Badge', 'Threat Taxonomy')],
+      [ZH_METHODOLOGY, numericMethodologySection(repo(ZH_METHODOLOGY), '评分徽章', '威胁分类')],
+      ['public/llms-full.txt (methodology)', numericMethodologySection(llmsFull, 'Score Badge', 'Threat Taxonomy')],
+    ]);
+  });
+
+  it('publishes one input list across the blog explainer and llms-full.txt', () => {
+    const labels = CHOKEPOINT_SCORE_INPUTS.map((input) => input.label);
+    assert.deepEqual(bulletsUnderHeading(repo(BLOG_EXPLAINER), SCORE_HEADING), labels);
+    assert.deepEqual(bulletsUnderHeading(repo('public/llms-full.txt'), SCORE_HEADING), labels);
+  });
+
+  it('discloses the same excluded metrics in every section that states the formula', () => {
+    assert.deepEqual(
+      CHOKEPOINT_SCORE_CONTEXT_ONLY,
+      ['AIS event counts', 'relay transit counts', 'PortWatch week-over-week movement'],
+      'the published context-only list changed; confirm each entry is still absent from the score '
+      + 'and restate it on every surface below',
+    );
+    const llmsFull = repo('public/llms-full.txt');
+    const sections = [
+      [BLOG_EXPLAINER, section(repo(BLOG_EXPLAINER), SCORE_HEADING), 'Nothing else moves the number. AIS event counts, relay transit counts, and PortWatch week-over-week movement are published as context rather than score inputs.'],
+      [METHODOLOGY, section(repo(METHODOLOGY), 'Score Badge'), EN_METHODOLOGY_EXCLUSION],
+      [ZH_METHODOLOGY, section(repo(ZH_METHODOLOGY), '评分徽章'), ZH_METHODOLOGY_EXCLUSION],
+      [FINANCE_DATA, sectionAtLevel(repo(FINANCE_DATA), 'Supply Chain Disruption Intelligence', 3), EN_FINANCE_EXCLUSION],
+      [ZH_FINANCE_DATA, sectionAtLevel(repo(ZH_FINANCE_DATA), '供应链中断情报', 3), ZH_FINANCE_EXCLUSION],
+      ['public/llms-full.txt (explainer)', section(llmsFull, SCORE_HEADING), 'Nothing else moves the number. AIS event counts, relay transit counts, and PortWatch week-over-week movement are published as context rather than score inputs.'],
+      ['public/llms-full.txt (methodology)', section(llmsFull, 'Score Badge'), EN_METHODOLOGY_EXCLUSION],
+    ];
+    for (const [label, body, expected] of sections) {
+      assertExactExclusion(body, expected, label);
+    }
+  });
+
+  it('keeps the methodology formula on the same terms the surfaces publish', () => {
+    const llmsFull = repo('public/llms-full.txt');
+    const english = section(repo(METHODOLOGY), 'Score Badge');
+    const chinese = section(repo(ZH_METHODOLOGY), '评分徽章');
+    const generated = section(llmsFull, 'Score Badge');
+    assertFormulaContracts([
+      [METHODOLOGY, english],
+      [ZH_METHODOLOGY, chinese],
+      ['public/llms-full.txt (methodology)', generated],
+    ]);
+    assert.ok(normalizedProse(english).includes(EN_METHODOLOGY_PROVENANCE));
+    assert.ok(normalizedProse(chinese).includes(ZH_METHODOLOGY_PROVENANCE));
+    assert.ok(normalizedProse(generated).includes(EN_METHODOLOGY_PROVENANCE));
+  });
+
+  it('keeps finance documentation on the score contract', () => {
+    const sections = [
+      [FINANCE_DATA, sectionAtLevel(repo(FINANCE_DATA), 'Supply Chain Disruption Intelligence', 3), [EN_FINANCE_INPUTS, EN_FINANCE_PROVENANCE, EN_FINANCE_EXCLUSION]],
+      [ZH_FINANCE_DATA, sectionAtLevel(repo(ZH_FINANCE_DATA), '供应链中断情报', 3), [ZH_FINANCE_INPUTS, ZH_FINANCE_PROVENANCE, ZH_FINANCE_EXCLUSION]],
+    ];
+    for (const [label, body, clauses] of sections) {
+      const text = normalizedProse(body);
+      for (const clause of clauses) {
+        assert.ok(text.includes(clause), `${label} must publish the complete four-input score contract`);
+      }
+    }
+  });
+
+  it('reads a complete initializer after an internal semicolon', () => {
+    const source = chokepointStatusSource();
+    const mutated = source.replace(
+      'return Math.max(max, score);',
+      'return Math.max(max, score, wowChangePct);',
+    );
+    assert.notEqual(mutated, source, 'the maxSeverity mutation must apply');
+    assert.match(declarationOf(mutated, 'maxSeverity'), /wowChangePct/);
+    assert.throws(() => assertScoreTermSources(mutated), /wowChangePct/);
+  });
+
+  it('rejects an anomaly-bonus coefficient change', () => {
+    const source = chokepointStatusSource();
+    const mutated = source.replace('anomaly.signal ? 10 : 0', 'anomaly.signal ? 15 : 0');
+    assert.notEqual(mutated, source, 'the anomalyBonus mutation must apply');
+    assert.throws(() => assertNumericScoreContract(mutated, [
+      [METHODOLOGY, numericMethodologySection(repo(METHODOLOGY), 'Score Badge', 'Threat Taxonomy')],
+      [ZH_METHODOLOGY, numericMethodologySection(repo(ZH_METHODOLOGY), '评分徽章', '威胁分类')],
+    ]));
+  });
+
+  it('rejects an extra published formula term', () => {
+    const source = repo(METHODOLOGY);
+    const mutated = source.replace(
+      'threatLevelWeight + warningComponent + aisComponent + anomalyBonus',
+      'threatLevelWeight + warningComponent + aisComponent + anomalyBonus + wowChangePct',
+    );
+    assert.notEqual(mutated, source, 'the formula-term mutation must apply');
+    assert.throws(() => assertFormulaContracts([
+      [METHODOLOGY, section(mutated, 'Score Badge')],
+    ]));
+  });
+
+  it('rejects reversed context-only prose', () => {
+    const source = repo(METHODOLOGY);
+    const mutated = source.replace(
+      'are published as context and never enter\nthe score.',
+      'are published as score inputs and enter\nthe score.',
+    );
+    assert.notEqual(mutated, source, 'the exclusion mutation must apply');
+    assert.throws(() => assertExactExclusion(
+      section(mutated, 'Score Badge'),
+      EN_METHODOLOGY_EXCLUSION,
+      METHODOLOGY,
+    ));
+  });
+
+  it('rejects score drift in the Chinese methodology mirror', () => {
+    const source = repo(ZH_METHODOLOGY);
+    const mutated = source.replace(
+      'threatLevelWeight + warningComponent + aisComponent + anomalyBonus',
+      'threatLevelWeight + warningComponent + aisComponent',
+    );
+    assert.notEqual(mutated, source, 'the Chinese formula mutation must apply');
+    assert.throws(() => assertFormulaContracts([
+      [ZH_METHODOLOGY, section(mutated, '评分徽章')],
+    ]));
+  });
+
+  it('rejects anomaly producer drift from PortWatch daily history', () => {
+    const source = repo(RELAY);
+    const mutated = source.replace(
+      'detectTrafficAnomaly(history, threatLevel)',
+      'detectTrafficAnomaly([cpData?.wowChangePct], threatLevel)',
+    );
+    assert.notEqual(mutated, source, 'the anomaly-producer mutation must apply');
+    assert.throws(() => assertAnomalyProducer(mutated));
+  });
+
+  it('accounts for every score input on the detail-page driver', () => {
+    const { scoreDriver } = chokepointEvidenceNarrative({
+      displayName: 'Strait of Hormuz',
+      score: 80,
+      bandLabel: 'Red',
+      description: 'Active conflict — blockade risk; Traffic down 60% vs 30-day baseline',
+      asOfText: '4 September 2026',
+      partial: false,
+      warningsLabel: '2 warnings',
+      congestionLabel: 'High',
+      aisEventCountLabel: '3 AIS disruptions',
+      todayTransits: '6',
+    });
+    for (const { id } of CHOKEPOINT_SCORE_INPUTS) {
+      assert.match(
+        scoreDriver,
+        SCORE_TERMS[id].driverClause,
+        `the detail-page score driver never accounts for input "${id}"`,
+      );
+    }
+    assert.match(scoreDriver, /Context only \(not score inputs\)/);
   });
 });

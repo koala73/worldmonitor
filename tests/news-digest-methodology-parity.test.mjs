@@ -340,7 +340,7 @@ function extractYamlSchemaBlock(yamlText, schemaName) {
   assert.notEqual(start, -1, `failed to locate YAML schema ${schemaName}`);
 
   const end = lines.findIndex((line, index) =>
-    index > start && /^        \S.*:\s*$/.test(line),
+    index > start && /^ {8}\S.*:\s*$/.test(line),
   );
   return lines.slice(start, end === -1 ? undefined : end).join('\n');
 }
@@ -363,7 +363,7 @@ function extractFeedInventoryRows(src) {
     if (!inVariants) continue;
     if (line.startsWith('};')) break;
 
-    const variantMatch = line.match(/^  ([A-Za-z][A-Za-z0-9_]*): \{$/);
+    const variantMatch = line.match(/^ {2}([A-Za-z][A-Za-z0-9_]*): \{$/);
     if (variantMatch) {
       currentVariant = variantMatch[1];
       currentCategory = null;
@@ -375,7 +375,7 @@ function extractFeedInventoryRows(src) {
       continue;
     }
 
-    const categoryMatch = line.match(/^    (?:(['"])(.*?)\1|([A-Za-z][A-Za-z0-9_]*)):\s\[$/);
+    const categoryMatch = line.match(/^ {4}(?:(['"])(.*?)\1|([A-Za-z][A-Za-z0-9_]*)):\s\[$/);
     if (currentVariant && categoryMatch) {
       currentCategory = categoryMatch[2] ?? categoryMatch[3];
       rows.push({ variant: currentVariant, category: currentCategory, sources: [] });
@@ -822,7 +822,7 @@ describe('news digest methodology parity', () => {
       assert.ok(cacheKeysSrc.includes(field), `cache-key contract comment must mention ${field}`);
       assertDocIncludes(`\`${field}\``, `story-track field ${field}`);
     }
-    const hashSummary = cacheKeysSrc.match(/^\/\/ Hash:[^\n]*(?:\n\/\/       [^\n]*)*/m)?.[0] ?? '';
+    const hashSummary = cacheKeysSrc.match(/^\/\/ Hash:[^\n]*(?:\n\/\/ {7}[^\n]*)*/m)?.[0] ?? '';
     const alwaysWrittenSummary = cacheKeysSrc.match(/story:track:v1:\$\{titleHash\}.*\(always-written\)/)?.[0] ?? '';
     assert.ok(hashSummary.length > 0, 'failed to locate cache-key hash summary comment');
     assert.ok(alwaysWrittenSummary.length > 0, 'failed to locate cache-key always-written summary comment');

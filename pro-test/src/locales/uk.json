@@ -482,7 +482,7 @@
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
       "positioningLink": "WorldMonitor is not an open-source Palantir",
-      "asOf": "Станом на 31 серпня 2026",
+      "asOf": "Станом на 4 вересня 2026",
       "whatIsTitle": "Що таке World Monitor?",
       "whatIsBody": "World Monitor — це безплатна, відкрита панель управління, яка передає сигнали геополітики, ринків, судноплавства, авіації, інфраструктури та кіберпростору на єдину живу карту світу. Вона корелює окремі потоки в єдину операційну картину й виявляє конвергенцію до новинних заголовків, з усіма цифрами, підтвердженими джерелами, та кожним методом, задокументованим."
     },
@@ -491,7 +491,8 @@
       "title": "Які живі дані показує ця сторінка прямо зараз?",
       "subtitle": "Four of the hundred-plus signals World Monitor watches around the clock.",
       "liveBadge": "Live",
-      "sampleBadge": "Sample",
+      "pulseBadge": "Опублікований пульс {{date}}",
+      "refreshNote": "Увімкніть JavaScript для оновлення — опублікований пульс вище залишається доступним без нього.",
       "cardHeadlines": "Top signals",
       "cardCii": "Instability index",
       "ciiNote": "12 fused signals per country",

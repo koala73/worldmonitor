@@ -31,6 +31,7 @@ import {
 import {
   QUOTE_LABELS as CLIENT_QUOTE_LABELS,
   QUOTE_SYMBOLS as CLIENT_QUOTE_SYMBOLS,
+  getFallbackTeasers,
 } from '../pro-test/src/services/teasers.ts';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
@@ -210,6 +211,60 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
     assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
     const ciiScores = committed.cii.map((row) => row.combinedScore);
     assert.deepEqual(ciiScores, [...ciiScores].sort((a, b) => b - a));
+  });
+});
+
+describe('welcome teaser strip carries its snapshot stamp (#7654)', () => {
+  it('commits the snapshot capture date alongside the rows', () => {
+    // The prerender badge names the freeze the rows came from. Without the
+    // date travelling in the same file, the badge cannot name it and the
+    // strip falls back to calling real data "Sample" — the inverse of #7608.
+    assert.equal(
+      committed.capturedAt,
+      snapshot.capturedAt,
+      'teasers.json must carry the snapshot capture date for the Published-pulse badge',
+    );
+  });
+
+  it('the fallback state exposes the capture date for the prerender badge', () => {
+    assert.equal(
+      getFallbackTeasers().capturedAt,
+      snapshot.capturedAt,
+      'the prerender renders the fallback, so the fallback must carry the capture date',
+    );
+  });
+
+  it('derives the homepage lastmod and dateModified from the same snapshot', () => {
+    // The strip and the page dates must refresh on one command
+    // (`npm run teasers:welcome`), or the next freeze leaves the strip
+    // publishing a newer capture under an older page date.
+    const welcome = read('pro-test/welcome.html');
+    assert.match(
+      welcome,
+      new RegExp(`<meta name="lastmod" content="${snapshot.capturedAt}"`),
+      'homepage lastmod must be the snapshot capture date, not a hand-maintained stamp',
+    );
+    assert.match(
+      welcome,
+      new RegExp(`"dateModified": "${snapshot.capturedAt}"`),
+      'homepage dateModified must agree with lastmod on the same snapshot date',
+    );
+  });
+
+  it('badges the snapshot rows as a published pulse, never a sample', () => {
+    // A crawler reading "Instability index · Sample · UA 99" discounts a
+    // correct, current number. The badge must use the corpus wording with a
+    // machine-readable stamp, matching /countries/* and /chokepoints/*.
+    const strip = read('pro-test/src/welcome/LiveStrip.tsx');
+    const en = JSON.parse(read('pro-test/src/locales/en.json'));
+    assert.match(strip, /data-live-updated/, 'the badge must carry the corpus live-updated marker');
+    assert.match(strip, /welcome\.live\.pulseBadge/, 'the badge must use the Published-pulse key');
+    assert.equal(
+      en.welcome.live.pulseBadge,
+      'Published pulse {{date}}',
+      'the badge wording must match the corpus pages',
+    );
+    assert.doesNotMatch(strip, /sampleBadge/, 'no card may badge real snapshot rows as a sample');
   });
 });
 

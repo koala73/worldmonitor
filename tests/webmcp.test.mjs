@@ -185,6 +185,21 @@ function createBindings(overrides = {}) {
       message: 'Opened mission presets.',
       context,
     }),
+    listFollowedCountries: async () => ({
+      ok: true,
+      enabled: true,
+      countries: ['DE'],
+      count: 1,
+      access: 'free',
+      limit: 3,
+    }),
+    setCountryFollowed: async (iso2, followed) => ({
+      ok: true,
+      status: 'accepted',
+      iso2,
+      followed,
+      message: 'Followed-country state accepted.',
+    }),
     getPanelLayout: async () => ({
       regions: {
         sidebar: { available: true, panelCount: 1 },
@@ -317,6 +332,8 @@ describe('webmcp.ts: current API contract', () => {
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setMapLayers/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.searchDashboard/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSearchResult/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.listFollowedCountries/);
+    assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.setCountryFollowed/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.getAccessContext/);
     assert.match(src, /name:\s*WEBMCP_SPA_TOOL\.openSignIn/);
   });
@@ -379,6 +396,7 @@ describe('webmcp.ts: current API contract', () => {
           'list_map_layers',
           'list_dashboard_panels',
           'list_dashboard_tabs',
+          'list_followed_countries',
           'list_mission_presets',
           'search_dashboard',
         ]
@@ -391,6 +409,55 @@ describe('webmcp.ts: current API contract', () => {
         }
       }
     }
+  });
+
+  it('lists followed countries and gates followed-country mutations', async () => {
+    let mutationCalls = 0;
+    const bindings = createBindings({
+      listFollowedCountries: async () => ({
+        ok: true,
+        enabled: true,
+        countries: ['DE', 'US'],
+        count: 2,
+        access: 'free',
+        limit: 3,
+      }),
+      setCountryFollowed: async (iso2, followed) => {
+        mutationCalls += 1;
+        return {
+          ok: true,
+          status: 'accepted',
+          iso2,
+          followed,
+          message: 'Followed-country state accepted.',
+        };
+      },
+    });
+    const tools = buildProductionWebMcpTools(bindings, () => {});
+    const list = tools.find((tool) => tool.name === 'list_followed_countries');
+    const set = tools.find((tool) => tool.name === 'set_country_followed');
+
+    assert.deepEqual(await list.execute({}), {
+      ok: true,
+      enabled: true,
+      countries: ['DE', 'US'],
+      count: 2,
+      access: 'free',
+      limit: 3,
+    });
+    assert.equal((await set.execute({ iso2: 'DE', followed: true })).reason,
+      'target_cancellation_unsupported');
+    assert.equal(mutationCalls, 0);
+
+    const signal = new AbortController().signal;
+    assert.deepEqual(await set.execute({ iso2: 'DE', followed: true }, { signal }), {
+      ok: true,
+      status: 'accepted',
+      iso2: 'DE',
+      followed: true,
+      message: 'Followed-country state accepted.',
+    });
+    assert.equal(mutationCalls, 1);
   });
 
   it('switches every monitor key and rejects unknown or malformed destinations', async () => {

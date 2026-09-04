@@ -9,6 +9,31 @@ import { buildEiaOilTransitBaselines } from './chokepoint-eia-baselines.mjs';
 
 export const CHOKEPOINT_PAGE_CONTENT_PATH = 'scripts/chokepoint-page-content.mjs';
 
+// The four terms of the published disruption score, in formula order, named
+// once so no surface has to restate them. Every label must say enough for a
+// reader to map it onto a metric we publish: an anomaly bonus named without its
+// source is what left a war-zone score of 70 unreconstructable from the page
+// showing it (#7614). The hub FAQ renders from this list; the methodology page,
+// the blog explainer and the detail-page score driver are held to it by
+// tests/crawlable-corpus.test.mjs, which also reds when the server-side score
+// assembly grows a term no label here accounts for.
+export const CHOKEPOINT_SCORE_INPUTS = Object.freeze([
+  { id: 'threat', label: 'a baseline geopolitical threat weight' },
+  { id: 'warnings', label: 'active NGA navigational warnings' },
+  { id: 'ais', label: 'AIS congestion severity' },
+  { id: 'anomaly', label: 'a transit anomaly bonus when PortWatch daily transits drop sharply under high-threat conditions' },
+]);
+
+// Metrics a chokepoint page displays that never move the score, published
+// beside the inputs so a reader cannot infer that a visible number fed the
+// badge. Note the split inside PortWatch: the anomaly bonus reads its daily
+// transit history, while the week-over-week figure is presentation only.
+export const CHOKEPOINT_SCORE_CONTEXT_ONLY = Object.freeze([
+  'AIS event counts',
+  'relay transit counts',
+  'PortWatch week-over-week movement',
+]);
+
 // Committed observation dates for Dataset temporalCoverage and <time datetime>
 // stamps. Docker corpus builds exclude `.git`, so gitFileLastmod() is null
 // there; these dates keep Hormuz-class pages dated without repository history.

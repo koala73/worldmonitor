@@ -126,18 +126,8 @@ const VARIANT_OG: Record<string, { name: string; title: string; description: str
   },
 };
 
-const ALLOWED_HOSTS = new Set([
-  'worldmonitor.app',
-  ...Object.keys(VARIANT_HOST_MAP),
-]);
-const VERCEL_PREVIEW_RE = /^[a-z0-9-]+-[a-z0-9]{8,}\.vercel\.app$/;
-
 function normalizeHost(raw: string): string {
   return raw.toLowerCase().replace(/:\d+$/, '');
-}
-
-function isAllowedHost(host: string): boolean {
-  return ALLOWED_HOSTS.has(host) || VERCEL_PREVIEW_RE.test(host);
 }
 
 function hasLegacyDashboardRootState(searchParams: URLSearchParams): boolean {
@@ -250,8 +240,10 @@ export default function middleware(request: Request) {
   }
 
   if (path === '/' && SOCIAL_PREVIEW_UA.test(ua)) {
+    // variant is truthy only for VARIANT_HOST_MAP keys, which are all served
+    // hosts by construction — no separate allowlist check (#7616).
     const variant = VARIANT_HOST_MAP[host];
-    if (variant && isAllowedHost(host)) {
+    if (variant) {
       const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
       if (og) {
         const eTitle = escHtml(og.title);
