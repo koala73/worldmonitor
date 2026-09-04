@@ -13,10 +13,13 @@ import {
   buildChokepointHubRows,
   buildCorpus,
   buildMicrostateCoverageStory,
+  assertCountryDevelopmentsRendered,
+  assertDevelopmentsCoverage,
   CHOKEPOINT_PAGE_CONTENT_VERSION,
   CHOKEPOINT_PAGE_LASTMOD_PATHS,
   CII_COUNTRY_PAGE_CONTENT_VERSION,
   chokepointMetaDescription,
+  countryDatasetDownload,
   countryMetaDescription,
   COUNTRY_PAGE_CONTENT_VERSION,
   DATASET_SCHEMA_CONTENT_VERSION,
@@ -24,13 +27,17 @@ import {
   datasetTemporalCoverage,
   describeHeadlineIneligibilityReason,
   describeInventoryScope,
+  developmentsHasDatedItem,
   GENERATED_DIRS,
   gitFileLastmod,
   hasObservedValue,
   laterDate,
   loadCorpusData,
   MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS,
+  newestDevelopmentsInstant,
   renderCountryAnalysis,
+  renderCountryDevelopments,
+  renderCountryPage,
   resolveChokepointObservation,
   resolveLatestLivePulseSnapshotPath,
   SOURCE_CATALOG_LASTMOD_PATHS,
@@ -38,6 +45,7 @@ import {
   withSchemaContext,
 } from '../scripts/build-crawlable-corpus.mjs';
 import {
+  chokepointEvidenceNarrative,
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
 } from '../scripts/crawlable-live-tools.mjs';
@@ -1502,6 +1510,24 @@ describe('crawlable corpus generator', () => {
         'a weekly-or-faster cron needs a branch key that advances weekly; a %Y-%m key makes runs 2-4 of a month no-op',
       );
     }
+  });
+
+  it('requires the API key before freezing the crawlable pulse', () => {
+    const workflow = readFileSync(
+      resolve(repoRoot, '.github/workflows/crawlable-pulse-refresh.yml'),
+      'utf8',
+    );
+    const guardIndex = workflow.indexOf('- name: Require WorldMonitor API key');
+    const freezeIndex = workflow.indexOf('- name: Freeze the current pulse');
+    assert.ok(guardIndex >= 0, 'the pulse refresh workflow must guard its required API key');
+    assert.ok(freezeIndex > guardIndex, 'the required-key guard must run before the freeze command');
+    const guardStep = workflow.slice(guardIndex, freezeIndex);
+    assert.match(guardStep, /WORLDMONITOR_API_KEY: \$\{\{ secrets\.WORLDMONITOR_API_KEY \}\}/);
+    assert.match(
+      guardStep,
+      /if \[ -z "\$\{WORLDMONITOR_API_KEY:-\}" \]; then[\s\S]*?exit 1[\s\S]*?fi/,
+      'an empty WORLDMONITOR_API_KEY must fail the workflow before the freeze',
+    );
   });
 
   // The corpus fixture has no untruncated unranked country, so the "omit the
@@ -3267,6 +3293,15 @@ describe('crawlable corpus generator', () => {
         const schemaQuestion = chokepointFaq.mainEntity.find((entry) => entry.name === question);
         assert.equal(schemaQuestion?.acceptedAnswer?.text, visibleAnswer);
       }
+      const scoreAnswer = chokepointFaq.mainEntity.find(
+        (entry) => entry.name === 'How does World Monitor score chokepoint status?',
+      )?.acceptedAnswer?.text;
+      assert.match(scoreAnswer, /maximum AIS severity/);
+      assert.match(scoreAnswer, /AIS event counts[^.]+are context rather than score inputs/);
+      assert.doesNotMatch(
+        chokepointFaq.mainEntity.map((entry) => entry.acceptedAnswer.text).join(' '),
+        /Green means open|Yellow means restricted|Red means effectively closed|maps? to passage status/,
+      );
       const sparseMetricsAnswer = chokepointFaq.mainEntity.find(
         (entry) => entry.name === 'Why do some chokepoint pages show fewer metrics than others?',
       )?.acceptedAnswer?.text;
@@ -3596,7 +3631,22 @@ describe('crawlable corpus generator', () => {
       assert.match(hormuz, /href="\/blog\/glossary\/strait-of-hormuz\/"/);
       assert.match(hormuz, /data-live-chokepoint data-chokepoint-id="hormuz_strait"/);
       assert.match(hormuz, /data-published-pulse/);
-      assert.match(hormuz, /traffic-light badge is a disruption score, not an operational closure declaration/i);
+      // #7613: keep the open/closed query while answering only from the
+      // evidence this snapshot can support.
+      assert.match(hormuz, /<h2>Is Strait of Hormuz open right now\?<\/h2>/);
+      assert.match(
+        hormuz,
+        /data-chokepoint-open-status>As of [^<]*source coverage for the Strait of Hormuz is partial\. No transit count is published for this snapshot\. World Monitor cannot verify operational passage status from this snapshot\.</,
+      );
+      assert.match(
+        hormuz,
+        /data-chokepoint-score-driver>The score of 70 \(Red\) has this evidence basis\. Configured geopolitical baseline: Active conflict — Iran-Israel war/,
+      );
+      assert.match(
+        hormuz,
+        /Observed score inputs: 0 warnings; maximum AIS severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count unavailable\./,
+      );
+      assert.doesNotMatch(hormuz, /data-chokepoint-status-mapping/);
       assert.ok(hormuz.includes(liveScriptTag), 'chokepoint live script must match the production CSP nonce');
       assert.doesNotMatch(hormuz, /id="app"/, 'chokepoint page must be raw static HTML, not the SPA shell');
       assert.doesNotMatch(hormuz, /Connecting…/);
@@ -3859,6 +3909,68 @@ describe('crawlable corpus generator', () => {
         const meta = chokepointSlugs.get(cpId);
         if (!meta) continue;
         const page = read(outDir, `chokepoints/${meta.slug}/index.html`);
+        // Every page keeps the query heading, but the answer follows source
+        // coverage instead of turning the risk band into a closure verdict.
+        assert.match(
+          page,
+          new RegExp(`<h2>Is ${meta.name} open right now\\?</h2>`),
+          `${meta.name} must carry the open/closed query heading`,
+        );
+        const document = htmlDocument(page, `https://www.worldmonitor.app/chokepoints/${meta.slug}/`);
+        const passageText = document.querySelector('[data-chokepoint-open-status]')?.textContent ?? '';
+        const asOfText = passageText.match(/^As of (.*), (?:source coverage|the observed transit count)/)?.[1];
+        assert.ok(asOfText, `${meta.name} passage evidence must carry an as-of timestamp`);
+        const expectedNarrative = chokepointEvidenceNarrative({
+          displayName: meta.name,
+          score: pulse.disruptionScore,
+          bandLabel: pulse.status,
+          description: pulse.description,
+          asOfText,
+          partial: pulse.partial === true
+            || pulse.todayTransits == null
+            || pulse.navigationalWarningsAvailable !== true
+            || pulse.aisSnapshotAvailable !== true,
+          warningsLabel: pulse.navigationalWarningsAvailable === true
+            ? pulse.navigationalWarnings
+            : null,
+          congestionLabel: pulse.aisSnapshotAvailable === true ? pulse.congestion : null,
+          aisEventCountLabel: pulse.aisSnapshotAvailable === true ? pulse.aisDisruptions : null,
+          todayTransits: pulse.todayTransits,
+        });
+        assert.equal(passageText, expectedNarrative.passage, `${meta.name} must use the shared passage policy`);
+        assert.equal(
+          document.querySelector('[data-chokepoint-score-driver]')?.textContent,
+          expectedNarrative.scoreDriver,
+          `${meta.name} must use the shared score-driver policy`,
+        );
+        if (expectedNarrative.passage.includes('source coverage')) {
+          assert.match(passageText, /cannot verify operational passage status/);
+        } else {
+          assert.match(passageText, /observed transit count/);
+          assert.match(passageText, /does not verify unrestricted passage or operational closure/);
+        }
+        assert.doesNotMatch(
+          passageText,
+          / is (?:open|restricted|effectively closed) to commercial shipping/,
+          `${meta.name} must not convert the score band into passage status`,
+        );
+        assert.match(
+          page,
+          new RegExp(`data-chokepoint-score-driver>The score of ${pulse.disruptionScore} \\(${pulse.status}\\)`),
+          `${meta.name} must attribute its score`,
+        );
+        // Absence and coverage notes are never the threat weight, whatever the
+        // frozen description carries for this snapshot.
+        assert.doesNotMatch(
+          page,
+          /Configured geopolitical baseline: No active disruptions/,
+          `${meta.name} must not quote absence as the threat baseline`,
+        );
+        assert.doesNotMatch(
+          page,
+          /Configured geopolitical baseline: Traffic down/,
+          `${meta.name} must not quote the transit anomaly as the threat baseline`,
+        );
         const raw = Number(String(pulse.todayTransits ?? '').replace(/,/g, ''));
         const noteRe = new RegExp(
           `World Monitor is not currently publishing a transit count for ${meta.name} for this period`,
@@ -4240,5 +4352,403 @@ describe('crawlable corpus generator', () => {
     assert.ok(allBullets.some((bullet) => bullet.includes('server scorer read non-existent')));
     assert.ok(allBullets.some((bullet) => bullet.includes('methodology_version is now v8')));
     assert.match(data.lastmod.chokepoints, /^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('country recent developments', () => {
+  const HEADLINE = {
+    title: 'Sudan aid convoy reaches Darfur amid talks',
+    source: 'UN News',
+    url: 'https://news.un.org/feed/view/en/story/2026/09/1168270',
+    publishedAt: '2026-09-02T10:00:00.000Z',
+  };
+  const BRIEF = {
+    text: 'SITUATION NOW\nConvoys move under escort [1].',
+    model: 'test-model',
+    generatedAt: '2026-09-02T12:00:00.000Z',
+    sources: [
+      HEADLINE,
+      {
+        title: 'Darfur harvest outlook',
+        source: 'Test Wire',
+        url: 'https://example.test/darfur-harvest',
+        publishedAt: '2026-09-01T08:00:00.000Z',
+      },
+    ],
+  };
+  const TIMELINE = [{
+    title: 'Port call logged in SD',
+    summary: 'A scheduled call completed.',
+    sourceUrl: 'https://example.test/port-call',
+    occurredAt: '2026-09-02T06:00:00.000Z',
+    domain: 'maritime',
+  }];
+  const DEVELOPMENTS = {
+    headlines: [HEADLINE],
+    brief: BRIEF,
+    timeline: TIMELINE,
+    briefSkipped: null,
+    capturedAt: '2026-09-03T00:00:00.000Z',
+  };
+  const CII_ENTRY = {
+    score: 62.5,
+    band: 'Elevated',
+    movementText: 'up 12 points over the past day',
+    asOf: '2026-09-02T14:00:00.000Z',
+    change24h: 12,
+  };
+
+  it('renders headlines, brief and timeline as dated, sourced items', () => {
+    const html = renderCountryDevelopments({
+      countryName: 'Sudan',
+      developments: DEVELOPMENTS,
+      ciiEntry: CII_ENTRY,
+    });
+    assert.ok(html.includes('data-country-developments'));
+    assert.ok(html.includes('<h2>Recent developments in Sudan</h2>'));
+    assert.ok(html.includes('<a href="https://news.un.org/feed/view/en/story/2026/09/1168270">Sudan aid convoy reaches Darfur amid talks</a>'));
+    assert.ok(html.includes('<time datetime="2026-09-02T10:00:00.000Z">'));
+    assert.ok(html.includes('UN News'));
+    // Movement states co-occurrence with the frozen window, never causation.
+    assert.ok(html.includes('62.5/100'));
+    assert.ok(html.includes('Reporting captured in the same window is listed below.'));
+    assert.ok(!html.toLowerCase().includes('driven by'));
+    // Brief body, generation line and grounding source count.
+    assert.ok(html.includes('data-intel-brief'));
+    assert.ok(html.includes('SITUATION NOW<br>Convoys move under escort [1].'));
+    assert.ok(html.includes('<time datetime="2026-09-02T12:00:00.000Z">'));
+    assert.ok(html.includes('from 2 grounding sources'));
+    // Timeline event with summary, domain and source link.
+    assert.ok(html.includes('data-intel-timeline'));
+    assert.ok(html.includes('Port call logged in SD'));
+    assert.ok(html.includes('<a href="https://example.test/port-call">source</a>'));
+  });
+
+  it('appends brief-only sources without duplicating headline URLs', () => {
+    const html = renderCountryDevelopments({ countryName: 'Sudan', developments: DEVELOPMENTS });
+    const harvestCount = (html.match(/https:\/\/example\.test\/darfur-harvest/g) || []).length;
+    const headlineCount = (html.match(/https:\/\/news\.un\.org\/feed\/view\/en\/story\/2026\/09\/1168270/g) || []).length;
+    assert.equal(harvestCount, 1, 'a brief-cited URL beyond the headlines renders once');
+    assert.equal(headlineCount, 1, 'a URL in both headlines and brief sources renders once');
+  });
+
+  it('renders nothing when zero items were captured', () => {
+    // No absence boilerplate: the same note on ~140 pages would be the exact
+    // template share the enrichment exists to reduce. The gap is recorded in
+    // resilience.json for the residual hub-consolidation decision.
+    assert.equal(renderCountryDevelopments({
+      countryName: 'Palau',
+      developments: { headlines: [], brief: null, timeline: [], briefSkipped: 'no-grounding', capturedAt: '2026-09-03T00:00:00.000Z' },
+    }), '');
+    assert.equal(renderCountryDevelopments({ countryName: 'Palau', developments: null }), '');
+  });
+
+  it('throws on unattributable rows instead of publishing them', () => {
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, headlines: [{ ...HEADLINE, url: 'http://insecure.test/x' }] },
+      }),
+      /missing title, source, https URL, or ISO publication time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, headlines: [{ ...HEADLINE, url: 'https://' }] },
+      }),
+      /missing title, source, https URL, or ISO publication time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], occurredAt: 'not-a-date' }] },
+      }),
+      /missing title, ISO occurrence time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], sourceUrl: undefined }] },
+      }),
+      /valid source URL/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], sourceUrl: 'http://insecure.test/event' }] },
+      }),
+      /valid source URL/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], sourceUrl: 'https://' }] },
+      }),
+      /valid source URL/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { text: '  ', model: '', generatedAt: null, sources: [] } },
+      }),
+      /brief carries no text/,
+    );
+  });
+
+  it('rejects ungrounded or invalidly cited briefs', () => {
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, generatedAt: 'not-a-date' } },
+      }),
+      /canonical ISO generation time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, text: 'Citation omitted.' } },
+      }),
+      /brief carries no source citation/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, sources: [] } },
+      }),
+      /brief carries no grounding sources/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: {
+          ...DEVELOPMENTS,
+          brief: { ...BRIEF, sources: [{ ...HEADLINE, url: 'https://' }] },
+        },
+      }),
+      /missing title, source, https URL, or ISO publication time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, text: 'Unsupported index [3].' } },
+      }),
+      /out-of-range source citation/,
+    );
+  });
+
+  it('escapes injected markup in frozen rows', () => {
+    const html = renderCountryDevelopments({
+      countryName: 'Sudan',
+      developments: {
+        ...DEVELOPMENTS,
+        headlines: [{ ...HEADLINE, title: '<script>alert(1)</script>' }],
+      },
+    });
+    assert.ok(!html.includes('<script>alert(1)</script>'));
+    assert.ok(html.includes('&lt;script&gt;alert(1)&lt;/script&gt;'));
+  });
+
+  it('escapes every interpolated field, not just headline titles', () => {
+    const html = renderCountryDevelopments({
+      countryName: 'Sudan"><img src=x onerror=alert(1)>',
+      developments: {
+        headlines: [{ ...HEADLINE, source: 'Wire</small><script>alert(2)</script>' }],
+        brief: { ...BRIEF, text: 'Lead <b>bold</b> claim [1]', model: 'm"x' },
+        timeline: [{ ...TIMELINE[0], summary: 'Done <iframe src="x"></iframe>', domain: 'd"e' }],
+        briefSkipped: null,
+        capturedAt: '2026-09-03T00:00:00.000Z',
+      },
+    });
+    for (const raw of [
+      '<img src=x', '<script>alert(2)</script>', '<b>bold</b>', '<iframe src="x">',
+    ]) {
+      assert.ok(!html.includes(raw), `unescaped markup reaches the page: ${raw}`);
+    }
+    assert.ok(html.includes('Sudan&quot;&gt;'), 'the country name is escaped in heading and aria label');
+    assert.ok(html.includes('m&quot;x'), 'the brief model is escaped');
+  });
+
+  it('falls back to the frozen pulse for the movement sentence', () => {
+    const html = renderCountryDevelopments({
+      countryName: 'Sudan',
+      developments: DEVELOPMENTS,
+      ciiEntry: null,
+      pulse: {
+        partial: false,
+        score: 55,
+        band: 'Moderate',
+        trend: 'Rising',
+        asOf: '2026-09-02T14:00:00.000Z',
+      },
+    });
+    assert.ok(html.includes('frozen instability pulse records'));
+    assert.ok(html.includes('Reporting captured in the same window is listed below.'));
+    const silent = renderCountryDevelopments({
+      countryName: 'Sudan',
+      developments: DEVELOPMENTS,
+      ciiEntry: null,
+      pulse: { partial: true, score: null, band: '', trend: '' },
+    });
+    assert.ok(!silent.includes('Reporting captured in the same window'),
+      'a partial pulse with no observed score renders no movement sentence');
+  });
+
+  it('selects the newest instant across headlines, brief and timeline', () => {
+    assert.equal(newestDevelopmentsInstant(DEVELOPMENTS), '2026-09-02T12:00:00.000Z');
+    assert.equal(newestDevelopmentsInstant({ headlines: [], brief: null, timeline: [], briefSkipped: null, capturedAt: '2026-09-03T00:00:00.000Z' }), null);
+    assert.equal(newestDevelopmentsInstant(null), null);
+  });
+
+  it('classifies dated-item presence for the pipeline tripwire', () => {
+    assert.equal(developmentsHasDatedItem(DEVELOPMENTS), true);
+    assert.equal(developmentsHasDatedItem({ headlines: [HEADLINE], brief: null, timeline: [] }), true);
+    assert.equal(developmentsHasDatedItem({ headlines: [], brief: null, timeline: [], briefSkipped: 'no-service-key' }), false);
+    assert.equal(developmentsHasDatedItem(null), false);
+  });
+
+  it('fails the build when frozen rows never reach the page', () => {
+    const html = renderCountryDevelopments({ countryName: 'Sudan', developments: DEVELOPMENTS });
+    assertCountryDevelopmentsRendered({ pagePath: '/countries/sudan/', html, developments: DEVELOPMENTS });
+    // Empty developments require no section and never throw.
+    assertCountryDevelopmentsRendered({
+      pagePath: '/countries/palau/',
+      html: '<html><body>no section here</body></html>',
+      developments: { headlines: [], brief: null, timeline: [] },
+    });
+    assert.throws(
+      () => assertCountryDevelopmentsRendered({
+        pagePath: '/countries/sudan/',
+        html: html.replaceAll('https://news.un.org/feed/view/en/story/2026/09/1168270', ''),
+        developments: DEVELOPMENTS,
+      }),
+      /dropped frozen headline/,
+    );
+    assert.throws(
+      () => assertCountryDevelopmentsRendered({
+        pagePath: '/countries/sudan/',
+        html: html.replaceAll('Convoys move under escort [1].', ''),
+        developments: DEVELOPMENTS,
+      }),
+      /dropped its frozen intel brief/,
+      'the last-line anchor must catch a truncated brief the first line misses',
+    );
+    assert.throws(
+      () => assertCountryDevelopmentsRendered({
+        pagePath: '/countries/sudan/',
+        html: html.replaceAll('https://example.test/darfur-harvest', ''),
+        developments: DEVELOPMENTS,
+      }),
+      /dropped frozen brief source/,
+    );
+    assert.throws(
+      () => assertCountryDevelopmentsRendered({
+        pagePath: '/countries/sudan/',
+        html: html.replaceAll('Port call logged in SD', ''),
+        developments: DEVELOPMENTS,
+      }),
+      /dropped frozen timeline event/,
+    );
+    assert.throws(
+      () => assertCountryDevelopmentsRendered({
+        pagePath: '/countries/sudan/',
+        html: html.replaceAll('datetime="2026-09-02T06:00:00.000Z"', ''),
+        developments: DEVELOPMENTS,
+      }),
+      /dropped the date of frozen timeline event/,
+    );
+    assert.throws(
+      () => assertCountryDevelopmentsRendered({
+        pagePath: '/countries/sudan/',
+        html: '<html><body>no section here</body></html>',
+        developments: DEVELOPMENTS,
+      }),
+      /missing its recent-developments section/,
+    );
+  });
+
+  it('requires full country developments coverage only for new-shape snapshots', () => {
+    assertDevelopmentsCoverage({
+      carriesDevelopments: true,
+      developmentsPageCount: 3,
+      indexedCountryPageCount: 3,
+    });
+    assert.throws(
+      () => assertDevelopmentsCoverage({
+        carriesDevelopments: true,
+        developmentsPageCount: 2,
+        indexedCountryPageCount: 3,
+      }),
+      /captured dated country developments for 2 of 3 indexed country pages/,
+    );
+    assert.throws(
+      () => assertDevelopmentsCoverage({
+        carriesDevelopments: true,
+        developmentsPageCount: 0,
+        indexedCountryPageCount: 3,
+      }),
+      /captured dated country developments for 0 of 3 indexed country pages/,
+    );
+    assertDevelopmentsCoverage({
+      carriesDevelopments: false,
+      developmentsPageCount: 0,
+      indexedCountryPageCount: 3,
+    });
+  });
+
+  it('passes frozen developments through to the dataset download', () => {
+    const base = {
+      capturedAt: '2026-08-29',
+      methodologyFormula: 'World Monitor CRI v3',
+      rankedCount: 100,
+      snapshotPath: 'docs/snapshots/resilience-ranking-2026-08-29.json',
+    };
+    const country = { code: 'SD', name: 'Sudan', slug: 'sudan', headlineEligible: true };
+    const withItems = JSON.parse(countryDatasetDownload(country, { ...base, developments: DEVELOPMENTS }));
+    assert.deepEqual(withItems.developments.headlines, DEVELOPMENTS.headlines);
+    assert.equal(withItems.developments.brief.text, BRIEF.text);
+    const withoutItems = JSON.parse(countryDatasetDownload(country, base));
+    assert.equal(withoutItems.developments, null);
+    const explicitlyEmpty = JSON.parse(countryDatasetDownload(country, {
+      ...base,
+      developments: { headlines: [], brief: null, timeline: [], briefSkipped: 'no-grounding' },
+    }));
+    assert.equal(explicitlyEmpty.developments, null);
+    const explicitlyEmptyWithNullTimeline = JSON.parse(countryDatasetDownload(country, {
+      ...base,
+      developments: { headlines: [], brief: null, timeline: null, briefSkipped: 'no-grounding' },
+    }));
+    assert.equal(explicitlyEmptyWithNullTimeline.developments, null);
+  });
+
+  it('wires developments into the rendered country page and its JSON-LD', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const country = data.countries.find((entry) => entry.code === 'NO');
+    assert.ok(country, 'fixture must include Norway');
+    const livePulse = structuredClone(data.livePulse);
+    livePulse.countries.NO = { ...(livePulse.countries.NO || {}), developments: DEVELOPMENTS };
+    const pageArgs = {
+      country,
+      baseUrl: 'https://www.worldmonitor.app',
+      capturedAt: data.resilience.capturedAt,
+      lastmod: data.lastmod.countries,
+      methodologyFormula: data.resilience.methodologyFormula || 'unknown',
+      rankedCount: data.countries.filter((entry) => entry.rank != null).length,
+      snapshotNote: data.resilience.snapshotNote,
+      snapshotPath: data.sources.resilienceSnapshot,
+      bbox: data.countryBboxByCode.get(country.code) || null,
+      livePulse,
+      ciiEntry: data.ciiRanking.byCode.get(country.code) || null,
+    };
+    const html = renderCountryPage(pageArgs);
+    assert.ok(html.includes('<h2>Recent developments in Norway</h2>'));
+    assert.ok(html.includes('https://news.un.org/feed/view/en/story/2026/09/1168270'));
+    const webPage = jsonLdObjects(html).find((entry) => entry['@type'] === 'WebPage');
+    assert.equal(webPage.dateModified, '2026-09-02T12:00:00.000Z',
+      'WebPage dateModified must reflect the newest frozen item (the brief)');
+    const plain = renderCountryPage({ ...pageArgs, livePulse: data.livePulse });
+    assert.ok(!plain.includes('data-country-developments'),
+      'a country with no frozen developments renders no section');
+    const plainWebPage = jsonLdObjects(plain).find((entry) => entry['@type'] === 'WebPage');
+    assert.ok(!('dateModified' in plainWebPage), 'no items means no dateModified claim');
   });
 });
