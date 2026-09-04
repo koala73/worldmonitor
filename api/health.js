@@ -982,7 +982,7 @@ const SEED_META = {
   researchArxivHnTrending: { key: 'seed-meta:research:arxiv-hn-trending', maxStaleMin: 150 },
   gdeltIntel:       { key: 'seed-meta:intelligence:gdelt-intel',   maxStaleMin: 45 }, // 15min bulk materializer; 45min = 3× cadence and expires before the 24h canonical key.
   telegramFeed:     { key: 'seed-meta:intelligence:telegram-feed:v1', maxStaleMin: 10 }, // 60s poll interval; 10min grace catches poll failures before they go stale in the panel
-  xFeed:            { key: 'seed-meta:intelligence:x-feed:v1', maxStaleMin: 45 }, // 5–15min ais-relay poll; 45min = 3× max cadence. Cutover complete (#6654): X_BEARER_TOKEN is on ais-relay and the producer serves the key, so EMPTY here is now a real fault, not a deploy window.
+  xFeed:            { key: 'seed-meta:intelligence:x-feed:v1', maxStaleMin: 45 }, // Fixed 15min List slots; 45min = 3 missed slots. Freshness advances only after an accepted page is published.
   digestNotifications: { key: 'seed-meta:digest:last-run',          maxStaleMin: 90 }, // Railway digest-notifications cron runs every 30min; 90 = 3x cadence and detects a dead cron before daily digests are missed.
   forecasts:        { key: 'seed-meta:forecast:predictions',       maxStaleMin: 90 },
   forecastsBootstrap: { key: 'seed-meta:forecast:predictions-bootstrap', maxStaleMin: 90 }, // Same cron. Monitored separately: the fast tier now hydrates from the dashboard list, and a transform/write failure there must not hide behind a healthy canonical key (#5300).
@@ -1917,6 +1917,9 @@ const MISSING_DATA_IS_FAILURE_KEYS = new Set([
 // key itself must still exist. Do not use this set in the missing-key branch.
 const ZERO_RECORD_DATA_OK_KEYS = new Set([
   ...EMPTY_DATA_OK_KEYS,
+  // A current List query can validly return no Posts. The relay still writes
+  // the canonical snapshot, so a missing xFeed key remains a hard failure.
+  'xFeed',
   // Both Toronto CAD sources publish an explicit {records:[]} envelope on a
   // quiet tick. Keep zero valid without softening a missing payload after each
   // activation marker exists.

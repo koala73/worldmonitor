@@ -70,8 +70,8 @@ describe('World Monitor brand-identity page', () => {
       assert.ok(read(path).includes('/world-monitor.md'), `${path} must link world-monitor.md`);
     }
 
-    const sitemap = read('public/sitemap.xml');
-    assert.ok(sitemap.includes(`<loc>${WWW_BRAND_URL}</loc>`), 'sitemap.xml must register the www brand page');
+    const sitemap = read('public/sitemap-main.xml');
+    assert.ok(sitemap.includes(`<loc>${WWW_BRAND_URL}</loc>`), 'sitemap-main.xml must register the www brand page');
   });
 });
 
@@ -98,5 +98,35 @@ describe('Organization JSON-LD NAP alignment', () => {
       /rel="alternate" type="text\/markdown" href="\/world-monitor\.md"/,
     );
     assert.doesNotMatch(read('pro-test/prerender.mjs'), /Organization JSON-LD|ORGANIZATION_JSONLD/);
+  });
+
+  it('links owned registry packages, never the foreign PyPI name or the product item', () => {
+    const [org] = organizationBlocks(read('pro-test/welcome.html'));
+    for (const edge of [
+      'https://rubygems.org/gems/worldmonitor',
+      'https://pypi.org/project/worldmonitor-sdk/',
+      'https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go',
+    ]) {
+      assert.ok(org.sameAs.includes(edge), `Organization sameAs must include ${edge}`);
+    }
+    assert.doesNotMatch(
+      read('pro-test/welcome.html'),
+      /pypi\.org\/project\/worldmonitor\//,
+      'the foreign same-name PyPI project is not ours and must not appear',
+    );
+    // Q141237754 is instance-of web application, not an organization: it belongs
+    // on the SoftwareApplication node (pinned by schema-graph-contract), and
+    // attaching it here would assert a false identity.
+    assert.equal(
+      org.sameAs.includes('https://www.wikidata.org/wiki/Q141237754'),
+      false,
+      'the web-application item must not be attached to the Organization node',
+    );
+  });
+
+  it('keeps star counts out of the source template for build-time injection', () => {
+    const source = read('pro-test/welcome.html');
+    assert.doesNotMatch(source, /"userInteractionCount":\s*\d+/, 'star counts must not be hardcoded in the source template');
+    assert.doesNotMatch(source, /GITHUB_STARS/, 'the source template must not carry injection tokens');
   });
 });

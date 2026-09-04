@@ -8,6 +8,11 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 
+import {
+  injectStarsInteractionCounter,
+  latestValidGithubStarsSnapshot,
+} from '../scripts/github-stars-snapshot.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
@@ -108,7 +113,13 @@ const CRITICAL_CSS = [
   // this rule matching nothing and paint the primary CTA unstyled above the
   // fold. deploy-config.test.mjs fails if any selector here stops matching a
   // prerendered anchor.
-  'main a[data-umami-event-target="welcome-hero"],main a[href*="moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href*="moments"]{background:transparent;color:#f3f4f6}',
+  // `[href="#moments"]`, not `[href*="moments"]`. The hero CTA is an exact
+  // fragment link (welcome/Hero.tsx), and since #7608 `main` also contains
+  // headline anchors whose href is a third-party article URL — a substring
+  // match would paint any story slug containing "moments" as a full-width
+  // uppercase CTA button until the deferred stylesheet lands. Same element,
+  // same painted result, no reach into feed-supplied hrefs.
+  'main a[data-umami-event-target="welcome-hero"],main a[href="#moments"]{width:100%;justify-content:center;padding:.875rem 1.25rem;border-radius:.25rem;font:700 .875rem/1.25 var(--font-mono);letter-spacing:.025em;text-transform:uppercase}main a[href="#moments"]{background:transparent;color:#f3f4f6}',
   '@media (min-width:640px){nav[data-wm-nav]>div{padding-inline:1.5rem}main>section:first-child{padding-top:8rem;padding-inline:1.5rem}main h1{font-size:3rem;line-height:1.05}main [class~="sm:flex-row"]{flex-direction:row}main [class~="sm:items-center"]{align-items:center}main [class~="sm:w-auto"]{width:auto}main [class~="sm:grid-cols-4"]{grid-template-columns:repeat(4,minmax(0,1fr))}main [class~="sm:max-w-3xl"]{max-width:48rem}main [class~="sm:max-w-none"]{max-width:none}main [class~="sm:px-4"]{padding-inline:1rem}main [class~="sm:px-6"]{padding-inline:1.5rem}main [class~="sm:px-8"]{padding-inline:2rem}main [class~="sm:tracking-wider"]{letter-spacing:.05em}main [class~="sm:block"]{display:block}}',
   '@media (min-width:768px){main h1{font-size:4.5rem}main p{font-size:1.125rem;line-height:1.75rem}main [class~="md:text-lg"]{font-size:1.125rem;line-height:1.75rem}nav[data-wm-nav] [class~="md:block"]{display:block}nav[data-wm-nav] [class~="md:flex"]{display:flex}}',
   '@media (min-width:1024px){nav[data-wm-nav] [class~="lg:flex"]{display:flex}nav[data-wm-nav] [class~="lg:hidden"]{display:none}}',
@@ -158,7 +169,8 @@ function inlineCriticalCss(html, file) {
     '    <script nonce="' + STATIC_SCRIPT_NONCE + '">' + DEFERRED_STYLES_SCRIPT + '</script>',
     '    <noscript><link rel="stylesheet" href="' + href + '"' + crossorigin + '></noscript>',
   ].join('\n');
-  return html.replace(stylesheetTag, criticalTags);
+  // Function replacement, for the same $-expansion reason as the #root splice below.
+  return html.replace(stylesheetTag, () => criticalTags);
 }
 
 async function renderWelcomeRoot() {
@@ -204,7 +216,7 @@ function rewriteBuiltAssetUrls(markup) {
       console.error(`[prerender] ERROR: Could not find SSR asset URL for ${filenamePrefix}${extension} in welcome markup.`);
       process.exit(1);
     }
-    rewritten = rewritten.replace(sourceAssetPattern, builtHref);
+    rewritten = rewritten.replace(sourceAssetPattern, () => builtHref);
   }
 
   // Catch any OTHER dev-only asset URL — a newly added asset import the rewrite
@@ -220,6 +232,30 @@ function rewriteBuiltAssetUrls(markup) {
 
 const welcomeContent = await renderWelcomeRoot();
 
+// GitHub star InteractionCounter: populated from the committed freeze
+// snapshot, never hardcoded and never fetched at build time (offline builds
+// stay deterministic). Refresh via `npm run freeze:github-stars`.
+// Pages whose committed template carries a #software node must leave the
+// build with the counter injected — a missing node is a dropped counter,
+// not an optional page.
+const GITHUB_STARS_PAGES = ['welcome.html'];
+
+function injectGithubStars(html, file) {
+  let snapshot;
+  try {
+    snapshot = latestValidGithubStarsSnapshot();
+  } catch (error) {
+    console.error(`[prerender] ERROR: ${error.message}`);
+    process.exit(1);
+  }
+  const { html: next, injected } = injectStarsInteractionCounter(html, snapshot);
+  if (!injected && GITHUB_STARS_PAGES.includes(file)) {
+    console.error('[prerender] ERROR: welcome.html carries no #software JSON-LD node to receive the star counter.');
+    process.exit(1);
+  }
+  return next;
+}
+
 const PAGES = [
   { file: 'index.html', content: '', rootAttributes: '' },
   {
@@ -230,22 +266,25 @@ const PAGES = [
 ];
 
 for (const { file, content, rootAttributes } of PAGES) {
-  // Fail loudly if server-rendered visible content resolved a missing locale key.
-  if (content.includes('undefined')) {
-    console.error(`[prerender] ERROR: Prerendered content for ${file} contains literal "undefined". Check the welcome SSR locale keys.`);
-    process.exit(1);
-  }
-
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
   html = inlineCriticalCss(html, file);
+  html = injectGithubStars(html, file);
   const emptyRoot = '<div id="root"></div>';
   if (content || rootAttributes) {
     if (!html.includes(emptyRoot)) {
       console.error(`[prerender] ERROR: ${file} has no empty <div id="root"></div> to inject into.`);
       process.exit(1);
     }
-    html = html.replace(emptyRoot, `<div id="root"${rootAttributes}>${content}</div>`);
+    // Replacer FUNCTION, not a replacement string: `String.prototype.replace`
+    // expands `$$`, `$&`, `` $` `` and `$'` in a string replacement. Since #7608
+    // the SSR markup carries headline text from ~461 third-party RSS feeds, so
+    // those sequences are no longer ours to rule out. React escapes `'` to
+    // `&#x27;`, which turns a title containing `$'` into a literal `$&` — that
+    // splices a SECOND `<div id="root">` into the page and hydration mounts on
+    // the wrong one; a backtick (which React does not escape) splices the whole
+    // preceding document. A function replacement is taken literally.
+    html = html.replace(emptyRoot, () => `<div id="root"${rootAttributes}>${content}</div>`);
   } else if (!html.includes('<div id="root">')) {
     console.error(`[prerender] ERROR: ${file} has no #root mount point.`);
     process.exit(1);

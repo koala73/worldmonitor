@@ -192,6 +192,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Docs page dates derive from git history; a shallow checkout would
+          # resolve every file to HEAD and fail the freshness gate spuriously.
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -201,8 +205,16 @@ jobs:
           node scripts/generate-inventory-facts.mjs --check
       - name: Doc claims match code
         run: node scripts/docs-stats.mjs --check
+      - name: Docs page dates match git history
+        run: node scripts/generate-docs-page-dates.mjs --check
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
+      - name: Homepage teaser strip matches the committed pulse snapshot
+        # Belongs in this always-on job, not `unit`: a PR that touches only
+        # docs/snapshots/ sets changes.code=false and skips `unit` entirely, so
+        # the snapshot could move out from under the generated teaser strip
+        # without any gate running. Pure Node builtins, no install required.
+        run: node scripts/build-welcome-teasers.mjs --check
       - name: Every entitlement gate is classified
         # Fails when a new free-vs-paid gate ships without a capability id or a
         # documented exclusion (exit 1), or when the tree is missing a source the
@@ -226,7 +238,12 @@ jobs:
           cache-dependency-path: |
             package-lock.json
             pro-test/package-lock.json
+            blog-site/package-lock.json
       - run: npm ci
+      - name: Install blog-site deps for SEO contract tests
+        # Unit-only nested install; keeps postinstall free of blog-site.
+        # Needed so blog-seo-contract can load astro.config.mjs.
+        run: npm run ci:blog-site
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
@@ -566,7 +583,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

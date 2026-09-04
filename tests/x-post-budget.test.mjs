@@ -6,6 +6,7 @@ import {
   isXPostReturningUrl,
   ACK_RECEIPTS_LUA,
   SETTLE_LUA,
+  STATUS_LUA,
   MAX_RECEIPT_BYTES,
   DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
   DEFAULT_X_POST_DAILY_LIMIT,
@@ -64,8 +65,10 @@ describe('X Post transport admission', () => {
 });
 
 describe('shared X returned-Post budget', () => {
-  it('reports budget exhaustion without reporting the service as healthy', () => {
+  it('reports budget exhaustion or an inadmissible next request as degraded', () => {
+    assert.equal(DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS, 505);
     assert.equal(xPostBudgetServiceStatus({ available: true, exhausted: false }), 'ok');
+    assert.equal(xPostBudgetServiceStatus({ available: true, exhausted: false, nextRequestAdmissible: false }), 'degraded');
     assert.equal(xPostBudgetServiceStatus({ available: true, exhausted: true }), 'degraded');
     assert.equal(xPostBudgetServiceStatus({ available: false, exhausted: false }), 'degraded');
   });
@@ -102,10 +105,11 @@ describe('shared X returned-Post budget', () => {
   });
 
   it('retains the full reservation when the response cannot be counted safely', async () => {
-    let evalCalls = 0;
+    const calls = [];
     const budget = createXPostBudget({
-      evalCommand: async () => {
-        evalCalls += 1;
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        if (script === ACK_RECEIPTS_LUA) return 1;
         return [1, 10, 10, 0, 0];
       },
       now: () => NOW,
@@ -116,14 +120,49 @@ describe('shared X returned-Post budget', () => {
       consumer: 'curated-feed',
       operation: 'timeline',
       requestedPosts: 10,
+      receiptScope: 'list:123',
       execute: async () => ({ response: { ok: true }, body: { data: 'not-an-array' } }),
     });
 
     assert.equal(outcome.allowed, true);
     assert.equal(outcome.completed, false);
     assert.equal(outcome.reason, 'unsettled_response');
-    assert.equal(evalCalls, 1, 'an unsafe response must not run the refund script');
+    assert.equal(calls.some(({ script }) => script === SETTLE_LUA), false,
+      'an unsafe response must not run the refund script');
+    assert.deepEqual(calls.at(-1).keys, ['intelligence:x-post-budget:v1:receipt-inflight:list-123:none']);
+    assert.deepEqual(calls.at(-1).args, ['intelligence:x-post-budget:v1:reservation:uncountable']);
     assert.equal(outcome.status.dailyUsed, 10);
+  });
+
+  it('releases only its receipt-scope lock after an unknown transport outcome', async () => {
+    const calls = [];
+    const budget = createXPostBudget({
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        if (script === ACK_RECEIPTS_LUA) return 1;
+        return [1, 5, 5, 0, 500, ''];
+      },
+      now: () => NOW,
+      idFactory: () => 'transport-unknown',
+    });
+
+    await assert.rejects(() => budget.withReturnedPosts({
+      consumer: 'curated-feed',
+      operation: 'list-feed',
+      requestedPosts: 5,
+      coverageTotal: 505,
+      coverageId: 'list-slot:2026-09-02T12:00:00.000Z',
+      coverageUnitPosts: 5,
+      receiptScope: 'list:123',
+      execute: async () => { throw new Error('socket reset'); },
+    }), /socket reset/);
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[1].script, ACK_RECEIPTS_LUA);
+    assert.deepEqual(calls[1].keys, [
+      'intelligence:x-post-budget:v1:receipt-inflight:list-123:list-slot-2026-09-02T12-00-00-000Z',
+    ]);
+    assert.deepEqual(calls[1].args, ['intelligence:x-post-budget:v1:reservation:transport-unknown']);
   });
 
   it('settles a completed non-success response at zero without publishing a replay receipt', async () => {
@@ -186,7 +225,7 @@ describe('shared X returned-Post budget', () => {
     assert.equal(outcome.receiptAck.key, 'test:x-posts:receipt:timeline-1652541');
   });
 
-  it('fails closed on a malformed pending receipt without calling X', async () => {
+  it('returns an acknowledgement for a malformed pending receipt without calling X', async () => {
     let executed = false;
     const budget = createXPostBudget({
       evalCommand: async () => [0, 1, 1, 4, 0, '{not-json'],
@@ -202,8 +241,12 @@ describe('shared X returned-Post budget', () => {
     });
 
     assert.equal(executed, false);
-    assert.equal(outcome.allowed, false);
-    assert.equal(outcome.reason, 'budget_unavailable');
+    assert.equal(outcome.allowed, true);
+    assert.equal(outcome.completed, true);
+    assert.equal(outcome.reusedReceipt, true);
+    assert.equal(outcome.receipt, null);
+    assert.equal(outcome.reason, 'invalid_pending_receipt');
+    assert.equal(outcome.receiptAck.expected, '{not-json');
   });
 
   it('keeps the full reservation when a receipt exceeds its size bound', async () => {
@@ -211,7 +254,9 @@ describe('shared X returned-Post budget', () => {
     const budget = createXPostBudget({
       evalCommand: async (script) => {
         scripts.push(script);
-        return scripts.length === 1 ? [1, 10, 10, 0, 0, ''] : [10, 10, 0];
+        if (script === STATUS_LUA) return [10, 10, 0, 0, ''];
+        if (script === ACK_RECEIPTS_LUA) return 1;
+        return [1, 10, 10, 0, 0, ''];
       },
       now: () => NOW,
       idFactory: () => 'oversized-receipt',
@@ -229,6 +274,7 @@ describe('shared X returned-Post budget', () => {
     assert.equal(outcome.reason, 'invalid_receipt');
     assert.equal(outcome.status.dailyUsed, 10);
     assert.equal(scripts.includes(SETTLE_LUA), false, 'invalid receipt bytes must not run the refund script');
+    assert.equal(scripts.includes(ACK_RECEIPTS_LUA), true, 'the unusable receipt must release its scope lock');
   });
 
   it('acknowledges receipts with an exact compare-and-delete script', async () => {
@@ -272,9 +318,9 @@ describe('shared X returned-Post budget', () => {
   it('reserves day and month capacity atomically and settles unused capacity', async () => {
     const calls = [];
     const responses = [
-      [1, 10, 110, 0, 572],
+      [1, 10, 110, 0, 562],
       [1, 3, 103, 10, 3, 562],
-      [3, 103, 562],
+      [3, 103, 562, 1, 'fixed-slots-v1:572'],
     ];
     const budget = createXPostBudget({
       evalCommand: async (script, keys, args) => {
@@ -307,7 +353,8 @@ describe('shared X returned-Post budget', () => {
       'test:x-posts:coverage-held:2026-09-02',
       'test:x-posts:coverage-accounted:2026-09-02:timeline-1652541',
       'test:x-posts:receipt:none',
-      'test:x-posts:receipt-inflight:none',
+      'test:x-posts:receipt-inflight:none:timeline-1652541',
+      'test:x-posts:coverage-model:2026-09-02',
     ]);
     assert.deepEqual(calls[0].args.slice(0, 4), [
       '10',
@@ -328,6 +375,69 @@ describe('shared X returned-Post budget', () => {
     assert.equal(status.dailyCoverageHeld, 562);
     assert.equal(status.dailySpendableRemaining, 35);
     assert.equal(status.monthlyRemaining, DEFAULT_X_POST_MONTHLY_LIMIT - 103);
+  });
+
+  it('reports whether the next fixed-size request fits after converting its held coverage', async () => {
+    const dailyUsed = [95, 96];
+    const budget = createXPostBudget({
+      evalCommand: async () => [
+        dailyUsed.shift(),
+        10_000,
+        DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+        1,
+        `fixed-slots-v1:${DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS}`,
+      ],
+      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      now: () => NOW,
+    });
+
+    const exact = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(exact.nextRequestAdmissible, true);
+    assert.equal(exact.nextRequestDailyProjected, DEFAULT_X_POST_DAILY_LIMIT);
+
+    const over = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(over.nextRequestAdmissible, false);
+    assert.equal(xPostBudgetServiceStatus(over), 'degraded');
+  });
+
+  it('projects the full daily coverage hold before its first reservation', async () => {
+    const usage = [
+      [95, 19_495],
+      [96, 19_496],
+    ];
+    const budget = createXPostBudget({
+      evalCommand: async () => {
+        const [dailyUsed, monthlyUsed] = usage.shift();
+        return [dailyUsed, monthlyUsed, 0, 0, ''];
+      },
+      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      now: () => NOW,
+    });
+
+    const exact = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(exact.dailyCoverageHeld, DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS);
+    assert.equal(exact.nextRequestDailyProjected, DEFAULT_X_POST_DAILY_LIMIT);
+    assert.equal(exact.nextRequestMonthlyProjected, DEFAULT_X_POST_MONTHLY_LIMIT);
+    assert.equal(exact.nextRequestAdmissible, true);
+
+    const over = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(over.nextRequestDailyProjected, DEFAULT_X_POST_DAILY_LIMIT + 1);
+    assert.equal(over.nextRequestMonthlyProjected, DEFAULT_X_POST_MONTHLY_LIMIT + 1);
+    assert.equal(over.nextRequestAdmissible, false);
+  });
+
+  it('reports a legacy coverage hold as not admissible before cutover', async () => {
+    const budget = createXPostBudget({
+      evalCommand: async () => [0, 0, DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS, 1, ''],
+      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      now: () => NOW,
+    });
+
+    const status = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(status.available, true);
+    assert.equal(status.nextRequestAdmissible, false);
+    assert.equal(status.nextRequestBlockedReason, 'coverage_model_mismatch');
+    assert.equal(xPostBudgetServiceStatus(status), 'degraded');
   });
 
   it('reports the binding limit without creating a reservation', async () => {
@@ -371,7 +481,7 @@ describe('shared X returned-Post budget', () => {
     assert.equal(denied.status.monthlyUsed, 19_991);
   });
 
-  it('passes the configured curated hold on a non-curated consumer first request', async () => {
+  it('passes the configured 505-Post curated hold on a non-curated request', async () => {
     const calls = [];
     const budget = createXPostBudget({
       evalCommand: async (script, keys, args) => {
@@ -386,7 +496,7 @@ describe('shared X returned-Post budget', () => {
     const denied = await budget.reserve({
       consumer: 'company-monitoring',
       operation: 'recent-search',
-      requestedPosts: 10,
+      requestedPosts: 95,
     });
     assert.equal(denied.allowed, false);
     assert.equal(calls[0].args[1], String(DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS));
@@ -428,5 +538,83 @@ describe('shared X returned-Post budget', () => {
     assert.equal(denied.allowed, false);
     assert.equal(denied.reason, 'budget_unavailable');
     assert.equal(denied.status.available, false);
+  });
+});
+
+describe('X Post budget inflight release on settlement failure', () => {
+  const NOW_LOCAL = Date.parse('2026-09-02T12:00:00.000Z');
+
+  it('releases its receipt-scope lock when settlement conflicts', async () => {
+    // The conflict path reached only through withReturnedPosts: settle() returning
+    // -2 leaves the reservation unsettled, and without the release the slot's
+    // inflight lock would sit until its own TTL, blocking the replay that is
+    // supposed to recover the paid page on the next slot. The pre-existing
+    // settlement_conflict test calls settle() directly and never reaches here.
+    const calls = [];
+    const budget = createXPostBudget({
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        if (script === ACK_RECEIPTS_LUA) return 1;
+        if (script === SETTLE_LUA) return [-2, 5, 5, 0, 4, 500];
+        if (script === STATUS_LUA) return [5, 5, 500, 1, 'fixed-slots-v1:505'];
+        return [1, 5, 5, 0, 500, ''];
+      },
+      now: () => NOW_LOCAL,
+      idFactory: () => 'settle-conflict-release',
+    });
+
+    const outcome = await budget.withReturnedPosts({
+      consumer: 'curated-feed',
+      operation: 'list-feed',
+      requestedPosts: 5,
+      coverageTotal: 505,
+      coverageId: 'list-slot:2026-09-02T12:00:00.000Z',
+      coverageUnitPosts: 5,
+      receiptScope: 'list:123',
+      receiptFromResult: () => ({ version: 1, listId: '123', posts: [] }),
+      execute: async () => ({
+        response: { ok: true, status: 200 },
+        body: { data: [{ id: '1' }, { id: '2' }], meta: { result_count: 2 } },
+      }),
+    });
+
+    assert.equal(outcome.allowed, true);
+    assert.equal(outcome.completed, false, 'a conflicting settlement is not a completion');
+    const acks = calls.filter((call) => call.script === ACK_RECEIPTS_LUA);
+    assert.equal(acks.length, 1, 'the inflight lock must be released exactly once');
+    assert.deepEqual(acks[0].args, [
+      'intelligence:x-post-budget:v1:reservation:settle-conflict-release',
+    ]);
+  });
+
+  it('releases its receipt-scope lock when the response over-returns its reservation', async () => {
+    const calls = [];
+    const budget = createXPostBudget({
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        if (script === ACK_RECEIPTS_LUA) return 1;
+        if (script === STATUS_LUA) return [5, 5, 500, 1, 'fixed-slots-v1:505'];
+        return [1, 5, 5, 0, 500, ''];
+      },
+      now: () => NOW_LOCAL,
+      idFactory: () => 'over-return-release',
+    });
+
+    const outcome = await budget.withReturnedPosts({
+      consumer: 'curated-feed',
+      operation: 'list-feed',
+      requestedPosts: 5,
+      coverageTotal: 505,
+      coverageId: 'list-slot:2026-09-02T12:00:00.000Z',
+      coverageUnitPosts: 5,
+      receiptScope: 'list:123',
+      execute: async () => ({
+        response: { ok: true, status: 200 },
+        body: { data: Array.from({ length: 9 }, (_, i) => ({ id: String(i) })) },
+      }),
+    });
+
+    assert.equal(outcome.completed, false);
+    assert.equal(calls.filter((call) => call.script === ACK_RECEIPTS_LUA).length, 1);
   });
 });

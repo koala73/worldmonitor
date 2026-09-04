@@ -114,6 +114,9 @@ COPY scripts/_country-stock-index.mjs ./scripts/_country-stock-index.mjs
 # (crash loop taking AIS/market/RSS with it), NOT a degraded weather seed.
 # Guarded by tests/dockerfile-relay-imports.test.mjs.
 COPY scripts/_weather-alert-select.mjs ./scripts/_weather-alert-select.mjs
+# Static import of _weather-alert-select.mjs, so it carries the same crash-loop
+# risk as the file above rather than a degraded weather seed.
+COPY scripts/lib/geo-coord.mjs ./scripts/lib/geo-coord.mjs
 COPY scripts/_country-resolver.mjs ./scripts/_country-resolver.mjs
 COPY scripts/_climate-news-helpers.mjs ./scripts/_climate-news-helpers.mjs
 # Shared single-pass entity decoder imported by seed-climate-news.mjs (and the

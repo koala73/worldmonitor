@@ -2,7 +2,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 170.
 
 A single codebase produces specialized variants — geopolitical, technology, finance, commodity, happy, and energy — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files so audience-specific builds can omit unrelated panels, feeds, and map registries.
 
@@ -48,7 +48,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 - [README](https://github.com/koala73/worldmonitor/blob/main/README.md): Full project documentation with architecture details, algorithm descriptions, and data source specifications
 - [Simplified Chinese README](https://github.com/koala73/worldmonitor/blob/main/README.zh-CN.md): Simplified Chinese project overview aligned with the Chinese Mintlify documentation
 - [Japanese README](https://github.com/koala73/worldmonitor/blob/main/README.ja-JP.md): Japanese project overview mirroring the English README
-- [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
+- [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/documentation.mdx): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
 - [API llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
 - [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub linking the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
 - [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, live tool registry, and auth modes
@@ -1970,6 +1970,37 @@ and are excluded from the headline ranking.
 ### Imputation Share
 
 The API response includes `imputationShare` (0.0-1.0), representing the fraction of total indicator weight that came from imputed (synthetic) data rather than observed data. This allows consumers to assess data provenance.
+
+### Supported Readings on Unranked Country Pages
+
+A country that publishes no headline score still publishes a dimension evidence
+inventory. The page uses three evidence terms that do not mean the same thing:
+
+- **Observed.** The snapshot holds a usable partial series for that dimension
+  and no more specific absence or failure class applies. Stable absence is
+  labeled separately, even when its recorded coverage is positive.
+- **Supported reading.** On a microstate or territory page, the dimension has no
+  imputation class, clears **0.50** coverage, and has a finite score. The page
+  publishes the dimension score and its coverage.
+- **Available evidence.** On another unranked country page, the summary names
+  non-gap dimensions that clear **0.50** coverage. The summary publishes their
+  labels and coverage, but it does not publish dimension scores.
+
+When a shown inventory row is labeled observed but falls below **0.50** coverage,
+the page names that row and states the floor inline. This explains why the row
+does not count as a supported reading.
+
+The inventory is ordered weakest evidence first — not-applicable slots, then
+dimensions with no usable series, then partial coverage ascending — and capped
+at 12 rows. It is grouped rather than strictly sorted by coverage, so a
+dimension with no usable series can precede one with a thin but real reading.
+The cap splits the active dimensions into three buckets, and the scope note
+accounts for all three: the dimensions shown, the dimensions already at full
+coverage that never entered the weakest-first pool, and the dimensions the cap
+omitted.
+The counts are generated from a single partition and asserted at build time, so
+a page whose inventory arithmetic does not close fails the build rather than
+publishing (#7609).
 
 ## Data Sources
 

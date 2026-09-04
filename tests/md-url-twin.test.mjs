@@ -41,6 +41,26 @@ describe('markdown URL-fallback helpers', () => {
   });
 });
 
+describe('api/md-twin.ts vary coverage (#7616 U4)', () => {
+  it('declares the loop-guard header in Vary so cached twins never replay across variants', async () => {
+    const plain = await buildMarkdownTwinResponse(
+      new Request('https://www.worldmonitor.app/dashboard.md'),
+      '/dashboard.md',
+      async () => new Response('<html><title>T</title><h1>H</h1></html>', { status: 200 }),
+    );
+    assert.match(plain.headers.get('vary') ?? '', new RegExp(MD_TWIN_LOOP_HEADER, 'i'));
+
+    const looped = await buildMarkdownTwinResponse(
+      new Request('https://www.worldmonitor.app/dashboard.md', {
+        headers: { [MD_TWIN_LOOP_HEADER]: '1' },
+      }),
+      '/dashboard.md',
+    );
+    assert.equal(looped.status, 404);
+    assert.match(looped.headers.get('vary') ?? '', new RegExp(MD_TWIN_LOOP_HEADER, 'i'));
+  });
+});
+
 describe('api/md-twin.ts', () => {
   it('returns the deprecation policy Link on OPTIONS preflights', async () => {
     const res = await buildMarkdownTwinResponse(

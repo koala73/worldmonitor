@@ -1,6 +1,7 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import en from './locales/en.json';
+import { throwOnMissingStaticTranslation } from './static-i18n-guard';
 import { isTraditionalChineseTag, resolveEffectiveWelcomeContentLanguage } from './welcome-language';
 
 type TranslationDictionary = Record<string, unknown>;
@@ -138,6 +139,7 @@ export async function initStaticI18n(): Promise<void> {
     lng: 'en',
     fallbackLng: 'en',
     interpolation: { escapeValue: false },
+    parseMissingKeyHandler: throwOnMissingStaticTranslation,
   });
 }
 

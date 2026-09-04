@@ -16,6 +16,8 @@ import { readFileSync, readdirSync } from 'node:fs';
 import { basename } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
+import { SITEMAP_MAIN_FILENAME } from './build-sitemap.mjs';
+
 // Keys must be genuinely random (`openssl rand -hex 16`). The previous value
 // (a7f3e9d1b2c44e8f9a0b1c2d3e4f5a6b) is permanently rejected by Bing with
 // 403 UserForbiddedToAccessSite even though the key file served fine — never
@@ -26,6 +28,7 @@ const BLOG_DIR = new URL('../blog-site/src/content/blog/', import.meta.url);
 const BLOG_AUTHORS_DIR = new URL('../blog-site/src/pages/authors/', import.meta.url);
 const GLOSSARY_SOURCE = new URL('../blog-site/src/data/glossary.ts', import.meta.url);
 const ROOT_SITEMAP = new URL('../public/sitemap.xml', import.meta.url);
+const LOCAL_SITEMAP_URL = new URL(`../public/${SITEMAP_MAIN_FILENAME}`, import.meta.url);
 const USER_AGENT = 'WorldMonitor-IndexNow/1.0 (+https://www.worldmonitor.app)';
 // Every host is submitted sequentially inside one 10-minute job, and fetch has
 // no default deadline — one unresponsive search engine would otherwise stall
@@ -45,12 +48,27 @@ function uniqueSorted(urls) {
   return [...new Set(urls)].sort();
 }
 
-function getRootSitemapUrls() {
+export function getRootSitemapUrls() {
   const source = readFileSync(ROOT_SITEMAP, 'utf8');
-  const urls = [...source.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+  // /sitemap.xml is the root index: submissions follow the local URL set it
+  // lists, never the index-member URLs themselves.
+  const urlsetSource = /<sitemapindex[\s>]/i.test(source)
+    ? readLocalIndexMember(source)
+    : source;
+  const urls = [...urlsetSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
     .map((match) => decodeXml(match[1].trim()));
   if (urls.length === 0) throw new Error(`${ROOT_SITEMAP.pathname} contains no canonical URLs`);
   return urls;
+}
+
+export function readLocalIndexMember(indexSource) {
+  const member = [...indexSource.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
+    .map((match) => decodeXml(match[1].trim()))
+    .find((loc) => loc.endsWith(`/${SITEMAP_MAIN_FILENAME}`));
+  if (!member) {
+    throw new Error(`${ROOT_SITEMAP.pathname} index lists no local ${SITEMAP_MAIN_FILENAME} member`);
+  }
+  return readFileSync(LOCAL_SITEMAP_URL, 'utf8');
 }
 
 const ROOT_SITEMAP_URLS = getRootSitemapUrls();

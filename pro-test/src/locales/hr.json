@@ -482,7 +482,9 @@
       "plateNote": "Snimljeno sa živih karti — klikni da je otvoriš",
       "trustBuild": "Izgradi na njoj:",
       "positioningLink": "WorldMonitor nije otvoreni kod Palantira",
-      "asOf": "Od 31. kolovoza 2026."
+      "asOf": "Od 31. kolovoza 2026.",
+      "whatIsTitle": "Što je World Monitor?",
+      "whatIsBody": "World Monitor je besplatna, otvorena nadzorna ploča koja streamira geopolitičke, tržišne, pomorske, zrakoplovne, infrastrukturne i kibernetske signale na jednu živu svjetsku kartu. Povezuje odvojene izvore u jednu operativnu sliku i označava konvergencije prije nego što se pojave u naslovima, pri čemu je svaki podatak dokumentiran i svaka metoda objašnjena."
     },
     "live": {
       "eyebrow": "Uživo sada",
@@ -588,11 +590,11 @@
       "title": "Kako detaljno je World Monitor model podataka?",
       "sub": "Svaki broj dolje je trenutno uživo na nadzornoj ploči — nije dio plana.",
       "s1v": "Dijeljeno",
-      "s1l": "Slojevi karte",
+      "s1l": "Vrste slojeva karte",
       "s2v": "Kurirano",
-      "s2l": "Kurirani izvori podataka",
+      "s2l": "Vijesti i OSINT izvori",
       "s3v": "Atribuirano",
-      "s3l": "Davatelji podataka",
+      "s3l": "Pripisani davatelji",
       "s4v": "Live",
       "s4l": "Uska grla · uživo AIS",
       "s5v": "Tier-1",
