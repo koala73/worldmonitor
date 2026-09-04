@@ -20,6 +20,7 @@ import {
   getEffectivePanelConfig,
 } from '../src/config/panels.ts';
 import {
+  FOLLOWED_COUNTRY_MUTATION_REASONS,
   WEBMCP_TOOL_CANCELLATION_POLICY,
   buildWebMcpTools as buildProductionWebMcpTools,
 } from '../src/services/webmcp.ts';
@@ -222,6 +223,21 @@ function createBindings(overrides: Record<string, unknown> = {}) {
         panels: { mounted: ['map'], enabled: ['map'] },
       },
     }),
+    listFollowedCountries: async () => ({
+      ok: true as const,
+      enabled: true,
+      countries: ['DE'],
+      count: 1,
+      access: 'free' as const,
+      limit: 3,
+    }),
+    setCountryFollowed: async (iso2: unknown, followed: unknown) => ({
+      ok: true as const,
+      status: 'accepted' as const,
+      iso2: typeof iso2 === 'string' ? iso2 : undefined,
+      followed: typeof followed === 'boolean' ? followed : undefined,
+      message: 'Followed-country state accepted.',
+    }),
     applyDashboardTabAction: async (action: { type: string; tabId?: string; name?: string }) => (
       action.type === 'list'
         ? {
@@ -342,6 +358,8 @@ const VALID_INPUTS: Record<string, Record<string, unknown>> = {
   list_mission_presets: {},
   apply_mission_preset: { presetId: 'supply-chain-risk' },
   open_mission_picker: {},
+  list_followed_countries: {},
+  set_country_followed: { iso2: 'DE', followed: true },
   get_access_context: {},
   open_sign_in: {},
 };
@@ -363,6 +381,7 @@ const HOMEPAGE_VALID_INPUTS: Record<string, Record<string, unknown>> = {
 const WEBMCP_MAINTAINER_SOURCES = [
   'src/config/webmcp.ts',
   'src/services/webmcp.ts',
+  'src/services/followed-countries.ts',
   'src/services/webmcp-map-layer-catalog.ts',
   'src/services/webmcp-panel-catalog.ts',
   'src/services/webmcp-mission-preset-catalog.ts',
@@ -478,6 +497,7 @@ const WEBMCP_DOCUMENTED_REASONS = [...new Set([
   ...MISSION_PRESET_UNAVAILABLE_REASONS,
   ...MISSION_PRESET_APPLY_DENY_REASONS,
   ...WEBMCP_MISSION_PICKER_REASONS,
+  ...FOLLOWED_COUNTRY_MUTATION_REASONS,
 ])].sort();
 
 function assertReasonsDocumented(
@@ -861,6 +881,8 @@ describe('WebMCP imperative schema and budget contract', () => {
       listMissionPresets: async () => { throw privateError; },
       applyMissionPreset: async () => { throw privateError; },
       openMissionPicker: async () => { throw privateError; },
+      listFollowedCountries: async () => { throw privateError; },
+      setCountryFollowed: async () => { throw privateError; },
       getPanelLayout: async () => { throw privateError; },
       setPanelCollapsed: async () => { throw privateError; },
       movePanel: async () => { throw privateError; },

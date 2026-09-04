@@ -340,6 +340,61 @@ describe('evaluateSetPanelEnabled', () => {
 });
 
 describe('applySetPanelEnabled', () => {
+  it('runs beforeApply only after a changed enable persists', () => {
+    const events: string[] = [];
+    const panelSettings = settingsWithFreeSlots('full');
+    const result = applySetPanelEnabled(
+      { panelSettings },
+      'windy-webcams',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => { events.push('persist'); },
+        trackToggle: () => { events.push('track'); },
+        beforeApply: () => { events.push('beforeApply'); },
+        applyPanelSettings: () => { events.push('apply'); },
+      },
+    );
+    assert.equal(result.changed, true);
+    assert.deepEqual(events, ['persist', 'track', 'beforeApply', 'apply']);
+
+    events.length = 0;
+    applySetPanelEnabled(
+      { panelSettings },
+      'windy-webcams',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => { events.push('persist'); },
+        trackToggle: () => { events.push('track'); },
+        beforeApply: () => { events.push('beforeApply'); },
+        applyPanelSettings: () => { events.push('apply'); },
+      },
+    );
+    assert.deepEqual(events, [], 'an unchanged enable must not arm suppression');
+  });
+
+  it('does not run beforeApply when persistence fails', () => {
+    let beforeApplyCount = 0;
+    const result = applySetPanelEnabled(
+      { panelSettings: settingsWithFreeSlots('full') },
+      'windy-webcams',
+      true,
+      {
+        variant: 'full',
+        isPro: false,
+        persist: () => false,
+        trackToggle: () => {},
+        beforeApply: () => { beforeApplyCount += 1; },
+        applyPanelSettings: () => {},
+      },
+    );
+    assert.equal(result.reason, 'persist_failed');
+    assert.equal(beforeApplyCount, 0);
+  });
+
   it('persists an enable through the same user-set path and skips persist on no-op', () => {
     const panelSettings = settingsWithFreeSlots('full');
     const persistCalls: Record<string, PanelConfig>[] = [];

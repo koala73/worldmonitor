@@ -19,6 +19,46 @@ import { afterEach, describe, it } from 'node:test';
 const PENDING_KEY = 'wm-conversion-pending';
 const KNOWN_PRODUCT = 'pdt_0Nbtt71uObulf7fGXhQup';
 
+describe('shared checkout attribution contract', () => {
+  it('round-trips only registered preview mission and panel pairs', async () => {
+    const attribution = await import('../shared/checkout-attribution.ts');
+    const url = attribution.buildAttributedProUrl('https://worldmonitor.app/pro', {
+      missionId: 'supply-chain-risk',
+      panelKey: 'supply-chain',
+    });
+    assert.deepEqual(
+      attribution.parseMissionPreviewAttributionFromSearch(new URL(url).search),
+      { kind: 'mission-preview', missionId: 'supply-chain-risk', panelKey: 'supply-chain' },
+    );
+    assert.equal(
+      attribution.parseMissionPreviewAttribution('supply-chain-risk', 'cii'),
+      null,
+    );
+  });
+
+  it('validates stored surfaces and migrates legacy attempts', async () => {
+    const attribution = await import('../shared/checkout-attribution.ts');
+    assert.equal(attribution.parseCheckoutContext({
+      eventSurface: 'crafted',
+      origin: { kind: 'dashboard' },
+    }), null);
+
+    const migrated = attribution.parseCheckoutAttemptRecord({
+      productId: KNOWN_PRODUCT,
+      startedAt: Date.now(),
+      missionId: 'osint-newsroom',
+      panelKey: 'gdelt-intel',
+      analyticsSurface: 'crafted',
+    });
+    assert.equal(migrated?.context.eventSurface, 'dashboard');
+    assert.deepEqual(migrated?.context.origin, {
+      kind: 'mission-preview',
+      missionId: 'osint-newsroom',
+      panelKey: 'gdelt-intel',
+    });
+  });
+});
+
 class MemoryStorage {
   private readonly store = new Map<string, string>();
   getItem(key: string): string | null {
@@ -180,7 +220,7 @@ describe('mission-attributed checkout-start (U2)', () => {
     assert.equal('extra' in failed.data!, false);
   });
 
-  it('buckets crafted attribution ids to "unknown" before storage', async () => {
+  it('drops crafted attribution before storage', async () => {
     const analytics = await import('../src/services/analytics.ts');
     analytics.resetAnalyticsForTesting();
     const { calls, sessionStorage } = installWindow();
@@ -191,9 +231,9 @@ describe('mission-attributed checkout-start (U2)', () => {
     });
 
     const live = calls.find((c) => c.name === 'checkout-start');
-    assert.equal(live!.data!.missionId, 'unknown');
-    assert.equal(live!.data!.panelKey, 'unknown');
-    assert.equal(readPending(sessionStorage)[0]!.data.missionId, 'unknown');
+    assert.equal('missionId' in live!.data!, false);
+    assert.equal('panelKey' in live!.data!, false);
+    assert.equal('missionId' in readPending(sessionStorage)[0]!.data, false);
   });
 });
 
@@ -234,13 +274,10 @@ describe('return-leg attribution (review P1: durable carrier + hardened peek)', 
   it('the checkout-attempt record carries the durable attribution copy', async () => {
     const { readFileSync } = await import('node:fs');
     const attempt = readFileSync(new URL('../src/services/checkout-attempt.ts', import.meta.url), 'utf8');
-    assert.ok(attempt.includes('missionId?: string'), 'CheckoutAttempt must carry missionId');
+    assert.ok(attempt.includes('CheckoutAttemptRecord'), 'CheckoutAttempt must use the shared typed record');
     const checkout = readFileSync(new URL('../src/services/checkout.ts', import.meta.url), 'utf8');
-    assert.equal(
-      (checkout.match(/missionId: behavior\?\.analyticsAttribution\?\.missionId/g) ?? []).length,
-      2,
-      'both saveCheckoutAttempt writes (signed-out intent AND main path) must thread attribution',
-    );
+    assert.ok(checkout.includes('context: checkoutContext'),
+      'saveCheckoutAttempt must persist the resolved checkout context');
   });
 });
 
@@ -252,13 +289,13 @@ describe('checkout service threading', () => {
       'checkout behavior must accept analyticsAttribution');
     assert.ok(src.includes('behavior?.analyticsAttribution'),
       'startCheckout must thread analyticsAttribution into trackCheckoutStart');
-    assert.ok(src.includes('analyticsAttribution?: CheckoutAttribution'),
-      'PendingCheckoutIntent must keep attribution for the post-sign-in resume');
-    assert.ok(src.includes('analyticsAttribution: intent.analyticsAttribution'),
-      'resumePendingCheckout must re-thread the stored attribution');
+    assert.ok(src.includes('checkoutContext?: CheckoutContext'),
+      'PendingCheckoutIntent must keep context for the post-sign-in resume');
+    assert.ok(src.includes('checkoutContext: intent.checkoutContext'),
+      'resumePendingCheckout must re-thread the stored context');
     assert.ok(
-      (src.match(/analyticsAttribution: behavior\?\.analyticsAttribution/g) ?? []).length >= 2,
-      'both pending-intent writes (signed-out AND token-expiry recovery) must carry analyticsAttribution',
+      (src.match(/checkoutContext/g) ?? []).length >= 8,
+      'checkout context must cover tracking, intent, attempt, retry, and recovery',
     );
   });
 });

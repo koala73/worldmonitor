@@ -187,6 +187,21 @@ function createBindings(overrides = {}) {
         panels: { mounted: ['map'], enabled: ['map'] },
       },
     }),
+    listFollowedCountries: async () => ({
+      ok: true,
+      enabled: true,
+      countries: ['DE'],
+      count: 1,
+      access: 'free',
+      limit: 3,
+    }),
+    setCountryFollowed: async (iso2, followed) => ({
+      ok: true,
+      status: 'accepted',
+      iso2,
+      followed,
+      message: 'Followed-country state accepted.',
+    }),
     applyDashboardTabAction: async (action) => (
       action.type === 'list'
         ? {
@@ -548,6 +563,7 @@ describe('WebMCP registry behavioral contract', () => {
         'openCountryBrief',
         'rename_dashboard_tab',
         'select_dashboard_tab',
+        'set_country_followed',
         'set_map_layers',
         'set_map_mode',
         'set_panel_collapsed',
@@ -561,6 +577,7 @@ describe('WebMCP registry behavioral contract', () => {
     let tabCalls = 0;
     let panelCalls = 0;
     let missionCalls = 0;
+    let followedCountryCalls = 0;
     const provider = new FakeWebMcpModelContext();
     const harness = trackedRuntime(provider);
     registerWebMcpTools(createBindings({
@@ -615,6 +632,16 @@ describe('WebMCP registry behavioral contract', () => {
           message: 'Applied.',
         };
       },
+      setCountryFollowed: async () => {
+        followedCountryCalls += 1;
+        return {
+          ok: true,
+          status: 'accepted',
+          iso2: 'DE',
+          followed: true,
+          message: 'Followed-country state accepted.',
+        };
+      },
     }), harness.runtime);
     await settlePromises();
 
@@ -651,6 +678,14 @@ describe('WebMCP registry behavioral contract', () => {
         provider,
         'apply_mission_preset',
         JSON.stringify({ presetId: 'supply-chain-risk' }),
+      ),
+      denial,
+    );
+    assert.deepEqual(
+      await executeRegistered(
+        provider,
+        'set_country_followed',
+        JSON.stringify({ iso2: 'DE', followed: true }),
       ),
       denial,
     );
@@ -695,6 +730,7 @@ describe('WebMCP registry behavioral contract', () => {
     assert.equal(tabCalls, 0, 'persistent dashboard tab tools must not reach their binding');
     assert.equal(panelCalls, 0, 'persistent panel changes must not reach their binding');
     assert.equal(missionCalls, 0, 'persistent mission preset changes must not reach their binding');
+    assert.equal(followedCountryCalls, 0, 'persistent followed-country changes must not reach their binding');
   });
 
   it('runs a dashboard-changing tool when the host omits the target execution signal', async () => {

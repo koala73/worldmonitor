@@ -9,20 +9,15 @@ import {
 import { SITE_VARIANT } from '@/config/variant';
 import { isLayerExecutable, sanitizeLayersForVariant } from '@/config/map-layer-definitions';
 import type { RendererKind, MapVariant } from '@/config/map-layer-definitions';
+import {
+  type MissionPresetId,
+  parseMissionPresetId,
+} from '../../shared/mission-domain';
+
+export type { MissionPresetId } from '../../shared/mission-domain';
 
 export const MISSION_PRESET_STORAGE_KEY = 'worldmonitor-mission-preset-v1';
 export const MISSION_PRESET_DISMISSED_KEY = 'worldmonitor-mission-preset-dismissed-v1';
-
-export type MissionPresetId =
-  | 'crisis-desk'
-  | 'supply-chain-risk'
-  | 'energy-security'
-  | 'osint-newsroom'
-  | 'macro-market-watch'
-  | 'tech-ai-watch'
-  | 'good-news-explorer'
-  | 'nq-day-trader'
-  | 'country-watcher';
 
 export type MissionMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 export type MissionTimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -40,6 +35,8 @@ export interface MissionPreset {
   layers: Array<keyof MapLayers>;
   /** When set, the preset is offered and applicable only on these variants. */
   variants?: string[];
+  /** Explicit layouts for variants where the base mission has no coherent native intersection. */
+  variantOverrides?: Partial<Record<string, Pick<MissionPreset, 'panels' | 'layers'>>>;
 }
 
 export interface AppliedMissionPreset {
@@ -391,11 +388,19 @@ export const MISSION_PRESETS: readonly MissionPreset[] = [
       'outages',
       'natural',
     ],
+    variantOverrides: {
+      happy: {
+        panels: ['map', 'positive-feed', 'progress', 'spotlight', 'species', 'renewable'],
+        layers: ['positiveEvents', 'happiness', 'speciesRecovery', 'renewableInstallations'],
+      },
+    },
   },
 ];
 
 const DYNAMIC_PANEL_PREFIXES = ['cw-', 'mcp-'];
 const MIN_PRESET_PANEL_MATCHES = 2;
+const missionPresetListeners = new Set<(preset: MissionPreset | null) => void>();
+let storageDeniedMissionState: MissionPresetId | null | undefined;
 
 const isDynamicPanel = (key: string): boolean =>
   key === 'runtime-config' || DYNAMIC_PANEL_PREFIXES.some((prefix) => key.startsWith(prefix));
@@ -416,6 +421,13 @@ export function getMissionPreset(id: string | null | undefined): MissionPreset |
   return MISSION_PRESETS.find((preset) => preset.id === id) ?? null;
 }
 
+export function resolveMissionPresetForVariant(
+  preset: MissionPreset,
+  variant: string,
+): Pick<MissionPreset, 'panels' | 'layers'> {
+  return preset.variantOverrides?.[variant] ?? preset;
+}
+
 export function isMissionPresetAvailableForVariant(
   preset: MissionPreset,
   variant: string,
@@ -429,8 +441,12 @@ export function getMissionPresetsForVariant(variant: string = SITE_VARIANT): rea
 }
 
 export function loadStoredMissionPreset(variant: string = SITE_VARIANT): MissionPreset | null {
+  if (storageDeniedMissionState !== undefined) {
+    const preset = storageDeniedMissionState ? getMissionPreset(storageDeniedMissionState) : null;
+    return preset && isMissionPresetAvailableForVariant(preset, variant) ? preset : null;
+  }
   try {
-    const preset = getMissionPreset(localStorage.getItem(MISSION_PRESET_STORAGE_KEY));
+    const preset = getMissionPreset(parseMissionPresetId(localStorage.getItem(MISSION_PRESET_STORAGE_KEY)));
     if (!preset || !isMissionPresetAvailableForVariant(preset, variant)) return null;
     return preset;
   } catch {
@@ -442,18 +458,39 @@ export function saveMissionPreset(id: MissionPresetId): void {
   try {
     localStorage.setItem(MISSION_PRESET_STORAGE_KEY, id);
     localStorage.setItem(MISSION_PRESET_DISMISSED_KEY, '1');
+    storageDeniedMissionState = undefined;
   } catch {
-    // Storage can be unavailable in private mode; preset application still works for this session.
+    storageDeniedMissionState = id;
   }
+  notifyMissionPresetListeners(getMissionPreset(id));
 }
 
 export function clearMissionPreset(): void {
   try {
     localStorage.removeItem(MISSION_PRESET_STORAGE_KEY);
     localStorage.setItem(MISSION_PRESET_DISMISSED_KEY, '1');
+    storageDeniedMissionState = undefined;
   } catch {
-    // Ignore storage failures.
+    storageDeniedMissionState = null;
   }
+  notifyMissionPresetListeners(null);
+}
+
+function notifyMissionPresetListeners(preset: MissionPreset | null): void {
+  for (const listener of missionPresetListeners) {
+    try {
+      listener(preset);
+    } catch {
+      // A consumer cannot interrupt mission application or another consumer.
+    }
+  }
+}
+
+export function onMissionPresetChange(
+  listener: (preset: MissionPreset | null) => void,
+): () => void {
+  missionPresetListeners.add(listener);
+  return () => missionPresetListeners.delete(listener);
 }
 
 export function isMissionPresetPromptDismissed(): boolean {
@@ -484,13 +521,14 @@ export function applyMissionPresetToState(
     throw new Error(`Mission preset ${presetId} is not available on this variant`);
   }
 
+  const resolvedPreset = resolveMissionPresetForVariant(preset, variant);
   const variantPanels = getVariantDefaultPanels(variant);
   const variantPanelSet = new Set(variantPanels);
-  const matchingPresetPanels = preset.panels.filter((key) => key !== 'map' && variantPanelSet.has(key));
+  const matchingPresetPanels = resolvedPreset.panels.filter((key) => key !== 'map' && variantPanelSet.has(key));
   const useVariantDefaultPanels = matchingPresetPanels.length < MIN_PRESET_PANEL_MATCHES;
   const selectedPanels = useVariantDefaultPanels
     ? withMapPanel(variantPanels)
-    : preset.panels.filter((key) => key === 'map' || variantPanelSet.has(key));
+    : resolvedPreset.panels.filter((key) => key === 'map' || variantPanelSet.has(key));
   const selectedPanelSet = new Set(selectedPanels);
   const nextPanelSettings: Record<string, PanelConfig> = {};
   const allKeys = new Set([
@@ -531,7 +569,7 @@ export function applyMissionPresetToState(
   for (const key of Object.keys(candidateLayers) as Array<keyof MapLayers>) {
     candidateLayers[key] = false;
   }
-  for (const key of preset.layers) {
+  for (const key of resolvedPreset.layers) {
     candidateLayers[key] = true;
   }
 

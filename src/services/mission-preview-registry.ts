@@ -25,7 +25,6 @@ export interface MissionPreviewSpec {
   /** Static, shape-only sample — never live premium data (KTD2). */
   renderSample: () => HTMLElement;
 }
-
 const sampleRow = (label: string, value: string, tone?: 'up' | 'down'): HTMLElement =>
   h(
     'div',
@@ -138,4 +137,3 @@ export function syncPanelPreview(
   host.appendChild(preview.getElement());
   previews.set(key, preview);
 }
-

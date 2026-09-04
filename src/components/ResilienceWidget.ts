@@ -5,7 +5,7 @@ import {
   onEntitlementVerificationChange,
 } from '@/services/entitlements';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
-import { loadStoredMissionPreset } from '@/services/mission-presets';
+import { loadStoredMissionPreset, onMissionPresetChange } from '@/services/mission-presets';
 import { trackProPreviewCta, trackProPreviewViewed } from '@/services/analytics';
 import { isProTierResolved } from '@/services/widget-store';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
@@ -58,6 +58,9 @@ export class ResilienceWidget {
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeVerification: (() => void) | null = null;
+  private unsubscribeMission: (() => void) | null = null;
+  private crisisPreviewObserver: IntersectionObserver | null = null;
+  private crisisPreviewFallbackTimer: number | null = null;
   private currentCountryCode: string | null = null;
   private currentData: ResilienceScoreResponse | null = null;
   private loading = false;
@@ -85,6 +88,7 @@ export class ResilienceWidget {
     // isAccessStillResolving. Without this subscription the widget would still
     // hang on the waiting state until some unrelated event forced a re-render.
     this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
+    this.unsubscribeMission = onMissionPresetChange(() => this.render());
 
     this.setCountryCode(countryCode ?? null);
   }
@@ -157,6 +161,9 @@ export class ResilienceWidget {
     this.unsubscribeEntitlement = null;
     this.unsubscribeVerification?.();
     this.unsubscribeVerification = null;
+    this.unsubscribeMission?.();
+    this.unsubscribeMission = null;
+    this.stopCrisisPreviewTracking();
   }
 
   /**
@@ -227,6 +234,7 @@ export class ResilienceWidget {
       ),
       body,
     );
+    this.reconcileCrisisPreviewTracking();
   }
 
   private renderBody(gateReason: PanelGateReason): HTMLElement {
@@ -284,10 +292,6 @@ export class ResilienceWidget {
   }
 
   private renderLocked(gateReason: PanelGateReason): HTMLElement {
-    if (this.isCrisisDeskMissionActive() && !this.crisisDeskPreviewViewedTracked) {
-      this.crisisDeskPreviewViewedTracked = true;
-      trackProPreviewViewed('crisis-desk', 'cii');
-    }
     const description = gateReason === PanelGateReason.ANONYMOUS
       ? 'Sign in to unlock premium resilience scores.'
       : 'Upgrade to Pro to unlock resilience scores.';
@@ -327,6 +331,40 @@ export class ResilienceWidget {
         : [createCheckoutConsentElement(WEB_APP_ORIGIN)]),
       button,
     );
+  }
+
+  private reconcileCrisisPreviewTracking(): void {
+    this.stopCrisisPreviewTracking();
+    if (this.crisisDeskPreviewViewedTracked || !this.isCrisisDeskMissionActive()) return;
+    if (!this.element.querySelector('.resilience-widget__locked')) return;
+
+    const recordView = (): void => {
+      if (this.crisisDeskPreviewViewedTracked) return;
+      if (!this.element.isConnected || !this.isCrisisDeskMissionActive()) return;
+      if (!this.element.querySelector('.resilience-widget__locked')) return;
+      this.crisisDeskPreviewViewedTracked = true;
+      this.stopCrisisPreviewTracking();
+      trackProPreviewViewed('crisis-desk', 'cii');
+    };
+
+    if (typeof IntersectionObserver === 'undefined') {
+      this.crisisPreviewFallbackTimer = window.setTimeout(recordView, 0);
+      return;
+    }
+
+    this.crisisPreviewObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) recordView();
+    }, { threshold: 0.3 });
+    this.crisisPreviewObserver.observe(this.element);
+  }
+
+  private stopCrisisPreviewTracking(): void {
+    this.crisisPreviewObserver?.disconnect();
+    this.crisisPreviewObserver = null;
+    if (this.crisisPreviewFallbackTimer !== null) {
+      window.clearTimeout(this.crisisPreviewFallbackTimer);
+      this.crisisPreviewFallbackTimer = null;
+    }
   }
 
   private async showAuthUnavailable(): Promise<void> {

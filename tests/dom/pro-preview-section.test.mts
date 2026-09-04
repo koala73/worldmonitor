@@ -27,6 +27,8 @@ const openUpgradeCheckout = vi.fn(async () => {});
 const unsubAuth = vi.fn();
 const unsubEnt = vi.fn();
 const unsubVer = vi.fn();
+const unsubBilling = vi.fn();
+const billingListeners: Array<() => void> = [];
 
 vi.mock('@/services/auth-state', () => ({
   getAuthState: () => state.auth,
@@ -45,6 +47,12 @@ vi.mock('@/services/panel-gating', () => ({
   getPanelGateReason: () => state.gateReason,
   resolveBillingAwareGateReason: (reason: string) =>
     state.billingRefined ? 'PAYMENT_ON_HOLD' : reason,
+}));
+vi.mock('@/services/billing', () => ({
+  onSubscriptionChange: (listener: () => void) => {
+    billingListeners.push(listener);
+    return unsubBilling;
+  },
 }));
 vi.mock('@/services/analytics', () => analytics);
 vi.mock('@/services/upgrade-flow', () => ({ openUpgradeCheckout }));
@@ -86,9 +94,11 @@ function intersectAll(): void {
 }
 
 beforeEach(() => {
+  vi.restoreAllMocks();
   localStorage.clear();
   vi.clearAllMocks();
   ioInstances.length = 0;
+  billingListeners.length = 0;
   vi.stubGlobal('IntersectionObserver', class {
     private entry: { cb: IntersectionObserverCallback; targets: Element[] };
     constructor(cb: IntersectionObserverCallback) {
@@ -191,6 +201,17 @@ describe('billing limbo (#4771)', () => {
     expect(el.textContent).not.toContain('Upgrade');
     expect(analytics.trackProPreviewViewed).not.toHaveBeenCalled();
   });
+
+  it('reacts when billing changes without an entitlement event', () => {
+    const section = makeSection();
+    expect(section.getElement().hidden).toBe(false);
+
+    state.billingRefined = true;
+    for (const listener of [...billingListeners]) listener();
+
+    expect(section.getElement().hidden).toBe(true);
+    expect(section.getElement().textContent).not.toContain('Upgrade');
+  });
 });
 
 describe('teardown', () => {
@@ -202,6 +223,7 @@ describe('teardown', () => {
     expect(unsubAuth).toHaveBeenCalledOnce();
     expect(unsubEnt).toHaveBeenCalledOnce();
     expect(unsubVer).toHaveBeenCalledOnce();
+    expect(unsubBilling).toHaveBeenCalledOnce();
     expect(host.childElementCount).toBe(0);
   });
 });
@@ -223,5 +245,18 @@ describe('dismissal (R8)', () => {
     expect(reopen).not.toBeNull();
     reopen.click();
     expect(el.querySelector('.pro-preview__cta')?.textContent).toBe('Upgrade to Pro');
+  });
+
+  it('keeps dismiss and reopen decisions when storage writes fail', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new Error('blocked');
+    });
+    const section = makeSection();
+
+    (section.getElement().querySelector('.pro-preview__dismiss') as HTMLButtonElement).click();
+    expect(section.getElement().querySelector('.pro-preview__reopen')).not.toBeNull();
+
+    (section.getElement().querySelector('.pro-preview__reopen') as HTMLButtonElement).click();
+    expect(section.getElement().querySelector('.pro-preview__cta')).not.toBeNull();
   });
 });

@@ -19,6 +19,7 @@ import {
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { createCheckoutConsentElement } from '@/utils/legal-links';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
+import { onSubscriptionChange } from '@/services/billing';
 
 /**
  * The shared in-panel Pro preview (plan U4, R7-R9): a static sample of the
@@ -43,6 +44,7 @@ export interface ProPreviewProps extends MissionPreviewSpec {
 }
 
 const DISMISSED_KEY = 'worldmonitor-pro-preview-dismissed-v1';
+const previewDismissalOverrides = new Map<string, boolean>();
 
 function readDismissed(): Record<string, true> {
   try {
@@ -55,18 +57,20 @@ function readDismissed(): Record<string, true> {
 }
 
 function isPreviewDismissed(previewId: string): boolean {
+  const override = previewDismissalOverrides.get(previewId);
+  if (override !== undefined) return override;
   return readDismissed()[previewId] === true;
 }
 
 function setPreviewDismissed(previewId: string, dismissed: boolean): void {
+  previewDismissalOverrides.set(previewId, dismissed);
   try {
     const all = readDismissed();
     if (dismissed) all[previewId] = true;
     else delete all[previewId];
     localStorage.setItem(DISMISSED_KEY, JSON.stringify(all));
-  } catch {
-    // Storage denied — dismissal lasts for this page only.
-  }
+    previewDismissalOverrides.delete(previewId);
+  } catch {}
 }
 
 type PreviewState = 'resolving' | 'degraded' | 'entitled' | 'anonymous' | 'preview' | 'dismissed';
@@ -80,6 +84,7 @@ export class ProPreviewSection {
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeVerification: (() => void) | null = null;
+  private unsubscribeSubscription: (() => void) | null = null;
 
   constructor(props: ProPreviewProps) {
     this.props = props;
@@ -94,6 +99,7 @@ export class ProPreviewSection {
       this.render();
     });
     this.unsubscribeEntitlement = onEntitlementChange(() => this.render());
+    this.unsubscribeSubscription = onSubscriptionChange(() => this.render());
     // The terminal "no snapshot is coming" verdict arrives ONLY on this
     // channel (see ResilienceWidget's identical trio of subscriptions).
     this.unsubscribeVerification = onEntitlementVerificationChange(() => this.render());
@@ -112,9 +118,11 @@ export class ProPreviewSection {
     this.unsubscribeAuth?.();
     this.unsubscribeEntitlement?.();
     this.unsubscribeVerification?.();
+    this.unsubscribeSubscription?.();
     this.unsubscribeAuth = null;
     this.unsubscribeEntitlement = null;
     this.unsubscribeVerification = null;
+    this.unsubscribeSubscription = null;
     this.viewedObserver?.disconnect();
     this.viewedObserver = null;
     this.element.remove();
@@ -146,6 +154,7 @@ export class ProPreviewSection {
     const state = this.resolveState();
 
     if (state === 'resolving' || state === 'degraded' || state === 'entitled') {
+      this.stopViewedTracking();
       this.element.hidden = true;
       replaceChildren(this.element);
       return;
@@ -154,6 +163,7 @@ export class ProPreviewSection {
     this.element.hidden = false;
 
     if (state === 'dismissed') {
+      this.stopViewedTracking();
       replaceChildren(this.element, this.renderReopenChip());
       return;
     }
@@ -184,6 +194,11 @@ export class ProPreviewSection {
       trackProPreviewViewed(this.props.missionId, this.props.panelKey);
     }, { threshold: 0.3 });
     this.viewedObserver.observe(this.element);
+  }
+
+  private stopViewedTracking(): void {
+    this.viewedObserver?.disconnect();
+    this.viewedObserver = null;
   }
 
   private renderPreviewBody(anonymous: boolean): HTMLElement[] {

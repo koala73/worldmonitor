@@ -267,7 +267,7 @@ describe('closed-vocabulary bucketing', () => {
     );
   });
 
-  it('pins the duplicated mission vocabulary against mission-presets (no drift)', async () => {
+  it('pins the shared mission vocabulary against mission-presets', async () => {
     const analytics = await import('../src/services/analytics.ts');
     const presets = await import('../src/services/mission-presets.ts');
     // Every real preset id must pass the analytics bucket unchanged...
@@ -275,20 +275,13 @@ describe('closed-vocabulary bucketing', () => {
       assert.equal(analytics.bucketMissionIdForAnalytics(preset.id), preset.id,
         `analytics KNOWN_MISSION_IDS is missing '${preset.id}' — update the duplicated vocabulary`);
     }
-    // ...and the duplicated set must not keep ids the catalog dropped.
-    const src = read('src/services/analytics.ts');
-    const block = src.match(/KNOWN_MISSION_IDS = new Set\(\[([^\]]+)\]\)/)?.[1] ?? '';
-    assert.ok(block, 'KNOWN_MISSION_IDS declaration not found — a reformat made this guard vacuous');
-    const analyticsIds = [...block.matchAll(/'([^']+)'/g)].map((m) => m[1]);
-    assert.ok(
-      analyticsIds.length >= presets.MISSION_PRESETS.length,
-      'extracted fewer ids than the catalog holds — the extraction regex no longer matches the declaration',
-    );
+    const domain = await import('../shared/mission-domain.ts');
+    const analyticsIds = [...domain.MISSION_PRESET_IDS];
     const catalogIds = new Set(presets.MISSION_PRESETS.map((preset) => preset.id));
     for (const id of analyticsIds) {
       assert.ok(catalogIds.has(id as never), `analytics keeps dropped mission id '${id}'`);
     }
-    // The duplicated storage key must match the mission-presets export.
+    const src = read('src/services/analytics.ts');
     assert.ok(src.includes(`MISSION_PRESET_STORAGE_KEY = '${presets.MISSION_PRESET_STORAGE_KEY}'`),
       'analytics mission storage key drifted from mission-presets');
   });

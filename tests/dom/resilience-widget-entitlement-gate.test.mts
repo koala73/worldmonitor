@@ -30,6 +30,11 @@ const entitlementListeners: Array<(state: unknown) => void> = [];
 const verificationListeners: Array<(status: string) => void> = [];
 let entitlementUnsubscribed = 0;
 let verificationUnsubscribed = 0;
+let missionUnsubscribed = 0;
+let activeMission: string | null = null;
+const missionListeners: Array<(preset: { id: string } | null) => void> = [];
+const trackProPreviewViewed = vi.fn();
+const visibilityObservers: Array<{ callback: IntersectionObserverCallback; targets: Element[] }> = [];
 
 vi.mock('@/services/auth-state', () => ({
   getAuthState: () => session,
@@ -92,6 +97,23 @@ vi.mock('@/services/billing', () => ({
   prereserveBillingPortalTab: () => {},
 }));
 
+vi.mock('@/services/mission-presets', () => ({
+  loadStoredMissionPreset: () => activeMission ? { id: activeMission } : null,
+  onMissionPresetChange: (listener: (preset: { id: string } | null) => void) => {
+    missionListeners.push(listener);
+    return () => {
+      missionUnsubscribed++;
+      const index = missionListeners.indexOf(listener);
+      if (index >= 0) missionListeners.splice(index, 1);
+    };
+  },
+}));
+
+vi.mock('@/services/analytics', () => ({
+  trackProPreviewCta: vi.fn(),
+  trackProPreviewViewed,
+}));
+
 vi.mock('@/services/runtime-config', () => ({
   getSecretState: () => ({ present: false, valid: false, source: 'missing' }),
 }));
@@ -141,6 +163,21 @@ beforeEach(() => {
   verificationListeners.length = 0;
   entitlementUnsubscribed = 0;
   verificationUnsubscribed = 0;
+  missionUnsubscribed = 0;
+  activeMission = null;
+  missionListeners.length = 0;
+  visibilityObservers.length = 0;
+  trackProPreviewViewed.mockClear();
+  vi.stubGlobal('IntersectionObserver', class {
+    private readonly entry: { callback: IntersectionObserverCallback; targets: Element[] };
+    constructor(callback: IntersectionObserverCallback) {
+      this.entry = { callback, targets: [] };
+      visibilityObservers.push(this.entry);
+    }
+    observe(target: Element) { this.entry.targets.push(target); }
+    disconnect() { this.entry.targets.length = 0; }
+    unobserve() {}
+  });
   getResilienceScore.mockClear();
   document.body.replaceChildren();
 });
@@ -164,6 +201,21 @@ function emitEntitlement(tier: number | null): void {
 function emitVerificationUnavailable(): void {
   verificationStatus = 'unavailable';
   for (const listener of [...verificationListeners]) listener(verificationStatus);
+}
+
+function emitMission(missionId: string | null): void {
+  activeMission = missionId;
+  const preset = missionId ? { id: missionId } : null;
+  for (const listener of [...missionListeners]) listener(preset);
+}
+
+function intersectVisible(): void {
+  for (const observer of visibilityObservers) {
+    observer.callback(
+      observer.targets.map((target) => ({ isIntersecting: true, target }) as IntersectionObserverEntry),
+      {} as IntersectionObserver,
+    );
+  }
 }
 
 function upgradeCta(root: HTMLElement): HTMLElement | null {
@@ -241,6 +293,37 @@ describe('ResilienceWidget entitlement gate (WORLDMONITOR-NY)', () => {
 
     expect(entitlementUnsubscribed).toBe(1);
     expect(verificationUnsubscribed).toBe(1);
+    expect(missionUnsubscribed).toBe(1);
+  });
+
+  it('tracks a crisis preview only after a same-tab mission switch and viewport entry', () => {
+    const widget = new ResilienceWidget('US');
+    document.body.appendChild(widget.getElement());
+    emitAuth(PAYING_USER);
+    emitEntitlement(0);
+
+    expect(trackProPreviewViewed).not.toHaveBeenCalled();
+    emitMission('crisis-desk');
+    expect(trackProPreviewViewed).not.toHaveBeenCalled();
+    intersectVisible();
+
+    expect(trackProPreviewViewed).toHaveBeenCalledOnce();
+    expect(trackProPreviewViewed).toHaveBeenCalledWith('crisis-desk', 'cii');
+    widget.destroy();
+  });
+
+  it('does not count a queued intersection after the mission switches away', () => {
+    const widget = new ResilienceWidget('US');
+    document.body.appendChild(widget.getElement());
+    emitAuth(PAYING_USER);
+    emitEntitlement(0);
+    emitMission('crisis-desk');
+    emitMission('country-watcher');
+
+    intersectVisible();
+
+    expect(trackProPreviewViewed).not.toHaveBeenCalled();
+    widget.destroy();
   });
 
   // A snapshot that never arrives is NOT the same as one that is still coming.

@@ -1,4 +1,5 @@
 import type { CheckoutAttribution } from './analytics';
+import { buildAttributedProUrl } from '../../shared/checkout-attribution';
 
 /**
  * The one upgrade path every locked/preview CTA routes through. Desktop
@@ -16,7 +17,11 @@ export async function openUpgradeCheckout(attribution?: CheckoutAttribution): Pr
 
   if (isDesktopRuntime()) {
     const { openExternalUrl } = await import('@/services/external-navigation');
-    await openExternalUrl('https://worldmonitor.app/pro');
+    await openExternalUrl(buildAttributedProUrl(
+      'https://worldmonitor.app/pro',
+      attribution,
+      { desktopHandoff: true },
+    ));
     return;
   }
 
@@ -29,6 +34,10 @@ export async function openUpgradeCheckout(attribution?: CheckoutAttribution): Pr
         : undefined,
     ))
     .catch(() => {
-      window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
+      window.open(
+        buildAttributedProUrl('https://worldmonitor.app/pro', attribution),
+        '_blank',
+        'noopener,noreferrer',
+      );
     });
 }

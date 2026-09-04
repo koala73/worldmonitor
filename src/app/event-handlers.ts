@@ -415,13 +415,6 @@ export class EventHandlerManager implements AppModule {
    * closing those panels still uses the dedicated confirm-and-delete handlers.
    */
   setPanelEnabledById(panelId: unknown, enabled: unknown): SetPanelEnabledResult {
-    // WebMCP-only entry: an agent enabling a panel mounts it (and possibly a
-    // mission preview) without any human intent — suppress the resulting
-    // panel-viewed / pro-preview-viewed records, same rule as agent mission
-    // applies and search flows.
-    if (typeof panelId === 'string' && enabled === true) {
-      suppressNextAgentPanelView(panelId);
-    }
     const isPro = hasPremiumAccess(getAuthState());
     return applySetPanelEnabled(
       {
@@ -437,6 +430,9 @@ export class EventHandlerManager implements AppModule {
         persist: (settings) => saveToStorage(STORAGE_KEYS.panels, settings),
         applyPanelSettings: () => this.applyPanelSettings(),
         trackToggle: trackPanelToggled,
+        beforeApply: (committedPanelId, committedEnabled) => {
+          if (committedEnabled) suppressNextAgentPanelView(committedPanelId);
+        },
         showCapToast: () => showToast(
           t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }),
         ),

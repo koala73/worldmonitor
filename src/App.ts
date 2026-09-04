@@ -254,7 +254,13 @@ import { initSubscriptionWatch, destroySubscriptionWatch } from '@/services/bill
 import {
   FREE_TIER_FOLLOW_LIMIT,
   WM_FOLLOWED_COUNTRIES_CAP_DROP,
+  addCountry,
+  getFollowed,
   installFollowedCountriesAuthListener,
+  isFollowFeatureEnabled,
+  isFollowed,
+  removeCountry,
+  serviceEntitlementState,
 } from '@/services/followed-countries';
 import {
   capturePendingCheckoutIntentFromUrl,
@@ -2154,6 +2160,109 @@ export class App {
           SITE_VARIANT,
           () => this.eventHandlers.openMissionPresetPickerForWebMcp(),
         );
+      },
+      listFollowedCountries: async (execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        const access = serviceEntitlementState();
+        const countries = getFollowed();
+        return {
+          ok: true,
+          enabled: isFollowFeatureEnabled(),
+          countries,
+          count: countries.length,
+          access,
+          limit: access === 'free' ? FREE_TIER_FOLLOW_LIMIT : null,
+        };
+      },
+      setCountryFollowed: async (iso2, followed, execution) => {
+        await this.waitForDashboardReady(false, execution?.signal);
+        throwIfWebMcpAborted(execution?.signal);
+        if (this.state.isDestroyed) {
+          throw new DashboardBindingError('app_destroyed', 'Dashboard is no longer available.');
+        }
+        if (typeof followed !== 'boolean') {
+          return {
+            ok: false,
+            status: 'invalid',
+            reason: 'malformed_arguments',
+            message: 'followed must be a boolean.',
+          };
+        }
+        const code = typeof iso2 === 'string' ? iso2.trim().toUpperCase() : '';
+        const wasFollowed = isFollowed(code);
+        const result = await (followed ? addCountry(code) : removeCountry(code));
+        throwIfWebMcpAborted(execution?.signal);
+        if (result.ok) {
+          return {
+            ok: true,
+            status: wasFollowed === followed ? 'unchanged' : 'accepted',
+            iso2: code,
+            followed,
+            message: wasFollowed === followed
+              ? `Country ${code} already has the requested followed state.`
+              : `Country ${code} followed state change was accepted.`,
+          };
+        }
+        switch (result.reason) {
+          case 'INVALID_INPUT':
+            return {
+              ok: false,
+              status: 'invalid',
+              reason: 'invalid_country',
+              followed,
+              message: 'iso2 must identify a supported country.',
+            };
+          case 'FREE_CAP':
+            return {
+              ok: false,
+              status: 'denied',
+              iso2: code,
+              followed,
+              reason: 'free_cap',
+              limit: result.limit ?? FREE_TIER_FOLLOW_LIMIT,
+              message: 'The free followed-country limit is already in use.',
+            };
+          case 'ENTITLEMENT_LOADING':
+            return {
+              ok: false,
+              status: 'denied',
+              iso2: code,
+              followed,
+              reason: 'entitlement_loading',
+              message: 'Account access is still loading. Try again after it settles.',
+            };
+          case 'HANDOFF_PENDING':
+            return {
+              ok: false,
+              status: 'denied',
+              iso2: code,
+              followed,
+              reason: 'handoff_pending',
+              message: 'Followed-country state is still syncing. Try again after it settles.',
+            };
+          case 'STORAGE_FULL':
+            return {
+              ok: false,
+              status: 'denied',
+              iso2: code,
+              followed,
+              reason: 'storage_full',
+              message: 'The browser could not save the followed-country state.',
+            };
+          case 'DISABLED':
+            return {
+              ok: false,
+              status: 'denied',
+              iso2: code,
+              followed,
+              reason: 'disabled',
+              message: 'Followed countries are not available on this dashboard.',
+            };
+        }
       },
       getPanelLayout: async (execution) => {
         await this.waitForDashboardReady(false, execution?.signal);
