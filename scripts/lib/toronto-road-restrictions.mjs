@@ -123,9 +123,9 @@ export function parseGeoPolyline(value) {
     const out = [];
     for (const point of value) {
       if (Array.isArray(point) && point.length >= 2) {
-        const lon = Number(point[0]);
-        const lat = Number(point[1]);
-        if (Number.isFinite(lon) && Number.isFinite(lat)) out.push([lon, lat]);
+        const lon = finiteCoord(point[0]);
+        const lat = finiteCoord(point[1], 90);
+        if (lon != null && lat != null) out.push([lon, lat]);
       } else if (typeof point === 'string') {
         out.push(...parseGeoPolyline(point));
       }
@@ -139,13 +139,14 @@ export function parseGeoPolyline(value) {
     const re = /\[\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*\]/g;
     let match;
     while ((match = re.exec(trimmed))) {
-      const lon = Number(match[1]);
-      const lat = Number(match[2]);
-      if (Number.isFinite(lon) && Number.isFinite(lat)) pairs.push([lon, lat]);
+      const lon = finiteCoord(match[1]);
+      const lat = finiteCoord(match[2], 90);
+      if (lon != null && lat != null) pairs.push([lon, lat]);
     }
     return pairs;
   }
-  return decodeEncodedPolyline(trimmed);
+  return decodeEncodedPolyline(trimmed)
+    .filter(([lon, lat]) => finiteCoord(lon) != null && finiteCoord(lat, 90) != null);
 }
 
 export function downsamplePath(path) {
@@ -171,10 +172,11 @@ export function centroidOfPath(path) {
   return [lon / path.length, lat / path.length];
 }
 
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
+function finiteCoord(value, limit = 180) {
+  if (typeof value !== 'number'
+    && !(typeof value === 'string' && value.trim() !== '')) return null;
   const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) && n >= -limit && n <= limit ? n : null;
 }
 
 function textOf(...values) {
@@ -205,7 +207,7 @@ function severityOf(item, { isFullClosure, type } = {}) {
 
 export function normalizeTorontoRoadRecord(item) {
   const type = restrictionType(item);
-  const lat = finiteCoord(item?.latitude ?? item?.Latitude ?? item?.lat);
+  const lat = finiteCoord(item?.latitude ?? item?.Latitude ?? item?.lat, 90);
   const lon = finiteCoord(item?.longitude ?? item?.Longitude ?? item?.lon ?? item?.lng);
   const decoded = parseGeoPolyline(
     item?.geoPolyline ?? item?.GeoPolyline ?? item?.EncodedPolyline ?? item?.encodedPolyline,
