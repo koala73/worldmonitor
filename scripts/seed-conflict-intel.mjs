@@ -106,6 +106,19 @@ export const HAPI_FAILURE_BACKOFF_MS = 2 * 60 * 60 * 1000;
 const HAPI_FAILURE_BACKOFF_KEY = 'conflict:humanitarian:hapi-backoff:v1';
 const HAPI_REQUEST_TIMEOUT_MS = 15_000;
 const HAPI_REQUEST_DELAY_MS = 1_100;
+// #7656: wall-clock budget for the last-resort per-country fan-out, in the same
+// "a request may not LAUNCH after the cutoff" shape as GDELT_SWEEP_BUDGET_MS.
+// Without it the two global sweeps (each ≤ HAPI_MAX_PAGES × HAPI_REQUEST_TIMEOUT_MS
+// = 75s) could be followed by 23 sequential per-country requests — 23 × 15s plus
+// 22 × 1.1s pacing ≈ 369s — for a 519s direct route, well past the 315s envelope
+// the whole fetch-deadline model is anchored on. Elapsed is measured from
+// fetchAllHumanitarianSummaries ENTRY, matching fetchAll's own documented anchor,
+// so slow sweeps SHRINK this window instead of stacking on top of it: the direct
+// route is bounded by max(150s sweeps, 140s budget) + one 15s in-flight request
+// = 165s. seed-fetch-deadline-budget-invariants models the looser 150 + 140 + 15
+// = 305s ≤ 315s on purpose — an invariant that cannot understate reality is the
+// one worth asserting, and it still fails if this constant grows past 150s.
+export const HAPI_FALLBACK_BUDGET_MS = 140_000;
 const PIZZINT_TTL = 600;
 
 export const CONFLICT_COUNTRIES = [
@@ -175,17 +188,21 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // auxiliary stage, not after the sweep, and re-derive as follows. Direct route:
 // each sweep costs at most HAPI_MAX_PAGES(5) × HAPI_REQUEST_TIMEOUT_MS(15s) = 75s,
 // so ≤150s, and the per-country fallback below now iterates ZERO countries because
-// the two sweeps are upstream-disjoint and jointly cover every published country.
+// the two sweeps are upstream-disjoint and jointly cover every published country —
+// and is wall-clock capped by HAPI_FALLBACK_BUDGET_MS when it does iterate.
 // Bot-block route: a 15s API rejection plus 60s HDX metadata and, only at the
 // January boundary, at most two 120s annual snapshot downloads — the same ≤315s
 // bound as before, because that ONE memoized snapshot serves both sweeps and the
 // fallback rather than being paid per request. Degenerate route (both sweeps miss
-// a required country): the retained fallback adds at most 23 × (15s timeout +
-// 1.1s pacing) ≈ 370s on top of the 150s sweeps ≈ 520s. All three remain under
-// ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
-// below. What this replaced was a fan-out paid on EVERY run — 6 missing countries
-// ≈ 97s, and ≈290s once the 13 HRP countries that publish only admin-2 rows were
-// added to the required set (re-verified #5554 review; HAPI_COUNTRIES is 38).
+// a required country): the retained fallback is capped by HAPI_FALLBACK_BUDGET_MS
+// measured from this function's entry, so the sweeps and the fan-out SHARE that
+// window rather than stacking — max(150s, 140s) + one 15s in-flight request =
+// 165s (#7656; unbounded it was 150s + 369s = 519s, which broke the anchor).
+// All three remain under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline
+// (lockTtlMs+120s) below. What this replaced was a fan-out paid on EVERY run —
+// 6 missing countries ≈ 97s, and ≈290s once the 13 HRP countries that publish
+// only admin-2 rows were added to the required set (re-verified #5554 review;
+// HAPI_COUNTRIES is 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
 // Cold-start floor for the bulk-primary path (#5849 review): only consulted
 // on a TRUE cold start (no previous snapshot of any kind — #5855 review). Kept
@@ -777,6 +794,11 @@ async function fetchHapiRows({
 export async function fetchAllHumanitarianSummaries({
   fetchFn = (...args) => globalThis.fetch(...args),
   now = Date.now,
+  // `now` is the DATA clock — tests pin it to a fixed date so request URLs and
+  // reference periods stay stable — so elapsed time needs its own reader. It
+  // defaults to the MONOTONIC clock rather than Date.now: a mid-run NTP step
+  // must not hand the fan-out below a budget it has not actually spent.
+  readElapsedMs = () => performance.now(),
   pace = sleep,
   countryCodes = HAPI_COUNTRIES,
   requiredCountryCodes = countryCodes === HAPI_COUNTRIES ? HAPI_REQUIRED_COUNTRIES : countryCodes,
@@ -796,6 +818,7 @@ export async function fetchAllHumanitarianSummaries({
   preserveLastGood = defaultPreserveHapiLastGood,
 } = {}) {
   const nowMs = now();
+  const startedAtMs = readElapsedMs();
   const failureBackoff = await loadFailureBackoff().catch((error) => {
     console.warn(`  HAPI backoff read failed: ${error.message}`);
     return null;
@@ -924,6 +947,18 @@ export async function fetchAllHumanitarianSummaries({
     let fallbackRows = 0;
     for (let i = 0; i < missingCountries.length; i += 1) {
       const countryCode = missingCountries[i];
+      // Snapshot-backed iterations issue no network request — they filter rows
+      // already in memory — so they are not what this budget bounds, and gating
+      // them would disable the net exactly when the bot-block route needs it.
+      if (!useSnapshot && readElapsedMs() - startedAtMs >= HAPI_FALLBACK_BUDGET_MS) {
+        const skipped = missingCountries.slice(i);
+        fallbackFailure = Object.assign(
+          new Error(`fallback budget exhausted with ${skipped.length} required countries unattempted`),
+          { reasonCode: 'HAPI_FALLBACK_BUDGET_EXHAUSTED' },
+        );
+        console.warn(`  HAPI fallback budget exhausted after ${i}/${missingCountries.length} countries — skipped ${skipped.join(', ')}`);
+        break;
+      }
       try {
         const rows = await fetchRows({
           nowMs,

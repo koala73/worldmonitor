@@ -502,6 +502,50 @@ test('HAPI ingestion keeps the per-country fallback for targets neither sweep co
   assert.equal(result.SD.summary.conflictEventsTotal, 12);
 });
 
+test('the per-country fallback stops LAUNCHING once its wall-clock budget is spent', async () => {
+  // #7656: unbounded, this loop could add 23 × 15s behind two 75s sweeps and blow
+  // the 315s envelope the fetch-deadline model is anchored on. Each per-country
+  // request here burns 70s of the 140s budget, so exactly two may launch.
+  const requested = [];
+  let elapsedMs = 0;
+  let backoff;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    readElapsedMs: () => elapsedMs,
+    countryCodes: ['SD', 'UA', 'IR', 'IL', 'YE'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async () => assert.fail('partial coverage must not publish SEED_ERROR'),
+    preserveLastGood: async () => { preserved += 1; },
+    fetchFn: async (url) => {
+      const parsed = new URL(url);
+      const locationCode = parsed.searchParams.get('location_code');
+      if (!locationCode) {
+        // Only Sudan comes back from the sweeps; the rest fall to the fan-out.
+        const data = parsed.searchParams.get('admin_level') === '0'
+          ? [hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 })]
+          : [];
+        return new Response(JSON.stringify({ data }), { status: 200 });
+      }
+      requested.push(locationCode);
+      elapsedMs += 70_000;
+      return new Response(JSON.stringify({
+        data: [hapiRow(locationCode, { admin_level: 1, events: 5, fatalities: 1 })],
+      }), { status: 200 });
+    },
+  });
+
+  assert.deepEqual(requested, ['UKR', 'IRN'], 'the third launch is over budget and must never be issued');
+  assert.deepEqual(Object.keys(result).sort(), ['IR', 'SD', 'UA'], 'countries already covered must still publish');
+  assert.equal(backoff.reasonCode, 'HAPI_FALLBACK_BUDGET_EXHAUSTED');
+  assert.equal(backoff.status, 0, 'a budget cut has no provider status to record');
+  assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+  assert.equal(preserved, 1, 'partial coverage must preserve last-good rather than pass as complete');
+});
+
 test('the HDX snapshot fallback serves the subnational sweep instead of returning nothing', async () => {
   // fetchRowsFromSnapshot filters on row.admin_level, so a bot-blocked run must
   // still hand the admin-2 sweep its rows out of the ONE memoized download.

@@ -82,6 +82,7 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
       GDELT_SWEEP_BUDGET_MS,
       GDELT_COUNTRY_FETCH_OPTS,
       ACLED_INTEL_LOCK_TTL_MS,
+      HAPI_FALLBACK_BUDGET_MS,
     } = await import('../scripts/seed-conflict-intel.mjs');
     const {
       HAPI_HDX_METADATA_TIMEOUT_MS,
@@ -113,13 +114,21 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
       + HAPI_HDX_METADATA_TIMEOUT_MS
       + 2 * HAPI_HDX_SNAPSHOT_TIMEOUT_MS;
     // Pure-direct route (no bot block): the admin-0 and admin-2 global sweeps each
-    // page up to HAPI_MAX_PAGES. That budget was raised for the ~13.8k-row
-    // subnational sweep, and it must not push the direct route past the snapshot
-    // route the max() above is anchored on — otherwise this model understates.
+    // page up to HAPI_MAX_PAGES, and the per-country fallback runs BEHIND them.
+    // #7656 shipped the sweeps while modelling only the sweeps, so an unbounded
+    // fan-out (23 × 15s + 22 × 1.1s ≈ 369s) sat outside this envelope and pushed
+    // the real direct route to 519s. Model all three terms: the sweeps, the
+    // fallback's launch budget, and the one request that may already be in flight
+    // when that budget expires. The seeder measures the budget from its own entry,
+    // so the sweeps and the fan-out actually SHARE the window and the true bound is
+    // tighter than this; summing them is deliberate — an invariant that cannot
+    // understate reality is the one worth asserting.
     const HAPI_GLOBAL_SWEEPS = 2;
-    const HAPI_DIRECT_WORST_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS;
+    const HAPI_DIRECT_WORST_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS
+      + HAPI_FALLBACK_BUDGET_MS
+      + HAPI_DIRECT_REQUEST_MS;
     assert.ok(HAPI_DIRECT_WORST_MS <= HAPI_WORST_MS,
-      `direct sweeps ${HAPI_DIRECT_WORST_MS}ms must stay inside the ${HAPI_WORST_MS}ms bot-block bound this model is anchored on`);
+      `direct route ${HAPI_DIRECT_WORST_MS}ms (sweeps + fallback budget + one in-flight request) must stay inside the ${HAPI_WORST_MS}ms bot-block bound this model is anchored on`);
 
     const EXTRA_KEY_WRITE_SLACK_MS = 30_000;
     const worstFetchAttempt = Math.max(HAPI_WORST_MS, GDELT_SWEEP_BUDGET_MS + worstBatch)
