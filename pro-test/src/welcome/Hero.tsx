@@ -11,7 +11,7 @@ import {
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from '../assets/dashboard-screenshot';
 import { SILICON_CANALS_2M_URL } from '../../../shared/press';
-import productFacts from '../../../shared/product-facts.generated.json';
+import heroProofStats from '../generated/hero-stats.json';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
 
@@ -19,14 +19,14 @@ const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(10
 // scripts/generate-public-product-facts.mjs), never hardcoded adjectives.
 // Labels stay in locale files; numerals bypass i18n because they are universal.
 const HERO_PROOF_STATS = [
-  { value: String(productFacts.heroProofStats.mapLayers), labelKey: 'welcome.depth.s1l' },
-  { value: String(productFacts.heroProofStats.feeds), labelKey: 'welcome.depth.s2l' },
+  { value: String(heroProofStats.mapLayers), labelKey: 'welcome.depth.s1l' },
+  { value: String(heroProofStats.feeds), labelKey: 'welcome.depth.s2l' },
   {
-    value: String(productFacts.heroProofStats.providers),
+    value: String(heroProofStats.providers),
     labelKey: 'welcome.depth.s3l',
     href: '/sources/?utm_source=welcome-hero',
   },
-  { value: String(productFacts.heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
+  { value: String(heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
 ] as const;
 
 const HeroProofRail = () => (

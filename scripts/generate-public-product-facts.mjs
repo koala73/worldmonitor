@@ -176,6 +176,9 @@ const catalogBundle = {
 
 emit('shared/product-facts.generated.json', json(facts));
 emit('scripts/shared/product-facts.generated.json', json(facts));
+// Slim homepage proof numerals. Hero.tsx imports this file — not the full
+// facts bundle — so the welcome JS payload grows by bytes, not kilobytes.
+emit('pro-test/src/generated/hero-stats.json', json(facts.heroProofStats));
 emit('shared/product-catalog.generated.json', json(catalogBundle));
 emit('scripts/shared/product-catalog.generated.json', json(catalogBundle));
 
