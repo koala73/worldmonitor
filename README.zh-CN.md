@@ -52,6 +52,7 @@
 
 - **精选新闻源**，覆盖全球和区域类别，并由 AI 综合生成简报
 - **双地图引擎** — 3D 地球仪（globe.gl）和 WebGL 平面地图（deck.gl），使用共享地图图层目录
+- **面板清单** — 涵盖各个专业变体的具体面板实现
 - **跨信息流关联** — 汇聚军事、经济、灾害和升级信号
 - **国家不稳定指数（CII）** — 面向一级国家注册表的服务器权威 CII v8 压力评分
 - **金融雷达** — 证券交易所、大宗商品、加密货币，以及市场综合指标
@@ -124,6 +125,7 @@ npm run dev:energy     # energy.worldmonitor.app
 World Monitor 同时为智能体、脚本和浏览器而构建：
 
 - **MCP Server** — `https://worldmonitor.app/mcp`（Streamable HTTP）。公开提供 `tools/list`；`tools/call` 通过 `X-WorldMonitor-Key` 请求头或 OAuth 进行身份验证。
+  服务端还通过起草阶段的 `io.modelcontextprotocol/skills` 扩展发布其智能体技能（支持 `skills/list`、`skills/get` 以及 `skill://…` 资源读取）。
 - **REST API** — 基础地址为 `https://api.worldmonitor.app`，详见 [OpenAPI 规范](https://worldmonitor.app/openapi.yaml)。
 - **CLI** — 官方 [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm 包（源代码位于 [`cli/`](cli/)）：
 
@@ -147,7 +149,7 @@ World Monitor 同时为智能体、脚本和浏览器而构建：
 
 ## 数据源
 
-WorldMonitor 汇聚来自地缘政治、金融、能源、气候、航空、网络、军事、基础设施和新闻情报领域的外部上游主机。精选信息流和新鲜度监控详情，请参阅完整的[数据源目录](https://www.worldmonitor.app/docs/zh/data-sources)，其中说明提供商、信息流层级和采集方法。
+WorldMonitor 汇聚来自地缘政治、金融、能源、气候、航空、网络、军事、基础设施和新闻情报领域的归属上游数据源。精选信息流和新鲜度追踪的源组发布在完整的[数据源目录](https://www.worldmonitor.app/docs/zh/data-sources)中，提供提供商、信息流层级、许可证状况及采集方法的详细信息。
 
 ---
 
@@ -215,3 +217,6 @@ npm run build:full       # Production build
    <img alt="星标历史图表" src="https://star-history.dera.page/svg?repos=koala73/worldmonitor&type=Date" />
  </picture>
 </a>
+---
+
+> 💡 **文档维护说明**：本中文文档由社区志愿者（@JasonYeYuhe）翻译维护，最后同步更新于 2026年8月31日。如发现内容与官方英文原版存在差异或新特性滞后，欢迎提交 PR 共同完善！
