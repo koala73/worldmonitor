@@ -14,7 +14,10 @@
 # canonicalization tool, and those already consolidate via a 308 or a
 # rel=canonical that a blocked URL could never serve. Full reasoning is
 # recorded once in robots.www.txt. The variant hosts contributed 415 of the
-# 1,000 exported redirect URLs. Rules are query-scoped (`/*?*`) so /dashboard
+# 1,000 exported redirect URLs, and these rules are the ONLY mechanism covering
+# them: Vercel applies vercel.json `redirects` before middleware, and the
+# variant `/` -> `/dashboard` host redirect pre-empts the middleware collapse
+# that handles www (probed against production 2026-09-04). Rules are query-scoped (`/*?*`) so /dashboard
 # and the 308 families stay crawlable, and the /embed carve-outs keep the
 # documented iframe fetchable. /docs/_next/ is left crawlable, also per
 # robots.www.txt.

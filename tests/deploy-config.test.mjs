@@ -4263,6 +4263,40 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       });
     }
 
+    // Probed against production 2026-09-04: Vercel applies vercel.json
+    // `redirects` BEFORE middleware. On a variant host, `/?ref=x` answers
+    // 308 -> `/dashboard?ref=x` with the param intact, while the same request
+    // on www answers 308 -> `/` with it stripped — so the middleware never
+    // runs for `/` there, and crawlerCanonicalUrl() cannot collapse variant
+    // map-state URLs.
+    //
+    // That makes the variant robots rules load-bearing rather than
+    // belt-and-braces: they are the ONLY thing keeping a compliant crawler off
+    // the variant hosts' share of the space (415 of the 1,000 exported
+    // redirect URLs). If the `/` -> `/dashboard` host redirect is ever
+    // removed, middleware takes over and this coupling changes — so assert the
+    // pair together rather than leaving the dependency unwritten.
+    it('keeps the variant map-state rules load-bearing while the / host redirect exists', () => {
+      const variantRootRedirect = vercelConfig.redirects.find(
+        (r) =>
+          r.source === '/' &&
+          Array.isArray(r.has) &&
+          r.has.some((h) => h.type === 'host' && /tech|finance|commodity|happy|energy/.test(h.value))
+      );
+      if (!variantRootRedirect) return;
+      assert.equal(variantRootRedirect.destination, '/dashboard');
+      for (const path of [
+        '/?lat=20.0000&lon=0.0000&zoom=1.00',
+        '/dashboard?lat=20.0000&lon=0.0000&zoom=1.00',
+      ]) {
+        assert.equal(
+          isCrawlable('robots.variant.txt', path),
+          false,
+          `robots.variant.txt must block ${path} itself — the middleware collapse never runs on a variant host`
+        );
+      }
+    });
+
     it('blocks nothing we declare in the sitemap', () => {
       // The failure mode worth guarding: a crawl-budget rule that also deletes
       // part of the 845-URL declared inventory it exists to protect. Resolved

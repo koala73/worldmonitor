@@ -191,6 +191,10 @@ const INDEX_NOISE_QUERY_KEYS = new Set([
  *    redirect" bucket grew 199 -> 1,271 in three months, 301 of the exported
  *    URLs being map states (#7660). `/dashboard` is already the rel=canonical
  *    for every one of them, so a crawler loses nothing by going straight there.
+ *    Note this collapse reaches www only: Vercel applies vercel.json
+ *    `redirects` before middleware, and the variant hosts have their own
+ *    `/` -> `/dashboard` host redirect, so on those hosts robots.variant.txt
+ *    is what keeps a crawler off the space (probed against production).
  *
  * Humans are deliberately excluded from the second collapse — the params are
  * what makes a shared or bookmarked legacy link open the view it encodes, and
