@@ -48,6 +48,18 @@
 # crawlable. Every crawl-permitting group below restates them — groups do not
 # inherit, and tests/deploy-config.test.mjs fails on a group that drops one.
 #
+# Known limitation, deliberately accepted: `/*?*lat=` is a SUBSTRING match over
+# the whole query, not a parameter-name match, so it also catches a param whose
+# name merely ends in the token (`?colon=` matches `/*?*lon=`) and value-side
+# text (`?q=flat=earth`). robots.txt cannot express better: name-anchoring a
+# non-first parameter needs `/*&lat=`, and a literal `&` in a rule path never
+# matches — verified against Protego, Google's spec. Anchoring would have
+# silently stopped blocking every map URL whose lat is not the first param,
+# which is worse than over-matching. The exposure is instead guarded from the
+# other side: tests/deploy-config.test.mjs asserts that no query parameter this
+# app actually reads ends in one of these tokens (96 today, zero collisions
+# outside the /api/-only bounding-box pair, which `Disallow: /api/` covers).
+#
 # `/embed` is carved back out. docs/embed-live-map.mdx documents a direct
 # iframe at `/embed?layers=…&zoom=…`, so without these two Allows Googlebot
 # could not fetch our widget while rendering a partner's page. The carve-outs

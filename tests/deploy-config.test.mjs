@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { execFileSync, spawnSync } from 'node:child_process';
 import { readFileSync as originalReadFileSync, existsSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { dirname, join, relative, resolve } from 'node:path';
 function readFileSync(path, options) {
   const content = originalReadFileSync(path, options);
   if (typeof content === 'string') {
@@ -4308,6 +4308,98 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     // (scripts/build-crawlable-corpus.mjs withUtmSource, scripts/build-use-cases.mjs
     // content attribution, scripts/crawlable-sources-page.mjs,
     // scripts/build-research-reports.mjs).
+    // `/*?*lat=` is a substring match over the whole query, not a parameter-NAME
+    // match: it also catches any param ending in the token (`?colon=` matches
+    // `/*?*lon=`) and value-side text (`?q=flat=earth` matches `/*?*lat=`).
+    //
+    // That cannot be fixed in robots.txt. Name-anchoring needs `/*&lat=` for a
+    // non-first parameter, and a literal `&` in a rule path never matches —
+    // verified against Protego, which implements Google's spec: `/*&lat=` does
+    // not match `/d?view=g&lat=1` while `/*?*lat=` does. Anchoring would have
+    // silently stopped blocking every map URL whose lat is not the first param.
+    //
+    // So the exposure is real and permanent, and the guard is on the other
+    // side: no parameter this application actually reads may end in one of the
+    // blocked tokens. 96 params read via searchParams today, zero collisions —
+    // this fails the day someone adds `?colon=`, `?salon=`, `?pylon=` or
+    // `?flat=`, which is when it matters.
+    it('has no live collision between a blocked token and a real parameter', () => {
+      const BLOCKED_TOKENS = ['lat', 'lon', 'zoom', 'layers'];
+      const SOURCE_DIRS = ['src', 'server', 'api', 'scripts', 'shared'];
+      // Both spellings: `url.searchParams.get('x')` and the bare
+      // `params.get('x')` / `params.set('x', …)` used once a URLSearchParams is
+      // in a local (src/utils/urlState.ts reads zoom and layers that way).
+      const PARAM_RE = /(?:searchParams|params)\.(?:get|has|set)\(\s*['"]([A-Za-z0-9_]+)['"]/g;
+
+      const collectParams = (dir, acc) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            collectParams(full, acc);
+            continue;
+          }
+          if (!/\.(ts|tsx|mts|mjs|js|cjs)$/.test(entry.name)) continue;
+          for (const m of readFileSync(full, 'utf-8').matchAll(PARAM_RE)) acc.add(m[1]);
+        }
+        return acc;
+      };
+
+      const params = new Set();
+      for (const dir of SOURCE_DIRS) collectParams(resolve(__dirname, '..', dir), params);
+      assert.ok(params.size > 50, `expected to find the app's query params, got ${params.size}`);
+      for (const token of BLOCKED_TOKENS) assert.ok(params.has(token), `${token} must be a real param`);
+
+      // The bounding-box params collide on the token but never on a crawlable
+      // URL: they exist only on `/api/*` RPC routes, which `Disallow: /api/`
+      // has covered since long before these rules. Allowlisted explicitly, and
+      // re-proved below, so a NEW collision on a crawlable surface still fails.
+      const API_ONLY_COLLISIONS = ['sw_lat', 'sw_lon', 'ne_lat', 'ne_lon'];
+
+      const collisions = [...params].filter(
+        (name) => !BLOCKED_TOKENS.includes(name) && BLOCKED_TOKENS.some((t) => name.endsWith(t))
+      );
+      assert.deepEqual(
+        collisions.filter((name) => !API_ONLY_COLLISIONS.includes(name)).sort(),
+        [],
+        'these parameters end in a blocked token, so `/*?*<token>=` would disallow every URL ' +
+          `carrying them: ${collisions.join(', ')}. Rename the param, or drop the rule.`
+      );
+
+      // The allowlist cannot rot: every file that names one of these must also
+      // name an /api/ path, so the day one is used on a crawlable URL this
+      // fails instead of quietly widening the exemption.
+      const filesNaming = (needle, dir, acc = []) => {
+        for (const entry of readdirSync(dir, { withFileTypes: true })) {
+          if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+          const full = join(dir, entry.name);
+          if (entry.isDirectory()) {
+            filesNaming(needle, full, acc);
+            continue;
+          }
+          if (!/\.(ts|tsx|mts|mjs|js|cjs)$/.test(entry.name)) continue;
+          const body = readFileSync(full, 'utf-8');
+          // As a query KEY only — quoted, or written into a query string. A
+          // bare prose mention (`// [sw_lat, sw_lon, …]` documenting an array
+          // order) is not a parameter and must not trip this.
+          const asQueryKey = new RegExp(`['\"\`]${needle}['\"\`]|[?&]${needle}=`);
+          if (asQueryKey.test(body)) acc.push({ path: full, apiScoped: body.includes('/api/') });
+        }
+        return acc;
+      };
+      for (const name of API_ONLY_COLLISIONS) {
+        for (const dir of SOURCE_DIRS) {
+          for (const hit of filesNaming(name, resolve(__dirname, '..', dir))) {
+            assert.ok(
+              hit.apiScoped,
+              `${name} is allowlisted as /api/-only, but ${relative(resolve(__dirname, '..'), hit.path)} ` +
+                'names it without any /api/ path — if it now reaches a crawlable URL, `/*?*lat=` disallows that URL'
+            );
+          }
+        }
+      }
+    });
+
     it('never blocks a link shape our own build emits', () => {
       const INTERNAL_CTA_SHAPES = [
         '/dashboard?utm_source=seo-cii',
