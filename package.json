@@ -82,6 +82,7 @@
     "dev:commodity": "cross-env VITE_VARIANT=commodity vite",
     "dev:energy": "cross-env VITE_VARIANT=energy vite",
     "postinstall": "npm run inventory:facts",
+    "ci:blog-site": "cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline",
     "prebuild:blog": "npm run product:facts",
     "build:blog": "npm run build:blog:raw",
     "build:blog:raw": "cross-env npm_config_allow_scripts= npm --prefix blog-site ci --prefer-offline && cd blog-site && npm run build && rm -rf ../public/blog && mkdir -p ../public/blog && cp -r dist/* ../public/blog/",
