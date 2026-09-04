@@ -897,6 +897,7 @@ ${justification}
       name: `Strait of Hormuz daily transit calls, ${focus.observationStart} to ${focus.observationEnd}`,
       description:
         'Daily AIS-observed vessel transit calls by class with deadweight-tonnage aggregates, from IMF PortWatch, frozen in a versioned snapshot.',
+      keywords: ['AIS vessel transits', 'Strait of Hormuz', 'maritime trade', 'IMF PortWatch'],
       creator: { ...WORLD_MONITOR_ORG },
       license: DATASET_LICENSE,
       datePublished: report.datePublished,
