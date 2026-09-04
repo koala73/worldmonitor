@@ -18,6 +18,23 @@
 # safelists `content-signal`, so the #4471 SEO regression that once forced the
 # header-only placement no longer applies.
 
+# Crawl-budget disallows (#7660). Search Console measured 1,271 "Page with
+# redirect" and 512 "Not found (404)" URLs against a declared inventory of 845,
+# both live and rising (199 -> 1,271 and 102 -> 512 in three months). Two
+# self-generated spaces produce them:
+#   * Parameterised URLs. Map state (lat/lon/zoom/layers) is effectively
+#     infinite; the attribution families (ref, wm_referral, wm_content_*,
+#     utm_*) multiply every landing page. Every one already carries a
+#     rel=canonical to its param-free document, so blocking the crawl costs
+#     nothing in indexing and stops the redirect chains at source.
+#   * /docs/_next/ — Mintlify's hashed build assets. The chunk names change on
+#     every redeploy, so the previous deploy's assets 404 forever. This is the
+#     only 404 bucket that regenerates itself on every deploy.
+# The rules are query-scoped (`/*?*`) on purpose: the canonical documents the
+# consolidation points at (/dashboard, /pro, the corpus) must stay crawlable.
+# Every crawl-permitting group below restates them — groups do not inherit, and
+# tests/deploy-config.test.mjs fails on a group that drops one.
+
 User-agent: *
 Content-Signal: ai-train=no, search=yes, ai-input=yes
 Allow: /
@@ -27,6 +44,16 @@ Allow: /api/llms.txt
 Allow: /api/product-catalog
 Disallow: /api/
 Disallow: /tests/
+Disallow: /docs/_next/
+Disallow: /tmp/
+Disallow: /*?*lat=
+Disallow: /*?*lon=
+Disallow: /*?*zoom=
+Disallow: /*?*layers=
+Disallow: /*?*ref=
+Disallow: /*?*wm_referral=
+Disallow: /*?*wm_content_
+Disallow: /*?*utm_
 
 # Tier 2 — AI search & assistant agents: welcome. Same path rules as `*`,
 # restated because a matching named group makes a crawler ignore `*` entirely.
@@ -50,6 +77,16 @@ Allow: /api/llms.txt
 Allow: /api/product-catalog
 Disallow: /api/
 Disallow: /tests/
+Disallow: /docs/_next/
+Disallow: /tmp/
+Disallow: /*?*lat=
+Disallow: /*?*lon=
+Disallow: /*?*zoom=
+Disallow: /*?*layers=
+Disallow: /*?*ref=
+Disallow: /*?*wm_referral=
+Disallow: /*?*wm_content_
+Disallow: /*?*utm_
 
 # Tier 3 — bulk training-only scrapers: no assistant surface, no citations,
 # nothing given back. anthropic-ai is Anthropic's legacy training UA

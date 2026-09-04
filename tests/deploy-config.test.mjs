@@ -4033,6 +4033,176 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
   });
 });
 
+// #7660: Search Console reported 1,271 "Page with redirect" and 512 "Not found
+// (404)" URLs against a declared inventory of 845 — both live and growing
+// (199 → 1,271 and 102 → 512 in three months). The export identified two
+// self-generated crawl spaces:
+//
+//   1. Parameterised URLs. Map state (`lat`/`lon`/`zoom`/`layers`) is
+//      effectively infinite, and the attribution families (`ref`,
+//      `wm_referral`, `wm_content_*`, `utm_*`) multiply every landing page.
+//      Canonicals already consolidate them, so blocking the crawl costs
+//      nothing in indexing and stops the redirect chains at source.
+//   2. `/docs/_next/` Mintlify build assets. Hashed chunk names change on
+//      every redeploy, so the previous deploy's assets 404 permanently — the
+//      only 404 bucket that regenerates itself on every deploy.
+//
+// Both robots files must carry these in EVERY crawl-permitting group: robots
+// groups do not inherit, so a named AI group that omits them keeps crawling
+// the space `*` no longer does.
+describe('agent readiness: crawl-budget disallows (#7660)', () => {
+  const CRAWL_BUDGET_DISALLOWS = [
+    'disallow: /docs/_next/',
+    'disallow: /tmp/',
+    'disallow: /*?*lat=',
+    'disallow: /*?*lon=',
+    'disallow: /*?*zoom=',
+    'disallow: /*?*layers=',
+    'disallow: /*?*ref=',
+    'disallow: /*?*wm_referral=',
+    'disallow: /*?*wm_content_',
+    'disallow: /*?*utm_',
+  ];
+
+  const parseGroups = (source) => {
+    const groups = [];
+    let current = null;
+    for (const raw of source.split('\n')) {
+      const line = raw.trim();
+      if (line === '') {
+        current = null;
+        continue;
+      }
+      if (line.startsWith('#')) continue;
+      const colon = line.indexOf(':');
+      if (colon === -1) continue;
+      const key = line.slice(0, colon).trim().toLowerCase();
+      const value = line.slice(colon + 1).trim();
+      if (key === 'user-agent') {
+        if (!current || current.rules.length > 0) {
+          current = { agents: [], rules: [] };
+          groups.push(current);
+        }
+        current.agents.push(value.toLowerCase());
+      } else if (current && (key === 'allow' || key === 'disallow')) {
+        current.rules.push(`${key}: ${value}`);
+      }
+    }
+    return groups;
+  };
+
+  for (const file of ['robots.www.txt', 'robots.variant.txt']) {
+    it(`${file} carries every crawl-budget disallow in every crawl-permitting group`, () => {
+      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const crawling = groups.filter((g) => g.rules.includes('allow: /'));
+      assert.ok(crawling.length >= 2, `${file} must have a * group and a named AI group that crawl`);
+      for (const group of crawling) {
+        for (const rule of CRAWL_BUDGET_DISALLOWS) {
+          assert.ok(
+            group.rules.includes(rule),
+            `${file} group [${group.agents.join(', ')}] is missing \`${rule.replace('disallow:', 'Disallow:')}\` — ` +
+              'robots groups do not inherit, so this crawler still burns budget on the space the others no longer crawl'
+          );
+        }
+      }
+    });
+  }
+
+  it('leaves the canonical param-free documents crawlable', () => {
+    // The disallows are query-scoped on purpose: `/dashboard` and `/pro` are
+    // the consolidation targets the canonicals point at, so blocking the bare
+    // paths would delete the pages this change exists to protect.
+    for (const file of ['robots.www.txt', 'robots.variant.txt']) {
+      const body = readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8');
+      assert.doesNotMatch(body, /^Disallow: \/dashboard$/m, `${file} must keep /dashboard crawlable`);
+      assert.doesNotMatch(body, /^Disallow: \/docs$/m, `${file} must keep /docs crawlable`);
+      for (const line of body.split('\n')) {
+        const match = /^Disallow: (\/\*.*)$/.exec(line.trim());
+        if (!match) continue;
+        assert.match(
+          match[1],
+          /^\/\*\?\*/,
+          `${line.trim()} must be query-scoped (\`/*?*\`) — a bare wildcard would block the canonical document too`
+        );
+      }
+    }
+  });
+
+  // Rule presence is not the contract — what the rules MATCH is. This resolves
+  // real request paths against the `*` group using Google's documented
+  // semantics (`*` = any sequence, `$` = end of URL, longest match wins,
+  // Allow beats an equal-length Disallow) so a future edit that quietly
+  // narrows or widens a pattern fails here rather than in Search Console.
+  describe('resolved against the paths Search Console actually reported', () => {
+    const pathMatches = (pattern, path) => {
+      const source = pattern.endsWith('$')
+        ? `^${pattern.slice(0, -1).split('*').map(escapeRe).join('.*')}$`
+        : `^${pattern.split('*').map(escapeRe).join('.*')}`;
+      return new RegExp(source).test(path);
+    };
+    const escapeRe = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+    const starGroupRules = (file) => {
+      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+      const star = groups.find((g) => g.agents.includes('*'));
+      assert.ok(star, `${file} must have a * group`);
+      return star.rules.map((rule) => {
+        const [key, ...rest] = rule.split(': ');
+        return { allow: key === 'allow', pattern: rest.join(': ') };
+      });
+    };
+
+    const isCrawlable = (file, path) => {
+      let best = null;
+      for (const rule of starGroupRules(file)) {
+        if (!pathMatches(rule.pattern, path)) continue;
+        if (!best || rule.pattern.length > best.pattern.length) best = rule;
+        else if (rule.pattern.length === best.pattern.length && rule.allow) best = rule;
+      }
+      return best ? best.allow : true;
+    };
+
+    // Verbatim shapes from the 2026-09-04 GSC "Page with redirect" and
+    // "Not found (404)" exports.
+    const BLOCKED = [
+      '/?lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts,bases',
+      '/index?lat=NaN&lon=NaN&zoom=2.50&view=america&timeRange=7d&layers=conflicts',
+      '/dashboard?lat=20.0000&lon=0.0000&zoom=1.00',
+      '/pro?wm_content_source=use-cases&wm_content_medium=internal',
+      '/dashboard?ref=affiliate',
+      '/countries/iran/?utm_source=newsletter',
+      '/docs/_next/static/chunks/5530074d3f762225.js?dpl=dpl_3mdVq74mXio1K76n3se3E4X3Wiv7',
+      '/tmp/gem-pipelines.json',
+    ];
+    const CRAWLABLE = [
+      '/',
+      '/dashboard',
+      '/pro',
+      '/countries/iran/',
+      '/compare/iran-vs-israel/',
+      '/docs/mcp-overview',
+      '/blog/',
+      '/api/llms.txt',
+    ];
+
+    for (const file of ['robots.www.txt', 'robots.variant.txt']) {
+      it(`${file} blocks the reported crawl-waste URLs`, () => {
+        for (const path of BLOCKED) {
+          assert.equal(isCrawlable(file, path), false, `${file} must block ${path}`);
+        }
+      });
+
+      it(`${file} still allows the canonical corpus`, () => {
+        for (const path of CRAWLABLE) {
+          // /pro is deliberately Disallowed on variant hosts (#6835).
+          if (file === 'robots.variant.txt' && path === '/pro') continue;
+          assert.equal(isCrawlable(file, path), true, `${file} must keep ${path} crawlable`);
+        }
+      });
+    }
+  });
+});
+
 describe('vercel deployment excludes api test files', () => {
   // Vercel deploys every non-underscore file under api/ as a live serverless
   // function. A deployed *.test.mjs is a public endpoint that executes its
@@ -4775,8 +4945,14 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     for (const path of ['/pro', '/api/', '/tests/']) {
       assert.match(body, new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'), `variant robots must Disallow ${path}`);
     }
-    assert.match(body, /^Allow: \/dashboard$/m);
-    assert.doesNotMatch(body, /^Disallow: \/dashboard$/m);
+    // End-anchored since #7660. Unanchored, `/dashboard` is a 10-character
+    // longest-match win over every `/*?*…=` crawl-budget rule, which silently
+    // re-opened the parameterised map-state space on the one path that
+    // generates it. `$` keeps the bare document explicitly crawlable without
+    // covering its query forms.
+    assert.match(body, /^Allow: \/dashboard\$$/m);
+    assert.doesNotMatch(body, /^Allow: \/dashboard$/m);
+    assert.doesNotMatch(body, /^Disallow: \/dashboard\$?$/m);
     assert.match(body, /^Sitemap: https:\/\/www\.worldmonitor\.app\/sitemap\.xml$/m);
   });
 
