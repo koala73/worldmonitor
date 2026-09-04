@@ -515,6 +515,40 @@ describe('temporal anomalies cache freshness', () => {
     );
   });
 
+  it('reads the seeder-owned count sources through the raw key on preview (#7575)', async () => {
+    const prefix = 'preview:deadbeef:';
+    const { calls } = await runWithRedisStub(
+      {
+        // Railway seeders write these keys unprefixed — they do not know the
+        // Vercel env-prefix scheme — so the rows exist ONLY under the bare
+        // names. A prefixed read can never hit them.
+        'news:insights:v1': liveNews(),
+        'wildfire:fires:v1': liveFires(),
+      },
+      { vercelEnv: 'preview', vercelSha: 'deadbeefcafebabe' },
+    );
+
+    const getKeys = calls.filter((c) => c.method === 'GET').map((c) => c.key);
+    assert.ok(
+      getKeys.includes('news:insights:v1') && getKeys.includes('wildfire:fires:v1'),
+      'count sources must be requested under their bare (seeder-written) names on preview',
+    );
+    assert.equal(
+      getKeys.some((k) => k.startsWith(`${prefix}news:insights:v1`) || k.startsWith(`${prefix}wildfire:fires:v1`)),
+      false,
+      'no prefixed read may stand in for a seeder-owned key: nothing ever writes those rows',
+    );
+
+    // The raw reads must actually feed the rebuild, while app-owned state
+    // stays inside the preview namespace.
+    const stamp = calls.find((c) => c.method === 'POST' && c.key === `${prefix}seed-meta:temporal:anomalies`);
+    assert.equal(stamp?.recordCount, 2, 'both raw-read sources must reach the rebuild');
+    assert.ok(
+      calls.some((c) => c.method === 'POST' && c.key.startsWith(`${prefix}baseline:v2:`)),
+      'baseline sampling must stay in the preview namespace (app-owned key)',
+    );
+  });
+
   it('counts the pre-cap FIRMS total, not the capped canonical array (#5866)', async () => {
     const originalFetch = globalThis.fetch;
     const originalUrl = process.env.UPSTASH_REDIS_REST_URL;
