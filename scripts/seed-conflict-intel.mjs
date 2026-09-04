@@ -832,9 +832,17 @@ export async function fetchAllHumanitarianSummaries({
     console.warn(`  HAPI freshness marker read failed: ${error.message}`);
     return null;
   });
+  const requiredCountryContract = [...requiredCountryCodes].sort();
   if (
     Number.isFinite(Number(previousMarker?.updatedAt))
     && nowMs - Number(previousMarker.updatedAt) < HAPI_REFRESH_INTERVAL_MS
+    && Number(previousMarker?.requiredCountriesTotal) === requiredCountryCodes.length
+    && Number(previousMarker?.requiredCountriesCovered) >= requiredCountryCodes.length
+    && Array.isArray(previousMarker?.requiredCountryCodes)
+    && previousMarker.requiredCountryCodes.length === requiredCountryContract.length
+    && [...previousMarker.requiredCountryCodes]
+      .sort()
+      .every((countryCode, index) => countryCode === requiredCountryContract[index])
   ) {
     console.log(`  Humanitarian: recent bulk snapshot still fresh (${Object.keys(previousMarker).length > 0 ? previousMarker.countriesCovered ?? 'unknown' : 'unknown'} countries)`);
     return null;
@@ -1177,6 +1185,7 @@ export async function fetchAll({
       {
         countriesCovered: Object.keys(ha).length,
         requiredCountriesCovered,
+        requiredCountryCodes: [...HAPI_REQUIRED_COUNTRIES].sort(),
         requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
         updatedAt: Date.now(),
       },
