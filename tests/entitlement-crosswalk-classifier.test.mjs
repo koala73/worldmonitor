@@ -48,6 +48,11 @@ describe('entitlement crosswalk classifier', () => {
     assert.equal(v, null, 'a different predicate in a mapped file must stay unmapped');
   });
 
+  it('maps the identity-preserving MCP proxy gate to MCP access', () => {
+    const v = classify(site('api/mcp-proxy.ts', 'resolvePremiumCallerIdentity'));
+    assert.equal(v?.cap, 'mcp.access');
+  });
+
   it('does NOT map a gate in a file nobody classified', () => {
     const v = classify(site('src/services/__not-a-real-file.ts', 'hasPremiumAccess'));
     assert.equal(v, null, 'an unmapped file must stay unmapped');
@@ -77,7 +82,8 @@ describe('entitlement crosswalk classifier', () => {
   it('a preds allow-list never contains an unknown predicate kind', () => {
     const KNOWN = new Set([
       'tier', 'hasPremiumAccess', 'isProUser', 'apiAccess',
-      'mcpAccess', 'dataExport', 'isCallerPremium', 'requiresPremium', 'other',
+      'mcpAccess', 'dataExport', 'isCallerPremium', 'resolvePremiumCallerIdentity',
+      'requiresPremium', 'other',
     ]);
     for (const [re, v] of SITE_MAP) {
       for (const p of v.preds ?? []) {

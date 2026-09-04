@@ -202,7 +202,9 @@ A deterministic check that a value reported by a model-based extractor actually 
 
 ### Closed-World Gate
 
-A completeness check structured so the universe it covers is mechanically enumerated from the source of truth and every member must be classified — required (mechanically asserted at every consumer) or excluded with a recorded reason — so an unclassified member fails the gate at the moment it is introduced. The inverse of an opt-in allowlist, which can only catch what someone remembered to add and therefore rots silently as the universe grows; a closed world converts each new member into a forced, recorded decision, and the classification record doubles as a decision log distinguishing deliberately-absent from forgotten. Both halves need their own vacuous-pass protection: an enumerator that finds zero members, or an extractor that finds zero consumers, must fail rather than skip. See also: Vacuous Guard, Mutation Proof.
+A completeness check structured so the universe it covers is mechanically enumerated from the source of truth and every member must be classified — required (mechanically asserted at every consumer) or excluded with a recorded reason — so an unclassified member fails the gate at the moment it is introduced. The inverse of an opt-in allowlist, which can only catch what someone remembered to add and therefore rots silently as the universe grows; a closed world converts each new member into a forced, recorded decision, and the classification record doubles as a decision log distinguishing deliberately-absent from forgotten. Both halves need their own vacuous-pass protection: an enumerator that finds zero members, or an extractor that finds zero consumers, must fail rather than skip.
+
+The same allowlist rot runs along a second axis that is easier to miss, because the universe there is not a population but a *property set*. A guard written from a bug report pins the fields that report named, which makes its expectation an enumeration of failures that already happened — the one set guaranteed not to recur — while every unenumerated field of the same object stays free to diverge under a green suite. Closing this axis means inverting it the same way: assert the invariant over every property, and name a short, closed exemption list for the ones a consumer genuinely merges by union. The tell is that the guard's name states an invariant its assertions do not enforce. See also: Vacuous Guard, Mutation Proof, Canonical Entity Node.
 
 ### Ratchet Inventory
 
@@ -269,6 +271,14 @@ The load-bearing rule: credential class never determines plan family, so any rul
 ### Streamable HTTP Transport
 
 The MCP transport this server implements over HTTP: JSON-RPC 2.0 requests via `POST`, with optional Server-Sent Events when the client advertises `Accept: text/event-stream`. Its `405` on a standalone stream-open is not an error but a contract — MCP SDK clients read it as the graceful "no standalone stream" signal and complete the handshake. Anything that converts that `405` into a `200` (including a CDN replaying a cached discovery response) breaks the handshake.
+
+## Structured Data & Entity Graph
+
+### Canonical Entity Node
+
+A node in the site's published structured-data graph that several independently-authored documents each declare, identified by a stable identifier rather than by the page carrying it, so a consumer that reads any two of those pages folds their bodies into one entity.
+
+The identity is the contract, which makes agreement between emitters a correctness property rather than a matter of tidiness: two documents stating different values for one single-valued property publish a contradiction about what the entity *is*, and the consumer resolves it arbitrarily. Three distinctions carry the load. A *declaration* — the identifier plus a body — is not a *reference*, which is the identifier alone linking one node to another; most occurrences of an identifier in the graph are references, so a check that cannot tell them apart mistakes the graph's wiring for a crowd of emitters. *Absence* is not *disagreement*: a document may omit a property another states, and the merge still yields one value, whereas two stated values for one property is the defect. And properties a consumer merges by union — feature lists, offers, alternate names — may legitimately differ per emitter, while single-valued ones may not, so any guard over this graph needs that exemption set named and closed. A variant host declares its own node under its own identifier instead of restating the canonical one, which is what keeps per-host branding a separate entity rather than a contradiction. See also: Variant Host, Vacuous Guard, Closed-World Gate.
 
 ## Routing & Hosts
 

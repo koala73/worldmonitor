@@ -72,7 +72,7 @@ for (const f of ['src/config/panels.ts','convex/constants.ts','src/services/gate
 
 
 // ------------------------------------------------------- code-site gates
-const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|requiresPremium|isCallerPremium\\(|!isProUser\\(\\)";
+const PAT = "features\\.tier\\s*[<>=]|tier\\s*[<>]=?\\s*1|!hasPremiumAccess\\(\\)|features\\.apiAccess|features\\.mcpAccess|features\\.dataExport|requiresPremium|isCallerPremium\\(|resolvePremiumCallerIdentity\\(|!isProUser\\(\\)";
 const out = execSync(`grep -rnE "${PAT}" --include="*.ts" --include="*.js" src api convex server 2>/dev/null || true`, { encoding: 'utf8', maxBuffer: 1 << 26 });
 const sites = [];
 for (const ln of out.split('\n')) {
@@ -92,6 +92,7 @@ for (const ln of out.split('\n')) {
     : /features\.dataExport/.test(t) ? 'dataExport'
     : /requiresPremium/.test(t)      ? 'requiresPremium'
     : /isCallerPremium\(/.test(t)    ? 'isCallerPremium'
+    : /resolvePremiumCallerIdentity\(/.test(t) ? 'resolvePremiumCallerIdentity'
     : /hasPremiumAccess\(\)/.test(t)  ? 'hasPremiumAccess'
     : /isProUser\(\)/.test(t)         ? 'isProUser'
     : /features\.tier|tier\s*[<>]=?\s*1/.test(t) ? 'tier'
@@ -214,16 +215,16 @@ const SITE_MAP = [
   [/convex\/alertRules\.ts/,                  { cap: 'alerts.rules' , preds: ['tier'] }],
   [/api\/notification-channels\.ts/,          { cap: 'notifications.channels' , preds: ['tier'] }],
   [/api\/widget-agent\.ts/,                   { cap: 'widgets.custom' , preds: ['tier'] }],
-  [/summarize-article\.ts/,                   { cap: 'news.summarization' , preds: ['requiresPremium'] }],
+  [/summarize-article\.ts/,                   { cap: 'news.summarization' , preds: ['requiresPremium','resolvePremiumCallerIdentity'] }],
   [/gates\/playback/,                         { cap: 'playback.historical' }], // NOTE: matches no current gate
   [/convex\/apiKeys\.ts/,                     { cap: 'api.keys' , preds: ['apiAccess'] }],
-  [/pro-mcp-gate\.ts|api\/mcp-proxy\.ts|api\/mcp\//, { cap: 'mcp.access' , preds: ['isCallerPremium','mcpAccess','tier'] }],
+  [/pro-mcp-gate\.ts|api\/mcp-proxy\.ts|api\/mcp\//, { cap: 'mcp.access' , preds: ['isCallerPremium','resolvePremiumCallerIdentity','mcpAccess','tier'] }],
   [/gates\/export/,                           { cap: 'export.data' , preds: ['dataExport'] }],
   [/analysis-framework-store\.ts/,            { cap: 'analysis.frameworks' , preds: ['hasPremiumAccess'] }],
   [/correlation-engine\/engine\.ts/,          { cap: 'correlation.llm' , preds: ['hasPremiumAccess'] }],
   [/followedCountries/,    { cap: 'limits.followed_countries' , preds: ['tier'] }],
   [/search-manager\.ts/,                      { cap: 'aviation.data', note: 'callsign search' }], // NOTE: matches no current gate
-  [/ChatAnalystPanel|chat-analyst/,           { cap: 'analyst.chat' }], // NOTE: matches no current gate
+  [/ChatAnalystPanel|chat-analyst/,           { cap: 'analyst.chat', preds: ['resolvePremiumCallerIdentity'] }],
   [/supply-chain\/index\.ts/,   { cap: 'supplychain.routes' , preds: ['hasPremiumAccess'] }],
   [/services\/scenario\//,                    { cap: 'scenario.engine' }], // NOTE: matches no current gate
   [/sanctions-pressure/,                      { cap: 'sanctions.pressure' , preds: ['hasPremiumAccess','isCallerPremium'] }],
@@ -241,7 +242,7 @@ const SITE_MAP = [
   [/summarization\.ts|summarize-gate/,        { cap: 'news.summarization' }], // NOTE: matches no current gate
   [/panel-layout|settings-window|event-handlers/, { cap: 'limits.panels', note: 'cap + gate CTA plumbing' , preds: ['hasPremiumAccess','isProUser'] }],
   [/widget-store/,                            { cap: 'widgets.custom' }], // NOTE: matches no current gate
-  [/entitlements|entitlement-check|premium-check|pro-entitlement|billing|payments\//, { exclude: 'entitlement plumbing — resolves/propagates state, gates nothing itself' , preds: ['apiAccess','isCallerPremium','tier'] }],
+  [/entitlements|entitlement-check|premium-check|pro-entitlement|billing|payments\//, { exclude: 'entitlement plumbing — resolves/propagates state, gates nothing itself' , preds: ['apiAccess','isCallerPremium','resolvePremiumCallerIdentity','tier'] }],
   [/UnifiedSettings|data-loader|http\.ts|apiPlanLimitUsage|mcpProTokens|gateway\.ts|shipping/, { exclude: 'consumer of a gate mapped elsewhere — renders or forwards, does not define' , preds: ['apiAccess','hasPremiumAccess','isCallerPremium','isProUser','mcpAccess','tier'] }],
 ];
 
@@ -288,7 +289,8 @@ export function diffSiteCounts(actual, baseline = SITE_BASELINE) {
 // watching the sweep stay green. Pinning the expected count closes it: any
 // added or removed gate changes a count and must be re-baselined deliberately.
 const SITE_BASELINE = {
-  "api/mcp-proxy.ts::isCallerPremium": 1,
+  "api/chat-analyst.ts::resolvePremiumCallerIdentity": 1,
+  "api/mcp-proxy.ts::resolvePremiumCallerIdentity": 1,
   "api/mcp/skill-extension/generated.ts::tier": 1,
   "api/me/entitlement.ts::isCallerPremium": 1,
   "api/notification-channels.ts::tier": 1,
@@ -315,6 +317,7 @@ const SITE_BASELINE = {
   "server/_shared/entitlement-check.ts::tier": 1,
   "server/_shared/premium-check.ts::apiAccess": 1,
   "server/_shared/premium-check.ts::isCallerPremium": 1,
+  "server/_shared/premium-check.ts::resolvePremiumCallerIdentity": 3,
   "server/_shared/premium-check.ts::tier": 2,
   "server/_shared/pro-entitlement.ts::tier": 1,
   "server/_shared/pro-mcp-gate.ts::mcpAccess": 2,
@@ -326,6 +329,7 @@ const SITE_BASELINE = {
   "server/worldmonitor/intelligence/v1/get-country-intel-brief.ts::isCallerPremium": 1,
   "server/worldmonitor/military/v1/list-military-bases.ts::tier": 1,
   "server/worldmonitor/news/v1/summarize-article.ts::requiresPremium": 2,
+  "server/worldmonitor/news/v1/summarize-article.ts::resolvePremiumCallerIdentity": 1,
   "server/worldmonitor/sanctions/v1/list-sanctions-pressure.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-bypass-options.ts::isCallerPremium": 1,
   "server/worldmonitor/supply-chain/v1/get-country-chokepoint-index.ts::isCallerPremium": 1,

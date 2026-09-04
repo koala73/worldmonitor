@@ -1,5 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { CANONICAL_ORIGIN } from '../src/config/schema-graph-ids';
 import {
   WEB_DASHBOARD_VARIANTS,
   renderVariantDashboardHtml,
@@ -9,7 +10,7 @@ import { VARIANT_META } from '../src/config/variant-meta';
 
 // Mirrors the exact markup shapes of the BUILT dist/dashboard.html (index.html
 // after htmlVariantPlugin with the full meta): trailing ` />` on metas,
-// pretty-printed JSON-LD with the WebApplication block first, the English-only
+// pretty-printed JSON-LD with the SoftwareApplication block first, the English-only
 // hreflang discovery pair, and the visually-hidden app-heading <h1>. If the real
 // markup drifts, renderVariantDashboardHtml throws at build time — this
 // fixture only exercises the transform logic.
@@ -40,11 +41,11 @@ const fixture = `<!doctype html>
     <script type="application/ld+json" nonce="wm-static-bootstrap">
     {
       "@context": "https://schema.org",
-      "@type": "WebApplication",
+      "@type": "SoftwareApplication",
       "@id": "https://www.worldmonitor.app/#software",
       "name": "World Monitor",
       "alternateName": ["WorldMonitor", "World Monitor App", "WM Intelligence"],
-      "url": "${FULL.url}",
+      "url": "${CANONICAL_ORIGIN}",
       "screenshot": "https://www.worldmonitor.app/favico/og-image.png",
       "featureList": [
         "Real-time news aggregation",
@@ -175,7 +176,7 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     assert.ok(html.includes(`<h1 class="app-heading">${escHtml(tech.title)}</h1>`), 'h1');
   });
 
-  it('rewrites WebApplication and attaches WebPage plus breadcrumbs instead of claiming the site', () => {
+  it('rewrites SoftwareApplication and attaches WebPage plus breadcrumbs instead of claiming the site', () => {
     const html = renderVariantDashboardHtml(fixture, 'finance');
     const finance = VARIANT_META.finance;
     const blocks = [...html.matchAll(/<script\b(?=[^>]*\btype=["']application\/ld\+json["'])[^>]*>\s*([\s\S]*?)\s*<\/script>/gi)].map(
@@ -183,9 +184,9 @@ describe('renderVariantDashboardHtml (#4996)', () => {
     );
     assert.deepEqual(
       blocks.map((b) => b['@type']).sort(),
-      ['BreadcrumbList', 'WebApplication', 'WebPage'],
+      ['BreadcrumbList', 'SoftwareApplication', 'WebPage'],
     );
-    const webApp = blocks.find((b) => b['@type'] === 'WebApplication');
+    const webApp = blocks.find((b) => b['@type'] === 'SoftwareApplication');
     assert.equal(webApp['@id'], `${finance.url}#software`);
     assert.equal(webApp.name, 'Finance Monitor');
     assert.equal(webApp.url, finance.url);

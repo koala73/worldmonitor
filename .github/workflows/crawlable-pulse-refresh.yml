@@ -71,11 +71,24 @@ jobs:
       - name: Install dependencies
         if: steps.reconcile.outputs.skip != 'true'
         run: npm ci --ignore-scripts
+      - name: Require WorldMonitor API key
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          WORLDMONITOR_API_KEY: ${{ secrets.WORLDMONITOR_API_KEY }}
+        run: |
+          if [ -z "${WORLDMONITOR_API_KEY:-}" ]; then
+            echo "::error::WORLDMONITOR_API_KEY secret is required to freeze the crawlable pulse."
+            exit 1
+          fi
       - name: Freeze the current pulse
         if: steps.reconcile.outputs.skip != 'true'
         env:
-          # The freeze mints an anonymous wm-session; no credential is required.
+          # Anonymous risk/chokepoint/crisis/headline captures use the minted
+          # wm-session. This scheduled refresh requires WORLDMONITOR_API_KEY
+          # for per-country intel brief and timeline enrichment on tier-gated
+          # routes (#7615).
           API_BASE: https://www.worldmonitor.app
+          WORLDMONITOR_API_KEY: ${{ secrets.WORLDMONITOR_API_KEY }}
         run: npm run freeze:crawlable-live-pulse
       - name: Rebuild and verify published artifacts
         if: steps.reconcile.outputs.skip != 'true'
