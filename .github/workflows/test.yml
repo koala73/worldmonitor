@@ -87,6 +87,13 @@ jobs:
             # and skips the one gate that measures the artifact it changed
             # (#6558).
             /^docs\/api\/worldmonitor\.openapi\.yaml$/ { count++; next }
+            # public/ai-search.md's Data Coverage block is generated from the
+            # inventory registries, and docs-stats' volatile-claim gate exempts
+            # that block precisely because tests/ai-search-product-facts.test.mjs
+            # fails when it drifts from the generator. That test lives in `unit`,
+            # so without this rule the only gate on a fabricated figure skips on
+            # exactly the PR that edits the file (#6038).
+            /^public\/ai-search\.md$/ { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }

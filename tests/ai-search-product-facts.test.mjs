@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 
 import {
   AI_SEARCH_PATH,
+  COVERAGE_CLOSE,
   COVERAGE_HEADING,
   buildAiSearchText,
   mapLayerCoverageText,
@@ -64,6 +65,15 @@ describe('#6038 ai-search.md data coverage', () => {
       'the coverage section must date its figures so a citation can be attributed',
     );
   });
+
+  it('does not claim a document freshness the generator cannot measure', () => {
+    // The generator knows when the figures were reconciled; it cannot know when
+    // the hand-authored prose was last touched, and a prose-only edit leaves
+    // the date unmoved. "Last updated" asserted the latter.
+    const briefing = read('public/ai-search.md');
+    assert.match(briefing, /^Facts reconciled: \d{4}-\d{2}-\d{2}\b/m);
+    assert.doesNotMatch(briefing, /^Last updated:/m);
+  });
 });
 
 describe('#6038 ai-search.md is generated, not hand-maintained', () => {
@@ -110,6 +120,21 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
     assert.equal(attribution.activeHosts, published.sourceAttributionHosts);
     assert.equal(stats.mcpToolCount, published.mcpTools);
     assert.equal(stats.locales, published.locales);
+  });
+
+  it('keeps the hand-authored CII prose agreeing with the generated bullet', () => {
+    // The page states the Tier-1 count twice: once in generated coverage, once
+    // in the hand-authored CII paragraph the generator preserves verbatim. When
+    // the registry moves, only the bullet follows — leaving one page publishing
+    // two answers to the same question. Nothing else catches that, because the
+    // paragraph is prose the volatile-claim scanner allows.
+    const prose = read(AI_SEARCH_PATH).match(/stress score for ([\d,]+) Tier-1 countries/);
+    assert.ok(prose, 'the CII paragraph must state the Tier-1 country count');
+    assert.equal(
+      Number(prose[1].replace(/,/g, '')),
+      loadStatsForInventoryFacts().tier1Countries,
+      'the CII paragraph and the generated coverage bullet must not disagree',
+    );
   });
 
   it('reconciles the map-layer figure the homepage publishes instead of contradicting it', () => {
@@ -192,14 +217,48 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
       assert.deepEqual(validateVolatileInventoryClaims(), [], 'the sandbox copy must start clean');
       const path = join(sandbox, AI_SEARCH_PATH);
       const source = readFileSync(path, 'utf8');
+      const claim = 'World Monitor ingests 500+ curated feeds.';
+
+      writeFileSync(path, source.replace('## Source Examples\n', `## Source Examples\n\n${claim}\n`));
+      assert.ok(
+        validateVolatileInventoryClaims().some((f) => f.startsWith(`${AI_SEARCH_PATH}:`)),
+        'a hand-authored inventory total outside the generated block must still fail the scan',
+      );
+
+      // The inverse: the same claim inside the sentinels is exempt, which is
+      // what makes the exemption narrow rather than a hole in the whole file.
+      writeFileSync(path, source.replace(COVERAGE_CLOSE, `${claim}\n${COVERAGE_CLOSE}`));
+      assert.deepEqual(
+        validateVolatileInventoryClaims().filter((f) => f.startsWith(`${AI_SEARCH_PATH}:`)),
+        [],
+        'the generated span is exempt from the scan — the drift test is what guards it',
+      );
+
+      // Removing the closing sentinel must fail closed, not exempt the tail.
+      writeFileSync(path, source.replace(`${COVERAGE_CLOSE}\n`, '').replace('## Source Examples\n', `## Source Examples\n\n${claim}\n`));
+      assert.ok(
+        validateVolatileInventoryClaims().some((f) => f.startsWith(`${AI_SEARCH_PATH}:`)),
+        'an unbalanced sentinel pair must scan the whole file rather than exempt it',
+      );
+    });
+  });
+
+  it('cannot have its exemption widened by an editorial heading change', async () => {
+    await withStatsRoot(async (sandbox) => {
+      const path = join(sandbox, AI_SEARCH_PATH);
+      const source = readFileSync(path, 'utf8');
+      // Demoting the following heading moved an inferred span's end past it,
+      // handing the prose below a pass from a merge-blocking gate. Sentinels
+      // make the span self-describing, so this edit changes nothing.
       writeFileSync(
         path,
-        source.replace('## Source Examples\n', '## Source Examples\n\nWorld Monitor ingests 500+ curated feeds.\n'),
+        source
+          .replace('## Source Examples', '### Source Examples')
+          .replace('### Source Examples\n', '### Source Examples\n\nWorld Monitor ingests 500+ curated feeds.\n'),
       );
-      const failures = validateVolatileInventoryClaims();
       assert.ok(
-        failures.some((failure) => failure.startsWith(`${AI_SEARCH_PATH}:`)),
-        'a hand-authored inventory total outside the generated block must still fail the scan',
+        validateVolatileInventoryClaims().some((f) => f.startsWith(`${AI_SEARCH_PATH}:`)),
+        'demoting the next heading must not extend the exemption over hand-authored prose',
       );
     });
   });

@@ -31,8 +31,12 @@ import { PIPELINES } from '../shared/pipelines-data.ts';
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { SOURCE_DOMAINS } from './crawlable-sources-page.mjs';
 import { resolveLatestResilienceSnapshotPath } from './build-crawlable-corpus.mjs';
-import { AI_SEARCH_COVERAGE_HEADING } from './docs-stats.mjs';
-import { loadStatsForInventoryFacts } from './generate-inventory-facts.mjs';
+import {
+  AI_SEARCH_COVERAGE_CLOSE,
+  AI_SEARCH_COVERAGE_HEADING,
+  AI_SEARCH_COVERAGE_OPEN,
+  computeStats,
+} from './docs-stats.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -43,8 +47,16 @@ export const AI_SEARCH_PATH = 'public/ai-search.md';
 // import only goes this way: docs-stats stays dependency-free so it can run in
 // container build stages that have no TypeScript loader.
 export const COVERAGE_HEADING = AI_SEARCH_COVERAGE_HEADING;
-const LAST_UPDATED_RE = /^Last updated: \d{4}-\d{2}-\d{2}$/m;
+export const COVERAGE_OPEN = AI_SEARCH_COVERAGE_OPEN;
+export const COVERAGE_CLOSE = AI_SEARCH_COVERAGE_CLOSE;
 const RECONCILED_RE = /^Coverage reconciled: \d{4}-\d{2}-\d{2}\b.*$/m;
+// Deliberately NOT "Last updated". The generator can measure when the figures
+// were last reconciled; it cannot measure when the hand-authored prose was
+// last touched, and a prose-only edit legitimately leaves this date unmoved.
+// Labelling it "Last updated" made the page assert a document freshness
+// nothing here establishes — on the one page whose whole job is citable
+// freshness. The label now matches what the mechanism actually knows.
+const FACTS_RECONCILED_RE = /^Facts reconciled: \d{4}-\d{2}-\d{2}\b.*$/m;
 
 const read = (rootDir, relativePath) => readFileSync(join(rootDir, relativePath), 'utf8');
 const readJson = (rootDir, relativePath) => JSON.parse(read(rootDir, relativePath));
@@ -105,11 +117,16 @@ export function buildCoverageBullets({ stats, resilience }) {
   const attribution = stats.sourceAttribution;
   return [
     `- ${count(attribution.providerCount)} active data providers across ${count(attribution.activeHosts)} observed source hosts (${count(attribution.structuredHosts)} structured/API, ${count(attribution.feedHosts)} news & OSINT feed, ${count(attribution.operationalStatusHosts)} operational-status; a host can be more than one), grouped into ${count(SOURCE_DOMAINS.length)} signal domains — full catalog at https://www.worldmonitor.app/sources/`,
-    `- ${count(stats.feedDefinitions)} feed definitions in the shared feed registry`,
+    // Two different "feed" counts exist and the homepage publishes the other
+    // one, so this bullet names both rather than leaving an agent to reconcile
+    // 724 against a hero stat of 461.
+    `- ${count(stats.feedDefinitions)} feed definitions in the shared feed registry — distinct from the ${count(attribution.feedHosts)} feed-publishing hosts above, since one host can back several feed definitions`,
     // "Freshness-tracked" is a different axis from the source catalog's signal
     // domains, and the two sat adjacent with no definition — an agent could
-    // reasonably have collapsed them into one grouping. Name the axis.
-    `- ${count(stats.freshnessSources)} named live data streams whose staleness is tracked and surfaced individually (ACLED, OpenSky, AIS, GDELT, RSS and the rest) — a different axis from the ${count(SOURCE_DOMAINS.length)} signal domains above, which group the source catalog by subject`,
+    // reasonably have collapsed them into one grouping. Name the axis. No
+    // example stream names: nothing here derives them, and an unverified list
+    // inside the generated block would rot behind every gate that guards it.
+    `- ${count(stats.freshnessSources)} named live data streams whose staleness is tracked and surfaced individually — a different axis from the ${count(SOURCE_DOMAINS.length)} signal domains above, which group the source catalog by subject`,
     mapLayerCoverage(stats),
     `- ${count(stats.panelClasses)} concrete panel implementations across ${count(stats.variantCount)} product variants`,
     `- ${count(stats.mcpToolCount)} MCP tools; use \`tools/list\` for the live inventory`,
@@ -127,32 +144,41 @@ export function buildCoverageBullets({ stats, resilience }) {
 
 export function buildCoverageSection({ stats, resilience, reconciledAt }) {
   return [
+    COVERAGE_OPEN,
     COVERAGE_HEADING,
     '',
     `Coverage reconciled: ${reconciledAt}. Every figure below is generated from this repository's authoritative registries by \`npm run build:ai-search\` — the same registries that produce https://www.worldmonitor.app/sources/.`,
     '',
     ...buildCoverageBullets({ stats, resilience }),
-    // Two trailing newlines: the replaced span runs up to the next `## `
-    // heading, so the section owns the blank line that separates them.
-    '',
-    '',
+    COVERAGE_CLOSE,
   ].join('\n');
 }
 
 /**
- * Replace the block from `heading` up to the next level-2 heading, keeping the
- * rest of the document byte-identical.
+ * Replace the sentinel-delimited generated block, keeping the rest of the
+ * document byte-identical. The sentinels are the same pair docs-stats reads to
+ * scope its scan exemption, so the generator and the gate can never disagree
+ * about where the generated region ends.
  */
-export function replaceSection(source, heading, replacement) {
-  const start = source.indexOf(`${heading}\n`);
-  if (start === -1) throw new Error(`${AI_SEARCH_PATH} is missing the ${heading} section`);
-  const nextHeading = source.indexOf('\n## ', start + heading.length);
-  const end = nextHeading === -1 ? source.length : nextHeading + 1;
-  return `${source.slice(0, start)}${replacement}${source.slice(end)}`;
+export function replaceGeneratedBlock(source, replacement) {
+  const start = source.indexOf(COVERAGE_OPEN);
+  const closeAt = source.indexOf(COVERAGE_CLOSE);
+  if (start === -1 || closeAt === -1 || closeAt < start) {
+    throw new Error(`${AI_SEARCH_PATH} must delimit its generated block with ${COVERAGE_OPEN} … ${COVERAGE_CLOSE}`);
+  }
+  // A second pair would leave an orphaned block this rewrite never refreshes.
+  // docs-stats already fails closed on duplicates; say so here rather than
+  // letting it surface later as an unexplained gate failure.
+  if (source.indexOf(COVERAGE_OPEN, start + 1) !== -1 || source.indexOf(COVERAGE_CLOSE, closeAt + 1) !== -1) {
+    throw new Error(`${AI_SEARCH_PATH} must contain exactly one generated coverage block`);
+  }
+  return `${source.slice(0, start)}${replacement}${source.slice(closeAt + COVERAGE_CLOSE.length)}`;
 }
 
 function withoutDates(text) {
-  return text.replace(LAST_UPDATED_RE, 'Last updated: <date>').replace(RECONCILED_RE, 'Coverage reconciled: <date>');
+  return text
+    .replace(RECONCILED_RE, 'Coverage reconciled: <date>')
+    .replace(FACTS_RECONCILED_RE, 'Facts reconciled: <date>');
 }
 
 /**
@@ -167,6 +193,12 @@ export function resolveReconciledAt({ current, candidate, today }) {
   return withoutDates(candidate) === withoutDates(current) ? existing : today;
 }
 
+/**
+ * `rootDir` scopes the document and snapshot reads only. The registry stats
+ * always come from the checkout this generator lives in, because computeStats
+ * parses that tree directly — same as build-llms-full importing its glossary.
+ * Tests exploit this to stage a mutated document without copying the repo.
+ */
 export function buildAiSearchText({ rootDir = ROOT, today = todayUtc() } = {}) {
   if (!existsSync(join(rootDir, AI_SEARCH_PATH))) {
     // The prose is hand-authored and committed; this generator only refreshes
@@ -174,20 +206,24 @@ export function buildAiSearchText({ rootDir = ROOT, today = todayUtc() } = {}) {
     throw new Error(`${AI_SEARCH_PATH} must exist — this generator rewrites its figures, not the file`);
   }
   const current = read(rootDir, AI_SEARCH_PATH);
-  const stats = loadStatsForInventoryFacts();
+  // computeStats directly, NOT loadStatsForInventoryFacts: that helper exists
+  // so a boot artifact can still be written when the attribution manifest no
+  // longer matches the tree, falling back to the committed counts unvalidated.
+  // Publishing a citable figure is the opposite situation — a manifest that
+  // has drifted from the source tree must fail the run, not quietly publish
+  // the last known-good number under today's reconciliation date.
+  const stats = computeStats();
   const resilience = publishedRankedCountries(rootDir);
 
   const render = (reconciledAt) => {
-    const withCoverage = replaceSection(
+    const withBlock = replaceGeneratedBlock(
       current,
-      COVERAGE_HEADING,
       buildCoverageSection({ stats, resilience, reconciledAt }),
     );
-    const dated = withCoverage.replace(LAST_UPDATED_RE, `Last updated: ${reconciledAt}`);
-    if (!LAST_UPDATED_RE.test(dated)) {
-      throw new Error(`${AI_SEARCH_PATH} must carry an ISO "Last updated: YYYY-MM-DD" line`);
+    if (!FACTS_RECONCILED_RE.test(withBlock)) {
+      throw new Error(`${AI_SEARCH_PATH} must carry a "Facts reconciled: YYYY-MM-DD" line`);
     }
-    return dated;
+    return withBlock.replace(FACTS_RECONCILED_RE, (line) => line.replace(/\d{4}-\d{2}-\d{2}/, reconciledAt));
   };
 
   return render(resolveReconciledAt({ current, candidate: render(today), today }));
