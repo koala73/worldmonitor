@@ -3,7 +3,8 @@
 // The first repair paced 38 per-country requests at ~1 request/second, but the
 // production identifier was blocked again after that still produced thousands
 // of requests per day. The durable contract is:
-//   - one national-level bulk request for the target countries,
+//   - two global bulk requests (admin-0, then admin-2 for the HRP countries that
+//     publish no national row at all) for the target countries,
 //   - no new request while the last successful snapshot is fresh,
 //   - direct bot-block failures switch to HAPI's official HDX snapshot,
 //   - quota/identifier throttles persist a failure backoff without snapshotting,
@@ -17,6 +18,8 @@ import {
   HAPI_FAILURE_BACKOFF_MS,
   HAPI_HDX_MAX_RESPONSE_BYTES,
   HAPI_HDX_PACKAGE_URL,
+  HAPI_COUNTRIES,
+  HAPI_DASHBOARD_COUNTRIES,
   HAPI_REFRESH_INTERVAL_MS,
   HAPI_REQUIRED_COUNTRIES,
   aggregateHapiConflictEvents,
@@ -28,11 +31,33 @@ import {
 import {
   HAPI_HDX_METADATA_TIMEOUT_MS,
   HAPI_HDX_SNAPSHOT_TIMEOUT_MS,
+  HAPI_MAX_PAGES,
+  HAPI_PAGE_LIMIT,
   hapiHdxFailureReason,
   readBoundedHapiHdxText,
 } from '../scripts/_conflict-hapi.mjs';
 
 const NOW = Date.parse('2026-07-26T13:30:00Z');
+// The seeder DERIVES its crisis coverage from this registry instead of duplicating
+// the codes, so these tests read the same file rather than restating them: a
+// hand-written expectation here would reintroduce the exact drift being fixed.
+const CRISIS_REGISTRY_PATH = new URL('../shared/crawlable-crises.json', import.meta.url);
+const CRISIS_REGISTRY_COUNTRIES = [...new Set(
+  JSON.parse(readFileSync(CRISIS_REGISTRY_PATH, 'utf8'))
+    .flatMap((crisis) => crisis.coverage.map((entry) => entry.code.toUpperCase())),
+)];
+
+function hapiRow(locationCode, overrides = {}) {
+  return {
+    location_code: locationCode,
+    reference_period_start: '2026-07-01',
+    admin_level: 0,
+    event_type: 'political_violence',
+    events: 1,
+    fatalities: 0,
+    ...overrides,
+  };
+}
 const HAPI_CSV_HEADER = '\ufefflocation_code,has_hrp,in_gho,provider_admin1_name,provider_admin2_name,admin1_code,admin1_name,admin2_code,admin2_name,admin_level,event_type,events,fatalities,reference_period_start,reference_period_end,dataset_hdx_id,resource_hdx_id,warning,error';
 
 function hapiCsv(...rows) {
@@ -58,9 +83,9 @@ function hapiHdxMetadata(resources = [hapiHdxResource(2026)]) {
 test('humanitarian health reports partial target-country coverage', () => {
   const healthSource = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
   const seedSource = readFileSync(new URL('../scripts/seed-conflict-intel.mjs', import.meta.url), 'utf8');
-  assert.match(
-    healthSource,
-    /humanitarianSummary:\s*\{[^}]*maxStaleMin:\s*300,\s*minRecordCount:\s*23\s*\}/,
+  const minRecordCount = Number(
+    /humanitarianSummary:\s*\{[^}]*maxStaleMin:\s*300,\s*minRecordCount:\s*(\d+)\s*\}/
+      .exec(healthSource)?.[1],
   );
   assert.match(
     seedSource,
@@ -70,16 +95,45 @@ test('humanitarian health reports partial target-country coverage', () => {
     seedSource,
     /HAPI_SEED_META_TTL_SECONDS,\s*requiredCountriesCovered,\s*HAPI_SEED_META_KEY/,
   );
-  assert.equal(HAPI_REQUIRED_COUNTRIES.length, 23);
+  assert.equal(
+    minRecordCount,
+    HAPI_REQUIRED_COUNTRIES.length,
+    'health.js minRecordCount must track the guaranteed-coverage contract, not a frozen count',
+  );
   assert.equal(new URL(HAPI_HDX_PACKAGE_URL).hostname, 'data.humdata.org');
   assert.doesNotMatch(seedSource, /HAPI_PROXY_URL/);
   assert.deepEqual(
     new Set(HAPI_REQUIRED_COUNTRIES),
-    new Set([
-      'US', 'RU', 'CN', 'UA', 'IR', 'IL', 'TW', 'KP', 'SA', 'TR',
-      'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'SY', 'YE', 'MM', 'VE',
-      'SD', 'DJ', 'ER',
-    ]),
+    new Set([...CRISIS_REGISTRY_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES]),
+    'required coverage is the crisis registry plus the dashboard watchlist — never a third hand-maintained list',
+  );
+});
+
+test('every crisis-tracker registry country reaches the HAPI aggregation filter', () => {
+  // THE regression guard for the bug this file's dual sweep exists to fix: the
+  // registry shipped public /crises/<slug> pages for countries the seeder never
+  // requested, and countryCodes silently DISCARDS rows for any country outside
+  // HAPI_COUNTRIES — so a miss here is invisible in logs and in health.
+  assert.ok(CRISIS_REGISTRY_COUNTRIES.length > 0, 'the crisis registry must not be empty');
+  for (const countryCode of CRISIS_REGISTRY_COUNTRIES) {
+    assert.ok(
+      HAPI_COUNTRIES.includes(countryCode),
+      `${countryCode} is published by a crisis tracker but sits outside the HAPI aggregation filter`,
+    );
+    assert.ok(
+      HAPI_REQUIRED_COUNTRIES.includes(countryCode),
+      `${countryCode} is published by a crisis tracker but is not in the guaranteed coverage contract`,
+    );
+  }
+});
+
+test('the Railway deploy copy of the crisis registry stays byte-identical', () => {
+  // loadSharedConfig resolves ../shared/ first and scripts/shared/ second, so the
+  // seeder reads a DIFFERENT file inside the Railway image than it does locally.
+  // Divergence would make coverage depend on where the seeder happens to run.
+  assert.equal(
+    readFileSync(new URL('../scripts/shared/crawlable-crises.json', import.meta.url), 'utf8'),
+    readFileSync(CRISIS_REGISTRY_PATH, 'utf8'),
   );
 });
 
@@ -94,6 +148,29 @@ test('HAPI bulk URL requests national totals for the current and previous month'
   assert.equal(url.searchParams.get('offset'), '0');
   assert.equal(url.searchParams.has('location_code'), false);
   assert.equal(url.searchParams.has('app_identifier'), false, 'identifier belongs in the supported request header');
+});
+
+test('the bulk page budget clears two monthly periods of subnational rows', () => {
+  // Measured against the live API on 2026-09-04: ONE monthly reference period is
+  // 13,785 admin-2 rows (vs 654 at admin-0, which is what the old 3-page budget
+  // was sized for), and previousMonthStart can put TWO periods in the window.
+  // fetchHapiRows THROWS past the budget instead of truncating, so a breach takes
+  // the HRP countries dark again behind nothing but a warn line.
+  const measuredRowsPerReferencePeriod = 13_785;
+  const worstCaseRows = 2 * measuredRowsPerReferencePeriod;
+
+  assert.ok(
+    HAPI_MAX_PAGES * HAPI_PAGE_LIMIT >= Math.ceil(worstCaseRows * 1.5),
+    `page budget ${HAPI_MAX_PAGES * HAPI_PAGE_LIMIT} leaves under 1.5x headroom on the measured ${worstCaseRows}-row worst case`,
+  );
+});
+
+test('HAPI subnational sweep URL requests the deepest published level globally', () => {
+  const url = new URL(buildHapiConflictEventsUrl({ nowMs: NOW, adminLevel: '2' }));
+
+  assert.equal(url.searchParams.get('admin_level'), '2');
+  assert.equal(url.searchParams.get('start_date'), '2026-06-01');
+  assert.equal(url.searchParams.has('location_code'), false, 'the subnational sweep is global, not per country');
 });
 
 test('HAPI HDX snapshot selection spans the year boundary needed by the two-month query', () => {
@@ -295,49 +372,101 @@ test('HAPI aggregation uses the deepest available administrative level without d
   assert.equal(result.SD.summary.conflictFatalities, 3);
 });
 
-test('HAPI ingestion makes one bulk request and maps all returned target countries', async () => {
+test('one aggregation pass over both sweeps keeps each country at its own admin level', () => {
+  // The live shape: HAPI publishes a country at exactly ONE admin level, so the
+  // two global sweeps are disjoint. Aggregating the CONCATENATION in a single
+  // pass (rather than merging two aggregates) is what keeps the deepest-level
+  // tiebreak available if that ever stops being true.
+  const nationalRows = [
+    hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 }),
+    hapiRow('SDN', { location_name: 'Sudan', event_type: 'demonstration', events: 7 }),
+    hapiRow('UKR', { location_name: 'Ukraine', event_type: 'demonstration', events: 8 }),
+  ];
+  const subnationalRows = [
+    hapiRow('AFG', { location_name: 'Afghanistan', admin_level: 2, events: 5, fatalities: 2 }),
+    hapiRow('AFG', { location_name: 'Afghanistan', admin_level: 2, events: 6, fatalities: 1 }),
+    hapiRow('HTI', { location_name: 'Haiti', admin_level: 2, event_type: 'civilian_targeting', events: 4, fatalities: 9 }),
+  ];
+  const countryCodes = ['SD', 'UA', 'AF', 'HT'];
+
+  const combined = aggregateHapiConflictEvents(
+    [...nationalRows, ...subnationalRows],
+    { nowMs: NOW, countryCodes },
+  );
+
+  assert.deepEqual(Object.keys(combined).sort(), ['AF', 'HT', 'SD', 'UA']);
+  assert.equal(combined.SD.summary.conflictEventsTotal, 19);
+  assert.equal(combined.AF.summary.conflictEventsTotal, 11);
+  assert.equal(combined.AF.summary.conflictFatalities, 3);
+  assert.equal(combined.HT.summary.conflictEventsTotal, 4);
+  assert.equal(combined.HT.summary.conflictFatalities, 9);
+
+  // Behaviour preservation: every country live today comes from the admin-0
+  // sweep, and appending the disjoint subnational rows must not perturb them.
+  const nationalOnly = aggregateHapiConflictEvents(nationalRows, { nowMs: NOW, countryCodes });
+  assert.deepEqual(combined.SD, nationalOnly.SD);
+  assert.deepEqual(combined.UA, nationalOnly.UA);
+  assert.equal(nationalOnly.AF, undefined, 'admin-0 alone is exactly what left the HRP countries dark');
+  assert.equal(nationalOnly.HT, undefined);
+});
+
+test('a country returned by both sweeps resolves to the deeper level without double counting', () => {
+  const result = aggregateHapiConflictEvents([
+    hapiRow('UKR', { location_name: 'Ukraine', events: 100, fatalities: 10 }),
+    hapiRow('UKR', { location_name: 'Ukraine', admin_level: 2, events: 40, fatalities: 4 }),
+    hapiRow('UKR', { location_name: 'Ukraine', admin_level: 2, events: 20, fatalities: 1 }),
+  ], { nowMs: NOW, countryCodes: ['UA'] });
+
+  assert.equal(result.UA.summary.conflictEventsTotal, 60);
+  assert.equal(result.UA.summary.conflictFatalities, 5);
+});
+
+test('HAPI ingestion makes two global bulk requests and maps all returned target countries', async () => {
   const calls = [];
   const result = await fetchAllHumanitarianSummaries({
     now: () => NOW,
-    countryCodes: ['SD', 'UA'],
-    pace: async () => {},
+    countryCodes: ['SD', 'UA', 'AF'],
+    pace: async () => assert.fail('two covering sweeps must leave the fallback fan-out with nothing to pace'),
     loadPreviousMarker: async () => null,
     loadFailureBackoff: async () => null,
     writeFailureBackoff: async () => assert.fail('success must not write a failure backoff'),
     preserveLastGood: async () => assert.fail('success must not extend stale rows'),
     fetchFn: async (url, options) => {
-      calls.push({ url: String(url), options });
-      return new Response(JSON.stringify({
-        data: [
-          {
-            location_code: 'SDN',
-            location_name: 'Sudan',
-            reference_period_start: '2026-07-01',
-            admin_level: 0,
-            event_type: 'political_violence',
-            events: 12,
-            fatalities: 3,
-          },
-          {
-            location_code: 'UKR',
-            location_name: 'Ukraine',
-            reference_period_start: '2026-07-01',
-            admin_level: 0,
-            event_type: 'demonstration',
-            events: 8,
-            fatalities: 0,
-          },
-        ],
-      }), { status: 200 });
+      const parsed = new URL(String(url));
+      calls.push({ url: parsed, options });
+      assert.equal(parsed.searchParams.has('location_code'), false, 'both sweeps are global');
+      const data = parsed.searchParams.get('admin_level') === '0'
+        ? [
+            hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 }),
+            hapiRow('UKR', { location_name: 'Ukraine', event_type: 'demonstration', events: 8 }),
+          ]
+        : [
+            hapiRow('AFG', { location_name: 'Afghanistan', admin_level: 2, events: 5, fatalities: 2 }),
+            hapiRow('AFG', { location_name: 'Afghanistan', admin_level: 2, events: 6, fatalities: 1 }),
+          ];
+      return new Response(JSON.stringify({ data }), { status: 200 });
     },
   });
 
-  assert.equal(calls.length, 1, 'one bulk request replaces the 38-request per-country sweep');
+  assert.deepEqual(
+    calls.map((call) => call.url.searchParams.get('admin_level')),
+    ['0', '2'],
+    'two global bulk requests replace the 38-request per-country sweep',
+  );
   assert.ok(calls[0].options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
-  assert.deepEqual(Object.keys(result).sort(), ['SD', 'UA']);
+  assert.ok(calls[1].options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
+  assert.deepEqual(Object.keys(result).sort(), ['AF', 'SD', 'UA']);
+  assert.equal(
+    result.AF.summary.conflictEventsTotal,
+    11,
+    'an HRP country with no national row must publish from the subnational sweep',
+  );
 });
 
-test('HAPI ingestion falls back only for targets missing national rows', async () => {
+test('HAPI ingestion keeps the per-country fallback for targets neither sweep covers', async () => {
+  // Sudan here is published only at admin-1, which neither global sweep requests.
+  // The fan-out is dead weight against today's upstream shape and MUST stay: it
+  // is the fail-closed net for a required country moving between admin levels.
   const urls = [];
   const result = await fetchAllHumanitarianSummaries({
     now: () => NOW,
@@ -350,35 +479,145 @@ test('HAPI ingestion falls back only for targets missing national rows', async (
     fetchFn: async (url) => {
       const parsed = new URL(url);
       urls.push(parsed);
-      const data = parsed.searchParams.get('location_code') === 'SDN'
-        ? [{
-            location_code: 'SDN',
-            location_name: 'Sudan',
-            reference_period_start: '2026-07-01',
-            admin_level: 2,
-            event_type: 'political_violence',
-            events: 12,
-            fatalities: 3,
-          }]
-        : [{
-            location_code: 'UKR',
-            location_name: 'Ukraine',
-            reference_period_start: '2026-07-01',
-            admin_level: 0,
-            event_type: 'demonstration',
-            events: 8,
-            fatalities: 0,
-          }];
+      if (parsed.searchParams.get('location_code') === 'SDN') {
+        return new Response(JSON.stringify({
+          data: [hapiRow('SDN', { location_name: 'Sudan', admin_level: 1, events: 12, fatalities: 3 })],
+        }), { status: 200 });
+      }
+      const data = parsed.searchParams.get('admin_level') === '0'
+        ? [hapiRow('UKR', { location_name: 'Ukraine', event_type: 'demonstration', events: 8 })]
+        : [];
       return new Response(JSON.stringify({ data }), { status: 200 });
     },
   });
 
-  assert.equal(urls.length, 2);
-  assert.equal(urls[0].searchParams.get('admin_level'), '0');
-  assert.equal(urls[0].searchParams.has('location_code'), false);
-  assert.equal(urls[1].searchParams.has('admin_level'), false);
-  assert.equal(urls[1].searchParams.get('location_code'), 'SDN');
+  assert.deepEqual(
+    urls.map((parsed) => [
+      parsed.searchParams.get('admin_level'),
+      parsed.searchParams.get('location_code'),
+    ]),
+    [['0', null], ['2', null], [null, 'SDN']],
+  );
   assert.deepEqual(Object.keys(result).sort(), ['SD', 'UA']);
+  assert.equal(result.SD.summary.conflictEventsTotal, 12);
+});
+
+test('the per-country fallback stops LAUNCHING once its wall-clock budget is spent', async () => {
+  // #7656: unbounded, this loop could add 23 × 15s behind two 75s sweeps and blow
+  // the 315s envelope the fetch-deadline model is anchored on. Each per-country
+  // request here burns 70s of the 140s budget, so exactly two may launch.
+  const requested = [];
+  let elapsedMs = 0;
+  let backoff;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    readElapsedMs: () => elapsedMs,
+    countryCodes: ['SD', 'UA', 'IR', 'IL', 'YE'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async () => assert.fail('partial coverage must not publish SEED_ERROR'),
+    preserveLastGood: async () => { preserved += 1; },
+    fetchFn: async (url) => {
+      const parsed = new URL(url);
+      const locationCode = parsed.searchParams.get('location_code');
+      if (!locationCode) {
+        // Only Sudan comes back from the sweeps; the rest fall to the fan-out.
+        const data = parsed.searchParams.get('admin_level') === '0'
+          ? [hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 })]
+          : [];
+        return new Response(JSON.stringify({ data }), { status: 200 });
+      }
+      requested.push(locationCode);
+      elapsedMs += 70_000;
+      return new Response(JSON.stringify({
+        data: [hapiRow(locationCode, { admin_level: 1, events: 5, fatalities: 1 })],
+      }), { status: 200 });
+    },
+  });
+
+  assert.deepEqual(requested, ['UKR', 'IRN'], 'the third launch is over budget and must never be issued');
+  assert.deepEqual(Object.keys(result).sort(), ['IR', 'SD', 'UA'], 'countries already covered must still publish');
+  assert.equal(backoff.reasonCode, 'HAPI_FALLBACK_BUDGET_EXHAUSTED');
+  assert.equal(backoff.status, 0, 'a budget cut has no provider status to record');
+  assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+  assert.equal(preserved, 1, 'partial coverage must preserve last-good rather than pass as complete');
+});
+
+test('the HDX snapshot fallback serves the subnational sweep instead of returning nothing', async () => {
+  // fetchRowsFromSnapshot filters on row.admin_level, so a bot-blocked run must
+  // still hand the admin-2 sweep its rows out of the ONE memoized download.
+  let directCalls = 0;
+  let snapshotCalls = 0;
+  const csv = hapiCsv(
+    'SDN,,,,,,,,,0,political_violence,12,3,2026-07-01,2026-07-31,dataset,resource,,',
+    'AFG,,,,,,,,,2,political_violence,5,2,2026-07-01,2026-07-31,dataset,resource,,',
+    'AFG,,,,,,,,,2,political_violence,6,1,2026-07-01,2026-07-31,dataset,resource,,',
+  );
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD', 'AF'],
+    pace: async () => assert.fail('a snapshot covering every target must not pace a fallback'),
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async () => assert.fail('successful snapshot recovery must not back off'),
+    writeFailureMeta: async () => assert.fail('successful snapshot recovery must not publish SEED_ERROR'),
+    preserveLastGood: async () => assert.fail('successful snapshot recovery must not preserve stale rows'),
+    snapshotFetchFn: async (input) => {
+      snapshotCalls += 1;
+      return String(input).includes('/api/3/action/package_show')
+        ? Response.json(hapiHdxMetadata())
+        : new Response(csv, { headers: { 'Content-Type': 'text/csv' } });
+    },
+    fetchFn: async () => {
+      directCalls += 1;
+      return new Response('Blocked due to bot activity.', { status: 406 });
+    },
+  });
+
+  assert.equal(directCalls, 1, 'the subnational sweep must reuse the snapshot, not re-hit the blocked API');
+  assert.equal(snapshotCalls, 2, 'one metadata plus one CSV download serves both sweeps');
+  assert.deepEqual(Object.keys(result).sort(), ['AF', 'SD']);
+  assert.equal(result.SD.summary.conflictEventsTotal, 12);
+  assert.equal(
+    result.AF.summary.conflictEventsTotal,
+    11,
+    'admin-2 rows must survive the snapshot admin_level filter',
+  );
+});
+
+test('a failed subnational sweep still publishes the national sweep and backs off', async () => {
+  let backoff;
+  let preserved = 0;
+  const adminLevels = [];
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async () => assert.fail('a partial success must not publish SEED_ERROR'),
+    preserveLastGood: async () => { preserved += 1; },
+    fetchFn: async (url) => {
+      const parsed = new URL(url);
+      adminLevels.push(parsed.searchParams.get('admin_level'));
+      if (parsed.searchParams.get('admin_level') === '2') {
+        return new Response(JSON.stringify({ error: 'Too Many Requests' }), { status: 429 });
+      }
+      return new Response(JSON.stringify({
+        data: [hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 })],
+      }), { status: 200 });
+    },
+  });
+
+  assert.deepEqual(adminLevels, ['0', '2'], 'a rejected subnational sweep must not abort the run');
+  assert.deepEqual(Object.keys(result), ['SD']);
+  assert.equal(preserved, 1);
+  assert.equal(backoff.status, 429);
+  assert.equal(backoff.reasonCode, 'HAPI_RATE_LIMIT');
 });
 
 test('HAPI bot-detection rejection loads the official HDX snapshot', async () => {
@@ -652,15 +891,9 @@ test('HAPI snapshot failure aborts the cycle without publishing a partial direct
       const url = new URL(String(input));
       if (!url.searchParams.has('location_code')) {
         return Response.json({
-          data: [{
-            location_code: 'SDN',
-            location_name: 'Sudan',
-            reference_period_start: '2026-07-01',
-            admin_level: 0,
-            event_type: 'political_violence',
-            events: 12,
-            fatalities: 3,
-          }],
+          data: url.searchParams.get('admin_level') === '0'
+            ? [hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 })]
+            : [],
         });
       }
       assert.equal(url.searchParams.get('location_code'), 'UKR');
@@ -669,7 +902,7 @@ test('HAPI snapshot failure aborts the cycle without publishing a partial direct
   });
 
   assert.equal(result, null, 'a terminal snapshot failure must discard the partial Sudan result');
-  assert.equal(directCalls, 2, 'the initial sweep and first missing-country request should run');
+  assert.equal(directCalls, 3, 'both global sweeps and the first missing-country request should run');
   assert.equal(snapshotUrls.length, 2, 'metadata plus one failed CSV request should run');
   assert.equal(preserved, 1);
   assert.equal(backoff.status, 503);

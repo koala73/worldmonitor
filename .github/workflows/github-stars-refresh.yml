@@ -1,0 +1,110 @@
+name: Refresh GitHub Stars Snapshot
+
+# The homepage star InteractionCounter is build-populated from the committed
+# freeze snapshot (docs/snapshots/github-stars-*.json), and
+# scripts/github-stars-snapshot.mjs rejects a snapshot older than
+# MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS (45) — so this monthly refresh is what
+# keeps the prerender buildable as well as truthful (#7641).
+#
+# The ceiling and the cron are one contract: relaxing either without the other
+# reopens the rotting-figure gap, and a guard in
+# tests/github-stars-snapshot.test.mjs asserts they still agree.
+# Mirrors .github/workflows/resilience-snapshot-refresh.yml. Unlike that
+# workflow no API key is needed: the freeze reads the public repository
+# endpoint, well inside the unauthenticated rate limit for one call a month.
+
+on:
+  schedule:
+    - cron: '29 5 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: github-stars-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          fetch-depth: 0
+          # workflow_dispatch can target a feature branch; publication must
+          # always branch from main so the review PR stays free of unrelated commits.
+          ref: refs/heads/main
+      - name: Reconcile the monthly review branch
+        id: reconcile
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          period=$(date -u +%Y-%m)
+          branch="automation/github-stars-${period}"
+          echo "branch=${branch}" >> "$GITHUB_OUTPUT"
+          existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
+          if [ -n "$existing_pr" ]; then
+            existing_state=$(gh pr view "$existing_pr" --json state --jq .state)
+            if [ "$existing_state" = "CLOSED" ]; then
+              echo "::error title=Closed unmerged star-snapshot PR::Reopen PR #${existing_pr} before retrying this workflow."
+              exit 1
+            fi
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "Monthly star-snapshot PR #${existing_pr} already exists."
+            exit 0
+          fi
+          if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
+            gh pr create \
+              --base main \
+              --head "$branch" \
+              --title "chore(geo): refresh github-stars snapshot ${period}" \
+              --body "Monthly public GitHub star-count freeze for the homepage InteractionCounter (#7641)."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        if: steps.reconcile.outputs.skip != 'true'
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - name: Install dependencies
+        if: steps.reconcile.outputs.skip != 'true'
+        run: npm ci --ignore-scripts
+      - name: Freeze the current star count
+        if: steps.reconcile.outputs.skip != 'true'
+        run: npm run freeze:github-stars
+      - name: Verify the frozen snapshot
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
+          node --test tests/github-stars-snapshot.test.mjs
+      - name: Prune superseded star snapshots
+        if: steps.reconcile.outputs.skip != 'true'
+        run: |
+          # Keep one fallback in case the newest snapshot becomes unreadable.
+          ls -1 docs/snapshots/github-stars-*.json \
+            | sort -r \
+            | tail -n +3 \
+            | xargs -r git rm --quiet
+      - name: Open the monthly snapshot PR
+        if: steps.reconcile.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+        run: |
+          snapshot_date=$(date -u +%F)
+          snapshot_path="docs/snapshots/github-stars-${snapshot_date}.json"
+          git switch -c "$BRANCH_NAME"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$snapshot_path"
+          git commit -m "chore(geo): refresh github-stars snapshot ${snapshot_date}"
+          git push --set-upstream origin "$BRANCH_NAME"
+          gh pr create \
+            --base main \
+            --head "$BRANCH_NAME" \
+            --title "chore(geo): refresh github-stars snapshot ${snapshot_date}" \
+            --body "Monthly public GitHub star-count freeze for the homepage InteractionCounter (#7641)."

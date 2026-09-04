@@ -3,8 +3,10 @@
  *
  * Keep the three semantics separate. GTA Update reuse permission is held, but
  * production remains disabled pending upstream provenance and product
- * activation. TPS datasets are official, retrospective, and available only
- * through bounded on-demand reads.
+ * activation. TPS datasets are official, retrospective, and served from bounded
+ * snapshots published by seed-bundle-canada (#7036 — they were manual-only
+ * until it turned out nothing invoked them and the 24h canonical TTL emptied
+ * both keys a day after every hand run).
  */
 
 export const TORONTO_SAFETY_SEMANTICS = Object.freeze({
@@ -49,7 +51,7 @@ export const TORONTO_SAFETY_SOURCES = Object.freeze([
     disclaimer: 'Retrospective offence/victim rows. Coordinates are deliberately offset. Not a live dispatch feed.',
     attribution: 'Contains information licensed under the Open Government Licence - Ontario.',
     sourceUrl: 'https://data.tps.ca/pages/major-crime-indicators',
-    productionWriter: 'on-demand',
+    productionWriter: 'bundle',
     bootstrap: 'none',
     geocode: false,
   }),
@@ -62,7 +64,7 @@ export const TORONTO_SAFETY_SOURCES = Object.freeze([
     disclaimer: 'Annual counts by division and neighbourhood. These are not incident points.',
     attribution: 'Toronto Police Service, Calls for Service Attended, via City of Toronto Open Data. https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/',
     sourceUrl: 'https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/',
-    productionWriter: 'on-demand',
+    productionWriter: 'bundle',
     bootstrap: 'none',
     geocode: false,
   }),

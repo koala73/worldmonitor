@@ -20,6 +20,21 @@ const SNAPSHOTS_DIR = join(ROOT, 'docs/snapshots');
 const SNAPSHOT_PATTERN = /^github-stars-(\d{4}-\d{2}-\d{2})\.json$/;
 const REPOSITORY = 'koala73/worldmonitor';
 
+// The committed snapshot is published as the homepage star count, and nothing
+// re-runs the freeze automatically except
+// .github/workflows/github-stars-refresh.yml — so bound the age here: a
+// forgotten or failed refresh must red the build rather than silently publish
+// a rotting figure under a live count (#7641). The lookup still falls back
+// past corrupt files to older valid ones, but only inside this bound: a missed
+// refresh degrades gracefully until the ceiling trips.
+//
+// Sized to clear the MONTHLY refresh cadence with slack: the cron freezes on
+// the 1st, so this leaves ~2 weeks to merge a refresh PR before the build
+// reds. The ceiling and the cron are one contract: relaxing either without the
+// other reopens the gap, and a guard in tests/github-stars-snapshot.test.mjs
+// asserts they still agree.
+export const MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS = 45;
+
 function readSnapshotError(name, reason) {
   return new Error(
     `star snapshot ${name} ${reason}; refresh with npm run freeze:github-stars`,
@@ -45,6 +60,7 @@ export function latestValidGithubStarsSnapshot(
     );
   }
   let lastError = null;
+  let newestValid = null;
   for (const name of [...files].reverse()) {
     try {
       const snapshot = JSON.parse(readFileSync(join(snapshotsDir, name), 'utf8'));
@@ -64,14 +80,24 @@ export function latestValidGithubStarsSnapshot(
       if (snapshot.capturedAt > currentUtcDate) {
         throw new Error(`capturedAt ${snapshot.capturedAt} is in the future`);
       }
-      return { ...snapshot, snapshotFile: name };
+      newestValid = { ...snapshot, snapshotFile: name };
+      break;
     } catch (error) {
       lastError = readSnapshotError(name, `unusable (${error.message})`);
     }
   }
-  throw lastError ?? new Error(
-    `no docs/snapshots/github-stars-*.json snapshot; run npm run freeze:github-stars`,
-  );
+  if (!newestValid) {
+    throw lastError ?? new Error(
+      `no docs/snapshots/github-stars-*.json snapshot; run npm run freeze:github-stars`,
+    );
+  }
+  const ageDays = (Date.parse(`${currentUtcDate}T00:00:00Z`) - Date.parse(`${newestValid.capturedAt}T00:00:00Z`)) / 86_400_000;
+  if (ageDays > MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS) {
+    throw new Error(
+      `star snapshot ${newestValid.snapshotFile} is ${Math.round(ageDays)} days old (max ${MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS}); run npm run freeze:github-stars`,
+    );
+  }
+  return newestValid;
 }
 
 export function starsInteractionCounter(snapshot) {
