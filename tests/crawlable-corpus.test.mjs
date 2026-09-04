@@ -4579,13 +4579,33 @@ describe('country recent developments', () => {
     );
   });
 
-  it('trips the pipeline coverage assertion only for new-shape snapshots', () => {
+  it('requires full country developments coverage only for new-shape snapshots', () => {
+    assertDevelopmentsCoverage({
+      carriesDevelopments: true,
+      developmentsPageCount: 3,
+      indexedCountryPageCount: 3,
+    });
     assert.throws(
-      () => assertDevelopmentsCoverage({ carriesDevelopments: true, developmentsPageCount: 0 }),
-      /refusing to publish an unenriched corpus/,
+      () => assertDevelopmentsCoverage({
+        carriesDevelopments: true,
+        developmentsPageCount: 2,
+        indexedCountryPageCount: 3,
+      }),
+      /captured dated country developments for 2 of 3 indexed country pages/,
     );
-    assertDevelopmentsCoverage({ carriesDevelopments: true, developmentsPageCount: 3 });
-    assertDevelopmentsCoverage({ carriesDevelopments: false, developmentsPageCount: 0 });
+    assert.throws(
+      () => assertDevelopmentsCoverage({
+        carriesDevelopments: true,
+        developmentsPageCount: 0,
+        indexedCountryPageCount: 3,
+      }),
+      /captured dated country developments for 0 of 3 indexed country pages/,
+    );
+    assertDevelopmentsCoverage({
+      carriesDevelopments: false,
+      developmentsPageCount: 0,
+      indexedCountryPageCount: 3,
+    });
   });
 
   it('passes frozen developments through to the dataset download', () => {

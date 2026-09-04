@@ -3128,12 +3128,16 @@ export function assertCountryDevelopmentsRendered({ pagePath, html, developments
 }
 
 // Pipeline tripwire decision (#7615), exported for tests: the per-page guard
-// proves frozen items render; this proves the freeze captured any.
-export function assertDevelopmentsCoverage({ carriesDevelopments, developmentsPageCount }) {
-  if (carriesDevelopments && developmentsPageCount === 0) {
+// proves frozen items render; this proves every indexed country captured one.
+export function assertDevelopmentsCoverage({
+  carriesDevelopments,
+  developmentsPageCount,
+  indexedCountryPageCount,
+}) {
+  if (carriesDevelopments && developmentsPageCount !== indexedCountryPageCount) {
     throw new Error(
-      'crawlable corpus captured no dated country developments on any country page; '
-      + 'refusing to publish an unenriched corpus',
+      `crawlable corpus captured dated country developments for ${developmentsPageCount} `
+      + `of ${indexedCountryPageCount} indexed country pages; refusing to publish incomplete coverage`,
     );
   }
 }
@@ -4778,11 +4782,8 @@ export async function buildCorpus({
     );
   }
   // Pipeline tripwire (#7615): the per-page guard proves frozen items render;
-  // this proves the freeze captured any. A zero means the digest match,
-  // brief, and timeline paths all came back empty — enriching nothing while
-  // the build stays green. (Per-page coverage varies with the news cycle, so
-  // the floor is pipeline-alive, not per-page — zero-match countries are the
-  // documented input to residual hub consolidation, not a build failure.)
+  // this proves the freeze captured at least one dated, sourced item for every
+  // indexed country page.
   // Snapshots frozen before developments existed carry no `developments` key
   // at all; the tripwire applies only once the snapshot has the shape, so
   // older committed snapshots (and the tests pinned to them) keep building.
@@ -4791,6 +4792,7 @@ export async function buildCorpus({
   assertDevelopmentsCoverage({
     carriesDevelopments: snapshotCarriesDevelopments,
     developmentsPageCount,
+    indexedCountryPageCount: data.countries.length,
   });
 
   const chokepointHubRows = buildChokepointHubRows(data.chokepoints, data.livePulse);
