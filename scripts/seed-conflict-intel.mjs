@@ -97,6 +97,12 @@ const HAPI_TTL = 21600;
 // headroom against a single missed/late tick, and reports EMPTY instead of STALE).
 const HAPI_SEED_META_KEY = 'seed-meta:conflict:humanitarian';
 const HAPI_SEED_META_TTL_SECONDS = 3 * 86400;
+// The two channels HAPI publishes this table through, recorded on every seed so
+// a number is always attributable to the route that produced it (#7658). They
+// are NOT interchangeable: see the divergence note at the channel latch in
+// fetchAllHumanitarianSummaries.
+export const HAPI_SNAPSHOT_CHANNEL = 'hdx-snapshot';
+export const HAPI_API_CHANNEL = 'hapi-api';
 // HAPI publishes this ACLED-derived table weekly. The conflict seeder runs every
 // 15 minutes for its other feeds, so a freshness gate prevents that unrelated
 // cadence from repeatedly hitting HAPI. The 2h interval remains comfortably
@@ -106,8 +112,11 @@ export const HAPI_FAILURE_BACKOFF_MS = 2 * 60 * 60 * 1000;
 const HAPI_FAILURE_BACKOFF_KEY = 'conflict:humanitarian:hapi-backoff:v1';
 const HAPI_REQUEST_TIMEOUT_MS = 15_000;
 const HAPI_REQUEST_DELAY_MS = 1_100;
-// #7656: wall-clock budget for the last-resort per-country fan-out, in the same
+// #7656: wall-clock budget for HAPI's discretionary network work, in the same
 // "a request may not LAUNCH after the cutoff" shape as GDELT_SWEEP_BUDGET_MS.
+// It gates TWO launch decisions, both measured from this function's entry:
+// demoting to the JSON API after the authoritative snapshot fails (#7658), and
+// the last-resort per-country fan-out below.
 // Without it the two global sweeps (each ≤ HAPI_MAX_PAGES × HAPI_REQUEST_TIMEOUT_MS
 // = 75s) could be followed by 23 sequential per-country requests — 23 × 15s plus
 // 22 × 1.1s pacing ≈ 369s — for a 519s direct route, well past the 315s envelope
@@ -185,19 +194,19 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // fallback is now dominated by the GDELT path. Without this cap a
 // GDELT brownout ran 5 batches ≈ 375s+ → deadline breach → exit 75 every tick.
 // HAPI's two global sweeps (admin-0 then admin-2) run inside the parallel
-// auxiliary stage, not after the sweep, and re-derive as follows. Direct route:
-// each sweep costs at most HAPI_MAX_PAGES(5) × HAPI_REQUEST_TIMEOUT_MS(15s) = 75s,
-// so ≤150s, and the per-country fallback below now iterates ZERO countries because
-// the two sweeps are upstream-disjoint and jointly cover every published country —
-// and is wall-clock capped by HAPI_FALLBACK_BUDGET_MS when it does iterate.
-// Bot-block route: a 15s API rejection plus 60s HDX metadata and, only at the
-// January boundary, at most two 120s annual snapshot downloads — the same ≤315s
-// bound as before, because that ONE memoized snapshot serves both sweeps and the
-// fallback rather than being paid per request. Degenerate route (both sweeps miss
-// a required country): the retained fallback is capped by HAPI_FALLBACK_BUDGET_MS
-// measured from this function's entry, so the sweeps and the fan-out SHARE that
-// window rather than stacking — max(150s, 140s) + one 15s in-flight request =
-// 165s (#7656; unbounded it was 150s + 369s = 519s, which broke the anchor).
+// auxiliary stage, not after the sweep, and re-derive as follows. Primary route
+// (#7658 — the authoritative HDX snapshot): 60s metadata plus, only at the
+// January boundary, at most two 120s annual downloads = 300s, and the sweeps
+// then cost NOTHING because that ONE memoized snapshot serves both of them and
+// the fallback by filtering rows already in memory. Demoted route (snapshot
+// failed and HAPI_FALLBACK_BUDGET_MS still had room, so the JSON API takes
+// over): the demotion may not start later than 140s, each sweep costs at most
+// HAPI_MAX_PAGES(5) × HAPI_REQUEST_TIMEOUT_MS(15s) = 75s, and the per-country
+// fan-out shares the same 140s launch window rather than stacking on it — 140s
+// + 150s + one 15s in-flight request = 305s. Both stay inside the ≤315s
+// envelope this model is anchored on; without that demotion gate a slow
+// snapshot failure would have stacked 300s + 150s + 15s = 465s (#7656 is the
+// same lesson for the fan-out: unbounded it was 150s + 369s = 519s).
 // All three remain under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline
 // (lockTtlMs+120s) below. What this replaced was a fan-out paid on EVERY run —
 // 6 missing countries ≈ 97s, and ≈290s once the 13 HRP countries that publish
@@ -237,12 +246,14 @@ export const GDELT_COUNTRY_FETCH_OPTS = Object.freeze({ maxRetries: 0, proxyMaxA
 export const ACLED_INTEL_LOCK_TTL_MS = 420_000;
 
 // HDX HAPI's `app_identifier` is used for per-client tracking/rate-limiting, not
-// just auth. The API remains the preferred route, but HAPI now bot-blocks both
-// Railway's direct egress and the configured residential proxy. A bot block
-// therefore falls back to HAPI's official annual CSV snapshot on HDX instead of
-// retrying the identical API endpoint through another egress. This seeder is
-// the only source of HAPI traffic; the RPC handlers only read the Redis keys it
-// writes, and the freshness gate permits one attempt at most every two hours.
+// just auth. It is still sent on every JSON API request, but that API is now the
+// FALLBACK route, not the preferred one (#7658): HAPI bot-blocks both Railway's
+// direct egress and the configured residential proxy, and its trailing-month
+// numbers lag the official annual CSV snapshot on HDX that the block used to
+// divert us to. The snapshot is therefore the primary channel and the API is
+// what a snapshot outage falls back to. This seeder is the only source of HAPI
+// traffic; the RPC handlers only read the Redis keys it writes, and the
+// freshness gate permits one attempt at most every two hours.
 const HAPI_APP_IDENTIFIER_CONFIG = loadSharedConfig('hapi-app-identifier.json');
 const HAPI_APP_IDENTIFIER = Buffer.from(
   `${HAPI_APP_IDENTIFIER_CONFIG.application}:${HAPI_APP_IDENTIFIER_CONFIG.email}`,
@@ -840,8 +851,18 @@ export async function fetchAllHumanitarianSummaries({
     return null;
   }
 
-  let useSnapshot = false;
-  let snapshotTriggerFailure = null;
+  // #7658: the channel is chosen HERE, once, before any row is aggregated —
+  // never by whether the provider happened to bot-block this tick. Measured
+  // 2026-09-04 across every 2026 reference period at admin-0: the two channels
+  // agree to within 0.1% for closed months, but for the TRAILING month (the one
+  // this seeder publishes) the JSON API was 13,815 events against the snapshot's
+  // 17,874 — 103 countries lower, ZERO higher. Same resource_hdx_ids, same row
+  // counts, so it is one dataset at two vintages and the API is the one that
+  // lags. Latching the snapshot as primary makes consecutive ticks comparable
+  // and keeps the route that Railway can actually reach (HAPI bot-blocks its
+  // egress, #5713/#5769/#5772) on the happy path instead of the rescue path.
+  let sourceChannel = HAPI_SNAPSHOT_CHANNEL;
+  let snapshotFailureReason = null;
   let snapshotRowsPromise;
   const loadSnapshotRows = () => {
     if (!snapshotRowsPromise) {
@@ -854,51 +875,81 @@ export async function fetchAllHumanitarianSummaries({
     return snapshotRowsPromise;
   };
   const fetchRowsFromSnapshot = async ({ countryCode, adminLevel }) => {
-    try {
-      const snapshotRows = await loadSnapshotRows();
-      return snapshotRows.filter((row) => {
-        const rowCountryCode = hapiCountryCodeForIso3(row?.location_code);
-        if (countryCode && rowCountryCode !== countryCode) return false;
-        if (adminLevel != null && String(row?.admin_level ?? '0') !== String(adminLevel)) {
-          return false;
-        }
-        return true;
-      });
-    } catch (snapshotFailure) {
-      const snapshotFailureReason = hapiHdxFailureReason(snapshotFailure);
-      throw Object.assign(
-        new Error(
-          `HAPI HDX snapshot fallback failed after direct bot detection: ${snapshotFailureReason}`,
-        ),
-        {
-          status: Number.isFinite(Number(snapshotFailure?.status))
-            ? Number(snapshotFailure.status)
-            : Number(snapshotTriggerFailure?.status),
-          reasonCode: 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED',
-          directFailureReason: snapshotTriggerFailure?.reasonCode ?? 'HAPI_BOT_BLOCK',
-          snapshotFailureReason,
-        },
-      );
-    }
+    const snapshotRows = await loadSnapshotRows();
+    return snapshotRows.filter((row) => {
+      const rowCountryCode = hapiCountryCodeForIso3(row?.location_code);
+      if (countryCode && rowCountryCode !== countryCode) return false;
+      if (adminLevel != null && String(row?.admin_level ?? '0') !== String(adminLevel)) {
+        return false;
+      }
+      return true;
+    });
   };
-  const fetchRows = async (options) => {
-    if (useSnapshot) {
-      return fetchRowsFromSnapshot(options);
-    }
-    try {
-      return await fetchHapiRows({ ...options, fetchFn });
-    } catch (directFailure) {
-      if (directFailure?.reasonCode !== 'HAPI_BOT_BLOCK') throw directFailure;
 
-      useSnapshot = true;
-      snapshotTriggerFailure = directFailure;
-      console.warn('  HAPI direct request hit provider bot detection — loading official HDX snapshot');
-      return fetchRowsFromSnapshot(options);
-    }
-  };
+  const fetchRows = async (options) => (
+    sourceChannel === HAPI_SNAPSHOT_CHANNEL
+      ? fetchRowsFromSnapshot(options)
+      : fetchHapiRows({ ...options, fetchFn })
+  );
+  // Every thrown failure carries the channel that produced it, plus the reason
+  // the primary channel was abandoned when it was, so seed-meta can say WHY a
+  // tick published from the lagging route.
+  const withChannelProvenance = (error) => Object.assign(error, {
+    sourceChannel,
+    ...(snapshotFailureReason ? { snapshotFailureReason } : {}),
+  });
 
   let failure;
   try {
+    // Resolving the snapshot up front is what keeps a run SINGLE-channel: the
+    // download is memoized either way, so paying for it here costs nothing extra
+    // and means no sweep can ever be served by a different vintage than the one
+    // before it. A snapshot outage demotes the whole run to the JSON API, whose
+    // failures then flow through the existing per-sweep degradation below rather
+    // than through a second, differently-shaped abort path.
+    try {
+      const snapshotRows = await loadSnapshotRows();
+      // A snapshot that parses but carries NOTHING for any of the 40-odd target
+      // countries in the window is an upstream publication problem, not a quiet
+      // month. Promoting the snapshot to primary would otherwise take HAPI dark
+      // on that failure mode with a working fallback sitting unused — the JSON
+      // API was the primary before #7658 and still covers it.
+      if (snapshotRows.length === 0) {
+        throw Object.assign(
+          new Error('HAPI HDX snapshot carried no rows for any target country'),
+          { reasonCode: 'HDX_SNAPSHOT_EMPTY' },
+        );
+      }
+    } catch (snapshotFailure) {
+      snapshotFailureReason = hapiHdxFailureReason(snapshotFailure);
+      // Same "may not LAUNCH after the cutoff" gate the fan-out below uses, for
+      // the same reason: the snapshot's own timeouts allow it to burn 60s of
+      // metadata plus two 120s annual downloads before failing, and stacking two
+      // 75s API sweeps behind that would push the worst case past the ≤315s
+      // envelope the whole fetch-deadline model is anchored on. A snapshot that
+      // fails FAST (DNS, 4xx/5xx, schema drift) still leaves ample budget to
+      // demote; one that fails SLOWLY has already spent the tick, so fail closed
+      // and let last-good ride to the next cron.
+      if (readElapsedMs() - startedAtMs >= HAPI_FALLBACK_BUDGET_MS) {
+        throw Object.assign(
+          new Error(
+            `HAPI HDX snapshot failed (${snapshotFailureReason}) with no budget left to demote to the JSON API`,
+          ),
+          {
+            status: Number.isFinite(Number(snapshotFailure?.status))
+              ? Number(snapshotFailure.status)
+              : 0,
+            reasonCode: snapshotFailureReason,
+          },
+        );
+      }
+      sourceChannel = HAPI_API_CHANNEL;
+      console.warn(
+        `  HAPI HDX snapshot unavailable (${snapshotFailureReason}) — demoting to the JSON API,`
+        + ' whose trailing reference period runs materially lower (#7658)',
+      );
+    }
+
     // Most countries have national rows, so one global admin-0 request covers
     // them without the old per-country fan-out.
     const nationalRows = await fetchRows({
@@ -928,7 +979,6 @@ export async function fetchAllHumanitarianSummaries({
         adminLevel: '2',
       });
     } catch (error) {
-      if (error.reasonCode === 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED') throw error;
       sweepFailure = error;
       console.warn(`  HAPI subnational sweep failed: ${error.message}`);
     }
@@ -949,8 +999,8 @@ export async function fetchAllHumanitarianSummaries({
       const countryCode = missingCountries[i];
       // Snapshot-backed iterations issue no network request — they filter rows
       // already in memory — so they are not what this budget bounds, and gating
-      // them would disable the net exactly when the bot-block route needs it.
-      if (!useSnapshot && readElapsedMs() - startedAtMs >= HAPI_FALLBACK_BUDGET_MS) {
+      // them would disable the net exactly on the run's primary route.
+      if (sourceChannel !== HAPI_SNAPSHOT_CHANNEL && readElapsedMs() - startedAtMs >= HAPI_FALLBACK_BUDGET_MS) {
         const skipped = missingCountries.slice(i);
         fallbackFailure = Object.assign(
           new Error(`fallback budget exhausted with ${skipped.length} required countries unattempted`),
@@ -973,10 +1023,9 @@ export async function fetchAllHumanitarianSummaries({
       } catch (error) {
         fallbackFailure = error;
         console.warn(`  HAPI ${countryCode} fallback failed: ${error.message}`);
-        if (error.reasonCode === 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED') throw error;
         if (error.status === 429 || error.status === 403) break;
       }
-      if (i < missingCountries.length - 1 && !useSnapshot) {
+      if (i < missingCountries.length - 1 && sourceChannel !== HAPI_SNAPSHOT_CHANNEL) {
         await pace(HAPI_REQUEST_DELAY_MS);
       }
     }
@@ -986,21 +1035,15 @@ export async function fetchAllHumanitarianSummaries({
       // outer catch's backoff write below records the real provider status
       // instead of falling back to 0 when a fallback rejection is what left
       // results empty.
-      throw Object.assign(
+      throw withChannelProvenance(Object.assign(
         new Error('bulk response contained no target-country national summaries'),
         fallbackFailure
           ? {
               ...(fallbackFailure.status != null ? { status: fallbackFailure.status } : {}),
               ...(fallbackFailure.reasonCode ? { reasonCode: fallbackFailure.reasonCode } : {}),
-              ...(fallbackFailure.directFailureReason
-                ? { directFailureReason: fallbackFailure.directFailureReason }
-                : {}),
-              ...(fallbackFailure.snapshotFailureReason
-                ? { snapshotFailureReason: fallbackFailure.snapshotFailureReason }
-                : {}),
             }
           : {},
-      );
+      ));
     }
 
     if (fallbackFailure) {
@@ -1015,10 +1058,10 @@ export async function fetchAllHumanitarianSummaries({
     }
 
     const requiredCovered = requiredCountryCodes.filter((countryCode) => results[countryCode]).length;
-    console.log(`  Humanitarian: ${Object.keys(results).length}/${countryCodes.length} countries (${requiredCovered}/${requiredCountryCodes.length} required) from ${nationalRows.length + subnationalRows.length + fallbackRows} bulk rows`);
-    return results;
+    console.log(`  Humanitarian: ${Object.keys(results).length}/${countryCodes.length} countries (${requiredCovered}/${requiredCountryCodes.length} required) from ${nationalRows.length + subnationalRows.length + fallbackRows} bulk rows via ${sourceChannel}`);
+    return { summaries: results, sourceChannel, snapshotFailureReason };
   } catch (error) {
-    failure = error;
+    failure = withChannelProvenance(error);
   }
 
   const retryAt = nowMs + HAPI_FAILURE_BACKOFF_MS;
@@ -1033,9 +1076,11 @@ export async function fetchAllHumanitarianSummaries({
     ...(Number.isFinite(Number(previousMarker?.updatedAt))
       ? { lastSuccessAt: Number(previousMarker.updatedAt) }
       : {}),
-    ...(failure?.directFailureReason
-      ? { directFailureReason: failure.directFailureReason }
-      : {}),
+    // Which channel was live when the run died, and — when the run had already
+    // been demoted off the authoritative snapshot — what pushed it there. Both
+    // survive on the seed-meta record so a dark HAPI can be attributed without
+    // re-running the seeder (#7658).
+    ...(failure?.sourceChannel ? { sourceChannel: failure.sourceChannel } : {}),
     ...(failure?.snapshotFailureReason
       ? { snapshotFailureReason: failure.snapshotFailureReason }
       : {}),
@@ -1158,8 +1203,8 @@ export async function fetchAll({
 
   // Write secondary keys BEFORE returning or failing the primary feed
   // (runSeed calls process.exit after primary write).
-  if (ha && Object.keys(ha).length > 0) {
-    for (const [cc, data] of Object.entries(ha)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1);
+  if (ha?.summaries && Object.keys(ha.summaries).length > 0) {
+    for (const [cc, data] of Object.entries(ha.summaries)) await writeExtraKeyWithMeta(`${HAPI_CACHE_KEY_PREFIX}:${cc}`, data, HAPI_TTL, 1);
     // Aggregate marker for api/health.js — STANDALONE_KEYS.humanitarianSummary STRLENs
     // this exact bare key (no country suffix) and SEED_META.humanitarianSummary reads
     // its seed-meta; the per-country writes above don't give either check anything to
@@ -1171,19 +1216,32 @@ export async function fetchAll({
     // degraded) to a path that previously did nothing at all in that scenario —
     // staleness still surfaces naturally once the last real marker's TTL/maxStaleMin
     // window elapses, no need to force a write here.
-    const requiredCountriesCovered = HAPI_REQUIRED_COUNTRIES.filter((countryCode) => ha[countryCode]).length;
+    const requiredCountriesCovered = HAPI_REQUIRED_COUNTRIES.filter((countryCode) => ha.summaries[countryCode]).length;
+    // #7658: which of HAPI's two channels served this tick, recorded on BOTH the
+    // marker and the seed-meta record. The channels disagree by ~23% on the
+    // trailing reference period, so a published number that cannot name its
+    // channel cannot be compared with the tick before it. A run is
+    // single-channel by construction — the channel latches once, before the
+    // first sweep — so one field describes every country written above.
+    const channelProvenance = {
+      sourceChannel: ha.sourceChannel,
+      ...(ha.snapshotFailureReason ? { snapshotFailureReason: ha.snapshotFailureReason } : {}),
+    };
     await writeExtraKeyWithMeta(
       HAPI_CACHE_KEY_PREFIX,
       {
-        countriesCovered: Object.keys(ha).length,
+        countriesCovered: Object.keys(ha.summaries).length,
         requiredCountriesCovered,
         requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
+        ...channelProvenance,
         updatedAt: Date.now(),
       },
       HAPI_SEED_META_TTL_SECONDS,
       requiredCountriesCovered,
       HAPI_SEED_META_KEY,
       HAPI_SEED_META_TTL_SECONDS,
+      undefined,
+      channelProvenance,
     );
   }
   if (acResolution?.events?.length) {

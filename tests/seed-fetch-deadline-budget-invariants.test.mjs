@@ -105,30 +105,37 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
       SWEEP_CONCURRENCY * GDELT_COUNTRY_FETCH_OPTS.proxyMaxAttempts * PROXY_CURL_CEILING_MS,
     );
 
-    // HAPI bot-block fallback worst at the January boundary: one 15s direct
-    // request, 60s metadata, then the current and previous annual snapshots.
-    // It runs inside the same parallel auxiliary phase as the GDELT sweep, so
-    // the two occupy the same window (max), they do not stack (sum).
+    // HAPI runs inside the same parallel auxiliary phase as the GDELT sweep, so
+    // the two occupy the same window (max), they do not stack (sum). It has two
+    // routes since #7658 made the HDX snapshot the authoritative channel.
     const HAPI_DIRECT_REQUEST_MS = 15_000;
-    const HAPI_WORST_MS = HAPI_DIRECT_REQUEST_MS
-      + HAPI_HDX_METADATA_TIMEOUT_MS
-      + 2 * HAPI_HDX_SNAPSHOT_TIMEOUT_MS;
-    // Pure-direct route (no bot block): the admin-0 and admin-2 global sweeps each
-    // page up to HAPI_MAX_PAGES, and the per-country fallback runs BEHIND them.
-    // #7656 shipped the sweeps while modelling only the sweeps, so an unbounded
-    // fan-out (23 × 15s + 22 × 1.1s ≈ 369s) sat outside this envelope and pushed
-    // the real direct route to 519s. Model all three terms: the sweeps, the
-    // fallback's launch budget, and the one request that may already be in flight
-    // when that budget expires. The seeder measures the budget from its own entry,
-    // so the sweeps and the fan-out actually SHARE the window and the true bound is
-    // tighter than this; summing them is deliberate — an invariant that cannot
-    // understate reality is the one worth asserting.
     const HAPI_GLOBAL_SWEEPS = 2;
-    const HAPI_DIRECT_WORST_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS
-      + HAPI_FALLBACK_BUDGET_MS
+    // Primary route: the snapshot, worst at the January boundary — 60s metadata
+    // then the current and previous annual downloads. The two global sweeps and
+    // the fan-out then cost NOTHING; they filter rows already in memory.
+    const HAPI_SNAPSHOT_WORST_MS = HAPI_HDX_METADATA_TIMEOUT_MS
+      + 2 * HAPI_HDX_SNAPSHOT_TIMEOUT_MS;
+    // Demoted route: the snapshot failed while HAPI_FALLBACK_BUDGET_MS still had
+    // room, so the JSON API takes over. Model all three terms — the latest moment
+    // the demotion may launch, both global sweeps paging to HAPI_MAX_PAGES, and
+    // the one per-country request that may already be in flight when the same
+    // budget closes the fan-out. #7656 shipped the sweeps while modelling only
+    // the sweeps, so an unbounded fan-out (23 × 15s + 22 × 1.1s ≈ 369s) sat
+    // outside this envelope and pushed the real route to 519s.
+    const HAPI_DEMOTED_SWEEP_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS;
+    const HAPI_DEMOTED_WORST_MS = HAPI_FALLBACK_BUDGET_MS
+      + HAPI_DEMOTED_SWEEP_MS
       + HAPI_DIRECT_REQUEST_MS;
-    assert.ok(HAPI_DIRECT_WORST_MS <= HAPI_WORST_MS,
-      `direct route ${HAPI_DIRECT_WORST_MS}ms (sweeps + fallback budget + one in-flight request) must stay inside the ${HAPI_WORST_MS}ms bot-block bound this model is anchored on`);
+    const HAPI_WORST_MS = Math.max(HAPI_SNAPSHOT_WORST_MS, HAPI_DEMOTED_WORST_MS);
+    // The demotion gate is what keeps those two routes from becoming one sum: a
+    // snapshot that fails only AFTER burning its own timeouts has already spent
+    // the tick, so the seeder fails closed instead of putting the sweeps behind
+    // the full snapshot cost.
+    const HAPI_UNGATED_STACK_MS = HAPI_SNAPSHOT_WORST_MS
+      + HAPI_DEMOTED_SWEEP_MS
+      + HAPI_DIRECT_REQUEST_MS;
+    assert.ok(HAPI_WORST_MS < HAPI_UNGATED_STACK_MS,
+      `the demotion gate must keep HAPI at ${HAPI_WORST_MS}ms rather than stacking a failed snapshot and the demoted sweeps into ${HAPI_UNGATED_STACK_MS}ms`);
 
     const EXTRA_KEY_WRITE_SLACK_MS = 30_000;
     const worstFetchAttempt = Math.max(HAPI_WORST_MS, GDELT_SWEEP_BUDGET_MS + worstBatch)

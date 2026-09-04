@@ -16,6 +16,7 @@ import { readFileSync } from 'node:fs';
 
 import {
   HAPI_FAILURE_BACKOFF_MS,
+  HAPI_FALLBACK_BUDGET_MS,
   HAPI_HDX_MAX_RESPONSE_BYTES,
   HAPI_HDX_PACKAGE_URL,
   HAPI_COUNTRIES,
@@ -80,6 +81,30 @@ function hapiHdxMetadata(resources = [hapiHdxResource(2026)]) {
   };
 }
 
+// #7658 made the HDX snapshot the PRIMARY channel, so every ingestion test has
+// to say what that channel does before it can say anything about the JSON API.
+// These are the two answers: the snapshot serves, or the snapshot is down and
+// the run is demoted to the API.
+function snapshotServing(csv, onCall = () => {}) {
+  return async (input) => {
+    const url = String(input);
+    onCall(url);
+    return url.includes('/api/3/action/package_show')
+      ? Response.json(hapiHdxMetadata())
+      : new Response(csv, { headers: { 'Content-Type': 'text/csv' } });
+  };
+}
+
+// Fails on the FIRST (metadata) request, so the demotion happens with the whole
+// HAPI_FALLBACK_BUDGET_MS window still unspent — the slow-failure case has its
+// own test below.
+function snapshotDown(onCall = () => {}) {
+  return async (input) => {
+    onCall(String(input));
+    return new Response('unavailable', { status: 503 });
+  };
+}
+
 test('humanitarian health reports partial target-country coverage', () => {
   const healthSource = readFileSync(new URL('../api/health.js', import.meta.url), 'utf8');
   const seedSource = readFileSync(new URL('../scripts/seed-conflict-intel.mjs', import.meta.url), 'utf8');
@@ -106,6 +131,55 @@ test('humanitarian health reports partial target-country coverage', () => {
     new Set(HAPI_REQUIRED_COUNTRIES),
     new Set([...CRISIS_REGISTRY_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES]),
     'required coverage is the crisis registry plus the dashboard watchlist — never a third hand-maintained list',
+  );
+});
+
+test('the channel that served a seed is recorded on the marker AND the seed-meta record', async () => {
+  // #7658. The two HAPI channels disagree by ~23% on the trailing reference
+  // period, so a published number that cannot name its channel cannot be
+  // compared with the tick before it. Marker-only is not enough: api/health's
+  // freshness view and every operator query read the seed-meta key, and the
+  // `extra` slot is the ONLY argument position that reaches it — passing the
+  // provenance one slot earlier lands it in `coverage` and silently drops it.
+  process.env.UPSTASH_REDIS_REST_URL ||= 'https://redis.test';
+  process.env.UPSTASH_REDIS_REST_TOKEN ||= 'fake-token';
+  const { writeExtraKeyWithMeta } = await import('../scripts/_seed-utils.mjs');
+  const seedSource = readFileSync(new URL('../scripts/seed-conflict-intel.mjs', import.meta.url), 'utf8');
+  const originalFetch = globalThis.fetch;
+  const sets = [];
+  globalThis.fetch = async (_url, opts = {}) => {
+    const command = opts?.body ? JSON.parse(opts.body) : null;
+    if (Array.isArray(command) && command[0] === 'SET') sets.push(command);
+    return Response.json({ result: 'OK' });
+  };
+  try {
+    const channelProvenance = { sourceChannel: 'hapi-api', snapshotFailureReason: 'HDX_HTTP_503' };
+    await writeExtraKeyWithMeta(
+      'conflict:humanitarian:v1',
+      { countriesCovered: 2, requiredCountriesCovered: 1, ...channelProvenance, updatedAt: NOW },
+      3 * 86400,
+      1,
+      'seed-meta:conflict:humanitarian',
+      3 * 86400,
+      undefined,
+      channelProvenance,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+
+  const marker = JSON.parse(sets.find((c) => c[1] === 'conflict:humanitarian:v1')[2]);
+  const meta = JSON.parse(sets.find((c) => c[1] === 'seed-meta:conflict:humanitarian')[2]);
+  assert.equal(marker.sourceChannel, 'hapi-api');
+  assert.equal(meta.sourceChannel, 'hapi-api', 'the seed-meta record must name the channel too');
+  assert.equal(meta.snapshotFailureReason, 'HDX_HTTP_503');
+
+  // …and the seeder must actually hand it to that slot: `coverage` skipped,
+  // provenance last.
+  assert.match(
+    seedSource,
+    /HAPI_SEED_META_TTL_SECONDS,\s*undefined,\s*channelProvenance,/,
+    'the HAPI marker write must pass channelProvenance in writeExtraKeyWithMeta’s `extra` slot',
   );
 });
 
@@ -421,7 +495,7 @@ test('a country returned by both sweeps resolves to the deeper level without dou
   assert.equal(result.UA.summary.conflictFatalities, 5);
 });
 
-test('HAPI ingestion makes two global bulk requests and maps all returned target countries', async () => {
+test('a demoted run makes two global bulk requests and maps all returned target countries', async () => {
   const calls = [];
   const result = await fetchAllHumanitarianSummaries({
     now: () => NOW,
@@ -431,6 +505,7 @@ test('HAPI ingestion makes two global bulk requests and maps all returned target
     loadFailureBackoff: async () => null,
     writeFailureBackoff: async () => assert.fail('success must not write a failure backoff'),
     preserveLastGood: async () => assert.fail('success must not extend stale rows'),
+    snapshotFetchFn: snapshotDown(),
     fetchFn: async (url, options) => {
       const parsed = new URL(String(url));
       calls.push({ url: parsed, options });
@@ -455,15 +530,21 @@ test('HAPI ingestion makes two global bulk requests and maps all returned target
   );
   assert.ok(calls[0].options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
   assert.ok(calls[1].options.headers['X-HDX-HAPI-APP-IDENTIFIER']);
-  assert.deepEqual(Object.keys(result).sort(), ['AF', 'SD', 'UA']);
+  assert.deepEqual(Object.keys(result.summaries).sort(), ['AF', 'SD', 'UA']);
   assert.equal(
-    result.AF.summary.conflictEventsTotal,
+    result.summaries.AF.summary.conflictEventsTotal,
     11,
     'an HRP country with no national row must publish from the subnational sweep',
   );
+  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(
+    result.snapshotFailureReason,
+    'HDX_HTTP_503',
+    'a demoted seed must carry WHY it left the authoritative channel (#7658)',
+  );
 });
 
-test('HAPI ingestion keeps the per-country fallback for targets neither sweep covers', async () => {
+test('a demoted run keeps the per-country fallback for targets neither sweep covers', async () => {
   // Sudan here is published only at admin-1, which neither global sweep requests.
   // The fan-out is dead weight against today's upstream shape and MUST stay: it
   // is the fail-closed net for a required country moving between admin levels.
@@ -476,6 +557,7 @@ test('HAPI ingestion keeps the per-country fallback for targets neither sweep co
     loadFailureBackoff: async () => null,
     writeFailureBackoff: async () => assert.fail('complete coverage must not write a failure backoff'),
     preserveLastGood: async () => assert.fail('complete coverage must not extend stale rows'),
+    snapshotFetchFn: snapshotDown(),
     fetchFn: async (url) => {
       const parsed = new URL(url);
       urls.push(parsed);
@@ -498,8 +580,8 @@ test('HAPI ingestion keeps the per-country fallback for targets neither sweep co
     ]),
     [['0', null], ['2', null], [null, 'SDN']],
   );
-  assert.deepEqual(Object.keys(result).sort(), ['SD', 'UA']);
-  assert.equal(result.SD.summary.conflictEventsTotal, 12);
+  assert.deepEqual(Object.keys(result.summaries).sort(), ['SD', 'UA']);
+  assert.equal(result.summaries.SD.summary.conflictEventsTotal, 12);
 });
 
 test('the per-country fallback stops LAUNCHING once its wall-clock budget is spent', async () => {
@@ -520,6 +602,7 @@ test('the per-country fallback stops LAUNCHING once its wall-clock budget is spe
     writeFailureBackoff: async (value) => { backoff = value; },
     writeFailureMeta: async () => assert.fail('partial coverage must not publish SEED_ERROR'),
     preserveLastGood: async () => { preserved += 1; },
+    snapshotFetchFn: snapshotDown(),
     fetchFn: async (url) => {
       const parsed = new URL(url);
       const locationCode = parsed.searchParams.get('location_code');
@@ -539,16 +622,19 @@ test('the per-country fallback stops LAUNCHING once its wall-clock budget is spe
   });
 
   assert.deepEqual(requested, ['UKR', 'IRN'], 'the third launch is over budget and must never be issued');
-  assert.deepEqual(Object.keys(result).sort(), ['IR', 'SD', 'UA'], 'countries already covered must still publish');
+  assert.deepEqual(Object.keys(result.summaries).sort(), ['IR', 'SD', 'UA'], 'countries already covered must still publish');
   assert.equal(backoff.reasonCode, 'HAPI_FALLBACK_BUDGET_EXHAUSTED');
   assert.equal(backoff.status, 0, 'a budget cut has no provider status to record');
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
   assert.equal(preserved, 1, 'partial coverage must preserve last-good rather than pass as complete');
 });
 
-test('the HDX snapshot fallback serves the subnational sweep instead of returning nothing', async () => {
-  // fetchRowsFromSnapshot filters on row.admin_level, so a bot-blocked run must
-  // still hand the admin-2 sweep its rows out of the ONE memoized download.
+test('the HDX snapshot serves both sweeps without ever touching the JSON API', async () => {
+  // #7658: the snapshot is the AUTHORITATIVE channel, not a bot-block rescue.
+  // A healthy API must not win the run, because its trailing reference period
+  // runs ~23% below the snapshot's — measured 2026-09-04, 103 countries lower
+  // and zero higher. fetchRowsFromSnapshot filters on row.admin_level, so the
+  // admin-2 sweep is served from the same ONE memoized download.
   let directCalls = 0;
   let snapshotCalls = 0;
   const csv = hapiCsv(
@@ -562,30 +648,28 @@ test('the HDX snapshot fallback serves the subnational sweep instead of returnin
     pace: async () => assert.fail('a snapshot covering every target must not pace a fallback'),
     loadPreviousMarker: async () => null,
     loadFailureBackoff: async () => null,
-    writeFailureBackoff: async () => assert.fail('successful snapshot recovery must not back off'),
-    writeFailureMeta: async () => assert.fail('successful snapshot recovery must not publish SEED_ERROR'),
-    preserveLastGood: async () => assert.fail('successful snapshot recovery must not preserve stale rows'),
-    snapshotFetchFn: async (input) => {
-      snapshotCalls += 1;
-      return String(input).includes('/api/3/action/package_show')
-        ? Response.json(hapiHdxMetadata())
-        : new Response(csv, { headers: { 'Content-Type': 'text/csv' } });
-    },
+    writeFailureBackoff: async () => assert.fail('a healthy snapshot run must not back off'),
+    writeFailureMeta: async () => assert.fail('a healthy snapshot run must not publish SEED_ERROR'),
+    preserveLastGood: async () => assert.fail('a healthy snapshot run must not preserve stale rows'),
+    snapshotFetchFn: snapshotServing(csv, () => { snapshotCalls += 1; }),
     fetchFn: async () => {
       directCalls += 1;
-      return new Response('Blocked due to bot activity.', { status: 406 });
+      // A perfectly healthy API. Reaching it at all is the regression.
+      return Response.json({ data: [hapiRow('SDN', { location_name: 'Sudan', events: 9999 })] });
     },
   });
 
-  assert.equal(directCalls, 1, 'the subnational sweep must reuse the snapshot, not re-hit the blocked API');
+  assert.equal(directCalls, 0, 'the authoritative channel must not be decided by whether the API answers');
   assert.equal(snapshotCalls, 2, 'one metadata plus one CSV download serves both sweeps');
-  assert.deepEqual(Object.keys(result).sort(), ['AF', 'SD']);
-  assert.equal(result.SD.summary.conflictEventsTotal, 12);
+  assert.deepEqual(Object.keys(result.summaries).sort(), ['AF', 'SD']);
+  assert.equal(result.summaries.SD.summary.conflictEventsTotal, 12);
   assert.equal(
-    result.AF.summary.conflictEventsTotal,
+    result.summaries.AF.summary.conflictEventsTotal,
     11,
     'admin-2 rows must survive the snapshot admin_level filter',
   );
+  assert.equal(result.sourceChannel, 'hdx-snapshot');
+  assert.equal(result.snapshotFailureReason, null);
 });
 
 test('a failed subnational sweep still publishes the national sweep and backs off', async () => {
@@ -601,6 +685,7 @@ test('a failed subnational sweep still publishes the national sweep and backs of
     writeFailureBackoff: async (value) => { backoff = value; },
     writeFailureMeta: async () => assert.fail('a partial success must not publish SEED_ERROR'),
     preserveLastGood: async () => { preserved += 1; },
+    snapshotFetchFn: snapshotDown(),
     fetchFn: async (url) => {
       const parsed = new URL(url);
       adminLevels.push(parsed.searchParams.get('admin_level'));
@@ -614,13 +699,13 @@ test('a failed subnational sweep still publishes the national sweep and backs of
   });
 
   assert.deepEqual(adminLevels, ['0', '2'], 'a rejected subnational sweep must not abort the run');
-  assert.deepEqual(Object.keys(result), ['SD']);
+  assert.deepEqual(Object.keys(result.summaries), ['SD']);
   assert.equal(preserved, 1);
   assert.equal(backoff.status, 429);
   assert.equal(backoff.reasonCode, 'HAPI_RATE_LIMIT');
 });
 
-test('HAPI bot-detection rejection loads the official HDX snapshot', async () => {
+test('a bot-blocked API is irrelevant while the snapshot is healthy', async () => {
   let directCalls = 0;
   const snapshotUrls = [];
   const csv = hapiCsv(
@@ -632,32 +717,24 @@ test('HAPI bot-detection rejection loads the official HDX snapshot', async () =>
     pace: async () => {},
     loadPreviousMarker: async () => null,
     loadFailureBackoff: async () => null,
-    writeFailureBackoff: async () => assert.fail('successful snapshot recovery must not back off'),
-    writeFailureMeta: async () => assert.fail('successful snapshot recovery must not publish SEED_ERROR'),
-    preserveLastGood: async () => assert.fail('successful snapshot recovery must not preserve stale rows'),
-    snapshotFetchFn: async (input) => {
-      const url = String(input);
-      snapshotUrls.push(url);
-      if (url.includes('/api/3/action/package_show')) {
-        return Response.json(hapiHdxMetadata());
-      }
-      return new Response(csv, {
-        headers: { 'Content-Type': 'text/csv' },
-      });
-    },
+    writeFailureBackoff: async () => assert.fail('a healthy snapshot run must not back off'),
+    writeFailureMeta: async () => assert.fail('a healthy snapshot run must not publish SEED_ERROR'),
+    preserveLastGood: async () => assert.fail('a healthy snapshot run must not preserve stale rows'),
+    snapshotFetchFn: snapshotServing(csv, (url) => snapshotUrls.push(url)),
     fetchFn: async () => {
       directCalls += 1;
       return new Response('Blocked due to bot activity.', { status: 406 });
     },
   });
 
-  assert.equal(directCalls, 1);
+  assert.equal(directCalls, 0, 'the bot block that used to pick the channel now never gets asked');
   assert.equal(snapshotUrls.length, 2);
-  assert.deepEqual(Object.keys(result), ['SD']);
-  assert.equal(result.SD.summary.countryName, 'Sudan');
+  assert.deepEqual(Object.keys(result.summaries), ['SD']);
+  assert.equal(result.summaries.SD.summary.countryName, 'Sudan');
+  assert.equal(result.sourceChannel, 'hdx-snapshot');
 });
 
-test('HAPI quota rejection backs off without loading a snapshot and publishes failure health', async () => {
+test('a quota rejection on the demoted API backs off and names both channels', async () => {
   let directCalls = 0;
   let backoff;
   let failureMeta;
@@ -674,7 +751,7 @@ test('HAPI quota rejection backs off without loading a snapshot and publishes fa
     writeFailureBackoff: async (value) => { backoff = value; },
     writeFailureMeta: async (value) => { failureMeta = value; },
     preserveLastGood: async () => { preserved += 1; },
-    snapshotFetchFn: async () => assert.fail('quota/identifier 429 must not load a snapshot'),
+    snapshotFetchFn: snapshotDown(),
     fetchFn: async () => {
       directCalls += 1;
       return new Response(JSON.stringify({ error: 'Too Many Requests' }), { status: 429 });
@@ -689,6 +766,12 @@ test('HAPI quota rejection backs off without loading a snapshot and publishes fa
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
   assert.equal(failureMeta.status, 'error');
   assert.equal(failureMeta.errorReason, 'HAPI_RATE_LIMIT');
+  assert.equal(failureMeta.sourceChannel, 'hapi-api');
+  assert.equal(
+    failureMeta.snapshotFailureReason,
+    'HDX_HTTP_503',
+    'a dark HAPI must name the primary failure as well as the fallback one',
+  );
   assert.equal(failureMeta.lastSuccessAt, NOW - 10 * HAPI_REFRESH_INTERVAL_MS);
   assert.equal(failureMeta.recordCount, 23);
 });
@@ -719,10 +802,10 @@ test('HAPI snapshot network failure publishes actionable SEED_ERROR metadata bef
 
   assert.equal(result, null);
   assert.equal(backoff.status, 429);
-  assert.equal(backoff.reasonCode, 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED');
+  assert.equal(backoff.reasonCode, 'HAPI_BOT_BLOCK', 'the terminal failure is the demoted channel’s own');
   assert.equal(failureMeta.status, 'error');
-  assert.equal(failureMeta.errorReason, 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED');
-  assert.equal(failureMeta.directFailureReason, 'HAPI_BOT_BLOCK');
+  assert.equal(failureMeta.errorReason, 'HAPI_BOT_BLOCK');
+  assert.equal(failureMeta.sourceChannel, 'hapi-api');
   assert.equal(failureMeta.snapshotFailureReason, 'HDX_DNS_ERROR');
   assert.equal(failureMeta.failedAt, NOW);
 });
@@ -860,23 +943,27 @@ test('HAPI snapshot schema drift publishes an actionable failure reason', async 
   assert.equal(failureMeta.snapshotFailureReason, 'HDX_CSV_INVALID');
 });
 
-test('HAPI snapshot failure aborts the cycle without publishing a partial direct aggregate', async () => {
+test('a snapshot outage publishes the demoted aggregate rather than going dark', async () => {
+  // Inverted by #7658. The snapshot used to be the rescue path, so its failure
+  // was terminal and discarded whatever the API had already produced. Now the
+  // API is the rescue path: partial coverage from it is worth publishing — the
+  // crisis pages keep numbers — PROVIDED the seed says it came from the lagging
+  // channel and the run still backs off over the country it could not cover.
   const snapshotUrls = [];
   let directCalls = 0;
-  let failureMeta;
   let backoff;
   let preserved = 0;
   const result = await fetchAllHumanitarianSummaries({
     now: () => NOW,
     countryCodes: ['SD', 'UA', 'IR'],
-    pace: async () => assert.fail('a terminal snapshot failure must stop before pacing another fallback'),
+    pace: async () => {},
     loadPreviousMarker: async () => ({
       updatedAt: NOW - 10 * HAPI_REFRESH_INTERVAL_MS,
       requiredCountriesCovered: 3,
     }),
     loadFailureBackoff: async () => null,
     writeFailureBackoff: async (value) => { backoff = value; },
-    writeFailureMeta: async (value) => { failureMeta = value; },
+    writeFailureMeta: async () => assert.fail('a partial success must not publish SEED_ERROR'),
     preserveLastGood: async () => { preserved += 1; },
     snapshotFetchFn: async (input) => {
       const url = String(input);
@@ -901,19 +988,83 @@ test('HAPI snapshot failure aborts the cycle without publishing a partial direct
     },
   });
 
-  assert.equal(result, null, 'a terminal snapshot failure must discard the partial Sudan result');
+  assert.deepEqual(Object.keys(result.summaries), ['SD']);
+  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(result.snapshotFailureReason, 'HDX_HTTP_503');
   assert.equal(directCalls, 3, 'both global sweeps and the first missing-country request should run');
   assert.equal(snapshotUrls.length, 2, 'metadata plus one failed CSV request should run');
-  assert.equal(preserved, 1);
-  assert.equal(backoff.status, 503);
-  assert.equal(backoff.reasonCode, 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED');
+  assert.equal(preserved, 1, 'incomplete coverage must preserve last-good rather than pass as complete');
+  assert.equal(backoff.status, 429);
+  assert.equal(backoff.reasonCode, 'HAPI_BOT_BLOCK');
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
+});
+
+test('a snapshot that parses but covers nothing demotes rather than going dark', async () => {
+  // Promoting the snapshot to primary would otherwise turn an upstream
+  // publication gap — a well-formed annual file with no rows in the window —
+  // into a dark HAPI, even though the channel that used to be primary is
+  // healthy and has the month.
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async () => assert.fail('a covered demotion must not back off'),
+    writeFailureMeta: async () => assert.fail('a covered demotion must not publish SEED_ERROR'),
+    preserveLastGood: async () => assert.fail('a covered demotion must not preserve stale rows'),
+    snapshotFetchFn: snapshotServing(hapiCsv()),
+    fetchFn: async (url) => Response.json({
+      data: new URL(url).searchParams.get('admin_level') === '0'
+        ? [hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 })]
+        : [],
+    }),
+  });
+
+  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(result.snapshotFailureReason, 'HDX_SNAPSHOT_EMPTY');
+  assert.equal(result.summaries.SD.summary.conflictEventsTotal, 12);
+});
+
+test('a snapshot that fails SLOWLY fails closed instead of stacking API sweeps behind it', async () => {
+  // The snapshot's own timeouts let it burn 60s of metadata plus two 120s annual
+  // downloads. Demoting after that would stack two 75s API sweeps on top and
+  // push the worst case to 465s, past the ≤315s envelope the fetch-deadline
+  // model is anchored on. Past HAPI_FALLBACK_BUDGET_MS the run must stop.
+  let elapsedMs = 0;
+  let backoff;
+  let failureMeta;
+  let preserved = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    readElapsedMs: () => elapsedMs,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => null,
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async (value) => { backoff = value; },
+    writeFailureMeta: async (value) => { failureMeta = value; },
+    preserveLastGood: async () => { preserved += 1; },
+    snapshotFetchFn: async () => {
+      elapsedMs = HAPI_FALLBACK_BUDGET_MS;
+      throw Object.assign(new TypeError('fetch failed'), {
+        cause: Object.assign(new Error('timed out'), { code: 'UND_ERR_BODY_TIMEOUT' }),
+      });
+    },
+    fetchFn: async () => assert.fail('an out-of-budget run must not launch a demoted API sweep'),
+  });
+
+  assert.equal(result, null);
+  assert.equal(preserved, 1);
+  assert.equal(backoff.reasonCode, 'HDX_TIMEOUT');
+  assert.equal(backoff.status, 0, 'a transport timeout has no provider status to record');
   assert.equal(failureMeta.status, 'error');
-  assert.equal(failureMeta.errorReason, 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED');
-  assert.equal(failureMeta.directFailureReason, 'HAPI_BOT_BLOCK');
-  assert.equal(failureMeta.snapshotFailureReason, 'HDX_HTTP_503');
-  assert.equal(failureMeta.lastSuccessAt, NOW - 10 * HAPI_REFRESH_INTERVAL_MS);
-  assert.equal(failureMeta.recordCount, 3);
+  assert.equal(failureMeta.errorReason, 'HDX_TIMEOUT');
+  assert.equal(
+    failureMeta.sourceChannel,
+    'hdx-snapshot',
+    'a run that never demoted must not be attributed to the API',
+  );
 });
 
 test('HAPI backoff records the fallback rejection status when the national sweep is empty', async () => {
@@ -929,6 +1080,7 @@ test('HAPI backoff records the fallback rejection status when the national sweep
     writeFailureBackoff: async (value) => { backoff = value; },
     writeFailureMeta: async (value) => { failureMeta = value; },
     preserveLastGood: async () => { preserved += 1; },
+    snapshotFetchFn: snapshotDown(),
     fetchFn: async (url) => {
       const parsed = new URL(url);
       if (!parsed.searchParams.has('location_code')) {
