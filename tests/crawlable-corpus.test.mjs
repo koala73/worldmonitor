@@ -28,6 +28,7 @@ import {
   describeHeadlineIneligibilityReason,
   describeInventoryScope,
   developmentsHasDatedItem,
+  SUPPORTED_READING_MIN_COVERAGE,
   GENERATED_DIRS,
   gitFileLastmod,
   hasObservedValue,
@@ -1540,21 +1541,14 @@ describe('crawlable corpus generator', () => {
   // directly: a note that appears when nothing is hidden would tell a reader
   // evidence is missing when it is not.
   it('describes the inventory scope only when rows are actually omitted', () => {
-    const dimension = (id, coverage) => ({ id, coverage });
     const country = (coverages) => ({
-      domains: [{ id: 'd', dimensions: coverages.map((c, i) => dimension(`dim${i}`, c)) }],
+      domains: [{ id: 'd', dimensions: coverages.map((coverage, index) => ({ id: `dim${index}`, coverage })) }],
     });
 
-    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 3), null, 'nothing omitted');
-    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 4), null, 'shown exceeds total');
+    assert.equal(describeInventoryScope(country([0.2, 0.4, 0.9])), null, 'nothing omitted');
     assert.equal(
-      describeInventoryScope(country([0.2, 0.4, 1, 1]), 2),
-      'Showing 2 of 4 active dimensions, lowest coverage first; 2 more at full coverage.',
-    );
-    assert.equal(
-      describeInventoryScope(country([0.2, 0.4, 0.9]), 2),
-      'Showing 2 of 3 active dimensions, lowest coverage first.',
-      'no full-coverage clause when there is nothing at full coverage',
+      describeInventoryScope(country([0.2, 0.4, 1, 1])),
+      'Showing 2 of 4 active dimensions, weakest evidence first; 2 more at full coverage.',
     );
   });
 
@@ -1924,7 +1918,7 @@ describe('crawlable corpus generator', () => {
           if (!section) continue;
           const shown = (section[1].match(/<li>/g) || []).length;
           const note = section[1].match(
-            /data-inventory-scope>Showing (\d+) of (\d+) active dimensions, lowest coverage first/,
+            /data-inventory-scope>Showing (\d+) of (\d+) active dimensions, weakest evidence first/,
           );
           if (!note) continue;
           checkedTruncated += 1;
@@ -2491,11 +2485,17 @@ describe('crawlable corpus generator', () => {
           `${route} analysis must contain at least 400 country-specific words, got ${articleWordCount}`,
         );
         const pageWordCount = words(countryDocument.querySelector('main')?.textContent).length;
-        // Upper bound leaves room for the published live-pulse tiles (#7376)
-        // on top of the #7371 country-analysis prose target.
+        // Upper bound leaves room for the published live-pulse tiles (#7376) on
+        // top of the #7371 country-analysis prose target. Only the unranked tier
+        // gets the wider ceiling: the truncation clause and the support-threshold
+        // note cost the widest of those pages ~30 words and pushed Monaco,
+        // Taiwan, Nauru, Palau and Andorra past 900 (#7609). Ranked pages never
+        // carry that copy -- the heaviest is 841 -- so raising the bound for all
+        // 196 would hand 191 pages 50 words of slack they did not need.
+        const pageWordCeiling = country.headlineEligible === false ? 950 : 900;
         assert.ok(
-          pageWordCount >= 600 && pageWordCount <= 900,
-          `${route} main content must contain 600-900 words, got ${pageWordCount}`,
+          pageWordCount >= 600 && pageWordCount <= pageWordCeiling,
+          `${route} main content must contain 600-${pageWordCeiling} words, got ${pageWordCount}`,
         );
       }
 
@@ -3018,6 +3018,67 @@ describe('crawlable corpus generator', () => {
           assert.ok(rankedNames.has(peer.name), `${route} peer ${peer.name} must be ranked`);
         }
       }
+      // Every unranked page publishes an inventory about its own evidence base,
+      // so that inventory has to survive a reader checking it. Sweep the whole
+      // unranked tier, not a sample: the arithmetic in the scope note must close
+      // over all three buckets, and an "observed" row below the support
+      // threshold must carry the sentence that explains why it is still absent
+      // from the supported readings (#7609).
+      const unrankedCorpusCountries = corpusData.countries
+        .filter((entry) => entry.headlineEligible === false);
+      assert.ok(
+        unrankedCorpusCountries.length >= 20,
+        `expected a non-trivial unranked tier to sweep, got ${unrankedCorpusCountries.length}`,
+      );
+      // Counted, not just skipped: `if (scope)` and the sub-threshold filter both
+      // pass vacuously on a page that renders neither, so a copy change that
+      // dropped both paragraphs everywhere would turn this whole sweep green.
+      let scopeNotesChecked = 0;
+      let thresholdNotesChecked = 0;
+      for (const country of unrankedCorpusCountries) {
+        const route = `/countries/${country.slug}/`;
+        const document = htmlDocument(
+          read(outDir, `${route.slice(1)}index.html`),
+          `https://www.worldmonitor.app${route}`,
+        );
+        const scope = (document.querySelector('[data-inventory-scope]')?.textContent || '').trim();
+        if (scope) {
+          scopeNotesChecked += 1;
+          // Anchored to the words, not to digit order: a flat /\d+/g stream
+          // re-attributes captures the moment the sentence gains a number.
+          const head = scope.match(/^Showing (\d+) of (\d+) active dimensions/);
+          assert.ok(head, `${route} inventory scope note lost its expected shape: "${scope}"`);
+          const atFullCoverage = Number(scope.match(/(\d+) more at full coverage/)?.[1] ?? 0);
+          const omittedForBrevity = Number(scope.match(/(\d+) omitted for brevity/)?.[1] ?? 0);
+          assert.equal(
+            Number(head[1]) + atFullCoverage + omittedForBrevity,
+            Number(head[2]),
+            `${route} inventory scope note does not account for every active dimension: "${scope}"`,
+          );
+        }
+        const subThresholdObserved = [...document.querySelectorAll('[data-country-analysis] ul.routes li')]
+          .map((node) => (node.textContent || '').trim())
+          .filter((text) => /;\s*observed\.$/.test(text))
+          // NaN, not 100, when a row stops matching: a default that reads as
+          // "above the floor" would silently empty this list and pass the page.
+          .filter((text) => !(Number(text.match(/(\d+)% coverage/)?.[1] ?? NaN)
+            >= SUPPORTED_READING_MIN_COVERAGE * 100));
+        const thresholdNote = (document.querySelector('[data-inventory-support-threshold]')?.textContent || '').trim();
+        if (thresholdNote) thresholdNotesChecked += 1;
+        assert.equal(
+          subThresholdObserved.length > 0,
+          thresholdNote !== '',
+          `${route} shows ${subThresholdObserved.length} sub-threshold observed rows but ${thresholdNote ? 'explains' : 'never explains'} the support threshold`,
+        );
+      }
+      assert.ok(
+        scopeNotesChecked >= 20,
+        `the arithmetic sweep is vacuous: only ${scopeNotesChecked} of ${unrankedCorpusCountries.length} unranked pages published a scope note`,
+      );
+      assert.ok(
+        thresholdNotesChecked >= 15,
+        `the support-threshold sweep is vacuous: only ${thresholdNotesChecked} of ${unrankedCorpusCountries.length} unranked pages published a threshold note`,
+      );
       const syria = read(outDir, 'countries/syria/index.html');
       assert.match(syria, /Macro-fiscal position/);
       assert.match(syria, /IMF/);

@@ -66,6 +66,7 @@ import {
 } from './chokepoint-page-content.mjs';
 import { EIA_OIL_TRANSIT_BASELINES_PATH } from './chokepoint-eia-baselines.mjs';
 import { buildMicrostateCoverageStoryContent } from './microstate-coverage-stories.mjs';
+import { buildUnrankedCountryInventory } from './unranked-country-inventory.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -141,6 +142,13 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
+// Coverage a dimension needs before a page will call it a supported reading. The
+// inventory labels anything with a usable series "observed", so a dimension
+// under this floor is observed and absent from the supported readings at once --
+// which reads as a contradiction unless the page states the floor (#7609).
+// This floor is published on country pages, so keep it aligned with
+// docs/methodology/country-resilience-index.mdx#supported-readings-on-unranked-country-pages.
+export const SUPPORTED_READING_MIN_COVERAGE = 0.5;
 export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-04';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
@@ -2459,12 +2467,15 @@ export function describeCoverageGaps(country) {
   return `${labels} ${verb} no usable observed series.${sourceClause}${failureClause}${unmonitoredClause}`;
 }
 
+function observedEvidenceDimensions(country) {
+  return activeCountryDimensions(country).filter((dimension) => (
+    !isCoverageGap(dimension)
+    && Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
+  ));
+}
+
 export function describeAvailableEvidence(country) {
-  const observed = activeCountryDimensions(country)
-    .filter((dimension) => (
-      !isCoverageGap(dimension)
-      && Number(dimension.coverage) >= 0.5
-    ))
+  const observed = observedEvidenceDimensions(country)
     .sort(compareDimensionsByCoverageDesc)
     .slice(0, AVAILABLE_EVIDENCE_LIMIT);
   if (observed.length === 0) {
@@ -2479,7 +2490,7 @@ function buildMicrostateEvidenceProfile(country) {
     .filter((dimension) => (
       !isCoverageGap(dimension)
       && String(dimension.imputationClass || '') === ''
-      && Number(dimension.coverage) >= 0.5
+      && Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
       && typeof dimension.score === 'number'
       && Number.isFinite(dimension.score)
     ));
@@ -2617,44 +2628,46 @@ export function dimensionInventoryNote(country, dimension) {
   return 'observed';
 }
 
-function selectUnrankedInventory(country) {
-  const dimensions = activeCountryDimensions(country);
-  const notApplicable = dimensions
-    .filter((dimension) => String(dimension.imputationClass || '') === 'not-applicable')
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const gaps = dimensions.filter(isCoverageGap).sort(compareDimensionsByCoverageAsc);
-  const observed = dimensions
-    .filter((dimension) => (
-      !isCoverageGap(dimension)
-      && String(dimension.imputationClass || '') !== 'not-applicable'
-      && Number(dimension.coverage) < 1
-    ))
-    .sort(compareDimensionsByCoverageAsc);
-  const selected = [];
-  const seen = new Set();
-  for (const dimension of [...notApplicable, ...gaps, ...observed]) {
-    if (seen.has(dimension.id)) continue;
-    seen.add(dimension.id);
-    selected.push(dimension);
-    if (selected.length >= UNRANKED_INVENTORY_LIMIT) break;
-  }
-  return selected;
+// Dimensions the page can call supported readings. The microstate branch
+// enumerates this set exhaustively and counts it out loud; the generic branch
+// prints only the strongest AVAILABLE_EVIDENCE_LIMIT of it and makes no claim to
+// be complete, so the display cap is not part of the set either way.
+function supportedReadingDimensions(country) {
+  return country.microstateTerritory === true
+    ? buildMicrostateEvidenceProfile(country).supportedDimensions
+    : observedEvidenceDimensions(country);
 }
 
-// The inventory is weakest-first and capped, so on a country like Tuvalu a
-// reader sees 12 of 23 dimensions -- the 12 worst -- with the 7 at full
-// coverage never entering the pool at all and 2 more dropped by the cap. Listing
-// only the weakest evidence with no note reads as uniformly poor coverage, which
-// is the opposite of what the snapshot says (#7530). State what is shown and
-// what is omitted, and say it only when something actually is omitted.
-export function describeInventoryScope(country, shown) {
-  const dimensions = activeCountryDimensions(country);
-  const total = dimensions.length;
-  const omitted = total - shown;
-  if (omitted <= 0) return null;
-  const complete = dimensions.filter((dimension) => Number(dimension.coverage) === 1).length;
-  const completeClause = complete > 0 ? `; ${complete} more at full coverage` : '';
-  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${completeClause}.`;
+function buildCountryUnrankedInventory(country) {
+  const supported = new Set(supportedReadingDimensions(country).map((dimension) => dimension.id));
+  const dimensions = activeCountryDimensions(country).map((dimension) => ({
+    id: dimension.id,
+    label: dimensionLabel(dimension),
+    coverage: dimension.coverage,
+    isCoverageGap: isCoverageGap(dimension),
+    isNotApplicable: String(dimension.imputationClass || '') === 'not-applicable',
+    inventoryNote: dimensionInventoryNote(country, dimension),
+    supported: supported.has(dimension.id),
+    value: dimension,
+  }));
+  return buildUnrankedCountryInventory({
+    countryCode: country.code,
+    dimensions,
+    inventoryLimit: UNRANKED_INVENTORY_LIMIT,
+    supportFloor: SUPPORTED_READING_MIN_COVERAGE,
+  });
+}
+
+export function describeInventoryScope(country) {
+  return buildCountryUnrankedInventory(country).inventoryScope;
+}
+
+export function describeSupportThreshold(country) {
+  return buildCountryUnrankedInventory(country).supportThreshold;
+}
+
+export function assertUnrankedInventoryIntegrity(country, rendered = {}) {
+  buildCountryUnrankedInventory(country).assertIntegrity(rendered);
 }
 
 function formatSignedScore(value, evidence) {
@@ -2767,14 +2780,21 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
   });
   const faqs = coverageStory?.faqs || countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
-    const inventory = selectUnrankedInventory(country);
+    const unrankedInventory = buildCountryUnrankedInventory(country);
+    const inventory = unrankedInventory.shown;
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
-    const inventoryScope = describeInventoryScope(country, inventory.length);
-    const inventoryScopeNote = inventoryScope
-      ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
-      : '';
+    const { inventoryScope, supportThreshold } = unrankedInventory;
+    unrankedInventory.assertIntegrity({ inventoryScope, supportThreshold });
+    const inventoryPreamble = [
+      inventoryScope
+        ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
+        : '',
+      supportThreshold
+        ? `        <p class="source" data-inventory-support-threshold>${escapeHtml(supportThreshold)}</p>\n`
+        : '',
+    ].join('');
     if (coverageStory) {
       const comparatorLinks = coverageStory.useRegionalComparators ? regionalLinks : peerLinks;
       const html = `      <article data-country-analysis>
@@ -2787,7 +2807,7 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(coverageStory.evidence)}</p>
         <h3>Dimension evidence inventory</h3>
-${inventoryScopeNote}        <ul class="routes">
+${inventoryPreamble}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -2831,7 +2851,7 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(availableEvidence)}</p>
         <h3>Dimension evidence inventory</h3>
-${inventoryScopeNote}        <ul class="routes">
+${inventoryPreamble}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>

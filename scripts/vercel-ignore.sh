@@ -8,7 +8,7 @@ if [ "$VERCEL_GIT_COMMIT_REF" = "main" ] && [ -n "$VERCEL_GIT_PREVIOUS_SHA" ]; t
     WEB_CHANGES=$(git diff --name-only "$VERCEL_GIT_PREVIOUS_SHA" HEAD -- \
       'src/' 'api/' 'server/' 'shared/' 'public/' 'blog-site/' 'pro-test/' 'proto/' 'convex/' \
       'CHANGELOG.md' 'docs/docs.json' 'docs/snapshots/' \
-      'scripts/build-crawlable-corpus.mjs' 'scripts/build-use-cases.mjs' 'scripts/build-research-reports.mjs' 'scripts/build-comparison-pages.mjs' \
+      'scripts/build-crawlable-corpus.mjs' 'scripts/unranked-country-inventory.mjs' 'scripts/build-use-cases.mjs' 'scripts/build-research-reports.mjs' 'scripts/build-comparison-pages.mjs' \
       'scripts/build-sitemap.mjs' 'scripts/discover-content-corpus-pages.mjs' \
       'scripts/crawlable-live-tools.mjs' 'scripts/crawlable-sources-page.mjs' \
       'scripts/source-origin.mjs' 'scripts/source-origin.d.mts' \
@@ -72,6 +72,7 @@ git diff --name-only "$COMPARE_SHA" HEAD -- \
   'docs/docs.json' \
   'docs/snapshots/' \
   'scripts/build-crawlable-corpus.mjs' \
+  'scripts/unranked-country-inventory.mjs' \
   'scripts/build-use-cases.mjs' \
   'scripts/build-comparison-pages.mjs' \
   'scripts/build-research-reports.mjs' \
