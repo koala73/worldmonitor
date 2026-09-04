@@ -559,6 +559,32 @@ describe('legacy root map-state links (#7660)', () => {
     assert.equal(call(`/dashboard?${MAP_STATE}`, CHROME_UA), undefined);
   });
 
+  it('keeps the map state for user-triggered assistant fetches', () => {
+    // ChatGPT-User / Claude-User / Perplexity-User fetch a link a HUMAN pasted,
+    // so they should see the view that link encodes — unlike their crawler
+    // siblings GPTBot / ClaudeBot / PerplexityBot. They fall on the right side
+    // of BOT_UA today; this pins that, because widening the regex to catch a
+    // new scraper could silently drag them across.
+    for (const ua of ['ChatGPT-User/1.0', 'Claude-User/1.0', 'Perplexity-User/1.0']) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response, `${ua} must still reach the dashboard`);
+      assert.equal(
+        res.headers.get('location'),
+        `https://www.worldmonitor.app/dashboard?${MAP_STATE}`,
+        `${ua} follows a human's link and must keep the view it encodes`
+      );
+    }
+    for (const ua of ['Mozilla/5.0 GPTBot/1.1', 'Mozilla/5.0 (compatible; ClaudeBot/1.0)']) {
+      const res = call(`/?${MAP_STATE}`, ua);
+      assert.ok(res instanceof Response);
+      assert.equal(
+        res.headers.get('location'),
+        'https://www.worldmonitor.app/dashboard',
+        `${ua} crawls on its own account and must get the canonical document`
+      );
+    }
+  });
+
   it('does not touch a param-free root request', () => {
     assert.equal(call('/', GOOGLEBOT_UA), undefined);
     assert.equal(call('/', CHROME_UA), undefined);

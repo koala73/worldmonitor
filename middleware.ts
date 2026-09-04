@@ -196,6 +196,13 @@ const INDEX_NOISE_QUERY_KEYS = new Set([
  * what makes a shared or bookmarked legacy link open the view it encodes, and
  * they still reach `/dashboard` with the state intact below. That split is why
  * the redirect built from this must carry `Vary: User-Agent` and no-store.
+ *
+ * The caller gates this on BOT_UA, which is broader than "search crawler" — it
+ * also matches generic HTTP clients (curl, python-requests, wget). Accepted:
+ * map state only renders in a JS-executing browser, so a script fetching
+ * `/?lat=…` receives the same SPA shell either way, and the user-triggered
+ * assistant agents (ChatGPT-User, Claude-User, Perplexity-User) do not match
+ * BOT_UA at all — they take the human branch and keep the state.
  */
 function crawlerCanonicalUrl(url: URL): URL | null {
   let changed = false;
