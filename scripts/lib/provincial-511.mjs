@@ -183,10 +183,10 @@ export function centroidOfPath(path) {
   return [lon / path.length, lat / path.length];
 }
 
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
+function finiteCoord(value, limit = 180) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
   const n = Number(value);
-  return Number.isFinite(n) ? n : null;
+  return Number.isFinite(n) && Math.abs(n) <= limit ? n : null;
 }
 
 function textOf(...values) {
@@ -229,7 +229,7 @@ function severityOf(item, { isFullClosure, highImportance, kind } = {}) {
 export function normalize511Record(item, ctx) {
   const kind = ctx.kind;
   const jurisdiction = ctx.jurisdiction || 'ON';
-  const lat = finiteCoord(item?.Latitude ?? item?.latitude ?? item?.lat);
+  const lat = finiteCoord(item?.Latitude ?? item?.latitude ?? item?.lat, 90);
   const lon = finiteCoord(item?.Longitude ?? item?.longitude ?? item?.lon ?? item?.lng);
   const encoded = polylinesFrom(item?.EncodedPolyline ?? item?.encodedPolyline);
   const decoded = encoded.flatMap(decodeEncodedPolyline);
