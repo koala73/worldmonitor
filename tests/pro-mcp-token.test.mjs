@@ -233,6 +233,70 @@ describe('pro-mcp-token', () => {
       assert.equal(redis.store.size, 0);
     });
 
+    // The three cases above each prove the NEGATIVE half of the fail-soft
+    // contract: a blip writes no sentinel. None of them proves the POSITIVE
+    // half — that the caller the blip degraded can actually come back. That
+    // gap matters, because api/mcp/auth.ts answers a transient verdict with a
+    // retryable 503 + `Retry-After: 5` and reports it at `warning` rather than
+    // `error` on exactly that premise (WORLDMONITOR-ZR). "No sentinel was
+    // written" is not the same claim as "the retry succeeds"; this pins the
+    // one the level downgrade actually rests on.
+    it('a transient blip recovers on the NEXT call — the retry the 503 + Retry-After invites', async () => {
+      const redis = makeRedisStub();
+      let attempt = 0;
+      const convex = (url) => {
+        if (!url.endsWith('/api/internal-validate-pro-mcp-token')) throw new Error(`unexpected: ${url}`);
+        attempt += 1;
+        // Round-trip 1 is the Convex blip WORLDMONITOR-ZR reports; round-trip
+        // 2 is the same token retried once the blip clears.
+        if (attempt === 1) return new Response('upstream blip', { status: 503 });
+        return new Response(JSON.stringify({ userId: 'user_123' }), { status: 200 });
+      };
+      const stub = makeFetchStub(redis, convex);
+      globalThis.fetch = stub;
+
+      const first = await mod.validateProMcpToken('tok_legit3');
+      assert.deepEqual(first, { ok: 'transient' }, 'the blip degrades the call');
+      assert.equal(redis.store.size, 0, 'and poisons nothing on the way out');
+
+      const retry = await mod.validateProMcpToken('tok_legit3');
+      assert.deepEqual(
+        retry,
+        { ok: 'valid', userId: 'user_123' },
+        'the retry recovers — a transient verdict is degraded, not defective',
+      );
+      assert.equal(
+        stub.counts.validate, 2,
+        'the retry re-reached Convex rather than replaying a cached verdict',
+      );
+    });
+
+    it('a REVOKED verdict does NOT recover on retry — the sentinel is the difference', async () => {
+      const redis = makeRedisStub();
+      let attempt = 0;
+      const convex = (url) => {
+        if (!url.endsWith('/api/internal-validate-pro-mcp-token')) throw new Error(`unexpected: ${url}`);
+        attempt += 1;
+        // Convex authoritatively says "no such grant", then (hypothetically)
+        // changes its mind. The sentinel must hold the verdict anyway.
+        if (attempt === 1) return new Response(JSON.stringify(null), { status: 200 });
+        return new Response(JSON.stringify({ userId: 'user_123' }), { status: 200 });
+      };
+      const stub = makeFetchStub(redis, convex);
+      globalThis.fetch = stub;
+
+      assert.deepEqual(await mod.validateProMcpToken('tok_revoked3'), { ok: 'revoked' });
+      assert.deepEqual(
+        await mod.validateProMcpToken('tok_revoked3'),
+        { ok: 'revoked' },
+        'a revoked grant stays revoked for the sentinel TTL — retrying must not launder it',
+      );
+      assert.equal(
+        stub.counts.validate, 1,
+        'the second call short-circuited on the sentinel and never re-reached Convex',
+      );
+    });
+
     it('returns ok:revoked on Convex response missing userId field (structurally not-found)', async () => {
       const redis = makeRedisStub();
       const convex = () => new Response(JSON.stringify({ unrelated: 'payload' }), { status: 200 });

@@ -85,7 +85,7 @@ const VARIANT_HOST_MAP: Record<string, string> = {
 };
 
 // Source of truth: src/config/variant-meta.ts — keep in sync when variant metadata changes.
-// `name` is the short brand for JSON-LD `WebApplication.name`; `title` is the full
+// `name` is the short brand for JSON-LD `SoftwareApplication.name`; `title` is the full
 // page <title>. They are split fields (not derived via title.split(' - ')) so a
 // future title format change cannot silently corrupt the JSON-LD name.
 const VARIANT_OG: Record<string, { name: string; title: string; description: string; image: string; url: string }> = {

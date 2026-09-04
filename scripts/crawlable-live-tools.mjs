@@ -104,6 +104,124 @@ export function withheldTransitCountSentence(displayName) {
   return `World Monitor is not currently publishing a transit count for ${name} for this period.`;
 }
 
+// Strict score coercion: only finite numbers and non-blank numeric strings
+// qualify. A bare Number() would turn null and '' into 0 — a measured calm
+// reading manufactured from an absence.
+function chokepointScoreNumber(value) {
+  if (typeof value === 'number') return value;
+  if (typeof value === 'string' && value.trim() !== '') return Number(value.replace(/,/g, ''));
+  return Number.NaN;
+}
+
+function chokepointBandLabel(score) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  if (numeric < 20) return 'Green';
+  if (numeric < 50) return 'Yellow';
+  return 'Red';
+}
+
+// Segments of the live status note that are NEITHER the threat baseline NOR
+// the anomaly signal: absence/coverage phrasing and operator review-hygiene
+// text. The live API always sends a non-empty description, so without this
+// filter every calm waterway would read as threat-driven.
+const NON_SCORE_DESCRIPTION_PATTERNS = [
+  /no active disruptions/i,
+  /source coverage incomplete/i,
+  /threat baseline last reviewed/i,
+];
+
+// The transit-anomaly signal (+10 score bonus) is observed traffic collapse,
+// not baseline — surface it as its own clause, never as the threat weight.
+const ANOMALY_DESCRIPTION_PATTERN = /traffic down \d+% vs .*baseline.*/i;
+
+function splitScoreDescription(description) {
+  const segments = String(description || '')
+    .split(';')
+    .map((segment) => segment.trim())
+    .filter(Boolean);
+  const anomaly = segments.find((segment) => ANOMALY_DESCRIPTION_PATTERN.test(segment)) ?? null;
+  const threatSegments = segments.filter((segment) => segment !== anomaly
+    && !NON_SCORE_DESCRIPTION_PATTERNS.some((pattern) => pattern.test(segment)));
+  return {
+    threat: threatSegments.length ? threatSegments.join('; ') : null,
+    anomaly,
+  };
+}
+
+function chokepointArticleName(displayName) {
+  const name = String(displayName || '').trim() || 'this chokepoint';
+  return `the ${name}`;
+}
+
+// Shared evidence policy for both static HTML and live hydration. The badge is
+// a disruption-risk signal, not evidence that operators have opened or closed
+// a waterway. AIS severity contributes to the score; the number of AIS events
+// and the transit count are context only.
+export function chokepointEvidenceNarrative({
+  displayName,
+  score,
+  bandLabel,
+  description,
+  asOfText,
+  partial,
+  warningsLabel,
+  congestionLabel,
+  aisEventCountLabel,
+  todayTransits,
+}) {
+  const numeric = chokepointScoreNumber(score);
+  if (!Number.isFinite(numeric) || numeric < 0 || numeric > 100) return null;
+  const band = String(bandLabel || '').trim() || chokepointBandLabel(numeric);
+  const formatted = Number.isInteger(numeric) ? String(numeric) : String(Math.round(numeric * 10) / 10);
+  const warnings = String(warningsLabel || '').trim() || null;
+  const severity = String(congestionLabel || '').trim() || null;
+  const aisEvents = String(aisEventCountLabel || '').trim() || null;
+  const transit = todayTransits == null || String(todayTransits).trim() === ''
+    ? null
+    : String(todayTransits).trim();
+  const name = chokepointArticleName(displayName);
+  const dated = String(asOfText || '').trim();
+  const snapshotLead = dated ? `As of ${dated}` : 'In the latest published snapshot';
+
+  let passage;
+  if (partial === true) {
+    const transitClause = transit === null
+      ? 'No transit count is published for this snapshot.'
+      : `The observed transit count is ${transit}.`;
+    passage = `${snapshotLead}, source coverage for ${name} is partial. ${transitClause} World Monitor cannot verify operational passage status from this snapshot.`;
+  } else {
+    const transitClause = transit === null
+      ? `no transit count is published for ${name}.`
+      : `the observed transit count for ${name} is ${transit}.`;
+    passage = `${snapshotLead}, ${transitClause} The ${band} disruption score is a risk signal; it does not verify unrestricted passage or operational closure.`;
+  }
+
+  const { threat, anomaly } = splitScoreDescription(description);
+  const baseline = threat
+    ? `Configured geopolitical baseline: ${threat.replace(/[.]+$/, '')}.`
+    : 'Configured geopolitical baseline: no additional threat weight.';
+  const observedInputs = [
+    warnings,
+    severity ? `maximum AIS severity ${severity}` : null,
+    anomaly ? `transit anomaly — ${anomaly.replace(/[.]+$/, '')}` : null,
+  ].filter(Boolean);
+  const unavailableInputs = [
+    warnings === null ? 'navigational warning count' : null,
+    severity === null ? 'maximum AIS severity' : null,
+  ].filter(Boolean);
+  const observed = observedInputs.length
+    ? `Observed score inputs: ${observedInputs.join('; ')}.`
+    : 'Observed score inputs: none available.';
+  const unavailable = unavailableInputs.length
+    ? ` Unavailable score inputs: ${unavailableInputs.join('; ')}.`
+    : '';
+  const context = `Context only (not score inputs): AIS event count ${aisEvents ? `(${aisEvents})` : 'unavailable'}; transit count ${transit ? `(${transit})` : 'unavailable'}.`;
+  const scoreDriver = `The score of ${formatted} (${band}) has this evidence basis. ${baseline} ${observed}${unavailable} ${context}`;
+
+  return { passage, scoreDriver };
+}
+
 function humanizeToken(value, prefixes = []) {
   let token = String(value || '').trim();
   for (const prefix of prefixes) {
@@ -1183,6 +1301,25 @@ export async function loadChokepoint(tool) {
     if (!isCurrentRequest(tool, state)) return;
     setText(tool, '[data-chokepoint-score]', view.disruptionScore);
     setText(tool, '[data-chokepoint-band]', view.status);
+    const narrative = chokepointEvidenceNarrative({
+      displayName: tool.dataset.chokepointName || '',
+      score: view.disruptionScore,
+      bandLabel: view.status,
+      description: view.description,
+      asOfText: formatDateTime(view.fetchedAt),
+      partial: view.partial,
+      warningsLabel: view.navigationalWarnings,
+      congestionLabel: view.congestion,
+      aisEventCountLabel: view.aisDisruptions,
+      todayTransits: view.todayTransits,
+    });
+    const openStatus = tool.querySelector('[data-chokepoint-open-status]');
+    if (openStatus && narrative !== null) openStatus.textContent = narrative.passage;
+    const scoreDriver = tool.querySelector('[data-chokepoint-score-driver]');
+    if (scoreDriver && narrative !== null) {
+      scoreDriver.hidden = false;
+      scoreDriver.textContent = narrative.scoreDriver;
+    }
     setOptionalMetric(tool, '[data-chokepoint-congestion]', view.congestion);
     setOptionalMetric(tool, '[data-chokepoint-warnings]', view.navigationalWarnings);
     setOptionalMetric(tool, '[data-chokepoint-ais-disruptions]', view.aisDisruptions);
