@@ -1742,7 +1742,12 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.countries.count, 196);
       assert.equal(manifest.sections.countryInstabilityIndex.count, 1);
       assert.equal(manifest.sections.chokepoints.count, 13);
-      assert.equal(manifest.sections.crises.count, 4);
+      // Derived, not frozen: a frozen count is exactly the drift #7656 removed from
+      // the seeder, where a hand-maintained copy of this registry silently diverged.
+      assert.equal(
+        manifest.sections.crises.count,
+        JSON.parse(read(repoRoot, 'shared/crawlable-crises.json')).length,
+      );
       assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
@@ -4218,6 +4223,19 @@ describe('crawlable corpus generator', () => {
 
       const toolsIndex = read(outDir, 'tools/index.html');
       assert.match(toolsIndex, /<h1>Check a current operational signal<\/h1>/);
+      // The hub cards state corpus sizes as fact, so they must track the registries
+      // this same build rendered. A literal here shipped "Four curated geographic
+      // scopes" against a 14-tracker corpus.
+      assert.match(
+        toolsIndex,
+        new RegExp(`href="/crises/"[^]*?<span>${corpus.crises.length} curated geographic scopes</span>`),
+        'the tools hub crisis count must match the rendered registry',
+      );
+      assert.match(
+        toolsIndex,
+        new RegExp(`href="/chokepoints/"[^]*?<span>${corpus.chokepoints.length} canonical waterways</span>`),
+        'the tools hub chokepoint count must match the rendered registry',
+      );
       assertDefaultSpeakable(
         jsonLdObjects(toolsIndex).find((entry) => entry['@type'] === 'CollectionPage'),
         'tools hub CollectionPage',
@@ -4624,7 +4642,11 @@ describe('crawlable corpus generator', () => {
       }),
       'source-page lastmod must include manifest, renderer, origin, catalog-input, and shared-template changes',
     );
-    assert.equal(data.crises.length, 4);
+    assert.equal(
+      data.crises.length,
+      JSON.parse(read(repoRoot, 'shared/crawlable-crises.json')).length,
+      'the loaded crisis set must match the registry, never a frozen count',
+    );
     assert.ok(data.crises.some((crisis) => crisis.slug === 'ukraine-war' && crisis.coverage.some((country) => country.code === 'UA')));
     assert.ok(data.countryBounds.some((country) => country.code === 'JP' && country.bounds[0] === 31.11));
     assert.ok(!data.countryBounds.some((country) => country.code === 'US'));
