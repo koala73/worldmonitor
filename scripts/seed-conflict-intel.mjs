@@ -269,7 +269,11 @@ export const ACLED_INTEL_LOCK_TTL_MS = 420_000;
 // divert us to. The snapshot is therefore the primary channel and the API is
 // what a snapshot outage falls back to. This seeder is the only source of HAPI
 // traffic; the RPC handlers only read the Redis keys it writes, and the
-// freshness gate permits one attempt at most every two hours.
+// freshness gate permits one JSON API attempt at most every two hours. A seed
+// that had to demote retries the SNAPSHOT every 15 minutes to reclaim the
+// authoritative channel sooner, but that shortened pin deliberately does not
+// speed up the API: while HDX stays down the demoted rows are preserved rather
+// than re-swept (see demotedVintageStillFresh).
 const HAPI_APP_IDENTIFIER_CONFIG = loadSharedConfig('hapi-app-identifier.json');
 const HAPI_APP_IDENTIFIER = Buffer.from(
   `${HAPI_APP_IDENTIFIER_CONFIG.application}:${HAPI_APP_IDENTIFIER_CONFIG.email}`,
@@ -863,12 +867,23 @@ export async function fetchAllHumanitarianSummaries({
   // HAPI_DEMOTED_REFRESH_INTERVAL_MS. Recording the channel and then not acting
   // on it would leave this fix's whole invariant (consecutive ticks are
   // comparable) unenforced.
-  const previousRefreshIntervalMs = previousMarker?.sourceChannel === HAPI_API_CHANNEL
+  const previousMarkerAgeMs = nowMs - Number(previousMarker?.updatedAt);
+  const previousWasDemoted = previousMarker?.sourceChannel === HAPI_API_CHANNEL;
+  const previousRefreshIntervalMs = previousWasDemoted
     ? HAPI_DEMOTED_REFRESH_INTERVAL_MS
     : HAPI_REFRESH_INTERVAL_MS;
+  // The shortened pin buys a cheap SNAPSHOT retry, not a cheap API refresh. If
+  // the snapshot is still down below, the JSON API rows this tick would fetch
+  // are the ones already published less than HAPI_REFRESH_INTERVAL_MS ago, so
+  // re-sweeping for them costs two global requests per tick — 8x the designed
+  // cadence — on the shared app_identifier that #5554 got throttled for exactly
+  // that kind of burst, and a resulting 429 takes BOTH channels dark.
+  const demotedVintageStillFresh = previousWasDemoted
+    && Number.isFinite(previousMarkerAgeMs)
+    && previousMarkerAgeMs < HAPI_REFRESH_INTERVAL_MS;
   if (
     Number.isFinite(Number(previousMarker?.updatedAt))
-    && nowMs - Number(previousMarker.updatedAt) < previousRefreshIntervalMs
+    && previousMarkerAgeMs < previousRefreshIntervalMs
   ) {
     console.log(`  Humanitarian: recent bulk snapshot still fresh (${Object.keys(previousMarker).length > 0 ? previousMarker.countriesCovered ?? 'unknown' : 'unknown'} countries)`);
     return null;
@@ -981,6 +996,21 @@ export async function fetchAllHumanitarianSummaries({
           },
         );
       }
+      // Still down, and the demoted rows this tick would re-fetch are younger
+      // than the normal refresh interval. Retry the snapshot again next tick
+      // rather than re-sweeping the lagging channel for rows we already have —
+      // see demotedVintageStillFresh. Last-good keeps serving (TTL extended,
+      // fetchedAt untouched, so staleness still advances honestly) and the
+      // previous seed-meta's sourceState 'degraded' keeps the health warning up.
+      if (demotedVintageStillFresh) {
+        console.log(
+          `  Humanitarian: HDX still down (${snapshotFailureReason}); demoted rows are`
+          + ` ${Math.round(previousMarkerAgeMs / 60_000)}min old — preserving them instead of re-sweeping the JSON API`,
+        );
+        await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
+        return null;
+      }
+
       sourceChannel = HAPI_API_CHANNEL;
       fallbackBudgetAnchorMs = readElapsedMs();
       console.warn(
@@ -1120,14 +1150,21 @@ export async function fetchAllHumanitarianSummaries({
     ...(Number.isFinite(Number(previousMarker?.updatedAt))
       ? { lastSuccessAt: Number(previousMarker.updatedAt) }
       : {}),
-    // Which channel was live when the run died, and — when the run had already
-    // been demoted off the authoritative snapshot — what pushed it there. Both
-    // survive on the seed-meta record so a dark HAPI can be attributed without
-    // re-running the seeder (#7658).
-    ...(failure?.sourceChannel ? { sourceChannel: failure.sourceChannel } : {}),
+    // `attemptedChannel`, NOT `sourceChannel`: this run published nothing, so
+    // the pages are still serving last-good from whichever channel last
+    // succeeded — naming this one `sourceChannel` would claim the failed
+    // attempt's channel over rows it never wrote. `servingChannel` carries the
+    // previous marker's answer alongside it. Plus what pushed the run off the
+    // authoritative snapshot, and the code health relays onto the entry, so a
+    // dark HAPI can be attributed without re-running the seeder (#7658).
+    ...(failure?.sourceChannel ? { attemptedChannel: failure.sourceChannel } : {}),
+    ...(previousMarker?.sourceChannel
+      ? { servingChannel: previousMarker.sourceChannel }
+      : {}),
     ...(failure?.snapshotFailureReason
       ? { snapshotFailureReason: failure.snapshotFailureReason }
       : {}),
+    ...(/^[A-Z0-9_]{1,64}$/.test(reasonCode) ? { errorCode: reasonCode } : {}),
   }).catch((error) => console.warn(`  HAPI failure health write failed: ${error.message}`));
   await writeFailureBackoff({
     status: Number.isFinite(Number(failure.status)) ? Number(failure.status) : 0,
@@ -1227,11 +1264,13 @@ async function fetchGdeltTensions() {
  * changed channel, the FAMILY can hold both vintages — the countries this run
  * wrote, plus older ones the previous channel wrote. The marker says which is
  * which: `sourceChannel` describes the whole family exactly when
- * requiredCountriesCovered === requiredCountriesTotal, and a shortfall there is
- * the signal that older countries may be on the other channel. Making the
- * family atomically single-vintage would mean publishing all 44 countries as
- * one generation behind a pointer swap — a bigger change to the write path than
- * this fix; the coverage fields make the current state readable, not silent.
+ * countriesCovered === countriesTotal. Note that is the FULL HAPI_COUNTRIES set
+ * (44), not the required set (41) — the 3 opportunistic countries are reachable
+ * through getHumanitarianSummary like any other, so a run covering every
+ * REQUIRED country can still leave them on the other channel. Making the family
+ * atomically single-vintage would mean publishing all 44 as one generation
+ * behind a pointer swap — a bigger change to the write path than this fix; the
+ * coverage fields make the current state readable, not silent.
  *
  * `sourceState: 'degraded'` is the hook api/health.js already has for "degraded
  * BUT SERVING" (readSeedMeta -> sourceDegraded -> SEED_ERROR at warn, record
@@ -1254,6 +1293,11 @@ export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {
       ? {
           snapshotFailureReason: humanitarian.snapshotFailureReason,
           sourceState: 'degraded',
+          // api/health.js relays `errorCode` (regex-gated) onto the health entry
+          // when the fault is SEED_ERROR, and relays `errorReason` nowhere — so
+          // without this a demotion and a bot-block look identical on the public
+          // endpoint. The HDX_*/HAPI_* codes all satisfy /^[A-Z0-9_]{1,64}$/.
+          errorCode: humanitarian.snapshotFailureReason,
         }
       : {}),
   };
@@ -1262,6 +1306,7 @@ export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {
     channelProvenance,
     marker: {
       countriesCovered: Object.keys(summaries).length,
+      countriesTotal: HAPI_COUNTRIES.length,
       requiredCountriesCovered,
       requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
       ...channelProvenance,

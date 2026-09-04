@@ -182,6 +182,23 @@ test('the channel that served a seed reaches the marker AND the seed-meta record
   assert.equal(demoted.marker.countriesCovered, 2);
   assert.equal(demoted.marker.requiredCountriesTotal, HAPI_REQUIRED_COUNTRIES.length);
   assert.equal(demoted.marker.updatedAt, NOW);
+  // api/health.js relays `errorCode` onto the entry when the fault is
+  // SEED_ERROR and relays `errorReason` nowhere, so without this a demotion and
+  // a bot-block are indistinguishable on the public endpoint.
+  assert.equal(demoted.channelProvenance.errorCode, 'HDX_HTTP_503');
+  assert.match(
+    demoted.channelProvenance.errorCode,
+    /^[A-Z0-9_]{1,64}$/,
+    'health gates errorCode on this regex — a code that fails it is silently dropped',
+  );
+  // The family is HAPI_COUNTRIES (44), not the required set (41): a run can
+  // cover every REQUIRED country while the 3 opportunistic ones still hold the
+  // other channel's vintage, so the marker has to carry both totals.
+  assert.equal(demoted.marker.countriesTotal, HAPI_COUNTRIES.length);
+  assert.ok(
+    HAPI_COUNTRIES.length > HAPI_REQUIRED_COUNTRIES.length,
+    'if these ever coincide, the two-total distinction above stops being load-bearing',
+  );
 
   // A healthy run must claim neither a failure reason nor a degraded source, or
   // the demotion alarm fires every tick and stops meaning anything.
@@ -189,7 +206,7 @@ test('the channel that served a seed reaches the marker AND the seed-meta record
   assert.deepEqual(
     Object.keys(authoritative.channelProvenance),
     ['sourceChannel'],
-    'an authoritative run must not carry snapshotFailureReason or sourceState',
+    'an authoritative run must not carry snapshotFailureReason, sourceState or errorCode',
   );
 
   // The per-country keys outlive a run (HAPI_TTL), and the caller's loop
@@ -834,7 +851,7 @@ test('a quota rejection on the demoted API backs off and names both channels', a
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
   assert.equal(failureMeta.status, 'error');
   assert.equal(failureMeta.errorReason, 'HAPI_RATE_LIMIT');
-  assert.equal(failureMeta.sourceChannel, HAPI_API_CHANNEL);
+  assert.equal(failureMeta.attemptedChannel, HAPI_API_CHANNEL);
   assert.equal(
     failureMeta.snapshotFailureReason,
     'HDX_HTTP_503',
@@ -873,7 +890,7 @@ test('HAPI snapshot network failure publishes actionable SEED_ERROR metadata bef
   assert.equal(backoff.reasonCode, 'HAPI_BOT_BLOCK', 'the terminal failure is the demoted channel’s own');
   assert.equal(failureMeta.status, 'error');
   assert.equal(failureMeta.errorReason, 'HAPI_BOT_BLOCK');
-  assert.equal(failureMeta.sourceChannel, HAPI_API_CHANNEL);
+  assert.equal(failureMeta.attemptedChannel, HAPI_API_CHANNEL);
   assert.equal(failureMeta.snapshotFailureReason, 'HDX_DNS_ERROR');
   assert.equal(failureMeta.failedAt, NOW);
 });
@@ -1221,6 +1238,70 @@ test('a demoted seed shortens its own freshness pin so the next tick retries the
   assert.ok(HAPI_DEMOTED_REFRESH_INTERVAL_MS < HAPI_REFRESH_INTERVAL_MS);
 });
 
+test('a still-down snapshot preserves the demoted rows instead of re-sweeping the API', async () => {
+  // The shortened demoted pin buys a cheap SNAPSHOT retry. If it also re-swept
+  // the JSON API every 15 min it would run those two global requests at 8x
+  // their designed cadence during an HDX outage, on the shared app_identifier
+  // #5554 got throttled for exactly that kind of burst — and the resulting 429
+  // would take BOTH channels dark. The rows it would re-fetch are the ones
+  // already published minutes ago, so there is nothing to gain.
+  let preserved = 0;
+  let snapshotCalls = 0;
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => ({
+      // Past the 15-min snapshot-retry pin, but well inside the 2h API cadence.
+      updatedAt: NOW - (HAPI_DEMOTED_REFRESH_INTERVAL_MS + 60_000),
+      sourceChannel: HAPI_API_CHANNEL,
+    }),
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async () => assert.fail('a preserved tick is not a failure — no backoff'),
+    writeFailureMeta: async () => assert.fail('a preserved tick must not publish SEED_ERROR'),
+    preserveLastGood: async () => { preserved += 1; },
+    snapshotFetchFn: snapshotDown(() => { snapshotCalls += 1; }),
+    fetchFn: async () => assert.fail('the demoted rows are still fresh — the API must not be re-swept'),
+  });
+
+  assert.equal(result, null);
+  assert.equal(snapshotCalls, 1, 'the authoritative channel must still be retried each tick');
+  assert.equal(preserved, 1, 'last-good must keep serving while the snapshot is down');
+});
+
+test('a still-down snapshot DOES re-sweep once the demoted rows reach the normal cadence', async () => {
+  // The other side of the same gate: preserving forever would let the demoted
+  // rows age past their own TTL. At HAPI_REFRESH_INTERVAL_MS the API refresh
+  // resumes at its designed cadence.
+  const adminLevels = [];
+  const result = await fetchAllHumanitarianSummaries({
+    now: () => NOW,
+    countryCodes: ['SD'],
+    pace: async () => {},
+    loadPreviousMarker: async () => ({
+      updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS,
+      sourceChannel: HAPI_API_CHANNEL,
+    }),
+    loadFailureBackoff: async () => null,
+    writeFailureBackoff: async () => assert.fail('a covered refresh must not back off'),
+    writeFailureMeta: async () => assert.fail('a covered refresh must not publish SEED_ERROR'),
+    preserveLastGood: async () => assert.fail('a covered refresh must not preserve stale rows'),
+    snapshotFetchFn: snapshotDown(),
+    fetchFn: async (url) => {
+      const parsed = new URL(url);
+      adminLevels.push(parsed.searchParams.get('admin_level'));
+      return Response.json({
+        data: parsed.searchParams.get('admin_level') === '0'
+          ? [hapiRow('SDN', { location_name: 'Sudan', events: 12, fatalities: 3 })]
+          : [],
+      });
+    },
+  });
+
+  assert.deepEqual(adminLevels, ['0', '2']);
+  assert.equal(result.sourceChannel, HAPI_API_CHANNEL);
+});
+
 test('a snapshot that fails SLOWLY fails closed instead of stacking API sweeps behind it', async () => {
   // The snapshot's own timeouts let it burn 60s of metadata plus two 120s annual
   // downloads. Demoting after that would stack two 75s API sweeps on top and
@@ -1256,7 +1337,7 @@ test('a snapshot that fails SLOWLY fails closed instead of stacking API sweeps b
   assert.equal(failureMeta.status, 'error');
   assert.equal(failureMeta.errorReason, 'HDX_TIMEOUT');
   assert.equal(
-    failureMeta.sourceChannel,
+    failureMeta.attemptedChannel,
     HAPI_SNAPSHOT_CHANNEL,
     'a run that never demoted must not be attributed to the API',
   );
