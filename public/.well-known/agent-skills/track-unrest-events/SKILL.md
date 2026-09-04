@@ -100,5 +100,5 @@ Use this skill for aggregate situational awareness and source-attributed reporti
 
 ## References
 
-- OpenAPI: https://worldmonitor.app/openapi.json - operation `ListUnrestEvents`.
+- OpenAPI: https://www.worldmonitor.app/openapi.json - operation `ListUnrestEvents`.
 - Auth matrix: https://www.worldmonitor.app/docs/usage-auth

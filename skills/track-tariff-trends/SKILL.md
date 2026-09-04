@@ -23,7 +23,7 @@ Issue a key at https://www.worldmonitor.app/pro.
 ## Endpoint
 
 ```
-GET https://worldmonitor.app/api/trade/v1/get-tariff-trends
+GET https://www.worldmonitor.app/api/trade/v1/get-tariff-trends
 ```
 
 ## Parameters
@@ -66,7 +66,7 @@ GET https://worldmonitor.app/api/trade/v1/get-tariff-trends
 
 ```bash
 curl -s --get -H "X-WorldMonitor-Key: $WM_API_KEY" \
-  'https://worldmonitor.app/api/trade/v1/get-tariff-trends' \
+  'https://www.worldmonitor.app/api/trade/v1/get-tariff-trends' \
   --data-urlencode 'reporting_country=840' \
   --data-urlencode 'years=10' \
   | jq '.datapoints[-5:] | .[] | {year, tariffRate}'

@@ -38,10 +38,10 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 - **`tools/list` and other discovery calls:** anonymous, no key.
 - **`get_sources` via `tools/call`:** no credentials and no daily quota; separate fail-closed limit of 10 anonymous calls/minute/IP. Its `tools/list` and server-card entries carry `_meta["worldmonitor/access"]: "free"`.
 - **All other data-bearing `tools/call` and `resources/read`:** need subscription access through an API key or OAuth.
-  - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://worldmonitor.app/pro. Per-minute burst is plan-resolved and shared per user across all of an account's keys and OAuth tokens: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1,000 on Enterprise. Legacy operator-issued keys stay at a flat 60/minute/key.
+  - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://www.worldmonitor.app/pro. Per-minute burst is plan-resolved and shared per user across all of an account's keys and OAuth tokens: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1,000 on Enterprise. Legacy operator-issued keys stay at a flat 60/minute/key.
   - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. The daily allowance is plan-resolved and identical on both doors, so a dashboard-issued `wm_…` key gets the same budget as an OAuth token for the same account. Pro is 50 quota-consuming `tools/call` / `resources/read` calls per UTC day and Pro Business is 250, one unit per call on a dedicated MCP counter. API Starter is 1,000 units/day and API Business is 10,000, drawn from the same allowance as their REST requests and charged at a per-tool weight of 1 for a cache read, 2 for a live downstream fetch, 3 for `get_country_brief` and `get_airspace`. Enterprise can be unlimited. Quota-free metadata methods and `get_sources` do not reserve a daily slot.
 
-Full agent walkthrough: [auth.md](https://worldmonitor.app/auth.md). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
+Full agent walkthrough: [auth.md](https://www.worldmonitor.app/auth.md). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 
 ## Connect in one step
 
@@ -58,7 +58,7 @@ Add the server to Claude Desktop / Cursor via their MCP settings using the URL `
 - [WebMCP](https://www.worldmonitor.app/docs/webmcp) — experimental visible-tab browser tools and their security/debugging contract
 - [MCP Apps](https://www.worldmonitor.app/docs/mcp-apps) — interactive `ui://` resources, host flow, view security, and drift checks
 - [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart) · [Tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference) · [JMESPath projection](https://www.worldmonitor.app/docs/mcp-jmespath) · [Error catalog](https://www.worldmonitor.app/docs/mcp-error-catalog)
-- [Developer Portal](https://worldmonitor.app/developers.md) · [REST API OpenAPI spec](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md) · [agents.md](https://worldmonitor.app/agents.md)
+- [Developer Portal](https://www.worldmonitor.app/developers.md) · [REST API OpenAPI spec](https://www.worldmonitor.app/openapi.md) · [SDKs](https://www.worldmonitor.app/sdks.md) · [agents.md](https://www.worldmonitor.app/agents.md)
 
 ## Important query matches
 

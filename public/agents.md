@@ -9,24 +9,24 @@ World Monitor is a real-time global intelligence dashboard: curated news feeds, 
 - **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json
 - **WebMCP (visible browser tabs):** https://www.worldmonitor.app/docs/webmcp — experimental, page-local tools that operate the current homepage or dashboard UI in Chrome. WebMCP does not replace the hosted MCP server; use the server for remote, background, headless, or direct-data agents.
 - **Docs MCP server:** `https://www.worldmonitor.app/docs/mcp` — Streamable HTTP, public (no auth); search-and-retrieval tools over the documentation. Use it for "how do I…" questions; use the product MCP above for live data.
-- **REST API:** base `https://api.worldmonitor.app` — OpenAPI spec: https://worldmonitor.app/openapi.yaml (JSON: /openapi.json) · API catalog: https://worldmonitor.app/.well-known/api-catalog
+- **REST API:** base `https://api.worldmonitor.app` — OpenAPI spec: https://www.worldmonitor.app/openapi.yaml (JSON: /openapi.json) · API catalog: https://worldmonitor.app/.well-known/api-catalog
 - **NLWeb:** `POST https://www.worldmonitor.app/ask` (supports SSE) for natural-language questions; machine-readable dashboard view at `https://www.worldmonitor.app/?mode=agent`
 - **Agent Skills:** discovery index at https://worldmonitor.app/.well-known/agent-skills/index.json · install via `npx skills add koala73/worldmonitor` (https://skills.sh/koala73/worldmonitor)
-- **Agent Plugin metadata:** https://worldmonitor.app/plugin.json — public metadata for the Agent Plugins 1.0.0 repository package. Install the package from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files)
+- **Agent Plugin metadata:** https://www.worldmonitor.app/plugin.json — public metadata for the Agent Plugins 1.0.0 repository package. Install the package from https://github.com/koala73/worldmonitor (root `plugin.json`, `mcp.json`, and `skills/*/SKILL.md` live in the repository, not as sibling HTTP files)
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key) — https://www.npmjs.com/package/worldmonitor
 - **SDKs:** Python `pip install worldmonitor-sdk` · Ruby `gem install worldmonitor` · Go `go get github.com/koala73/worldmonitor/sdk/go` · JavaScript npm `worldmonitor` — guide: https://www.worldmonitor.app/docs/sdks
 - **Sandbox / test environment:** https://www.worldmonitor.app/sandbox/index.json — deterministic, schema-valid sample responses for representative REST operations; no auth, no quota, safe for CI. Guide: https://www.worldmonitor.app/docs/sandbox
-- **LLM briefings:** https://worldmonitor.app/llms.txt (overview) · https://worldmonitor.app/llms-full.txt (full reference) · section files: https://worldmonitor.app/api/llms.txt (API) · https://www.worldmonitor.app/docs/llms.txt (docs) · https://worldmonitor.app/developers/llms.txt (developer portal) · https://www.worldmonitor.app/blog/llms.txt (blog)
+- **LLM briefings:** https://www.worldmonitor.app/llms.txt (overview) · https://www.worldmonitor.app/llms-full.txt (full reference) · section files: https://www.worldmonitor.app/api/llms.txt (API) · https://www.worldmonitor.app/docs/llms.txt (docs) · https://www.worldmonitor.app/developers/llms.txt (developer portal) · https://www.worldmonitor.app/blog/llms.txt (blog)
 - **Schema map:** https://www.worldmonitor.app/schemamap.xml — NLWeb schemamap indexing the structured-data surfaces
 - **Research reports:** https://www.worldmonitor.app/research/ — original source-backed research with downloadable CSV/JSON data, per-figure provenance, and stable citation URLs (no auth, no JavaScript required)
-- **Developer portal:** https://worldmonitor.app/developers.md — links every developer resource by name. Named resource pages: [MCP Server](https://worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md)
-- **Brand identity:** https://worldmonitor.app/world-monitor.md — official name, canonical domain, NAP, press mentions
-- **REST versioning and deprecation:** https://worldmonitor.app/api-versioning.md — URL versioning, sunset timeline, Deprecation / Sunset / Link header contract (HTML: https://www.worldmonitor.app/docs/api-versioning)
+- **Developer portal:** https://www.worldmonitor.app/developers.md — links every developer resource by name. Named resource pages: [MCP Server](https://www.worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://www.worldmonitor.app/openapi.md) · [SDKs](https://www.worldmonitor.app/sdks.md)
+- **Brand identity:** https://www.worldmonitor.app/world-monitor.md — official name, canonical domain, NAP, press mentions
+- **REST versioning and deprecation:** https://www.worldmonitor.app/api-versioning.md — URL versioning, sunset timeline, Deprecation / Sunset / Link header contract (HTML: https://www.worldmonitor.app/docs/api-versioning)
 
 ## Authentication
 
 - **Anonymous** works for discovery endpoints, `tools/list`, and public data (world brief, product catalog, story pages). For MCP data tools, `get_sources` is the sole credential-free, daily-quota-free exception and has a separate fail-closed limit of 10 anonymous calls/minute/IP.
-- **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` for subscription-gated REST and MCP data calls — issue one at https://worldmonitor.app/pro. All MCP data tools other than `get_sources` require subscription access. Full agent walkthrough: https://worldmonitor.app/auth.md
+- **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` for subscription-gated REST and MCP data calls — issue one at https://www.worldmonitor.app/pro. All MCP data tools other than `get_sources` require subscription access. Full agent walkthrough: https://www.worldmonitor.app/auth.md
 - **OAuth2** for MCP (`scope=mcp`), with dynamic client registration at `/oauth/register`. Details in auth.md.
 
 ## Crawl & content-usage policy
@@ -37,12 +37,12 @@ World Monitor is a real-time global intelligence dashboard: curated news feeds, 
 
 ## Rate limits & plans
 
-- Machine-readable pricing and plan limits: https://worldmonitor.app/pricing.md · live JSON catalog: `GET https://www.worldmonitor.app/api/product-catalog` (public, no key)
+- Machine-readable pricing and plan limits: https://www.worldmonitor.app/pricing.md · live JSON catalog: `GET https://www.worldmonitor.app/api/product-catalog` (public, no key)
 - Rate-limit documentation: https://www.worldmonitor.app/docs/usage-rate-limits.md · auth matrix: https://www.worldmonitor.app/docs/usage-auth
 - Plan-limit responses include upgrade guidance; back off on 429 and honor `Retry-After`.
 
 ## Support & escalation
 
-- https://worldmonitor.app/support.md — support@worldmonitor.app (general) · enterprise@worldmonitor.app (sales)
+- https://www.worldmonitor.app/support.md — support@worldmonitor.app (general) · enterprise@worldmonitor.app (sales)
 - Status: https://status.worldmonitor.app · Issues: https://github.com/koala73/worldmonitor/issues
 - Source (AGPL-3.0): https://github.com/koala73/worldmonitor

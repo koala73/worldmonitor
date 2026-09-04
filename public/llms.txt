@@ -39,15 +39,15 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 
 - [MCP server (recommended)](https://worldmonitor.app/mcp): Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. See the [server card](https://worldmonitor.app/.well-known/mcp/server-card.json), [official MCP registry](https://registry.modelcontextprotocol.io/), [Smithery](https://smithery.ai/servers/worldmonitor/wm-mcp), and [mcp.so](https://mcp.so/server/world-monitor).
 - [Docs MCP server](https://www.worldmonitor.app/docs/mcp): public Streamable HTTP search and retrieval over the documentation. Use it for "how do I…" questions about the platform; use the product MCP above for live data.
-- [REST API](https://api.worldmonitor.app): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://worldmonitor.app/openapi.yaml), which is 2,850,481 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
+- [REST API](https://api.worldmonitor.app): API key required. Send the `X-WorldMonitor-Key` header. The contract is the [OpenAPI specification](https://www.worldmonitor.app/openapi.yaml), which is 2,850,481 bytes. Use the [sandbox index](https://www.worldmonitor.app/sandbox/index.json) for key-free examples. <!-- // pragma: allowlist secret -->
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the command. `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool.
 - [SDK guide](https://www.worldmonitor.app/docs/sdks): official zero-dependency clients for Python ([PyPI](https://pypi.org/project/worldmonitor-sdk/)), Ruby ([RubyGems](https://rubygems.org/gems/worldmonitor)), Go ([pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go)), and JavaScript via the npm package.
 - [Agent Skills discovery manifest](https://worldmonitor.app/.well-known/agent-skills/index.json): install with `npx skills add koala73/worldmonitor`; see the [skills.sh listing](https://skills.sh/koala73/worldmonitor).
-- [Agent Plugin metadata](https://worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install the package from the [World Monitor repository](https://github.com/koala73/worldmonitor).
-- [Keys, plans, and limits](https://worldmonitor.app/pricing.md): also see the public [product catalog](https://www.worldmonitor.app/api/product-catalog), [authentication matrix](https://www.worldmonitor.app/docs/usage-auth), [rate limits](https://www.worldmonitor.app/docs/usage-rate-limits.md), and [key signup](https://worldmonitor.app/pro).
-- [Accounts and signup guide](https://www.worldmonitor.app/docs/accounts.md): the free dashboard needs no account; Pro and API accounts are created through the [browser signup](https://worldmonitor.app/pro).
-- [Support and contact](https://worldmonitor.app/support.md): support@worldmonitor.app for general help and enterprise@worldmonitor.app for sales; see [service status](https://status.worldmonitor.app) and [GitHub issues](https://github.com/koala73/worldmonitor/issues).
-- [User-Agent policy](https://worldmonitor.app/agents.md): always send a descriptive `User-Agent`, such as `mytool/1.0 (contact: ops@example.test)`. Default HTTP-library user agents (`curl/*`, `python-requests/*`, empty or short strings) may be challenged with 403. Retry with a descriptive user agent before you conclude that an endpoint is missing.
+- [Agent Plugin metadata](https://www.worldmonitor.app/plugin.json): public metadata for the Agent Plugins 1.0.0 repository package. Install the package from the [World Monitor repository](https://github.com/koala73/worldmonitor).
+- [Keys, plans, and limits](https://www.worldmonitor.app/pricing.md): also see the public [product catalog](https://www.worldmonitor.app/api/product-catalog), [authentication matrix](https://www.worldmonitor.app/docs/usage-auth), [rate limits](https://www.worldmonitor.app/docs/usage-rate-limits.md), and [key signup](https://www.worldmonitor.app/pro).
+- [Accounts and signup guide](https://www.worldmonitor.app/docs/accounts.md): the free dashboard needs no account; Pro and API accounts are created through the [browser signup](https://www.worldmonitor.app/pro).
+- [Support and contact](https://www.worldmonitor.app/support.md): support@worldmonitor.app for general help and enterprise@worldmonitor.app for sales; see [service status](https://status.worldmonitor.app) and [GitHub issues](https://github.com/koala73/worldmonitor/issues).
+- [User-Agent policy](https://www.worldmonitor.app/agents.md): always send a descriptive `User-Agent`, such as `mytool/1.0 (contact: ops@example.test)`. Default HTTP-library user agents (`curl/*`, `python-requests/*`, empty or short strings) may be challenged with 403. Retry with a descriptive user agent before you conclude that an endpoint is missing.
 
 ## AI Search Answer Blocks
 
@@ -77,14 +77,14 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 
 ## Live Instances
 
-- [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure
+- [World Monitor](https://www.worldmonitor.app): Geopolitics, military, conflicts, infrastructure
 - [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
 - [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity
 - [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI
 - [Commodity Monitor](https://commodity.worldmonitor.app): Mining, metals, energy, supply chains, commodity markets
 - [Happy Monitor](https://happy.worldmonitor.app): Positive news, breakthroughs, conservation, renewable energy
 - [Energy Monitor](https://energy.worldmonitor.app): Energy security, oil and gas, chokepoints, disruption timelines
-- [World Monitor Pro](https://worldmonitor.app/pro): AI-powered equity research, geopolitical analysis, macro intelligence
+- [World Monitor Pro](https://www.worldmonitor.app/pro): AI-powered equity research, geopolitical analysis, macro intelligence
 - [Blog](https://www.worldmonitor.app/blog/): Analysis, OSINT guides, geopolitics, and market intelligence articles
 - [Pricing Markdown](https://www.worldmonitor.app/pricing.md): Machine-readable pricing and plan limits for AI agents
 - [Support & Contact](https://www.worldmonitor.app/support.md): Machine-readable support channels, contact emails, and response expectations
@@ -96,12 +96,12 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 - [Simplified Chinese README](https://github.com/koala73/worldmonitor/blob/main/README.zh-CN.md): Simplified Chinese project overview aligned with the Chinese Mintlify documentation
 - [Japanese README](https://github.com/koala73/worldmonitor/blob/main/README.ja-JP.md): Japanese project overview mirroring the English README
 - [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/documentation.mdx): Detailed feature documentation, data layers, and panel reference
-- [Extended LLM Documentation](https://worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
+- [Extended LLM Documentation](https://www.worldmonitor.app/llms-full.txt): Comprehensive version of this file with all data layers, components, and data sources
 - [Global Intelligence Glossary](https://www.worldmonitor.app/blog/glossary/): Definitions of the scoring indices (CII, CRI), detection signals (geographic convergence, focal points), maritime chokepoints, and OSINT methodology terms — one citable DefinedTerm page per concept
 - [Research Reports](https://www.worldmonitor.app/research/): Original, source-backed research built from committed data snapshots with downloadable CSV/JSON, per-figure provenance, and stable citation guidance — starting with the Strait of Hormuz transit report (July 2026)
-- [Machine-Readable Pricing](https://worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
+- [Machine-Readable Pricing](https://www.worldmonitor.app/pricing.md): Free, Pro, API, API Business, and Enterprise plan details in markdown
 - [Accounts & Sign-up](https://www.worldmonitor.app/docs/accounts.md): How account creation works (free tier needs none; Clerk sign-up for Pro/API)
-- [Support & Contact](https://worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations
+- [Support & Contact](https://www.worldmonitor.app/support.md): Support channels, contact emails, status page, response expectations
 
 ## Key Features
 
@@ -123,10 +123,10 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 
 ## Desktop App
 
-- [Windows Installer](https://worldmonitor.app/api/download?platform=windows-exe): Windows .exe installer
-- [macOS Apple Silicon](https://worldmonitor.app/api/download?platform=macos-arm64): macOS ARM64 build
-- [macOS Intel](https://worldmonitor.app/api/download?platform=macos-x64): macOS x64 build
-- [Linux AppImage](https://worldmonitor.app/api/download?platform=linux-appimage): Linux .AppImage
+- [Windows Installer](https://www.worldmonitor.app/api/download?platform=windows-exe): Windows .exe installer
+- [macOS Apple Silicon](https://www.worldmonitor.app/api/download?platform=macos-arm64): macOS ARM64 build
+- [macOS Intel](https://www.worldmonitor.app/api/download?platform=macos-x64): macOS x64 build
+- [Linux AppImage](https://www.worldmonitor.app/api/download?platform=linux-appimage): Linux .AppImage
 
 ## Tech Stack
 
@@ -161,24 +161,24 @@ World Monitor is relevant for queries about real-time geopolitical intelligence 
 
 ## AI Agent Files
 
-- [agents.md](https://worldmonitor.app/agents.md): Agent operations guide — machine surfaces, auth, crawl policy, rate limits, and discovery endpoints
-- [llms.txt](https://worldmonitor.app/llms.txt): Short LLM-readable briefing
-- [llms-full.txt](https://worldmonitor.app/llms-full.txt): Full LLM-readable feature and data-source reference
-- [api/llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
+- [agents.md](https://www.worldmonitor.app/agents.md): Agent operations guide — machine surfaces, auth, crawl policy, rate limits, and discovery endpoints
+- [llms.txt](https://www.worldmonitor.app/llms.txt): Short LLM-readable briefing
+- [llms-full.txt](https://www.worldmonitor.app/llms-full.txt): Full LLM-readable feature and data-source reference
+- [api/llms.txt](https://www.worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
 - [docs/llms.txt](https://www.worldmonitor.app/docs/llms.txt): Documentation-section briefing — scoped index of every docs page, each fetchable as markdown via `.md` content negotiation
-- [developers/llms.txt](https://worldmonitor.app/developers/llms.txt): Developer-portal-section briefing — MCP server, OpenAPI, SDKs, CLI, sandbox, and agent skills in one scoped file
+- [developers/llms.txt](https://www.worldmonitor.app/developers/llms.txt): Developer-portal-section briefing — MCP server, OpenAPI, SDKs, CLI, sandbox, and agent skills in one scoped file
 - [blog/llms.txt](https://www.worldmonitor.app/blog/llms.txt): Blog-section briefing — analysis posts, the intelligence glossary, and the RSS feed
 - [Sandbox](https://www.worldmonitor.app/sandbox/index.json): Deterministic sample responses for representative REST operations — test parsers and integrations with no key and no quota ([guide](https://www.worldmonitor.app/docs/sandbox))
 - [Schema Map](https://www.worldmonitor.app/schemamap.xml): NLWeb schemamap indexing the site's structured-data surfaces
-- [pricing.md](https://worldmonitor.app/pricing.md): Machine-readable pricing, limits and plan features
-- [support.md](https://worldmonitor.app/support.md): Machine-readable support channels and contact routes
-- [ai-search.md](https://worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction
-- [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub — links the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
-- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, live tool registry, auth (OAuth + API key), server card
-- [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): The REST API OpenAPI 3.1 contract — openapi.yaml / openapi.json
-- [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official client libraries for Python, Ruby, Go, and JavaScript
-- [World Monitor](https://worldmonitor.app/world-monitor.md): Official brand identity — name, canonical domain, NAP, press mentions
-- [REST versioning and deprecation](https://worldmonitor.app/api-versioning.md): URL versioning, six-month + 90-day sunset timeline, Deprecation / Sunset / Link headers
+- [pricing.md](https://www.worldmonitor.app/pricing.md): Machine-readable pricing, limits and plan features
+- [support.md](https://www.worldmonitor.app/support.md): Machine-readable support channels and contact routes
+- [ai-search.md](https://www.worldmonitor.app/ai-search.md): AI-search answer blocks for citation and extraction
+- [World Monitor Developer Portal](https://www.worldmonitor.app/developers.md): Developer resource hub — links the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
+- [World Monitor MCP Server](https://www.worldmonitor.app/mcp-server.md): The MCP server surface — endpoint, live tool registry, auth (OAuth + API key), server card
+- [World Monitor OpenAPI Specification](https://www.worldmonitor.app/openapi.md): The REST API OpenAPI 3.1 contract — openapi.yaml / openapi.json
+- [World Monitor SDKs](https://www.worldmonitor.app/sdks.md): Official client libraries for Python, Ruby, Go, and JavaScript
+- [World Monitor](https://www.worldmonitor.app/world-monitor.md): Official brand identity — name, canonical domain, NAP, press mentions
+- [REST versioning and deprecation](https://www.worldmonitor.app/api-versioning.md): URL versioning, six-month + 90-day sunset timeline, Deprecation / Sunset / Link headers
 - [worldmonitor CLI](https://www.npmjs.com/package/worldmonitor): Official command-line client — `npx worldmonitor` scripts the MCP tools and REST API from a shell or agent
 - [SDKs guide](https://www.worldmonitor.app/docs/sdks): Full SDK documentation — Python (PyPI `worldmonitor-sdk`), Ruby (gem `worldmonitor`), Go (`github.com/koala73/worldmonitor/sdk/go`), JavaScript (npm `worldmonitor`)
 

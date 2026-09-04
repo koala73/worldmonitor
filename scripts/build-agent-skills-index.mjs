@@ -34,7 +34,13 @@ const SKILLS_DIR = resolve(ROOT, 'public/.well-known/agent-skills');
 const PLUGIN_SKILLS_DIR = resolve(ROOT, 'skills');
 const INDEX_PATH = join(SKILLS_DIR, 'index.json');
 const MCP_SKILLS_PATH = resolve(ROOT, 'api/mcp/skill-extension/generated.ts');
+// The apex serves `/.well-known/*` directly — that path is on the Cloudflare
+// apex→www exemption list (ARCHITECTURE.md §2), so skill URLs stay apex.
 const PUBLIC_BASE = 'https://worldmonitor.app';
+// Everything NOT on that exemption list 301s to www. Publishing the apex form
+// hands every agent and crawler a redirect instead of a document (#7660), so
+// non-exempt links in generated output must name www.
+const WWW_BASE = 'https://www.worldmonitor.app';
 
 // Canonical v0.2.0 discovery-schema URL. Graders (orank/ora.ai Identity
 // `agent-skills-index-v2`) string-match this exact value; the earlier
@@ -85,9 +91,9 @@ const INSTRUCTIONS = [
   '',
   'How an agent should call it:',
   '- MCP server (recommended): https://worldmonitor.app/mcp — Streamable HTTP; issue `tools/list` for the live inventory.',
-  '- REST API: base https://api.worldmonitor.app — OpenAPI spec at https://worldmonitor.app/openapi.yaml.',
+  '- REST API: base https://api.worldmonitor.app — OpenAPI spec at https://www.worldmonitor.app/openapi.yaml.',
   '- CLI (shell/scripts): the `worldmonitor` npm package wraps these tools — `npx worldmonitor tools` (public, no key) or `npm i -g worldmonitor`, then pass `--api-key` for data calls. https://www.npmjs.com/package/worldmonitor',
-  '- Auth: OAuth2 (`scope=mcp`) or an API-key header `X-WorldMonitor-Key: wm_<40-hex>`. Issue a key at https://worldmonitor.app/pro.',
+  '- Auth: OAuth2 (`scope=mcp`) or an API-key header `X-WorldMonitor-Key: wm_<40-hex>`. Issue a key at https://www.worldmonitor.app/pro.',
 ].join('\n');
 
 // Closing fence must be anchored to its own line so values that happen to
@@ -123,7 +129,7 @@ export function rewriteWellKnownSkillForPlugin(md) {
       return full;
     }
     if (normalized.endsWith('.worldmonitor.app')) {
-      return `${PUBLIC_BASE}${suffix}`;
+      return `${WWW_BASE}${suffix}`;
     }
     return full;
   });

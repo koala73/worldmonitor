@@ -32,7 +32,7 @@ Pro 订阅者无需粘贴任何 API key 即可接入 Claude Desktop / Cursor / c
 | `https://api.worldmonitor.app/api/oauth/authorize` | OAuth 2.1 授权端点（要求 PKCE） |
 | `https://api.worldmonitor.app/api/oauth/token` | Token 端点（authorization_code + refresh_token） |
 | `https://api.worldmonitor.app/.well-known/oauth-authorization-server` | AS 元数据（RFC 8414） |
-| `https://worldmonitor.app/docs/mcp` | 独立的匿名**文档** MCP 服务器（文档搜索 + 只读文档文件系统）——卡片位于 `/.well-known/mcp/docs-server-card.json`；参见[智能体发现](/zh/agent-discovery) |
+| `https://www.worldmonitor.app/docs/mcp` | 独立的匿名**文档** MCP 服务器（文档搜索 + 只读文档文件系统）——卡片位于 `/.well-known/mcp/docs-server-card.json`；参见[智能体发现](/zh/agent-discovery) |
 | `https://worldmonitor.app/.well-known/oauth-protected-resource` | 资源服务器元数据（RFC 9728） |
 
 服务器标识：`worldmonitor` v1.17.0。
@@ -129,7 +129,7 @@ Pro 订阅者（以及不愿粘贴 key 的 API Starter+ 用户）可通过其已
 
 每次授权都会生成一条独立记录，因此撤销 Claude Desktop 不会影响 Cursor。
 
-- 在 **[Settings → Connected MCP clients](https://worldmonitor.app/settings)** 管理已连接的客户端。
+- 在 **[Settings → Connected MCP clients](https://www.worldmonitor.app/settings)** 管理已连接的客户端。
 - 可查看每个 token 的实时 `clientName`（例如 "Claude"、"Cursor"）、`lastUsedAt` 和 `createdAt`。
 - 撤销会在下一次 MCP 请求时生效（无正向缓存）。
 - 每个用户最多 **5 个活跃 token**。超出上限的授权会静默撤销**创建时间最早**的现有 token（按创建顺序，而非最近使用时间；并发授权下的执行是最终一致的）。

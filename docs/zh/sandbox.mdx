@@ -35,7 +35,7 @@ curl https://www.worldmonitor.app/sandbox/get-resilience-score.json
 保证:
 
 - **确定性** — fixtures 由已发布的 OpenAPI 示例生成(`scripts/generate-sandbox-fixtures.mjs`)，只有在 API 契约变化时才会更新。可安全地用于 CI 快照测试。
-- **符合 schema** — 每个 `response.body` 都通过 [openapi.json](https://worldmonitor.app/openapi.json) 中对应操作的响应 schema 校验。
+- **符合 schema** — 每个 `response.body` 都通过 [openapi.json](https://www.worldmonitor.app/openapi.json) 中对应操作的响应 schema 校验。
 - **明确标注为合成数据** — 每个 fixture 都带有 `"sandbox": true`。切勿将 fixture 负载当作实时数据。
 
 ## 2. 生产 MCP 服务器上的匿名、免配额发现接口
@@ -55,7 +55,7 @@ curl https://www.worldmonitor.app/sandbox/get-resilience-score.json
 
 ## 切换到生产环境
 
-1. 在 [worldmonitor.app/pro](https://worldmonitor.app/pro) 申请密钥，并通过 `X-WorldMonitor-Key: wm_<40位十六进制>` 请求头发送(或使用 [OAuth 2.1](/zh/api-oauth)，`scope=mcp`)。
+1. 在 [worldmonitor.app/pro](https://www.worldmonitor.app/pro) 申请密钥，并通过 `X-WorldMonitor-Key: wm_<40位十六进制>` 请求头发送(或使用 [OAuth 2.1](/zh/api-oauth)，`scope=mcp`)。
 2. 将 fixture URL 替换为沙盒索引中的 `productionUrl`——响应信封结构完全相同。
 3. 注意[速率限制](/zh/usage-rate-limits)，收到 429 时遵循 `Retry-After`。
 

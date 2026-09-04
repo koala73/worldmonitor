@@ -24,18 +24,18 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 **How an agent should call it:**
 
 - **MCP server (recommended):** `https://worldmonitor.app/mcp` — Streamable HTTP; issue `tools/list` for the live inventory. Auth: OAuth2 (`scope=mcp`) or an API key header `X-WorldMonitor-Key: wm_<40-hex>`. Server card: https://worldmonitor.app/.well-known/mcp/server-card.json · Registry entries: `app.worldmonitor/mcp` in the official MCP registry (registry.modelcontextprotocol.io) · https://smithery.ai/servers/worldmonitor/wm-mcp · https://mcp.so/server/world-monitor
-- **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. Use `https://www.worldmonitor.app/sandbox/index.json` for key-free examples. The OpenAPI spec is at https://worldmonitor.app/openapi.yaml.
+- **REST API.** Base `https://api.worldmonitor.app`. API key required. Send the `X-WorldMonitor-Key` header. Use `https://www.worldmonitor.app/sandbox/index.json` for key-free examples. The OpenAPI spec is at https://www.worldmonitor.app/openapi.yaml.
 - **CLI:** `npx worldmonitor tools` lists every tool (public, no key); `npm install -g worldmonitor` installs the `worldmonitor` command. A zero-dependency, MCP-first client for the tools and REST API above — `worldmonitor call get_sources` needs no key; pass `--api-key` for every other data tool. https://www.npmjs.com/package/worldmonitor
 - **Agent Skills:** discovery manifest at https://worldmonitor.app/.well-known/agent-skills/index.json · install via `npx skills add koala73/worldmonitor` (https://skills.sh/koala73/worldmonitor)
-- **Agent Plugin metadata.** https://worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
-- **Keys, plans & limits:** https://worldmonitor.app/pricing.md (markdown) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog` (public, no key) · auth matrix https://www.worldmonitor.app/docs/usage-auth · rate limits https://www.worldmonitor.app/docs/usage-rate-limits.md · issue a key at https://worldmonitor.app/pro
-- **Accounts & sign-up:** free dashboard needs NO account; Pro/API accounts are created in a browser (Clerk sign-up at https://worldmonitor.app/pro). Guide: https://www.worldmonitor.app/docs/accounts.md
-- **Support & contact:** https://worldmonitor.app/support.md — support@worldmonitor.app (general) · enterprise@worldmonitor.app (sales) · status https://status.worldmonitor.app · issues https://github.com/koala73/worldmonitor/issues
+- **Agent Plugin metadata.** https://www.worldmonitor.app/plugin.json describes the Agent Plugins 1.0.0 repository package.
+- **Keys, plans & limits:** https://www.worldmonitor.app/pricing.md (markdown) · live JSON catalog `GET https://www.worldmonitor.app/api/product-catalog` (public, no key) · auth matrix https://www.worldmonitor.app/docs/usage-auth · rate limits https://www.worldmonitor.app/docs/usage-rate-limits.md · issue a key at https://www.worldmonitor.app/pro
+- **Accounts & sign-up:** free dashboard needs NO account; Pro/API accounts are created in a browser (Clerk sign-up at https://www.worldmonitor.app/pro). Guide: https://www.worldmonitor.app/docs/accounts.md
+- **Support & contact:** https://www.worldmonitor.app/support.md — support@worldmonitor.app (general) · enterprise@worldmonitor.app (sales) · status https://status.worldmonitor.app · issues https://github.com/koala73/worldmonitor/issues
 - **User-Agent policy:** always send a descriptive `User-Agent` (e.g. `mytool/1.0 (+https://yoursite.example)`). Default HTTP-library UAs (`curl/*`, `python-requests/*`, empty/short strings) may be challenged with 403 by the edge firewall — a 403 does NOT mean the endpoint is missing; retry with a real UA before concluding anything.
 
 ## Live Instances
 
-- [World Monitor](https://worldmonitor.app): Geopolitics, military, conflicts, infrastructure — RSS categories, panels, military bases, nuclear facilities, hotspots
+- [World Monitor](https://www.worldmonitor.app): Geopolitics, military, conflicts, infrastructure — RSS categories, panels, military bases, nuclear facilities, hotspots
 - [Live Country Instability Index rankings](https://www.worldmonitor.app/country-instability-index/): CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
 - [Tech Monitor](https://tech.worldmonitor.app): Startups, AI/ML, cloud, cybersecurity — RSS categories, panels, tech HQs, cloud regions, startup hubs
 - [Finance Monitor](https://finance.worldmonitor.app): Global markets, trading, central banks, Gulf FDI — RSS categories, panels, stock exchanges, central banks, Gulf investments
@@ -49,13 +49,13 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 - [Simplified Chinese README](https://github.com/koala73/worldmonitor/blob/main/README.zh-CN.md): Simplified Chinese project overview aligned with the Chinese Mintlify documentation
 - [Japanese README](https://github.com/koala73/worldmonitor/blob/main/README.ja-JP.md): Japanese project overview mirroring the English README
 - [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/documentation.mdx): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
-- [API llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
-- [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub linking the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
-- [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, live tool registry, and auth modes
-- [World Monitor OpenAPI Specification](https://worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
-- [World Monitor SDKs](https://worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
-- [World Monitor](https://worldmonitor.app/world-monitor.md): Official brand identity — name, canonical domain, NAP, press mentions
-- [REST versioning and deprecation](https://worldmonitor.app/api-versioning.md): URL versioning, six-month + 90-day sunset timeline, Deprecation / Sunset / Link headers
+- [API llms.txt](https://www.worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
+- [World Monitor Developer Portal](https://www.worldmonitor.app/developers.md): Developer resource hub linking the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
+- [World Monitor MCP Server](https://www.worldmonitor.app/mcp-server.md): MCP server endpoint, live tool registry, and auth modes
+- [World Monitor OpenAPI Specification](https://www.worldmonitor.app/openapi.md): REST API OpenAPI 3.1 contract (openapi.yaml / openapi.json)
+- [World Monitor SDKs](https://www.worldmonitor.app/sdks.md): Official Python, Ruby, Go, and JavaScript client libraries
+- [World Monitor](https://www.worldmonitor.app/world-monitor.md): Official brand identity — name, canonical domain, NAP, press mentions
+- [REST versioning and deprecation](https://www.worldmonitor.app/api-versioning.md): URL versioning, six-month + 90-day sunset timeline, Deprecation / Sunset / Link headers
 
 ## Data Layers — Geopolitical
 
@@ -218,7 +218,7 @@ The live inventory currently covers 578+ observed upstream hosts. The [data-sour
 
 ## Supported Languages
 
-Localization follows the runtime locale registry, including right-to-left bundles. Fetch `https://worldmonitor.app/product-facts.json` and read `capabilities.localeCodes` for the exact current locale list. Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation is available for cross-language intelligence gathering.
+Localization follows the runtime locale registry, including right-to-left bundles. Fetch `https://www.worldmonitor.app/product-facts.json` and read `capabilities.localeCodes` for the exact current locale list. Language bundles are lazy-loaded on demand. Localized news feeds load region-specific RSS sources based on language preference. AI translation is available for cross-language intelligence gathering.
 
 ## Multi-Variant Build System
 
@@ -2067,7 +2067,7 @@ The subsection on [Pillar-combined score activation](#pillar-combined-score-acti
 
 ### Runtime manifest
 
-For the live deployment state, use the [runtime manifest](https://api.worldmonitor.app/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, and safe derived construct versions: `constructVersions.energy` (`legacy` or `v2`) and `constructVersions.education` (`active` or `rollback`). It also reports `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production. <!-- // pragma: allowlist secret -->
+For the live deployment state, use the [runtime manifest](https://api.worldmonitor.app/api/resilience/v1/get-runtime-manifest). It reports the active formula tag, static `dataVersion`, ranking-cache metadata, and safe derived construct versions: `constructVersions.energy` (`legacy` or `v2`) and `constructVersions.education` (`active` or `rollback`). It also reports `intervals` availability metadata for the public `scoreInterval`/`rankStable` support path without exposing deploy identifiers, raw `RESILIENCE_*` flag states, or internal cache keys. The Reference Edition remains a frozen shipped bundle; it should not be treated as proof of the runtime state currently active in production. <!-- // pragma: allowlist secret -->
 
 ### Cache versioning
 
@@ -2443,7 +2443,7 @@ rather than pretending the surface is live.
   rows after the classifier ships.
 - An automated correction-intake pipeline. If you spot something
   wrong, use the feedback channels at
-  [worldmonitor.app](https://worldmonitor.app) or open a GitHub issue
+  [worldmonitor.app](https://www.worldmonitor.app) or open a GitHub issue
   at the [public repository](https://github.com/koala73/worldmonitor/issues).
   Corrections are not yet on the classifier's path — they're handled
   manually today.

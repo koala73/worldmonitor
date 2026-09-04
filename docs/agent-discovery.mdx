@@ -5,18 +5,18 @@ description: "Point any AI agent, codegen tool, or MCP client at worldmonitor.ap
 
 WorldMonitor is built to be **agent-native**. An autonomous agent — Claude, Cursor, an MCP client, or your own LangChain / LangGraph workflow — can start from a single root URL and discover everything it needs: REST schemas, MCP transport, OAuth flow, skill bundles, and human-readable briefings.
 
-No prior knowledge required. Just `GET https://worldmonitor.app/`.
+No prior knowledge required. Just `GET https://www.worldmonitor.app/`.
 
 ## The one URL to remember
 
 ```
-https://worldmonitor.app/
+https://www.worldmonitor.app/
 ```
 
 The HTTP response carries an [RFC 8288](https://datatracker.ietf.org/doc/html/rfc8288) `Link:` header with `rel` values pointing at every machine-readable surface below. An agent that follows the links resolves the full picture without hardcoding a single path.
 
 ```bash
-curl -sI https://worldmonitor.app/ | grep -i '^link:'
+curl -sI https://www.worldmonitor.app/ | grep -i '^link:'
 ```
 
 You'll see entries like:
@@ -51,9 +51,9 @@ Link: </.well-known/api-catalog>; rel="api-catalog"; type="application/linkset+j
 | [`/.well-known/agent-card.json`](https://worldmonitor.app/.well-known/agent-card.json) | [A2A](https://a2a-protocol.org) | Agent card for the `/a2a` JSON-RPC concierge (see below) — transport, protocol version, skills, no auth required |
 | [`/.well-known/http-message-signatures-directory`](https://worldmonitor.app/.well-known/http-message-signatures-directory) | [RFC 9421](https://datatracker.ietf.org/doc/html/rfc9421) / Web Bot Auth | Ed25519 public-key directory (`application/http-message-signatures-directory+json`) so third parties can verify WorldMonitor-originated signed automated requests. Keys advertise a rolling 24 h `nbf`/`exp` window; cached `public, max-age=3600` |
 | [`/.well-known/agent-skills/index.json`](https://worldmonitor.app/.well-known/agent-skills/index.json) | (custom) | Index of pre-packaged agent skills (`fetch-country-brief`, `fetch-resilience-score`, …) — each skill is a self-contained recipe |
-| [`/plugin.json`](https://worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | Manifest for the World Monitor agent plugin (`name: worldmonitor`). The GitHub repository is the plugin package: root `plugin.json`, `mcp.json`, and regular `skills/*/SKILL.md` files (not git symlinks — Windows checkouts and zip extracts still get YAML frontmatter). Plugin recipes match the well-known catalog except REST examples use the public site origin `https://worldmonitor.app` |
-| [`/llms.txt`](https://worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM-friendly markdown briefing — overview, capabilities, links |
-| [`/llms-full.txt`](https://worldmonitor.app/llms-full.txt) | (extension) | Full LLM corpus: product brief plus inlined glossary, chokepoint methodology and explainers, Country Resilience Index methodology, corrections log, and the published ranking snapshot |
+| [`/plugin.json`](https://www.worldmonitor.app/plugin.json) | [Agent Plugins 1.0.0](https://agent-plugins.org/specification) | Manifest for the World Monitor agent plugin (`name: worldmonitor`). The GitHub repository is the plugin package: root `plugin.json`, `mcp.json`, and regular `skills/*/SKILL.md` files (not git symlinks — Windows checkouts and zip extracts still get YAML frontmatter). Plugin recipes match the well-known catalog except REST examples use the public site origin `https://www.worldmonitor.app` |
+| [`/llms.txt`](https://www.worldmonitor.app/llms.txt) | [llmstxt.org](https://llmstxt.org) | LLM-friendly markdown briefing — overview, capabilities, links |
+| [`/llms-full.txt`](https://www.worldmonitor.app/llms-full.txt) | (extension) | Full LLM corpus: product brief plus inlined glossary, chokepoint methodology and explainers, Country Resilience Index methodology, corrections log, and the published ranking snapshot |
 | [`/api/health`](https://api.worldmonitor.app/api/health) | (custom) | Per-key seed status, freshness, record counts — agents can gate fetches on this |
 
 The header-discoverable static assets (`.well-known/*`, `/openapi.yaml`, `/openapi.json`, `/plugin.json`) serve `Access-Control-Allow-Origin: *` and are cached `public, max-age=3600` — safe to memoize. `/api/health` uses the normal API CORS allowlist and is **not** cached (`private, no-store`) because it reflects real-time seed freshness; agents should hit it fresh whenever they need to gate on data availability.
@@ -67,7 +67,7 @@ Beyond static discovery documents, several live endpoints exist specifically for
 An [NLWeb](https://github.com/microsoft/NLWeb)-style front door: send a question, get back the MCP tools that answer it. Accepts `query` (max 2048 chars) as JSON body, form body, or `?query=`; optional `mode` (default `"list"`), `query_id`, and `streaming` (also triggered by `Accept: text/event-stream`).
 
 ```bash
-curl -s https://worldmonitor.app/ask -H 'Content-Type: application/json' \
+curl -s https://www.worldmonitor.app/ask -H 'Content-Type: application/json' \
   -d '{"query": "is there unusual military air activity near Taiwan?"}'
 ```
 

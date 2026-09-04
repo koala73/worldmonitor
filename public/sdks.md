@@ -2,7 +2,7 @@
 
 Last updated: July 7, 2026
 
-World Monitor ships official client libraries in four language ecosystems so you can script country briefs, risk scores, market data, and every registered [MCP tool](https://worldmonitor.app/mcp-server.md) without writing an HTTP integration. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
+World Monitor ships official client libraries in four language ecosystems so you can script country briefs, risk scores, market data, and every registered [MCP tool](https://www.worldmonitor.app/mcp-server.md) without writing an HTTP integration. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](https://www.worldmonitor.app/docs/cli), with a small REST escape hatch for host-relative and self-hosted use.
 
 ## Official SDKs
 
@@ -38,11 +38,11 @@ client.country_risk("IR")
 client.call_tool("get_market_data", asset_class="crypto")
 ```
 
-Get an API key at https://worldmonitor.app/pro. The full per-language guide — Ruby, Go, and JavaScript examples included — is at https://www.worldmonitor.app/docs/sdks.
+Get an API key at https://www.worldmonitor.app/pro. The full per-language guide — Ruby, Go, and JavaScript examples included — is at https://www.worldmonitor.app/docs/sdks.
 
 ## Learn more
 
-- [Developer Portal](https://worldmonitor.app/developers.md) · [MCP Server](https://worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://worldmonitor.app/openapi.md) · [CLI guide](https://www.worldmonitor.app/docs/cli) · [agents.md](https://worldmonitor.app/agents.md)
+- [Developer Portal](https://www.worldmonitor.app/developers.md) · [MCP Server](https://www.worldmonitor.app/mcp-server.md) · [OpenAPI Specification](https://www.worldmonitor.app/openapi.md) · [CLI guide](https://www.worldmonitor.app/docs/cli) · [agents.md](https://www.worldmonitor.app/agents.md)
 
 ## Important query matches
 

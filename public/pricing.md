@@ -16,7 +16,7 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 
 World Monitor attribution is optional in reports, presentations and derived analysis permitted by your plan. If you choose to credit us, "Source: World Monitor" or "via World Monitor" is sufficient. Source-specific notices supplied with an output still apply.
 
-These subscription licenses cover the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. Full scope, examples, output-retention classes and restrictions, covering the dashboard, desktop apps, API, MCP server, SDKs, embeds and alerts: https://worldmonitor.app/docs/eula
+These subscription licenses cover the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. Full scope, examples, output-retention classes and restrictions, covering the dashboard, desktop apps, API, MCP server, SDKs, embeds and alerts: https://www.worldmonitor.app/docs/eula
 
 ## Free
 
@@ -72,7 +72,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Includes: Everything in API Starter, redistribution rights, 5 Pro licenses — invite users at any corporate email domain and priority support
 - License: Commercial license for your customers — embed WorldMonitor data in what you sell; the 5 bundled Pro seats may be assigned to users at any corporate email domain
 - Limits: 300 requests/minute, 10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
-- Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://worldmonitor.app/pro
+- Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://www.worldmonitor.app/pro
 
 ## Enterprise
 
@@ -87,7 +87,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 
 - Rate limits are hard limits by default: exceeding a plan quota returns HTTP `429` with a `Retry-After` header and `X-RateLimit-*` headers on API responses. Usage above the quota is rejected — never silently charged; if opt-in metered overage is introduced for API plans it will be documented here first.
 - Per-endpoint request budgets are documented at https://www.worldmonitor.app/docs/usage-rate-limits (also fetchable as markdown at https://www.worldmonitor.app/docs/usage-rate-limits.md).
-- Need a higher limit? Upgrade at https://worldmonitor.app/pro or contact enterprise@worldmonitor.app for custom quotas.
+- Need a higher limit? Upgrade at https://www.worldmonitor.app/pro or contact enterprise@worldmonitor.app for custom quotas.
 
 ## Machine-Readable Summary
 
