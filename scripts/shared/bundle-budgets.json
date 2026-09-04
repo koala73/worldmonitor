@@ -7,15 +7,15 @@
   "totalTolerancePct": 0.25,
   "totalToleranceBytes": 16384,
   "total": {
-    "raw": 1709382
+    "raw": 1736040
   },
   "chunks": {
     "analytics": {
-      "raw": 122576,
+      "raw": 128009,
       "files": 1
     },
     "cached-risk-scores": {
-      "raw": 24574,
+      "raw": 24604,
       "files": 1
     },
     "clerk": {
@@ -31,7 +31,7 @@
       "files": 1
     },
     "data-freshness": {
-      "raw": 85698,
+      "raw": 85940,
       "files": 1
     },
     "dom-utils": {
@@ -47,7 +47,7 @@
       "files": 1
     },
     "gdelt-intel": {
-      "raw": 133774,
+      "raw": 133788,
       "files": 1
     },
     "i18n": {
@@ -59,7 +59,7 @@
       "files": 1
     },
     "main": {
-      "raw": 953361,
+      "raw": 972512,
       "files": 1
     },
     "panel-gating": {
@@ -67,7 +67,7 @@
       "files": 1
     },
     "panels": {
-      "raw": 146255,
+      "raw": 147801,
       "files": 1
     },
     "persistent-cache": {
@@ -91,11 +91,11 @@
       "files": 1
     },
     "user-location": {
-      "raw": 11105,
+      "raw": 12111,
       "files": 1
     },
     "widget-store": {
-      "raw": 26414,
+      "raw": 25650,
       "files": 1
     }
   }
