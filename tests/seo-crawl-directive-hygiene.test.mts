@@ -50,7 +50,7 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
 
   it('embeds the full-dashboard SEO summary outside #app so hydration cannot wipe it', () => {
     const html = read('index.html');
-    const summaryIdx = html.indexOf('<section class="app-seo-summary" aria-hidden="true">');
+    const summaryIdx = html.indexOf('<section class="app-seo-summary"');
     const appIdx = html.indexOf('<div id="app">');
     assert.ok(summaryIdx > 0, 'missing app-seo-summary');
     assert.ok(appIdx > summaryIdx, 'SEO summary must precede #app');
@@ -58,9 +58,23 @@ describe('SEO crawl-directive hygiene (#7380)', () => {
     assert.doesNotMatch(
       summaryOpenTag,
       /aria-label=/,
-      'crawler-only summary must stay out of the accessibility tree',
+      'summary must not carry a label that would replace its announced content',
+    );
+    assert.doesNotMatch(
+      summaryOpenTag,
+      /aria-hidden/,
+      'SEO summary must stay in the accessibility tree (#7607)',
     );
     assert.match(html, /full-spectrum real-time global intelligence dashboard/i);
+  });
+
+  it('keeps every speakable cssSelector target in the accessibility tree (#7607)', () => {
+    const html = read('index.html');
+    // The declared speakable selectors must not point at aria-hidden content:
+    // .app-seo-summary is announced to screen readers and truthfully citeable
+    // by voice assistants only while it stays in the accessibility tree.
+    assert.match(html, /"cssSelector": \["h1", ".app-seo-summary"\]/);
+    assert.doesNotMatch(html, /<section class="app-seo-summary"[^>]*aria-hidden/);
   });
 
   it('308-redirects bots away from ?ref= / utm_* duplicate dashboard URLs', () => {

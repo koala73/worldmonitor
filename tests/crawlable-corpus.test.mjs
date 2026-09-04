@@ -20,6 +20,7 @@ import {
   countryMetaDescription,
   COUNTRY_PAGE_CONTENT_VERSION,
   DATASET_SCHEMA_CONTENT_VERSION,
+  datasetObservationCoverage,
   datasetTemporalCoverage,
   describeHeadlineIneligibilityReason,
   describeInventoryScope,
@@ -489,6 +490,11 @@ function assertDatasetDownloadsAreGenerated(html, outDir, route, baseUrl = 'http
   assert.ok(downloads.length > 0, `${route} Dataset must expose at least one DataDownload`);
   const origin = new URL(baseUrl).origin;
   for (const item of downloads) {
+    assert.notEqual(
+      item.encodingFormat,
+      'text/html',
+      `${route} Dataset download must be machine-readable, not self-referential HTML`,
+    );
     assert.ok(isAbsoluteHttpUrl(item.contentUrl), `${route} DataDownload contentUrl must be absolute`);
     const url = new URL(item.contentUrl);
     assert.equal(url.origin, origin, `${route} DataDownload must stay on ${origin}`);
@@ -502,6 +508,12 @@ function assertDatasetDownloadsAreGenerated(html, outDir, route, baseUrl = 'http
       existsSync(join(outDir, relativePath)),
       `${route} DataDownload ${item.contentUrl} must map to generated file ${relativePath}`,
     );
+    if (item.encodingFormat === 'application/json') {
+      assert.doesNotThrow(
+        () => JSON.parse(read(outDir, relativePath)),
+        `${route} JSON DataDownload ${item.contentUrl} must contain valid JSON`,
+      );
+    }
   }
 }
 
@@ -512,6 +524,14 @@ function assertDatasetGoogleProperties(html, route, { requireDataset = false, re
   }
 
   for (const [index, dataset] of datasets.entries()) {
+    assert.ok(
+      Array.isArray(dataset.keywords)
+        && dataset.keywords.length > 0
+        && dataset.keywords.every((keyword) => (
+          typeof keyword === 'string' && keyword.trim().length > 0
+        )),
+      `${route} Dataset ${index + 1} must declare non-empty domain keywords`,
+    );
     const description = typeof dataset.description === 'string' ? dataset.description.trim() : '';
     assert.ok(
       description.length >= DATASET_DESCRIPTION_MIN_LENGTH,
@@ -632,6 +652,7 @@ describe('Dataset spatialCoverage Google contract', () => {
       '@type': 'Dataset',
       name: 'Contract test dataset',
       description: 'A focused contract fixture with enough detail for the Google Dataset description requirement.',
+      keywords: ['contract fixture'],
       creator: {
         '@id': 'https://www.worldmonitor.app/#organization',
         '@type': 'Organization',
@@ -1173,6 +1194,25 @@ describe('crawlable corpus generator', () => {
     );
   });
 
+  it('rejects a calendar-invalid CII observation timestamp', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const livePulse = structuredClone(data.livePulse);
+    const countryCode = Object.keys(livePulse.countries).find((code) => {
+      const pulse = livePulse.countries[code];
+      return pulse.partial !== true && pulse.score != null && pulse.score !== '';
+    });
+    assert.ok(countryCode, 'expected a publishable CII country');
+    livePulse.countries[countryCode] = {
+      ...livePulse.countries[countryCode],
+      asOf: '2026-02-30T00:00:00.000Z',
+    };
+
+    assert.throws(
+      () => buildCiiRankingEntries(data.countries, livePulse),
+      new RegExp(`CII pulse timestamp is invalid for ${countryCode}`),
+    );
+  });
+
   it('rejects a chokepoint pulse key that is not in the registry', async () => {
     const data = await loadCorpusData({ rootDir: repoRoot });
     assert.doesNotThrow(
@@ -1202,6 +1242,25 @@ describe('crawlable corpus generator', () => {
     assert.equal(datasetTemporalCoverage(''), undefined);
     assert.equal(datasetTemporalCoverage('2026-08-29T00:00:00Z'), undefined);
     assert.equal(datasetTemporalCoverage('schema-edit'), undefined);
+  });
+
+  it('derives Dataset temporalCoverage from all exported observation dates', () => {
+    assert.equal(
+      datasetObservationCoverage([
+        '2026-09-03T00:15:00.000Z',
+        '2026-09-01T23:45:00.000Z',
+        '2026-09-02T12:00:00.000Z',
+      ]),
+      '2026-09-01/2026-09-03',
+    );
+    assert.equal(
+      datasetObservationCoverage([
+        '2026-09-03T00:15:00.000Z',
+        '2026-09-03T23:45:00.000Z',
+      ]),
+      '2026-09-03',
+    );
+    assert.equal(datasetObservationCoverage([]), undefined);
   });
 
   it('uses one observed-value contract for every numeric page family', () => {
@@ -1972,12 +2031,106 @@ describe('crawlable corpus generator', () => {
       assertDataCatalogPresent(read(outDir, 'crises/index.html'), '/crises/');
       assertDataCatalogPresent(read(outDir, 'research/index.html'), '/research/');
 
+      const datasetTemplateContracts = [
+        {
+          name: 'CII hub',
+          route: '/country-instability-index/',
+          id: '#dataset',
+          identifier: `world-monitor-cii-${clock.ciiRanking.methodologyVersion}`,
+          artifact: 'country-instability-index/cii-ranking.json',
+          dataset: 'country-instability-index',
+          observationRows: 'countries',
+        },
+        {
+          name: 'countries hub',
+          route: '/countries/',
+          id: '#dataset',
+          identifier: 'country-resilience-ranking',
+          artifact: 'countries/resilience-ranking.json',
+          dataset: 'country-resilience-ranking',
+        },
+        {
+          name: 'country resilience',
+          route: '/countries/norway/',
+          id: '#resilience-dataset',
+        },
+        {
+          name: 'country CII',
+          route: '/countries/ukraine/',
+          id: '#cii-dataset',
+          artifact: 'countries/ukraine/cii.json',
+          dataset: 'country-instability-index',
+        },
+        {
+          name: 'chokepoints hub',
+          route: '/chokepoints/',
+          id: '#status-dataset',
+          identifier: 'world-monitor-chokepoint-status',
+          artifact: 'chokepoints/status.json',
+          dataset: 'maritime-chokepoint-status',
+          observationRows: 'chokepoints',
+        },
+        {
+          name: 'chokepoint detail',
+          route: '/chokepoints/strait-of-hormuz/',
+          id: '#chokepoint-dataset',
+        },
+        {
+          name: 'crisis tracker',
+          route: '/crises/red-sea-security/',
+          id: '#crisis-dataset',
+        },
+        {
+          name: 'signal convergence',
+          route: '/tools/signal-convergence/',
+          id: '#signal-convergence-dataset',
+          identifier: 'signal-convergence-reference',
+        },
+        {
+          name: 'research transit',
+          route: '/research/strait-of-hormuz-transit-report-2026-07/',
+          match: (dataset) => dataset.name?.startsWith('Strait of Hormuz daily transit calls'),
+        },
+      ];
+      assert.equal(datasetTemplateContracts.length, 9, 'the Dataset contract must cover all nine template families');
+      for (const contract of datasetTemplateContracts) {
+        const html = read(outDir, `${contract.route.slice(1)}index.html`);
+        const dataset = collectDatasets(jsonLdObjects(html)).find((entry) => (
+          contract.match?.(entry) || entry['@id']?.endsWith(contract.id)
+        ));
+        assert.ok(dataset, `${contract.name} Dataset template must be generated`);
+        assert.ok(Array.isArray(dataset.keywords) && dataset.keywords.length > 0,
+          `${contract.name} Dataset must expose keywords`);
+        if (contract.identifier) {
+          assert.equal(dataset.identifier, contract.identifier,
+            `${contract.name} Dataset identifier must be stable across captures`);
+        }
+        if (contract.artifact) {
+          const artifact = JSON.parse(read(outDir, contract.artifact));
+          assert.equal(artifact.dataset, contract.dataset,
+            `${contract.name} Dataset download must describe its published dataset`);
+          if (contract.observationRows) {
+            assert.equal(
+              dataset.temporalCoverage,
+              datasetObservationCoverage(
+                artifact[contract.observationRows].map((row) => row.observedAt),
+              ),
+              `${contract.name} Dataset temporalCoverage must span every exported observation`,
+            );
+          }
+        }
+      }
+
       for (const path of [
         'countries/index.html',
         'country-instability-index/index.html',
+        'country-instability-index/cii-ranking.json',
         'countries/norway/index.html',
         'countries/norway/resilience.json',
+        'countries/resilience-ranking.json',
+        'countries/ukraine/cii.json',
         'chokepoints/index.html',
+        'chokepoints/status.json',
         'chokepoints/strait-of-hormuz/index.html',
         'chokepoints/strait-of-hormuz/reference.json',
         'crises/index.html',
@@ -3077,7 +3230,11 @@ describe('crawlable corpus generator', () => {
         .sort()
         .at(-1);
       assert.equal(chokepointDataset.dateModified, latestChokepointUpdate);
-      assert.equal(chokepointDataset.temporalCoverage, corpusData.livePulse.capturedAt);
+      const chokepointArtifact = JSON.parse(read(outDir, 'chokepoints/status.json'));
+      assert.equal(
+        chokepointDataset.temporalCoverage,
+        datasetObservationCoverage(chokepointArtifact.chokepoints.map((row) => row.observedAt)),
+      );
       assert.ok(chokepointDataset.measurementTechnique);
       assert.ok(chokepointDataset.variableMeasured.length >= 3);
       assert.equal(chokepointDataset.distribution['@type'], 'DataDownload');
@@ -3958,7 +4115,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(convergenceDataset['@id'], 'https://www.worldmonitor.app/tools/signal-convergence/#signal-convergence-dataset');
       assert.equal(convergenceDataset.url, 'https://www.worldmonitor.app/tools/signal-convergence/');
       const convergenceCapturedAt = corpus.livePulse.signalConvergence.capturedAt;
-      assert.equal(convergenceDataset.identifier, `signal-convergence-${convergenceCapturedAt}`);
+      assert.equal(convergenceDataset.identifier, 'signal-convergence-reference');
       assert.equal(convergenceDataset.datePublished, convergenceCapturedAt);
       assert.equal(convergenceDataset.spatialCoverage, 'Worldwide');
       assert.equal(convergenceDataset.variableMeasured[1].value, 3);
@@ -4095,7 +4252,7 @@ describe('crawlable corpus generator', () => {
       laterDate(data.lastmod.countries, CII_COUNTRY_PAGE_CONTENT_VERSION),
       'the CII country clock must derive from the generic country clock',
     );
-    assert.equal(data.lastmod.research, '2026-07-27');
+    assert.equal(data.lastmod.research, '2026-09-03');
     assert.equal(
       data.lastmod.chokepoints,
       laterDate(
