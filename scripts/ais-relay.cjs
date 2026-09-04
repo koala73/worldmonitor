@@ -3190,33 +3190,32 @@ const YAHOO_ONLY = new Set([
   ...COMMODITY_SYMBOLS.filter(s => s.endsWith('=X')),
 ]);
 
+// CommonJS cannot import finiteObservation from _seed-utils.mjs. The relay test
+// keeps this boundary guard aligned with the cron seeder.
+function _finiteObservation(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 function _parseYahooChartJson(body) {
   try {
     const data = JSON.parse(body);
     const result = data?.chart?.result?.[0];
     const meta = result?.meta;
     if (!meta) return null;
-    const price = meta.regularMarketPrice;
-    const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+    const price = _finiteObservation(meta.regularMarketPrice);
+    if (price == null) return null;
+    const prevClose = [meta.chartPreviousClose, meta.previousClose]
+      .map(_finiteObservation)
+      .find((value) => value != null && value !== 0) ?? price;
     const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
-    // Round to 7 significant digits like the cron seeders' roundSparkline
-    // (_seed-utils.mjs). Raw float64 noise made these FAST-tier keys ~2x the
-    // rounded size, and whichever writer wins the relay/cron race decides
-    // what every visitor downloads on cold load.
-    //
-    // The guard below MIRRORS toSignificantDigits in _seed-utils.mjs exactly:
-    // non-numbers, non-finite values and 0 pass through untouched so a malformed
-    // upstream degrades identically on both writers. Without it a string close
-    // ("N/A") becomes NaN and serialises to null, denting the curve on the relay
-    // path only. CJS cannot import the ESM helper, so the copy is deliberate and
-    // tests/ais-relay-sparkline-precision.test.mjs pins the two in lockstep.
     const closes = result.indicators?.quote?.[0]?.close;
     const sparkline = Array.isArray(closes)
-      ? closes.filter((v) => v != null).map((v) => (
-        typeof v === 'number' && Number.isFinite(v) && v !== 0
-          ? Number(v.toPrecision(7))
-          : v
-      ))
+      ? closes
+        .map(_finiteObservation)
+        .filter((value) => value != null)
+        .map((value) => (value !== 0 ? Number(value.toPrecision(7)) : value))
       : [];
     return { price, change, sparkline };
   } catch { return null; }
