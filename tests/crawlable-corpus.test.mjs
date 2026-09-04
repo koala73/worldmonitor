@@ -2492,10 +2492,17 @@ describe('crawlable corpus generator', () => {
         // Taiwan, Nauru, Palau and Andorra past 900 (#7609). Ranked pages never
         // carry that copy -- the heaviest is 841 -- so raising the bound for all
         // 196 would hand 191 pages 50 words of slack they did not need.
-        const pageWordCeiling = country.headlineEligible === false ? 950 : 900;
+        // #7615 adds a variable-length Recent developments section. Count the
+        // rendered section itself: a fixed allowance would let one short item
+        // hide unrelated growth in the base page content.
+        const developmentsWordCount = words(
+          countryDocument.querySelector('[data-country-developments]')?.textContent,
+        ).length;
+        const basePageWordCeiling = country.headlineEligible === false ? 950 : 900;
+        const pageWordCeiling = basePageWordCeiling + developmentsWordCount;
         assert.ok(
           pageWordCount >= 600 && pageWordCount <= pageWordCeiling,
-          `${route} main content must contain 600-${pageWordCeiling} words, got ${pageWordCount}`,
+          `${route} main content must contain at least 600 words and no more than ${basePageWordCeiling} base words plus ${developmentsWordCount} developments words; got ${pageWordCount}`,
         );
       }
 
@@ -4949,31 +4956,62 @@ describe('country recent developments', () => {
   });
 
   it('requires full country developments coverage only for new-shape snapshots', () => {
+    // Full coverage passes, and so does the partial coverage a real capture
+    // produces: the news cycle does not mention most countries, so a fully
+    // keyed freeze covers roughly a third of indexed pages (61 of 196 on
+    // 2026-09-04). Demanding equality here rejected every snapshot the freeze
+    // could make, leaving the weekly refresh unable to publish.
     assertDevelopmentsCoverage({
       carriesDevelopments: true,
-      developmentsPageCount: 3,
-      indexedCountryPageCount: 3,
+      developmentsPageCount: 196,
+      indexedCountryPageCount: 196,
     });
+    assertDevelopmentsCoverage({
+      carriesDevelopments: true,
+      developmentsPageCount: 61,
+      indexedCountryPageCount: 196,
+    });
+
+    // A collapse is what this gate exists to catch.
     assert.throws(
       () => assertDevelopmentsCoverage({
         carriesDevelopments: true,
-        developmentsPageCount: 2,
-        indexedCountryPageCount: 3,
+        developmentsPageCount: 0,
+        indexedCountryPageCount: 196,
       }),
-      /captured dated country developments for 2 of 3 indexed country pages/,
+      /captured dated country developments for 0 of 196 indexed country pages; expected at least 20/,
+      'a snapshot that carries developments but renders none is a broken pipeline',
     );
+    assert.throws(
+      () => assertDevelopmentsCoverage({
+        carriesDevelopments: true,
+        developmentsPageCount: 19,
+        indexedCountryPageCount: 196,
+      }),
+      /expected at least 20/,
+      'just under the floor still fails, so the floor is not decorative',
+    );
+    assertDevelopmentsCoverage({
+      carriesDevelopments: true,
+      developmentsPageCount: 20,
+      indexedCountryPageCount: 196,
+    });
+
+    // The floor scales with the indexed set rather than being a magic number.
     assert.throws(
       () => assertDevelopmentsCoverage({
         carriesDevelopments: true,
         developmentsPageCount: 0,
         indexedCountryPageCount: 3,
       }),
-      /captured dated country developments for 0 of 3 indexed country pages/,
+      /expected at least 1/,
     );
+
+    // A snapshot that predates the developments capture is not gated at all.
     assertDevelopmentsCoverage({
       carriesDevelopments: false,
       developmentsPageCount: 0,
-      indexedCountryPageCount: 3,
+      indexedCountryPageCount: 196,
     });
   });
 
@@ -5027,7 +5065,13 @@ describe('country recent developments', () => {
     const webPage = jsonLdObjects(html).find((entry) => entry['@type'] === 'WebPage');
     assert.equal(webPage.dateModified, '2026-09-02T12:00:00.000Z',
       'WebPage dateModified must reflect the newest frozen item (the brief)');
-    const plain = renderCountryPage({ ...pageArgs, livePulse: data.livePulse });
+    // Strip the developments explicitly rather than trusting that today's news
+    // did not mention Norway: the committed snapshot is refreshed weekly, so a
+    // negative case keyed on real content flips the moment it does.
+    const withoutDevelopments = structuredClone(data.livePulse);
+    withoutDevelopments.countries.NO = { ...(withoutDevelopments.countries.NO || {}) };
+    delete withoutDevelopments.countries.NO.developments;
+    const plain = renderCountryPage({ ...pageArgs, livePulse: withoutDevelopments });
     assert.ok(!plain.includes('data-country-developments'),
       'a country with no frozen developments renders no section');
     const plainWebPage = jsonLdObjects(plain).find((entry) => entry['@type'] === 'WebPage');

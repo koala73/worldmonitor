@@ -127,7 +127,7 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml pro-test/src/generated/teasers.json
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml pro-test/src/generated/teasers.json
           git commit -m "chore(corpus): refresh crawlable live pulse ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
           gh pr create \

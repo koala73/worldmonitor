@@ -351,7 +351,88 @@ function securityAuditMatrixLockfiles(): string[] {
   ).sort();
 }
 
+describe('MCP live smoke — the production detection net', () => {
+  const smokeWorkflow = read(resolve(workflowsDir, 'mcp-live-smoke.yml'));
+
+  // A 2026-09-03 FUNCTION_INVOCATION_FAILED outage ran 13:24→16:30 UTC and was
+  // caught by neither Sentry nor Axiom (the platform kills the function before
+  // any handler code runs, so nothing first-party can observe it). The schedule
+  // is therefore the only net for a failure BETWEEN deploys, and its cadence is
+  // the upper bound on how long one can run unnoticed. At `23 */6 * * *` the
+  // outage fell entirely between the 12:23 and 18:23 runs.
+  it('probes production at least four times an hour, not six-hourly', () => {
+    const crons = Array.from(
+      smokeWorkflow.matchAll(/^\s+- cron:\s*['"]([^'"]+)['"]/gm),
+      ([, value]) => value.trim(),
+    );
+    assert.equal(crons.length, 1, 'exactly one schedule entry');
+    const fields = crons[0].split(/\s+/);
+    assert.equal(fields.length, 5, `schedule must have exactly five fields; got "${crons[0]}"`);
+    const [minute, hour, dayOfMonth, month, dayOfWeek] = fields;
+    assert.match(
+      minute,
+      /^\*\/([1-9]|1[0-5])$/,
+      `schedule must run at least every 15 minutes; got "${crons[0]}". A sparser `
+        + 'cadence is how a multi-hour outage slips between two runs.',
+    );
+    assert.equal(hour, '*', 'the hour field must not narrow the schedule back down');
+    assert.equal(dayOfMonth, '*', 'the day-of-month field must not narrow the schedule back down');
+    assert.equal(month, '*', 'the month field must not narrow the schedule back down');
+    assert.equal(dayOfWeek, '*', 'the day-of-week field must not narrow the schedule back down');
+  });
+
+  // These three literals are the entire gate. GitHub's API returns
+  // environment 'Production' (capital P) and creator 'vercel[bot]' — verified
+  // against repos/koala73/worldmonitor/deployments on 2026-09-04. A drift to
+  // 'production' would skip every run while looking exactly like the healthy
+  // case, because most deployment_status events SHOULD skip (Preview, Railway,
+  // Mintlify, and the pending/in_progress states of all of them).
+  it('gates the per-deploy trigger on the shapes the GitHub API actually sends', () => {
+    assert.match(smokeWorkflow, /^\s+deployment_status:\s*$/m, 'per-deploy trigger present');
+    assert.match(smokeWorkflow, /deployment_status\.state == 'success'/);
+    assert.match(smokeWorkflow, /deployment\.environment == 'Production'/);
+    assert.match(smokeWorkflow, /deployment\.creator\.login == 'vercel\[bot\]'/);
+    // Without the escape hatch the schedule/push/dispatch runs would ALSO be
+    // evaluated against deployment_status fields and skip — disabling the net
+    // entirely rather than just the per-deploy half.
+    assert.match(smokeWorkflow, /github\.event_name != 'deployment_status' \|\|/);
+  });
+
+  it('checks out the deployed sha on a per-deploy run, not the branch tip', () => {
+    assert.match(
+      smokeWorkflow,
+      /ref:\s*\$\{\{\s*github\.event_name == 'deployment_status' && github\.event\.deployment\.sha/,
+    );
+  });
+
+  // Workflow-level concurrency lets a pending or in-progress Production event
+  // evict a QUEUED successful-production smoke before the job gate skips it.
+  // An evicted run reads as neither pass nor fail, which is the worst outcome
+  // for a detection net.
+  it('applies concurrency only after the deployment-status gate', () => {
+    const smokeJob = workflowJobBlock(smokeWorkflow, 'smoke');
+    assert.doesNotMatch(
+      smokeWorkflow,
+      /^concurrency:\s*$/m,
+      'workflow-level concurrency applies before the job gate, so a skipped deployment event can evict a queued probe',
+    );
+    assert.match(smokeJob, /^\s{4}concurrency:\s*$/m);
+    assert.match(smokeJob, /group:\s*mcp-live-smoke-\$\{\{[^}]*deployment\.environment/);
+    assert.match(smokeJob, /cancel-in-progress:\s*false/);
+  });
+});
+
 describe('CI workflow coverage', () => {
+  it('stages the regenerated main sitemap in the weekly pulse PR', () => {
+    const pulseWorkflow = read(resolve(workflowsDir, 'crawlable-pulse-refresh.yml'));
+    const openPrStep = workflowStepBlock(pulseWorkflow, 'Open the weekly pulse PR');
+    assert.match(
+      openPrStep,
+      /git\s+add\s+"\$snapshot_path"\s+public\/sitemap\.xml\s+public\/sitemap-main\.xml\s+pro-test\/src\/generated\/teasers\.json/,
+      'weekly pulse PRs must include the regenerated main sitemap artifact',
+    );
+  });
+
   it('runs the proto breaking check against the full main history (#6114)', () => {
     const breakingJob = workflowJobBlock(protoCheckWorkflow, 'proto-breaking');
     assert.match(breakingJob, /^\s+needs: changes\s*$/m);
