@@ -204,7 +204,7 @@ export function chokepointEvidenceNarrative({
   const observedInputs = [
     warnings,
     severity ? `maximum AIS congestion severity ${severity}` : null,
-    anomaly ? `transit anomaly — ${anomaly.replace(/[.]+$/, '')}` : null,
+    anomaly ? `PortWatch daily-transit anomaly: ${anomaly.replace(/[.]+$/, '')}` : null,
   ].filter(Boolean);
   const unavailableInputs = [
     warnings === null ? 'navigational warning count' : null,

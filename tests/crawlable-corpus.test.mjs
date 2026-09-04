@@ -7,6 +7,13 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { describe, it } from 'node:test';
 
 import { Window } from 'happy-dom';
+import ts from 'typescript';
+
+import {
+  aisComponent,
+  THREAT_LEVEL,
+  warningComponent,
+} from '../server/worldmonitor/supply-chain/v1/_scoring.mjs';
 
 import {
   buildCiiRankingEntries,
@@ -5254,12 +5261,21 @@ describe('chokepoint disruption-score methodology', () => {
       from: ['THREAT_LEVEL', 'Record', 'string', 'number', 'cp', 'threatLevel'],
       methodologyTerm: 'threatLevelWeight',
       driverClause: /Configured geopolitical baseline: /,
+      implementationValues: { war_zone: 70, critical: 40, high: 30, elevated: 15, normal: 0 },
+      methodologyClauses: [
+        '| `war_zone` | 70 |',
+        '| `critical` | 40 |',
+        '| `high` | 30 |',
+        '| `elevated` | 15 |',
+        '| `normal` | 0 |',
+      ],
     },
     warnings: {
       term: 'matchedWarnings',
       from: ['warningsByChokepoint', 'get', 'cp', 'id'],
       methodologyTerm: 'warningComponent',
       driverClause: /2 warnings/,
+      methodologyClauses: ['`warningComponent = min(15, activeWarnings * 5)`'],
     },
     ais: {
       term: 'maxSeverity',
@@ -5267,12 +5283,15 @@ describe('chokepoint disruption-score methodology', () => {
         'string', 'number', 'severity', 'Math'],
       methodologyTerm: 'aisComponent',
       driverClause: /maximum AIS congestion severity High/,
+      methodologyClauses: ['`aisComponent = min(15, maxCongestionSeverity * 5)`'],
     },
     anomaly: {
       term: 'anomalyBonus',
       from: ['anomaly', 'signal'],
       methodologyTerm: 'anomalyBonus',
-      driverClause: /transit anomaly — Traffic down 60%/,
+      driverClause: /PortWatch daily-transit anomaly: Traffic down 60%/,
+      implementationExpression: 'anomaly.signal ? 10 : 0',
+      methodologyClauses: ['`anomalyBonus = 10`'],
     },
   };
 
@@ -5294,23 +5313,75 @@ describe('chokepoint disruption-score methodology', () => {
       .filter((name) => !NON_IDENTIFIER_KEYWORDS.has(name)));
   }
 
-  // A declaration, from `const <name> =` to the semicolon that closes it.
-  function declarationOf(source, name) {
-    const start = source.indexOf(`const ${name} =`);
-    assert.notEqual(start, -1, `get-chokepoint-status.ts must declare ${name}`);
-    const end = source.indexOf(';', start);
-    assert.notEqual(end, -1, `${name} declaration must terminate`);
-    return source.slice(start + `const ${name} =`.length, end).trim();
+  function parsedSource(source) {
+    return ts.createSourceFile('score-contract.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   }
 
-  // The body of one `## <heading>` section, stopping at the next `## `. Scoping
-  // to the section matters for llms-full.txt, which inlines both the
-  // methodology page and the blog explainer: a whole-file substring search
-  // there is satisfied by whichever copy still has the sentence.
+  function functionDeclarationOf(sourceFile, name) {
+    const matches = [];
+    const visit = (node) => {
+      if (ts.isFunctionDeclaration(node) && node.name?.text === name) matches.push(node);
+      ts.forEachChild(node, visit);
+    };
+    visit(sourceFile);
+    assert.equal(matches.length, 1, `expected one ${name} function declaration`);
+    return matches[0];
+  }
+
+  function variableDeclarationOf(sourceFile, name, functionName = null) {
+    const scope = functionName ? functionDeclarationOf(sourceFile, functionName) : sourceFile;
+    const matches = [];
+    const visit = (node) => {
+      if (ts.isVariableDeclaration(node) && ts.isIdentifier(node.name) && node.name.text === name) {
+        matches.push(node);
+      }
+      ts.forEachChild(node, visit);
+    };
+    visit(scope);
+    assert.equal(matches.length, 1, `expected one ${name} variable declaration`);
+    assert.ok(matches[0].initializer, `${name} must have an initializer`);
+    return matches[0];
+  }
+
+  function declarationOf(source, name, functionName = null) {
+    const sourceFile = parsedSource(source);
+    return variableDeclarationOf(sourceFile, name, functionName).initializer.getText(sourceFile);
+  }
+
+  function sectionAtLevel(text, heading, level = 2) {
+    const lines = text.split('\n');
+    const marker = `${'#'.repeat(level)} ${heading}`;
+    const start = lines.indexOf(marker);
+    assert.notEqual(start, -1, `expected a "${heading}" section`);
+    let end = lines.length;
+    for (let index = start + 1; index < lines.length; index++) {
+      const match = lines[index].match(/^(#+) /);
+      if (match && match[1].length <= level) {
+        end = index;
+        break;
+      }
+    }
+    return lines.slice(start + 1, end).join('\n').trim();
+  }
+
   function section(text, heading) {
-    const body = text.split(`\n## ${heading}\n`)[1];
-    assert.ok(body, `expected a "${heading}" section`);
-    return body.split('\n## ')[0];
+    return sectionAtLevel(text, heading, 2);
+  }
+
+  function normalizedProse(text) {
+    return text
+      .replace(/\s+/g, ' ')
+      .replace(/\s+([，。])/g, '$1')
+      .replace(/([，。])\s+/g, '$1')
+      .trim();
+  }
+
+  function formulaTerms(sectionBody) {
+    const formula = sectionBody.match(/```text\n([\s\S]*?)```/);
+    assert.ok(formula, 'the score section must publish the formula in a text block');
+    const expression = formula[1].match(/disruptionScore\s*=\s*min\(\s*100,\s*([\s\S]*?)\s*\)/);
+    assert.ok(expression, 'the score formula must use disruptionScore = min(100, ...)');
+    return expression[1].split('+').map((term) => term.trim());
   }
 
   function bulletsUnderHeading(text, heading) {
@@ -5327,7 +5398,90 @@ describe('chokepoint disruption-score methodology', () => {
 
   const BLOG_EXPLAINER = 'blog-site/src/content/blog/what-is-a-maritime-chokepoint.md';
   const METHODOLOGY = 'docs/methodology/chokepoints.mdx';
+  const ZH_METHODOLOGY = 'docs/zh/methodology/chokepoints.mdx';
+  const FINANCE_DATA = 'docs/finance-data.mdx';
+  const ZH_FINANCE_DATA = 'docs/zh/finance-data.mdx';
+  const RELAY = 'scripts/ais-relay.cjs';
   const SCORE_HEADING = 'How WorldMonitor scores chokepoint status';
+  const englishList = (items) => `${items.slice(0, -1).join(', ')}, and ${items.at(-1)}`;
+  const englishContextOnly = englishList(CHOKEPOINT_SCORE_CONTEXT_ONLY);
+  const EN_METHODOLOGY_EXCLUSION = `Those four terms are the whole formula. ${englishContextOnly} are published as context and never enter the score.`;
+  const ZH_METHODOLOGY_EXCLUSION = '这四项即为公式全部。AIS 事件计数、中继通行计数和 PortWatch 周环比变动均作为背景信息发布，不进入评分。';
+  const EN_METHODOLOGY_PROVENANCE = 'PortWatch feeds both sides: `anomalyBonus` reads its daily transit history through `supply_chain:portwatch:v1`, while the week-over-week figure is presentation only.';
+  const ZH_METHODOLOGY_PROVENANCE = 'PortWatch 同时服务于两侧：`anomalyBonus` 通过 `supply_chain:portwatch:v1` 读取其每日通行历史，而周环比数字仅用于展示。';
+  const EN_FINANCE_INPUTS = `Four inputs set the score: ${englishList(CHOKEPOINT_SCORE_INPUTS.map(({ label }) => label))}.`;
+  const EN_FINANCE_PROVENANCE = 'The anomaly bonus adds 10 points when PortWatch daily transit history shows a drop of at least 50% against the prior 30-day baseline and the threat level is `war_zone` or `critical`.';
+  const EN_FINANCE_EXCLUSION = `${englishContextOnly} are context only. They do not change the score.`;
+  const ZH_FINANCE_INPUTS = '评分有四项输入：地缘政治威胁基线权重、活跃 NGA 航行警告、AIS 拥堵严重度，以及 PortWatch 每日通行量在高威胁条件下急剧下降时的通行异常加分。';
+  const ZH_FINANCE_PROVENANCE = '仅当 PortWatch 每日通行历史比之前 30 天基线下降至少 50%，且威胁等级为 `war_zone` 或 `critical` 时，异常加分才增加 10 分。';
+  const ZH_FINANCE_EXCLUSION = 'AIS 事件计数、中继通行计数和 PortWatch 周环比变动仅作背景信息。它们不改变评分。';
+
+  function assertScoreTermSources(statusSource) {
+    for (const [id, { term, from }] of Object.entries(SCORE_TERMS)) {
+      const allowed = new Set([...from, term]);
+      for (const name of identifiersIn(declarationOf(statusSource, term))) {
+        assert.ok(
+          allowed.has(name),
+          `${term} now derives from ${name}, which the published label for "${id}" does not account for`,
+        );
+      }
+    }
+  }
+
+  function assertAnomalyProducer(relaySource) {
+    assert.equal(
+      declarationOf(relaySource, 'history', 'seedTransitSummaries'),
+      'cpData?.history ?? []',
+      'the anomaly history must come from PortWatch daily transit history',
+    );
+    const anomaly = declarationOf(relaySource, 'anomaly', 'seedTransitSummaries');
+    assert.equal(
+      anomaly,
+      'detectTrafficAnomaly(history, threatLevel)',
+      'the anomaly signal must use PortWatch daily history and the canonical threat level',
+    );
+    assert.doesNotMatch(anomaly, /wowChangePct|relayTransit|todayTotal/);
+  }
+
+  function assertNumericScoreContract(statusSource, methodologySections) {
+    assert.deepEqual(THREAT_LEVEL, SCORE_TERMS.threat.implementationValues);
+    assert.deepEqual([0, 1, 2, 3, 10].map(warningComponent), [0, 5, 10, 15, 15]);
+    assert.deepEqual([0, 1, 2, 3, 4].map(aisComponent), [0, 5, 10, 15, 15]);
+    assert.equal(
+      declarationOf(statusSource, 'anomalyBonus'),
+      SCORE_TERMS.anomaly.implementationExpression,
+    );
+    for (const [label, body] of methodologySections) {
+      const text = normalizedProse(body);
+      for (const { methodologyClauses } of Object.values(SCORE_TERMS)) {
+        for (const clause of methodologyClauses) {
+          assert.ok(text.includes(clause), `${label} must publish ${clause}`);
+        }
+      }
+    }
+  }
+
+  function numericMethodologySection(text, scoreHeading, threatHeading) {
+    return `${section(text, scoreHeading)}\n${section(text, threatHeading)}`;
+  }
+
+  function assertFormulaContracts(sections) {
+    const expected = CHOKEPOINT_SCORE_INPUTS.map(({ id }) => SCORE_TERMS[id].methodologyTerm);
+    for (const [label, body] of sections) {
+      assert.deepEqual(
+        formulaTerms(body),
+        expected,
+        `${label} must publish exactly the score terms in CHOKEPOINT_SCORE_INPUTS`,
+      );
+    }
+  }
+
+  function assertExactExclusion(body, expected, label) {
+    assert.ok(
+      normalizedProse(body).includes(expected),
+      `${label} must publish the complete context-only exclusion clause`,
+    );
+  }
 
   it('adds exactly the declared inputs to the published score', () => {
     const source = chokepointStatusSource();
@@ -5366,17 +5520,17 @@ describe('chokepoint disruption-score methodology', () => {
   });
 
   it('keeps each score term on the evidence its published label names', () => {
-    const source = chokepointStatusSource();
-    for (const [id, { term, from }] of Object.entries(SCORE_TERMS)) {
-      const allowed = new Set([...from, term]);
-      for (const name of identifiersIn(declarationOf(source, term))) {
-        assert.ok(
-          allowed.has(name),
-          `${term} now derives from ${name}, which the published label for "${id}" does not account for; `
-          + 'restate the input in CHOKEPOINT_SCORE_INPUTS or widen SCORE_TERMS deliberately',
-        );
-      }
-    }
+    assertScoreTermSources(chokepointStatusSource());
+    assertAnomalyProducer(repo(RELAY));
+  });
+
+  it('ties every published numeric score rule to the implementation', () => {
+    const llmsFull = repo('public/llms-full.txt');
+    assertNumericScoreContract(chokepointStatusSource(), [
+      [METHODOLOGY, numericMethodologySection(repo(METHODOLOGY), 'Score Badge', 'Threat Taxonomy')],
+      [ZH_METHODOLOGY, numericMethodologySection(repo(ZH_METHODOLOGY), '评分徽章', '威胁分类')],
+      ['public/llms-full.txt (methodology)', numericMethodologySection(llmsFull, 'Score Badge', 'Threat Taxonomy')],
+    ]);
   });
 
   it('publishes one input list across the blog explainer and llms-full.txt', () => {
@@ -5394,32 +5548,114 @@ describe('chokepoint disruption-score methodology', () => {
     );
     const llmsFull = repo('public/llms-full.txt');
     const sections = [
-      [BLOG_EXPLAINER, section(repo(BLOG_EXPLAINER), SCORE_HEADING)],
-      [METHODOLOGY, section(repo(METHODOLOGY), 'Score Badge')],
-      ['public/llms-full.txt (explainer)', section(llmsFull, SCORE_HEADING)],
-      ['public/llms-full.txt (methodology)', section(llmsFull, 'Score Badge')],
+      [BLOG_EXPLAINER, section(repo(BLOG_EXPLAINER), SCORE_HEADING), 'Nothing else moves the number. AIS event counts, relay transit counts, and PortWatch week-over-week movement are published as context rather than score inputs.'],
+      [METHODOLOGY, section(repo(METHODOLOGY), 'Score Badge'), EN_METHODOLOGY_EXCLUSION],
+      [ZH_METHODOLOGY, section(repo(ZH_METHODOLOGY), '评分徽章'), ZH_METHODOLOGY_EXCLUSION],
+      [FINANCE_DATA, sectionAtLevel(repo(FINANCE_DATA), 'Supply Chain Disruption Intelligence', 3), EN_FINANCE_EXCLUSION],
+      [ZH_FINANCE_DATA, sectionAtLevel(repo(ZH_FINANCE_DATA), '供应链中断情报', 3), ZH_FINANCE_EXCLUSION],
+      ['public/llms-full.txt (explainer)', section(llmsFull, SCORE_HEADING), 'Nothing else moves the number. AIS event counts, relay transit counts, and PortWatch week-over-week movement are published as context rather than score inputs.'],
+      ['public/llms-full.txt (methodology)', section(llmsFull, 'Score Badge'), EN_METHODOLOGY_EXCLUSION],
     ];
-    for (const [label, body] of sections) {
-      const text = body.replace(/\s+/g, ' ');
-      for (const metric of CHOKEPOINT_SCORE_CONTEXT_ONLY) {
-        assert.ok(text.includes(metric), `${label} must name ${metric} as context rather than a score input`);
-      }
+    for (const [label, body, expected] of sections) {
+      assertExactExclusion(body, expected, label);
     }
   });
 
   it('keeps the methodology formula on the same terms the surfaces publish', () => {
-    const scoreBadge = section(repo(METHODOLOGY), 'Score Badge');
-    const formula = scoreBadge.match(/```text\n([\s\S]*?)```/);
-    assert.ok(formula, 'the Score Badge section must publish the formula in a text block');
-    for (const { id } of CHOKEPOINT_SCORE_INPUTS) {
-      const { methodologyTerm } = SCORE_TERMS[id];
-      assert.ok(
-        formula[1].includes(methodologyTerm),
-        `the published formula omits ${methodologyTerm}, the term backing input "${id}"`,
-      );
-      // Each term is also defined in prose, as `term` or `term = <expression>`.
-      assert.match(scoreBadge, new RegExp(`\`${methodologyTerm}[ \`]`));
+    const llmsFull = repo('public/llms-full.txt');
+    const english = section(repo(METHODOLOGY), 'Score Badge');
+    const chinese = section(repo(ZH_METHODOLOGY), '评分徽章');
+    const generated = section(llmsFull, 'Score Badge');
+    assertFormulaContracts([
+      [METHODOLOGY, english],
+      [ZH_METHODOLOGY, chinese],
+      ['public/llms-full.txt (methodology)', generated],
+    ]);
+    assert.ok(normalizedProse(english).includes(EN_METHODOLOGY_PROVENANCE));
+    assert.ok(normalizedProse(chinese).includes(ZH_METHODOLOGY_PROVENANCE));
+    assert.ok(normalizedProse(generated).includes(EN_METHODOLOGY_PROVENANCE));
+  });
+
+  it('keeps finance documentation on the score contract', () => {
+    const sections = [
+      [FINANCE_DATA, sectionAtLevel(repo(FINANCE_DATA), 'Supply Chain Disruption Intelligence', 3), [EN_FINANCE_INPUTS, EN_FINANCE_PROVENANCE, EN_FINANCE_EXCLUSION]],
+      [ZH_FINANCE_DATA, sectionAtLevel(repo(ZH_FINANCE_DATA), '供应链中断情报', 3), [ZH_FINANCE_INPUTS, ZH_FINANCE_PROVENANCE, ZH_FINANCE_EXCLUSION]],
+    ];
+    for (const [label, body, clauses] of sections) {
+      const text = normalizedProse(body);
+      for (const clause of clauses) {
+        assert.ok(text.includes(clause), `${label} must publish the complete four-input score contract`);
+      }
     }
+  });
+
+  it('reads a complete initializer after an internal semicolon', () => {
+    const source = chokepointStatusSource();
+    const mutated = source.replace(
+      'return Math.max(max, score);',
+      'return Math.max(max, score, wowChangePct);',
+    );
+    assert.notEqual(mutated, source, 'the maxSeverity mutation must apply');
+    assert.match(declarationOf(mutated, 'maxSeverity'), /wowChangePct/);
+    assert.throws(() => assertScoreTermSources(mutated), /wowChangePct/);
+  });
+
+  it('rejects an anomaly-bonus coefficient change', () => {
+    const source = chokepointStatusSource();
+    const mutated = source.replace('anomaly.signal ? 10 : 0', 'anomaly.signal ? 15 : 0');
+    assert.notEqual(mutated, source, 'the anomalyBonus mutation must apply');
+    assert.throws(() => assertNumericScoreContract(mutated, [
+      [METHODOLOGY, numericMethodologySection(repo(METHODOLOGY), 'Score Badge', 'Threat Taxonomy')],
+      [ZH_METHODOLOGY, numericMethodologySection(repo(ZH_METHODOLOGY), '评分徽章', '威胁分类')],
+    ]));
+  });
+
+  it('rejects an extra published formula term', () => {
+    const source = repo(METHODOLOGY);
+    const mutated = source.replace(
+      'threatLevelWeight + warningComponent + aisComponent + anomalyBonus',
+      'threatLevelWeight + warningComponent + aisComponent + anomalyBonus + wowChangePct',
+    );
+    assert.notEqual(mutated, source, 'the formula-term mutation must apply');
+    assert.throws(() => assertFormulaContracts([
+      [METHODOLOGY, section(mutated, 'Score Badge')],
+    ]));
+  });
+
+  it('rejects reversed context-only prose', () => {
+    const source = repo(METHODOLOGY);
+    const mutated = source.replace(
+      'are published as context and never enter\nthe score.',
+      'are published as score inputs and enter\nthe score.',
+    );
+    assert.notEqual(mutated, source, 'the exclusion mutation must apply');
+    assert.throws(() => assertExactExclusion(
+      section(mutated, 'Score Badge'),
+      EN_METHODOLOGY_EXCLUSION,
+      METHODOLOGY,
+    ));
+  });
+
+  it('rejects score drift in the Chinese methodology mirror', () => {
+    const source = repo(ZH_METHODOLOGY);
+    const mutated = source.replace(
+      'threatLevelWeight + warningComponent + aisComponent + anomalyBonus',
+      'threatLevelWeight + warningComponent + aisComponent',
+    );
+    assert.notEqual(mutated, source, 'the Chinese formula mutation must apply');
+    assert.throws(() => assertFormulaContracts([
+      [ZH_METHODOLOGY, section(mutated, '评分徽章')],
+    ]));
+  });
+
+  it('rejects anomaly producer drift from PortWatch daily history', () => {
+    const source = repo(RELAY);
+    const mutated = source.replace(
+      'detectTrafficAnomaly(history, threatLevel)',
+      'detectTrafficAnomaly([cpData?.wowChangePct], threatLevel)',
+    );
+    assert.notEqual(mutated, source, 'the anomaly-producer mutation must apply');
+    assert.throws(() => assertAnomalyProducer(mutated));
   });
 
   it('accounts for every score input on the detail-page driver', () => {

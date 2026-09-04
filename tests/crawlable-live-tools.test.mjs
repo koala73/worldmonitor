@@ -789,7 +789,7 @@ describe('crawlable live intelligence view models', () => {
     assert.match(anomaly.scoreDriver, /Configured geopolitical baseline: Active conflict — blockade risk\./);
     assert.match(
       anomaly.scoreDriver,
-      /Observed score inputs: 0 warnings; maximum AIS congestion severity Normal; transit anomaly — Traffic down 55%/,
+      /Observed score inputs: 0 warnings; maximum AIS congestion severity Normal; PortWatch daily-transit anomaly: Traffic down 55%/,
     );
     assert.equal(chokepointEvidenceNarrative({ score: null }), null);
   });
