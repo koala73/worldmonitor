@@ -28,6 +28,7 @@
       "name": "aisGaps",
       "status": "EMPTY",
       "issue": 7574,
+      "reason": "Bounded deploy-order window: the standalone probe reads plain EMPTY until the Railway relay's first scheduled seedAisGaps publish writes the envelope and seed-meta (#7574).",
       "expiresAt": "2026-09-05T18:00:00Z",
       "cutover": {
         "probeKey": "seed-meta:maritime:ais-gaps",
