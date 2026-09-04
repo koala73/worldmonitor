@@ -84,6 +84,12 @@ const COUNTRY_HEADLINE_LIMIT = 5;
 // list, and each record carries its own occurredAt.
 const COUNTRY_TIMELINE_LIMIT = 10;
 
+// A crawlable country page should describe recent developments, not the full
+// durable history store. Keep the query window explicit and derive its lower
+// bound from the single freeze clock so every country uses the same interval.
+const COUNTRY_TIMELINE_WINDOW_DAYS = 10;
+const COUNTRY_TIMELINE_WINDOW_MS = COUNTRY_TIMELINE_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
 // Brief context budget (#7615). The dashboard sends 3800 chars of grounding
 // (src/app/country-intel.ts); the freeze builds the same `Source [n]` block
 // from the same digest so citation indexes align with the frozen sources.
@@ -129,6 +135,18 @@ function sleep(ms) {
 
 function normalizeApiBase(apiBase) {
   return String(apiBase || API_BASE).replace(/\/$/, '');
+}
+
+// Parse before accepting an external URL. Besides enforcing HTTPS, URL's
+// serialization gives digest and enrichment responses one canonical form
+// (host casing and default ports included) for provenance comparisons.
+function normalizeHttpsUrl(value) {
+  try {
+    const url = new URL(String(value || '').trim());
+    return url.protocol === 'https:' ? url.toString() : null;
+  } catch {
+    return null;
+  }
 }
 
 async function fetchJson(url, { headers = {}, method = 'GET', body, apiBase = API_BASE } = {}) {
@@ -303,55 +321,66 @@ function crisisRecord(view) {
 // surfaces as an empty brief (the handler returns `empty` on failure), which
 // must degrade into developmentsErrors — freezing an empty string would let
 // the corpus render a "Recent developments" section with no developments.
-function briefRecord(payload) {
+function briefRecord(payload, digestUrls) {
   const text = String(payload?.brief || '').trim();
   if (!text) return null;
   const generatedMs = Number(payload?.generatedAt);
+  if (!Number.isFinite(generatedMs) || generatedMs <= 0) {
+    throw new Error('brief response carried no valid generatedAt');
+  }
   const sources = Array.isArray(payload?.sources) ? payload.sources : [];
+  if (sources.length === 0) {
+    throw new Error('brief response carried no sources from the frozen digest generation');
+  }
+  const normalizedSources = sources.map((source) => {
+    const title = String(source?.title || '').trim();
+    const outlet = String(source?.source || '').trim();
+    const url = normalizeHttpsUrl(source?.url);
+    const publishedMs = new Date(String(source?.publishedAt || '')).getTime();
+    if (!title || !outlet || !url || !Number.isFinite(publishedMs)) {
+      throw new Error('brief response carried an invalid source');
+    }
+    if (!digestUrls.has(url)) {
+      throw new Error(`brief source was not in the frozen digest generation: ${url}`);
+    }
+    return {
+      title,
+      source: outlet,
+      url,
+      publishedAt: new Date(publishedMs).toISOString(),
+    };
+  });
+  const citations = [...text.matchAll(/\[(\d+)\]/g)].map((match) => Number(match[1]));
+  if (citations.length === 0) {
+    throw new Error('brief response carried no source citation');
+  }
+  if (citations.some((citation) => citation < 1 || citation > normalizedSources.length)) {
+    throw new Error('brief response carried an out-of-range source citation');
+  }
   return {
     text,
     model: String(payload?.model || ''),
-    generatedAt: Number.isFinite(generatedMs) && generatedMs > 0
-      ? new Date(generatedMs).toISOString()
-      : null,
-    // A source without a parseable publication time is dropped here, not
-    // frozen: the corpus requires a canonical ISO instant on every rendered
-    // row and throws for the whole build on a violation, so one rotten
-    // upstream date must never reach it (per-item isolation, same rule as
-    // the digest path).
-    sources: sources
-      .map((source) => {
-        const title = String(source?.title || '').trim();
-        const outlet = String(source?.source || '').trim();
-        const url = String(source?.url || '').trim();
-        if (!title || !outlet || !url.startsWith('https://')) return null;
-        const publishedMs = new Date(String(source?.publishedAt || '')).getTime();
-        if (!Number.isFinite(publishedMs)) return null;
-        return {
-          title,
-          source: outlet,
-          url,
-          publishedAt: new Date(publishedMs).toISOString(),
-        };
-      })
-      .filter((source) => source !== null)
-      .slice(0, 6),
+    generatedAt: new Date(generatedMs).toISOString(),
+    // Preserve the returned order exactly: [n] citations index this array.
+    // Any invalid or unfrozen entry rejects the whole brief above rather than
+    // being removed and silently shifting later citation indexes.
+    sources: normalizedSources,
   };
 }
 
-// Normalize one get-intel-timeline record. `upstreamUnavailable: true` is a
-// valid empty state (the handler's contract for a store failure), not an
-// error — the corpus simply omits the timeline for that country.
+// Normalize one get-intel-timeline record. Attribution is mandatory: an
+// otherwise publishable event without a safe source URL is not crawlable
+// evidence and must not enter the frozen timeline.
 function timelineRecord(record) {
   const title = String(record?.title || '').trim();
   const occurredMs = Number(record?.occurredAt);
-  if (!title || !Number.isFinite(occurredMs) || occurredMs <= 0) return null;
-  const sourceUrl = String(record?.sourceUrl || '').trim();
+  const sourceUrl = normalizeHttpsUrl(record?.sourceUrl);
+  if (!title || !Number.isFinite(occurredMs) || occurredMs <= 0 || !sourceUrl) return null;
   const summary = String(record?.summary || '').replace(/\s+/g, ' ').trim();
   return {
     title,
     summary: summary.length > 400 ? `${summary.slice(0, 399).trim()}...` : summary,
-    sourceUrl: sourceUrl.startsWith('https://') ? sourceUrl : null,
+    sourceUrl,
     occurredAt: new Date(occurredMs).toISOString(),
     domain: String(record?.domain || ''),
   };
@@ -361,7 +390,8 @@ function emptyDevelopments(freezeStartedAt, briefSkipped) {
   return {
     headlines: [],
     brief: null,
-    timeline: [],
+    timeline: null,
+    timelineStatus: 'not-requested',
     briefSkipped,
     capturedAt: new Date(freezeStartedAt).toISOString(),
   };
@@ -386,9 +416,9 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
     .map((item) => {
       const title = String(item?.title || '').trim();
       const source = String(item?.source || '').trim();
-      const url = String(item?.link || '').trim();
+      const url = normalizeHttpsUrl(item?.link);
       const publishedAt = Number(item?.publishedAt);
-      if (!title || !source || !url.startsWith('https://')) return null;
+      if (!title || !source || !url) return null;
       if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
       return {
         row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
@@ -429,6 +459,15 @@ function countryDisplayName(code) {
   }
 }
 
+// These ISO codes are also common English words or abbreviations. A display
+// name match remains valid, but a bare uppercase token is too ambiguous to
+// establish country relevance. US stays eligible because it is a common and
+// intentional digest token for the United States.
+const AMBIGUOUS_ENGLISH_ISO_CODES = new Set([
+  'AI', 'AM', 'AS', 'AT', 'BE', 'BY', 'DO', 'ID', 'IN', 'IS',
+  'IT', 'LA', 'ME', 'MY', 'NO', 'SO', 'TO',
+]);
+
 function matchesCountryText(text, code, name) {
   if (name) {
     const term = name.trim().toLowerCase();
@@ -436,6 +475,7 @@ function matchesCountryText(text, code, name) {
       return true;
     }
   }
+  if (AMBIGUOUS_ENGLISH_ISO_CODES.has(code)) return false;
   // Raw text, NOT lowercased — the uppercase-token code match depends on the
   // original casing surviving to this point.
   return new RegExp(`(^|[^A-Za-z0-9])${escapeMatchRegExp(code)}(?=$|[^A-Za-z0-9])`).test(text);
@@ -454,9 +494,9 @@ function selectCountryHeadlines(digestItems, code, limit = COUNTRY_HEADLINE_LIMI
     .map((item) => {
       const title = String(item?.title || '').trim();
       const source = String(item?.source || '').trim();
-      const url = String(item?.link || '').trim();
+      const url = normalizeHttpsUrl(item?.link);
       const publishedAt = Number(item?.publishedAt);
-      if (!title || !source || !url.startsWith('https://')) return null;
+      if (!title || !source || !url) return null;
       if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
       const text = `${title} ${typeof item?.snippet === 'string' ? item.snippet : ''}`;
       if (!matchesCountryText(text, normalized, name)) return null;
@@ -680,17 +720,15 @@ export async function freezeCrawlableLivePulse({
   // Provenance cross-check (#7615): a brief source renders headline-grade on
   // the page, so its URL must have been in the frozen digest generation. The
   // server re-grounds from its own live digest read at brief time; anything
-  // outside this run's frozen generation (rotation, hallucination) is dropped
-  // rather than published unverifiable. Trailing-slash-insensitive: the
-  // server normalizes URLs through `new URL().toString()` while the digest
-  // carries them raw.
+  // outside this run's frozen generation (rotation, hallucination) rejects
+  // the entire brief rather than being removed and shifting citation indexes.
+  // Both sides use the same HTTPS-only URL serialization.
   const digestUrls = new Set();
   for (const item of digestItems) {
-    const raw = String(item?.link || '').trim();
-    if (!raw) continue;
-    digestUrls.add(raw);
-    digestUrls.add(raw.endsWith('/') ? raw.slice(0, -1) : `${raw}/`);
+    const url = normalizeHttpsUrl(item?.link);
+    if (url) digestUrls.add(url);
   }
+  const timelineFrom = freezeStartedAt - COUNTRY_TIMELINE_WINDOW_MS;
   for (const code of Object.keys(countries)) {
     const countryHeadlines = headlinesByCode.get(code) || [];
     const briefSkipped = !keyed
@@ -709,9 +747,8 @@ export async function freezeCrawlableLivePulse({
           base,
           authOpts,
         );
-        const brief = briefRecord(briefPayload);
+        const brief = briefRecord(briefPayload, digestUrls);
         if (brief) {
-          brief.sources = brief.sources.filter((source) => digestUrls.has(source.url));
           developments.brief = brief;
         } else {
           developmentsErrors.push({ code, stage: 'brief', message: 'response carried no publishable brief text' });
@@ -724,16 +761,34 @@ export async function freezeCrawlableLivePulse({
     if (keyed) {
       try {
         const timelinePayload = await authedGet(
-          `/api/intelligence/v1/get-intel-timeline?country=${encodeURIComponent(code)}&limit=${COUNTRY_TIMELINE_LIMIT}`,
+          `/api/intelligence/v1/get-intel-timeline?country=${encodeURIComponent(code)}&from=${timelineFrom}&limit=${COUNTRY_TIMELINE_LIMIT}`,
           token,
           base,
           authOpts,
         );
-        const records = Array.isArray(timelinePayload?.records) ? timelinePayload.records : [];
-        developments.timeline = records
-          .map(timelineRecord)
-          .filter((record) => record !== null);
+        if (timelinePayload?.upstreamUnavailable === true) {
+          developments.timelineStatus = 'unavailable';
+          developmentsErrors.push({ code, stage: 'timeline', message: 'timeline upstream unavailable' });
+        } else {
+          const records = Array.isArray(timelinePayload?.records) ? timelinePayload.records : [];
+          const publishableRecords = records
+            .map(timelineRecord)
+            .filter((record) => record !== null);
+          const droppedCount = records.length - publishableRecords.length;
+          developments.timeline = publishableRecords;
+          developments.timelineStatus = timelinePayload?.partial === true || droppedCount > 0
+            ? 'partial'
+            : 'available';
+          if (droppedCount > 0) {
+            developmentsErrors.push({
+              code,
+              stage: 'timeline',
+              message: `dropped ${droppedCount} of ${records.length} timeline records without publishable attribution`,
+            });
+          }
+        }
       } catch (error) {
+        developments.timelineStatus = 'failed';
         developmentsErrors.push({ code, stage: 'timeline', message: error instanceof Error ? error.message : String(error) });
       }
       await sleep(requestGapMs);
@@ -906,4 +961,6 @@ export {
   selectCountryHeadlines,
   buildBriefContext,
   countryDisplayName,
+  normalizeHttpsUrl,
+  timelineRecord,
 };

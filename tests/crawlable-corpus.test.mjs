@@ -1511,6 +1511,24 @@ describe('crawlable corpus generator', () => {
     }
   });
 
+  it('requires the API key before freezing the crawlable pulse', () => {
+    const workflow = readFileSync(
+      resolve(repoRoot, '.github/workflows/crawlable-pulse-refresh.yml'),
+      'utf8',
+    );
+    const guardIndex = workflow.indexOf('- name: Require WorldMonitor API key');
+    const freezeIndex = workflow.indexOf('- name: Freeze the current pulse');
+    assert.ok(guardIndex >= 0, 'the pulse refresh workflow must guard its required API key');
+    assert.ok(freezeIndex > guardIndex, 'the required-key guard must run before the freeze command');
+    const guardStep = workflow.slice(guardIndex, freezeIndex);
+    assert.match(guardStep, /WORLDMONITOR_API_KEY: \$\{\{ secrets\.WORLDMONITOR_API_KEY \}\}/);
+    assert.match(
+      guardStep,
+      /if \[ -z "\$\{WORLDMONITOR_API_KEY:-\}" \]; then[\s\S]*?exit 1[\s\S]*?fi/,
+      'an empty WORLDMONITOR_API_KEY must fail the workflow before the freeze',
+    );
+  });
+
   // The corpus fixture has no untruncated unranked country, so the "omit the
   // note when nothing is omitted" branch is unobservable end-to-end. Pin it
   // directly: a note that appears when nothing is hidden would tell a reader
@@ -4258,7 +4276,7 @@ describe('country recent developments', () => {
     publishedAt: '2026-09-02T10:00:00.000Z',
   };
   const BRIEF = {
-    text: 'SITUATION NOW\nConvoys move under escort.',
+    text: 'SITUATION NOW\nConvoys move under escort [1].',
     model: 'test-model',
     generatedAt: '2026-09-02T12:00:00.000Z',
     sources: [
@@ -4308,11 +4326,11 @@ describe('country recent developments', () => {
     assert.ok(html.includes('62.5/100'));
     assert.ok(html.includes('Reporting captured in the same window is listed below.'));
     assert.ok(!html.toLowerCase().includes('driven by'));
-    // Brief body, generation line and citation count.
+    // Brief body, generation line and grounding source count.
     assert.ok(html.includes('data-intel-brief'));
-    assert.ok(html.includes('SITUATION NOW<br>Convoys move under escort.'));
+    assert.ok(html.includes('SITUATION NOW<br>Convoys move under escort [1].'));
     assert.ok(html.includes('<time datetime="2026-09-02T12:00:00.000Z">'));
-    assert.ok(html.includes('from 2 cited sources'));
+    assert.ok(html.includes('from 2 grounding sources'));
     // Timeline event with summary, domain and source link.
     assert.ok(html.includes('data-intel-timeline'));
     assert.ok(html.includes('Port call logged in SD'));
@@ -4349,6 +4367,13 @@ describe('country recent developments', () => {
     assert.throws(
       () => renderCountryDevelopments({
         countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, headlines: [{ ...HEADLINE, url: 'https://' }] },
+      }),
+      /missing title, source, https URL, or ISO publication time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
         developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], occurredAt: 'not-a-date' }] },
       }),
       /missing title, ISO occurrence time/,
@@ -4356,9 +4381,71 @@ describe('country recent developments', () => {
     assert.throws(
       () => renderCountryDevelopments({
         countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], sourceUrl: undefined }] },
+      }),
+      /valid source URL/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], sourceUrl: 'http://insecure.test/event' }] },
+      }),
+      /valid source URL/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, timeline: [{ ...TIMELINE[0], sourceUrl: 'https://' }] },
+      }),
+      /valid source URL/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
         developments: { ...DEVELOPMENTS, brief: { text: '  ', model: '', generatedAt: null, sources: [] } },
       }),
       /brief carries no text/,
+    );
+  });
+
+  it('rejects ungrounded or invalidly cited briefs', () => {
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, generatedAt: 'not-a-date' } },
+      }),
+      /canonical ISO generation time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, text: 'Citation omitted.' } },
+      }),
+      /brief carries no source citation/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, sources: [] } },
+      }),
+      /brief carries no grounding sources/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: {
+          ...DEVELOPMENTS,
+          brief: { ...BRIEF, sources: [{ ...HEADLINE, url: 'https://' }] },
+        },
+      }),
+      /missing title, source, https URL, or ISO publication time/,
+    );
+    assert.throws(
+      () => renderCountryDevelopments({
+        countryName: 'Sudan',
+        developments: { ...DEVELOPMENTS, brief: { ...BRIEF, text: 'Unsupported index [3].' } },
+      }),
+      /out-of-range source citation/,
     );
   });
 
@@ -4379,7 +4466,7 @@ describe('country recent developments', () => {
       countryName: 'Sudan"><img src=x onerror=alert(1)>',
       developments: {
         headlines: [{ ...HEADLINE, source: 'Wire</small><script>alert(2)</script>' }],
-        brief: { ...BRIEF, text: 'Lead <b>bold</b> claim', model: 'm"x' },
+        brief: { ...BRIEF, text: 'Lead <b>bold</b> claim [1]', model: 'm"x' },
         timeline: [{ ...TIMELINE[0], summary: 'Done <iframe src="x"></iframe>', domain: 'd"e' }],
         briefSkipped: null,
         capturedAt: '2026-09-03T00:00:00.000Z',
@@ -4452,7 +4539,7 @@ describe('country recent developments', () => {
     assert.throws(
       () => assertCountryDevelopmentsRendered({
         pagePath: '/countries/sudan/',
-        html: html.replaceAll('Convoys move under escort.', ''),
+        html: html.replaceAll('Convoys move under escort [1].', ''),
         developments: DEVELOPMENTS,
       }),
       /dropped its frozen intel brief/,
@@ -4514,6 +4601,16 @@ describe('country recent developments', () => {
     assert.equal(withItems.developments.brief.text, BRIEF.text);
     const withoutItems = JSON.parse(countryDatasetDownload(country, base));
     assert.equal(withoutItems.developments, null);
+    const explicitlyEmpty = JSON.parse(countryDatasetDownload(country, {
+      ...base,
+      developments: { headlines: [], brief: null, timeline: [], briefSkipped: 'no-grounding' },
+    }));
+    assert.equal(explicitlyEmpty.developments, null);
+    const explicitlyEmptyWithNullTimeline = JSON.parse(countryDatasetDownload(country, {
+      ...base,
+      developments: { headlines: [], brief: null, timeline: null, briefSkipped: 'no-grounding' },
+    }));
+    assert.equal(explicitlyEmptyWithNullTimeline.developments, null);
   });
 
   it('wires developments into the rendered country page and its JSON-LD', async () => {

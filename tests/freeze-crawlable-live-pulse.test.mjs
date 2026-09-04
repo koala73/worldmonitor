@@ -11,6 +11,7 @@ import {
   freezeCrawlableLivePulse,
   mintSession,
   normalizeApiBase,
+  timelineRecord,
   selectCountryHeadlines,
 } from '../scripts/freeze-crawlable-live-pulse.mjs';
 
@@ -163,9 +164,10 @@ function countryPayload() {
       digestItem({ title: 'Headline five', importanceScore: 50 }),
     ],
     briefStatus = 'ok',
-    briefSourceUrl = 'https://example.test/harbor',
+    briefOverrides = {},
     briefFailCodes = [],
     timelineStatus = 'ok',
+    timelineSourceUrl = 'https://example.test/port-call',
     onRequest = null,
   } = {}) {
     let countriesServed = 0;
@@ -201,24 +203,32 @@ function countryPayload() {
         if (briefStatus === 'empty') {
           return jsonResponse({ countryCode: code, countryName: code, brief: '', model: '', generatedAt: Date.now(), sources: [] });
         }
+        const context = new URL(href).searchParams.get('context') || '';
+        const firstSourceLine = context.match(/^Source \[1\]: (.+)$/m);
+        const firstSource = firstSourceLine ? JSON.parse(firstSourceLine[1]) : null;
+        const override = briefOverrides[code] || {};
+        const sources = Object.hasOwn(override, 'sources')
+          ? override.sources
+          : firstSource ? [{
+            ...firstSource,
+            url: override.sourceUrl || firstSource.url,
+          }] : [];
         return jsonResponse({
           countryCode: code,
           countryName: code,
-          brief: 'SITUATION NOW\nCalm seas and steady traffic.',
+          brief: override.brief || 'SITUATION NOW\nCalm seas and steady traffic [1].',
           model: 'test-model',
-          generatedAt: Date.now(),
-          sources: [{
-            title: `Harbor report for ${code}`,
-            source: 'Test Wire',
-            url: briefSourceUrl,
-            publishedAt: new Date(Date.now() - 3600_000).toISOString(),
-          }],
+          generatedAt: Object.hasOwn(override, 'generatedAt') ? override.generatedAt : Date.now(),
+          sources,
         });
       }
       if (href.includes('get-intel-timeline')) {
         if (timelineStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
-        if (timelineStatus === 'empty') {
+        if (timelineStatus === 'unavailable') {
           return jsonResponse({ records: [], partial: false, upstreamUnavailable: true });
+        }
+        if (timelineStatus === 'available-empty') {
+          return jsonResponse({ records: [], partial: false, upstreamUnavailable: false });
         }
         const code = new URL(href).searchParams.get('country');
         return jsonResponse({
@@ -230,12 +240,12 @@ function countryPayload() {
             category: 'incident',
             title: `Port call logged in ${code}`,
             summary: 'A scheduled port call completed without incident.',
-            sourceUrl: 'https://example.test/port-call',
+            sourceUrl: timelineSourceUrl,
             occurredAt: Date.now() - 7200_000,
             ingestedAt: Date.now(),
             score: 3,
           }],
-          partial: false,
+          partial: timelineStatus === 'partial',
           upstreamUnavailable: false,
         });
       }
@@ -454,6 +464,11 @@ describe('freeze per-country developments selection', () => {
     assert.equal(selectCountryHeadlines([countryItem('US announces new sanctions')], 'US').length, 1);
   });
 
+  it('does not treat ambiguous uppercase English tokens as country codes', () => {
+    assert.deepEqual(selectCountryHeadlines([countryItem('RALLY IN EUROPE')], 'IN'), []);
+    assert.equal(selectCountryHeadlines([countryItem('India hosts regional talks')], 'IN').length, 1);
+  });
+
   it('ranks, caps and validates like the global headline selection', () => {
     const now = Date.now();
     const items = [
@@ -591,7 +606,8 @@ describe('freeze per-country developments capture', () => {
     assert.equal(sudan.headlines[0].source, 'UN News');
     assert.equal(sudan.brief, null);
     assert.equal(sudan.briefSkipped, 'no-service-key');
-    assert.deepEqual(sudan.timeline, []);
+    assert.equal(sudan.timeline, null);
+    assert.equal(sudan.timelineStatus, 'not-requested');
     // A country with no digest match still gets a uniform developments shape.
     assert.deepEqual(snapshot.countries.BT.developments.headlines, []);
     assert.equal(snapshot.coverage.headlineCountryCount >= 2, true);
@@ -608,6 +624,7 @@ describe('freeze per-country developments capture', () => {
     assert.ok(sudan.brief.text.includes('SITUATION NOW'));
     assert.equal(sudan.brief.sources.length, 1);
     assert.equal(sudan.timeline.length, 1);
+    assert.equal(sudan.timelineStatus, 'available');
     assert.ok(sudan.timeline[0].occurredAt);
     const briefCall = requested.find(({ href }) => href.includes('get-country-intel-brief?country_code=SD'));
     assert.ok(briefCall, 'a brief must be attempted for the headline-matched country');
@@ -621,6 +638,9 @@ describe('freeze per-country developments capture', () => {
       'a keyed freeze must not mint an anonymous session');
     assert.ok(snapshot.coverage.briefCountryCount >= 2);
     assert.ok(snapshot.coverage.timelineCountryCount > 0);
+    const timelineCall = requested.find(({ href }) => href.includes('get-intel-timeline?country=SD'));
+    const timelineFrom = Number(new URL(timelineCall.href).searchParams.get('from'));
+    assert.equal(timelineFrom, snapshot.capturedAtMs - (10 * 24 * 60 * 60 * 1000));
   });
 
   it('skips the brief where there is no grounding to cite', async () => {
@@ -639,15 +659,84 @@ describe('freeze per-country developments capture', () => {
     );
   });
 
-  it('drops brief sources outside the frozen digest generation', async () => {
+  it('accepts canonical-equivalent brief source URLs from the frozen digest generation', async () => {
+    stubFetch({
+      digestItems: countryDigestItems(),
+      briefOverrides: {
+        SD: { sourceUrl: 'HTTPS://NEWS.UN.ORG:443/feed/view/en/story/2026/09/1168270' },
+      },
+    });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.equal(
+      snapshot.countries.SD.developments.brief.sources[0].url,
+      'https://news.un.org/feed/view/en/story/2026/09/1168270',
+    );
+  });
+
+  it('rejects a brief with zero returned sources', async () => {
+    stubFetch({
+      digestItems: countryDigestItems(),
+      briefOverrides: { SD: { sources: [] } },
+    });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.equal(snapshot.countries.SD.developments.brief, null);
+    assert.ok(snapshot.errors.developments.some((entry) => (
+      entry.code === 'SD' && entry.stage === 'brief' && entry.message.includes('no sources')
+    )));
+  });
+
+  it('rejects otherwise-valid briefs with a zero or missing generatedAt', async () => {
+    for (const generatedAt of [0, undefined]) {
+      stubFetch({
+        digestItems: countryDigestItems(),
+        briefOverrides: { SD: { generatedAt } },
+      });
+      const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+      assert.equal(snapshot.countries.SD.developments.brief, null);
+      assert.ok(snapshot.errors.developments.some((entry) => (
+        entry.code === 'SD' && entry.stage === 'brief' && entry.message.includes('generatedAt')
+      )));
+    }
+  });
+
+  it('rejects brief sources outside the frozen digest generation', async () => {
     // The server re-grounds from its own live read; a cited URL absent from
-    // this run's frozen digest is unverifiable and must not render
-    // headline-grade on the page. The brief text itself is kept.
-    stubFetch({ digestItems: countryDigestItems(), briefSourceUrl: 'https://unfrozen.test/ghost' });
+    // this run's frozen digest invalidates the whole brief. Removing just that
+    // source would shift citation indexes and publish unverifiable prose.
+    stubFetch({
+      digestItems: countryDigestItems(),
+      briefOverrides: { SD: { sourceUrl: 'https://unfrozen.test/ghost' } },
+    });
     const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
     const sudan = snapshot.countries.SD.developments;
-    assert.ok(sudan.brief, 'the brief text survives the provenance filter');
-    assert.deepEqual(sudan.brief.sources, [], 'unfrozen cited URLs are dropped, not published');
+    assert.equal(sudan.brief, null);
+    assert.ok(snapshot.errors.developments.some((entry) => (
+      entry.code === 'SD' && entry.stage === 'brief' && entry.message.includes('not in the frozen digest')
+    )));
+  });
+
+  it('rejects a citationless brief', async () => {
+    stubFetch({
+      digestItems: countryDigestItems(),
+      briefOverrides: { SD: { brief: 'SITUATION NOW\nCalm seas and steady traffic.' } },
+    });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.equal(snapshot.countries.SD.developments.brief, null);
+    assert.ok(snapshot.errors.developments.some((entry) => (
+      entry.code === 'SD' && entry.stage === 'brief' && entry.message.includes('no source citation')
+    )));
+  });
+
+  it('rejects a brief with an out-of-range citation', async () => {
+    stubFetch({
+      digestItems: countryDigestItems(),
+      briefOverrides: { SD: { brief: 'SITUATION NOW\nCalm seas and steady traffic [2].' } },
+    });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.equal(snapshot.countries.SD.developments.brief, null);
+    assert.ok(snapshot.errors.developments.some((entry) => (
+      entry.code === 'SD' && entry.stage === 'brief' && entry.message.includes('out-of-range')
+    )));
   });
 
   it('rejects a keyed freeze whose brief capture collapses', async () => {
@@ -687,17 +776,59 @@ describe('freeze per-country developments capture', () => {
     );
   });
 
-  it('treats an unavailable timeline store as empty, not as failure', async () => {
-    stubFetch({ digestItems: countryDigestItems(), timelineStatus: 'empty' });
+  it('records an unavailable timeline store without presenting it as empty', async () => {
+    stubFetch({ digestItems: countryDigestItems(), timelineStatus: 'unavailable' });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.equal(snapshot.countries.SD.developments.timeline, null);
+    assert.equal(snapshot.countries.SD.developments.timelineStatus, 'unavailable');
+    assert.ok(snapshot.errors.developments.some((entry) => (
+      entry.code === 'SD' && entry.stage === 'timeline' && entry.message.includes('upstream unavailable')
+    )));
+    assert.ok(snapshot.countries.SD.developments.brief, 'the brief capture must be unaffected');
+  });
+
+  it('reserves an empty timeline for a successful available response', async () => {
+    stubFetch({ digestItems: countryDigestItems(), timelineStatus: 'available-empty' });
     const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
     assert.deepEqual(snapshot.countries.SD.developments.timeline, []);
-    assert.ok(snapshot.countries.SD.developments.brief, 'the brief capture must be unaffected');
+    assert.equal(snapshot.countries.SD.developments.timelineStatus, 'available');
+  });
+
+  it('preserves partial timeline records and marks their state', async () => {
+    stubFetch({ digestItems: countryDigestItems(), timelineStatus: 'partial' });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.equal(snapshot.countries.SD.developments.timeline.length, 1);
+    assert.equal(snapshot.countries.SD.developments.timelineStatus, 'partial');
+  });
+
+  it('drops timeline records without a valid HTTPS attribution URL', () => {
+    assert.equal(timelineRecord({
+      title: 'Unattributed event',
+      occurredAt: Date.now(),
+      sourceUrl: 'http://example.test/event',
+    }), null);
+  });
+
+  it('marks a successful timeline partial when all raw records lack attribution', async () => {
+    stubFetch({
+      digestItems: countryDigestItems(),
+      timelineSourceUrl: 'http://example.test/unattributed',
+    });
+    const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
+    assert.deepEqual(snapshot.countries.SD.developments.timeline, []);
+    assert.equal(snapshot.countries.SD.developments.timelineStatus, 'partial');
+    assert.ok(snapshot.errors.developments.some((entry) => (
+      entry.code === 'SD'
+      && entry.stage === 'timeline'
+      && entry.message.includes('dropped 1 of 1 timeline records')
+    )));
   });
 
   it('records timeline outages per country without failing the run', async () => {
     stubFetch({ digestItems: countryDigestItems(), timelineStatus: 'fail' });
     const { snapshot } = await runFreeze({ serviceKey: 'test-key' });
-    assert.deepEqual(snapshot.countries.SD.developments.timeline, []);
+    assert.equal(snapshot.countries.SD.developments.timeline, null);
+    assert.equal(snapshot.countries.SD.developments.timelineStatus, 'failed');
     assert.ok(snapshot.errors.developments.some((entry) => entry.stage === 'timeline'),
       'timeline failures must be recorded, not swallowed');
     assert.ok(snapshot.countries.SD.developments.brief, 'the brief capture must be unaffected');

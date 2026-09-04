@@ -596,10 +596,10 @@ export function countryDatasetDownload(country, {
     source: snapshotPath,
     license: DATASET_LICENSE.url,
     // Frozen recent developments (#7615): dated, attributed headlines, the
-    // intel brief with its cited sources, and timeline events. Null when the
+    // intel brief with its grounding sources, and timeline events. Null when the
     // snapshot captured nothing for this country — the post-enrichment input
     // for the residual regional-hub consolidation decision.
-    developments: developments && typeof developments === 'object' ? developments : null,
+    developments: developmentsHasDatedItem(developments) ? developments : null,
   });
 }
 
@@ -2963,15 +2963,13 @@ export function renderCountryDevelopments({ countryName, developments, ciiEntry 
   }
   if (brief) {
     const briefHtml = escapeHtml(brief.text).replace(/\n/g, '<br>');
-    const generatedLine = brief.generatedAt
-      ? `Brief generated <time datetime="${escapeHtml(brief.generatedAt)}">${escapeHtml(formatStaticDateTime(brief.generatedAt))}</time>`
-      : 'Brief generated from frozen sources';
-    parts.push(`        <div data-intel-brief>\n          <h3>Country brief</h3>\n          <p>${briefHtml}</p>\n          <p class="source">${generatedLine}${brief.model ? ` by ${escapeHtml(brief.model)}` : ''} from ${(Array.isArray(brief.sources) ? brief.sources.length : 0)} cited sources.</p>\n        </div>`);
+    const generatedLine = `Brief generated <time datetime="${escapeHtml(brief.generatedAt)}">${escapeHtml(formatStaticDateTime(brief.generatedAt))}</time>`;
+    parts.push(`        <div data-intel-brief>\n          <h3>Country brief</h3>\n          <p>${briefHtml}</p>\n          <p class="source">${generatedLine}${brief.model ? ` by ${escapeHtml(brief.model)}` : ''} from ${brief.sources.length} grounding sources.</p>\n        </div>`);
   }
   if (timeline.length > 0) {
     const events = timeline
       .map((event) => {
-        const sourceBit = event.sourceUrl ? ` <a href="${escapeHtml(event.sourceUrl)}">source</a>` : '';
+        const sourceBit = ` <a href="${escapeHtml(event.sourceUrl)}">source</a>`;
         const summaryBit = event.summary ? ` — ${escapeHtml(event.summary)}` : '';
         const domainBit = event.domain ? ` <small>${escapeHtml(event.domain)}</small>` : '';
         return `          <li><strong>${escapeHtml(event.title)}</strong>${summaryBit} <small><time datetime="${escapeHtml(event.occurredAt)}">${escapeHtml(formatStaticDateTime(event.occurredAt))}</time></small>${domainBit}${sourceBit}</li>`;
@@ -2983,11 +2981,21 @@ export function renderCountryDevelopments({ countryName, developments, ciiEntry 
   return `      <section data-country-developments aria-label="Recent developments in ${escapeHtml(name)}">\n        <h2>Recent developments in ${escapeHtml(name)}</h2>\n${inner}\n      </section>`;
 }
 
+function isValidHttpsUrl(value) {
+  if (typeof value !== 'string') return false;
+  try {
+    const parsed = new URL(value);
+    return parsed.protocol === 'https:' && Boolean(parsed.hostname);
+  } catch {
+    return false;
+  }
+}
+
 function assertDevelopmentsHeadline(headline) {
   const valid = headline && typeof headline === 'object'
     && typeof headline.title === 'string' && headline.title.trim()
     && typeof headline.source === 'string' && headline.source.trim()
-    && typeof headline.url === 'string' && headline.url.startsWith('https://')
+    && isValidHttpsUrl(headline.url)
     && typeof headline.publishedAt === 'string' && isCanonicalIsoInstant(headline.publishedAt);
   if (!valid) throw new Error('country developments headline is missing title, source, https URL, or ISO publication time');
 }
@@ -2996,13 +3004,28 @@ function assertDevelopmentsBrief(brief) {
   if (typeof brief.text !== 'string' || !brief.text.trim()) {
     throw new Error('country developments brief carries no text');
   }
+  if (typeof brief.generatedAt !== 'string' || !isCanonicalIsoInstant(brief.generatedAt)) {
+    throw new Error('country developments brief is missing a canonical ISO generation time');
+  }
+  if (!Array.isArray(brief.sources) || brief.sources.length === 0) {
+    throw new Error('country developments brief carries no grounding sources');
+  }
+  for (const source of brief.sources) assertDevelopmentsHeadline(source);
+  const citations = [...brief.text.matchAll(/\[(\d+)\]/g)]
+    .map((match) => Number(match[1]));
+  if (citations.length === 0) {
+    throw new Error('country developments brief carries no source citation');
+  }
+  if (citations.some((citation) => citation < 1 || citation > brief.sources.length)) {
+    throw new Error('country developments brief carries an out-of-range source citation');
+  }
 }
 
 function assertDevelopmentsTimelineEvent(event) {
   const valid = event && typeof event === 'object'
     && typeof event.title === 'string' && event.title.trim()
     && typeof event.occurredAt === 'string' && isCanonicalIsoInstant(event.occurredAt)
-    && (event.sourceUrl == null || (typeof event.sourceUrl === 'string' && event.sourceUrl.startsWith('https://')));
+    && isValidHttpsUrl(event.sourceUrl);
   if (!valid) throw new Error('country developments timeline event is missing title, ISO occurrence time, or a valid source URL');
 }
 
