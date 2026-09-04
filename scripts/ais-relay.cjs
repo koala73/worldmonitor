@@ -8846,6 +8846,14 @@ const TRANSIT_WINDOW_MS = 24 * 60 * 60 * 1000;
 const MIN_DWELL_MS = 5 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_KEY = 'supply_chain:chokepoint_transits:v1';
 const CHOKEPOINT_TRANSIT_TTL = 3600; // 1h — 6x interval; survives ~5 consecutive missed pings
+
+// Dark-ship (AIS gap) count envelope — the trusted producer behind the
+// temporal anomalies `ais_gaps` count source (#7574). Written on its own
+// slow loop, not on the per-snapshot build: detectDisruptions runs every
+// SNAPSHOT_INTERVAL_MS, which would be a Redis write per relay heartbeat.
+const AIS_GAPS_REDIS_KEY = 'maritime:ais-gaps:v1';
+const AIS_GAPS_TTL = 1800; // 30min — 3x the seed interval; survives 2 missed cycles
+const AIS_GAPS_SEED_INTERVAL_MS = 10 * 60 * 1000;
 const CHOKEPOINT_TRANSIT_INTERVAL_MS = 10 * 60 * 1000;
 
 const NAVAL_PREFIX_RE = /^(USS|USNS|HMS|HMAS|HMCS|INS|JS|ROKS|TCG|FS|BNS|RFS|PLAN|PLA|CGC|PNS|KRI|ITS|SNS|MMSI)/i;
@@ -9275,6 +9283,26 @@ function cleanupAggregates() {
   }
 }
 
+/**
+ * Vessels that returned after extended AIS silence — the signal the retired
+ * client-side ais_gaps baseline used to count per browser session (#7574).
+ * A vessel qualifies when the gap between its last two fixes exceeded
+ * GAP_THRESHOLD and it was seen again within the last 10 minutes.
+ */
+function countDarkShips(now = Date.now()) {
+  let darkShipCount = 0;
+  for (const history of vesselHistory.values()) {
+    if (history.length >= 2) {
+      const lastSeen = history[history.length - 1];
+      const secondLast = history[history.length - 2];
+      if (lastSeen - secondLast > GAP_THRESHOLD && now - lastSeen < 10 * 60 * 1000) {
+        darkShipCount++;
+      }
+    }
+  }
+  return darkShipCount;
+}
+
 function detectDisruptions() {
   const disruptions = [];
   const now = Date.now();
@@ -9308,17 +9336,7 @@ function detectDisruptions() {
     }
   }
 
-  let darkShipCount = 0;
-  for (const history of vesselHistory.values()) {
-    if (history.length >= 2) {
-      const lastSeen = history[history.length - 1];
-      const secondLast = history[history.length - 2];
-      if (lastSeen - secondLast > GAP_THRESHOLD && now - lastSeen < 10 * 60 * 1000) {
-        darkShipCount++;
-      }
-    }
-  }
-
+  const darkShipCount = countDarkShips(now);
   if (darkShipCount >= 1) {
     disruptions.push({
       id: 'global-gap-spike',
@@ -9544,6 +9562,24 @@ async function seedChokepointTransits() {
   await upstashSet('seed-meta:supply_chain:chokepoint_transits', { fetchedAt: now, recordCount: Object.keys(transits).length }, 604800);
   console.log(`[Transit] Seeded ${Object.keys(transits).length} chokepoint transit counts`);
 }
+
+/**
+ * Publish the dark-ship count as a seed envelope. `sampledAt` is the content
+ * clock the temporal-anomalies rebuild reads (gapsContentClock); computing
+ * `now` once and threading it through both writes keeps `_seed.fetchedAt` and
+ * seed-meta in agreement (#6775).
+ */
+async function seedAisGaps() {
+  const now = Date.now();
+  const darkShips = countDarkShips(now);
+  await envelopeWrite(AIS_GAPS_REDIS_KEY, { darkShips, sampledAt: now }, AIS_GAPS_TTL, { fetchedAt: now, recordCount: darkShips, sourceVersion: 'ais-gaps', zeroOk: true });
+  await upstashSet('seed-meta:maritime:ais-gaps', { fetchedAt: now, recordCount: darkShips }, 604800);
+  console.log(`[AisGaps] Seeded dark-ship count: ${darkShips}`);
+}
+
+setTimeout(() => {
+  startBootSeedLoop('AisGaps', 'seed-meta:maritime:ais-gaps', AIS_GAPS_SEED_INTERVAL_MS, seedAisGaps, err => console.error('[AisGaps] Initial seed error:', err.message), err => console.error('[AisGaps] Seed error:', err.message));
+}, 30_000);
 
 setTimeout(() => {
   startBootSeedLoop('Transit', 'seed-meta:supply_chain:chokepoint_transits', CHOKEPOINT_TRANSIT_INTERVAL_MS, seedChokepointTransits, err => console.error('[Transit] Initial seed error:', err.message), err => console.error('[Transit] Seed error:', err.message));

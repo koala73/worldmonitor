@@ -30,6 +30,7 @@ import {
   temporalAnomaliesContentMeta,
   temporalAnomaliesReadableContentMeta,
   type BaselineEntry,
+  type CountSourcePayloads,
 } from './_shared';
 
 interface AnomalySnapshot {
@@ -45,6 +46,9 @@ const MONTH_NAMES = ['', 'January', 'February', 'March', 'April', 'May', 'June',
 const TYPE_LABELS: Record<string, string> = {
   news: 'News velocity',
   satellite_fires: 'Satellite fire detections',
+  military_flights: 'Military flights',
+  vessels: 'Military vessels',
+  ais_gaps: 'AIS gaps',
 };
 
 function getSeverity(zScore: number): string {
@@ -110,7 +114,7 @@ async function readPriorContentAge(
  *      when the readable source is live.
  */
 async function resolveContentAge(
-  countPayloads: { news?: unknown; satellite_fires?: unknown },
+  countPayloads: CountSourcePayloads,
   erroredSourceTypes: string[],
   nowMs: number,
 ): Promise<{ newestItemAt: number | null; oldestItemAt: number | null } | null> {
@@ -216,7 +220,7 @@ export async function listTemporalAnomalies(
       const anomalies: TemporalAnomalyProto[] = [];
 
       const counts: Record<string, number> = {};
-      const countPayloads: { news?: unknown; satellite_fires?: unknown } = {};
+      const countPayloads: CountSourcePayloads = {};
       // Status-aware reads: getCachedJson collapses a genuine miss and a
       // transient read ERROR (timeout, non-2xx, parse failure) into the same
       // null, and the content clock fails closed on a missing source. Without
@@ -239,9 +243,10 @@ export async function listTemporalAnomalies(
       ] as const);
       for (const [type, data] of countEntries) {
         if (!data) continue;
-        if (type === 'news' || type === 'satellite_fires') {
-          countPayloads[type] = data;
-        }
+        // Every configured source contributes its payload to the content-age
+        // contract — the strict clock fail-closes on any configured source
+        // that was not read this cycle.
+        countPayloads[type as keyof CountSourcePayloads] = data;
 
         if (type === 'news') {
           const stories = (data as { topStories?: unknown[] })?.topStories;
@@ -256,6 +261,30 @@ export async function listTemporalAnomalies(
             fireDetections: fires ?? [],
             pagination: (data as { pagination?: { totalCount?: number } })?.pagination,
           });
+        } else if (type === 'military_flights') {
+          // military:flights:v1 is a RAW payload (no seed envelope): the
+          // globally tracked military flights from the seeder/RPC producer.
+          const flights = (data as { flights?: unknown[] })?.flights;
+          counts[type] = flights?.length ?? 0;
+        } else if (type === 'vessels') {
+          // theater-posture:sebuf:v1 arrives envelope-unwrapped. The count is
+          // the sum of per-theater strictly-filtered military vessels — NOT
+          // the theaters array length, and not the envelope recordCount,
+          // which counts theaters.
+          const theaters = (data as { theaters?: Array<{ trackedVessels?: unknown }> })?.theaters;
+          let vessels = 0;
+          if (Array.isArray(theaters)) {
+            for (const theater of theaters) {
+              const tracked = Number(theater?.trackedVessels);
+              if (Number.isFinite(tracked)) vessels += tracked;
+            }
+          }
+          counts[type] = vessels;
+        } else if (type === 'ais_gaps') {
+          // maritime:ais-gaps:v1 arrives envelope-unwrapped: dark ships that
+          // returned after extended AIS silence, counted by the relay.
+          const darkShips = Number((data as { darkShips?: unknown })?.darkShips);
+          counts[type] = Number.isFinite(darkShips) ? darkShips : 0;
         }
       }
 
