@@ -9,8 +9,10 @@ import {
   buildBriefContext,
   countryDisplayName,
   freezeCrawlableLivePulse,
+  minimumBriefCaptures,
   mintSession,
   normalizeApiBase,
+  selectFrozenQuotes,
   timelineRecord,
   selectCountryHeadlines,
 } from '../scripts/freeze-crawlable-live-pulse.mjs';
@@ -113,9 +115,10 @@ function countryPayload() {
 
   // Shaped like /api/news/v1/list-feed-digest: category buckets of NewsItem,
   // each carrying the masthead (`source`) and the article URL (`link`).
-  function digestPayload(items) {
+  function digestPayload(items, coverage = { state: 'complete', servedStale: false }) {
     return {
       generatedAt: new Date().toISOString(),
+      coverage: { itemsServed: items.length, ...coverage },
       categories: { politics: { items } },
     };
   }
@@ -127,6 +130,23 @@ function countryPayload() {
       link: 'https://news.un.org/feed/view/en/story/2026/09/1168270',
       publishedAt: Date.now() - 60 * 60 * 1000,
       importanceScore: 50,
+      ...overrides,
+    };
+  }
+
+  // Shaped like the three /api/market/v1/list-*-quotes routes.
+  function quotePayload(symbols, overrides = {}) {
+    return {
+      asOf: new Date().toISOString(),
+      rateLimited: false,
+      quotes: symbols.map((symbol) => ({
+        symbol,
+        name: symbol,
+        display: symbol,
+        price: 100,
+        change: 1.234,
+        sparkline: Array.from({ length: 40 }, (_, i) => 100 + i),
+      })),
       ...overrides,
     };
   }
@@ -163,12 +183,16 @@ function countryPayload() {
       digestItem({ title: 'Headline four', importanceScore: 60 }),
       digestItem({ title: 'Headline five', importanceScore: 50 }),
     ],
+    digestCoverage = { state: 'complete', servedStale: false },
     briefStatus = 'ok',
     briefOverrides = {},
     briefFailCodes = [],
     timelineStatus = 'ok',
     timelineSourceUrl = 'https://example.test/port-call',
     onRequest = null,
+    marketSymbols = ['^GSPC', '^IXIC', '^VIX'],
+    commoditySymbols = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
+    cryptoSymbols = ['BTC', 'ETH'],
   } = {}) {
     let countriesServed = 0;
     globalThis.fetch = async (url, options = {}) => {
@@ -195,7 +219,10 @@ function countryPayload() {
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
       }
-      if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems));
+      if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems, digestCoverage));
+      if (href.includes('list-market-quotes')) return jsonResponse(quotePayload(marketSymbols));
+      if (href.includes('list-commodity-quotes')) return jsonResponse(quotePayload(commoditySymbols));
+      if (href.includes('list-crypto-quotes')) return jsonResponse(quotePayload(cryptoSymbols));
       if (href.includes('get-country-intel-brief')) {
         if (briefStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
         const code = new URL(href).searchParams.get('country_code');
@@ -253,17 +280,61 @@ function countryPayload() {
     };
   }
 
+// The brief tolerance decides whether a weekly run publishes at all, and it
+// borrowed an absolute allowance calibrated for ~196 countries. Applied to the
+// headline-matched set it became a 90% demand on a stochastic upstream: a real
+// run capturing 41 of 51 threw and wrote NO snapshot, discarding the country,
+// chokepoint and crisis captures with it and arming the corpus staleness fuse.
+describe('brief capture tolerance', () => {
+  it('scales with the matched set instead of a fixed allowance', () => {
+    // A real run: 51 matched, 10 LLM rejections. Must publish.
+    assert.ok(41 >= minimumBriefCaptures(51), '41 of 51 is an ordinary run, not a failure');
+    // A collapse at the same size must not.
+    assert.ok(10 < minimumBriefCaptures(51), '10 of 51 is a broken pipeline');
+  });
+
+  it('keeps a majority collapse failing at every set size', () => {
+    assert.ok(1 < minimumBriefCaptures(7), '1 of 7 is a collapse');
+    assert.ok(6 >= minimumBriefCaptures(7), '6 of 7 is a few rejections');
+  });
+
+  it('does not read a single rejection in a tiny set as a collapse', () => {
+    // One failure out of two is 50% and says nothing about pipeline health;
+    // the separate zero-brief check is what catches a genuine outage there.
+    assert.equal(minimumBriefCaptures(2), 1);
+    assert.equal(minimumBriefCaptures(1), 1);
+  });
+});
+
 describe('freeze crawlable live pulse coverage gates', () => {
   const originalFetch = globalThis.fetch;
+  const scratchRoots = [];
 
-  afterEach(() => {
+  afterEach(async () => {
     globalThis.fetch = originalFetch;
+    await Promise.all(scratchRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
+
+  async function scratchRoot() {
+    const dir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    await mkdir(join(dir, 'docs', 'snapshots'), { recursive: true });
+    scratchRoots.push(dir);
+    return dir;
+  }
+
+  async function runFreeze(options = {}) {
+    return freezeCrawlableLivePulse({
+      apiBase: STAGING_BASE,
+      requestGapMs: 0,
+      rootDir: await scratchRoot(),
+      ...options,
+    });
+  }
 
   it('rejects a freeze that captured far fewer countries than the corpus renders', async () => {
     stubFetch({ dropCountriesAfter: 100 });
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 100 of \d+ countries/,
       'a 100-country capture must not pass when the corpus renders far more',
     );
@@ -272,7 +343,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
   it('rejects a freeze missing any chokepoint the registry defines', async () => {
     stubFetch({ chokepointIds: ['suez', 'malacca_strait', 'hormuz_strait'] });
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 3 of \d+ chokepoints/,
       'a truncated chokepoint list must fail rather than ship placeholder pages',
     );
@@ -288,7 +359,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
     // The run must fail on the coverage gate (0 chokepoints), NOT on an
     // unhandled rejection from the single unguarded fetch.
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 0 of \d+ chokepoints/,
       'a chokepoint outage must degrade into the coverage gate, not an uncaught throw',
     );
@@ -296,30 +367,20 @@ describe('freeze crawlable live pulse coverage gates', () => {
 
   it('preserves explicit transit-count availability in the frozen snapshot', async () => {
     stubFetch();
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: STAGING_BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.ok(Object.values(snapshot.chokepoints).length > 0);
-      assert.ok(
-        Object.values(snapshot.chokepoints).every((pulse) => (
-          pulse.todayTransits === '0'
-          && pulse.todayCountsAvailable === true
-          && pulse.navigationalWarnings === '0 warnings'
-          && pulse.navigationalWarningsAvailable === true
-          && pulse.aisDisruptions === '0 AIS disruptions'
-          && pulse.aisSnapshotAvailable === true
-          && pulse.congestion === 'Normal'
-          && pulse.weekMovement === '0% vs prior week'
-        )),
-      );
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.ok(Object.values(snapshot.chokepoints).length > 0);
+    assert.ok(
+      Object.values(snapshot.chokepoints).every((pulse) => (
+        pulse.todayTransits === '0'
+        && pulse.todayCountsAvailable === true
+        && pulse.navigationalWarnings === '0 warnings'
+        && pulse.navigationalWarningsAvailable === true
+        && pulse.aisDisruptions === '0 AIS disruptions'
+        && pulse.aisSnapshotAvailable === true
+        && pulse.congestion === 'Normal'
+        && pulse.weekMovement === '0% vs prior week'
+      )),
+    );
   });
 
   // The homepage teaser strip renders whatever this freeze captures into the
@@ -344,56 +405,66 @@ describe('freeze crawlable live pulse coverage gates', () => {
         digestItem({ title: 'Fifth', importanceScore: 10 }),
       ],
     });
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: STAGING_BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.equal(snapshot.headlines.length, 4, 'the strip renders exactly four headlines');
-      assert.deepEqual(
-        snapshot.headlines.map((h) => h.title),
-        ['First', 'Second', 'Third', 'Fourth'],
-        'headlines must be ranked by importance, matching the live card',
-      );
-      assert.deepEqual(snapshot.headlines[0], {
-        title: 'First',
-        source: 'UN News',
-        url: 'https://news.un.org/story/1',
-        publishedAt: new Date(publishedAt).toISOString(),
-      });
-      assert.equal(snapshot.coverage.headlineCount, 4);
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.headlines.length, 4, 'the strip renders exactly four headlines');
+    assert.deepEqual(
+      snapshot.headlines.map((h) => h.title),
+      ['First', 'Second', 'Third', 'Fourth'],
+      'headlines must be ranked by importance, matching the live card',
+    );
+    assert.deepEqual(snapshot.headlines[0], {
+      title: 'First',
+      source: 'UN News',
+      url: 'https://news.un.org/story/1',
+      publishedAt: new Date(publishedAt).toISOString(),
+    });
+    assert.equal(snapshot.coverage.headlineCount, 4);
   });
 
-  it('rejects a freeze whose headline capture came back empty', async () => {
+  it('keeps the country capture when the digest yields no publishable headline', async () => {
     stubFetch({ digestItems: [] });
-    await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
-      /captured only 0 of 4 headlines/,
-      'an empty digest must red the freeze, not republish the previous headlines',
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(snapshot.headlines, [], 'an empty capture publishes nothing, never stale rows');
+    assert.equal(snapshot.coverage.headlineCount, 0);
+    assert.ok(
+      snapshot.coverage.countryCount > 100,
+      'the country capture must survive a headline shortfall',
+    );
+    assert.match(
+      snapshot.errors.headlines[0].message,
+      /only 0 of 4 digest items were publishable/,
+      'the shortfall must be recorded with its cause, not silently dropped',
     );
   });
 
-  it('rejects digest items that cannot be attributed or verified', async () => {
+  it('records why unattributable digest items were rejected', async () => {
     stubFetch({
       digestItems: [
         digestItem({ title: 'No masthead', source: '' }),
         digestItem({ title: 'No link', link: '' }),
         digestItem({ title: 'Insecure link', link: 'http://example.test/a' }),
+        digestItem({ title: 'Malformed HTTPS link', link: 'https://' }),
         digestItem({ title: 'No publication time', publishedAt: 0 }),
+        digestItem({
+          title: 'Aggregator redirect - New Lines Magazine',
+          link: 'https://news.google.com/rss/articles/CBMifzFBVV95cUx',
+        }),
+        digestItem({
+          title: 'Aggregator redirect with trailing dot',
+          link: 'https://news.google.com./rss/articles/CBMifzFBVV95cUx',
+        }),
         digestItem({ title: 'Keeps its provenance' }),
       ],
     });
-    await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
-      /captured only 1 of 4 headlines/,
-      'an item missing masthead, https URL, or publication time is not publishable',
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(
+      snapshot.headlines.map((h) => h.title),
+      ['Keeps its provenance'],
+      'only the item with a masthead, a verifiable https link and a publication time survives',
     );
+    assert.match(snapshot.errors.headlines[0].message, /noSource=1/);
+    assert.match(snapshot.errors.headlines[0].message, /unverifiableUrl=5/);
+    assert.match(snapshot.errors.headlines[0].message, /noPublishedAt=1/);
   });
 
   it('survives a digest outage without discarding the country work', async () => {
@@ -403,27 +474,112 @@ describe('freeze crawlable live pulse coverage gates', () => {
       if (String(url).includes('list-feed-digest')) throw new Error('offline');
       return outer(url);
     };
-    await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
-      /captured only 0 of 4 headlines; first error \(\*\): offline/,
-      'a digest outage must degrade into the coverage gate, not an uncaught throw',
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(snapshot.headlines, []);
+    assert.equal(snapshot.errors.headlines[0].message, 'offline');
+    assert.ok(snapshot.coverage.countryCount > 100, 'a news outage must not cost the corpus its refresh');
+  });
+
+  it('carries the digest own stale verdict into the snapshot', async () => {
+    stubFetch({ digestCoverage: { state: 'stale', servedStale: true } });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.coverage.headlineCount, 4);
+    assert.equal(snapshot.coverage.headlineDigestState, 'stale');
+    assert.equal(snapshot.coverage.headlineServedStale, true);
+  });
+
+  it('preserves an unknown served-stale verdict as null', async () => {
+    stubFetch({ digestCoverage: { state: 'complete' } });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.coverage.headlineDigestState, 'complete');
+    assert.equal(snapshot.coverage.headlineServedStale, null);
+  });
+
+  // The market tape names real instruments, so an invented row is a specific
+  // false claim. #7608 shipped one that had drifted 22% on the S&P.
+  it('captures the market tape in strip order with a reduced sparkline', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(
+      snapshot.quotes.map((quote) => quote.symbol),
+      ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
     );
+    assert.equal(snapshot.coverage.quoteCount, 12);
+    assert.equal(snapshot.coverage.quoteErrorCount, 0);
+    assert.ok(snapshot.quotesAsOf, 'the tape carries the upstream as-of stamp');
+    const spx = snapshot.quotes[0];
+    assert.equal(spx.display, 'S&P 500', 'the frozen row carries the label the card renders');
+    assert.equal(spx.change, 1.23, 'change is rounded, not carried at full float precision');
+    assert.equal(spx.sparkline.length, 12, 'a 40-point series is reduced for the 14x5px sparkline');
+    assert.equal(spx.sparkline[0], 100);
+    assert.equal(spx.sparkline.at(-1), 139);
+  });
+
+  it('drops quotes without a raw finite numeric change and preserves numeric zero', () => {
+    for (const change of [undefined, null, '', '1.25', 'n/a', Number.NaN, Infinity, -Infinity]) {
+      const quotes = selectFrozenQuotes([{
+        quotes: [{ symbol: '^GSPC', price: 100, change, sparkline: [99, 100] }],
+      }]);
+      assert.deepEqual(
+        quotes,
+        [],
+        `change ${String(change)} (${typeof change}) must not become a factual zero`,
+      );
+    }
+
+    const [unchanged] = selectFrozenQuotes([{
+      quotes: [{ symbol: '^GSPC', price: 100, change: 0, sparkline: [99, 100] }],
+    }]);
+    assert.equal(unchanged.change, 0, 'a genuine numeric zero is publishable');
+  });
+
+  it('keeps the country capture when the market upstream is down', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('list-market-quotes')) throw new Error('offline');
+      return outer(url);
+    };
+    const { snapshot } = await runFreeze();
+    // The equities leg is gone; commodities and crypto still publish.
+    assert.deepEqual(
+      snapshot.quotes.map((quote) => quote.symbol),
+      ['BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
+    );
+    assert.equal(snapshot.errors.quotes[0].message, 'offline');
+    assert.match(snapshot.errors.quotes[1].message, /missing \^GSPC, \^IXIC, \^VIX/);
+    assert.ok(snapshot.coverage.countryCount > 100, 'a market outage must not cost the corpus its refresh');
+  });
+
+  it('drops a quote with no usable price rather than defaulting one', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('list-crypto-quotes')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            quotes: [
+              { symbol: 'BTC', price: 0, change: 1, sparkline: [1, 2] },
+              { symbol: 'ETH', price: 2504.62, change: 4.49, sparkline: [2400, 2504.62] },
+            ],
+          }),
+        };
+      }
+      return outer(url);
+    };
+    const { snapshot } = await runFreeze();
+    const symbols = snapshot.quotes.map((quote) => quote.symbol);
+    assert.ok(!symbols.includes('BTC'), 'a zero price is not a price');
+    assert.ok(symbols.includes('ETH'));
+    assert.match(snapshot.errors.quotes[0].message, /missing BTC/);
   });
 
   it('omits the upstream no-active-disruptions boilerplate from frozen chokepoints', async () => {
     stubFetch({ chokepointDescriptions: { malacca_strait: 'No active disruptions' } });
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: STAGING_BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.equal(snapshot.chokepoints.malacca_strait.description, null);
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.chokepoints.malacca_strait.description, null);
   });
 });
 

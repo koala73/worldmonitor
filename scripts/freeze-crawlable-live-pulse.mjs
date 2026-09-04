@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Freeze last-known-good crawlable live-pulse values for country risk,
-// chokepoint status, crisis HAPI summaries, the top news headlines, and
+// chokepoint status, crisis HAPI summaries, the top news headlines,
+// the market tape, and
 // per-country recent developments (digest headlines matched per country,
 // plus the intel brief and timeline where a service key unlocks the
 // tier-gated routes). Writes
@@ -64,15 +65,136 @@ const HTTP_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_TIMEOUT_MS', 20_000);
 const OUTPUT_BASENAME = process.env.PULSE_FREEZE_OUTPUT_BASENAME || '';
 
 // Countries the upstream may legitimately fail to serve in a single run before
-// the freeze is considered too thin to publish. Chokepoints, crises and
-// headlines are small enough sets that partial capture is never acceptable.
+// the freeze is considered too thin to publish. Chokepoints and crises are
+// small enough sets that partial capture is never acceptable.
 const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 
-// The welcome strip's headline card renders exactly four rows, and
-// scripts/build-welcome-teasers.mjs derives them from this capture. Fewer than
-// four means the card would keep whatever it rendered last -- which is the
-// #7608 failure mode with a stale date on it. Gate instead.
+// The welcome strip's headline card renders four rows, and
+// scripts/build-welcome-teasers.mjs derives them from this capture.
+//
+// A shortfall is recorded and warned about, NOT thrown. This step runs last,
+// just before the only write, so throwing here would discard ~196 successfully
+// captured countries over a news-content problem -- and two such Mondays in a
+// row would push the snapshot past MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS and hard-
+// fail the whole crawlable corpus build. The strip degrades to fewer rows (or
+// none); it can never fill the gap with something unattributable, because the
+// generator publishes exactly what this capture vouched for.
 const HEADLINE_CAPTURE_COUNT = 4;
+
+// Share of headline-matched countries that must come back with a publishable
+// brief before the freeze is considered healthy. Proportional because the
+// matched set varies run to run, and generous because each brief is an LLM
+// response that must clear grounding and citation checks — a genuine outage
+// shows up as the zero-brief check, not as a few rejections.
+export const MIN_BRIEF_CAPTURE_RATIO = 0.6;
+
+// Lose at most one country, or the ratio's share of them -- whichever is more
+// forgiving. Neither rule works alone: a bare ratio demands 2 of 2 on a
+// two-country set, where a single LLM rejection is noise rather than a signal;
+// a bare "all but one" demands 50 of 51 on a real run. Taking the lower bound
+// of the two keeps a majority collapse failing at every set size (1 of 7 still
+// rejects) while letting an ordinary run's handful of rejections through.
+export function minimumBriefCaptures(briefMatchedCount) {
+  return Math.max(1, Math.min(
+    briefMatchedCount - 1,
+    Math.ceil(briefMatchedCount * MIN_BRIEF_CAPTURE_RATIO),
+  ));
+}
+
+// Aggregator hosts whose article links are opaque, expiring redirects rather
+// than the publisher's own URL. A frozen row is published for up to
+// MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS, and "verifiable" has to mean a reader can
+// see the outlet in the URL and still reach the piece next week.
+const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
+
+// Shared with scripts/build-welcome-teasers.mjs so the capture-time rule and
+// the publish-time re-check cannot drift apart.
+export function isVerifiableArticleUrl(url) {
+  const value = String(url || '').trim();
+  const parsed = URL.parse(value);
+  if (!parsed || parsed.protocol !== 'https:' || !parsed.hostname) return false;
+  const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+  return hostname.length > 0 && !AGGREGATOR_LINK_HOSTS.has(hostname);
+}
+
+// The market card's twelve rows, and the labels it renders them under.
+//
+// Mirrors QUOTE_SYMBOLS / QUOTE_LABELS in pro-test/src/services/teasers.ts.
+// pro-test is an isolated package that must not import from here, so the lists
+// are duplicated on purpose; tests/welcome-teasers.test.mjs imports both and
+// fails if they drift.
+const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
+const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
+export const QUOTE_SYMBOLS = [
+  '^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH',
+  'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X',
+];
+export const QUOTE_LABELS = {
+  '^GSPC': 'S&P 500',
+  '^IXIC': 'Nasdaq',
+  '^VIX': 'VIX',
+  BTC: 'Bitcoin',
+  ETH: 'Ethereum',
+  'CL=F': 'WTI crude',
+  'BZ=F': 'Brent',
+  'GC=F': 'Gold',
+  'HG=F': 'Copper',
+  'NG=F': 'Nat gas',
+  'EURUSD=X': 'EUR/USD',
+  'USDJPY=X': 'USD/JPY',
+};
+
+// The card paints a 14x5px sparkline, so the upstream's 48-530 point series is
+// far more resolution than it can show and far more bytes than the committed
+// snapshot should carry. Reduce to an evenly spaced sample that keeps the first
+// and last observation, so the frozen curve starts and ends where the real one
+// does instead of being a truncated tail.
+const QUOTE_SPARKLINE_POINTS = 12;
+
+// Round to a precision that survives every instrument on the card: FX quotes
+// live in the fourth decimal (EUR/USD 1.0821) while index levels need none.
+function roundQuoteValue(value) {
+  return Math.round(Number(value) * 10_000) / 10_000;
+}
+
+export function downsampleSparkline(points, target = QUOTE_SPARKLINE_POINTS) {
+  const values = (Array.isArray(points) ? points : [])
+    .map(Number)
+    .filter((value) => Number.isFinite(value));
+  if (values.length <= target) return values.map(roundQuoteValue);
+  const step = (values.length - 1) / (target - 1);
+  return Array.from({ length: target }, (_, i) => roundQuoteValue(values[Math.round(i * step)]));
+}
+
+// A quote row names a real instrument, so every field has to come from the
+// upstream rather than be filled in. #7608 shipped a hand-written market tape
+// that drifted to a 22% error on the S&P and a 30% error on Bitcoin -- specific
+// false numbers about named instruments, published as "live data". A row
+// missing a usable price or change is dropped, never defaulted.
+export function selectFrozenQuotes(payloads) {
+  const bySymbol = new Map();
+  for (const payload of payloads) {
+    for (const quote of Array.isArray(payload?.quotes) ? payload.quotes : []) {
+      const symbol = String(quote?.symbol || '').trim();
+      const price = Number(quote?.price);
+      const change = quote?.change;
+      if (!QUOTE_LABELS[symbol]) continue;
+      if (!Number.isFinite(price) || price <= 0) continue;
+      if (typeof change !== 'number' || !Number.isFinite(change)) continue;
+      bySymbol.set(symbol, {
+        symbol,
+        display: QUOTE_LABELS[symbol],
+        price: roundQuoteValue(price),
+        change: Math.round(change * 100) / 100,
+        sparkline: downsampleSparkline(quote?.sparkline),
+      });
+    }
+  }
+  // Card order, not response order: the strip renders equities, crypto, energy,
+  // metals and FX in a fixed sequence.
+  return QUOTE_SYMBOLS.map((symbol) => bySymbol.get(symbol)).filter(Boolean);
+}
 
 // Per-country "Recent developments" cap (#7615): 3-5 dated, attributed,
 // linked headlines per country page. Below 3 the section is thin; above 5 the
@@ -401,25 +523,35 @@ function emptyDevelopments(freezeStartedAt, briefSkipped) {
 //
 // A row reaches the homepage with a masthead beside it, so it must carry
 // everything a reader needs to check that attribution: the outlet, an https
-// article URL, and the publication time. #7608 shipped four invented headlines
-// under real Reuters/FT/AP/BBC bylines because the strip's fallback was
-// hand-written prose with none of those. An item missing any of the three is
-// dropped here rather than published unverifiable.
+// article URL on the publisher's own host, and the publication time. #7608
+// shipped four invented headlines under real Reuters/FT/AP/BBC bylines because
+// the strip's fallback was hand-written prose with none of those. An item
+// missing any of them is dropped here rather than published unverifiable.
 //
-// Ranking mirrors the browser path in pro-test/src/services/teasers.ts, so the
-// frozen rows are the same ones a live fetch would replace them with.
+// Ranking is importance-first like the browser path in
+// pro-test/src/services/teasers.ts, but this selector is deliberately STRICTER:
+// it also requires a masthead, a publication time and a non-aggregator link, so
+// the frozen rows are a publishable subset of what a live fetch would show, not
+// necessarily the identical four.
+//
+// Returns the accepted rows plus a rejection tally. A silent `.filter()` here
+// would leave a shortfall with no recorded cause, since the request itself
+// succeeded -- the operator would see a count and no reason.
 export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
+  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0 };
   const categories = payload && typeof payload === 'object' ? payload.categories : null;
-  if (!categories || typeof categories !== 'object') return [];
-  return Object.values(categories)
+  if (!categories || typeof categories !== 'object') return { rows: [], rejections };
+  const rows = Object.values(categories)
     .flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []))
     .map((item) => {
       const title = String(item?.title || '').trim();
       const source = String(item?.source || '').trim();
-      const url = normalizeHttpsUrl(item?.link);
+      const url = String(item?.link || '').trim();
       const publishedAt = Number(item?.publishedAt);
-      if (!title || !source || !url) return null;
-      if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
+      if (!title) { rejections.noTitle += 1; return null; }
+      if (!source) { rejections.noSource += 1; return null; }
+      if (!isVerifiableArticleUrl(url)) { rejections.unverifiableUrl += 1; return null; }
+      if (!Number.isFinite(publishedAt) || publishedAt <= 0) { rejections.noPublishedAt += 1; return null; }
       return {
         row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
         importanceScore: Number(item?.importanceScore) || 0,
@@ -434,6 +566,7 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
     ))
     .slice(0, limit)
     .map((entry) => entry.row);
+  return { rows, rejections };
 }
 
 // Country matching mirrors the server's shared grounding
@@ -684,17 +817,36 @@ export async function freezeCrawlableLivePulse({
     }
   }
 
-  // Guarded like every other network step: a digest outage degrades into the
-  // coverage gate below instead of discarding the country/chokepoint work.
+  // Guarded like every other network step, and unlike the others it never
+  // throws: a digest outage costs the strip its headline rows, not the whole
+  // snapshot (see HEADLINE_CAPTURE_COUNT).
   // The raw items are ALSO the per-country developments source below — one
   // digest fetch feeds the global strip (#7608) and every country page
   // (#7615), never two.
   const headlineErrors = [];
   let headlines = [];
   let digestItems = [];
+  // ListFeedDigest self-reports how it is being served. Four well-formed rows
+  // off a six-hour-old last-good replay look identical to a complete capture
+  // unless that verdict is carried into the artifact, so record it.
+  let headlineDigestState = null;
+  let headlineServedStale = null;
   try {
     const digest = await authedGet('/api/news/v1/list-feed-digest?variant=full&lang=en', token, base, authOpts);
-    headlines = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
+    headlineDigestState = digest?.coverage?.state ?? null;
+    headlineServedStale = typeof digest?.coverage?.servedStale === 'boolean'
+      ? digest.coverage.servedStale
+      : null;
+    const { rows, rejections } = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
+    headlines = rows;
+    if (rows.length < HEADLINE_CAPTURE_COUNT) {
+      headlineErrors.push({
+        id: '*',
+        message: `only ${rows.length} of ${HEADLINE_CAPTURE_COUNT} digest items were publishable `
+          + `(rejected: ${Object.entries(rejections).map(([k, v]) => `${k}=${v}`).join(', ')}; `
+          + `digest state=${headlineDigestState ?? 'unknown'})`,
+      });
+    }
     const categories = digest && typeof digest === 'object' ? digest.categories : null;
     if (categories && typeof categories === 'object') {
       digestItems = Object.values(categories)
@@ -704,6 +856,42 @@ export async function freezeCrawlableLivePulse({
     headlineErrors.push({
       id: '*',
       message: error instanceof Error ? error.message : String(error),
+    });
+  }
+
+  // Market tape (#7608). Three endpoints, captured individually so one bad
+  // upstream costs the card its rows rather than the whole tape, and never
+  // throwing for the same reason the headline capture does not: a market
+  // outage must not discard the country work or arm the corpus staleness fuse.
+  const quoteErrors = [];
+  let quotes = [];
+  let quotesAsOf = null;
+  let quotesRateLimited = null;
+  const quotePayloads = [];
+  const quoteRequests = [
+    ['market', `/api/market/v1/list-market-quotes?${MARKET_QUOTE_SYMBOLS.map((symbol) => `symbols=${encodeURIComponent(symbol)}`).join('&')}`],
+    ['commodities', `/api/market/v1/list-commodity-quotes?${COMMODITY_QUOTE_SYMBOLS.map((symbol) => `symbols=${encodeURIComponent(symbol)}`).join('&')}`],
+    ['crypto', `/api/market/v1/list-crypto-quotes?${CRYPTO_QUOTE_IDS.map((id) => `ids=${encodeURIComponent(id)}`).join('&')}`],
+  ];
+  for (const [id, pathname] of quoteRequests) {
+    try {
+      const payload = await authedGet(pathname, token, base, authOpts);
+      quotePayloads.push(payload);
+      if (id === 'market') {
+        quotesAsOf = typeof payload?.asOf === 'string' ? payload.asOf : null;
+        quotesRateLimited = typeof payload?.rateLimited === 'boolean' ? payload.rateLimited : null;
+      }
+    } catch (error) {
+      quoteErrors.push({ id, message: error instanceof Error ? error.message : String(error) });
+    }
+    await sleep(requestGapMs);
+  }
+  quotes = selectFrozenQuotes(quotePayloads);
+  if (quotes.length < QUOTE_SYMBOLS.length) {
+    const missing = QUOTE_SYMBOLS.filter((symbol) => !quotes.some((quote) => quote.symbol === symbol));
+    quoteErrors.push({
+      id: '*',
+      message: `captured ${quotes.length} of ${QUOTE_SYMBOLS.length} quotes; missing ${missing.join(', ')}`,
     });
   }
 
@@ -817,6 +1005,8 @@ export async function freezeCrawlableLivePulse({
     chokepoints,
     crises: crisisSnapshots,
     headlines,
+    quotes,
+    quotesAsOf,
     signalConvergence: {
       ...signalConvergenceReference(capturedAt),
       ciiGeoConvergenceLeaders: geoLeaders,
@@ -830,6 +1020,11 @@ export async function freezeCrawlableLivePulse({
       crisisErrorCount: crisisErrors.length,
       headlineCount: headlines.length,
       headlineErrorCount: headlineErrors.length,
+      headlineDigestState,
+      headlineServedStale,
+      quoteCount: quotes.length,
+      quoteErrorCount: quoteErrors.length,
+      quotesRateLimited,
       headlineCountryCount: Object.values(countries)
         .filter((row) => (row.developments?.headlines?.length || 0) > 0).length,
       briefCountryCount: Object.values(countries)
@@ -847,6 +1042,7 @@ export async function freezeCrawlableLivePulse({
       chokepoints: chokepointErrors,
       crises: crisisErrors,
       headlines: headlineErrors,
+      quotes: quoteErrors,
       developments: developmentsErrors,
     },
   };
@@ -876,18 +1072,18 @@ export async function freezeCrawlableLivePulse({
     );
   }
 
-  if (headlines.length < HEADLINE_CAPTURE_COUNT) {
-    throw new Error(
-      `Pulse freeze captured only ${headlines.length} of ${HEADLINE_CAPTURE_COUNT} headlines`
-      + firstCaptureCause(headlineErrors),
-    );
-  }
-
-  // Brief gate (#7615): with a service key, every headline-matched country is
-  // owed a brief attempt. Tolerance mirrors the country shortfall above — a
-  // few LLM failures must not red the weekly run — but zero briefs means the
-  // key is wrong-tiered, the route moved, or the model is down, and shipping
-  // that silently would revert every enriched page to headlines-only.
+  // Brief gate (#7615, retuned in the #7620 follow-up): with a service key,
+  // every headline-matched country is owed a brief attempt. Zero briefs means
+  // the key is wrong-tiered, the route moved, or the model is down, and
+  // shipping that silently would revert every enriched page to headlines-only.
+  //
+  // The tolerance is PROPORTIONAL, not the absolute MAX_COUNTRY_CAPTURE_SHORTFALL
+  // this originally borrowed. That constant is calibrated against ~196 countries
+  // (a 2.5% allowance); applied to a headline-matched set that varies run to run
+  // — 51 on 2026-09-04 — it became a 90% demand on a stochastic upstream, where
+  // each brief must pass grounding and citation checks. A run capturing 41 of 51
+  // threw and wrote no snapshot at all, taking the country, chokepoint and
+  // crisis captures down with it.
   // Without a key there is nothing to gate: briefSkipped=no-service-key is
   // the documented degraded state, not a failure.
   if (keyed && snapshot.coverage.briefMatchedCount > 0) {
@@ -897,7 +1093,7 @@ export async function freezeCrawlableLivePulse({
         + firstCaptureCause(developmentsErrors),
       );
     }
-    const minBriefs = Math.max(1, snapshot.coverage.briefMatchedCount - MAX_COUNTRY_CAPTURE_SHORTFALL);
+    const minBriefs = minimumBriefCaptures(snapshot.coverage.briefMatchedCount);
     if (snapshot.coverage.briefCountryCount < minBriefs) {
       throw new Error(
         `Pulse freeze captured briefs for only ${snapshot.coverage.briefCountryCount} of ${snapshot.coverage.briefMatchedCount} headline-matched countries; `
@@ -923,16 +1119,44 @@ if (isMain) {
         + `chokepoints=${snapshot.coverage.chokepointCount} `
         + `crises=${snapshot.coverage.crisisCount} `
         + `headlines=${snapshot.coverage.headlineCount} `
+        + `quotes=${snapshot.coverage.quoteCount} `
         + `headlineCountries=${snapshot.coverage.headlineCountryCount} `
         + `briefCountries=${snapshot.coverage.briefCountryCount} `
         + `timelineCountries=${snapshot.coverage.timelineCountryCount} `
         + `keyed=${snapshot.coverage.serviceKeyPresent}`,
       );
+      if (snapshot.coverage.headlineCount < HEADLINE_CAPTURE_COUNT) {
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: only ${snapshot.coverage.headlineCount} publishable `
+          + 'headline(s) captured; the welcome strip will show that many rows. '
+          + `Cause: ${snapshot.errors.headlines[0]?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.quoteCount < QUOTE_SYMBOLS.length) {
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: only ${snapshot.coverage.quoteCount} of `
+          + `${QUOTE_SYMBOLS.length} market quotes captured; the tape will show that many rows. `
+          + `Cause: ${snapshot.errors.quotes[0]?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.quotesRateLimited) {
+        console.warn(
+          '[freeze-crawlable-live-pulse] WARNING: market upstream reported rateLimited; '
+          + 'frozen prices may be older than this run.',
+        );
+      }
+      if (snapshot.coverage.headlineServedStale) {
+        console.warn(
+          '[freeze-crawlable-live-pulse] WARNING: news digest served stale content '
+          + `(state=${snapshot.coverage.headlineDigestState}); frozen headlines are older than this run.`,
+        );
+      }
       if (
         snapshot.coverage.countryErrorCount
         || snapshot.coverage.chokepointErrorCount
         || snapshot.coverage.crisisErrorCount
         || snapshot.coverage.headlineErrorCount
+        || snapshot.coverage.quoteErrorCount
         || snapshot.coverage.developmentsErrorCount
       ) {
         console.warn('[freeze-crawlable-live-pulse] partial errors recorded in snapshot.errors');
@@ -947,6 +1171,7 @@ if (isMain) {
           + '(briefSkipped=no-service-key). Set WORLDMONITOR_API_KEY for full enrichment.',
         );
       }
+      console.log('[freeze-crawlable-live-pulse] next: npm run teasers:welcome (regenerates the welcome strip)');
     })
     .catch((error) => {
       console.error('[freeze-crawlable-live-pulse] failed:', error);

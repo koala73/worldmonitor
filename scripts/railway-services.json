@@ -4,6 +4,10 @@
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.relay",
     "service": "ais-relay",
+    "requiredEnv": [
+      "X_BEARER_TOKEN",
+      "X_CURATED_LIST_ID"
+    ],
     "watchPatterns": [
       ".dockerignore",
       "Dockerfile.relay",
@@ -29,6 +33,7 @@
       "scripts/generate-inventory-facts.mjs",
       "scripts/lib/classify-digest-request.cjs",
       "scripts/lib/digest-stale-gate.cjs",
+      "scripts/lib/geo-coord.mjs",
       "scripts/lib/llm-model-policy.cjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/poll-generation-guard.cjs",
@@ -408,6 +413,7 @@
       "scripts/lib/bc-emergency-info.mjs",
       "scripts/lib/canada-alerts-union.mjs",
       "scripts/lib/saskalert.mjs",
+      "scripts/lib/geo-coord.mjs",
       "scripts/lib/gtfsrt.mjs",
       "scripts/lib/llm-telemetry.cjs",
       "scripts/lib/open511.mjs",

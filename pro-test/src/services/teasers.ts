@@ -19,6 +19,8 @@ import { createTimeoutSignal } from './timeout-signal';
 export interface TeaserHeadline {
   title: string;
   source: string;
+  /** Article URL. A headline rendered beside a masthead must be checkable (#7608). */
+  url: string;
   publishedAt: number;
 }
 
@@ -51,10 +53,31 @@ export interface TeaserState {
 
 const FETCH_TIMEOUT_MS = 5000;
 
+// Mirrors AGGREGATOR_LINK_HOSTS in scripts/freeze-crawlable-live-pulse.mjs.
+// pro-test is an isolated package and cannot import from scripts/, so this list
+// is duplicated on purpose — keep the two in step. An aggregator redirect is an
+// opaque, expiring URL: the masthead beside it is real but the link does not
+// let a reader verify the story, which is the whole point of showing it (#7608).
+const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
+
+function articleUrl(link: string | undefined): string {
+  if (!link) return '';
+  try {
+    const parsed = new URL(link);
+    const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+    return parsed.protocol === 'https:' && hostname && !AGGREGATOR_LINK_HOSTS.has(hostname)
+      ? link
+      : '';
+  } catch {
+    return '';
+  }
+}
+
 interface FallbackShape {
   headlines: TeaserHeadline[];
   cii: TeaserCiiScore[];
   chokepoints: TeaserChokepoint[];
+  chokepointDisrupted: number;
   chokepointTotal: number;
   quotes: TeaserQuote[];
 }
@@ -69,8 +92,12 @@ export function getFallbackTeasers(): TeaserState {
     cii: { items: fallback.cii, live: false },
     chokepoints: {
       items: fallback.chokepoints,
+      // Both halves come from the full capture. Counting `disrupted` off
+      // `fallback.chokepoints` — the five rows the card renders — published
+      // "5 of 13" into the prerender against a real 7 of 13, because the
+      // numerator was capped by the display slice and the denominator was not.
       total: fallback.chokepointTotal,
-      disrupted: fallback.chokepoints.filter(isDisrupted).length,
+      disrupted: fallback.chokepointDisrupted,
       live: false,
     },
     quotes: { items: fallback.quotes, live: false },
@@ -167,9 +194,12 @@ interface CryptoQuotesResponse {
 const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
 const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
-const QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+// Exported so tests/welcome-teasers.test.mjs can pin these against the
+// duplicated copies in scripts/freeze-crawlable-live-pulse.mjs (pro-test is an
+// isolated package and cannot share the constants directly).
+export const QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 
-const QUOTE_LABELS: Record<string, string> = {
+export const QUOTE_LABELS: Record<string, string> = {
   '^GSPC': 'S&P 500',
   '^IXIC': 'Nasdaq',
   '^VIX': 'VIX',
@@ -235,7 +265,7 @@ async function fetchQuotes(): Promise<{ items: TeaserQuote[]; live: boolean } | 
 }
 
 interface FeedDigestResponse {
-  categories?: Record<string, { items?: Array<{ title?: string; source?: string; publishedAt?: number; importanceScore?: number }> }>;
+  categories?: Record<string, { items?: Array<{ title?: string; source?: string; link?: string; publishedAt?: number; importanceScore?: number }> }>;
   generatedAt?: string;
 }
 
@@ -249,9 +279,24 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
     .filter(i => typeof i.title === 'string' && i.title.length > 0);
   if (!all.length) return null;
   const items = all
-    .sort((a, b) => (b.importanceScore ?? 0) - (a.importanceScore ?? 0))
+    // Same three-level ordering as selectFrozenHeadlines in
+    // scripts/freeze-crawlable-live-pulse.mjs. Sorting on importance alone
+    // leaves ties to array order, so a tie at the fourth slot could swap which
+    // headline the live fetch shows versus the frozen row it replaces.
+    .sort((a, b) => (
+      (b.importanceScore ?? 0) - (a.importanceScore ?? 0)
+      || (b.publishedAt ?? 0) - (a.publishedAt ?? 0)
+      || (a.title ?? '').localeCompare(b.title ?? '')
+    ))
     .slice(0, 4)
-    .map(i => ({ title: i.title as string, source: i.source ?? '', publishedAt: i.publishedAt ?? 0 }));
+    .map(i => ({
+      title: i.title as string,
+      source: i.source ?? '',
+      // Anything not a verifiable https article URL degrades to plain text
+      // rather than becoming a live href (LiveStrip renders a <span> for '').
+      url: articleUrl(i.link),
+      publishedAt: i.publishedAt ?? 0,
+    }));
   // The digest response carries no degraded/stale booleans — its freshness
   // signal is generatedAt. Only claim LIVE when the digest is recent; an
   // unparseable/missing timestamp keeps the badge (matches the other

@@ -1,9 +1,10 @@
 name: Refresh Crawlable Live Pulse
 
 # The committed pulse snapshot is published as "Current signal" on every
-# country, chokepoint and crisis page. build-crawlable-corpus.mjs rejects a
-# snapshot older than MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS (10), so this weekly
-# refresh is what keeps the corpus buildable as well as truthful.
+# country, chokepoint and crisis page, and as the homepage teaser strip's
+# prerendered fallback. build-crawlable-corpus.mjs rejects a snapshot older than
+# MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS (10), so this weekly refresh is what keeps
+# the corpus buildable as well as truthful.
 #
 # Weekly, not monthly: these pages are headed "Approx. 24-hour movement", and a
 # monthly cron behind a 45-day ceiling let them ship on six-week-old data
@@ -58,7 +59,7 @@ jobs:
               --base main \
               --head "$branch" \
               --title "chore(corpus): refresh crawlable live pulse ${period}" \
-              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
+              --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, and the homepage welcome-teaser strip (#7608)."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -95,10 +96,16 @@ jobs:
         run: |
           npm run build:crawlable-corpus
           npm run build:sitemap
+          # The homepage teaser strip is derived from the same snapshot, so it
+          # refreshes on this cadence too. Skipping it would leave the strip
+          # publishing headlines and scores this freeze has already superseded —
+          # the drift that produced #7608 — and red the unit gate on this PR.
+          npm run teasers:welcome
           node --import tsx --test --test-concurrency=1 \
             tests/crawlable-corpus.test.mjs \
             tests/crawlable-live-tools.test.mjs \
             tests/freeze-crawlable-live-pulse.test.mjs \
+            tests/welcome-teasers.test.mjs \
             tests/sitemap-generation.test.mjs
       - name: Prune superseded pulse snapshots
         if: steps.reconcile.outputs.skip != 'true'
@@ -120,11 +127,11 @@ jobs:
           git switch -c "$BRANCH_NAME"
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add "$snapshot_path" public/sitemap.xml
+          git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml pro-test/src/generated/teasers.json
           git commit -m "chore(corpus): refresh crawlable live pulse ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
           gh pr create \
             --base main \
             --head "$BRANCH_NAME" \
             --title "chore(corpus): refresh crawlable live pulse ${snapshot_date}" \
-            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus and root sitemap."
+            --body "Weekly crawlable live-pulse refresh. Rebuilds the crawlable corpus, root sitemap, and the homepage welcome-teaser strip (#7608)."

@@ -3,100 +3,101 @@ import assert from 'node:assert/strict';
 import { createRequire } from 'node:module';
 
 const require = createRequire(import.meta.url);
-const { createXPollCycle } = require('../scripts/lib/x-poll-cycle.cjs');
+const { createXPollCycle, xPollSlot } = require('../scripts/lib/x-poll-cycle.cjs');
 const xNewsAccounts = require('../scripts/lib/x-news-accounts.cjs');
 const {
   createXPostBudget,
   RESERVE_LUA,
   SETTLE_LUA,
   ACK_RECEIPTS_LUA,
-  STATUS_LUA,
 } = require('../scripts/lib/x-post-budget.cjs');
-
-// These three functions used to live inside scripts/ais-relay.cjs, which has no
-// module.exports and no require.main guard — importing it boots the relay — so
-// the only "coverage" they had was tests/x-relay-state-contract.test.mjs
-// asserting that regexes matched the file's SOURCE TEXT. A regex proves a string
-// exists, not that a branch works: a generation-field collision, a lease handoff
-// that permanently dropped a peer replica's posts, and a stuck-abort threshold
-// that outlived the Redis lease all passed those assertions. Everything below
-// executes the real code with stubbed Redis instead.
 
 const CACHE_KEY = 'intelligence:x-feed:v1';
 const POLL_STATE_KEY = 'intelligence:x-feed:poll-state:v1';
 const LOCK_KEY = 'intelligence:x-feed:poll-lock:v1';
 const META_KEY = 'seed-meta:intelligence:x-feed:v1';
-const NOW = 1_700_000_000_000;
-
+const LIST_ID = '1234567890123456789';
+const NOW = Date.parse('2026-09-03T12:07:30.000Z');
+const SLOT_ID = '2026-09-03T12:00:00.000Z';
 const ACCOUNT = {
   handle: 'Reuters',
   accountId: '1652541',
   label: 'Reuters',
   sourceName: 'Reuters',
   topic: 'world',
-  tier: 1,
   enabled: true,
 };
 
-function post(id, ts) {
-  return { id, postId: id, ts, text: `post ${id}`, sourceName: 'Reuters', handle: 'Reuters' };
+function post(id, ts = '2026-09-03T12:06:00.000Z') {
+  return {
+    id: `Reuters:${id}`,
+    postId: id,
+    source: 'x',
+    account: 'Reuters',
+    accountId: ACCOUNT.accountId,
+    accountTitle: 'Reuters',
+    sourceName: 'Reuters',
+    url: `https://x.com/Reuters/status/${id}`,
+    ts,
+    text: `post ${id}`,
+    topic: 'world',
+    tags: [],
+    lang: 'en',
+    hasMedia: false,
+    isReply: false,
+    isQuote: false,
+    likeCount: 0,
+    replyCount: 0,
+    repostCount: 0,
+    earlySignal: true,
+    storageState: 'metadata_only',
+    contentState: 'active',
+  };
 }
 
-// Mirrors the xState literal in scripts/ais-relay.cjs.
 function makeState(overrides = {}) {
   return {
     accounts: [ACCOUNT],
-    cursorByAccountId: Object.create(null),
-    accountIdByHandle: Object.create(null),
-    lastPolledAtByHandle: Object.create(null),
-    lastDeletionAuditAt: 0,
-    lastCycleUsage: null,
-    postBudget: null,
     items: [],
     lookupOffset: 0,
-    accountOffset: 0,
     generation: 0,
     lastPollAt: 0,
     lastHealthyAt: 0,
+    lastAttemptAt: 0,
+    lastProviderSuccessAt: 0,
+    lastAcceptedPublicationAt: 0,
+    lastAttemptSlot: null,
+    lastProviderSuccessSlot: null,
+    lastPublishedSlot: null,
     lastCoverage: null,
     lastError: null,
     rateLimitedUntil: 0,
     rateLimitAttempt: 0,
     backoffCause: null,
+    lastDeletionAuditAt: 0,
+    lastCycleUsage: null,
+    postBudget: null,
     hydrationFailed: false,
     startedAt: NOW,
     ...overrides,
   };
 }
 
-// A poll result shaped like xNewsAccounts.pollXFeed's return value.
 function pollResult(overrides = {}) {
   return {
-    cursorByAccountId: { 1652541: '900' },
-    accountIdByHandle: { reuters: '1652541' },
-    lastPolledAtByHandle: { Reuters: NOW },
-    lastDeletionAuditAt: NOW,
-    lastCycleUsage: { requestsUsed: 2, requestLimit: 2, postsRead: 1, postReadLimit: 10 },
-    postBudget: {
-      available: true,
-      day: '2023-11-14',
-      month: '2023-11',
-      dailyLimit: 600,
-      dailyUsed: 1,
-      dailyRemaining: 599,
-      monthlyLimit: 20_000,
-      monthlyUsed: 1,
-      monthlyRemaining: 19_999,
-      exhausted: false,
-    },
     items: [],
     lookupOffset: 0,
-    accountOffset: 0,
+    lastDeletionAuditAt: 0,
+    lastCycleUsage: { requestsUsed: 1, requestLimit: 2, postsRead: 0, postReadLimit: 5 },
+    postBudget: { available: true, dailyLimit: 600, dailyUsed: 5, monthlyLimit: 20_000, monthlyUsed: 5 },
     accountsPolled: 1,
     accountsFailed: 0,
     accountsAttempted: 1,
     cycleComplete: true,
-    newCount: 1,
+    listAccepted: true,
+    providerSuccess: true,
+    newCount: 0,
+    receiptAcks: [],
     rateLimitedUntil: 0,
     rateLimitAttempt: 0,
     backoffCause: null,
@@ -105,112 +106,53 @@ function pollResult(overrides = {}) {
   };
 }
 
-function createReceiptBudgetDouble() {
-  let dailyUsed = 0;
-  let monthlyUsed = 0;
-  let reservation = null;
-  let receipt = null;
-  return {
-    budget: createXPostBudget({
-      now: () => NOW,
-      idFactory: () => 'integration-reservation',
-      dailyCoveragePosts: 10,
-      evalCommand: async (script, keys, args) => {
-        if (script === RESERVE_LUA) {
-          if (receipt) return [0, dailyUsed, monthlyUsed, 4, 0, receipt];
-          const requested = Number(args[0]);
-          dailyUsed += requested;
-          monthlyUsed += requested;
-          reservation = { key: keys[2], reserved: requested };
-          return [1, dailyUsed, monthlyUsed, 0, 0, ''];
-        }
-        if (script === SETTLE_LUA) {
-          assert.equal(keys[2], reservation?.key);
-          const actual = Number(args[0]);
-          const refund = reservation.reserved - actual;
-          dailyUsed -= refund;
-          monthlyUsed -= refund;
-          receipt = args[3];
-          return [1, dailyUsed, monthlyUsed, reservation.reserved, actual, 0];
-        }
-        if (script === ACK_RECEIPTS_LUA) {
-          if (receipt === args[0]) {
-            receipt = null;
-            return 1;
-          }
-          return 0;
-        }
-        if (script === STATUS_LUA) return [dailyUsed, monthlyUsed, 0];
-        throw new Error('unexpected budget script');
-      },
-    }),
-    status: () => ({ dailyUsed, monthlyUsed, hasReceipt: receipt != null }),
-  };
-}
-
 function createHarness(options = {}) {
-  const {
-    state = makeState(),
-    redis = new Map(),
-    failGet = () => false,
-    setNxResult = 'new',
-    publishResult = true,
-    pollXFeed = async () => pollResult(),
-    autoFireTimer = true,
-    xEnabled = true,
-    now = () => NOW,
-    fetchImpl = () => { throw new Error('the cycle must not fetch directly'); },
-    xPostBudget = {
-      withReturnedPosts: async ({ execute }) => execute(),
-      ackReceipts: async () => true,
-      status: async () => ({ available: true, dailyLimit: 600, monthlyLimit: 20_000 }),
-    },
-  } = options;
-
+  const state = options.state ?? makeState();
+  const redis = options.redis ?? new Map();
   const calls = {
-    get: [], setNx: [], publish: [], release: [], poll: [], retry: [], timer: [],
-    timerFns: [], loadAccounts: 0, log: [], warn: [], ack: [],
+    get: [], setNx: [], publish: [], release: [], poll: [], retry: [], ack: [], warn: [], timer: [],
   };
-  let getIndex = 0;
   let generation = 1;
-
+  const pollXFeed = options.pollXFeed ?? (async () => pollResult());
+  const providedBudget = options.xPostBudget || {};
+  const publishResult = options.publishResult ?? ((args) => {
+    redis.set(CACHE_KEY, args.snapshot);
+    redis.set(POLL_STATE_KEY, args.pollState);
+    return true;
+  });
   const cycle = createXPollCycle({
     xState: state,
     xNewsAccounts: {
       ...xNewsAccounts,
       pollXFeed: async (args) => {
-        // `args.state` is the live xState the cycle keeps mutating, so snapshot
-        // the fields a test wants to inspect AT CALL TIME.
-        calls.poll.push({
-          ...args,
-          cursorsAtCall: { ...args.state.cursorByAccountId },
-          itemsAtCall: [...(args.state.items || [])],
-        });
+        calls.poll.push(args);
         return pollXFeed(args);
       },
     },
     xPostBudget: {
-      ...xPostBudget,
+      withReturnedPosts: providedBudget.withReturnedPosts
+        ? (request) => providedBudget.withReturnedPosts(request)
+        : async (request) => request.execute({}, {}),
       ackReceipts: async (receipts) => {
         calls.ack.push(receipts);
-        return typeof xPostBudget.ackReceipts === 'function'
-          ? xPostBudget.ackReceipts(receipts)
-          : true;
+        return providedBudget.ackReceipts ? providedBudget.ackReceipts(receipts) : true;
       },
     },
-    loadXAccounts: () => { calls.loadAccounts += 1; return state.accounts; },
+    loadXAccounts: () => state.accounts,
     upstashGet: async (key, onFailure) => {
-      const index = getIndex++;
       calls.get.push(key);
-      if (failGet(key, index)) {
-        onFailure?.(`stubbed read failure (call ${index}, ${key})`);
+      options.onGet?.(key);
+      if (options.failGet?.(key)) {
+        onFailure?.('stubbed failure');
         return null;
       }
-      return redis.has(key) ? redis.get(key) : null;
+      return redis.get(key) ?? null;
     },
     upstashSetNx: async (key, owner, ttlSeconds) => {
       calls.setNx.push({ key, owner, ttlSeconds });
-      return typeof setNxResult === 'function' ? setNxResult() : setNxResult;
+      return typeof options.setNxResult === 'function'
+        ? options.setNxResult({ key, owner, ttlSeconds })
+        : (options.setNxResult ?? 'new');
     },
     upstashPublishXIfLockOwner: async (args) => {
       calls.publish.push(args);
@@ -218,519 +160,408 @@ function createHarness(options = {}) {
     },
     upstashReleaseLockIfOwner: async (key, owner) => { calls.release.push({ key, owner }); return true; },
     getPollGeneration: () => generation,
-    scheduleRetry: (retryAfterLeaseConflict) => { calls.retry.push(retryAfterLeaseConflict); },
+    scheduleRetry: (retry) => calls.retry.push(retry),
     randomId: () => 'deadbeef',
-    X_ENABLED: xEnabled,
+    X_ENABLED: options.xEnabled ?? true,
     X_BEARER_TOKEN: 'test-bearer',
+    X_CURATED_LIST_ID: LIST_ID,
+    X_POLL_INTERVAL_MS: 15 * 60 * 1000,
     X_FEED_CACHE_KEY: CACHE_KEY,
     X_FEED_META_KEY: META_KEY,
     X_FEED_POLL_STATE_KEY: POLL_STATE_KEY,
     X_FEED_POLL_LOCK_KEY: LOCK_KEY,
     X_FEED_TTL_SECONDS: 5400,
     X_FEED_META_TTL_SECONDS: 3600,
-    X_FEED_POLL_LOCK_TTL_SECONDS: 720,
+    X_FEED_POLL_LOCK_TTL_SECONDS: options.xFeedPollLockTtlSeconds ?? 120,
     X_MAX_FEED_ITEMS: 200,
     X_MAX_TEXT_CHARS: 800,
-    log: (message) => calls.log.push(message),
-    warn: (message) => calls.warn.push(message),
-    now,
+    now: options.now ?? (() => NOW),
     pid: 4242,
-    fetchImpl,
+    fetchImpl: options.fetchImpl ?? (() => { throw new Error('cycle must not fetch directly'); }),
+    warn: (line) => calls.warn.push(line),
     setTimer: (fn, ms) => {
-      calls.timer.push(ms);
-      calls.timerFns.push(fn);
-      if (autoFireTimer) fn();
-      return { unref() {} };
+      calls.timer.push({ fn, ms });
+      return { fn, unref() {} };
     },
   });
-
-  return {
-    cycle,
-    calls,
-    state,
-    redis,
-    getGeneration: () => generation,
-    setGeneration: (value) => { generation = value; },
-  };
+  return { cycle, state, redis, calls, setGeneration: (value) => { generation = value; } };
 }
 
-describe('createXPollCycle — baseline cycle (positive control)', () => {
-  it('publishes and commits when Redis reads, the lease and the publish all succeed', async () => {
-    const harness = createHarness({
-      pollXFeed: async () => pollResult({ items: [post('fresh-1', '2026-08-20T10:00:00Z')] }),
+describe('fixed X poll slots', () => {
+  it('aligns every time to a fixed 15-minute UTC slot', () => {
+    assert.deepEqual(xPollSlot(NOW), {
+      id: SLOT_ID,
+      startsAt: Date.parse(SLOT_ID),
+      endsAt: Date.parse('2026-09-03T12:15:00.000Z'),
     });
+  });
 
-    assert.equal(await harness.cycle.hydrate(), false, 'empty Redis hydrates to nothing, but not to a failure');
-    assert.equal(harness.state.hydrationFailed, false);
+  it('does not admit work twice in a slot, including after hydration', async () => {
+    const first = createHarness();
+    await first.cycle.pollOnce({ generation: 1 });
+
+    const restarted = createHarness({ redis: first.redis });
+    assert.equal(await restarted.cycle.hydrate(), true);
+    await restarted.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(restarted.calls.setNx.length, 0);
+    assert.equal(restarted.calls.poll.length, 0);
+    assert.equal(restarted.state.lastAttemptSlot, SLOT_ID);
+  });
+
+  it('uses the active slot when Redis reads cross a slot boundary', async () => {
+    let clock = Date.parse('2026-09-03T12:14:59.999Z');
+    let crossed = false;
+    const harness = createHarness({
+      now: () => clock,
+      onGet: () => {
+        if (crossed) return;
+        crossed = true;
+        clock = Date.parse('2026-09-03T12:15:00.001Z');
+      },
+    });
 
     await harness.cycle.pollOnce({ generation: 1 });
 
-    assert.equal(harness.calls.setNx.length, 1);
-    assert.equal(harness.calls.setNx[0].key, LOCK_KEY);
-    assert.equal(harness.calls.setNx[0].ttlSeconds, 720);
-    assert.match(harness.calls.setNx[0].owner, /^ais-relay:4242:1:\d+:deadbeef$/);
-    assert.equal(harness.calls.publish.length, 1, 'a healthy cycle must publish exactly once');
-    assert.equal(harness.calls.publish[0].snapshotKey, CACHE_KEY);
-    assert.equal(harness.calls.publish[0].pollStateKey, POLL_STATE_KEY);
-    assert.equal(harness.calls.publish[0].metaKey, META_KEY);
-    assert.equal(harness.calls.publish[0].meta.sourceState, 'ok');
-    assert.equal(harness.calls.publish[0].meta.fetchedAt, NOW);
-    assert.equal(typeof harness.calls.poll[0].withReturnedPosts, 'function');
-    // Commit happens only after a successful publish.
-    assert.deepEqual(harness.state.items.map((item) => item.id), ['fresh-1']);
-    assert.equal(harness.state.generation, 1);
-    assert.equal(harness.state.lastPollAt, NOW);
-    assert.deepEqual({ ...harness.state.cursorByAccountId }, { 1652541: '900' });
-    // The lease is always released, owner-fenced.
-    assert.equal(harness.calls.release.length, 1);
-    assert.equal(harness.calls.release[0].key, LOCK_KEY);
-    assert.equal(harness.calls.release[0].owner, harness.calls.setNx[0].owner);
+    assert.equal(harness.calls.poll.length, 1);
+    assert.equal(harness.calls.poll[0].coverageId, 'list-slot:2026-09-03T12:15:00.000Z');
+    assert.equal(harness.state.lastAttemptSlot, '2026-09-03T12:15:00.000Z');
   });
 
-  it('does not poll at all when X is disabled', async () => {
+  it('retries the current slot when the prior slot ends during budget admission', async () => {
+    let clock = Date.parse('2026-09-03T12:14:59.999Z');
+    const harness = createHarness({
+      now: () => clock,
+      pollXFeed: async () => {
+        clock = Date.parse('2026-09-03T12:15:00.001Z');
+        return pollResult({
+          cycleComplete: false,
+          listAccepted: false,
+          providerSuccess: false,
+          lastError: 'X Post budget source_window_expired; List page deferred',
+        });
+      },
+    });
+
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(harness.state.lastAttemptSlot, '2026-09-03T12:00:00.000Z');
+    assert.equal(harness.calls.timer.length, 1);
+    assert.equal(harness.calls.timer[0].ms, 1000);
+    harness.calls.timer[0].fn();
+    assert.deepEqual(harness.calls.retry, [false]);
+  });
+
+  it('a lock loser rehydrates peer state and makes no provider request', async () => {
+    const peer = createHarness();
+    await peer.cycle.pollOnce({ generation: 1 });
+    const loser = createHarness({ redis: peer.redis, setNxResult: 'existing' });
+    await loser.cycle.pollOnce({ generation: 1, retryAfterLeaseConflict: true });
+    assert.equal(loser.calls.poll.length, 0);
+    assert.equal(loser.calls.publish.length, 0);
+    assert.equal(loser.state.lastPublishedSlot, SLOT_ID);
+    assert.deepEqual(loser.calls.retry, []);
+  });
+
+  it('recovers at the next slot after a crashed owner lease expires', async () => {
+    let clock = NOW;
+    const crashedLeaseExpiresAt = NOW + 120_000;
+    const harness = createHarness({
+      now: () => clock,
+      setNxResult: ({ ttlSeconds }) => {
+        assert.equal(ttlSeconds, 120);
+        return clock < crashedLeaseExpiresAt ? 'existing' : 'new';
+      },
+    });
+
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(harness.calls.poll.length, 0);
+
+    clock += 15 * 60 * 1000;
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(harness.calls.poll.length, 1);
+    assert.equal(harness.state.lastAttemptSlot, '2026-09-03T12:15:00.000Z');
+  });
+});
+
+describe('X provider and publication clocks', () => {
+  it('publishes a valid empty page and moves all accepted-publication clocks', async () => {
+    const harness = createHarness();
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(harness.calls.poll[0].listId, LIST_ID);
+    assert.equal(harness.calls.poll[0].coverageId, `list-slot:${SLOT_ID}`);
+    assert.equal(harness.calls.publish[0].meta.sourceState, 'ok');
+    assert.equal(harness.calls.publish[0].meta.fetchedAt, NOW);
+    assert.equal(harness.state.lastAttemptAt, NOW);
+    assert.equal(harness.state.lastProviderSuccessAt, NOW);
+    assert.equal(harness.state.lastAcceptedPublicationAt, NOW);
+    assert.equal(harness.state.lastPollAt, NOW);
+    assert.equal(harness.state.lastHealthyAt, NOW);
+    assert.equal(harness.state.lastPublishedSlot, SLOT_ID);
+  });
+
+  it('keeps accepted List seed metadata healthy when deletion maintenance fails', async () => {
+    const harness = createHarness({
+      pollXFeed: async () => pollResult({ lastError: 'rate limited during deletion lookup' }),
+    });
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(harness.calls.publish[0].meta.sourceState, 'ok');
+    assert.equal(harness.calls.publish[0].meta.fetchedAt, NOW);
+    assert.equal(harness.state.lastHealthyAt, NOW);
+    assert.equal(harness.state.lastError, 'rate limited during deletion lookup');
+  });
+
+  it('persists private attempt diagnostics without refreshing public freshness or seed meta', async () => {
+    const harness = createHarness({
+      pollXFeed: async () => pollResult({
+        cycleComplete: false,
+        listAccepted: false,
+        providerSuccess: true,
+        accountsPolled: 0,
+        accountsAttempted: 1,
+        lastError: 'invalid page',
+      }),
+    });
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.equal(harness.calls.publish[0].meta, null);
+    assert.equal(harness.state.lastAttemptAt, NOW);
+    assert.equal(harness.state.lastProviderSuccessAt, NOW);
+    assert.equal(harness.state.lastAcceptedPublicationAt, 0);
+    assert.equal(harness.state.lastPollAt, 0);
+    assert.equal(harness.state.lastHealthyAt, 0);
+    assert.equal(harness.state.lastAttemptSlot, SLOT_ID);
+    assert.equal(harness.state.lastPublishedSlot, null);
+  });
+
+  it('keeps every clock and last-good item uncommitted when publication loses the lease', async () => {
+    const existing = post('7000000000000000001');
+    const harness = createHarness({
+      state: makeState({ items: [existing] }),
+      publishResult: false,
+      pollXFeed: async () => pollResult({
+        items: [post('7000000000000000002'), existing],
+        receiptAcks: [{ key: 'receipt', expected: '{}' }],
+      }),
+    });
+    await harness.cycle.pollOnce({ generation: 1 });
+
+    assert.deepEqual(harness.state.items, [existing]);
+    assert.equal(harness.state.lastAttemptAt, 0);
+    assert.equal(harness.state.lastProviderSuccessAt, 0);
+    assert.equal(harness.state.lastAcceptedPublicationAt, 0);
+    assert.equal(harness.state.lastPollAt, 0);
+    assert.equal(harness.calls.ack.length, 0);
+  });
+
+  it('does not poll or publish when X List configuration is disabled', async () => {
     const harness = createHarness({ xEnabled: false });
     await harness.cycle.pollOnce({ generation: 1 });
     assert.equal(harness.calls.setNx.length, 0);
     assert.equal(harness.calls.publish.length, 0);
   });
-
-  it('preserves poll cadence, deletion cadence, cycle use, and budget status through publication and hydration', async () => {
-    const stamp = NOW - 1;
-    const usage = { requestsUsed: 2, requestLimit: 2, postsRead: 3, postReadLimit: 10 };
-    const postBudget = { ...pollResult().postBudget, dailyUsed: 3, dailyRemaining: 597 };
-    const redis = new Map();
-    const persist = ({ snapshot, pollState }) => {
-      redis.set(CACHE_KEY, snapshot);
-      redis.set(POLL_STATE_KEY, pollState);
-      return true;
-    };
-    const first = createHarness({
-      redis,
-      pollXFeed: async () => pollResult({
-        lastPolledAtByHandle: { slower: stamp },
-        lastDeletionAuditAt: stamp,
-        lastCycleUsage: usage,
-        postBudget,
-      }),
-      publishResult: persist,
-    });
-
-    await first.cycle.pollOnce({ generation: 1 });
-    assert.deepEqual({ ...first.calls.publish[0].pollState.lastPolledAtByHandle }, { slower: stamp });
-    assert.equal(first.calls.publish[0].pollState.lastDeletionAuditAt, stamp);
-    assert.deepEqual(first.calls.publish[0].pollState.lastCycleUsage, usage);
-    assert.equal(first.calls.publish[0].pollState.postBudget.dailyUsed, 3);
-
-    const restarted = createHarness({ redis, publishResult: persist });
-    assert.equal(await restarted.cycle.hydrate(), true);
-    assert.deepEqual({ ...restarted.state.lastPolledAtByHandle }, { slower: stamp });
-    assert.equal(restarted.state.lastDeletionAuditAt, stamp);
-    assert.deepEqual(restarted.state.lastCycleUsage, usage);
-    assert.equal(restarted.state.postBudget.dailyUsed, 3);
-  });
 });
 
-describe('createXPollCycle — fail-closed hydration', () => {
-  for (const failingKey of [CACHE_KEY, POLL_STATE_KEY]) {
-    it(`latches hydrationFailed when the ${failingKey} read fails, and the next poll skips without publishing`, async () => {
-      const harness = createHarness({ failGet: (key) => key === failingKey });
-
-      assert.equal(await harness.cycle.hydrate(), false);
-      assert.equal(harness.state.hydrationFailed, true, 'a failed GET is not an empty feed');
-      assert.ok(harness.calls.warn.some((line) => /refusing to poll or publish/.test(line)));
-
-      await harness.cycle.pollOnce({ generation: 1 });
-
-      assert.equal(harness.calls.publish.length, 0, 'must never publish over last-good state it could not read');
-      assert.equal(harness.calls.poll.length, 0, 'must not burn shared X quota either');
-      assert.equal(
-        harness.state.lastError,
-        'X hydration still failing; skipped poll to protect last-good Redis state',
-      );
-      assert.equal(harness.state.hydrationFailed, true, 'the latch stays set for the next cycle');
+describe('receipt recovery and Redis safety', () => {
+  it('publishes last-good state before acknowledging an invalid replay receipt', async () => {
+    const existing = post('7000000000000000009');
+    let receipt = JSON.stringify({
+      version: 1,
+      listId: LIST_ID,
+      sourceSlot: SLOT_ID,
+      providerSuccessAt: NOW,
+      rawPostCount: 1,
+      posts: [{ id: '7000000000000000010', accountId: '999999999999999999', item: null }],
     });
-  }
-
-  it('clears the latch and resumes once the read succeeds', async () => {
-    let broken = true;
-    const harness = createHarness({ failGet: () => broken });
-
-    await harness.cycle.hydrate();
-    assert.equal(harness.state.hydrationFailed, true);
-
-    broken = false;
-    await harness.cycle.pollOnce({ generation: 1 });
-
-    assert.equal(harness.state.hydrationFailed, false);
-    assert.equal(harness.calls.publish.length, 1, 'the retry inside pollOnce must be able to clear the latch');
-  });
-});
-
-describe('createXPollCycle — lease conflict', () => {
-  function seedPeerRedis(redis) {
-    redis.set(CACHE_KEY, xNewsAccounts.buildXFeedSnapshot(
-      { items: [post('peer-1', '2026-08-20T09:00:00Z')], generation: 7, lastPollAt: NOW - 60_000 },
-      { enabled: true, expectedAccounts: 1 },
-    ));
-    redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      { generation: 7, cursorByAccountId: { 1652541: '800' }, lastPollAt: NOW - 60_000 },
-      { expectedAccounts: 1 },
-    ));
-  }
-
-  it('re-hydrates, refuses to poll, and re-arms the guard exactly once', async () => {
-    const harness = createHarness({ setNxResult: 'existing' });
-    seedPeerRedis(harness.redis);
-
-    await harness.cycle.pollOnce({ generation: 1, retryAfterLeaseConflict: true });
-
-    assert.equal(harness.calls.poll.length, 0, 'a lock-loser must not poll X');
-    assert.equal(harness.calls.publish.length, 0, 'a lock-loser must not publish');
-    // Re-hydrated instead of serving frozen process-local items forever.
-    assert.deepEqual(harness.calls.get, [CACHE_KEY, POLL_STATE_KEY]);
-    assert.deepEqual(harness.state.items.map((item) => item.id), ['peer-1']);
-    assert.equal(harness.state.generation, 7);
-    // Exactly one re-arm, and it passes `false` — passing `true` self-perpetuated
-    // a ~1Hz SETNX + log storm for the whole lease TTL.
-    assert.deepEqual(harness.calls.retry, [false]);
-    assert.deepEqual(harness.calls.timer, [1000]);
-    assert.equal(harness.calls.release.length, 0, 'a lease we never took must not be released');
-  });
-
-  it('does not re-arm when the guard did not ask for a retry', async () => {
-    const harness = createHarness({ setNxResult: 'existing' });
-    seedPeerRedis(harness.redis);
-
-    await harness.cycle.pollOnce({ generation: 1, retryAfterLeaseConflict: false });
-
-    assert.deepEqual(harness.calls.retry, []);
-    assert.deepEqual(harness.calls.timer, []);
-    // The re-hydrate still happens — that is what bounds a non-owner's staleness.
-    assert.deepEqual(harness.state.items.map((item) => item.id), ['peer-1']);
-  });
-
-  it('drops the re-arm when the guard generation moved on while the retry was pending', async () => {
-    const harness = createHarness({ setNxResult: 'existing', autoFireTimer: false });
-    seedPeerRedis(harness.redis);
-
-    await harness.cycle.pollOnce({ generation: 1, retryAfterLeaseConflict: true });
-    assert.equal(harness.calls.timerFns.length, 1);
-
-    harness.setGeneration(2);
-    harness.calls.timerFns[0]();
-
-    assert.deepEqual(harness.calls.retry, [], 'a superseded run must not schedule a poll');
-  });
-});
-
-describe('createXPollCycle — cursor-rewind and item-loss prevention', () => {
-  // hydrate() reads CACHE then POLL_STATE (indexes 0,1); the re-read under the
-  // lock reads POLL_STATE then CACHE (indexes 2,3).
-  for (const [label, failingIndex] of [['poll-state', 2], ['snapshot', 3]]) {
-    it(`skips the cycle when the ${label} re-read under the lock fails`, async () => {
-      const harness = createHarness({ failGet: (_key, index) => index === failingIndex });
-
-      await harness.cycle.hydrate();
-      assert.equal(harness.state.hydrationFailed, false);
-
-      await harness.cycle.pollOnce({ generation: 1 });
-
-      assert.equal(harness.calls.poll.length, 0);
-      assert.equal(harness.calls.publish.length, 0, 'publishing here rewinds since_id or drops a peer\'s items');
-      assert.equal(
-        harness.state.lastError,
-        'Redis re-read failed under the lock; skipped cycle rather than risk a cursor rewind or item loss',
-      );
-      assert.equal(harness.calls.release.length, 1, 'the lease we took is still released');
-    });
-  }
-
-  it('adopts the peer cursor map read under the lock instead of republishing stale cursors', async () => {
-    const harness = createHarness({
-      state: makeState({ cursorByAccountId: { 1652541: '100' } }),
-      pollXFeed: async () => pollResult({ cursorByAccountId: { 1652541: '900' } }),
-    });
-    harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      { generation: 7, cursorByAccountId: { 1652541: '800' }, lastPollAt: NOW - 60_000 },
-      { expectedAccounts: 1 },
-    ));
-
-    await harness.cycle.pollOnce({ generation: 1 });
-
-    // pollXFeed must have been handed Redis truth (800), not the stale local 100.
-    assert.deepEqual(harness.calls.poll[0].cursorsAtCall, { 1652541: '800' });
-    // And the snapshot version never goes backwards behind a peer's.
-    assert.equal(harness.calls.publish[0].snapshot.generation, 8);
-  });
-});
-
-describe('createXPollCycle — peer item preservation', () => {
-  it('folds a peer post that only exists in Redis back into the published snapshot', async () => {
-    const local = post('local-1', '2026-08-20T08:00:00Z');
-    const peer = post('peer-1', '2026-08-20T09:00:00Z');
-    const fresh = post('fresh-1', '2026-08-20T10:00:00Z');
-
-    const harness = createHarness({
-      state: makeState({ items: [local] }),
-      // pollXFeed merges new posts into whatever state.items holds at call time,
-      // exactly as the real implementation does.
-      pollXFeed: async ({ state }) => pollResult({
-        items: xNewsAccounts.mergeAndDedup(state.items, [fresh], 200),
-      }),
-    });
-    // Redis holds the peer's post AND its own copy of ours; our in-memory state
-    // never saw peer-1 because our last hydrate ran before the peer published.
-    harness.redis.set(CACHE_KEY, xNewsAccounts.buildXFeedSnapshot(
-      { items: [peer, local], generation: 7, lastPollAt: NOW - 60_000 },
-      { enabled: true, expectedAccounts: 1 },
-    ));
-    harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      { generation: 7, cursorByAccountId: { 1652541: '800' }, lastPollAt: NOW - 60_000 },
-      { expectedAccounts: 1 },
-    ));
-
-    await harness.cycle.pollOnce({ generation: 1 });
-
-    assert.equal(harness.calls.publish.length, 1);
-    const publishedIds = harness.calls.publish[0].snapshot.items.map((item) => item.id).sort();
-    // The peer's post is the one that used to be lost for good: the cursor map we
-    // just read has already advanced past its id, so it is never re-fetched.
-    assert.deepEqual(publishedIds, ['fresh-1', 'local-1', 'peer-1']);
-    assert.deepEqual(harness.state.items.map((item) => item.id).sort(), ['fresh-1', 'local-1', 'peer-1']);
-  });
-});
-
-describe('createXPollCycle — generation fencing', () => {
-  it('discards a result that lands after the guard generation moved on', async () => {
-    let harness;
-    harness = createHarness({
-      pollXFeed: async () => {
-        harness.setGeneration(9);
-        return pollResult({ items: [post('fresh-1', '2026-08-20T10:00:00Z')] });
+    const budget = createXPostBudget({
+      now: () => NOW,
+      dailyCoveragePosts: 505,
+      evalCommand: async (script) => {
+        if (script === RESERVE_LUA) return [0, 5, 5, 4, 500, receipt];
+        if (script === ACK_RECEIPTS_LUA) {
+          receipt = null;
+          return 1;
+        }
+        throw new Error('invalid replay must not reserve or settle new work');
       },
     });
-
-    await harness.cycle.pollOnce({ generation: 1 });
-
-    assert.equal(harness.calls.publish.length, 0, 'a superseded run must not publish');
-    assert.ok(harness.calls.warn.some((line) => /generation 1 finished stale; discarding result/.test(line)));
-    assert.deepEqual(harness.state.items, [], 'and must not commit its cursors or items');
-    assert.deepEqual({ ...harness.state.cursorByAccountId }, {});
-    assert.equal(harness.state.lastPollAt, 0);
-  });
-
-  it('discards a result whose abort signal fired', async () => {
-    const harness = createHarness({
-      pollXFeed: async () => pollResult({ items: [post('fresh-1', '2026-08-20T10:00:00Z')] }),
-    });
-
-    await harness.cycle.pollOnce({ generation: 1, signal: { aborted: true } });
-
-    assert.equal(harness.calls.publish.length, 0);
-    assert.deepEqual(harness.state.items, []);
-  });
-});
-
-describe('createXPollCycle — publish before commit', () => {
-  it('leaves xState uncommitted when the lease-guarded publish fails', async () => {
-    const existing = post('local-1', '2026-08-20T08:00:00Z');
-    const harness = createHarness({
-      state: makeState({ items: [existing], cursorByAccountId: { 1652541: '100' } }),
-      publishResult: false,
-      pollXFeed: async () => pollResult({
-        items: [post('fresh-1', '2026-08-20T10:00:00Z'), existing],
-        receiptAcks: [{ key: 'budget:receipt:reuters', expected: '{"version":1}' }],
-        rateLimitedUntil: NOW + 30_000,
-        rateLimitAttempt: 2,
-        lastDeletionAuditAt: NOW,
-        lastCycleUsage: { requestsUsed: 1, requestLimit: 2, postsRead: 1, postReadLimit: 10 },
-        postBudget: { ...pollResult().postBudget, dailyUsed: 10, dailyRemaining: 590 },
-      }),
-    });
-
-    await harness.cycle.pollOnce({ generation: 1 });
-
-    assert.equal(harness.calls.publish.length, 1, 'publish is attempted first');
-    assert.deepEqual(harness.state.items.map((item) => item.id), ['local-1'], 'items must not advance past Redis');
-    assert.deepEqual({ ...harness.state.cursorByAccountId }, { 1652541: '100' }, 'cursors must not advance past Redis');
-    assert.equal(harness.state.generation, 0);
-    assert.equal(harness.state.lastPollAt, 0);
-    assert.equal(harness.state.lastDeletionAuditAt, 0);
-    assert.equal(harness.state.lastCycleUsage, null);
-    assert.equal(harness.state.postBudget, null);
-    assert.equal(harness.state.lastError, 'lost X poll lease before publication');
-    assert.ok(harness.calls.warn.some((line) => /keeping previous state so Redis stays the source of truth/.test(line)));
-    // Rate-limit state is protective and is deliberately kept even on failure —
-    // dropping it would let the next tick hammer a 429ing upstream.
-    assert.equal(harness.state.rateLimitedUntil, NOW + 30_000);
-    assert.equal(harness.state.rateLimitAttempt, 2);
-    assert.equal(harness.calls.ack.length, 0, 'a failed publish must retain its paid receipt');
-  });
-
-  it('acknowledges paid receipts only after the snapshot publishes', async () => {
-    const receiptAcks = [{ key: 'budget:receipt:reuters', expected: '{"version":1}' }];
-    const harness = createHarness({
-      pollXFeed: async () => pollResult({ receiptAcks }),
-    });
-
-    await harness.cycle.pollOnce({ generation: 1 });
-
-    assert.equal(harness.calls.publish.length, 1);
-    assert.deepEqual(harness.calls.ack, [receiptAcks]);
-  });
-
-  it('replays a paid page after publish failure without a second X request', async () => {
-    const sharedBudget = createReceiptBudgetDouble();
+    let publishes = 0;
     let fetches = 0;
-    let publishAttempts = 0;
     const harness = createHarness({
-      xPostBudget: sharedBudget.budget,
+      state: makeState({
+        items: [existing],
+        lastPollAt: NOW - 15 * 60_000,
+        lastHealthyAt: NOW - 15 * 60_000,
+      }),
+      xPostBudget: budget,
       publishResult: () => {
-        publishAttempts += 1;
-        return publishAttempts > 1;
+        publishes += 1;
+        return publishes > 1;
+      },
+      fetchImpl: async () => {
+        fetches += 1;
+        return Response.json({ meta: { result_count: 0 } });
+      },
+      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false, verifyMembership: false }),
+    });
+
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.notEqual(receipt, null);
+    assert.equal(harness.calls.ack.length, 0);
+    assert.equal(harness.state.lastPollAt, NOW - 15 * 60_000);
+
+    await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(fetches, 0);
+    assert.equal(receipt, null);
+    assert.equal(harness.calls.ack.length, 1);
+    assert.deepEqual(harness.state.items, [existing]);
+    assert.equal(harness.state.lastPollAt, NOW - 15 * 60_000);
+    assert.equal(harness.state.lastHealthyAt, NOW - 15 * 60_000);
+    assert.match(harness.state.lastError, /no longer valid/);
+  });
+
+  it('replays a paid List page before another provider request and acknowledges only after publish', async () => {
+    let receipt = null;
+    let reservation = 0;
+    let clock = NOW;
+    const budget = createXPostBudget({
+      now: () => NOW,
+      idFactory: () => 'receipt-test',
+      dailyCoveragePosts: 505,
+      evalCommand: async (script, _keys, args) => {
+        if (script === RESERVE_LUA) {
+          if (receipt) return [0, reservation, reservation, 4, 500, receipt];
+          reservation = Number(args[0]);
+          return [1, reservation, reservation, 0, 500, ''];
+        }
+        if (script === SETTLE_LUA) {
+          receipt = args[3];
+          return [1, 1, 1, reservation, 1, 500];
+        }
+        if (script === ACK_RECEIPTS_LUA) {
+          receipt = null;
+          return 1;
+        }
+        throw new Error('unexpected budget command');
+      },
+    });
+    let fetches = 0;
+    let publishes = 0;
+    const harness = createHarness({
+      now: () => clock,
+      xPostBudget: budget,
+      publishResult: (args) => {
+        publishes += 1;
+        if (publishes === 1) return false;
+        harness.redis.set(CACHE_KEY, args.snapshot);
+        harness.redis.set(POLL_STATE_KEY, args.pollState);
+        return true;
       },
       fetchImpl: async () => {
         fetches += 1;
         return Response.json({
           data: [{
-            id: '1999999999999999999',
+            id: '7000000000000000010',
+            author_id: ACCOUNT.accountId,
             text: 'paid once',
-            created_at: new Date(NOW - 1_000).toISOString(),
+            created_at: '2026-09-03T12:06:00.000Z',
           }],
+          meta: { result_count: 1 },
         });
       },
-      pollXFeed: (args) => xNewsAccounts.pollXFeed({
-        ...args,
-        wait: async () => {},
-        staggerMs: 0,
-        lookupDeletions: false,
-      }),
+      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false, verifyMembership: false }),
     });
 
     await harness.cycle.pollOnce({ generation: 1 });
     assert.equal(fetches, 1);
-    assert.deepEqual({ ...harness.state.cursorByAccountId }, {});
-    assert.deepEqual(sharedBudget.status(), { dailyUsed: 1, monthlyUsed: 1, hasReceipt: true });
-
+    assert.equal(harness.calls.ack.length, 0);
+    clock += 15 * 60 * 1000;
     await harness.cycle.pollOnce({ generation: 1 });
-    assert.equal(fetches, 1, 'the second cycle must apply the Redis receipt, not call X');
-    assert.equal(harness.state.cursorByAccountId['1652541'], '1999999999999999999');
-    assert.equal(harness.state.items[0].postId, '1999999999999999999');
-    assert.deepEqual(sharedBudget.status(), { dailyUsed: 1, monthlyUsed: 1, hasReceipt: false });
+    assert.equal(fetches, 1);
+    assert.equal(harness.state.items[0].postId, '7000000000000000010');
+    assert.equal(harness.state.lastAttemptSlot, '2026-09-03T12:15:00.000Z');
+    assert.equal(harness.state.lastProviderSuccessSlot, SLOT_ID);
+    assert.equal(harness.state.lastProviderSuccessAt, NOW);
+    assert.equal(harness.state.lastPublishedSlot, '2026-09-03T12:15:00.000Z');
+    assert.equal(harness.state.lastAcceptedPublicationAt, clock);
+    assert.equal(harness.state.lastPollAt, NOW,
+      'public freshness stays bound to the original provider success');
+    assert.equal(harness.calls.ack.length, 1);
+    assert.equal(receipt, null);
   });
 
-  it('reports the publish result through publish() itself', async () => {
-    const harness = createHarness({ publishResult: false });
-    assert.equal(await harness.cycle.publish(1, { accountsPolled: 1, cycleComplete: true, lockOwner: 'owner-1' }), false);
-    assert.equal(harness.state.lastError, 'lost X poll lease before publication');
-    assert.equal(harness.calls.publish[0].owner, 'owner-1');
-    assert.equal(harness.calls.publish[0].ttlSeconds, 5400);
-    assert.equal(harness.calls.publish[0].metaTtlSeconds, 3600);
-  });
-
-  it('omits seed metadata when no account was actually polled', async () => {
-    const harness = createHarness();
-    assert.equal(await harness.cycle.publish(1, { accountsPolled: 0, cycleComplete: false, lockOwner: 'owner-1' }), true);
-    assert.equal(harness.calls.publish[0].meta, null, 'a zero-account cycle must not refresh seed-meta freshness');
-  });
-});
-
-describe('createXPollCycle — 429 backoff preservation', () => {
-  it('keeps the LATER deadline and the HIGHER attempt count when Redis is older', async () => {
-    const harness = createHarness({
-      state: makeState({ rateLimitedUntil: NOW + 300_000, rateLimitAttempt: 3 }),
-    });
-    harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      { generation: 7, rateLimitedUntil: NOW + 1_000, rateLimitAttempt: 1 },
-      { expectedAccounts: 1 },
-    ));
-
-    assert.equal(await harness.cycle.hydrate(), true);
-
-    assert.equal(harness.state.rateLimitedUntil, NOW + 300_000, 'an older Redis copy must not clear our fresh backoff');
-    assert.equal(harness.state.rateLimitAttempt, 3, 'escalation must not reset behind a peer with a lower count');
-  });
-
-  it('adopts a peer backoff that is later than ours', async () => {
-    const harness = createHarness({
-      state: makeState({ rateLimitedUntil: NOW + 1_000, rateLimitAttempt: 1 }),
-    });
-    harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      { generation: 7, rateLimitedUntil: NOW + 300_000, rateLimitAttempt: 4 },
-      { expectedAccounts: 1 },
-    ));
-
-    assert.equal(await harness.cycle.hydrate(), true);
-
-    assert.equal(harness.state.rateLimitedUntil, NOW + 300_000, 'the shared bearer means a peer 429 applies here too');
-    assert.equal(harness.state.rateLimitAttempt, 4);
-  });
-
-  it('defers the poll while a shared backoff window read under the lock is still open', async () => {
-    const harness = createHarness();
-    harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      {
-        generation: 7,
-        rateLimitedUntil: NOW + 300_000,
-        rateLimitAttempt: 4,
-        backoffCause: xNewsAccounts.X_BACKOFF_CAUSES.RATE_LIMIT,
-      },
-      { expectedAccounts: 1 },
-    ));
-
-    await harness.cycle.pollOnce({ generation: 1 });
-
-    assert.equal(harness.calls.poll.length, 0, 'the pre-lock check only saw our own state');
-    assert.equal(harness.calls.publish.length, 0);
-    assert.equal(harness.state.lastError, 'shared X rate-limit window still open; deferring poll');
-  });
-
-  it('propagates a peer credits diagnosis and clears it after a healthy recovery', async () => {
+  it('acknowledges an already-published receipt without renewing public freshness', async () => {
+    let receipt = null;
+    let reservation = 0;
+    let ackAttempts = 0;
     let clock = NOW;
-    const harness = createHarness({ now: () => clock });
-    harness.redis.set(POLL_STATE_KEY, xNewsAccounts.buildXPollState(
-      {
-        generation: 7,
-        rateLimitedUntil: NOW + 1_000,
-        rateLimitAttempt: 0,
-        backoffCause: xNewsAccounts.X_BACKOFF_CAUSES.CREDITS,
+    const budget = createXPostBudget({
+      now: () => clock,
+      idFactory: () => 'ack-retry',
+      dailyCoveragePosts: 505,
+      evalCommand: async (script, _keys, args) => {
+        if (script === RESERVE_LUA) {
+          if (receipt) return [0, reservation, reservation, 4, 500, receipt];
+          reservation = Number(args[0]);
+          return [1, reservation, reservation, 0, 500, ''];
+        }
+        if (script === SETTLE_LUA) {
+          receipt = args[3];
+          return [1, 1, 1, reservation, 1, 500];
+        }
+        if (script === ACK_RECEIPTS_LUA) {
+          ackAttempts += 1;
+          if (ackAttempts === 1) return 0;
+          receipt = null;
+          return 1;
+        }
+        throw new Error('unexpected budget command');
       },
-      { expectedAccounts: 1 },
-    ));
-
-    assert.equal(await harness.cycle.hydrate(), true);
-    assert.equal(harness.state.backoffCause, xNewsAccounts.X_BACKOFF_CAUSES.CREDITS);
-    assert.match(harness.state.lastError, /top up the X API plan/i,
-      'startup hydration must preserve the peer billing diagnosis');
+    });
+    let fetches = 0;
+    const harness = createHarness({
+      now: () => clock,
+      xPostBudget: budget,
+      fetchImpl: async () => {
+        fetches += 1;
+        return Response.json({ meta: { result_count: 0 } });
+      },
+      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false, verifyMembership: false }),
+    });
 
     await harness.cycle.pollOnce({ generation: 1 });
+    assert.equal(fetches, 1);
+    assert.equal(harness.state.lastPollAt, NOW);
+    assert.equal(harness.state.lastAcceptedPublicationAt, NOW);
+    assert.equal(receipt == null, false);
 
-    assert.equal(harness.calls.poll.length, 0, 'the peer deadline must defer this replica');
-    assert.equal(harness.calls.setNx.length, 0, 'an already-hydrated deadline must avoid the lease request');
-    assert.equal(harness.state.backoffCause, xNewsAccounts.X_BACKOFF_CAUSES.CREDITS);
-    assert.match(harness.state.lastError, /top up the X API plan/i);
-    assert.doesNotMatch(harness.state.lastError, /X_BEARER_TOKEN/);
-
-    clock = NOW + 1_001;
+    clock += 15 * 60 * 1000;
     await harness.cycle.pollOnce({ generation: 1 });
-
-    assert.equal(harness.calls.poll.length, 1, 'polling must resume automatically after expiry');
-    assert.equal(harness.state.rateLimitedUntil, 0);
-    assert.equal(harness.state.backoffCause, null);
-    assert.equal(harness.state.lastError, null);
-    assert.equal(harness.calls.publish.at(-1).pollState.backoffCause, null,
-      'the recovered replica must clear the shared cause');
+    assert.equal(fetches, 1);
+    assert.equal(harness.state.lastPollAt, NOW);
+    assert.equal(harness.state.lastAcceptedPublicationAt, NOW);
+    assert.equal(harness.state.lastProviderSuccessAt, NOW);
+    assert.equal(harness.state.lastAttemptSlot, '2026-09-03T12:15:00.000Z');
+    assert.equal(harness.state.lastPublishedSlot, SLOT_ID);
+    assert.equal(harness.calls.publish[1].meta, null);
+    assert.equal(ackAttempts, 2);
+    assert.equal(receipt, null);
   });
 
-  it('returns before taking the lease while our own backoff is open', async () => {
-    const harness = createHarness({ state: makeState({ rateLimitedUntil: NOW + 300_000 }) });
+  it('fails closed when hydration cannot read either Redis document', async () => {
+    const harness = createHarness({ failGet: () => true });
+    assert.equal(await harness.cycle.hydrate(), false);
+    assert.equal(harness.state.hydrationFailed, true);
     await harness.cycle.pollOnce({ generation: 1 });
-    assert.equal(harness.calls.setNx.length, 0);
+    assert.equal(harness.calls.poll.length, 0);
+    assert.equal(harness.calls.publish.length, 0);
   });
 });
 
-describe('createXPollCycle — dependency wiring', () => {
-  it('refuses to build without the collaborators it cannot fake', () => {
+describe('X poll cycle dependencies', () => {
+  it('refuses to build without required collaborators', () => {
     assert.throws(() => createXPollCycle({}), /xState is required/);
     assert.throws(() => createXPollCycle({ xState: makeState() }), /xNewsAccounts is required/);
   });
