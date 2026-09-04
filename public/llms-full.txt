@@ -1971,6 +1971,33 @@ and are excluded from the headline ranking.
 
 The API response includes `imputationShare` (0.0-1.0), representing the fraction of total indicator weight that came from imputed (synthetic) data rather than observed data. This allows consumers to assess data provenance.
 
+### Supported Readings on Unranked Country Pages
+
+A country that publishes no headline score still publishes a dimension evidence
+inventory. Two labels appear there and they do not mean the same thing:
+
+- **Observed** — the snapshot holds a usable series for that dimension. The
+  inventory applies this label to any dimension that is neither a coverage gap
+  nor marked not-applicable.
+- **Supported reading** — the dimension additionally clears **0.50** coverage,
+  so the page publishes its score next to the label.
+
+A dimension between those two states is recorded as observed without appearing
+among the supported readings. The page names those dimensions and states the
+0.50 floor inline, so the two lists never appear to contradict each other.
+
+The inventory is ordered weakest evidence first — not-applicable slots, then
+dimensions with no usable series, then partial coverage ascending — and capped
+at 12 rows. It is grouped rather than strictly sorted by coverage, so a
+dimension with no usable series can precede one with a thin but real reading.
+The cap splits the active dimensions into three buckets, and the scope note
+accounts for all three: the dimensions shown, the dimensions already at full
+coverage that never entered the weakest-first pool, and the dimensions the cap
+omitted.
+The counts are generated from a single partition and asserted at build time, so
+a page whose inventory arithmetic does not close fails the build rather than
+publishing (#7609).
+
 ## Data Sources
 
 | Source | Indicators | Cadence | Scope |
