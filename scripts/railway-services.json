@@ -4,6 +4,10 @@
     "deployMode": "dockerfile",
     "dockerfile": "Dockerfile.relay",
     "service": "ais-relay",
+    "requiredEnv": [
+      "X_BEARER_TOKEN",
+      "X_CURATED_LIST_ID"
+    ],
     "watchPatterns": [
       ".dockerignore",
       "Dockerfile.relay",

@@ -28,6 +28,7 @@ import {
   describeHeadlineIneligibilityReason,
   describeInventoryScope,
   developmentsHasDatedItem,
+  SUPPORTED_READING_MIN_COVERAGE,
   GENERATED_DIRS,
   gitFileLastmod,
   hasObservedValue,
@@ -49,6 +50,11 @@ import {
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
 } from '../scripts/crawlable-live-tools.mjs';
+import {
+  COMPARISON_HUB_MATRIX_ROWS,
+  COMPARISON_MATRIX_COLUMNS,
+  COMPARISON_PAGES,
+} from '../scripts/build-comparison-pages.mjs';
 import { buildSitemapEntries } from '../scripts/build-sitemap.mjs';
 import {
   auditMicrostateCorpusSimilarity,
@@ -1535,21 +1541,14 @@ describe('crawlable corpus generator', () => {
   // directly: a note that appears when nothing is hidden would tell a reader
   // evidence is missing when it is not.
   it('describes the inventory scope only when rows are actually omitted', () => {
-    const dimension = (id, coverage) => ({ id, coverage });
     const country = (coverages) => ({
-      domains: [{ id: 'd', dimensions: coverages.map((c, i) => dimension(`dim${i}`, c)) }],
+      domains: [{ id: 'd', dimensions: coverages.map((coverage, index) => ({ id: `dim${index}`, coverage })) }],
     });
 
-    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 3), null, 'nothing omitted');
-    assert.equal(describeInventoryScope(country([0.2, 0.4, 1]), 4), null, 'shown exceeds total');
+    assert.equal(describeInventoryScope(country([0.2, 0.4, 0.9])), null, 'nothing omitted');
     assert.equal(
-      describeInventoryScope(country([0.2, 0.4, 1, 1]), 2),
-      'Showing 2 of 4 active dimensions, lowest coverage first; 2 more at full coverage.',
-    );
-    assert.equal(
-      describeInventoryScope(country([0.2, 0.4, 0.9]), 2),
-      'Showing 2 of 3 active dimensions, lowest coverage first.',
-      'no full-coverage clause when there is nothing at full coverage',
+      describeInventoryScope(country([0.2, 0.4, 1, 1])),
+      'Showing 2 of 4 active dimensions, weakest evidence first; 2 more at full coverage.',
     );
   });
 
@@ -1747,6 +1746,7 @@ describe('crawlable corpus generator', () => {
       assert.equal(manifest.sections.tools.count, 3);
       assert.equal(manifest.sections.research.count, 1);
       assert.equal(manifest.sections.useCases.count, 3);
+  assert.equal(manifest.sections.comparisons.count, 13);
       assert.equal(manifest.sections.sources.count, 1);
       assert.equal(manifest.generatorContentVersion, '2026-09-01');
       const sitemapEntries = buildSitemapEntries({
@@ -1780,6 +1780,8 @@ describe('crawlable corpus generator', () => {
         ...manifest.sections.research.routes,
         manifest.sections.useCases.index,
         ...manifest.sections.useCases.routes,
+        manifest.sections.comparisons.index,
+        ...manifest.sections.comparisons.routes,
         manifest.sections.changelog.index,
         ...manifest.sections.changelog.routes,
         manifest.sections.sources.index,
@@ -1916,7 +1918,7 @@ describe('crawlable corpus generator', () => {
           if (!section) continue;
           const shown = (section[1].match(/<li>/g) || []).length;
           const note = section[1].match(
-            /data-inventory-scope>Showing (\d+) of (\d+) active dimensions, lowest coverage first/,
+            /data-inventory-scope>Showing (\d+) of (\d+) active dimensions, weakest evidence first/,
           );
           if (!note) continue;
           checkedTruncated += 1;
@@ -2483,11 +2485,17 @@ describe('crawlable corpus generator', () => {
           `${route} analysis must contain at least 400 country-specific words, got ${articleWordCount}`,
         );
         const pageWordCount = words(countryDocument.querySelector('main')?.textContent).length;
-        // Upper bound leaves room for the published live-pulse tiles (#7376)
-        // on top of the #7371 country-analysis prose target.
+        // Upper bound leaves room for the published live-pulse tiles (#7376) on
+        // top of the #7371 country-analysis prose target. Only the unranked tier
+        // gets the wider ceiling: the truncation clause and the support-threshold
+        // note cost the widest of those pages ~30 words and pushed Monaco,
+        // Taiwan, Nauru, Palau and Andorra past 900 (#7609). Ranked pages never
+        // carry that copy -- the heaviest is 841 -- so raising the bound for all
+        // 196 would hand 191 pages 50 words of slack they did not need.
+        const pageWordCeiling = country.headlineEligible === false ? 950 : 900;
         assert.ok(
-          pageWordCount >= 600 && pageWordCount <= 900,
-          `${route} main content must contain 600-900 words, got ${pageWordCount}`,
+          pageWordCount >= 600 && pageWordCount <= pageWordCeiling,
+          `${route} main content must contain 600-${pageWordCeiling} words, got ${pageWordCount}`,
         );
       }
 
@@ -3010,6 +3018,67 @@ describe('crawlable corpus generator', () => {
           assert.ok(rankedNames.has(peer.name), `${route} peer ${peer.name} must be ranked`);
         }
       }
+      // Every unranked page publishes an inventory about its own evidence base,
+      // so that inventory has to survive a reader checking it. Sweep the whole
+      // unranked tier, not a sample: the arithmetic in the scope note must close
+      // over all three buckets, and an "observed" row below the support
+      // threshold must carry the sentence that explains why it is still absent
+      // from the supported readings (#7609).
+      const unrankedCorpusCountries = corpusData.countries
+        .filter((entry) => entry.headlineEligible === false);
+      assert.ok(
+        unrankedCorpusCountries.length >= 20,
+        `expected a non-trivial unranked tier to sweep, got ${unrankedCorpusCountries.length}`,
+      );
+      // Counted, not just skipped: `if (scope)` and the sub-threshold filter both
+      // pass vacuously on a page that renders neither, so a copy change that
+      // dropped both paragraphs everywhere would turn this whole sweep green.
+      let scopeNotesChecked = 0;
+      let thresholdNotesChecked = 0;
+      for (const country of unrankedCorpusCountries) {
+        const route = `/countries/${country.slug}/`;
+        const document = htmlDocument(
+          read(outDir, `${route.slice(1)}index.html`),
+          `https://www.worldmonitor.app${route}`,
+        );
+        const scope = (document.querySelector('[data-inventory-scope]')?.textContent || '').trim();
+        if (scope) {
+          scopeNotesChecked += 1;
+          // Anchored to the words, not to digit order: a flat /\d+/g stream
+          // re-attributes captures the moment the sentence gains a number.
+          const head = scope.match(/^Showing (\d+) of (\d+) active dimensions/);
+          assert.ok(head, `${route} inventory scope note lost its expected shape: "${scope}"`);
+          const atFullCoverage = Number(scope.match(/(\d+) more at full coverage/)?.[1] ?? 0);
+          const omittedForBrevity = Number(scope.match(/(\d+) omitted for brevity/)?.[1] ?? 0);
+          assert.equal(
+            Number(head[1]) + atFullCoverage + omittedForBrevity,
+            Number(head[2]),
+            `${route} inventory scope note does not account for every active dimension: "${scope}"`,
+          );
+        }
+        const subThresholdObserved = [...document.querySelectorAll('[data-country-analysis] ul.routes li')]
+          .map((node) => (node.textContent || '').trim())
+          .filter((text) => /;\s*observed\.$/.test(text))
+          // NaN, not 100, when a row stops matching: a default that reads as
+          // "above the floor" would silently empty this list and pass the page.
+          .filter((text) => !(Number(text.match(/(\d+)% coverage/)?.[1] ?? NaN)
+            >= SUPPORTED_READING_MIN_COVERAGE * 100));
+        const thresholdNote = (document.querySelector('[data-inventory-support-threshold]')?.textContent || '').trim();
+        if (thresholdNote) thresholdNotesChecked += 1;
+        assert.equal(
+          subThresholdObserved.length > 0,
+          thresholdNote !== '',
+          `${route} shows ${subThresholdObserved.length} sub-threshold observed rows but ${thresholdNote ? 'explains' : 'never explains'} the support threshold`,
+        );
+      }
+      assert.ok(
+        scopeNotesChecked >= 20,
+        `the arithmetic sweep is vacuous: only ${scopeNotesChecked} of ${unrankedCorpusCountries.length} unranked pages published a scope note`,
+      );
+      assert.ok(
+        thresholdNotesChecked >= 15,
+        `the support-threshold sweep is vacuous: only ${thresholdNotesChecked} of ${unrankedCorpusCountries.length} unranked pages published a threshold note`,
+      );
       const syria = read(outDir, 'countries/syria/index.html');
       assert.match(syria, /Macro-fiscal position/);
       assert.match(syria, /IMF/);
@@ -4161,6 +4230,219 @@ describe('crawlable corpus generator', () => {
         breakingNewsLd.some((entry) => entry['@type'] === 'HowTo'),
         'HowTo-shaped use-case pages must emit HowTo JSON-LD (#7462)',
       );
+      const compareHub = read(outDir, 'compare/index.html');
+      const compareHubLd = jsonLdObjects(compareHub);
+      assertDefaultSpeakable(
+        compareHubLd.find((entry) => entry['@type'] === 'CollectionPage'),
+        'compare hub CollectionPage',
+      );
+      assert.match(compareHub, /<h1>Compare World Monitor<\/h1>/);
+      for (const page of COMPARISON_PAGES) {
+        assert.match(compareHub, new RegExp('href="' + page.path.replaceAll('/', '\/') + '"'));
+      }
+      assert.match(compareHub, /href="\/blog\/posts\/worldmonitor-vs-traditional-intelligence-tools\/"/);
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        const ld = jsonLdObjects(html);
+        const h1 = html.match(/<h1>([^<]+)<\/h1>/)?.[1] ?? '';
+        assert.ok(
+          h1.toLowerCase().includes(page.h1.toLowerCase()),
+          page.slug + ' H1 must contain its own h1 string',
+        );
+        assert.match(html, /<title>[^<]*World Monitor[^<]*<\/title>/);
+        assert.ok(
+          ld.some((entry) => entry['@type'] === 'WebPage'),
+          page.slug + ' must emit WebPage JSON-LD',
+        );
+        assert.ok(
+          ld.some((entry) => entry['@type'] === 'FAQPage'),
+          page.slug + ' must emit FAQPage JSON-LD (#7610)',
+        );
+        if (page.itemList) {
+          const itemList = ld.find((entry) => entry['@type'] === 'ItemList');
+          assert.ok(itemList, page.slug + ' must emit ranked ItemList JSON-LD (#7610)');
+          assert.equal(itemList.numberOfItems, page.itemList.length);
+          assert.equal(itemList.itemListOrder, 'https://schema.org/ItemListOrderAscending');
+        }
+        assert.match(
+          html,
+          /When to choose them instead/,
+          page.slug + ' must include a concession section (#7610 non-negotiable rule)',
+        );
+        for (const cell of COMPARISON_MATRIX_COLUMNS) {
+          const headerCell = cell.replaceAll('&', '&amp;');
+          assert.match(html, new RegExp('<th>' + headerCell + '</th>'), page.slug + ' matrix must contain header cell: ' + cell);
+        }
+        assert.doesNotMatch(html, /id="app"/);
+        for (const competitor of page.competitors) {
+          const renderedName = competitor.replaceAll("&", "&amp;").replaceAll("'", "&#39;");
+          assert.match(html, new RegExp(renderedName.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&')), page.slug + ' must name competitor: ' + competitor);
+        }
+      }
+      const liveuamapPage = read(outDir, 'compare/liveuamap-alternatives/index.html');
+      assert.match(liveuamapPage, /Multi-domain fusion/i);
+      assert.match(liveuamapPage, /maritime/i);
+      const riskDashboards = read(outDir, 'compare/best-geopolitical-risk-dashboards/index.html');
+      assert.match(riskDashboards, /Update latency at zero price/i);
+      const acledPage = read(outDir, 'compare/worldmonitor-vs-acled/index.html');
+      assert.match(acledPage, /wins on historical depth/i);
+      assert.match(acledPage, /complement/i);
+      const gdeltPage = read(outDir, 'compare/worldmonitor-vs-gdelt/index.html');
+      assert.match(gdeltPage, /wins on archive depth/i);
+
+      // #7610 requires the literal 13-route /compare/ family: hub + 12 children.
+      assert.deepEqual(
+        manifest.sections.comparisons.routes,
+        [
+          '/compare/liveuamap-alternatives/',
+          '/compare/best-geopolitical-risk-dashboards/',
+          '/compare/worldmonitor-vs-liveuamap/',
+          '/compare/worldmonitor-vs-acled/',
+          '/compare/worldmonitor-vs-gdelt/',
+          '/compare/worldmonitor-vs-dataminr/',
+          '/compare/worldmonitor-vs-recorded-future/',
+          '/compare/worldmonitor-vs-deepstatemap/',
+          '/compare/mcp-servers-for-geopolitical-data/',
+          '/compare/chokepoint-monitoring-tools/',
+          '/compare/free-geopolitical-risk-dashboards/',
+          '/compare/travel-risk-intelligence-vs-assistance/',
+        ],
+      );
+      assert.equal(manifest.sections.comparisons.count, 13);
+
+      // Hub master matrix: independent literal expectations, not derived from
+      // the exported rows the renderer itself consumes (#7610).
+      assert.ok(compareHub.includes('<h2>Master comparison matrix</h2>'));
+      assert.ok(compareHub.includes('<th>Product</th>'));
+      assert.ok(compareHub.includes('<th>Price</th>'));
+      for (const vendor of ['Liveuamap', 'ACLED (myACLED)', 'GDELT Cloud', 'Dataminr', 'Recorded Future', 'IMF PortWatch']) {
+        assert.match(compareHub, new RegExp('<td>' + vendor.replaceAll(/[.*+?^${}()|[\]\\]/g, '\\$&') + '</td>'));
+      }
+      // First data row must carry both a product cell and a real price cell.
+      assert.ok(
+        compareHub.includes('<td>World Monitor</td><td>$0 dashboard; API from $99.99/mo (1,000 req/day); MCP from $39.99/mo (Pro)</td>'),
+        'hub master matrix first row must carry Product and Price cells',
+      );
+
+      // Every matrix row must carry the Product column and a separate Price cell.
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        assert.ok(html.includes('<th>Product</th><th>Price</th>'), page.slug + ' matrix must lead with Product then Price');
+        assert.ok(html.indexOf('<th>Product</th>') < html.indexOf('<th>Price</th>'), page.slug + ' must render Product before Price');
+      }
+
+      // Liveuamap alternatives page: literal competitor set including the two
+      // issue-required additions.
+      const liveuamapDefinition = COMPARISON_PAGES.find((page) => page.slug === 'liveuamap-alternatives');
+      const liveuamapCompetitors = liveuamapDefinition.competitors;
+      assert.deepEqual(
+        liveuamapCompetitors,
+        ['Liveuamap', 'Deep State Map', 'ACLED', 'ConflictZone.io', 'ISW', 'UNOSAT', 'ICG CrisisWatch', 'ConflictRadar'],
+      );
+      assert.deepEqual(
+        liveuamapDefinition.itemList,
+        [
+          { name: 'World Monitor', position: 1 },
+          { name: 'Liveuamap', position: 2 },
+          { name: 'Deep State Map', position: 3 },
+          { name: 'ACLED', position: 4 },
+          { name: 'ConflictZone.io', position: 5 },
+          { name: 'ISW', position: 6 },
+          { name: 'UNOSAT', position: 7 },
+          { name: 'ICG CrisisWatch', position: 8 },
+          { name: 'ConflictRadar', position: 9 },
+        ],
+      );
+      const liveuamapItemList = jsonLdObjects(liveuamapPage).find((entry) => entry['@type'] === 'ItemList');
+      assert.deepEqual(
+        liveuamapItemList.itemListElement.map(({ name, position }) => ({ name, position })),
+        liveuamapDefinition.itemList,
+      );
+      assert.match(liveuamapPage, /ICG CrisisWatch/);
+      assert.match(liveuamapPage, /ConflictRadar/);
+
+      const comparisonRows = [
+        ...COMPARISON_HUB_MATRIX_ROWS,
+        ...COMPARISON_PAGES.flatMap((page) => page.matrixRows),
+      ];
+      const mcpColumn = COMPARISON_MATRIX_COLUMNS.indexOf('MCP server');
+      const verifiedMcpProducts = [
+        'World Monitor',
+        'GDELT',
+        'war-dashboard-data',
+        'world-intel-mcp',
+        'Off-Nadir Delta',
+        'Satellite MCP',
+        'OSINT MCP',
+        'IMF PortWatch',
+      ];
+      for (const row of comparisonRows) {
+        const hasVerifiedMcp = verifiedMcpProducts.some((name) => row[0].includes(name));
+        if (hasVerifiedMcp) {
+          assert.doesNotMatch(row[mcpColumn], /^(?:No|Unverified)$/i, row[0] + ' has verified MCP evidence');
+        } else {
+          assert.equal(row[mcpColumn], 'Unverified', row[0] + ' MCP status must preserve the unverified evidence state');
+        }
+      }
+
+      const worldMonitorRows = comparisonRows.filter((row) => row[0].startsWith('World Monitor'));
+      for (const row of worldMonitorRows) {
+        assert.equal(
+          row[2],
+          'Source-dependent: live and minute-level feeds plus daily, weekly, and monthly datasets',
+          row[0] + ' must not publish one refresh interval for every source',
+        );
+      }
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        assert.doesNotMatch(html, /5[-–]15 min/i, page.slug + ' must not publish a universal 5-15 minute cadence');
+      }
+
+      // False "no public API" claim must never return (#7610 correction).
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        assert.doesNotMatch(html, /Liveuamap[^.]*no public API/i, page.slug + ' must not claim Liveuamap has no public API');
+      }
+      assert.ok(liveuamapPage.includes('$150'), 'liveuamap alternatives must cite the corrected $150 API price');
+      assert.ok(liveuamapPage.includes('1,000 requests/day'));
+      const vsLiveuamapPage = read(outDir, 'compare/worldmonitor-vs-liveuamap/index.html');
+      assert.ok(vsLiveuamapPage.includes('Does Liveuamap have an API?'), 'head-to-head must carry the corrected API FAQ');
+      assert.ok(vsLiveuamapPage.includes('Yes. Liveuamap sells API access'));
+      assert.ok(vsLiveuamapPage.includes('liveuamap.com/promo/api'));
+
+      // Unnamed third-party enterprise price claims must never be published.
+      const dataminrPage = read(outDir, 'compare/worldmonitor-vs-dataminr/index.html');
+      const recordedFuturePage = read(outDir, 'compare/worldmonitor-vs-recorded-future/index.html');
+      for (const [label, html] of [['dataminr', dataminrPage], ['recorded-future', recordedFuturePage]]) {
+        assert.doesNotMatch(html, /six figures|\$100K|\$300K/i, label + ' must omit enterprise figures without a named source');
+        assert.match(html, /does not publish list pricing/);
+      }
+      assert.doesNotMatch(recordedFuturePage, /cyber-only/i);
+      assert.match(recordedFuturePage, /physical[^.]*geopolitical risk/i);
+
+      assert.doesNotMatch(acledPage, /CC-BY-NC|myACLED free tier|Daily event coding/i);
+      assert.match(acledPage, /Research, Partner, and Enterprise/);
+
+      const chokepointComparisonPage = read(outDir, 'compare/chokepoint-monitoring-tools/index.html');
+      assert.equal(manifest.sections.chokepoints.count, 13);
+      assert.doesNotMatch(chokepointComparisonPage, /\b14 chokepoints\b|28 vs 14/i);
+      assert.match(chokepointComparisonPage, /\b13 chokepoints\b/);
+
+      // Required alternative H2 headings on their pages (#7610).
+      const headingExpectations = [
+        ['worldmonitor-vs-acled', 'ACLED alternative'],
+        ['worldmonitor-vs-dataminr', 'Dataminr alternatives'],
+        ['worldmonitor-vs-recorded-future', 'Recorded Future alternatives'],
+      ];
+      for (const [slug, heading] of headingExpectations) {
+        const html = read(outDir, 'compare/' + slug + '/index.html');
+        assert.match(html, new RegExp('<h2>' + heading + '</h2>'), slug + ' must emit the required H2');
+      }
+
+      // Hub description guard: 90-160 chars, asserted through the exported builder.
+      const hubDescription = compareHubLd.find((entry) => entry['@type'] === 'CollectionPage')?.description;
+      assert.ok(hubDescription, 'compare hub must emit a description');
+      assert.ok(hubDescription.length >= 90 && hubDescription.length <= 160, 'hub description must be 90-160 chars, got ' + hubDescription.length);
       assert.match(toolsIndex, /href="\/tools\/natural-hazard-pulse\/"/);
       assert.match(toolsIndex, /href="\/tools\/airspace-disruption-checker\/"/);
       assert.match(toolsIndex, /href="\/tools\/signal-convergence\/"/);

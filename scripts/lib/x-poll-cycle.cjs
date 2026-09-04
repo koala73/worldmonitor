@@ -26,6 +26,22 @@ const REQUIRED_DEPS = [
   'randomId',
 ];
 
+const DEFAULT_X_POLL_INTERVAL_MS = 15 * 60 * 1000;
+
+function xPollSlot(nowMs, intervalMs = DEFAULT_X_POLL_INTERVAL_MS) {
+  const timestamp = Number(nowMs);
+  const interval = Number(intervalMs);
+  if (!Number.isFinite(timestamp) || !Number.isFinite(interval) || interval <= 0) {
+    throw new TypeError('a valid poll time and interval are required');
+  }
+  const startsAt = Math.floor(timestamp / interval) * interval;
+  return {
+    id: new Date(startsAt).toISOString(),
+    startsAt,
+    endsAt: startsAt + interval,
+  };
+}
+
 function createXPollCycle(deps = {}) {
   for (const name of REQUIRED_DEPS) {
     if (deps[name] == null) throw new TypeError(`${name} is required`);
@@ -52,6 +68,8 @@ function createXPollCycle(deps = {}) {
     randomId,
     X_ENABLED = false,
     X_BEARER_TOKEN = '',
+    X_CURATED_LIST_ID = '',
+    X_POLL_INTERVAL_MS = DEFAULT_X_POLL_INTERVAL_MS,
     X_FEED_CACHE_KEY,
     X_FEED_META_KEY,
     X_FEED_POLL_STATE_KEY,
@@ -103,18 +121,21 @@ function createXPollCycle(deps = {}) {
       pollState,
     });
     if (!hydrated) return false;
-    xState.cursorByAccountId = hydrated.cursorByAccountId;
-    xState.accountIdByHandle = hydrated.accountIdByHandle;
-    xState.lastPolledAtByHandle = hydrated.lastPolledAtByHandle;
     xState.lastDeletionAuditAt = hydrated.lastDeletionAuditAt;
+    xState.lastMembershipCheckAt = hydrated.lastMembershipCheckAt;
     xState.lastCycleUsage = hydrated.lastCycleUsage;
     xState.postBudget = hydrated.postBudget;
     xState.items = hydrated.items;
     xState.lookupOffset = hydrated.lookupOffset;
-    xState.accountOffset = hydrated.accountOffset;
     xState.generation = hydrated.generation;
     xState.lastPollAt = hydrated.lastPollAt;
     xState.lastHealthyAt = hydrated.lastHealthyAt;
+    xState.lastAttemptAt = hydrated.lastAttemptAt;
+    xState.lastProviderSuccessAt = hydrated.lastProviderSuccessAt;
+    xState.lastAcceptedPublicationAt = hydrated.lastAcceptedPublicationAt;
+    xState.lastAttemptSlot = hydrated.lastAttemptSlot;
+    xState.lastProviderSuccessSlot = hydrated.lastProviderSuccessSlot;
+    xState.lastPublishedSlot = hydrated.lastPublishedSlot;
     xState.lastCoverage = hydrated.lastCoverage;
     // LATER deadline and HIGHER attempt count, never plain assignment — the same
     // invariant mergeRefreshedPollState enforces under the lock, and this is where
@@ -132,12 +153,12 @@ function createXPollCycle(deps = {}) {
     return true;
   }
 
-  async function publish(expectedAccounts, { cycleComplete, accountsPolled, lockOwner, state = xState } = {}) {
+  async function publish(expectedAccounts, { cycleComplete, listAccepted, lockOwner, state = xState } = {}) {
     const snapshot = xNewsAccounts.buildXFeedSnapshot(state, {
       enabled: X_ENABLED,
       expectedAccounts,
     });
-    const meta = accountsPolled > 0 ? {
+    const meta = listAccepted ? {
       fetchedAt: state.lastPollAt,
       recordCount: snapshot.count,
       generation: snapshot.generation,
@@ -165,6 +186,8 @@ function createXPollCycle(deps = {}) {
 
   async function pollOnce({ generation, signal, retryAfterLeaseConflict = false } = {}) {
     if (!X_ENABLED) return;
+    const initialSlot = xPollSlot(now(), X_POLL_INTERVAL_MS);
+    if (xState.lastAttemptSlot === initialSlot.id) return;
     if (xState.rateLimitedUntil && now() < xState.rateLimitedUntil) {
       xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
       return;
@@ -188,8 +211,8 @@ function createXPollCycle(deps = {}) {
       // persisted snapshot version, so this run's poll-guard generation stamp
       // survives it and the guard's `.finally` still matches. That
       // self-perpetuated a ~1Hz SETNX + log storm for the whole lease TTL
-      // (X_FEED_POLL_LOCK_TTL_SECONDS, ~17min) whenever a peer replica held the
-      // lease. If this single retry also loses, the next scheduled tick picks it up.
+      // whenever a peer replica held the lease. If this single retry also loses,
+      // the next scheduled tick picks it up.
       if (retryAfterLeaseConflict) {
         setTimer(() => {
           if (generation === getPollGeneration()) scheduleRetry(false);
@@ -198,6 +221,7 @@ function createXPollCycle(deps = {}) {
       return;
     }
 
+    let retryCurrentSlot = false;
     try {
       const accounts = xState.accounts.length ? xState.accounts : loadXAccounts();
       if (!accounts.length) return;
@@ -212,19 +236,9 @@ function createXPollCycle(deps = {}) {
         }
       }
 
-      // Cursors may have advanced under another replica since our boot hydrate.
-      // buildXPollState serialises the WHOLE cursor map, including accounts this
-      // cycle never touches — so polling from stale in-memory cursors and then
-      // publishing would write those stale values back over a peer's newer ones,
-      // rewinding since_id and re-fetching windows that were already consumed.
-      // Re-read under the lock so we start from Redis truth.
-      //
-      // The serving snapshot has to be re-read with it. mergeRefreshedPollState
-      // returns poll bookkeeping ONLY, on purpose, so items stay at whatever this
-      // process last hydrated — and on the lease-conflict path that hydrate always
-      // ran before the lease holder published, so our copy is missing that peer's
-      // posts. Publishing from it drops them permanently: the cursor map we just
-      // read has already advanced past their ids, so they are never re-fetched.
+      // Re-read aggregate poll state and the serving snapshot under the lock.
+      // This makes the slot fence and last-good feed Redis-authoritative across
+      // replicas before this process spends another paid request.
       let stateReadFailed = false;
       const [freshPollState, freshSnapshot] = await Promise.all([
         upstashGet(X_FEED_POLL_STATE_KEY, (reason) => {
@@ -237,19 +251,19 @@ function createXPollCycle(deps = {}) {
         }),
       ]);
       if (stateReadFailed) {
-        xState.lastError = 'Redis re-read failed under the lock; skipped cycle rather than risk a cursor rewind or item loss';
+        xState.lastError = 'Redis re-read failed under the lock; skipped cycle rather than risk duplicate spend or item loss';
         return;
       }
       if (freshPollState) {
         const refreshed = xNewsAccounts.hydrateXFeedSnapshot(null, { pollState: freshPollState });
         if (refreshed) {
-          // Cursors from Redis; rate-limit deadline whichever is LATER. See
-          // mergeRefreshedPollState — the bearer is shared across replicas, so a
+          // Rate-limit deadline whichever is LATER. See mergeRefreshedPollState
+          // — the bearer is shared across replicas, so a
           // peer's 429 backoff applies here too, but it must not clear a backoff
           // this process recorded moments ago.
           Object.assign(xState, xNewsAccounts.mergeRefreshedPollState(xState, refreshed));
-          // The snapshot version is Redis-owned like the cursors and must never go
-          // backwards: a replica that sat out several peer cycles would otherwise
+          // The snapshot version is Redis-owned and must never go backwards: a
+          // replica that sat out several peer cycles would otherwise
           // republish a lower number than the one already in Redis.
           xState.generation = Math.max(xState.generation, refreshed.generation);
         }
@@ -268,12 +282,17 @@ function createXPollCycle(deps = {}) {
         xState.lastError = xNewsAccounts.sharedBackoffMessage(xState.backoffCause);
         return;
       }
+      const activeSlot = xPollSlot(now(), X_POLL_INTERVAL_MS);
+      if (xState.lastAttemptSlot === activeSlot.id) return;
 
       const pollStart = now();
       const next = await xNewsAccounts.pollXFeed({
         accounts,
         state: xState,
         bearerToken: X_BEARER_TOKEN,
+        listId: X_CURATED_LIST_ID,
+        slot: activeSlot,
+        coverageId: `list-slot:${activeSlot.id}`,
         fetchImpl: (...args) => fetchImpl(...args),
         now,
         maxFeedItems: X_MAX_FEED_ITEMS,
@@ -281,6 +300,7 @@ function createXPollCycle(deps = {}) {
         withReturnedPosts: (request) => xPostBudget.withReturnedPosts(request),
         signal,
       });
+      retryCurrentSlot = xPollSlot(now(), X_POLL_INTERVAL_MS).id !== activeSlot.id;
 
       if (generation !== getPollGeneration() || signal?.aborted) {
         warn(`[Relay] X poll generation ${generation} finished stale; discarding result`);
@@ -296,6 +316,9 @@ function createXPollCycle(deps = {}) {
       xState.lastError = next.lastError;
 
       const pollCompletedAt = now();
+      const acceptedSourceAt = next.listAccepted
+        ? Math.min(Number(next.providerSuccessAt) || pollCompletedAt, pollCompletedAt)
+        : xState.lastPollAt;
       const candidate = {
         ...xState,
         // The persisted snapshot version advances once per PUBLISHED snapshot. It
@@ -304,24 +327,38 @@ function createXPollCycle(deps = {}) {
         // publish path owns it. Built on the value re-read under the lock above, so
         // it stays monotonic across replicas.
         generation: xState.generation + 1,
-        cursorByAccountId: next.cursorByAccountId,
-        accountIdByHandle: next.accountIdByHandle,
-        lastPolledAtByHandle: next.lastPolledAtByHandle,
         lastDeletionAuditAt: next.lastDeletionAuditAt || 0,
+        lastMembershipCheckAt: next.lastMembershipCheckAt || 0,
         lastCycleUsage: next.lastCycleUsage || null,
         postBudget: next.postBudget || null,
-        items: next.items,
+        items: next.listAccepted ? next.items : xState.items,
         lookupOffset: next.lookupOffset || 0,
-        accountOffset: next.accountOffset || 0,
-        lastPollAt: pollCompletedAt,
-        lastCoverage: {
+        lastAttemptAt: pollCompletedAt,
+        lastAttemptSlot: activeSlot.id,
+        lastProviderSuccessAt: next.providerSuccess
+          ? (next.providerSuccessAt || pollCompletedAt)
+          : xState.lastProviderSuccessAt,
+        lastProviderSuccessSlot: next.providerSuccess
+          ? (next.providerSuccessSlot || activeSlot.id)
+          : xState.lastProviderSuccessSlot,
+        lastAcceptedPublicationAt: next.listAccepted ? pollCompletedAt : xState.lastAcceptedPublicationAt,
+        lastPublishedSlot: next.listAccepted ? activeSlot.id : xState.lastPublishedSlot,
+        lastPollAt: acceptedSourceAt,
+        lastCoverage: next.listAccepted ? {
           expected: accounts.length,
           polled: next.accountsPolled,
           failed: next.accountsFailed,
           attempted: next.accountsAttempted,
           complete: next.cycleComplete,
-        },
-        lastHealthyAt: next.cycleComplete ? pollCompletedAt : xState.lastHealthyAt,
+        } : (xState.lastCoverage
+          // A rejected slot keeps the last-good COUNTS but must stop claiming
+          // completeness: polled/expected/failed freeze together with `complete`,
+          // so normalizeCoverage cannot self-correct and the panel's degraded
+          // banner (api/x-feed.js -> XIntelPanel) would never render through an
+          // outage. Seed-meta staleness only catches this 3 slots (45min) later.
+          ? { ...xState.lastCoverage, complete: false }
+          : xState.lastCoverage),
+        lastHealthyAt: next.listAccepted && next.cycleComplete ? acceptedSourceAt : xState.lastHealthyAt,
       };
 
       const elapsed = ((pollCompletedAt - pollStart) / 1000).toFixed(1);
@@ -333,11 +370,11 @@ function createXPollCycle(deps = {}) {
       // cursors ahead of Redis whenever the lease-guarded EVAL failed, so /x here
       // served data no other replica could see and the seed-meta key silently went
       // unrefreshed. On failure we keep the previous state and re-poll the same
-      // window next cycle. The paid timeline response stays in Redis as a
+      // window next cycle. The paid List response stays in Redis as a
       // receipt, so the next replica replays it without calling X again.
       const published = await publish(accounts.length, {
         cycleComplete: next.cycleComplete,
-        accountsPolled: next.accountsPolled,
+        listAccepted: next.listAccepted,
         lockOwner,
         state: candidate,
       });
@@ -349,15 +386,20 @@ function createXPollCycle(deps = {}) {
       if (next.receiptAcks?.length) {
         const acknowledged = await xPostBudget.ackReceipts(next.receiptAcks);
         if (!acknowledged) {
-          warn('[Relay] X receipt acknowledgement failed; the next cycle will replay it without calling X');
+          warn('[Relay] X receipt acknowledgement failed; the next cycle will recover it without calling X');
         }
       }
     } finally {
       await upstashReleaseLockIfOwner(X_FEED_POLL_LOCK_KEY, lockOwner);
+      if (retryCurrentSlot) {
+        setTimer(() => {
+          if (generation === getPollGeneration()) scheduleRetry(false);
+        }, 1000);
+      }
     }
   }
 
   return { hydrate, publish, pollOnce };
 }
 
-module.exports = { createXPollCycle };
+module.exports = { createXPollCycle, xPollSlot };

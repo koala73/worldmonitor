@@ -113,9 +113,10 @@ function countryPayload() {
 
   // Shaped like /api/news/v1/list-feed-digest: category buckets of NewsItem,
   // each carrying the masthead (`source`) and the article URL (`link`).
-  function digestPayload(items) {
+  function digestPayload(items, coverage = { state: 'complete', servedStale: false }) {
     return {
       generatedAt: new Date().toISOString(),
+      coverage: { itemsServed: items.length, ...coverage },
       categories: { politics: { items } },
     };
   }
@@ -163,6 +164,7 @@ function countryPayload() {
       digestItem({ title: 'Headline four', importanceScore: 60 }),
       digestItem({ title: 'Headline five', importanceScore: 50 }),
     ],
+    digestCoverage = { state: 'complete', servedStale: false },
     briefStatus = 'ok',
     briefOverrides = {},
     briefFailCodes = [],
@@ -195,7 +197,7 @@ function countryPayload() {
       if (href.includes('get-humanitarian-summary')) {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
       }
-      if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems));
+      if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems, digestCoverage));
       if (href.includes('get-country-intel-brief')) {
         if (briefStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
         const code = new URL(href).searchParams.get('country_code');
@@ -255,15 +257,33 @@ function countryPayload() {
 
 describe('freeze crawlable live pulse coverage gates', () => {
   const originalFetch = globalThis.fetch;
+  const scratchRoots = [];
 
-  afterEach(() => {
+  afterEach(async () => {
     globalThis.fetch = originalFetch;
+    await Promise.all(scratchRoots.splice(0).map((dir) => rm(dir, { recursive: true, force: true })));
   });
+
+  async function scratchRoot() {
+    const dir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
+    await mkdir(join(dir, 'docs', 'snapshots'), { recursive: true });
+    scratchRoots.push(dir);
+    return dir;
+  }
+
+  async function runFreeze(options = {}) {
+    return freezeCrawlableLivePulse({
+      apiBase: STAGING_BASE,
+      requestGapMs: 0,
+      rootDir: await scratchRoot(),
+      ...options,
+    });
+  }
 
   it('rejects a freeze that captured far fewer countries than the corpus renders', async () => {
     stubFetch({ dropCountriesAfter: 100 });
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 100 of \d+ countries/,
       'a 100-country capture must not pass when the corpus renders far more',
     );
@@ -272,7 +292,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
   it('rejects a freeze missing any chokepoint the registry defines', async () => {
     stubFetch({ chokepointIds: ['suez', 'malacca_strait', 'hormuz_strait'] });
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 3 of \d+ chokepoints/,
       'a truncated chokepoint list must fail rather than ship placeholder pages',
     );
@@ -288,7 +308,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
     // The run must fail on the coverage gate (0 chokepoints), NOT on an
     // unhandled rejection from the single unguarded fetch.
     await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
+      runFreeze(),
       /captured only 0 of \d+ chokepoints/,
       'a chokepoint outage must degrade into the coverage gate, not an uncaught throw',
     );
@@ -296,30 +316,20 @@ describe('freeze crawlable live pulse coverage gates', () => {
 
   it('preserves explicit transit-count availability in the frozen snapshot', async () => {
     stubFetch();
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: STAGING_BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.ok(Object.values(snapshot.chokepoints).length > 0);
-      assert.ok(
-        Object.values(snapshot.chokepoints).every((pulse) => (
-          pulse.todayTransits === '0'
-          && pulse.todayCountsAvailable === true
-          && pulse.navigationalWarnings === '0 warnings'
-          && pulse.navigationalWarningsAvailable === true
-          && pulse.aisDisruptions === '0 AIS disruptions'
-          && pulse.aisSnapshotAvailable === true
-          && pulse.congestion === 'Normal'
-          && pulse.weekMovement === '0% vs prior week'
-        )),
-      );
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.ok(Object.values(snapshot.chokepoints).length > 0);
+    assert.ok(
+      Object.values(snapshot.chokepoints).every((pulse) => (
+        pulse.todayTransits === '0'
+        && pulse.todayCountsAvailable === true
+        && pulse.navigationalWarnings === '0 warnings'
+        && pulse.navigationalWarningsAvailable === true
+        && pulse.aisDisruptions === '0 AIS disruptions'
+        && pulse.aisSnapshotAvailable === true
+        && pulse.congestion === 'Normal'
+        && pulse.weekMovement === '0% vs prior week'
+      )),
+    );
   });
 
   // The homepage teaser strip renders whatever this freeze captures into the
@@ -344,56 +354,66 @@ describe('freeze crawlable live pulse coverage gates', () => {
         digestItem({ title: 'Fifth', importanceScore: 10 }),
       ],
     });
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: STAGING_BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.equal(snapshot.headlines.length, 4, 'the strip renders exactly four headlines');
-      assert.deepEqual(
-        snapshot.headlines.map((h) => h.title),
-        ['First', 'Second', 'Third', 'Fourth'],
-        'headlines must be ranked by importance, matching the live card',
-      );
-      assert.deepEqual(snapshot.headlines[0], {
-        title: 'First',
-        source: 'UN News',
-        url: 'https://news.un.org/story/1',
-        publishedAt: new Date(publishedAt).toISOString(),
-      });
-      assert.equal(snapshot.coverage.headlineCount, 4);
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.headlines.length, 4, 'the strip renders exactly four headlines');
+    assert.deepEqual(
+      snapshot.headlines.map((h) => h.title),
+      ['First', 'Second', 'Third', 'Fourth'],
+      'headlines must be ranked by importance, matching the live card',
+    );
+    assert.deepEqual(snapshot.headlines[0], {
+      title: 'First',
+      source: 'UN News',
+      url: 'https://news.un.org/story/1',
+      publishedAt: new Date(publishedAt).toISOString(),
+    });
+    assert.equal(snapshot.coverage.headlineCount, 4);
   });
 
-  it('rejects a freeze whose headline capture came back empty', async () => {
+  it('keeps the country capture when the digest yields no publishable headline', async () => {
     stubFetch({ digestItems: [] });
-    await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
-      /captured only 0 of 4 headlines/,
-      'an empty digest must red the freeze, not republish the previous headlines',
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(snapshot.headlines, [], 'an empty capture publishes nothing, never stale rows');
+    assert.equal(snapshot.coverage.headlineCount, 0);
+    assert.ok(
+      snapshot.coverage.countryCount > 100,
+      'the country capture must survive a headline shortfall',
+    );
+    assert.match(
+      snapshot.errors.headlines[0].message,
+      /only 0 of 4 digest items were publishable/,
+      'the shortfall must be recorded with its cause, not silently dropped',
     );
   });
 
-  it('rejects digest items that cannot be attributed or verified', async () => {
+  it('records why unattributable digest items were rejected', async () => {
     stubFetch({
       digestItems: [
         digestItem({ title: 'No masthead', source: '' }),
         digestItem({ title: 'No link', link: '' }),
         digestItem({ title: 'Insecure link', link: 'http://example.test/a' }),
+        digestItem({ title: 'Malformed HTTPS link', link: 'https://' }),
         digestItem({ title: 'No publication time', publishedAt: 0 }),
+        digestItem({
+          title: 'Aggregator redirect - New Lines Magazine',
+          link: 'https://news.google.com/rss/articles/CBMifzFBVV95cUx',
+        }),
+        digestItem({
+          title: 'Aggregator redirect with trailing dot',
+          link: 'https://news.google.com./rss/articles/CBMifzFBVV95cUx',
+        }),
         digestItem({ title: 'Keeps its provenance' }),
       ],
     });
-    await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
-      /captured only 1 of 4 headlines/,
-      'an item missing masthead, https URL, or publication time is not publishable',
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(
+      snapshot.headlines.map((h) => h.title),
+      ['Keeps its provenance'],
+      'only the item with a masthead, a verifiable https link and a publication time survives',
     );
+    assert.match(snapshot.errors.headlines[0].message, /noSource=1/);
+    assert.match(snapshot.errors.headlines[0].message, /unverifiableUrl=5/);
+    assert.match(snapshot.errors.headlines[0].message, /noPublishedAt=1/);
   });
 
   it('survives a digest outage without discarding the country work', async () => {
@@ -403,27 +423,31 @@ describe('freeze crawlable live pulse coverage gates', () => {
       if (String(url).includes('list-feed-digest')) throw new Error('offline');
       return outer(url);
     };
-    await assert.rejects(
-      freezeCrawlableLivePulse({ apiBase: STAGING_BASE, requestGapMs: 0 }),
-      /captured only 0 of 4 headlines; first error \(\*\): offline/,
-      'a digest outage must degrade into the coverage gate, not an uncaught throw',
-    );
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(snapshot.headlines, []);
+    assert.equal(snapshot.errors.headlines[0].message, 'offline');
+    assert.ok(snapshot.coverage.countryCount > 100, 'a news outage must not cost the corpus its refresh');
+  });
+
+  it('carries the digest own stale verdict into the snapshot', async () => {
+    stubFetch({ digestCoverage: { state: 'stale', servedStale: true } });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.coverage.headlineCount, 4);
+    assert.equal(snapshot.coverage.headlineDigestState, 'stale');
+    assert.equal(snapshot.coverage.headlineServedStale, true);
+  });
+
+  it('preserves an unknown served-stale verdict as null', async () => {
+    stubFetch({ digestCoverage: { state: 'complete' } });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.coverage.headlineDigestState, 'complete');
+    assert.equal(snapshot.coverage.headlineServedStale, null);
   });
 
   it('omits the upstream no-active-disruptions boilerplate from frozen chokepoints', async () => {
     stubFetch({ chokepointDescriptions: { malacca_strait: 'No active disruptions' } });
-    const rootDir = await mkdtemp(join(tmpdir(), 'crawlable-pulse-'));
-    await mkdir(join(rootDir, 'docs', 'snapshots'), { recursive: true });
-    try {
-      const { snapshot } = await freezeCrawlableLivePulse({
-        apiBase: STAGING_BASE,
-        rootDir,
-        requestGapMs: 0,
-      });
-      assert.equal(snapshot.chokepoints.malacca_strait.description, null);
-    } finally {
-      await rm(rootDir, { recursive: true, force: true });
-    }
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.chokepoints.malacca_strait.description, null);
   });
 });
 

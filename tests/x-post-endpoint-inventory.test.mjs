@@ -18,19 +18,11 @@ const approved = new Map([
     ],
   }],
   ['scripts/lib/x-news-accounts.cjs', {
-    endpoints: ['/2/users/${encodeURIComponent(id)}/tweets', '/2/tweets'],
+    endpoints: ['/2/lists/${encodeURIComponent(id)}/tweets', '/2/tweets'],
     wrappers: [
       /async function xFetchJson[\s\S]{0,300}assertXPostBudgetAdmission\(/,
-      /buildUserTimelineUrl\([\s\S]{0,1200}executePostRead\(\{/,
+      /buildXListPostsUrl\([\s\S]{0,1600}executePostRead\(\{/,
       /buildTweetsLookupUrl\([\s\S]{0,1200}executePostRead\(\{/,
-    ],
-  }],
-  ['scripts/verify-x-accounts.mjs', {
-    endpoints: ['/2/users/${account.accountId}/tweets'],
-    wrappers: [
-      /async function apiGet[\s\S]{0,300}assertXPostBudgetAdmission\(/,
-      /postBudget\.withReturnedPosts\([\s\S]{0,800}execute: \([^)]*postBudgetAdmission[^)]*\) => apiGet\(/,
-      /consumer: 'account-verifier',[\s\S]{0,300}coverageTotal: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]{0,300}coverageId: `timeline:\$\{account\.accountId\}`,[\s\S]{0,300}coverageUnitPosts/,
     ],
   }],
 ]);
@@ -72,5 +64,10 @@ describe('X Post-returning endpoint inventory', () => {
       /requires unused shared budget admission/,
     );
     assert.equal(fetches, 0);
+  });
+
+  it('contains no curated per-account timeline endpoint', () => {
+    const source = readFileSync(resolve(root, 'scripts/lib/x-news-accounts.cjs'), 'utf8');
+    assert.doesNotMatch(source, /\/2\/users\/[\s\S]{0,80}\/tweets/);
   });
 });
