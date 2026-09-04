@@ -1102,6 +1102,20 @@
       ]
     },
     {
+      "host": "api.serply.io",
+      "provider": "Serply Search MCP",
+      "kind": "structured",
+      "observed": true,
+      "license": "Excluded: optional user-configured MCP connector",
+      "attribution": "Excluded from the provider count: user-configured MCP connector.",
+      "status": "excluded",
+      "references": [
+        {
+          "path": "src/services/mcp-store.ts"
+        }
+      ]
+    },
+    {
       "host": "api.spdrgoldshares.com",
       "provider": "api.spdrgoldshares.com",
       "kind": "structured",
