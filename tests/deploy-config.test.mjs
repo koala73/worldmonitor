@@ -46,7 +46,7 @@ const frontendDockerfileSource = readFileSync(resolve(__dirname, '../docker/Dock
 const dockerignoreSource = readFileSync(resolve(__dirname, '../.dockerignore'), 'utf-8');
 const vercelIgnoreSource = readFileSync(resolve(__dirname, '../scripts/vercel-ignore.sh'), 'utf-8');
 const variantDashboardSource = readFileSync(resolve(__dirname, '../src/config/variant-dashboard-html.ts'), 'utf-8');
-const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
+const SPA_HTML_CACHE_SOURCE = '/((?!api|mcp|a2a|ask|oauth|assets|blog|docs|country-instability-index|countries|chokepoints|compare|crises|tools|research|reference|changelog|sources|use-cases|src|tmp|server|embed|embed\\.html|favico|map-styles|data|textures|pro|sw\\.js|workbox-[a-f0-9]+\\.js|manifest\\.webmanifest|offline\\.html|robots\\.txt|robots\\.www\\.txt|robots\\.variant\\.txt|robots\\.api\\.txt|sitemap\\.xml|schemamap\\.xml|sandbox|llms\\.txt|llms-full\\.txt|llms\\*\\.txt|openapi\\.yaml|openapi\\.json|plugin\\.json|auth\\.md|pricing\\.md|support\\.md|ai-search\\.md|agents\\.md|developers\\.md|developers/llms\\.txt|mcp-server\\.md|openapi\\.md|sdks\\.md|world-monitor\\.md|api-versioning\\.md|agent\\.txt|\\.well-known|wm-widget-sandbox\\.html|mcp-grant\\.html|mcp-grant|.*\\.md$).*)';
 const GLOBAL_SECURITY_HEADER_SOURCE = '/((?!docs|embed|embed\\.html|wm-widget-sandbox\\.html).*)';
 const APP_ROOT_HOST_PATTERN = '^(?:(?:www|tech|finance|commodity|happy|energy)\\.)?worldmonitor\\.app$';
 const WEBMCP_PRODUCTION_HOST_PATTERN = '^(?:www|tech|finance|commodity|happy|energy)\\.worldmonitor\\.app$';
@@ -605,6 +605,7 @@ describe('crawlable content corpus deployment contracts', () => {
     assert.ok(vercelIgnoreSource.includes("'docs/snapshots/'"));
     for (const path of [
       'docs/docs.json',
+      'scripts/build-comparison-pages.mjs',
       'scripts/build-use-cases.mjs',
       'scripts/crawlable-sources-page.mjs',
       'scripts/source-origin.mjs',
@@ -635,6 +636,7 @@ describe('crawlable content corpus deployment contracts', () => {
 
       for (const path of [
         'docs/docs.json',
+        'scripts/build-comparison-pages.mjs',
         'scripts/build-use-cases.mjs',
         'scripts/crawlable-sources-page.mjs',
         'scripts/source-origin.mjs',
@@ -2885,8 +2887,8 @@ describe('self-hosted docker nginx SPA entry', () => {
     //   docker/Dockerfile -> docker/nginx.conf.template (published ghcr image)
     for (const conf of ['docker/nginx.conf', 'docker/nginx.conf.template']) {
       const src = readFileSync(resolve(__dirname, `../${conf}`), 'utf-8');
-      assert.match(src, /^\s*index dashboard\.html;/m, `${conf}: index directive must be dashboard.html`);
-      assert.match(src, /try_files \$uri \$uri\/ \/dashboard\.html;/, `${conf}: SPA fallback must serve /dashboard.html`);
+      assert.match(src, /^\s*index dashboard\.html index\.html;/m, `${conf}: index directive must prefer dashboard.html then serve corpus index.html`);
+      assert.match(src, /try_files \$uri \$uri\/ \$uri\/index\.html \/dashboard\.html;/, `${conf}: SPA fallback must serve corpus index.html before /dashboard.html`);
       assert.doesNotMatch(src, /try_files \$uri \$uri\/ \/index\.html;/, `${conf}: must not keep the broken /index.html SPA fallback`);
     }
   });
@@ -4541,6 +4543,7 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     'country-instability-index',
     'countries',
     'chokepoints',
+    'compare',
     'research',
     'tools',
     'crises',

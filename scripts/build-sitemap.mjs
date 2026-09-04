@@ -307,7 +307,7 @@ export function buildSitemapEntries({
         + 'run npm run build:crawlable-corpus before npm run build:sitemap',
       );
     }
-    for (const prefix of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/research/', '/reference/']) {
+    for (const prefix of ['/countries/', '/chokepoints/', '/compare/', '/crises/', '/tools/', '/research/', '/reference/']) {
       if (!corpusPages.some((page) => new URL(page.loc).pathname.startsWith(prefix))) {
         throw new Error(
           `generated content corpus is incomplete: no ${prefix} pages; `
