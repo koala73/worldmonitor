@@ -482,7 +482,9 @@
       "plateNote": "Erfasst von der Live-Karte — klicken Sie zum Öffnen",
       "trustBuild": "Darauf aufbauen:",
       "positioningLink": "WorldMonitor ist kein Open-Source-Palantir",
-      "asOf": "Stand: 31. August 2026"
+      "asOf": "Stand: 31. August 2026",
+      "whatIsTitle": "Was ist World Monitor?",
+      "whatIsBody": "World Monitor ist ein kostenloses, quelloffenes Dashboard, das geopolitische, Markt-, Schiffs-, Luftfahrt-, Infrastruktur- und Cyber-Signale auf eine Live-Weltkarte streamt. Es korreliert separate Feeds zu einem einzigen Lagebild und kennzeichnet Konvergenzen vor den Schlagzeilen, wobei jede Kennzahl belegt und jede Methode dokumentiert ist."
     },
     "live": {
       "eyebrow": "Live jetzt",
@@ -588,11 +590,11 @@
       "title": "Wie tiefgreifend ist das World Monitor-Datenmodell?",
       "sub": "Jede Zahl unten ist heute live im Dashboard — keine Roadmap.",
       "s1v": "Geteilt",
-      "s1l": "Kartenschichten",
+      "s1l": "Kartenschicht-Typen",
       "s2v": "Kuratiert",
-      "s2l": "Kuratierte Feeds",
+      "s2l": "Nachrichten- und OSINT-Feeds",
       "s3v": "Attribuiert",
-      "s3l": "Datenanbieter",
+      "s3l": "Attributierte Anbieter",
       "s4v": "Live",
       "s4l": "Engpässe · live AIS",
       "s5v": "Tier-1",

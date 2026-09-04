@@ -482,7 +482,9 @@
       "plateNote": "Inayoshikwa kutoka kwenye ramani ya moja kwa moja — bofya kufungua",
       "trustBuild": "Tengeneza juu yake:",
       "positioningLink": "WorldMonitor si Palantir ya chanzo wazi",
-      "asOf": "Kwa tarehe 31 Agosti 2026"
+      "asOf": "Kwa tarehe 31 Agosti 2026",
+      "whatIsTitle": "World Monitor ni nini?",
+      "whatIsBody": "World Monitor ni dashboard ya bure, ya chanzo wazi ambayo inapokezana maalamiko ya kisiasa, soko, usafirishaji wa bahari, avioni, miundombinu, na ishara za cyber kwenye ramani moja ya ulimwengu inayoishi. Inahusiana na mtiririko tofauti katika picha moja ya uendeshaji na inaashiria muunganisho kabla ya manukuu, na kila takwimu ina chanzo na kila njia imedokezwa."
     },
     "live": {
       "eyebrow": "Moja kwa moja sasa sasa",
@@ -588,11 +590,11 @@
       "title": "Kina ki World Monitor data model kiaje?",
       "sub": "Kila nambari hapa chini iko karibu katika dashboard leo — sio ramani ya njia.",
       "s1v": "Iliyoshirikiwa",
-      "s1l": "Tabaka la ramani",
+      "s1l": "Aina za tabaka la ramani",
       "s2v": "Iliyoteuliwa",
-      "s2l": "Mitikisiko iliyokusanywa",
+      "s2l": "Habari & maliasili ya OSINT",
       "s3v": "Iliyohesabiwa",
-      "s3l": "Vyanzo",
+      "s3l": "Watoa huduma wenye jina",
       "s4v": "Moja kwa moja",
       "s4l": "Sehemu nyingi · AIS karibu",
       "s5v": "Daraja la 1",

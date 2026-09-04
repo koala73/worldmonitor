@@ -692,8 +692,8 @@ export function buildSourceCatalog(entries, { logicalProviders = [] } = {}) {
   return catalog.sort((left, right) => left.displayName.localeCompare(right.displayName, 'en', { sensitivity: 'base' }));
 }
 
-export function renderSourcesIndex({ sourceStats, sourceCatalog, baseUrl, lastmod, helpers }) {
-  const { absoluteUrl, breadcrumbLd, escapeHtml, pageDocument, withUtmSource } = helpers;
+export function renderSourcesIndex({ sourceStats, sourceCatalog, catalogDatasets = [], baseUrl, lastmod, helpers }) {
+  const { absoluteUrl, breadcrumbLd, dataCatalogLd, escapeHtml, pageDocument, withUtmSource } = helpers;
   const path = '/sources/';
   const description = `Explore ${sourceStats.providerCount} active providers and ${sourceStats.activeHosts} source hosts across World Monitor's global intelligence, markets, energy, cyber, aviation, climate and news coverage.`;
   // Query precedes the fragment — withUtmSource() would append after the
@@ -770,6 +770,7 @@ export function renderSourcesIndex({ sourceStats, sourceCatalog, baseUrl, lastmo
             <a class="secondary-cta" href="${withUtmSource('/dashboard', 'sources-hero')}">Open the live dashboard <span aria-hidden="true">→</span></a>
           </div>
           <p class="trust-line"><span>Manifest-derived</span><span>Build-checked</span><span>Source-attributed</span></p>
+          <p class="catalog-updated">Catalog last updated ${escapeHtml(lastmod)} · ${sourceStats.providerCount} active providers across ${sourceStats.activeHosts} source hosts</p>
         </div>
         <div class="signal-console" aria-label="Source inventory summary">
           <div class="console-bar"><span><i></i><i></i><i></i></span><strong>source_graph.live</strong><em>ACTIVE</em></div>
@@ -803,6 +804,13 @@ ${domainCards}
         <div>
           <p>This inventory is generated from the source-attribution manifest and checked against the external URLs that World Monitor uses. Adding or removing a source changes this page at build time.</p>
           <p>An active listing confirms use and attribution tracking. It does not claim that a provider's redistribution terms have completed review. The <a href="${withUtmSource('/docs/source-attribution', 'seo-sources')}">attribution ledger</a> records that posture, and the <a href="${docsHref('source-credibility-%26-feed-tiering')}">credibility methodology</a> explains feed tiers and bias metadata.</p>
+        </div>
+      </section>
+      <section class="provenance-section" aria-labelledby="provenance-heading">
+        <div class="section-heading">
+          <p class="eyebrow">Provenance</p>
+          <h2 id="provenance-heading">Where does World Monitor get its data?</h2>
+          <p>World Monitor fuses licensed data feeds, official statistics, open-source intelligence, and live sensor networks into one operating picture. Every provider below is named, attributed, and reconciled against the code that queries it, so models and analysts can verify each claim. Counts update at build time from the tracked inventory.</p>
         </div>
       </section>
       <section class="catalog-section" id="catalog" aria-labelledby="catalog-heading">
@@ -1003,24 +1011,38 @@ ${providerCards}
         }
       });
     })();`;
+  const catalogBase = dataCatalogLd(baseUrl);
+  const catalogLd = {
+    ...catalogBase,
+    dateModified: lastmod,
+    variableMeasured: {
+      '@type': 'PropertyValue',
+      name: 'Active providers',
+      value: sourceStats.providerCount,
+    },
+    dataset: catalogDatasets,
+  };
   return pageDocument({
     baseUrl,
     path,
     title: 'Data Source Catalog | World Monitor',
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'World Monitor data source catalog',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-      mainEntity: {
-        '@type': 'ItemList',
-        numberOfItems: sourceCatalog.length,
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: 'World Monitor data source catalog',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+        mainEntity: {
+          '@type': 'ItemList',
+          numberOfItems: sourceCatalog.length,
+        },
       },
-    },
+      catalogLd,
+    ],
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Sources', path },

@@ -145,6 +145,11 @@ function markdownHeaders(req: Request, markdownPath: string, extra: Record<strin
     'Content-Type': 'text/markdown; charset=utf-8',
     'X-Content-Type-Options': 'nosniff',
     'Cache-Control': 'public, max-age=3600',
+    // The loop-guard header is the only request header that changes the twin
+    // response (loop requests get a 404 stub). CORS is `*` (no Origin echo),
+    // the outbound Accept is fixed, and auth/cookie/UA are never forwarded, so
+    // no other variance needs declaring.
+    Vary: MD_TWIN_LOOP_HEADER,
     ...getPublicCorsHeaders('GET, HEAD, OPTIONS'),
     Link: `<${origin}${markdownPath}>; rel="canonical", ${DEPRECATION_POLICY_LINK}`,
     ...extra,

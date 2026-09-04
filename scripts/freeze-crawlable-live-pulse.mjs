@@ -64,15 +64,37 @@ const HTTP_TIMEOUT_MS = numberFromEnv('PULSE_FREEZE_TIMEOUT_MS', 20_000);
 const OUTPUT_BASENAME = process.env.PULSE_FREEZE_OUTPUT_BASENAME || '';
 
 // Countries the upstream may legitimately fail to serve in a single run before
-// the freeze is considered too thin to publish. Chokepoints, crises and
-// headlines are small enough sets that partial capture is never acceptable.
+// the freeze is considered too thin to publish. Chokepoints and crises are
+// small enough sets that partial capture is never acceptable.
 const MAX_COUNTRY_CAPTURE_SHORTFALL = 5;
 
-// The welcome strip's headline card renders exactly four rows, and
-// scripts/build-welcome-teasers.mjs derives them from this capture. Fewer than
-// four means the card would keep whatever it rendered last -- which is the
-// #7608 failure mode with a stale date on it. Gate instead.
+// The welcome strip's headline card renders four rows, and
+// scripts/build-welcome-teasers.mjs derives them from this capture.
+//
+// A shortfall is recorded and warned about, NOT thrown. This step runs last,
+// just before the only write, so throwing here would discard ~196 successfully
+// captured countries over a news-content problem -- and two such Mondays in a
+// row would push the snapshot past MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS and hard-
+// fail the whole crawlable corpus build. The strip degrades to fewer rows (or
+// none); it can never fill the gap with something unattributable, because the
+// generator publishes exactly what this capture vouched for.
 const HEADLINE_CAPTURE_COUNT = 4;
+
+// Aggregator hosts whose article links are opaque, expiring redirects rather
+// than the publisher's own URL. A frozen row is published for up to
+// MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS, and "verifiable" has to mean a reader can
+// see the outlet in the URL and still reach the piece next week.
+const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
+
+// Shared with scripts/build-welcome-teasers.mjs so the capture-time rule and
+// the publish-time re-check cannot drift apart.
+export function isVerifiableArticleUrl(url) {
+  const value = String(url || '').trim();
+  const parsed = URL.parse(value);
+  if (!parsed || parsed.protocol !== 'https:' || !parsed.hostname) return false;
+  const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+  return hostname.length > 0 && !AGGREGATOR_LINK_HOSTS.has(hostname);
+}
 
 // Per-country "Recent developments" cap (#7615): 3-5 dated, attributed,
 // linked headlines per country page. Below 3 the section is thin; above 5 the
@@ -401,25 +423,35 @@ function emptyDevelopments(freezeStartedAt, briefSkipped) {
 //
 // A row reaches the homepage with a masthead beside it, so it must carry
 // everything a reader needs to check that attribution: the outlet, an https
-// article URL, and the publication time. #7608 shipped four invented headlines
-// under real Reuters/FT/AP/BBC bylines because the strip's fallback was
-// hand-written prose with none of those. An item missing any of the three is
-// dropped here rather than published unverifiable.
+// article URL on the publisher's own host, and the publication time. #7608
+// shipped four invented headlines under real Reuters/FT/AP/BBC bylines because
+// the strip's fallback was hand-written prose with none of those. An item
+// missing any of them is dropped here rather than published unverifiable.
 //
-// Ranking mirrors the browser path in pro-test/src/services/teasers.ts, so the
-// frozen rows are the same ones a live fetch would replace them with.
+// Ranking is importance-first like the browser path in
+// pro-test/src/services/teasers.ts, but this selector is deliberately STRICTER:
+// it also requires a masthead, a publication time and a non-aggregator link, so
+// the frozen rows are a publishable subset of what a live fetch would show, not
+// necessarily the identical four.
+//
+// Returns the accepted rows plus a rejection tally. A silent `.filter()` here
+// would leave a shortfall with no recorded cause, since the request itself
+// succeeded -- the operator would see a count and no reason.
 export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
+  const rejections = { noTitle: 0, noSource: 0, unverifiableUrl: 0, noPublishedAt: 0 };
   const categories = payload && typeof payload === 'object' ? payload.categories : null;
-  if (!categories || typeof categories !== 'object') return [];
-  return Object.values(categories)
+  if (!categories || typeof categories !== 'object') return { rows: [], rejections };
+  const rows = Object.values(categories)
     .flatMap((bucket) => (Array.isArray(bucket?.items) ? bucket.items : []))
     .map((item) => {
       const title = String(item?.title || '').trim();
       const source = String(item?.source || '').trim();
-      const url = normalizeHttpsUrl(item?.link);
+      const url = String(item?.link || '').trim();
       const publishedAt = Number(item?.publishedAt);
-      if (!title || !source || !url) return null;
-      if (!Number.isFinite(publishedAt) || publishedAt <= 0) return null;
+      if (!title) { rejections.noTitle += 1; return null; }
+      if (!source) { rejections.noSource += 1; return null; }
+      if (!isVerifiableArticleUrl(url)) { rejections.unverifiableUrl += 1; return null; }
+      if (!Number.isFinite(publishedAt) || publishedAt <= 0) { rejections.noPublishedAt += 1; return null; }
       return {
         row: { title, source, url, publishedAt: new Date(publishedAt).toISOString() },
         importanceScore: Number(item?.importanceScore) || 0,
@@ -434,6 +466,7 @@ export function selectFrozenHeadlines(payload, limit = HEADLINE_CAPTURE_COUNT) {
     ))
     .slice(0, limit)
     .map((entry) => entry.row);
+  return { rows, rejections };
 }
 
 // Country matching mirrors the server's shared grounding
@@ -684,17 +717,36 @@ export async function freezeCrawlableLivePulse({
     }
   }
 
-  // Guarded like every other network step: a digest outage degrades into the
-  // coverage gate below instead of discarding the country/chokepoint work.
+  // Guarded like every other network step, and unlike the others it never
+  // throws: a digest outage costs the strip its headline rows, not the whole
+  // snapshot (see HEADLINE_CAPTURE_COUNT).
   // The raw items are ALSO the per-country developments source below — one
   // digest fetch feeds the global strip (#7608) and every country page
   // (#7615), never two.
   const headlineErrors = [];
   let headlines = [];
   let digestItems = [];
+  // ListFeedDigest self-reports how it is being served. Four well-formed rows
+  // off a six-hour-old last-good replay look identical to a complete capture
+  // unless that verdict is carried into the artifact, so record it.
+  let headlineDigestState = null;
+  let headlineServedStale = null;
   try {
     const digest = await authedGet('/api/news/v1/list-feed-digest?variant=full&lang=en', token, base, authOpts);
-    headlines = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
+    headlineDigestState = digest?.coverage?.state ?? null;
+    headlineServedStale = typeof digest?.coverage?.servedStale === 'boolean'
+      ? digest.coverage.servedStale
+      : null;
+    const { rows, rejections } = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
+    headlines = rows;
+    if (rows.length < HEADLINE_CAPTURE_COUNT) {
+      headlineErrors.push({
+        id: '*',
+        message: `only ${rows.length} of ${HEADLINE_CAPTURE_COUNT} digest items were publishable `
+          + `(rejected: ${Object.entries(rejections).map(([k, v]) => `${k}=${v}`).join(', ')}; `
+          + `digest state=${headlineDigestState ?? 'unknown'})`,
+      });
+    }
     const categories = digest && typeof digest === 'object' ? digest.categories : null;
     if (categories && typeof categories === 'object') {
       digestItems = Object.values(categories)
@@ -830,6 +882,8 @@ export async function freezeCrawlableLivePulse({
       crisisErrorCount: crisisErrors.length,
       headlineCount: headlines.length,
       headlineErrorCount: headlineErrors.length,
+      headlineDigestState,
+      headlineServedStale,
       headlineCountryCount: Object.values(countries)
         .filter((row) => (row.developments?.headlines?.length || 0) > 0).length,
       briefCountryCount: Object.values(countries)
@@ -873,13 +927,6 @@ export async function freezeCrawlableLivePulse({
     throw new Error(
       `Pulse freeze captured only ${Object.keys(crisisSnapshots).length} of ${crises.length} crises`
       + firstCaptureCause(crisisErrors),
-    );
-  }
-
-  if (headlines.length < HEADLINE_CAPTURE_COUNT) {
-    throw new Error(
-      `Pulse freeze captured only ${headlines.length} of ${HEADLINE_CAPTURE_COUNT} headlines`
-      + firstCaptureCause(headlineErrors),
     );
   }
 
@@ -928,6 +975,19 @@ if (isMain) {
         + `timelineCountries=${snapshot.coverage.timelineCountryCount} `
         + `keyed=${snapshot.coverage.serviceKeyPresent}`,
       );
+      if (snapshot.coverage.headlineCount < HEADLINE_CAPTURE_COUNT) {
+        console.warn(
+          `[freeze-crawlable-live-pulse] WARNING: only ${snapshot.coverage.headlineCount} publishable `
+          + 'headline(s) captured; the welcome strip will show that many rows. '
+          + `Cause: ${snapshot.errors.headlines[0]?.message || 'unrecorded'}`,
+        );
+      }
+      if (snapshot.coverage.headlineServedStale) {
+        console.warn(
+          '[freeze-crawlable-live-pulse] WARNING: news digest served stale content '
+          + `(state=${snapshot.coverage.headlineDigestState}); frozen headlines are older than this run.`,
+        );
+      }
       if (
         snapshot.coverage.countryErrorCount
         || snapshot.coverage.chokepointErrorCount
@@ -947,6 +1007,7 @@ if (isMain) {
           + '(briefSkipped=no-service-key). Set WORLDMONITOR_API_KEY for full enrichment.',
         );
       }
+      console.log('[freeze-crawlable-live-pulse] next: npm run teasers:welcome (regenerates the welcome strip)');
     })
     .catch((error) => {
       console.error('[freeze-crawlable-live-pulse] failed:', error);

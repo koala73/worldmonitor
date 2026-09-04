@@ -119,7 +119,7 @@ const QUERY_VERSION: Record<Source, string> = {
 
 // Provider limits are Convex-owned. A worker receives the selected value in a
 // lease and cannot raise it in claim or finalize arguments.
-const RESULT_CAP: Record<Source, number> = { exa: 25, x: 100 };
+const RESULT_CAP: Record<Source, number> = { exa: 25, x: 95 };
 const EXA_DISCOVERY_CLAIM_LIMIT_PER_COMPANY = 12;
 const EXA_DISCOVERY_CLAIM_TYPES = new Set([
   "alias",

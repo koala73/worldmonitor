@@ -17,6 +17,11 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import { writeResearchSection } from './build-research-reports.mjs';
 import {
+  COMPARISONS_CONTENT_VERSION,
+  COMPARISON_PAGES,
+  writeComparisonPages,
+} from './build-comparison-pages.mjs';
+import {
   USE_CASE_PAGES,
   USE_CASES_CONTENT_VERSION,
   writeUseCasesSection,
@@ -61,6 +66,7 @@ import {
 } from './chokepoint-page-content.mjs';
 import { EIA_OIL_TRANSIT_BASELINES_PATH } from './chokepoint-eia-baselines.mjs';
 import { buildMicrostateCoverageStoryContent } from './microstate-coverage-stories.mjs';
+import { buildUnrankedCountryInventory } from './unranked-country-inventory.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -96,6 +102,9 @@ const CHANGELOG_PATH = 'CHANGELOG.md';
 const LIVE_TOOLS_SCRIPT_PATH = 'scripts/crawlable-live-tools.mjs';
 const COUNTRY_BBOXES_PATH = 'shared/country-bboxes.js';
 const CRISIS_REGISTRY_PATH = 'shared/crawlable-crises.json';
+// Resolvable provenance for crisis scope citations: the registry is a repo
+// file, so pages link the versioned blob URL instead of the bare repo path.
+const CRISIS_REGISTRY_URL = 'https://github.com/koala73/worldmonitor/blob/main/shared/crawlable-crises.json';
 const RESEARCH_REPORTS_INDEX_PATH = 'shared/research-reports/index.mjs';
 const SOURCE_ATTRIBUTION_MANIFEST_PATH = 'shared/source-attribution-manifest.json';
 const SOURCE_PAGE_RENDERER_PATH = 'scripts/crawlable-sources-page.mjs';
@@ -133,6 +142,13 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
+// Coverage a dimension needs before a page will call it a supported reading. The
+// inventory labels anything with a usable series "observed", so a dimension
+// under this floor is observed and absent from the supported readings at once --
+// which reads as a contradiction unless the page states the floor (#7609).
+// This floor is published on country pages, so keep it aligned with
+// docs/methodology/country-resilience-index.mdx#supported-readings-on-unranked-country-pages.
+export const SUPPORTED_READING_MIN_COVERAGE = 0.5;
 export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-04';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
@@ -253,6 +269,7 @@ export const GENERATED_DIRS = [
   'country-instability-index',
   'countries',
   'chokepoints',
+  'compare',
   'crises',
   'tools',
   'reference/changelog',
@@ -506,7 +523,7 @@ function dataCatalogId(baseUrl) {
   return `${normalizeBaseUrl(baseUrl)}/${DATA_CATALOG_FRAGMENT}`;
 }
 
-function dataCatalogLd(baseUrl) {
+export function dataCatalogLd(baseUrl) {
   return {
     '@context': SCHEMA_ORG_CONTEXT_URL,
     '@type': 'DataCatalog',
@@ -1641,6 +1658,10 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
     USE_CASES_CONTENT_VERSION,
     gitFileLastmod(rootDir, 'scripts/build-use-cases.mjs'),
   );
+  const comparisonsLastmod = laterDate(
+    COMPARISONS_CONTENT_VERSION,
+    gitFileLastmod(rootDir, 'scripts/build-comparison-pages.mjs'),
+  );
   const attributionManifest = readJson(rootDir, SOURCE_ATTRIBUTION_MANIFEST_PATH);
   // Production generators share the validated attribution predicate and stats.
   // Tests retain a separate raw-manifest oracle so a mutation here cannot make
@@ -1683,6 +1704,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       crisisRegistry: CRISIS_REGISTRY_PATH,
       researchReports: RESEARCH_REPORTS_INDEX_PATH,
       useCases: 'scripts/build-use-cases.mjs',
+      comparisons: 'scripts/build-comparison-pages.mjs',
       sourceAttributionManifest: SOURCE_ATTRIBUTION_MANIFEST_PATH,
       sourcePageRenderer: SOURCE_PAGE_RENDERER_PATH,
       sourceOrigin: SOURCE_ORIGIN_PATH,
@@ -1701,6 +1723,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
       crises: crisesLastmod,
       research: researchLastmod,
       useCases: useCasesLastmod,
+      comparisons: comparisonsLastmod,
       sources: sourcesLastmod,
     },
     sourceStats,
@@ -1861,6 +1884,7 @@ function pageDocument({
     .map((entry) => withSchemaContext(entry));
   const renderedNav = headerNav || `        <a href="/">World Monitor</a>
         <a href="/sources/">Sources</a>
+        <a href="/compare/">Compare</a>
         <a href="/countries/">Countries</a>
         <a href="/chokepoints/">Chokepoints</a>
         <a href="/crises/">Crises</a>
@@ -2443,12 +2467,15 @@ export function describeCoverageGaps(country) {
   return `${labels} ${verb} no usable observed series.${sourceClause}${failureClause}${unmonitoredClause}`;
 }
 
+function observedEvidenceDimensions(country) {
+  return activeCountryDimensions(country).filter((dimension) => (
+    !isCoverageGap(dimension)
+    && Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
+  ));
+}
+
 export function describeAvailableEvidence(country) {
-  const observed = activeCountryDimensions(country)
-    .filter((dimension) => (
-      !isCoverageGap(dimension)
-      && Number(dimension.coverage) >= 0.5
-    ))
+  const observed = observedEvidenceDimensions(country)
     .sort(compareDimensionsByCoverageDesc)
     .slice(0, AVAILABLE_EVIDENCE_LIMIT);
   if (observed.length === 0) {
@@ -2463,7 +2490,7 @@ function buildMicrostateEvidenceProfile(country) {
     .filter((dimension) => (
       !isCoverageGap(dimension)
       && String(dimension.imputationClass || '') === ''
-      && Number(dimension.coverage) >= 0.5
+      && Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
       && typeof dimension.score === 'number'
       && Number.isFinite(dimension.score)
     ));
@@ -2601,44 +2628,46 @@ export function dimensionInventoryNote(country, dimension) {
   return 'observed';
 }
 
-function selectUnrankedInventory(country) {
-  const dimensions = activeCountryDimensions(country);
-  const notApplicable = dimensions
-    .filter((dimension) => String(dimension.imputationClass || '') === 'not-applicable')
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const gaps = dimensions.filter(isCoverageGap).sort(compareDimensionsByCoverageAsc);
-  const observed = dimensions
-    .filter((dimension) => (
-      !isCoverageGap(dimension)
-      && String(dimension.imputationClass || '') !== 'not-applicable'
-      && Number(dimension.coverage) < 1
-    ))
-    .sort(compareDimensionsByCoverageAsc);
-  const selected = [];
-  const seen = new Set();
-  for (const dimension of [...notApplicable, ...gaps, ...observed]) {
-    if (seen.has(dimension.id)) continue;
-    seen.add(dimension.id);
-    selected.push(dimension);
-    if (selected.length >= UNRANKED_INVENTORY_LIMIT) break;
-  }
-  return selected;
+// Dimensions the page can call supported readings. The microstate branch
+// enumerates this set exhaustively and counts it out loud; the generic branch
+// prints only the strongest AVAILABLE_EVIDENCE_LIMIT of it and makes no claim to
+// be complete, so the display cap is not part of the set either way.
+function supportedReadingDimensions(country) {
+  return country.microstateTerritory === true
+    ? buildMicrostateEvidenceProfile(country).supportedDimensions
+    : observedEvidenceDimensions(country);
 }
 
-// The inventory is weakest-first and capped, so on a country like Tuvalu a
-// reader sees 12 of 23 dimensions -- the 12 worst -- with the 7 at full
-// coverage never entering the pool at all and 2 more dropped by the cap. Listing
-// only the weakest evidence with no note reads as uniformly poor coverage, which
-// is the opposite of what the snapshot says (#7530). State what is shown and
-// what is omitted, and say it only when something actually is omitted.
-export function describeInventoryScope(country, shown) {
-  const dimensions = activeCountryDimensions(country);
-  const total = dimensions.length;
-  const omitted = total - shown;
-  if (omitted <= 0) return null;
-  const complete = dimensions.filter((dimension) => Number(dimension.coverage) === 1).length;
-  const completeClause = complete > 0 ? `; ${complete} more at full coverage` : '';
-  return `Showing ${shown} of ${total} active dimensions, lowest coverage first${completeClause}.`;
+function buildCountryUnrankedInventory(country) {
+  const supported = new Set(supportedReadingDimensions(country).map((dimension) => dimension.id));
+  const dimensions = activeCountryDimensions(country).map((dimension) => ({
+    id: dimension.id,
+    label: dimensionLabel(dimension),
+    coverage: dimension.coverage,
+    isCoverageGap: isCoverageGap(dimension),
+    isNotApplicable: String(dimension.imputationClass || '') === 'not-applicable',
+    inventoryNote: dimensionInventoryNote(country, dimension),
+    supported: supported.has(dimension.id),
+    value: dimension,
+  }));
+  return buildUnrankedCountryInventory({
+    countryCode: country.code,
+    dimensions,
+    inventoryLimit: UNRANKED_INVENTORY_LIMIT,
+    supportFloor: SUPPORTED_READING_MIN_COVERAGE,
+  });
+}
+
+export function describeInventoryScope(country) {
+  return buildCountryUnrankedInventory(country).inventoryScope;
+}
+
+export function describeSupportThreshold(country) {
+  return buildCountryUnrankedInventory(country).supportThreshold;
+}
+
+export function assertUnrankedInventoryIntegrity(country, rendered = {}) {
+  buildCountryUnrankedInventory(country).assertIntegrity(rendered);
 }
 
 function formatSignedScore(value, evidence) {
@@ -2751,14 +2780,21 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
   });
   const faqs = coverageStory?.faqs || countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
-    const inventory = selectUnrankedInventory(country);
+    const unrankedInventory = buildCountryUnrankedInventory(country);
+    const inventory = unrankedInventory.shown;
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
-    const inventoryScope = describeInventoryScope(country, inventory.length);
-    const inventoryScopeNote = inventoryScope
-      ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
-      : '';
+    const { inventoryScope, supportThreshold } = unrankedInventory;
+    unrankedInventory.assertIntegrity({ inventoryScope, supportThreshold });
+    const inventoryPreamble = [
+      inventoryScope
+        ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`
+        : '',
+      supportThreshold
+        ? `        <p class="source" data-inventory-support-threshold>${escapeHtml(supportThreshold)}</p>\n`
+        : '',
+    ].join('');
     if (coverageStory) {
       const comparatorLinks = coverageStory.useRegionalComparators ? regionalLinks : peerLinks;
       const html = `      <article data-country-analysis>
@@ -2771,7 +2807,7 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(coverageStory.evidence)}</p>
         <h3>Dimension evidence inventory</h3>
-${inventoryScopeNote}        <ul class="routes">
+${inventoryPreamble}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -2815,7 +2851,7 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
         <h3>What the snapshot does cover</h3>
         <p>${escapeHtml(availableEvidence)}</p>
         <h3>Dimension evidence inventory</h3>
-${inventoryScopeNote}        <ul class="routes">
+${inventoryPreamble}        <ul class="routes">
 ${inventoryItems}
         </ul>
         <h3>Nearest ranked comparators</h3>
@@ -4003,7 +4039,7 @@ ${crises.map((crisis) => `        <a class="card" href="/crises/${escapeHtml(cri
       <p>Every tracker names its covered countries up front and never silently widens. Metrics are monthly country-level conflict summaries — recorded events, political-violence events, fatalities, and demonstrations — from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API (HDX HAPI)</a>. A combined total is shown only when every covered country reports the same reference month; otherwise per-country figures stand alone.</p>
       <h2>What they are not</h2>
       <p>These are bounded pulses, not battlefield maps, casualty ledgers, or forecasts. Missing countries are reported as unavailable rather than zero, and event-level context lives in the <a href="/?utm_source=seo-crisis">live dashboard</a> with its map layers and independent signals.</p>
-      <p class="source">Scope source: ${CRISIS_REGISTRY_PATH}. Live metrics: HAPI/HDX humanitarian conflict summaries through the World Monitor API.</p>`;
+      <p class="source">Scope source: <a href="${CRISIS_REGISTRY_URL}">${CRISIS_REGISTRY_PATH}</a>. Live metrics: HAPI/HDX humanitarian conflict summaries through the World Monitor API.</p>`;
   return pageDocument({
     baseUrl,
     path,
@@ -4124,7 +4160,7 @@ ${snapshotSection}
       <p>${escapeHtml(crisis.coverage.map((country) => `${country.name} (${country.code})`).join(', '))}. Events outside this list are not included in the live totals on this page.</p>
       <h2>How to read this tracker</h2>
       <p>Use these monthly country summaries as a bounded pulse, then inspect the dashboard for event-level context, map layers, and other independent signals. The figures are not forecasts and should not be interpreted as a complete casualty or incident ledger.</p>
-      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))}">${CRISIS_DATASET_DOWNLOAD}</a>. Scope source: ${CRISIS_REGISTRY_PATH}. Maintained metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>.</p>`;
+      <p class="source">Download: <a href="${escapeHtml(datasetDownloadHref(path, CRISIS_DATASET_DOWNLOAD))}">${CRISIS_DATASET_DOWNLOAD}</a>. Scope source: <a href="${CRISIS_REGISTRY_URL}">${CRISIS_REGISTRY_PATH}</a>. Maintained metrics: HAPI/HDX humanitarian conflict summaries from the UN OCHA <a href="https://data.humdata.org/hapi">Humanitarian API</a>.</p>`;
   const coveragePlaces = crisis.coverage.map((country) => ({
     '@type': 'Country',
     name: country.name,
@@ -4671,6 +4707,11 @@ function buildManifest({ data, baseUrl, changelogPageCount }) {
         index: '/use-cases/',
         routes: USE_CASE_PAGES.map((page) => page.path),
       },
+      comparisons: {
+        count: COMPARISON_PAGES.length + 1,
+        index: '/compare/',
+        routes: COMPARISON_PAGES.map((page) => page.path),
+      },
       sources: {
         count: 1,
         index: '/sources/',
@@ -4699,17 +4740,53 @@ export async function buildCorpus({
     }
   }
 
+  // Flagship downloadable datasets for the /sources/ DataCatalog node: every
+  // entry resolves to a generated download the corpus writes, so the catalog
+  // never advertises a dataset without a distribution.
+  const convergenceMetricName = data.livePulse.signalConvergence.metricName || 'Geographic Convergence Score';
+  const sourcesCatalogDatasets = [
+    ...data.crises.map((crisis) => {
+      const pagePath = `/crises/${crisis.slug}/`;
+      return {
+        '@type': 'Dataset',
+        name: crisis.title,
+        description: crisis.description,
+        url: absoluteUrl(baseUrl, pagePath),
+        keywords: ['crisis tracker', 'armed conflict', 'humanitarian response'],
+        creator: { ...WORLD_MONITOR_ORG },
+        license: DATASET_LICENSE,
+        distribution: [
+          dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(pagePath, CRISIS_DATASET_DOWNLOAD))),
+        ],
+      };
+    }),
+    {
+      '@type': 'Dataset',
+      name: `${convergenceMetricName} reference`,
+      description: `World Monitor's ${convergenceMetricName} (0-100) names when protests, military flights, naval vessels, and earthquakes co-occur in the same 1° cell.`,
+      url: absoluteUrl(baseUrl, '/tools/signal-convergence/'),
+      keywords: ['signal convergence', 'geographic correlation', 'early warning'],
+      creator: { ...WORLD_MONITOR_ORG },
+      license: DATASET_LICENSE,
+      distribution: [
+        dataDownload(absoluteUrl(baseUrl, datasetDownloadHref('/tools/signal-convergence/', CONVERGENCE_DATASET_DOWNLOAD))),
+      ],
+    },
+  ];
+
   writeGeneratedFile(
     outDir,
     'sources/index.html',
     renderSourcesIndex({
       sourceStats: data.sourceStats,
       sourceCatalog: data.sourceCatalog,
+      catalogDatasets: sourcesCatalogDatasets,
       baseUrl,
       lastmod: data.lastmod.sources,
       helpers: {
         absoluteUrl,
         breadcrumbLd,
+        dataCatalogLd,
         escapeHtml,
         pageDocument,
         withUtmSource,
@@ -4886,6 +4963,13 @@ export async function buildCorpus({
     tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
   });
 
+  writeComparisonPages({
+    outDir,
+    baseUrl,
+    lastmod: data.lastmod.comparisons,
+    tpl: { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument },
+  });
+
   writeGeneratedFile(
     outDir,
     'tools/live-tools.js',
@@ -5033,6 +5117,7 @@ async function main() {
     + `${manifest.sections.tools.count} live tools, `
     + `${manifest.sections.research.count} research reports, `
     + `${manifest.sections.changelog.count} changelog pages, `
+    + `${manifest.sections.comparisons.count} comparison pages, `
     + `${manifest.sections.sources.count} source catalog page. `
     + `Glossary manifest references ${manifest.sections.glossary.count} existing blog pages.\n`,
   );

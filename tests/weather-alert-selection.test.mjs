@@ -164,6 +164,13 @@ describe('weather alert selection', () => {
     assert.equal(alert.centroid.length, 2);
   });
 
+  it('does not send a fabricated zero centroid from an invalid closed ring', () => {
+    const invalidRing = [[null, null], [null, null], [null, null], [null, null]];
+    const [alert] = selectAlerts([feature('Severe', 1, {}, { type: 'Polygon', coordinates: [invalidRing] })]);
+    assert.equal(alert.centroid, undefined);
+    assert.deepEqual(weatherAlertNotifyLocation(alert), {});
+  });
+
   it('caps description length at 500 characters', () => {
     const [alert] = selectAlerts([feature('Severe', 1, { description: 'y'.repeat(900) })]);
     assert.equal(alert.description.length, 500);
@@ -630,6 +637,30 @@ describe('WMO SWIC adapter on weather:alerts:v1', () => {
     assert.equal(location.lat, 20.5);
     assert.equal(location.lon, 78.9);
     assert.equal(location.geometry, undefined);
+  });
+
+  it('falls back to the country when SWIC point coordinates are missing values', () => {
+    const members = indexSwicMembers([{ ra: 2, members: [swicMember()] }]);
+    for (const bad of ['', '  ', false, true, [], [12], {}, null]) {
+      const [alert] = selectSwicAlerts([swicItem({ extras: { lat: bad, lon: bad } })], members);
+      assert.equal(alert.geometryPrecision, 'country');
+      assert.deepEqual(alert.centroid, [78.96, 20.59]);
+    }
+  });
+
+  it('drops a SWIC alert whose member coordinates are missing rather than placing it at 0,0', () => {
+    for (const bad of ['', '  ', false, true, [], {}, null]) {
+      const members = indexSwicMembers([{ ra: 2, members: [swicMember({ lat: bad, lng: bad })] }]);
+      assert.deepEqual(selectSwicAlerts([swicItem()], members), []);
+    }
+  });
+
+  it('keeps genuine zero coordinates and quoted numeric strings in SWIC locations', () => {
+    for (const coordinate of [0, '0', ' 12.5 ']) {
+      const [point] = selectSwicAlerts([swicItem({ extras: { lat: coordinate, lon: coordinate } })]);
+      assert.equal(point.geometryPrecision, 'point');
+      assert.deepEqual(point.centroid, [Number(coordinate), Number(coordinate)]);
+    }
   });
 
   it('normalizes offset-free SWIC timestamps to explicit UTC instants', () => {

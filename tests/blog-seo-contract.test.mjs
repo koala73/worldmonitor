@@ -259,7 +259,9 @@ describe('blog SEO and GEO corpus contract', () => {
   });
 
   it('stamps glossary and author sitemap URLs with lastmod (#7382)', async () => {
-    const { buildPostDateMap } = await import('../blog-site/astro.config.mjs');
+    // post-dates.mjs, not astro.config.mjs: this workspace is installed only by
+    // the blog build now, so importing the config would need astro/config here.
+    const { buildPostDateMap } = await import('../blog-site/post-dates.mjs');
     const dates = buildPostDateMap();
     const iso = /^\d{4}-\d{2}-\d{2}$/;
     for (const key of [

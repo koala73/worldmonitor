@@ -827,6 +827,9 @@
           "path": "scripts/dispatch-stale-railway-reconcile.mjs"
         },
         {
+          "path": "scripts/freeze-github-stars.mjs"
+        },
+        {
           "path": "scripts/resolve-railway-reconcile-control.mjs"
         },
         {
@@ -4549,6 +4552,9 @@
       "references": [
         {
           "path": "api/download.js"
+        },
+        {
+          "path": "scripts/build-crawlable-corpus.mjs"
         },
         {
           "path": "scripts/generate-airline-codes.mjs"
@@ -14255,6 +14261,9 @@
         },
         {
           "path": "scripts/generate-sandbox-fixtures.mjs"
+        },
+        {
+          "path": "scripts/github-stars-snapshot.mjs"
         },
         {
           "path": "scripts/mcp-live-smoke.mjs"
