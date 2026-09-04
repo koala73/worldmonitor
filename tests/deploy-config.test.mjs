@@ -4297,6 +4297,41 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       }
     });
 
+    // The sitemap covers the documents we declare. This covers the links those
+    // documents CONTAIN — a different failure, and the one a crawl-budget rule
+    // is most likely to cause: publishing a link on ~240 generated pages while
+    // telling Google it may not follow it. Blocking a link you keep emitting is
+    // the worst of both, and it moves the volume into "Blocked by robots.txt"
+    // rather than removing it.
+    //
+    // Shapes are the ones the corpus builders actually emit
+    // (scripts/build-crawlable-corpus.mjs withUtmSource, scripts/build-use-cases.mjs
+    // content attribution, scripts/crawlable-sources-page.mjs,
+    // scripts/build-research-reports.mjs).
+    it('never blocks a link shape our own build emits', () => {
+      const INTERNAL_CTA_SHAPES = [
+        '/dashboard?utm_source=seo-cii',
+        '/?country=JP&expanded=1&utm_source=seo-tool',
+        '/?chokepoint=strait-of-hormuz&utm_source=seo-chokepoint',
+        '/countries/iran/?utm_source=seo-country',
+        '/dashboard?utm_source=seo-crisis',
+        '/dashboard?utm_source=sources-hub',
+        '/docs/source-attribution?utm_source=seo-sources',
+        '/pro?utm_source=research-report',
+        '/dashboard?wm_content_source=worldmonitor-use-cases&wm_content_medium=owned-content&wm_content_campaign=use-cases&wm_content_destination=dashboard&wm_content_placement=hero&utm_source=seo-use-case',
+        '/pro?wm_content_source=worldmonitor-use-cases&wm_content_destination=pro&utm_source=seo-use-case',
+        '/docs/api-reference?wm_content_source=worldmonitor-use-cases&utm_source=seo-use-case',
+        '/docs/mcp-quickstart?utm_source=seo-use-case',
+      ];
+      for (const shape of INTERNAL_CTA_SHAPES) {
+        assert.equal(
+          isCrawlable('robots.www.txt', shape),
+          true,
+          `robots.www.txt blocks an internal CTA the build emits: ${shape}`
+        );
+      }
+    });
+
     it('blocks nothing we declare in the sitemap', () => {
       // The failure mode worth guarding: a crawl-budget rule that also deletes
       // part of the 845-URL declared inventory it exists to protect. Resolved
