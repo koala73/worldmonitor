@@ -25,7 +25,7 @@ import {
   resolveReconciledAt,
   writeAiSearch,
 } from '../scripts/build-ai-search.mjs';
-import { VERSION_HEADER_RE } from '../scripts/build-llms-full.mjs';
+import { VERSION_HEADER_RE, withVersionHeader } from '../scripts/build-llms-full.mjs';
 import { SOURCE_DOMAINS } from '../scripts/crawlable-sources-page.mjs';
 import { validateVolatileInventoryClaims, withStatsRoot } from '../scripts/docs-stats.mjs';
 import { loadStatsForInventoryFacts } from '../scripts/generate-inventory-facts.mjs';
@@ -198,18 +198,52 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
     assert.match(workflow, /git add "\$snapshot_path".*public\/ai-search\.md/);
   });
 
-  it('carries the reconciliation date forward when nothing changed', () => {
+  it('re-dates only when the figures move, so regeneration is idempotent', () => {
     const current = read(AI_SEARCH_PATH);
+    const committed = current.match(/Coverage reconciled: (\d{4}-\d{2}-\d{2})/)[1];
+
     assert.equal(
       resolveReconciledAt({ current, candidate: current, today: '2099-01-01' }),
-      current.match(/Coverage reconciled: (\d{4}-\d{2}-\d{2})/)[1],
+      committed,
       'an unchanged document must keep its committed date rather than stamping the build clock',
     );
     assert.equal(
-      resolveReconciledAt({ current, candidate: `${current}\nnew claim`, today: '2099-01-01' }),
+      resolveReconciledAt({ current, candidate: `${current}\n- 1 new figure`, today: '2099-01-01' }),
       '2099-01-01',
-      'a changed document must be re-dated',
+      'changed figures must be re-dated',
     );
+    // The date claims when the FIGURES were reconciled, which is why a
+    // prose-only edit deliberately leaves it alone. This is the semantic the
+    // "Facts reconciled" rename exists to state honestly.
+    const proseEdited = current.replace(
+      'This page is written for AI search systems',
+      'This page is written for AI search engines',
+    );
+    assert.notEqual(proseEdited, current, 'the prose-edit fixture must actually differ');
+    assert.equal(
+      resolveReconciledAt({ current: proseEdited, candidate: proseEdited, today: '2099-01-01' }),
+      committed,
+      'a prose-only edit must not re-date the figures',
+    );
+  });
+
+  it('bumps a stale file once and then stays put', () => {
+    const sandbox = mkdtempSync(join(tmpdir(), 'wm-ai-search-'));
+    try {
+      mkdirSync(join(sandbox, 'public'), { recursive: true });
+      symlinkSync(join(repoRoot, 'docs'), join(sandbox, 'docs'), 'dir');
+      const path = join(sandbox, AI_SEARCH_PATH);
+      writeFileSync(path, read(AI_SEARCH_PATH).replace(/^- \d[\d,]* MCP tools.*$/m, '- 1 MCP tool'));
+
+      const first = buildAiSearchText({ rootDir: sandbox, today: '2027-03-04' });
+      assert.match(first, /Coverage reconciled: 2027-03-04/, 'stale figures must be re-dated on the fixing run');
+      writeFileSync(path, first);
+
+      // A later run on a different day must not churn the file again.
+      assert.equal(buildAiSearchText({ rootDir: sandbox, today: '2028-11-19' }), first);
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
   });
 
   it('keeps hand-authored copy outside the coverage block under the drift scanner', async () => {
@@ -280,5 +314,22 @@ describe('#6038 AI briefing version headers', () => {
     const full = read('public/llms-full.txt').match(VERSION_HEADER_RE)?.[0];
     assert.ok(full, 'public/llms-full.txt must carry the same version header as llms.txt');
     assert.equal(full, brief, 'both briefings must declare the same version and date');
+  });
+
+  it('inserts the header after the whole summary blockquote, and only once', () => {
+    const header = '> Version: 9.9.9 · Last updated: 2099-01-01';
+    const single = withVersionHeader('# T\n\n> One line.\n\nBody.', header);
+    assert.equal(single, `# T\n\n> One line.\n\n${header}\n\nBody.`);
+
+    // A two-line summary must not be split in half by the inserted header.
+    const twoLine = withVersionHeader('# T\n\n> First.\n> Second.\n\nBody.', header);
+    assert.equal(twoLine, `# T\n\n> First.\n> Second.\n\n${header}\n\nBody.`);
+
+    // Re-running must be a no-op rather than stacking headers or blank lines.
+    assert.equal(withVersionHeader(single, header), single);
+    assert.equal(withVersionHeader(withVersionHeader(single, header), header), single);
+
+    assert.throws(() => withVersionHeader('', header), /must exist with its hand-authored brief/);
+    assert.throws(() => withVersionHeader('# T\n\nNo blockquote.', header), /summary blockquote/);
   });
 });

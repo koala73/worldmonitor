@@ -96,15 +96,22 @@ export function readVersionHeader(rootDir) {
 }
 
 export function withVersionHeader(prefix, versionHeader) {
+  if (prefix.trim() === '') {
+    throw new Error(`${OUTPUT_PATH} must exist with its hand-authored brief — this generator appends a corpus, it does not author the file`);
+  }
   const lines = prefix.split('\n').filter((line) => !line.startsWith('> Version: '));
   const summaryAt = lines.findIndex((line) => line.startsWith('> '));
   if (summaryAt === -1) {
-    throw new Error('public/llms-full.txt must open with the llms.txt-style summary blockquote');
+    throw new Error(`${OUTPUT_PATH} must open with the llms.txt-style summary blockquote`);
   }
-  const rest = lines.slice(summaryAt + 1);
+  // Past the WHOLE first blockquote, not just its opening line: a two-line
+  // summary would otherwise be split in half by the inserted header.
+  let insertAt = summaryAt;
+  while (lines[insertAt + 1]?.startsWith('> ')) insertAt += 1;
+  const rest = lines.slice(insertAt + 1);
   // Collapse the blank left behind by a removed header so re-runs are stable.
   while (rest[0] === '' && rest[1] === '') rest.shift();
-  return [...lines.slice(0, summaryAt + 1), '', versionHeader, ...rest].join('\n');
+  return [...lines.slice(0, insertAt + 1), '', versionHeader, ...rest].join('\n');
 }
 
 function renderGlossary() {
