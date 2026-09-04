@@ -666,6 +666,7 @@
       "scripts/_eurostat-utils.mjs",
       "scripts/_html-entities.mjs",
       "scripts/_imf-weo-content-age-helpers.mjs",
+      "scripts/_macro-bundle-order.mjs",
       "scripts/_proxy-utils.cjs",
       "scripts/_seed-contract.mjs",
       "scripts/_seed-envelope-source.mjs",
@@ -717,6 +718,7 @@
       "scripts/shared/sovereign-status.json",
       "shared/iso2-to-iso3.json"
     ],
+    "cronSchedule": "0 8,9 * * *",
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#bundle-8-seed-bundle-macro"
   },
   {
@@ -1200,10 +1202,12 @@
       "scripts/package.json",
       "scripts/seed-conflict-intel.mjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/crawlable-crises.json",
       "scripts/shared/hapi-app-identifier.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
+      "shared/crawlable-crises.json",
       "shared/hapi-app-identifier.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json"
