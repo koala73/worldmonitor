@@ -4714,6 +4714,7 @@ export async function buildCorpus({
         name: crisis.title,
         description: crisis.description,
         url: absoluteUrl(baseUrl, pagePath),
+        keywords: ['crisis tracker', 'armed conflict', 'humanitarian response'],
         creator: { ...WORLD_MONITOR_ORG },
         license: DATASET_LICENSE,
         distribution: [
@@ -4726,6 +4727,7 @@ export async function buildCorpus({
       name: `${convergenceMetricName} reference`,
       description: `World Monitor's ${convergenceMetricName} (0-100) names when protests, military flights, naval vessels, and earthquakes co-occur in the same 1° cell.`,
       url: absoluteUrl(baseUrl, '/tools/signal-convergence/'),
+      keywords: ['signal convergence', 'geographic correlation', 'early warning'],
       creator: { ...WORLD_MONITOR_ORG },
       license: DATASET_LICENSE,
       distribution: [
