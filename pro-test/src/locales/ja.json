@@ -482,7 +482,7 @@
       "plateNote": "ライブマップからキャプチャ — クリックして開く",
       "trustBuild": "構築:",
       "positioningLink": "WorldMonitor はオープンソース版 Palantir ではありません",
-      "asOf": "2026年8月31日時点",
+      "asOf": "2026年9月4日時点",
       "whatIsTitle": "World Monitor とは何ですか？",
       "whatIsBody": "World Monitor は、地政学、市場、海運、航空、インフラ、サイバーシグナルをリアルタイムの世界地図にストリーミング配信する無料のオープンソース dashboard です。複数のフィードを統合した単一の状況認識を提供し、ニュース報道に先立って情報の収束を検出します。すべての数値は出典付きで、すべての手法は記録されています。"
     },
@@ -491,7 +491,8 @@
       "title": "このページが現在表示しているライブデータは何ですか?",
       "subtitle": "World Monitor が 24 時間監視する 100 以上のシグナルのうち 4 つ。",
       "liveBadge": "ライブ",
-      "sampleBadge": "サンプル",
+      "pulseBadge": "公開パルス {{date}}",
+      "refreshNote": "JavaScriptを有効にするとリフレッシュできます。上記の公開パルスはJavaScriptなしでも利用可能です。",
       "cardHeadlines": "トップシグナル",
       "cardCii": "不安定性指数",
       "ciiNote": "国ごとに12の統合シグナル",

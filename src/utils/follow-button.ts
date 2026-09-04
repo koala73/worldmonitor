@@ -427,6 +427,11 @@ async function onClick(
 
   switch (result.reason) {
     case 'FREE_CAP':
+      // Country Watcher's honest conversion trigger (plan U6/R12): the cap
+      // hit is the upgrade moment, so it joins the funnel as a gate-hit.
+      void import('@/services/analytics')
+        .then((analytics) => analytics.trackGateHit('limits.followed_countries'))
+        .catch(() => {});
       try {
         _upgradeTrigger('follow-cap');
       } catch (err) {

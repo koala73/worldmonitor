@@ -32,6 +32,8 @@
       "list_mission_presets",
       "apply_mission_preset",
       "open_mission_picker",
+      "list_followed_countries",
+      "set_country_followed",
       "get_access_context",
       "open_sign_in"
     ],

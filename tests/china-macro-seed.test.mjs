@@ -415,7 +415,7 @@ describe('China official macro source adapters', () => {
     assert.throws(
       () => parseNbsIndustrialRelease(
         fixture('nbs-industrial.html').replace(
-          '2026\/07\/16 10:00',
+          '2026/07/16 10:00',
           '2026/07/26 10:00',
         ),
         { retrievalTime },

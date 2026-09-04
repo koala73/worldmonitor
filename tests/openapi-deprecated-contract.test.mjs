@@ -183,10 +183,10 @@ describe('OpenAPI deprecated + operation-description contract', () => {
         resolve(root, `src/generated/${family}/worldmonitor/intelligence/v1/service_${family}.ts`),
         'utf8',
       );
-      assert.match(generated, /export interface GetCompanyEnrichmentRequest \{\n  \/\*\* @deprecated \*\/\n  domain: string;/);
-      assert.match(generated, /export interface GetCompanyEnrichmentResponse \{[\s\S]*?  \/\*\* @deprecated \*\/\n  github\?: EnrichedGithub;/);
-      assert.match(generated, /export interface EnrichedCompany \{[\s\S]*?  \/\*\* @deprecated \*\/\n  founded: number;/);
-      assert.match(generated, /export interface ListCompanySignalsResponse \{[\s\S]*?  \/\*\* @deprecated \*\/\n  domain: string;/);
+      assert.match(generated, /export interface GetCompanyEnrichmentRequest \{\n {2}\/\*\* @deprecated \*\/\n {2}domain: string;/);
+      assert.match(generated, /export interface GetCompanyEnrichmentResponse \{[\s\S]*? {2}\/\*\* @deprecated \*\/\n {2}github\?: EnrichedGithub;/);
+      assert.match(generated, /export interface EnrichedCompany \{[\s\S]*? {2}\/\*\* @deprecated \*\/\n {2}founded: number;/);
+      assert.match(generated, /export interface ListCompanySignalsResponse \{[\s\S]*? {2}\/\*\* @deprecated \*\/\n {2}domain: string;/);
     }
   });
 

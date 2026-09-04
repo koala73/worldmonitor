@@ -188,3 +188,45 @@ describe('durable checkout-success', () => {
     assert.equal(storage.getItem(PENDING_KEY), null, 'marker must clear once the replay delivers');
   });
 });
+
+describe('durable mission return', () => {
+  afterEach(() => {
+    delete (globalThis as { window?: unknown }).window;
+  });
+
+  it('replays after a reload and clears only after delivery', async () => {
+    const analytics = await import('../src/services/analytics.ts');
+    const returns = await import('../src/services/checkout-return-state.ts');
+    analytics.resetAnalyticsForTesting();
+    const storage = new MemoryStorage();
+    installWindow(storage, { withUmami: false });
+    returns.armCheckoutReturnState({
+      eventSurface: 'mission-preview',
+      origin: {
+        kind: 'mission-preview',
+        missionId: 'energy-security',
+        panelKey: 'pipeline-status',
+      },
+    }, 'url-return');
+
+    analytics.replayPendingMissionReturn();
+    assert.equal(returns.loadCheckoutReturnState()?.delivery.missionReturn, 'pending');
+
+    analytics.resetAnalyticsForTesting();
+    const calls = installWindow(storage, { withUmami: true });
+    analytics.replayPendingMissionReturn();
+
+    assert.deepEqual(calls, [{
+      name: 'mission-returned-after-purchase',
+      data: {
+        variant: 'full',
+        deviceClass: 'desktop',
+        missionId: 'energy-security',
+        panelKey: 'pipeline-status',
+        surface: 'mission-preview',
+      },
+    }]);
+    assert.equal(returns.loadCheckoutReturnState()?.delivery.missionReturn, 'settled');
+    assert.equal(returns.loadCheckoutReturnState()?.delivery.panelFocus, 'pending');
+  });
+});

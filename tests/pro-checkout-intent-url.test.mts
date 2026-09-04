@@ -22,6 +22,11 @@ import {
   CHECKOUT_DISCOUNT_PARAM,
   CHECKOUT_ATTRIBUTION_PARAM,
 } from '../pro-test/src/services/checkout-intent-url.ts';
+import {
+  CHECKOUT_HANDOFF_PARAM,
+  CHECKOUT_MISSION_PARAM,
+  CHECKOUT_PANEL_PARAM,
+} from '../shared/checkout-attribution.ts';
 
 describe('parseCheckoutIntentFromSearch', () => {
   it('returns null when no productId param is present (normal page load)', () => {
@@ -62,6 +67,25 @@ describe('parseCheckoutIntentFromSearch', () => {
       discountCode: undefined,
       attributionSource: 'mcp-paid-funnel',
     });
+  });
+
+  it('parses only registered mission preview attribution and a desktop handoff', () => {
+    const intent = parseCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_MISSION_PARAM}=energy-security`
+      + `&${CHECKOUT_PANEL_PARAM}=pipeline-status&${CHECKOUT_HANDOFF_PARAM}=desktop`,
+    );
+    assert.deepEqual(intent?.checkoutAttribution, {
+      kind: 'mission-preview',
+      missionId: 'energy-security',
+      panelKey: 'pipeline-status',
+    });
+    assert.equal(intent?.desktopHandoff, true);
+
+    const mismatched = parseCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=pro_monthly&${CHECKOUT_MISSION_PARAM}=energy-security`
+      + `&${CHECKOUT_PANEL_PARAM}=cii`,
+    );
+    assert.equal(mismatched?.checkoutAttribution, undefined);
   });
 
   it('ignores unrelated query params', () => {
@@ -115,6 +139,14 @@ describe('stripCheckoutIntentFromSearch', () => {
   it('strips all three checkout params together (partial cleanup would leave ghosts)', () => {
     const result = stripCheckoutIntentFromSearch(
       `?${CHECKOUT_PRODUCT_PARAM}=X&${CHECKOUT_REF_PARAM}=Y&${CHECKOUT_DISCOUNT_PARAM}=Z&keep=me`,
+    );
+    assert.equal(result, '?keep=me');
+  });
+
+  it('strips mission preview and desktop handoff intent', () => {
+    const result = stripCheckoutIntentFromSearch(
+      `?${CHECKOUT_PRODUCT_PARAM}=X&${CHECKOUT_MISSION_PARAM}=crisis-desk`
+      + `&${CHECKOUT_PANEL_PARAM}=cii&${CHECKOUT_HANDOFF_PARAM}=desktop&keep=me`,
     );
     assert.equal(result, '?keep=me');
   });
@@ -177,6 +209,20 @@ describe('buildCheckoutReturnUrl', () => {
     const url = new URL(returnUrl);
     assert.equal(url.pathname, '/pro');
     assert.equal(url.hash, '#pricing');
+  });
+
+  it('carries preview attribution and desktop handoff through sign-in', () => {
+    const returnUrl = buildCheckoutReturnUrl('https://worldmonitor.app/pro', 'pro_monthly', {
+      checkoutAttribution: {
+        missionId: 'crisis-desk',
+        panelKey: 'cii',
+      },
+      desktopHandoff: true,
+    });
+    const url = new URL(returnUrl);
+    assert.equal(url.searchParams.get(CHECKOUT_MISSION_PARAM), 'crisis-desk');
+    assert.equal(url.searchParams.get(CHECKOUT_PANEL_PARAM), 'cii');
+    assert.equal(url.searchParams.get(CHECKOUT_HANDOFF_PARAM), 'desktop');
   });
 });
 

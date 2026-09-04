@@ -20,15 +20,16 @@
  */
 
 import { clearReferralOnAttribution } from './referral-capture';
+import {
+  CHECKOUT_ATTEMPT_MAX_AGE_MS as SHARED_CHECKOUT_ATTEMPT_MAX_AGE_MS,
+  CHECKOUT_ATTEMPT_STORAGE_KEY,
+  parseCheckoutAttemptRecord,
+  type CheckoutAttemptRecord,
+} from '../../shared/checkout-attribution';
 
-export const LAST_CHECKOUT_ATTEMPT_KEY = 'wm-last-checkout-attempt';
-
-export interface CheckoutAttempt {
-  productId: string;
-  referralCode?: string;
-  discountCode?: string;
-  startedAt: number;
-}
+export const LAST_CHECKOUT_ATTEMPT_KEY = CHECKOUT_ATTEMPT_STORAGE_KEY;
+export const CHECKOUT_ATTEMPT_MAX_AGE_MS = SHARED_CHECKOUT_ATTEMPT_MAX_AGE_MS;
+export type CheckoutAttempt = CheckoutAttemptRecord;
 
 export type CheckoutAttemptClearReason =
   | 'success'
@@ -43,8 +44,6 @@ export type CheckoutAttemptClearReason =
  * This is the SOLE staleness gate — there is no separate abandonment
  * sweep; records older than this are ignored by `loadCheckoutAttempt`.
  */
-export const CHECKOUT_ATTEMPT_MAX_AGE_MS = 24 * 60 * 60 * 1000;
-
 export function saveCheckoutAttempt(attempt: CheckoutAttempt): void {
   try {
     sessionStorage.setItem(LAST_CHECKOUT_ATTEMPT_KEY, JSON.stringify(attempt));
@@ -58,14 +57,7 @@ export function loadCheckoutAttempt(): CheckoutAttempt | null {
   try {
     const raw = sessionStorage.getItem(LAST_CHECKOUT_ATTEMPT_KEY);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as CheckoutAttempt;
-    if (!parsed || typeof parsed.productId !== 'string' || typeof parsed.startedAt !== 'number') {
-      return null;
-    }
-    if (Date.now() - parsed.startedAt > CHECKOUT_ATTEMPT_MAX_AGE_MS) {
-      return null;
-    }
-    return parsed;
+    return parseCheckoutAttemptRecord(JSON.parse(raw));
   } catch {
     return null;
   }

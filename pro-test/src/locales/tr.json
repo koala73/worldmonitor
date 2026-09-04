@@ -482,7 +482,7 @@
       "plateNote": "Canlı haritadan yakalandı — açmak için tıkla",
       "trustBuild": "Buna katkıda bulun:",
       "positioningLink": "WorldMonitor açık kaynaklı bir Palantir değil",
-      "asOf": "31 Ağustos 2026 itibarıyla",
+      "asOf": "4 Eylül 2026 itibariyle",
       "whatIsTitle": "World Monitor Nedir?",
       "whatIsBody": "World Monitor, jeopolitik, piyasalar, denizcilik, havacılık, altyapı ve siber sinyalleri tek bir canlı dünya haritasına aktaran ücretsiz, açık kaynaklı bir paneldir. Ayrı kaynakları tek bir operasyonel görüntüde birleştirir ve manşetlerden önce yakınsamaları işaretler; her rakam kaynak gösterilerek ve her yöntem belgelenerek sunulur."
     },
@@ -491,7 +491,8 @@
       "title": "Bu sayfa şu anda hangi canlı verileri gösteriyor?",
       "subtitle": "World Monitor'un gece gündüz izlediği yüz artı sinyal arasından dört tanesi.",
       "liveBadge": "Canlı",
-      "sampleBadge": "Örnek",
+      "pulseBadge": "Yayımlanan pulse {{date}}",
+      "refreshNote": "Yenilemek için JavaScript'i etkinleştirin — yukarıdaki yayımlanan pulse bunu olmadan da kullanılabilir kalır.",
       "cardHeadlines": "Üst sinyaller",
       "cardCii": "İstikrarsızlık endeksi",
       "ciiNote": "Ülke başına 12 füzyone sinyal",

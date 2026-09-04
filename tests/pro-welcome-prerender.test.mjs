@@ -189,3 +189,23 @@ test('homepage answers "What is World Monitor?" and carries page date metadata',
   assert.ok(words >= 40 && words <= 60, `definition must be 40-60 words, got ${words}`);
   assert.match(html, /<meta name="lastmod" content="\d{4}-\d{2}-\d{2}"\s*\/>/);
 });
+
+test('built welcome teaser strip badges the snapshot as a published pulse (#7654)', { skip }, () => {
+  // The prerender bakes the fallback rows, which are a frozen capture of real
+  // published data (#7608) — a crawler must read them as an attributable
+  // snapshot, never a sample.
+  const { content: rootContent } = welcomeRoot();
+  assert.match(rootContent, /data-live-updated/, 'strip badges must carry the corpus live-updated marker');
+  assert.match(rootContent, /Published pulse \w{3} \d{1,2}, \d{4}/, 'strip badges must name the freeze date');
+  assert.match(rootContent, /Enable JavaScript to refresh/, 'strip must carry the corpus refresh affordance');
+  assert.doesNotMatch(rootContent, />Sample</, 'no card may badge real snapshot rows as a sample');
+});
+
+test('built welcome lastmod tracks the teaser strip snapshot (#7654)', { skip }, () => {
+  const teasers = JSON.parse(readFileSync(new URL('../pro-test/src/generated/teasers.json', import.meta.url), 'utf8'));
+  assert.match(
+    welcomeHtml(),
+    new RegExp(`<meta name="lastmod" content="${teasers.capturedAt}"`),
+    'served homepage lastmod must be the snapshot capture date behind the strip',
+  );
+});

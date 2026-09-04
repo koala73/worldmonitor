@@ -482,7 +482,7 @@
       "plateNote": "Vastgelegd van de live kaart — klik om deze te openen",
       "trustBuild": "Bouw erop:",
       "positioningLink": "WorldMonitor is geen open-source Palantir",
-      "asOf": "Per 31 augustus 2026",
+      "asOf": "Per 4 september 2026",
       "whatIsTitle": "Wat is World Monitor?",
       "whatIsBody": "World Monitor is een gratis, open-source dashboard dat geopolitieke, markt-, scheepvaart-, luchtvaart-, infrastructuur- en cybersignalen op één live wereldkaart streamt. Het correleert afzonderlijke feeds in één operationeel beeld en markeert convergentie vóór headlines, waarbij elke cijfer van bron is voorzien en elke methode is gedocumenteerd."
     },
@@ -491,7 +491,8 @@
       "title": "Welke live gegevens toont deze pagina nu?",
       "subtitle": "Vier van de meer dan honderd signalen die World Monitor rond de klok in de gaten houdt.",
       "liveBadge": "Live",
-      "sampleBadge": "Voorbeeld",
+      "pulseBadge": "Gepubliceerde pulse {{date}}",
+      "refreshNote": "Schakel JavaScript in om te vernieuwen — de gepubliceerde pulse hierboven blijft beschikbaar zonder het.",
       "cardHeadlines": "Topsignalen",
       "cardCii": "Instabiliteitsindex",
       "ciiNote": "12 gefuseerde signalen per land",

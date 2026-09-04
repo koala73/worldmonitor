@@ -6,6 +6,12 @@
 //   node scripts/build-welcome-teasers.mjs            # write
 //   node scripts/build-welcome-teasers.mjs --check    # fail if stale
 //
+// The generator owns two committed artifacts: pro-test/src/generated/teasers.json
+// (the strip rows plus the capture date the Published-pulse badge names) and
+// the date metadata in pro-test/welcome.html (`lastmod` + `dateModified`).
+// Both refresh on this one command so a new freeze can never leave the strip
+// publishing a newer capture under an older page date (#7654).
+//
 // Why this file is generated rather than hand-curated
 // ---------------------------------------------------
 // The root welcome strip renders this fallback immediately, INCLUDING into the
@@ -41,12 +47,14 @@ const __filename = fileURLToPath(import.meta.url);
 const REPO_ROOT = resolve(dirname(__filename), '..');
 
 export const TEASERS_OUTPUT_PATH = 'pro-test/src/generated/teasers.json';
+export const WELCOME_HTML_PATH = 'pro-test/welcome.html';
 
 // The strip renders five rows per data card and four headlines.
 const CHOKEPOINT_STATUSES = new Set(['green', 'yellow', 'red']);
 const CII_ROWS = 5;
 const CHOKEPOINT_ROWS = 5;
 const HEADLINE_ROWS = 4;
+const CAPTURED_AT_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 const { CHOKEPOINT_REGISTRY } = await import(
   pathToFileURL(join(REPO_ROOT, 'src', 'config', 'chokepoint-registry.ts')).href
@@ -121,6 +129,17 @@ function quoteRow(quote, index, snapshotPath) {
 }
 
 export function buildWelcomeTeasers(snapshot, snapshotPath) {
+  // The badge names the freeze behind the rows ("Published pulse Sep 4,
+  // 2026"), so the capture date is output, not decoration. A missing or
+  // misshapen date reds the generator rather than publishing undated fact
+  // claims — the same fail-closed contract as an unpublishable headline.
+  const capturedAt = String(snapshot?.capturedAt || '').trim();
+  if (!CAPTURED_AT_RE.test(capturedAt)) {
+    throw new Error(
+      `${snapshotPath} holds capturedAt ${JSON.stringify(snapshot?.capturedAt)}, `
+      + 'which is not a YYYY-MM-DD date — the strip badge cannot attribute the rows without it',
+    );
+  }
   // An empty capture publishes an empty card. That is the honest degradation:
   // the freeze records and warns about a shortfall rather than throwing (a news
   // outage must not cost the corpus its country refresh), and showing nothing
@@ -173,6 +192,7 @@ export function buildWelcomeTeasers(snapshot, snapshotPath) {
   });
 
   return {
+    capturedAt,
     headlines: headlines.slice(0, HEADLINE_ROWS).map(headlineRow),
     cii,
     chokepoints: [...chokepointRows]
@@ -215,23 +235,49 @@ export async function renderWelcomeTeasers({ rootDir = REPO_ROOT } = {}) {
   return `${JSON.stringify({ _comment: comment(snapshotPath, snapshot.capturedAt), ...teasers }, null, 2)}\n`;
 }
 
+// The homepage is the strip's host page, so its crawler-facing dates track
+// the same freeze the strip reads. Exactly one lastmod meta and one
+// dateModified JSON-LD node exist in the template; anything else (zero, two)
+// is a template edit this sync must not silently reinterpret — fail closed.
+export function renderWelcomeHtml({ rootDir = REPO_ROOT, capturedAt } = {}) {
+  const htmlPath = join(rootDir, WELCOME_HTML_PATH);
+  const html = readFileSync(htmlPath, 'utf8');
+  const lastmodMatches = html.match(/<meta name="lastmod" content="\d{4}-\d{2}-\d{2}" \/>/g) || [];
+  const dateModifiedMatches = html.match(/"dateModified": "\d{4}-\d{2}-\d{2}"/g) || [];
+  if (lastmodMatches.length !== 1 || dateModifiedMatches.length !== 1) {
+    throw new Error(
+      `${WELCOME_HTML_PATH} must carry exactly one lastmod meta and one dateModified node `
+      + `(found ${lastmodMatches.length} / ${dateModifiedMatches.length}) — refusing to guess which one tracks the strip snapshot`,
+    );
+  }
+  return html
+    .replace(/<meta name="lastmod" content="\d{4}-\d{2}-\d{2}" \/>/, `<meta name="lastmod" content="${capturedAt}" />`)
+    .replace(/"dateModified": "\d{4}-\d{2}-\d{2}"/, `"dateModified": "${capturedAt}"`);
+}
+
 const isMain = process.argv[1] && resolve(process.argv[1]) === __filename;
 if (isMain) {
   const check = process.argv.includes('--check');
+  const snapshotPath = resolveLatestLivePulseSnapshotPath(REPO_ROOT);
+  const snapshot = JSON.parse(readFileSync(join(REPO_ROOT, snapshotPath), 'utf8'));
+  const teasers = buildWelcomeTeasers(snapshot, snapshotPath);
+  const expectedTeasers = `${JSON.stringify({ _comment: comment(snapshotPath, snapshot.capturedAt), ...teasers }, null, 2)}\n`;
+  const expectedHtml = renderWelcomeHtml({ rootDir: REPO_ROOT, capturedAt: teasers.capturedAt });
   const outPath = join(REPO_ROOT, TEASERS_OUTPUT_PATH);
-  const expected = await renderWelcomeTeasers();
+  const htmlPath = join(REPO_ROOT, WELCOME_HTML_PATH);
   if (check) {
-    const actual = readFileSync(outPath, 'utf8');
-    if (actual !== expected) {
-      console.error(
-        `[build-welcome-teasers] ${TEASERS_OUTPUT_PATH} is stale. Run \`npm run teasers:welcome\`.`,
-      );
+    const stale = [];
+    if (readFileSync(outPath, 'utf8') !== expectedTeasers) stale.push(TEASERS_OUTPUT_PATH);
+    if (readFileSync(htmlPath, 'utf8') !== expectedHtml) stale.push(WELCOME_HTML_PATH);
+    if (stale.length > 0) {
+      console.error(`[build-welcome-teasers] stale: ${stale.join(', ')}. Run \`npm run teasers:welcome\`.`);
       process.exitCode = 1;
     } else {
-      console.log(`[build-welcome-teasers] ${TEASERS_OUTPUT_PATH} is current`);
+      console.log(`[build-welcome-teasers] ${TEASERS_OUTPUT_PATH} and ${WELCOME_HTML_PATH} are current`);
     }
   } else {
-    writeFileSync(outPath, expected, 'utf8');
-    console.log(`[build-welcome-teasers] wrote ${TEASERS_OUTPUT_PATH}`);
+    writeFileSync(outPath, expectedTeasers, 'utf8');
+    writeFileSync(htmlPath, expectedHtml, 'utf8');
+    console.log(`[build-welcome-teasers] wrote ${TEASERS_OUTPUT_PATH} and ${WELCOME_HTML_PATH}`);
   }
 }

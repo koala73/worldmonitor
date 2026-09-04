@@ -29,7 +29,7 @@ const catalogEntrySourceFor = (planKey) => {
   const blockStart = catalogSrc.indexOf(`\n  ${planKey}: {`);
   assert.notEqual(blockStart, -1, `productCatalog.ts must contain a "${planKey}" entry`);
   const remainder = catalogSrc.slice(blockStart + 1);
-  const nextEntry = remainder.slice(1).search(/\n  [A-Za-z_][A-Za-z0-9_]*: \{/);
+  const nextEntry = remainder.slice(1).search(/\n {2}[A-Za-z_][A-Za-z0-9_]*: \{/);
   return nextEntry === -1 ? remainder : remainder.slice(0, nextEntry + 1);
 };
 

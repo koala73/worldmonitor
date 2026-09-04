@@ -7,7 +7,6 @@ import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
 import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
-import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
 import { createCheckoutConsentElement } from '@/utils/legal-links';
 import { WEB_APP_ORIGIN } from '@/config/web-origin';
@@ -1128,17 +1127,11 @@ export class Panel {
     // that page carries its own assent line above every tier CTA.
     if (!isDesktopRuntime()) lockedChildren.push(createCheckoutConsentElement(WEB_APP_ORIGIN));
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
-    if (isDesktopRuntime()) {
-      ctaBtn.addEventListener('click', () => {
-        void openExternalUrl('https://worldmonitor.app/pro');
+    ctaBtn.addEventListener('click', () => {
+      import('@/services/upgrade-flow').then((m) => m.openUpgradeCheckout()).catch(() => {
+        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
       });
-    } else {
-      ctaBtn.addEventListener('click', () => {
-        import('@/services/checkout').then(m => import('@/config/products').then(p => m.startCheckout(p.DEFAULT_UPGRADE_PRODUCT))).catch(() => {
-          window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
-        });
-      });
-    }
+    });
     lockedChildren.push(ctaBtn);
 
     this.replaceContent(h('div', { className: 'panel-locked-state' }, ...lockedChildren));
