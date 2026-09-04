@@ -257,10 +257,18 @@ function pruneWebSites(value: unknown): unknown | null {
   return next;
 }
 
-function rewriteDocsJsonLdValue(value: unknown, pathname?: string): unknown | null {
+function rewriteDocsJsonLdValue(
+  value: unknown,
+  pathname?: string,
+  allowArticleInjection = true,
+): unknown | null {
   const pruned = pruneWebSites(rewriteDocsWebsiteIds(value));
   if (pruned === null) return null;
-  return withDocsArticleDates(withDocsArticleNode(withDocsArticleAuthor(withDocsSpeakable(pruned)), pathname), pathname);
+  const attributed = withDocsArticleAuthor(withDocsSpeakable(pruned));
+  const withArticle = allowArticleInjection
+    ? withDocsArticleNode(attributed, pathname)
+    : attributed;
+  return withDocsArticleDates(withArticle, pathname);
 }
 
 function collectJsonLdNodes(value: unknown, into: Record<string, unknown>[] = []): Record<string, unknown>[] {
@@ -271,6 +279,23 @@ function collectJsonLdNodes(value: unknown, into: Record<string, unknown>[] = []
     for (const nested of Object.values(value)) collectJsonLdNodes(nested, into);
   }
   return into;
+}
+
+function hasDocsArticle(value: unknown): boolean {
+  return collectJsonLdNodes(value).some(
+    (node) => hasJsonLdType(node, 'Article') || hasJsonLdType(node, 'TechArticle'),
+  );
+}
+
+function documentHasDocsArticle(html: string): boolean {
+  for (const match of html.matchAll(JSON_LD_SCRIPT_RE)) {
+    try {
+      if (hasDocsArticle(JSON.parse(match[1] ?? ''))) return true;
+    } catch {
+      // The main rewrite logs parse failures and leaves those blocks untouched.
+    }
+  }
+  return false;
 }
 
 function docsSlugForPathname(pathname: string | undefined): string | null {
@@ -409,10 +434,12 @@ function withDocsArticleAuthor(value: unknown): unknown {
  * pathname-independent.
  */
 export function rewriteDocsEntityGraph(html: string, pathname?: string): string {
+  let articlePresent = documentHasDocsArticle(html);
   return html.replace(JSON_LD_SCRIPT_RE, (script, body: string) => {
     try {
-      const next = rewriteDocsJsonLdValue(JSON.parse(body), pathname);
+      const next = rewriteDocsJsonLdValue(JSON.parse(body), pathname, !articlePresent);
       if (next === null) return '';
+      articlePresent ||= hasDocsArticle(next);
       // Escape `<` so a `</script>` inside any string value cannot close the
       // element early. JSON.parse turns Mintlify's escaped `<\/script>` back
       // into a literal, and JSON.stringify would re-emit it raw. Mirrors

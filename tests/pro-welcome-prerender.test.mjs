@@ -1,16 +1,8 @@
 import assert from 'node:assert/strict';
-import { readdirSync, readFileSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { latestValidGithubStarsSnapshot } from '../scripts/github-stars-snapshot.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
-
-const latestGithubStarsSnapshot = () => {
-  const dir = new URL('../docs/snapshots/', import.meta.url);
-  const files = readdirSync(dir)
-    .filter((name) => /^github-stars-\d{4}-\d{2}-\d{2}\.json$/.test(name))
-    .sort();
-  assert.ok(files.length > 0, 'a frozen star snapshot must exist — run npm run freeze:github-stars');
-  return JSON.parse(readFileSync(new URL(files[files.length - 1], dir), 'utf8'));
-};
 
 let cachedWelcomeHtml;
 const welcomeHtml = () =>
@@ -159,7 +151,7 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
 });
 
 test('built welcome SoftwareApplication carries the snapshot star InteractionCounter', { skip }, () => {
-  const snapshot = latestGithubStarsSnapshot();
+  const snapshot = latestValidGithubStarsSnapshot();
   const application = welcomeJsonLdBlocks().find((block) => block['@type'] === 'SoftwareApplication');
   assert.ok(application, 'welcome.html should include SoftwareApplication JSON-LD');
   assert.deepEqual(application.interactionStatistic, {

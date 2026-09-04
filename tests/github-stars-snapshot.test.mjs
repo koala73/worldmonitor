@@ -17,11 +17,19 @@ function fixtureDir(files) {
   return dir;
 }
 
+function snapshot(capturedAt, stargazersCount, repository = 'koala73/worldmonitor') {
+  return JSON.stringify({
+    repository,
+    stargazers_count: stargazersCount,
+    capturedAt,
+  });
+}
+
 describe('github stars snapshot lookup', () => {
   it('prefers the newest valid snapshot', () => {
     const dir = fixtureDir({
-      'github-stars-2026-09-01.json': JSON.stringify({ stargazers_count: 1 }),
-      'github-stars-2026-09-03.json': JSON.stringify({ stargazers_count: 3 }),
+      'github-stars-2026-09-01.json': snapshot('2026-09-01', 1),
+      'github-stars-2026-09-03.json': snapshot('2026-09-03', 3),
     });
     try {
       assert.equal(latestValidGithubStarsSnapshot(dir).stargazers_count, 3);
@@ -32,7 +40,7 @@ describe('github stars snapshot lookup', () => {
 
   it('falls back past a corrupt newest snapshot instead of failing the build', () => {
     const dir = fixtureDir({
-      'github-stars-2026-09-01.json': JSON.stringify({ stargazers_count: 1 }),
+      'github-stars-2026-09-01.json': snapshot('2026-09-01', 1),
       'github-stars-2026-09-03.json': '{not json',
     });
     try {
@@ -53,6 +61,56 @@ describe('github stars snapshot lookup', () => {
     } finally {
       rmSync(empty, { recursive: true, force: true });
       rmSync(bad, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects snapshots captured from a different repository', () => {
+    const dir = fixtureDir({
+      'github-stars-2026-09-03.json': snapshot('2026-09-03', 42, 'someone/else'),
+    });
+    try {
+      assert.throws(
+        () => latestValidGithubStarsSnapshot(dir, '2026-09-04'),
+        /repository must be koala73\/worldmonitor/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects malformed and filename-mismatched capture dates', () => {
+    const malformed = fixtureDir({
+      'github-stars-2026-09-03.json': snapshot('2026-02-30', 42),
+    });
+    const mismatched = fixtureDir({
+      'github-stars-2026-09-03.json': snapshot('2026-09-02', 42),
+    });
+    try {
+      assert.throws(
+        () => latestValidGithubStarsSnapshot(malformed, '2026-09-04'),
+        /capturedAt must be a real YYYY-MM-DD calendar date/,
+      );
+      assert.throws(
+        () => latestValidGithubStarsSnapshot(mismatched, '2026-09-04'),
+        /capturedAt 2026-09-02 does not match filename date 2026-09-03/,
+      );
+    } finally {
+      rmSync(malformed, { recursive: true, force: true });
+      rmSync(mismatched, { recursive: true, force: true });
+    }
+  });
+
+  it('rejects snapshots captured after the current UTC date', () => {
+    const dir = fixtureDir({
+      'github-stars-2026-09-05.json': snapshot('2026-09-05', 42),
+    });
+    try {
+      assert.throws(
+        () => latestValidGithubStarsSnapshot(dir, '2026-09-04'),
+        /capturedAt 2026-09-05 is in the future/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 

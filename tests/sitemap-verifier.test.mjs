@@ -3,6 +3,7 @@ import { describe, it } from 'node:test';
 
 import {
   classifySitemapUrl,
+  fetchSitemapTree,
   inspectIndexability,
   parseSitemapDocument,
   verifyProductionSitemaps,
@@ -88,6 +89,7 @@ describe('production sitemap verifier helpers', () => {
   it('accepts the canonical apex MCP URL in the root sitemap inventory', async () => {
     const mcpUrl = 'https://worldmonitor.app/mcp';
     const rootSitemap = 'https://www.worldmonitor.app/sitemap.xml';
+    const mainSitemap = 'https://www.worldmonitor.app/sitemap-main.xml';
     const blogSitemap = 'https://www.worldmonitor.app/blog/sitemap-index.xml';
     const docsSitemap = 'https://www.worldmonitor.app/docs/sitemap.xml';
     const responses = new Map([
@@ -95,7 +97,12 @@ describe('production sitemap verifier helpers', () => {
         'https://www.worldmonitor.app/robots.txt',
         `Sitemap: ${rootSitemap}\nSitemap: ${blogSitemap}\nSitemap: ${docsSitemap}\n`,
       ],
-      [rootSitemap, `<urlset><url><loc>${mcpUrl}</loc></url></urlset>`],
+      [rootSitemap, `<sitemapindex>
+        <sitemap><loc>${mainSitemap}</loc></sitemap>
+        <sitemap><loc>${blogSitemap}</loc></sitemap>
+        <sitemap><loc>${docsSitemap}</loc></sitemap>
+      </sitemapindex>`],
+      [mainSitemap, `<urlset><url><loc>${mcpUrl}</loc></url></urlset>`],
       [blogSitemap, '<urlset><url><loc>https://www.worldmonitor.app/blog/</loc></url></urlset>'],
       [docsSitemap, '<urlset><url><loc>https://www.worldmonitor.app/docs/</loc></url></urlset>'],
       ['https://www.worldmonitor.app/blog/', '<html><head><link rel="canonical" href="https://www.worldmonitor.app/blog/"></head></html>'],
@@ -118,6 +125,44 @@ describe('production sitemap verifier helpers', () => {
 
     assert.equal(result.passed, true, result.errors.join('\n'));
     assert.equal(result.familySummary.mcp.urls, 1);
+  });
+
+  it('rejects a legacy root URL set when the canonical sitemap index is required', async () => {
+    const rootSitemap = 'https://www.worldmonitor.app/sitemap.xml';
+    const blogSitemap = 'https://www.worldmonitor.app/blog/sitemap-index.xml';
+    const docsSitemap = 'https://www.worldmonitor.app/docs/sitemap.xml';
+    const responses = new Map([
+      [
+        'https://www.worldmonitor.app/robots.txt',
+        `Sitemap: ${rootSitemap}\nSitemap: ${blogSitemap}\nSitemap: ${docsSitemap}\n`,
+      ],
+      [rootSitemap, '<urlset><url><loc>https://www.worldmonitor.app/</loc></url></urlset>'],
+      [blogSitemap, '<urlset><url><loc>https://www.worldmonitor.app/blog/</loc></url></urlset>'],
+      [docsSitemap, '<urlset><url><loc>https://www.worldmonitor.app/docs/</loc></url></urlset>'],
+      [
+        'https://www.worldmonitor.app/',
+        '<html><head><link rel="canonical" href="https://www.worldmonitor.app/"></head></html>',
+      ],
+      [
+        'https://www.worldmonitor.app/blog/',
+        '<html><head><link rel="canonical" href="https://www.worldmonitor.app/blog/"></head></html>',
+      ],
+      [
+        'https://www.worldmonitor.app/docs/',
+        '<html><head><link rel="canonical" href="https://www.worldmonitor.app/docs/"></head></html>',
+      ],
+    ]);
+    const fetchImpl = async (url) => new Response(responses.get(String(url)), {
+      status: responses.has(String(url)) ? 200 : 404,
+      headers: {
+        'content-type': String(url).endsWith('/') ? 'text/html' : 'application/xml',
+      },
+    });
+
+    const result = await verifyProductionSitemaps({ fetchImpl });
+
+    assert.equal(result.passed, false);
+    assert.ok(result.errors.some((error) => /sitemap\.xml must be a sitemap index/.test(error)));
   });
 
   it('fails when multiple sitemap owners advertise the same canonical URL', async () => {
@@ -201,7 +246,6 @@ describe('production sitemap verifier helpers', () => {
 
 describe('mixed-owner root index traversal', () => {
   it('validates index members under their own owning family', async () => {
-    const { fetchSitemapTree } = await import('../scripts/verify-sitemaps.mjs');
     const bodies = {
       'https://www.worldmonitor.app/sitemap.xml': `<?xml version="1.0"?>
         <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
@@ -236,5 +280,51 @@ describe('mixed-owner root index traversal', () => {
     assert.ok(urls.has('https://www.worldmonitor.app/dashboard'));
     assert.ok(urls.has('https://www.worldmonitor.app/blog/posts/example/'));
     assert.ok(urls.has('https://www.worldmonitor.app/docs/example'));
+  });
+
+  it('rejects a nested index edge that crosses the inherited owner family', async () => {
+    const rootSitemap = 'https://www.worldmonitor.app/sitemap.xml';
+    const mainSitemap = 'https://www.worldmonitor.app/sitemap-main.xml';
+    const blogSitemap = 'https://www.worldmonitor.app/blog/sitemap-index.xml';
+    const docsSitemap = 'https://www.worldmonitor.app/docs/sitemap.xml';
+    const fetches = [];
+    const bodies = {
+      [rootSitemap]: `<?xml version="1.0"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>${mainSitemap}</loc></sitemap>
+          <sitemap><loc>${blogSitemap}</loc></sitemap>
+          <sitemap><loc>${docsSitemap}</loc></sitemap>
+        </sitemapindex>`,
+      [mainSitemap]: `<?xml version="1.0"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://www.worldmonitor.app/dashboard</loc></url>
+        </urlset>`,
+      [blogSitemap]: `<?xml version="1.0"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>${docsSitemap}</loc></sitemap>
+        </sitemapindex>`,
+      [docsSitemap]: `<?xml version="1.0"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://www.worldmonitor.app/docs/example</loc></url>
+        </urlset>`,
+    };
+    const fetchImpl = async (url) => {
+      fetches.push(String(url));
+      return new Response(bodies[String(url)] ?? '', {
+        status: bodies[String(url)] ? 200 : 404,
+        headers: { 'content-type': 'application/xml' },
+      });
+    };
+
+    const { inventoryErrors } = await fetchSitemapTree(
+      [{ url: rootSitemap, owner: 'root' }],
+      fetchImpl,
+      'https://www.worldmonitor.app',
+    );
+
+    assert.ok(inventoryErrors.some(
+      (error) => error === `blog sitemap index points outside its owned path family: ${docsSitemap}`,
+    ));
+    assert.equal(fetches.filter((url) => url === docsSitemap).length, 1);
   });
 });

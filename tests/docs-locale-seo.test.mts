@@ -408,6 +408,54 @@ describe('docs article injection for bare WebPage output', () => {
     assert.deepEqual(article?.author, { '@id': ORG_ID });
   });
 
+  it('does not inject a second Article when another JSON-LD script already has one', async () => {
+    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
+    const html = rewriteDocsEntityGraph(`<html><head>
+<script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      '@id': 'https://www.worldmonitor.app/docs/about#webpage',
+      name: 'About World Monitor',
+      url: 'https://www.worldmonitor.app/docs/about',
+    })}</script>
+<script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'Article',
+      '@id': 'https://www.worldmonitor.app/docs/about#article',
+      headline: 'About World Monitor',
+    })}</script>
+</head><body></body></html>`, '/docs/about');
+    const nodes = flatNodes(html);
+    const articles = nodes.filter(isArticle);
+
+    assert.equal(articles.length, 1, 'the complete document must contain at most one Article');
+    assert.equal(articles[0]?.dateModified, DOCS_PAGE_DATES.about);
+    assert.deepEqual(articles[0]?.author, { '@id': ORG_ID });
+    assert.deepEqual(
+      nodes.find((node) => node['@type'] === 'WebPage')?.speakable,
+      { '@type': 'SpeakableSpecification', cssSelector: ['h1'] },
+    );
+  });
+
+  it('injects at most one Article across multiple bare WebPage scripts', () => {
+    const html = rewriteDocsEntityGraph(`<html><head>
+<script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'About World Monitor',
+      url: 'https://www.worldmonitor.app/docs/about',
+    })}</script>
+<script type="application/ld+json">${JSON.stringify({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      name: 'About World Monitor alternate graph',
+      url: 'https://www.worldmonitor.app/docs/about',
+    })}</script>
+</head><body></body></html>`, '/docs/about');
+
+    assert.equal(flatNodes(html).filter(isArticle).length, 1);
+  });
+
   it('injects through the zh locale slug mapping', async () => {
     const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
     const html = rewriteDocsEntityGraph(seed({

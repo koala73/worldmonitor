@@ -17,7 +17,8 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = resolve(__dirname, '..');
 const SNAPSHOTS_DIR = join(ROOT, 'docs/snapshots');
 
-const SNAPSHOT_PATTERN = /^github-stars-\d{4}-\d{2}-\d{2}\.json$/;
+const SNAPSHOT_PATTERN = /^github-stars-(\d{4}-\d{2}-\d{2})\.json$/;
+const REPOSITORY = 'koala73/worldmonitor';
 
 function readSnapshotError(name, reason) {
   return new Error(
@@ -25,7 +26,16 @@ function readSnapshotError(name, reason) {
   );
 }
 
-export function latestValidGithubStarsSnapshot(snapshotsDir = SNAPSHOTS_DIR) {
+function isRealCalendarDate(value) {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const timestamp = Date.parse(`${value}T00:00:00Z`);
+  return Number.isFinite(timestamp) && new Date(timestamp).toISOString().slice(0, 10) === value;
+}
+
+export function latestValidGithubStarsSnapshot(
+  snapshotsDir = SNAPSHOTS_DIR,
+  currentUtcDate = new Date().toISOString().slice(0, 10),
+) {
   let files;
   try {
     files = readdirSync(snapshotsDir).filter((name) => SNAPSHOT_PATTERN.test(name)).sort();
@@ -38,8 +48,21 @@ export function latestValidGithubStarsSnapshot(snapshotsDir = SNAPSHOTS_DIR) {
   for (const name of [...files].reverse()) {
     try {
       const snapshot = JSON.parse(readFileSync(join(snapshotsDir, name), 'utf8'));
+      const filenameDate = SNAPSHOT_PATTERN.exec(name)?.[1];
+      if (snapshot.repository !== REPOSITORY) {
+        throw new Error(`repository must be ${REPOSITORY}`);
+      }
       if (!Number.isInteger(snapshot.stargazers_count) || snapshot.stargazers_count < 0) {
         throw new Error('no integer stargazers_count');
+      }
+      if (!isRealCalendarDate(snapshot.capturedAt)) {
+        throw new Error('capturedAt must be a real YYYY-MM-DD calendar date');
+      }
+      if (snapshot.capturedAt !== filenameDate) {
+        throw new Error(`capturedAt ${snapshot.capturedAt} does not match filename date ${filenameDate}`);
+      }
+      if (snapshot.capturedAt > currentUtcDate) {
+        throw new Error(`capturedAt ${snapshot.capturedAt} is in the future`);
       }
       return { ...snapshot, snapshotFile: name };
     } catch (error) {

@@ -99,7 +99,7 @@ jobs:
               || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_APEX=true
             fi
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/.*|public/blog/.*|public/sitemap\.xml|public/sitemap-main\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|docs/snapshots/github-stars-[0-9]{4}-[0-9]{2}-[0-9]{2}\.json|pro-test/.*|public/blog/.*|public/sitemap\.xml|public/sitemap-main\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/github-stars-snapshot\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${WWW_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_WWW=true
             fi

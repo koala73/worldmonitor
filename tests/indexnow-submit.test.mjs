@@ -318,6 +318,41 @@ describe('IndexNow submission', () => {
     );
   });
 
+  it('resubmits canonical www URLs when the frozen GitHub-star proof changes', async () => {
+    const changes = [
+      'docs/snapshots/github-stars-2026-09-04.json',
+      'scripts/github-stars-snapshot.mjs',
+    ];
+    const inert = [
+      'docs/snapshots/github-stars-not-a-date.json',
+      'scripts/freeze-github-stars.mjs',
+    ];
+    const [gates, inertGates] = await Promise.all([
+      Promise.all(changes.map((changed) => runRelevanceGate([changed]))),
+      Promise.all(inert.map((changed) => runRelevanceGate([changed]))),
+    ]);
+
+    changes.forEach((changed, index) => {
+      assert.equal(
+        gates[index].submit_www,
+        'true',
+        `${changed} changes prerendered structured data on canonical www URLs, so it must resubmit`,
+      );
+      assert.equal(
+        gates[index].submit_variants,
+        'false',
+        `${changed} does not change variant dashboard URLs, so it must not resubmit them`,
+      );
+    });
+    inert.forEach((changed, index) => {
+      assert.equal(
+        inertGates[index].submit_www,
+        'false',
+        `${changed} is not a direct input to the deployed canonical www output`,
+      );
+    });
+  });
+
   it('keeps every submitted URL and key location on the declared host', () => {
     for (const batch of indexNow.INDEXNOW_BATCHES) {
       assert.equal(new URL(batch.keyLocation).hostname, batch.host);

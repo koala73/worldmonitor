@@ -48,8 +48,15 @@ function latestCommitDates() {
   // One pass, newest-first: the first date seen per file is its latest commit.
   const output = execFileSync(
     'git',
-    ['log', '--format=COMMIT:%cs', '--name-only', '--', 'docs/'],
-    { cwd: ROOT, encoding: 'utf8' },
+    [
+      'log',
+      '--date=format-local:%Y-%m-%d',
+      '--format=COMMIT:%cd',
+      '--name-only',
+      '--',
+      'docs/',
+    ],
+    { cwd: ROOT, encoding: 'utf8', env: { ...process.env, TZ: 'UTC' } },
   );
   const dates = new Map();
   let current = null;
