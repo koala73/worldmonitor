@@ -4263,7 +4263,7 @@ describe('crawlable corpus generator', () => {
       );
       assert.match(compareHub, /<h1>Compare World Monitor<\/h1>/);
       for (const page of COMPARISON_PAGES) {
-        assert.match(compareHub, new RegExp('href="' + page.path.replaceAll('/', '\/') + '"'));
+        assert.match(compareHub, new RegExp('href="' + page.path.replaceAll('/', '/') + '"'));
       }
       assert.match(compareHub, /href="\/blog\/posts\/worldmonitor-vs-traditional-intelligence-tools\/"/);
       for (const page of COMPARISON_PAGES) {

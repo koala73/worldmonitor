@@ -60,12 +60,23 @@ beforeEach(() => {
 const checkout = await import('../src/services/checkout-attempt.ts');
 const { saveCheckoutAttempt, loadCheckoutAttempt, clearCheckoutAttempt } = checkout;
 
+function attempt(productId: string, startedAt: number) {
+  return {
+    version: 2 as const,
+    productId,
+    startedAt,
+    context: {
+      eventSurface: 'dashboard' as const,
+      origin: { kind: 'dashboard' as const },
+    },
+  };
+}
+
 describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
   it('round-trips a fresh attempt', () => {
     saveCheckoutAttempt({
-      productId: 'pdt_X',
+      ...attempt('pdt_X', Date.now()),
       referralCode: 'abc',
-      startedAt: Date.now(),
     });
     const loaded = loadCheckoutAttempt();
     assert.equal(loaded?.productId, 'pdt_X');
@@ -91,19 +102,13 @@ describe('saveCheckoutAttempt / loadCheckoutAttempt', () => {
 
   it('returns null for records older than 24h', () => {
     const twentyFiveHoursAgo = Date.now() - 25 * 60 * 60 * 1000;
-    saveCheckoutAttempt({
-      productId: 'pdt_X',
-      startedAt: twentyFiveHoursAgo,
-    });
+    saveCheckoutAttempt(attempt('pdt_X', twentyFiveHoursAgo));
     assert.equal(loadCheckoutAttempt(), null);
   });
 
   it('returns record just under 24h', () => {
     const twentyThreeHoursAgo = Date.now() - 23 * 60 * 60 * 1000;
-    saveCheckoutAttempt({
-      productId: 'pdt_X',
-      startedAt: twentyThreeHoursAgo,
-    });
+    saveCheckoutAttempt(attempt('pdt_X', twentyThreeHoursAgo));
     assert.equal(loadCheckoutAttempt()?.productId, 'pdt_X');
   });
 });
@@ -117,10 +122,7 @@ describe('clearCheckoutAttempt', () => {
       'dismissed',
     ];
     for (const reason of reasons) {
-      saveCheckoutAttempt({
-        productId: 'pdt_X',
-        startedAt: Date.now(),
-      });
+      saveCheckoutAttempt(attempt('pdt_X', Date.now()));
       clearCheckoutAttempt(reason);
       assert.equal(loadCheckoutAttempt(), null, `reason=${reason} should clear the record`);
     }

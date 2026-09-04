@@ -430,6 +430,9 @@ export class EventHandlerManager implements AppModule {
         persist: (settings) => saveToStorage(STORAGE_KEYS.panels, settings),
         applyPanelSettings: () => this.applyPanelSettings(),
         trackToggle: trackPanelToggled,
+        beforeApply: (committedPanelId, committedEnabled) => {
+          if (committedEnabled) suppressNextAgentPanelView(committedPanelId);
+        },
         showCapToast: () => showToast(
           t('modals.settingsWindow.freePanelLimit', { max: String(FREE_MAX_PANELS) }),
         ),

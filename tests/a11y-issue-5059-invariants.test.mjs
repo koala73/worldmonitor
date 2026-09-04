@@ -190,11 +190,11 @@ describe('keyboard — toggle focus continuity', () => {
 
 describe('CSS — focus-visible indicator for toggle items', () => {
   it('.panel-toggle-item:focus-visible rule exists', () => {
-    assert.match(css, /\.panel-toggle-item:focus-visible\s*[,\{]/);
+    assert.match(css, /\.panel-toggle-item:focus-visible\s*[,{]/);
   });
 
   it('.source-toggle-item:focus-visible rule exists', () => {
-    assert.match(css, /\.source-toggle-item:focus-visible\s*[,\{]/);
+    assert.match(css, /\.source-toggle-item:focus-visible\s*[,{]/);
   });
 
   it('toggle focus-visible uses a high-contrast color', () => {
@@ -216,7 +216,7 @@ describe('CSS — focus-visible for preference controls', () => {
   });
 
   it('.unified-settings-select:focus-visible rule exists', () => {
-    assert.match(css, /\.unified-settings-select:focus-visible\s*[,\{]/);
+    assert.match(css, /\.unified-settings-select:focus-visible\s*[,{]/);
   });
 
   it('.ai-flow-switch input:focus-visible + .ai-flow-slider rule exists', () => {

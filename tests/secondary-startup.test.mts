@@ -172,7 +172,7 @@ describe('deferred Umami loader', () => {
       // www MUST stay listed (#4931): the apex 301s to www in production and
       // the tracker's data-domains check is an exact hostname match — without
       // www, analytics on the canonical host are silently disabled.
-      assert.equal(firstScript.dataset.domains, 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app');
+      assert.equal(firstScript.dataset.domains, 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app,finance.worldmonitor.app');
       assert.deepEqual(calls, []);
       firstScript.listeners.get('error')?.();
       assert.equal(firstScript.removed, true);

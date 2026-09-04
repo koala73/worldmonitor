@@ -11,6 +11,7 @@ import { onSubscriptionChange, type SubscriptionInfo } from './billing';
 import { getClerkUserCreatedAt } from './clerk';
 import { DODO_PRODUCT_IDS } from '@/config/product-ids.generated';
 import { SITE_VARIANT, isSiteVariant } from '@/config/variant';
+import { isAgentPanelViewSuppressed } from './agent-analytics-privacy';
 import type { ActivationEventName, ActivationStepId } from './pro-activation-state';
 import {
   collectorFailureFromError,
@@ -27,6 +28,25 @@ import {
   getContentAttributionForAnalytics,
   withContentAttribution,
 } from '../../shared/content-attribution';
+import { MISSION_PRESET_IDS } from '../../shared/mission-domain';
+import {
+  isCheckoutSurface,
+  parseCheckoutContext,
+  resolveCheckoutContext,
+  type CheckoutAttribution,
+  type CheckoutContext,
+  type CheckoutSurface,
+} from '../../shared/checkout-attribution';
+import {
+  loadCheckoutReturnState,
+  settleMissionReturnDelivery,
+} from './checkout-return-state';
+
+export type {
+  CheckoutAttribution,
+  CheckoutContext,
+  CheckoutSurface,
+} from '../../shared/checkout-attribution';
 
 const UMAMI_SCRIPT_SRC = 'https://abacus.worldmonitor.app/script.js';
 const UMAMI_COLLECTOR_ENDPOINT = new URL('/api/send', UMAMI_SCRIPT_SRC).href;
@@ -44,7 +64,12 @@ const UMAMI_WEBSITE_ID = 'e8800335-c853-46a8-8497-c993ed2f58bc';
 // to www in production, and the tracker's data-domains check is an EXACT
 // hostname match (`!domains.includes(hostname)` → disabled) — with only the
 // apex listed, every event from the canonical host was silently dropped.
-const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app';
+// finance re-added 2026-09-04 (option 2, mission-funnel measurement): the
+// finance-only nq-day-trader mission was invisible to the funnel with the
+// tracker self-disabled there. Upstream #4183 still drops 4-8% of /api/send
+// on affected hosts — accepted noise; durable checkout markers already
+// tolerate collector failures. tech/commodity stay out until #4183 ships.
+const UMAMI_DOMAINS = 'worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app,finance.worldmonitor.app';
 const UMAMI_QUEUE_LIMIT = 50;
 const UMAMI_LOAD_ATTEMPT_LIMIT = 2;
 const UMAMI_LOAD_RETRY_DELAY_MS = 5_000;
@@ -55,6 +80,7 @@ const CRITICAL_TRACK_EVENTS = new Set<UmamiEvent>([
   'checkout-start',
   'checkout-success',
   'checkout-failed',
+  'mission-returned-after-purchase',
 ]);
 
 type QueuedUmamiCall =
@@ -270,6 +296,7 @@ function handleCollectorOutcome(outcome: CollectorOutcome): void {
   if (!isDurableMarkerResolved(outcome.failure)) return;
 
   if (outcome.eventName === 'checkout-success') clearPendingCheckoutSuccessMarker();
+  if (outcome.eventName === 'mission-returned-after-purchase') settleMissionReturnDelivery();
   if (outcome.eventName === 'checkout-start' && isReplayedCheckoutStart(outcome.requestBody)) {
     noteProFunnelReplayDelivered();
   }
@@ -451,6 +478,7 @@ function scheduleTrackRetry(call: Extract<QueuedUmamiCall, { kind: 'track' }>, e
  */
 function clearUnobservableCriticalMarker(call: Extract<QueuedUmamiCall, { kind: 'track' }>): void {
   if (call.event === 'checkout-success') clearPendingCheckoutSuccessMarker();
+  if (call.event === 'mission-returned-after-purchase') settleMissionReturnDelivery();
   if (call.event === 'checkout-start' && call.data?.replayed === true) {
     noteProFunnelReplayDelivered();
   }
@@ -943,12 +971,6 @@ function forgetPendingConversion(event: PendingConversion['event']): void {
  * redirect. Entries stay durable until the collector confirms them, so this is
  * a no-op on ordinary boots.
  */
-const CHECKOUT_SURFACES: ReadonlySet<string> = new Set([
-  'dashboard',
-  'dashboard-resume',
-  'mission-preview',
-]);
-
 /**
  * Rebuild a stored pending-conversion payload from an allowlist before
  * replaying it. Write-time bucketing does not protect this path — the entry
@@ -969,7 +991,7 @@ function sanitizePendingConversionData(
   }
   const out: Record<string, unknown> = {
     productId: bucketProductIdForAnalytics(typeof data.productId === 'string' ? data.productId : ''),
-    surface: typeof data.surface === 'string' && CHECKOUT_SURFACES.has(data.surface)
+    surface: isCheckoutSurface(data.surface)
       ? data.surface
       : 'dashboard',
     authed: data.authed === true,
@@ -981,24 +1003,41 @@ function sanitizePendingConversionData(
   return out;
 }
 
+/**
+ * Return-leg reader (plan U4): the originating mission/panel of the checkout
+ * that just completed, straight from the durable pending-conversion entry —
+ * read BEFORE the boot replay's collector confirmation can clear it. Values
+ * were bucketed at write time and are re-validated by the caller's tracker.
+ */
+export function peekPendingMissionAttribution(): {
+  missionId: string;
+  panelKey?: string;
+  surface?: string;
+} | null {
+  // Positional: only the NEWEST checkout-start counts — falling through to
+  // older entries would attribute this purchase to an earlier abandoned
+  // attempt. Values are re-bucketed on read: this store is attacker-writable
+  // (same sanitize-on-read rule as sanitizePendingConversionData).
+  const newest = readPendingConversions().reverse().find((item) => item.event === 'checkout-start');
+  if (!newest) return null;
+  const rawMission = newest.data.missionId;
+  if (typeof rawMission !== 'string') return null;
+  const missionId = bucketMissionIdForAnalytics(rawMission);
+  if (missionId === 'unknown') return null;
+  const rawPanel = newest.data.panelKey;
+  const panelKey = typeof rawPanel === 'string' ? bucketPanelKeyForAnalytics(rawPanel) : 'unknown';
+  const rawSurface = newest.data.surface;
+  return {
+    missionId,
+    ...(panelKey !== 'unknown' ? { panelKey } : {}),
+    ...(isCheckoutSurface(rawSurface) ? { surface: rawSurface } : {}),
+  };
+}
+
 export function replayPendingConversionEvents(): void {
   for (const item of readPendingConversions()) {
     track(item.event, { ...sanitizePendingConversionData(item.event, item.data), replayed: true });
   }
-}
-
-export type CheckoutSurface = 'dashboard' | 'dashboard-resume' | 'mission-preview';
-
-/**
- * Optional mission attribution for a checkout. Ids are bucketed against their
- * closed vocabularies before they reach Umami for the same reason as
- * bucketProductIdForAnalytics: the dashboard-resume path replays payloads that
- * travelled through sessionStorage, so a crafted value must not inject
- * unbounded cardinality.
- */
-export interface CheckoutAttribution {
-  missionId?: string;
-  panelKey?: string;
 }
 
 export function trackCheckoutStart(
@@ -1006,26 +1045,37 @@ export function trackCheckoutStart(
   authed: boolean,
   surface: CheckoutSurface = 'dashboard',
   attribution?: CheckoutAttribution,
-): void {
+  existingContext?: CheckoutContext,
+): CheckoutContext {
   // Seeded with the shared funnel context (variant, deviceClass, ambient
   // missionId) so the baseline read can segment checkout-starts. Semantics of
   // missionId on this event: ambient mission context when the surface is a
   // generic one ('dashboard'), preview-attributed when explicit attribution
   // overrides it below (surface 'mission-preview').
+  const funnelFields = missionFunnelFields();
+  const parsedContext = parseCheckoutContext(existingContext);
+  const context = parsedContext
+    ? { ...parsedContext, eventSurface: surface }
+    : resolveCheckoutContext({
+      surface,
+      attribution,
+      ambientMissionId: funnelFields.missionId,
+    });
   const data: Record<string, unknown> = {
-    ...missionFunnelFields(),
+    ...funnelFields,
     productId: bucketProductIdForAnalytics(productId),
-    surface,
+    surface: context.eventSurface,
     authed,
   };
-  if (attribution?.missionId != null) {
-    data.missionId = bucketMissionIdForAnalytics(attribution.missionId);
+  if (context.origin.missionId) {
+    data.missionId = context.origin.missionId;
   }
-  if (attribution?.panelKey != null) {
-    data.panelKey = bucketPanelKeyForAnalytics(attribution.panelKey);
+  if (context.origin.kind === 'mission-preview') {
+    data.panelKey = context.origin.panelKey;
   }
   rememberPendingConversion('checkout-start', data);
   track('checkout-start', data);
+  return context;
 }
 
 /**
@@ -1300,16 +1350,7 @@ function analyticsDeviceClass(): 'mobile' | 'desktop' {
  * KNOWN_PRODUCT_IDS is a separate generated module (#5165).
  */
 const MISSION_PRESET_STORAGE_KEY = 'worldmonitor-mission-preset-v1';
-const KNOWN_MISSION_IDS = new Set([
-  'crisis-desk',
-  'supply-chain-risk',
-  'energy-security',
-  'osint-newsroom',
-  'macro-market-watch',
-  'tech-ai-watch',
-  'good-news-explorer',
-  'nq-day-trader',
-]);
+const KNOWN_MISSION_IDS = new Set<string>(MISSION_PRESET_IDS);
 
 /** Unknown mission ids collapse to 'unknown' — closed vocabulary, like productId. */
 export function bucketMissionIdForAnalytics(missionId: string): string {
@@ -1459,7 +1500,83 @@ function trackProPreviewEvent(
   });
 }
 
+/**
+ * Guardrail-denominator integrity (review findings on the pre-registered
+ * dismissal-rate rollback): viewed is once per preview per tab session — a
+ * render is not a view, and mission flapping or per-country widget re-creates
+ * must not multiply the denominator — and agent-driven mounts (WebMCP mission
+ * applies / set_panel_enabled) are suppressed via the same per-panel window
+ * panel-viewed uses, so the human funnel reads clean. Centralized here so the
+ * component, ResilienceWidget's crisis-desk surface, and any future caller
+ * share one contract.
+ */
+const PRO_PREVIEW_VIEWED_SESSION_KEY = 'wm-pro-preview-viewed-v1';
+const PRO_PREVIEW_DISMISSED_SESSION_KEY = 'wm-pro-preview-dismissed-v1';
+let proPreviewViewedMemory = new Set<string>();
+let proPreviewDismissedMemory = new Set<string>();
+
+export function resetProPreviewViewedForTesting(): void {
+  proPreviewViewedMemory = new Set();
+  proPreviewDismissedMemory = new Set();
+  try {
+    window.sessionStorage.removeItem(PRO_PREVIEW_VIEWED_SESSION_KEY);
+    window.sessionStorage.removeItem(PRO_PREVIEW_DISMISSED_SESSION_KEY);
+  } catch {
+    // ignore
+  }
+}
+
+function hasTrackedProPreviewDismissed(id: string): boolean {
+  if (proPreviewDismissedMemory.has(id)) return true;
+  try {
+    const raw = window.sessionStorage.getItem(PRO_PREVIEW_DISMISSED_SESSION_KEY);
+    const items: unknown = raw ? JSON.parse(raw) : null;
+    return Array.isArray(items) && items.includes(id);
+  } catch {
+    return false;
+  }
+}
+
+function rememberProPreviewDismissed(id: string): void {
+  proPreviewDismissedMemory.add(id);
+  try {
+    const raw = window.sessionStorage.getItem(PRO_PREVIEW_DISMISSED_SESSION_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    const items = Array.isArray(parsed) ? parsed.filter((i): i is string => typeof i === 'string') : [];
+    items.push(id);
+    window.sessionStorage.setItem(PRO_PREVIEW_DISMISSED_SESSION_KEY, JSON.stringify(items.slice(-100)));
+  } catch {}
+}
+
+function hasTrackedProPreviewViewed(id: string): boolean {
+  if (proPreviewViewedMemory.has(id)) return true;
+  try {
+    const raw = window.sessionStorage.getItem(PRO_PREVIEW_VIEWED_SESSION_KEY);
+    const items: unknown = raw ? JSON.parse(raw) : null;
+    return Array.isArray(items) && items.includes(id);
+  } catch {
+    return false;
+  }
+}
+
+function rememberProPreviewViewed(id: string): void {
+  proPreviewViewedMemory.add(id);
+  try {
+    const raw = window.sessionStorage.getItem(PRO_PREVIEW_VIEWED_SESSION_KEY);
+    const parsed: unknown = raw ? JSON.parse(raw) : null;
+    const items = Array.isArray(parsed) ? parsed.filter((i): i is string => typeof i === 'string') : [];
+    items.push(id);
+    window.sessionStorage.setItem(PRO_PREVIEW_VIEWED_SESSION_KEY, JSON.stringify(items.slice(-100)));
+  } catch {
+    // Storage denied — the in-memory set still dedupes this page.
+  }
+}
+
 export function trackProPreviewViewed(missionId: string, panelKey: string): void {
+  if (isAgentPanelViewSuppressed(panelKey)) return;
+  const id = `${bucketMissionIdForAnalytics(missionId)}:${bucketPanelKeyForAnalytics(panelKey)}`;
+  if (hasTrackedProPreviewViewed(id)) return;
+  rememberProPreviewViewed(id);
   trackProPreviewEvent('pro-preview-viewed', missionId, panelKey);
 }
 
@@ -1468,11 +1585,37 @@ export function trackProPreviewCta(missionId: string, panelKey: string): void {
 }
 
 export function trackProPreviewDismissed(missionId: string, panelKey: string): void {
+  const id = `${bucketMissionIdForAnalytics(missionId)}:${bucketPanelKeyForAnalytics(panelKey)}`;
+  if (hasTrackedProPreviewDismissed(id)) return;
+  rememberProPreviewDismissed(id);
   trackProPreviewEvent('pro-preview-dismissed', missionId, panelKey);
 }
 
-export function trackMissionReturnedAfterPurchase(missionId: string, panelKey: string): void {
-  trackProPreviewEvent('mission-returned-after-purchase', missionId, panelKey);
+export function trackMissionReturnedAfterPurchase(
+  missionId: string,
+  panelKey: string,
+  surface?: string,
+): void {
+  track('mission-returned-after-purchase', {
+    ...missionFunnelFields(),
+    missionId: bucketMissionIdForAnalytics(missionId),
+    panelKey: bucketPanelKeyForAnalytics(panelKey),
+    // Distinguishes a preview-originated purchase from an ambient-context
+    // one — day-30 completion reads split on this.
+    ...(surface ? { surface } : {}),
+  });
+}
+
+export function replayPendingMissionReturn(): void {
+  const state = loadCheckoutReturnState();
+  if (!state || state.delivery.missionReturn !== 'pending') return;
+  const { origin } = state.context;
+  if (!origin.missionId) return;
+  trackMissionReturnedAfterPurchase(
+    origin.missionId,
+    origin.kind === 'mission-preview' ? origin.panelKey : 'unknown',
+    state.context.eventSurface,
+  );
 }
 
 export function trackApiKeysSnapshot(): void {}

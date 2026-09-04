@@ -51,7 +51,8 @@ function unusedNavigationResult(
 
 const unusedNavigationBindings: Pick<
   WebMcpAppBindings,
-  'switchMonitor' | 'openSettings' | 'openAlerts' | 'listMissionPresets' | 'applyMissionPreset' | 'openMissionPicker'
+  'switchMonitor' | 'openSettings' | 'openAlerts' | 'listMissionPresets' | 'applyMissionPreset'
+    | 'openMissionPicker' | 'listFollowedCountries' | 'setCountryFollowed'
 > = {
   switchMonitor: async () => unusedNavigationResult('full', { navigation: 'none' }),
   openSettings: async () => unusedNavigationResult('settings', {
@@ -80,6 +81,21 @@ const unusedNavigationBindings: Pick<
   }),
   openMissionPicker: async () => unusedNavigationResult('mission_picker', {
     overlay: 'open',
+  }),
+  listFollowedCountries: async () => ({
+    ok: true,
+    enabled: true,
+    countries: [],
+    count: 0,
+    access: 'free',
+    limit: 3,
+  }),
+  setCountryFollowed: async () => ({
+    ok: true,
+    status: 'unchanged',
+    iso2: 'DE',
+    followed: true,
+    message: 'Unused followed-country binding.',
   }),
 };
 

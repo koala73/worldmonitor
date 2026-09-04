@@ -42,6 +42,14 @@ import {
   getContentAttributionForAnalytics,
   withContentAttribution,
 } from '../../../shared/content-attribution';
+import {
+  CHECKOUT_ATTEMPT_STORAGE_KEY,
+  CHECKOUT_RETURN_SOURCE_PARAM,
+  DESKTOP_CHECKOUT_HANDOFF,
+  parseMissionPreviewAttribution,
+  resolveCheckoutContext,
+  type CheckoutAttribution,
+} from '../../../shared/checkout-attribution';
 
 let checkoutInFlight = false;
 
@@ -242,6 +250,8 @@ export async function startCheckout(
     referralCode?: string;
     discountCode?: string;
     attributionSource?: string;
+    checkoutAttribution?: CheckoutAttribution;
+    desktopHandoff?: boolean;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -261,6 +271,8 @@ async function startCheckoutInner(
     referralCode?: string;
     discountCode?: string;
     attributionSource?: string;
+    checkoutAttribution?: CheckoutAttribution;
+    desktopHandoff?: boolean;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -275,10 +287,17 @@ async function startCheckoutInner(
 
   // Funnel (#4931): every /pro pricing CTA routes through here. authed:false
   // marks intent clicks that detour through the Clerk sign-in modal first.
+  const checkoutAttribution = parseMissionPreviewAttribution(
+    options?.checkoutAttribution?.missionId,
+    options?.checkoutAttribution?.panelKey,
+  );
   trackFunnelEvent('checkout-start', {
     productId: bucketProductIdForAnalytics(productId),
     surface: 'pro-page',
     authed: Boolean(c.user),
+    ...(checkoutAttribution
+      ? { missionId: checkoutAttribution.missionId, panelKey: checkoutAttribution.panelKey }
+      : {}),
   });
 
   if (!c.user) {
@@ -318,12 +337,32 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
     return false;
   }
   if (!c.user) return false;
-  const { productId, referralCode, discountCode, attributionSource } = intent;
+  const {
+    productId,
+    referralCode,
+    discountCode,
+    attributionSource,
+    checkoutAttribution,
+    desktopHandoff,
+  } = intent;
   // Funnel (#4931): post-sign-in auto-resume — the pre-auth click already
   // fired checkout-start{authed:false}; this marks the resumed attempt.
   // productId is URL-derived here — bucketed for analytics (round-4 F2).
-  trackFunnelEvent('checkout-start', { productId: bucketProductIdForAnalytics(productId), surface: 'pro-resume', authed: true });
-  return doCheckout(productId, { referralCode, discountCode, attributionSource });
+  trackFunnelEvent('checkout-start', {
+    productId: bucketProductIdForAnalytics(productId),
+    surface: 'pro-resume',
+    authed: true,
+    ...(checkoutAttribution
+      ? { missionId: checkoutAttribution.missionId, panelKey: checkoutAttribution.panelKey }
+      : {}),
+  });
+  return doCheckout(productId, {
+    referralCode,
+    discountCode,
+    attributionSource,
+    checkoutAttribution,
+    desktopHandoff,
+  });
 }
 
 async function doCheckout(
@@ -332,6 +371,8 @@ async function doCheckout(
     referralCode?: string;
     discountCode?: string;
     attributionSource?: string;
+    checkoutAttribution?: CheckoutAttribution;
+    desktopHandoff?: boolean;
     bypassPendingGuard?: boolean;
   },
 ): Promise<boolean> {
@@ -343,6 +384,20 @@ async function doCheckout(
   if (_phase.kind === 'rate_limited') setPhase({ kind: 'idle' });
   if (checkoutInFlight) return false;
   checkoutInFlight = true;
+  const checkoutContext = resolveCheckoutContext({
+    surface: options.checkoutAttribution ? 'mission-preview' : 'dashboard',
+    attribution: options.checkoutAttribution,
+  });
+  try {
+    window.sessionStorage.setItem(CHECKOUT_ATTEMPT_STORAGE_KEY, JSON.stringify({
+      version: 2,
+      productId,
+      referralCode: options.referralCode,
+      discountCode: options.discountCode,
+      startedAt: Date.now(),
+      context: checkoutContext,
+    }));
+  } catch {}
   // Phase transitions to creating_checkout ONLY here, not in
   // startCheckout's no-user branch. This narrow window (post-auth,
   // edge call + Dodo SDK import + overlay open) is the only time the
@@ -388,7 +443,9 @@ async function doCheckout(
         // failure, cancel, pending) — `?wm_checkout=success` would false-succeed
         // a failed/pending/no-ID return. `?wm_checkout=return` only reconciles
         // success against authoritative Dodo evidence. See checkout-return.ts.
-        returnUrl: DASHBOARD_CHECKOUT_RETURN_URL,
+        returnUrl: options.desktopHandoff
+          ? `${DASHBOARD_CHECKOUT_RETURN_URL}&${CHECKOUT_RETURN_SOURCE_PARAM}=${DESKTOP_CHECKOUT_HANDOFF}`
+          : DASHBOARD_CHECKOUT_RETURN_URL,
         discountCode: options.discountCode,
         referralCode: options.referralCode,
         attributionSource: options.attributionSource,

@@ -482,7 +482,7 @@
       "plateNote": "Capturado del mapa en vivo — haz clic para abrirlo",
       "trustBuild": "Construye sobre él:",
       "positioningLink": "WorldMonitor no es un Palantir de código abierto",
-      "asOf": "A partir del 31 de agosto de 2026",
+      "asOf": "A partir del 4 de septiembre de 2026",
       "whatIsTitle": "¿Qué es World Monitor?",
       "whatIsBody": "World Monitor es un dashboard gratuito y de código abierto que transmite señales de geopolítica, mercados, transporte marítimo, aviación, infraestructura y ciberseguridad en un único mapa mundial en vivo. Correlaciona fuentes independientes en una única imagen operativa e identifica convergencias antes de que salgan en los titulares, con cada dato documentado y cada metodología explicada."
     },
@@ -491,7 +491,8 @@
       "title": "¿Qué datos en vivo muestra esta página en este momento?",
       "subtitle": "Cuatro de las cien señales que World Monitor monitorea las 24 horas.",
       "liveBadge": "En vivo",
-      "sampleBadge": "Muestra",
+      "pulseBadge": "Pulse publicado {{date}}",
+      "refreshNote": "Habilita JavaScript para actualizar — el pulse publicado arriba sigue disponible sin él.",
       "cardHeadlines": "Principales señales",
       "cardCii": "Índice de inestabilidad",
       "ciiNote": "12 señales fusionadas por país",

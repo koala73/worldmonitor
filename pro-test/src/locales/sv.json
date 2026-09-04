@@ -482,7 +482,7 @@
       "plateNote": "Fångad från live-kartan — klicka för att öppna den",
       "trustBuild": "Bygg på den:",
       "positioningLink": "WorldMonitor är inte en öppen källkod Palantir",
-      "asOf": "Per den 31 augusti 2026",
+      "asOf": "Per 4 september 2026",
       "whatIsTitle": "Vad är World Monitor?",
       "whatIsBody": "World Monitor är en gratis dashboard med öppen källkod som strömmar geopolitik, marknader, sjöfart, luftfart, infrastruktur och cybersignaler till en direkt världskarta. Den korrelerar separata feeds till en enda operativ bild och flaggar konvergens före rubrikerna, där varje siffra är källhänvisad och varje metod är dokumenterad."
     },
@@ -491,7 +491,8 @@
       "title": "Vilka aktiva data visar denna sida just nu?",
       "subtitle": "Fyra av de hundratals signaler som World Monitor övervakar dygnet runt.",
       "liveBadge": "Live",
-      "sampleBadge": "Exempel",
+      "pulseBadge": "Publicerad puls {{date}}",
+      "refreshNote": "Aktivera JavaScript för att uppdatera — pulsen ovan som publicerades förblir tillgänglig utan det.",
       "cardHeadlines": "Toppignaler",
       "cardCii": "Instabilitetindex",
       "ciiNote": "12 sammanslagna signaler per land",

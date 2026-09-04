@@ -6,8 +6,7 @@ import { describe, it } from 'node:test';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const callSiteFiles = [
-  'src/components/Panel.ts',
-  'src/components/ResilienceWidget.ts',
+  'src/services/upgrade-flow.ts',
   'src/app/event-handlers.ts',
   'src/app/desktop-updater.ts',
   'src/settings-main.ts',
@@ -52,8 +51,7 @@ describe('external navigation call-site contract (#6120)', () => {
     // fire-and-forget (the handle is never read), which is why passing
     // `noopener,noreferrer` — and getting null back — is harmless here.
     const ALLOWED_WINDOW_OPEN = new Map([
-      ['src/components/Panel.ts', 1], //            web checkout fallback
-      ['src/components/ResilienceWidget.ts', 2], // web upgrade fallbacks
+      ['src/services/upgrade-flow.ts', 1], //       web checkout fallback (shared funnel helper)
       ['src/app/event-handlers.ts', 2], //          download-banner links
       ['src/app/desktop-updater.ts', 1], //         non-desktop update link
       ['src/settings-main.ts', 0],
