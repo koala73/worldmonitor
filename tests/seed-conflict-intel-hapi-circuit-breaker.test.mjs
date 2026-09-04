@@ -214,12 +214,22 @@ test('the channel that served a seed reaches the marker AND the seed-meta record
   // changed channel the family can hold both vintages. sourceChannel is
   // family-wide only when coverage is complete — so the marker must keep
   // carrying the coverage pair that lets a reader tell those apart.
-  for (const field of ['requiredCountriesCovered', 'requiredCountriesTotal', 'countriesCovered']) {
+  for (const field of ['requiredCountriesCovered', 'requiredCountriesTotal', 'countriesCovered', 'countriesTotal']) {
     assert.ok(
       Object.hasOwn(demoted.marker, field),
       `the marker must keep ${field} — it is what scopes sourceChannel to the whole family or just this run`,
     );
   }
+  // Presence is not enough for this one: it is ALSO the recordCount argument to
+  // writeExtraKeyWithMeta, and health gates humanitarianSummary on
+  // minRecordCount === HAPI_REQUIRED_COUNTRIES.length. Computed backwards it
+  // would either report 39/41 covered while 2 countries are published (health
+  // green, crisis pages empty) or false-alarm on a healthy run. Both SD and UA
+  // are in the required set, so the count is 2 — inverting the filter yields 39
+  // and must fail here.
+  assert.equal(demoted.marker.requiredCountriesCovered, 2);
+  assert.equal(demoted.requiredCountriesCovered, 2, 'the returned recordCount must match the marker');
+  assert.equal(authoritative.requiredCountriesCovered, 1);
 
   // Second half of the contract: `extra` is the ONLY writeExtraKeyWithMeta
   // argument slot that reaches the seed-meta record, so provenance passed one
@@ -1376,10 +1386,20 @@ test('HAPI backoff records the fallback rejection status when the national sweep
 });
 
 test('HAPI ingestion skips network calls during success and failure backoff windows', async () => {
+  // Counting only fetchFn used to be enough, but since #7658 the SNAPSHOT
+  // resolves first on every non-gated run — and snapshotFetchFn defaults to the
+  // real globalThis.fetch against data.humdata.org (~21MB). So the invariant
+  // here is "no network AT ALL inside a pinned window", and both channels have
+  // to be stubbed to assert it: an unstubbed snapshot would hit the live
+  // provider and still pass on `calls`.
   let calls = 0;
   const fetchFn = async () => {
     calls += 1;
     return new Response(JSON.stringify({ data: [] }), { status: 200 });
+  };
+  const snapshotFetchFn = async () => {
+    calls += 1;
+    assert.fail('a pinned window must not reach the snapshot channel either');
   };
 
   const recent = await fetchAllHumanitarianSummaries({
@@ -1388,6 +1408,7 @@ test('HAPI ingestion skips network calls during success and failure backoff wind
     pace: async () => {},
     loadPreviousMarker: async () => ({ updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1 }),
     loadFailureBackoff: async () => null,
+    snapshotFetchFn,
     fetchFn,
   });
   const blocked = await fetchAllHumanitarianSummaries({
@@ -1396,6 +1417,7 @@ test('HAPI ingestion skips network calls during success and failure backoff wind
     pace: async () => {},
     loadPreviousMarker: async () => null,
     loadFailureBackoff: async () => ({ retryAt: NOW + 1 }),
+    snapshotFetchFn,
     fetchFn,
   });
 
