@@ -16,9 +16,9 @@ const arcgisRateLimitFixture = JSON.parse(await readFile(
   'utf8',
 ));
 
-function arcgisJson(body) {
+function arcgisJson(body, status = 200) {
   return new Response(JSON.stringify(body), {
-    status: 200,
+    status,
     headers: { 'Content-Type': 'application/json' },
   });
 }
@@ -230,6 +230,159 @@ describe('PortWatch reference pagination recovery', () => {
 
     const neither = await rejectedRefsError({ error: { details: ['nope'] } });
     assert.equal(neither, 'ArcGIS error: {"details":["nope"]}');
+  });
+
+  // The status-429 branch, not the HTTP-200 rate-limit envelope the earlier
+  // tests drive: no test above hands the transport a non-200 status, so
+  // deleting `if (resp.status === 429)` leaves the whole suite green
+  // (verified by mutation on #7539's head).
+  it('routes an HTTP 429 status through the proxy transport at the same offset', async () => {
+    const requestedOffsets = [];
+    const proxyCalls = [];
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+      return offset === 0
+        ? arcgisJson(FIRST_PAGE)
+        : arcgisJson(arcgisRateLimitFixture, 429);
+    };
+
+    const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
+      fetchFn,
+      proxyRetryFn: async (...args) => {
+        proxyCalls.push(args);
+        return FINAL_PAGE;
+      },
+    });
+
+    assert.deepEqual(requestedOffsets, [0, 1]);
+    assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
+    assert.equal(proxyCalls.length, 1);
+    assert.equal(proxyCalls[0][1], 'HTTP 429 rate-limited');
+    assert.ok(proxyCalls[0][2].signal instanceof AbortSignal);
+  });
+
+  it('rejects on a non-429 HTTP error status without retrying or proxying', async () => {
+    const requestedOffsets = [];
+    const proxyCalls = [];
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+      return offset === 0
+        ? arcgisJson(FIRST_PAGE)
+        : arcgisJson({ error: { message: 'Service unavailable.' } }, 503);
+    };
+
+    await assert.rejects(
+      portwatchSeed.fetchAllPortRefs({
+        fetchFn,
+        proxyRetryFn: async (...args) => {
+          proxyCalls.push(args);
+          return FINAL_PAGE;
+        },
+      }),
+      /ArcGIS HTTP 503 for /,
+    );
+
+    // retryRateLimited only retries the rate-limit class, and the invalid-
+    // params circuit breaker only matches its own message — a bare HTTP
+    // error status must surface as-is after one attempt per offset.
+    assert.deepEqual(requestedOffsets, [0, 1]);
+    assert.equal(proxyCalls.length, 0);
+  });
+
+  it('falls back to the proxy transport when the direct transport throws a timeout-like error', async () => {
+    // The WM 2026-05-13 silent-stall mode: ArcGIS never answers, the
+    // transport throws instead of returning a response. The thrown message
+    // must match an isTimeoutLike class for the proxy fallback to open.
+    const requestedOffsets = [];
+    const proxyCalls = [];
+    const fetchFn = async (url) => {
+      const offset = Number(new URL(url).searchParams.get('resultOffset'));
+      requestedOffsets.push(offset);
+      if (offset === 0) return arcgisJson(FIRST_PAGE);
+      throw new TypeError('fetch failed');
+    };
+
+    const refsByIso3 = await portwatchSeed.fetchAllPortRefs({
+      fetchFn,
+      proxyRetryFn: async (...args) => {
+        proxyCalls.push(args);
+        return FINAL_PAGE;
+      },
+    });
+
+    assert.deepEqual(requestedOffsets, [0, 1]);
+    assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
+    assert.equal(proxyCalls.length, 1);
+    assert.equal(proxyCalls[0][1], 'direct TypeError');
+  });
+
+  it('propagates a caller abort from the transport catch without proxy fallback', async () => {
+    // A real cancellation (SIGTERM / per-country timeout) must rethrow the
+    // caller's own reason: routing it to the proxy retry would spend a
+    // paid request on work the run already gave up on.
+    const proxyCalls = [];
+    const controller = new AbortController();
+    const abortReason = new Error('run cancelled');
+    const fetchFn = async () => {
+      controller.abort(abortReason);
+      throw controller.signal.reason;
+    };
+
+    await assert.rejects(
+      portwatchSeed.fetchAllPortRefs({
+        signal: controller.signal,
+        fetchFn,
+        proxyRetryFn: async (...args) => {
+          proxyCalls.push(args);
+          return FINAL_PAGE;
+        },
+      }),
+      (err) => err === abortReason,
+    );
+    assert.equal(proxyCalls.length, 0);
+  });
+
+  it('rejects before dialling out when the run signal is already aborted', async () => {
+    const directCalls = [];
+    const controller = new AbortController();
+    const abortReason = new Error('run cancelled');
+    controller.abort(abortReason);
+
+    await assert.rejects(
+      portwatchSeed.fetchAllPortRefs({
+        signal: controller.signal,
+        fetchFn: async (...args) => {
+          directCalls.push(args);
+          return arcgisJson(FIRST_PAGE);
+        },
+      }),
+      (err) => err === abortReason,
+    );
+    assert.equal(directCalls.length, 0);
+  });
+
+  it('wires the default direct transport to globalThis.fetch', async (t) => {
+    // defaultFetch must read globalThis.fetch at call time rather than
+    // binding the original once, so swapping the global is observable here.
+    const originalFetch = globalThis.fetch;
+    const directCalls = [];
+    t.after(() => {
+      globalThis.fetch = originalFetch;
+    });
+    globalThis.fetch = async (url, init) => {
+      directCalls.push({ url: String(url), init });
+      return arcgisJson(FINAL_PAGE);
+    };
+
+    const refsByIso3 = await portwatchSeed.fetchAllPortRefs({});
+
+    assert.equal(directCalls.length, 1);
+    assert.equal(directCalls[0].init.headers['User-Agent'], CHROME_UA);
+    assert.equal(directCalls[0].init.headers.Accept, 'application/json');
+    assert.ok(directCalls[0].init.signal instanceof AbortSignal);
+    assert.deepEqual([...refsByIso3.get('CYP').keys()], ['cy-lca']);
   });
 });
 
