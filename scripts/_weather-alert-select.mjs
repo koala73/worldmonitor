@@ -168,8 +168,9 @@ export function calculateCentroid(coords) {
     && coords[0][0] === coords[coords.length - 1][0]
     && coords[0][1] === coords[coords.length - 1][1];
   const ring = closed ? coords.slice(0, -1) : coords;
+  if (ring.length === 0 || ring.some((position) => lonLatPair(position) == null)) return undefined;
   const sum = ring.reduce((acc, [lon, lat]) => [acc[0] + lon, acc[1] + lat], [0, 0]);
-  return [sum[0] / ring.length, sum[1] / ring.length];
+  return lonLatPair([sum[0] / ring.length, sum[1] / ring.length]) || undefined;
 }
 
 /**
@@ -620,8 +621,9 @@ export function requireSwicItems(data) {
 
 function swicCentroid(item, member) {
   const coords = extractCoordinates(item?.geometry);
-  if (coords.length) {
-    return { coordinates: coords, centroid: calculateCentroid(coords), geometryPrecision: 'polygon' };
+  const polygonCentroid = calculateCentroid(coords);
+  if (polygonCentroid) {
+    return { coordinates: coords, centroid: polygonCentroid, geometryPrecision: 'polygon' };
   }
   const itemLat = finiteLat(item?.lat ?? item?.latitude);
   const itemLon = finiteLon(item?.lon ?? item?.lng ?? item?.longitude);

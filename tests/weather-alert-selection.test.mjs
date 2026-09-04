@@ -164,6 +164,13 @@ describe('weather alert selection', () => {
     assert.equal(alert.centroid.length, 2);
   });
 
+  it('does not send a fabricated zero centroid from an invalid closed ring', () => {
+    const invalidRing = [[null, null], [null, null], [null, null], [null, null]];
+    const [alert] = selectAlerts([feature('Severe', 1, {}, { type: 'Polygon', coordinates: [invalidRing] })]);
+    assert.equal(alert.centroid, undefined);
+    assert.deepEqual(weatherAlertNotifyLocation(alert), {});
+  });
+
   it('caps description length at 500 characters', () => {
     const [alert] = selectAlerts([feature('Severe', 1, { description: 'y'.repeat(900) })]);
     assert.equal(alert.description.length, 500);

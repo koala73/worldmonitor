@@ -237,14 +237,15 @@ function featureAttributes(feature) {
 
 function featureCoords(feature, attributes) {
   const geometry = feature?.geometry;
-  const x = finiteLon(geometry?.x);
-  const y = finiteLat(geometry?.y);
-  if (x != null && y != null) return torontoPoint(x, y);
+  const point = (lon, lat) => torontoPoint(finiteLon(lon), finiteLat(lat));
+  const xy = point(geometry?.x, geometry?.y);
+  if (xy.lat != null && xy.lon != null) return xy;
   const coords = geometry?.coordinates;
   if (Array.isArray(coords) && coords.length >= 2) {
-    return torontoPoint(finiteLon(coords[0]), finiteLat(coords[1]));
+    const coordinatePair = point(coords[0], coords[1]);
+    if (coordinatePair.lat != null && coordinatePair.lon != null) return coordinatePair;
   }
-  return torontoPoint(finiteLon(attributes?.LONGITUDE), finiteLat(attributes?.LATITUDE));
+  return point(attributes?.LONGITUDE, attributes?.LATITUDE);
 }
 
 function classifyTpsFeature(feature) {
