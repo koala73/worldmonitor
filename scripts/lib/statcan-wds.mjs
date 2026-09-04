@@ -1,7 +1,7 @@
 // Statistics Canada WDS parsers + approved HTTPS fetch.
 // Tests import this module, not scripts/seed-statcan-wds.mjs.
 
-import { CHROME_UA } from '../_seed-utils.mjs';
+import { CHROME_UA, finiteObservation } from '../_seed-utils.mjs';
 import { tokensToContentMeta, DAY_MIN } from '../_content-age-helpers.mjs';
 
 export const STATCAN_WDS_HOST = 'www150.statcan.gc.ca';
@@ -102,8 +102,11 @@ export function parseVectorSeries(doc, vectorId) {
     const points = [];
     for (const pt of Array.isArray(object.vectorDataPoint) ? object.vectorDataPoint : []) {
       const refPer = typeof pt?.refPer === 'string' ? pt.refPer : null;
-      const value = typeof pt?.value === 'number' ? pt.value : Number(pt?.value);
-      if (!refPer || !/^\d{4}-\d{2}-\d{2}$/.test(refPer) || !Number.isFinite(value)) continue;
+      // StatCan sends value: null for a suppressed or not-yet-released
+      // observation. Number(null) is 0, which published Canada's unemployment
+      // rate as 0.0% for the reference month rather than omitting the point.
+      const value = finiteObservation(pt?.value);
+      if (!refPer || !/^\d{4}-\d{2}-\d{2}$/.test(refPer) || value == null) continue;
       points.push({
         refPer,
         value,
