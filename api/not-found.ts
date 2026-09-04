@@ -50,7 +50,7 @@ export default function handler(req: Request): Response | Promise<Response> {
     error: {
       code: 'not_found',
       message: `No API endpoint matches ${pathname}.`,
-      hint: 'Check the endpoint path against the OpenAPI spec at https://worldmonitor.app/openapi.yaml or the API reference at https://www.worldmonitor.app/docs/api-reference.',
+      hint: 'Check the endpoint path against the OpenAPI spec at https://www.worldmonitor.app/openapi.yaml or the API reference at https://www.worldmonitor.app/docs/api-reference.',
     },
     documentation: 'https://www.worldmonitor.app/docs/api-reference',
   };

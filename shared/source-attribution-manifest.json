@@ -10101,9 +10101,6 @@
           "path": "api/mcp/skill-extension/generated.ts"
         },
         {
-          "path": "api/not-found.ts"
-        },
-        {
           "path": "api/oauth/authorize.js"
         },
         {

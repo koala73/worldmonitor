@@ -40,9 +40,15 @@ const APEX_SERVED = [
 // table names the apex precisely because it is describing the apex.
 const APEX_IDENTIFIERS = [/"(?:issuer|resource)":/, /^\| Apex domain \|/];
 
-// Directories owned by other builds (Astro blog, pro-test) — their host
-// hygiene is guarded by their own suites.
+// public/blog and public/pro are BUILD OUTPUT — scanning them would report the
+// same defect twice and cannot be fixed there. Their sources are scanned
+// instead: BLOG_SOURCE_DIR below is the Astro content the blog is built from,
+// and it is crawlable HTML at www.worldmonitor.app/blog/* with its own sitemap
+// in robots.www.txt, so its host hygiene is this guard's job too. (An earlier
+// version of this comment claimed the blog was covered by its own suite; it is
+// not — blog-conversion-links only pins two product-URL constants.)
 const SKIP_DIRS = new Set(['blog', 'pro', 'node_modules']);
+const BLOG_SOURCE_DIR = join(ROOT, 'blog-site/src/content/blog');
 const SCANNED_EXTENSIONS = /\.(?:txt|md|json|yaml|yml|xml)$/;
 // `.well-known` documents are served extensionless by RFC 8615 convention
 // (`/.well-known/api-catalog` is a linkset of 12 published URLs), so the
@@ -72,7 +78,7 @@ function scanFiles(dir, acc = []) {
 
 function apexOffenders() {
   const offenders = [];
-  for (const file of scanFiles(PUBLIC_DIR)) {
+  for (const file of [...scanFiles(PUBLIC_DIR), ...scanFiles(BLOG_SOURCE_DIR)]) {
     const rel = relative(ROOT, file);
     readFileSync(file, 'utf-8')
       .split('\n')
@@ -117,7 +123,7 @@ describe('published agent corpus names the serving host (#7660)', () => {
       { label: 'an OAuth endpoint', re: /https:\/\/www\.worldmonitor\.app\/oauth\// },
     ];
     const offenders = [];
-    for (const file of scanFiles(PUBLIC_DIR)) {
+    for (const file of [...scanFiles(PUBLIC_DIR), ...scanFiles(BLOG_SOURCE_DIR)]) {
       const body = readFileSync(file, 'utf-8');
       for (const { label, re } of APEX_IDENTITY_PATHS) {
         body.split('\n').forEach((line, index) => {
@@ -225,7 +231,9 @@ describe('published agent corpus names the serving host (#7660)', () => {
   it('scans the files the issue named', () => {
     // Guards the scanner itself: a glob or extension change that silently
     // stopped covering the corpus would make this suite pass vacuously.
-    const scanned = new Set(scanFiles(PUBLIC_DIR).map((f) => relative(ROOT, f)));
+    const scanned = new Set(
+      [...scanFiles(PUBLIC_DIR), ...scanFiles(BLOG_SOURCE_DIR)].map((f) => relative(ROOT, f))
+    );
     for (const required of [
       'public/llms.txt',
       'public/llms-full.txt',
@@ -241,6 +249,11 @@ describe('published agent corpus names the serving host (#7660)', () => {
       'public/.well-known/agent-skills/index.json',
       'public/.well-known/api-catalog',
       'public/.well-known/agent-card.json',
+      // The blog is crawlable HTML on www with its own sitemap — and it had
+      // been repeating the same broken apex-root discovery instruction this
+      // suite forbids in docs/agent-discovery.mdx.
+      'blog-site/src/content/blog/build-on-worldmonitor-developer-api-open-source.md',
+      'blog-site/src/content/blog/worldmonitor-mcp-server-ai-agents-real-time-intelligence.md',
     ]) {
       assert.ok(scanned.has(required), `${required} must be covered by the apex scan`);
     }
