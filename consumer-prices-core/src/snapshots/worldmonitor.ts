@@ -302,6 +302,13 @@ export async function buildOverviewSnapshot(marketCode: string): Promise<WMOverv
 // (#2322).
 export const MAX_MOVE_RATIO = 4;
 
+// How many movers each direction publishes, and the sample floor the
+// all-gated check needs before it may fail the run. The two are the same
+// number on purpose: a window that cannot fill one published column is too
+// thin for "every candidate is an artifact" to distinguish a systemic parse
+// break from a market that simply has few priced-both-ends products.
+export const MOVERS_PER_DIRECTION = 10;
+
 export function isPlausiblePriceMove(changePct: number): boolean {
   if (!Number.isFinite(changePct)) return false;
   const ratio = 1 + changePct / 100; // newPrice / pastPrice
@@ -374,11 +381,17 @@ export async function buildMoversSnapshot(
       `[movers] ${marketCode} ${range}: dropped ${dropped}/${all.length} implausible movers (outside ${1 / MAX_MOVE_RATIO}x-${MAX_MOVE_RATIO}x — likely unit/parse artifacts)`,
     );
   }
-  if (all.length > 0 && plausible.length === 0) {
-    // Every candidate was gated as a parse artifact. Publishing an empty but
-    // "healthy" snapshot would overwrite the last good one and render as a
-    // false "no movers" — fail loudly instead; the publish job's per-snapshot
-    // catch keeps the previous snapshot alive under its TTL (#5445).
+  if (all.length >= MOVERS_PER_DIRECTION && plausible.length === 0) {
+    // A full candidate window with nothing plausible in it means the parser
+    // broke, not that prices held still. Publishing an empty but "healthy"
+    // snapshot would overwrite the last good one and render as a false "no
+    // movers" — fail loudly instead; the publish job's per-snapshot catch
+    // keeps the previous snapshot alive under its TTL (#5445).
+    //
+    // Below the floor that unanimity carries no signal, so a sparse market
+    // falls through to the empty snapshot the zero-row window already
+    // returns instead of exiting the whole job 1 for every other market too.
+    // The dropped-N/N warning above still reports it.
     throw new Error(
       `[movers] ${marketCode} ${range}: all ${all.length} candidates gated as implausible — refusing to publish an empty movers snapshot`,
     );
@@ -388,8 +401,8 @@ export async function buildMoversSnapshot(
     marketCode,
     asOf: String(now),
     range,
-    risers: plausible.filter((r) => r.changePct > 0).slice(0, 10),
-    fallers: plausible.filter((r) => r.changePct < 0).slice(0, 10),
+    risers: plausible.filter((r) => r.changePct > 0).slice(0, MOVERS_PER_DIRECTION),
+    fallers: plausible.filter((r) => r.changePct < 0).slice(0, MOVERS_PER_DIRECTION),
     upstreamUnavailable: false,
   };
 }

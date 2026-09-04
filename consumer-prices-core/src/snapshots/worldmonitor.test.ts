@@ -3,9 +3,8 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 const mockQuery = vi.fn();
 vi.mock('../db/client.js', () => ({ query: mockQuery }));
 
-const { buildMoversSnapshot, isPlausiblePriceMove, MAX_MOVE_RATIO } = await import(
-  './worldmonitor.js'
-);
+const { buildMoversSnapshot, isPlausiblePriceMove, MAX_MOVE_RATIO, MOVERS_PER_DIRECTION } =
+  await import('./worldmonitor.js');
 
 describe('isPlausiblePriceMove', () => {
   it('rejects the parse-artifact movers reported in #5445', () => {
@@ -78,18 +77,29 @@ describe('buildMoversSnapshot', () => {
     expect(String(warn.mock.calls[0][0])).toContain('outside 0.25x-4x');
   });
 
+  const artifactRows = (n: number) =>
+    Array.from({ length: n }, (_, i) => row(String(i + 1), '874.68'));
+
   it('throws instead of publishing an empty snapshot when every row is gated', async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [row('1', '874.68'), row('2', '608.86'), row('3', '-99.25')],
-    });
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MOVERS_PER_DIRECTION) });
 
     // The publish job's per-snapshot catch skips the write on throw, keeping
     // the previous (real) snapshot alive instead of overwriting it with a
     // false-healthy empty one.
     await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(
-      /all 3 candidates gated as implausible/,
+      /all 10 candidates gated as implausible/,
     );
-    expect(String(warn.mock.calls[0][0])).toContain('dropped 3/3');
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 10/10');
+  });
+
+  it('gates exactly at the sample floor the published column size sets', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MOVERS_PER_DIRECTION - 1) });
+    const snap = await buildMoversSnapshot('ae', 7);
+    expect(snap.risers).toEqual([]);
+    expect(snap.fallers).toEqual([]);
+
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MOVERS_PER_DIRECTION) });
+    await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(/gated as implausible/);
   });
 
   it('does not fail a sparse market whose only candidate is an artifact', async () => {
