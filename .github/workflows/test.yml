@@ -96,6 +96,12 @@ jobs:
             # that edits the file (#6038). NOTE: no apostrophes in this awk
             # program - it is single-quoted in the shell, so one would end it.
             /^public\/ai-search\.md$/ { count++; next }
+            # A published ranking snapshot is the source of the ranked-country
+            # figure and captured date in public/ai-search.md. A snapshot-only
+            # PR would otherwise set code=false, skip the byte test, and land a
+            # snapshot whose figures the committed page no longer matches -
+            # surfacing later as a confusing failure on an unrelated PR.
+            /^docs\/snapshots\/resilience-ranking-[0-9-]+\.json$/ { count++; next }
             /\.md$/ { next }
             /^docs\// { next }
             /^src-tauri\// && $0 !~ /^src-tauri\/sidecar\// && $0 !~ /^src-tauri\/.*\.json$/ { next }

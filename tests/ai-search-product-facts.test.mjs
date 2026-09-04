@@ -20,6 +20,7 @@ import {
   COVERAGE_CLOSE,
   COVERAGE_HEADING,
   buildAiSearchText,
+  isTrustworthyDate,
   mapLayerCoverageText,
   publishedRankedCountries,
   resolveReconciledAt,
@@ -32,6 +33,8 @@ import { loadStatsForInventoryFacts } from '../scripts/generate-inventory-facts.
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const read = (relativePath) => readFileSync(join(repoRoot, relativePath), 'utf8');
+/** The ISO date inside the coverage block's reconciliation line. */
+const RECONCILED_ISO = /(?<=Coverage reconciled: )\d{4}-\d{2}-\d{2}/;
 
 function section(source, heading) {
   const start = source.indexOf(`\n${heading}\n`);
@@ -225,6 +228,24 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
       committed,
       'a prose-only edit must not re-date the figures',
     );
+  });
+
+  it('refuses to carry forward a date that was never a real reconciliation', () => {
+    const current = read(AI_SEARCH_PATH);
+    const today = '2026-09-04';
+    // withoutDates normalizes the date away before comparing, so an unchecked
+    // carry-forward would republish any of these indefinitely under byte parity.
+    for (const fabricated of ['2099-99-99', '0000-00-00', '2026-02-31', '2099-01-01']) {
+      const tampered = current.replace(RECONCILED_ISO, fabricated);
+      assert.notEqual(tampered, current, `${fabricated} fixture must differ`);
+      assert.equal(
+        resolveReconciledAt({ current: tampered, candidate: tampered, today }),
+        today,
+        `${fabricated} must be replaced, not carried forward`,
+      );
+    }
+    assert.equal(isTrustworthyDate('2026-09-03', today), true);
+    assert.equal(isTrustworthyDate(today, today), true, 'today itself is valid');
   });
 
   it('bumps a stale file once and then stays put', () => {

@@ -187,9 +187,25 @@ function withoutDates(text) {
  * every run and make `--check` fail once a day for no reason; carrying the
  * committed date forward keeps regeneration idempotent.
  */
+/**
+ * A real calendar date, not in the future. The carry-forward rule trusts the
+ * committed date, and `withoutDates` normalizes it away before comparing — so
+ * without this a hand-edited `2099-99-99` or a date years ahead would be
+ * carried forward run after run with byte parity intact, letting the page
+ * claim a reconciliation that never happened.
+ */
+export function isTrustworthyDate(value, today) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime())) return false;
+  // Round-trip rejects overflow dates like 2026-02-31, which Date rolls over.
+  if (parsed.toISOString().slice(0, 10) !== value) return false;
+  return value <= today;
+}
+
 export function resolveReconciledAt({ current, candidate, today }) {
   const existing = current.match(RECONCILED_RE)?.[0].match(/\d{4}-\d{2}-\d{2}/)?.[0];
-  if (!existing) return today;
+  if (!existing || !isTrustworthyDate(existing, today)) return today;
   return withoutDates(candidate) === withoutDates(current) ? existing : today;
 }
 
