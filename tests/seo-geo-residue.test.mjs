@@ -80,32 +80,44 @@ describe('GEO residue #7463', () => {
     assert.match(committed, /product-facts\.json.*capabilities\.localeCodes/);
   });
 
+  // "Usable" was previously read as "not redacted", and the URL this pinned —
+  // https://api.worldmonitor.app/resilience/v1/get-runtime-manifest — 404s: the
+  // route is /api/resilience/v1/..., and the link had been published without the
+  // /api prefix (#7660, confirmed against production 2026-09-04). It now asserts
+  // the served path as well as the surviving host, so a link that resolves to
+  // nothing cannot pass again.
   it('keeps the public runtime-manifest link usable in llms-full', () => {
     const generated = buildLlmsFullText({ rootDir: repoRoot });
-    const publicHost = ['api', 'worldmonitor.app'].join('.');
-    const manifestPath = '/resilience/v1/get-runtime-manifest';
-    const publicManifestUrl = `https://${publicHost}${manifestPath}`;
-    const escaped = publicManifestUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const manifestPath = '/api/resilience/v1/get-runtime-manifest';
+    const manifestUrl = `https://www.worldmonitor.app${manifestPath}`;
+    const escaped = manifestUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     assert.match(
       generated,
       new RegExp(`\\[runtime manifest\\]\\(${escaped}\\)`),
-      'generated corpus must keep the canonical public runtime-manifest URL',
+      'generated corpus must link the runtime manifest at the path that actually serves it',
     );
-    assert.doesNotMatch(
-      generated,
-      /\[runtime manifest\]\(\[REDACTED\]\/resilience\/v1\/get-runtime-manifest\)/,
-    );
-    assert.match(
-      generated,
-      new RegExp(`${escaped}[)\\s].*pragma: allowlist secret`),
-    );
+    // Every citation of the route must carry the /api prefix. A bare
+    // `/resilience/v1/...` is the 404 shape, and `[REDACTED]/...` is the
+    // over-redaction this test was originally written to catch.
+    for (const citation of generated.match(/\S*\/resilience\/v1\/get-runtime-manifest/g) ?? []) {
+      assert.ok(
+        citation.includes('/api/resilience/v1/get-runtime-manifest'),
+        `runtime-manifest citation does not resolve: ${citation}`,
+      );
+      assert.ok(!citation.includes('[REDACTED]'), `runtime-manifest citation was redacted: ${citation}`);
+    }
 
+    // The redaction rule itself: internal/preview `api.*` hosts collapse to
+    // [REDACTED], the public API origin survives. Asserted directly rather
+    // than through whichever document happens to cite it.
+    const publicApiOrigin = ['https://api', 'worldmonitor.app'].join('.');
     const mixed = redactInternalApiOrigins([
       `see https://api.preview.example${manifestPath}`,
-      `and ${publicManifestUrl}`,
+      `and ${publicApiOrigin}${manifestPath}`,
     ].join(' '));
-    assert.match(mixed, /\[REDACTED\]\/resilience\/v1\/get-runtime-manifest/);
-    assert.match(mixed, new RegExp(escaped));
+    assert.match(mixed, /\[REDACTED\]\/api\/resilience\/v1\/get-runtime-manifest/);
+    assert.ok(mixed.includes(`${publicApiOrigin}${manifestPath}`), 'the public API origin must survive redaction');
+    assert.match(mixed, /pragma: allowlist secret/);
   });
 
   it('serves the MCP server card at the newer well-known server.json name', () => {

@@ -3090,16 +3090,18 @@ describe('agent readiness: api-catalog + openapi build', () => {
     const meta = apiEntry['service-meta'];
     assert.ok(Array.isArray(meta) && meta.length > 0, 'api context must carry service-meta entries');
     const hrefs = meta.map((entry) => entry.href);
-    assert.ok(hrefs.includes('https://worldmonitor.app/pricing.md'), 'service-meta must advertise pricing.md');
+    // www, not apex: neither path is on the Cloudflare apex-exemption list, so
+    // the apex form is a 301 an agent pays for before reaching the file (#7660).
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/pricing.md'), 'service-meta must advertise pricing.md');
     assert.ok(
       hrefs.includes('https://www.worldmonitor.app/api/product-catalog'),
       'service-meta must advertise the live product-catalog JSON endpoint'
     );
-    assert.ok(hrefs.includes('https://worldmonitor.app/support.md'), 'service-meta must advertise support.md');
-    assert.ok(hrefs.includes('https://worldmonitor.app/agents.md'), 'service-meta must advertise agents.md (#4952)');
-    assert.ok(hrefs.includes('https://worldmonitor.app/world-monitor.md'), 'service-meta must advertise world-monitor.md');
-    assert.ok(hrefs.includes('https://worldmonitor.app/api-versioning.md'), 'service-meta must advertise api-versioning.md');
-    assert.ok(hrefs.includes('https://worldmonitor.app/plugin.json'), 'service-meta must advertise /plugin.json');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/support.md'), 'service-meta must advertise support.md');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/agents.md'), 'service-meta must advertise agents.md (#4952)');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/world-monitor.md'), 'service-meta must advertise world-monitor.md');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/api-versioning.md'), 'service-meta must advertise api-versioning.md');
+    assert.ok(hrefs.includes('https://www.worldmonitor.app/plugin.json'), 'service-meta must advertise /plugin.json');
     // The Commerce spec lives outside the root openapi bundle (size budget,
     // #4853) — without this link no advertised descriptor reaches it
     // (post-#4867 review finding); Mintlify serves the raw YAML at this URL.
@@ -4043,16 +4045,17 @@ describe('agent readiness: robots.txt AI crawler policy', () => {
 //      `wm_referral`, `wm_content_*`, `utm_*`) multiply every landing page.
 //      Canonicals already consolidate them, so blocking the crawl costs
 //      nothing in indexing and stops the redirect chains at source.
-//   2. `/docs/_next/` Mintlify build assets. Hashed chunk names change on
-//      every redeploy, so the previous deploy's assets 404 permanently — the
-//      only 404 bucket that regenerates itself on every deploy.
+//   2. `/tmp/` paths. The docs code fences publish `/tmp/*.json` shell
+//      examples, which Google crawls and gets a 404 for.
 //
 // Both robots files must carry these in EVERY crawl-permitting group: robots
 // groups do not inherit, so a named AI group that omits them keeps crawling
 // the space `*` no longer does.
+//
+// `/docs/_next/` is NOT here — see the crawlable-corpus assertion below for
+// the measurement that ruled it out.
 describe('agent readiness: crawl-budget disallows (#7660)', () => {
   const CRAWL_BUDGET_DISALLOWS = [
-    'disallow: /docs/_next/',
     'disallow: /tmp/',
     'disallow: /*?*lat=',
     'disallow: /*?*lon=',
@@ -4171,7 +4174,6 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       '/pro?wm_content_source=use-cases&wm_content_medium=internal',
       '/dashboard?ref=affiliate',
       '/countries/iran/?utm_source=newsletter',
-      '/docs/_next/static/chunks/5530074d3f762225.js?dpl=dpl_3mdVq74mXio1K76n3se3E4X3Wiv7',
       '/tmp/gem-pipelines.json',
     ];
     const CRAWLABLE = [
@@ -4181,6 +4183,14 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       '/countries/iran/',
       '/compare/iran-vs-israel/',
       '/docs/mcp-overview',
+      // #7660 proposed Disallow: /docs/_next/ for the 139 stale hashed chunks
+      // that 404 after every Mintlify redeploy. Measured instead: a live
+      // /docs/* page pulls 76 assets from that prefix, JS and CSS both, and
+      // the current deploy's assets carry the same `?dpl=` pin as the stale
+      // ones — no pattern separates them. Blocking it would hide every render
+      // resource from Googlebot on the pages already stuck in "crawled -
+      // currently not indexed", which costs more than a cheap 404.
+      '/docs/_next/static/chunks/462bacc63bed9960.css?dpl=dpl_6TpKozpvfbf2eKSzPrrzWSvEC9fx',
       '/blog/',
       '/api/llms.txt',
     ];
@@ -4543,7 +4553,8 @@ describe('agent readiness: named developer-resource pages (#4953)', () => {
       'utf-8'
     );
     for (const page of DEV_PAGES) {
-      const url = `https://worldmonitor.app${page.path}`;
+      // www, not apex (#7660): the developer-resource pages 301 off the apex.
+      const url = `https://www.worldmonitor.app${page.path}`;
       assert.ok(catalogHrefs.includes(url), `api-catalog must advertise ${url}`);
       for (const [name, content] of surfaces) {
         assert.ok(content.includes(page.path), `public/${name} must link ${page.path}`);
@@ -4656,9 +4667,9 @@ describe('section-scoped llms.txt files', () => {
   it('the site-wide llms.txt cross-links every section file and the sandbox', () => {
     const llms = readFileSync(resolve(__dirname, '../public/llms.txt'), 'utf-8');
     for (const url of [
-      'https://worldmonitor.app/api/llms.txt',
+      'https://www.worldmonitor.app/api/llms.txt',
       'https://www.worldmonitor.app/docs/llms.txt',
-      'https://worldmonitor.app/developers/llms.txt',
+      'https://www.worldmonitor.app/developers/llms.txt',
       'https://www.worldmonitor.app/blog/llms.txt',
       'https://www.worldmonitor.app/sandbox/index.json',
       'https://www.worldmonitor.app/schemamap.xml',

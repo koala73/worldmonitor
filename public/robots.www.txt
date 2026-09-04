@@ -27,9 +27,15 @@
 #     utm_*) multiply every landing page. Every one already carries a
 #     rel=canonical to its param-free document, so blocking the crawl costs
 #     nothing in indexing and stops the redirect chains at source.
-#   * /docs/_next/ — Mintlify's hashed build assets. The chunk names change on
-#     every redeploy, so the previous deploy's assets 404 forever. This is the
-#     only 404 bucket that regenerates itself on every deploy.
+# Deliberately NOT blocked: /docs/_next/. #7660 proposed it, because Mintlify's
+# hashed chunk names change on every redeploy and the previous deploy's assets
+# 404 forever (139 of the exported 404s). Measured before acting: a live
+# /docs/* page references 76 assets under that prefix, JS and CSS both, and all
+# of them — current deploy included — carry the same `?dpl=` pin, so no pattern
+# separates a stale asset from a live one. Blocking the prefix would hide every
+# render resource from Googlebot on exactly the pages already stuck in
+# "crawled - currently not indexed". A cheap 404 costs less than a page Google
+# cannot render.
 # The rules are query-scoped (`/*?*`) on purpose: the canonical documents the
 # consolidation points at (/dashboard, /pro, the corpus) must stay crawlable.
 # Every crawl-permitting group below restates them — groups do not inherit, and
@@ -44,7 +50,6 @@ Allow: /api/llms.txt
 Allow: /api/product-catalog
 Disallow: /api/
 Disallow: /tests/
-Disallow: /docs/_next/
 Disallow: /tmp/
 Disallow: /*?*lat=
 Disallow: /*?*lon=
@@ -77,7 +82,6 @@ Allow: /api/llms.txt
 Allow: /api/product-catalog
 Disallow: /api/
 Disallow: /tests/
-Disallow: /docs/_next/
 Disallow: /tmp/
 Disallow: /*?*lat=
 Disallow: /*?*lon=
