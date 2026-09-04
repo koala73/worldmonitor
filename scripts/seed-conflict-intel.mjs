@@ -108,25 +108,39 @@ export const HAPI_API_CHANNEL = 'hapi-api';
 // cadence from repeatedly hitting HAPI. The 2h interval remains comfortably
 // inside the 5h health threshold and 6h per-country data TTL.
 export const HAPI_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000;
+// #7658: a run that had to DEMOTE off the authoritative snapshot is not worth
+// pinning for two hours. It publishes the JSON API's trailing month, which runs
+// ~23% below the snapshot's, so holding it that long turns one transient HDX
+// blip into 8 cron ticks of the lagging vintage and a ~30% discontinuity when
+// the snapshot returns. Retry the authoritative channel on the next tick
+// instead. This cannot become a retry storm: the expensive failure mode (a
+// snapshot that fails SLOWLY) never demotes at all — it fails closed and writes
+// the 2h HAPI_FAILURE_BACKOFF_MS — so everything reaching this interval failed
+// fast and costs one cheap rejected request per tick.
+export const HAPI_DEMOTED_REFRESH_INTERVAL_MS = 15 * 60 * 1000;
 export const HAPI_FAILURE_BACKOFF_MS = 2 * 60 * 60 * 1000;
 const HAPI_FAILURE_BACKOFF_KEY = 'conflict:humanitarian:hapi-backoff:v1';
 const HAPI_REQUEST_TIMEOUT_MS = 15_000;
 const HAPI_REQUEST_DELAY_MS = 1_100;
 // #7656: wall-clock budget for HAPI's discretionary network work, in the same
 // "a request may not LAUNCH after the cutoff" shape as GDELT_SWEEP_BUDGET_MS.
-// It gates TWO launch decisions, both measured from this function's entry:
-// demoting to the JSON API after the authoritative snapshot fails (#7658), and
-// the last-resort per-country fan-out below.
-// Without it the two global sweeps (each ≤ HAPI_MAX_PAGES × HAPI_REQUEST_TIMEOUT_MS
-// = 75s) could be followed by 23 sequential per-country requests — 23 × 15s plus
-// 22 × 1.1s pacing ≈ 369s — for a 519s direct route, well past the 315s envelope
-// the whole fetch-deadline model is anchored on. Elapsed is measured from
-// fetchAllHumanitarianSummaries ENTRY, matching fetchAll's own documented anchor,
-// so slow sweeps SHRINK this window instead of stacking on top of it: the direct
-// route is bounded by max(150s sweeps, 140s budget) + one 15s in-flight request
-// = 165s. seed-fetch-deadline-budget-invariants models the looser 150 + 140 + 15
-// = 305s ≤ 315s on purpose — an invariant that cannot understate reality is the
-// one worth asserting, and it still fails if this constant grows past 150s.
+// It gates TWO launch decisions (#7658): demoting to the JSON API after the
+// authoritative snapshot fails, measured from fetchAllHumanitarianSummaries
+// ENTRY; and the last-resort per-country fan-out below, measured from ENTRY on
+// the snapshot route but from the DEMOTION on the API route (see
+// fallbackBudgetAnchorMs — an entry-anchored fan-out would let a slow-failing
+// snapshot spend the fallback's whole window before it ever runs).
+// Without a budget at all the two global sweeps (each ≤ HAPI_MAX_PAGES ×
+// HAPI_REQUEST_TIMEOUT_MS = 75s) could be followed by 23 sequential per-country
+// requests — 23 × 15s plus 22 × 1.1s pacing ≈ 369s — for a 519s route, well past
+// the 315s envelope the whole fetch-deadline model is anchored on.
+// Re-derived worst cases: the snapshot route pays 60s metadata + up to two 120s
+// annual downloads = 300s and issues no HAPI request at all; the demoted route
+// pays at most 140s before the demotion may launch, then the sweeps and the
+// fan-out SHARE the re-anchored window rather than stacking — 140s + max(150s
+// sweeps, 140s budget + one 15s in-flight request) = 295s.
+// seed-fetch-deadline-budget-invariants asserts both against the 315s envelope
+// directly, so raising this constant past 150s still fails there.
 export const HAPI_FALLBACK_BUDGET_MS = 140_000;
 const PIZZINT_TTL = 600;
 
@@ -184,9 +198,10 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // #5140: the GDELT fallback sweep may not LAUNCH a batch after this much of the
 // fetch phase has elapsed (fetchAll anchors the clock at its own entry and passes
 // an absolute deadline down, so slow aux feeds automatically shrink the sweep
-// window instead of stacking on top of it). HAPI now uses two bounded global API
-// sweeps plus, only on bot detection, an official snapshot instead of a 38-country
-// sequential sweep. One
+// window instead of stacking on top of it). HAPI now serves both global sweeps
+// from the authoritative HDX snapshot and demotes to two bounded global API
+// sweeps only when that snapshot fails inside HAPI_FALLBACK_BUDGET_MS (#7658),
+// instead of the old 38-country sequential sweep. One
 // in-flight batch may still drain past the cutoff: ≤~100s at the knobs below
 // (either 15s concurrent direct legs when no proxy is configured, or 4 × 20s
 // SERIALIZED sync proxy curls — curlFetch is execFileSync, so "concurrent"
@@ -202,11 +217,12 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // failed and HAPI_FALLBACK_BUDGET_MS still had room, so the JSON API takes
 // over): the demotion may not start later than 140s, each sweep costs at most
 // HAPI_MAX_PAGES(5) × HAPI_REQUEST_TIMEOUT_MS(15s) = 75s, and the per-country
-// fan-out shares the same 140s launch window rather than stacking on it — 140s
-// + 150s + one 15s in-flight request = 305s. Both stay inside the ≤315s
-// envelope this model is anchored on; without that demotion gate a slow
-// snapshot failure would have stacked 300s + 150s + 15s = 465s (#7656 is the
-// same lesson for the fan-out: unbounded it was 150s + 369s = 519s).
+// fan-out re-anchors its launch window at the demotion, so post-demotion the
+// sweeps and the fan-out SHARE that window rather than stacking on it — 140s +
+// max(150s sweeps, 140s budget + one 15s in-flight request) = 295s. Both stay
+// inside the ≤315s envelope this model is anchored on; without the demotion gate
+// a slow snapshot failure would have stacked 300s + 150s + 15s = 465s (#7656 is
+// the same lesson for the fan-out: unbounded it was 150s + 369s = 519s).
 // All three remain under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline
 // (lockTtlMs+120s) below. What this replaced was a fan-out paid on EVERY run —
 // 6 missing countries ≈ 97s, and ≈290s once the 13 HRP countries that publish
@@ -843,9 +859,16 @@ export async function fetchAllHumanitarianSummaries({
     console.warn(`  HAPI freshness marker read failed: ${error.message}`);
     return null;
   });
+  // A seed that came from the demoted channel earns a much shorter pin — see
+  // HAPI_DEMOTED_REFRESH_INTERVAL_MS. Recording the channel and then not acting
+  // on it would leave this fix's whole invariant (consecutive ticks are
+  // comparable) unenforced.
+  const previousRefreshIntervalMs = previousMarker?.sourceChannel === HAPI_API_CHANNEL
+    ? HAPI_DEMOTED_REFRESH_INTERVAL_MS
+    : HAPI_REFRESH_INTERVAL_MS;
   if (
     Number.isFinite(Number(previousMarker?.updatedAt))
-    && nowMs - Number(previousMarker.updatedAt) < HAPI_REFRESH_INTERVAL_MS
+    && nowMs - Number(previousMarker.updatedAt) < previousRefreshIntervalMs
   ) {
     console.log(`  Humanitarian: recent bulk snapshot still fresh (${Object.keys(previousMarker).length > 0 ? previousMarker.countriesCovered ?? 'unknown' : 'unknown'} countries)`);
     return null;
@@ -863,6 +886,21 @@ export async function fetchAllHumanitarianSummaries({
   // egress, #5713/#5769/#5772) on the happy path instead of the rescue path.
   let sourceChannel = HAPI_SNAPSHOT_CHANNEL;
   let snapshotFailureReason = null;
+  // docs/solutions/design-patterns/primary-fallback-inversion-budget-transfer.md,
+  // filed against THIS module: inverting a primary/fallback order silently hands
+  // the demoted path's shared time budget to the new primary, so a SLOW (not
+  // down) primary permanently disables the emergency fallback — the exact
+  // insurance it exists to provide. Anchored at entry while the snapshot is
+  // serving, where it bounds nothing (those iterations filter rows already in
+  // memory and issue no request), and re-anchored at the MOMENT OF DEMOTION so
+  // the JSON API route gets the same window it had back when it was primary.
+  // The credit is self-clamping, so it needs no explicit Math.min: demotion
+  // itself may not happen after HAPI_FALLBACK_BUDGET_MS, and past that point the
+  // sweeps and the fan-out SHARE the re-anchored window rather than stacking on
+  // it, so the demoted worst case is 140s + max(150s sweeps, 140s + one 15s
+  // in-flight request) = 295s — inside the ≤315s envelope, and tighter than the
+  // 305s the entry-anchored version modelled.
+  let fallbackBudgetAnchorMs = startedAtMs;
   let snapshotRowsPromise;
   const loadSnapshotRows = () => {
     if (!snapshotRowsPromise) {
@@ -944,6 +982,7 @@ export async function fetchAllHumanitarianSummaries({
         );
       }
       sourceChannel = HAPI_API_CHANNEL;
+      fallbackBudgetAnchorMs = readElapsedMs();
       console.warn(
         `  HAPI HDX snapshot unavailable (${snapshotFailureReason}) — demoting to the JSON API,`
         + ' whose trailing reference period runs materially lower (#7658)',
@@ -999,8 +1038,13 @@ export async function fetchAllHumanitarianSummaries({
       const countryCode = missingCountries[i];
       // Snapshot-backed iterations issue no network request — they filter rows
       // already in memory — so they are not what this budget bounds, and gating
-      // them would disable the net exactly on the run's primary route.
-      if (sourceChannel !== HAPI_SNAPSHOT_CHANNEL && readElapsedMs() - startedAtMs >= HAPI_FALLBACK_BUDGET_MS) {
+      // them would disable the net exactly on the run's primary route. On the
+      // demoted route the window runs from the demotion, not from entry — see
+      // fallbackBudgetAnchorMs.
+      if (
+        sourceChannel !== HAPI_SNAPSHOT_CHANNEL
+        && readElapsedMs() - fallbackBudgetAnchorMs >= HAPI_FALLBACK_BUDGET_MS
+      ) {
         const skipped = missingCountries.slice(i);
         fallbackFailure = Object.assign(
           new Error(`fallback budget exhausted with ${skipped.length} required countries unattempted`),
@@ -1220,12 +1264,38 @@ export async function fetchAll({
     // #7658: which of HAPI's two channels served this tick, recorded on BOTH the
     // marker and the seed-meta record. The channels disagree by ~23% on the
     // trailing reference period, so a published number that cannot name its
-    // channel cannot be compared with the tick before it. A run is
+    // channel cannot be compared with the tick before it. A RUN is
     // single-channel by construction — the channel latches once, before the
-    // first sweep — so one field describes every country written above.
+    // first sweep — so this names the channel behind every country written just
+    // above.
+    //
+    // Scope caveat, because the distinction is load-bearing: the per-country
+    // keys outlive a run (HAPI_TTL is 6h, ~3 refresh cycles), and this loop
+    // overwrites only the countries THIS run covered. So after a partial run
+    // that changed channel, the FAMILY can hold both vintages — the countries
+    // this run wrote, plus older ones the previous channel wrote. The marker
+    // says which is which: `sourceChannel` describes the whole family exactly
+    // when requiredCountriesCovered === requiredCountriesTotal, and a shortfall
+    // there is the signal that older countries may be on the other channel.
+    // Making the family atomically single-vintage would mean publishing all 44
+    // countries as one generation behind a pointer swap, which is a bigger
+    // change to the write path than this fix; the coverage fields make the
+    // current state readable rather than silent.
+    // `sourceState: 'degraded'` is the hook api/health.js already has for
+    // "degraded BUT SERVING" (readSeedMeta -> sourceDegraded -> SEED_ERROR at
+    // warn, record count preserved). Without it this change would REDUCE
+    // observability: a snapshot failure used to be terminal and surfaced as
+    // SEED_ERROR, whereas a demotion succeeds, so a permanent HDX-side break
+    // (resource rename, 403) would otherwise publish the lagging channel
+    // indefinitely with health fully green. Set only when demoted — omitting the
+    // field is the no-degradation-claim default, and 'blocked' is deliberately
+    // NOT used: api/health.js escalates it to a hard SEED_ERROR for every key
+    // but one allowlisted adapter.
     const channelProvenance = {
       sourceChannel: ha.sourceChannel,
-      ...(ha.snapshotFailureReason ? { snapshotFailureReason: ha.snapshotFailureReason } : {}),
+      ...(ha.snapshotFailureReason
+        ? { snapshotFailureReason: ha.snapshotFailureReason, sourceState: 'degraded' }
+        : {}),
     };
     await writeExtraKeyWithMeta(
       HAPI_CACHE_KEY_PREFIX,
