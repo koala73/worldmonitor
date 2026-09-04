@@ -6,9 +6,7 @@ import {
   airportDisruptionViewModel,
   ciiRankingViewModel,
   chokepointCoverageMetrics,
-  chokepointOpenStatusSentence,
-  chokepointPassageStatus,
-  chokepointScoreDriverSentence,
+  chokepointEvidenceNarrative,
   chokepointStatusViewModel,
   crisisTrackerViewModel,
   hasPublishedLivePulse,
@@ -480,14 +478,14 @@ describe('crawlable live intelligence view models', () => {
     assert.equal(tool.querySelector('[data-chokepoint-transits-note]').hidden, true);
   });
 
-  it('refreshes the open/closed sentence and score driver on live update (#7613)', async () => {
+  it('refreshes the passage evidence and score driver together on live update (#7613)', async () => {
     const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/strait-of-hormuz/' });
     const { document } = window;
     document.body.innerHTML = `
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-chokepoint-name="Strait of Hormuz" data-state="ready">
         <h2>Is Strait of Hormuz open right now?</h2>
-        <p data-chokepoint-open-status>As of Sep 2, 2026, the Strait of Hormuz is restricted to commercial shipping.</p>
-        <p data-chokepoint-score-driver>The score of 35 (Yellow) comes from this snapshot's observed inputs.</p>
+        <p data-chokepoint-open-status>Old passage evidence.</p>
+        <p data-chokepoint-score-driver>Old score inputs.</p>
         <span class="live-status" data-live-status>Published pulse</span>
         <div class="grid" data-live-grid>
           <div class="metric"><strong><span data-chokepoint-score>35</span><small data-chokepoint-band>Yellow</small></strong></div>
@@ -540,11 +538,81 @@ describe('crawlable live intelligence view models', () => {
 
     assert.match(
       tool.querySelector('[data-chokepoint-open-status]').textContent,
-      /the Strait of Hormuz is effectively closed to commercial shipping\. Today's transit count is 6\./,
+      /the observed transit count for the Strait of Hormuz is 6\. The Red disruption score is a risk signal; it does not verify unrestricted passage or operational closure\./,
     );
     assert.match(
       tool.querySelector('[data-chokepoint-score-driver]').textContent,
-      /The score of 70 \(Red\) builds on the baseline geopolitical threat weight — Active conflict\./,
+      /Configured geopolitical baseline: Active conflict\. Observed score inputs: 0 warnings; maximum AIS severity Normal\. Context only \(not score inputs\): AIS event count \(0 AIS disruptions\); transit count \(6\)\./,
+    );
+  });
+
+  it('does not hydrate a definitive passage status from partial source coverage', async () => {
+    const window = new Window({ url: 'https://www.worldmonitor.app/chokepoints/taiwan-strait/' });
+    const { document } = window;
+    document.body.innerHTML = `
+      <section class="live-tool" data-live-chokepoint data-chokepoint-id="taiwan_strait" data-chokepoint-name="Taiwan Strait" data-state="ready">
+        <p data-chokepoint-open-status>Old passage evidence.</p>
+        <p data-chokepoint-score-driver>Old score inputs.</p>
+        <span class="live-status" data-live-status>Published pulse</span>
+        <div class="grid" data-live-grid>
+          <div class="metric"><strong><span data-chokepoint-score>20</span><small data-chokepoint-band>Yellow</small></strong></div>
+          <div class="metric"><strong data-chokepoint-congestion>Low</strong></div>
+          <div class="metric"><strong data-chokepoint-warnings>0 warnings</strong></div>
+          <div class="metric"><strong data-chokepoint-ais-disruptions>1 AIS disruption</strong></div>
+          <div class="metric"><strong data-chokepoint-transits>12</strong></div>
+          <div class="metric"><strong data-chokepoint-movement>Stable</strong></div>
+        </div>
+        <p data-chokepoint-description></p>
+        <p data-chokepoint-transits-note hidden></p>
+        <time data-live-updated datetime="2026-08-30T12:00:00.000Z">Published pulse Aug 30, 2026</time>
+      </section>
+    `;
+    const tool = document.querySelector('[data-live-chokepoint]');
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('get-chokepoint-status')) {
+        return {
+          ok: true,
+          status: 200,
+          json: async () => ({
+            fetchedAt: new Date(Date.now() - 60_000).toISOString(),
+            upstreamUnavailable: false,
+            chokepoints: [{
+              id: 'taiwan_strait',
+              disruptionScore: 20,
+              status: 'yellow',
+              congestionLevel: 'low',
+              activeWarnings: 0,
+              navigationalWarningsAvailable: false,
+              aisDisruptions: 1,
+              aisSnapshotAvailable: true,
+              description: 'Cross-strait military tensions',
+              transitSummary: {
+                dataAvailable: true,
+                todayTotal: 12,
+                todayCountsAvailable: true,
+                wowChangePct: 0,
+              },
+            }],
+          }),
+        };
+      }
+      return anonymousSessionResponse();
+    };
+    try {
+      await loadChokepoint(tool);
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+
+    const passage = tool.querySelector('[data-chokepoint-open-status]').textContent;
+    assert.match(passage, /source coverage for the Taiwan Strait is partial/);
+    assert.match(passage, /observed transit count is 12/);
+    assert.match(passage, /cannot verify operational passage status/);
+    assert.doesNotMatch(passage, / is (?:open|restricted|effectively closed) /);
+    assert.match(
+      tool.querySelector('[data-chokepoint-score-driver]').textContent,
+      /Observed score inputs: maximum AIS severity Low\. Unavailable score inputs: navigational warning count\./,
     );
   });
 
@@ -619,145 +687,111 @@ describe('crawlable live intelligence view models', () => {
     assert.match(withheldTransitCountSentence(''), /for this chokepoint for this period/);
   });
 
-  it('maps disruption bands to passage status for the open/closed binary (#7613)', () => {
-    // Bands mirror the traffic-light badge so the binary is reproducible.
-    assert.equal(chokepointPassageStatus(0), 'open');
-    assert.equal(chokepointPassageStatus(19.9), 'open');
-    assert.equal(chokepointPassageStatus(20), 'restricted');
-    assert.equal(chokepointPassageStatus('35'), 'restricted');
-    assert.equal(chokepointPassageStatus(49.9), 'restricted');
-    assert.equal(chokepointPassageStatus(50), 'effectively closed');
-    assert.equal(chokepointPassageStatus('70'), 'effectively closed');
-    assert.equal(chokepointPassageStatus(100), 'effectively closed');
-    assert.equal(chokepointPassageStatus(null), null);
-    assert.equal(chokepointPassageStatus(Number.NaN), null);
-    assert.equal(chokepointPassageStatus(-1), null);
-    assert.equal(chokepointPassageStatus(101), null);
-    assert.equal(chokepointPassageStatus('Red'), null);
+  it('keeps maximum AIS severity as a score input and AIS event count as context', () => {
+    const narrative = chokepointEvidenceNarrative({
+      displayName: 'Suez Canal',
+      score: '35',
+      bandLabel: 'Yellow',
+      description: 'JWC Listed Area',
+      asOfText: 'Sep 3, 2026, 6:25 AM UTC',
+      partial: false,
+      warningsLabel: '1 warning',
+      congestionLabel: 'High',
+      aisEventCountLabel: '7 AIS disruptions',
+      todayTransits: '2',
+    });
+    assert.deepEqual(narrative, {
+      passage: 'As of Sep 3, 2026, 6:25 AM UTC, the observed transit count for the Suez Canal is 2.'
+        + ' The Yellow disruption score is a risk signal; it does not verify unrestricted passage or operational closure.',
+      scoreDriver: 'The score of 35 (Yellow) has this evidence basis.'
+        + ' Configured geopolitical baseline: JWC Listed Area.'
+        + ' Observed score inputs: 1 warning; maximum AIS severity High.'
+        + ' Context only (not score inputs): AIS event count (7 AIS disruptions); transit count (2).',
+    });
+    assert.doesNotMatch(narrative.scoreDriver, /Observed score inputs:[^.]*7 AIS disruptions/);
   });
 
-  it('states the open/closed binary first-screen with the transit count (#7613)', () => {
-    assert.equal(
-      chokepointOpenStatusSentence({
-        displayName: 'Strait of Hormuz',
-        score: 70,
-        asOfText: 'Sep 3, 2026, 6:25 AM UTC',
-        todayTransits: null,
-      }),
-      'As of Sep 3, 2026, 6:25 AM UTC, the Strait of Hormuz is effectively closed to commercial shipping.'
-      + ' No transit count is published for this snapshot.',
-    );
-    assert.equal(
-      chokepointOpenStatusSentence({
-        displayName: 'Suez Canal',
-        score: '35',
-        asOfText: 'Sep 3, 2026, 6:25 AM UTC',
-        todayTransits: '2',
-      }),
-      'As of Sep 3, 2026, 6:25 AM UTC, the Suez Canal is restricted to commercial shipping.'
-      + " Today's transit count is 2.",
-    );
-    assert.equal(
-      chokepointOpenStatusSentence({
-        displayName: 'Panama Canal',
-        score: 0,
-        asOfText: 'Sep 3, 2026, 6:25 AM UTC',
-        todayTransits: null,
-      }),
-      'As of Sep 3, 2026, 6:25 AM UTC, the Panama Canal is open to commercial shipping.'
-      + ' No transit count is published for this snapshot.',
-    );
-    assert.equal(chokepointOpenStatusSentence({
-      displayName: 'Strait of Hormuz',
-      score: null,
-      asOfText: 'Sep 3, 2026',
+  it('withholds definitive passage status for partial coverage and names one missing score source', () => {
+    const narrative = chokepointEvidenceNarrative({
+      displayName: 'Taiwan Strait',
+      score: 20,
+      bandLabel: 'Yellow',
+      description: 'Cross-strait military tensions',
+      asOfText: 'Sep 3, 2026, 6:25 AM UTC',
+      partial: true,
+      warningsLabel: null,
+      congestionLabel: 'Low',
+      aisEventCountLabel: '1 AIS disruption',
+      todayTransits: '12',
+    });
+    assert.match(narrative.passage, /source coverage for the Taiwan Strait is partial/);
+    assert.match(narrative.passage, /observed transit count is 12/);
+    assert.match(narrative.passage, /cannot verify operational passage status/);
+    assert.doesNotMatch(narrative.passage, / is (?:open|restricted|effectively closed) /);
+    assert.match(narrative.scoreDriver, /Observed score inputs: maximum AIS severity Low\./);
+    assert.match(narrative.scoreDriver, /Unavailable score inputs: navigational warning count\./);
+    assert.doesNotMatch(narrative.scoreDriver, /unavailable[^.]*observed/i);
+  });
+
+  it('separates both missing score sources from observed inputs', () => {
+    const narrative = chokepointEvidenceNarrative({
+      displayName: 'Panama Canal',
+      score: 0,
+      bandLabel: 'Green',
+      description: 'source coverage incomplete',
+      partial: true,
+      warningsLabel: null,
+      congestionLabel: null,
+      aisEventCountLabel: null,
       todayTransits: null,
-    }), null, 'an unusable score must fall back to the unavailable note');
+    });
+    assert.match(narrative.passage, /No transit count is published/);
+    assert.match(narrative.passage, /cannot verify operational passage status/);
+    assert.match(narrative.scoreDriver, /Observed score inputs: none available\./);
+    assert.match(
+      narrative.scoreDriver,
+      /Unavailable score inputs: navigational warning count; maximum AIS severity\./,
+    );
+    assert.match(narrative.scoreDriver, /AIS event count unavailable; transit count unavailable/);
   });
 
-  it('attributes the score to the threat baseline and scoring signals (#7613)', () => {
-    assert.equal(
-      chokepointScoreDriverSentence({
-        score: '70',
-        bandLabel: 'Red',
-        description: 'Active conflict — Iran-Israel war; Iranian naval blockade risk and mines reported in Persian Gulf',
-        warningsLabel: '0 warnings',
-        aisLabel: '0 AIS disruptions',
-        congestionLabel: 'Normal',
-        todayTransits: null,
-      }),
-      'The score of 70 (Red) builds on the baseline geopolitical threat weight'
-      + ' — Active conflict — Iran-Israel war; Iranian naval blockade risk and mines reported in Persian Gulf'
-      + ' — with 0 warnings and 0 AIS disruptions observed in this snapshot.'
-      + ' Congestion is Normal; no transit count is published for this snapshot.',
-    );
-    assert.equal(
-      chokepointScoreDriverSentence({
-        score: 0,
-        bandLabel: 'Green',
-        description: null,
-        warningsLabel: '0 warnings',
-        aisLabel: '0 AIS disruptions',
-        congestionLabel: 'Normal',
-        todayTransits: null,
-      }),
-      'The score of 0 (Green) comes from 0 warnings and 0 AIS disruptions observed in this snapshot,'
-      + ' with no additional geopolitical threat baseline.'
-      + ' Congestion is Normal; no transit count is published for this snapshot.',
-    );
-    assert.equal(chokepointScoreDriverSentence({
-      score: null,
-      bandLabel: 'Red',
-      description: 'Active conflict.',
-      warningsLabel: '0 warnings',
-      aisLabel: '0 AIS disruptions',
-      congestionLabel: 'Normal',
-      todayTransits: null,
-    }), null);
-  });
-
-  it('never quotes absence or coverage notes as the threat baseline (#7613)', () => {
-    // The live API always sends a description, so calm and partial-coverage
-    // waterways must read as observed, not threat-driven.
+  it('keeps the traffic anomaly as a score input and filters coverage notes from the baseline', () => {
     for (const description of [
       'No active disruptions',
       'No active disruptions reported by available sources; source coverage incomplete',
       'Threat baseline last reviewed > 120 days ago — review recommended',
     ]) {
-      assert.equal(
-        chokepointScoreDriverSentence({
-          score: 0,
-          bandLabel: 'Green',
-          description,
-          warningsLabel: '0 warnings',
-          aisLabel: '0 AIS disruptions',
-          congestionLabel: 'Normal',
-          todayTransits: null,
-        }),
-        'The score of 0 (Green) comes from 0 warnings and 0 AIS disruptions observed in this snapshot,'
-        + ' with no additional geopolitical threat baseline.'
-        + ' Congestion is Normal; no transit count is published for this snapshot.',
-        `must not quote as threat: ${description}`,
-      );
-    }
-    // Threat plus anomaly quotes the threat as baseline and surfaces the
-    // anomaly (+10 bonus) as its own clause — never as the threat weight.
-    assert.equal(
-      chokepointScoreDriverSentence({
-        score: 80,
-        bandLabel: 'Red',
-        description: 'Active conflict — blockade risk; Traffic down 55% vs 30-day baseline, vessels may be transiting dark (AIS off)',
+      const narrative = chokepointEvidenceNarrative({
+        displayName: 'Panama Canal',
+        score: 0,
+        bandLabel: 'Green',
+        description,
+        partial: false,
         warningsLabel: '0 warnings',
-        aisLabel: '0 AIS disruptions',
         congestionLabel: 'Normal',
+        aisEventCountLabel: '0 AIS disruptions',
         todayTransits: null,
-      }),
-      'The score of 80 (Red) builds on the baseline geopolitical threat weight'
-      + ' — Active conflict — blockade risk'
-      + ' — with 0 warnings and 0 AIS disruptions observed in this snapshot,'
-      + ' plus the published transit anomaly — Traffic down 55% vs 30-day baseline, vessels may be transiting dark (AIS off).'
-      + ' Congestion is Normal; no transit count is published for this snapshot.',
+      });
+      assert.match(narrative.scoreDriver, /Configured geopolitical baseline: no additional threat weight\./);
+      assert.doesNotMatch(narrative.scoreDriver, new RegExp(`baseline: ${description}`));
+    }
+    const anomaly = chokepointEvidenceNarrative({
+      displayName: 'Strait of Hormuz',
+      score: 80,
+      bandLabel: 'Red',
+      description: 'Active conflict — blockade risk; Traffic down 55% vs 30-day baseline, vessels may be transiting dark (AIS off)',
+      partial: false,
+      warningsLabel: '0 warnings',
+      congestionLabel: 'Normal',
+      aisEventCountLabel: '0 AIS disruptions',
+      todayTransits: null,
+    });
+    assert.match(anomaly.scoreDriver, /Configured geopolitical baseline: Active conflict — blockade risk\./);
+    assert.match(
+      anomaly.scoreDriver,
+      /Observed score inputs: 0 warnings; maximum AIS severity Normal; transit anomaly — Traffic down 55%/,
     );
+    assert.equal(chokepointEvidenceNarrative({ score: null }), null);
   });
 
   it('aggregates same-period crisis summaries and names missing coverage', () => {
@@ -1367,6 +1401,9 @@ describe('crawlable live intelligence view models', () => {
         <button type="button" data-live-refresh>Refresh</button>
       </section>
       <section class="live-tool" data-live-chokepoint data-chokepoint-id="hormuz_strait" data-state="ready">
+        <h2>Is Strait of Hormuz open right now?</h2>
+        <p data-chokepoint-open-status>Published passage evidence.</p>
+        <p data-chokepoint-score-driver>Published score inputs.</p>
         <span class="live-status" data-live-status>Published pulse</span>
         <div class="grid" data-live-grid aria-busy="false">
           <div class="metric"><strong><span data-chokepoint-score>72</span><small data-chokepoint-band>Red</small></strong></div>
@@ -1405,6 +1442,14 @@ describe('crawlable live intelligence view models', () => {
 
     assert.equal(chokepoint.querySelector('[data-chokepoint-score]').textContent, '72');
     assert.equal(chokepoint.querySelector('[data-chokepoint-band]').textContent, 'Red');
+    assert.equal(
+      chokepoint.querySelector('[data-chokepoint-open-status]').textContent,
+      'Published passage evidence.',
+    );
+    assert.equal(
+      chokepoint.querySelector('[data-chokepoint-score-driver]').textContent,
+      'Published score inputs.',
+    );
     assert.equal(chokepoint.querySelector('[data-live-updated]').getAttribute('datetime'), '2026-08-30T12:00:00.000Z');
     assert.match(chokepoint.querySelector('[data-live-status]').textContent, /published pulse/i);
     assert.equal(chokepoint.dataset.state, 'error');

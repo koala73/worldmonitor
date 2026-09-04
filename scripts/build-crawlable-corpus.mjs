@@ -45,9 +45,7 @@ import { getSovereignStatus } from './shared/rankable-universe.mjs';
 // `typeof document !== 'undefined'` guard). A mirrored copy could not fail.
 import {
   chokepointCoverageMetrics,
-  chokepointOpenStatusSentence,
-  chokepointPassageStatus,
-  chokepointScoreDriverSentence,
+  chokepointEvidenceNarrative,
   instabilityBand,
   MAX_FUTURE_SKEW_MS,
   MAX_LIVE_SNAPSHOT_AGE_MS,
@@ -135,7 +133,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-03';
+export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-04';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -3249,11 +3247,11 @@ function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, bas
   const hubFaqs = [
     {
       question: 'Which maritime chokepoints are most disrupted?',
-      answer: `The published ${formatStaticDateTime(updatedAt)} snapshot gives the highest disruption score to ${formatProseList(mostDisruptedNames)}, each at ${formatScore(highestScore, OBSERVED_EVIDENCE)}/100. The table covers all ${chokepointHubRows.length} tracked waterways and shows each source timestamp. A higher score means more current pressure. Passage status follows the same bands the detail pages publish: Green means open, Yellow means restricted, and Red means effectively closed.`,
+      answer: `The published ${formatStaticDateTime(updatedAt)} snapshot gives the highest disruption score to ${formatProseList(mostDisruptedNames)}, each at ${formatScore(highestScore, OBSERVED_EVIDENCE)}/100. The table covers all ${chokepointHubRows.length} tracked waterways and shows each source timestamp. A higher score means more current pressure, but the badge is a risk signal and does not declare unrestricted passage or operational closure.`,
     },
     {
       question: 'How does World Monitor score chokepoint status?',
-      answer: `World Monitor scores each waterway 0-100 from four independent sources: NGA navigational warnings, the AIS snapshot, relay transit counts, and PortWatch week-over-week movement. Each source controls only its own values, so a source that is unavailable is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The traffic-light status maps to passage status — Green means open, Yellow means restricted, and Red means effectively closed — so each detail page states whether its waterway is open right now. The chokepoint methodology documents the inputs, score bands, and mapping.`,
+      answer: `World Monitor scores each waterway 0-100 from a configured geopolitical baseline, NGA navigational warnings, maximum AIS severity, and a qualifying traffic anomaly. AIS event counts, relay transit counts, and PortWatch movement are context rather than score inputs. Each source controls only its own values, so unavailable evidence is withheld rather than published as a measured zero or a calm reading — ${congestionCoverageClause}. The methodology documents the inputs and score bands.`,
     },
     {
       question: 'Why do some chokepoint pages show fewer metrics than others?',
@@ -3562,44 +3560,28 @@ function renderChokepointPage({
   const transitsNote = transitsWithheld
     ? `        <p data-chokepoint-transits-note>${escapeHtml(withheldTransitCountSentence(chokepoint.displayName))}</p>`
     : '        <p data-chokepoint-transits-note hidden></p>';
-  // First-screen binary for the open/closed query vocabulary (#7613). The
-  // disruption score stays on the page as the supporting detail below.
-  const passageStatus = hasPulse ? chokepointPassageStatus(pulse.disruptionScore) : null;
-  const openStatusSentence = hasPulse
-    ? chokepointOpenStatusSentence({
+  const narrative = hasPulse
+    ? chokepointEvidenceNarrative({
       displayName: chokepoint.displayName,
-      score: pulse.disruptionScore,
-      asOfText: formatStaticDateTime(pulse.asOf),
-      todayTransits: transitsLabel,
-    })
-    : null;
-  // The helper returns plain text shared with the live-refresh path; the
-  // status word is a fixed ASCII token, so wrapping it here cannot disturb
-  // escaping. The exact `is <status> to commercial shipping.` clause is built
-  // by the helper above, which guarantees the replace target is present.
-  const openStatusHtml = openStatusSentence !== null && passageStatus !== null
-    ? escapeHtml(openStatusSentence).replace(
-      `is ${passageStatus} to commercial shipping.`,
-      `is <strong>${passageStatus}</strong> to commercial shipping.`,
-    )
-    : `World Monitor has not published a current passage status for ${escapeHtml(chokepoint.displayName)} yet.`;
-  const scoreDriverSentence = hasPulse
-    ? chokepointScoreDriverSentence({
       score: pulse.disruptionScore,
       bandLabel: pulse.status,
       description: pulse.description,
+      asOfText: formatStaticDateTime(pulse.asOf),
+      partial: pulsePartial,
       warningsLabel: coverageMetrics.navigationalWarnings,
-      aisLabel: coverageMetrics.aisDisruptions,
       congestionLabel: coverageMetrics.congestion,
+      aisEventCountLabel: coverageMetrics.aisDisruptions,
       todayTransits: transitsLabel,
     })
     : null;
+  const openStatusHtml = narrative !== null
+    ? escapeHtml(narrative.passage)
+    : `World Monitor has not published current passage evidence for ${escapeHtml(chokepoint.displayName)} yet.`;
   const openStatusSection = `        <h2>Is ${escapeHtml(chokepoint.displayName)} open right now?</h2>
         <p data-chokepoint-open-status>${openStatusHtml}</p>
-${scoreDriverSentence !== null
-    ? `        <p data-chokepoint-score-driver>${escapeHtml(scoreDriverSentence)}</p>`
-    : '        <p data-chokepoint-score-driver hidden></p>'}
-        <p class="tool-note" data-chokepoint-status-mapping>${escapeHtml(CHOKEPOINT_PASSAGE_MAPPING_NOTE)}</p>`;
+${narrative !== null
+    ? `        <p data-chokepoint-score-driver>${escapeHtml(narrative.scoreDriver)}</p>`
+    : '        <p data-chokepoint-score-driver hidden></p>'}`;
   const liveGrid = hasPulse
     ? `        <div class="grid" data-live-grid aria-label="Current chokepoint status" aria-busy="false">
           <div class="metric"><span>Disruption score</span><strong><span data-chokepoint-score>${escapeHtml(formatScore(pulse.disruptionScore, { coverage: hasPulse }))}</span><small data-chokepoint-band>${escapeHtml(pulse.status)}</small></strong></div>
