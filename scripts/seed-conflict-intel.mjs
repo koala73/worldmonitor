@@ -22,6 +22,7 @@ import {
   runSeed,
   writeExtraKey,
   writeExtraKeyWithMeta,
+  writeExtraKeyWithMetaAtomically,
   extendExistingTtl,
   sleep,
   loadSharedConfig,
@@ -124,21 +125,18 @@ const HAPI_REQUEST_TIMEOUT_MS = 15_000;
 const HAPI_REQUEST_DELAY_MS = 1_100;
 // #7656: wall-clock budget for HAPI's discretionary network work, in the same
 // "a request may not LAUNCH after the cutoff" shape as GDELT_SWEEP_BUDGET_MS.
-// It gates TWO launch decisions (#7658): demoting to the JSON API after the
-// authoritative snapshot fails, measured from fetchAllHumanitarianSummaries
-// ENTRY; and the last-resort per-country fan-out below, measured from ENTRY on
-// the snapshot route but from the DEMOTION on the API route (see
-// fallbackBudgetAnchorMs — an entry-anchored fan-out would let a slow-failing
-// snapshot spend the fallback's whole window before it ever runs).
+// It gates demotion after a slow snapshot failure and every JSON API page launch.
+// The API deadline is re-anchored at demotion, so a slow-failing snapshot cannot
+// spend the fallback's whole window before it starts.
 // Without a budget at all the two global sweeps (each ≤ HAPI_MAX_PAGES ×
 // HAPI_REQUEST_TIMEOUT_MS = 75s) could be followed by 23 sequential per-country
 // requests — 23 × 15s plus 22 × 1.1s pacing ≈ 369s — for a 519s route, well past
 // the 315s envelope the whole fetch-deadline model is anchored on.
 // Re-derived worst cases: the snapshot route pays 60s metadata + up to two 120s
 // annual downloads = 300s and issues no HAPI request at all; the demoted route
-// pays at most 140s before the demotion may launch, then the sweeps and the
-// fan-out SHARE the re-anchored window rather than stacking — 140s + max(150s
-// sweeps, 140s budget + one 15s in-flight request) = 295s.
+// pays at most 140s before the demotion may launch, then every API page shares
+// the re-anchored 140s window. One in-flight page may drain after the cutoff:
+// 140s + 140s + 15s = 295s.
 // seed-fetch-deadline-budget-invariants asserts both against the 315s envelope
 // directly, so raising this constant past 150s still fails there.
 export const HAPI_FALLBACK_BUDGET_MS = 140_000;
@@ -785,10 +783,18 @@ async function fetchHapiRows({
   nowMs,
   countryCode,
   adminLevel,
+  readElapsedMs,
+  deadlineAtMs,
 }) {
   const records = [];
   let fullyRead = false;
   for (let page = 0; page < HAPI_MAX_PAGES; page += 1) {
+    if (readElapsedMs() >= deadlineAtMs) {
+      throw Object.assign(
+        new Error(`${countryCode || 'global'} bulk response reached the HAPI fallback deadline`),
+        { reasonCode: 'HAPI_FALLBACK_BUDGET_EXHAUSTED' },
+      );
+    }
     const offset = page * HAPI_PAGE_LIMIT;
     const resp = await fetchFn(
       buildHapiConflictEventsUrl({ nowMs, offset, countryCode, adminLevel }),
@@ -850,28 +856,27 @@ export async function fetchAllHumanitarianSummaries({
 } = {}) {
   const nowMs = now();
   const startedAtMs = readElapsedMs();
-  const failureBackoff = await loadFailureBackoff().catch((error) => {
-    console.warn(`  HAPI backoff read failed: ${error.message}`);
-    return null;
-  });
-  if (Number(failureBackoff?.retryAt) > nowMs) {
-    console.log(`  Humanitarian: provider backoff active until ${new Date(failureBackoff.retryAt).toISOString()}`);
-    return null;
-  }
-
   const previousMarker = await loadPreviousMarker().catch((error) => {
     console.warn(`  HAPI freshness marker read failed: ${error.message}`);
     return null;
   });
+  const failureBackoff = await loadFailureBackoff().catch((error) => {
+    console.warn(`  HAPI backoff read failed: ${error.message}`);
+    return null;
+  });
+  const apiBackoffActive = Number(failureBackoff?.retryAt) > nowMs;
   // A seed that came from the demoted channel earns a much shorter pin — see
   // HAPI_DEMOTED_REFRESH_INTERVAL_MS. Recording the channel and then not acting
   // on it would leave this fix's whole invariant (consecutive ticks are
   // comparable) unenforced.
   const previousMarkerAgeMs = nowMs - Number(previousMarker?.updatedAt);
   const previousWasDemoted = previousMarker?.sourceChannel === HAPI_API_CHANNEL;
-  const previousRefreshIntervalMs = previousWasDemoted
-    ? HAPI_DEMOTED_REFRESH_INTERVAL_MS
-    : HAPI_REFRESH_INTERVAL_MS;
+  const nextSnapshotRetryAt = Number(previousMarker?.nextSnapshotRetryAt);
+  const demotedSnapshotRetryDue = previousWasDemoted && (
+    Number.isFinite(nextSnapshotRetryAt)
+      ? nowMs >= nextSnapshotRetryAt
+      : previousMarkerAgeMs >= HAPI_DEMOTED_REFRESH_INTERVAL_MS
+  );
   // The shortened pin buys a cheap SNAPSHOT retry, not a cheap API refresh. If
   // the snapshot is still down below, the JSON API rows this tick would fetch
   // are the ones already published less than HAPI_REFRESH_INTERVAL_MS ago, so
@@ -884,7 +889,9 @@ export async function fetchAllHumanitarianSummaries({
   const requiredCountryContract = [...requiredCountryCodes].sort();
   if (
     Number.isFinite(Number(previousMarker?.updatedAt))
-    && previousMarkerAgeMs < previousRefreshIntervalMs
+    && (previousWasDemoted
+      ? !demotedSnapshotRetryDue
+      : previousMarkerAgeMs < HAPI_REFRESH_INTERVAL_MS)
     && Number(previousMarker?.requiredCountriesTotal) === requiredCountryCodes.length
     && Number(previousMarker?.requiredCountriesCovered) >= requiredCountryCodes.length
     && Array.isArray(previousMarker?.requiredCountryCodes)
@@ -894,6 +901,10 @@ export async function fetchAllHumanitarianSummaries({
       .every((countryCode, index) => countryCode === requiredCountryContract[index])
   ) {
     console.log(`  Humanitarian: recent bulk snapshot still fresh (${Object.keys(previousMarker).length > 0 ? previousMarker.countriesCovered ?? 'unknown' : 'unknown'} countries)`);
+    return null;
+  }
+  if (apiBackoffActive && !demotedSnapshotRetryDue) {
+    console.log(`  Humanitarian: provider backoff active until ${new Date(failureBackoff.retryAt).toISOString()}`);
     return null;
   }
 
@@ -917,13 +928,11 @@ export async function fetchAllHumanitarianSummaries({
   // serving, where it bounds nothing (those iterations filter rows already in
   // memory and issue no request), and re-anchored at the MOMENT OF DEMOTION so
   // the JSON API route gets the same window it had back when it was primary.
-  // The credit is self-clamping, so it needs no explicit Math.min: demotion
-  // itself may not happen after HAPI_FALLBACK_BUDGET_MS, and past that point the
-  // sweeps and the fan-out SHARE the re-anchored window rather than stacking on
-  // it, so the demoted worst case is 140s + max(150s sweeps, 140s + one 15s
-  // in-flight request) = 295s — inside the ≤315s envelope, and tighter than the
-  // 305s the entry-anchored version modelled.
-  let fallbackBudgetAnchorMs = startedAtMs;
+  // Demotion may not happen after HAPI_FALLBACK_BUDGET_MS. After it happens,
+  // every JSON API page shares one re-anchored deadline. One in-flight 15s page
+  // can drain after the cutoff, so the demoted worst case is 140s + 140s + 15s
+  // = 295s, inside the 315s envelope.
+  let fallbackDeadlineAtMs = startedAtMs + HAPI_FALLBACK_BUDGET_MS;
   let snapshotRowsPromise;
   const loadSnapshotRows = () => {
     if (!snapshotRowsPromise) {
@@ -950,7 +959,12 @@ export async function fetchAllHumanitarianSummaries({
   const fetchRows = async (options) => (
     sourceChannel === HAPI_SNAPSHOT_CHANNEL
       ? fetchRowsFromSnapshot(options)
-      : fetchHapiRows({ ...options, fetchFn })
+      : fetchHapiRows({
+          ...options,
+          fetchFn,
+          readElapsedMs,
+          deadlineAtMs: fallbackDeadlineAtMs,
+        })
   );
   // Every thrown failure carries the channel that produced it, plus the reason
   // the primary channel was abandoned when it was, so seed-meta can say WHY a
@@ -1018,9 +1032,17 @@ export async function fetchAllHumanitarianSummaries({
         await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
         return null;
       }
+      if (apiBackoffActive) {
+        console.log(
+          `  Humanitarian: HDX still down (${snapshotFailureReason}); API backoff remains active until`
+          + ` ${new Date(failureBackoff.retryAt).toISOString()} — preserving last-good data`,
+        );
+        await preserveLastGood().catch((error) => console.warn(`  HAPI last-good preservation failed: ${error.message}`));
+        return null;
+      }
 
       sourceChannel = HAPI_API_CHANNEL;
-      fallbackBudgetAnchorMs = readElapsedMs();
+      fallbackDeadlineAtMs = readElapsedMs() + HAPI_FALLBACK_BUDGET_MS;
       console.warn(
         `  HAPI HDX snapshot unavailable (${snapshotFailureReason}) — demoting to the JSON API,`
         + ' whose trailing reference period runs materially lower (#7658)',
@@ -1077,11 +1099,10 @@ export async function fetchAllHumanitarianSummaries({
       // Snapshot-backed iterations issue no network request — they filter rows
       // already in memory — so they are not what this budget bounds, and gating
       // them would disable the net exactly on the run's primary route. On the
-      // demoted route the window runs from the demotion, not from entry — see
-      // fallbackBudgetAnchorMs.
+      // demoted route the deadline runs from the demotion, not from entry.
       if (
         sourceChannel !== HAPI_SNAPSHOT_CHANNEL
-        && readElapsedMs() - fallbackBudgetAnchorMs >= HAPI_FALLBACK_BUDGET_MS
+        && readElapsedMs() >= fallbackDeadlineAtMs
       ) {
         const skipped = missingCountries.slice(i);
         fallbackFailure = Object.assign(
@@ -1290,6 +1311,10 @@ async function fetchGdeltTensions() {
  * default, and 'blocked' is deliberately NOT used: api/health.js escalates it
  * to a hard SEED_ERROR for every key but one allowlisted adapter.
  */
+function nextFixedIntervalBoundary(nowMs, intervalMs) {
+  return (Math.floor(nowMs / intervalMs) + 1) * intervalMs;
+}
+
 export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {}) {
   const summaries = humanitarian?.summaries ?? {};
   const requiredCountriesCovered = HAPI_REQUIRED_COUNTRIES.filter(
@@ -1319,6 +1344,9 @@ export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {
       requiredCountryCodes: [...HAPI_REQUIRED_COUNTRIES].sort(),
       requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
       ...channelProvenance,
+      ...(humanitarian?.sourceChannel === HAPI_API_CHANNEL
+        ? { nextSnapshotRetryAt: nextFixedIntervalBoundary(nowMs, HAPI_DEMOTED_REFRESH_INTERVAL_MS) }
+        : {}),
       updatedAt: nowMs,
     },
   };
@@ -1382,17 +1410,21 @@ export async function fetchAll({
     // Marker fields and channel provenance are built by buildHapiSeedProvenance
     // above, where a test can reach them — see its contract note for what
     // sourceChannel does and does not claim about the family.
-    const { requiredCountriesCovered, channelProvenance, marker } = buildHapiSeedProvenance(ha);
-    await writeExtraKeyWithMeta(
-      HAPI_CACHE_KEY_PREFIX,
-      marker,
-      HAPI_SEED_META_TTL_SECONDS,
-      requiredCountriesCovered,
-      HAPI_SEED_META_KEY,
-      HAPI_SEED_META_TTL_SECONDS,
-      undefined,
-      channelProvenance,
+    const publishedAt = Date.now();
+    const { requiredCountriesCovered, channelProvenance, marker } = buildHapiSeedProvenance(
+      ha,
+      { nowMs: publishedAt },
     );
+    await writeExtraKeyWithMetaAtomically({
+      key: HAPI_CACHE_KEY_PREFIX,
+      data: marker,
+      ttlSeconds: HAPI_SEED_META_TTL_SECONDS,
+      recordCount: requiredCountriesCovered,
+      metaKey: HAPI_SEED_META_KEY,
+      metaTtlSeconds: HAPI_SEED_META_TTL_SECONDS,
+      extra: channelProvenance,
+      fetchedAt: publishedAt,
+    });
   }
   if (acResolution?.events?.length) {
     await writeExtraKeyWithMeta(

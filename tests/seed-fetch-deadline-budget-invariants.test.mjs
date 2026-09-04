@@ -115,20 +115,13 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     // the fan-out then cost NOTHING; they filter rows already in memory.
     const HAPI_SNAPSHOT_WORST_MS = HAPI_HDX_METADATA_TIMEOUT_MS
       + 2 * HAPI_HDX_SNAPSHOT_TIMEOUT_MS;
-    // Demoted route: the snapshot failed while HAPI_FALLBACK_BUDGET_MS still had
-    // room, so the JSON API takes over. Model all three terms — the latest moment
-    // the demotion may launch, both global sweeps paging to HAPI_MAX_PAGES, and
-    // the one per-country request that may already be in flight when the same
-    // budget closes the fan-out. #7656 shipped the sweeps while modelling only
-    // the sweeps, so an unbounded fan-out (23 × 15s + 22 × 1.1s ≈ 369s) sat
-    // outside this envelope and pushed the real route to 519s.
-    const HAPI_DEMOTED_SWEEP_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS;
-    // Post-demotion the sweeps and the fan-out SHARE the re-anchored window
-    // (#7658 anchors the fan-out at the demotion, not at function entry), so
-    // they take the max, not the sum. The fan-out's own term is its launch
-    // budget plus the one request that may already be in flight when it closes.
-    const HAPI_DEMOTED_WORST_MS = HAPI_FALLBACK_BUDGET_MS
-      + Math.max(HAPI_DEMOTED_SWEEP_MS, HAPI_FALLBACK_BUDGET_MS + HAPI_DIRECT_REQUEST_MS);
+    // Demoted route: the snapshot may spend almost HAPI_FALLBACK_BUDGET_MS
+    // before failing. After demotion, every API page launch shares one new
+    // absolute deadline. One page can still be in flight when that deadline
+    // closes, but no later page from either global sweep or the country fallback
+    // may launch. This is the bound the injected-clock pagination test proves.
+    const HAPI_DEMOTED_API_WINDOW_MS = HAPI_FALLBACK_BUDGET_MS + HAPI_DIRECT_REQUEST_MS;
+    const HAPI_DEMOTED_WORST_MS = HAPI_FALLBACK_BUDGET_MS + HAPI_DEMOTED_API_WINDOW_MS;
     const HAPI_WORST_MS = Math.max(HAPI_SNAPSHOT_WORST_MS, HAPI_DEMOTED_WORST_MS);
 
     // The envelope every HAPI comment in the seeder re-derives against. Assert
@@ -140,13 +133,14 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     assert.ok(HAPI_SNAPSHOT_WORST_MS <= HAPI_ENVELOPE_MS,
       `snapshot route ${HAPI_SNAPSHOT_WORST_MS}ms must fit the ${HAPI_ENVELOPE_MS}ms envelope`);
     assert.ok(HAPI_DEMOTED_WORST_MS <= HAPI_ENVELOPE_MS,
-      `demoted route ${HAPI_DEMOTED_WORST_MS}ms (demotion cutoff + shared sweep/fan-out window) must fit the ${HAPI_ENVELOPE_MS}ms envelope`);
+      `demoted route ${HAPI_DEMOTED_WORST_MS}ms (demotion cutoff + one shared page-launch window) must fit the ${HAPI_ENVELOPE_MS}ms envelope`);
     // The demotion gate is what keeps those two routes from becoming one sum: a
     // snapshot that fails only AFTER burning its own timeouts has already spent
     // the tick, so the seeder fails closed instead of putting the sweeps behind
     // the full snapshot cost.
+    const HAPI_UNGATED_SWEEP_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS;
     const HAPI_UNGATED_STACK_MS = HAPI_SNAPSHOT_WORST_MS
-      + HAPI_DEMOTED_SWEEP_MS
+      + HAPI_UNGATED_SWEEP_MS
       + HAPI_DIRECT_REQUEST_MS;
     assert.ok(HAPI_UNGATED_STACK_MS > HAPI_ENVELOPE_MS,
       'this guard is only meaningful while an ungated stack would actually breach the envelope');
