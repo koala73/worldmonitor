@@ -12,8 +12,10 @@ import {
   STATIC_ROUTE_MANIFEST,
   buildSitemapEntries,
   createMaterialLastmodResolver,
+  generateSitemapIndexXml,
   generateSitemapXml,
   validateSitemapEntries,
+  validateSitemapIndex,
 } from '../scripts/build-sitemap.mjs';
 import { gitFileLastmod } from '../scripts/build-crawlable-corpus.mjs';
 
@@ -350,5 +352,45 @@ describe('root sitemap generator', () => {
       const occurrences = robots.split(`Sitemap: ${url}`).length - 1;
       assert.equal(occurrences, 1, `${url} must be advertised exactly once`);
     }
+  });
+});
+
+describe('root sitemap index validator', () => {
+  const members = (overrides = {}) => ([
+    { loc: `${SITE_ORIGIN}/sitemap-main.xml`, lastmod: '2026-09-03' },
+    { loc: `${SITE_ORIGIN}/blog/sitemap-index.xml` },
+    { loc: `${SITE_ORIGIN}/docs/sitemap.xml` },
+  ].map((member) => ({ ...member, ...(overrides[member.loc] ?? {}) })));
+
+  it('accepts the three robots-declared sitemaps with a measured local lastmod', () => {
+    assert.deepEqual(validateSitemapIndex(members()), members());
+    const xml = generateSitemapIndexXml(members());
+    assert.equal(XMLValidator.validate(xml), true);
+    assert.match(xml, /<sitemapindex/);
+    assert.match(xml, new RegExp(`<loc>${SITE_ORIGIN.replace(/\./g, '\\.')}/sitemap-main\\.xml<\\/loc>\\s*<lastmod>2026-09-03<\\/lastmod>`));
+    assert.doesNotMatch(xml, /blog\/sitemap-index\.xml<\/loc>\s*<lastmod>/);
+  });
+
+  it('rejects wrong membership, missing local lastmod, and fabricated foreign lastmod', () => {
+    assert.throws(
+      () => validateSitemapIndex(members().slice(0, 2)),
+      /exactly the robots-declared sitemaps/,
+    );
+    assert.throws(
+      () => validateSitemapIndex([...members().slice(0, 2), { loc: `${SITE_ORIGIN}/sitemap-extra.xml` }]),
+      /exactly the robots-declared sitemaps/,
+    );
+    assert.throws(
+      () => validateSitemapIndex(members({ [`${SITE_ORIGIN}/sitemap-main.xml`]: { lastmod: undefined } })),
+      /measured lastmod/,
+    );
+    assert.throws(
+      () => validateSitemapIndex(members({ [`${SITE_ORIGIN}/blog/sitemap-index.xml`]: { lastmod: '2026-09-03' } })),
+      /never fabricate/,
+    );
+    assert.throws(
+      () => validateSitemapIndex(members({ [`${SITE_ORIGIN}/sitemap-main.xml`]: { lastmod: '2999-01-01' } }), { today: '2026-09-03' }),
+      /future lastmod/,
+    );
   });
 });

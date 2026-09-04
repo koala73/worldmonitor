@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import { existsSync, readdirSync } from 'node:fs';
 import { describe, it } from 'node:test';
 import { join, resolve } from 'node:path';
@@ -390,8 +391,38 @@ describe('docs article injection for bare WebPage output', () => {
     assert.equal(flatNodes(html).filter(isArticle).length, 0);
   });
 
-  it('covers every committed docs slug in the date manifest', async () => {
+  it('backfills dateModified onto an upstream Article that drops it', async () => {
     const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
+    const html = rewriteDocsEntityGraph(seed({
+      '@context': 'https://schema.org',
+      '@graph': [{
+        '@type': ['Article', 'TechArticle'],
+        '@id': 'https://www.worldmonitor.app/docs/about#article',
+        headline: 'About World Monitor',
+        publisher: { '@id': 'https://www.worldmonitor.app/#organization' },
+      }],
+    }), '/docs/about');
+    const article = flatNodes(html).find(isArticle);
+    assert.ok(article, 'the upstream Article must survive');
+    assert.equal(article?.dateModified, DOCS_PAGE_DATES['about']);
+    assert.deepEqual(article?.author, { '@id': ORG_ID });
+  });
+
+  it('injects through the zh locale slug mapping', async () => {
+    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
+    const html = rewriteDocsEntityGraph(seed({
+      '@context': 'https://schema.org',
+      '@type': 'WebPage',
+      '@id': 'https://www.worldmonitor.app/docs/zh/about#webpage',
+      name: '关于 World Monitor',
+      url: 'https://www.worldmonitor.app/docs/zh/about',
+    }), '/docs/zh/about');
+    const article = flatNodes(html).find(isArticle);
+    assert.ok(article, 'a bare zh WebPage must gain an Article node');
+    assert.equal(article?.dateModified, DOCS_PAGE_DATES['zh/about']);
+  });
+
+  it('covers every committed docs slug in the date manifest', async () => {    const { DOCS_PAGE_DATES } = await import('../src/config/docs-page-dates.generated.ts');
     const slugs: string[] = [];
     const walk = (dir: string, prefix: string) => {
       for (const entry of readdirSync(join(repoRoot, dir), { withFileTypes: true })) {
@@ -414,5 +445,14 @@ describe('docs article injection for bare WebPage output', () => {
         `date manifest must not retain removed page docs/${slug}.mdx`,
       );
     }
+  });
+
+  it('keeps the committed date manifest fresh against git history', () => {
+    assert.doesNotThrow(() => {
+      execFileSync(process.execPath, ['scripts/generate-docs-page-dates.mjs', '--check'], {
+        cwd: repoRoot,
+        stdio: 'pipe',
+      });
+    });
   });
 });

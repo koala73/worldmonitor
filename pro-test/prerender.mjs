@@ -8,6 +8,11 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 
+import {
+  latestValidGithubStarsSnapshot,
+  starsInteractionCounter,
+} from '../scripts/github-stars-snapshot.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
@@ -228,23 +233,6 @@ const GITHUB_STARS_TOKEN = '"%GITHUB_STARS_INTERACTION%"';
 // these is a dropped counter, not an optional page — fail the build.
 const GITHUB_STARS_PAGES = ['welcome.html'];
 
-function latestGithubStarsSnapshot() {
-  const snapshotsDir = resolve(__dirname, '../docs/snapshots');
-  const files = readdirSync(snapshotsDir)
-    .filter((name) => /^github-stars-\d{4}-\d{2}-\d{2}\.json$/.test(name))
-    .sort();
-  if (files.length === 0) {
-    console.error('[prerender] ERROR: No docs/snapshots/github-stars-*.json snapshot. Run npm run freeze:github-stars.');
-    process.exit(1);
-  }
-  const snapshot = JSON.parse(readFileSync(resolve(snapshotsDir, files[files.length - 1]), 'utf8'));
-  if (!Number.isInteger(snapshot.stargazers_count) || snapshot.stargazers_count < 0) {
-    console.error('[prerender] ERROR: Star snapshot carries no integer stargazers_count.');
-    process.exit(1);
-  }
-  return snapshot;
-}
-
 function injectGithubStars(html, file) {
   if (!html.includes(GITHUB_STARS_TOKEN)) {
     if (GITHUB_STARS_PAGES.includes(file)) {
@@ -253,16 +241,14 @@ function injectGithubStars(html, file) {
     }
     return html;
   }
-  const snapshot = latestGithubStarsSnapshot();
-  return html.replaceAll(
-    GITHUB_STARS_TOKEN,
-    JSON.stringify({
-      '@type': 'InteractionCounter',
-      interactionType: 'https://schema.org/LikeAction',
-      name: 'GitHub stars',
-      userInteractionCount: snapshot.stargazers_count,
-    }),
-  );
+  let snapshot;
+  try {
+    snapshot = latestValidGithubStarsSnapshot();
+  } catch (error) {
+    console.error(`[prerender] ERROR: ${error.message}`);
+    process.exit(1);
+  }
+  return html.replaceAll(GITHUB_STARS_TOKEN, JSON.stringify(starsInteractionCounter(snapshot)));
 }
 
 const PAGES = [

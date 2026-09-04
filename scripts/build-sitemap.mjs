@@ -12,16 +12,23 @@ import {
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
 
 /**
+ * Local URL-set filename. The root /sitemap.xml is the index; crawlers and
+ * tools that need page URLs read this file. Exported so consumers derive
+ * paths from one constant instead of repeating the literal.
+ */
+export const SITEMAP_MAIN_FILENAME = 'sitemap-main.xml';
+
+/**
  * Canonical root-sitemap-index membership.
  *
- * These are the three sitemaps declared in public/robots.www.txt and
- * public/robots.variant.txt. Crawlers that fetch /sitemap.xml directly never
- * parse robots, so /sitemap.xml itself is the index: the local URL set moves
- * to /sitemap-main.xml while the blog (Astro) and docs (Mintlify) publishers
- * keep owning their families. No new sitemap families are introduced.
+ * /sitemap.xml itself is the index. The three members below are the sitemap
+ * locations crawlers must discover: the local URL set plus the blog (Astro)
+ * and docs (Mintlify) sitemaps, whose publishers own those families. robots
+ * declares the index alongside each member URL, so crawlers that parse robots
+ * and crawlers that fetch /sitemap.xml directly converge on the same three.
  */
 export const SITEMAP_INDEX_MEMBERS = Object.freeze([
-  `${SITE_ORIGIN}/sitemap-main.xml`,
+  `${SITE_ORIGIN}/${SITEMAP_MAIN_FILENAME}`,
   `${SITE_ORIGIN}/blog/sitemap-index.xml`,
   `${SITE_ORIGIN}/docs/sitemap.xml`,
 ]);
@@ -290,12 +297,20 @@ export function validateSitemapEntries(entries, { today = TODAY } = {}) {
   return entries;
 }
 
+function readFirstExistingFile(paths) {
+  for (const path of paths) {
+    if (existsSync(path)) return readFileSync(path, 'utf8');
+  }
+  return null;
+}
+
 export function buildSitemapEntries({
   repoRoot = REPO_ROOT,
   publicDir = join(repoRoot, 'public'),
-  existingSitemapSource = existsSync(join(publicDir, 'sitemap.xml'))
-    ? readFileSync(join(publicDir, 'sitemap.xml'), 'utf8')
-    : '',
+  existingSitemapSource = readFirstExistingFile([
+    join(publicDir, SITEMAP_MAIN_FILENAME),
+    join(publicDir, 'sitemap.xml'), // legacy pre-index location
+  ]) ?? '',
   resolveMaterialLastmod = createMaterialLastmodResolver({
     repoRoot,
     existingSitemapSource,
@@ -373,16 +388,9 @@ export function validateSitemapIndex(members, { today = TODAY } = {}) {
     );
   }
   for (const member of members) {
-    let url;
-    try {
-      url = new URL(member.loc);
-    } catch {
-      throw new Error(`malformed sitemap index member URL: ${member.loc}`);
-    }
-    if (url.protocol !== 'https:' || url.href !== member.loc) {
-      throw new Error(`sitemap index member is not a canonical https URL: ${member.loc}`);
-    }
-    if (member.loc === `${SITE_ORIGIN}/sitemap-main.xml`) {
+    // Membership above pins the exact three canonical https URLs, so only the
+    // lastmod rules remain: measured for the local member, absent for foreign.
+    if (member.loc === `${SITE_ORIGIN}/${SITEMAP_MAIN_FILENAME}`) {
       if (!isIsoDate(member.lastmod)) {
         throw new Error('the local index member must carry a measured lastmod date');
       }

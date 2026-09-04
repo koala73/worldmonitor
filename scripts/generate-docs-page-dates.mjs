@@ -37,6 +37,14 @@ function listDocFiles() {
 }
 
 function latestCommitDates() {
+  const shallow = execFileSync('git', ['rev-parse', '--is-shallow-repository'], {
+    cwd: ROOT, encoding: 'utf8',
+  }).trim() === 'true';
+  if (shallow) {
+    throw new Error(
+      'docs page dates need full git history (fetch-depth: 0); a shallow checkout resolves every file to HEAD',
+    );
+  }
   // One pass, newest-first: the first date seen per file is its latest commit.
   const output = execFileSync(
     'git',

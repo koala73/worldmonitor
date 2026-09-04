@@ -197,3 +197,43 @@ describe('production sitemap verifier helpers', () => {
     assert.ok(!fetches.includes('https://attacker.example/private'));
   });
 });
+
+describe('mixed-owner root index traversal', () => {
+  it('validates index members under their own owning family', async () => {
+    const { fetchSitemapTree } = await import('../scripts/verify-sitemaps.mjs');
+    const bodies = {
+      'https://www.worldmonitor.app/sitemap.xml': `<?xml version="1.0"?>
+        <sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <sitemap><loc>https://www.worldmonitor.app/sitemap-main.xml</loc></sitemap>
+          <sitemap><loc>https://www.worldmonitor.app/blog/sitemap-index.xml</loc></sitemap>
+          <sitemap><loc>https://www.worldmonitor.app/docs/sitemap.xml</loc></sitemap>
+        </sitemapindex>`,
+      'https://www.worldmonitor.app/sitemap-main.xml': `<?xml version="1.0"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://www.worldmonitor.app/dashboard</loc></url>
+        </urlset>`,
+      'https://www.worldmonitor.app/blog/sitemap-index.xml': `<?xml version="1.0"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://www.worldmonitor.app/blog/posts/example/</loc></url>
+        </urlset>`,
+      'https://www.worldmonitor.app/docs/sitemap.xml': `<?xml version="1.0"?>
+        <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+          <url><loc>https://www.worldmonitor.app/docs/example</loc></url>
+        </urlset>`,
+    };
+    const fetchImpl = async (url) => new Response(bodies[String(url)] ?? '', {
+      status: bodies[String(url)] ? 200 : 404,
+      headers: { 'content-type': 'application/xml' },
+    });
+    const { documents, urls, inventoryErrors } = await fetchSitemapTree(
+      [{ url: 'https://www.worldmonitor.app/sitemap.xml', owner: 'root' }],
+      fetchImpl,
+      'https://www.worldmonitor.app',
+    );
+    assert.deepEqual(inventoryErrors, []);
+    assert.equal(documents.length, 4);
+    assert.ok(urls.has('https://www.worldmonitor.app/dashboard'));
+    assert.ok(urls.has('https://www.worldmonitor.app/blog/posts/example/'));
+    assert.ok(urls.has('https://www.worldmonitor.app/docs/example'));
+  });
+});

@@ -214,7 +214,7 @@ function validatePageOwner(value, owner) {
   return null;
 }
 
-async function fetchSitemapTree(rootSitemaps, fetchImpl, origin) {
+export async function fetchSitemapTree(rootSitemaps, fetchImpl, origin) {
   const pending = [...rootSitemaps];
   const seen = new Set();
   const documents = [];

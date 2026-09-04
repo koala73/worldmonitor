@@ -229,7 +229,7 @@ describe('GEO residue #7616 (U1 agent surfaces)', () => {
   it('states coverage with the two-part definition pinned to the live snapshot', () => {
     const ranked = latestRankedCount();
     const standard = new RegExp(`live in 190\\+ countries[^.]*structural resilience ranked for ${ranked}`);
-    for (const file of ['public/llms.txt', 'index.html', 'docs/about.mdx']) {
+    for (const file of ['public/llms.txt', 'public/llms-full.txt', 'index.html', 'docs/about.mdx']) {
       assert.match(read(file), standard, `${file} must carry the standard coverage definition`);
     }
     for (const file of ['public/llms.txt', 'public/llms-full.txt', 'index.html', 'docs/about.mdx']) {

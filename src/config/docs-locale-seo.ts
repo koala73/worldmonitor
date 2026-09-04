@@ -260,7 +260,7 @@ function pruneWebSites(value: unknown): unknown | null {
 function rewriteDocsJsonLdValue(value: unknown, pathname?: string): unknown | null {
   const pruned = pruneWebSites(rewriteDocsWebsiteIds(value));
   if (pruned === null) return null;
-  return withDocsArticleNode(withDocsArticleAuthor(withDocsSpeakable(pruned)), pathname);
+  return withDocsArticleDates(withDocsArticleNode(withDocsArticleAuthor(withDocsSpeakable(pruned)), pathname), pathname);
 }
 
 function collectJsonLdNodes(value: unknown, into: Record<string, unknown>[] = []): Record<string, unknown>[] {
@@ -282,6 +282,26 @@ function docsSlugForPathname(pathname: string | undefined): string | null {
   return slug.length > 0 ? slug : null;
 }
 
+/**
+ * Backfill dateModified onto upstream Article nodes that lack it, from the
+ * same build-time manifest the injection path uses. An upstream shape flip
+ * that drops dates must not ship dateless articles silently; unknown slugs
+ * stay untouched rather than invented.
+ */
+function withDocsArticleDates(value: unknown, pathname?: string): unknown {
+  const slug = docsSlugForPathname(pathname);
+  const dateModified = slug ? DOCS_PAGE_DATES[slug] : undefined;
+  if (!dateModified) return value;
+  for (const node of collectJsonLdNodes(value)) {
+    if (
+      (hasJsonLdType(node, 'Article') || hasJsonLdType(node, 'TechArticle'))
+      && node.dateModified == null
+    ) {
+      node.dateModified = dateModified;
+    }
+  }
+  return value;
+}
 /**
  * Inject a full Article node when upstream ships a bare WebPage. Every field
  * is derived, never invented: headline/description/url from the page node,

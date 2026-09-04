@@ -478,3 +478,21 @@ describe('IndexNow submission', () => {
     );
   });
 });
+
+describe('IndexNow root-index indirection', () => {
+  it('resolves page URLs through the local urlset member, never index-member URLs', async () => {
+    const { getRootSitemapUrls, readLocalIndexMember } = await import('../scripts/seo-indexnow-submit.mjs');
+    const urls = getRootSitemapUrls();
+    assert.ok(urls.length > 0, 'must resolve a non-empty page URL list');
+    assert.ok(urls.every((url) => !url.endsWith('sitemap.xml') && !url.endsWith('sitemap-main.xml')));
+    assert.ok(urls.some((url) => url === 'https://www.worldmonitor.app/dashboard'));
+  });
+
+  it('fails closed when the root index lists no local urlset member', async () => {
+    const { readLocalIndexMember } = await import('../scripts/seo-indexnow-submit.mjs');
+    assert.throws(
+      () => readLocalIndexMember('<?xml version="1.0"?><sitemapindex><sitemap><loc>https://www.worldmonitor.app/blog/sitemap-index.xml</loc></sitemap></sitemapindex>'),
+      /no local sitemap-main\.xml member/,
+    );
+  });
+});
