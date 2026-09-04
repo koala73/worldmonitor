@@ -238,6 +238,24 @@ describe('quantified cross-Strait activity (#5575)', () => {
     assert.equal(validateDecisionSignalProvenance(observation.provenance).ok, true);
   });
 
+  it('accepts the official nested MND publication date inside scoped metadata', () => {
+    const html = fixture('mnd-detail.html');
+    assert.match(
+      html,
+      /<span class="body-2"><span class="en">2026\.07\.25<\/span><\/span>/,
+    );
+
+    const observation = parseTaiwanMndDetail(html, {
+      sourceUrl: 'https://www.mnd.gov.tw/en/News/PLAAct/87151',
+      retrievedAt,
+      expectedPublicationDay: '2026-07-25',
+    });
+
+    assert.equal(observation.publicationTime, '2026-07-25');
+    assert.equal(observation.reportingDay, '2026-07-25');
+    assert.equal(validateDecisionSignalProvenance(observation.provenance).ok, true);
+  });
+
   it('decodes malformed numeric HTML entities without crashing the source parser', () => {
     const rows = parseJapanModIndex(`
       <a href="/js/pdf/2026/p20260730_01.pdf">
