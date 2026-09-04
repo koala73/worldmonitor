@@ -47,6 +47,11 @@ jobs:
           echo "branch=${branch}" >> "$GITHUB_OUTPUT"
           existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
           if [ -n "$existing_pr" ]; then
+            existing_state=$(gh pr view "$existing_pr" --json state --jq .state)
+            if [ "$existing_state" = "CLOSED" ]; then
+              echo "::error title=Closed unmerged star-snapshot PR::Reopen PR #${existing_pr} before retrying this workflow."
+              exit 1
+            fi
             echo "skip=true" >> "$GITHUB_OUTPUT"
             echo "Monthly star-snapshot PR #${existing_pr} already exists."
             exit 0
@@ -79,11 +84,10 @@ jobs:
       - name: Prune superseded star snapshots
         if: steps.reconcile.outputs.skip != 'true'
         run: |
-          # Keep only the newest snapshot: latestValidGithubStarsSnapshot
-          # reads the highest-dated file, so older ones are dead weight.
+          # Keep one fallback in case the newest snapshot becomes unreadable.
           ls -1 docs/snapshots/github-stars-*.json \
             | sort -r \
-            | tail -n +2 \
+            | tail -n +3 \
             | xargs -r git rm --quiet
       - name: Open the monthly snapshot PR
         if: steps.reconcile.outputs.skip != 'true'
