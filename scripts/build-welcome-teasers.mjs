@@ -111,16 +111,6 @@ function headlineRow(headline, index) {
       + `a verifiable https article URL and a publication time (got ${JSON.stringify(headline)})`,
     );
   }
-  // pro-test/prerender.mjs hard-fails the deploy when the SSR markup contains
-  // the literal "undefined" (its locale-key guard). Headline text is third-party
-  // now, so catch it here -- a broken publisher permalink reds this generator,
-  // not the weekly refresh's build step.
-  if (`${title} ${url}`.includes('undefined')) {
-    throw new Error(
-      `unpublishable headline at index ${index}: contains the literal "undefined", which trips `
-      + 'the prerender deploy guard in pro-test/prerender.mjs',
-    );
-  }
   return { title, source, url, publishedAt };
 }
 

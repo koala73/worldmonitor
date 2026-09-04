@@ -333,10 +333,15 @@ describe('freeze crawlable live pulse coverage gates', () => {
         digestItem({ title: 'No masthead', source: '' }),
         digestItem({ title: 'No link', link: '' }),
         digestItem({ title: 'Insecure link', link: 'http://example.test/a' }),
+        digestItem({ title: 'Malformed HTTPS link', link: 'https://' }),
         digestItem({ title: 'No publication time', publishedAt: 0 }),
         digestItem({
           title: 'Aggregator redirect - New Lines Magazine',
           link: 'https://news.google.com/rss/articles/CBMifzFBVV95cUx',
+        }),
+        digestItem({
+          title: 'Aggregator redirect with trailing dot',
+          link: 'https://news.google.com./rss/articles/CBMifzFBVV95cUx',
         }),
         digestItem({ title: 'Keeps its provenance' }),
       ],
@@ -350,7 +355,7 @@ describe('freeze crawlable live pulse coverage gates', () => {
     // A bare count says a refresh went thin but never why. The request itself
     // succeeded here, so without per-reason tallies the operator sees nothing.
     assert.match(snapshot.errors.headlines[0].message, /noSource=1/);
-    assert.match(snapshot.errors.headlines[0].message, /unverifiableUrl=3/);
+    assert.match(snapshot.errors.headlines[0].message, /unverifiableUrl=5/);
     assert.match(snapshot.errors.headlines[0].message, /noPublishedAt=1/);
   });
 
@@ -376,6 +381,13 @@ describe('freeze crawlable live pulse coverage gates', () => {
     assert.equal(snapshot.coverage.headlineCount, 4);
     assert.equal(snapshot.coverage.headlineDigestState, 'stale');
     assert.equal(snapshot.coverage.headlineServedStale, true);
+  });
+
+  it('preserves an unknown served-stale verdict as null', async () => {
+    stubFetch({ digestCoverage: { state: 'complete' } });
+    const { snapshot } = await runFreeze();
+    assert.equal(snapshot.coverage.headlineDigestState, 'complete');
+    assert.equal(snapshot.coverage.headlineServedStale, null);
   });
 
   it('omits the upstream no-active-disruptions boilerplate from frozen chokepoints', async () => {

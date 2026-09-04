@@ -189,8 +189,10 @@ function MarketTape({ quotes }: { quotes: TeaserQuote[] }) {
 
 export const LiveStrip = () => {
   const [teasers, setTeasers] = useState<TeaserState>(getFallbackTeasers);
+  const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
+    setMounted(true);
     let cancelled = false;
     fetchLiveTeasers().then(next => { if (!cancelled) setTeasers(next); });
     return () => { cancelled = true; };
@@ -229,7 +231,7 @@ export const LiveStrip = () => {
                     <span className="line-clamp-2">{h.title}</span>
                   )}
                   <span className="font-mono text-[10px] uppercase tracking-wider text-wm-muted">
-                    {h.source}{h.publishedAt ? ` · ${timeAgo(h.publishedAt)}` : ''}
+                    {h.source}{mounted && h.publishedAt ? ` · ${timeAgo(h.publishedAt)}` : ''}
                   </span>
                 </li>
               ))}

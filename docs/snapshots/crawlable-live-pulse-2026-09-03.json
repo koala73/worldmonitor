@@ -2797,7 +2797,9 @@
     "crisisCount": 4,
     "crisisErrorCount": 0,
     "headlineCount": 4,
-    "headlineErrorCount": 0
+    "headlineErrorCount": 0,
+    "headlineDigestState": null,
+    "headlineServedStale": null
   },
   "errors": {
     "countries": [],

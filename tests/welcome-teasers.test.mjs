@@ -45,7 +45,7 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
   });
 
   it('publishes no headline it cannot attribute and link', () => {
-    assert.equal(committed.headlines.length, 4);
+    assert.ok(committed.headlines.length <= 4, 'the fail-soft strip publishes at most four rows');
     for (const headline of committed.headlines) {
       assert.ok(headline.title.length > 0, 'a headline needs a title');
       assert.ok(headline.source.length > 0, `"${headline.title}" needs a masthead`);
@@ -59,6 +59,19 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
         `"${headline.title}" must carry its real publication time, not the 0 placeholder`,
       );
     }
+  });
+
+  it('records whether the committed headline capture was stale', () => {
+    assert.ok(Object.hasOwn(snapshot.coverage, 'headlineDigestState'));
+    assert.ok(Object.hasOwn(snapshot.coverage, 'headlineServedStale'));
+    assert.ok(
+      snapshot.coverage.headlineDigestState === null
+      || typeof snapshot.coverage.headlineDigestState === 'string',
+    );
+    assert.ok(
+      snapshot.coverage.headlineServedStale === null
+      || typeof snapshot.coverage.headlineServedStale === 'boolean',
+    );
   });
 
   it('every published headline came from the snapshot capture', () => {
@@ -210,8 +223,8 @@ describe('welcome teaser generator refuses unpublishable input', () => {
       // is what makes headlineRow's "a hand-edited snapshot cannot publish an
       // unattributable headline" comment true rather than aspirational.
       ['url', 'https://news.google.com/rss/articles/CBMifzFBVV95cUx'],
-      // pro-test/prerender.mjs hard-fails the deploy on the literal "undefined".
-      ['title', 'Publisher CMS emitted undefined in the slug'],
+      ['url', 'https://news.google.com./rss/articles/CBMifzFBVV95cUx'],
+      ['url', 'https://'],
     ];
     for (const [field, value] of unpublishable) {
       const fixture = snapshotFixture();
@@ -222,6 +235,15 @@ describe('welcome teaser generator refuses unpublishable input', () => {
         `a headline with ${field}=${JSON.stringify(value)} must not reach the homepage`,
       );
     }
+  });
+
+  it('preserves valid third-party text and URLs containing undefined', () => {
+    const fixture = snapshotFixture();
+    fixture.headlines[0].title = 'Publisher explains why a value was undefined';
+    fixture.headlines[0].url = 'https://publisher.example/articles/undefined-value';
+    const built = buildWelcomeTeasers(fixture, 'docs/snapshots/x.json');
+    assert.equal(built.headlines[0].title, fixture.headlines[0].title);
+    assert.equal(built.headlines[0].url, fixture.headlines[0].url);
   });
 
   it('maps snapshot trend prose onto the strip trend enum', () => {

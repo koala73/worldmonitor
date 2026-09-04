@@ -18,8 +18,10 @@ import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { afterEach, describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
+import i18next from 'i18next';
 
 import { fetchLiveTeasers } from '../pro-test/src/services/teasers.ts';
+import { throwOnMissingStaticTranslation } from '../pro-test/src/static-i18n-guard.ts';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -81,8 +83,8 @@ describe('live welcome headlines link only to verifiable articles', () => {
     assert.equal(headlines.items[0].source, 'UN News');
   });
 
-  it('drops a non-https link instead of rendering it as an href', async () => {
-    for (const link of ['http://example.test/a', 'javascript:alert(1)', '', undefined]) {
+  it('drops an invalid or non-https link instead of rendering it as an href', async () => {
+    for (const link of ['http://example.test/a', 'javascript:alert(1)', 'https://', '', undefined]) {
       stubDigest([digestItem({ title: `link=${String(link)}`, link })]);
       const { headlines } = await fetchLiveTeasers();
       assert.equal(
@@ -99,9 +101,14 @@ describe('live welcome headlines link only to verifiable articles', () => {
     // scripts/freeze-crawlable-live-pulse.mjs rejects these because the URL is
     // opaque and expiring: the masthead is real but a reader cannot check the
     // story. The live path must not be laxer than the frozen one.
-    stubDigest([digestItem({ link: 'https://news.google.com/rss/articles/CBMifzFBVV95cUx' })]);
-    const { headlines } = await fetchLiveTeasers();
-    assert.equal(headlines.items[0].url, '');
+    for (const link of [
+      'https://news.google.com/rss/articles/CBMifzFBVV95cUx',
+      'https://news.google.com./rss/articles/CBMifzFBVV95cUx',
+    ]) {
+      stubDigest([digestItem({ link })]);
+      const { headlines } = await fetchLiveTeasers();
+      assert.equal(headlines.items[0].url, '');
+    }
   });
 
   it('breaks importance ties the same way the freeze does', async () => {
@@ -120,6 +127,32 @@ describe('live welcome headlines link only to verifiable articles', () => {
 });
 
 describe('third-party headline text survives the prerender splice', () => {
+  it('fails at a real missing static translation instead of scanning rendered data', async () => {
+    const instance = i18next.createInstance();
+    await instance.init({
+      resources: { en: { translation: { welcome: { known: 'Known copy' } } } },
+      lng: 'en',
+      fallbackLng: 'en',
+      parseMissingKeyHandler: throwOnMissingStaticTranslation,
+    });
+    assert.equal(instance.t('welcome.known'), 'Known copy');
+    assert.throws(
+      () => instance.t('welcome.missing'),
+      /missing welcome SSR locale key: welcome\.missing/,
+    );
+
+    const i18nSource = readFileSync(resolve(repoRoot, 'pro-test/src/i18n.ts'), 'utf8');
+    const prerenderSource = readFileSync(resolve(repoRoot, 'pro-test/prerender.mjs'), 'utf8');
+    assert.match(i18nSource, /parseMissingKeyHandler:\s*throwOnMissingStaticTranslation/);
+    assert.doesNotMatch(prerenderSource, /content\.includes\(['"]undefined['"]\)/);
+  });
+
+  it('does not evaluate relative headline age during SSR or initial hydration', () => {
+    const source = readFileSync(resolve(repoRoot, 'pro-test/src/welcome/LiveStrip.tsx'), 'utf8');
+    assert.match(source, /const \[mounted, setMounted\] = useState\(false\)/);
+    assert.match(source, /mounted && h\.publishedAt \? ` · \$\{timeAgo\(h\.publishedAt\)\}`/);
+  });
+
   // Positive control for the hazard itself. Without this, the assertion below
   // reads as style preference rather than a defect being held closed.
   it('a STRING replacement expands $-patterns in the injected markup', () => {

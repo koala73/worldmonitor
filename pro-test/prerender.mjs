@@ -237,12 +237,6 @@ const PAGES = [
 ];
 
 for (const { file, content, rootAttributes } of PAGES) {
-  // Fail loudly if server-rendered visible content resolved a missing locale key.
-  if (content.includes('undefined')) {
-    console.error(`[prerender] ERROR: Prerendered content for ${file} contains literal "undefined". Check the welcome SSR locale keys.`);
-    process.exit(1);
-  }
-
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
   html = inlineCriticalCss(html, file);

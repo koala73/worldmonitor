@@ -67,8 +67,10 @@ const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
 // the publish-time re-check cannot drift apart.
 export function isVerifiableArticleUrl(url) {
   const value = String(url || '').trim();
-  if (!value.startsWith('https://')) return false;
-  return !AGGREGATOR_LINK_HOSTS.has(URL.parse(value)?.hostname ?? '');
+  const parsed = URL.parse(value);
+  if (!parsed || parsed.protocol !== 'https:' || !parsed.hostname) return false;
+  const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+  return hostname.length > 0 && !AGGREGATOR_LINK_HOSTS.has(hostname);
 }
 
 // Operator-facing review-hygiene text the chokepoint status contract appends
@@ -471,7 +473,9 @@ export async function freezeCrawlableLivePulse({
   try {
     const digest = await authedGet('/api/news/v1/list-feed-digest?variant=full&lang=en', token, base);
     headlineDigestState = digest?.coverage?.state ?? null;
-    headlineServedStale = digest?.coverage?.servedStale === true;
+    headlineServedStale = typeof digest?.coverage?.servedStale === 'boolean'
+      ? digest.coverage.servedStale
+      : null;
     const { rows, rejections } = selectFrozenHeadlines(digest, HEADLINE_CAPTURE_COUNT);
     headlines = rows;
     if (rows.length < HEADLINE_CAPTURE_COUNT) {

@@ -61,9 +61,13 @@ const FETCH_TIMEOUT_MS = 5000;
 const AGGREGATOR_LINK_HOSTS = new Set(['news.google.com']);
 
 function articleUrl(link: string | undefined): string {
-  if (!link?.startsWith('https://')) return '';
+  if (!link) return '';
   try {
-    return AGGREGATOR_LINK_HOSTS.has(new URL(link).hostname) ? '' : link;
+    const parsed = new URL(link);
+    const hostname = parsed.hostname.toLowerCase().replace(/\.+$/, '');
+    return parsed.protocol === 'https:' && hostname && !AGGREGATOR_LINK_HOSTS.has(hostname)
+      ? link
+      : '';
   } catch {
     return '';
   }
