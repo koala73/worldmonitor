@@ -2,11 +2,15 @@
  * Toronto Police Service Open Data — official occurrence and calls-attended
  * datasets (#7012).
  *
- * On-demand only. Do not add the ~486k MCI corpus to FAST/SLOW bootstrap or
- * as a ninth seed-bundle-canada member. Capacity decision: a full MCI walk
- * at the 2,000-record page cap is ~243 pages and cannot fit the Canada
- * bundle's 570s wall budget with margin. Use this bounded worker / on-demand
- * fetch instead.
+ * Do not add the ~486k MCI corpus to FAST/SLOW bootstrap, and never walk the
+ * full corpus: at the 2,000-record page cap that is ~243 pages and cannot fit
+ * the Canada bundle's 570s wall budget. What ships instead is this BOUNDED
+ * worker — a 90-day MCI lookback capped at 3 pages, and the Calls datastore
+ * capped at 12. Measured live 2026-09-04: 3,195 + 5,982 records in 22.1s for
+ * the pair, so the bounded form fits the bundle comfortably and both seeders
+ * run there on a 6h member interval (#7036). The earlier "on-demand only"
+ * rule was a capacity claim about the full walk, and it kept the keys with no
+ * invoker at all: the 24h canonical TTL emptied them a day after each hand run.
  *
  * Source rights and attribution are recorded in scripts/source-attribution.mjs.
  * Credit TPS without crests. No endorsement. Coordinates are deliberately
