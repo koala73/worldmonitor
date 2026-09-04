@@ -40,13 +40,18 @@
  *   node scripts/cloudflare-cache-rule.mjs --check   # compare against the live zone; exit 1 on drift
  *   node scripts/cloudflare-cache-rule.mjs --apply   # idempotent upsert into the zone
  *
- * `--check` and `--apply` need `CLOUDFLARE_API_TOKEN` with Zone > Cache Rules
- * edit on worldmonitor.app (the same secret .github/workflows/deploy-worker.yml
- * already uses; `CLOUDFLARE_ALL_ACCESS_TOKEN` is accepted as a fallback because
- * that is what .env.local carries locally, and the worker token is not scoped to
- * cache rules). `--apply` prints the ruleset version it replaced; Cloudflare
- * keeps prior versions, so a bad apply is recoverable from the dashboard's
- * ruleset history.
+ * `--check` and `--apply` need `CLOUDFLARE_API_TOKEN` carrying **Zone > Cache
+ * Rules > Edit on worldmonitor.app**. That is NOT the `CLOUDFLARE_API_TOKEN`
+ * .github/workflows/deploy-worker.yml uses: that secret is scoped to Workers
+ * Scripts:Edit + Workers Routes:Edit (see its header comment) and will fail here.
+ * Wiring this into CI means provisioning a separate, cache-rules-scoped token.
+ * Locally, `CLOUDFLARE_ALL_ACCESS_TOKEN` is accepted as a fallback because that
+ * is what .env.local carries — note it is account-wide, so a mistake here runs
+ * with far more Cloudflare authority than the task needs.
+ *
+ * `--apply` touches only this one rule and then re-reads the zone to confirm it
+ * actually wins. Cloudflare keeps prior ruleset versions, so a bad apply is also
+ * recoverable from the dashboard's ruleset history.
  */
 
 import { pathToFileURL } from 'node:url';
@@ -55,7 +60,7 @@ import { CONTENT_CORPUS_PREFIXES } from './discover-content-corpus-pages.mjs';
 
 const CLOUDFLARE_API = 'https://api.cloudflare.com/client/v4';
 
-export const ZONE_NAME = 'worldmonitor.app';
+const ZONE_NAME = 'worldmonitor.app';
 
 /** Apex and the variant subdomains serve different documents from these paths. */
 export const CORPUS_HOST = 'www.worldmonitor.app';
@@ -65,10 +70,10 @@ export const CORPUS_HOST = 'www.worldmonitor.app';
  * it here without renaming it in the dashboard creates a duplicate rule rather
  * than updating the existing one.
  */
-export const CORPUS_CACHE_RULE_DESCRIPTION = 'WWW corpus HTML - use origin CDN cache headers';
+const CORPUS_CACHE_RULE_DESCRIPTION = 'WWW corpus HTML - use origin CDN cache headers';
 
 /** The cache-phase ruleset both this rule and the pre-existing bypass live in. */
-export const CACHE_PHASE = 'http_request_cache_settings';
+const CACHE_PHASE = 'http_request_cache_settings';
 
 /**
  * Build the wirefilter expression for the corpus families.
@@ -91,7 +96,7 @@ export const CACHE_PHASE = 'http_request_cache_settings';
  * whole change exists to serve, and production confirms `/countries/iran.md`
  * answers 200 `text/markdown` from a Cloudflare HIT.
  */
-export function buildCorpusCacheExpression(prefixes = CONTENT_CORPUS_PREFIXES) {
+function buildCorpusCacheExpression(prefixes = CONTENT_CORPUS_PREFIXES) {
   const bare = prefixes.map((prefix) => `"/${prefix}"`).join(' ');
   const nested = prefixes
     .map((prefix) => `    or starts_with(http.request.uri.path, "/${prefix}/")`)
@@ -155,7 +160,7 @@ export function buildCorpusCacheRule(prefixes = CONTENT_CORPUS_PREFIXES) {
  * `JSON.stringify` comparison reports drift on a rule that was just applied
  * unchanged — observed on the very first `--check` after this rule landed.
  */
-export function stableStringify(value) {
+function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
   if (value && typeof value === 'object') {
     const body = Object.keys(value)
