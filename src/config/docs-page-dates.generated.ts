@@ -60,7 +60,7 @@ export const DOCS_PAGE_DATES: Record<string, string> = {
   "methodology/china-activity-nowcast": "2026-08-31",
   "methodology/chokepoints": "2026-09-04",
   "methodology/cii-risk-scores": "2026-09-02",
-  "methodology/country-resilience-index": "2026-08-31",
+  "methodology/country-resilience-index": "2026-09-04",
   "methodology/defense-industrial-base": "2026-08-31",
   "methodology/demographics-capability": "2026-08-31",
   "methodology/disease-alert-level": "2026-08-31",
