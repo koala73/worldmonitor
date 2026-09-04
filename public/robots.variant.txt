@@ -2,16 +2,18 @@
 # Prefixes that 308 to www are NOT Disallowed — a crawler must fetch them to
 # observe the redirect. /pro/welcome.html stays 200 here, so /pro is Disallowed.
 # `Allow: /dashboard$` is end-anchored (#7660): the bare document stays
-# explicitly crawlable, but an unanchored `/dashboard` would be a 10-character
-# longest-match win over every `/*?*…=` rule below and silently re-open the
-# parameterised map-state space on exactly the path that generates it.
+# explicitly crawlable, but unanchored `/dashboard` is 10 characters and so
+# out-ranks the `/*?*lat=`, `/*?*lon=`, `/*?*zoom=`, `/*?*ref=` and `/*?*utm_`
+# rules below (8-9). Any map URL that omits `layers` would slip straight
+# through on exactly the path that generates the space.
 # Named AI groups restate the * rules — robots.txt groups do not inherit.
 #
 # Crawl-budget disallows (#7660) mirror robots.www.txt: parameterised map-state
 # and attribution URLs, already consolidated by rel=canonical. The variant hosts
 # contributed 415 of the 1,000 exported redirect URLs. Rules are query-scoped
-# (`/*?*`) so /dashboard and the 308 families stay crawlable. /docs/_next/ is
-# deliberately left crawlable for the reason recorded in robots.www.txt.
+# (`/*?*`) so /dashboard and the 308 families stay crawlable, and the /embed
+# carve-outs keep the documented iframe fetchable. /docs/_next/ is deliberately
+# left crawlable for the reason recorded in robots.www.txt.
 
 User-agent: *
 Content-Signal: ai-train=no, search=yes, ai-input=yes
@@ -21,6 +23,8 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /embed?*layers=
+Allow: /embed?*zoom=
 Disallow: /pro
 Disallow: /api/
 Disallow: /tests/
@@ -53,6 +57,8 @@ Allow: /api/story
 Allow: /api/og-story
 Allow: /api/llms.txt
 Allow: /api/product-catalog
+Allow: /embed?*layers=
+Allow: /embed?*zoom=
 Disallow: /pro
 Disallow: /api/
 Disallow: /tests/

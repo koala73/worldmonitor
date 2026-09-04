@@ -4211,6 +4211,11 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       // resource from Googlebot on the pages already stuck in "crawled -
       // currently not indexed", which costs more than a cheap 404.
       '/docs/_next/static/chunks/462bacc63bed9960.css?dpl=dpl_6TpKozpvfbf2eKSzPrrzWSvEC9fx',
+      // docs/embed-live-map.mdx documents this exact iframe src. The map-param
+      // rules would otherwise stop Googlebot fetching our widget while it
+      // renders a partner's page.
+      '/embed?layers=conflicts,earthquakes,weather&center=20,0&zoom=1&theme=dark&variant=full',
+      '/embed?panel=fear-greed&theme=dark',
       '/blog/',
       '/api/llms.txt',
     ];
@@ -4993,11 +4998,11 @@ describe('variant-host canonicalization (#6833–#6836)', () => {
     for (const path of ['/pro', '/api/', '/tests/']) {
       assert.match(body, new RegExp(`^Disallow: ${path.replace('/', '\\/')}$`, 'm'), `variant robots must Disallow ${path}`);
     }
-    // End-anchored since #7660. Unanchored, `/dashboard` is a 10-character
-    // longest-match win over every `/*?*…=` crawl-budget rule, which silently
-    // re-opened the parameterised map-state space on the one path that
-    // generates it. `$` keeps the bare document explicitly crawlable without
-    // covering its query forms.
+    // End-anchored since #7660. Unanchored, `/dashboard` is 10 characters and
+    // out-ranks the 8-9 character `/*?*lat=`, `/*?*lon=`, `/*?*zoom=`,
+    // `/*?*ref=` and `/*?*utm_` rules, so any map URL omitting `layers` slipped
+    // straight through on the one path that generates the space. `$` keeps the
+    // bare document explicitly crawlable without covering its query forms.
     assert.match(body, /^Allow: \/dashboard\$$/m);
     assert.doesNotMatch(body, /^Allow: \/dashboard$/m);
     assert.doesNotMatch(body, /^Disallow: \/dashboard\$?$/m);
