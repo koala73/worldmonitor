@@ -1933,6 +1933,10 @@ const ZERO_RECORD_DATA_OK_KEYS = new Set([
   // activation marker exists.
   'torontoTfs',
   'torontoTps',
+  // The relay publishes the dark-ship envelope with zeroOk — zero dark ships
+  // is a legitimate peaceful state, not a failed publish. A MISSING key still
+  // reads EMPTY (absence is not peaceful).
+  'aisGaps',
   'globalTendersSam', 'globalTendersTed', 'globalTendersContractsFinder', 'globalTendersCanadaBuys', 'globalTendersGets', 'globalTendersWorldBank',
   // retailer-spread is SUPPRESSED to an explicit 0 by the aggregate job when a
   // market's retailers share < MIN_SPREAD_ITEMS (4) common basket items —

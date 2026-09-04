@@ -187,6 +187,49 @@ async function writeTemporalAnomaliesSeedMeta(
   }, 604800).catch(() => false);
 }
 
+/**
+ * One count extractor per configured COUNT_SOURCE_KEYS type, typed against
+ * CountSourcePayloads (derived from COUNT_SOURCE_KEYS in _shared.ts) so a new
+ * source without an extractor is a COMPILE error. Without it, a future
+ * source would silently drop out of typesWithCounts: no anomalies, no
+ * baseline folds, and no coverage alarm (no consumer sets minRecordCount).
+ */
+const COUNT_EXTRACTORS: Record<keyof CountSourcePayloads, (data: Record<string, unknown>) => number> = {
+  news: (data) => (data.topStories as unknown[] | undefined)?.length ?? 0,
+  satellite_fires: (data) =>
+    // wildfire:fires:v1 is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866)
+    // and carries the pre-cap FIRMS total in `pagination`. Counting the array instead
+    // would saturate this baseline at the cap, silently flattening every fire-volume
+    // anomaly above it — the z-score would read "normal" during a record fire season.
+    resolveFireDetectionTotalCount({
+      fireDetections: (data.fireDetections as unknown[] | undefined) ?? [],
+      pagination: data.pagination as { totalCount?: number } | undefined,
+    }),
+  // military:flights:v1 is a RAW payload (no seed envelope): the globally
+  // tracked military flights from the seeder/RPC producer.
+  military_flights: (data) => (data.flights as unknown[] | undefined)?.length ?? 0,
+  // theater-posture:sebuf:v1 arrives envelope-unwrapped. The count is the sum
+  // of per-theater strictly-filtered military vessels — NOT the theaters
+  // array length, and not the envelope recordCount, which counts theaters.
+  vessels: (data) => {
+    const theaters = data.theaters as Array<{ trackedVessels?: unknown }> | undefined;
+    let vessels = 0;
+    if (Array.isArray(theaters)) {
+      for (const theater of theaters) {
+        const tracked = Number(theater?.trackedVessels);
+        if (Number.isFinite(tracked)) vessels += tracked;
+      }
+    }
+    return vessels;
+  },
+  // maritime:ais-gaps:v1 arrives envelope-unwrapped: dark ships that returned
+  // after extended AIS silence, counted by the relay.
+  ais_gaps: (data) => {
+    const darkShips = Number(data.darkShips);
+    return Number.isFinite(darkShips) ? darkShips : 0;
+  },
+};
+
 export async function listTemporalAnomalies(
   _ctx: ServerContext,
   _req: ListTemporalAnomaliesRequest,
@@ -224,10 +267,10 @@ export async function listTemporalAnomalies(
       // Status-aware reads: getCachedJson collapses a genuine miss and a
       // transient read ERROR (timeout, non-2xx, parse failure) into the same
       // null, and the content clock fails closed on a missing source. Without
-      // the distinction one Redis blip stamps newestItemAt:null on two live
-      // feeds, which health reads as STALE_CONTENT immediately (it never
-      // reaches the 48h budget) and the scheduled monitor pages on with no
-      // debounce. An errored read means "unknown this cycle", not "frozen".
+      // the distinction one Redis blip stamps newestItemAt:null on every
+      // other live feed, which health reads as STALE_CONTENT immediately (it
+      // never reaches the 48h budget) and the scheduled monitor pages on with
+      // no debounce. An errored read means "unknown this cycle", not "frozen".
       const countReads = await Promise.all(
         Object.entries(COUNT_SOURCE_KEYS).map(async ([type, sourceKey]) => [
           type,
@@ -247,45 +290,7 @@ export async function listTemporalAnomalies(
         // contract — the strict clock fail-closes on any configured source
         // that was not read this cycle.
         countPayloads[type as keyof CountSourcePayloads] = data;
-
-        if (type === 'news') {
-          const stories = (data as { topStories?: unknown[] })?.topStories;
-          counts[type] = stories?.length ?? 0;
-        } else if (type === 'satellite_fires') {
-          // wildfire:fires:v1 is itself capped at WILDFIRE_CANONICAL_DETECTION_LIMIT (#5866)
-          // and carries the pre-cap FIRMS total in `pagination`. Counting the array instead
-          // would saturate this baseline at the cap, silently flattening every fire-volume
-          // anomaly above it — the z-score would read "normal" during a record fire season.
-          const fires = (data as { fireDetections?: unknown[] })?.fireDetections;
-          counts[type] = resolveFireDetectionTotalCount({
-            fireDetections: fires ?? [],
-            pagination: (data as { pagination?: { totalCount?: number } })?.pagination,
-          });
-        } else if (type === 'military_flights') {
-          // military:flights:v1 is a RAW payload (no seed envelope): the
-          // globally tracked military flights from the seeder/RPC producer.
-          const flights = (data as { flights?: unknown[] })?.flights;
-          counts[type] = flights?.length ?? 0;
-        } else if (type === 'vessels') {
-          // theater-posture:sebuf:v1 arrives envelope-unwrapped. The count is
-          // the sum of per-theater strictly-filtered military vessels — NOT
-          // the theaters array length, and not the envelope recordCount,
-          // which counts theaters.
-          const theaters = (data as { theaters?: Array<{ trackedVessels?: unknown }> })?.theaters;
-          let vessels = 0;
-          if (Array.isArray(theaters)) {
-            for (const theater of theaters) {
-              const tracked = Number(theater?.trackedVessels);
-              if (Number.isFinite(tracked)) vessels += tracked;
-            }
-          }
-          counts[type] = vessels;
-        } else if (type === 'ais_gaps') {
-          // maritime:ais-gaps:v1 arrives envelope-unwrapped: dark ships that
-          // returned after extended AIS silence, counted by the relay.
-          const darkShips = Number((data as { darkShips?: unknown })?.darkShips);
-          counts[type] = Number.isFinite(darkShips) ? darkShips : 0;
-        }
+        counts[type] = COUNT_EXTRACTORS[type as keyof CountSourcePayloads](data);
       }
 
       const typesWithCounts = trackedTypes.filter(t => counts[t] !== undefined);
