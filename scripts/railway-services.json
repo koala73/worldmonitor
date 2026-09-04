@@ -1547,6 +1547,33 @@
     "documentedAt": "docs/railway-seed-consolidation-runbook.md#standalone-seed-crons-43-not-bundled"
   },
   {
+    "entry": "scripts/seed-security-advisories.mjs",
+    "deployMode": "nixpacks-root-scripts",
+    "service": "seed-security-advisories",
+    "requiredEnv": [
+      "UPSTASH_REDIS_REST_URL",
+      "UPSTASH_REDIS_REST_TOKEN"
+    ],
+    "watchPatterns": [
+      "scripts/_html-entities.mjs",
+      "scripts/_proxy-utils.cjs",
+      "scripts/_seed-contract.mjs",
+      "scripts/_seed-envelope-source.mjs",
+      "scripts/_seed-utils.mjs",
+      "scripts/lib/llm-telemetry.cjs",
+      "scripts/nixpacks.toml",
+      "scripts/package-lock.json",
+      "scripts/package.json",
+      "scripts/seed-security-advisories.mjs",
+      "scripts/shared/country-names.json",
+      "scripts/shared/rss-allowed-domains.json",
+      "shared/country-names.json",
+      "shared/rss-allowed-domains.json"
+    ],
+    "cronSchedule": "0 * * * *",
+    "documentedAt": "scripts/seed-security-advisories.mjs"
+  },
+  {
     "entry": "scripts/seed-service-statuses.mjs",
     "deployMode": "nixpacks-root-repo",
     "lifecycle": "planned",

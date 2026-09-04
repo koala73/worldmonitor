@@ -166,6 +166,11 @@ describe('seed-security-advisories — advisory level index coverage', () => {
       text: async () => xml,
     }));
 
+    assert.equal(
+      MAX_ADVISORY_FEED_BYTES,
+      2 * 1024 * 1024,
+      'feed limit must stay at the reviewed two MiB bound',
+    );
     assert.ok(bytes > 1024 * 1024, 'fixture must exceed the former one MiB limit');
     assert.ok(bytes <= MAX_ADVISORY_FEED_BYTES, 'fixture must remain inside the configured limit');
     assert.equal(mapped.length, REGISTER.length);
