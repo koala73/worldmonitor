@@ -23,12 +23,10 @@ import { fileURLToPath } from 'node:url';
 
 import { CONTENT_CORPUS_PREFIXES } from '../scripts/discover-content-corpus-pages.mjs';
 import {
-  CORPUS_CACHE_RULE_DESCRIPTION,
   CORPUS_HOST,
   buildCorpusCacheRule,
   diffLiveRuleset,
-  sanitizeRuleForPut,
-  upsertCorpusCacheRule,
+  planApply,
 } from '../scripts/cloudflare-cache-rule.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -57,7 +55,17 @@ function vercelPublicCorpusFamilies() {
     const cdn = entry.headers.find((header) => header.key === 'CDN-Cache-Control');
     if (cdn?.value !== HTML_ENTRY_EDGE_CACHE) continue;
     if (ENTRY_DOCUMENT_SOURCES.has(entry.source)) continue;
-    for (const family of familiesFromVercelSource(entry.source)) families.add(family);
+    const parsed = familiesFromVercelSource(entry.source);
+    // Failing open here would gut the guard below: a family added under a source
+    // shape this regex does not recognise would silently contribute nothing, and
+    // the comparison would pass while the Cloudflare rule was missing it — the
+    // exact drift the test exists to catch.
+    assert.ok(
+      parsed.length,
+      `${entry.source} advertises a shared CDN-Cache-Control but does not parse as a corpus family source;`
+        + ' teach familiesFromVercelSource() its shape or add it to ENTRY_DOCUMENT_SOURCES',
+    );
+    for (const family of parsed) families.add(family);
   }
   return families;
 }
@@ -92,6 +100,21 @@ describe('cloudflare corpus cache rule', () => {
       [...claimed].sort(),
       [...vercelPublicCorpusFamilies()].sort(),
       'the Cloudflare rule and the vercel.json CDN-Cache-Control rules must cover the same families',
+    );
+  });
+
+  it('deliberately claims the agent-facing markdown twins alongside the HTML', () => {
+    // `starts_with(path, "/countries/")` matches /countries/iran.md as well as
+    // /countries/iran/. Same static build output, same public s-maxage, and AI
+    // crawlers are the audience this change exists to serve — so this is intended,
+    // and pinning it makes any future narrowing a deliberate act.
+    assert.ok(
+      rule.expression.includes('starts_with(http.request.uri.path, "/countries/")'),
+      'the prefix clause is what admits both /countries/iran/ and /countries/iran.md',
+    );
+    assert.ok(
+      !rule.expression.includes('http.request.uri.path.extension'),
+      'no extension filter: narrowing to HTML would drop the .md twins crawlers fetch',
     );
   });
 
@@ -135,56 +158,65 @@ describe('cloudflare corpus cache rule', () => {
         // it gets revalidation for free and keeps one TTL under one owner.
         mode: 'bypass_by_default',
         status_code_ttl: [
-          // A 404 under a corpus prefix is rendered per-request by
-          // middleware.ts (markdown for agents, HTML for browsers). Caching it
-          // would let one audience's variant answer the other's request.
-          { status_code_range: { from: 300, to: 499 }, value: 0 },
+          // Both -1 (no-store), not 0. Cloudflare's 0 means no-cache, which still
+          // STORES the response — production showed a corpus 404 sitting at
+          // cf-cache-status MISS under 0. A 404 here can come from middleware.ts's
+          // Accept-negotiating originNotFoundResponse, and Cloudflare honours Vary
+          // only for Accept-Encoding, so it must never be stored.
+          { status_code_range: { from: 300, to: 499 }, value: -1 },
           { status_code_range: { from: 500 }, value: -1 },
         ],
       },
     });
   });
 
-  it('appends the rule last so it overrides the blanket document bypass', () => {
-    // Cloudflare evaluates every matching rule in the cache phase in order and
-    // the last one to set a field wins. The corpus rule and the "Bypass cache -
-    // WWW documents" rule both match a corpus URL, so ordering is the whole
-    // mechanism — placed first, the rule is silently inert.
-    const existing = [
-      { id: 'a', description: 'Bypass cache - WWW documents', action: 'set_cache_settings' },
-      { id: 'b', description: 'WWW entry HTML - use origin CDN cache headers', action: 'set_cache_settings' },
+  it('creates the rule when the zone has never had it', () => {
+    const bypass = { id: 'a', description: 'Bypass cache - WWW documents', action_parameters: { cache: false } };
+    assert.deepEqual(planApply([bypass], rule).op, 'create');
+  });
+
+  it('does nothing when the zone already matches', () => {
+    const bypass = { id: 'a', description: 'Bypass cache - WWW documents', action_parameters: { cache: false } };
+    assert.equal(planApply([bypass, { ...rule, id: 'mine' }], rule).op, 'none');
+  });
+
+  it('patches in place when only the settings drifted', () => {
+    // Content-only drift needs no move, and moving it would churn the rule id
+    // for no reason.
+    const bypass = { id: 'a', description: 'Bypass cache - WWW documents', action_parameters: { cache: false } };
+    const edited = { ...rule, id: 'mine', expression: '(http.host eq "example.com")' };
+    const plan = planApply([bypass, edited], rule);
+    assert.equal(plan.op, 'update');
+    assert.equal(plan.id, 'mine');
+    assert.deepEqual(plan.diff.problems, ['expression differs']);
+  });
+
+  it('recreates the rule when it sits where it can never win', () => {
+    // Ordering is the whole mechanism: the blanket document bypass matches every
+    // corpus URL too, and Cloudflare lets the last matching rule win. A rule
+    // above it is silently inert, so it has to move rather than be patched.
+    const bypass = { id: 'a', description: 'Bypass cache - WWW documents', action_parameters: { cache: false } };
+    const plan = planApply([{ ...rule, id: 'mine' }, bypass], rule);
+    assert.equal(plan.op, 'recreate');
+    assert.equal(plan.id, 'mine');
+  });
+
+  it('never plans a write that touches another rule', () => {
+    // The regression this pins: an earlier version rewrote the whole cache-phase
+    // ruleset on every apply, which silently reverts any concurrent dashboard
+    // edit and round-trips every other rule's user-owned `ref`. A plan may only
+    // ever name our own rule's id.
+    const others = [
+      { id: 'a', description: 'Bypass cache - WWW documents', action_parameters: { cache: false } },
+      { id: 'b', description: 'WWW entry HTML - use origin CDN cache headers', ref: 'www_entry_html_origin_cache' },
     ];
-    const next = upsertCorpusCacheRule(existing, rule);
-    assert.equal(next.length, 3);
-    assert.equal(next.at(-1).description, CORPUS_CACHE_RULE_DESCRIPTION);
-    assert.deepEqual(next.slice(0, 2), existing, 'the rules already in the zone must be left untouched');
-  });
-
-  it('replaces its own previous copy instead of stacking duplicates', () => {
-    const existing = [
-      { id: 'a', description: 'Bypass cache - WWW documents', action: 'set_cache_settings' },
-      { id: 'stale', description: CORPUS_CACHE_RULE_DESCRIPTION, expression: '(http.host eq "old")' },
-      { id: 'b', description: 'WWW entry HTML - use origin CDN cache headers', action: 'set_cache_settings' },
-    ];
-    const once = upsertCorpusCacheRule(existing, rule);
-    assert.equal(once.filter((entry) => entry.description === CORPUS_CACHE_RULE_DESCRIPTION).length, 1);
-    assert.equal(once.at(-1).expression, rule.expression, 'the stale copy must be replaced, not kept');
-    assert.deepEqual(upsertCorpusCacheRule(once, rule), once, 'a second apply must be a no-op');
-  });
-
-  it('does not graft the replaced rule’s id onto the new definition', () => {
-    // The entrypoint PUT replaces the whole rule list, and Cloudflare owns rule
-    // ids. Carrying the stale copy's id forward would ask it to mutate a rule
-    // whose body we never read, so the replacement goes in as a fresh rule.
-    const existing = [{ id: 'stale', description: CORPUS_CACHE_RULE_DESCRIPTION, expression: 'old' }];
-    const next = upsertCorpusCacheRule(existing, rule);
-    assert.equal(next.at(-1).id, undefined, 'the replacement rule must not carry the old rule id');
-  });
-
-  it('strips the fields Cloudflare owns before echoing a rule back on a PUT', () => {
-    const live = { id: 'keep', description: 'x', expression: 'y', version: '3', last_updated: 'now', ref: 'r' };
-    assert.deepEqual(sanitizeRuleForPut(live), { id: 'keep', description: 'x', expression: 'y' });
-    assert.equal(live.version, '3', 'the live rule read from the zone must not be mutated');
+    for (const rules of [others, [...others, { ...rule, id: 'mine' }], [{ ...rule, id: 'mine' }, ...others]]) {
+      const plan = planApply(rules, rule);
+      assert.ok(
+        plan.id === undefined || plan.id === 'mine',
+        `plan targeted ${plan.id}, which is not this rule`,
+      );
+    }
   });
 });
 

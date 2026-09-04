@@ -129,6 +129,41 @@ async function fetchText(pathOrUrl, init = {}) {
   return { resp, bodyText };
 }
 
+/**
+ * Fetch a corpus document until Cloudflare reports a stored HIT.
+ *
+ * Asserting merely "not DYNAMIC" proves the cache rule made the document
+ * ELIGIBLE — which a zone that never actually stores anything also satisfies. It
+ * would answer MISS forever and this probe would stay green while the edge HITs
+ * #7659 exists to deliver never happened. A cold edge server legitimately answers
+ * MISS once, so retry rather than demanding a HIT on the first request: six fresh
+ * country documents each reached HIT on their second attempt when measured.
+ */
+async function waitForCloudflareHit(url, name) {
+  const seen = [];
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const result = await fetchText(url);
+    assert.equal(result.resp.status, 200, `${name}: corpus document must still be served`);
+    const status = cfCacheStatus(result.resp).toUpperCase();
+    seen.push(status || 'absent');
+    if (status === 'HIT') return result;
+    // DYNAMIC/BYPASS is the cache-rule fingerprint and is worth its own message;
+    // any other status means eligible-but-not-yet-stored, so keep trying.
+    assert.ok(
+      !['DYNAMIC', 'BYPASS'].includes(status),
+      `${name}: not edge-cacheable (cf-cache-status: ${status || 'absent'});`
+        + ' the "WWW corpus HTML" cache rule is missing, disabled, or no longer sits after the'
+        + ' "Bypass cache - WWW documents" rule — regenerate it with'
+        + ' `node scripts/cloudflare-cache-rule.mjs --apply`',
+    );
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  assert.fail(
+    `${name}: eligible for the Cloudflare cache but never returned a HIT (${seen.join(' -> ')}) —`
+    + ' the rule is in force yet nothing is being stored, so the corpus still pays full origin TTFB',
+  );
+}
+
 async function waitForSharedCacheHit(url, name) {
   const attempts = [];
   for (let attempt = 1; attempt <= 5; attempt += 1) {
@@ -451,20 +486,11 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
   // which edge server answered, so "not DYNAMIC" is the deterministic form of
   // "the rule is in force" — demanding a HIT would be a coin flip on a cold POP.
   it('serves the corpus from the Cloudflare edge, and only its query-free canonical', async () => {
-    const canonical = await fetchText(CORPUS_DOCUMENT_URL);
-    assert.equal(canonical.resp.status, 200, 'corpus document must still be served');
+    const canonical = await waitForCloudflareHit(CORPUS_DOCUMENT_URL, 'corpus document');
     assert.equal(
       canonical.resp.headers.get('cdn-cache-control'),
       CORPUS_EDGE_CACHE_CONTROL,
       'corpus document must still advertise the 600s shared TTL the cache rule honours',
-    );
-    const status = cfCacheStatus(canonical.resp).toUpperCase();
-    assert.ok(
-      status && !['DYNAMIC', 'BYPASS'].includes(status),
-      `corpus document is not edge-cacheable (cf-cache-status: ${status || 'absent'});`
-        + ' the "WWW corpus HTML" cache rule is missing, disabled, or no longer sits after the'
-        + ' "Bypass cache - WWW documents" rule — regenerate it with'
-        + ' `node scripts/cloudflare-cache-rule.mjs --apply`',
     );
 
     // Negative control, and the safety boundary the rule was scoped around:
@@ -477,11 +503,13 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     const tagged = await fetchText(`${CORPUS_DOCUMENT_URL}?utm_source=live-cache-sweep`);
     assert.equal(tagged.resp.status, 200, 'the tagged URL must reach the page, not the bot redirect —'
       + ' otherwise this control passes for the wrong reason');
-    assert.equal(
-      cfCacheStatus(tagged.resp).toUpperCase(),
-      'DYNAMIC',
+    // Same two-value set the positive assertion treats as "not edge-cached".
+    // Demanding exactly DYNAMIC would turn this 6-hourly gate red the day
+    // Cloudflare answers BYPASS for an unrelated reason.
+    assert.ok(
+      ['DYNAMIC', 'BYPASS'].includes(cfCacheStatus(tagged.resp).toUpperCase()),
       'query-bearing corpus URLs must stay out of the Cloudflare cache — they reach a'
-        + ' User-Agent-dependent redirect that Cloudflare cannot vary on',
+        + ` User-Agent-dependent redirect that Cloudflare cannot vary on (got ${cfCacheStatus(tagged.resp) || 'absent'})`,
     );
     markProbeCompleted('corpus-edge-cache');
   });

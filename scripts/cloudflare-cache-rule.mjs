@@ -77,6 +77,19 @@ export const CACHE_PHASE = 'http_request_cache_settings';
  * the bare form is a 308 to the trailing-slash canonical and is not cached either
  * way, but omitting it would leave the rule describing a smaller surface than the
  * vercel.json header rule it mirrors, which is how the two drift apart.
+ *
+ * `starts_with` also claims the non-HTML members of each family — chiefly the
+ * agent-facing markdown twins (`/countries/iran.md`). That is deliberate, though
+ * not for the reason the HTML is safe: a `.md` twin is NOT static build output.
+ * vercel.json rewrites `/:path.md` to the `/api/md-twin` edge handler, which is a
+ * pure function of the path — api/_md-url-twin.ts forwards no auth, cookie or UA,
+ * fixes its outbound Accept, and answers `public, max-age=3600`, with `no-store`
+ * on every failure branch. Its one declared `Vary` is the internal loop guard
+ * `x-wm-md-twin`, which Cloudflare ignores but which cannot reach a cached entry
+ * anyway: only a `.md` URL reaches the handler, and the handler's own outbound
+ * fetch targets the sibling non-`.md` page. AI crawlers are the audience this
+ * whole change exists to serve, and production confirms `/countries/iran.md`
+ * answers 200 `text/markdown` from a Cloudflare HIT.
  */
 export function buildCorpusCacheExpression(prefixes = CONTENT_CORPUS_PREFIXES) {
   const bare = prefixes.map((prefix) => `"/${prefix}"`).join(' ');
@@ -118,7 +131,15 @@ export function buildCorpusCacheRule(prefixes = CONTENT_CORPUS_PREFIXES) {
         // it gets revalidation for free and keeps one TTL under one owner.
         mode: 'bypass_by_default',
         status_code_ttl: [
-          { status_code_range: { from: 300, to: 499 }, value: 0 },
+          // -1 is Cloudflare's no-store; 0 is its no-cache, which STORES the
+          // response and revalidates. The entry-HTML rule this otherwise mirrors
+          // uses 0 here, and production showed the effect: a 404 under a corpus
+          // prefix sat at `cf-cache-status: MISS` on every request rather than
+          // DYNAMIC — stored, not excluded. A 404 under these prefixes can be
+          // produced by middleware.ts's originNotFoundResponse, which negotiates
+          // on Accept (markdown for agents, HTML for browsers) while Cloudflare
+          // honours Vary only for Accept-Encoding, so it must not be stored at all.
+          { status_code_range: { from: 300, to: 499 }, value: -1 },
           { status_code_range: { from: 500 }, value: -1 },
         ],
       },
@@ -126,21 +147,6 @@ export function buildCorpusCacheRule(prefixes = CONTENT_CORPUS_PREFIXES) {
     enabled: true,
   };
 }
-
-/**
- * Place `rule` last in `rules`, replacing any earlier copy of itself.
- *
- * Last position is the mechanism, not a detail: the blanket document bypass also
- * matches every corpus URL, and Cloudflare lets the last matching rule win.
- * Rules that are not ours pass through untouched, in their original order.
- */
-export function upsertCorpusCacheRule(rules, rule = buildCorpusCacheRule()) {
-  const others = (rules ?? []).filter((entry) => entry?.description !== rule.description);
-  return [...others, rule];
-}
-
-/** Fields Cloudflare owns; echoing them back on a PUT is at best noise. */
-const READ_ONLY_RULE_FIELDS = ['version', 'last_updated', 'ref'];
 
 /**
  * Deep-compare two values independently of object key order.
@@ -161,13 +167,6 @@ export function stableStringify(value) {
   return JSON.stringify(value) ?? 'null';
 }
 
-/** Strip the server-owned fields from a rule read back out of the zone. */
-export function sanitizeRuleForPut(rule) {
-  const copy = { ...rule };
-  for (const field of READ_ONLY_RULE_FIELDS) delete copy[field];
-  return copy;
-}
-
 async function cloudflareRequest(path, { token, method = 'GET', body } = {}) {
   const response = await fetch(`${CLOUDFLARE_API}${path}`, {
     method,
@@ -177,6 +176,8 @@ async function cloudflareRequest(path, { token, method = 'GET', body } = {}) {
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
   });
+  // A rule DELETE can answer 204 with no body; that is success, not a parse error.
+  if (response.status === 204 && response.ok) return null;
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.success) {
     const detail = JSON.stringify(payload?.errors ?? payload ?? response.statusText);
@@ -186,7 +187,18 @@ async function cloudflareRequest(path, { token, method = 'GET', body } = {}) {
 }
 
 async function resolveZoneId(token, env = process.env) {
-  if (env.CLOUDFLARE_ZONE_ID) return env.CLOUDFLARE_ZONE_ID;
+  if (env.CLOUDFLARE_ZONE_ID) {
+    // Never take the id on trust. The credential that actually runs this locally
+    // is account-wide, so a stale or mistyped id would aim every write at another
+    // zone's cache rules — and the script would report success.
+    const zone = await cloudflareRequest(`/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}`, { token });
+    if (zone?.name !== ZONE_NAME) {
+      throw new Error(
+        `CLOUDFLARE_ZONE_ID ${env.CLOUDFLARE_ZONE_ID} is zone "${zone?.name ?? 'unknown'}", not ${ZONE_NAME}`,
+      );
+    }
+    return zone.id;
+  }
   const zones = await cloudflareRequest(`/zones?name=${encodeURIComponent(ZONE_NAME)}`, { token });
   const zone = zones?.[0];
   if (!zone) throw new Error(`no Cloudflare zone named ${ZONE_NAME} is visible to this token`);
@@ -209,7 +221,9 @@ function resolveToken(env = process.env) {
  */
 export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
   const index = (rules ?? []).findIndex((entry) => entry.description === rule.description);
-  if (index === -1) return { status: 'missing', problems: ['the rule is not in the zone'] };
+  if (index === -1) {
+    return { status: 'missing', problems: ['the rule is not in the zone'], misordered: false };
+  }
 
   const live = rules[index];
   const problems = [];
@@ -229,8 +243,14 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
   // exists to catch — a correct-looking rule sitting where it can never win — is
   // invisible in the dashboard. A false alarm costs a moment's thought; a false
   // clear costs a repeat of #7659.
-  const laterBypass = rules.findIndex((entry, position) => position > index
-    && entry.action_parameters?.cache === false);
+  const laterBypass = rules.findIndex((entry, position) => {
+    if (position <= index) return false;
+    const params = entry.action_parameters;
+    if (params?.cache === false) return true;
+    // A later rule can also neutralise caching while leaving `cache: true`, by
+    // overriding the origin TTL to zero. Same outcome, different shape.
+    return params?.edge_ttl?.mode === 'override_origin' && params.edge_ttl.default === 0;
+  });
   if (laterBypass !== -1) {
     problems.push(
       `the rule sits at ${index}, above a cache-disabling rule at ${laterBypass}`
@@ -238,7 +258,34 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
     );
   }
 
-  return { status: problems.length ? 'drifted' : 'current', problems, index };
+  return {
+    status: problems.length ? 'drifted' : 'current',
+    problems,
+    index,
+    misordered: laterBypass !== -1,
+  };
+}
+
+/**
+ * Decide the single rule-level operation that reconciles the zone.
+ *
+ * Deliberately never rewrites the whole ruleset. The phase entrypoint PUT
+ * replaces every rule in the phase, so any dashboard edit made between this
+ * script's read and its write is reverted silently and without a trace — and
+ * that read-modify-write window is exactly when a human is most likely to be in
+ * the dashboard looking at the same rules. The per-rule endpoints touch only our
+ * own rule, which also means no other rule's user-owned `ref` is ever echoed
+ * back or lost.
+ */
+export function planApply(rules, rule = buildCorpusCacheRule()) {
+  const diff = diffLiveRuleset(rules, rule);
+  if (diff.status === 'missing') return { op: 'create', diff };
+  if (diff.status === 'current') return { op: 'none', diff };
+  const id = rules[diff.index]?.id;
+  // Content-only drift is a patch in place. A misordered rule has to move, and
+  // Cloudflare appends a new rule last — so the corrected copy is added before
+  // the stale one is removed and the corpus is never uncached in between.
+  return { op: diff.misordered ? 'recreate' : 'update', id, diff };
 }
 
 async function main(argv) {
@@ -272,15 +319,31 @@ async function main(argv) {
     return 0;
   }
 
-  const nextRules = upsertCorpusCacheRule((ruleset.rules ?? []).map(sanitizeRuleForPut), rule);
-  const updated = await cloudflareRequest(`/zones/${zoneId}/rulesets/${ruleset.id}`, {
-    token,
-    method: 'PUT',
-    body: { name: ruleset.name, kind: ruleset.kind, phase: ruleset.phase, rules: nextRules },
-  });
+  const plan = planApply(ruleset.rules, rule);
+  const rulesPath = `/zones/${zoneId}/rulesets/${ruleset.id}/rules`;
+  if (plan.op === 'update') {
+    await cloudflareRequest(`${rulesPath}/${plan.id}`, { token, method: 'PATCH', body: rule });
+  } else {
+    await cloudflareRequest(rulesPath, { token, method: 'POST', body: rule });
+    if (plan.op === 'recreate') {
+      await cloudflareRequest(`${rulesPath}/${plan.id}`, { token, method: 'DELETE' });
+    }
+  }
+
+  // Re-read rather than trusting the write's own echo: the point of this script
+  // is that a rule can be present and still not win.
+  const after = await cloudflareRequest(
+    `/zones/${zoneId}/rulesets/phases/${CACHE_PHASE}/entrypoint`,
+    { token },
+  );
+  const verify = diffLiveRuleset(after.rules, rule);
+  if (verify.status !== 'current') {
+    console.error(`applied but the zone still reports drift (${verify.status}): ${verify.problems.join('; ')}`);
+    return 1;
+  }
   console.log(
-    `applied: "${rule.description}" (${diff.status}) — ruleset version ${ruleset.version} -> ${updated.version},`
-    + ` ${updated.rules.length} rules`,
+    `applied (${plan.op}): "${rule.description}" — ruleset version ${ruleset.version} -> ${after.version},`
+    + ` ${after.rules.length} rules, position ${verify.index}`,
   );
   return 0;
 }

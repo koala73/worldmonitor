@@ -52,7 +52,8 @@ name: Live API Cache/Auth Sweep
 #     probes don't hit prod from the same runner IP range in the same minute):
 #     the posture this guards is set by CDN rules and deploy config, which drift
 #     independently of commits. ~25 requests per run (2 bootstrap + 2 RPC +
-#     1 premium RPC + 16 MCP + 2 OAuth + 2 corpus); 4 runs/day is ~100 requests —
+#     1 premium RPC + 16 MCP + 2 OAuth + 2-6 corpus, the corpus probe retrying
+#     until Cloudflare reports a stored HIT); 4 runs/day is ~100-116 requests —
 #     negligible, and the 16 MCP requests land over ~2s, far under the anon
 #     60/min/IP limit.
 #   - push to main touching the suite/workflow: validates edits on merge.
