@@ -1,5 +1,5 @@
 // RUN WITH: `npm run test:data` OR `node --import=tsx --test tests/mcp-proxy.test.mjs`.
-// The handler under test (api/mcp-proxy.ts) imports isCallerPremium from
+// The handler under test (api/mcp-proxy.ts) imports premium auth helpers from
 // server/_shared/premium-check (extensionless TS). Plain `node --test`
 // cannot resolve that import and will fail with ERR_MODULE_NOT_FOUND —
 // this is expected; use tsx (the project's standard test runner).
@@ -148,7 +148,7 @@ function dnsJsonResponse(records) {
 describe('api/mcp-proxy', () => {
   beforeEach(async () => {
     // mcp-proxy migrated .js → .ts in PR #3768 to unlock the
-    // isCallerPremium import from server/. Test must follow the rename.
+    // premium-check import from server/. Test must follow the rename.
     const mod = await import(`../api/mcp-proxy.ts?t=${Date.now()}`);
     handler = mod.default;
     assert.equal(mod.__setMcpProxyResolveHostnameForTest, undefined);
@@ -197,7 +197,7 @@ describe('api/mcp-proxy', () => {
     // PR #3768 review finding; closes the residual #3723 surface.
     // wms_ session tokens are anonymous and freely mintable via
     // /api/wm-session. The auth gate must reject them — otherwise the
-    // bypass is "mint, then proxy". isCallerPremium does this by
+    // bypass is "mint, then proxy". resolvePremiumCallerIdentity does this by
     // requiring keyCheck.required === true (wms_ short-circuits at
     // required:false). PR #3768 review regression.
     it('rejects a wms_ session token even though it is technically valid', async () => {
@@ -213,7 +213,7 @@ describe('api/mcp-proxy', () => {
       assert.match(body.error, /Pro authentication required/i);
     });
 
-    // wm_ user keys: isCallerPremium calls validateUserApiKey which hits
+    // wm_ user keys: resolvePremiumCallerIdentity calls validateUserApiKey which hits
     // Convex. With CONVEX_SITE_URL unset in test env, it returns null →
     // 401. This proves the wm_ branch fails closed when the validator
     // can't run — and that the path is exercised (no MODULE_NOT_FOUND
@@ -902,11 +902,9 @@ describe('api/mcp-proxy', () => {
       assert.match(data.error, /Unknown tool/i);
     });
 
-    it('returns 504 on timeout during tool call', async () => {
+    it('returns 504 on a native fetch TimeoutError during tool call', async () => {
       globalThis.fetch = async () => {
-        const err = new Error('signal timed out');
-        err.name = 'TimeoutError';
-        throw err;
+        throw new DOMException('The operation was aborted due to timeout', 'TimeoutError');
       };
       const res = await handler(makePostRequest({
         serverUrl: 'https://mcp.example.com/mcp',
@@ -1558,7 +1556,7 @@ describe('api/mcp-proxy — observability', () => {
   }
 
   /** Intercept the Axiom ingest POST and return the rows it carried. */
-  function stubAxiom() {
+  function stubAxiom(upstreamFetch = async () => new Response('{}', { status: 200 })) {
     const rows = [];
     globalThis.fetch = async (input, init) => {
       const url = typeof input === 'string' ? input : input.url;
@@ -1566,7 +1564,7 @@ describe('api/mcp-proxy — observability', () => {
         rows.push(...JSON.parse(init.body));
         return new Response('{}', { status: 200 });
       }
-      return new Response('{}', { status: 200 });
+      return upstreamFetch(input, init);
     };
     return rows;
   }
@@ -1620,6 +1618,78 @@ describe('api/mcp-proxy — observability', () => {
     assert.equal(rows.length, 0, 'no ctx means no waitUntil to hang delivery on');
   });
 
+  it('attributes an authenticated enterprise request instead of reporting anonymous traffic', async () => {
+    const rows = stubAxiom(makeMcpFetch({ tools: [] }));
+    const { ctx, pending } = collectingCtx();
+    const res = await obsHandler(
+      makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' }),
+      ctx,
+    );
+    assert.equal(res.status, 200);
+    await Promise.all(pending);
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0].auth_kind, 'enterprise_api_key');
+    assert.equal(rows[0].customer_id, 'enterprise-unmapped');
+    assert.equal(rows[0].plan_key, 'enterprise');
+    assert.ok(rows[0].principal_id, 'enterprise key must have a hashed principal');
+    assert.notEqual(rows[0].principal_id, ENTERPRISE_KEY, 'raw enterprise key must never enter telemetry');
+  });
+
+  it('maps each premium caller identity onto the shared usage identity contract', async () => {
+    const { proxyUsageIdentityFor } = await import(`../api/mcp-proxy.ts?identity=${Date.now()}`);
+    const request = makeGetRequest({ serverUrl: 'https://mcp.example.com/mcp' });
+
+    assert.deepEqual(
+      proxyUsageIdentityFor(request, { isPremium: true, userId: 'user_bearer', kind: 'bearer' }),
+      {
+        auth_kind: 'clerk_jwt',
+        principal_id: 'user_bearer',
+        customer_id: 'user_bearer',
+        tier: 0,
+        plan_key: null,
+      },
+    );
+    assert.deepEqual(
+      proxyUsageIdentityFor(request, { isPremium: true, userId: 'user_key', kind: 'user-api-key' }),
+      {
+        auth_kind: 'user_api_key',
+        principal_id: 'user_key',
+        customer_id: 'user_key',
+        tier: 0,
+        plan_key: null,
+      },
+    );
+    assert.deepEqual(
+      proxyUsageIdentityFor(request, { isPremium: true, userId: 'user_mcp', kind: 'internal-mcp' }),
+      {
+        auth_kind: 'mcp_oauth',
+        principal_id: 'user_mcp',
+        customer_id: 'user_mcp',
+        tier: 0,
+        plan_key: null,
+      },
+    );
+  });
+
+  it('downgrades expected upstream failures but keeps proxy defects at error level', async () => {
+    const { McpProxyUpstreamError, proxyFailureFor } = await import(
+      `../api/mcp-proxy.ts?failure=${Date.now()}`
+    );
+
+    assert.deepEqual(
+      proxyFailureFor(new DOMException('The operation was aborted due to timeout', 'TimeoutError')),
+      { isTimeout: true, level: 'warning' },
+    );
+    assert.deepEqual(
+      proxyFailureFor(new McpProxyUpstreamError('Initialize failed: HTTP 401')),
+      { isTimeout: false, level: 'warning' },
+    );
+    assert.deepEqual(
+      proxyFailureFor(new Error('unexpected local invariant failure')),
+      { isTimeout: false, level: 'error' },
+    );
+  });
+
   // Every value below must be a member of the RequestReason union in
   // server/_shared/usage.ts. api/mcp-proxy.ts is `@ts-nocheck`, so tsc will
   // NOT catch a typo against that union — a misspelled reason would ship a row
@@ -1642,20 +1712,20 @@ describe('api/mcp-proxy — observability', () => {
     assert.equal(proxyReasonFor(422), 'ok');
   });
 
-  it('the top-level catch reports to Sentry, and downgrades only upstream timeouts', async () => {
+  it('the top-level catch reports to Sentry with the classified failure level', async () => {
     const fs = await import('node:fs');
     const src = fs.readFileSync(new URL('../api/mcp-proxy.ts', import.meta.url), 'utf8');
 
-    const catchAt = src.indexOf('const isTimeout =');
-    assert.ok(catchAt > 0, 'the top-level catch still classifies timeouts');
+    const catchAt = src.indexOf('const failure = proxyFailureFor(err);');
+    assert.ok(catchAt > 0, 'the top-level catch still classifies failures');
     const tail = src.slice(catchAt, src.indexOf('logProxyCall({', catchAt));
 
     assert.match(tail, /captureSilentError\(err,/, 'a swallowed handler fault must not be silent');
     assert.match(tail, /step:\s*'proxy-dispatch'/);
     assert.match(
       tail,
-      /isTimeout\s*\?\s*\{\s*level:\s*'warning'/,
-      'an upstream timeout is remote slowness, not our defect — it reports at warning',
+      /level:\s*failure\.level/,
+      'expected upstream failures are warnings while proxy defects remain errors',
     );
     // targetHost is caller-supplied. As a Sentry TAG it would let any caller
     // mint unbounded tag values; it belongs in extra.

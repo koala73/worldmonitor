@@ -1,11 +1,11 @@
-// @ts-nocheck — Migrated from .js to .ts only to unlock the
-// `isCallerPremium` import from server/ (PR #3768 review). Body remains
-// JS-shaped; not annotating types in this commit. Future PR can add
-// types incrementally; behaviour is unchanged.
+// @ts-nocheck — Migrated from .js to .ts to import server-side auth helpers
+// (PR #3768 review). Most of the body remains JS-shaped; types can be added
+// incrementally.
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
-import { isCallerPremium } from '../server/_shared/premium-check';
+import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
+import { buildUsageIdentity } from '../server/_shared/usage-identity';
 import {
   readBoundedRequestBody,
   readBoundedResponseBody,
@@ -98,6 +98,45 @@ export function proxyReasonFor(status: number): string {
   return 'ok';
 }
 
+export function proxyUsageIdentityFor(req, identity) {
+  if (!identity?.isPremium) {
+    return buildUsageIdentity({
+      sessionUserId: null,
+      isUserApiKey: false,
+      enterpriseApiKey: null,
+      widgetKey: null,
+      clerkOrgId: null,
+      userApiKeyCustomerRef: null,
+      tier: null,
+      planKey: null,
+    });
+  }
+
+  if (identity.kind === 'internal-mcp') {
+    return {
+      auth_kind: 'mcp_oauth',
+      principal_id: identity.userId,
+      customer_id: identity.userId,
+      tier: 0,
+      plan_key: null,
+    };
+  }
+
+  const enterpriseApiKey = identity.kind === 'enterprise'
+    ? req.headers.get('X-WorldMonitor-Key') ?? req.headers.get('X-Api-Key')
+    : null;
+  return buildUsageIdentity({
+    sessionUserId: identity.userId,
+    isUserApiKey: identity.kind === 'user-api-key',
+    enterpriseApiKey,
+    widgetKey: null,
+    clerkOrgId: null,
+    userApiKeyCustomerRef: null,
+    tier: null,
+    planKey: null,
+  });
+}
+
 /**
  * Emit one wm_api_usage RequestEvent per proxied call.
  *
@@ -114,9 +153,10 @@ export function proxyReasonFor(status: number): string {
  * fail would double row volume for no diagnostic value. /mcp skips them too
  * (McpUsage.skip).
  */
-function emitProxyUsage(req, status: number, durationMs: number, ctx): void {
+function emitProxyUsage(req, status: number, durationMs: number, ctx, callerIdentity = null): void {
   if (!ctx) return;
   try {
+    const usageIdentity = proxyUsageIdentityFor(req, callerIdentity);
     emitUsageEvents(ctx, [buildRequestEvent({
       requestId: deriveRequestId(req),
       domain: 'mcp',
@@ -133,13 +173,11 @@ function emitProxyUsage(req, status: number, durationMs: number, ctx): void {
       // report without buffering a second time. Size questions belong to
       // MAX_MCP_PROXY_RESPONSE_BYTES, not to this row.
       resBytes: 0,
-      // The proxy gate is isCallerPremium, which does not hand back an
-      // identity — so there is no customer to attribute. Join on ip instead.
-      customerId: null,
-      principalId: null,
-      authKind: 'anon',
-      tier: 0,
-      planKey: null,
+      customerId: usageIdentity.customer_id,
+      principalId: usageIdentity.principal_id,
+      authKind: usageIdentity.auth_kind,
+      tier: usageIdentity.tier,
+      planKey: usageIdentity.plan_key,
       country: deriveCountry(req),
       ipCity: deriveIpCity(req),
       ipRegion: deriveIpRegion(req),
@@ -200,6 +238,38 @@ class McpProxySsrfError extends Error {
   constructor(message) {
     super(message);
     this.name = 'McpProxySsrfError';
+  }
+}
+
+export class McpProxyUpstreamError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'McpProxyUpstreamError';
+  }
+}
+
+export function proxyFailureFor(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const isTimeout = (error instanceof Error && error.name === 'TimeoutError')
+    || message.includes('TimeoutError')
+    || message.includes('timed out');
+  const isExpectedExternal = error instanceof McpProxyUpstreamError
+    || error instanceof McpProxySsrfError
+    || error instanceof ResponseBodyTooLargeError
+    || error instanceof McpProxyJsonDepthError;
+  return {
+    isTimeout,
+    level: isTimeout || isExpectedExternal ? 'warning' : 'error',
+  };
+}
+
+async function fetchMcpUpstream(input, init) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (proxyFailureFor(error).isTimeout) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new McpProxyUpstreamError(message);
   }
 }
 
@@ -370,7 +440,7 @@ async function postJson(url, body, headers, sessionId) {
   const h = { ...headers };
   if (sessionId) h['Mcp-Session-Id'] = sessionId;
   await revalidateBeforeFetch(url);
-  const resp = await fetch(url.toString(), {
+  const resp = await fetchMcpUpstream(url.toString(), {
     method: 'POST',
     headers: h,
     body: JSON.stringify(body),
@@ -385,24 +455,30 @@ async function cancelResponseBody(response) {
 }
 
 async function parseJsonRpcResponse(resp) {
-  const body = await readBoundedResponseBody(resp, MAX_MCP_PROXY_RESPONSE_BYTES);
-  const text = new TextDecoder().decode(body);
-  const ct = resp.headers.get('content-type') || '';
-  if (ct.includes('text/event-stream')) {
-    const lines = text.split('\n');
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          const parsed = parseMcpProxyJson(line.slice(6));
-          if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
-        } catch (error) {
-          if (error instanceof McpProxyJsonDepthError) throw error;
+  try {
+    const body = await readBoundedResponseBody(resp, MAX_MCP_PROXY_RESPONSE_BYTES);
+    const text = new TextDecoder().decode(body);
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('text/event-stream')) {
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const parsed = parseMcpProxyJson(line.slice(6));
+            if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
+          } catch (error) {
+            if (error instanceof McpProxyJsonDepthError) throw error;
+          }
         }
       }
+      throw new McpProxyUpstreamError('No result found in SSE response');
     }
-    throw new Error('No result found in SSE response');
+    return parseMcpProxyJson(text);
+  } catch (error) {
+    if (error instanceof McpProxyUpstreamError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new McpProxyUpstreamError(message);
   }
-  return parseMcpProxyJson(text);
 }
 
 async function sendInitialized(serverUrl, headers, sessionId) {
@@ -422,35 +498,35 @@ async function sendInitialized(serverUrl, headers, sessionId) {
 async function mcpListTools(serverUrl, customHeaders) {
   const headers = buildHeaders(customHeaders);
   const initResp = await postJson(serverUrl, buildInitPayload(), headers, null);
-  if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`);
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
+  if (initData.error) throw new McpProxyUpstreamError(`Initialize error: ${initData.error.message}`);
   await sendInitialized(serverUrl, headers, sessionId);
   const listResp = await postJson(serverUrl, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
   }, headers, sessionId);
-  if (!listResp.ok) throw new Error(`tools/list failed: HTTP ${listResp.status}`);
+  if (!listResp.ok) throw new McpProxyUpstreamError(`tools/list failed: HTTP ${listResp.status}`);
   const listData = await parseJsonRpcResponse(listResp);
-  if (listData.error) throw new Error(`tools/list error: ${listData.error.message}`);
+  if (listData.error) throw new McpProxyUpstreamError(`tools/list error: ${listData.error.message}`);
   return listData.result?.tools || [];
 }
 
 async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
   const headers = buildHeaders(customHeaders);
   const initResp = await postJson(serverUrl, buildInitPayload(), headers, null);
-  if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`);
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
+  if (initData.error) throw new McpProxyUpstreamError(`Initialize error: ${initData.error.message}`);
   await sendInitialized(serverUrl, headers, sessionId);
   const callResp = await postJson(serverUrl, {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: toolName, arguments: toolArgs || {} },
   }, headers, sessionId);
-  if (!callResp.ok) throw new Error(`tools/call failed: HTTP ${callResp.status}`);
+  if (!callResp.ok) throw new McpProxyUpstreamError(`tools/call failed: HTTP ${callResp.status}`);
   const callData = await parseJsonRpcResponse(callResp);
-  if (callData.error) throw new Error(`tools/call error: ${callData.error.message}`);
+  if (callData.error) throw new McpProxyUpstreamError(`tools/call error: ${callData.error.message}`);
   return callData.result;
 }
 
@@ -487,12 +563,12 @@ class SseSession {
 
   async connect() {
     await revalidateBeforeFetch(new URL(this._sseUrl));
-    const resp = await fetch(this._sseUrl, {
+    const resp = await fetchMcpUpstream(this._sseUrl, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
       redirect: 'manual',
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
     });
-    if (!resp.ok) throw new Error(`SSE connect HTTP ${resp.status}`);
+    if (!resp.ok) throw new McpProxyUpstreamError(`SSE connect HTTP ${resp.status}`);
     this._reader = resp.body.getReader();
     this._startReadLoop();
     await this._endpointDeferred.promise;
@@ -518,7 +594,7 @@ class SseSession {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
-            const error = new Error(
+            const error = new McpProxyUpstreamError(
               this._endpointUrl ? 'SSE stream closed' : 'SSE stream closed before endpoint event',
             );
             this._terminalError = error;
@@ -546,15 +622,15 @@ class SseSession {
                 try {
                   resolved = new URL(data.startsWith('http') ? data : data, this._sseUrl);
                 } catch {
-                  this._endpointDeferred.reject(new Error('SSE endpoint event contains invalid URL'));
+                  this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint event contains invalid URL'));
                   return;
                 }
                 if (resolved.protocol !== 'https:' && resolved.protocol !== 'http:') {
-                  this._endpointDeferred.reject(new Error('SSE endpoint protocol not allowed'));
+                  this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint protocol not allowed'));
                   return;
                 }
                 if (BLOCKED_HOSTNAMES.has(resolved.hostname.toLowerCase()) || isBlockedResolvedAddress(resolved.hostname)) {
-                  this._endpointDeferred.reject(new Error('SSE endpoint host is blocked'));
+                  this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint host is blocked'));
                   return;
                 }
                 // Pin endpoint to the same host as the original SSE URL to
@@ -562,7 +638,7 @@ class SseSession {
                 // event to an internal host (DNS rebinding / SSRF).
                 if (resolved.host !== this._originHost || resolved.protocol !== this._originProtocol) {
                   this._endpointDeferred.reject(
-                    new Error('SSE endpoint host or protocol does not match origin server'),
+                    new McpProxyUpstreamError('SSE endpoint host or protocol does not match origin server'),
                   );
                   return;
                 }
@@ -596,12 +672,12 @@ class SseSession {
     const timer = setTimeout(() => {
       if (this._pending.has(id)) {
         this._pending.delete(id);
-        deferred.reject(new Error(`RPC ${method} timed out`));
+        deferred.reject(new McpProxyUpstreamError(`RPC ${method} timed out`));
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
       await revalidateBeforeFetch(new URL(this._endpointUrl));
-      const postResp = await fetch(this._endpointUrl, {
+      const postResp = await fetchMcpUpstream(this._endpointUrl, {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
@@ -611,7 +687,7 @@ class SseSession {
       await cancelResponseBody(postResp);
       if (!postResp.ok) {
         this._pending.delete(id);
-        throw new Error(`${method} POST HTTP ${postResp.status}`);
+        throw new McpProxyUpstreamError(`${method} POST HTTP ${postResp.status}`);
       }
       return await deferred.promise;
     } finally {
@@ -646,10 +722,10 @@ async function mcpListToolsSse(serverUrl, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new Error(`Initialize error: ${initResp.error.message}`);
+    if (initResp.error) throw new McpProxyUpstreamError(`Initialize error: ${initResp.error.message}`);
     await session.notify('notifications/initialized', {});
     const listResp = await session.send(2, 'tools/list', {});
-    if (listResp.error) throw new Error(`tools/list error: ${listResp.error.message}`);
+    if (listResp.error) throw new McpProxyUpstreamError(`tools/list error: ${listResp.error.message}`);
     return listResp.result?.tools || [];
   } finally {
     session.close();
@@ -666,10 +742,10 @@ async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new Error(`Initialize error: ${initResp.error.message}`);
+    if (initResp.error) throw new McpProxyUpstreamError(`Initialize error: ${initResp.error.message}`);
     await session.notify('notifications/initialized', {});
     const callResp = await session.send(2, 'tools/call', { name: toolName, arguments: toolArgs || {} });
-    if (callResp.error) throw new Error(`tools/call error: ${callResp.error.message}`);
+    if (callResp.error) throw new McpProxyUpstreamError(`tools/call error: ${callResp.error.message}`);
     return callResp.result;
   } finally {
     session.close();
@@ -759,7 +835,7 @@ export default async function handler(req, ctx) {
   // validateApiKey forceKey:true, which broke the Pro "Connect MCP" UI
   // for normal web Pro users (no enterprise key path).
   //
-  // isCallerPremium is the project's canonical premium-caller check. It
+  // resolvePremiumCallerIdentity is the project's canonical premium-caller check. It
   // accepts: enterprise key (WORLDMONITOR_VALID_KEYS), wm_ user API key
   // (Convex-validated + entitlement check), and Clerk Pro Bearer JWT
   // (role==='pro' or entitlement tier>=1). It rejects wms_ session tokens
@@ -771,7 +847,8 @@ export default async function handler(req, ctx) {
   // premiumFetch (not plain fetch) so the renderer attaches the Bearer
   // for Pro users; /api/mcp-proxy is now in PREMIUM_RPC_PATHS for that
   // path-gated injection.
-  if (!(await isCallerPremium(req))) {
+  const callerIdentity = await resolvePremiumCallerIdentity(req);
+  if (!callerIdentity.isPremium) {
     emitProxyUsage(req, 401, Date.now() - startedAt, ctx);
     return jsonResponse({ error: 'Pro authentication required' }, 401, cors);
   }
@@ -797,7 +874,7 @@ export default async function handler(req, ctx) {
       status: 429,
       duration_ms: Date.now() - started,
     });
-    emitProxyUsage(req, 429, Date.now() - startedAt, ctx);
+    emitProxyUsage(req, 429, Date.now() - startedAt, ctx, callerIdentity);
     // JSON-RPC -32029 mirrors api/mcp.ts; HTTP 429 + Retry-After follows the
     // shared rate-limit response shape.
     return new Response(
@@ -831,26 +908,29 @@ export default async function handler(req, ctx) {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const isTimeout = msg.includes('TimeoutError') || msg.includes('timed out');
+    const failure = proxyFailureFor(err);
     // Until now this catch swallowed EVERY handler fault into a 422/422-shaped
     // JSON body with no Sentry event, so a genuine proxy defect was visible
     // only to the caller who hit it. Capture it.
     //
-    // An upstream timeout is the remote MCP server being slow, not our defect,
-    // so it reports at `warning` — the same call api/telegram-feed.js (#7438)
-    // and api/rss-proxy.js (#7588) already make for relay timeouts. Everything
-    // else stays at `error`.
+    // Expected upstream transport/protocol failures are the remote MCP server's
+    // outcome, not our defect, so they report at `warning`. Unknown failures
+    // stay at `error` so real proxy defects remain actionable.
     //
     // targetHost is caller-supplied, so it rides in `extra`, never a tag —
     // an attacker-controlled tag value would shred Sentry's tag cardinality.
     captureSilentError(err, {
       tags: { route: 'api/mcp-proxy', step: 'proxy-dispatch' },
       extra: { target_host: meta.targetHost, target_path: meta.targetPath, method: req.method },
-      ...(isTimeout ? { level: 'warning' as const } : {}),
+      level: failure.level,
       ctx,
     });
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
-    response = jsonResponse({ error: isTimeout ? 'MCP server timed out' : msg }, isTimeout ? 504 : 422, cors);
+    response = jsonResponse(
+      { error: failure.isTimeout ? 'MCP server timed out' : msg },
+      failure.isTimeout ? 504 : 422,
+      cors,
+    );
   }
 
   logProxyCall({
@@ -862,7 +942,7 @@ export default async function handler(req, ctx) {
     status: response.status,
     duration_ms: Date.now() - started,
   });
-  emitProxyUsage(req, response.status, Date.now() - startedAt, ctx);
+  emitProxyUsage(req, response.status, Date.now() - startedAt, ctx, callerIdentity);
 
   return response;
 }
