@@ -3,17 +3,21 @@
 # observe the redirect. /pro/welcome.html stays 200 here, so /pro is Disallowed.
 # `Allow: /dashboard$` is end-anchored (#7660): the bare document stays
 # explicitly crawlable, but unanchored `/dashboard` is 10 characters and so
-# out-ranks the `/*?*lat=`, `/*?*lon=`, `/*?*zoom=`, `/*?*ref=` and `/*?*utm_`
-# rules below (8-9). Any map URL that omits `layers` would slip straight
-# through on exactly the path that generates the space.
+# out-ranks `/*?*lat=`, `/*?*lon=` (8) and `/*?*zoom=` (9). Any map URL that
+# omits `layers` would slip straight through on exactly the path that
+# generates the space.
 # Named AI groups restate the * rules — robots.txt groups do not inherit.
 #
-# Crawl-budget disallows (#7660) mirror robots.www.txt: parameterised map-state
-# and attribution URLs, already consolidated by rel=canonical. The variant hosts
-# contributed 415 of the 1,000 exported redirect URLs. Rules are query-scoped
-# (`/*?*`) so /dashboard and the 308 families stay crawlable, and the /embed
-# carve-outs keep the documented iframe fetchable. /docs/_next/ is deliberately
-# left crawlable for the reason recorded in robots.www.txt.
+# Crawl-budget disallows (#7660) mirror robots.www.txt: the unbounded map-state
+# space only. The attribution families (ref, wm_referral, wm_content_*, utm_*)
+# are deliberately left crawlable — robots.txt is a crawl control, not a
+# canonicalization tool, and those already consolidate via a 308 or a
+# rel=canonical that a blocked URL could never serve. Full reasoning is
+# recorded once in robots.www.txt. The variant hosts contributed 415 of the
+# 1,000 exported redirect URLs. Rules are query-scoped (`/*?*`) so /dashboard
+# and the 308 families stay crawlable, and the /embed carve-outs keep the
+# documented iframe fetchable. /docs/_next/ is left crawlable, also per
+# robots.www.txt.
 
 User-agent: *
 Content-Signal: ai-train=no, search=yes, ai-input=yes
@@ -33,10 +37,6 @@ Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
 Disallow: /*?*layers=
-Disallow: /*?*ref=
-Disallow: /*?*wm_referral=
-Disallow: /*?*wm_content_
-Disallow: /*?*utm_
 
 User-agent: GPTBot
 User-agent: OAI-SearchBot
@@ -67,10 +67,6 @@ Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
 Disallow: /*?*layers=
-Disallow: /*?*ref=
-Disallow: /*?*wm_referral=
-Disallow: /*?*wm_content_
-Disallow: /*?*utm_
 
 User-agent: CCBot
 User-agent: Bytespider

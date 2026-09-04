@@ -1235,8 +1235,13 @@ describe('welcome landing page routing', () => {
     // other's client.
     assert.match(
       middlewareSource,
-      /Location: dashboardUrl\.toString\(\),\n\s*Vary: 'User-Agent',\n\s*'Cache-Control': 'private, no-store',/,
+      /headers: uaConditionedRedirectHeaders\(dashboardUrl\)/,
       'the legacy root redirect must preserve the query string AND declare the User-Agent cache key',
+    );
+    assert.match(
+      middlewareSource,
+      /'CDN-Cache-Control': 'no-store',\n\s*'Vercel-CDN-Cache-Control': 'no-store',/,
+      'Cache-Control alone loses to the CDN directives on the / route',
     );
     assert.doesNotMatch(
       middlewareSource,
@@ -4071,6 +4076,16 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
     'disallow: /*?*lon=',
     'disallow: /*?*zoom=',
     'disallow: /*?*layers=',
+  ];
+
+  // The inverse half of the contract, and the more important one. robots.txt is
+  // a crawl control, not a canonicalization tool: a disallowed URL is never
+  // fetched, so Google reads neither its rel=canonical nor its redirect. These
+  // families already consolidate — middleware 308s a crawler off ref/
+  // wm_referral/utm_* (a 308 passes the link equity that affiliates' pasted
+  // /pro?ref=… URLs carry), and wm_content_* answers 200 with a canonical.
+  // Blocking them would replace a working mechanism with a worse one.
+  const MUST_STAY_CRAWLABLE = [
     'disallow: /*?*ref=',
     'disallow: /*?*wm_referral=',
     'disallow: /*?*wm_content_',
@@ -4115,6 +4130,14 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
             group.rules.includes(rule),
             `${file} group [${group.agents.join(', ')}] is missing \`${rule.replace('disallow:', 'Disallow:')}\` — ` +
               'robots groups do not inherit, so this crawler still burns budget on the space the others no longer crawl'
+          );
+        }
+        for (const rule of MUST_STAY_CRAWLABLE) {
+          assert.ok(
+            !group.rules.includes(rule),
+            `${file} group [${group.agents.join(', ')}] added \`${rule.replace('disallow:', 'Disallow:')}\` — ` +
+              'that family already consolidates via a 308 or a rel=canonical, and a disallowed URL is never ' +
+              'fetched, so blocking it strands the signal instead of folding it'
           );
         }
       }
@@ -4191,9 +4214,6 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       '/?lat=20.0000&lon=0.0000&zoom=1.00&view=global&timeRange=7d&layers=conflicts,bases',
       '/index?lat=NaN&lon=NaN&zoom=2.50&view=america&timeRange=7d&layers=conflicts',
       '/dashboard?lat=20.0000&lon=0.0000&zoom=1.00',
-      '/pro?wm_content_source=use-cases&wm_content_medium=internal',
-      '/dashboard?ref=affiliate',
-      '/countries/iran/?utm_source=newsletter',
       '/tmp/gem-pipelines.json',
     ];
     const CRAWLABLE = [
@@ -4216,6 +4236,12 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       // renders a partner's page.
       '/embed?layers=conflicts,earthquakes,weather&center=20,0&zoom=1&theme=dark&variant=full',
       '/embed?panel=fear-greed&theme=dark',
+      // Bounded, already-consolidating families: the middleware 308 and the
+      // rel=canonical only work if the crawler is allowed to fetch them.
+      '/pro?ref=affiliate',
+      '/pro?wm_referral=abc123',
+      '/pro?wm_content_source=use-cases&wm_content_medium=internal',
+      '/countries/iran/?utm_source=newsletter',
       '/blog/',
       '/api/llms.txt',
     ];
@@ -4229,8 +4255,9 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
 
       it(`${file} still allows the canonical corpus`, () => {
         for (const path of CRAWLABLE) {
-          // /pro is deliberately Disallowed on variant hosts (#6835).
-          if (file === 'robots.variant.txt' && path === '/pro') continue;
+          // /pro and its query forms are deliberately Disallowed on variant
+          // hosts (#6835) — /pro/welcome.html stays 200 there.
+          if (file === 'robots.variant.txt' && path.startsWith('/pro')) continue;
           assert.equal(isCrawlable(file, path), true, `${file} must keep ${path} crawlable`);
         }
       });

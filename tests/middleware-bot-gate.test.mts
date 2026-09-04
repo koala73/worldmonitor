@@ -15,9 +15,17 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import middleware from '../middleware';
 import { WEB_DASHBOARD_VARIANTS } from '../src/config/variant-dashboard-html';
 import { VARIANT_META } from '../src/config/variant-meta';
+
+const vercelConfig = JSON.parse(
+  readFileSync(resolve(dirname(fileURLToPath(import.meta.url)), '../vercel.json'), 'utf-8'),
+) as { headers?: Array<{ source: string; headers?: Array<{ key: string; value: string }> }> };
 
 const TELEGRAM_BOT_UA = 'TelegramBot (like TwitterBot)';
 const SLACKBOT_UA = 'Slackbot-LinkExpanding 1.0 (+https://api.slack.com/robots)';
@@ -493,12 +501,18 @@ describe('legacy root map-state links (#7660)', () => {
     );
   });
 
-  it('declares the User-Agent cache key on BOTH branches', () => {
+  it('closes every caching layer on BOTH branches', () => {
     // One request URL, two Locations, chosen by User-Agent. A 308 is cacheable
-    // by default (RFC 9110 §15.4.9), so a shared cache that stored either
-    // branch without the key would replay it to the other's client — serving
-    // the crawler the parameterised URL this change exists to keep it off, or
-    // stripping a human's map state. Both directions must be closed.
+    // by default (RFC 9110 §15.4.9), so a cache that stored either branch
+    // without the key would replay it to the other's client — serving the
+    // crawler the parameterised URL this change exists to keep it off, or
+    // stripping a human's map state.
+    //
+    // `Cache-Control` alone is insufficient here: vercel.json gives `/` a
+    // CDN-Cache-Control of `public, s-maxage=600`, and the CDN directives take
+    // priority over Cache-Control for the shared cache. And per RFC 9111, Vary
+    // on one response cannot protect a sibling that omitted it — so every
+    // layer, on both branches.
     for (const [label, ua] of [
       ['crawler', GOOGLEBOT_UA],
       ['human', CHROME_UA],
@@ -506,12 +520,35 @@ describe('legacy root map-state links (#7660)', () => {
       const res = call(`/?${MAP_STATE}`, ua);
       assert.ok(res instanceof Response, `${label} must be redirected`);
       assert.match(res.headers.get('vary') ?? '', /User-Agent/i, `${label} branch must declare Vary`);
-      assert.equal(
-        res.headers.get('cache-control'),
-        'private, no-store',
-        `${label} branch must not be stored by a shared cache`
-      );
+      for (const [header, expected] of [
+        ['cache-control', 'private, no-store'],
+        ['cdn-cache-control', 'no-store'],
+        ['vercel-cdn-cache-control', 'no-store'],
+      ] as const) {
+        assert.equal(
+          res.headers.get(header),
+          expected,
+          `${label} branch must set ${header}: a layer left open can store one UA's Location and replay it to the other`
+        );
+      }
     }
+  });
+
+  it('overrides the s-maxage the / route would otherwise apply', () => {
+    // The concrete number this defends against. If vercel.json ever drops the
+    // CDN cache on `/`, this assertion becomes trivially true rather than
+    // wrong — but while the cache exists, the middleware must out-rank it.
+    const rootRule = (vercelConfig.headers ?? []).find((entry: { source: string }) => entry.source === '/');
+    const cdn = (rootRule?.headers ?? []).find((h: { key: string }) => h.key === 'CDN-Cache-Control');
+    if (!cdn) return;
+    assert.match(cdn.value, /s-maxage=\d+/, 'expected the / route to carry a shared-cache lifetime');
+    const res = call(`/?${MAP_STATE}`, GOOGLEBOT_UA);
+    assert.ok(res instanceof Response);
+    assert.equal(
+      res.headers.get('cdn-cache-control'),
+      'no-store',
+      `the / route caches for ${cdn.value} at the CDN; the UA-conditioned redirect must opt out`
+    );
   });
 
   it('leaves /dashboard?<map state> alone for everyone', () => {

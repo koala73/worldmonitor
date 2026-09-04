@@ -20,19 +20,33 @@
 
 # Crawl-budget disallows (#7660). Search Console measured 1,271 "Page with
 # redirect" and 512 "Not found (404)" URLs against a declared inventory of 845,
-# both live and rising (199 -> 1,271 and 102 -> 512 in three months). Two
-# self-generated spaces produce them:
-#   * Parameterised URLs. Map state (lat/lon/zoom/layers) is effectively
-#     infinite; the attribution families (ref, wm_referral, wm_content_*,
-#     utm_*) multiply every landing page. Every one already carries a
-#     rel=canonical to its param-free document, so blocking the crawl costs
-#     nothing in indexing and stops the redirect chains at source.
-#   * /tmp/ — the docs code fences publish /tmp/*.json shell examples, which
-#     Google crawls and gets a 404 for.
-# The parameter rules are query-scoped (`/*?*`) on purpose: the canonical
-# documents the consolidation points at (/dashboard, /pro, the corpus) must
-# stay crawlable. Every crawl-permitting group below restates them — groups do
-# not inherit, and tests/deploy-config.test.mjs fails on a group that drops one.
+# both live and rising (199 -> 1,271 and 102 -> 512 in three months).
+#
+# Only ONE thing is blocked here, and the line is deliberate: robots.txt is a
+# crawl control, not a canonicalization tool. A disallowed URL is never
+# fetched, so Google reads neither its rel=canonical nor its redirect and
+# cannot fold it into anything — it can still be indexed URL-only from an
+# inbound link. So block only what no consolidation mechanism can ever finish.
+#
+#   * BLOCKED — map state (lat/lon/zoom/layers). The space is unbounded: every
+#     shared or bookmarked view is a new URL, so consolidation never converges
+#     and the crawl never ends. This is the case Google's own faceted-navigation
+#     guidance names for robots.txt. Nothing links to these URLs, so no signal
+#     is stranded by not crawling them.
+#   * BLOCKED — /tmp/. The docs code fences publish /tmp/*.json shell examples,
+#     which Google crawls and gets a 404 for.
+#   * NOT BLOCKED — the attribution families (ref, wm_referral, wm_content_*,
+#     utm_*). These are bounded and already consolidate correctly: middleware.ts
+#     308s a crawler off ref/wm_referral/utm_* to the clean document (a 308
+#     passes link equity, which matters because affiliates paste /pro?ref=…
+#     onto third-party sites), and wm_content_* URLs answer 200 with a correct
+#     rel=canonical. Disallowing them would replace two working mechanisms with
+#     a worse one and strand the signals they currently carry.
+#
+# The map rules are query-scoped (`/*?*`) on purpose: the canonical documents
+# the consolidation points at (/dashboard, /pro, the corpus) must stay
+# crawlable. Every crawl-permitting group below restates them — groups do not
+# inherit, and tests/deploy-config.test.mjs fails on a group that drops one.
 #
 # `/embed` is carved back out. docs/embed-live-map.mdx documents a direct
 # iframe at `/embed?layers=…&zoom=…`, so without these two Allows Googlebot
@@ -66,10 +80,6 @@ Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
 Disallow: /*?*layers=
-Disallow: /*?*ref=
-Disallow: /*?*wm_referral=
-Disallow: /*?*wm_content_
-Disallow: /*?*utm_
 
 # Tier 2 — AI search & assistant agents: welcome. Same path rules as `*`,
 # restated because a matching named group makes a crawler ignore `*` entirely.
@@ -100,10 +110,6 @@ Disallow: /*?*lat=
 Disallow: /*?*lon=
 Disallow: /*?*zoom=
 Disallow: /*?*layers=
-Disallow: /*?*ref=
-Disallow: /*?*wm_referral=
-Disallow: /*?*wm_content_
-Disallow: /*?*utm_
 
 # Tier 3 — bulk training-only scrapers: no assistant surface, no citations,
 # nothing given back. anthropic-ai is Anthropic's legacy training UA

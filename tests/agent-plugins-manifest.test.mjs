@@ -313,9 +313,11 @@ describe('agent readiness: Agent Plugins manifest', () => {
       rewriteWellKnownSkillForPlugin('GET https://edge.worldmonitor.app/api/foo'),
       'GET https://www.worldmonitor.app/api/foo',
     );
+    // The apex is rewritten too — `/api/*` is not on the exemption list, so an
+    // apex REST example 301s exactly like a variant-host one.
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://worldmonitor.app/api/foo'),
-      'GET https://worldmonitor.app/api/foo',
+      'GET https://www.worldmonitor.app/api/foo',
     );
     assert.equal(
       rewriteWellKnownSkillForPlugin('GET https://www.worldmonitor.app/api/foo'),

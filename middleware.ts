@@ -215,6 +215,27 @@ function crawlerCanonicalUrl(url: URL): URL | null {
   }
   return changed ? next : null;
 }
+/**
+ * Headers for a 308 whose Location was chosen by User-Agent.
+ *
+ * `Cache-Control` alone is not enough at this edge: vercel.json gives `/` a
+ * `CDN-Cache-Control` / `Vercel-CDN-Cache-Control` of `public, s-maxage=600`,
+ * and those take priority over `Cache-Control` for the shared cache — so the
+ * CDN could store one User-Agent's Location and replay it to the other for ten
+ * minutes, silently undoing the split. Every layer that could store this
+ * response has to be told not to, and `Vary` alone cannot protect a sibling
+ * response that omitted it (RFC 9111).
+ */
+function uaConditionedRedirectHeaders(location: URL): Record<string, string> {
+  return {
+    Location: location.toString(),
+    Vary: 'User-Agent',
+    'Cache-Control': 'private, no-store',
+    'CDN-Cache-Control': 'no-store',
+    'Vercel-CDN-Cache-Control': 'no-store',
+  };
+}
+
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
@@ -238,14 +259,7 @@ export default function middleware(request: Request) {
       // crawler can warm the tagged URL and a shared edge cache can replay
       // the clean Location to a human, stripping `ref` before referral capture
       // or dropping the map state out of a shared link (#7660).
-      return new Response(null, {
-        status: 308,
-        headers: {
-          Location: cleaned.toString(),
-          Vary: 'User-Agent',
-          'Cache-Control': 'private, no-store',
-        },
-      });
+      return new Response(null, { status: 308, headers: uaConditionedRedirectHeaders(cleaned) });
     }
   }
 
@@ -265,14 +279,7 @@ export default function middleware(request: Request) {
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
     const dashboardUrl = new URL(request.url);
     dashboardUrl.pathname = '/dashboard';
-    return new Response(null, {
-      status: 308,
-      headers: {
-        Location: dashboardUrl.toString(),
-        Vary: 'User-Agent',
-        'Cache-Control': 'private, no-store',
-      },
-    });
+    return new Response(null, { status: 308, headers: uaConditionedRedirectHeaders(dashboardUrl) });
   }
 
   if (request.method === 'GET' || request.method === 'HEAD') {

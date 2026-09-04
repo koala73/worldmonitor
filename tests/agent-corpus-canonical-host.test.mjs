@@ -101,30 +101,58 @@ describe('published agent corpus names the serving host (#7660)', () => {
     );
   });
 
-  it('keeps the apex-served discovery paths on the apex', () => {
-    // The inverse guard. A well-meaning sweep that rewrote these to www would
-    // break MCP clients and OAuth registration, and nothing else would notice
-    // until the live smoke ran.
-    const llms = readFileSync(join(PUBLIC_DIR, 'llms.txt'), 'utf-8');
-    // The endpoint itself, not its sibling documents: `/mcp-server.md` is an
-    // ordinary www page, so the boundary has to be a real URL delimiter.
-    const MCP_ENDPOINT = (host) =>
-      new RegExp(`https://${host.replace(/\./g, '\\.')}/mcp(?=[/?#)\\s"'\`]|$)`, 'm');
-    assert.match(llms, MCP_ENDPOINT('worldmonitor.app'));
-    assert.doesNotMatch(
-      llms,
-      MCP_ENDPOINT('www.worldmonitor.app'),
-      'the MCP endpoint canonical is apex (ARCHITECTURE.md §2); www would fragment discovery'
+  // The inverse direction. The apex scan above cannot see a www URL at all, so
+  // on its own it would stay green while a sweep quietly moved the MCP
+  // endpoint or an OAuth path onto www — the failure that breaks apex-URL MCP
+  // clients and turns a registration POST into a GET (#4938).
+  //
+  // Scoped to the families where the host IS the identity. `/robots.txt` is
+  // per-host by definition, and `/.well-known/*` documents answer 200 on both
+  // hosts, so a www link to those is a mild canonical preference, not a
+  // defect — banning them outright would fail on correct pre-existing links.
+  it('never publishes an apex-identity path on www', () => {
+    // A real URL delimiter, not \b: `/mcp-server.md` is an ordinary www page.
+    const APEX_IDENTITY_PATHS = [
+      { label: 'the MCP endpoint', re: /https:\/\/www\.worldmonitor\.app\/mcp(?=[/?#)\s"'`]|$)/ },
+      { label: 'an OAuth endpoint', re: /https:\/\/www\.worldmonitor\.app\/oauth\// },
+    ];
+    const offenders = [];
+    for (const file of scanFiles(PUBLIC_DIR)) {
+      const body = readFileSync(file, 'utf-8');
+      for (const { label, re } of APEX_IDENTITY_PATHS) {
+        body.split('\n').forEach((line, index) => {
+          if (re.test(line)) offenders.push(`  ${relative(ROOT, file)}:${index + 1}  ${label}`);
+        });
+      }
+    }
+    assert.deepEqual(
+      offenders,
+      [],
+      'these are served on the apex and their host is part of their identity — ' +
+        'www breaks apex-URL MCP clients and turns an OAuth registration POST into a GET (#4938):\n' +
+        offenders.join('\n')
     );
+  });
 
-    const serverCard = readFileSync(join(PUBLIC_DIR, '.well-known/mcp/server-card.json'), 'utf-8');
-    const card = JSON.parse(serverCard);
+  it('keeps the apex-served discovery paths on the apex', () => {
+    const llms = readFileSync(join(PUBLIC_DIR, 'llms.txt'), 'utf-8');
+    assert.match(llms, /https:\/\/worldmonitor\.app\/mcp(?=[/?#)\s"'`]|$)/);
+
+    const card = JSON.parse(readFileSync(join(PUBLIC_DIR, '.well-known/mcp/server-card.json'), 'utf-8'));
     assert.equal(card.url, 'https://worldmonitor.app/mcp');
     assert.equal(card.transport.endpoint, 'https://worldmonitor.app/mcp');
     assert.equal(
       card.authentication.resource,
       'https://worldmonitor.app',
       'the OAuth protected-resource identifier is compared byte-for-byte by clients'
+    );
+
+    // The other half of the same identity pair, and the one #4938 was about.
+    const authGuide = readFileSync(join(PUBLIC_DIR, 'auth.md'), 'utf-8');
+    assert.match(
+      authGuide,
+      /"issuer": "https:\/\/worldmonitor\.app"/,
+      'the OAuth issuer is compared byte-for-byte by clients'
     );
   });
 

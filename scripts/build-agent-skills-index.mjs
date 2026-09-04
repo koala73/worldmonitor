@@ -122,13 +122,18 @@ export function buildResourceContent(content, mimeType) {
 // public site origin already advertised by plugin.json. That keeps the
 // portable package off Vite env hosts that secret scanners treat as
 // credentials when they appear in newly added files.
+//
+// The apex is rewritten too (#7660): `/api/*` is not on the Cloudflare
+// apex-exemption list, so an apex REST example 301s and the documented
+// `curl -s` (no -L) against it returns an empty body. www is the only host
+// here that serves the path it names.
 export function rewriteWellKnownSkillForPlugin(md) {
   return md.replace(/https:\/\/([A-Za-z0-9.-]+)(\/api\/)/g, (full, host, suffix) => {
     const normalized = host.toLowerCase();
-    if (normalized === 'worldmonitor.app' || normalized === 'www.worldmonitor.app') {
+    if (normalized === 'www.worldmonitor.app') {
       return full;
     }
-    if (normalized.endsWith('.worldmonitor.app')) {
+    if (normalized === 'worldmonitor.app' || normalized.endsWith('.worldmonitor.app')) {
       return `${WWW_BASE}${suffix}`;
     }
     return full;
