@@ -796,10 +796,18 @@ describe('crawlable content corpus deployment contracts', () => {
         assert.equal(
           effectiveHeader(route, 'CDN-Cache-Control'),
           HTML_ENTRY_EDGE_CACHE,
-          // Necessary but not sufficient, which #7659 established the hard way:
-          // the header was correct on every family and production still answered
-          // DYNAMIC, because a zone cache rule had already declared the response
-          // ineligible. The other half of the pair is
+          // Necessary but not sufficient — and this suite has now been the green
+          // half of that pair twice in two days, one layer apart:
+          //   #7590 (2026-09-03): the `:param*` source never matched the corpus's
+          //     trailing-slash URLs, so all ~22 rules were inert at Vercel while
+          //     the model here matched both forms and stayed green.
+          //   #7659 (2026-09-04): the header was finally reaching production and
+          //     Cloudflare still answered DYNAMIC, because a zone cache rule had
+          //     already declared the response ineligible — origin headers get no
+          //     vote once that happens.
+          // The lesson both times: no assertion over vercel.json can see whether a
+          // layer downstream honoured it. The live counterpart is the corpus probe
+          // in tests/live-api-cache-auth-regression.test.mjs, and the rule itself is
           // scripts/cloudflare-cache-rule.mjs (tests/cloudflare-cache-rule.test.mjs).
           `${route} must advertise the 600s Cloudflare TTL; without it the zone cache rule has no TTL to honour`,
         );

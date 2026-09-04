@@ -159,6 +159,12 @@ export function buildCorpusCacheRule(prefixes = CONTENT_CORPUS_PREFIXES) {
  * Cloudflare re-serialises `action_parameters` alphabetically, so a plain
  * `JSON.stringify` comparison reports drift on a rule that was just applied
  * unchanged — observed on the very first `--check` after this rule landed.
+ *
+ * scripts/openapi-inject-jmespath.mjs has its own copy of this shape. Two copies
+ * of a ten-line pure function in unrelated one-off scripts is under the bar for a
+ * shared module here: a new file under scripts/shared/ has to be threaded through
+ * the Railway registry closure and the Dockerfile.relay COPY list, which is real
+ * deployment risk for no behavioural gain. A third copy is the signal to extract.
  */
 function stableStringify(value) {
   if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
@@ -172,14 +178,24 @@ function stableStringify(value) {
   return JSON.stringify(value) ?? 'null';
 }
 
-async function cloudflareRequest(path, { token, method = 'GET', body } = {}) {
+/** Identifies this caller in Cloudflare's audit log; AGENTS.md requires it on server-side fetches. */
+const USER_AGENT = 'WorldMonitor Cloudflare Cache Rule/1.0';
+
+/** Matches the ceiling scripts/_kv-storage.mjs uses for its Cloudflare API writes. */
+const REQUEST_TIMEOUT_MS = 15_000;
+
+async function cloudflareRequest(path, { token, method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+  // A hung API call must not park an `--apply` between the read and the write
+  // forever; fail loudly instead so the operator can retry against a fresh read.
   const response = await fetch(`${CLOUDFLARE_API}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
+      'User-Agent': USER_AGENT,
       ...(body ? { 'Content-Type': 'application/json' } : {}),
     },
     ...(body ? { body: JSON.stringify(body) } : {}),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   // A rule DELETE can answer 204 with no body; that is success, not a parse error.
   if (response.status === 204 && response.ok) return null;
@@ -225,13 +241,26 @@ function resolveToken(env = process.env) {
  * a cache-disabling rule looks correct in the dashboard and does nothing.
  */
 export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
-  const index = (rules ?? []).findIndex((entry) => entry.description === rule.description);
-  if (index === -1) {
+  const matches = (rules ?? [])
+    .map((entry, position) => ({ entry, position }))
+    .filter(({ entry }) => entry.description === rule.description);
+  if (matches.length === 0) {
     return { status: 'missing', problems: ['the rule is not in the zone'], misordered: false };
   }
 
-  const live = rules[index];
+  // Duplicates are reachable: a `recreate` whose POST lands and whose DELETE
+  // fails leaves two copies. Reading only the first would let this report
+  // `current` off a correct early copy while a stale LATER copy is the one
+  // Cloudflare actually applies — the same last-rule-wins trap as #7659, from
+  // inside our own tooling. Judge the last copy, and refuse to call it current.
+  const { entry: live, position: index } = matches.at(-1);
   const problems = [];
+  if (matches.length > 1) {
+    problems.push(
+      `${matches.length} rules share this description (positions ${matches.map((m) => m.position).join(', ')});`
+      + ' remove the stale copies — the last one wins and the others only confuse the next reader',
+    );
+  }
   if (live.expression !== rule.expression) problems.push('expression differs');
   if (live.action !== rule.action) problems.push(`action is ${live.action}, expected ${rule.action}`);
   // Exact rather than subset: an extra field Cloudflare stores that we did not
@@ -286,6 +315,13 @@ export function planApply(rules, rule = buildCorpusCacheRule()) {
   const diff = diffLiveRuleset(rules, rule);
   if (diff.status === 'missing') return { op: 'create', diff };
   if (diff.status === 'current') return { op: 'none', diff };
+  // Duplicates are not something to patch around: leave the last copy (the one
+  // that wins) and report the rest so an operator deletes them deliberately.
+  const duplicates = (rules ?? [])
+    .filter((entry) => entry.description === rule.description)
+    .slice(0, -1)
+    .map((entry) => entry.id);
+  if (duplicates.length) return { op: 'duplicates', duplicates, diff };
   const id = rules[diff.index]?.id;
   // Content-only drift is a patch in place. A misordered rule has to move, and
   // Cloudflare appends a new rule last — so the corrected copy is added before
@@ -293,8 +329,17 @@ export function planApply(rules, rule = buildCorpusCacheRule()) {
   return { op: diff.misordered ? 'recreate' : 'update', id, diff };
 }
 
+const MODES = ['--print', '--check', '--apply'];
+
 async function main(argv) {
-  const mode = argv.find((arg) => ['--print', '--check', '--apply'].includes(arg)) ?? '--print';
+  // Without this, `--aply` falls through to `--print` and exits 0 — a silent
+  // no-op that reads exactly like a successful apply.
+  const unknown = argv.filter((arg) => !MODES.includes(arg));
+  if (unknown.length) {
+    console.error(`unknown argument(s): ${unknown.join(' ')}\nusage: cloudflare-cache-rule.mjs [${MODES.join(' | ')}]`);
+    return 2;
+  }
+  const mode = argv.find((arg) => MODES.includes(arg)) ?? '--print';
   const rule = buildCorpusCacheRule();
 
   if (mode === '--print') {
@@ -325,6 +370,13 @@ async function main(argv) {
   }
 
   const plan = planApply(ruleset.rules, rule);
+  if (plan.op === 'duplicates') {
+    console.error(
+      `refusing to write: ${plan.duplicates.length + 1} rules share "${rule.description}".`
+      + ` Delete the stale copies first (rule ids: ${plan.duplicates.join(', ')}), then re-run.`,
+    );
+    return 1;
+  }
   const rulesPath = `/zones/${zoneId}/rulesets/${ruleset.id}/rules`;
   if (plan.op === 'update') {
     await cloudflareRequest(`${rulesPath}/${plan.id}`, { token, method: 'PATCH', body: rule });

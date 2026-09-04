@@ -201,6 +201,22 @@ describe('cloudflare corpus cache rule', () => {
     assert.equal(plan.id, 'mine');
   });
 
+  it('judges the last copy and refuses to write when duplicates exist', () => {
+    // Reachable state: a `recreate` whose POST lands and whose DELETE fails
+    // leaves two copies. Reading only the first would report `current` off a
+    // correct early copy while a stale LATER copy is what Cloudflare applies —
+    // the same last-rule-wins trap as #7659, reintroduced by our own tooling.
+    const bypass = { id: 'a', description: 'Bypass cache - WWW documents', action_parameters: { cache: false } };
+    const stale = { ...rule, id: 'stale', expression: '(http.host eq "old")' };
+    const diff = diffLiveRuleset([bypass, { ...rule, id: 'good' }, stale], rule);
+    assert.equal(diff.status, 'drifted', 'the LAST copy is stale, so the zone is not current');
+    assert.match(diff.problems[0], /2 rules share this description/);
+
+    const plan = planApply([bypass, { ...rule, id: 'good' }, stale], rule);
+    assert.equal(plan.op, 'duplicates', 'must not silently patch one of several copies');
+    assert.deepEqual(plan.duplicates, ['good'], 'the earlier copies are the ones to delete');
+  });
+
   it('never plans a write that touches another rule', () => {
     // The regression this pins: an earlier version rewrote the whole cache-phase
     // ruleset on every apply, which silently reverts any concurrent dashboard

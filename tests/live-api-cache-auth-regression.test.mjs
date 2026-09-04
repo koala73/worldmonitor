@@ -508,7 +508,10 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
     // or a crawler's redirect could be replayed to a human and strip `ref`
     // before referral capture. This sweep's own UA is not bot-shaped, so the
     // tagged request gets the page rather than the redirect.
-    const tagged = await fetchText(`${CORPUS_DOCUMENT_URL}?utm_source=live-cache-sweep`);
+    // `redirect: 'manual'` so a 308 fails on the assertion that names it. Following
+    // the redirect would land on the cached canonical and fail the DYNAMIC check
+    // below instead — still red, but pointing at the wrong cause.
+    const tagged = await fetchText(`${CORPUS_DOCUMENT_URL}?utm_source=live-cache-sweep`, { redirect: 'manual' });
     assert.equal(tagged.resp.status, 200, 'the tagged URL must reach the page, not the bot redirect —'
       + ' otherwise this control passes for the wrong reason');
     // Same two-value set the positive assertion treats as "not edge-cached".

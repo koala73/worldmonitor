@@ -98,11 +98,16 @@ jobs:
         # INSIDE the skipped describe.
         #
         # So assert that all mandatory work actually happened. The suite has one
-        # self-check plus six mandatory production-probe groups; the authenticated
-        # canary is a seventh probe group but remains an explicit skip until
-        # WM_LIVE_TEST_KEY is provisioned. Requiring seven passes means the
+        # self-check plus seven mandatory production-probe groups; the authenticated
+        # canary is an eighth probe group but remains an explicit skip until
+        # WM_LIVE_TEST_KEY is provisioned. Requiring eight passes means the
         # documentation-only self-check cannot keep this workflow green if any
-        # mandatory production group stops registering or starts skipping. Each
+        # mandatory production group stops registering or starts skipping. Both
+        # numbers below are load-bearing and must be raised together whenever a
+        # mandatory probe is added — leaving the count at the old value lets the
+        # NEW probe vanish silently while the total still clears the bar, which is
+        # the very vacuous-pass this step exists to prevent (#7659 added
+        # corpus-edge-cache and had to move both). Each
         # group also emits a named completion marker so an unrelated new test or
         # the optional canary cannot compensate for a missing mandatory probe.
         # `--test-reporter=tap` is pinned
@@ -114,11 +119,11 @@ jobs:
           set -o pipefail
           node --test --test-reporter=tap tests/live-api-cache-auth-regression.test.mjs 2>&1 | tee /tmp/sweep.log
           pass_count=$(awk '/^# pass [0-9]+$/ { value = $3 } END { print value + 0 }' /tmp/sweep.log)
-          if [ "$pass_count" -lt 7 ]; then
-            echo "::error::Live sweep completed only $pass_count/7 mandatory checks — one or more production probe groups did not run."
+          if [ "$pass_count" -lt 8 ]; then
+            echo "::error::Live sweep completed only $pass_count/8 mandatory checks — one or more production probe groups did not run."
             exit 1
           fi
-          for probe in bootstrap-auth warm-cache generated-rpc premium-rpc mcp-protocol oauth-metadata; do
+          for probe in bootstrap-auth warm-cache generated-rpc premium-rpc mcp-protocol oauth-metadata corpus-edge-cache; do
             if ! grep -qE "^[[:space:]]*# LIVE_SWEEP_PROBE_COMPLETED ${probe}$" /tmp/sweep.log; then
               echo "::error::Live sweep did not complete mandatory production probe group: ${probe}"
               exit 1
