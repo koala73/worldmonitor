@@ -358,6 +358,42 @@ describe('X Post budget Lua, executed', () => {
     assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '500');
   });
 
+  it('migrates a lower same-day fixed-slots model without reclaiming spent Posts', () => {
+    const redis = makeRedis({
+      [DAY_KEY]: 5,
+      [MONTH_KEY]: 105,
+      [COVERAGE_HOLD_KEY]: 592,
+      [COVERAGE_MODEL_KEY]: 'fixed-slots-v1:597',
+    });
+    const returned = runScript(
+      RESERVE_LUA,
+      budgetKeys('reservation:new-model', 'coverage:new-model'),
+      reserveArgs(5, 505, 5, false, true),
+      redis,
+      6,
+    );
+    assert.deepEqual(returned, [1, 10, 110, 0, 495, '']);
+    assert.equal(redis.store.get(DAY_KEY), '10');
+    assert.equal(redis.store.get(MONTH_KEY), '110');
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '495');
+    assert.equal(redis.store.get(COVERAGE_MODEL_KEY), 'fixed-slots-v1:505');
+
+    const second = runScript(
+      RESERVE_LUA,
+      budgetKeys(
+        'reservation:second-poller',
+        'coverage:second-poller',
+        'receipt:second-poller',
+        'inflight:second-poller',
+      ),
+      reserveArgs(5, 505, 5, false, true),
+      redis,
+      6,
+    );
+    assert.deepEqual(second, [1, 15, 115, 0, 490, '']);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '490');
+  });
+
   it('reads day and month counters without changing them', () => {
     const redis = makeRedis({ [DAY_KEY]: 25, [MONTH_KEY]: 425 });
     assert.deepEqual(

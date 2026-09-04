@@ -440,6 +440,35 @@ describe('shared X returned-Post budget', () => {
     assert.equal(xPostBudgetServiceStatus(status), 'degraded');
   });
 
+  it('reports a lower same-day fixed-slots model as admissible', async () => {
+    const budget = createXPostBudget({
+      evalCommand: async () => [5, 105, 592, 1, 'fixed-slots-v1:597'],
+      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      now: () => NOW,
+    });
+
+    const status = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(status.dailyCoverageHeld, 500);
+    assert.equal(status.nextRequestAdmissible, true);
+    assert.equal(status.nextRequestDailyProjected, 505);
+    assert.equal(status.nextRequestMonthlyProjected, 605);
+    assert.equal(status.nextRequestBlockedReason, undefined);
+    assert.equal(xPostBudgetServiceStatus(status), 'ok');
+  });
+
+  it('keeps an upward same-day fixed-slots change blocked', async () => {
+    const budget = createXPostBudget({
+      evalCommand: async () => [5, 105, 495, 1, 'fixed-slots-v1:500'],
+      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+      now: () => NOW,
+    });
+
+    const status = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+    assert.equal(status.nextRequestAdmissible, false);
+    assert.equal(status.nextRequestBlockedReason, 'coverage_model_mismatch');
+    assert.equal(xPostBudgetServiceStatus(status), 'degraded');
+  });
+
   it('reports the binding limit without creating a reservation', async () => {
     const calls = [];
     const budget = createXPostBudget({
