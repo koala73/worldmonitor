@@ -203,12 +203,12 @@ export function chokepointEvidenceNarrative({
     : 'Configured geopolitical baseline: no additional threat weight.';
   const observedInputs = [
     warnings,
-    severity ? `maximum AIS severity ${severity}` : null,
+    severity ? `maximum AIS congestion severity ${severity}` : null,
     anomaly ? `transit anomaly — ${anomaly.replace(/[.]+$/, '')}` : null,
   ].filter(Boolean);
   const unavailableInputs = [
     warnings === null ? 'navigational warning count' : null,
-    severity === null ? 'maximum AIS severity' : null,
+    severity === null ? 'maximum AIS congestion severity' : null,
   ].filter(Boolean);
   const observed = observedInputs.length
     ? `Observed score inputs: ${observedInputs.join('; ')}.`

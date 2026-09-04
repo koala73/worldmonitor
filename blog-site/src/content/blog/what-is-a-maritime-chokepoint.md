@@ -6,7 +6,7 @@ keywords: "maritime chokepoint, shipping chokepoint, Strait of Hormuz, Suez Cana
 audience: "Logistics teams, maritime analysts, commodity traders, students, geopolitical risk readers"
 heroImage: "/blog/images/blog/what-is-a-maritime-chokepoint.jpg"
 pubDate: "2026-06-13"
-modifiedDate: "2026-07-22"
+modifiedDate: "2026-09-04"
 ---
 
 A maritime chokepoint is a narrow passage where a large share of global trade, energy, food, or military movement must pass through a small physical space.
@@ -68,9 +68,11 @@ The public status badge is a traffic-light score: green, yellow, or red. It is n
 The disruption score combines:
 
 - a baseline geopolitical threat weight
-- active navigational warnings
-- AIS disruption severity
-- a transit anomaly bonus when traffic drops sharply under high-threat conditions
+- active NGA navigational warnings
+- AIS congestion severity
+- a transit anomaly bonus when PortWatch daily transits drop sharply under high-threat conditions
+
+Nothing else moves the number. AIS event counts, relay transit counts, and PortWatch week-over-week movement are published as context rather than score inputs. PortWatch supplies both: the anomaly bonus compares its daily transit history, seven days against the prior thirty, while the week-over-week figure on the page is presentation only.
 
 The score is capped at 100. Green is below 20, yellow is 20 to 49, and red is 50 or higher.
 
