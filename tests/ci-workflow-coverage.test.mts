@@ -461,6 +461,29 @@ describe('deployment_status triggers — npm cache scope hygiene (#7593)', () =>
     return /^ {2}deployment_status:(?:[ \t]*#[^\n]*)?\s*$/m.test(block);
   };
 
+  // The two ban patterns and the single detection path both tests below read.
+  // The sweep asserts real workflows stay clean; the self-test asserts the
+  // patterns can still fire, so a corrupted pattern reddens this suite
+  // instead of silently covering nothing.
+  const CACHE_BAN_PATTERN = /^[ \t]+cache:[ \t]*(?!false\b)\S/m;
+  // `npm i` resolves the deployed SHA's lockfile exactly like `npm install`,
+  // so the alias spelling is banned too; the word boundaries keep `npm info`,
+  // `npm init` and `pnpm i` out of the ban.
+  const NPM_INSTALL_BAN_PATTERN = /\bnpm (?:ci|install|i)\b/;
+
+  const deploymentCacheProblems = (executable: string): string[] => {
+    const problems: string[] = [];
+    if (CACHE_BAN_PATTERN.test(executable)) {
+      problems.push(
+        'a step carries a truthy `cache:` input, so a privileged deployment_status run could save a package cache resolved from github.event.deployment.sha',
+      );
+    }
+    if (NPM_INSTALL_BAN_PATTERN.test(executable)) {
+      problems.push("the job runs npm ci/install, resolving the deployed SHA's lockfile instead of main's");
+    }
+    return problems;
+  };
+
   it('keeps every deployment_status-triggered workflow free of package-cache writes and lockfile installs (#7593)', () => {
     const scanned: string[] = [];
     const offenders: string[] = [];
@@ -472,16 +495,7 @@ describe('deployment_status triggers — npm cache scope hygiene (#7593)', () =>
       if (!triggersOnDeploymentStatus(source)) continue;
       scanned.push(file);
 
-      const executable = executableText(source);
-      const problems: string[] = [];
-      if (/^[ \t]+cache:[ \t]*(?!false\b)\S/m.test(executable)) {
-        problems.push(
-          'a step carries a truthy `cache:` input, so a privileged deployment_status run could save a package cache resolved from github.event.deployment.sha',
-        );
-      }
-      if (/\bnpm (?:ci|install)\b/.test(executable)) {
-        problems.push("the job runs npm ci/install, resolving the deployed SHA's lockfile instead of main's");
-      }
+      const problems = deploymentCacheProblems(executableText(source));
       if (problems.length > 0) offenders.push(`${file}\n    - ${problems.join('\n    - ')}`);
     }
 
@@ -499,6 +513,59 @@ describe('deployment_status triggers — npm cache scope hygiene (#7593)', () =>
       '#7593: a deployment_status trigger is privileged (repo secrets, write-capable GITHUB_TOKEN) and these workflows check out github.event.deployment.sha, so resolving dependencies there could write a package cache built from a non-main lockfile into the shared scope main-branch runs restore from. PR #7591 shipped that shape and #7605 reverted it; if one of these workflows genuinely needs npm, extend this guard deliberately:\n' +
         offenders.join('\n'),
     );
+  });
+
+  // The sweep only asserts the absence of offenders, so a ban pattern that
+  // stopped matching (lost indentation anchor, dropped alternation branch)
+  // would keep this suite green while the guard detects nothing. This
+  // self-test feeds inline sources through the same deploymentCacheProblems
+  // path the sweep uses and pins the firing half of the guard.
+  it('keeps the ban patterns load-bearing: offenders fire and safe look-alikes stay silent (#7593)', () => {
+    const cacheProblem =
+      'a step carries a truthy `cache:` input, so a privileged deployment_status run could save a package cache resolved from github.event.deployment.sha';
+    const npmProblem = "the job runs npm ci/install, resolving the deployed SHA's lockfile instead of main's";
+
+    const offender = [
+      'name: offender',
+      'on:',
+      '  deployment_status:',
+      'jobs:',
+      '  smoke:',
+      '    steps:',
+      '      - uses: actions/setup-node@v4',
+      '        with:',
+      "          cache: 'npm'",
+      '      - run: npm ci --ignore-scripts --omit=optional',
+    ].join('\n');
+    assert.deepEqual(deploymentCacheProblems(executableText(offender)), [cacheProblem, npmProblem]);
+
+    const aliasOffender = offender.replace(
+      'npm ci --ignore-scripts --omit=optional',
+      'npm i --omit=optional',
+    );
+    assert.ok(
+      deploymentCacheProblems(executableText(aliasOffender)).includes(npmProblem),
+      'npm i must be flagged the same as npm install',
+    );
+
+    for (const safe of [
+      '        with:\n          cache: false',
+      "      # cache: 'npm'",
+      '        with:\n          cache-dependency-path: package-lock.json',
+      '      - run: npm run build',
+    ]) {
+      assert.deepEqual(deploymentCacheProblems(executableText(safe)), [], `must not flag safe input:\n${safe}`);
+    }
+
+    // Both trigger spellings must stay recognized through a trailing YAML
+    // comment, and a flow list without deployment_status must not be swept.
+    assert.equal(
+      triggersOnDeploymentStatus('on: # deploy hook\n  deployment_status: # success only'),
+      true,
+      'a trailing comment on either trigger line must not hide a deployment_status trigger',
+    );
+    assert.equal(triggersOnDeploymentStatus('on: [push, deployment_status]'), true);
+    assert.equal(triggersOnDeploymentStatus('on: [push, workflow_dispatch]'), false);
   });
 });
 
