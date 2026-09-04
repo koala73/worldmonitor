@@ -8,6 +8,11 @@ import { resolve, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 
+import {
+  injectStarsInteractionCounter,
+  latestValidGithubStarsSnapshot,
+} from '../scripts/github-stars-snapshot.mjs';
+
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
 const STATIC_SCRIPT_NONCE = 'wm-static-bootstrap';
@@ -227,6 +232,30 @@ function rewriteBuiltAssetUrls(markup) {
 
 const welcomeContent = await renderWelcomeRoot();
 
+// GitHub star InteractionCounter: populated from the committed freeze
+// snapshot, never hardcoded and never fetched at build time (offline builds
+// stay deterministic). Refresh via `npm run freeze:github-stars`.
+// Pages whose committed template carries a #software node must leave the
+// build with the counter injected — a missing node is a dropped counter,
+// not an optional page.
+const GITHUB_STARS_PAGES = ['welcome.html'];
+
+function injectGithubStars(html, file) {
+  let snapshot;
+  try {
+    snapshot = latestValidGithubStarsSnapshot();
+  } catch (error) {
+    console.error(`[prerender] ERROR: ${error.message}`);
+    process.exit(1);
+  }
+  const { html: next, injected } = injectStarsInteractionCounter(html, snapshot);
+  if (!injected && GITHUB_STARS_PAGES.includes(file)) {
+    console.error('[prerender] ERROR: welcome.html carries no #software JSON-LD node to receive the star counter.');
+    process.exit(1);
+  }
+  return next;
+}
+
 const PAGES = [
   { file: 'index.html', content: '', rootAttributes: '' },
   {
@@ -240,6 +269,7 @@ for (const { file, content, rootAttributes } of PAGES) {
   const htmlPath = resolve(__dirname, '../public/pro', file);
   let html = readFileSync(htmlPath, 'utf-8');
   html = inlineCriticalCss(html, file);
+  html = injectGithubStars(html, file);
   const emptyRoot = '<div id="root"></div>';
   if (content || rootAttributes) {
     if (!html.includes(emptyRoot)) {

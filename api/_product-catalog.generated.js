@@ -163,7 +163,13 @@ export const PUBLIC_PRODUCT_FACTS = {
       "dashboardAiCallsPerDay": null,
       "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
-  ]
+  ],
+  "heroProofStats": {
+    "mapLayers": 57,
+    "feeds": 461,
+    "providers": 747,
+    "alertOrigins": 5
+  }
 };
 
 export const PRODUCT_CATALOG = {

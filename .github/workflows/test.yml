@@ -192,6 +192,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Docs page dates derive from git history; a shallow checkout would
+          # resolve every file to HEAD and fail the freshness gate spuriously.
+          fetch-depth: 0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -201,6 +205,8 @@ jobs:
           node scripts/generate-inventory-facts.mjs --check
       - name: Doc claims match code
         run: node scripts/docs-stats.mjs --check
+      - name: Docs page dates match git history
+        run: node scripts/generate-docs-page-dates.mjs --check
       - name: Source attribution inventory is current
         run: node scripts/source-attribution.mjs --check
       - name: Homepage teaser strip matches the committed pulse snapshot
@@ -577,7 +583,7 @@ jobs:
     needs: changes
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4

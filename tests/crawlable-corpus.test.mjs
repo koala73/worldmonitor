@@ -5084,3 +5084,118 @@ describe('country recent developments', () => {
     assert.ok(!('dateModified' in plainWebPage), 'no items means no dateModified claim');
   });
 });
+describe('GEO residue #7616 (U2b changelog lastmod)', () => {
+  it('advertises the newer of the changelog file date and the latest dated release', async () => {
+    const data = await loadCorpusData({ rootDir: repoRoot });
+    const dated = data.changelog
+      .map((release) => release.date)
+      .filter((date) => /^\d{4}-\d{2}-\d{2}$/.test(date ?? ''))
+      .sort();
+    const latestRelease = dated[dated.length - 1];
+    assert.ok(latestRelease, 'changelog must contain a dated release');
+    const fileDate = gitFileLastmod(repoRoot, 'CHANGELOG.md');
+    const expected = fileDate >= latestRelease ? fileDate : latestRelease;
+    assert.equal(
+      data.lastmod.changelog,
+      expected,
+      `changelog lastmod must track file commits (${fileDate}), not freeze at the newest release heading (${latestRelease})`,
+    );
+  });
+});
+
+describe('GEO residue #7616 (U5 sources DataCatalog)', () => {
+  const renderSources = async () => {
+    const { renderSourcesIndex } = await import('../scripts/crawlable-sources-page.mjs');
+    const { dataCatalogLd } = await import('../scripts/build-crawlable-corpus.mjs');
+    const escapeHtml = (value) => String(value)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const absoluteUrl = (base, path) => `${String(base).replace(/\/+$/, '')}${path}`;
+    const helpers = {
+      absoluteUrl,
+      breadcrumbLd: () => '',
+      dataCatalogLd,
+      escapeHtml,
+      pageDocument: ({ jsonLd, body }) => JSON.stringify({ jsonLd, body }),
+      withUtmSource: (url, source) => `${url}?utm_source=${source}`,
+    };
+    return renderSourcesIndex({
+      sourceStats: { providerCount: 747, activeHosts: 760, structuredHosts: 331, feedHosts: 461 },
+      sourceCatalog: [],
+      catalogDatasets: [
+        {
+          '@type': 'Dataset',
+          name: 'Ukraine war tracker',
+          description: 'Monthly country-level conflict summaries for the Ukraine war corpus entry, with bounded coverage and provenance.',
+          url: 'https://www.worldmonitor.app/crises/ukraine-war/',
+          creator: { '@id': 'https://www.worldmonitor.app/#organization', '@type': 'Organization', name: 'World Monitor' },
+          license: 'https://www.worldmonitor.app/docs/terms',
+          distribution: [{ '@type': 'DataDownload', contentUrl: 'https://www.worldmonitor.app/crises/ukraine-war/tracker.json' }],
+        },
+      ],
+      baseUrl: 'https://www.worldmonitor.app',
+      lastmod: '2026-09-03',
+      helpers,
+    });
+  };
+
+  it('emits a DataCatalog node with datasets, modification date, and provider count', async () => {
+    const { jsonLd } = JSON.parse(await renderSources());
+    const nodes = Array.isArray(jsonLd) ? jsonLd : [jsonLd];
+    const catalog = nodes.find((node) => node?.['@type'] === 'DataCatalog');
+    assert.ok(catalog, 'sources page must emit a DataCatalog node');
+    assert.ok(Array.isArray(catalog.dataset) && catalog.dataset.length > 0, 'DataCatalog must list datasets');
+    assert.equal(catalog.dateModified, '2026-09-03', 'DataCatalog date must track the page lastmod');
+    const measured = catalog.variableMeasured ?? catalog.additionalProperty;
+    assert.equal(measured?.['@type'], 'PropertyValue', 'provider count must be a PropertyValue');
+    assert.equal(measured?.value, 747, 'PropertyValue must carry the live provider count');
+  });
+
+  it('shows a visible catalog date with live counts and an extractable data-source answer', async () => {
+    const { body } = JSON.parse(await renderSources());
+    assert.match(
+      body,
+      /Catalog last updated 2026-09-03 · 747 active providers across 760 source hosts/,
+      'visible catalog line must show the date with live counts',
+    );
+    assert.match(body, /<h2[^>]*>Where does World Monitor get its data\?<\/h2>/);
+    const answer = body.match(/<h2[^>]*>Where does World Monitor get its data\?<\/h2>\s*<p>([\s\S]*?)<\/p>/);
+    assert.ok(answer, 'the data-source question needs an extractable answer paragraph');
+    const words = answer[1].replace(/<[^>]+>/g, '').trim().split(/\s+/).length;
+    assert.ok(words >= 40 && words <= 60, `answer must be 40-60 words, got ${words}`);
+  });
+});
+describe('GEO residue #7616 (U2a citations and prose)', () => {
+  const repo = (path) => readFileSync(join(repoRoot, path), 'utf8');
+
+  it('links crisis scope sources to a resolvable location, not a bare repo path', () => {
+    const generator = repo('scripts/build-crawlable-corpus.mjs');
+    assert.doesNotMatch(
+      generator,
+      /Scope source: \$\{CRISIS_REGISTRY_PATH\}/,
+      'crisis scope citations must link a resolvable URL, not interpolate the bare repo path',
+    );
+    assert.match(
+      generator,
+      /github\.com\/koala73\/worldmonitor\/blob\/main\/shared\/crawlable-crises\.json/,
+      'crisis scope citations must point at the versioned registry location',
+    );
+  });
+
+  it('keeps internal issue numbers out of rendered corpus prose', () => {
+    assert.doesNotMatch(
+      repo('scripts/build-use-cases.mjs'),
+      /Canonical treatment \(\#\d+\)/,
+      'the verify-news canonical note must not leak its internal issue number',
+    );
+    assert.match(
+      repo('scripts/build-use-cases.mjs'),
+      /Canonical treatment:/,
+      'the verify-news canonical note must keep its substance',
+    );
+    assert.doesNotMatch(
+      repo('shared/research-reports/strait-of-hormuz-transit-report-2026-07.mjs'),
+      /Issue #\d+/,
+      'published report justification must not leak internal issue numbers',
+    );
+  });
+});

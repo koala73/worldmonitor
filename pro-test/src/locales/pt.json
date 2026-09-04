@@ -482,7 +482,9 @@
       "plateNote": "Capturado do mapa ao vivo — clique para abrir",
       "trustBuild": "Construa sobre ele:",
       "positioningLink": "WorldMonitor não é um Palantir de código aberto",
-      "asOf": "Até 31 de agosto de 2026"
+      "asOf": "Até 31 de agosto de 2026",
+      "whatIsTitle": "O que é World Monitor?",
+      "whatIsBody": "World Monitor é um dashboard gratuito e de código aberto que transmite sinais de geopolítica, mercados, transporte marítimo, aviação, infraestrutura e cibernética em um único mapa ao vivo. Ele correlaciona feeds separados em uma única imagem operacional e sinaliza convergências antes dos destaques, com cada dado fundamentado e cada metodologia documentada."
     },
     "live": {
       "eyebrow": "Ao vivo agora",
@@ -588,11 +590,11 @@
       "title": "Qual é a profundidade do modelo de dados do World Monitor?",
       "sub": "Cada número abaixo está ao vivo no painel agora — não é um roadmap.",
       "s1v": "Compartilhado",
-      "s1l": "Camadas de mapa",
+      "s1l": "Tipos de camada de mapa",
       "s2v": "Curado",
-      "s2l": "Feeds curadas",
+      "s2l": "Feeds de notícias e OSINT",
       "s3v": "Atribuído",
-      "s3l": "Provedores de dados",
+      "s3l": "Provedores atribuídos",
       "s4v": "Ao Vivo",
       "s4l": "Pontos de estrangulamento · AIS ao vivo",
       "s5v": "Tier-1",

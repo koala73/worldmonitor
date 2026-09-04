@@ -655,4 +655,15 @@ describe('public product facts generation contract', () => {
       );
     });
   });
+
+  it('derives hero proof stats from live registries, not literals', async () => {
+    const { getCompleteLayerCatalogKeys } = await import('../src/config/map-layer-definitions.ts');
+    const { loadManifest, scanUpstreamHosts, sourceAttributionStats } = await import('../scripts/source-attribution.mjs');
+    const facts = readJson('shared/product-facts.generated.json');
+    const stats = sourceAttributionStats(scanUpstreamHosts(ROOT), loadManifest(ROOT));
+    assert.equal(facts.heroProofStats.mapLayers, getCompleteLayerCatalogKeys('full').length);
+    assert.equal(facts.heroProofStats.feeds, stats.feedHosts);
+    assert.equal(facts.heroProofStats.providers, stats.providerCount);
+    assert.equal(facts.heroProofStats.alertOrigins, 5);
+  });
 });

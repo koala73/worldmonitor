@@ -482,7 +482,9 @@
       "plateNote": "Az élő térképről rögzítve — kattints a megnyitásához",
       "trustBuild": "Építs rá:",
       "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir",
-      "asOf": "2026. augusztus 31-i állapot szerint"
+      "asOf": "2026. augusztus 31-i állapot szerint",
+      "whatIsTitle": "Mi az a World Monitor?",
+      "whatIsBody": "A World Monitor egy ingyenes, nyílt forráskódú dashboard, amely geopolitikai, piac-, szállítás-, légiközlekedési, infrastrukturális és kibervédelmi jeleket stream-el egy élő világtérképre. Egymástól független adatforrásokat korrelál egyetlen operatív képpé, és a konvergenciákat a hírek előtt flaggeli – minden adat forrásos és minden módszer dokumentált."
     },
     "live": {
       "eyebrow": "Most élő",
@@ -588,11 +590,11 @@
       "title": "Milyen mély a World Monitor adatmodell?",
       "sub": "Az alábbi minden szám ma élesben van az irányítópulton — nem egy ütemterv.",
       "s1v": "Megosztott",
-      "s1l": "Térképrétegek",
+      "s1l": "Térképréteg-típusok",
       "s2v": "Válogatott",
-      "s2l": "Kurátori források",
+      "s2l": "Hír- és OSINT-adatforrások",
       "s3v": "Megjelölt",
-      "s3l": "Adatszolgáltatók",
+      "s3l": "Hozzárendelt szolgáltatók",
       "s4v": "Élő",
       "s4l": "Szűk keresztmetszetek · élő AIS",
       "s5v": "1. szintű",

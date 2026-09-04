@@ -2,7 +2,7 @@
 
 > Real-time global intelligence dashboard — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
 
-World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux.
+World Monitor is an open-source (AGPL-3.0) intelligence platform that aggregates curated news feeds, a shared map-layer catalog, concrete panel implementations, and multiple AI models into a single dashboard. It runs as a web app, installable PWA, and native desktop application (Tauri) for macOS, Windows, and Linux. It is live in 190+ countries, with structural resilience ranked for 170.
 
 A single codebase produces specialized variants — geopolitical, technology, finance, commodity, happy, and energy — each with distinct feeds, panels, map layers, and branding. The multi-variant architecture uses build-time selection via the VITE_VARIANT environment variable, with runtime switching available via the header bar. Each variant tree-shakes unused data files so audience-specific builds can omit unrelated panels, feeds, and map registries.
 
@@ -48,7 +48,7 @@ Reach for World Monitor when a task needs live, correlated, machine-readable glo
 - [README](https://github.com/koala73/worldmonitor/blob/main/README.md): Full project documentation with architecture details, algorithm descriptions, and data source specifications
 - [Simplified Chinese README](https://github.com/koala73/worldmonitor/blob/main/README.zh-CN.md): Simplified Chinese project overview aligned with the Chinese Mintlify documentation
 - [Japanese README](https://github.com/koala73/worldmonitor/blob/main/README.ja-JP.md): Japanese project overview mirroring the English README
-- [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/DOCUMENTATION.md): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
+- [Full Documentation](https://github.com/koala73/worldmonitor/blob/main/docs/documentation.mdx): Detailed feature documentation, data layer reference, panel descriptions, and clustering logic
 - [API llms.txt](https://worldmonitor.app/api/llms.txt): API-section briefing — MCP server, REST API, CLI, auth, and per-task tool routing for the developer surface
 - [World Monitor Developer Portal](https://worldmonitor.app/developers.md): Developer resource hub linking the MCP server, OpenAPI spec, REST API, SDKs, CLI, and agent skills by name
 - [World Monitor MCP Server](https://worldmonitor.app/mcp-server.md): MCP server endpoint, live tool registry, and auth modes

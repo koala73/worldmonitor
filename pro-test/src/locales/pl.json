@@ -482,7 +482,9 @@
       "plateNote": "Przechwycone z żywej mapy — kliknij, aby ją otworzyć",
       "trustBuild": "Buduj na jej podstawie:",
       "positioningLink": "WorldMonitor nie jest open-source'owym Palantir",
-      "asOf": "Stan na dzień 31 sierpnia 2026"
+      "asOf": "Stan na dzień 31 sierpnia 2026",
+      "whatIsTitle": "Czym jest World Monitor?",
+      "whatIsBody": "World Monitor to bezpłatny, open-source'owy dashboard, który przesyła sygnały z zakresu geopolityki, rynków, żeglugi, lotnictwa, infrastruktury i cyberprzestrzeni na jedną żywą mapę świata. Koreluje oddzielne strumienie danych w jeden obraz operacyjny i sygnalizuje zbieżności zanim pojawią się nagłówki, przy czym każda liczba ma źródło, a każda metoda jest udokumentowana."
     },
     "live": {
       "eyebrow": "Na żywo teraz",
@@ -588,11 +590,11 @@
       "title": "Jak głębokie jest dane World Monitor?",
       "sub": "Każdy numer poniżej działa na żywo na pulpicie nawigacyjnym dzisiaj — nie na mapie drogowej.",
       "s1v": "Współdzielone",
-      "s1l": "Warstwy mapy",
+      "s1l": "Typy warstw mapy",
       "s2v": "Kluczowane",
-      "s2l": "Wyselekcjonowane kanały",
+      "s2l": "Strumienie wiadomości i OSINT",
       "s3v": "Przypisane",
-      "s3l": "Dostawcy danych",
+      "s3l": "Przypisani dostawcy",
       "s4v": "Live",
       "s4l": "Punkty krytyczne · AIS na żywo",
       "s5v": "Tier-1",

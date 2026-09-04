@@ -166,7 +166,7 @@ describe('IndexNow submission', () => {
   });
 
   it('keeps IndexNow coverage aligned with the committed root sitemap and blog corpus', () => {
-    const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+    const sitemap = readFileSync(new URL('../public/sitemap-main.xml', import.meta.url), 'utf8');
     const sitemapUrls = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)]
       .map((match) => match[1].trim());
     const wwwSitemapUrls = sitemapUrls.filter((url) => new URL(url).hostname === 'www.worldmonitor.app');
@@ -202,14 +202,14 @@ describe('IndexNow submission', () => {
   });
 
   it('submits every canonical URL the sitemap publishes, for every host', () => {
-    const sitemap = readFileSync(new URL('../public/sitemap.xml', import.meta.url), 'utf8');
+    const sitemap = readFileSync(new URL('../public/sitemap-main.xml', import.meta.url), 'utf8');
     const sitemapUrls = [...sitemap.matchAll(/<loc>\s*([^<]+?)\s*<\/loc>/g)].map((match) => match[1].trim());
     assert.ok(sitemapUrls.length > 0, 'sitemap parse produced no URLs');
 
     for (const url of sitemapUrls) {
       const host = new URL(url).hostname;
       const batch = indexNow.INDEXNOW_BATCHES.find((candidate) => candidate.host === host);
-      assert.ok(batch, `${host} appears in public/sitemap.xml but has no INDEXNOW_BATCHES entry`);
+      assert.ok(batch, `${host} appears in public/sitemap-main.xml but has no INDEXNOW_BATCHES entry`);
       assert.ok(
         batch.urls.includes(url),
         `${url} is published in the sitemap but is not in the ${host} batch, so it is never submitted`,
@@ -221,7 +221,7 @@ describe('IndexNow submission', () => {
     // Three links, each pinned by execution or exact equality rather than a
     // regex over the YAML: the gate emits the derived hosts, the submit step
     // consumes that exact output, and the loop invokes --host for each one.
-    const emitted = (await runRelevanceGate(['public/sitemap.xml'])).variant_hosts;
+    const emitted = (await runRelevanceGate(['public/sitemap-main.xml'])).variant_hosts;
     assert.equal(
       emitted,
       indexNow.INDEXNOW_VARIANT_HOSTS.join(' '),
@@ -273,7 +273,7 @@ describe('IndexNow submission', () => {
       indexNow.INDEXNOW_BATCHES.find(({ host }) => host === indexNow.INDEXNOW_VARIANT_HOSTS[0]).keyLocation,
     ).pathname.slice(1);
     const resubmits = [
-      'public/sitemap.xml',
+      'public/sitemap-main.xml',
       'scripts/build-sitemap.mjs',
       'middleware.ts',
       'src/config/variant-meta.ts',
@@ -316,6 +316,41 @@ describe('IndexNow submission', () => {
       'true',
       'operator-requested recovery must cover the variants too',
     );
+  });
+
+  it('resubmits canonical www URLs when the frozen GitHub-star proof changes', async () => {
+    const changes = [
+      'docs/snapshots/github-stars-2026-09-04.json',
+      'scripts/github-stars-snapshot.mjs',
+    ];
+    const inert = [
+      'docs/snapshots/github-stars-not-a-date.json',
+      'scripts/freeze-github-stars.mjs',
+    ];
+    const [gates, inertGates] = await Promise.all([
+      Promise.all(changes.map((changed) => runRelevanceGate([changed]))),
+      Promise.all(inert.map((changed) => runRelevanceGate([changed]))),
+    ]);
+
+    changes.forEach((changed, index) => {
+      assert.equal(
+        gates[index].submit_www,
+        'true',
+        `${changed} changes prerendered structured data on canonical www URLs, so it must resubmit`,
+      );
+      assert.equal(
+        gates[index].submit_variants,
+        'false',
+        `${changed} does not change variant dashboard URLs, so it must not resubmit them`,
+      );
+    });
+    inert.forEach((changed, index) => {
+      assert.equal(
+        inertGates[index].submit_www,
+        'false',
+        `${changed} is not a direct input to the deployed canonical www output`,
+      );
+    });
   });
 
   it('keeps every submitted URL and key location on the declared host', () => {
@@ -475,6 +510,24 @@ describe('IndexNow submission', () => {
     assert.equal(
       workflowDoc.concurrency?.group,
       "indexnow-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}",
+    );
+  });
+});
+
+describe('IndexNow root-index indirection', () => {
+  it('resolves page URLs through the local urlset member, never index-member URLs', async () => {
+    const { getRootSitemapUrls, readLocalIndexMember } = await import('../scripts/seo-indexnow-submit.mjs');
+    const urls = getRootSitemapUrls();
+    assert.ok(urls.length > 0, 'must resolve a non-empty page URL list');
+    assert.ok(urls.every((url) => !url.endsWith('sitemap.xml') && !url.endsWith('sitemap-main.xml')));
+    assert.ok(urls.some((url) => url === 'https://www.worldmonitor.app/dashboard'));
+  });
+
+  it('fails closed when the root index lists no local urlset member', async () => {
+    const { readLocalIndexMember } = await import('../scripts/seo-indexnow-submit.mjs');
+    assert.throws(
+      () => readLocalIndexMember('<?xml version="1.0"?><sitemapindex><sitemap><loc>https://www.worldmonitor.app/blog/sitemap-index.xml</loc></sitemap></sitemapindex>'),
+      /no local sitemap-main\.xml member/,
     );
   });
 });
