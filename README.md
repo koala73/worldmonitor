@@ -4,20 +4,19 @@
 
 ### Global environmental · biological · pharmaceutical · regulatory intelligence
 
-**A free-first situational-awareness surface built on the WorldMonitor engine.**  
-Real-time news, maps, public data, infrastructure signals, markets, weather, disasters, and cross-stream intelligence in one interface.
+**A free-first situational-awareness surface for public intelligence, environmental signals, bio/pharma context, regulation, infrastructure, markets, weather, disasters, and cross-stream analysis.**
 
 [![GitHub stars](https://img.shields.io/github/stars/sonoxo/thegreenhouse?style=social)](https://github.com/sonoxo/thegreenhouse/stargazers)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-2ea043.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
 [![Last commit](https://img.shields.io/github/last-commit/sonoxo/thegreenhouse)](https://github.com/sonoxo/thegreenhouse/commits/main)
-[![WorldMonitor Engine](https://img.shields.io/badge/Engine-WorldMonitor-0b8f55?style=flat)](https://github.com/koala73/worldmonitor)
+[![Green House](https://img.shields.io/badge/Identity-THE_GREEN_HOUSE-16a34a?style=flat)](https://github.com/sonoxo/thegreenhouse)
 [![Free First](https://img.shields.io/badge/Data-Zero--Cost--First-22c55e?style=flat)](#free--public-data-first)
 
 <p>
-  <a href="https://github.com/sonoxo/thegreenhouse"><img src="https://img.shields.io/badge/GREEN_HOUSE-OPEN_REPOSITORY-16a34a?style=for-the-badge&logo=github&logoColor=white" alt="Open Green House"></a>&nbsp;
-  <a href="https://github.com/koala73/worldmonitor"><img src="https://img.shields.io/badge/UPSTREAM-WORLDMONITOR-0891b2?style=for-the-badge&logo=github&logoColor=white" alt="WorldMonitor upstream"></a>&nbsp;
-  <a href="#quick-start"><img src="https://img.shields.io/badge/LOCAL_LAUNCH-NPM_RUN_DEV-14532d?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Local launch"></a>
+  <a href="https://github.com/sonoxo/thegreenhouse"><img src="https://img.shields.io/badge/THE_GREEN_HOUSE-OPEN_REPOSITORY-16a34a?style=for-the-badge&logo=github&logoColor=white" alt="Open The Green House"></a>&nbsp;
+  <a href="#quick-start"><img src="https://img.shields.io/badge/LOCAL_LAUNCH-NPM_RUN_DEV-14532d?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Local launch"></a>&nbsp;
+  <a href="NOTICE.md"><img src="https://img.shields.io/badge/LEGAL-SOURCE_NOTICE-334155?style=for-the-badge&logo=readthedocs&logoColor=white" alt="Source notice"></a>
 </p>
 
 <p>
@@ -25,18 +24,18 @@ Real-time news, maps, public data, infrastructure signals, markets, weather, dis
   <a href="#quick-start"><strong>Quick Start</strong></a> &nbsp;·&nbsp;
   <a href="#free--public-data-first"><strong>Free Data</strong></a> &nbsp;·&nbsp;
   <a href="#architecture"><strong>Architecture</strong></a> &nbsp;·&nbsp;
-  <a href="#license--upstream-attribution"><strong>License</strong></a>
+  <a href="#license"><strong>License</strong></a>
 </p>
 
 </div>
 
-![The Green House / WorldMonitor intelligence dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
+![The Green House intelligence dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
 
 ---
 
 ## What It Does
 
-The Green House keeps the high-density WorldMonitor experience while organizing it as a **free-first public intelligence surface** for environmental, biological, pharmaceutical, regulatory, infrastructure, and global-event awareness.
+THE GREEN HOUSE is a **free-first public intelligence surface** built for environmental, biological, pharmaceutical, regulatory, infrastructure, and global-event awareness.
 
 - **Curated global news feeds** with regional and topical intelligence streams
 - **Dual map engine** — 3D globe plus high-performance WebGL flat mapping
@@ -47,10 +46,10 @@ The Green House keeps the high-density WorldMonitor experience while organizing 
 - **Finance radar** — exchanges, commodities, crypto and market context
 - **Browser-side AI capability** through Transformers.js where appropriate
 - **Optional AI providers** such as Groq / OpenRouter without making paid services the baseline requirement
-- **Desktop-capable upstream architecture** through Tauri 2
-- **Multilingual interface** inherited from the WorldMonitor codebase
+- **Desktop-capable architecture** through Tauri 2
+- **Multilingual interface** inherited from the underlying open-source engine
 
-> **Identity:** The Green House is an independent derivative/integration built from the open-source WorldMonitor codebase. It is not the official WorldMonitor project. Upstream attribution and AGPL obligations remain intact.
+> **Project identity:** THE GREEN HOUSE is an independent derivative/integration with its own branding, ontology, data posture, and implementation direction. It is not the official upstream project. Required upstream legal notices remain preserved in [`NOTICE.md`](NOTICE.md), [`LICENSE`](LICENSE), and the repository source history.
 
 ---
 
@@ -89,7 +88,7 @@ Then open:
 http://localhost:3000
 ```
 
-The inherited WorldMonitor application can run without environment variables for its baseline experience. Feature-specific providers may require optional credentials; see `.env.example`.
+The application can run without environment variables for its baseline experience. Feature-specific providers may require optional credentials; see `.env.example`.
 
 ### Update later
 
@@ -111,7 +110,7 @@ npm run dev
 ├──────────────────────────────────────────────────────────┤
 │  NEWS  │  MAPS  │ WEATHER │ BIO │ PHARMA │ MARKETS     │
 ├──────────────────────────────────────────────────────────┤
-│        WorldMonitor visualization + panel engine         │
+│      visualization · panel · correlation engine         │
 ├──────────────────────────────────────────────────────────┤
 │ Open/public APIs │ free registration │ browser compute   │
 ├──────────────────────────────────────────────────────────┤
@@ -127,10 +126,10 @@ npm run dev
 | **3D Mapping** | globe.gl, Three.js |
 | **2D Mapping** | deck.gl, MapLibre GL |
 | **Desktop** | Tauri 2 / Rust |
-| **AI / ML** | Transformers.js, optional Groq / OpenRouter / upstream providers |
-| **Caching** | Browser/service-worker + upstream cache architecture |
+| **AI / ML** | Transformers.js, optional Groq / OpenRouter / compatible providers |
+| **Caching** | Browser/service-worker + multi-tier cache architecture |
 | **Data posture** | Public / open / free-registration first |
-| **Source engine** | WorldMonitor |
+| **Project identity** | THE GREEN HOUSE |
 
 ---
 
@@ -145,18 +144,6 @@ npm run dev
 | 📡 **Global Intel** | geopolitical, aviation, economic, cyber and event convergence |
 
 The interface is an **intelligence and research surface**, not a substitute for authoritative medical, regulatory, emergency, or governmental determinations.
-
----
-
-## Upstream WorldMonitor
-
-The visualization engine and substantial portions of the underlying application originate from **WorldMonitor** by Elie Habib and contributors.
-
-- Upstream source: https://github.com/koala73/worldmonitor
-- Official upstream web app: https://www.worldmonitor.app
-- Upstream documentation: https://www.worldmonitor.app/docs/documentation
-
-The Green House intentionally preserves upstream attribution while applying its own project identity, data posture, ontology, and integration direction.
 
 ---
 
@@ -179,9 +166,9 @@ npm run dev:energy
 
 ---
 
-## License & Upstream Attribution
+## License
 
-**AGPL-3.0-only** applies to the WorldMonitor-derived source in this repository. Commercial use is permitted when the AGPL's copyleft and source-availability obligations are satisfied.
+**AGPL-3.0-only** applies to covered source in this repository. Commercial use is permitted when the AGPL's copyleft and source-availability obligations are satisfied.
 
 | Use Case | Status |
 |---|---|
@@ -189,25 +176,20 @@ npm run dev:energy
 | Self-hosting | ✅ Allowed under AGPL-3.0-only |
 | Forking and modification | ✅ Allowed, subject to AGPL obligations |
 | Commercial / SaaS deployment | ✅ Allowed when AGPL obligations are followed |
-| Official WorldMonitor branding rights | ⚠️ Not granted by the code license |
+| Upstream trademark / official-brand rights | ⚠️ Not granted by the code license |
 
-See [`LICENSE`](LICENSE) for the complete license terms.
+See [`LICENSE`](LICENSE) for the complete license text and [`NOTICE.md`](NOTICE.md) for preserved upstream copyright, attribution, provenance, and source information.
 
-**Upstream copyright:** Copyright (C) 2024-2026 Elie Habib. All rights reserved as stated in the upstream project.
+<details>
+<summary><strong>Upstream source & attribution</strong></summary>
 
-The Green House project does not remove or replace upstream copyright, license, attribution, or provenance requirements.
+This repository contains an independently branded derivative of an AGPL-licensed open-source intelligence project. The upstream project, source link, copyright notice, and attribution are preserved in [`NOTICE.md`](NOTICE.md). This project does not claim official upstream affiliation or trademark rights.
+
+</details>
 
 ---
 
-## Contributors
-
-### Upstream WorldMonitor contributors
-
-<a href="https://github.com/koala73/worldmonitor/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=koala73/worldmonitor" alt="WorldMonitor contributors" />
-</a>
-
-### The Green House repository
+## THE GREEN HOUSE Contributors
 
 <a href="https://github.com/sonoxo/thegreenhouse/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=sonoxo/thegreenhouse" alt="The Green House contributors" />
@@ -219,8 +201,10 @@ The Green House project does not remove or replace upstream copyright, license, 
 
 ### 🌿 THE GREEN HOUSE
 
-**WorldMonitor engine · Green House identity · free/public-data-first intelligence**
+**Eco · Bio · Pharma · Regulatory · Global Intelligence**
 
-[Repository](https://github.com/sonoxo/thegreenhouse) · [Upstream](https://github.com/koala73/worldmonitor) · [License](LICENSE)
+**Free-first data · browser intelligence · geospatial awareness · public-source correlation**
+
+[Repository](https://github.com/sonoxo/thegreenhouse) · [Source Notice](NOTICE.md) · [License](LICENSE)
 
 </div>
