@@ -37,6 +37,7 @@ function parseExactUtc(iso, length) {
 export function gdeltSeenDateToIso(seendate) {
   const s = String(seendate || '').replace(/[^0-9]/g, '');
   if (s.length < 8) return '';
+  if (s.length !== 8 && !Number.isFinite(gdeltSeenDateToMs(s))) return '';
   const iso = `${s.slice(0, 4)}-${s.slice(4, 6)}-${s.slice(6, 8)}`;
   // Slicing alone emitted impossible days verbatim: '20260231' became the
   // string '2026-02-31'. Date.parse does not reject those, it rolls them into

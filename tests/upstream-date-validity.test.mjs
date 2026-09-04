@@ -19,6 +19,7 @@ test('an impossible calendar day is rejected, not rolled into the next month', (
 
 test('a clock rollover does not move the observation to the following day', () => {
   for (const stamp of ['20260430T240000Z', '20260430T126000Z', '20260430T125960Z']) {
+    assert.equal(gdeltSeenDateToIso(stamp), '', `accepted date for ${stamp}`);
     assert.ok(Number.isNaN(gdeltSeenDateToMs(stamp)), `accepted ${stamp}`);
   }
 });
@@ -34,6 +35,9 @@ test('leap days and both supported stamp shapes still parse', () => {
 test('an article with an impossible date produces no conflict event', () => {
   const events = mapGdeltArticlesToEvents([
     { seendate: '20260231T120000Z', title: 'impossible', url: 'https://example.com/a' },
+    { seendate: '20260228T240000Z', title: 'invalid hour', url: 'https://example.com/hour' },
+    { seendate: '20260228T126000Z', title: 'invalid minute', url: 'https://example.com/minute' },
+    { seendate: '20260228T125960Z', title: 'invalid second', url: 'https://example.com/second' },
     { seendate: '20260228T120000Z', title: 'real', url: 'https://example.com/b' },
   ], 'SD');
   assert.equal(events.length, 1);
@@ -45,11 +49,11 @@ for (const source of ['acled', 'ucdp']) {
   const split = events => (source === 'acled' ? [events, []] : [[], events]);
 
   test(`${source}: a corrupt far-future date cannot inflate the 24-hour count`, () => {
-    const events = [now - 1, now, now + 30 * DAY].map(ms => ({
+    const events = [now - 1, now, now + DAY, now + DAY + 1, now + 30 * DAY].map(ms => ({
       country: 'Sudan', [field]: new Date(ms).toISOString(),
     }));
     const windows = computeEmaWindows(new Map(), ...split(events), now);
-    assert.deepEqual(windows.get('sudan').window, [2]);
+    assert.deepEqual(windows.get('sudan').window, [3]);
   });
 
   test(`${source}: a date-only event dated today is still counted from any timezone`, () => {
