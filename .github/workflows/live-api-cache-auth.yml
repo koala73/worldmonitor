@@ -51,11 +51,7 @@ name: Live API Cache/Auth Sweep
 #   - schedule (every 6h, offset from mcp-live-smoke's :23 so the two live
 #     probes don't hit prod from the same runner IP range in the same minute):
 #     the posture this guards is set by CDN rules and deploy config, which drift
-#     independently of commits. ~25 requests per run (2 bootstrap + 2 RPC +
-#     1 premium RPC + 16 MCP + 2 OAuth + 2-9 corpus, the corpus probe retrying
-#     until Cloudflare reports a stored HIT); 4 runs/day is ~100-128 requests —
-#     negligible, and the 16 MCP requests land over ~2s, far under the anon
-#     60/min/IP limit.
+#     independently of commits.
 #   - push to main touching the suite/workflow: validates edits on merge.
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run could
@@ -77,9 +73,6 @@ permissions:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    # ~25 requests x 15s worst-case per-request timeout (LIVE_API_CACHE_TIMEOUT_MS)
-    # is a ~6min absolute ceiling, plus ~1min checkout/setup-node. Nominal runs
-    # finish in under 5s.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0

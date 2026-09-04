@@ -47,7 +47,8 @@
  * Wiring this into CI means provisioning a separate, cache-rules-scoped token.
  * Locally, `CLOUDFLARE_ALL_ACCESS_TOKEN` is accepted as a fallback because that
  * is what .env.local carries — note it is account-wide, so a mistake here runs
- * with far more Cloudflare authority than the task needs.
+ * with far more Cloudflare authority than the task needs. Set exactly one token;
+ * the script refuses to guess when both variables are present.
  *
  * `--apply` touches only this one rule and then re-reads the zone to confirm it
  * actually wins. Cloudflare keeps prior ruleset versions, so a bad apply is also
@@ -65,12 +66,10 @@ const ZONE_NAME = 'worldmonitor.app';
 /** Apex and the variant subdomains serve different documents from these paths. */
 export const CORPUS_HOST = 'www.worldmonitor.app';
 
-/**
- * The rule's identity in the zone. `--apply` matches on this string, so renaming
- * it here without renaming it in the dashboard creates a duplicate rule rather
- * than updating the existing one.
- */
 const CORPUS_CACHE_RULE_DESCRIPTION = 'WWW corpus HTML - use origin CDN cache headers';
+
+/** Stable ruleset identity, independent of dashboard description edits. */
+const CORPUS_CACHE_RULE_REF = 'www_corpus_html_origin_cache';
 
 /** The cache-phase ruleset both this rule and the pre-existing bypass live in. */
 const CACHE_PHASE = 'http_request_cache_settings';
@@ -124,6 +123,7 @@ function buildCorpusCacheExpression(prefixes = CONTENT_CORPUS_PREFIXES) {
  */
 export function buildCorpusCacheRule(prefixes = CONTENT_CORPUS_PREFIXES) {
   return {
+    ref: CORPUS_CACHE_RULE_REF,
     description: CORPUS_CACHE_RULE_DESCRIPTION,
     expression: buildCorpusCacheExpression(prefixes),
     action: 'set_cache_settings',
@@ -184,10 +184,19 @@ const USER_AGENT = 'WorldMonitor Cloudflare Cache Rule/1.0';
 /** Matches the ceiling scripts/_kv-storage.mjs uses for its Cloudflare API writes. */
 const REQUEST_TIMEOUT_MS = 15_000;
 
-async function cloudflareRequest(path, { token, method = 'GET', body, timeoutMs = REQUEST_TIMEOUT_MS } = {}) {
+async function cloudflareRequest(
+  path,
+  {
+    token,
+    method = 'GET',
+    body,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+    fetchImpl = (...args) => globalThis.fetch(...args),
+  } = {},
+) {
   // A hung API call must not park an `--apply` between the read and the write
   // forever; fail loudly instead so the operator can retry against a fresh read.
-  const response = await fetch(`${CLOUDFLARE_API}${path}`, {
+  const response = await fetchImpl(`${CLOUDFLARE_API}${path}`, {
     method,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -197,8 +206,6 @@ async function cloudflareRequest(path, { token, method = 'GET', body, timeoutMs 
     ...(body ? { body: JSON.stringify(body) } : {}),
     signal: AbortSignal.timeout(timeoutMs),
   });
-  // A rule DELETE can answer 204 with no body; that is success, not a parse error.
-  if (response.status === 204 && response.ok) return null;
   const payload = await response.json().catch(() => null);
   if (!response.ok || !payload?.success) {
     const detail = JSON.stringify(payload?.errors ?? payload ?? response.statusText);
@@ -207,12 +214,15 @@ async function cloudflareRequest(path, { token, method = 'GET', body, timeoutMs 
   return payload.result;
 }
 
-async function resolveZoneId(token, env = process.env) {
+async function resolveZoneId(token, { env = process.env, fetchImpl } = {}) {
   if (env.CLOUDFLARE_ZONE_ID) {
     // Never take the id on trust. The credential that actually runs this locally
     // is account-wide, so a stale or mistyped id would aim every write at another
     // zone's cache rules — and the script would report success.
-    const zone = await cloudflareRequest(`/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}`, { token });
+    const zone = await cloudflareRequest(`/zones/${encodeURIComponent(env.CLOUDFLARE_ZONE_ID)}`, {
+      token,
+      fetchImpl,
+    });
     if (zone?.name !== ZONE_NAME) {
       throw new Error(
         `CLOUDFLARE_ZONE_ID ${env.CLOUDFLARE_ZONE_ID} is zone "${zone?.name ?? 'unknown'}", not ${ZONE_NAME}`,
@@ -220,47 +230,78 @@ async function resolveZoneId(token, env = process.env) {
     }
     return zone.id;
   }
-  const zones = await cloudflareRequest(`/zones?name=${encodeURIComponent(ZONE_NAME)}`, { token });
+  const zones = await cloudflareRequest(`/zones?name=${encodeURIComponent(ZONE_NAME)}`, { token, fetchImpl });
   const zone = zones?.[0];
   if (!zone) throw new Error(`no Cloudflare zone named ${ZONE_NAME} is visible to this token`);
   return zone.id;
 }
 
 function resolveToken(env = process.env) {
-  const token = env.CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_ALL_ACCESS_TOKEN;
-  if (!token) {
-    throw new Error('CLOUDFLARE_API_TOKEN is required for --check and --apply');
+  const tokens = [env.CLOUDFLARE_API_TOKEN, env.CLOUDFLARE_ALL_ACCESS_TOKEN].filter(Boolean);
+  if (tokens.length !== 1) {
+    throw new Error(
+      tokens.length
+        ? 'set exactly one of CLOUDFLARE_API_TOKEN or CLOUDFLARE_ALL_ACCESS_TOKEN, not both'
+        : 'exactly one of CLOUDFLARE_API_TOKEN or CLOUDFLARE_ALL_ACCESS_TOKEN is required for --check and --apply',
+    );
   }
-  return token;
+  return tokens[0];
+}
+
+function identifyLiveRule(rules, rule) {
+  const entries = (rules ?? []).map((entry, position) => ({ entry, position }));
+  const refMatches = entries.filter(({ entry }) => entry.ref === rule.ref);
+  const descriptionMatches = entries.filter(({ entry }) => entry.description === rule.description);
+  const legacyMatches = descriptionMatches.filter(({ entry }) => !entry.ref);
+  const conflictingDescriptionMatches = descriptionMatches.filter(
+    ({ entry }) => entry.ref && entry.ref !== rule.ref,
+  );
+  const candidates = entries.filter(
+    ({ entry }) => entry.ref === rule.ref || entry.description === rule.description,
+  );
+
+  if (
+    refMatches.length > 1
+    || conflictingDescriptionMatches.length > 0
+    || (refMatches.length === 1 && candidates.length > 1)
+    || (refMatches.length === 0 && legacyMatches.length > 1)
+  ) {
+    return { status: 'ambiguous', matches: candidates };
+  }
+  if (refMatches.length === 1) return { status: 'matched', match: refMatches[0] };
+  if (legacyMatches.length === 1) return { status: 'matched', match: legacyMatches[0] };
+  return { status: 'missing' };
 }
 
 /**
  * Report how the live zone differs from the generated rule.
  *
- * Ordering is checked as well as content: a rule that is present but sits above
- * a cache-disabling rule looks correct in the dashboard and does nothing.
+ * Ordering is checked as well as content: a later cache-settings rule can
+ * override any field it writes even when this rule looks correct in isolation.
  */
 export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
-  const matches = (rules ?? [])
-    .map((entry, position) => ({ entry, position }))
-    .filter(({ entry }) => entry.description === rule.description);
-  if (matches.length === 0) {
+  const identity = identifyLiveRule(rules, rule);
+  if (identity.status === 'missing') {
     return { status: 'missing', problems: ['the rule is not in the zone'], misordered: false };
   }
-
-  // Duplicates are reachable: a `recreate` whose POST lands and whose DELETE
-  // fails leaves two copies. Reading only the first would let this report
-  // `current` off a correct early copy while a stale LATER copy is the one
-  // Cloudflare actually applies — the same last-rule-wins trap as #7659, from
-  // inside our own tooling. Judge the last copy, and refuse to call it current.
-  const { entry: live, position: index } = matches.at(-1);
-  const problems = [];
-  if (matches.length > 1) {
-    problems.push(
-      `${matches.length} rules share this description (positions ${matches.map((m) => m.position).join(', ')});`
-      + ' remove the stale copies — the last one wins and the others only confuse the next reader',
-    );
+  if (identity.status === 'ambiguous') {
+    const positions = identity.matches.map(({ position }) => position).join(', ');
+    return {
+      status: 'drifted',
+      problems: [
+        `${identity.matches.length} rules match the managed ref or legacy description (positions ${positions});`
+        + ' identity is ambiguous and must be repaired before applying',
+      ],
+      misordered: false,
+      ambiguous: true,
+      matches: identity.matches,
+    };
   }
+
+  const { entry: live, position: index } = identity.match;
+  const problems = [];
+  if (live.ref !== rule.ref) problems.push(`ref is ${live.ref ?? 'missing'}, expected ${rule.ref}`);
+  if (live.description !== rule.description) problems.push('description differs');
   if (live.expression !== rule.expression) problems.push('expression differs');
   if (live.action !== rule.action) problems.push(`action is ${live.action}, expected ${rule.action}`);
   // Exact rather than subset: an extra field Cloudflare stores that we did not
@@ -271,24 +312,20 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
   }
   if (live.enabled === false) problems.push('the rule is disabled');
 
-  // Deliberately over-inclusive: any later rule that turns caching off is
-  // reported, not only the document bypass. Deciding whether a given expression
-  // could match a corpus URL would mean parsing wirefilter, and the failure this
-  // exists to catch — a correct-looking rule sitting where it can never win — is
-  // invisible in the dashboard. A false alarm costs a moment's thought; a false
-  // clear costs a repeat of #7659.
-  const laterBypass = rules.findIndex((entry, position) => {
-    if (position <= index) return false;
-    const params = entry.action_parameters;
-    if (params?.cache === false) return true;
-    // A later rule can also neutralise caching while leaving `cache: true`, by
-    // overriding the origin TTL to zero. Same outcome, different shape.
-    return params?.edge_ttl?.mode === 'override_origin' && params.edge_ttl.default === 0;
-  });
-  if (laterBypass !== -1) {
+  const laterWriters = [];
+  for (let position = index + 1; position < (rules ?? []).length; position += 1) {
+    const entry = rules[position];
+    if (entry.enabled === false || entry.action !== 'set_cache_settings') continue;
+    const fields = ['cache', 'browser_ttl', 'edge_ttl'].filter(
+      (field) => Object.hasOwn(entry.action_parameters ?? {}, field),
+    );
+    if (fields.length) laterWriters.push({ entry, fields, position });
+  }
+  for (const { entry, fields, position } of laterWriters) {
     problems.push(
-      `the rule sits at ${index}, above a cache-disabling rule at ${laterBypass}`
-      + ` ("${rules[laterBypass].description}"), which wins on any URL they both match`,
+      `the rule sits at ${index}, above an enabled cache-settings rule at ${position}`
+      + ` ("${entry.description}") that writes ${fields.join(', ')}`
+      + ' and wins on any URL they both match',
     );
   }
 
@@ -296,7 +333,7 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
     status: problems.length ? 'drifted' : 'current',
     problems,
     index,
-    misordered: laterBypass !== -1,
+    misordered: laterWriters.length > 0,
   };
 }
 
@@ -314,102 +351,119 @@ export function diffLiveRuleset(rules, rule = buildCorpusCacheRule()) {
 export function planApply(rules, rule = buildCorpusCacheRule()) {
   const diff = diffLiveRuleset(rules, rule);
   if (diff.status === 'missing') return { op: 'create', diff };
+  if (diff.ambiguous) {
+    return { op: 'duplicates', duplicates: diff.matches.map(({ entry }) => entry.id), diff };
+  }
   if (diff.status === 'current') return { op: 'none', diff };
-  // Duplicates are not something to patch around: leave the last copy (the one
-  // that wins) and report the rest so an operator deletes them deliberately.
-  const duplicates = (rules ?? [])
-    .filter((entry) => entry.description === rule.description)
-    .slice(0, -1)
-    .map((entry) => entry.id);
-  if (duplicates.length) return { op: 'duplicates', duplicates, diff };
   const id = rules[diff.index]?.id;
-  // Content-only drift is a patch in place. A misordered rule has to move, and
-  // Cloudflare appends a new rule last — so the corrected copy is added before
-  // the stale one is removed and the corpus is never uncached in between.
-  return { op: diff.misordered ? 'recreate' : 'update', id, diff };
+  // Cloudflare accepts position on the per-rule PATCH, so drift and movement are
+  // one atomic update that preserves the existing rule id.
+  return { op: 'update', id, diff };
 }
 
 const MODES = ['--print', '--check', '--apply'];
 
-async function main(argv) {
+function writeLine(stream, message) {
+  stream.write(`${message}\n`);
+}
+
+export async function runCloudflareCacheRule(
+  argv,
+  {
+    env = process.env,
+    fetchImpl = (...args) => globalThis.fetch(...args),
+    stdout = process.stdout,
+    stderr = process.stderr,
+  } = {},
+) {
   // Without this, `--aply` falls through to `--print` and exits 0 — a silent
   // no-op that reads exactly like a successful apply.
   const unknown = argv.filter((arg) => !MODES.includes(arg));
   if (unknown.length) {
-    console.error(`unknown argument(s): ${unknown.join(' ')}\nusage: cloudflare-cache-rule.mjs [${MODES.join(' | ')}]`);
+    writeLine(stderr, `unknown argument(s): ${unknown.join(' ')}\nusage: cloudflare-cache-rule.mjs [${MODES.join(' | ')}]`);
     return 2;
   }
-  const mode = argv.find((arg) => MODES.includes(arg)) ?? '--print';
+  const modes = argv.filter((arg) => MODES.includes(arg));
+  if (modes.length > 1) {
+    writeLine(stderr, `choose exactly one mode\nusage: cloudflare-cache-rule.mjs [${MODES.join(' | ')}]`);
+    return 2;
+  }
+  const mode = modes[0] ?? '--print';
   const rule = buildCorpusCacheRule();
 
   if (mode === '--print') {
-    console.log(JSON.stringify(rule, null, 2));
+    writeLine(stdout, JSON.stringify(rule, null, 2));
     return 0;
   }
 
-  const token = resolveToken();
-  const zoneId = await resolveZoneId(token);
-  const ruleset = await cloudflareRequest(
-    `/zones/${zoneId}/rulesets/phases/${CACHE_PHASE}/entrypoint`,
-    { token },
-  );
-  const diff = diffLiveRuleset(ruleset.rules, rule);
+  try {
+    const token = resolveToken(env);
+    const zoneId = await resolveZoneId(token, { env, fetchImpl });
+    const ruleset = await cloudflareRequest(
+      `/zones/${zoneId}/rulesets/phases/${CACHE_PHASE}/entrypoint`,
+      { token, fetchImpl },
+    );
+    const diff = diffLiveRuleset(ruleset.rules, rule);
 
-  if (mode === '--check') {
+    if (mode === '--check') {
+      if (diff.status === 'current') {
+        writeLine(stdout, `ok: "${rule.description}" is current at position ${diff.index} of ${ruleset.rules.length}`);
+        return 0;
+      }
+      writeLine(stderr, `drift (${diff.status}): ${diff.problems.join('; ')}`);
+      return 1;
+    }
+
     if (diff.status === 'current') {
-      console.log(`ok: "${rule.description}" is current at position ${diff.index} of ${ruleset.rules.length}`);
+      writeLine(stdout, `no change: "${rule.description}" already matches (ruleset version ${ruleset.version})`);
       return 0;
     }
-    console.error(`drift (${diff.status}): ${diff.problems.join('; ')}`);
-    return 1;
-  }
 
-  if (diff.status === 'current') {
-    console.log(`no change: "${rule.description}" already matches (ruleset version ${ruleset.version})`);
-    return 0;
-  }
-
-  const plan = planApply(ruleset.rules, rule);
-  if (plan.op === 'duplicates') {
-    console.error(
-      `refusing to write: ${plan.duplicates.length + 1} rules share "${rule.description}".`
-      + ` Delete the stale copies first (rule ids: ${plan.duplicates.join(', ')}), then re-run.`,
-    );
-    return 1;
-  }
-  const rulesPath = `/zones/${zoneId}/rulesets/${ruleset.id}/rules`;
-  if (plan.op === 'update') {
-    await cloudflareRequest(`${rulesPath}/${plan.id}`, { token, method: 'PATCH', body: rule });
-  } else {
-    await cloudflareRequest(rulesPath, { token, method: 'POST', body: rule });
-    if (plan.op === 'recreate') {
-      await cloudflareRequest(`${rulesPath}/${plan.id}`, { token, method: 'DELETE' });
+    const plan = planApply(ruleset.rules, rule);
+    if (plan.op === 'duplicates') {
+      writeLine(
+        stderr,
+        `refusing to write: ${plan.duplicates.length} rules match the managed ref or legacy description.`
+        + ` Repair the identity collision first (rule ids: ${plan.duplicates.join(', ')}), then re-run.`,
+      );
+      return 1;
     }
-  }
+    const rulesPath = `/zones/${zoneId}/rulesets/${ruleset.id}/rules`;
+    if (plan.op === 'update') {
+      const body = plan.diff.misordered ? { ...rule, position: { after: '' } } : rule;
+      await cloudflareRequest(`${rulesPath}/${plan.id}`, {
+        token,
+        method: 'PATCH',
+        body,
+        fetchImpl,
+      });
+    } else {
+      await cloudflareRequest(rulesPath, { token, method: 'POST', body: rule, fetchImpl });
+    }
 
-  // Re-read rather than trusting the write's own echo: the point of this script
-  // is that a rule can be present and still not win.
-  const after = await cloudflareRequest(
-    `/zones/${zoneId}/rulesets/phases/${CACHE_PHASE}/entrypoint`,
-    { token },
-  );
-  const verify = diffLiveRuleset(after.rules, rule);
-  if (verify.status !== 'current') {
-    console.error(`applied but the zone still reports drift (${verify.status}): ${verify.problems.join('; ')}`);
+    // Re-read rather than trusting the write's own echo: the point of this script
+    // is that a rule can be present and still not win.
+    const after = await cloudflareRequest(
+      `/zones/${zoneId}/rulesets/phases/${CACHE_PHASE}/entrypoint`,
+      { token, fetchImpl },
+    );
+    const verify = diffLiveRuleset(after.rules, rule);
+    if (verify.status !== 'current') {
+      writeLine(stderr, `applied but the zone still reports drift (${verify.status}): ${verify.problems.join('; ')}`);
+      return 1;
+    }
+    writeLine(
+      stdout,
+      `applied (${plan.op}): "${rule.description}" — ruleset version ${ruleset.version} -> ${after.version},`
+      + ` ${after.rules.length} rules, position ${verify.index}`,
+    );
+    return 0;
+  } catch (error) {
+    writeLine(stderr, error.message);
     return 1;
   }
-  console.log(
-    `applied (${plan.op}): "${rule.description}" — ruleset version ${ruleset.version} -> ${after.version},`
-    + ` ${after.rules.length} rules, position ${verify.index}`,
-  );
-  return 0;
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
-  main(process.argv.slice(2))
-    .then((code) => { process.exitCode = code; })
-    .catch((error) => {
-      console.error(error.message);
-      process.exitCode = 1;
-    });
+  runCloudflareCacheRule(process.argv.slice(2)).then((code) => { process.exitCode = code; });
 }

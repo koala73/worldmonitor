@@ -129,6 +129,18 @@ async function fetchText(pathOrUrl, init = {}) {
   return { resp, bodyText };
 }
 
+async function assertRepeatedNeverCloudflareHit(url, { expectedStatus, label, init = {} }) {
+  for (let attempt = 1; attempt <= 2; attempt += 1) {
+    const { resp } = await fetchText(url, init);
+    assert.equal(resp.status, expectedStatus, `${label} attempt ${attempt}: expected HTTP ${expectedStatus}`);
+    assert.notEqual(
+      cfCacheStatus(resp).toUpperCase(),
+      'HIT',
+      `${label} attempt ${attempt}: must never be a Cloudflare HIT`,
+    );
+  }
+}
+
 /**
  * Fetch a corpus document until Cloudflare reports a stored HIT.
  *
@@ -522,6 +534,16 @@ describe(`live API cache/auth regression sweep (${LIVE ? 'ENABLED' : 'SKIPPED - 
       'query-bearing corpus URLs must stay out of the Cloudflare cache — they reach a'
         + ` User-Agent-dependent redirect that Cloudflare cannot vary on (got ${cfCacheStatus(tagged.resp) || 'absent'})`,
     );
+
+    await assertRepeatedNeverCloudflareHit(`${WWW_BASE}/countries`, {
+      expectedStatus: 308,
+      label: 'bare corpus family redirect',
+      init: { redirect: 'manual' },
+    });
+    await assertRepeatedNeverCloudflareHit(`${WWW_BASE}/countries/live-cache-sweep-not-a-country/`, {
+      expectedStatus: 404,
+      label: 'missing corpus document',
+    });
     markProbeCompleted('corpus-edge-cache');
   });
 

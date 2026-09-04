@@ -27,6 +27,7 @@ import {
   buildCorpusCacheRule,
   diffLiveRuleset,
   planApply,
+  runCloudflareCacheRule,
 } from '../scripts/cloudflare-cache-rule.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -148,6 +149,7 @@ describe('cloudflare corpus cache rule', () => {
   });
 
   it('defers the TTL to the origin and refuses to cache anything but a 2xx', () => {
+    assert.equal(rule.ref, 'www_corpus_html_origin_cache');
     assert.equal(rule.action, 'set_cache_settings');
     assert.deepEqual(rule.action_parameters, {
       cache: true,
@@ -191,14 +193,41 @@ describe('cloudflare corpus cache rule', () => {
     assert.deepEqual(plan.diff.problems, ['expression differs']);
   });
 
-  it('recreates the rule when it sits where it can never win', () => {
+  it('patches and moves the same rule when it sits where it can never win', () => {
     // Ordering is the whole mechanism: the blanket document bypass matches every
     // corpus URL too, and Cloudflare lets the last matching rule win. A rule
     // above it is silently inert, so it has to move rather than be patched.
-    const bypass = { id: 'a', description: 'Bypass cache - WWW documents', action_parameters: { cache: false } };
+    const bypass = {
+      id: 'a',
+      description: 'Bypass cache - WWW documents',
+      action: 'set_cache_settings',
+      action_parameters: { cache: false },
+      enabled: true,
+    };
     const plan = planApply([{ ...rule, id: 'mine' }, bypass], rule);
-    assert.equal(plan.op, 'recreate');
+    assert.equal(plan.op, 'update');
     assert.equal(plan.id, 'mine');
+    assert.equal(plan.diff.misordered, true);
+  });
+
+  it('matches the stable ref when the description drifts', () => {
+    const renamed = { ...rule, id: 'mine', description: 'renamed in the dashboard' };
+    const plan = planApply([renamed], rule);
+    assert.equal(plan.op, 'update');
+    assert.equal(plan.id, 'mine');
+    assert.deepEqual(plan.diff.problems, ['description differs']);
+  });
+
+  it('adopts one legacy description-only rule and rejects ambiguous identity', () => {
+    const legacy = { ...rule, id: 'legacy' };
+    delete legacy.ref;
+    assert.equal(planApply([legacy], rule).op, 'update');
+    assert.equal(planApply([legacy], rule).id, 'legacy');
+
+    const renamed = { ...rule, id: 'managed', description: 'renamed in the dashboard' };
+    const ambiguous = planApply([renamed, legacy], rule);
+    assert.equal(ambiguous.op, 'duplicates');
+    assert.deepEqual(ambiguous.duplicates, ['managed', 'legacy']);
   });
 
   it('judges the last copy and refuses to write when duplicates exist', () => {
@@ -210,11 +239,11 @@ describe('cloudflare corpus cache rule', () => {
     const stale = { ...rule, id: 'stale', expression: '(http.host eq "old")' };
     const diff = diffLiveRuleset([bypass, { ...rule, id: 'good' }, stale], rule);
     assert.equal(diff.status, 'drifted', 'the LAST copy is stale, so the zone is not current');
-    assert.match(diff.problems[0], /2 rules share this description/);
+    assert.match(diff.problems[0], /2 rules match the managed ref or legacy description/);
 
     const plan = planApply([bypass, { ...rule, id: 'good' }, stale], rule);
     assert.equal(plan.op, 'duplicates', 'must not silently patch one of several copies');
-    assert.deepEqual(plan.duplicates, ['good'], 'the earlier copies are the ones to delete');
+    assert.deepEqual(plan.duplicates, ['good', 'stale']);
   });
 
   it('never plans a write that touches another rule', () => {
@@ -240,7 +269,9 @@ describe('cloudflare cache rule drift report', () => {
   const rule = buildCorpusCacheRule();
   const bypass = {
     description: 'Bypass cache - WWW documents',
+    action: 'set_cache_settings',
     action_parameters: { cache: false },
+    enabled: true,
   };
 
   it('reports a zone that has never had the rule', () => {
@@ -259,7 +290,40 @@ describe('cloudflare cache rule drift report', () => {
     const diff = diffLiveRuleset([rule, bypass], rule);
     assert.equal(diff.status, 'drifted');
     assert.equal(diff.problems.length, 1);
-    assert.match(diff.problems[0], /above a cache-disabling rule at 1/);
+    assert.match(diff.problems[0], /above an enabled cache-settings rule at 1/);
+    assert.match(diff.problems[0], /writes cache/);
+  });
+
+  it('reports each cache field written by a later enabled cache-settings rule', () => {
+    for (const field of ['cache', 'browser_ttl', 'edge_ttl']) {
+      const later = {
+        description: `later ${field}`,
+        action: 'set_cache_settings',
+        action_parameters: { [field]: field === 'cache' ? true : { mode: 'respect_origin' } },
+        enabled: true,
+      };
+      const diff = diffLiveRuleset([rule, later], rule);
+      assert.equal(diff.status, 'drifted');
+      assert.match(diff.problems.at(-1), new RegExp(`writes ${field}`));
+    }
+  });
+
+  it('ignores disabled and non-cache-settings rules after the managed rule', () => {
+    const later = [
+      {
+        description: 'disabled cache writer',
+        action: 'set_cache_settings',
+        action_parameters: { cache: false, browser_ttl: { mode: 'override_origin', default: 60 } },
+        enabled: false,
+      },
+      {
+        description: 'different action',
+        action: 'skip',
+        action_parameters: { cache: false, edge_ttl: { mode: 'override_origin', default: 0 } },
+        enabled: true,
+      },
+    ];
+    assert.equal(diffLiveRuleset([rule, ...later], rule).status, 'current');
   });
 
   it('does not call Cloudflare’s own key ordering a drift', () => {
@@ -297,5 +361,243 @@ describe('cloudflare cache rule drift report', () => {
     const diff = diffLiveRuleset([bypass, edited], rule);
     assert.equal(diff.status, 'drifted');
     assert.deepEqual(diff.problems, ['expression differs', 'the rule is disabled']);
+  });
+});
+
+function outputSink() {
+  const chunks = [];
+  return {
+    chunks,
+    stream: { write: (chunk) => chunks.push(String(chunk)) },
+  };
+}
+
+function cloudflareResponse(result, { status = 200, success = true, errors = [] } = {}) {
+  return {
+    status,
+    ok: status >= 200 && status < 300,
+    statusText: status === 200 ? 'OK' : 'Error',
+    json: async () => ({ success, result, errors }),
+  };
+}
+
+function interceptedFetch(responses) {
+  const calls = [];
+  return {
+    calls,
+    fetchImpl: async (url, options) => {
+      calls.push({
+        url,
+        method: options.method,
+        body: options.body ? JSON.parse(options.body) : undefined,
+      });
+      assert.ok(responses.length, `unexpected Cloudflare request: ${options.method} ${url}`);
+      return responses.shift();
+    },
+  };
+}
+
+const API = 'https://api.cloudflare.com/client/v4';
+const ZONE_PATH = `${API}/zones/zone-id`;
+const ENTRYPOINT_PATH = `${API}/zones/zone-id/rulesets/phases/http_request_cache_settings/entrypoint`;
+const RULES_PATH = `${API}/zones/zone-id/rulesets/ruleset-id/rules`;
+const RUN_ENV = { CLOUDFLARE_API_TOKEN: 'token', CLOUDFLARE_ZONE_ID: 'zone-id' };
+
+describe('cloudflare cache rule runner', () => {
+  it('rejects multiple recognized modes in either order before network access', async () => {
+    for (const argv of [['--apply', '--check'], ['--print', '--apply']]) {
+      let networkCalls = 0;
+      const stderr = outputSink();
+      const code = await runCloudflareCacheRule(argv, {
+        env: RUN_ENV,
+        fetchImpl: async () => { networkCalls += 1; },
+        stdout: outputSink().stream,
+        stderr: stderr.stream,
+      });
+      assert.equal(code, 2);
+      assert.equal(networkCalls, 0);
+      assert.match(stderr.chunks.join(''), /choose exactly one mode/);
+    }
+  });
+
+  it('requires exactly one compatible token variable before network access', async () => {
+    for (const env of [
+      { CLOUDFLARE_ZONE_ID: 'zone-id' },
+      {
+        CLOUDFLARE_API_TOKEN: 'scoped',
+        CLOUDFLARE_ALL_ACCESS_TOKEN: 'broad',
+        CLOUDFLARE_ZONE_ID: 'zone-id',
+      },
+    ]) {
+      let networkCalls = 0;
+      const stderr = outputSink();
+      const code = await runCloudflareCacheRule(['--check'], {
+        env,
+        fetchImpl: async () => { networkCalls += 1; },
+        stdout: outputSink().stream,
+        stderr: stderr.stream,
+      });
+      assert.equal(code, 1);
+      assert.equal(networkCalls, 0);
+      assert.match(stderr.chunks.join(''), /exactly one of CLOUDFLARE_API_TOKEN or CLOUDFLARE_ALL_ACCESS_TOKEN/);
+    }
+  });
+
+  it('accepts CLOUDFLARE_ALL_ACCESS_TOKEN when it is the only token', async () => {
+    const rule = buildCorpusCacheRule();
+    const intercepted = interceptedFetch([
+      cloudflareResponse({ id: 'zone-id', name: 'worldmonitor.app' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '1', rules: [{ ...rule, id: 'managed-id' }] }),
+    ]);
+    const code = await runCloudflareCacheRule(['--check'], {
+      env: { CLOUDFLARE_ALL_ACCESS_TOKEN: 'broad', CLOUDFLARE_ZONE_ID: 'zone-id' },
+      fetchImpl: intercepted.fetchImpl,
+      stdout: outputSink().stream,
+      stderr: outputSink().stream,
+    });
+
+    assert.equal(code, 0);
+    assert.deepEqual(intercepted.calls, [
+      { url: ZONE_PATH, method: 'GET', body: undefined },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+    ]);
+  });
+
+  it('refuses ambiguous identity before any write', async () => {
+    const rule = buildCorpusCacheRule();
+    const legacy = { ...rule, id: 'legacy-id' };
+    delete legacy.ref;
+    const renamed = { ...rule, id: 'managed-id', description: 'renamed in dashboard' };
+    const intercepted = interceptedFetch([
+      cloudflareResponse({ id: 'zone-id', name: 'worldmonitor.app' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '3', rules: [renamed, legacy] }),
+    ]);
+    const stderr = outputSink();
+    const code = await runCloudflareCacheRule(['--apply'], {
+      env: RUN_ENV,
+      fetchImpl: intercepted.fetchImpl,
+      stdout: outputSink().stream,
+      stderr: stderr.stream,
+    });
+
+    assert.equal(code, 1);
+    assert.deepEqual(intercepted.calls, [
+      { url: ZONE_PATH, method: 'GET', body: undefined },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+    ]);
+    assert.match(stderr.chunks.join(''), /refusing to write: 2 rules match/);
+  });
+
+  it('moves an existing ref-matched rule with one PATCH and no create or delete', async () => {
+    const rule = buildCorpusCacheRule();
+    const managed = { ...rule, id: 'managed-id', description: 'renamed in dashboard' };
+    const later = {
+      id: 'later-id',
+      description: 'later browser TTL',
+      action: 'set_cache_settings',
+      action_parameters: { browser_ttl: { mode: 'override_origin', default: 60 } },
+      enabled: true,
+    };
+    const intercepted = interceptedFetch([
+      cloudflareResponse({ id: 'zone-id', name: 'worldmonitor.app' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '4', rules: [managed, later] }),
+      cloudflareResponse({ ...rule, id: 'managed-id' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '5', rules: [later, { ...rule, id: 'managed-id' }] }),
+    ]);
+    const code = await runCloudflareCacheRule(['--apply'], {
+      env: RUN_ENV,
+      fetchImpl: intercepted.fetchImpl,
+      stdout: outputSink().stream,
+      stderr: outputSink().stream,
+    });
+
+    assert.equal(code, 0);
+    assert.deepEqual(intercepted.calls, [
+      { url: ZONE_PATH, method: 'GET', body: undefined },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+      {
+        url: `${RULES_PATH}/managed-id`,
+        method: 'PATCH',
+        body: { ...rule, position: { after: '' } },
+      },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+    ]);
+  });
+
+  it('adopts exactly one legacy description-only rule with PATCH', async () => {
+    const rule = buildCorpusCacheRule();
+    const legacy = { ...rule, id: 'legacy-id' };
+    delete legacy.ref;
+    const intercepted = interceptedFetch([
+      cloudflareResponse({ id: 'zone-id', name: 'worldmonitor.app' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '8', rules: [legacy] }),
+      cloudflareResponse({ ...rule, id: 'legacy-id' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '9', rules: [{ ...rule, id: 'legacy-id' }] }),
+    ]);
+    const code = await runCloudflareCacheRule(['--apply'], {
+      env: RUN_ENV,
+      fetchImpl: intercepted.fetchImpl,
+      stdout: outputSink().stream,
+      stderr: outputSink().stream,
+    });
+
+    assert.equal(code, 0);
+    assert.deepEqual(intercepted.calls, [
+      { url: ZONE_PATH, method: 'GET', body: undefined },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+      { url: `${RULES_PATH}/legacy-id`, method: 'PATCH', body: rule },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+    ]);
+  });
+
+  it('creates a missing rule with POST and verifies the result', async () => {
+    const rule = buildCorpusCacheRule();
+    const other = { id: 'other-id', description: 'unrelated', action: 'skip', enabled: true };
+    const intercepted = interceptedFetch([
+      cloudflareResponse({ id: 'zone-id', name: 'worldmonitor.app' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '1', rules: [other] }),
+      cloudflareResponse({ ...rule, id: 'managed-id' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '2', rules: [other, { ...rule, id: 'managed-id' }] }),
+    ]);
+    const code = await runCloudflareCacheRule(['--apply'], {
+      env: RUN_ENV,
+      fetchImpl: intercepted.fetchImpl,
+      stdout: outputSink().stream,
+      stderr: outputSink().stream,
+    });
+
+    assert.equal(code, 0);
+    assert.deepEqual(intercepted.calls, [
+      { url: ZONE_PATH, method: 'GET', body: undefined },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+      { url: RULES_PATH, method: 'POST', body: rule },
+      { url: ENTRYPOINT_PATH, method: 'GET', body: undefined },
+    ]);
+  });
+
+  it('returns failure and stops when a PATCH fails', async () => {
+    const rule = buildCorpusCacheRule();
+    const edited = { ...rule, id: 'managed-id', expression: '(http.host eq "wrong.example")' };
+    const intercepted = interceptedFetch([
+      cloudflareResponse({ id: 'zone-id', name: 'worldmonitor.app' }),
+      cloudflareResponse({ id: 'ruleset-id', version: '2', rules: [edited] }),
+      cloudflareResponse(null, { status: 500, success: false, errors: [{ message: 'write failed' }] }),
+    ]);
+    const stderr = outputSink();
+    const code = await runCloudflareCacheRule(['--apply'], {
+      env: RUN_ENV,
+      fetchImpl: intercepted.fetchImpl,
+      stdout: outputSink().stream,
+      stderr: stderr.stream,
+    });
+
+    assert.equal(code, 1);
+    assert.equal(intercepted.calls.length, 3);
+    assert.deepEqual(intercepted.calls.at(-1), {
+      url: `${RULES_PATH}/managed-id`,
+      method: 'PATCH',
+      body: rule,
+    });
+    assert.match(stderr.chunks.join(''), /Cloudflare PATCH .* failed \(500\).*write failed/);
   });
 });
