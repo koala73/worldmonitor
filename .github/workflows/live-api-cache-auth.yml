@@ -26,6 +26,11 @@ name: Live API Cache/Auth Sweep
 #     cleanly for an anonymous caller, and tools/call is a 401 carrying the
 #     OAuth resource_metadata hint.
 #   - OAuth metadata stays discoverable and cacheable on both hosts.
+#   - the crawlable corpus is EDGE-cacheable at Cloudflare, not merely at
+#     Vercel: `cf-cache-status` on a corpus document is anything but DYNAMIC
+#     (the fingerprint of a cache rule declaring it ineligible, #7659), while
+#     its query-bearing form stays DYNAMIC because that URL reaches a
+#     User-Agent-dependent redirect Cloudflare cannot vary on.
 # None of this is reachable from an in-process test: CDN cache status, CF/Vercel
 # rule ordering, and the apex/www host split only exist in production.
 #
@@ -46,9 +51,7 @@ name: Live API Cache/Auth Sweep
 #   - schedule (every 6h, offset from mcp-live-smoke's :23 so the two live
 #     probes don't hit prod from the same runner IP range in the same minute):
 #     the posture this guards is set by CDN rules and deploy config, which drift
-#     independently of commits. ~23 requests per run (2 bootstrap + 2 RPC +
-#     1 premium RPC + 16 MCP + 2 OAuth); 4 runs/day is ~92 requests — negligible,
-#     and the 16 MCP requests land over ~2s, far under the anon 60/min/IP limit.
+#     independently of commits.
 #   - push to main touching the suite/workflow: validates edits on merge.
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run could
@@ -70,9 +73,6 @@ permissions:
 jobs:
   sweep:
     runs-on: ubuntu-latest
-    # ~23 requests x 15s worst-case per-request timeout (LIVE_API_CACHE_TIMEOUT_MS)
-    # is a ~6min absolute ceiling, plus ~1min checkout/setup-node. Nominal runs
-    # finish in under 5s.
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
@@ -91,11 +91,16 @@ jobs:
         # INSIDE the skipped describe.
         #
         # So assert that all mandatory work actually happened. The suite has one
-        # self-check plus six mandatory production-probe groups; the authenticated
-        # canary is a seventh probe group but remains an explicit skip until
-        # WM_LIVE_TEST_KEY is provisioned. Requiring seven passes means the
+        # self-check plus seven mandatory production-probe groups; the authenticated
+        # canary is an eighth probe group but remains an explicit skip until
+        # WM_LIVE_TEST_KEY is provisioned. Requiring eight passes means the
         # documentation-only self-check cannot keep this workflow green if any
-        # mandatory production group stops registering or starts skipping. Each
+        # mandatory production group stops registering or starts skipping. Both
+        # numbers below are load-bearing and must be raised together whenever a
+        # mandatory probe is added — leaving the count at the old value lets the
+        # NEW probe vanish silently while the total still clears the bar, which is
+        # the very vacuous-pass this step exists to prevent (#7659 added
+        # corpus-edge-cache and had to move both). Each
         # group also emits a named completion marker so an unrelated new test or
         # the optional canary cannot compensate for a missing mandatory probe.
         # `--test-reporter=tap` is pinned
@@ -107,11 +112,11 @@ jobs:
           set -o pipefail
           node --test --test-reporter=tap tests/live-api-cache-auth-regression.test.mjs 2>&1 | tee /tmp/sweep.log
           pass_count=$(awk '/^# pass [0-9]+$/ { value = $3 } END { print value + 0 }' /tmp/sweep.log)
-          if [ "$pass_count" -lt 7 ]; then
-            echo "::error::Live sweep completed only $pass_count/7 mandatory checks — one or more production probe groups did not run."
+          if [ "$pass_count" -lt 8 ]; then
+            echo "::error::Live sweep completed only $pass_count/8 mandatory checks — one or more production probe groups did not run."
             exit 1
           fi
-          for probe in bootstrap-auth warm-cache generated-rpc premium-rpc mcp-protocol oauth-metadata; do
+          for probe in bootstrap-auth warm-cache generated-rpc premium-rpc mcp-protocol oauth-metadata corpus-edge-cache; do
             if ! grep -qE "^[[:space:]]*# LIVE_SWEEP_PROBE_COMPLETED ${probe}$" /tmp/sweep.log; then
               echo "::error::Live sweep did not complete mandatory production probe group: ${probe}"
               exit 1
