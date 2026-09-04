@@ -29,6 +29,9 @@ const DEFAULT_IDENTITY_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_X_REQUESTS_PER_LEASE = 100;
 export const COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS = 20_000;
 export const MAX_COMPANY_MONITORING_X_RETURNED_POSTS = 95;
+// X recent search rejects max_results below 10, so the discovery loop cannot run
+// at all under this many remaining Posts. Reconciliation sizing must leave it.
+export const MIN_X_RECENT_SEARCH_PAGE_POSTS = 10;
 
 export class CompanyMonitoringXSsrfError extends Error {
   constructor(message) {
@@ -1050,6 +1053,23 @@ export function createXRecentSearchExecutor(options = {}) {
     ).filter((tracked) => complianceBindings.some((binding) =>
       binding.companyId === tracked.companyId && binding.accountId === String(tracked.authorAccountId)
     ));
+    // KNOWN TRADE-OFF (unresolved, needs a product call -- see PR #7626 review).
+    // At effectiveResultCap - 1 this can take 94 of the 95 shared lease Posts,
+    // leaving remainingReturnedPosts under MIN_X_RECENT_SEARCH_PAGE_POSTS so the
+    // discovery loop below is skipped entirely for a heavily-tracked cohort, on
+    // every recurring lease (buildCheckpoint hashes only workId/windowEnd/packIds,
+    // so reconciliation repeats each window rather than resuming).
+    //
+    // Reserving a discovery floor here is NOT a safe unilateral fix: this slice
+    // always starts at index 0 with no rotating offset, so truncating it means
+    // the tail of allTrackedPosts never receives its deletion check on any lease.
+    // That trades discovery starvation for a compliance gap. The regression-free
+    // resolution is to bound tracked work below the lease instead -- lower
+    // X_TRACKED_POSTS_PER_COMPANY or COMPANY_MONITORING_SCAN_COHORT_LIMIT in
+    // convex/companyMonitoring/orchestration.ts so cohort x per-company stays at
+    // or under effectiveResultCap - MIN_X_RECENT_SEARCH_PAGE_POSTS (85 today;
+    // it is 4 x 25 = 100 now) -- or to add a reconciliation offset so the slice
+    // rotates. Both change scan throughput, so they are the owner's call.
     const trackedReconciliationCap = Math.min(100, Math.max(1, effectiveResultCap - 1));
     const trackedPosts = allTrackedPosts.slice(0, trackedReconciliationCap);
     if (trackedPosts.length < allTrackedPosts.length) complianceUnavailable = true;
@@ -1168,7 +1188,7 @@ export function createXRecentSearchExecutor(options = {}) {
             hasMore = true;
             break packLoop;
           }
-          if (remainingReturnedPosts < 10) {
+          if (remainingReturnedPosts < MIN_X_RECENT_SEARCH_PAGE_POSTS) {
             providerPartial = true;
             hasMore = true;
             break packLoop;

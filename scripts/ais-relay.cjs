@@ -2119,6 +2119,7 @@ const xPostBudget = createXPostBudget({
 
 const xState = {
   accounts: [],
+  lastMembershipCheckAt: 0,
   items: [],
   lookupOffset: 0,
   // Persisted snapshot version, published to Redis and to /status. NOT the poll
@@ -11783,7 +11784,12 @@ const server = http.createServer(async (req, res) => {
         enabled: X_ENABLED,
         accounts: xState.accounts?.length || 0,
         items: xState.items?.length || 0,
+        // lastPollAt is an ACCEPTED-PUBLICATION clock: it advances only when a
+        // List page is validated, settled and published. lastAttemptAt is the
+        // attempt clock this field used to be, kept here so public consumers can
+        // still tell "not polling" from "polling but not accepting".
         lastPollAt: xState.lastPollAt ? new Date(xState.lastPollAt).toISOString() : null,
+        lastAttemptAt: xState.lastAttemptAt ? new Date(xState.lastAttemptAt).toISOString() : null,
         hasError: !!xState.lastError,
         lastError: xState.lastError || null,
         // Distinguishes "Redis unreadable, refusing to publish" from an ordinary
@@ -11857,6 +11863,9 @@ const server = http.createServer(async (req, res) => {
         lastAttemptSlot: xState.lastAttemptSlot,
         lastProviderSuccessSlot: xState.lastProviderSuccessSlot,
         lastPublishedSlot: xState.lastPublishedSlot,
+        lastMembershipCheckAt: xState.lastMembershipCheckAt
+          ? new Date(xState.lastMembershipCheckAt).toISOString()
+          : null,
         lastError: xState.lastError || null,
         coverage: xState.lastCoverage,
         lastHealthyAt: xState.lastHealthyAt ? new Date(xState.lastHealthyAt).toISOString() : null,

@@ -1387,6 +1387,84 @@ describe('Company Monitoring shared X Post budget', () => {
     assert.equal(budgetCalls.length, 2, 'profile lookups do not consume returned-Post budget');
   });
 
+  test('reclaims an over-reservation so a later request can spend the refunded headroom', async () => {
+    // The refund line only ever computed zero in the existing suite, because every
+    // case returned exactly what it reserved. Its whole purpose is cross-call:
+    // a lookup that reserves 5 and is answered with 3 must hand 2 Posts back to
+    // the shared lease budget, so the recent search that follows sizes itself
+    // against Posts actually returned rather than Posts optimistically reserved.
+    const tracer = fixture.liveTracers[0];
+    const trackedPosts = [
+      '6100000000000000001',
+      '6100000000000000002',
+      '6100000000000000003',
+      '6100000000000000004',
+      '6100000000000000005',
+    ].map((postId) => ({
+      postId,
+      authorAccountId: tracer.accountId,
+      contentState: 'active',
+      observedAt: CHECKED_AT - DAY,
+    }));
+    const answered = trackedPosts.slice(0, 3);
+    const budgetCalls = [];
+    const execute = createXRecentSearchExecutorImpl({
+      bearerToken: 'x-test-token',
+      now: () => CHECKED_AT,
+      fetchOfficialPage: async () => ({
+        url: tracer.officialPageUrl,
+        finalUrl: tracer.officialPageUrl,
+        html: tracer.officialHtml,
+      }),
+      withReturnedPosts: async (request) => {
+        const outcome = await withTestReturnedPostBudget(request);
+        budgetCalls.push({
+          operation: request.operation,
+          requestedPosts: request.requestedPosts,
+          returnedPosts: outcome.returnedPosts,
+        });
+        return outcome;
+      },
+      fetchImpl: async (input) => {
+        const url = new URL(input);
+        if (url.pathname.includes('/users/by/username/')) {
+          return Response.json({ data: xProfileFor(tracer) });
+        }
+        if (url.pathname === '/2/tweets') {
+          // Reserved for 5 ids, X answers with 3 -- the other 2 are unaccounted.
+          return Response.json({
+            data: answered.map((tracked) => ({
+              id: tracked.postId,
+              author_id: tracked.authorAccountId,
+              created_at: new Date(tracked.observedAt).toISOString(),
+              edit_history_tweet_ids: [tracked.postId],
+            })),
+            includes: { users: [{ id: tracer.accountId, username: tracer.currentHandle }] },
+          });
+        }
+        return Response.json({ data: [], meta: { result_count: 0 } });
+      },
+    });
+
+    await execute(workFor([subjectFor(tracer, { trackedPosts })]));
+
+    assert.equal(budgetCalls.length, 2);
+    assert.equal(budgetCalls[0].operation, 'tracked-post-lookup');
+    assert.equal(budgetCalls[0].requestedPosts, trackedPosts.length);
+    assert.equal(budgetCalls[0].returnedPosts, answered.length, 'fewer Posts came back than were reserved');
+    assert.equal(budgetCalls[1].operation, 'recent-search');
+    assert.equal(
+      budgetCalls[1].requestedPosts,
+      MAX_COMPANY_MONITORING_X_RETURNED_POSTS - answered.length,
+      'the search must be sized against Posts actually returned, not Posts reserved',
+    );
+    assert.ok(
+      budgetCalls[1].requestedPosts
+        > MAX_COMPANY_MONITORING_X_RETURNED_POSTS - trackedPosts.length,
+      'without the refund the lease would stay short by the unaccounted Posts',
+    );
+  });
+
   test('clamps persisted 100-Post work and skips recent search below the X minimum page size', async () => {
     const tracer = fixture.liveTracers[0];
     const trackedPosts = Array.from({ length: 94 }, (_, index) => ({

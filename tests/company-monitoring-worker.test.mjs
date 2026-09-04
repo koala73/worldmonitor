@@ -18,6 +18,7 @@ import {
 } from '../scripts/company-monitoring-worker.mjs';
 import {
   COMPANY_MONITORING_LEASE_FINALIZATION_RESERVE_MS,
+  MAX_COMPANY_MONITORING_X_RETURNED_POSTS,
   createXRecentSearchExecutor,
 } from '../scripts/lib/company-monitoring-x-provider.mjs';
 
@@ -69,9 +70,18 @@ describe('company-monitoring X budget wiring', () => {
     assert.match(source, /createXPostBudget\(\{[\s\S]*dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,[\s\S]*\}\)/);
   });
 
-  it('limits each newly claimed X work item to 95 returned Posts', () => {
+  it('keeps the Convex X result cap equal to the provider returned-Post ceiling', () => {
+    // The two are coordinated but declared in different languages with no shared
+    // source, so a literal 95 in this regex would still pass while they drifted.
+    // Derive one from the other instead.
     const source = readFileSync(new URL('../convex/companyMonitoring/orchestration.ts', import.meta.url), 'utf8');
-    assert.match(source, /RESULT_CAP: Record<Source, number> = \{ exa: 25, x: 95 \}/);
+    const declared = source.match(/RESULT_CAP: Record<Source, number> = \{ exa: 25, x: (\d+) \}/);
+    assert.ok(declared, 'RESULT_CAP.x must stay greppable for this parity check');
+    assert.equal(
+      Number(declared[1]),
+      MAX_COMPANY_MONITORING_X_RETURNED_POSTS,
+      'convex/companyMonitoring/orchestration.ts RESULT_CAP.x and MAX_COMPANY_MONITORING_X_RETURNED_POSTS must move together',
+    );
   });
 });
 

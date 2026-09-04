@@ -46,6 +46,14 @@ function assertXPostBudgetAdmission(url, admission) {
 // Reservations are conservative until a response is known. Admission consumes
 // coverage and once-per-day work so an unknown outcome cannot run twice.
 // Settlement releases unused capacity and publishes an optional replay receipt.
+//
+// ADMISSION IS THE SOLE COMMIT POINT for the coverage marker and the
+// once-per-day key. SETTLE_LUA deliberately holds no release branch for either:
+// it used to match the once key against the reservation key, which stopped
+// matching the moment RESERVE started writing the literal "done", leaving dead
+// code that read as a working rollback. A failed once-per-day item therefore
+// stays consumed until its EXAT day expiry -- that is the intended trade, since
+// an unknown transport outcome must never be retried on the same paid budget.
 // Unknown transport outcomes keep their full reservation because X may have
 // returned billable Posts before the connection failed.
 const RESERVE_LUA = [
@@ -108,11 +116,6 @@ const SETTLE_LUA = [
   'local receiptJson = ARGV[4]',
   'local receiptHash = ARGV[5]',
   'local storeReceipt = ARGV[6] == "1"',
-  'local hasOnce = ARGV[7] == "1"',
-  'local completeOnce = ARGV[8] == "1"',
-  'local hasCoverageUnit = ARGV[9] == "1"',
-  'local completeCoverage = ARGV[10] == "1"',
-  'local coverageUnit = tonumber(ARGV[11]) or 0',
   'local dayUsed = tonumber(redis.call("get", KEYS[1]) or "0")',
   'local monthUsed = tonumber(redis.call("get", KEYS[2]) or "0")',
   'local coverageHeld = tonumber(redis.call("get", KEYS[4]) or "0") or 0',
@@ -141,15 +144,6 @@ const SETTLE_LUA = [
   'end',
   'if storeReceipt then redis.call("set", KEYS[5], receiptJson) end',
   'if hasReceiptScope and redis.call("get", KEYS[6]) == KEYS[3] then redis.call("del", KEYS[6]) end',
-  'if hasOnce and redis.call("get", KEYS[7]) == KEYS[3] then',
-  '  if completeOnce then redis.call("set", KEYS[7], "done", "EXAT", tonumber(ARGV[2]))',
-  '  else redis.call("del", KEYS[7]) end',
-  'end',
-  'if hasCoverageUnit and completeCoverage and redis.call("exists", KEYS[8]) == 0 then',
-  '  coverageHeld = math.max(0, coverageHeld - coverageUnit)',
-  '  redis.call("set", KEYS[4], coverageHeld, "EXAT", tonumber(ARGV[2]))',
-  '  redis.call("set", KEYS[8], "1", "EXAT", tonumber(ARGV[2]))',
-  'end',
   'redis.call("set", KEYS[3], "settled:" .. actual .. ":" .. receiptHash, "EXAT", tonumber(ARGV[2]))',
   'return {1, dayUsed, monthUsed, reserved, actual, coverageHeld}',
 ].join('\n');
@@ -478,11 +472,6 @@ function createXPostBudget(options = {}) {
     }
     const hasReceiptScope = Boolean(reservation.receiptKey);
     const storeReceipt = hasReceiptScope && settlementOptions.discardReceipt !== true;
-    const hasOnce = Boolean(reservation.onceKey);
-    const completeOnce = hasOnce && settlementOptions.completeOnce !== false;
-    const hasCoverageUnit = Boolean(reservation.coverageMarkerKey)
-      && boundedNonNegativeInteger(reservation.coverageUnitPosts) > 0;
-    const completeCoverage = hasCoverageUnit && settlementOptions.completeCoverage !== false;
     let receiptJson = '';
     let receiptHash = '-';
     if (storeReceipt) {
@@ -502,7 +491,6 @@ function createXPostBudget(options = {}) {
       receiptHash = createHash('sha256').update(receiptJson).digest('hex');
     }
     const keys = keysFor(reservation.period, reservation.id);
-    const unusedKey = `${keyPrefix}:unused`;
     let result;
     try {
       result = await evalCommand(
@@ -514,8 +502,6 @@ function createXPostBudget(options = {}) {
           keys.coverageHoldKey,
           reservation.receiptKey || keys.receiptKey,
           reservation.inflightKey || keys.inflightKey,
-          reservation.onceKey || unusedKey,
-          reservation.coverageMarkerKey || unusedKey,
         ],
         [
           String(actual),
@@ -524,11 +510,6 @@ function createXPostBudget(options = {}) {
           receiptJson,
           receiptHash,
           storeReceipt ? '1' : '0',
-          hasOnce ? '1' : '0',
-          completeOnce ? '1' : '0',
-          hasCoverageUnit ? '1' : '0',
-          completeCoverage ? '1' : '0',
-          String(hasCoverageUnit ? reservation.coverageUnitPosts : 0),
         ],
       );
     } catch {
@@ -657,8 +638,6 @@ function createXPostBudget(options = {}) {
     }
     const settlement = await settle(admission.reservation, returnedPosts, receipt, {
       discardReceipt: !responseOk,
-      completeOnce: responseOk,
-      completeCoverage: responseOk,
     });
     if (!settlement.settled) await releaseReceiptInflight(admission.reservation);
     return {

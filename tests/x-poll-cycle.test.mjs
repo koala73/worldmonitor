@@ -404,7 +404,7 @@ describe('receipt recovery and Redis safety', () => {
         fetches += 1;
         return Response.json({ meta: { result_count: 0 } });
       },
-      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false }),
+      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false, verifyMembership: false }),
     });
 
     await harness.cycle.pollOnce({ generation: 1 });
@@ -471,7 +471,7 @@ describe('receipt recovery and Redis safety', () => {
           meta: { result_count: 1 },
         });
       },
-      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false }),
+      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false, verifyMembership: false }),
     });
 
     await harness.cycle.pollOnce({ generation: 1 });
@@ -528,7 +528,7 @@ describe('receipt recovery and Redis safety', () => {
         fetches += 1;
         return Response.json({ meta: { result_count: 0 } });
       },
-      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false }),
+      pollXFeed: (args) => xNewsAccounts.pollXFeed({ ...args, lookupDeletions: false, verifyMembership: false }),
     });
 
     await harness.cycle.pollOnce({ generation: 1 });

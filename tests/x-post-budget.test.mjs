@@ -540,3 +540,81 @@ describe('shared X returned-Post budget', () => {
     assert.equal(denied.status.available, false);
   });
 });
+
+describe('X Post budget inflight release on settlement failure', () => {
+  const NOW_LOCAL = Date.parse('2026-09-02T12:00:00.000Z');
+
+  it('releases its receipt-scope lock when settlement conflicts', async () => {
+    // The conflict path reached only through withReturnedPosts: settle() returning
+    // -2 leaves the reservation unsettled, and without the release the slot's
+    // inflight lock would sit until its own TTL, blocking the replay that is
+    // supposed to recover the paid page on the next slot. The pre-existing
+    // settlement_conflict test calls settle() directly and never reaches here.
+    const calls = [];
+    const budget = createXPostBudget({
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        if (script === ACK_RECEIPTS_LUA) return 1;
+        if (script === SETTLE_LUA) return [-2, 5, 5, 0, 4, 500];
+        if (script === STATUS_LUA) return [5, 5, 500, 1, 'fixed-slots-v1:505'];
+        return [1, 5, 5, 0, 500, ''];
+      },
+      now: () => NOW_LOCAL,
+      idFactory: () => 'settle-conflict-release',
+    });
+
+    const outcome = await budget.withReturnedPosts({
+      consumer: 'curated-feed',
+      operation: 'list-feed',
+      requestedPosts: 5,
+      coverageTotal: 505,
+      coverageId: 'list-slot:2026-09-02T12:00:00.000Z',
+      coverageUnitPosts: 5,
+      receiptScope: 'list:123',
+      receiptFromResult: () => ({ version: 1, listId: '123', posts: [] }),
+      execute: async () => ({
+        response: { ok: true, status: 200 },
+        body: { data: [{ id: '1' }, { id: '2' }], meta: { result_count: 2 } },
+      }),
+    });
+
+    assert.equal(outcome.allowed, true);
+    assert.equal(outcome.completed, false, 'a conflicting settlement is not a completion');
+    const acks = calls.filter((call) => call.script === ACK_RECEIPTS_LUA);
+    assert.equal(acks.length, 1, 'the inflight lock must be released exactly once');
+    assert.deepEqual(acks[0].args, [
+      'intelligence:x-post-budget:v1:reservation:settle-conflict-release',
+    ]);
+  });
+
+  it('releases its receipt-scope lock when the response over-returns its reservation', async () => {
+    const calls = [];
+    const budget = createXPostBudget({
+      evalCommand: async (script, keys, args) => {
+        calls.push({ script, keys, args });
+        if (script === ACK_RECEIPTS_LUA) return 1;
+        if (script === STATUS_LUA) return [5, 5, 500, 1, 'fixed-slots-v1:505'];
+        return [1, 5, 5, 0, 500, ''];
+      },
+      now: () => NOW_LOCAL,
+      idFactory: () => 'over-return-release',
+    });
+
+    const outcome = await budget.withReturnedPosts({
+      consumer: 'curated-feed',
+      operation: 'list-feed',
+      requestedPosts: 5,
+      coverageTotal: 505,
+      coverageId: 'list-slot:2026-09-02T12:00:00.000Z',
+      coverageUnitPosts: 5,
+      receiptScope: 'list:123',
+      execute: async () => ({
+        response: { ok: true, status: 200 },
+        body: { data: Array.from({ length: 9 }, (_, i) => ({ id: String(i) })) },
+      }),
+    });
+
+    assert.equal(outcome.completed, false);
+    assert.equal(calls.filter((call) => call.script === ACK_RECEIPTS_LUA).length, 1);
+  });
+});

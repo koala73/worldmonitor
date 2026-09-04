@@ -47,6 +47,7 @@ const X_BACKOFF_CAUSES = Object.freeze({
   RATE_LIMIT: 'rate-limit',
   AUTH: 'auth',
   CREDITS: 'credits',
+  MEMBERSHIP_DRIFT: 'membership-drift',
 });
 const X_FEED_SNAPSHOT_VERSION = 1;
 const USER_AGENT = 'WorldMonitor/1.0 (curated news-account monitoring; +https://worldmonitor.app)';
@@ -610,6 +611,7 @@ function buildXPollState(state, { expectedAccounts = 0 } = {}) {
   return {
     generation: Math.max(0, Math.floor(Number(state?.generation) || 0)),
     lastDeletionAuditAt: Math.max(0, Number(state?.lastDeletionAuditAt) || 0),
+    lastMembershipCheckAt: Math.max(0, Number(state?.lastMembershipCheckAt) || 0),
     lastCycleUsage: normalizeLastCycleUsage(state?.lastCycleUsage),
     postBudget: normalizePostBudget(state?.postBudget),
     lookupOffset: Math.max(0, Math.floor(Number(state?.lookupOffset) || 0)),
@@ -661,6 +663,7 @@ function hydrateXFeedSnapshot(snapshot, { maxItems = DEFAULT_MAX_FEED_ITEMS, pol
   return {
     generation: Math.max(0, Math.floor(Number(validSnapshot ? snapshot.generation : pollState.generation) || 0)),
     lastDeletionAuditAt: Math.max(0, Number(pollState.lastDeletionAuditAt) || 0),
+    lastMembershipCheckAt: Math.max(0, Number(pollState.lastMembershipCheckAt) || 0),
     lastCycleUsage: normalizeLastCycleUsage(pollState.lastCycleUsage),
     postBudget: normalizePostBudget(pollState.postBudget),
     items: validSnapshot ? snapshot.items.filter((item) => item && typeof item === 'object').slice(0, itemLimit) : [],
@@ -703,6 +706,7 @@ function mergeRefreshedPollState(current, refreshed) {
   if (!refreshed || typeof refreshed !== 'object') {
     return {
       lastDeletionAuditAt: toMs(current?.lastDeletionAuditAt),
+      lastMembershipCheckAt: toMs(current?.lastMembershipCheckAt),
       lastCycleUsage: normalizeLastCycleUsage(current?.lastCycleUsage),
       postBudget: normalizePostBudget(current?.postBudget),
       lookupOffset: toCount(current?.lookupOffset),
@@ -736,6 +740,7 @@ function mergeRefreshedPollState(current, refreshed) {
   };
   return {
     lastDeletionAuditAt: Math.max(toMs(current?.lastDeletionAuditAt), toMs(refreshed.lastDeletionAuditAt)),
+    lastMembershipCheckAt: Math.max(toMs(current?.lastMembershipCheckAt), toMs(refreshed.lastMembershipCheckAt)),
     lastCycleUsage: normalizeLastCycleUsage(refreshed.lastCycleUsage ?? current?.lastCycleUsage),
     postBudget: normalizePostBudget(refreshed.postBudget ?? current?.postBudget),
     lookupOffset: toCount(refreshed.lookupOffset),
@@ -803,6 +808,62 @@ function compute429BackoffMs(headers, attempt = 0, now = Date.now) {
   return Math.min(MAX_429_BACKOFF_MS, 1000 * (2 ** exp));
 }
 
+// Membership verification reads List and User resources only. Neither path
+// returns Posts, so neither is billed against the shared returned-Post budget --
+// see X_POST_RETURNING_PATHS. That is what makes a recurring check affordable.
+function buildXListDetailsUrl(listId) {
+  const id = normalizeAccountId(listId);
+  if (!id) throw new Error('X List ID is invalid');
+  const url = new URL(`/2/lists/${encodeURIComponent(id)}`, X_API_ORIGIN);
+  url.searchParams.set('list.fields', 'id,name,description,private,member_count');
+  return url;
+}
+
+function buildXListMembersUrl(listId) {
+  const id = normalizeAccountId(listId);
+  if (!id) throw new Error('X List ID is invalid');
+  const url = new URL(`/2/lists/${encodeURIComponent(id)}/members`, X_API_ORIGIN);
+  url.searchParams.set('max_results', '100');
+  url.searchParams.set('user.fields', 'id,name,username,protected');
+  return url;
+}
+
+// Findings that mean the List no longer covers the registry. A cosmetic name or
+// description edit is deliberately NOT drift: the activation gate in
+// scripts/verify-x-accounts.mjs still enforces those, but they cost no coverage
+// and must not degrade a serving feed.
+const MEMBERSHIP_DRIFT_KINDS = new Set([
+  'list-id-mismatch',
+  'list-private',
+  'member-count-mismatch',
+  'duplicate-member',
+  'protected-member',
+  'result-count-mismatch',
+  'missing-members',
+  'extra-members',
+  'handle-mismatch',
+]);
+
+// Being unable to READ the List is not evidence that the List is wrong, and it
+// must not be treated as drift: verifyXListMembership computes missingIds against
+// an empty member map, so an unreadable page would otherwise report all 64
+// accounts missing and red a perfectly healthy feed on a transient API blip.
+// Report it, stamp the clock so the check does not hammer, and leave coverage be.
+const MEMBERSHIP_UNVERIFIABLE_KINDS = new Set([
+  'invalid-expected-set',
+  'unreadable-list',
+  'unreadable-members',
+  'unreadable-member',
+  'pagination',
+]);
+
+const MEMBERSHIP_CHECK_INTERVAL_MS = 24 * 60 * 60 * 1000;
+
+function membershipCheckIsDue(lastMembershipCheckAt, nowMs) {
+  const last = Math.max(0, Number(lastMembershipCheckAt) || 0);
+  return last === 0 || nowMs < last || (nowMs - last) >= MEMBERSHIP_CHECK_INTERVAL_MS;
+}
+
 function buildXListPostsUrl(listId) {
   const id = normalizeAccountId(listId);
   if (!id) throw new Error('X List ID is invalid');
@@ -858,6 +919,22 @@ function isCreditsExhaustedStatus(status) {
   return status === CREDITS_EXHAUSTED_STATUS;
 }
 
+/**
+ * Membership drift is a CONFIGURATION fault, not a transient upstream one, and
+ * it does not heal on API time: every slot re-reads the same List, gets the same
+ * off-registry author, discards the whole page in buildXListReceiptResult, and
+ * is never refunded -- settle() rejects the null receipt before it reaches the
+ * refund script. Left unbounded that is 5 Posts x 96 slots = 480 of the 600-Post
+ * daily budget spent on pages the relay throws away, while the feed goes stale
+ * anyway. Reuse the auth breaker's bounded window so an operator repairing the
+ * List still recovers automatically, without paying for every slot in between.
+ */
+function recordMembershipDrift(nextState, detail, now) {
+  nextState.rateLimitedUntil = now() + AUTH_FAILURE_BACKOFF_MS;
+  nextState.backoffCause = X_BACKOFF_CAUSES.MEMBERSHIP_DRIFT;
+  nextState.lastError = `X List membership drift: ${detail} — re-run scripts/verify-x-accounts.mjs and repair the List — deferring polls for ${Math.round(AUTH_FAILURE_BACKOFF_MS / 60000)}m`;
+}
+
 function recordCreditsExhausted(nextState, context, now) {
   nextState.rateLimitedUntil = now() + AUTH_FAILURE_BACKOFF_MS;
   nextState.backoffCause = X_BACKOFF_CAUSES.CREDITS;
@@ -865,6 +942,9 @@ function recordCreditsExhausted(nextState, context, now) {
 }
 
 function sharedBackoffMessage(cause) {
+  if (cause === X_BACKOFF_CAUSES.MEMBERSHIP_DRIFT) {
+    return 'X List membership drift: re-run scripts/verify-x-accounts.mjs and repair the List; shared backoff window still open; deferring poll';
+  }
   if (cause === X_BACKOFF_CAUSES.CREDITS) {
     return 'X credits depleted: top up the X API plan; shared backoff window still open; deferring poll';
   }
@@ -972,21 +1052,32 @@ async function pollXListFeed({
   state,
   bearerToken,
   listId,
+  slot,
   coverageId,
   fetchImpl,
   now = Date.now,
   maxFeedItems = DEFAULT_MAX_FEED_ITEMS,
   maxTextChars = DEFAULT_MAX_TEXT_CHARS,
   lookupDeletions = true,
+  verifyMembership = true,
   withReturnedPosts,
   signal,
 } = {}) {
   const configuredAccounts = Array.isArray(accounts) ? accounts : [];
   const pollCycleNow = now();
-  const sourceSlot = typeof coverageId === 'string' && coverageId.startsWith('list-slot:')
-    ? normalizeSlot(coverageId.slice('list-slot:'.length))
-    : null;
-  const sourceSlotEndsAt = sourceSlot ? Date.parse(sourceSlot) + X_LIST_POLL_INTERVAL_MS : 0;
+  // The caller owns the slot. Prefer the structured value it already holds over
+  // re-parsing the `list-slot:` prefix off coverageId, and take its endsAt
+  // directly so the Redis-side deadline cannot drift from the slot the coverage
+  // marker is keyed on. The prefix parse remains as a fallback for callers that
+  // pass only a coverageId.
+  const sourceSlot = normalizeSlot(slot?.id)
+    || (typeof coverageId === 'string' && coverageId.startsWith('list-slot:')
+      ? normalizeSlot(coverageId.slice('list-slot:'.length))
+      : null);
+  const slotEndsAt = Number(slot?.endsAt);
+  const sourceSlotEndsAt = Number.isFinite(slotEndsAt) && slotEndsAt > 0
+    ? slotEndsAt
+    : (sourceSlot ? Date.parse(sourceSlot) + X_LIST_POLL_INTERVAL_MS : 0);
   const activeBackoffDeadline = Number(state?.rateLimitedUntil) > pollCycleNow
     ? Number(state.rateLimitedUntil)
     : 0;
@@ -994,6 +1085,7 @@ async function pollXListFeed({
     items: Array.isArray(state?.items) ? [...state.items] : [],
     lookupOffset: Number(state?.lookupOffset) || 0,
     lastDeletionAuditAt: Math.max(0, Number(state?.lastDeletionAuditAt) || 0),
+    lastMembershipCheckAt: Math.max(0, Number(state?.lastMembershipCheckAt) || 0),
     postBudget: normalizePostBudget(state?.postBudget),
     lastError: null,
     rateLimitedUntil: activeBackoffDeadline,
@@ -1117,9 +1209,11 @@ async function pollXListFeed({
           nextState.providerSuccessAt = receipt?.providerSuccessAt || now();
           nextState.providerSuccessSlot = receipt?.sourceSlot || sourceSlot;
           if (outcome.completed !== true) {
-            nextState.lastError = listValidationError === 'unknown_author'
-              ? 'X List membership drift: page contains an author outside the enabled registry'
-              : 'X List page receipt was invalid; retained the full reservation';
+            if (listValidationError === 'unknown_author') {
+              recordMembershipDrift(nextState, 'page contains an author outside the enabled registry', now);
+            } else {
+              nextState.lastError = 'X List page receipt was invalid; retained the full reservation';
+            }
           } else if (!receipt || !outcome.receiptAck) {
             nextState.lastError = 'X List page receipt was unavailable after settlement';
           } else {
@@ -1137,6 +1231,63 @@ async function pollXListFeed({
     }
   } catch (error) {
     nextState.lastError = `X List poll failed: ${error?.message || String(error)}`;
+  }
+
+  // Coverage is asserted from the registry size above, which is only honest if
+  // the List still holds the registry. Nothing else re-checks that at runtime:
+  // verifyXListMembership was reachable only from the operator-run
+  // scripts/verify-x-accounts.mjs, so a List that silently lost members -- or was
+  // emptied outright -- kept publishing "N/N complete" and stayed healthy, and
+  // an empty page is a valid result now that xFeed is in ZERO_RECORD_DATA_OK_KEYS.
+  // Deliberately NOT gated on items.length: an emptied List is the case that
+  // matters most, and it has no items by definition.
+  if (
+    nextState.cycleComplete
+    && verifyMembership
+    && membershipCheckIsDue(nextState.lastMembershipCheckAt, pollCycleNow)
+    && !nextState.rateLimitedUntil
+  ) {
+    try {
+      const [listOutcome, membersOutcome] = await Promise.all([
+        countedFetch(buildXListDetailsUrl(listId)),
+        countedFetch(buildXListMembersUrl(listId)),
+      ]);
+      const listResponse = listOutcome?.response;
+      const membersResponse = membersOutcome?.response;
+      if (listResponse?.status === 429 || membersResponse?.status === 429) {
+        recordRateLimit(nextState, (listResponse?.status === 429 ? listResponse : membersResponse).headers, now);
+        nextState.lastError = 'rate limited verifying X List membership';
+      } else if (isAuthFailureStatus(listResponse?.status) || isAuthFailureStatus(membersResponse?.status)) {
+        recordAuthFailure(nextState, listResponse?.status ?? membersResponse?.status, 'verifying X List membership', now);
+      } else if (!listResponse?.ok || !membersResponse?.ok) {
+        nextState.lastMembershipCheckAt = pollCycleNow;
+        nextState.lastError = `X List membership check failed: HTTP ${listResponse?.ok ? membersResponse?.status : listResponse?.status}`;
+      } else {
+        const verdict = verifyXListMembership({
+          listId,
+          accounts: configuredAccounts,
+          listBody: listOutcome.body,
+          membersBody: membersOutcome.body,
+        });
+        nextState.lastMembershipCheckAt = pollCycleNow;
+        const findings = verdict.findings || [];
+        const unverifiable = findings.find((finding) => MEMBERSHIP_UNVERIFIABLE_KINDS.has(finding.kind));
+        const drift = findings.filter((finding) => MEMBERSHIP_DRIFT_KINDS.has(finding.kind));
+        if (unverifiable) {
+          nextState.lastError = `X List membership check inconclusive: ${unverifiable.message}`;
+        } else if (drift.length) {
+          // Publish the page anyway -- the Posts it carried are real. Only the
+          // coverage claim is wrong, so degrade that and let sourceState follow.
+          const unaccounted = verdict.missingIds.length || drift.length;
+          nextState.accountsFailed = unaccounted;
+          nextState.accountsPolled = Math.max(0, configuredAccounts.length - unaccounted);
+          nextState.cycleComplete = false;
+          nextState.lastError = `X List membership drift: ${drift[0].message}`;
+        }
+      }
+    } catch (error) {
+      nextState.lastError = `X List membership check failed: ${error?.message || String(error)}`;
+    }
   }
 
   if (
@@ -1212,7 +1363,7 @@ async function pollXListFeed({
   nextState.requestsUsed = requestsUsed;
   nextState.lastCycleUsage = {
     requestsUsed,
-    requestLimit: lookupDeletions ? 2 : 1,
+    requestLimit: 1 + (lookupDeletions ? 1 : 0) + (verifyMembership ? 2 : 0),
     postsRead,
     postReadLimit,
   };
@@ -1257,6 +1408,9 @@ module.exports = {
   MAX_429_BACKOFF_MS,
   MAX_429_BACKOFF_EXPONENT,
   buildXListPostsUrl,
+  buildXListDetailsUrl,
+  buildXListMembersUrl,
+  membershipCheckIsDue,
   buildXListReceipt,
   normalizeXListReceipt,
   listItemsFromReceipt,

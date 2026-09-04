@@ -122,6 +122,7 @@ function createXPollCycle(deps = {}) {
     });
     if (!hydrated) return false;
     xState.lastDeletionAuditAt = hydrated.lastDeletionAuditAt;
+    xState.lastMembershipCheckAt = hydrated.lastMembershipCheckAt;
     xState.lastCycleUsage = hydrated.lastCycleUsage;
     xState.postBudget = hydrated.postBudget;
     xState.items = hydrated.items;
@@ -290,6 +291,7 @@ function createXPollCycle(deps = {}) {
         state: xState,
         bearerToken: X_BEARER_TOKEN,
         listId: X_CURATED_LIST_ID,
+        slot: activeSlot,
         coverageId: `list-slot:${activeSlot.id}`,
         fetchImpl: (...args) => fetchImpl(...args),
         now,
@@ -326,6 +328,7 @@ function createXPollCycle(deps = {}) {
         // it stays monotonic across replicas.
         generation: xState.generation + 1,
         lastDeletionAuditAt: next.lastDeletionAuditAt || 0,
+        lastMembershipCheckAt: next.lastMembershipCheckAt || 0,
         lastCycleUsage: next.lastCycleUsage || null,
         postBudget: next.postBudget || null,
         items: next.listAccepted ? next.items : xState.items,
@@ -347,7 +350,14 @@ function createXPollCycle(deps = {}) {
           failed: next.accountsFailed,
           attempted: next.accountsAttempted,
           complete: next.cycleComplete,
-        } : xState.lastCoverage,
+        } : (xState.lastCoverage
+          // A rejected slot keeps the last-good COUNTS but must stop claiming
+          // completeness: polled/expected/failed freeze together with `complete`,
+          // so normalizeCoverage cannot self-correct and the panel's degraded
+          // banner (api/x-feed.js -> XIntelPanel) would never render through an
+          // outage. Seed-meta staleness only catches this 3 slots (45min) later.
+          ? { ...xState.lastCoverage, complete: false }
+          : xState.lastCoverage),
         lastHealthyAt: next.listAccepted && next.cycleComplete ? acceptedSourceAt : xState.lastHealthyAt,
       };
 

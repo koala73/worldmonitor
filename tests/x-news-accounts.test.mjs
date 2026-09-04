@@ -315,6 +315,7 @@ describe('aggregate X List poll', () => {
       listId: '1234567890123456789',
       coverageId: 'list-slot:2026-09-03T12:00:00.000Z',
       lookupDeletions: false,
+      verifyMembership: false,
       now: () => NOW,
       withReturnedPosts: async (request) => {
         budgetRequests.push(request);
@@ -669,6 +670,7 @@ describe('aggregate X List poll', () => {
       bearerToken: 'x-test-token',
       listId: '1234567890123456789',
       coverageId: 'list-slot:2026-09-03T12:00:00.000Z',
+      verifyMembership: false,
       now: () => NOW,
       withReturnedPosts: withTestReturnedPostBudget,
       fetchImpl: async (input) => {
@@ -716,5 +718,238 @@ describe('shared feed helpers', () => {
     assert.match(xNews.sharedBackoffMessage(xNews.X_BACKOFF_CAUSES.RATE_LIMIT), /rate-limit/);
     assert.match(xNews.sharedBackoffMessage(xNews.X_BACKOFF_CAUSES.AUTH), /X_BEARER_TOKEN/);
     assert.match(xNews.sharedBackoffMessage(xNews.X_BACKOFF_CAUSES.CREDITS), /top up/);
+  });
+});
+
+describe('under-lock poll-state merge (multi-replica)', () => {
+  // Ported from the pre-List suite. The cursor/offset cases went with the
+  // per-account cursors this change deleted, but the backoff-merge invariants
+  // still ship at two live call sites in x-poll-cycle.cjs and must not regress:
+  // every replica shares one X bearer, so a peer's 429 applies here too.
+  const base = { lookupOffset: 7, rateLimitedUntil: 0, rateLimitAttempt: 0 };
+
+  it('adopts a peer active rate-limit backoff — the X bearer is shared', () => {
+    const merged = xNews.mergeRefreshedPollState(
+      { ...base },
+      {
+        ...base,
+        rateLimitedUntil: 5_000_000,
+        rateLimitAttempt: 4,
+        backoffCause: xNews.X_BACKOFF_CAUSES.CREDITS,
+      },
+    );
+    assert.equal(merged.rateLimitedUntil, 5_000_000);
+    assert.equal(merged.rateLimitAttempt, 4);
+    assert.equal(merged.backoffCause, xNews.X_BACKOFF_CAUSES.CREDITS);
+  });
+
+  it('does not let an older Redis copy clear a backoff this process just recorded', () => {
+    // The failure a plain assignment would cause: this replica 429s, records a
+    // deadline, then reads a Redis copy written before that 429 and resumes
+    // polling straight into the same rate limit.
+    const merged = xNews.mergeRefreshedPollState(
+      { ...base, rateLimitedUntil: 9_000_000, rateLimitAttempt: 6 },
+      { ...base, rateLimitedUntil: 1_000_000, rateLimitAttempt: 2 },
+    );
+    assert.equal(merged.rateLimitedUntil, 9_000_000);
+    assert.equal(merged.rateLimitAttempt, 6, 'backoff escalation must not reset');
+  });
+
+  it('keeps current state when the refreshed read is absent or malformed', () => {
+    for (const bad of [null, undefined, 'nope', 42]) {
+      const merged = xNews.mergeRefreshedPollState(
+        { ...base, rateLimitedUntil: 4_000, lastMembershipCheckAt: 8_000 },
+        bad,
+      );
+      assert.equal(merged.rateLimitedUntil, 4_000);
+      assert.equal(merged.lastMembershipCheckAt, 8_000);
+    }
+  });
+
+  it('returns only poll bookkeeping, never serving state', () => {
+    const merged = xNews.mergeRefreshedPollState(
+      { ...base, items: [{ id: 'keep-me' }] },
+      { ...base, items: [{ id: 'clobber' }] },
+    );
+    assert.equal(merged.items, undefined, 'items must not be merged by this path');
+    assert.equal(merged.lastCoverage, undefined);
+  });
+
+  it('advances the maintenance clocks to whichever replica ran them last', () => {
+    const merged = xNews.mergeRefreshedPollState(
+      { ...base, lastDeletionAuditAt: 300, lastMembershipCheckAt: 900 },
+      { ...base, lastDeletionAuditAt: 700, lastMembershipCheckAt: 400 },
+    );
+    assert.equal(merged.lastDeletionAuditAt, 700);
+    assert.equal(merged.lastMembershipCheckAt, 900);
+  });
+
+  it('takes each slot id from whichever copy owns the later matching clock', () => {
+    const merged = xNews.mergeRefreshedPollState(
+      {
+        ...base,
+        lastAttemptAt: 100,
+        lastAttemptSlot: '2026-09-03T11:45:00.000Z',
+      },
+      {
+        ...base,
+        lastAttemptAt: 500,
+        lastAttemptSlot: '2026-09-03T12:00:00.000Z',
+      },
+    );
+    assert.equal(merged.lastAttemptSlot, '2026-09-03T12:00:00.000Z');
+  });
+});
+
+describe('X List membership verification at poll time', () => {
+  const listId = '1234567890123456789';
+  const memberRow = (account) => ({
+    id: account.accountId,
+    name: account.handle,
+    username: account.handle,
+  });
+
+  function membershipFetch({ members, listOverrides = {}, onPath = () => {} }) {
+    return async (input) => {
+      const url = new URL(input);
+      onPath(url.pathname);
+      if (url.pathname === `/2/lists/${listId}`) {
+        return Response.json({
+          data: {
+            id: listId,
+            name: xNews.X_CURATED_LIST_NAME,
+            description: xNews.X_CURATED_LIST_DESCRIPTION,
+            private: false,
+            member_count: members.length,
+            ...listOverrides,
+          },
+        });
+      }
+      if (url.pathname === `/2/lists/${listId}/members`) {
+        return Response.json({
+          data: members.map(memberRow),
+          meta: { result_count: members.length },
+        });
+      }
+      return Response.json({ data: [], meta: { result_count: 0 } });
+    };
+  }
+
+  const pollWith = (fetchImpl, state = {}) => xNews.pollXFeed({
+    accounts,
+    state: { items: [], ...state },
+    bearerToken: 'x-test-token',
+    listId,
+    coverageId: 'list-slot:2026-09-03T12:00:00.000Z',
+    lookupDeletions: false,
+    now: () => NOW,
+    withReturnedPosts: withTestReturnedPostBudget,
+    fetchImpl,
+  });
+
+  it('reports full coverage only when the List still holds the whole registry', async () => {
+    const next = await pollWith(membershipFetch({ members: accounts }));
+    assert.equal(next.listAccepted, true);
+    assert.equal(next.cycleComplete, true);
+    assert.equal(next.accountsPolled, accounts.length);
+    assert.equal(next.accountsFailed, 0);
+    assert.equal(next.lastMembershipCheckAt, NOW);
+  });
+
+  it('degrades coverage instead of fabricating it when the List loses members', async () => {
+    // The blind spot this closes: accountsPolled was asserted from the registry
+    // size on any accepted page, so a List that silently dropped members — or was
+    // emptied outright — kept publishing "N/N complete" and stayed healthy, and an
+    // empty page is a valid result now that xFeed is in ZERO_RECORD_DATA_OK_KEYS.
+    const kept = accounts.slice(0, accounts.length - 3);
+    const next = await pollWith(membershipFetch({ members: kept }));
+    assert.equal(next.listAccepted, true, 'the page itself is still real and must publish');
+    assert.equal(next.cycleComplete, false, 'but the coverage claim must degrade');
+    assert.equal(next.accountsFailed, 3);
+    assert.equal(next.accountsPolled, accounts.length - 3);
+    assert.match(next.lastError, /membership drift/i);
+  });
+
+  it('treats an emptied List as drift rather than a healthy quiet slot', async () => {
+    const next = await pollWith(membershipFetch({ members: [] }));
+    assert.equal(next.cycleComplete, false);
+    assert.equal(next.accountsPolled, 0);
+    assert.equal(next.accountsFailed, accounts.length);
+  });
+
+  it('does not degrade coverage when the List simply cannot be read', async () => {
+    // Being unable to verify is not evidence of drift: verifyXListMembership
+    // computes missingIds against an empty member map, so a transient unreadable
+    // page would otherwise report every account missing and red a healthy feed.
+    const next = await pollWith(async (input) => {
+      const url = new URL(input);
+      if (url.pathname.startsWith(`/2/lists/${listId}/tweets`) === false
+        && url.pathname.startsWith(`/2/lists/${listId}`)) {
+        return Response.json({ errors: [{ title: 'Service Unavailable' }] });
+      }
+      return Response.json({ data: [], meta: { result_count: 0 } });
+    });
+    assert.equal(next.cycleComplete, true, 'an inconclusive check must not degrade coverage');
+    assert.equal(next.accountsPolled, accounts.length);
+    assert.match(next.lastError, /inconclusive/i);
+    assert.equal(next.lastMembershipCheckAt, NOW, 'still stamped so it does not hammer each slot');
+  });
+
+  it('runs the check at most once per day', async () => {
+    const paths = [];
+    const next = await pollWith(
+      membershipFetch({ members: accounts, onPath: (p) => paths.push(p) }),
+      { lastMembershipCheckAt: NOW - 60_000 },
+    );
+    assert.equal(paths.filter((p) => p === `/2/lists/${listId}/members`).length, 0);
+    assert.equal(next.lastMembershipCheckAt, NOW - 60_000);
+  });
+
+  it('reads membership from endpoints that return no Posts', () => {
+    // Both must stay off the Post-returning paths or the daily check would bill
+    // against the shared 600/day budget the List poll depends on.
+    assert.equal(xNews.buildXListDetailsUrl(listId).pathname, `/2/lists/${listId}`);
+    assert.equal(xNews.buildXListMembersUrl(listId).pathname, `/2/lists/${listId}/members`);
+  });
+});
+
+describe('X List membership drift backoff', () => {
+  it('opens a bounded backoff instead of re-billing the same discarded page', async () => {
+    // Without this the relay pays 5 Posts every slot for a page it always
+    // discards: settle() rejects the null receipt before the refund script, so
+    // the spend is never returned — 480 of the 600 daily Posts, indefinitely.
+    const budgetRequests = [];
+    const stranger = { ...accounts[0], accountId: '9999999999999999999' };
+    const next = await xNews.pollXFeed({
+      accounts,
+      state: { items: [] },
+      bearerToken: 'x-test-token',
+      listId: '1234567890123456789',
+      coverageId: 'list-slot:2026-09-03T12:00:00.000Z',
+      lookupDeletions: false,
+      verifyMembership: false,
+      now: () => NOW,
+      withReturnedPosts: async (request) => {
+        budgetRequests.push(request);
+        return withTestReturnedPostBudget(request);
+      },
+      fetchImpl: async () => Response.json({
+        data: [rawPost(stranger, '7000000000000000077')],
+        meta: { result_count: 1 },
+      }),
+    });
+
+    assert.equal(budgetRequests.length, 1, 'the page was paid for exactly once');
+    assert.equal(next.listAccepted, false, 'an off-registry author voids the whole page');
+    assert.equal(next.backoffCause, xNews.X_BACKOFF_CAUSES.MEMBERSHIP_DRIFT);
+    assert.ok(next.rateLimitedUntil > NOW, 'the next slot must not repeat the same paid attempt');
+    assert.match(next.lastError, /membership drift/i);
+    assert.match(next.lastError, /verify-x-accounts/);
+  });
+
+  it('describes the drift backoff distinctly from a rate limit', () => {
+    const message = xNews.sharedBackoffMessage(xNews.X_BACKOFF_CAUSES.MEMBERSHIP_DRIFT);
+    assert.match(message, /membership drift/i);
+    assert.doesNotMatch(message, /rate-limit window/);
   });
 });
