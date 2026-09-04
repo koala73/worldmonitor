@@ -54,6 +54,7 @@ describe('production sitemap verifier helpers', () => {
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/pricing.md'), 'machine-readable');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/countries/norway/'), 'countries');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/chokepoints/suez-canal/'), 'chokepoints');
+    assert.equal(classifySitemapUrl('https://www.worldmonitor.app/compare/worldmonitor-vs-acled/'), 'compare');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/crises/ukraine-war/'), 'crises');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/tools/natural-hazard-pulse/'), 'tools');
     assert.equal(classifySitemapUrl('https://www.worldmonitor.app/research/strait-of-hormuz-transit-report-2026-07/'), 'research');

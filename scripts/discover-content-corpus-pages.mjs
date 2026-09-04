@@ -3,7 +3,7 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
-export const CONTENT_CORPUS_PREFIXES = ['country-instability-index', 'countries', 'chokepoints', 'crises', 'tools', 'research', 'reference', 'changelog', 'sources', 'use-cases'];
+export const CONTENT_CORPUS_PREFIXES = ['country-instability-index', 'countries', 'chokepoints', 'compare', 'crises', 'tools', 'research', 'reference', 'changelog', 'sources', 'use-cases'];
 
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
