@@ -177,14 +177,16 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
     // error on the S&P and a 30% error on Bitcoin -- specific false numbers
     // about named instruments, crawlable under "What live data is this page
     // showing right now?".
-    const frozen = new Map((snapshot.quotes ?? []).map((quote) => [quote.symbol, quote]));
-    assert.ok(committed.quotes.length > 0, 'the tape must publish the captured rows');
+    const expected = buildWelcomeTeasers(
+      snapshot,
+      resolveLatestLivePulseSnapshotPath(repoRoot),
+    ).quotes;
+    assert.deepEqual(
+      committed.quotes,
+      expected,
+      'the tape must publish exactly the captured rows, including an honest empty capture',
+    );
     for (const quote of committed.quotes) {
-      const source = frozen.get(quote.symbol);
-      assert.ok(source, `${quote.symbol} is not in the frozen capture -- it was hand-written`);
-      assert.equal(quote.price, source.price);
-      assert.equal(quote.change, source.change);
-      assert.deepEqual(quote.sparkline, source.sparkline);
       assert.ok(Number.isFinite(quote.price) && quote.price > 0, `${quote.symbol} needs a real price`);
     }
   });

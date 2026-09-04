@@ -2492,23 +2492,17 @@ describe('crawlable corpus generator', () => {
         // Taiwan, Nauru, Palau and Andorra past 900 (#7609). Ranked pages never
         // carry that copy -- the heaviest is 841 -- so raising the bound for all
         // 196 would hand 191 pages 50 words of slack they did not need.
-        // #7615 added a whole "Recent developments" section -- up to five dated
-        // headlines, a cited brief and ten timeline events -- without widening
-        // this band, so the first snapshot that actually carried developments
-        // pushed pages past the ceiling (Norway 1252). Measured across the 196
-        // pages built from the 2026-09-04 keyed capture: 135 pages without the
-        // section run 741-916 words, the 61 with it run 835-1648 (Ukraine is
-        // the heaviest). The section's own caps -- COUNTRY_HEADLINE_LIMIT,
-        // COUNTRY_TIMELINE_LIMIT and BRIEF_CONTEXT_MAX_CHARS in the freeze --
-        // are what bound it; this allowance keeps the ceiling meaningful for
-        // everything else on the page rather than being widened for all 196.
-        const developmentsWordAllowance = countryDocument
-          .querySelector('[data-country-developments]') ? 900 : 0;
-        const pageWordCeiling = (country.headlineEligible === false ? 950 : 900)
-          + developmentsWordAllowance;
+        // #7615 adds a variable-length Recent developments section. Count the
+        // rendered section itself: a fixed allowance would let one short item
+        // hide unrelated growth in the base page content.
+        const developmentsWordCount = words(
+          countryDocument.querySelector('[data-country-developments]')?.textContent,
+        ).length;
+        const basePageWordCeiling = country.headlineEligible === false ? 950 : 900;
+        const pageWordCeiling = basePageWordCeiling + developmentsWordCount;
         assert.ok(
           pageWordCount >= 600 && pageWordCount <= pageWordCeiling,
-          `${route} main content must contain 600-${pageWordCeiling} words, got ${pageWordCount}`,
+          `${route} main content must contain at least 600 words and no more than ${basePageWordCeiling} base words plus ${developmentsWordCount} developments words; got ${pageWordCount}`,
         );
       }
 

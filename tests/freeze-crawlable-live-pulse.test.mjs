@@ -12,6 +12,7 @@ import {
   minimumBriefCaptures,
   mintSession,
   normalizeApiBase,
+  selectFrozenQuotes,
   timelineRecord,
   selectCountryHeadlines,
 } from '../scripts/freeze-crawlable-live-pulse.mjs';
@@ -512,6 +513,24 @@ describe('freeze crawlable live pulse coverage gates', () => {
     assert.equal(spx.sparkline.length, 12, 'a 40-point series is reduced for the 14x5px sparkline');
     assert.equal(spx.sparkline[0], 100);
     assert.equal(spx.sparkline.at(-1), 139);
+  });
+
+  it('drops quotes without a raw finite numeric change and preserves numeric zero', () => {
+    for (const change of [undefined, null, '', '1.25', 'n/a', Number.NaN, Infinity, -Infinity]) {
+      const quotes = selectFrozenQuotes([{
+        quotes: [{ symbol: '^GSPC', price: 100, change, sparkline: [99, 100] }],
+      }]);
+      assert.deepEqual(
+        quotes,
+        [],
+        `change ${String(change)} (${typeof change}) must not become a factual zero`,
+      );
+    }
+
+    const [unchanged] = selectFrozenQuotes([{
+      quotes: [{ symbol: '^GSPC', price: 100, change: 0, sparkline: [99, 100] }],
+    }]);
+    assert.equal(unchanged.change, 0, 'a genuine numeric zero is publishable');
   });
 
   it('keeps the country capture when the market upstream is down', async () => {

@@ -171,21 +171,22 @@ export function downsampleSparkline(points, target = QUOTE_SPARKLINE_POINTS) {
 // upstream rather than be filled in. #7608 shipped a hand-written market tape
 // that drifted to a 22% error on the S&P and a 30% error on Bitcoin -- specific
 // false numbers about named instruments, published as "live data". A row
-// missing a usable price is dropped, never defaulted.
+// missing a usable price or change is dropped, never defaulted.
 export function selectFrozenQuotes(payloads) {
   const bySymbol = new Map();
   for (const payload of payloads) {
     for (const quote of Array.isArray(payload?.quotes) ? payload.quotes : []) {
       const symbol = String(quote?.symbol || '').trim();
       const price = Number(quote?.price);
-      const change = Number(quote?.change);
+      const change = quote?.change;
       if (!QUOTE_LABELS[symbol]) continue;
       if (!Number.isFinite(price) || price <= 0) continue;
+      if (typeof change !== 'number' || !Number.isFinite(change)) continue;
       bySymbol.set(symbol, {
         symbol,
         display: QUOTE_LABELS[symbol],
         price: roundQuoteValue(price),
-        change: Number.isFinite(change) ? Math.round(change * 100) / 100 : 0,
+        change: Math.round(change * 100) / 100,
         sparkline: downsampleSparkline(quote?.sparkline),
       });
     }

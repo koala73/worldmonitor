@@ -352,6 +352,16 @@ function securityAuditMatrixLockfiles(): string[] {
 }
 
 describe('CI workflow coverage', () => {
+  it('stages the regenerated main sitemap in the weekly pulse PR', () => {
+    const pulseWorkflow = read(resolve(workflowsDir, 'crawlable-pulse-refresh.yml'));
+    const openPrStep = workflowStepBlock(pulseWorkflow, 'Open the weekly pulse PR');
+    assert.match(
+      openPrStep,
+      /git\s+add\s+"\$snapshot_path"\s+public\/sitemap\.xml\s+public\/sitemap-main\.xml\s+pro-test\/src\/generated\/teasers\.json/,
+      'weekly pulse PRs must include the regenerated main sitemap artifact',
+    );
+  });
+
   it('runs the proto breaking check against the full main history (#6114)', () => {
     const breakingJob = workflowJobBlock(protoCheckWorkflow, 'proto-breaking');
     assert.match(breakingJob, /^\s+needs: changes\s*$/m);
