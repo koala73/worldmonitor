@@ -176,10 +176,10 @@ describe('GEO residue #7463', () => {
     const home = read('public/home.md');
     const en = readJson('pro-test/src/locales/en.json');
 
-    assert.match(index, /"dateModified": "2026-08-31"/);
-    assert.match(hero, /dateTime="2026-08-31"/);
-    assert.match(home, /2026-08-31/);
-    assert.match(String(en.welcome?.hero?.asOf || ''), /2026-08-31|31 August 2026/);
+    assert.match(index, /"dateModified": "2026-09-04"/);
+    assert.match(hero, /dateTime="2026-09-04"/);
+    assert.match(home, /2026-09-04/);
+    assert.match(String(en.welcome?.hero?.asOf || ''), /2026-09-04|4 September 2026/);
   });
 
   it('homepage welcome.html dates track the teaser strip snapshot (#7654)', () => {
