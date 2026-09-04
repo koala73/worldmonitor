@@ -14,13 +14,14 @@ const MONTH_KEY = 'intelligence:x-post-budget:v1:month:2026-09';
 const RESERVATION_KEY = 'intelligence:x-post-budget:v1:reservation:test';
 const ONCE_KEY = 'intelligence:x-post-budget:v1:once:2026-09-02:curated-feed:deletion-audit';
 const COVERAGE_HOLD_KEY = 'intelligence:x-post-budget:v1:coverage-held:2026-09-02';
+const COVERAGE_MODEL_KEY = 'intelligence:x-post-budget:v1:coverage-model:2026-09-02';
 const COVERAGE_MARKER_KEY = 'intelligence:x-post-budget:v1:coverage-accounted:2026-09-02:timeline-a';
 const RECEIPT_KEY = 'intelligence:x-post-budget:v1:receipt:timeline-a';
 const INFLIGHT_KEY = 'intelligence:x-post-budget:v1:receipt-inflight:timeline-a';
 const DAY_EXPIRES_AT = 1_788_566_400;
 const MONTH_EXPIRES_AT = 1_791_158_400;
 
-function makeRedis(initial = {}) {
+function makeRedis(initial = {}, nowMs = Date.parse('2026-09-02T12:00:00.000Z')) {
   const store = new Map(Object.entries(initial).map(([key, value]) => [key, String(value)]));
   const expirations = new Map();
   const commands = [];
@@ -32,6 +33,9 @@ function makeRedis(initial = {}) {
       const verb = String(command).toUpperCase();
       commands.push([verb, ...args]);
       if (verb === 'GET') return store.has(args[0]) ? store.get(args[0]) : false;
+      if (verb === 'TIME') {
+        return [Math.floor(nowMs / 1000), (nowMs % 1000) * 1000];
+      }
       if (verb === 'EXISTS') return store.has(args[0]) ? 1 : 0;
       if (verb === 'INCRBY') {
         const next = Number(store.get(args[0]) ?? 0) + Number(args[1]);
@@ -111,7 +115,14 @@ function runScript(script, keys, args, redis, returnLength) {
   return returned;
 }
 
-const reserveArgs = (requested, coverageTotal = 0, coverageUnit = 0, oncePerDay = false, hasReceipt = false) => [
+const reserveArgs = (
+  requested,
+  coverageTotal = 0,
+  coverageUnit = 0,
+  oncePerDay = false,
+  hasReceipt = false,
+  deadlineMs = 0,
+) => [
   requested,
   coverageTotal,
   600,
@@ -123,6 +134,8 @@ const reserveArgs = (requested, coverageTotal = 0, coverageUnit = 0, oncePerDay 
   coverageUnit,
   coverageUnit > 0 ? 1 : 0,
   hasReceipt ? 1 : 0,
+  `fixed-slots-v1:${coverageTotal}`,
+  deadlineMs,
 ];
 
 const budgetKeys = (
@@ -139,6 +152,7 @@ const budgetKeys = (
   coverageMarkerKey,
   receiptKey,
   inflightKey,
+  COVERAGE_MODEL_KEY,
 ];
 
 const settleKeys = (
@@ -261,7 +275,7 @@ describe('X Post budget Lua, executed', () => {
       6,
     );
     const second = runScript(RESERVE_LUA, budgetKeys('reservation:b', 'coverage:audit'), reserveArgs(25, 25, 25, true), redis, 6);
-    assert.deepEqual(first, [1, 25, 25, 0, 25, '']);
+    assert.deepEqual(first, [1, 25, 25, 0, 0, '']);
     assert.deepEqual(settled, [1, 25, 25, 25, 25, 0]);
     assert.deepEqual(second, [0, 25, 25, 3, 0, '']);
     assert.equal(redis.store.get(DAY_KEY), '25');
@@ -269,7 +283,7 @@ describe('X Post budget Lua, executed', () => {
     assert.equal(redis.store.has('reservation:b'), false);
   });
 
-  it('releases failed once-per-day work for retry but keeps its coverage protected', () => {
+  it('refunds a completed failure without reopening once-per-day work', () => {
     const redis = makeRedis();
     runScript(RESERVE_LUA, budgetKeys('reservation:a', 'coverage:audit'), reserveArgs(25, 25, 25, true), redis, 6);
     const settled = runScript(
@@ -285,19 +299,89 @@ describe('X Post budget Lua, executed', () => {
       redis,
       6,
     );
-    assert.deepEqual(settled, [1, 0, 0, 25, 0, 25]);
-    assert.equal(redis.store.has(ONCE_KEY), false);
-    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '25');
+    assert.deepEqual(settled, [1, 0, 0, 25, 0, 0]);
+    assert.equal(redis.store.get(ONCE_KEY), 'done');
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '0');
     assert.deepEqual(
       runScript(RESERVE_LUA, budgetKeys('reservation:b', 'coverage:audit'), reserveArgs(25, 25, 25, true), redis, 6),
-      [1, 25, 25, 0, 25, ''],
+      [0, 0, 0, 3, 0, ''],
     );
+  });
+
+  it('does not admit the same coverage slot again after an unknown outcome', () => {
+    const redis = makeRedis();
+    assert.deepEqual(
+      runScript(RESERVE_LUA, budgetKeys('reservation:first'), reserveArgs(5, 505, 5), redis, 6),
+      [1, 5, 5, 0, 500, ''],
+    );
+    assert.equal(redis.store.get(COVERAGE_MARKER_KEY), '1');
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '500');
+    assert.deepEqual(
+      runScript(RESERVE_LUA, budgetKeys('reservation:retry'), reserveArgs(5, 505, 5), redis, 6),
+      [0, 5, 5, 3, 500, ''],
+    );
+    assert.equal(redis.store.get(DAY_KEY), '5');
+  });
+
+  it('rejects an expired source slot before it initializes or spends the daily hold', () => {
+    const deadlineMs = Date.parse('2026-09-02T12:15:00.000Z');
+    const redis = makeRedis({}, deadlineMs);
+    assert.deepEqual(
+      runScript(
+        RESERVE_LUA,
+        budgetKeys('reservation:expired', 'coverage:expired'),
+        reserveArgs(5, 505, 5, false, true, deadlineMs),
+        redis,
+        6,
+      ),
+      [0, 0, 0, 7, 0, ''],
+    );
+    assert.equal(redis.store.size, 0);
+  });
+
+  it('refuses to convert a legacy coverage hold before the staged UTC rollover', () => {
+    const redis = makeRedis({
+      [DAY_KEY]: 3,
+      [MONTH_KEY]: 103,
+      [COVERAGE_HOLD_KEY]: 500,
+    });
+    const returned = runScript(
+      RESERVE_LUA,
+      budgetKeys('reservation:list-slot', 'coverage:list-slot'),
+      reserveArgs(5, 505, 5, false, true),
+      redis,
+      6,
+    );
+    assert.deepEqual(returned, [0, 3, 103, 6, 500, '']);
+    assert.equal(redis.store.has('reservation:list-slot'), false);
+    assert.equal(redis.store.get(DAY_KEY), '3');
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '500');
   });
 
   it('reads day and month counters without changing them', () => {
     const redis = makeRedis({ [DAY_KEY]: 25, [MONTH_KEY]: 425 });
-    assert.deepEqual(runScript(STATUS_LUA, [DAY_KEY, MONTH_KEY, COVERAGE_HOLD_KEY], [], redis, 3), [25, 425, 0]);
-    assert.deepEqual(redis.commands, [['GET', DAY_KEY], ['GET', MONTH_KEY], ['GET', COVERAGE_HOLD_KEY]]);
+    assert.deepEqual(
+      runScript(STATUS_LUA, [DAY_KEY, MONTH_KEY, COVERAGE_HOLD_KEY, COVERAGE_MODEL_KEY], [], redis, 5),
+      [25, 425, 0, 0, ''],
+    );
+    assert.deepEqual(redis.commands, [
+      ['GET', DAY_KEY],
+      ['GET', MONTH_KEY],
+      ['GET', COVERAGE_HOLD_KEY],
+      ['GET', COVERAGE_MODEL_KEY],
+    ]);
+  });
+
+  it('reports an unversioned legacy coverage hold to the status caller', () => {
+    const redis = makeRedis({
+      [DAY_KEY]: 3,
+      [MONTH_KEY]: 103,
+      [COVERAGE_HOLD_KEY]: 500,
+    });
+    assert.deepEqual(
+      runScript(STATUS_LUA, [DAY_KEY, MONTH_KEY, COVERAGE_HOLD_KEY, COVERAGE_MODEL_KEY], [], redis, 5),
+      [3, 103, 500, 1, ''],
+    );
   });
 
   it('keeps unpolled coverage durable across replicas and other consumers', () => {
@@ -309,8 +393,8 @@ describe('X Post budget Lua, executed', () => {
       redis,
       6,
     );
-    assert.deepEqual(first, [1, 590, 590, 0, 20, '']);
-    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '20');
+    assert.deepEqual(first, [1, 590, 590, 0, 10, '']);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '10');
 
     const settled = runScript(
       SETTLE_LUA,
@@ -341,7 +425,7 @@ describe('X Post budget Lua, executed', () => {
       redis,
       6,
     );
-    assert.deepEqual(second, [1, 600, 600, 0, 10, ''], 'a new replica can consume the remaining protected unit');
+    assert.deepEqual(second, [1, 600, 600, 0, 0, ''], 'a new replica can consume the remaining protected unit');
   });
 
   it('installs the curated hold before another consumer can spend after midnight', () => {
@@ -349,35 +433,41 @@ describe('X Post budget Lua, executed', () => {
     const company = runScript(
       RESERVE_LUA,
       budgetKeys('reservation:company', 'coverage:none'),
-      reserveArgs(10, 597),
+      reserveArgs(95, 505),
       redis,
       6,
     );
-    assert.deepEqual(company, [0, 0, 0, 1, 597, '']);
-    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '597');
-    assert.equal(redis.store.has('reservation:company'), false);
+    assert.deepEqual(company, [1, 95, 95, 0, 505, '']);
+    assert.equal(redis.store.get(COVERAGE_HOLD_KEY), '505');
+
+    const deniedRedis = makeRedis();
+    assert.deepEqual(
+      runScript(RESERVE_LUA, budgetKeys('reservation:denied', 'coverage:none'), reserveArgs(96, 505), deniedRedis, 6),
+      [0, 0, 0, 1, 505, ''],
+    );
+    assert.equal(deniedRedis.store.has('reservation:denied'), false);
 
     const curated = runScript(
       RESERVE_LUA,
       budgetKeys('reservation:curated', 'coverage:timeline-a'),
-      reserveArgs(10, 597, 10),
+      reserveArgs(5, 505, 5),
       redis,
       6,
     );
-    assert.deepEqual(curated, [1, 10, 10, 0, 597, '']);
+    assert.deepEqual(curated, [1, 100, 100, 0, 500, '']);
     assert.deepEqual(
       runScript(
         SETTLE_LUA,
         settleKeys('reservation:curated', ONCE_KEY, 'coverage:timeline-a'),
-        settleArgs(10, '', '-', {
+        settleArgs(5, '', '-', {
           hasCoverageUnit: true,
           completeCoverage: true,
-          coverageUnit: 10,
+          coverageUnit: 5,
         }),
         redis,
         6,
       ),
-      [1, 10, 10, 10, 10, 587],
+      [1, 100, 100, 5, 5, 500],
     );
   });
 
@@ -431,6 +521,32 @@ describe('X Post budget Lua, executed', () => {
       'acknowledgement is idempotent when a retry sees a missing receipt');
   });
 
+  it('does not let one crashed slot block the next slot receipt scope', () => {
+    const redis = makeRedis();
+    const nextReservation = 'intelligence:x-post-budget:v1:reservation:next';
+    const nextCoverageMarker = 'intelligence:x-post-budget:v1:coverage-accounted:2026-09-02:list-slot-next';
+    const nextInflight = 'intelligence:x-post-budget:v1:receipt-inflight:list:next-slot';
+
+    assert.deepEqual(
+      runScript(RESERVE_LUA, budgetKeys(), reserveArgs(5, 505, 5, false, true), redis, 6),
+      [1, 5, 5, 0, 500, ''],
+    );
+    assert.equal(redis.store.get(INFLIGHT_KEY), RESERVATION_KEY);
+
+    assert.deepEqual(
+      runScript(
+        RESERVE_LUA,
+        budgetKeys(nextReservation, nextCoverageMarker, RECEIPT_KEY, nextInflight),
+        reserveArgs(5, 505, 5, false, true),
+        redis,
+        6,
+      ),
+      [1, 10, 10, 0, 495, ''],
+    );
+    assert.equal(redis.store.get(nextInflight), nextReservation);
+    assert.equal(redis.store.get(INFLIGHT_KEY), RESERVATION_KEY);
+  });
+
   it('settles a failed response at zero and releases its receipt in-flight lock', () => {
     const redis = makeRedis();
     runScript(RESERVE_LUA, budgetKeys(), reserveArgs(10, 0, 0, false, true), redis, 6);
@@ -444,6 +560,26 @@ describe('X Post budget Lua, executed', () => {
     assert.deepEqual(settled, [1, 0, 0, 10, 0, 0]);
     assert.equal(redis.store.has(INFLIGHT_KEY), false);
     assert.equal(redis.store.has(RECEIPT_KEY), false);
+  });
+
+  it('releases only the owning receipt lock while retaining the unknown charge and slot marker', () => {
+    const redis = makeRedis({
+      [DAY_KEY]: 5,
+      [MONTH_KEY]: 105,
+      [RESERVATION_KEY]: 5,
+      [COVERAGE_HOLD_KEY]: 500,
+      [COVERAGE_MODEL_KEY]: 'fixed-slots-v1:505',
+      [COVERAGE_MARKER_KEY]: 1,
+      [INFLIGHT_KEY]: RESERVATION_KEY,
+    });
+    assert.equal(runScript(ACK_RECEIPTS_LUA, [INFLIGHT_KEY], ['reservation:other'], redis, null), 0);
+    assert.equal(redis.store.get(INFLIGHT_KEY), RESERVATION_KEY);
+    assert.equal(runScript(ACK_RECEIPTS_LUA, [INFLIGHT_KEY], [RESERVATION_KEY], redis, null), 1);
+    assert.equal(redis.store.has(INFLIGHT_KEY), false);
+    assert.equal(redis.store.get(DAY_KEY), '5');
+    assert.equal(redis.store.get(MONTH_KEY), '105');
+    assert.equal(redis.store.get(RESERVATION_KEY), '5');
+    assert.equal(redis.store.get(COVERAGE_MARKER_KEY), '1');
   });
 
   it('does not let a stale acknowledgement delete a newer receipt', () => {

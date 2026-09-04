@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import test from 'node:test';
+import { latestValidGithubStarsSnapshot } from '../scripts/github-stars-snapshot.mjs';
 import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 let cachedWelcomeHtml;
@@ -91,14 +92,14 @@ test('built welcome page ships the real hero in #root before JavaScript', { skip
   assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-hero"/);
   assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-depth"/);
   assert.match(rootContent, /href="\/sources\/\?utm_source=welcome-footer"[^>]*>Sources<\/a>/);
-  assert.match(rootContent, /Map layers/);
+  assert.match(rootContent, /Map layer types/);
   const navContent = rootContent.slice(
     rootContent.indexOf('<nav'),
     rootContent.indexOf('</nav>') + '</nav>'.length,
   );
   assert.match(navContent, /href="\/blog\/"/);
   assert.match(navContent, />Blog<\/a>/);
-  assert.match(navContent, /href="\/sources\/\?utm_source=welcome-nav"[^>]*>Sources<\/a>/);
+  assert.match(navContent, /href="\/sources\/\?utm_source=welcome-nav"[^>]*>Attributed providers<\/a>/);
   assert.match(navContent, /id="welcome-tablet-navigation"/);
   assert.match(navContent, />Menu</);
   const headlineIndex = rootContent.indexOf('By the time it&#x27;s news,');
@@ -147,4 +148,44 @@ test('built welcome page prerenders task routes and agent discovery links', { sk
   for (const linkPattern of agentLinks) {
     assert.match(agentSection, linkPattern);
   }
+});
+
+test('built welcome SoftwareApplication carries the snapshot star InteractionCounter', { skip }, () => {
+  const snapshot = latestValidGithubStarsSnapshot();
+  const application = welcomeJsonLdBlocks().find((block) => block['@type'] === 'SoftwareApplication');
+  assert.ok(application, 'welcome.html should include SoftwareApplication JSON-LD');
+  assert.deepEqual(application.interactionStatistic, {
+    '@type': 'InteractionCounter',
+    interactionType: 'https://schema.org/LikeAction',
+    name: 'GitHub stars',
+    userInteractionCount: snapshot.stargazers_count,
+  });
+  assert.doesNotMatch(welcomeHtml(), /%GITHUB_STARS_INTERACTION%/);
+});
+
+test('hero proof rail renders measured numerals with extractable labels', { skip }, () => {
+  const facts = JSON.parse(readFileSync(new URL('../shared/product-facts.generated.json', import.meta.url), 'utf8'));
+  const { content } = welcomeRoot();
+  for (const [value, label] of [
+    [String(facts.heroProofStats.mapLayers), 'Map layer types'],
+    [String(facts.heroProofStats.feeds), 'News &amp; OSINT feeds'],
+    [String(facts.heroProofStats.providers), 'Attributed providers'],
+    [String(facts.heroProofStats.alertOrigins), 'Independent alert origins'],
+  ]) {
+    assert.ok(content.includes(`>${value}</div>`), `hero rail must render the numeral ${value}`);
+    assert.ok(content.includes(label), `hero rail must label the numeral ${label}`);
+  }
+  const railStart = content.indexOf('sm:max-w-3xl grid-cols-2');
+  assert.ok(railStart > 0, 'hero proof rail markup must be present');
+  const rail = content.slice(railStart, content.indexOf('mt-8 flex', railStart));
+  assert.doesNotMatch(rail, />(Shared|Curated|Attributed)</, 'hero numeral slots must not render adjectives');
+});
+
+test('homepage answers "What is World Monitor?" and carries page date metadata', { skip }, () => {
+  const html = welcomeHtml();
+  const heading = html.match(/<h2[^>]*>What is World Monitor\?<\/h2>\s*<p[^>]*>([\s\S]*?)<\/p>/);
+  assert.ok(heading, 'homepage must define World Monitor under an answer-style H2');
+  const words = heading[1].replace(/<[^>]+>/g, '').trim().split(/\s+/).length;
+  assert.ok(words >= 40 && words <= 60, `definition must be 40-60 words, got ${words}`);
+  assert.match(html, /<meta name="lastmod" content="\d{4}-\d{2}-\d{2}"\s*\/>/);
 });

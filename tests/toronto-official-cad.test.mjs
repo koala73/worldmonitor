@@ -196,6 +196,29 @@ test('TPS FeatureServer parser keeps coords, intersection, type, time, source', 
   assert.equal(breakIn.division, 'D41');
 });
 
+test('TPS coordinates fall through unusable higher-priority representations', () => {
+  const base = TPS_FIXTURE.features[0];
+  const withFallback = (geometry, attributes = {}) => tpsSnapshot({
+    ...TPS_FIXTURE,
+    features: [{ ...base, geometry, attributes: { ...base.attributes, ...attributes } }],
+  }).records[0];
+  const coordinatesFallback = withFallback({ x: false, y: '', coordinates: [-79.3, 43.7] });
+  assert.equal(coordinatesFallback.lat, 43.7);
+  assert.equal(coordinatesFallback.lon, -79.3);
+  const attributesFallback = withFallback(
+    { x: 181, y: 91, coordinates: [181, 91] },
+    { LONGITUDE: -79.2, LATITUDE: 43.8 },
+  );
+  assert.equal(attributesFallback.lat, 43.8);
+  assert.equal(attributesFallback.lon, -79.2);
+  const unplaced = withFallback(
+    { x: false, y: '', coordinates: [181, 91] },
+    { LONGITUDE: false, LATITUDE: '' },
+  );
+  assert.equal(unplaced.lat, null);
+  assert.equal(unplaced.lon, null);
+});
+
 test('TPS privacy-excluded categories remain absent and are not backfilled', () => {
   const snapshot = tpsSnapshot();
   const types = snapshot.records.map((r) => r.callType);

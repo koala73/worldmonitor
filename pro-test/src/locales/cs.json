@@ -482,7 +482,9 @@
       "plateNote": "Zachyceno z živé mapy — kliknutím ji otevřete",
       "trustBuild": "Postavte na tom:",
       "positioningLink": "WorldMonitor není open-source Palantir",
-      "asOf": "K 31. srpna 2026"
+      "asOf": "K 31. srpna 2026",
+      "whatIsTitle": "Co je World Monitor?",
+      "whatIsBody": "World Monitor je bezplatný open-source dashboard, který streamuje geopolitické, tržní, námořní, letecké, infrastrukturní a kybernetické signály na jednu živou mapu světa. Koreluje samostatné kanály v jediný operační obraz a upozorňuje na konvergenci před titulky, přičemž každá číslice je zdrojována a každá metodika zdokumentována."
     },
     "live": {
       "eyebrow": "Live právě teď",
@@ -588,11 +590,11 @@
       "title": "Jak hluboký je datový model World Monitor?",
       "sub": "Každé číslo níže je dnes živé na řídicím panelu — ne na roadmapě.",
       "s1v": "Sdílený",
-      "s1l": "Mapové vrstvy",
+      "s1l": "Typy vrstev mapy",
       "s2v": "Kurovaný",
-      "s2l": "Kurátorované zdroje",
+      "s2l": "Kanály zpráv a OSINT",
       "s3v": "Atribuovaný",
-      "s3l": "Poskytovatelé dat",
+      "s3l": "Přiřazení poskytovatelé",
       "s4v": "Živý",
       "s4l": "Kritické body · živý AIS",
       "s5v": "Tier-1",

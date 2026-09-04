@@ -1,213 +1,114 @@
 #!/usr/bin/env node
 /**
- * Verify data/x-accounts.json against the official X API (#6654 follow-up).
- *
- * The registry was originally curated without API access. Six handles pointed
- * at accounts that do not exist, one at a suspended account, and four pinned
- * accountIds pointed at unrelated private individuals — whose posts would have
- * published into the intelligence feed as trusted tier-2 wire services and
- * reached the alert path. Nothing in CI could see it: the poll loop reported
- * only "6 errors" with no handle and no reason, and X answers an unreadable
- * account with HTTP 200 plus an `errors` body rather than a 4xx.
- *
- * Offline invariants (id present, well-formed, unique) are asserted by
- * tests/x-news-accounts.test.mjs. Only the API can prove an id still belongs to
- * the publisher we think it does, so that check lives here, out of CI, and is
- * run deliberately when the registry changes.
+ * Verify that the configured public X List exactly mirrors data/x-accounts.json.
  *
  * Usage:
- *   X_BEARER_TOKEN=... node scripts/verify-x-accounts.mjs [--json] [--include-disabled]
- *   X_BEARER_TOKEN=... UPSTASH_REDIS_REST_URL=... UPSTASH_REDIS_REST_TOKEN=... \
- *     node scripts/verify-x-accounts.mjs --timelines
+ *   X_BEARER_TOKEN=... X_CURATED_LIST_ID=... node scripts/verify-x-accounts.mjs [--json]
  *
- * Cost: one User read per account (~$0.010, 24h-deduped). It does NOT read
- * timelines by default, so it does not bill Post reads. The --timelines mode
- * requires Redis and uses the same shared returned-Post cap as production.
- *
- * Exit 0 = every checked account verified. Exit 1 = at least one mismatch.
+ * This check reads one List object and one page of at most 100 User objects. It
+ * never calls a Post-returning endpoint. Exit 0 means the List is public,
+ * readable, unpaginated, and contains exactly the enabled immutable IDs.
  */
 
 import { readFileSync } from 'node:fs';
-import { dirname, join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { defaultRedisEval } from './lib/_upstash-pipeline.mjs';
-import {
-  createXPostBudget,
-  DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
-  assertXPostBudgetAdmission,
-  isXPostReturningUrl,
-} from './lib/x-post-budget.cjs';
+import xNewsAccounts from './lib/x-news-accounts.cjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const REGISTRY = join(__dirname, '../data/x-accounts.json');
 const X_API_ORIGIN = 'https://api.x.com';
+const USER_AGENT = 'WorldMonitor-X-List-Verifier/1.0';
+const MAX_RATE_LIMIT_RETRIES = 2;
+const MAX_RATE_LIMIT_WAIT_MS = 60_000;
 
-const args = new Set(process.argv.slice(2));
-const asJson = args.has('--json');
-const includeDisabled = args.has('--include-disabled');
-const checkTimelines = args.has('--timelines');
+const sleep = (ms) => new Promise((resolveDelay) => setTimeout(resolveDelay, ms));
 
-const token = process.env.X_BEARER_TOKEN;
-if (!token) {
-  console.error('X_BEARER_TOKEN is not set — cannot verify against the official API.');
-  process.exit(2);
-}
-if (checkTimelines && (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN)) {
-  console.error('--timelines requires UPSTASH_REDIS_REST_URL and UPSTASH_REDIS_REST_TOKEN so Post reads use the shared cap.');
-  process.exit(2);
-}
-
-const postBudget = checkTimelines
-  ? createXPostBudget({
-      evalCommand: defaultRedisEval,
-      dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
-    })
-  : null;
-
-const registry = JSON.parse(readFileSync(REGISTRY, 'utf8'));
-const accounts = [];
-for (const [group, arr] of Object.entries(registry.channels || {})) {
-  for (const account of arr) {
-    if (!account.enabled && !includeDisabled) continue;
-    accounts.push({ ...account, group });
+export async function apiGet(path, token, fetchImpl = fetch, options = {}) {
+  const now = options.now ?? Date.now;
+  const sleepImpl = options.sleepImpl ?? sleep;
+  const onRateLimit = options.onRateLimit ?? ((message) => process.stderr.write(message));
+  for (let attempt = 0; attempt <= MAX_RATE_LIMIT_RETRIES; attempt += 1) {
+    const url = new URL(path, X_API_ORIGIN);
+    const response = await fetchImpl(url, {
+      headers: {
+        Authorization: `Bearer ${token}`,
+        Accept: 'application/json',
+        'User-Agent': USER_AGENT,
+      },
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (response.status === 429 && attempt < MAX_RATE_LIMIT_RETRIES) {
+      const reset = Number(response.headers.get('x-rate-limit-reset') || 0) * 1000;
+      const waitMs = Math.min(MAX_RATE_LIMIT_WAIT_MS, Math.max(5_000, reset - now()));
+      onRateLimit(`rate limited; waiting ${Math.round(waitMs / 1000)}s\n`);
+      await sleepImpl(waitMs);
+      continue;
+    }
+    let body = null;
+    try {
+      body = await response.json();
+    } catch {
+      body = null;
+    }
+    return { status: response.status, ok: response.ok, body };
   }
+  throw new Error('unreachable X verifier retry state');
 }
 
-const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-
-/**
- * X reports an unreadable resource with HTTP 200 and a top-level `errors`
- * array. Treating `response.ok` as success is precisely the bug this script
- * exists to catch, so read the payload, not the status.
- */
-function resourceError(body) {
-  if (body?.data) return null;
-  const error = (Array.isArray(body?.errors) ? body.errors : [])[0];
-  if (error) return `${error.title || 'API error'}${error.detail ? `: ${error.detail}` : ''}`;
-  // A quiet account answers `{"meta":{"result_count":0}}` — no `data` key and
-  // no `errors` key (verified against the live API). Reporting that as a fault
-  // would flag every account that simply had nothing to say in the window.
-  if (typeof body?.meta?.result_count === 'number') return null;
-  return 'empty response with no data, no errors, and no result_count';
+function enabledRegistryAccounts(registry) {
+  return Object.values(registry?.channels || {})
+    .flat()
+    .filter((account) => account?.enabled !== false);
 }
 
-async function apiGet(path, { postBudgetAdmission } = {}) {
-  const url = new URL(path, X_API_ORIGIN);
-  assertXPostBudgetAdmission(url, postBudgetAdmission);
-  const response = await fetch(url, {
-    headers: { Authorization: `Bearer ${token}` },
-    signal: AbortSignal.timeout(20_000),
+async function main() {
+  const asJson = process.argv.slice(2).includes('--json');
+  const token = String(process.env.X_BEARER_TOKEN || '').trim();
+  const listId = String(process.env.X_CURATED_LIST_ID || '').trim();
+  if (!token || !/^[1-9]\d{0,18}$/.test(listId)) {
+    console.error('X_BEARER_TOKEN and a numeric X_CURATED_LIST_ID are required.');
+    return 2;
+  }
+
+  const registry = JSON.parse(readFileSync(REGISTRY, 'utf8'));
+  const accounts = enabledRegistryAccounts(registry);
+  const listPath = `/2/lists/${listId}?list.fields=id,name,description,private,member_count`;
+  const membersPath = `/2/lists/${listId}/members?max_results=100&user.fields=id,name,username,protected`;
+  const [listResult, membersResult] = await Promise.all([
+    apiGet(listPath, token),
+    apiGet(membersPath, token),
+  ]);
+  const result = xNewsAccounts.verifyXListMembership({
+    listId,
+    accounts,
+    listBody: listResult.body,
+    membersBody: membersResult.body,
   });
-  if (response.status === 429) {
-    if (isXPostReturningUrl(url)) return { response, status: response.status, body: null };
-    const reset = Number(response.headers.get('x-rate-limit-reset') || 0) * 1000;
-    const waitMs = Math.max(5_000, reset - Date.now());
-    process.stderr.write(`rate limited; waiting ${Math.round(waitMs / 1000)}s\n`);
-    await sleep(waitMs);
-    return apiGet(path, { postBudgetAdmission });
+  if (!listResult.ok) {
+    result.findings.unshift({ kind: 'list-http-error', message: `List lookup returned HTTP ${listResult.status}` });
+    result.ok = false;
   }
-  let body = null;
-  try {
-    body = await response.json();
-  } catch {
-    body = null;
-  }
-  return { response, status: response.status, body };
-}
-
-const findings = [];
-for (const account of accounts) {
-  const handle = String(account.handle || '').replace(/^@/, '');
-  const label = `@${handle}`;
-
-  if (!account.accountId) {
-    findings.push({ handle, level: 'error', kind: 'missing-id', message: 'no accountId pinned' });
-    continue;
+  if (!membersResult.ok) {
+    result.findings.unshift({ kind: 'members-http-error', message: `List members lookup returned HTTP ${membersResult.status}` });
+    result.ok = false;
   }
 
-  // Resolve BOTH directions: the id proves who we actually poll, the handle
-  // proves the registry still names the same account. A rename breaks only the
-  // handle; a bad copy-paste breaks only the id.
-  const { status, body } = await apiGet(`/2/users/${account.accountId}?user.fields=id,name,username,protected`);
-  const failure = resourceError(body);
-  if (failure) {
-    findings.push({ handle, level: 'error', kind: 'unresolvable-id', message: `id ${account.accountId} — ${failure} (HTTP ${status})` });
-    await sleep(400);
-    continue;
-  }
-
-  const actual = body.data;
-  if (String(actual.username).toLowerCase() !== handle.toLowerCase()) {
-    findings.push({
-      handle,
-      level: 'error',
-      kind: 'handle-mismatch',
-      message: `id ${account.accountId} is @${actual.username} (${actual.name}), not ${label}`,
-    });
-  }
-  if (actual.protected) {
-    findings.push({
-      handle,
-      level: 'error',
-      kind: 'protected',
-      message: `${label} is protected — X refuses its timeline to a third-party app; disable it or coverage never completes`,
-    });
-  }
-
-  if (checkTimelines && !actual.protected) {
-    const coverageUnitPosts = Math.max(5, Math.min(100, Number(account.maxMessages) || 10));
-    const outcome = await postBudget.withReturnedPosts({
-      consumer: 'account-verifier',
-      operation: 'timeline',
-      requestedPosts: 5,
-      coverageTotal: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
-      coverageId: `timeline:${account.accountId}`,
-      coverageUnitPosts,
-      execute: (_admission, postBudgetAdmission) => apiGet(`/2/users/${account.accountId}/tweets?max_results=5&tweet.fields=id`, {
-        postBudgetAdmission,
-      }),
-    });
-    if (!outcome.allowed) {
-      findings.push({
-        handle,
-        level: 'error',
-        kind: 'post-budget-denied',
-        message: `shared X Post budget ${outcome.reason || 'unavailable'}`,
-      });
-      break;
-    }
-    if (!outcome.completed) {
-      findings.push({
-        handle,
-        level: 'error',
-        kind: 'post-budget-unsettled',
-        message: 'timeline response could not be settled; the full reservation was retained',
-      });
-      break;
-    }
-    const timeline = outcome.result;
-    const timelineFailure = resourceError(timeline.body);
-    if (timelineFailure) {
-      findings.push({ handle, level: 'error', kind: 'unreadable-timeline', message: timelineFailure });
-    }
-    await sleep(400);
-  }
-
-  await sleep(400);
-}
-
-if (asJson) {
-  console.log(JSON.stringify({ checked: accounts.length, findings }, null, 2));
-} else {
-  console.log(`checked ${accounts.length} account(s) against ${X_API_ORIGIN}`);
-  if (findings.length === 0) {
-    console.log('all verified — every accountId resolves to the handle the registry names');
+  if (asJson) {
+    console.log(JSON.stringify({ listId, ...result }, null, 2));
   } else {
-    for (const f of findings) {
-      console.log(`  ${f.level.toUpperCase()} @${f.handle} [${f.kind}] ${f.message}`);
+    console.log(`checked public X List ${listId}: ${result.actualCount}/${result.expectedCount} member rows`);
+    if (result.ok) {
+      console.log('all verified — List membership exactly matches the enabled registry IDs');
+    } else {
+      for (const finding of result.findings) {
+        console.log(`  ERROR [${finding.kind}] ${finding.message}`);
+      }
     }
-    console.log(`\n${findings.length} finding(s). Update data/x-accounts.json and bump each entry's verifiedAt.`);
   }
+  return result.ok ? 0 : 1;
 }
 
-process.exit(findings.length === 0 ? 0 : 1);
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
+  process.exitCode = await main();
+}

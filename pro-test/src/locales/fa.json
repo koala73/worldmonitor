@@ -482,7 +482,9 @@
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
       "positioningLink": "WorldMonitor is not an open-source Palantir",
-      "asOf": "تا ۳۱ اوت ۲۰۲۶"
+      "asOf": "تا ۳۱ اوت ۲۰۲۶",
+      "whatIsTitle": "World Monitor چیست؟",
+      "whatIsBody": "World Monitor یک داشبورد رایگان و متن‌باز است که سیگنال‌های ژئوپلیتیک، بازار، کشتیرانی، هوانوری، زیرساخت و سایبری را به صورت زنده بر روی یک نقشه جهانی پخش می‌کند. این ابزار فیدهای جداگانه را در یک تصویر عملیاتی یکپارچه ترکیب می‌کند، همگرایی را قبل از تیتر‌های خبری شناسایی می‌کند و هر رقم از منابع معتبر و هر روش توثیق‌شده است."
     },
     "live": {
       "eyebrow": "Live right now",
@@ -588,11 +590,11 @@
       "title": "مدل داده World Monitor چقدر عمیق است؟",
       "sub": "Every number below is live in the dashboard today — not a roadmap.",
       "s1v": "اشتراک‌شده",
-      "s1l": "Map layers",
+      "s1l": "انواع لایه‌های نقشه",
       "s2v": "منتخب",
-      "s2l": "Curated feeds",
+      "s2l": "فیدهای خبری و OSINT",
       "s3v": "مرجع‌شده",
-      "s3l": "Data providers",
+      "s3l": "ارائه‌دهندگان منسوب",
       "s4v": "زنده",
       "s4l": "Chokepoints · live AIS",
       "s5v": "سطح ۱",

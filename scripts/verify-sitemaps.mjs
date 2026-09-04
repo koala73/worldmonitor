@@ -149,6 +149,30 @@ const expectedRootSitemaps = (origin) => [
   { url: `${origin}/docs/sitemap.xml`, owner: 'docs' },
 ];
 
+const expectedRootIndexMembers = (origin) => [
+  `${origin}/sitemap-main.xml`,
+  `${origin}/blog/sitemap-index.xml`,
+  `${origin}/docs/sitemap.xml`,
+];
+
+function validateCanonicalRootIndex(sitemapUrl, parsed, origin) {
+  if (sitemapUrl !== `${origin}/sitemap.xml`) return [];
+  if (parsed.type !== 'index') return [`${sitemapUrl} must be a sitemap index`];
+
+  const expected = expectedRootIndexMembers(origin);
+  const actual = new Set(parsed.locations);
+  const missing = expected.filter((url) => !actual.has(url));
+  const unexpected = parsed.locations.filter((url) => !expected.includes(url));
+  const errors = [];
+  if (missing.length > 0) {
+    errors.push(`${sitemapUrl} is missing canonical index members: ${missing.join(', ')}`);
+  }
+  if (unexpected.length > 0) {
+    errors.push(`${sitemapUrl} contains unexpected index members: ${unexpected.join(', ')}`);
+  }
+  return errors;
+}
+
 function validateSitemapDocumentUrl(value, { origin, owner }) {
   let url;
   try {
@@ -214,7 +238,7 @@ function validatePageOwner(value, owner) {
   return null;
 }
 
-async function fetchSitemapTree(rootSitemaps, fetchImpl, origin) {
+export async function fetchSitemapTree(rootSitemaps, fetchImpl, origin) {
   const pending = [...rootSitemaps];
   const seen = new Set();
   const documents = [];
@@ -239,6 +263,7 @@ async function fetchSitemapTree(rootSitemaps, fetchImpl, origin) {
       throw new Error(`${sitemapUrl} returned ${response.status}, expected direct HTTP 200`);
     }
     const parsed = parseSitemapDocument(body);
+    inventoryErrors.push(...validateCanonicalRootIndex(sitemapUrl, parsed, origin));
     documents.push({
       url: sitemapUrl,
       status: response.status,
@@ -249,9 +274,14 @@ async function fetchSitemapTree(rootSitemaps, fetchImpl, origin) {
 
     if (parsed.type === 'index') {
       for (const childUrl of parsed.locations) {
-        const childError = validateSitemapDocumentUrl(childUrl, { origin, owner });
+        // The canonical root delegates to the three owned sitemap families.
+        // Nested indexes remain in their inherited family.
+        const childOwner = sitemapUrl === `${origin}/sitemap.xml`
+          ? sitemapOwner(childUrl)
+          : owner;
+        const childError = validateSitemapDocumentUrl(childUrl, { origin, owner: childOwner });
         if (childError) inventoryErrors.push(childError);
-        else pending.push({ url: childUrl, owner });
+        else pending.push({ url: childUrl, owner: childOwner });
       }
     } else {
       for (const loc of parsed.locations) {

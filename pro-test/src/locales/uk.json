@@ -482,7 +482,9 @@
       "plateNote": "Captured from the live map — click to open it",
       "trustBuild": "Build on it:",
       "positioningLink": "WorldMonitor is not an open-source Palantir",
-      "asOf": "Станом на 31 серпня 2026"
+      "asOf": "Станом на 31 серпня 2026",
+      "whatIsTitle": "Що таке World Monitor?",
+      "whatIsBody": "World Monitor — це безплатна, відкрита панель управління, яка передає сигнали геополітики, ринків, судноплавства, авіації, інфраструктури та кіберпростору на єдину живу карту світу. Вона корелює окремі потоки в єдину операційну картину й виявляє конвергенцію до новинних заголовків, з усіма цифрами, підтвердженими джерелами, та кожним методом, задокументованим."
     },
     "live": {
       "eyebrow": "Live right now",
@@ -588,11 +590,11 @@
       "title": "Наскільки глибока модель даних World Monitor?",
       "sub": "Every number below is live in the dashboard today — not a roadmap.",
       "s1v": "Спільне",
-      "s1l": "Map layers",
+      "s1l": "Типи шарів карти",
       "s2v": "Куровано",
-      "s2l": "Curated feeds",
+      "s2l": "Стрічки новин та розвідданих",
       "s3v": "Атрибутовано",
-      "s3l": "Data providers",
+      "s3l": "Атрибутовані джерела",
       "s4v": "Живе",
       "s4l": "Chokepoints · live AIS",
       "s5v": "Tier-1",
