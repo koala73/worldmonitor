@@ -4,15 +4,21 @@ type SandboxProbeWindow = Window & typeof globalThis & {
   __bodyBeforeUnloadCalls: number;
   __clickCalls: number;
   __framesetBeforeUnloadCalls: number;
+  __widgetScriptRan: boolean;
 };
 
-async function mountSandboxWidget(page: Page, id: string, html: string): Promise<Frame> {
+async function mountSandboxWidget(
+  page: Page,
+  id: string,
+  html: string,
+  { iframeSandbox = true }: { iframeSandbox?: boolean } = {},
+): Promise<Frame> {
   const token = `token-${id}`;
 
-  await page.evaluate(({ html: widgetHtml, id: widgetId, token: widgetToken }) => {
+  await page.evaluate(({ html: widgetHtml, id: widgetId, token: widgetToken, iframeSandbox: useIframeSandbox }) => {
     const iframe = document.createElement('iframe');
     iframe.dataset.testid = widgetId;
-    iframe.setAttribute('sandbox', 'allow-scripts');
+    if (useIframeSandbox) iframe.setAttribute('sandbox', 'allow-scripts');
     iframe.src = `/wm-widget-sandbox.html#id=${encodeURIComponent(widgetId)}&token=${encodeURIComponent(widgetToken)}`;
 
     function handleReady(event: MessageEvent): void {
@@ -36,10 +42,10 @@ async function mountSandboxWidget(page: Page, id: string, html: string): Promise
 
     window.addEventListener('message', handleReady);
     document.body.appendChild(iframe);
-  }, { html, id, token });
+  }, { html, id, token, iframeSandbox });
 
   const iframe = page.locator(`iframe[data-testid="${id}"]`);
-  await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
+  if (iframeSandbox) await expect(iframe).toHaveAttribute('sandbox', 'allow-scripts');
   await expect.poll(
     () => page.evaluate(() => document.documentElement.dataset.widgetReady),
   ).toBe(id);
@@ -49,6 +55,9 @@ async function mountSandboxWidget(page: Page, id: string, html: string): Promise
   expect(frame).not.toBeNull();
   return frame!;
 }
+
+const SANDBOX_CSP = "default-src 'none'; sandbox allow-scripts; script-src 'unsafe-inline' https://cdn.jsdelivr.net https://static.cloudflareinsights.com; style-src 'unsafe-inline'; img-src data:; connect-src https://cdn.jsdelivr.net;";
+const SANDBOX_CACHE_CONTROL = 'public, max-age=0, must-revalidate';
 
 test.describe('PRO widget sandbox', () => {
   test.beforeEach(async ({ page }) => {
@@ -111,5 +120,31 @@ test.describe('PRO widget sandbox', () => {
         () => (window as SandboxProbeWindow).__framesetBeforeUnloadCalls,
       ),
     ).toBe(0);
+  });
+
+  test('enforces the response sandbox when the iframe has no sandbox attribute', async ({ page }) => {
+    await page.route('**/wm-widget-sandbox.html*', async (route) => {
+      const response = await route.fetch();
+      await route.fulfill({
+        response,
+        headers: {
+          ...response.headers(),
+          'content-security-policy': SANDBOX_CSP,
+          'cache-control': SANDBOX_CACHE_CONTROL,
+        },
+      });
+    });
+
+    const frame = await mountSandboxWidget(page, 'response-sandbox-widget', `<!doctype html>
+<script>
+  window.__widgetScriptRan = true;
+</script>`, { iframeSandbox: false });
+
+    const iframe = page.locator('iframe[data-testid="response-sandbox-widget"]');
+    await expect(iframe).not.toHaveAttribute('sandbox', /.+/);
+    await expect.poll(
+      () => frame.evaluate(() => (window as SandboxProbeWindow).__widgetScriptRan),
+    ).toBe(true);
+    expect(await frame.evaluate(() => window.origin)).toBe('null');
   });
 });

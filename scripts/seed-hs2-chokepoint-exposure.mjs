@@ -14,6 +14,9 @@ import {
 
 loadEnvFile(import.meta.url);
 
+const require = createRequire(import.meta.url);
+const SUPPLY_VULNERABILITY_COMMODITIES = require('./shared/supply-vulnerability-commodities.json');
+
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 /** @type {string} */
@@ -27,7 +30,7 @@ const LOCK_TTL_MS = 5 * 60 * 1000;
 const COMTRADE_KEY_PREFIX = 'comtrade:bilateral-hs4:';
 
 // Top 10 HS2 chapters by global trade volume and strategic importance.
-const HS2_CODES = [
+const BASE_HS2_CODES = [
   '27', // Mineral Fuels (energy)
   '84', // Machinery & Mechanical Appliances
   '85', // Electrical Machinery & Electronics
@@ -39,6 +42,11 @@ const HS2_CODES = [
   '10', // Cereals (food security)
   '62', // Apparel (textiles)
 ];
+
+export const HS2_CODES = Array.from(new Set([
+  ...BASE_HS2_CODES,
+  ...SUPPLY_VULNERABILITY_COMMODITIES.commodities.map((commodity) => commodity.transitHs2),
+])).sort((a, b) => Number(a) - Number(b));
 
 // Lightweight copy of the chokepoint registry fields needed for exposure computation.
 // Kept in sync with src/config/chokepoint-registry.ts — update both together.
@@ -61,7 +69,6 @@ const CHOKEPOINT_REGISTRY = [
 
 // ── Load country-port-clusters ────────────────────────────────────────────────
 
-const require = createRequire(import.meta.url);
 /** @type {Record<string, {nearestRouteIds: string[], coastSide: string}>} */
 const COUNTRY_PORT_CLUSTERS = require('./shared/country-port-clusters.json');
 
@@ -174,6 +181,7 @@ export function computeCountryLevelExposure(nearestRouteIds, coastSide, hs2) {
     exposures: entries,
     primaryChokepointId: entries[0]?.chokepointId ?? '',
     vulnerabilityIndex,
+    coverage: 'country_route_fallback',
   };
 }
 
@@ -301,6 +309,7 @@ export async function main() {
               exposures,
               primaryChokepointId: exposures[0]?.chokepointId ?? '',
               vulnerabilityIndex: buildVulnIndex(exposures),
+              coverage: 'flow_weighted',
             };
             flowWeightedCount++;
           } else {

@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:cap="urn:oasis:names:tc:emergency:cap:1.1" xmlns:georss="http://www.georss.org/georss">
+  <id>https://www.alberta.ca/data/aea/rss/feed-full.atom</id>
+  <title>Alberta Emergency Alert - Full Atom Feed</title>
+  <updated>2026-08-13T20:06:02-06:00</updated>
+  <entry>
+    <id>2026-08-13T19_31_03-06_00=cap-pac@canada.ca=urn_oid_2.49.0.1.124.3132006609.2026</id>
+    <updated>2026-08-13T19:31:03-06:00</updated>
+    <title>yellow watch - tornado - ended</title>
+    <link href="https://www.alberta.ca/data/aea/cap/2026/08/13/ended-tornado.xml" rel="alternate"/>
+    <link href="https://www.alberta.ca/data/aea/cap/2026/08/13/ended-tornado.xml" rel="enclosure" type="application/common-alerting-protocol+xml"/>
+    <summary>Conditions are no longer favourable for the development of tornadoes.
+
+Area: (Smoky Lake Co. near Vilna Saddle Lake and Whitefish Lake)</summary>
+    <cap:sender>cap-pac@canada.ca</cap:sender>
+    <cap:identifier>urn:oid:2.49.0.1.124.3132006609.2026</cap:identifier>
+    <cap:sent>2026-08-13T19:31:03-06:00</cap:sent>
+    <cap:expires>2026-08-13T20:31:03-06:00</cap:expires>
+    <georss:point>53.9 -111.3</georss:point>
+  </entry>
+</feed>

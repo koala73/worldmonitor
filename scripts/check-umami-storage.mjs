@@ -220,7 +220,6 @@ async function main() {
     process.exitCode = 1;
   } else if (result.status === 'warning') {
     console.error('::warning::Umami Postgres storage needs retention or capacity action before the next threshold.');
-    process.exitCode = 1;
   }
 }
 

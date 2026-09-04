@@ -83,6 +83,12 @@ function enableLimiterEnv() {
 beforeEach(async () => {
   process.env.MCP_INTERNAL_HMAC_SECRET = HMAC_SECRET;
   process.env.MCP_TELEMETRY = 'false';
+  // A null entitlement row is `free_account` only when the backend
+  // could actually run a lookup (#5619). Unconfigured → billing_verification.
+  // Gate cases below need the configured path so free-account admission (#6716)
+  // is observable on the null-row fixture.
+  process.env.CONVEX_SITE_URL = 'https://fake.convex.site';
+  process.env.CONVEX_SERVER_SHARED_SECRET = 'test-convex-shared-secret';
   delete process.env.UPSTASH_REDIS_REST_URL;
   delete process.env.UPSTASH_REDIS_REST_TOKEN;
   delete process.env.CF_EDGE_PROOF_SECRET;
@@ -111,36 +117,36 @@ const entOk = () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: true }, v
  * `isolates` names the predicate the case is the sole witness for — i.e. the
  * predicate whose deletion this case (and only this case) turns red.
  */
-const REJECT_CASES = [
+const ENTITLEMENT_CASES = [
   {
-    // NOTE: `!ent` is the ONE predicate no test can isolate, and that is a
-    // property of the code, not a gap in this fixture. All three sibling reads
-    // are optional-chained with a falsy default — `ent?.features?.tier ?? 0`,
-    // `ent?.features?.mcpAccess === true`, `ent?.validUntil ?? 0` — so a falsy
-    // `ent` forces tier=0 AND mcpAccess=false AND validUntil=0, firing all
-    // three other guards. `!ent` is therefore fully subsumed defence-in-depth:
-    // deleting it leaves this suite green (verified), and deleting `!ent` AND
-    // `tier < 1` together STILL 401s here via `!mcpAccess`. Keep the case —
-    // it pins the null-row rejection itself, which is the security-relevant
-    // behaviour — but do not claim it isolates a predicate.
-    label: 'ent === null (no entitlement row) — triple-guarded, see note',
-    isolates: 'null-row rejection (no single predicate)',
+    label: 'ent === null after a configured lookup',
+    isolates: 'confirmed no-row free account',
     ent: () => null,
+    freeAccount: true,
   },
   {
-    label: 'tier 0 — mcpAccess true, validUntil future',
-    isolates: 'tier < 1',
+    label: 'well-formed tier 0 row',
+    isolates: 'confirmed tier-0 free account',
+    ent: () => ({ planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0 }),
+    freeAccount: true,
+  },
+  {
+    label: 'contradictory tier 0 row with mcpAccess true',
+    isolates: 'malformed free shape',
     ent: () => ({ planKey: 'free', features: { tier: 0, mcpAccess: true }, validUntil: Date.now() + DAY }),
+    freeAccount: false,
   },
   {
     label: 'mcpAccess false — tier 1, validUntil future',
     isolates: '!mcpAccess',
     ent: () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: false }, validUntil: Date.now() + DAY }),
+    freeAccount: false,
   },
   {
     label: 'validUntil in the past — tier 1, mcpAccess true',
     isolates: 'validUntil < Date.now()',
     ent: () => ({ planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() - 1000 }),
+    freeAccount: false,
   },
 ];
 
@@ -163,6 +169,9 @@ const GATE_ENTRIES = [
  * pre-check can also report the plan's MCP daily limit; every case below is
  * about the verdict alone, so the unwrap keeps those assertions unchanged. The
  * limit itself is covered by its own describe block further down.
+ *
+ * #6716: only a confirmed no-row or well-formed tier-0 row is reinterpreted as
+ * a free account. Expired/disabled tiered rows and malformed shapes stay closed.
  */
 async function runGate(context, getEntitlements) {
   const { deps } = makeProDeps({ getEntitlements });
@@ -172,25 +181,31 @@ async function runGate(context, getEntitlements) {
 
 async function assertRejected(res, label) {
   assert.ok(res instanceof Response, `${label}: gate must reject with a Response, got ${res}`);
-  assert.equal(res.status, 401, `${label}: entitlement rejection is a 401`);
+  assert.equal(res.status, 403, `${label}: inactive entitlement is a terminal 403`);
   const body = await res.json();
-  assert.equal(body.error?.code, -32001, `${label}: JSON-RPC error code`);
-  assert.equal(body.error?.message, 'Subscription not active.', `${label}: rejection message`);
-  assert.match(
-    res.headers.get('WWW-Authenticate') ?? '',
-    /error="invalid_token"/,
-    `${label}: must carry the invalid_token challenge`,
+  assert.equal(body.error?.code, -32002, `${label}: JSON-RPC error code`);
+  assert.ok(
+    typeof body.error?.message === 'string' && body.error.message.length > 0,
+    `${label}: rejection message`,
   );
+  assert.equal(body.error?.data?.reason, 'upgrade-required', `${label}: structured denial reason`);
+  assert.equal(res.headers.get('WWW-Authenticate'), null, `${label}: terminal denial must not invite OAuth retry`);
   assert.equal(res.headers.get('Cache-Control'), 'no-store', `${label}: auth rejections must never be cached`);
 }
 
 describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)', () => {
   for (const entry of GATE_ENTRIES) {
     describe(`${entry.kind} context`, () => {
-      for (const c of REJECT_CASES) {
-        it(`rejects 401 when ${c.label} [isolates \`${c.isolates}\`]`, async () => {
-          const res = await runGate(entry.context, async () => c.ent());
-          await assertRejected(res, `${entry.kind} / ${c.isolates}`);
+      for (const c of ENTITLEMENT_CASES) {
+        it(`${c.freeAccount ? 'admits' : 'rejects'} ${c.label} [isolates \`${c.isolates}\`] (#6716)`, async () => {
+          const { deps } = makeProDeps({ getEntitlements: async () => c.ent() });
+          const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+          if (c.freeAccount) {
+            assert.equal(res.ok, true, `${entry.kind} / ${c.isolates}: MCP call-site must admit free allowance`);
+            assert.equal(res.freeAccountAllowance, true, `${entry.kind} / ${c.isolates}: freeAccountAllowance flag`);
+          } else {
+            await assertRejected(res.ok ? null : res.response, `${entry.kind} / ${c.isolates}`);
+          }
         });
       }
 
@@ -200,60 +215,82 @@ describe('api/mcp/auth.ts — checkMcpEntitlementGate predicates (#5379 Gap 4)',
       });
 
       for (const t of TRUTHY_NOT_TRUE) {
-        it(`rejects 401 on ${t.label} — mcpAccess is \`=== true\`, not truthy`, async () => {
-          const res = await runGate(entry.context, async () => ({
-            planKey: 'pro',
-            features: { tier: 1, mcpAccess: t.value },
-            validUntil: Date.now() + DAY,
-          }));
-          await assertRejected(res, `${entry.kind} / ${t.label}`);
+        it(`rejects malformed ${t.label} (#6716)`, async () => {
+          const { deps } = makeProDeps({
+            getEntitlements: async () => ({
+              planKey: 'pro',
+              features: { tier: 1, mcpAccess: t.value },
+              validUntil: Date.now() + DAY,
+            }),
+          });
+          const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+          await assertRejected(res.ok ? null : res.response, `${entry.kind} / ${t.label}`);
         });
       }
 
-      it('rejects 401 (fail-closed) when getEntitlements THROWS', async () => {
+      it('denies with a retryable 503 (fail-closed) when getEntitlements THROWS (#6716)', async () => {
+        // Fail-closed is preserved — no admission, no metering. What changed is
+        // the CLAIM: a thrown lookup is our backend being unreachable, so it
+        // must not be rendered as a verdict about the caller's subscription.
         const res = await runGate(entry.context, async () => { throw new Error('convex down'); });
-        await assertRejected(res, `${entry.kind} / getEntitlements throws`);
+        assert.ok(res instanceof Response, `${entry.kind}: must reject with a Response`);
+        assert.equal(res.status, 503, `${entry.kind}: availability failure is retryable`);
+        const body = await res.json();
+        assert.equal(body.error?.code, -32603, `${entry.kind}: JSON-RPC error code`);
+        assert.equal(res.headers.get('Retry-After'), '5', `${entry.kind}: must say when to retry`);
+        assert.equal(
+          body.error?.data?.reason,
+          undefined,
+          `${entry.kind}: must not assert a billing/account reason for an outage`,
+        );
+        assert.equal(res.headers.get('Cache-Control'), 'no-store', `${entry.kind}: never cached`);
       });
 
-      it('boundary: validUntil exactly now-ish (future by 1 ms) passes, past by 1 ms rejects', async () => {
+      it('boundary: validUntil future passes; past-by-1ms is rejected (#6716)', async () => {
         const pass = await runGate(entry.context, async () => ({
           planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() + 60_000,
         }));
         assert.equal(pass, null, 'validUntil comfortably in the future must pass');
 
-        const fail = await runGate(entry.context, async () => ({
-          planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() - 1,
-        }));
-        await assertRejected(fail, `${entry.kind} / validUntil past by 1ms`);
+        const { deps } = makeProDeps({
+          getEntitlements: async () => ({
+            planKey: 'pro', features: { tier: 1, mcpAccess: true }, validUntil: Date.now() - 1,
+          }),
+        });
+        const expired = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+        await assertRejected(expired.ok ? null : expired.response, `${entry.kind} / expired`);
       });
 
-      it('tier boundary: tier 1 passes, tier 0 rejects, tier 2 passes', async () => {
+      it('tier boundary: tier 1/2 pass Pro; tier 0 admits free allowance (#6716)', async () => {
         for (const tier of [1, 2]) {
           const res = await runGate(entry.context, async () => ({
             planKey: 'pro', features: { tier, mcpAccess: true }, validUntil: Date.now() + DAY,
           }));
           assert.equal(res, null, `tier ${tier} must satisfy \`tier >= 1\``);
         }
-        const res0 = await runGate(entry.context, async () => ({
-          planKey: 'free', features: { tier: 0, mcpAccess: true }, validUntil: Date.now() + DAY,
-        }));
-        await assertRejected(res0, `${entry.kind} / tier 0`);
+        const { deps } = makeProDeps({
+          getEntitlements: async () => ({
+            planKey: 'free', features: { tier: 0, mcpAccess: false }, validUntil: 0,
+          }),
+        });
+        const res0 = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+        assert.equal(res0.ok, true);
+        assert.equal(res0.freeAccountAllowance, true);
       });
 
-      it('missing features object → 401 (tier defaults to 0, never open)', async () => {
-        const res = await runGate(entry.context, async () => ({ planKey: 'pro', validUntil: Date.now() + DAY }));
-        await assertRejected(res, `${entry.kind} / no features`);
+      it('missing features object → fail closed (#6716)', async () => {
+        const { deps } = makeProDeps({
+          getEntitlements: async () => ({ planKey: 'pro', validUntil: Date.now() + DAY }),
+        });
+        const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+        await assertRejected(res.ok ? null : res.response, `${entry.kind} / missing features`);
       });
 
-      // What `!ent` actually defends. It is unprovable by single-predicate
-      // mutation (it is subsumed — see the note on REJECT_CASES), but the
-      // BEHAVIOUR it guards is testable: every falsy entitlement shape must
-      // reject. This is the regression that bites if someone ever drops the
-      // `?.` / `??` defaults and reads `ent.features.tier` directly.
-      for (const falsy of [null, undefined, 0, '', false, NaN]) {
-        it(`falsy entitlement \`${String(falsy)}\` → 401, never a throw or a pass`, async () => {
-          const res = await runGate(entry.context, async () => falsy);
-          await assertRejected(res, `${entry.kind} / falsy ent ${String(falsy)}`);
+      for (const falsy of [undefined, 0, '', false, NaN]) {
+        it(`malformed falsy entitlement \`${String(falsy)}\` → fail closed, never throw (#6716)`, async () => {
+          const { deps } = makeProDeps({ getEntitlements: async () => falsy });
+          const res = await authMod.runContextPreChecks(entry.context, deps, RESOURCE_META_URL, CORS);
+          await assertRejected(res.ok ? null : res.response, `${entry.kind} / ${String(falsy)}`);
         });
       }
     });
@@ -310,58 +347,126 @@ const withLimits = (planKey, mcpCallsPerDay, tier = 1) => ({
   validUntil: Date.now() + DAY,
 });
 
+/** An API-tier row: no MCP allowance of its own, charges the REST budget. */
+const withSharedLimits = (planKey, apiRequestsPerDay, tier = 2) => ({
+  planKey,
+  features: {
+    tier,
+    mcpAccess: true,
+    planLimits: {
+      apiRequestsPerDay,
+      apiBurstRequestsPerMinute: 60,
+      mcpCallsPerDay: 'shared-api-budget',
+      mcpBurstRequestsPerMinute: 60,
+    },
+  },
+  validUntil: Date.now() + DAY,
+});
+
 describe('api/mcp/auth.ts — pre-check resolves the plan MCP daily limit (U3 / KTD6)', () => {
   it('pro context carries the plan limit through to the caller (pro_business → 250)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_business_monthly', 250) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true, 'an entitled Pro Business owner passes the gate');
-    assert.equal(res.mcpDailyLimit, 250, 'the resolved limit rides on the pass result');
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: 250 }, 'the resolved budget rides on the pass result');
   });
 
   it('pro context with the Pro plan resolves 50 (the plan value, which happens to equal the default)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_monthly', 50) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, 50);
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: 50 });
   });
 
   it('pro context with an unlimited plan resolves null (distinct from "missing")', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('enterprise', null, 3) });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, null, 'null is the unlimited sentinel, not an absent value');
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: null }, 'null is the unlimited sentinel, not an absent value');
   });
 
-  it('pro context on a legacy row without planLimits resolves undefined → caller applies the 50 default', async () => {
+  it('pro context on a legacy row without planLimits falls back to the dedicated 50 default', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => entOk() });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.deepEqual(res.budget, { allowance: 'mcp', limit: 50 }, 'an unreadable limit never buys a wider cap');
   });
 
-  it('KTD6: user_key DROPS the plan limit even when the owner is on a 10k plan', async () => {
-    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
-    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
-    assert.equal(res.ok, true, 'the owner is entitled — only the LIMIT is withheld');
-    assert.equal(
-      res.mcpDailyLimit, undefined,
-      'raising API-plan MCP allowances is a deliberate follow-up; user_key keeps the hardcoded cap',
+  it('user_key carries the SAME budget as the OAuth door for the same subscriber', async () => {
+    // The shared budget is only a cap once REST enforcement is on; in shadow
+    // the plan stays on its dedicated counter (mcp-shared-budget-enforcement).
+    process.env.API_RATE_LIMIT_ENFORCE = 'true';
+    const ent = async () => withSharedLimits('api_business', 10_000, 2);
+    const viaUserKey = await authMod.runContextPreChecks(
+      USER_KEY_CONTEXT, makeProDeps({ getEntitlements: ent }).deps, RESOURCE_META_URL, CORS,
     );
+    const viaOauth = await authMod.runContextPreChecks(
+      PRO_CONTEXT, makeProDeps({ getEntitlements: ent }).deps, RESOURCE_META_URL, CORS,
+    );
+    assert.equal(viaUserKey.ok, true);
+    assert.deepEqual(
+      viaUserKey.budget, viaOauth.budget,
+      'the two credential doors must not disagree about the cap — the property KTD6 pinned to 50',
+    );
+    assert.deepEqual(viaUserKey.budget, { allowance: 'api', counter: 'api', limit: 10_000 });
   });
 
   it('env_key passes with no limit at all (never metered by the daily counter)', async () => {
     const { deps } = makeProDeps({ getEntitlements: async () => withLimits('api_business', 10_000, 2) });
     const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, true);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.equal(res.budget, undefined);
   });
 
   it('a rejected gate carries the Response and no limit (fail-closed shape is unambiguous)', async () => {
-    const { deps } = makeProDeps({ getEntitlements: async () => null });
+    // Throws remain hard rejects; null rows now admit free-account allowance (#6716).
+    const { deps } = makeProDeps({ getEntitlements: async () => { throw new Error('convex down'); } });
     const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
     assert.equal(res.ok, false);
     assert.ok(res.response instanceof Response);
-    assert.equal(res.mcpDailyLimit, undefined);
+    assert.equal(res.budget, undefined);
+  });
+
+  it('user_key fails closed before dispatch when MCP_INTERNAL_HMAC_SECRET is missing', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    let entitlementCalls = 0;
+    const { deps } = makeProDeps({
+      getEntitlements: async () => {
+        entitlementCalls += 1;
+        return withLimits('api_business', 10_000, 2);
+      },
+    });
+    const res = await authMod.runContextPreChecks(USER_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, false);
+    assert.equal(res.response.status, 503);
+    assert.equal(res.response.headers.get('Retry-After'), '5');
+    assert.equal(entitlementCalls, 0, 'must not reach entitlement or quota once the signing secret is gone');
+  });
+
+  it('env_key still skips the HMAC-secret preflight (legacy operator path)', async () => {
+    delete process.env.MCP_INTERNAL_HMAC_SECRET;
+    const { deps } = makeProDeps();
+    const res = await authMod.runContextPreChecks(ENV_KEY_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true);
+  });
+});
+
+describe('api/mcp/auth.ts — buildAuthHeaders credential class', () => {
+  it('user_key signs the internal HMAC and never forwards the dashboard key', async () => {
+    const { verifyInternalMcpRequest } = await import('../server/_shared/mcp-internal-hmac.ts');
+    const url = 'https://example.test/api/intelligence/v1/get-country-risk?countryCode=US';
+    const headers = await authMod.buildAuthHeaders(USER_KEY_CONTEXT, 'GET', url, null);
+    assert.equal(headers['X-WorldMonitor-Key'], undefined);
+    assert.ok(headers['X-WM-MCP-Internal']);
+    assert.equal(headers['X-WM-MCP-User-Id'], USER_KEY_USER_ID);
+    const signed = new Request(url, { method: 'GET', headers });
+    assert.ok(await verifyInternalMcpRequest(signed, HMAC_SECRET));
+  });
+
+  it('env_key stays on the raw-key path', async () => {
+    const headers = await authMod.buildAuthHeaders(ENV_KEY_CONTEXT, 'GET', 'https://example.test/api/x', null);
+    assert.equal(headers['X-WorldMonitor-Key'], ENV_KEY);
+    assert.equal(headers['X-WM-MCP-Internal'], undefined);
   });
 });
 
@@ -501,6 +606,144 @@ describe('api/mcp/auth.ts — applyPerMinuteLimit (#5379 Gap 9)', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Per-plan minute burst
+// ---------------------------------------------------------------------------
+// The catalog sells API Business 300/min and everyone else 60. A single
+// hardcoded slidingWindow(60) throttled that plan to a fifth of its number and
+// then reported 60 as the observed ceiling in telemetry.
+
+/** An entitlement row with an explicit MCP burst, everything else catalog-shaped. */
+const withBurst = (planKey, mcpBurstRequestsPerMinute, tier = 2) => ({
+  planKey,
+  features: {
+    tier,
+    mcpAccess: true,
+    planLimits: {
+      apiRequestsPerDay: 10_000,
+      apiBurstRequestsPerMinute: 300,
+      mcpCallsPerDay: 'shared-api-budget',
+      mcpBurstRequestsPerMinute,
+    },
+  },
+  validUntil: Date.now() + DAY,
+});
+
+describe('api/mcp/auth.ts — the minute burst is the plan\'s, not a constant', () => {
+  it('the pre-check resolves the plan burst for both credential doors', async () => {
+    for (const context of [PRO_CONTEXT, USER_KEY_CONTEXT]) {
+      const { deps } = makeProDeps({ getEntitlements: async () => withBurst('api_business', 300) });
+      const res = await authMod.runContextPreChecks(context, deps, RESOURCE_META_URL, CORS);
+      assert.equal(res.ok, true);
+      assert.equal(res.burstPerMinute, 300, 'API Business sells 300/min through either door');
+    }
+  });
+
+  it('a 60/min plan resolves 60', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => withLimits('pro_monthly', 50) });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.burstPerMinute, 60);
+  });
+
+  it('an unreadable burst resolves to 60 — the lower of the two ceilings sold', async () => {
+    for (const bad of [undefined, null, Number.NaN, -30, '300', 0.5]) {
+      const { deps } = makeProDeps({ getEntitlements: async () => withBurst('api_business', bad) });
+      const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+      assert.equal(res.burstPerMinute, 60, `burst ${String(bad)} must not widen the window`);
+    }
+  });
+
+  it('a catalog 0 resolves to 60 rather than a slidingWindow(0) that rejects everything', async () => {
+    // The free plan publishes `mcpBurstRequestsPerMinute: 0`. Honouring it here
+    // would 429 the #6716 free-account funnel on its first call; that funnel's
+    // ceiling is its daily allowance. `server/gateway.ts` guards `perMinute > 0`
+    // before checkBurst for the same reason.
+    const { deps } = makeProDeps({
+      getEntitlements: async () => ({
+        planKey: 'free',
+        features: {
+          tier: 0,
+          mcpAccess: false,
+          planLimits: { mcpCallsPerDay: 0, mcpBurstRequestsPerMinute: 0 },
+        },
+        validUntil: Date.now() + DAY,
+      }),
+    });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true, 'a free row is admitted to the metered allowance (#6716)');
+    assert.equal(res.freeAccountAllowance, true);
+    assert.equal(res.burstPerMinute, 60);
+  });
+
+  it('a legacy row with no planLimits still resolves 60', async () => {
+    const { deps } = makeProDeps({ getEntitlements: async () => entOk() });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.burstPerMinute, 60);
+  });
+
+  it('the resolved burst becomes the sliding-window threshold, same bucket key', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: true });
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 300);
+    assert.equal(calls[0].tokens, 300, 'the window must admit what the plan sold');
+    assert.equal(calls[0].window, '60 s');
+    assert.equal(
+      calls[0].key,
+      `rl:mcp:pro-min:pro-user:${PRO_USER_ID}`,
+      'Upstash applies the threshold at read time, so the key family must not move',
+    );
+  });
+
+  it('two plans on one deployment get their own limiters and keep their own buckets', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: true });
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 60);
+    await authMod.applyPerMinuteLimit({ kind: 'pro', userId: 'user_business', mcpTokenId: 't' }, CORS, 300);
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 60);
+    assert.deepEqual(calls.map((c) => c.tokens), [60, 300, 60], 'the memo must be keyed by limit, not shared');
+    assert.equal(calls[0].key, calls[2].key);
+    assert.notEqual(calls[0].key, calls[1].key);
+  });
+
+  it('a 300/min hit reports 300 — the scanner reads observed_limit from this line', async () => {
+    enableLimiterEnv();
+    stubLimiter({ success: false });
+    const hits = await withTelemetry(() => authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 300));
+    assert.equal(hits.length, 1);
+    assert.equal(hits[0].limit, 300, 'a hardcoded 60 records the wrong ceiling for every API Business account');
+    assert.equal(hits[0].window_seconds, 60);
+  });
+
+  it('the -32029 copy quotes the limit that actually rejected', async () => {
+    enableLimiterEnv();
+    stubLimiter({ success: false });
+    const res = await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, 300);
+    assert.equal(
+      (await res.json()).error?.message,
+      'Rate limit exceeded. Max 300 requests per minute per user.',
+    );
+  });
+
+  it('env_key keeps the fixed legacy threshold, whatever the caller passes', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: false });
+    const res = await authMod.applyPerMinuteLimit(ENV_KEY_CONTEXT, CORS, 300);
+    assert.equal(calls[0].tokens, 60, 'operator keys carry no entitlement row to read a plan from');
+    assert.equal(
+      (await res.json()).error?.message,
+      'Rate limit exceeded. Max 60 requests per minute per API key.',
+    );
+  });
+
+  it('an omitted burst falls back to 60, so an unresolved pre-check cannot widen it', async () => {
+    enableLimiterEnv();
+    const calls = stubLimiter({ success: true });
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS);
+    await authMod.applyPerMinuteLimit(PRO_CONTEXT, CORS, undefined);
+    assert.deepEqual(calls.map((c) => c.tokens), [60, 60]);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Gap 10 — applyAnonDiscoveryLimit
 // ---------------------------------------------------------------------------
 
@@ -619,5 +862,74 @@ describe('api/mcp/auth.ts — applyAnonDiscoveryLimit (#5379 Gap 10)', () => {
     await authMod.applyAnonDiscoveryLimit(anonReq({ 'x-real-ip': '8.8.8.8' }), CORS);
     assert.equal(calls[0].key, 'rl:mcp:anon:ip:9.9.9.9');
     assert.equal(calls[1].key, 'rl:mcp:anon:ip:8.8.8.8');
+  });
+});
+
+// ---------------------------------------------------------------------------
+// WORLDMONITOR-ZR — a `transient` verdict is a fail-soft degrade, not a defect.
+// `validateProMcpToken` returns it for a Convex 5xx, network error, timeout, or
+// malformed body, and the caller is handed a retryable 503 + `Retry-After`.
+// Reporting that at Sentry's default `error` level paged on-call for routine
+// upstream blips (6 events across 5 releases in 17 days, every one isolated) —
+// the exact condition api/user-prefs.ts and api/_rate-limit.js already
+// downgrade. The asymmetry with the sibling `catch` is load-bearing, so it is
+// pinned here too: a THROWN validator is an unexpected defect and must keep
+// paging.
+//
+// `captureSilentError` self-disables without a DSN (`_envelopeUrl` / `_key` are
+// unset under test), so the level is not observable at runtime here. Pin it
+// from source text — the same lever tests/rate-limit.test.mts uses on the
+// rate-limit capture, for exactly this reason.
+// ---------------------------------------------------------------------------
+describe('api/mcp/auth.ts — a transient Convex verdict degrades, it does not page (WORLDMONITOR-ZR)', () => {
+  it('a transient validate verdict still fails closed on a retryable 503', async () => {
+    const { deps } = makeProDeps({ validateProMcpToken: async () => ({ ok: 'transient' }) });
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, false, 'a transient verdict never grants the call');
+    assert.equal(res.response.status, 503);
+    assert.equal(res.response.headers.get('Retry-After'), '5', 'the client is told to back off');
+  });
+
+  it('the happy path is untouched by the downgrade', async () => {
+    const { deps } = makeProDeps();
+    const res = await authMod.runContextPreChecks(PRO_CONTEXT, deps, RESOURCE_META_URL, CORS);
+    assert.equal(res.ok, true, 'a valid grant still passes the gate');
+  });
+
+  it('the transient capture carries level: warning, and the thrown-validator catch does NOT', async () => {
+    const fs = await import('node:fs');
+    const src = fs.readFileSync(new URL('../api/mcp/auth.ts', import.meta.url), 'utf8');
+
+    const transientAt = src.indexOf("validation.ok === 'transient'");
+    assert.ok(transientAt > 0, 'the transient branch still exists');
+
+    const branch = src.slice(transientAt);
+    const transientCapture = branch.slice(
+      branch.indexOf('captureSilentError'),
+      branch.indexOf('return {'),
+    );
+    assert.match(
+      transientCapture,
+      /level:\s*'warning'/,
+      'the fail-soft transient verdict must not page on-call at error level',
+    );
+
+    // Preservation: the sibling `catch` reports an UNEXPECTED rejection of the
+    // validator. If a future widening drags it to `warning` too, a genuine
+    // defect on the gated Pro path goes quiet.
+    const validateAt = src.indexOf('deps.validateProMcpToken(context.mcpTokenId)');
+    const catchAt = src.indexOf('} catch (err) {', validateAt);
+    assert.ok(
+      validateAt > 0 && catchAt > validateAt && catchAt < transientAt,
+      'the guarded await and its catch still bracket the transient branch — if this '
+        + 'fails the slice below is meaningless, not merely failing',
+    );
+    const thrownCapture = src.slice(catchAt, transientAt);
+    assert.match(thrownCapture, /captureSilentError\(err,/, 'the catch still reports');
+    assert.doesNotMatch(
+      thrownCapture,
+      /level:\s*'warning'/,
+      'a THROWN validator is a defect, not the fail-soft path — it must keep paging',
+    );
   });
 });

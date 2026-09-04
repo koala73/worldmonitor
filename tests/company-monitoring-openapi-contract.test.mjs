@@ -5,6 +5,8 @@ import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { load as loadYaml } from 'js-yaml';
 
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+
 import {
   COMPANY_MONITORING_OPENAPI_ITEM_CONTRACTS,
   COMPANY_MONITORING_OPENAPI_QUERY_ITEM_CONTRACTS,
@@ -24,7 +26,7 @@ const specs = [
   ],
   [
     'unified YAML',
-    loadYaml(readFileSync(resolve(root, 'docs/api/worldmonitor.openapi.yaml'), 'utf8')),
+    loadUnifiedOpenApiSpec(),
     'worldmonitor_company_monitoring_v1_',
   ],
 ];
@@ -75,6 +77,18 @@ describe('Company Monitoring generated OpenAPI contract', () => {
       ]) {
         const cursor = spec.paths[path].get.parameters.find((entry) => entry.name === 'cursor');
         assert.match(cursor.example, CURSOR_PATTERN, `${path} cursor example`);
+      }
+    });
+
+    it(`${label} publishes identity_unresolved as a non-quiet coverage state`, () => {
+      for (const [schemaName, propertyName] of [
+        ['CompanyCoverage', 'state'],
+        ['MonitoredCompany', 'coverage'],
+      ]) {
+        const coverageState = spec.components.schemas[`${prefix}${schemaName}`]
+          .properties[propertyName];
+        assert.ok(coverageState.enum.includes('COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED'));
+        assert.match(coverageState.description, /identity_unresolved.+must not be reported as quiet/is);
       }
     });
   }

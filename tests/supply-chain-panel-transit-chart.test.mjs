@@ -6,6 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const panelSrc = readFileSync(resolve(__dirname, '..', 'src', 'components', 'SupplyChainPanel.ts'), 'utf-8');
+const stripSrc = readFileSync(resolve(__dirname, '..', 'src', 'components', 'ChokepointStripPanel.ts'), 'utf-8');
+const embedStripSrc = readFileSync(resolve(__dirname, '..', 'src', 'embed', 'panels', 'chokepoint-strip.ts'), 'utf-8');
 
 // Structural tests verify the transit chart mount/cleanup contract is implemented correctly.
 // These test the source patterns rather than extracting and executing method bodies,
@@ -123,7 +125,7 @@ describe('SupplyChainPanel transit chart mount contract', () => {
 
   it('tab switch clears transit chart before re-rendering', () => {
     // Clicking a different tab should clear chart state before rendering new tab
-    const tabHandler = panelSrc.match(/if\s*\(tab\)\s*\{([\s\S]*?)\n\s{8}return/);
+    const tabHandler = panelSrc.match(/if\s*\(tab\?\.dataset\.tab\)\s*\{([\s\S]*?)\n\s{8}return/);
     assert.ok(tabHandler, 'tab click handler should exist');
     const body = tabHandler[1];
     assert.ok(body.includes('clearTransitChart'), 'tab switch must clear chart before render');
@@ -142,6 +144,15 @@ describe('SupplyChainPanel transit chart mount contract', () => {
 const serverSrc = readFileSync(resolve(__dirname, '..', 'server', 'worldmonitor', 'supply-chain', 'v1', 'get-chokepoint-status.ts'), 'utf-8');
 
 describe('SupplyChainPanel restructure contract', () => {
+
+  it('withholds dashboard source values unless their owner reports availability', () => {
+    assert.match(panelSrc, /cp\.navigationalWarningsAvailable === true/);
+    assert.match(panelSrc, /cp\.aisSnapshotAvailable === true/);
+    assert.doesNotMatch(panelSrc, /congestionLevel === 'normal' \? 0 : 1/);
+    assert.match(stripSrc, /cp\.navigationalWarningsAvailable === true && cp\.activeWarnings > 0/);
+    assert.match(stripSrc, /cp\.aisSnapshotAvailable === true \? cp\.aisDisruptions : 0/);
+    assert.match(embedStripSrc, /cp\.navigationalWarningsAvailable === true && cp\.activeWarnings > 0/);
+  });
 
   it('activeHasData for shipping tab accepts chokepointData without FRED', () => {
     const block = panelSrc.match(/const activeHasData[\s\S]*?;/);

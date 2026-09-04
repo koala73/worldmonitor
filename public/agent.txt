@@ -33,13 +33,17 @@ across live layers, a plain LLM is cheaper and faster.
 ## How to connect
 
 - MCP server (recommended): https://worldmonitor.app/mcp — Streamable HTTP,
-  59 tools; tools/list for the live inventory
+  use tools/list for the live inventory
 - Docs MCP (documentation Q&A): https://www.worldmonitor.app/docs/mcp
 - REST API: https://api.worldmonitor.app — OpenAPI at
   https://worldmonitor.app/openapi.yaml
 - Agent skills: https://worldmonitor.app/.well-known/agent-skills/index.json
-- Auth walkthrough: https://worldmonitor.app/auth.md (anonymous discovery is
-  fine; data calls take X-WorldMonitor-Key: wm_<40-hex> or OAuth scope=mcp)
+- Agent plugin metadata: https://worldmonitor.app/plugin.json — repository
+  package at https://github.com/koala73/worldmonitor (not sibling HTTP files)
+- Auth walkthrough: https://worldmonitor.app/auth.md (anonymous discovery and
+  get_sources need no credentials; get_sources is daily-quota-free with a
+  fail-closed 10/min/IP ceiling; all other data calls take
+  X-WorldMonitor-Key: wm_<40-hex> or OAuth scope=mcp)
 
 Full agent guide: https://www.worldmonitor.app/agents.md
 LLM briefing: https://worldmonitor.app/llms.txt

@@ -3,12 +3,13 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 import {
   DEBUGBEAR_RUM_SAMPLE_RATE,
   DEBUGBEAR_RUM_SCRIPT_SRC,
   initDebugBearRum,
-  reportBootstrapR2Rum,
+  reportBootstrapTransferRum,
   resetDebugBearRumForTesting,
   shouldEnableDebugBearRum,
 } from '../src/bootstrap/debugbear-rum.ts';
@@ -152,25 +153,25 @@ describe('DebugBear RUM loader', () => {
     }
   });
 
-  it('queues only numeric U3a durations and closed low-cardinality tags', () => {
+  it('queues transfer metrics and closed low-cardinality tags in the documented slots', () => {
     const h = installDebugBearHarness('www.worldmonitor.app');
     try {
       initDebugBearRum();
-      reportBootstrapR2Rum({
-        bootstrap_tier: 'slow',
+      reportBootstrapTransferRum({
+        tier: 'slow',
         device_class: 'mobile',
-        total_duration_ms: 880,
-        redis_duration_ms: 310,
-        non_r2_overhead_ms: 570,
-        outcome: 'abort',
+        duration_ms: 880,
+        decoded_bytes: 1_937_018,
+        encoded_bytes: 351_175,
+        outcome: 'complete',
       });
 
       assert.deepEqual(h.win.dbbRum?.slice(1), [
         ['metric1', 880],
-        ['metric2', 310],
-        ['metric3', 570],
+        ['metric2', 1_937_018],
+        ['metric3', 351_175],
         ['tag1', 'slow'],
-        ['tag2', 'abort'],
+        ['tag2', 'complete'],
         ['tag3', 'mobile'],
       ]);
       assert.equal(JSON.stringify(h.win.dbbRum).includes('request'), false);
@@ -281,8 +282,12 @@ describe('DebugBear RUM marketing loader', () => {
   });
 });
 
-describe('DebugBear RUM marketing build output', () => {
-  it('/pro and root welcome can reach the DebugBear loader in committed assets', () => {
+// public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
+// checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+describe('DebugBear RUM marketing build output', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
+
+  it('/pro and root welcome can reach the DebugBear loader in built assets', () => {
     for (const page of ['public/pro/index.html', 'public/pro/welcome.html']) {
       const entries = proPageModuleEntries(page);
       assert.ok(entries.length > 0, `${page}: no module entry found`);

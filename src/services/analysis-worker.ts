@@ -145,6 +145,12 @@ class AnalysisWorkerManager {
         pending.reject(new Error(`Worker error: ${error.message}`));
         this.pendingRequests.delete(id);
       }
+
+      // The worker just errored after becoming ready. Terminate it and
+      // reset state so the next clusterNews/analyzeCorrelations call
+      // re-initializes a fresh worker instead of posting into a dead one
+      // and hanging until the request timeout on every subsequent refresh.
+      this.cleanup();
     };
   }
 

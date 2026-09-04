@@ -159,6 +159,13 @@ export function isBlockedNotificationResolvedAddress(address: string): boolean {
 }
 
 export function blockedNotificationWebhookUrlReason(rawUrl: string): string | null {
+  // Explicit, before the URL parse: '' and whitespace would already fail
+  // `new URL`, but the guarantee that no blank envelope passes belongs in the
+  // validator, not in each call site's condition (#7207) — and the dedicated
+  // message beats 'not a valid URL' for an empty field.
+  if (!rawUrl || !rawUrl.trim()) {
+    return 'Webhook URL must not be empty';
+  }
   let parsed: URL;
   try {
     parsed = new URL(rawUrl);

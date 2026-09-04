@@ -57,9 +57,11 @@ describe('a2a: agent card contract', () => {
     assert.ok(rewrite, 'missing /a2a rewrite');
     assert.equal(rewrite.destination, '/api/a2a');
 
+    // #6575: the dashboard catch-all rewrite is gone — unknown paths 404.
+    // /a2a keeps its explicit endpoint rewrite, which is now structurally
+    // incapable of being shadowed by a SPA fallback.
     const catchAll = vercelConfig.rewrites.find((r) => r.destination === '/dashboard.html' && r.source.startsWith('/((?!'));
-    assert.ok(catchAll, 'dashboard catch-all rewrite missing');
-    assert.ok(catchAll.source.includes('a2a'), 'a2a must be excluded from the dashboard catch-all');
+    assert.equal(catchAll, undefined, 'dashboard catch-all rewrite must stay removed (#6575)');
 
     const corsBlock = vercelConfig.headers.find((h) => h.source === '/a2a');
     assert.ok(corsBlock, 'missing /a2a headers block');
@@ -172,6 +174,34 @@ describe('a2a: JSON-RPC endpoint', () => {
     assert.equal((await bad.json()).error.code, -32700);
     const wrong = await post({ id: 1, method: 'message/send' });
     assert.equal((await wrong.json()).error.code, -32600);
+  });
+
+  it('rejects an oversized JSON-RPC body before parsing (#7406)', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
+    const rpcBody = '{"jsonrpc":"2.0","id":1,"method":"message/send","params":{}}';
+    const oversized = `${rpcBody.slice(0, -1)}${' '.repeat(MAX_JSON_RPC_BODY_BYTES - rpcBody.length + 1)}}`;
+    assert.ok(
+      new TextEncoder().encode(oversized).byteLength > MAX_JSON_RPC_BODY_BYTES,
+      'fixture must exceed the shared body cap',
+    );
+
+    const res = await post(oversized);
+    assert.equal(res.status, 413, 'oversized bodies must be HTTP 413');
+    const body = await res.json();
+    assert.equal(body.id, null, 'a pre-parse reject cannot echo an id');
+    assert.equal(body.error.code, -32600);
+    assert.equal(body.error.data?.reason, 'body-too-large');
+    assert.equal(body.error.data?.maxBytes, MAX_JSON_RPC_BODY_BYTES);
+  });
+
+  it('accepts a JSON-RPC body at the exact byte cap (#7406)', async () => {
+    const { MAX_JSON_RPC_BODY_BYTES } = await import('../api/mcp/body-limits.ts');
+    const rpcBody = '{"jsonrpc":"2.0","id":1,"method":"tasks/get","params":{}}';
+    const atCap = `${rpcBody.slice(0, -1)}${' '.repeat(MAX_JSON_RPC_BODY_BYTES - rpcBody.length)}}`;
+    assert.equal(new TextEncoder().encode(atCap).byteLength, MAX_JSON_RPC_BODY_BYTES);
+
+    const res = await post(atCap);
+    assert.notEqual(res.status, 413, 'a body exactly at the cap must not be rejected');
   });
 
   it('GET → 405 with Allow header; OPTIONS → 204 with CORS', async () => {

@@ -19,7 +19,7 @@ Prefer the terminal? The official [`worldmonitor` CLI](/cli) hits any of these p
 
 Building an agent or codegen pipeline? Point at `https://worldmonitor.app/` and follow the `Link:` header — every OpenAPI spec, MCP server card, OAuth endpoint, and agent-skill bundle is discoverable from one root URL via standard `.well-known` paths. See [Agent Discovery](/agent-discovery) for the full walkthrough.
 
-The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for all 36 generated services in one pass, including platform services that do not have dedicated sidebar pages. `CompanyMonitoringService` is the one exception: it is published as a contract only and is not routed yet, so generated clients for its operations will not receive a response.
+The single bundled spec is at [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — feed it to any OpenAPI generator to produce typed clients for **the generated domain services** in one pass. Platform endpoints documented in prose only (`/api/bootstrap`, `/api/health`, `/api/product-catalog`, the brief/notification/commerce routes, …) are not in the bundle. `CompanyMonitoringService` is a further exception: it is published as a contract only and is not routed yet, so generated clients for its operations will not receive a response.
 
 For compatibility guarantees, advance-notice periods, and the response headers
 used when a version is retired, see [API versioning and deprecation](/api-versioning).
@@ -51,7 +51,7 @@ curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
   -d '{
     "operations": [
       { "id": "fear-greed", "path": "/api/market/v1/get-fear-greed-index" },
-      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country=DE&jmespath=score" }
+      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country_code=DE&jmespath=score" }
     ]
   }'
 ```

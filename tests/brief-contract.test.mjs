@@ -46,6 +46,44 @@ describe('synthesis prompts (#4921)', () => {
     assert.match(prompt, /2\. Turkey hikes interest rates to 50% \(Bloomberg, 1 source\)/);
     assert.match(prompt, /3\. Magnitude 6\.8 earthquake/);
   });
+
+  // #6428: this count is fed to the LLM that writes the published brief, so it
+  // is the most directly user-visible corroboration claim in the product. It
+  // read story.sources.length — feed LABELS — so one newsroom's own editions
+  // told the model a single-sourced story carried six.
+  it('user prompt counts publishers, not feed labels', () => {
+    const prompt = synthesisUserPrompt([
+      {
+        primaryTitle: 'Missile attack kills troops in border strike',
+        primarySource: 'Reuters World',
+        sources: ['Reuters World', 'Reuters US', 'Reuters Business', 'Reuters Asia'],
+      },
+      {
+        primaryTitle: 'Talks resume in Geneva',
+        primarySource: 'Reuters World',
+        sources: ['Reuters World', 'BBC World', 'Al Jazeera'],
+      },
+    ]);
+    assert.match(
+      prompt,
+      /1\. Missile attack kills troops in border strike \(Reuters World, 1 source\)/,
+      'four Reuters feed labels are one publisher',
+    );
+    assert.match(
+      prompt,
+      /2\. Talks resume in Geneva \(Reuters World, 3 sources\)/,
+      'three real publishers must still read as three',
+    );
+  });
+
+  it('user prompt never falls back to the article count', () => {
+    // sourceCount is articles. A story with no usable source list must claim
+    // one source, not the number of headlines that clustered into it.
+    const prompt = synthesisUserPrompt([
+      { primaryTitle: 'Something happened', primarySource: 'Wire', sources: [], sourceCount: 9 },
+    ]);
+    assert.match(prompt, /1\. Something happened \(Wire, 1 source\)/);
+  });
 });
 
 describe('parseBriefSynthesis (#4921)', () => {
@@ -182,20 +220,26 @@ describe('citation-scoped numeric and date grounding (#6030)', () => {
 
 describe('brief-contract wiring (source-textual)', () => {
   it('seed-insights runs the synthesis path through the pure composer with enforce-by-default', () => {
-    const src = readSrc('scripts/seed-insights.mjs');
-    assert.match(src, /synthesisSystemPrompt/);
+    const seedSrc = readSrc('scripts/seed-insights.mjs');
+    const diagnosticsSrc = readSrc('scripts/_insights-synthesis-diagnostics.mjs');
+    assert.match(seedSrc, /synthesisSystemPrompt/);
     // #6001 moved the composer call behind composeFromText so the SAME gate
     // decides provider acceptance and the final result. Both links still have
     // to hold: the composer receives topStories, and the synthesis response is
     // what gets composed.
-    assert.match(src, /composeSynthesizedBrief\(text, topStories, \{/);
-    assert.match(src, /composeFromText\(synthesisResult\.text\)/);
-    assert.match(src, /accept: composeFromText/, 'the acceptance gate must be the composer itself');
-    assert.match(src, /validatorMode: BRIEF_VALIDATOR_MODE/);
-    assert.match(src, /=== 'shadow' \? 'shadow' : 'enforce'/, 'enforce must be the default mode');
-    assert.match(src, /generateLegacySingleHeadlineBrief\(topStories[,)]/, 'L2 fallback must be wired');
-    assert.match(src, /briefStoryLines/);
-    assert.match(src, /sourceAgeRange/);
+    assert.match(diagnosticsSrc, /composeSynthesizedBriefResult\(text, topStories, composerOptions\)/);
+    // #5947 moved the compose+classify glue into the exported
+    // resolveInsightsSynthesis so it is reachable behaviorally; the
+    // enforce-by-default and gate-reason contracts are asserted for real in
+    // tests/seed-insights-freshness.test.mjs rather than by matching this text.
+    assert.match(seedSrc, /resolveInsightsSynthesis\(\{/);
+    assert.match(seedSrc, /accept: composeFromText/, 'the acceptance gate must be the composer itself');
+    assert.match(diagnosticsSrc, /opts\.validatorMode \?\? 'enforce'/);
+    assert.match(seedSrc, /=== 'shadow' \? 'shadow' : 'enforce'/, 'enforce must be the default mode');
+    assert.match(seedSrc, /sourceFromStory: briefSourceFromStory/, 'the seeder must inject its formatter');
+    assert.match(seedSrc, /generateLegacySingleHeadlineBrief\(topStories[,)]/, 'L2 fallback must be wired');
+    assert.match(seedSrc, /briefStoryLines/);
+    assert.match(seedSrc, /sourceAgeRange/);
   });
 
   it('country-intel brief strips invented citations before shipping', () => {
@@ -221,7 +265,7 @@ describe('brief-contract wiring (source-textual)', () => {
 
 // ── #4928 review-round additions ───────────────────────────────────────────
 
-import { composeSynthesizedBrief } from '../scripts/_insights-brief.mjs';
+import { BRIEF_REJECTIONS, composeSynthesizedBrief } from '../scripts/_insights-brief.mjs';
 
 describe('composeSynthesizedBrief (functional L1 coverage, #4928 review)', () => {
   const CORROBORATED = [
@@ -345,7 +389,11 @@ describe('citation-scoped composer gates (#4928 external review)', () => {
   ];
   const passOpts = { validatorMode: 'enforce', sourceFromStory: (s) => ({ title: s.primaryTitle, source: s.primarySource, url: s.primaryLink }) };
 
-  it('REGRESSION: a lead sentence attributing story-2 facts to [1] is rejected (misattribution)', () => {
+  it('REGRESSION: a lead sentence attributing story-2 facts to [1] is dropped (misattribution)', () => {
+    // Repair policy (2026-08-28): the misattributed sentence must never reach a
+    // reader. The cited Iran sentence passed every gate, so it still publishes —
+    // the #4928 property is "Turkey facts bound to [1] do not ship", not
+    // "the whole brief is discarded".
     const misattributed = JSON.stringify({
       lead: 'Turkey hikes interest rates to 50% in a dramatic move [1]. Iran threatens the Strait of Hormuz [1].',
       lines: [
@@ -353,11 +401,16 @@ describe('citation-scoped composer gates (#4928 external review)', () => {
         { n: 2, text: 'Turkey raises interest rates to 50% [2].' },
       ],
     });
-    assert.equal(composeSynthesizedBrief(misattributed, STORIES2, passOpts), null,
-      'Turkey facts cited to [1] (Iran) must fail citation-scoped validation');
+    const out = composeSynthesizedBrief(misattributed, STORIES2, passOpts);
+    assert.notEqual(out, null, 'the grounded Iran sentence still publishes');
+    assert.ok(!out.lead.includes('Turkey'), 'Turkey facts cited to [1] never ship');
+    assert.match(out.lead, /Iran threatens the Strait of Hormuz \[1\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'turkey');
   });
 
-  it('REGRESSION: an uncited lead sentence rejects the synthesis (every claim cited)', () => {
+  it('REGRESSION: an uncited lead sentence is dropped (every claim cited)', () => {
     const uncited = JSON.stringify({
       lead: 'Iran threatens the Strait of Hormuz [1]. Markets everywhere are nervous about what comes next.',
       lines: [
@@ -365,7 +418,12 @@ describe('citation-scoped composer gates (#4928 external review)', () => {
         { n: 2, text: 'Turkey raises interest rates to 50% [2].' },
       ],
     });
-    assert.equal(composeSynthesizedBrief(uncited, STORIES2, passOpts), null);
+    const out = composeSynthesizedBrief(uncited, STORIES2, passOpts);
+    assert.notEqual(out, null, 'the cited sentence still publishes');
+    assert.ok(!out.lead.includes('Markets everywhere'), 'the uncited sentence never publishes');
+    assert.match(out.lead, /Iran threatens the Strait of Hormuz \[1\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_UNCITED);
   });
 
   it('REGRESSION: a line carrying the WRONG in-range citation is rewritten to its own [n]', () => {
@@ -463,16 +521,26 @@ describe('fragmented-cluster leads (#6001)', () => {
 
   const DOHA = 'Israel and Hamas resumed indirect talks in Doha [2].';
 
-  it('rejects the merged Kyiv claim when it cites only one of the two slots', () => {
-    // The exact production rejection: nouns ["kyiv"], cited [3]. "Kyiv" is
+  it('drops the merged Kyiv claim when it cites only one of the two slots', () => {
+    // The exact production drop: nouns ["kyiv"], cited [3]. "Kyiv" is
     // absent from story 3 ("Ukrainian capital") and present only in story 7.
+    // The Doha sentence is independently grounded, so the brief survives.
     const out = compose(`Russia struck Kyiv with missiles and drones, killing at least 9 [3]. ${DOHA}`);
-    assert.equal(out, null, 'a fact drawn from an uncited sibling must not ship');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('Kyiv'), 'a fact drawn from an uncited sibling must not ship');
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'kyiv');
   });
 
-  it('rejects a sibling-only numeric fact when proper nouns are grounded', () => {
+  it('drops a sibling-only numeric fact when proper nouns are grounded', () => {
     const out = compose(`Russia struck the Ukrainian capital, killing nine [3]. ${DOHA}`);
-    assert.equal(out, null, 'a casualty count drawn from an uncited sibling must not ship');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('nine'), 'a casualty count drawn from an uncited sibling must not ship');
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadSentences, 1);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_NUMERIC_FACT);
   });
 
   it('accepts a sibling numeric fact once both fragments are cited', () => {
@@ -486,19 +554,37 @@ describe('fragmented-cluster leads (#6001)', () => {
     assert.match(out.lead, /\[3\]\[7\]/, 'both citations survive verification');
   });
 
-  it('still rejects a claim whose facts come from an UNCITED story (#4928)', () => {
+  it('still drops a claim whose facts come from an UNCITED story (#4928)', () => {
     // The misattribution #4928 exists to stop. Chile is genuinely IN the
     // corpus (story 4), so corpus-wide grounding would wave this through —
     // but the claim binds to [6] (Venezuela). Citation-scoped grounding is
-    // the only thing that catches it, and #6001 must not relax it.
+    // the only thing that catches it, and #6001 must not relax it. The
+    // property is that Chile never publishes, not that Doha is discarded too.
     const out = compose(`A magnitude 6.8 earthquake struck northern Chile [6]. ${DOHA}`);
-    assert.equal(out, null, '#4928 misattribution protection must survive #6001');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('Chile'), '#4928 misattribution protection must survive #6001');
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'chile');
   });
 
-  it('rejects an invented proper noun even when every slot is cited', () => {
+  it('drops an invented proper noun even when every slot is cited', () => {
     const allCited = STORIES6001.map((_, i) => `[${i + 1}]`).join('');
     const out = compose(`Belarus opened a second front against Latvia ${allCited}. ${DOHA}`);
-    assert.equal(out, null, 'citing everything must not launder a hallucination');
+    assert.notEqual(out, null, 'the grounded Doha sentence still publishes');
+    assert.ok(!out.lead.includes('Belarus'), 'citing everything must not launder a hallucination');
+    assert.ok(!out.lead.includes('Latvia'));
+    assert.match(out.lead, /Doha \[2\]/);
+    assert.equal(out.droppedLeadRejection, BRIEF_REJECTIONS.LEAD_PROPER_NOUN);
+    assert.equal(out.droppedLeadDetail, 'belarus');
+  });
+
+  it('still rejects the whole brief when every lead sentence fails', () => {
+    // Total-failure classification is unchanged: no survivors → null. The
+    // single-sentence Macron hallucination above this suite also stays a
+    // whole-brief reject — only a neighbour that passed every gate publishes.
+    const out = compose('Belarus opened a second front against Latvia [1]. Markets may react next week.');
+    assert.equal(out, null, 'no surviving sentence must still reject the synthesis');
   });
 
   it('system prompt tells the model to cite EVERY story a claim draws from', () => {

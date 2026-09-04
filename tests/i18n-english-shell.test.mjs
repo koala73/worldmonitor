@@ -8,7 +8,7 @@ const APP_SOURCE = 'src/App.ts';
 const EN_LOCALE = 'src/locales/en.json';
 const EN_SHELL_LOCALE = 'src/locales/en.shell.json';
 const COMPONENTS_DIR = 'src/components';
-const SHELL_BUDGET_BYTES = 50 * 1024;
+const SHELL_BUDGET_BYTES = 52 * 1024;
 
 function tsFilesUnder(dir) {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -41,6 +41,7 @@ const SHELL_KEY_PREFIXES = [
   'countryBrief.fallback.',
   'contextMenu.',
   'dashboardTabs.',
+  'components.breakingNews.',
   'components.deckgl.views.',
   'components.map.',
   'components.panel.',
@@ -234,6 +235,11 @@ describe('English i18n shell split', () => {
       'components.newsPanel.sortRelevance',
       'components.webcams.previewStatus',
       'dashboardTabs.defaultName',
+      // Body-mounted breaking-news live region is constructed during Phase 2,
+      // before the full English chunk is guaranteed, and the healer does not
+      // walk document.body overlays.
+      'components.breakingNews.alertsRegion',
+      'components.breakingNews.viewPanel',
       ...eagerChromeKeys(),
     ];
 

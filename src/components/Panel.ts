@@ -1,7 +1,7 @@
 import { isDesktopRuntime } from '../services/runtime';
 import { invokeTauri } from '../services/tauri-bridge';
 import { t } from '../services/i18n';
-import { h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml } from '../utils/dom-utils';
+import { type DomChild, h, replaceChildren, safeHtml as sanitizeHtmlFragment, setTrustedHtml, trustedHtml, type TrustedHtml } from '../utils/dom-utils';
 import { safeHtmlToString, type SafeHtml } from '@/utils/sanitize';
 import { trackPanelResized } from '@/services/analytics';
 import { getAiFlowSettings } from '@/services/ai-flow-settings';
@@ -9,6 +9,8 @@ import { getSecretState } from '@/services/runtime-config';
 import { PanelGateReason } from '@/services/panel-gating';
 import { openExternalUrl } from '@/services/external-navigation';
 import { lockSvg, upgradeSvg } from '@/components/gate-icons';
+import { createCheckoutConsentElement } from '@/utils/legal-links';
+import { WEB_APP_ORIGIN } from '@/config/web-origin';
 import { dataFreshness, type PanelFreshnessSummary } from '@/services/data-freshness';
 import { formatPanelFreshnessDisplay } from '@/services/panel-freshness-display';
 import {
@@ -141,6 +143,20 @@ export class Panel {
   private colSpanReconcileRaf: number | null = null;
   private readonly contentDebounceMs = 150;
   private pendingContentHtml: string | null = null;
+  /**
+   * The exact string last written by `setContentImmediate`, or `null` when the
+   * content was replaced by any other path (loading/error/locked states, clear,
+   * saved-content restore) and is therefore no longer a known string.
+   *
+   * Exists to keep the two content dirty-checks off `this.content.innerHTML`:
+   * reading that getter serializes the whole panel subtree to a string, and it
+   * was read twice per update — once to decide whether to schedule the write and
+   * again to decide whether to perform it. Panels re-render on every data tick,
+   * so that serialization was pure overhead on the render path. `null` compares
+   * unequal to any candidate, so an unknown state always falls through to a
+   * write — the safe direction.
+   */
+  private lastCommittedHtml: string | null = null;
   private contentDebounceTimer: ReturnType<typeof setTimeout> | null = null;
   private pendingContentCallback: (() => void) | null = null;
   private retryCallback: (() => void) | null = null;
@@ -148,6 +164,14 @@ export class Panel {
   private retryAttempt = 0;
   private _fetching = false;
   private _locked = false;
+  // Lock-awareness for subclasses that write positionally (insertBefore /
+  // appendChild into this.content) instead of through the setContent* helpers.
+  // #6678's GdeltIntelPanel previously proxied this via
+  // element.classList.contains('panel-is-locked') — a string-keyed mirror of
+  // private state that belongs once on the base class (#6714).
+  protected get isLocked(): boolean {
+    return this._locked;
+  }
   // Last reason rendered by showGatedCta, so repeat gating passes with an
   // unchanged verdict skip the DOM teardown/rebuild (#4771 re-runs gating on
   // every subscription-row change, including fields irrelevant to gating).
@@ -183,6 +207,10 @@ export class Panel {
     const title = document.createElement('span');
     title.className = 'panel-title';
     title.textContent = options.title;
+    // Panels are the dashboard's sections, but a real <h2> would drag along
+    // element styles; role/aria-level gives the outline with zero visual change.
+    title.setAttribute('role', 'heading');
+    title.setAttribute('aria-level', '2');
     headerLeft.appendChild(title);
 
     this.severityDotEl = document.createElement('span');
@@ -305,6 +333,8 @@ export class Panel {
     // Restore saved col-span
     this.restoreSavedColSpan();
     this.reconcileColSpanAfterAttach();
+    this.setupKeyboardRowResize();
+    this.setupKeyboardColResize();
 
     this.showLoading();
   }
@@ -345,6 +375,7 @@ export class Panel {
       }
       this.colSpanReconcileRaf = null;
       this.restoreSavedColSpan();
+      this.syncKeyboardColResizeAria();
     };
 
     tryReconcile(attempts);
@@ -372,6 +403,78 @@ export class Panel {
     if (this.onTouchCancel) {
       document.removeEventListener('touchcancel', this.onTouchCancel);
     }
+  }
+
+  /**
+   * Keyboard path for the mouse/touch drag handles (WAI-ARIA window-splitter):
+   * the handle is a focusable role="separator"; arrow keys step the span one
+   * unit and persist through the same code path as a completed drag.
+   */
+  private setupKeyboardRowResize(): void {
+    const handle = this.resizeHandle;
+    if (!handle) return;
+    handle.tabIndex = 0;
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'horizontal');
+    handle.setAttribute('aria-label', t('components.panel.dragToResize'));
+    handle.setAttribute('aria-valuemin', '1');
+    handle.setAttribute('aria-valuemax', '4');
+    this.syncKeyboardRowResizeAria();
+    handle.addEventListener('keydown', (e: KeyboardEvent) => {
+      const current = getRowSpan(this.element);
+      let next: number | null = null;
+      if (e.key === 'ArrowUp') next = Math.max(1, current - 1);
+      else if (e.key === 'ArrowDown') next = Math.min(4, current + 1);
+      else if (e.key === 'Home') next = 1;
+      else if (e.key === 'End') next = 4;
+      if (next === null) return;
+      e.preventDefault();
+      if (next === current) return;
+      setSpanClass(this.element, next);
+      savePanelSpan(this.panelId, next);
+      trackPanelResized(this.panelId, next);
+      this.syncKeyboardRowResizeAria();
+    });
+  }
+
+  private setupKeyboardColResize(): void {
+    const handle = this.colResizeHandle;
+    if (!handle) return;
+    handle.tabIndex = 0;
+    handle.setAttribute('role', 'separator');
+    handle.setAttribute('aria-orientation', 'vertical');
+    handle.setAttribute('aria-label', t('components.panel.dragToResize'));
+    handle.setAttribute('aria-valuemin', '1');
+    this.syncKeyboardColResizeAria();
+    handle.addEventListener('keydown', (e: KeyboardEvent) => {
+      const maxSpan = getMaxColSpan(this.element);
+      const current = clampColSpan(getColSpan(this.element), maxSpan);
+      let next: number | null = null;
+      if (e.key === 'ArrowLeft') next = Math.max(1, current - 1);
+      else if (e.key === 'ArrowRight') next = Math.min(maxSpan, current + 1);
+      else if (e.key === 'Home') next = 1;
+      else if (e.key === 'End') next = maxSpan;
+      if (next === null) return;
+      e.preventDefault();
+      if (next === current) return;
+      setColSpanClass(this.element, next);
+      persistPanelColSpan(this.panelId, this.element);
+      this.syncKeyboardColResizeAria();
+    });
+  }
+
+  private syncKeyboardRowResizeAria(): void {
+    this.resizeHandle?.setAttribute('aria-valuenow', String(getRowSpan(this.element)));
+  }
+
+  private syncKeyboardColResizeAria(): void {
+    if (!this.colResizeHandle) return;
+    const maxSpan = getMaxColSpan(this.element);
+    this.colResizeHandle.setAttribute('aria-valuemax', String(maxSpan));
+    this.colResizeHandle.setAttribute(
+      'aria-valuenow',
+      String(clampColSpan(getColSpan(this.element), maxSpan)),
+    );
   }
 
   private setupResizeHandlers(): void {
@@ -403,6 +506,7 @@ export class Panel {
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
       trackPanelResized(this.panelId, currentSpan);
+      this.syncKeyboardRowResizeAria();
     };
 
     this.onRowWindowBlur = () => this.onRowMouseUp?.();
@@ -475,6 +579,7 @@ export class Panel {
       const currentSpan = getRowSpan(this.element);
       savePanelSpan(this.panelId, currentSpan);
       trackPanelResized(this.panelId, currentSpan);
+      this.syncKeyboardRowResizeAria();
     };
     this.onTouchCancel = this.onTouchEnd;
 
@@ -544,6 +649,7 @@ export class Panel {
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
       }
+      this.syncKeyboardColResizeAria();
     };
 
     this.onColWindowBlur = () => this.onColMouseUp?.();
@@ -615,6 +721,7 @@ export class Panel {
       if (finalSpan !== this.startColSpan) {
         persistPanelColSpan(this.panelId, this.element);
       }
+      this.syncKeyboardColResizeAria();
     };
     this.onColTouchCancel = this.onColTouchEnd;
   }
@@ -689,6 +796,43 @@ export class Panel {
     btn.title = label;
   }
 
+  /** True when this panel exposes the same collapse control a person uses. */
+  public supportsCollapse(): boolean {
+    return this._collapseBtn !== null;
+  }
+
+  public isCollapsed(): boolean {
+    return this._collapsed;
+  }
+
+  /**
+   * Apply collapse/expand through the visible control path and persist it.
+   * Persist first so a quota/private-mode failure leaves the live DOM unchanged.
+   */
+  public setCollapsed(collapsed: boolean): { ok: boolean; persisted: boolean } {
+    if (!this._collapseBtn) return { ok: false, persisted: true };
+    if (this._collapsed === collapsed) return { ok: true, persisted: true };
+    if (!savePanelCollapsed(this.panelId, collapsed)) {
+      return { ok: false, persisted: false };
+    }
+    this._applyCollapsed(this._collapseBtn, collapsed);
+    return { ok: true, persisted: true };
+  }
+
+  /** Override in panels that expose a fullscreen control. */
+  public supportsFullscreen(): boolean {
+    return false;
+  }
+
+  public isFullscreenActive(): boolean {
+    return false;
+  }
+
+  /** Apply fullscreen through the visible control path. Default: unsupported. */
+  public setFullscreen(_fullscreen: boolean): boolean {
+    return false;
+  }
+
   protected appendCollapseButton(): void {
     const btn = h('button', {
       className: 'icon-btn panel-collapse-btn',
@@ -698,8 +842,7 @@ export class Panel {
     }, '▾') as HTMLButtonElement;
     btn.addEventListener('click', (e) => {
       e.stopPropagation();
-      this._applyCollapsed(btn, !this._collapsed);
-      savePanelCollapsed(this.panelId, this._collapsed);
+      this.setCollapsed(!this._collapsed);
     });
     this._collapseBtn = btn;
     this.header.appendChild(btn);
@@ -865,7 +1008,7 @@ export class Panel {
     if (this._locked) return;
     this.setErrorState(false);
     this.clearRetryCountdown();
-    replaceChildren(this.content,
+    this.replaceContent(
       h('div', { className: 'panel-loading' },
         h('div', { className: 'panel-loading-radar' },
           h('div', { className: 'panel-radar-sweep' }),
@@ -909,7 +1052,7 @@ export class Panel {
         countdownEl.textContent = `${t('common.retrying')} (${remaining}s)`;
       }, 1000);
     }
-    replaceChildren(this.content, h('div', { className: 'panel-error-state' }, ...children));
+    this.replaceContent(h('div', { className: 'panel-error-state' }, ...children));
   }
 
   public resetRetryBackoff(): void {
@@ -917,11 +1060,34 @@ export class Panel {
   }
 
   /**
+   * Run a content write WITHOUT crediting the upstream with a recovery
+   * (#6679). The setContent* helpers clear the whole error state — chip,
+   * countdown, AND the exponential-backoff rung — because a success render
+   * normally proves the upstream recovered. Replaying a cache while the live
+   * fetch still fails proves no such thing. Wrapping that write here keeps the
+   * visible clears while the still-failing upstream keeps its rung instead of
+   * dropping back to the 15s floor. Callers must know from the result's
+   * provenance that the write is non-authoritative; an empty payload alone is
+   * not enough. Safe to nest; the setContent* clear is synchronous, so the
+   * restore cannot race a debounced write.
+   */
+  protected withRetryBackoffPreserved(write: () => void): void {
+    const rung = this.retryAttempt;
+    write();
+    this.retryAttempt = rung;
+  }
+
+  /**
    * Drop the error badge, the pending auto-retry countdown, and the backoff.
-   * `setContentHtml` does this implicitly, but panels that paint their content
-   * with `replaceChildren` bypass it — without this, a showError() countdown
-   * scheduled before a successful load keeps ticking and fires one redundant
-   * refresh after the panel has already recovered.
+   * The single owner of "this panel has recovered": `setContentHtml`,
+   * `setContentNodes` and `setTrustedContent` all clear through here, so the
+   * three pieces of state can never be cleared apart. Without it, a showError()
+   * countdown scheduled before a successful load keeps ticking and fires one
+   * redundant refresh after the panel has already recovered.
+   *
+   * Public because a panel may recover without replacing its content (an
+   * in-place row patch); a panel that DOES replace content should use the
+   * `setContent*` helpers instead, which clear as part of the write.
    */
   public clearErrorState(): void {
     this.setErrorState(false);
@@ -955,6 +1121,12 @@ export class Panel {
       lockedChildren.push(featureList);
     }
 
+    // Assent immediately above the CTA (#6976). This button jumps straight to
+    // Dodo's hosted checkout, where Dodo (merchant of record) shows its terms
+    // and never ours — so ours are presented here, before the jump. The desktop
+    // branch below opens the /pro pricing page in the OS browser instead, and
+    // that page carries its own assent line above every tier CTA.
+    if (!isDesktopRuntime()) lockedChildren.push(createCheckoutConsentElement(WEB_APP_ORIGIN));
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, 'Upgrade to Pro');
     if (isDesktopRuntime()) {
       ctaBtn.addEventListener('click', () => {
@@ -969,7 +1141,7 @@ export class Panel {
     }
     lockedChildren.push(ctaBtn);
 
-    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, ...lockedChildren));
+    this.replaceContent(h('div', { className: 'panel-locked-state' }, ...lockedChildren));
   }
 
   /**
@@ -1058,7 +1230,7 @@ export class Panel {
     const ctaBtn = h('button', { type: 'button', className: 'panel-locked-cta' }, entry.cta);
     ctaBtn.addEventListener('click', onAction);
 
-    replaceChildren(this.content, h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
+    this.replaceContent(h('div', { className: 'panel-locked-state' }, iconEl, descEl, ctaBtn));
   }
 
   public unlockPanel(): void {
@@ -1077,10 +1249,10 @@ export class Panel {
     // ChatAnalystPanel, …) that would otherwise end up with an empty body.
     // Fall back to the legacy empty-content behaviour if nothing was saved.
     if (this._savedContent !== null) {
-      replaceChildren(this.content, ...this._savedContent);
+      this.replaceContent(...this._savedContent);
       this._savedContent = null;
     } else {
-      replaceChildren(this.content);
+      this.replaceContent();
     }
   }
 
@@ -1092,13 +1264,25 @@ export class Panel {
    */
   protected clearSensitiveContent(): void {
     this._savedContent = null;
+    this.cancelPendingContentWrite();
+    if (!this._locked) this.replaceContent();
+  }
+
+  /**
+   * Drop a debounced `setContentHtml` write that has not committed yet.
+   *
+   * Any write that lands the content immediately must call this first: the
+   * queued string commits `contentDebounceMs` later regardless, so without it a
+   * `setSafeContent(old)` still in flight overwrites the render that just
+   * replaced it — 150ms after the panel already looked correct.
+   */
+  private cancelPendingContentWrite(): void {
     this.pendingContentHtml = null;
     this.pendingContentCallback = null;
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
     }
-    if (!this._locked) replaceChildren(this.content);
   }
 
   // Capture this.content's current child nodes so unlockPanel can put them
@@ -1140,7 +1324,7 @@ export class Panel {
       }, 1000);
     }
 
-    replaceChildren(this.content,
+    this.replaceContent(
       h('div', { className: 'panel-error-state' }, ...children),
     );
   }
@@ -1177,7 +1361,7 @@ export class Panel {
         }, t('components.panel.openSettings')),
       );
     }
-    replaceChildren(this.content, msgEl);
+    this.replaceContent(msgEl);
   }
 
   public setCount(count: number): void {
@@ -1201,20 +1385,103 @@ export class Panel {
     }
   }
 
+  /**
+   * The raw content primitive. It deliberately does NOT touch the error state:
+   * `showError` / `showRetrying` set the badge and then paint through here, so
+   * a clear inside this method would erase the state its own callers just set.
+   *
+   * Every such write invalidates `lastCommittedHtml`, so routing them through
+   * here makes that invariant structural instead of something each new call site
+   * has to remember. Do not call `replaceChildren(this.content, …)` directly —
+   * for a SUCCESSFUL render use `setContentNodes` / `setTrustedContent`, which
+   * add the error-state clear this method must not do.
+   */
+  private replaceContent(...children: DomChild[]): void {
+    // Structural, for the same reason `invalidateCommittedHtml` is: EVERY
+    // immediate write must drop a queued one, and `showError` / `showRetrying` /
+    // `showLoading` / `showLocked` / `showGatedCta` / `showConfigError` /
+    // `unlockPanel` all land content through here. Without it a `setSafeContent`
+    // queued moments earlier commits `contentDebounceMs` later and paints over
+    // the render that just replaced it — under a chip nothing then clears, which
+    // is #6557 reached from the other direction.
+    //
+    // This does not self-cancel the debounce: `setContentImmediate` writes via
+    // `setTrustedHtml` and never routes through here.
+    this.cancelPendingContentWrite();
+    replaceChildren(this.content, ...children);
+    this.invalidateCommittedHtml();
+  }
+
+  /**
+   * The content dirty-check is only sound while EVERY writer invalidates it, so
+   * it lives in one method rather than being repeated at each write path.
+   */
+  private invalidateCommittedHtml(): void {
+    this.lastCommittedHtml = null;
+  }
+
+  /**
+   * Commit a render as the panel's authoritative content — the `setSafeContent`
+   * of the DOM-node path, and a true twin of it: same lock bail, same
+   * error-state clear.
+   *
+   * `setContentHtml` drops the error badge, the pending auto-retry countdown and
+   * the backoff on every such write. A panel that calls
+   * `replaceChildren(this.content, …)` itself skips all three, so one transient
+   * `showError()` latches the red `Error` chip over correct data for the rest of
+   * the session and leaves a countdown ticking toward a redundant refresh
+   * (#6557: `cii` and `strategic-risk` in production).
+   *
+   * "Authoritative content" covers a settled empty/unavailable state as well as
+   * a recovery — both mean "this, not an error state". It does NOT cover a
+   * loading render: `showLoading` deliberately leaves `retryAttempt` alone, and
+   * resetting the backoff on every loading paint would flatten it to its floor.
+   */
+  protected setContentNodes(...children: DomChild[]): void {
+    // #6714: the error-state clear runs BEFORE the lock bail. Clearing the
+    // chip and the backoff rung paints nothing, so it cannot reopen the
+    // paywall hole the bail exists to close — but bailing first meant a
+    // locked panel's success render cleared neither, leaving a red header
+    // over the lock CTA and a stale retryAttempt rung after unlock.
+    this.clearErrorState();
+    if (this._locked) return;
+    this.cancelPendingContentWrite();
+    this.replaceContent(...children);
+  }
+
+  /**
+   * Trusted-HTML twin of `setContentNodes`, for panels that build their own
+   * markup string and cannot go through the debounced `setSafeContent` path.
+   */
+  protected setTrustedContent(html: TrustedHtml): void {
+    // #6714: clear error state before the lock bail — see setContentNodes.
+    this.clearErrorState();
+    if (this._locked) return;
+    this.cancelPendingContentWrite();
+    setTrustedHtml(this.content, html);
+    this.invalidateCommittedHtml();
+  }
+
   public setSafeContent(html: SafeHtml, afterUpdate?: () => void): void {
     this.setContentHtml(safeHtmlToString(html), afterUpdate);
   }
 
   private setContentHtml(html: string, afterUpdate?: () => void): void {
+    // #6714: clear error state before the lock bail — see setContentNodes.
+    this.clearErrorState();
     if (this._locked) return;
-    this.setErrorState(false);
-    this.clearRetryCountdown();
-    this.retryAttempt = 0;
     if (this.pendingContentHtml === html) {
       if (afterUpdate) this.pendingContentCallback = afterUpdate;
       return;
     }
-    if (this.content.innerHTML === html) {
+    if (this.lastCommittedHtml === html) {
+      // The DOM already shows `html`, but a DIFFERENT write may still be queued
+      // behind the debounce — and returning without cancelling it lets that
+      // stale write land afterwards, permanently. World Clock reproduces it:
+      // open settings, then close within the debounce window, and the settings
+      // markup commits after the clock has been asked to come back (which also
+      // strands the cached row handles, so the clock stops ticking).
+      this.cancelPendingContentWrite();
       afterUpdate?.();
       return;
     }
@@ -1233,6 +1500,15 @@ export class Panel {
   }
 
   private setContentImmediate(html: string): void {
+    // The lock is re-checked HERE, not only at schedule time in `setContentHtml`.
+    // A panel locked during the debounce window (showGatedCta / showLocked fire
+    // from the async entitlement pass) would otherwise have this timer paint the
+    // premium payload over the upgrade CTA, and no later writer repaints it
+    // because every other write path bails on `_locked`.
+    if (this._locked) {
+      this.cancelPendingContentWrite();
+      return;
+    }
     if (this.contentDebounceTimer) {
       clearTimeout(this.contentDebounceTimer);
       this.contentDebounceTimer = null;
@@ -1241,8 +1517,9 @@ export class Panel {
     this.pendingContentHtml = null;
     const afterUpdate = this.pendingContentCallback;
     this.pendingContentCallback = null;
-    if (this.content.innerHTML !== html) {
+    if (this.lastCommittedHtml !== html) {
       setTrustedHtml(this.content, trustedHtml(html, 'legacy direct innerHTML migration'));
+      this.lastCommittedHtml = html;
     }
     afterUpdate?.();
   }
@@ -1304,6 +1581,15 @@ export class Panel {
     this.severityDotEl.className = 'panel-severity-dot';
     if (level !== 'none') {
       this.severityDotEl.classList.add(`severity-${level}`);
+      // Severity was color+animation only (and aria-hidden), i.e. absent from
+      // the accessibility tree entirely; expose it as a named image.
+      this.severityDotEl.removeAttribute('aria-hidden');
+      this.severityDotEl.setAttribute('role', 'img');
+      this.severityDotEl.setAttribute('aria-label', `${level} severity`);
+    } else {
+      this.severityDotEl.setAttribute('aria-hidden', 'true');
+      this.severityDotEl.removeAttribute('role');
+      this.severityDotEl.removeAttribute('aria-label');
     }
   }
 
@@ -1320,11 +1606,13 @@ export class Panel {
   public resetHeight(): void {
     this.element.classList.remove('resized', 'span-1', 'span-2', 'span-3', 'span-4');
     clearPanelSpan(this.panelId);
+    this.syncKeyboardRowResizeAria();
   }
 
   public resetWidth(): void {
     clearColSpanClass(this.element);
     clearPanelColSpan(this.panelId);
+    this.syncKeyboardColResizeAria();
   }
 
   protected get signal(): AbortSignal {

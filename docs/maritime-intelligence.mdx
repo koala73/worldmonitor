@@ -10,7 +10,7 @@ Route Explorer is the keyboard-first workflow for planning a shipment between an
 
 ## Chokepoint Monitoring
 
-The system monitors 13 strategic waterways where disruptions could impact global trade, powered by three data sources: IMF PortWatch (weekly vessel transit counts), AISStream (real-time 24h crossing counter), and CorridorRisk (risk intelligence).
+The system monitors the canonical strategic-waterway registry for disruptions that could affect global trade. It uses IMF PortWatch for weekly vessel transit counts, AISStream for the real-time crossing counter, and CorridorRisk for risk intelligence.
 
 | Chokepoint | Strategic Importance |
 |------------|---------------------|
@@ -57,6 +57,7 @@ Vessels reappearing after gaps are flagged for the duration of the session.
 |---|---|---|
 | Vessel snapshot | `GET /api/maritime/v1/get-vessel-snapshot` | Civilian AIS point-in-time view for traffic and disruption context. |
 | Navigational warnings | `GET /api/maritime/v1/list-navigational-warnings` | NGA maritime safety warnings used by chokepoint and undersea-cable awareness. |
+| IMD port / sea / coastal | Bootstrap `imdCycloneMarine` (`weather:imd-cyclone-marine:v1`) | Official IMD port warnings and sea-area / coastal bulletins with issuing ACWC/CWC, valid times, wind, visibility, and sea state. Not merged into NWS weather alerts. Fishermen warning stays disabled (indexed, no field reference). |
 
 ## WebSocket Architecture
 

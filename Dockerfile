@@ -8,7 +8,7 @@
 # =============================================================================
 
 # ── Stage 1: Builder ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS builder
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS builder
 
 WORKDIR /app
 
@@ -19,16 +19,41 @@ RUN npm ci --ignore-scripts
 # Copy full source
 COPY . .
 
+# The crawlable-corpus step runs the source-attribution drift gate against
+# scripts/, server/, api/, and src/. generate-inventory-facts and
+# build-handlers write untracked .js into those same roots, so the gate must
+# run on the pristine checkout first (#7435). tsc + vite stay later: they
+# need the generated inventory assets and compiled handlers.
+RUN npm run build:crawlable-corpus && npm run build:sitemap
+
+# Generated inventory modules are intentionally untracked. Recreate them in
+# the clean image context before handlers import or bundle them.
+RUN node scripts/generate-inventory-facts.mjs
+
 # Compile TypeScript API handlers → self-contained ESM bundles
 # Output is api/**/*.js alongside the source .ts files
 RUN node docker/build-handlers.mjs
 
-# Build the crawlable static corpus and Vite frontend (outputs to dist/)
+# public/pro/ is a build product, not committed bytes (#6898), so this image has
+# to build it. Skipping it does NOT 404: this image installs docker/nginx.conf,
+# whose `location /` ends in `try_files $uri $uri/ /dashboard.html`,
+# so /pro would quietly serve the dashboard SPA shell with a 200 — wrong content
+# under a real URL, which is worse than a missing page. (docker/Dockerfile is the
+# one with an explicit `location ^~ /pro` block, in nginx.conf.template.)
+# build:pro installs pro-test's own lockfile.
+RUN npm run build:pro
+
+# Build the Vite frontend (outputs to dist/)
 # Skip blog build — blog-site has its own deps not installed here
-RUN npm run build:crawlable-corpus && npm run build:sitemap && npx tsc && npx vite build
+RUN npx tsc && npx vite build
+# Assert the /pro pages survived the public/ -> dist/ copy (#6898). build:pro
+# succeeding proves public/pro/ exists; it does NOT prove Vite copied it, and
+# docker/nginx.conf's SPA fallback would serve the dashboard shell at 200 for a
+# missing /pro rather than failing visibly.
+RUN test -s dist/pro/index.html && test -s dist/pro/welcome.html
 
 # ── Stage 2: Runtime dependencies ───────────────────────────────────────────
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS runtime-deps
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS runtime-deps
 
 WORKDIR /app
 
@@ -42,7 +67,7 @@ COPY docker/runtime-package-lock.json ./package-lock.json
 RUN npm ci --omit=dev --omit=optional --ignore-scripts
 
 # ── Stage 3: Runtime ─────────────────────────────────────────────────────────
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS final
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf AS final
 
 # nginx + supervisord
 RUN apk add --no-cache nginx supervisor gettext && \
@@ -55,6 +80,8 @@ WORKDIR /app
 # API server
 COPY --from=builder /app/src-tauri/sidecar/local-api-server.mjs ./local-api-server.mjs
 COPY --from=builder /app/src-tauri/sidecar/package.json ./package.json
+COPY --from=builder /app/shared/llm-health-providers.js ./shared/llm-health-providers.js
+ENV LOCAL_API_RESOURCE_DIR=/app
 
 # Minimal runtime node_modules — required by raw .js handlers that aren't
 # bundled by build-handlers.mjs. Without this the Node sidecar dispatches
@@ -75,6 +102,8 @@ COPY --from=builder /app/dist /usr/share/nginx/html
 COPY docker/nginx.conf /etc/nginx/nginx.conf.template
 COPY docker/supervisord.conf /etc/supervisor/conf.d/worldmonitor.conf
 COPY docker/entrypoint.sh /app/entrypoint.sh
+COPY docker/render-nginx-realip.mjs /app/render-nginx-realip.mjs
+COPY docker/validate-session-secret.mjs /app/validate-session-secret.mjs
 RUN chmod +x /app/entrypoint.sh
 
 # Ensure writable dirs for non-root

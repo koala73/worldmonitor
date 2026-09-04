@@ -50,12 +50,29 @@
       "displayName": "World Monitor REST API",
       "type": "application/vnd.oai.openapi+json;version=3.1",
       "url": "https://worldmonitor.app/openapi.json",
-      "description": "World Monitor's public REST API: 190+ documented operations across conflict, markets, energy, maritime, aviation, climate, health, and supply-chain intelligence, with API-key and OAuth access.",
+      "description": "World Monitor's public REST API spans conflict, markets, energy, maritime, aviation, climate, health, and supply-chain intelligence, with API-key and OAuth access. Read the linked OpenAPI document for the live operation inventory.",
       "tags": [
         "news-and-intelligence",
         "api",
         "rest",
         "openapi"
+      ],
+      "trustManifest": {
+        "identity": "did:web:worldmonitor.app",
+        "identityType": "did"
+      }
+    },
+    {
+      "identifier": "urn:air:worldmonitor.app:agent-plugin:worldmonitor",
+      "displayName": "World Monitor agent plugin",
+      "type": "application/json",
+      "url": "https://worldmonitor.app/plugin.json",
+      "description": "Agent Plugins 1.0.0 manifest for World Monitor: MCP servers plus task-focused agent skills, packaged from the public GitHub repository.",
+      "tags": [
+        "news-and-intelligence",
+        "agent-plugin",
+        "mcp",
+        "agent-skills"
       ],
       "trustManifest": {
         "identity": "did:web:worldmonitor.app",

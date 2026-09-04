@@ -1,0 +1,35 @@
+{
+  "cap": "urn:oasis:names:tc:emergency:cap:1.2",
+  "alert": {
+    "status": "Actual",
+    "msgType": "Alert",
+    "scope": "Public",
+    "sender": "SKMacoun",
+    "identifier": "E746FB63-2A32-48EC-8AAF-D30FFC1CDDE0",
+    "sent": "2026-05-19T11:34:08-06:00",
+    "source": "NAADS",
+    "info": [
+      {
+        "language": "en-CA",
+        "category": "Health",
+        "event": "Drinking Water",
+        "responseType": "Prepare",
+        "urgency": "Immediate",
+        "severity": "Moderate",
+        "certainty": "Observed",
+        "senderName": "SK Macoun",
+        "headline": "Precautionary Drinking Water Advisory for the Village of Macoun",
+        "description": "A Precautionary Drinking Water Advisory remains in affect for the Village of Macoun. This advisory is for the Village of Macoun and for any individuals who may access water from the Macoun water system. This advisory is in effect until further notice.",
+        "instruction": "Boil water for at least 1 minute prior to use.",
+        "effective": "2026-05-19T11:34:08-06:00",
+        "expires": "2026-10-31T17:00:19-06:00",
+        "area": [
+          {
+            "areaDesc": "Village of Macoun",
+            "polygon": "49.3074,-103.2553 49.3117,-103.2553 49.3116,-103.2509 49.3190,-103.2509 49.3190,-103.2741 49.3116,-103.2737 49.3118,-103.2648 49.3074,-103.2647 49.3074,-103.2553"
+          }
+        ]
+      }
+    ]
+  }
+}

@@ -7,7 +7,8 @@ import type {
   CableHealthStatus,
 } from '../../../../src/generated/server/worldmonitor/infrastructure/v1/service_server';
 
-import { cachedFetchJson, setCachedJson } from '../../../_shared/redis';
+import { cachedFetchJson, cachedFetchJsonWithMeta, setCachedJson } from '../../../_shared/redis';
+import { parseNgaBroadcastWarnings, type NgaBroadcastWarning } from '../../../_shared/nga-broadcast-warnings';
 import { UPSTREAM_TIMEOUT_MS } from './_shared';
 import { CHROME_UA } from '../../../_shared/constants';
 
@@ -17,7 +18,7 @@ import { CHROME_UA } from '../../../_shared/constants';
 
 const CACHE_KEY = 'cable-health-v1';
 const CACHE_TTL = 1800; // 30 min — matches warm-ping interval; ensures recencyWeight decay is recomputed each cycle
-const NGA_CACHE_KEY = 'cable-health-nga-warnings-v1';
+const NGA_CACHE_KEY = 'cable-health-nga-warnings-v2';
 const NGA_CACHE_TTL = 86400; // 24h — raw NGA warnings are stable; long TTL survives relay downtime without hammering upstream
 
 // In-memory fallback: serves stale data when both Redis and NGA are down
@@ -27,13 +28,7 @@ let fallbackCache: GetCableHealthResponse | null = null;
 // NGA warning types
 // ========================================================================
 
-interface NgaWarning {
-  text?: string;
-  issueDate?: string;
-  navArea?: string;
-  msgYear?: number;
-  msgNumber?: number;
-}
+type NgaWarning = Partial<Pick<NgaBroadcastWarning, 'text' | 'issueDate'>>;
 
 // ========================================================================
 // Cable keywords and patterns
@@ -176,7 +171,7 @@ async function fetchNgaWarnings(): Promise<NgaWarning[] | null> {
     );
     if (!res.ok) return null; // fetch failed — don't cache, let sentinel TTL govern retry
     const data = await res.json();
-    return Array.isArray(data) ? data : (data as { warnings?: NgaWarning[] })?.warnings ?? [];
+    return parseNgaBroadcastWarnings(data);
   } catch {
     return null; // network error — don't poison NGA cache with empty data
   }
@@ -427,25 +422,25 @@ export async function getCableHealth(
   _req: GetCableHealthRequest,
 ): Promise<GetCableHealthResponse> {
   try {
-    const result = await cachedFetchJson<GetCableHealthResponse>(CACHE_KEY, CACHE_TTL, async () => {
+    const { data: result } = await cachedFetchJsonWithMeta<GetCableHealthResponse>(CACHE_KEY, CACHE_TTL, async () => {
       // NGA raw warnings cached 24h — expensive upstream call, data stable between pings.
       // Computed response cached 30 min — recomputes recencyWeight decay on each warm-ping cycle.
-      // null from fetchNgaWarnings = fetch failed; cachedFetchJson stores sentinel (2 min) and
-      // returns null here, which causes this outer fetcher to return null, leaving cable-health-v1
-      // untouched so the previous valid computed response is served from fallbackCache.
+      // null from fetchNgaWarnings = fetch failed; the inner cache stores its sentinel and
+      // returns null here. The outer computed cache is positive-only so the fallback path
+      // below controls the public key during an upstream outage.
       const ngaData = await cachedFetchJson<NgaWarning[]>(NGA_CACHE_KEY, NGA_CACHE_TTL, fetchNgaWarnings);
       if (ngaData === null) return null;
       const signals = processNgaSignals(ngaData);
       const cables = computeHealthMap(signals);
 
       return { generatedAt: Date.now(), cables };
-    });
+    }, 120, { cacheFailures: false });
 
     if (result) {
       // Write seed-meta on every successful response (cache hit or fresh) so the
       // 30-min warm-ping keeps seed-meta within the 90-min health.js stale window.
       // recordCount reflects the actual cable count — previous Math.max(count, 1)
-      // misrepresented empty responses as having 1 record; now writeback-path
+      // misrepresented empty responses as having 1 record; fallback path
       // below keeps the canonical key populated (strlen > 10) so health.js
       // reads hasData=true without needing a fake recordCount floor.
       const count = result.cables ? Object.keys(result.cables).length : 0;
@@ -454,17 +449,15 @@ export async function getCableHealth(
       return result;
     }
 
-    // NGA upstream failed (cachedFetchJson stored NEG_SENTINEL in cable-health-v1
-    // for 2 min). Without writeback, api/health.js sees strlen=10 (NEG_SENTINEL
-    // length) → strlenIsData=false → records=0 → EMPTY alarm even though we're
-    // serving a valid fallbackCache response to the client. Refresh both the
-    // canonical key AND seed-meta with fallbackCache so health reflects the
-    // response the user is actually receiving. Short TTL (matches NEG_SENTINEL)
-    // so a recovered NGA fetch can immediately overwrite with fresh data.
+    // Refresh both the canonical key and seed-meta with fallbackCache so health
+    // reflects the response the user is actually receiving. Short TTL allows a
+    // recovered NGA fetch to overwrite the fallback immediately.
     const fallback = fallbackCache || { generatedAt: Date.now(), cables: {} };
     const fbCount = fallback.cables ? Object.keys(fallback.cables).length : 0;
-    setCachedJson(CACHE_KEY, fallback, 120).catch(() => {});
-    setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: fbCount }, 604800).catch(() => {});
+    await Promise.all([
+      setCachedJson(CACHE_KEY, fallback, 120),
+      setCachedJson('seed-meta:cable-health', { fetchedAt: Date.now(), recordCount: fbCount }, 604800),
+    ]);
     return fallback;
   } catch {
     if (fallbackCache) return fallbackCache;

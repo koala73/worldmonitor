@@ -225,8 +225,10 @@ const NON_LINEAR_DOC_METADATA = {
     methodologyGoalposts: '<= -5 or >= 50 -> 0; 1-3 -> 100',
   },
   bisLbsXborderPctGdp: {
+    // #6459: worst anchor moved 60 → 0. The band's worst reading is financial
+    // isolation, not over-exposure.
     methodologyDirection: 'Lower is better (U-shape)',
-    methodologyGoalposts: '60 - 25',
+    methodologyGoalposts: '0 - 25',
   },
   fatfListingStatus: {
     methodologyDirection: 'Higher is better',
@@ -387,20 +389,52 @@ function buildSpecFromRegistry(
   };
 }
 
+/**
+ * True when `index` sits after a `//` on its own line — i.e. inside a line
+ * comment rather than in code.
+ *
+ * This matters because the call-site search below is a plain text scan. A
+ * scorer that MENTIONS `weightedBlend([])` in a comment (as
+ * `scoreFinancialSystemExposure` does, describing its flag-off empty shape)
+ * would otherwise bind the extractor to the comment, yielding an empty entry
+ * list and a "found 0 rows" failure that points nowhere near the cause. #6459.
+ */
+function isInsideLineComment(source: string, index: number): boolean {
+  const lineStart = source.lastIndexOf('\n', index) + 1;
+  return source.slice(lineStart, index).includes('//');
+}
+
+function findCallSite(functionBody: string, needle: string, occurrence: 'first' | 'last'): number {
+  const hits: number[] = [];
+  for (let idx = functionBody.indexOf(needle); idx !== -1; idx = functionBody.indexOf(needle, idx + 1)) {
+    if (!isInsideLineComment(functionBody, idx)) hits.push(idx);
+  }
+  if (hits.length === 0) return -1;
+  return occurrence === 'first' ? hits[0]! : hits[hits.length - 1]!;
+}
+
 function extractWeightedBlendEntries(scorerName: string, occurrence: 'first' | 'last' = 'first'): string[] {
   const functionBody = extractFunctionBody(scorerName);
-  let callStart = occurrence === 'first'
-    ? functionBody.indexOf('return weightedBlend(')
-    : functionBody.lastIndexOf('return weightedBlend(');
+  let callStart = findCallSite(functionBody, 'return weightedBlend(', occurrence);
+  let traced = false;
   if (callStart === -1) {
-    callStart = occurrence === 'first'
-      ? functionBody.indexOf('weightedBlend([')
-      : functionBody.lastIndexOf('weightedBlend([');
+    // Scorers that post-process the blend (e.g. `scoreFinancialSystemExposure`
+    // applies its comprehensive-embargo cap after blending) assign the result
+    // instead of returning it directly.
+    callStart = findCallSite(functionBody, 'weightedBlend([', occurrence);
+  }
+  if (callStart === -1) {
+    // Traced scorers may have an early missing-envelope fallback with fewer
+    // rows. The final traced blend is the active observed-data formula that
+    // the methodology table documents.
+    callStart = findCallSite(functionBody, 'tracedBlend(', 'last');
+    traced = callStart !== -1;
   }
   assert.notEqual(callStart, -1, `${scorerName} does not call weightedBlend in the extractable source shape.`);
   const openParen = functionBody.indexOf('(', callStart);
   const closeParen = findMatchingDelimiter(functionBody, openParen, '(', ')');
-  const callArg = functionBody.slice(openParen + 1, closeParen).trim();
+  const callArgs = functionBody.slice(openParen + 1, closeParen).trim();
+  const callArg = traced ? splitTopLevel(callArgs)[1]?.trim() ?? '' : callArgs;
   assert.ok(callArg.startsWith('['), `${scorerName} weightedBlend argument must be an array literal.`);
   const closeBracket = findMatchingDelimiter(callArg, 0, '[', ']');
   return splitTopLevel(stripLineComments(callArg.slice(1, closeBracket)));
@@ -424,6 +458,12 @@ function extractWeight(entry: string, indicatorId: string): number {
     const key = macroMatch[1] as keyof typeof MACRO_FISCAL_INDICATOR_WEIGHTS;
     const value = MACRO_FISCAL_INDICATOR_WEIGHTS[key];
     assert.equal(typeof value, 'number', `Unknown macro-fiscal weight ${expression} for ${indicatorId}.`);
+    return value;
+  }
+  if (/^[A-Z][A-Z0-9_]*$/.test(expression)) {
+    const declaration = new RegExp(`\\b(?:export\\s+)?const\\s+${expression}\\s*=\\s*([^;]+);`).exec(SCORER_SOURCE);
+    const value = Number(declaration?.[1]?.trim());
+    assert.ok(Number.isFinite(value), `Unknown numeric scorer constant ${expression} for ${indicatorId}.`);
     return value;
   }
   const numeric = Number(expression);
@@ -511,10 +551,31 @@ function splitTopLevel(source: string): string[] {
 }
 
 function stripLineComments(source: string): string {
-  return source
-    .split(/\r?\n/)
-    .map((line) => line.replace(/\/\/.*$/, ''))
-    .join('\n');
+  let result = '';
+  let quote: '"' | "'" | '`' | null = null;
+  for (let i = 0; i < source.length; i += 1) {
+    const ch = source[i]!;
+    const prev = i > 0 ? source[i - 1] : '';
+    if (quote) {
+      result += ch;
+      if (ch === quote && prev !== '\\') quote = null;
+      continue;
+    }
+    if (ch === '"' || ch === "'" || ch === '`') {
+      quote = ch;
+      result += ch;
+      continue;
+    }
+    if (ch === '/' && source[i + 1] === '/') {
+      const newline = source.indexOf('\n', i + 2);
+      if (newline === -1) break;
+      result += '\n';
+      i = newline;
+      continue;
+    }
+    result += ch;
+  }
+  return result;
 }
 
 function findMatchingDelimiter(source: string, openIndex: number, open: string, close: string): number {

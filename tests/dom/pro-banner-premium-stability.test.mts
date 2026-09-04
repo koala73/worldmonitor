@@ -80,7 +80,10 @@ vi.mock('@/services/billing', () => ({
   getSubscription: () => null,
   onSubscriptionChange: () => () => {},
 }));
-vi.mock('@/services/billing-state', () => ({
+// Partial so the real status-tone helpers stay available: a full stub goes
+// stale the moment billing-state gains an export a rendered surface uses (#7315).
+vi.mock('@/services/billing-state', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@/services/billing-state')>()),
   deriveBillingUxState: () => 'free',
   getReactivationHref: () => '/pro#pricing',
 }));
@@ -180,11 +183,13 @@ function installAppEntitlementResetListener(
         isCurrent: () => session.user?.id === userId,
         effects: {
           destroyEntitlementSubscription: () => {},
+          beginEntitlementVerification: () => {},
           resetEntitlementState: () => {
             entitlementSnapshot = null;
             const state = entitlement();
             for (const listener of entitlementListeners) listener(state);
           },
+          markEntitlementVerificationUnavailable: () => {},
           destroySubscriptionWatch: () => {},
           rebindConvexAuthForWatchHandoff: async () => false,
           initEntitlementSubscription: () => {},

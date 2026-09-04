@@ -54,9 +54,11 @@ export const EXCLUDED_PREFIXES = [
   'public/blog/',
   // Built bundle, not source: pro-test/ compiles into here and each locale
   // becomes its own hashed chunk, so the joiners allowed in locale data below
-  // reappear verbatim in public/pro/assets/fa-*.js. Its inputs are scanned, and
-  // .github/workflows rebuilds and byte-diffs it, so excluding the output adds
-  // no unscanned surface.
+  // reappear verbatim in public/pro/assets/fa-*.js. Excluding the output adds no
+  // unscanned surface because its INPUTS are scanned -- which is now the whole
+  // argument: #6898 gitignored public/pro/ and deleted the rebuild-and-byte-diff
+  // gate this comment used to lean on, so scanning the sources is what makes the
+  // exclusion safe.
   'public/pro/',
   'scripts/data/',
   'scripts/node_modules/',

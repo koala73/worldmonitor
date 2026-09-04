@@ -27,8 +27,7 @@ const monitoredLifecycleItem = {
 };
 const coverageItem = {
   type: 'string',
-  pattern: '^(?:awaiting_first_scan|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$',
-  description: 'Accepted values are awaiting_first_scan, adequate, partial, stale, unavailable, and needs_confirmation.',
+  pattern: '^(?:awaiting_first_scan|identity_unresolved|adequate|partial|stale|unavailable|needs_confirmation|COMPANY_COVERAGE_STATE_(?:AWAITING_FIRST_SCAN|IDENTITY_UNRESOLVED|ADEQUATE|PARTIAL|STALE|UNAVAILABLE|NEEDS_CONFIRMATION))$',
 };
 const impactDirectionItem = {
   type: 'string',

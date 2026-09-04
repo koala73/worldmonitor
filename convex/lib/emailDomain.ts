@@ -1,4 +1,10 @@
 import { isValid as mailcheckerIsValid } from "mailchecker";
+import { extractDomain } from "./emailShape";
+
+// Re-exported so this module stays the address-semantics entry point for
+// existing callers, while the pure shape parse lives in a dependency-free
+// module the checkout path can import without pulling in `mailchecker` (#6335).
+export { extractDomain };
 
 // Free / consumer email providers. A "corporate" domain is, by definition, NOT
 // one of these. Kept as the single convex-side source of truth for the
@@ -24,27 +30,6 @@ export const FREE_EMAIL_DOMAINS = new Set<string>([
 ]);
 
 /**
- * Return the lowercased domain part of an email address, or `null` when the
- * address is malformed. "Malformed" here means: not a string, no `@`, an empty
- * local part, more than one `@`, an empty domain, or whitespace in the domain.
- * Does NOT require a dot in the domain — that is only enforced by
- * {@link isCorporateDomain}.
- */
-export function extractDomain(email: string): string | null {
-  if (typeof email !== "string") return null;
-  const trimmed = email.trim();
-  const at = trimmed.indexOf("@");
-  // `at <= 0` rejects both "no @" (-1) and an empty local part ("@b.com" -> 0).
-  if (at <= 0) return null;
-  // Reject a second `@` — "a@b@c" is not a single address.
-  if (trimmed.indexOf("@", at + 1) !== -1) return null;
-  const domain = trimmed.slice(at + 1).toLowerCase();
-  if (domain.length === 0) return null;
-  if (/\s/.test(domain)) return null;
-  return domain;
-}
-
-/**
  * Case-insensitive equality of the two addresses' domains. Returns `false` if
  * either address is malformed (no domain to compare).
  */
@@ -57,9 +42,8 @@ export function sameDomain(a: string, b: string): boolean {
 /**
  * True only when `email` is well-formed AND its domain is a real corporate
  * domain: not a free/consumer provider, not disposable/temporary, and it
- * contains a dot. This is the gate that makes "same company email" mean a
- * company — used to decide whether a Business owner may invite teammates and
- * whether an invitee's address is acceptable.
+ * contains a dot. This keeps Business seat invitations limited to corporate
+ * addresses: both the owner and each invitee must pass it.
  */
 export function isCorporateDomain(email: string): boolean {
   const domain = extractDomain(email);

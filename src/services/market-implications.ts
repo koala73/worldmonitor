@@ -1,4 +1,5 @@
 import { toApiUrl } from '@/services/runtime';
+import { premiumFetch } from '@/services/premium-fetch';
 import { getHydratedData } from '@/services/bootstrap';
 
 export interface TransmissionNode {
@@ -86,7 +87,11 @@ export async function fetchMarketImplications(frameworkId = ''): Promise<MarketI
   try {
     const url = new URL(toApiUrl('/api/intelligence/v1/list-market-implications'));
     if (frameworkId) url.searchParams.set('frameworkId', frameworkId);
-    const resp = await fetch(url.toString(), {
+    // list-market-implications is a PREMIUM_RPC_PATH; a bare fetch still picked
+    // up the Clerk bearer from the global patch but skipped reportServerError,
+    // so its 503s were invisible in Sentry. The 15s budget comfortably covers a
+    // first attempt plus the server's 5s Retry-After and the replay.
+    const resp = await premiumFetch(url.toString(), {
       signal: AbortSignal.timeout(15_000),
     });
     if (!resp.ok) return cached?.data ?? null;

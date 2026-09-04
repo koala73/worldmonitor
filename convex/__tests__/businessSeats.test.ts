@@ -2,8 +2,8 @@
  * Tests for business seat invites (#4634/#4635).
  *
  * Covers the invite-issuance surface: owner must be an active/covering
- * api_business subscriber on a corporate domain; invitees must share that
- * domain; cap of 4 active-or-pending grants; self-invite and duplicates are
+ * api_business subscriber on a corporate domain; invitees must also use
+ * corporate domains; cap of 4 active-or-pending grants; self-invite and duplicates are
  * rejected.
  */
 
@@ -158,6 +158,8 @@ async function fireWebhook(
     eventTimestamp: number;
     cancelledAt?: number;
     productId?: string;
+    /** `null` omits next_billing_date so the handler keeps the stored period end. */
+    nextBillingDate?: number | null;
   },
 ) {
   await t.mutation(internal.payments.webhookMutations.processWebhookEvent, {
@@ -172,7 +174,13 @@ async function fireWebhook(
         customer: { customer_id: "cus_test" },
         metadata: { wm_user_id: OWNER_ID },
         previous_billing_date: new Date(NOW - DAY_MS).toISOString(),
-        next_billing_date: new Date(NOW + 30 * DAY_MS).toISOString(),
+        ...(opts.nextBillingDate === null
+          ? {}
+          : {
+              next_billing_date: new Date(
+                opts.nextBillingDate ?? NOW + 30 * DAY_MS,
+              ).toISOString(),
+            }),
         ...(opts.cancelledAt ? { cancelled_at: new Date(opts.cancelledAt).toISOString() } : {}),
       },
     },
@@ -181,7 +189,7 @@ async function fireWebhook(
 }
 
 describe("payments businessSeats inviteSeats", () => {
-  test("happy path: 4 same-domain invites → 4 pending grants + 4 emails scheduled", async () => {
+  test("happy path: 4 corporate-domain invites → 4 pending grants + 4 emails scheduled", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
@@ -276,7 +284,13 @@ describe("payments businessSeats inviteSeats", () => {
     ).rejects.toThrow(/SEAT_CAP_REACHED|TOO_MANY_EMAILS/);
   });
 
-  test("cross-domain invitee → INVITEE_DOMAIN_MISMATCH", async () => {
+  test("cross-domain corporate invitee is allowed for API Business", async () => {
+    // inviteSeats schedules sendBusinessInviteEmail via runAfter(0). Drain it
+    // on fake timers: a real-timer leak patches the previous DatabaseFake
+    // after later tests replace global.Convex, which convex-test reports as
+    // "Write outside of transaction …;_scheduled_functions".
+    vi.useFakeTimers();
+    process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
     const t = convexTest(schema, modules);
     await seedBusinessSubscription(t, {
       dodoSubscriptionId: "sub_business_003",
@@ -284,11 +298,16 @@ describe("payments businessSeats inviteSeats", () => {
       currentPeriodEnd: NOW + 30 * DAY_MS,
     });
 
-    await expect(
-      t.withIdentity(OWNER_IDENTITY).mutation(api.payments.businessSeats.inviteSeats, {
-        emails: ["teammate@other.com"],
-      }),
-    ).rejects.toThrow(/INVITEE_DOMAIN_MISMATCH/);
+    const result = await t.withIdentity(OWNER_IDENTITY).mutation(
+      api.payments.businessSeats.inviteSeats,
+      { emails: ["client@other.com"] },
+    );
+
+    expect(result.invited).toEqual([
+      expect.objectContaining({ email: "client@other.com", status: "created" }),
+    ]);
+    await t.finishAllScheduledFunctions(vi.runAllTimers);
+    vi.useRealTimers();
   });
 
   test("free-domain owner → OWNER_DOMAIN_NOT_CORPORATE", async () => {
@@ -1250,6 +1269,9 @@ describe("payments businessSeats revoke-on-lapse", () => {
       status: "cancelled",
       eventTimestamp: NOW + 1000,
       cancelledAt: NOW - DAY_MS,
+      // Omit the payload date so this stays a truly-lapsed cancel, not the
+      // missed-renewal case that must persist a newer next_billing_date.
+      nextBillingDate: null,
     });
 
     const grants = await t.run(async (ctx) =>
@@ -1642,7 +1664,7 @@ describe("payments businessSeats reconcileBusinessProGrants (reconciliation cron
 // ---------------------------------------------------------------------------
 
 describe("payments businessSeats end-to-end lifecycle", () => {
-  test("full lifecycle: invite → accept → Pro → Business lapse → revoke", async () => {
+  test("full lifecycle: cross-domain invite → accept → Pro → Business lapse → revoke", async () => {
     vi.useFakeTimers();
     vi.setSystemTime(NOW);
     process.env.DODO_IDENTITY_SIGNING_SECRET = SIGNING_SECRET;
@@ -1657,14 +1679,14 @@ describe("payments businessSeats end-to-end lifecycle", () => {
     // 1. Invite
     const invite = await t.withIdentity(OWNER_IDENTITY).mutation(
       api.payments.businessSeats.inviteSeats,
-      { emails: ["teammate@acme.com"] },
+      { emails: ["client@other.com"] },
     );
     const grantId = invite.invited[0].grantId;
     const token = await signBusinessInviteToken(grantId);
 
     // 2. Accept
     await t
-      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "teammate@acme.com" })
+      .withIdentity({ subject: "user_teammate", tokenIdentifier: "clerk|user_teammate", email: "client@other.com" })
       .mutation(api.payments.businessSeats.acceptBusinessInvite, {
         grantId,
         token,

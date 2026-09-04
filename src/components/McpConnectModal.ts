@@ -1,6 +1,13 @@
-import type { McpPanelSpec, McpPreset, McpToolDef } from '@/services/mcp-store';
+import {
+  MIN_MCP_REFRESH_INTERVAL_MS,
+  normalizeMcpRefreshIntervalMs,
+  type McpPanelSpec,
+  type McpPreset,
+  type McpToolDef,
+} from '@/services/mcp-store';
 import { MCP_PRESETS } from '@/services/mcp-store';
 import { t } from '@/services/i18n';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import { escapeHtml } from '@/utils/sanitize';
 import { proxyUrl } from '@/utils/proxy';
 import { premiumFetch } from '@/services/premium-fetch';
@@ -13,9 +20,10 @@ interface McpConnectOptions {
   onComplete: (spec: McpPanelSpec) => void;
 }
 
-const MIN_MCP_REFRESH_S = 60;
+const MIN_MCP_REFRESH_S = MIN_MCP_REFRESH_INTERVAL_MS / 1000;
 
 let overlay: HTMLElement | null = null;
+let focusTrap: FocusTrap | null = null;
 
 /** Build a header Record from a template + key value.
  *  Template format: "Header-Name: prefix {key}" e.g. "Authorization: Bearer {key}" */
@@ -55,6 +63,9 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
   const existing = options.existingSpec;
   overlay = document.createElement('div');
   overlay.className = 'modal-overlay active';
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-modal', 'true');
+  overlay.setAttribute('aria-label', t('mcp.modalTitle'));
 
   const modal = document.createElement('div');
   modal.className = 'modal mcp-connect-modal';
@@ -160,6 +171,8 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
 
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
+  focusTrap = createFocusTrap(overlay, { onEscape: () => closeMcpConnectModal() });
+  focusTrap.activate();
 
   let tools: McpToolDef[] = [];
   let selectedTool: McpToolDef | null = existing
@@ -437,7 +450,7 @@ export function openMcpConnectModal(options: McpConnectOptions): void {
       customHeaders: getEffectiveHeaders(),
       toolName: selectedTool.name,
       toolArgs,
-      refreshIntervalMs: Math.max(MIN_MCP_REFRESH_S, parseInt(refreshInput.value, 10) || MIN_MCP_REFRESH_S) * 1000,
+      refreshIntervalMs: normalizeMcpRefreshIntervalMs(parseInt(refreshInput.value, 10) * 1000),
       createdAt: existing?.createdAt ?? Date.now(),
       updatedAt: Date.now(),
     };
@@ -460,6 +473,8 @@ function _headersToLine(headers: Record<string, string>): string {
 }
 
 export function closeMcpConnectModal(): void {
+  focusTrap?.deactivate();
+  focusTrap = null;
   overlay?.remove();
   overlay = null;
 }

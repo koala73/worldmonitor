@@ -1,7 +1,7 @@
 ---
-title: "Intelligence Without Borders: World Monitor in 26 Languages"
-description: "World Monitor supports 26 languages with full RTL Arabic, CJK, and locale-specific news feeds. AI analysis and search in your preferred language, free."
-metaTitle: "World Monitor in 26 Languages | Multilingual OSINT"
+title: "Intelligence Without Borders: Multilingual World Monitor"
+description: "World Monitor supports localized interfaces with full RTL Arabic, CJK, and locale-specific news feeds. AI analysis and search in your preferred language, free."
+metaTitle: "Multilingual World Monitor | OSINT"
 keywords: "multilingual intelligence dashboard, Arabic OSINT tool, Japanese intelligence platform, global dashboard localized, RTL intelligence dashboard"
 audience: "Non-English-speaking analysts, international organizations, global enterprises, multilingual researchers"
 heroImage: "/blog/images/blog/worldmonitor-in-21-languages-global-intelligence-for-everyone.jpg"
@@ -11,7 +11,7 @@ modifiedDate: "2026-07-22"
 
 The world doesn't operate in English. Crises unfold in Arabic. Markets move in Mandarin. Diplomatic cables are written in French. Military communications happen in Russian. Yet most intelligence platforms are English-only, forcing analysts to work in a second language during high-pressure situations.
 
-World Monitor speaks **26 languages** natively, with full interface localization, language-specific news feeds, AI analysis in your preferred language, and search that works in any supported script.
+World Monitor offers localized interfaces, with full interface localization, language-specific news feeds, AI analysis in your preferred language, and search that works in any supported script.
 
 ## Full Interface Localization
 
@@ -52,10 +52,12 @@ This isn't machine translation bolted on as an afterthought. The localization sy
 | Croatian | Latin | LTR | Croatia, Balkans |
 | Hungarian | Latin | LTR | Hungary, Central Europe |
 | Chinese (Simplified) | CJK | LTR | China, Singapore |
+| Chinese (Traditional) | CJK | LTR | Taiwan, Hong Kong, Macau |
 | Japanese | CJK | LTR | Japan |
 | Korean | Hangul | LTR | Korea |
 | Thai | Thai | LTR | Southeast Asia |
 | Vietnamese | Latin (diacritics) | LTR | Southeast Asia |
+| Swahili | Latin | LTR | East Africa |
 
 ## Arabic and RTL: First-Class Support
 
@@ -82,7 +84,7 @@ World Monitor handles all of these. The command palette accepts CJK input during
 
 ## Language-Specific News Feeds
 
-This is where multilingual support goes beyond interface translation. World Monitor's **500+ curated RSS feeds** include **locale-specific sources**:
+This is where multilingual support goes beyond interface translation. World Monitor's **curated RSS catalog** includes **locale-specific sources**:
 
 When you switch World Monitor to French, you don't just see English headlines translated. You see French-language sources: [Le Monde](https://www.lemonde.fr/), [France 24](https://www.france24.com/fr/), [AFP](https://www.afp.com/fr). Switch to Arabic and you see [Al Jazeera Arabic](https://www.aljazeera.net/), [Al Arabiya](https://www.alarabiya.net/), local MENA outlets. Switch to Japanese and Japanese news sources appear.
 
@@ -105,7 +107,7 @@ When using local LLMs (Ollama, LM Studio), multilingual output depends on the mo
 
 ## Multilingual Command Palette
 
-The Cmd+K command palette indexes keywords in all 26 languages:
+The Cmd+K command palette indexes keywords across supported languages:
 
 - Search for "Allemagne" → Germany (French)
 - Search for "Japón" → Japan (Spanish)
@@ -113,7 +115,7 @@ The Cmd+K command palette indexes keywords in all 26 languages:
 - Search for "مصر" → Egypt (Arabic)
 - Search for "중국" → China (Korean)
 
-All 195 countries have searchable names in every supported language. Layer names, panel names, and command keywords are also localized in the search index. Learn more about this feature in [Command Palette: Search Everything Instantly](/blog/posts/command-palette-search-everything-instantly/).
+The country registry has searchable names in every supported language. Layer names, panel names, and command keywords are also localized in the search index. Learn more about this feature in [Command Palette: Search Everything Instantly](/blog/posts/command-palette-search-everything-instantly/).
 
 ## Auto-Detection
 
@@ -125,7 +127,7 @@ You can manually switch languages at any time. The preference is saved to localS
 
 ### International Organizations (UN, NATO, EU)
 
-Staff from dozens of countries need a common intelligence picture in their working language. World Monitor's 26 languages cover the official languages of the UN (English, French, Spanish, Arabic, Chinese, Russian) and most NATO member languages.
+Staff from many countries need a common intelligence picture in their working language. World Monitor's localized interfaces cover the official languages of the UN (English, French, Spanish, Arabic, Chinese, Russian) and many NATO member languages.
 
 ### Multinational Corporations
 
@@ -171,4 +173,4 @@ Yes. World Monitor is open source and uses JSON-based translation files. Bilingu
 
 ---
 
-**Use World Monitor in your language at [worldmonitor.app](https://www.worldmonitor.app). 26 languages, full RTL support, locale-specific feeds. Free for everyone, everywhere.**
+**Use World Monitor in your language at [worldmonitor.app](https://www.worldmonitor.app). Localized interfaces, full RTL support, locale-specific feeds. Free for everyone, everywhere.**

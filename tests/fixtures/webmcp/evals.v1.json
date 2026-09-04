@@ -1,0 +1,1655 @@
+{
+  "version": "webmcp_eval_v1",
+  "description": "Offline WebMCP tool-selection and execution-trace contract. No case invokes an external model.",
+  "toolInventory": {
+    "imperative": [
+      "openCountryBrief",
+      "openSearch",
+      "get_dashboard_context",
+      "list_map_layers",
+      "list_dashboard_panels",
+      "switch_monitor",
+      "open_settings",
+      "open_alerts",
+      "open_dashboard_panel",
+      "set_panel_enabled",
+      "get_panel_layout",
+      "set_panel_collapsed",
+      "move_panel",
+      "set_panel_fullscreen",
+      "set_map_view",
+      "set_map_layers",
+      "set_time_range",
+      "focus_country",
+      "set_map_mode",
+      "search_dashboard",
+      "open_search_result",
+      "list_dashboard_tabs",
+      "select_dashboard_tab",
+      "create_dashboard_tab",
+      "rename_dashboard_tab",
+      "delete_dashboard_tab",
+      "list_mission_presets",
+      "apply_mission_preset",
+      "open_mission_picker",
+      "get_access_context",
+      "open_sign_in"
+    ],
+    "declarative": [
+      "search_procurement"
+    ]
+  },
+  "symbolSyntax": "$steps[<zero-based-step-index>].results[<zero-based-result-index>].key",
+  "cases": [
+    {
+      "id": "dashboard_context_direct",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "Read the current dashboard context and tell me which map layers and panels are active.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_dashboard_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "set_time_range",
+        "focus_country",
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_context_ambiguous",
+      "category": "dashboard_context",
+      "promptKind": "ambiguous",
+      "prompt": "What am I looking at right now?",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_dashboard_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "set_time_range",
+        "focus_country",
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "access_context_direct",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "Am I signed in on this tab, and what product tier and panel limits apply? Do not return any personal information.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_access_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "open_sign_in",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "access_context_ambiguous",
+      "category": "dashboard_context",
+      "promptKind": "ambiguous",
+      "prompt": "Can this account add another dashboard tab, or is the account state still loading?",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_access_context",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "open_sign_in",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_panel_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the markets panel.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "markets"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_controls_alternate_order",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the strategic-risk panel and focus the map on Europe.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "strategic-risk"
+            }
+          },
+          {
+            "tool": "set_map_view",
+            "arguments": {
+              "view": "eu"
+            }
+          }
+        ],
+        [
+          {
+            "tool": "set_map_view",
+            "arguments": {
+              "view": "eu"
+            }
+          },
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "strategic-risk"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_layers_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Enable the natural layer and disable the flights layer.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "natural": true,
+                "flights": false
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "open_sign_in_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the existing Clerk sign-in dialog on this page. Do not send a password, one-time code, or provider choice.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_sign_in",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "get_access_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "country_brief_direct",
+      "category": "country_brief",
+      "promptKind": "direct",
+      "prompt": "Open the country intelligence brief for Iran.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "openCountryBrief",
+            "arguments": {
+              "iso2": "IR"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "focus_country",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "country_brief_ambiguous",
+      "category": "country_brief",
+      "promptKind": "ambiguous",
+      "prompt": "Take me to Germany's country view.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "openCountryBrief",
+            "arguments": {
+              "iso2": "DE"
+            }
+          }
+        ],
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "Germany"
+            }
+          },
+          {
+            "tool": "open_search_result",
+            "arguments": {
+              "resultKey": "$steps[0].results[0].key"
+            }
+          }
+        ],
+        [
+          {
+            "tool": "focus_country",
+            "arguments": {
+              "iso2": "DE"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_search_list_only",
+      "category": "search_selection",
+      "promptKind": "direct",
+      "prompt": "Find dashboard items about shipping disruptions and list the results, but do not open anything.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "shipping disruptions"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_search_and_select",
+      "category": "search_selection",
+      "promptKind": "direct",
+      "prompt": "Search the dashboard for cyber threats, return at most five matches, and open the first result.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "cyber threats",
+              "scope": "all",
+              "limit": 5
+            }
+          },
+          {
+            "tool": "open_search_result",
+            "arguments": {
+              "resultKey": "$steps[0].results[0].key"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "procurement_direct",
+      "category": "procurement",
+      "promptKind": "direct",
+      "prompt": "Search official procurement opportunities for cloud services in Canada, technology relevant only.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_procurement",
+            "arguments": {
+              "query": "cloud services",
+              "country": "CA",
+              "source": "canada-buys",
+              "sort": "relevance",
+              "techRelevant": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "procurement_ambiguous",
+      "category": "procurement",
+      "promptKind": "ambiguous",
+      "prompt": "Find the newest EU government tenders for cybersecurity.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_procurement",
+            "arguments": {
+              "query": "cybersecurity",
+              "source": "ted",
+              "sort": "newest"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "no_tool_explanation_negative",
+      "category": "negative",
+      "promptKind": "direct",
+      "prompt": "Explain what a country brief is in one sentence, but do not open or inspect anything.",
+      "expectedPlans": [
+        []
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "set_time_range",
+        "focus_country",
+        "set_map_mode",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "search_selection_stale_key_failure",
+      "category": "search_selection",
+      "promptKind": "direct",
+      "prompt": "Search for Iran sanctions and open the first result.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_dashboard",
+            "arguments": {
+              "query": "Iran sanctions"
+            }
+          },
+          {
+            "tool": "open_search_result",
+            "arguments": {
+              "resultKey": "$steps[0].results[0].key"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "open_search_result",
+        "reason": "invalid_or_expired_key",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "openCountryBrief",
+          "openSearch",
+          "open_dashboard_panel",
+          "list_dashboard_tabs",
+          "select_dashboard_tab",
+          "create_dashboard_tab",
+          "rename_dashboard_tab",
+          "delete_dashboard_tab",
+          "set_panel_enabled",
+          "set_panel_fullscreen",
+          "move_panel",
+          "set_panel_collapsed",
+          "get_panel_layout"
+        ]
+      }
+    },
+    {
+      "id": "dashboard_control_entitlement_failure",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Read the dashboard context, open the strategic-risk panel, then focus the map on MENA.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_dashboard_context",
+            "arguments": {}
+          },
+          {
+            "tool": "open_dashboard_panel",
+            "arguments": {
+              "panelId": "strategic-risk"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "open_dashboard_panel",
+        "reason": "panel_not_entitled",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "set_map_view",
+          "list_dashboard_tabs",
+          "select_dashboard_tab",
+          "create_dashboard_tab",
+          "rename_dashboard_tab",
+          "delete_dashboard_tab",
+          "get_panel_layout",
+          "set_panel_collapsed",
+          "move_panel",
+          "set_panel_fullscreen"
+        ]
+      }
+    },
+    {
+      "id": "procurement_unavailable_failure",
+      "category": "procurement",
+      "promptKind": "direct",
+      "prompt": "Search official procurement opportunities for solar equipment in Australia.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "search_procurement",
+            "arguments": {
+              "query": "solar equipment",
+              "country": "AU",
+              "sort": "closing_soon"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "get_access_context",
+        "open_sign_in",
+        "list_map_layers",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_tabs",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "set_panel_enabled",
+        "set_panel_fullscreen",
+        "move_panel",
+        "set_panel_collapsed",
+        "get_panel_layout",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ],
+      "failure": {
+        "atStep": 1,
+        "tool": "search_procurement",
+        "reason": "panel_unavailable",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "openSearch",
+          "search_dashboard",
+          "list_dashboard_tabs",
+          "select_dashboard_tab",
+          "create_dashboard_tab",
+          "rename_dashboard_tab",
+          "delete_dashboard_tab",
+          "set_panel_enabled",
+          "set_panel_fullscreen",
+          "move_panel",
+          "set_panel_collapsed",
+          "get_panel_layout"
+        ]
+      }
+    },
+    {
+      "id": "dashboard_time_range_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Set the map time range to 24 hours.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_time_range",
+            "arguments": {
+              "timeRange": "24h"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "set_map_view",
+        "focus_country",
+        "search_dashboard",
+        "open_search_result",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_focus_country_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Focus the map on Germany without opening a country brief.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "focus_country",
+            "arguments": {
+              "iso2": "DE"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "set_map_view",
+        "search_dashboard",
+        "open_search_result",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_map_mode_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Switch the map to 3D globe mode.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_map_mode",
+            "arguments": {
+              "mode": "3d"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_layers_catalog_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List the map layers on this dashboard, then enable the conflicts layer.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_map_layers",
+            "arguments": {}
+          },
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "conflicts": true
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_layers_ambiguous",
+      "category": "dashboard_control",
+      "promptKind": "ambiguous",
+      "prompt": "Turn on the earthquakes overlay.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_map_layers",
+            "arguments": {}
+          },
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "natural": true
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_layers_catalog_unavailable_failure",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List the map layers, then enable the resilienceScore layer.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_map_layers",
+            "arguments": {}
+          },
+          {
+            "tool": "set_map_layers",
+            "arguments": {
+              "layers": {
+                "resilienceScore": true
+              }
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openSearch",
+        "search_dashboard",
+        "open_search_result",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "set_map_layers",
+        "reason": "layer_not_entitled",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "set_map_view",
+          "open_dashboard_panel",
+          "get_panel_layout",
+          "set_panel_collapsed",
+          "move_panel",
+          "set_panel_fullscreen"
+        ]
+      }
+    },
+    {
+      "id": "switch_monitor_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Switch the dashboard to the Tech monitor.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "switch_monitor",
+            "arguments": {
+              "monitor": "tech"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "open_settings",
+        "open_alerts",
+        "list_map_layers",
+        "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "switch_monitor_ambiguous",
+      "category": "dashboard_control",
+      "promptKind": "ambiguous",
+      "prompt": "Take me to Good News.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "switch_monitor",
+            "arguments": {
+              "monitor": "happy"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "open_settings",
+        "open_alerts",
+        "list_map_layers",
+        "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "open_settings_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the dashboard settings overlay.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_settings",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "switch_monitor",
+        "open_alerts",
+        "list_map_layers",
+        "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "open_alerts_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Open the dashboard alerts overlay.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "open_alerts",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "switch_monitor",
+        "open_settings",
+        "list_map_layers",
+        "list_dashboard_panels",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_panel_catalog_direct",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "List every dashboard panel, including disabled and unmounted ones.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_panels",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_map_layers",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_panel_catalog_variant_filter",
+      "category": "dashboard_context",
+      "promptKind": "direct",
+      "prompt": "List the World monitor panel catalog for the full variant.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_panels",
+            "arguments": {
+              "variant": "full"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "switch_monitor",
+        "open_settings",
+        "open_alerts",
+        "list_map_layers",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_tabs_list_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List the dashboard workspace tabs, including which one is active.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_tabs_create_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Create a dashboard workspace named Markets, or return it if it already exists.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "create_dashboard_tab",
+            "arguments": {
+              "name": "Markets"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "select_dashboard_tab",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_tabs_workspace_ambiguous",
+      "category": "dashboard_control",
+      "promptKind": "ambiguous",
+      "prompt": "Switch to my Markets dashboard workspace.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "select_dashboard_tab",
+            "arguments": {
+              "tabId": "tab-main01-abc123"
+            }
+          }
+        ],
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "create_dashboard_tab",
+            "arguments": {
+              "name": "Markets"
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "rename_dashboard_tab",
+        "delete_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "dashboard_tabs_delete_last_failure",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "List dashboard tabs and delete the only remaining workspace.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "list_dashboard_tabs",
+            "arguments": {}
+          },
+          {
+            "tool": "delete_dashboard_tab",
+            "arguments": {
+              "tabId": "tab-main01-abc123",
+              "confirm": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "get_dashboard_context",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "select_dashboard_tab",
+        "create_dashboard_tab",
+        "rename_dashboard_tab",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ],
+      "failure": {
+        "atStep": 2,
+        "tool": "delete_dashboard_tab",
+        "reason": "last_tab",
+        "mustStop": true,
+        "forbiddenAfterFailure": [
+          "create_dashboard_tab",
+          "open_dashboard_panel",
+          "get_panel_layout",
+          "set_panel_collapsed",
+          "move_panel",
+          "set_panel_fullscreen"
+        ]
+      }
+    },
+    {
+      "id": "panel_enablement_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Enable the giving panel.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_panel_enabled",
+            "arguments": {
+              "panelId": "giving",
+              "enabled": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "list_mission_presets",
+        "apply_mission_preset",
+        "open_mission_picker"
+      ]
+    },
+    {
+      "id": "panel_layout_read_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Show me the current panel layout, including which region each panel is in.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "get_panel_layout",
+            "arguments": {}
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_panel_fullscreen",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "panel_collapse_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Collapse the live-news panel.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_panel_collapsed",
+            "arguments": {
+              "panelId": "live-news",
+              "collapsed": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "get_panel_layout",
+        "move_panel",
+        "set_panel_fullscreen",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "panel_move_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Move the giving panel to the first slot in the sidebar.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "move_panel",
+            "arguments": {
+              "panelId": "giving",
+              "region": "sidebar",
+              "index": 0
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "set_panel_fullscreen",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    },
+    {
+      "id": "panel_fullscreen_direct",
+      "category": "dashboard_control",
+      "promptKind": "direct",
+      "prompt": "Put the live-news panel into fullscreen.",
+      "expectedPlans": [
+        [
+          {
+            "tool": "set_panel_fullscreen",
+            "arguments": {
+              "panelId": "live-news",
+              "fullscreen": true
+            }
+          }
+        ]
+      ],
+      "forbiddenTools": [
+        "openCountryBrief",
+        "openSearch",
+        "open_dashboard_panel",
+        "set_panel_enabled",
+        "get_panel_layout",
+        "set_panel_collapsed",
+        "move_panel",
+        "set_map_view",
+        "set_map_layers",
+        "search_dashboard",
+        "open_search_result"
+      ]
+    }
+  ]
+}

@@ -2,45 +2,208 @@ name: Proto Generation Check
 
 on:
   pull_request:
-    paths:
-      - 'proto/**'
-      - 'src/generated/**'
-      - 'docs/api/**'
-      - 'scripts/generate-request-validation.mjs'
-      - 'Makefile'
-      - '.github/workflows/proto-check.yml'
+  push:
+    branches: [main]
 
-permissions:
-  contents: read
+# Keep these registries aligned with .husky/pre-push PROTO_INPUTS and every
+# output written by `make generate`.
+env:
+  CODEGEN_INPUT_REGEX: '^(proto(?:/|$)|scripts(?:/|$)|shared(?:/|$)|server(?:/|$)|src/shared(?:/|$)|Makefile$)'
+  GENERATED_PATHS: >-
+    src/generated/
+    docs/api/
+    server/worldmonitor/scorecard/v1/_input-registry.ts
+    server/worldmonitor/scorecard/v1/_methodology.ts
+    server/worldmonitor/scorecard/v1/_score-country.ts
+    server/worldmonitor/scorecard/v1/_snapshot.ts
+    server/worldmonitor/scorecard/v1/_source-adapters.ts
+    server/worldmonitor/scorecard/v1/_source-registry.ts
+    server/worldmonitor/scorecard/v1/_types.ts
+
+permissions: {}
+
+# A generated commit updates the PR head and starts a clean follow-up run. Do
+# not let an older run race a newer head and push stale artifacts afterward.
+concurrency:
+  group: proto-freshness-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
-  proto-breaking:
+  changes:
+    name: proto-changes
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      pull-requests: read
+    outputs:
+      codegen: ${{ steps.paths.outputs.codegen || steps.non-pr.outputs.codegen }}
+      breaking: ${{ steps.paths.outputs.breaking || steps.non-pr.outputs.breaking }}
+      trusted_fork: ${{ steps.paths.outputs.trusted_fork || steps.non-pr.outputs.trusted_fork }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
-        # buf compares the checked-out proto tree with the main baseline.
-        # Full history keeps that Git-backed reference from resolving vacuously.
+      - name: Classify proto codegen paths
+        id: paths
+        if: github.event_name == 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EVENT_ACTION: ${{ github.event.action }}
+          EVENT_ACTOR: ${{ github.actor }}
+          EVENT_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          EVENT_HEAD_REPOSITORY: ${{ github.event.pull_request.head.repo.full_name }}
+          EVENT_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPOSITORY: ${{ github.repository }}
+          REPOSITORY_OWNER: ${{ github.repository_owner }}
+        run: |
+          PR_JSON=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER")
+          FILES_JSON=$(gh api "repos/$REPOSITORY/pulls/$PR_NUMBER/files" --paginate --slurp)
+
+          EXPECTED_FILE_COUNT=$(jq -er '.changed_files | numbers' <<< "$PR_JSON")
+          RETURNED_FILE_COUNT=$(jq -er '[.[][]?] | length' <<< "$FILES_JSON")
+          API_HEAD_SHA=$(jq -er '.head.sha' <<< "$PR_JSON")
+          API_BASE_SHA=$(jq -er '.base.sha' <<< "$PR_JSON")
+
+          if [ "$API_HEAD_SHA" != "$EVENT_HEAD_SHA" ] || [ "$API_BASE_SHA" != "$EVENT_BASE_SHA" ]; then
+            echo "ERROR: Pull request metadata moved while codegen paths were being classified."
+            exit 1
+          fi
+
+          if [ "$EXPECTED_FILE_COUNT" -gt 3000 ] || [ "$RETURNED_FILE_COUNT" -ne "$EXPECTED_FILE_COUNT" ]; then
+            echo "ERROR: GitHub returned $RETURNED_FILE_COUNT of $EXPECTED_FILE_COUNT changed files; refusing an incomplete codegen classification."
+            exit 1
+          fi
+
+          jq -r \
+            --arg action "$EVENT_ACTION" \
+            --arg actor "$EVENT_ACTOR" \
+            --arg head_repository "$EVENT_HEAD_REPOSITORY" \
+            --arg inputs "$CODEGEN_INPUT_REGEX" \
+            --arg outputs "$GENERATED_PATHS" \
+            --arg pr_author "$PR_AUTHOR" \
+            --arg repository "$REPOSITORY" \
+            --arg repository_owner "$REPOSITORY_OWNER" '
+            def is_generated($path; $generated):
+              any($generated[];
+                . as $output
+                | if ($output | endswith("/"))
+                  then ($path | startswith($output))
+                  else $path == $output
+                  end
+              );
+
+            ($outputs | [splits("\\s+")]) as $generated
+            |
+            [.[][]? | .filename, (.previous_filename // empty)] as $paths
+            |
+            {
+              codegen: any($paths[]; . as $path | test($inputs) or is_generated($path; $generated)),
+              breaking: any($paths[]; test("^proto(?:/|$)"))
+            } as $classification
+            |
+            $classification + {
+              trusted_fork: (
+                $classification.codegen
+                and $action == "synchronize"
+                and ($actor | length) > 0
+                and ($repository_owner | length) > 0
+                and ($head_repository | length) > 0
+                and ($pr_author | length) > 0
+                and $actor == $repository_owner
+                and $head_repository != $repository
+                and $pr_author != "dependabot[bot]"
+              )
+            }
+            | to_entries[]
+            | "\(.key)=\(.value)"
+          ' <<< "$FILES_JSON" >> "$GITHUB_OUTPUT"
+
+      - name: Publish non-PR path classification
+        id: non-pr
+        if: github.event_name != 'pull_request'
+        run: |
+          echo "codegen=false" >> "$GITHUB_OUTPUT"
+          echo "breaking=false" >> "$GITHUB_OUTPUT"
+          echo "trusted_fork=false" >> "$GITHUB_OUTPUT"
+
+  proto-breaking:
+    needs: changes
+    if: needs.changes.outputs.breaking == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
         with:
           fetch-depth: 0
+          persist-credentials: false
+
+      # Fork PRs must receive compatibility feedback, but their Makefile is
+      # untrusted. Replace it with the reviewed main copy before invoking any
+      # make target; buf then treats the PR's proto files as data only.
+      - name: Restore the trusted main Makefile
+        run: git show origin/main:Makefile > Makefile
 
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
+          # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
           go-version: '1.26'
           cache: false
 
+      - name: Cache buf
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/go/bin
+          key: buf-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
       - name: Install buf
-        run: make install-buf
+        run: |
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          export PATH="$(go env GOPATH)/bin:$PATH"
+          make install-buf
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
 
       - name: Check for breaking proto changes
         run: make breaking
 
-  proto-freshness:
-    if: github.event.pull_request.head.repo.full_name == github.repository
+  fork-artifact-check:
+    needs: changes
+    if: >-
+      needs.changes.outputs.codegen == 'true' &&
+      needs.changes.outputs.trusted_fork != 'true' &&
+      (github.event.pull_request.head.repo.full_name != github.repository ||
+      github.event.pull_request.user.login == 'dependabot[bot]')
     runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+      - name: Require trusted codegen validation
+        run: |
+          echo "ERROR: Codegen inputs or generated outputs changed on a read-only PR."
+          echo "CI does not execute or certify generated artifacts from this trust boundary."
+          echo "Ask a maintainer to move the commit to a trusted internal branch."
+          exit 1
+
+  internal-generate:
+    needs: changes
+    if: >-
+      needs.changes.outputs.codegen == 'true' &&
+      ((github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]') ||
+      needs.changes.outputs.trusted_fork == 'true')
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    outputs:
+      changed: ${{ steps.patch.outputs.changed }}
+    steps:
+      - name: Checkout the exact PR head without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
 
       - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
         with:
@@ -62,35 +225,394 @@ jobs:
           path: ~/go/bin
           key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
 
-      - name: Install buf and protoc plugins
-        run: make install-buf install-plugins
+      # Fork-controlled make can write GITHUB_PATH or GITHUB_ENV. GitHub
+      # applies those files to later steps, so a fake git could hide drift.
+      # Capture trusted make/git first, then keep install, generate, and the
+      # exact-head verdict in this one shell.
+      - name: Install plugins, generate, and judge exact-head freshness
+        id: patch
         env:
-          GOPROXY: direct
+          GOPROXY: 'https://proxy.golang.org,direct'
           GOPRIVATE: github.com/SebastienMelki
-
-      - name: Run proto generation
-        run: make generate
-
-      - name: Verify generated code is up to date
+          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
         run: |
-          if ! git diff --exit-code src/generated/ docs/api/; then
-            echo ""
-            echo "============================================================"
-            echo "ERROR: Proto-generated code is out of date."
-            echo "Run 'make generate' locally and commit the updated files."
-            echo "============================================================"
+          MAKE_BIN=$(command -v make || true)
+          GIT_BIN=$(command -v git || true)
+          if [ -z "$MAKE_BIN" ] || [ -z "$GIT_BIN" ]; then
+            echo "ERROR: trusted make or git is missing from PATH."
+            exit 1
+          fi
+          case "$MAKE_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted make must resolve to an absolute path: $MAKE_BIN"
+              exit 1
+              ;;
+          esac
+          case "$GIT_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted git must resolve to an absolute path: $GIT_BIN"
+              exit 1
+              ;;
+          esac
+
+          GO_BIN="$(go env GOPATH)/bin"
+          echo "$GO_BIN" >> "$GITHUB_PATH"
+          export PATH="$GO_BIN:$PATH"
+          "$MAKE_BIN" install-buf install-plugins
+          "$MAKE_BIN" generate
+
+          read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
+          EXCLUSIONS=()
+          for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
+            if [[ "$GENERATED_PATH" == */ ]]; then
+              EXCLUSIONS+=(":(exclude,glob)${GENERATED_PATH}**")
+            else
+              EXCLUSIONS+=(":(exclude,literal)$GENERATED_PATH")
+            fi
+          done
+
+          if ! "$GIT_BIN" diff --quiet -- . "${EXCLUSIONS[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
+            echo "ERROR: make generate modified tracked files outside the generated artifact paths."
+            "$GIT_BIN" diff --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --cached --stat -- . "${EXCLUSIONS[@]}"
             exit 1
           fi
 
-          UNTRACKED=$(git ls-files --others --exclude-standard src/generated/ docs/api/)
+          UNEXPECTED_UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
+          if [ -n "$UNEXPECTED_UNTRACKED" ]; then
+            echo "ERROR: make generate created files outside the generated artifact paths:"
+            echo "$UNEXPECTED_UNTRACKED"
+            exit 1
+          fi
+
+          "$GIT_BIN" add -A -- "${GENERATED_PATH_ARRAY[@]}"
+          if "$GIT_BIN" diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          if [ "$TRUSTED_FORK" = "true" ]; then
+            echo "ERROR: Generated artifacts are stale on the owner-trusted fork head."
+            echo "Regenerate the artifacts and push the reviewed result from the repository owner account."
+            "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            exit 1
+          fi
+
+          "$GIT_BIN" diff --cached --binary --full-index -- "${GENERATED_PATH_ARRAY[@]}" > "$RUNNER_TEMP/generated.patch"
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload generated artifact patch
+        if: >-
+          needs.changes.outputs.trusted_fork != 'true' &&
+          steps.patch.outputs.changed == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v4.6.2
+        with:
+          name: generated-proto-patch
+          path: ${{ runner.temp }}/generated.patch
+          if-no-files-found: error
+          retention-days: 1
+
+  internal-auto-generate:
+    needs: [changes, internal-generate]
+    if: >-
+      needs.changes.outputs.codegen == 'true' &&
+      needs.internal-generate.result == 'success' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      statuses: write
+    outputs:
+      pushed: ${{ steps.commit.outputs.pushed }}
+      generated-sha: ${{ steps.commit.outputs.generated-sha }}
+    steps:
+      - name: Checkout the exact internal PR head without persisted credentials
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+
+      - name: Download generated artifact patch
+        if: needs.internal-generate.outputs.changed == 'true'
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: generated-proto-patch
+          path: ${{ runner.temp }}
+
+      # This fresh job has never executed repository-controlled code. Apply
+      # only the validated generated patch before exposing the write token.
+      - name: Commit generated artifacts to the internal PR branch
+        id: commit
+        env:
+          GENERATED_CHANGED: ${{ needs.internal-generate.outputs.changed }}
+          GH_TOKEN: ${{ github.token }}
+          PR_HEAD_REF: ${{ github.event.pull_request.head.ref }}
+          EXPECTED_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          git check-ref-format "refs/heads/$PR_HEAD_REF"
+
+          if [ "$GENERATED_CHANGED" != "true" ]; then
+            echo "Proto-generated artifacts are already current on the PR branch."
+            echo "pushed=false" >> "$GITHUB_OUTPUT"
+            echo "generated-sha=$EXPECTED_HEAD_SHA" >> "$GITHUB_OUTPUT"
+            gh api "repos/$REPOSITORY/statuses/$EXPECTED_HEAD_SHA" --method POST \
+              --field state=success \
+              --field context=proto-generated-followup \
+              --field description='Generated artifacts are current on this SHA'
+            exit 0
+          fi
+
+          test -s "$RUNNER_TEMP/generated.patch"
+          git apply --check --binary "$RUNNER_TEMP/generated.patch"
+          git apply --index --binary "$RUNNER_TEMP/generated.patch"
+
+          if git diff --cached --quiet; then
+            echo "ERROR: Generated patch did not stage any changes."
+            exit 1
+          fi
+
+          read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
+          while IFS= read -r -d '' PATHNAME; do
+            ALLOWED=false
+            for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
+              if [ "$PATHNAME" = "$GENERATED_PATH" ] || \
+                 [[ "$GENERATED_PATH" == */ && "$PATHNAME" == "$GENERATED_PATH"* ]]; then
+                ALLOWED=true
+                break
+              fi
+            done
+            if [ "$ALLOWED" != "true" ]; then
+              echo "ERROR: Generated patch staged an unexpected path: $PATHNAME"
+              exit 1
+            fi
+          done < <(git diff --cached --name-only -z)
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -c core.hooksPath=/dev/null commit -m "chore(proto): update generated artifacts"
+          GENERATED_SHA=$(git rev-parse HEAD)
+
+          BASIC_AUTH=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          git -c core.hooksPath=/dev/null \
+            -c http.https://github.com/.extraheader="AUTHORIZATION: basic $BASIC_AUTH" \
+            push --force-with-lease="refs/heads/$PR_HEAD_REF:$EXPECTED_HEAD_SHA" \
+            origin "HEAD:refs/heads/$PR_HEAD_REF"
+
+          # The token push does not create a push-triggered run. Updating the PR
+          # does create an approval-required synchronize run, so keep a visible
+          # pending status until that follow-up validates the generated SHA.
+          gh api "repos/$REPOSITORY/statuses/$GENERATED_SHA" --method POST \
+            --field state=pending \
+            --field context=proto-generated-followup \
+            --field description='Waiting for CI on the generated commit'
+
+          echo "pushed=true" >> "$GITHUB_OUTPUT"
+          echo "generated-sha=$GENERATED_SHA" >> "$GITHUB_OUTPUT"
+
+  internal-merge-freshness:
+    needs: [changes, internal-generate, internal-auto-generate]
+    if: >-
+      always() &&
+      needs.changes.result == 'success' &&
+      needs.internal-generate.result == 'success' &&
+      needs.changes.outputs.codegen == 'true' &&
+      ((github.event.pull_request.head.repo.full_name == github.repository &&
+      github.event.pull_request.user.login != 'dependabot[bot]' &&
+      needs.internal-auto-generate.result == 'success' &&
+      needs.internal-auto-generate.outputs.pushed != 'true') ||
+      (needs.changes.outputs.trusted_fork == 'true' &&
+      needs.internal-auto-generate.result == 'skipped'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout PR merge commit
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Install Node dependencies
+        run: npm ci --ignore-scripts
+
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
+        with:
+          # setup-go v6 uses GOTOOLCHAIN=local; match the pinned sebuf toolchain requirement.
+          go-version: '1.26'
+          cache: false
+
+      - name: Cache Go binaries (buf, protoc plugins)
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6
+        with:
+          path: ~/go/bin
+          key: go-bin-${{ runner.os }}-${{ hashFiles('Makefile') }}
+
+      - name: Install plugins, generate, and verify merge-result freshness
+        env:
+          GOPROXY: 'https://proxy.golang.org,direct'
+          GOPRIVATE: github.com/SebastienMelki
+        run: |
+          MAKE_BIN=$(command -v make || true)
+          GIT_BIN=$(command -v git || true)
+          if [ -z "$MAKE_BIN" ] || [ -z "$GIT_BIN" ]; then
+            echo "ERROR: trusted make or git is missing from PATH."
+            exit 1
+          fi
+          case "$MAKE_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted make must resolve to an absolute path: $MAKE_BIN"
+              exit 1
+              ;;
+          esac
+          case "$GIT_BIN" in
+            /*) ;;
+            *)
+              echo "ERROR: trusted git must resolve to an absolute path: $GIT_BIN"
+              exit 1
+              ;;
+          esac
+
+          GO_BIN="$(go env GOPATH)/bin"
+          echo "$GO_BIN" >> "$GITHUB_PATH"
+          export PATH="$GO_BIN:$PATH"
+          "$MAKE_BIN" install-buf install-plugins
+          "$MAKE_BIN" generate
+
+          read -r -a GENERATED_PATH_ARRAY <<< "$GENERATED_PATHS"
+          EXCLUSIONS=()
+          for GENERATED_PATH in "${GENERATED_PATH_ARRAY[@]}"; do
+            if [[ "$GENERATED_PATH" == */ ]]; then
+              EXCLUSIONS+=(":(exclude,glob)${GENERATED_PATH}**")
+            else
+              EXCLUSIONS+=(":(exclude,literal)$GENERATED_PATH")
+            fi
+          done
+
+          if ! "$GIT_BIN" diff --quiet -- . "${EXCLUSIONS[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- . "${EXCLUSIONS[@]}"; then
+            echo "ERROR: Merge-result generation modified tracked files outside the generated artifact paths."
+            "$GIT_BIN" diff --stat -- . "${EXCLUSIONS[@]}"
+            "$GIT_BIN" diff --cached --stat -- . "${EXCLUSIONS[@]}"
+            exit 1
+          fi
+
+          UNEXPECTED_UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- . "${EXCLUSIONS[@]}")
+          if [ -n "$UNEXPECTED_UNTRACKED" ]; then
+            echo "ERROR: Merge-result generation created files outside the generated artifact paths:"
+            echo "$UNEXPECTED_UNTRACKED"
+            exit 1
+          fi
+
+          if ! "$GIT_BIN" diff --quiet -- "${GENERATED_PATH_ARRAY[@]}" || \
+             ! "$GIT_BIN" diff --cached --quiet -- "${GENERATED_PATH_ARRAY[@]}"; then
+            echo ""
+            echo "============================================================"
+            echo "ERROR: Generated artifacts are stale against the PR merge result."
+            echo "Merge the latest main branch into the PR branch and retry."
+            echo "============================================================"
+            "$GIT_BIN" diff --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            "$GIT_BIN" diff --cached --stat -- "${GENERATED_PATH_ARRAY[@]}"
+            exit 1
+          fi
+
+          UNTRACKED=$("$GIT_BIN" ls-files --others --exclude-standard -- "${GENERATED_PATH_ARRAY[@]}")
           if [ -n "$UNTRACKED" ]; then
-            echo ""
-            echo "============================================================"
-            echo "ERROR: Untracked generated files found:"
+            echo "ERROR: Untracked generated files found against the PR merge result:"
             echo "$UNTRACKED"
-            echo "Run 'make generate' locally and commit the new files."
-            echo "============================================================"
             exit 1
           fi
 
-          echo "Proto-generated code is up to date."
+  proto-freshness:
+    if: always()
+    needs:
+      - changes
+      - proto-breaking
+      - fork-artifact-check
+      - internal-generate
+      - internal-auto-generate
+      - internal-merge-freshness
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions: {}
+    steps:
+      - name: Publish aggregate proto freshness result
+        env:
+          CHANGE_RESULT: ${{ needs.changes.result }}
+          CODEGEN_CHANGED: ${{ needs.changes.outputs.codegen }}
+          BREAKING_CHANGED: ${{ needs.changes.outputs.breaking }}
+          TRUSTED_FORK: ${{ needs.changes.outputs.trusted_fork }}
+          WRITABLE_INTERNAL_PR: ${{ github.event.pull_request.head.repo.full_name == github.repository && github.event.pull_request.user.login != 'dependabot[bot]' }}
+          BREAKING_RESULT: ${{ needs.proto-breaking.result }}
+          FORK_RESULT: ${{ needs.fork-artifact-check.result }}
+          GENERATE_RESULT: ${{ needs.internal-generate.result }}
+          PUBLISH_RESULT: ${{ needs.internal-auto-generate.result }}
+          MERGE_RESULT: ${{ needs.internal-merge-freshness.result }}
+          GENERATED_PUSHED: ${{ needs.internal-auto-generate.outputs.pushed }}
+        run: |
+          if [ "$CHANGE_RESULT" != "success" ]; then
+            echo "ERROR: Proto path classification did not complete successfully."
+            exit 1
+          fi
+
+          if [ "$CODEGEN_CHANGED" != "true" ]; then
+            echo "No proto codegen input or output changes require generation."
+            exit 0
+          fi
+
+          if [ "$BREAKING_CHANGED" = "true" ] && [ "$BREAKING_RESULT" != "success" ]; then
+            echo "ERROR: Proto compatibility check did not pass."
+            exit 1
+          fi
+
+          if [ "$TRUSTED_FORK" = "true" ]; then
+            if [ "$WRITABLE_INTERNAL_PR" = "true" ] || \
+               [ "$FORK_RESULT" != "skipped" ] || \
+               [ "$GENERATE_RESULT" != "success" ] || \
+               [ "$PUBLISH_RESULT" != "skipped" ] || \
+               [ "$MERGE_RESULT" != "success" ]; then
+              echo "ERROR: Owner-trusted fork generation did not complete through the read-only path."
+              exit 1
+            fi
+            echo "Owner-trusted fork artifacts are fresh at the exact head and merge result."
+            exit 0
+          fi
+
+          if [ "$WRITABLE_INTERNAL_PR" != "true" ]; then
+            echo "ERROR: Fork and Dependabot codegen changes require an owner-trusted head or a trusted internal branch."
+            exit 1
+          fi
+
+          if [ "$FORK_RESULT" != "skipped" ] || \
+             [ "$GENERATE_RESULT" != "success" ] || \
+             [ "$PUBLISH_RESULT" != "success" ]; then
+            echo "ERROR: Internal generation or publication did not pass."
+            exit 1
+          fi
+
+          if [ "$GENERATED_PUSHED" = "true" ]; then
+            if [ "$MERGE_RESULT" != "skipped" ]; then
+              echo "ERROR: Merge freshness ran against a superseded internal head."
+              exit 1
+            fi
+            echo "Generated artifacts were committed. A follow-up run will validate the new head."
+            exit 0
+          fi
+
+          if [ "$MERGE_RESULT" != "success" ]; then
+            echo "ERROR: Merge-result proto freshness did not pass."
+            exit 1
+          fi
+
+          echo "Proto checks passed without a generated follow-up commit."

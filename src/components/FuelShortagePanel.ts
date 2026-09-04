@@ -19,6 +19,7 @@ import {
   type RawFuelShortageRegistry,
 } from '@/shared/fuel-shortage-registry-store';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
+import { bindActivationKeys } from '@/utils/activation';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -146,7 +147,22 @@ export class FuelShortagePanel extends Panel {
     if (typeof window !== 'undefined') {
       window.addEventListener('energy:open-fuel-shortage-detail', this.openDetailHandler);
     }
+    this.content.addEventListener('click', this.handleContentClick);
+    bindActivationKeys(this.content, '.fs-row');
   }
+
+  private handleContentClick = (e: Event): void => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest('.fs-drawer-close')) {
+      this.closeDetail();
+      return;
+    }
+    const row = target.closest<HTMLTableRowElement>('tr.fs-row');
+    if (!row || !this.content.contains(row)) return;
+    const id = row.dataset.shortageId;
+    if (id) void this.loadDetail(id);
+  };
 
   public destroy(): void {
     if (typeof window !== 'undefined') {
@@ -267,10 +283,10 @@ export class FuelShortagePanel extends Panel {
         <table class="fs-table">
           <thead>
             <tr>
-              <th>Country · Product</th>
-              <th>Since</th>
-              <th>Evidence</th>
-              <th>Severity</th>
+              <th scope="col">Country · Product</th>
+              <th scope="col">Since</th>
+              <th scope="col">Evidence</th>
+              <th scope="col">Severity</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -280,48 +296,39 @@ export class FuelShortagePanel extends Panel {
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .fs-wrap { position: relative; font-size: 11px; }
-        .fs-summary { font-size: 10px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
+        .fs-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
+        .fs-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; margin: 4px 0 6px 0; }
         .fs-table { width: 100%; border-collapse: collapse; }
-        .fs-table th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .fs-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .fs-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .fs-table tr.fs-row { cursor: pointer; }
         .fs-table tr.fs-row:hover td { background: rgba(255,255,255,0.03); }
         .fs-name { font-weight: 600; color: var(--text, #eee); }
-        .fs-sub  { font-size: 9px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
-        .fs-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
-        .fs-quality { font-family: monospace; font-size: 10px; color: var(--text-dim, #888); }
+        .fs-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .fs-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+        .fs-quality { font-family: monospace; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); }
         .fs-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
-        .fs-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: 14px; }
-        .fs-drawer h3 { margin: 0 0 6px 0; font-size: 13px; color: var(--text, #eee); }
-        .fs-drawer .fs-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: 10px; margin-bottom: 10px; }
-        .fs-drawer .fs-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: 9px; padding-top: 2px; }
+        .fs-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
+        .fs-drawer h3 { margin: 0 0 6px 0; font-size: calc(13px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
+        .fs-drawer .fs-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-bottom: 10px; }
+        .fs-drawer .fs-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding-top: 2px; }
         .fs-source-list { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
-        .fs-src-item { font-size: 10px; color: var(--text, #eee); margin-bottom: 6px; }
+        .fs-src-item { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); margin-bottom: 6px; }
         .fs-src-item a { color: #4ade80; text-decoration: none; }
         .fs-src-item a:hover { text-decoration: underline; }
-        .fs-src-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: 8px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
+        .fs-src-type { display: inline-block; padding: 1px 6px; border-radius: 8px; font-size: calc(8px * var(--wm-panel-effective-scale, 1)); font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; background: rgba(255,255,255,0.08); color: var(--text-dim, #aaa); margin-right: 4px; }
         .fs-src-type-regulator { background: #2980b9; color: #fff; }
         .fs-src-type-operator { background: #27ae60; color: #fff; }
         .fs-src-type-press { background: #555; color: #ccc; }
       </style>
     `, 'legacy Panel.setContent() migration'));
-
-    const table = this.element?.querySelector('.fs-table') as HTMLTableElement | null;
-    table?.querySelectorAll<HTMLTableRowElement>('tr.fs-row').forEach(tr => {
-      const id = tr.dataset.shortageId;
-      if (!id) return;
-      tr.addEventListener('click', () => void this.loadDetail(id));
-    });
-    const closeBtn = this.element?.querySelector<HTMLButtonElement>('.fs-drawer-close');
-    closeBtn?.addEventListener('click', () => this.closeDetail());
   }
 
   private renderRow(s: FuelShortageEntry): string {
     const glyph = PRODUCT_GLYPH[s.product] ?? '•';
     const quality = deriveShortageEvidenceQuality(s.evidence);
     return `
-      <tr class="fs-row" data-shortage-id="${escapeHtml(s.id)}">
+      <tr class="fs-row" data-shortage-id="${escapeHtml(s.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
         <td>
           <div class="fs-name">${glyph} ${escapeHtml(s.country)} · ${escapeHtml(s.product)}</div>
           <div class="fs-sub">${escapeHtml(s.causeChain.join(' · ') || '—')}</div>

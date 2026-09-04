@@ -12,7 +12,40 @@
 
 import { existsSync, readFileSync, statSync } from 'node:fs';
 import { isBuiltin } from 'node:module';
-import { dirname, extname, join, relative, resolve, sep } from 'node:path';
+import { dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+
+// Per-file strip/extract cache. The container guards walk overlapping graphs
+// repeatedly — resolveRuntimeSurface alone re-walks each service's graph up to
+// 8 times to reach its spawn-edge fixed point, and every service's walk
+// revisits the same shared seeder modules — so without a cache the same file
+// is read and comment-stripped hundreds of times per test file. Keyed by
+// mtime+size so a test that rewrites a fixture between walks still sees the
+// fresh content, while unchanged files pay stripComments/extractEdges once.
+const sourceCache = new Map();
+const nativePathSemantics = { relative, isAbsolute, sep };
+
+function cachedSourceEntry(path) {
+  const stat = statSync(path);
+  const key = `${stat.mtimeMs}:${stat.size}`;
+  let entry = sourceCache.get(path);
+  if (!entry || entry.key !== key) {
+    entry = { key, stripped: stripComments(readFileSync(path, 'utf-8')), edges: null };
+    sourceCache.set(path, entry);
+  }
+  return entry;
+}
+
+/** Comment-stripped source of `path`, cached until the file changes on disk. */
+export function readStrippedSource(path) {
+  return cachedSourceEntry(path).stripped;
+}
+
+/** Import edges of `path` (see extractEdges), cached until the file changes. */
+export function extractCachedEdges(path) {
+  const entry = cachedSourceEntry(path);
+  if (!entry.edges) entry.edges = extractEdges(entry.stripped);
+  return entry.edges;
+}
 
 // Keywords after which a `/` in code position starts a REGEX LITERAL, not
 // division (`return /x/.test(s)`, `typeof /x/`, `case /x/:` ...).
@@ -157,6 +190,10 @@ export function parseDockerfileCopy(src) {
   const files = new Set();
   const directories = new Set();
   for (const m of src.matchAll(/^COPY\s+([^\n]+)$/gm)) {
+    // Stage-to-stage sources live inside the build graph, not the repository.
+    // Treating `/workspace/...` as a checkout path creates a fake Railway
+    // dependency and can never be satisfied by a repository watch pattern.
+    if (/(?:^|\s)--from=\S+/u.test(m[1])) continue;
     const tokens = m[1].trim().split(/\s+/).filter((t) => !t.startsWith('--'));
     if (tokens.length < 2) continue; // need at least <src> <dest>
     for (const arg of tokens.slice(0, -1)) {
@@ -208,6 +245,26 @@ export function resolveNodeRelative(fromFile, relImport, exts = NODE_SOURCE_EXTS
   return null;
 }
 
+/**
+ * Express `absolutePath` relative to `root`, forward-slash-separated
+ * regardless of host OS -- Dockerfile COPY sources and the container guards'
+ * tracked-prefix lists (e.g. `scripts/`) are always POSIX-style. Returns
+ * null when `absolutePath` is not inside `root`.
+ *
+ * Used by the relay and digest-notifications Dockerfile guards in place of
+ * their former inline `resolved.startsWith(root + '/') ? resolved.slice(...)
+ * : null` check, which hardcoded a forward slash. path.resolve() returns
+ * backslash-separated paths on Windows, so that check never matched there:
+ * both guards' BFS terminated after the entrypoint and their "every
+ * transitively-imported file is COPY'd" assertions passed vacuously,
+ * regardless of actual Dockerfile coverage, on any Windows dev machine.
+ */
+export function relativeToRepoRoot(root, absolutePath, pathSemantics = nativePathSemantics) {
+  const rel = pathSemantics.relative(root, absolutePath);
+  if (rel === '' || rel.startsWith('..') || pathSemantics.isAbsolute(rel)) return null;
+  return rel.split(pathSemantics.sep).join('/');
+}
+
 // tsx-style resolution: extension guessing (including TypeScript), directory
 // index probing, and the TS idiom where an explicit .js/.mjs specifier maps
 // to a .ts/.mts source.
@@ -224,8 +281,7 @@ export function resolveTsxRelative(fromFile, spec) {
 // included — the COPY-closure guards never followed those). Used by the
 // relay and digest-notifications Dockerfile guards.
 export function collectRelativeImports(filePath) {
-  const src = stripComments(readFileSync(filePath, 'utf-8'));
-  const { staticSpecs, requireSpecs } = extractEdges(src);
+  const { staticSpecs, requireSpecs } = extractCachedEdges(filePath);
   const imports = new Set();
   for (const spec of [...staticSpecs, ...requireSpecs]) {
     if (spec.startsWith('.')) imports.add(spec);
@@ -238,8 +294,7 @@ export function collectRelativeImports(filePath) {
 // a conditional import that escapes scripts/ still crashes when that branch
 // executes in Railway's /app scripts root.
 export function collectRelativeRuntimeImports(filePath) {
-  const src = stripComments(readFileSync(filePath, 'utf-8'));
-  const { staticSpecs, dynamicSpecs, requireSpecs } = extractEdges(src);
+  const { staticSpecs, dynamicSpecs, requireSpecs } = extractCachedEdges(filePath);
   const imports = new Set();
   for (const spec of [...staticSpecs, ...dynamicSpecs, ...requireSpecs]) {
     if (spec.startsWith('.')) imports.add(spec);
@@ -318,8 +373,7 @@ export function walkContainerGraph(rootFiles, contract) {
     visited.add(file);
     if (extname(file) === '.json') continue; // data, no imports
 
-    const src = stripComments(readFileSync(file, 'utf-8'));
-    const { staticSpecs, dynamicSpecs, requireSpecs } = extractEdges(src);
+    const { staticSpecs, dynamicSpecs, requireSpecs } = extractCachedEdges(file);
 
     for (const spec of staticSpecs) {
       if (isBare(spec)) checkBare(file, spec, 'statically imported');

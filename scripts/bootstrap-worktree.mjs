@@ -25,6 +25,7 @@ export function parseArgs(argv = []) {
     envSource: process.env.WM_ENV_SOURCE || '',
     forceInstall: false,
     help: false,
+    hooksOnly: false,
     ignoreScripts: false,
     rootDir: process.cwd(),
     skipEnv: false,
@@ -52,6 +53,8 @@ export function parseArgs(argv = []) {
       options.skipInstall = true;
     } else if (arg === '--force-install') {
       options.forceInstall = true;
+    } else if (arg === '--hooks-only') {
+      options.hooksOnly = true;
     } else if (arg === '--ignore-scripts') {
       options.ignoreScripts = true;
     } else if (arg === '--env-source') {
@@ -85,8 +88,9 @@ Options:
                       from git's common .git directory.
   --cache <dir>       npm cache directory. Default: ${DEFAULT_NPM_CACHE}
   --skip-env          Do not create env symlinks.
-  --skip-install      Do not run npm ci when node_modules is missing.
+  --skip-install      Do not run npm ci, even when installation is not verified.
   --force-install     Run npm ci even when node_modules already exists.
+  --hooks-only        Normalize core.hooksPath, then exit without other bootstrap work.
   --ignore-scripts    Pass --ignore-scripts to npm ci for docs/test-only work.
   --dry-run           Print what would happen without changing files.
   -h, --help          Show this help text.`);
@@ -202,7 +206,19 @@ export function shouldInstallDependencies({
   forceInstall = false,
   rootDir = process.cwd(),
 } = {}) {
-  return forceInstall || !existsSync(resolve(rootDir, 'node_modules'));
+  return forceInstall || !existsSync(resolve(rootDir, 'node_modules/.package-lock.json'));
+}
+
+export function assertNodeModulesNotSymlink(rootDir = process.cwd(), label = 'node_modules') {
+  const target = resolve(rootDir, 'node_modules');
+  try {
+    if (lstatSync(target).isSymbolicLink()) {
+      throw new Error(`${label} is a symlink; copy, hardlink, or npm ci — never symlink`);
+    }
+  } catch (error) {
+    if (error?.code === 'ENOENT') return;
+    throw error;
+  }
 }
 
 export function installDependencies({
@@ -212,7 +228,11 @@ export function installDependencies({
   log = console.log,
   rootDir = process.cwd(),
 } = {}) {
-  const args = ['ci', '--cache', cacheDir];
+  assertNodeModulesNotSymlink(
+    rootDir,
+    basename(rootDir) === 'pro-test' ? 'pro-test/node_modules' : 'node_modules',
+  );
+  const args = ['ci', '--cache', cacheDir, '--prefer-offline'];
   if (ignoreScripts) args.push('--ignore-scripts');
 
   if (dryRun) {
@@ -225,10 +245,7 @@ export function installDependencies({
 
   const result = spawnSync('npm', args, {
     cwd: rootDir,
-    env: {
-      ...process.env,
-      npm_config_cache: cacheDir,
-    },
+    env: createInstallEnvironment(process.env, cacheDir),
     stdio: 'inherit',
   });
 
@@ -237,6 +254,22 @@ export function installDependencies({
   }
 
   return result;
+}
+
+/**
+ * Builds the child npm environment without the parent's project-scoped script policy.
+ *
+ * @param {NodeJS.ProcessEnv} environment Parent process environment.
+ * @param {string} cacheDir Shared npm cache directory.
+ * @returns {NodeJS.ProcessEnv} Environment for a project-scoped child npm install.
+ */
+export function createInstallEnvironment(environment, cacheDir) {
+  return {
+    ...Object.fromEntries(
+      Object.entries(environment).filter(([key]) => key !== 'npm_config_allow_scripts'),
+    ),
+    npm_config_cache: cacheDir,
+  };
 }
 
 // Relative, so git resolves it against whichever worktree the hook runs from.
@@ -425,13 +458,15 @@ export function normalizeWorktreeHooksPath({
 export function bootstrapWorktree(options = {}) {
   const rootDir = resolve(options.rootDir || process.cwd());
   const log = options.log || console.log;
-  const envSource = options.envSource
-    ? resolve(options.envSource)
-    : inferEnvSource(rootDir);
 
   assertProjectRoot(rootDir);
 
   normalizeWorktreeHooksPath({ dryRun: options.dryRun, log, rootDir });
+  if (options.hooksOnly) return;
+
+  const envSource = options.envSource
+    ? resolve(options.envSource)
+    : inferEnvSource(rootDir);
 
   if (!options.skipEnv) {
     linkEnvFiles({
@@ -445,16 +480,27 @@ export function bootstrapWorktree(options = {}) {
   assertNoForbiddenEnvDumps(rootDir);
 
   if (!options.skipInstall) {
+    const installOpts = {
+      cacheDir: options.cacheDir || DEFAULT_NPM_CACHE,
+      dryRun: options.dryRun,
+      ignoreScripts: options.ignoreScripts,
+      log,
+    };
     if (shouldInstallDependencies({ forceInstall: options.forceInstall, rootDir })) {
-      installDependencies({
-        cacheDir: options.cacheDir || DEFAULT_NPM_CACHE,
-        dryRun: options.dryRun,
-        ignoreScripts: options.ignoreScripts,
-        log,
-        rootDir,
-      });
+      installDependencies({ ...installOpts, rootDir });
     } else {
-      log('[worktree] node_modules present; skipping npm ci');
+      assertNodeModulesNotSymlink(rootDir, 'node_modules');
+      log('[worktree] verified npm install present; skipping npm ci');
+    }
+
+    const proTestRoot = resolve(rootDir, 'pro-test');
+    if (existsSync(resolve(proTestRoot, 'package.json'))) {
+      if (shouldInstallDependencies({ forceInstall: options.forceInstall, rootDir: proTestRoot })) {
+        installDependencies({ ...installOpts, rootDir: proTestRoot });
+      } else {
+        assertNodeModulesNotSymlink(proTestRoot, 'pro-test/node_modules');
+        log('[worktree] verified pro-test npm install present; skipping npm ci');
+      }
     }
   }
 

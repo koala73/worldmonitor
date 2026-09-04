@@ -1,6 +1,7 @@
 import { SITE_VARIANT } from '@/config/variant';
 import { getClerkToken } from '@/services/clerk';
-import { isDesktopRuntime } from './desktop-runtime';
+import { withBillingVerificationRetry } from '@/services/billing-retry';
+import { hasExplicitDesktopSignals, isDesktopRuntime } from './desktop-runtime';
 
 // The detector lives in a dependency-free leaf (#5911) so consumers that need
 // only the boolean do not pull this module's variant/Clerk graph. Re-exported
@@ -65,8 +66,20 @@ function normalizeBaseUrl(baseUrl: string): string {
   return baseUrl.replace(/\/$/, '');
 }
 
+/**
+ * Whether /api/ traffic should take the desktop sidecar path.
+ *
+ * Same predicate as `suppressesRemoteBase`: a bare `https://localhost` origin
+ * is not enough. `isDesktopRuntime()` treats that origin as desktop, which
+ * would install the sidecar fetch patch and skip the same-origin web path —
+ * the exact HTTPS-dev failure `hasExplicitDesktopSignals()` exists to stop.
+ */
+function routesApiViaDesktop(): boolean {
+  return hasExplicitDesktopSignals();
+}
+
 export function getApiBaseUrl(): string {
-  if (!isDesktopRuntime()) {
+  if (!routesApiViaDesktop()) {
     return '';
   }
 
@@ -84,9 +97,53 @@ function isWorldMonitorWebHost(hostname: string): boolean {
     || hostname.endsWith('.worldmonitor.app');
 }
 
+// Loopback page origins the API deliberately refuses in production. Keep in
+// step with the bare-localhost entries in api/_cors.js and server/cors.ts.
+const LOOPBACK_HOSTNAMES = new Set(['localhost', '127.0.0.1', '::1', '[::1]']);
+
+function isLoopbackHostname(hostname: string): boolean {
+  return LOOPBACK_HOSTNAMES.has(hostname);
+}
+
+function hostnameOf(url: string): string {
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return '';
+  }
+}
+
+/**
+ * A page on loopback may not send /api/ to a remote origin.
+ *
+ * `api/_cors.js` and `server/cors.ts` both drop bare localhost/127.0.0.1 from
+ * the allow-list in production, so every such call returns 403 and the whole
+ * dashboard renders unavailable. `VITE_WS_API_URL=https://api.worldmonitor.app`
+ * in a developer's .env.local used to do exactly that to `npm run dev`, where
+ * the Vite sebuf plugin serves those routes same-origin anyway.
+ *
+ * Deliberately narrow. The Tauri shell is exempt: its tauri:// and asset://
+ * origins are allow-listed by name and it has no same-origin API to fall back
+ * to. A loopback base stays honoured, so pointing dev at a local API on another
+ * port still works. Deployed and self-hosted pages are untouched — and the
+ * self-hosted image proxies /api/ server-side (docker/nginx.conf.template).
+ *
+ * The exemption tests `hasExplicitDesktopSignals()`, NOT `isDesktopRuntime()`:
+ * the latter counts a bare `https://localhost` origin as desktop, so a dev
+ * server running over HTTPS would inherit the exemption and keep 403ing —
+ * the exact failure this guard exists to stop.
+ */
+function suppressesRemoteBase(configuredBaseUrl: string): boolean {
+  if (typeof window === 'undefined') return false;
+  if (hasExplicitDesktopSignals()) return false;
+  if (!isLoopbackHostname(window.location?.hostname ?? '')) return false;
+  return !isLoopbackHostname(hostnameOf(configuredBaseUrl));
+}
+
 export function getConfiguredWebApiBaseUrl(): string {
   if (WS_API_URL) {
-    return normalizeBaseUrl(WS_API_URL);
+    const configured = normalizeBaseUrl(WS_API_URL);
+    return suppressesRemoteBase(configured) ? '' : configured;
   }
 
   if (typeof window === 'undefined') {
@@ -146,7 +203,7 @@ export function toApiUrl(path: string): string {
     return path;
   }
 
-  if (isDesktopRuntime()) {
+  if (routesApiViaDesktop()) {
     return toRuntimeUrl(path);
   }
 
@@ -227,13 +284,23 @@ export type {
 } from './smart-poll-loop';
 
 export async function waitForSidecarReady(timeoutMs = 3000): Promise<boolean> {
+  // Resolve the Tauri-confirmed port first. The main app window otherwise never
+  // calls resolveLocalApiPort, so getApiBaseUrl would fall back to the guessed
+  // default port and could report not-ready for a sidecar that is actually up
+  // on an EADDRINUSE-fallback port — a false alarm now that the caller acts on
+  // the result (#6779).
+  await resolveLocalApiPort();
   const baseUrl = getApiBaseUrl();
   if (!baseUrl) return false;
   const pollInterval = 200;
   const deadline = Date.now() + timeoutMs;
   while (Date.now() < deadline) {
     try {
-      const res = await fetch(`${baseUrl}/api/service-status`, { method: 'GET' });
+      // Probe the sidecar's own dependency-free liveness endpoint, not the
+      // generic /api/service-status page — /api/sidecar-health is served only
+      // by the local Node sidecar, so a 200 confirms *this* process is up on
+      // the resolved port rather than something else answering on it (#6779).
+      const res = await fetch(`${baseUrl}/api/sidecar-health`, { method: 'GET' });
       if (res.ok) return true;
     } catch {
       // sidecar not ready yet
@@ -297,12 +364,12 @@ async function fetchLocalWithStartupRetry(
 // cache through the local HTTP control plane.
 
 export function installRuntimeFetchPatch(): void {
-  if (!isDesktopRuntime() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
+  if (!routesApiViaDesktop() || typeof window === 'undefined' || (window as unknown as Record<string, unknown>).__wmFetchPatched) {
     return;
   }
 
   const nativeFetch = window.fetch.bind(window);
-  window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+  const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
     const target = getApiTargetFromRequestInput(input);
     const debug = localStorage.getItem('wm-debug-log') === '1';
 
@@ -361,6 +428,11 @@ export function installRuntimeFetchPatch(): void {
       return cloudFallback();
     }
   };
+  // Desktop reaches the same cloud gateway through the native proxy, so it sees
+  // the same retryable billing-verification 503. This patch and the web one are
+  // mutually exclusive (each returns early on the other's runtime), so wrapping
+  // both is what makes the contract honored everywhere rather than only on web.
+  window.fetch = withBillingVerificationRetry(dispatch);
 
   (window as unknown as Record<string, unknown>).__wmFetchPatched = true;
 }
@@ -372,14 +444,14 @@ const ALLOWED_REDIRECT_HOSTS = /^https:\/\/([a-z0-9]([a-z0-9-]*[a-z0-9])?\.)*wor
 function isAllowedRedirectTarget(url: string): boolean {
   try {
     const parsed = new URL(url);
-    return ALLOWED_REDIRECT_HOSTS.test(parsed.origin) || parsed.hostname === 'localhost';
+    return ALLOWED_REDIRECT_HOSTS.test(parsed.origin) || isLoopbackHostname(parsed.hostname);
   } catch {
     return false;
   }
 }
 
 export function installWebApiRedirect(): void {
-  if (isDesktopRuntime() || typeof window === 'undefined') return;
+  if (routesApiViaDesktop() || typeof window === 'undefined') return;
   if ((window as unknown as Record<string, unknown>).__wmWebRedirectPatched) return;
 
   const apiBase = getConfiguredWebApiBaseUrl();
@@ -459,7 +531,7 @@ export function installWebApiRedirect(): void {
       }
     };
 
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       if (typeof input === 'string') {
         if (shouldRedirectPath(input)) {
           // Relative /api/... path — redirect to API base and inject auth.
@@ -505,9 +577,10 @@ export function installWebApiRedirect(): void {
       }
       return nativeFetch(input, init);
     };
+    window.fetch = withBillingVerificationRetry(dispatch);
   } else {
     // No API base redirect — only inject auth headers for premium paths.
-    window.fetch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
+    const dispatch = async (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
       if (typeof input === 'string') {
         if (shouldRedirectPath(input)) {
           const enriched = await enrichInitForPremium(input, init);
@@ -538,6 +611,7 @@ export function installWebApiRedirect(): void {
       }
       return nativeFetch(input, init);
     };
+    window.fetch = withBillingVerificationRetry(dispatch);
   }
 
   (window as unknown as Record<string, unknown>).__wmWebRedirectPatched = true;

@@ -4,6 +4,7 @@ import { getShippingRates } from './get-shipping-rates';
 import { getChokepointStatus } from './get-chokepoint-status';
 import { getChokepointHistory } from './get-chokepoint-history';
 import { getCriticalMinerals } from './get-critical-minerals';
+import { getMineralProduction } from './get-mineral-production';
 import { getShippingStress } from './get-shipping-stress';
 import { getCountryChokepointIndex } from './get-country-chokepoint-index';
 import { getBypassOptions } from './get-bypass-options';
@@ -21,12 +22,16 @@ import { listFuelShortages } from './list-fuel-shortages';
 import { getFuelShortageDetail } from './get-fuel-shortage-detail';
 import { listEnergyDisruptions } from './list-energy-disruptions';
 import { getChinaCorridorControlTowers } from './get-china-corridor-control-towers';
+import { getCountryVulnerabilities } from './get-country-vulnerabilities';
+import { getChokepointDependencies } from './get-chokepoint-dependencies';
+import { listVulnerabilityRankings } from './list-vulnerability-rankings';
 
 export const supplyChainHandler: SupplyChainServiceHandler = {
   getShippingRates,
   getChokepointStatus,
   getChokepointHistory,
   getCriticalMinerals,
+  getMineralProduction,
   getShippingStress,
   getCountryChokepointIndex,
   getBypassOptions,
@@ -44,4 +49,7 @@ export const supplyChainHandler: SupplyChainServiceHandler = {
   getFuelShortageDetail,
   listEnergyDisruptions,
   getChinaCorridorControlTowers,
+  getCountryVulnerabilities,
+  getChokepointDependencies,
+  listVulnerabilityRankings,
 };

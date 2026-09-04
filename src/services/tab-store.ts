@@ -24,12 +24,26 @@ export interface TabsState {
   tabs: PanelTab[];
 }
 
+/** Matches the dashboard tab rename input (`maxLength` on the visible control). */
+export const DASHBOARD_TAB_NAME_MAX_LENGTH = 40;
+
+/**
+ * Stable tab IDs from `generateTabId()`. Agents must use these, never display names.
+ * `Date.now().toString(36)` and the random suffix are lowercase base36.
+ */
+export const DASHBOARD_TAB_ID_PATTERN = '^tab-[a-z0-9]+-[a-z0-9]+$';
+export const DASHBOARD_TAB_ID_RE = new RegExp(DASHBOARD_TAB_ID_PATTERN);
+
 // Per-variant key: each variant has its own default panel set, so tabs
 // built on one variant must not leak into another.
 const TABS_STORAGE_KEY = `worldmonitor-tabs-v1:${SITE_VARIANT}`;
 
 export function generateTabId(): string {
   return `tab-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+export function isDashboardTabId(value: unknown): value is string {
+  return typeof value === 'string' && DASHBOARD_TAB_ID_RE.test(value);
 }
 
 export function loadTabsState(): TabsState | null {
@@ -52,11 +66,17 @@ export function loadTabsState(): TabsState | null {
   }
 }
 
-export function saveTabsState(state: TabsState): void {
+export interface TabsPersistReceipt {
+  persisted: boolean;
+}
+
+export function saveTabsState(state: TabsState): TabsPersistReceipt {
   try {
     localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify(state));
+    return { persisted: true };
   } catch {
     // Storage unavailable (private mode / quota) — tabs still work this session.
+    return { persisted: false };
   }
 }
 

@@ -130,6 +130,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -159,6 +164,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -220,6 +250,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -249,6 +284,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -297,14 +357,19 @@ paths:
                                     "exampleKey":
                                         "items":
                                             - "corroborationCount": 42
+                                              "credibilityScore": 42
                                               "importanceScore": 42
                                               "isAlert": true
                                               "link": "https://example.com/worldmonitor"
-                                              "location":
-                                                  "latitude": 40.7128
-                                                  "longitude": -74.006
                                               "source": "example"
                                               "title": "example"
+                                "coverage":
+                                    "attemptedAt": "2026-01-15T12:00:00Z"
+                                    "categoryCompleted": 1
+                                    "categoryStates":
+                                        "exampleKey": "example"
+                                    "categoryTotal": 1
+                                    "droppedCategoryCap": 1
                                 "feedStatuses":
                                     "exampleKey": "example"
                                 "generatedAt": "2026-01-15T12:00:00Z"
@@ -326,6 +391,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: API access requires an active subscription (the API key's subscription is inactive or expired).
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -355,6 +425,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -407,6 +502,27 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
         InvalidRequestBodyError:
             type: object
             description: Returned when a JSON POST request body is empty or malformed.
@@ -443,6 +559,11 @@ components:
                 error:
                     type: string
                     description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
                 requiredTier:
                     type: integer
                     format: int32
@@ -601,6 +722,8 @@ components:
                 generatedAt:
                     type: string
                     description: ISO 8601 timestamp of when this digest was generated
+                coverage:
+                    $ref: '#/components/schemas/DigestCoverage'
         CategoriesEntry:
             type: object
             properties:
@@ -689,6 +812,17 @@ components:
                              (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
                              Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
                     maxItems: 8
+                credibilityScore:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Credibility score (0-100), distinct from importance_score. Measures
+                         source reliability / truthfulness, not newsworthiness. The base score
+                         uses source tier × 30% + propaganda risk × 50% + independent
+                         corroboration × 20%. High propaganda-risk sources (state-controlled
+                         media) are capped at 40 so a highly newsworthy RT/TASS story still
+                         scores low. Third-party bias/factuality ratings are reserved and not
+                         currently applied. See docs/methodology/news-credibility.mdx.
             required:
                 - source
                 - title
@@ -765,3 +899,95 @@ components:
                         - STORY_PHASE_FADING
                     description: StoryPhase represents the lifecycle stage of a tracked news story.
             description: StoryMeta carries cross-cycle persistence data attached to each news item.
+        DigestCoverage:
+            type: object
+            properties:
+                state:
+                    type: string
+                    description: |-
+                        complete | partial | stale | unavailable.
+                         complete: every configured category had at least one completed eligible
+                           feed and the build did not hit the global deadline.
+                         partial: content exists, but a category had no completed feed or the
+                           build hit the global deadline.
+                         stale: accepted older content is served after a failed latest attempt
+                           (durable last-good serving, #7084).
+                         unavailable: no eligible content could be served.
+                attemptedAt:
+                    type: string
+                    description: ISO 8601 time of the latest build attempt (attempt identity).
+                itemsServed:
+                    type: integer
+                    format: int32
+                    description: Items served in this response, after every gate.
+                publisherCount:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Distinct publishers among the served items (normalized source labels,
+                         current cycle only — not feed-label counts, not historical sets).
+                feedTotal:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Eligible feeds configured for this variant+language, and how many
+                         completed (with or without items).
+                feedCompleted:
+                    type: integer
+                    format: int32
+                categoryTotal:
+                    type: integer
+                    format: int32
+                    description: Configured categories, and how many had at least one completed feed.
+                categoryCompleted:
+                    type: integer
+                    format: int32
+                categoryStates:
+                    type: object
+                    additionalProperties:
+                        type: string
+                    description: 'Per-category state: ok (a feed completed) | missing (none did).'
+                droppedFeedCap:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Per-gate drop counts, named by gate position in the pipeline:
+                         feed cap, undated-item, freshness floor, category cap.
+                droppedUndated:
+                    type: integer
+                    format: int32
+                droppedFreshness:
+                    type: integer
+                    format: int32
+                droppedCategoryCap:
+                    type: integer
+                    format: int32
+                servedStale:
+                    type: boolean
+                    description: |-
+                        Durable last-good serving (#7084): true exactly when accepted older
+                         content is replayed after a failed latest attempt. The content counts
+                         above still describe the served body; attempted_at names the FAILED
+                         attempt, so it and generated_at diverge on a replay.
+                staleAgeSeconds:
+                    type: integer
+                    format: int32
+                    description: |-
+                        Age of the served content since acceptance, in seconds (0 when fresh).
+                         Bounded at 21600 (six hours): past that window the service reports
+                         state=unavailable rather than serving older content.
+                staleReason:
+                    type: string
+                    description: 'Closed stale reason: empty-rebuild | build-error (empty when fresh).'
+            description: |-
+                Content vs attempt state for one digest response (#7085). generated_at
+                 keeps the CONTENT identity (when the served items were produced);
+                 attempted_at keeps the latest BUILD identity — the two diverge when
+                 stale content is served after a failed attempt (#7084).
+        CategoryStatesEntry:
+            type: object
+            properties:
+                key:
+                    type: string
+                value:
+                    type: string

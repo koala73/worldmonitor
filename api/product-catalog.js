@@ -14,7 +14,7 @@
 export const config = { runtime: 'edge' };
 
 // @ts-expect-error — JS module
-import { getCorsHeaders } from './_cors.js';
+import { getCorsHeaders, getPublicCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module
 import { timingSafeEqualSecret } from './_crypto.js';
 // @ts-expect-error — generated JS module
@@ -25,6 +25,8 @@ import {
   PUBLIC_TIER_GROUPS,
   TIER_CONFIG,
 } from './_product-catalog.generated.js';
+// @ts-expect-error — build-generated JS module
+import { PUBLIC_INVENTORY_FACTS } from './_inventory-facts.generated.js';
 // @ts-expect-error — JS module
 import { unwrapEnvelope } from './_seed-envelope.js';
 
@@ -34,7 +36,7 @@ const DODO_API_KEY = process.env.DODO_API_KEY ?? '';
 const DODO_ENV = process.env.DODO_PAYMENTS_ENVIRONMENT ?? 'test_mode';
 const RELAY_SECRET = process.env.RELAY_SHARED_SECRET ?? '';
 
-const CACHE_KEY = 'product-catalog:v2';
+const CACHE_KEY = 'product-catalog:v3';
 const CACHE_TTL = 3600; // 1 hour
 
 function json(body, status, cors, cacheControl, source) {
@@ -54,7 +56,11 @@ function json(body, status, cors, cacheControl, source) {
 }
 
 function withPublicFacts(payload) {
-  return { ...payload, ...PUBLIC_PRODUCT_FACTS };
+  return {
+    ...payload,
+    ...PUBLIC_PRODUCT_FACTS,
+    capabilities: PUBLIC_INVENTORY_FACTS.capabilities,
+  };
 }
 
 async function getFromCache() {
@@ -67,7 +73,7 @@ async function getFromCache() {
     if (!res.ok) return null;
     const { result } = await res.json();
     if (!result) return null;
-    // Envelope-aware: ais-relay now writes `product-catalog:v2` as {_seed, data}
+    // Envelope-aware: ais-relay writes `product-catalog:v3` as {_seed, data}
     // (PR #3097). Return the bare payload so clients see the legacy
     // {tiers, fetchedAt, cachedUntil, priceSource} shape. Pre-contract bare
     // values pass through unchanged.
@@ -75,17 +81,13 @@ async function getFromCache() {
   } catch { return null; }
 }
 
-async function setCache(data) {
-  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
-  try {
-    await fetch(`${UPSTASH_URL}`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify(['SET', CACHE_KEY, JSON.stringify(data), 'EX', String(CACHE_TTL)]),
-      signal: AbortSignal.timeout(3000),
-    });
-  } catch { /* non-fatal */ }
-}
+// This handler is READ-ONLY on `product-catalog:v3` on purpose — no setCache
+// here. The Railway ais-relay seed loop owns the key (envelope shape, longer
+// TTL; PR #3097), and the Dodo fallback path below says so explicitly:
+// "Don't write to Redis — let the Railway seed own that key". A writer here
+// would clobber the relay's {_seed, data} envelope with the bare legacy shape
+// and fight its TTL. The orphaned setCache() that used to sit here was the
+// symptom of that fork in ownership, not a missing call (#7211).
 
 async function purgeCache() {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
@@ -192,10 +194,14 @@ function buildTiers(dodoPrices) {
 }
 
 export default async function handler(req) {
-  const cors = getCorsHeaders(req);
+  const cors = getCorsHeaders(req, 'GET, DELETE, OPTIONS');
+
+  if (isDisallowedOrigin(req)) {
+    return json({ error: 'Origin not allowed' }, 403, cors);
+  }
 
   if (req.method === 'OPTIONS') {
-    return new Response(null, { status: 204, headers: { ...cors, 'Access-Control-Allow-Methods': 'GET, DELETE, OPTIONS', 'Access-Control-Allow-Headers': 'Content-Type, Authorization' } });
+    return new Response(null, { status: 204, headers: cors });
   }
 
   // DELETE = purge cache (authenticated)
@@ -213,10 +219,12 @@ export default async function handler(req) {
     return json({ error: 'Method not allowed' }, 405, cors);
   }
 
+  const publicCors = getPublicCorsHeaders('GET, DELETE, OPTIONS');
+
   // Read from Redis (populated by Railway ais-relay seed loop)
   const cached = await getFromCache();
   if (cached) {
-    return json(withPublicFacts(cached), 200, cors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300', 'cache');
+    return json(withPublicFacts(cached), 200, publicCors, 'public, max-age=300, s-maxage=600, stale-while-revalidate=300', 'cache');
   }
 
   // Redis empty (purged or seed hasn't run). Try Dodo directly as backup.
@@ -236,12 +244,12 @@ export default async function handler(req) {
       // Just return the result with short cache so the next Railway cycle repopulates properly.
       // Header must carry the SAME source as the body: a partial Dodo read
       // stamped 'dodo' here made probes read a degraded response as fully live.
-      return json(result, 200, cors, 'public, max-age=60, s-maxage=60', priceSource);
+      return json(result, 200, publicCors, 'public, max-age=60, s-maxage=60', priceSource);
     }
   }
 
   // All sources failed. Return fallback with short cache.
   const tiers = buildTiers({});
   const now = Date.now();
-  return json(withPublicFacts({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }), 200, cors, 'public, max-age=60, s-maxage=60', 'fallback');
+  return json(withPublicFacts({ tiers, fetchedAt: now, cachedUntil: now + 60_000, priceSource: 'fallback' }), 200, publicCors, 'public, max-age=60, s-maxage=60', 'fallback');
 }

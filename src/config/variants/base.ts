@@ -19,6 +19,8 @@ export const REFRESH_INTERVALS = {
   pizzint: 10 * 60 * 1000,
   natural: 60 * 60 * 1000,
   weather: 10 * 60 * 1000,
+  canadaRoads: 10 * 60 * 1000,
+  canadaAlerts: 10 * 60 * 1000,
   fred: 6 * 60 * 60 * 1000,
   oil: 6 * 60 * 60 * 1000,
   spending: 6 * 60 * 60 * 1000,
@@ -50,9 +52,12 @@ export const REFRESH_INTERVALS = {
   chinaCorridors: 15 * 60 * 1000,
   chinaActivityNowcast: 15 * 60 * 1000,
   telegramIntel: 60 * 1000,
+  xIntel: 15 * 60 * 1000,
   gulfEconomies: 10 * 60 * 1000,
   groceryBasket: 6 * 60 * 60 * 1000,
   fuelPrices: 6 * 60 * 60 * 1000,
+  fx: 6 * 60 * 60 * 1000, // all three FX keys are daily seeds; 6h picks up the new bar without polling a static payload
+
   faoFoodPriceIndex: 24 * 60 * 60 * 1000, // monthly data; refresh daily is sufficient
   oilInventories: 5 * 60 * 1000, // EIA weekly + EU gas daily; 5min refresh
   climateNews: 30 * 60 * 1000, // seeded every 30min; match cadence
@@ -77,8 +82,11 @@ export const REFRESH_INTERVALS = {
   economicCalendar: 60 * 60 * 1000,
   cotPositioning: 60 * 60 * 1000,
   goldIntelligence: 5 * 60 * 1000,
+  nqPulse: 5 * 60 * 1000,
+  nqCatalysts: 5 * 60 * 1000,
   aaiiSentiment: 60 * 60 * 1000, // weekly data; hourly refresh is sufficient
   marketBreadth: 60 * 60 * 1000, // seeded daily; hourly refresh is sufficient
+  newsMarketCorrelation: 15 * 60 * 1000, // matches the timestamped market-series seed cadence
 };
 
 // Monitor colors - shared
@@ -97,10 +105,14 @@ export const MONITOR_COLORS = [
 
 // Storage keys - shared
 export const STORAGE_KEYS = {
+  variant: 'worldmonitor-variant',
   panels: 'worldmonitor-panels',
   monitors: 'worldmonitor-monitors',
   mapLayers: 'worldmonitor-layers',
   disabledFeeds: 'worldmonitor-disabled-feeds',
+  sourceGateOwnership: 'worldmonitor-free-tier-source-ownership',
+  mapLayerGateOwnership: 'worldmonitor-free-tier-layer-ownership',
+  panelLayoutVariant: 'worldmonitor-panel-layout-variant',
   // Schema version for the disabledFeeds set. Bumped on each migration that
   // mutates the set in a backwards-incompatible way. Currently:
   //   missing/0 → pre-2026-05-01 alphabetical-cap state. Eligible for

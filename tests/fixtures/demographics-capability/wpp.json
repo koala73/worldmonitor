@@ -1,0 +1,17 @@
+{
+  "demographics": [
+    {"locationId":276,"indicatorId":67,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":188,"value":45.6901895449157},
+    {"locationId":276,"indicatorId":84,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":1005,"value":39.163518856210956},
+    {"locationId":276,"indicatorId":86,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":1015,"value":61.552928237261035},
+    {"locationId":840,"indicatorId":67,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":188,"value":38.712830745706},
+    {"locationId":840,"indicatorId":84,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":1005,"value":29.319809414505748},
+    {"locationId":840,"indicatorId":86,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":1015,"value":55.629017020478116},
+    {"locationId":840,"indicatorId":67,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":188,"value":null}
+  ],
+  "workingAge": [
+    {"locationId":276,"indicatorId":70,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":40,"value":51775142},
+    {"locationId":276,"indicatorId":70,"variantId":4,"timeLabel":"2036","sexId":3,"ageId":40,"value":47232903},
+    {"locationId":840,"indicatorId":70,"variantId":4,"timeLabel":"2026","sexId":3,"ageId":40,"value":224274046.5},
+    {"locationId":840,"indicatorId":70,"variantId":4,"timeLabel":"2036","sexId":3,"ageId":40,"value":227607223.5}
+  ]
+}

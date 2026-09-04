@@ -203,7 +203,7 @@ Intelligence service 现在提供一套以 SEC 权威身份为基础的公司解
 | 表面 | 端点 | 备注 |
 |---|---|---|
 | 事件分类 | `GET /api/intelligence/v1/classify-event` | 生成客户端使用的直接 REST RPC；服务端结果按标题哈希缓存。 |
-| 国家事实背景 | `GET /api/intelligence/v1/get-country-facts` | 国家简报与档案工作流的 RestCountries / Wikipedia 上下文。 |
+| 国家事实背景 | `GET /api/intelligence/v1/get-country-facts` | 国家简报与档案工作流的 Wikidata / Wikipedia 上下文。 |
 | 摘要缓存查询 | `GET /api/news/v1/summarize-article-cache` | 针对确定性摘要键的 CDN 可缓存查询；生成仍走 `POST /api/news/v1/summarize-article`。 |
 
 ## 警报
@@ -389,13 +389,13 @@ FOCAL POINTS (entities across news + signals):
 
 缺乏综合时，情报流各自为政：
 
-- 新闻 feed 显示 500+ 来源的数千条标题
+- 新闻 feed 显示精选来源的标题
 - 地图图层独立显示军机、抗议、中断
 - 无法自动看出 IRAN 既出现在新闻中，又有军事活动，还发生了互联网中断
 
 ### 工作原理
 
-1. **实体抽取**：使用实体注册表（含别名的 66 个实体）从所有新闻聚类中抽取国家、公司与组织
+1. **实体抽取**：使用含别名的实体注册表从所有新闻聚类中抽取国家、公司与组织
 
 2. **信号聚合**：收集所有地图信号（军机、抗议、中断、舰船）并按国家分组
 

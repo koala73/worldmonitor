@@ -17,17 +17,72 @@ import {
   createDodoCheckoutSession,
 } from "../lib/dodo";
 import { requireUserId, resolveUserIdentity } from "../lib/auth";
-import { ANON_ID_V4_REGEX, signAnonClaimToken, signUserId } from "../lib/identitySigning";
+import { extractDomain } from "../lib/emailShape";
+import {
+  ANON_ID_V4_REGEX,
+  signAnonClaimToken,
+  signCheckoutLoginEmail,
+  signUserId,
+} from "../lib/identitySigning";
 import { resolveProductToPlan } from "../config/productCatalog";
+import { isTrustedReturnUrlOrigin } from "./returnUrlOrigin";
 import {
   CHECKOUT_RATE_LIMITED,
   CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS,
   isCheckoutRateLimitedOutcome,
   runCheckoutWithRateLimitRetry,
 } from "./checkoutRateLimit";
+import { recordTerminalCheckoutRateLimit } from "./checkoutRateLimitAlarm";
+
+// MCP paid-funnel campaign marker (#6716). Imported, never re-declared: a
+// second copy of this normalisation is exactly the drift that produced the
+// display-vs-enforcement divergence documented in
+// docs/solutions/security-issues/mcp-quota-credential-class-vs-plan-family-scoping-bypass.md.
+// The Convex runtime imports from `shared/` elsewhere (convex/apiKeys.ts,
+// convex/companyMonitoring/*), so there is no module-boundary reason to fork it.
+import { normalizeCheckoutAttributionSource as normalizeAttributionSource } from "../../shared/mcp-attribution";
 
 const ACTIVE_SUBSCRIPTION_EXISTS = "ACTIVE_SUBSCRIPTION_EXISTS";
 const PAYMENT_IN_PROGRESS = "PAYMENT_IN_PROGRESS";
+
+// RFC 5321 maximum forward-path length. A value beyond it is not an address we
+// could deliver to anyway, and it keeps the stamped metadata value small.
+const MAX_LOGIN_EMAIL_LENGTH = 254;
+
+/**
+ * Normalizes the authenticated login email for stamping into checkout metadata
+ * (#6335).
+ *
+ * This is a shape guard, not a trust boundary — it keeps an unusable value out
+ * of a field the webhook later hands to Resend as a recipient. What makes that
+ * the right level: `createCheckout` reads the email from the Clerk JWT `email`
+ * claim via `resolveUserIdentity`, and `internalCreateCheckout` receives it from
+ * `/relay/create-checkout`, whose only caller (`api/create-checkout.ts`) derives
+ * it from a JWKS-verified bearer token. Note the relay itself authenticates by
+ * shared secret and does NOT re-derive the claim, so "the value is a verified
+ * credential" is a property of that caller rather than one enforced here.
+ * Downstream this stays safe regardless: the webhook trusts the value only
+ * through the HMAC, and the email templates escape it.
+ *
+ * Case is PRESERVED (the local part is case-sensitive per RFC 5321, and
+ * `users.email` is stored the same way).
+ *
+ * Returns null when there is nothing usable to stamp, in which case the
+ * webhook's existing `users.email` → checkout-email ladder is unchanged.
+ */
+function normalizeCheckoutLoginEmail(raw: string | undefined): string | null {
+  if (typeof raw !== "string") return null;
+  const trimmed = raw.trim();
+  if (trimmed.length === 0 || trimmed.length > MAX_LOGIN_EMAIL_LENGTH) return null;
+  // `extractDomain` owns the @-shape rules (no @, empty local part, a second @,
+  // empty domain). Imported from `emailShape` rather than `emailDomain` so the
+  // checkout path does not pull in that module's `mailchecker` dependency.
+  if (extractDomain(trimmed) === null) return null;
+  // Stricter than extractDomain, which only rejects whitespace in the domain
+  // half: an address bound for an email `to:` header must have none anywhere.
+  if (/\s/.test(trimmed)) return null;
+  return trimmed;
+}
 
 // ---------------------------------------------------------------------------
 // Shared checkout session creation logic
@@ -38,6 +93,8 @@ interface CheckoutArgs {
   returnUrl?: string;
   discountCode?: string;
   referralCode?: string;
+  /** MCP paid-funnel attribution (#6716). Parallel to referralCode. */
+  attributionSource?: string;
 }
 
 interface UserInfo {
@@ -163,6 +220,7 @@ async function getCheckoutBlockingPendingPayment(
 }
 
 async function _createCheckoutSession(
+  ctx: ActionCtx,
   args: CheckoutArgs,
   user: UserInfo,
 ) {
@@ -177,23 +235,46 @@ async function _createCheckoutSession(
       throw new ConvexError("Invalid returnUrl: must be a valid absolute URL");
     }
 
-    const allowedOrigins = new Set([
-      "https://worldmonitor.app",
-      "https://www.worldmonitor.app",
-      "https://app.worldmonitor.app",
-      "https://tech.worldmonitor.app",
-      "https://finance.worldmonitor.app",
-      "https://commodity.worldmonitor.app",
-      "https://happy.worldmonitor.app",
-      "https://energy.worldmonitor.app",
-      new URL(siteUrl).origin,
-    ]);
-    if (!allowedOrigins.has(parsedReturnUrl.origin)) {
+    if (!isTrustedReturnUrlOrigin(parsedReturnUrl.origin, new URL(siteUrl).origin)) {
       throw new ConvexError(
         "Invalid returnUrl: must use a trusted worldmonitor.app origin",
       );
     }
     returnUrl = parsedReturnUrl.toString();
+  }
+
+  // Record Terms assent (#6976). Both checkout paths — the /pro pricing page
+  // and every dashboard CTA — funnel through here, so one call covers them all
+  // and no client can skip it: the buyer clicked a button that sits directly
+  // under "By subscribing you agree to the Terms of Service and Privacy Policy".
+  //
+  // Deliberately BEFORE the Dodo call. Assent is a fact about what the user was
+  // shown and clicked, not about whether the payment provider then answered.
+  //
+  // Skipped for an anonymous buyer: `users` is keyed by Clerk userId, and
+  // writing an anon UUID into it would create a row nothing can ever join. Their
+  // assent lands on the first authenticated session after they claim the
+  // subscription, via `users:ensureRecord`'s insert branch.
+  //
+  // Never allowed to fail the checkout: losing a paid conversion to an audit
+  // write is strictly worse than the missing row, which stays visible in logs.
+  if (!ANON_ID_V4_REGEX.test(user.userId)) {
+    try {
+      await ctx.runMutation(internal.users.recordTermsAcceptance, {
+        userId: user.userId,
+        email: user.email,
+      });
+    } catch (err) {
+      // sentry-coverage-ok: structured console.error is forwarded by Convex
+      // auto-Sentry, so on-call still sees a customer who bought without an
+      // assent record. Re-throwing is the wrong trade here — same reasoning as
+      // the pending-payment guard above: losing a paid conversion to an audit
+      // write is strictly worse than the missing row.
+      const msg = err instanceof Error ? err.message : String(err);
+      console.error(
+        `[checkout] terms acceptance not recorded user=${user.userId}: ${msg}`,
+      );
+    }
   }
 
   // Build metadata: HMAC-signed userId for the webhook identity bridge.
@@ -205,6 +286,26 @@ async function _createCheckoutSession(
     : null;
   if (anonymousClaimToken) {
     metadata.wm_anon_claim = "v2";
+  }
+  // #6335: carry the login email that was authenticated FOR THIS CHECKOUT, so
+  // the activation webhook can address lifecycle mail without depending on the
+  // `users` row — that row is refreshed once per page load per userId
+  // (src/services/convex-client.ts short-circuits on a module-level
+  // lastEnsuredUserId), so a portal email change made in a long-lived tab
+  // leaves it stale and the welcome lands at the abandoned address.
+  //
+  // Signed as a SEPARATE field rather than folded into `wm_user_id_sig`: that
+  // signature's payload must stay `userId` alone, or every checkout session
+  // created before this deploy stops verifying at the webhook and its buyer
+  // becomes unattributable.
+  const loginEmail = normalizeCheckoutLoginEmail(user.email);
+  if (loginEmail) {
+    metadata.wm_login_email = loginEmail;
+    metadata.wm_login_email_sig = await signCheckoutLoginEmail(
+      user.userId,
+      loginEmail,
+      Date.now(),
+    );
   }
   // Tier-group bridge for the duplicate-payment guard (#4438): the pending
   // `payment.processing` webhook echoes `data.metadata.wm_plan_key` and persists
@@ -225,6 +326,13 @@ async function _createCheckoutSession(
     // created on this conversion path. Mirror read in
     // `convex/payments/subscriptionHelpers.ts`.
     metadata.affonso_referral = args.referralCode;
+  }
+  const attributionSource = normalizeAttributionSource(args.attributionSource);
+  if (attributionSource) {
+    // Internal source tag for MCP paid-funnel conversions (#6716). Distinct
+    // from affonso_referral — never an affiliate code. Mirror read in
+    // subscriptionHelpers on first subscription.active.
+    metadata.wm_attribution = attributionSource;
   }
 
   try {
@@ -262,6 +370,16 @@ async function _createCheckoutSession(
       console.warn(
         `[checkout] Dodo rate limited checkout creation for user=${user.userId} product=${args.productId} after bounded retry (<=${CHECKOUT_RATE_LIMIT_MAX_ATTEMPTS} attempts); retry after ${result.retryAfterSeconds}s`,
       );
+      // The ladder's tail (#6698). This warn is per-occurrence and pages
+      // nobody by design; the recorder below owns the RATE and escalates to
+      // Convex auto-Sentry once a documented per-day/per-week threshold is
+      // crossed. Awaited (not scheduled) so the count is durable before the
+      // buyer's 429 is returned, and fail-open so a degraded alarm cannot
+      // convert a retryable rate limit into a hard checkout failure.
+      await recordTerminalCheckoutRateLimit(ctx, {
+        userId: user.userId,
+        productId: args.productId,
+      });
       return result;
     }
     return anonymousClaimToken
@@ -286,6 +404,7 @@ export const createCheckout = action({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    attributionSource: v.optional(v.string()),
     // "Start a new checkout anyway" — skips ONLY the pending-payment guard
     // (#4438). The subscription guard still applies.
     bypassPendingGuard: v.optional(v.boolean()),
@@ -321,7 +440,7 @@ export const createCheckout = action({
         identity.name
       : undefined;
 
-    const result = await _createCheckoutSession(args, {
+    const result = await _createCheckoutSession(ctx, args, {
       userId,
       email: identity?.email,
       name: customerName,
@@ -353,6 +472,7 @@ export const internalCreateCheckout = internalAction({
     returnUrl: v.optional(v.string()),
     discountCode: v.optional(v.string()),
     referralCode: v.optional(v.string()),
+    attributionSource: v.optional(v.string()),
     // See createCheckout — skips only the pending-payment guard (#4438).
     bypassPendingGuard: v.optional(v.boolean()),
   },
@@ -379,11 +499,13 @@ export const internalCreateCheckout = internalAction({
       return buildPendingBlockedResponse(pending);
     }
     return _createCheckoutSession(
+      ctx,
       {
         productId: args.productId,
         returnUrl: args.returnUrl,
         discountCode: args.discountCode,
         referralCode: args.referralCode,
+        attributionSource: args.attributionSource,
       },
       {
         userId: args.userId,

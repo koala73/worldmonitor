@@ -37,6 +37,7 @@ export interface ListFeedDigestResponse {
   categories: Record<string, CategoryBucket>;
   feedStatuses: Record<string, string>;
   generatedAt: string;
+  coverage?: DigestCoverage;
 }
 
 export interface CategoryBucket {
@@ -57,6 +58,7 @@ export interface NewsItem {
   storyMeta?: StoryMeta;
   snippet: string;
   tickers: string[];
+  credibilityScore: number;
 }
 
 export interface ThreatClassification {
@@ -76,6 +78,25 @@ export interface StoryMeta {
   mentionCount: number;
   sourceCount: number;
   phase: StoryPhase;
+}
+
+export interface DigestCoverage {
+  state: string;
+  attemptedAt: string;
+  itemsServed: number;
+  publisherCount: number;
+  feedTotal: number;
+  feedCompleted: number;
+  categoryTotal: number;
+  categoryCompleted: number;
+  categoryStates: Record<string, string>;
+  droppedFeedCap: number;
+  droppedUndated: number;
+  droppedFreshness: number;
+  droppedCategoryCap: number;
+  servedStale: boolean;
+  staleAgeSeconds: number;
+  staleReason: string;
 }
 
 export type StoryPhase = "STORY_PHASE_UNSPECIFIED" | "STORY_PHASE_BREAKING" | "STORY_PHASE_DEVELOPING" | "STORY_PHASE_SUSTAINED" | "STORY_PHASE_FADING";

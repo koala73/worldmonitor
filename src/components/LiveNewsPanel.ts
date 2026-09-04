@@ -2,6 +2,7 @@ import { Panel } from './Panel';
 import { fetchLiveVideoInfo } from '@/services/live-news';
 import { isDesktopRuntime, getRemoteApiBaseUrl, getApiBaseUrl, getLocalApiPort } from '@/services/runtime';
 import { t } from '../services/i18n';
+import { createFocusTrap } from '@/utils/focus-trap';
 import { loadFromStorage, saveToStorage } from '@/utils';
 import { IDLE_PAUSE_MS, STORAGE_KEYS, SITE_VARIANT } from '@/config';
 import { escapeHtml, sanitizeUrl } from '@/utils/sanitize';
@@ -392,6 +393,7 @@ export class LiveNewsPanel extends Panel {
   private desktopEmbedIframe: HTMLIFrameElement | null = null;
   private desktopEmbedSession: { iframe: HTMLIFrameElement; channelId: string; sessionToken: number } | null = null;
   private desktopEmbedRenderToken = 0;
+  private channelSwitchGeneration = 0;
   private suppressChannelClick = false;
   private boundMessageHandler!: (e: MessageEvent) => void;
   private muteSyncInterval: ReturnType<typeof setInterval> | null = null;
@@ -873,14 +875,23 @@ export class LiveNewsPanel extends Panel {
     this.fullscreenBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       track('live-news-fullscreen', { entering: !this.isFullscreen });
-      this.toggleFullscreen();
+      this.setFullscreen(!this.isFullscreen);
     });
     const header = this.element.querySelector('.panel-header');
     header?.appendChild(this.fullscreenBtn);
   }
 
-  private toggleFullscreen(): void {
-    this.isFullscreen = !this.isFullscreen;
+  public override supportsFullscreen(): boolean {
+    return true;
+  }
+
+  public override isFullscreenActive(): boolean {
+    return this.isFullscreen;
+  }
+
+  public override setFullscreen(fullscreen: boolean): boolean {
+    if (this.isFullscreen === fullscreen) return true;
+    this.isFullscreen = fullscreen;
     this.element.classList.toggle('live-news-fullscreen', this.isFullscreen);
     document.body.classList.toggle('live-news-fullscreen-active', this.isFullscreen);
 
@@ -890,10 +901,11 @@ export class LiveNewsPanel extends Panel {
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>'
         : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     }
+    return true;
   }
 
   private boundFullscreenEscHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && this.isFullscreen) this.toggleFullscreen();
+    if (e.key === 'Escape' && this.isFullscreen) this.setFullscreen(false);
   };
 
   private updateMuteIcon(): void {
@@ -918,11 +930,26 @@ export class LiveNewsPanel extends Panel {
   private createChannelButton(channel: LiveChannel): HTMLButtonElement {
     const btn = document.createElement('button');
     btn.className = `live-channel-btn ${channel.id === this.activeChannel.id ? 'active' : ''}`;
+    btn.setAttribute('aria-pressed', String(channel.id === this.activeChannel.id));
     btn.dataset.channelId = channel.id;
 
     btn.textContent = this.getChannelDisplayName(channel);
 
     btn.style.cursor = 'grab';
+    // Keyboard parity for the mouse drag reorder in createChannelSwitcher:
+    // arrows move the focused channel one slot and persist through the same
+    // applyChannelOrderFromDom path a completed drag uses.
+    btn.addEventListener('keydown', (e) => {
+      const back = e.key === 'ArrowLeft';
+      const fwd = e.key === 'ArrowRight';
+      if (!back && !fwd) return;
+      const sibling = back ? btn.previousElementSibling : btn.nextElementSibling;
+      if (!(sibling instanceof HTMLElement) || !sibling.classList.contains('live-channel-btn')) return;
+      e.preventDefault();
+      btn.parentElement?.insertBefore(btn, back ? sibling : sibling.nextElementSibling);
+      this.applyChannelOrderFromDom();
+      btn.focus();
+    });
     btn.addEventListener('click', (e) => {
       if (this.suppressChannelClick) {
         e.preventDefault();
@@ -1019,7 +1046,9 @@ export class LiveNewsPanel extends Panel {
 
     const overlay = document.createElement('div');
     overlay.className = 'live-channels-modal-overlay';
+    overlay.setAttribute('role', 'dialog');
     overlay.setAttribute('aria-modal', 'true');
+    overlay.setAttribute('aria-label', t('components.liveNews.manage') ?? 'Manage channels');
 
     const modal = document.createElement('div');
     modal.className = 'live-channels-modal';
@@ -1044,10 +1073,13 @@ export class LiveNewsPanel extends Panel {
     }).catch(console.error);
 
     const close = () => {
+      focusTrap.deactivate();
       overlay.remove();
       document.removeEventListener('keydown', onKey);
       this.refreshChannelsFromStorage();
     };
+    const focusTrap = createFocusTrap(overlay);
+    focusTrap.activate();
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') close();
     };
@@ -1109,15 +1141,38 @@ export class LiveNewsPanel extends Panel {
     channel.hlsUrl = (!hlsCooldownActive && info.hlsUrl) ? info.hlsUrl : undefined;
   }
 
+  private resetChannelButtonLoading(btn: HTMLElement): void {
+    btn.classList.remove('loading');
+    btn.removeAttribute('aria-busy');
+    (btn as HTMLButtonElement).disabled = false;
+  }
+
+  // Clear every channel button, not only `.loading`. Success used to drop the
+  // spinner class while leaving aria-busy/disabled set, and a later switch
+  // could strip `.loading` from a still-disabled predecessor.
   private clearChannelLoadingState(): void {
-    this.channelSwitcher?.querySelectorAll('.live-channel-btn.loading').forEach(btn => {
-      (btn as HTMLElement).classList.remove('loading');
+    this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
+      this.resetChannelButtonLoading(btn as HTMLElement);
+    });
+  }
+
+  private markChannelButtonLoading(channelId: string): void {
+    this.clearChannelLoadingState();
+    this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
+      const btnEl = btn as HTMLElement;
+      if (btnEl.dataset.channelId !== channelId) return;
+      btnEl.classList.add('loading');
+      // CSS blocks the pointer during load (pointer-events: none); mirror
+      // that for keyboard/AT instead of leaving a silently dead button.
+      btnEl.setAttribute('aria-busy', 'true');
+      (btnEl as HTMLButtonElement).disabled = true;
     });
   }
 
   private async switchChannel(channel: LiveChannel): Promise<void> {
     if (channel.id === this.activeChannel.id) return;
 
+    const generation = ++this.channelSwitchGeneration;
     this.activeChannel = channel;
     saveToStorage(STORAGE_KEYS.activeChannel, channel.id);
     const shouldStartMedia = this.hasPlaybackIntent();
@@ -1125,57 +1180,68 @@ export class LiveNewsPanel extends Panel {
 
     this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
       const btnEl = btn as HTMLElement;
-      btnEl.classList.toggle('active', btnEl.dataset.channelId === channel.id);
-      if (shouldStartMedia && btnEl.dataset.channelId === channel.id) {
-        btnEl.classList.add('loading');
-      }
+      const isActive = btnEl.dataset.channelId === channel.id;
+      btnEl.classList.toggle('active', isActive);
+      btnEl.setAttribute('aria-pressed', String(isActive));
     });
 
     if (!shouldStartMedia) {
+      this.clearChannelLoadingState();
       this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
-        (btn as HTMLElement).classList.remove('loading', 'offline');
+        (btn as HTMLElement).classList.remove('offline');
       });
       this.renderPlaceholder();
       return;
     }
 
-    await this.resolveChannelVideo(channel);
-    if (!this.element?.isConnected) return;
-    // Every early return below bails after the loading spinner was set; clear it
-    // so an interrupted/aborted switch doesn't leave a button spinning forever.
-    if (this.activeChannel.id !== channel.id) { this.clearChannelLoadingState(); return; }
-    if (hadLiveNewsOwnership && !this.ownsLiveNewsMedia()) {
-      this.clearChannelLoadingState();
-      this.renderPlaceholder();
-      return;
-    }
-    if (!this.hasPlaybackIntent()) {
-      this.clearChannelLoadingState();
-      this.renderPlaceholder();
-      return;
-    }
+    this.markChannelButtonLoading(channel.id);
 
-    this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
-      const btnEl = btn as HTMLElement;
-      btnEl.classList.remove('loading');
-      if (btnEl.dataset.channelId === channel.id && !channel.videoId) {
-        btnEl.classList.add('offline');
+    try {
+      await this.resolveChannelVideo(channel);
+      if (generation !== this.channelSwitchGeneration) return;
+      if (!this.element?.isConnected) return;
+      if (this.activeChannel.id !== channel.id) return;
+      if (hadLiveNewsOwnership && !this.ownsLiveNewsMedia()) {
+        this.renderPlaceholder();
+        return;
       }
-    });
+      if (!this.hasPlaybackIntent()) {
+        this.renderPlaceholder();
+        return;
+      }
 
-    this.requestPlaybackForActiveChannel();
+      this.channelSwitcher?.querySelectorAll('.live-channel-btn').forEach(btn => {
+        const btnEl = btn as HTMLElement;
+        if (btnEl.dataset.channelId === channel.id && !channel.videoId) {
+          btnEl.classList.add('offline');
+        }
+      });
+
+      this.requestPlaybackForActiveChannel();
+    } finally {
+      if (generation === this.channelSwitchGeneration) {
+        this.clearChannelLoadingState();
+      }
+    }
   }
 
   private showOfflineMessage(channel: LiveChannel): void {
     this.destroyPlayer();
     const safeName = escapeHtml(channel.name);
-    setTrustedHtml(this.content, trustedHtml(`
+    // #6557: a terminal offline state is authoritative content.
+    this.setTrustedContent(trustedHtml(`
       <div class="live-offline live-offline-compact">
         <div class="offline-icon">📺</div>
         <div class="offline-text">${t('components.liveNews.notLive', { name: safeName })}</div>
-        <button class="offline-retry" onclick="this.closest('.panel').querySelector('.live-channel-btn.active')?.click()">${t('common.retry')}</button>
+        <button class="offline-retry" data-live-retry>${t('common.retry')}</button>
       </div>
     `, "legacy direct innerHTML migration"));
+    // The repo's last inline onclick= lived here (CSP unsafe-inline
+    // dependency). switchChannel no-ops when the id is already active, so
+    // retry must re-request playback for the current stream.
+    this.content.querySelector('[data-live-retry]')?.addEventListener('click', () => {
+      this.requestPlaybackForActiveChannel();
+    });
   }
 
   private showEmbedError(channel: LiveChannel, errorCode: number): void {
@@ -1187,7 +1253,8 @@ export class LiveNewsPanel extends Panel {
       : 'https://www.youtube.com';
     const safeName = escapeHtml(channel.name);
 
-    setTrustedHtml(this.content, trustedHtml(`
+    // #6557: a terminal embed-error state is authoritative content.
+    this.setTrustedContent(trustedHtml(`
       <div class="live-offline live-offline-compact">
         <div class="offline-icon">!</div>
         <div class="offline-text">${t('components.liveNews.cannotEmbed', { name: safeName, code: String(errorCode) })}</div>
@@ -1834,7 +1901,7 @@ export class LiveNewsPanel extends Panel {
     document.removeEventListener('visibilitychange', this.boundVisibilityHandler);
     document.removeEventListener('keydown', this.boundFullscreenEscHandler);
     window.removeEventListener('message', this.boundMessageHandler);
-    if (this.isFullscreen) this.toggleFullscreen();
+    if (this.isFullscreen) this.setFullscreen(false);
     if (this.idleDetectionEnabled) {
       IDLE_ACTIVITY_EVENTS.forEach(event => {
         document.removeEventListener(event, this.boundIdleResetHandler);

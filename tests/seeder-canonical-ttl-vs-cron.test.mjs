@@ -46,9 +46,14 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import {
+  extractBundleSections,
+  listBundleFiles,
+  resolveExpr,
+} from './helpers/bundle-section-parser.mjs';
 
 const __filename = fileURLToPath(import.meta.url);     // ESM: must declare explicitly (Greptile P1 on PR #3625)
 const __dirname = dirname(__filename);
@@ -89,7 +94,7 @@ const KNOWN_VIOLATIONS = {
   'Ocean-Ice:seed-climate-ocean-ice.mjs': '24h TTL vs 24h cron (1×)',
 
   // ── Energy ──
-  'JODI-Gas:seed-jodi-gas.mjs': '35d TTL vs 35d cron (1×)',
+  'JODI-Gas:seed-jodi-gas.mjs': '70d TTL vs 35d cron (2×) — one missed-cycle buffer; 3× would be 105d',
 
   // ── Portwatch ──
   'PW-Disruptions:seed-portwatch-disruptions.mjs': '2h TTL vs 1h cron (2×) — borderline',
@@ -103,109 +108,10 @@ const KNOWN_VIOLATIONS = {
   'Displacement:seed-displacement-summary.mjs': '24h TTL vs 24h cron (1×)',
 };
 
-// Conventional bundle-level constants. Pre-seeded so `12 * HOUR` works
-// without parsing the bundle's own declaration.
-const PRESEEDED = {
-  MIN: 60 * 1000,
-  HOUR: 60 * 60 * 1000,
-  DAY: 24 * 60 * 60 * 1000,
-  WEEK: 7 * 24 * 60 * 60 * 1000,
-};
-
-/** Strip JS numeric-separator underscores so safe-eval can parse them. */
-function stripNumericUnderscores(s) {
-  // 7_200 → 7200, 86_400 → 86400. Only between digits, never adjacent.
-  return s.replace(/(\d)_(?=\d)/g, '$1');
-}
-
-/**
- * Safely evaluate a simple numeric expression. Allows digits, +-/*(), and
- * underscored identifiers (which must be in `scope`). Rejects anything
- * else with null. No `eval` — uses Function constructor with a strict
- * input-character whitelist + name-substitution.
- */
-function safeEval(expr, scope = {}) {
-  const trimmed = stripNumericUnderscores(String(expr).trim());
-  if (!/^[\w\s+\-*/().,_]+$/.test(trimmed)) return null;
-  let substituted = trimmed;
-  for (const [name, value] of Object.entries(scope)) {
-    if (typeof value !== 'number') continue;
-    substituted = substituted.replace(new RegExp(`\\b${name}\\b`, 'g'), `(${value})`);
-  }
-  if (!/^[\d\s+\-*/().]+$/.test(substituted)) return null;
-  try {
-    const result = Function(`"use strict"; return (${substituted})`)();
-    return Number.isFinite(result) ? result : null;
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Find a `const|let|var|export const <name> = <expr>` declaration in `src`
- * and resolve to a number. Cycle-guarded.
- */
-function resolveIdentifier(src, name, scope = {}, _seen = new Set()) {
-  if (_seen.has(name)) return null;
-  if (name in scope) return scope[name];
-  if (name in PRESEEDED) return PRESEEDED[name];
-  _seen.add(name);
-  // Match: optional `export `, then `const|let|var <name> = <rhs>` up to ; // or newline
-  const re = new RegExp(`(?:^|\\n)\\s*(?:export\\s+)?(?:const|let|var)\\s+${name}\\s*=\\s*([^;\\n]+?)(?:\\s*(?://|;)|$)`, 'm');
-  const m = src.match(re);
-  if (!m) return null;
-  return resolveExpr(src, m[1].trim(), scope, _seen);
-}
-
-function resolveExpr(src, expr, scope = {}, _seen = new Set()) {
-  const direct = safeEval(expr, { ...PRESEEDED, ...scope });
-  if (direct != null) return direct;
-  if (/^\w+$/.test(expr)) return resolveIdentifier(src, expr, scope, _seen);
-  const idents = [...new Set([...expr.matchAll(/\b([A-Za-z_]\w*)\b/g)].map(m => m[1]))];
-  const expanded = { ...scope, ...PRESEEDED };
-  for (const id of idents) {
-    if (id in expanded) continue;
-    const v = resolveIdentifier(src, id, scope, _seen);
-    if (v != null) expanded[id] = v;
-  }
-  return safeEval(expr, expanded);
-}
-
-/**
- * Extract bundle sections via brace-balanced scan from each `{ label: '...'`
- * anchor. The non-greedy `\{...?\}` regex would match at the first inner
- * `}` for sections containing nested objects (e.g. `extraHeaders: {...}`),
- * silently dropping them — which would let a real new violation slip past
- * the guard. Greptile P2 on PR #3625.
- */
-function extractBundleSections(bundleSrc) {
-  const sections = [];
-  const anchorRe = /\{\s*label:\s*'([^']+)'/g;
-  for (const m of bundleSrc.matchAll(anchorRe)) {
-    const label = m[1];
-    const startIdx = m.index;
-    // Walk forward balancing braces, respecting string literals.
-    let depth = 0, endIdx = -1, inStr = false, strCh = '';
-    for (let i = startIdx; i < bundleSrc.length; i++) {
-      const c = bundleSrc[i];
-      if (inStr) {
-        if (c === '\\') i++;     // skip escape
-        else if (c === strCh) inStr = false;
-        continue;
-      }
-      if (c === '"' || c === "'" || c === '`') { inStr = true; strCh = c; continue; }
-      if (c === '{') depth++;
-      else if (c === '}') { depth--; if (depth === 0) { endIdx = i; break; } }
-    }
-    if (endIdx < 0) continue;     // unbalanced — skip
-    const block = bundleSrc.slice(startIdx, endIdx + 1);
-    const scriptM = block.match(/script:\s*'([^']+)'/);
-    const intervalM = block.match(/intervalMs:\s*([^,}\n]+)/);
-    if (!scriptM || !intervalM) continue;
-    sections.push({ label, script: scriptM[1], intervalMsExpr: intervalM[1].trim() });
-  }
-  return sections;
-}
+// The section parser and safe expression resolver live in
+// tests/helpers/bundle-section-parser.mjs, shared with
+// tests/bundle-budget-admission.test.mjs and covered by
+// tests/bundle-section-parser.test.mjs.
 
 function extractRunSeedTtl(seederSrc) {
   const m = seederSrc.match(/ttlSeconds:\s*([^,}\n]+)/);
@@ -215,9 +121,7 @@ function extractRunSeedTtl(seederSrc) {
 // ── Tests ────────────────────────────────────────────────────────────────
 
 test('every bundle section using runSeed has canonical TTL ≥ 3× cron interval', () => {
-  const bundleFiles = readdirSync(SCRIPTS_DIR)
-    .filter(f => f.startsWith('seed-bundle-') && f.endsWith('.mjs'))
-    .map(f => join(SCRIPTS_DIR, f));
+  const bundleFiles = listBundleFiles(SCRIPTS_DIR);
   assert.ok(bundleFiles.length > 0, 'no scripts/seed-bundle-*.mjs files found');
 
   const newViolations = [];     // (a) new violations not in allowlist → fail
@@ -300,101 +204,4 @@ test('every bundle section using runSeed has canonical TTL ≥ 3× cron interval
   assert.deepEqual(resolvedAllowlistEntries, [],
     `${resolvedAllowlistEntries.length} KNOWN_VIOLATIONS entry/entries are stale:\n  - ${resolvedAllowlistEntries.join('\n  - ')}`,
   );
-});
-
-// ── Sanity tests for the resolver itself ─────────────────────────────────
-
-test('resolver: numeric literal', () => {
-  assert.equal(resolveExpr('', '43200'), 43200);
-});
-
-test('resolver: numeric literal with underscores (7_200, 86_400)', () => {
-  assert.equal(resolveExpr('', '7_200'), 7200);
-  assert.equal(resolveExpr('', '86_400'), 86400);
-});
-
-test('resolver: simple multiplication', () => {
-  assert.equal(resolveExpr('', '35 * 24 * 3600'), 35 * 24 * 3600);
-});
-
-test('resolver: preseeded HOUR/DAY/WEEK constants', () => {
-  assert.equal(resolveExpr('', '12 * HOUR'), 12 * 3600 * 1000);
-  assert.equal(resolveExpr('', '7 * DAY'), 7 * 24 * 3600 * 1000);
-  assert.equal(resolveExpr('', 'WEEK'), 7 * 24 * 3600 * 1000);
-});
-
-test('resolver: const declared in src (with underscored numeric)', () => {
-  const src = 'const TTL_SECONDS = 86_400;\n';
-  assert.equal(resolveExpr(src, 'TTL_SECONDS'), 86400);
-});
-
-test('resolver: export const declared in src', () => {
-  const src = 'export const CACHE_TTL_SECONDS = 2700;\n';
-  assert.equal(resolveExpr(src, 'CACHE_TTL_SECONDS'), 2700);
-});
-
-test('resolver: const expression mixing identifiers + arithmetic', () => {
-  const src = 'const TTL = 35 * 24 * 3600;\n';
-  assert.equal(resolveExpr(src, 'TTL'), 35 * 24 * 3600);
-});
-
-test('resolver: returns null on unresolvable identifier', () => {
-  assert.equal(resolveExpr('', 'COMPLETELY_UNKNOWN'), null);
-});
-
-test('resolver: rejects unsafe input', () => {
-  assert.equal(resolveExpr('', 'process.env.X'), null);
-  assert.equal(resolveExpr('', 'someFunction()'), null);
-});
-
-test('extractBundleSections: catches sections with intervalMs', () => {
-  const sample = `
-const HOUR = 60 * 60 * 1000;
-export const SECTIONS = [
-  { label: 'A', script: 'seed-a.mjs', intervalMs: HOUR, timeoutMs: 120_000 },
-  { label: 'B', script: 'seed-b.mjs', canonicalKey: 'foo', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
-];
-`;
-  const sections = extractBundleSections(sample);
-  assert.equal(sections.length, 2);
-  assert.equal(sections[0].label, 'A');
-  assert.equal(sections[1].intervalMsExpr, '12 * HOUR');
-});
-
-test('extractBundleSections: handles sections with nested objects (Greptile P2)', () => {
-  // Pre-fix the regex `\{ ... \}` non-greedy match would END at the first
-  // inner `}` (the close of `{ 'X-Auth': '...' }`), leaving the outer
-  // section's `script:` and `intervalMs:` outside the captured block →
-  // section silently dropped → real new violation could slip past the guard.
-  const sample = `
-const HOUR = 60 * 60 * 1000;
-export const SECTIONS = [
-  {
-    label: 'WithNested',
-    script: 'seed-with-nested.mjs',
-    extraHeaders: { 'X-Auth': 'Bearer xxx', 'Content-Type': 'application/json' },
-    intervalMs: 6 * HOUR,
-    timeoutMs: 300_000,
-  },
-];
-`;
-  const sections = extractBundleSections(sample);
-  assert.equal(sections.length, 1, 'section with nested object must be detected');
-  assert.equal(sections[0].label, 'WithNested');
-  assert.equal(sections[0].script, 'seed-with-nested.mjs');
-  assert.equal(sections[0].intervalMsExpr, '6 * HOUR');
-});
-
-test('extractBundleSections: handles strings containing braces', () => {
-  // Defensive: if a string literal contains `{` or `}`, brace-counting
-  // must not be confused.
-  const sample = `
-const SECTIONS = [
-  { label: 'StrWithBrace', script: 'seed-str.mjs', regexFilter: 'foo\\\\{bar}', intervalMs: 1000 },
-];
-`;
-  const sections = extractBundleSections(sample);
-  assert.equal(sections.length, 1);
-  assert.equal(sections[0].script, 'seed-str.mjs');
-  assert.equal(sections[0].intervalMsExpr, '1000');
 });

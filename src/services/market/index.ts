@@ -6,12 +6,13 @@
  */
 
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
+import type { ListMarketQuotesResponse, ListCommodityQuotesResponse, GetPhysicalDivergenceIndexResponse, GetPhysicalPremiumsResponse, GetSectorSummaryResponse, ListCryptoQuotesResponse, ListCryptoSectorsResponse, CryptoSector, ListDefiTokensResponse, ListAiTokensResponse, ListOtherTokensResponse, MarketQuote as ProtoMarketQuote, MarketQuoteUnavailable, CryptoQuote as ProtoCryptoQuote } from '@/generated/client/worldmonitor/market/v1/service_client';
 import type { MarketData, CryptoData, TokenData } from '@/types';
 import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { MarketServiceClient } from '@/services/generated-rpc-clients';
 import { proFreshRpcFetch } from '@/services/premium-fetch';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 
 // ---- Client + Circuit Breakers ----
 
@@ -19,6 +20,7 @@ const client = new MarketServiceClient(getRpcBaseUrl(), { fetch: proFreshRpcFetc
 const MARKET_QUOTES_CACHE_TTL_MS = 5 * 60 * 1000;
 const stockBreaker = createCircuitBreaker<ListMarketQuotesResponse>({ name: 'Market Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const commodityBreaker = createCircuitBreaker<ListCommodityQuotesResponse>({ name: 'Commodity Quotes', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
+const physicalPremiumBreaker = createCircuitBreaker<GetPhysicalPremiumsResponse>({ name: 'Physical Premiums', cacheTtlMs: 0 });
 const sectorBreaker = createCircuitBreaker<GetSectorSummaryResponse>({ name: 'Sector Summary v2', cacheTtlMs: MARKET_QUOTES_CACHE_TTL_MS, persistCache: true });
 const cryptoBreaker = createCircuitBreaker<ListCryptoQuotesResponse>({ name: 'Crypto Quotes', persistCache: true });
 const cryptoSectorsBreaker = createCircuitBreaker<ListCryptoSectorsResponse>({ name: 'Crypto Sectors', persistCache: true });
@@ -26,10 +28,15 @@ const defiBreaker = createCircuitBreaker<ListDefiTokensResponse>({ name: 'DeFi T
 const aiBreaker = createCircuitBreaker<ListAiTokensResponse>({ name: 'AI Tokens', persistCache: true });
 const otherBreaker = createCircuitBreaker<ListOtherTokensResponse>({ name: 'Other Tokens', persistCache: true });
 
-const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false };
+const emptyStockFallback: ListMarketQuotesResponse = { quotes: [], finnhubSkipped: false, skipReason: '', rateLimited: false, unavailableSymbols: [], asOf: '' };
 const emptyCommodityFallback: ListCommodityQuotesResponse = { quotes: [] };
+const emptyPhysicalPremiumFallback: GetPhysicalPremiumsResponse = { premiums: [] };
 const emptySectorFallback: GetSectorSummaryResponse = { sectors: [] };
-const emptyCryptoFallback: ListCryptoQuotesResponse = { quotes: [] };
+const EMPTY_CRYPTO_FALLBACK: ListCryptoQuotesResponse = {
+  quotes: [],
+  unresolvedIds: [],
+  provider: 'degraded',
+};
 const emptyCryptoSectorsFallback: ListCryptoSectorsResponse = { sectors: [] };
 const emptyDefiTokensFallback: ListDefiTokensResponse = { tokens: [] };
 const emptyAiTokensFallback: ListAiTokensResponse = { tokens: [] };
@@ -67,21 +74,29 @@ export interface MarketFetchResult {
   skipped?: boolean;
   reason?: string;
   rateLimited?: boolean;
+  /**
+   * Requested symbols that produced no quote, each with a reason (#6305).
+   * A custom watchlist ticker the fixed seed does not carry used to vanish
+   * from `data` with no signal at all.
+   */
+  unavailableSymbols?: MarketQuoteUnavailable[];
+  /** ISO-8601 seed-batch timestamp when the RPC supplied one. */
+  asOf?: string;
 }
 
 // ========================================================================
 // Stocks -- replaces fetchMultipleStocks + fetchStockQuote
 // ========================================================================
 
-const lastSuccessfulByKey = new Map<string, MarketData[]>();
+const lastSuccessfulByKey = new Map<string, MarketFetchResult>();
 
 function symbolSetKey(symbols: string[]): string {
   return [...new Set(symbols.map((symbol) => symbol.trim()))].sort().join(',');
 }
 
 export async function fetchMultipleStocks(
-  symbols: Array<{ symbol: string; name: string; display: string }>,
-  options: { onBatch?: (results: MarketData[]) => void } = {},
+  symbols: readonly { symbol: string; name: string; display: string }[],
+  options: { onBatch?: (results: MarketData[]) => void; signal?: AbortSignal } = {},
 ): Promise<MarketFetchResult> {
   // Preserve exact requested symbols for cache keys and request payloads so
   // case-distinct instruments do not collapse into one cache entry.
@@ -105,10 +120,14 @@ export async function fetchMultipleStocks(
   const setKey = symbolSetKey(allSymbolStrings);
 
   const resp = await stockBreaker.execute(async () => {
-    return client.listMarketQuotes({ symbols: allSymbolStrings });
+    return client.listMarketQuotes(
+      { symbols: allSymbolStrings },
+      options.signal ? { signal: options.signal } : undefined,
+    );
   }, emptyStockFallback, {
     cacheKey: setKey,
     shouldCache: (r) => r.quotes.length > 0,
+    ignoreError: () => options.signal?.aborted === true,
   });
 
   const results = resp.quotes.map((q) => {
@@ -123,15 +142,27 @@ export async function fetchMultipleStocks(
   }
 
   if (results.length > 0) {
-    lastSuccessfulByKey.set(setKey, results);
+    lastSuccessfulByKey.set(setKey, {
+      data: results,
+      skipped: resp.finnhubSkipped || undefined,
+      reason: resp.skipReason || undefined,
+      rateLimited: resp.rateLimited || undefined,
+      unavailableSymbols: resp.unavailableSymbols?.length ? resp.unavailableSymbols : undefined,
+      asOf: resp.asOf || undefined,
+    });
   }
 
-  const data = results.length > 0 ? results : (lastSuccessfulByKey.get(setKey) || []);
+  const cached = lastSuccessfulByKey.get(setKey);
+  const data = results.length > 0 ? results : (cached?.data || []);
   return {
     data,
-    skipped: resp.finnhubSkipped || undefined,
-    reason: resp.skipReason || undefined,
-    rateLimited: resp.rateLimited || undefined,
+    skipped: (results.length > 0 ? resp.finnhubSkipped : cached?.skipped) || undefined,
+    reason: (results.length > 0 ? resp.skipReason : cached?.reason) || undefined,
+    rateLimited: (results.length > 0 ? resp.rateLimited : cached?.rateLimited) || undefined,
+    unavailableSymbols: results.length > 0
+      ? (resp.unavailableSymbols?.length ? resp.unavailableSymbols : undefined)
+      : cached?.unavailableSymbols,
+    asOf: results.length > 0 ? (resp.asOf || undefined) : cached?.asOf,
   };
 }
 
@@ -197,6 +228,36 @@ export async function fetchCommodityQuotes(
   return { data: results };
 }
 
+// Deliberately NOT the breaker's own cache: the premium and divergence responses have to
+// stay in the same seed cohort (the panel compares their clocks for strict equality), which
+// is why both routes are `no-store`. Retention is a different concern from caching — every
+// sibling breaker in this file keeps a `lastSuccessful*` so one failed poll cannot blank a
+// panel, and without it a single blip returns the empty fallback, overwrites good premiums,
+// and hides the Physical tab until the next markets cycle (12 min, viewport-gated).
+let lastSuccessfulPhysicalPremiums: GetPhysicalPremiumsResponse | null = null;
+
+export async function fetchPhysicalPremiums(signal?: AbortSignal): Promise<GetPhysicalPremiumsResponse> {
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
+  const response = await physicalPremiumBreaker.execute(async () => {
+    return client.getPhysicalPremiums({ metals: [] }, { signal: requestSignal });
+  }, emptyPhysicalPremiumFallback, {
+    shouldCache: () => false,
+    ignoreError: () => signal?.aborted === true,
+  });
+  if (response.premiums.length > 0) {
+    lastSuccessfulPhysicalPremiums = response;
+    return response;
+  }
+  return lastSuccessfulPhysicalPremiums ?? response;
+}
+
+export async function fetchPhysicalDivergence(signal?: AbortSignal): Promise<GetPhysicalDivergenceIndexResponse> {
+  const timeoutSignal = createTimeoutSignal(15_000);
+  const requestSignal = signal ? combineAbortSignals([signal, timeoutSignal]) : timeoutSignal;
+  return client.getPhysicalDivergenceIndex({ metals: [] }, { signal: requestSignal });
+}
+
 // ========================================================================
 // Sectors -- uses getSectorSummary (reads market:sectors:v2)
 // ========================================================================
@@ -232,7 +293,7 @@ export async function fetchCrypto(): Promise<CryptoData[]> {
 
   const resp = await cryptoBreaker.execute(async () => {
     return client.listCryptoQuotes({ ids: [] }); // empty = all defaults
-  }, emptyCryptoFallback);
+  }, EMPTY_CRYPTO_FALLBACK);
 
   const results = resp.quotes
     .map(toCryptoData)

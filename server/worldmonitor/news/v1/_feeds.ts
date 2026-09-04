@@ -3,6 +3,12 @@ export interface ServerFeed {
   url: string;
   lang?: string;
   strategicDefault?: boolean;
+  /**
+   * Positive values start earlier in a cold digest build. This is a fetch
+   * scheduling hint only; it does not affect ranking, source tier, or UI
+   * default selection.
+   */
+  deadlinePriority?: number;
 }
 
 export function isServerFeedReachableForLanguage(
@@ -10,6 +16,23 @@ export function isServerFeedReachableForLanguage(
   language: string,
 ): boolean {
   return !feed.lang || feed.lang === language || !!feed.strategicDefault;
+}
+
+export function orderServerFeedEntries<T extends {
+  feed: Pick<ServerFeed, 'deadlinePriority'>;
+}>(entries: readonly T[]): T[] {
+  return entries
+    .map((entry, index) => ({ entry, index }))
+    .sort((a, b) => {
+      const aPriority = Number.isFinite(a.entry.feed.deadlinePriority)
+        ? a.entry.feed.deadlinePriority!
+        : 0;
+      const bPriority = Number.isFinite(b.entry.feed.deadlinePriority)
+        ? b.entry.feed.deadlinePriority!
+        : 0;
+      return bPriority - aPriority || a.index - b.index;
+    })
+    .map(({ entry }) => entry);
 }
 
 const gn = (q: string) =>
@@ -44,17 +67,45 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Politico', url: 'https://rss.politico.com/politics-news.xml' },
       { name: 'The Hill', url: 'https://thehill.com/news/feed' },
       { name: 'Axios', url: 'https://api.axios.com/feed/' },
+    { name: 'Fox News', url: 'https://moxie.foxnews.com/google-publisher/us.xml' },
       // Canada + North America key-country pack (#5960)
       { name: 'CBC News', url: 'https://www.cbc.ca/webfeed/rss/rss-world' },
       { name: 'Globe and Mail', url: 'https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/?outputType=xml' },
       { name: 'Global News', url: 'https://globalnews.ca/feed/' },
+      // Canada depth pack (#6604/#6605). FR sources keep lang:'fr'.
+      { name: 'Toronto Star', url: 'https://www.thestar.com/search/?f=rss&t=article&c=news/canada' },
+      { name: 'National Post', url: 'https://nationalpost.com/feed/' },
+      { name: 'Financial Post', url: 'https://financialpost.com/feed/' },
+      { name: 'iPolitics', url: 'https://www.ipolitics.ca/feed' },
+      { name: 'The Narwhal', url: 'https://thenarwhal.ca/feed/' },
+      { name: 'The Tyee', url: 'https://thetyee.ca/rss2.xml' },
+      { name: 'Radio-Canada', url: 'https://ici.radio-canada.ca/info/rss/info/en-continu', lang: 'fr' },
+      { name: 'La Presse', url: 'https://www.lapresse.ca/actualites/rss', lang: 'fr' },
+      { name: 'Le Devoir', url: 'https://www.ledevoir.com/rss/manchettes.xml', lang: 'fr' },
+      { name: 'TVA Nouvelles', url: 'https://www.tvanouvelles.ca/rss.xml', lang: 'fr' },
+      { name: 'Vancouver Sun', url: 'https://vancouversun.com/feed/' },
+      { name: 'Calgary Herald', url: 'https://calgaryherald.com/feed/' },
+      { name: 'Winnipeg Free Press', url: 'https://www.winnipegfreepress.com/feed' },
+      { name: 'Ottawa Citizen', url: 'https://ottawacitizen.com/feed/' },
+      { name: 'Edmonton Journal', url: 'https://edmontonjournal.com/feed/' },
+      { name: "Maclean's", url: 'https://macleans.ca/feed/' },
+      { name: 'The Province', url: 'https://theprovince.com/feed/' },
+      { name: 'CTV News', url: gnLocale('site:ctvnews.ca when:1d', 'en-CA', 'CA', 'CA:en') },
+      { name: 'CP24', url: gnLocale('site:cp24.com when:1d', 'en-CA', 'CA', 'CA:en') },
+      { name: 'Montreal Gazette', url: gnLocale('site:montrealgazette.com when:1d', 'en-CA', 'CA', 'CA:en') },
     ],
+
     europe: [
       { name: 'France 24', url: 'https://www.france24.com/en/rss' },
       { name: 'EuroNews', url: 'https://www.euronews.com/rss?format=xml' },
       { name: 'Le Monde', url: 'https://www.lemonde.fr/en/rss/une.xml' },
       { name: 'DW News', url: 'https://rss.dw.com/xml/rss-en-all' },
+      { name: 'Telegraph', url: 'https://www.telegraph.co.uk/rss.xml' },
+      { name: 'Interfax EN', url: gn('site:interfax.com when:7d') },
       { name: 'Tagesschau', url: 'https://www.tagesschau.de/xml/rss2/', lang: 'de' },
+      { name: 'Handelsblatt', url: 'https://www.handelsblatt.com/contentexport/feed/schlagzeilen', lang: 'de' },
+      { name: 'Welt', url: 'https://www.welt.de/feeds/latest.rss', lang: 'de' },
+      { name: 'Interfax RU', url: 'https://www.interfax.ru/rss.asp', lang: 'ru' },
       { name: 'ANSA', url: 'https://www.ansa.it/sito/ansait_rss.xml', lang: 'it' },
       { name: 'NOS Nieuws', url: 'https://feeds.nos.nl/nosnieuwsalgemeen', lang: 'nl' },
       { name: 'SVT Nyheter', url: 'https://www.svt.se/nyheter/rss.xml', lang: 'sv' },
@@ -134,7 +185,24 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       // language and protected from client-side source filtering.
       { name: 'Hurriyet', url: 'https://www.hurriyet.com.tr/rss/anasayfa', lang: 'tr', strategicDefault: true },
       { name: 'Polsat News', url: 'https://www.polsatnews.pl/rss/wszystkie.xml', lang: 'pl', strategicDefault: true },
+      // Polish depth — catalog opt-in, locale-boosted for `pl`. PAP/Onet native
+      // RSS is gone; OKO.press still has a live publisher feed.
+      { name: 'PAP', url: gnLocale('site:pap.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Gazeta Wyborcza', url: gnLocale('site:wyborcza.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Polityka', url: gnLocale('site:polityka.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'Onet', url: gnLocale('site:wiadomosci.onet.pl when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
+      { name: 'OKO.press', url: 'https://oko.press/feed', lang: 'pl' },
+      { name: 'TVP Info', url: gnLocale('site:tvp.info when:2d', 'pl', 'PL', 'PL:pl'), lang: 'pl' },
       { name: 'Kathimerini', url: gnLocale('site:kathimerini.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el', strategicDefault: true },
+      { name: 'Naftemporiki', url: 'https://www.naftemporiki.gr/feed/', lang: 'el' },
+      { name: 'in.gr', url: 'https://www.in.gr/feed/', lang: 'el' },
+      { name: 'iefimerida', url: 'https://www.iefimerida.gr/rss.xml', lang: 'el' },
+      { name: 'Proto Thema', url: gnLocale('site:protothema.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'ERT', url: gnLocale('site:ert.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'AMNA', url: gnLocale('site:amna.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'Ta Nea', url: 'https://www.tanea.gr/feed/', lang: 'el' },
+      { name: 'Liberal GR', url: gnLocale('site:liberal.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
+      { name: 'CNN Greece', url: gnLocale('site:cnn.gr when:2d', 'el', 'GR', 'GR:el'), lang: 'el' },
     ],
     middleeast: [
       { name: 'BBC Middle East', url: 'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
@@ -152,12 +220,25 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Oman Observer', url: 'https://www.omanobserver.om/rssFeed/1' },
       { name: 'Asharq Business', url: 'https://asharqbusiness.com/rss.xml' },
       { name: 'Rudaw', url: gn('site:rudaw.net when:7d') },
+      { name: 'Yemen Online', url: gn('site:yemenonline.info when:14d') },
+      { name: "Sana'a Center", url: 'https://sanaacenter.org/feed/' },
+      { name: 'Syria Direct', url: 'https://syriadirect.org/feed/' },
+      { name: 'Enab Baladi English', url: gn('site:english.enabbaladi.net when:14d') },
+      { name: '+972 Magazine', url: 'https://www.972mag.com/feed/' },
+      { name: 'WAFA English', url: gn('site:english.wafa.ps when:7d') },
+      { name: 'Naharnet Lebanon', url: 'https://www.naharnet.com/tags/lebanon/en/feed.atom' },
+      { name: "L'Orient Today", url: gn('site:lorientlejour.com Lebanon when:7d') },
+      { name: 'Annahar', url: gnLocale('site:annahar.com/lebanon when:7d', 'ar', 'LB', 'LB:ar'), lang: 'ar', strategicDefault: true },
+      { name: 'Libya Herald', url: 'https://libyaherald.com/rss.xml' },
+      { name: 'Egypt Independent', url: 'https://www.egyptindependent.com/feed/' },
+      { name: 'Mada Masr', url: gn('site:madamasr.com when:30d') },
     ],
     tech: [
       { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
       { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/technology-lab' },
       { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
       { name: 'MIT Tech Review', url: 'https://www.technologyreview.com/feed/' },
+      { name: 'Wired', url: 'https://www.wired.com/feed/rss' },
     ],
     ai: [
       { name: 'AI News', url: gn('(OpenAI OR Anthropic OR Google AI OR "large language model" OR ChatGPT) when:2d') },
@@ -172,6 +253,15 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/news/rssindex' },
       { name: 'Financial Times', url: 'https://www.ft.com/rss/home' },
       { name: 'Reuters Business', url: gn('site:reuters.com business markets when:1d') },
+      { name: 'Fox Business', url: 'https://moxie.foxbusiness.com/google-publisher/latest.xml' },
+      { name: 'Business Insider', url: 'https://www.businessinsider.com/rss' },
+      { name: 'GlobeNewswire', url: 'https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire' },
+      { name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==' },
+      { name: 'PR Newswire', url: gn('site:prnewswire.com when:1d') },
+      { name: 'Chainwire', url: 'https://chainwire.org/feed/' },
+      { name: 'Coinbase Blog', url: gn('site:coinbase.com/blog when:7d') },
+      { name: 'Binance Announcements', url: gn('site:binance.com/en/support/announcement when:3d') },
+      { name: 'Jin10', url: gnLocale('site:jin10.com when:1d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
     ],
     // MCP digest-backed tools consume `full`, while the finance dashboard
     // consumes `finance`. Keep this literal array aligned with the finance
@@ -204,6 +294,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Pentagon', url: 'https://www.war.gov/DesktopModules/ArticleCS/RSS.ashx?ContentType=1&Site=945' },
       { name: 'Federal Reserve', url: 'https://www.federalreserve.gov/feeds/press_all.xml' },
       { name: 'SEC', url: 'https://www.sec.gov/news/pressreleases.rss' },
+      { name: 'U.S. Trade Representative', url: 'https://ustr.gov/rss.xml' },
       { name: 'UN News', url: 'https://news.un.org/feed/subscribe/en/news/all/rss.xml' },
       { name: 'CISA', url: 'https://www.cisa.gov/cybersecurity-advisories/all.xml' },
       { name: 'Treasury', url: gn('site:treasury.gov when:1d') },
@@ -237,6 +328,15 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Le Quotidien', url: 'https://lequotidien.sn/feed/', lang: 'fr' },
       // Pan-African
       { name: 'RFI Afrique', url: 'https://www.rfi.fr/en/africa/rss' },
+      { name: 'Studio Tamani', url: 'https://www.studiotamani.org/feed/', lang: 'fr', strategicDefault: true },
+      { name: 'leFaso.net', url: 'https://lefaso.net/spip.php?page=backend', lang: 'fr', strategicDefault: true },
+      { name: 'ActuNiger', url: gnLocale('site:actuniger.com Niger when:7d', 'fr', 'FR', 'FR:fr'), lang: 'fr', strategicDefault: true },
+      { name: 'Aïr Info', url: 'https://airinfoagadez.com/feed/', lang: 'fr' },
+      { name: 'Daily Nation', url: 'https://nation.africa/kenya/rss.xml' },
+      { name: 'The Guardian Post', url: gn('site:theguardianpostcameroon.com when:30d') },
+      { name: 'Tchadinfos', url: 'https://tchadinfos.com/feed/', lang: 'fr' },
+      { name: 'Alwihda Info', url: 'https://www.alwihdainfo.com/rss/', lang: 'fr' },
+      { name: 'Radio Ndeke Luka', url: 'https://www.radiondekeluka.org/feed/', lang: 'fr' },
     ],
     latam: [
       { name: 'BBC Latin America', url: 'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
@@ -246,12 +346,19 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'El Universo', url: 'https://www.eluniverso.com/arc/outboundfeeds/rss/category/noticias/?outputType=xml', lang: 'es' },
       { name: 'Clarín', url: 'https://www.clarin.com/rss/lo-ultimo/', lang: 'es' },
       { name: 'InSight Crime', url: 'https://insightcrime.org/feed/' },
+      { name: 'HaitiLibre English', url: 'https://www.haitilibre.com/rss-flash-en.php' },
+      { name: 'AyiboPost', url: gnLocale('site:ayibopost.com Haiti when:14d', 'fr', 'FR', 'FR:fr'), lang: 'fr' },
+      { name: 'Caracas Chronicles', url: 'https://www.caracaschronicles.com/feed/' },
+      { name: 'Efecto Cocuyo', url: 'https://efectococuyo.com/feed/', lang: 'es' },
+      { name: 'Havana Times', url: 'https://havanatimes.org/feed/' },
+      { name: '14ymedio', url: 'https://www.14ymedio.com/rss/', lang: 'es' },
     ],
     asia: [
       { name: 'BBC Asia', url: 'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
       { name: 'The Diplomat', url: 'https://thediplomat.com/feed/' },
       // Theater coverage preset (#5956) - Indo-Pacific sources.
       { name: 'Reuters Asia', url: gn('site:reuters.com (China OR Japan OR Taiwan OR Korea) when:3d') },
+      { name: 'Reuters India', url: gn('site:reuters.com India when:3d') },
       { name: 'Japan Today', url: 'https://japantoday.com/feed/atom' },
       { name: 'Nikkei Asia', url: gn('site:asia.nikkei.com when:3d') },
       { name: 'CNA', url: 'https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml' },
@@ -259,10 +366,13 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'South China Morning Post', url: gn('site:scmp.com when:2d') },
       { name: 'The Hindu', url: 'https://www.thehindu.com/feeder/default.rss' },
       { name: 'Asia News', url: gn('site:asianews.it when:3d') },
-      { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d') },
+      // China coverage feeds must start before the full digest's later
+      // batches. Otherwise a slow cold build can report timeout for an
+      // otherwise healthy source while the seed transport remains fresh.
+      { name: 'Xinhua', url: gn('site:xinhuanet.com OR Xinhua when:1d'), deadlinePriority: 100 },
       { name: 'Asahi Shimbun', url: 'https://www.asahi.com/rss/asahi/newsheadlines.rdf', lang: 'ja', strategicDefault: true },
-      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true },
-      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true },
+      { name: 'MIIT (China)', url: gnLocale('site:miit.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true, deadlinePriority: 100 },
+      { name: 'MOFCOM (China)', url: gnLocale('site:mofcom.gov.cn when:7d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh', strategicDefault: true, deadlinePriority: 100 },
       { name: 'Bangkok Post', url: gn('site:bangkokpost.com when:1d'), lang: 'th', strategicDefault: true },
       { name: 'VnExpress', url: 'https://vnexpress.net/rss/tin-moi-nhat.rss', lang: 'vi', strategicDefault: true },
       { name: 'Yonhap News', url: 'https://www.yonhapnewstv.co.kr/browse/feed/', lang: 'ko', strategicDefault: true },
@@ -289,6 +399,11 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'The Star (Malaysia)', url: gn('site:thestar.com.my when:3d') },
       { name: 'Irrawaddy', url: 'https://www.irrawaddy.com/feed/' },
       { name: 'Island Times (Palau)', url: 'https://islandtimes.org/feed/' },
+      { name: 'Amu TV', url: 'https://amu.tv/feed/' },
+      { name: 'Pajhwok Afghan News', url: gn('site:pajhwok.com Afghanistan when:7d') },
+      { name: 'The Daily Star', url: gn('site:thedailystar.net when:14d') },
+      { name: 'Dhaka Tribune', url: gn('site:dhakatribune.com when:14d') },
+      { name: 'Times of India', url: 'https://timesofindia.indiatimes.com/rssfeeds/-2128936835.cms', lang: 'en' },
     ],
     energy: [
       { name: 'Oil & Gas', url: gn('(oil price OR OPEC OR "natural gas" OR pipeline OR LNG) when:2d') },
@@ -322,6 +437,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'The Verge', url: 'https://www.theverge.com/rss/index.xml' },
       { name: 'Ars Technica', url: 'https://feeds.arstechnica.com/arstechnica/technology-lab' },
       { name: 'Hacker News', url: 'https://hnrss.org/frontpage' },
+      { name: 'Wired', url: 'https://www.wired.com/feed/rss' },
     ],
     ai: [
       { name: 'AI News', url: gn('(OpenAI OR Anthropic OR Google AI OR "large language model" OR ChatGPT) when:2d') },
@@ -338,7 +454,7 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Y Combinator Blog', url: 'https://www.ycombinator.com/blog/rss/' },
       { name: 'a16z Blog', url: 'https://www.a16z.news/feed' },
       { name: 'First Round Review', url: 'https://review.firstround.com/articles/rss' },
-      { name: 'Sequoia Blog', url: 'https://www.sequoiacap.com/feed/' },
+      { name: 'Sequoia Blog', url: gn('site:sequoiacap.com when:7d') },
       { name: 'Stratechery', url: 'https://stratechery.com/feed/' },
     ],
     regionalStartups: [
@@ -355,7 +471,6 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
     ],
     accelerators: [
       { name: 'YC News', url: 'https://news.ycombinator.com/rss' },
-      { name: 'YC Blog', url: 'https://www.ycombinator.com/blog/rss/' },
       { name: 'Demo Day News', url: gn('("demo day" OR "YC batch" OR "accelerator batch") startup when:7d') },
     ],
     security: [
@@ -414,6 +529,11 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'CNBC', url: 'https://www.cnbc.com/id/100003114/device/rss/rss.html' },
       { name: 'Yahoo Finance', url: 'https://finance.yahoo.com/rss/topstories' },
       { name: 'Seeking Alpha', url: 'https://seekingalpha.com/market_currents.xml' },
+      { name: 'Fox Business', url: 'https://moxie.foxbusiness.com/google-publisher/latest.xml' },
+      { name: 'Business Insider', url: 'https://www.businessinsider.com/rss' },
+      { name: 'GlobeNewswire', url: 'https://www.globenewswire.com/RssFeed/subjectcode/22/feedTitle/GlobeNewswire' },
+      { name: 'Business Wire', url: 'https://feed.businesswire.com/rss/home/?rss=G1QFDERJXkJeGVtRWA==' },
+      { name: 'PR Newswire', url: gn('site:prnewswire.com when:1d') },
     ],
     forex: [
       { name: 'Forex News', url: gn('(forex OR currency OR "exchange rate" OR FX OR "US dollar") when:2d') },
@@ -430,6 +550,10 @@ export const VARIANT_FEEDS: Record<string, Record<string, ServerFeed[]>> = {
       { name: 'Cointelegraph', url: 'https://cointelegraph.com/rss' },
       { name: 'The Block', url: 'https://news.google.com/rss/search?q=site:theblock.co+when:1d&hl=en-US&gl=US&ceid=US:en' },
       { name: 'Decrypt', url: 'https://decrypt.co/feed' },
+      { name: 'Chainwire', url: 'https://chainwire.org/feed/' },
+      { name: 'Coinbase Blog', url: gn('site:coinbase.com/blog when:7d') },
+      { name: 'Binance Announcements', url: gn('site:binance.com/en/support/announcement when:3d') },
+      { name: 'Jin10', url: gnLocale('site:jin10.com when:1d', 'zh-CN', 'CN', 'CN:zh-Hans'), lang: 'zh' },
       // Blockworks REMOVED in parity with src/config/feeds.ts (PR #3715
       // review). blockworks.co/feed is Cloudflare-blocked from both Vercel
       // edge AND Railway egress, AND Google News returns 0 items for

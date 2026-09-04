@@ -39,7 +39,7 @@ export async function registerWebhook(
   // gate and the documented "X-WorldMonitor-Key required" contract in
   // docs/api-shipping-v2.mdx.
   const apiKeyResult = (await validateApiKey(ctx.request, { forceKey: true })) as {
-    valid: boolean; required: boolean; error?: string;
+    valid: boolean; required: boolean; error?: string; credential?: string;
   };
   if (apiKeyResult.required && !apiKeyResult.valid) {
     throw new ApiError(401, apiKeyResult.error ?? 'API key required', '');
@@ -80,7 +80,7 @@ export async function registerWebhook(
     ]);
   }
 
-  const ownerTag = await callerFingerprint(ctx.request);
+  const ownerTag = await callerFingerprint(ctx.request, apiKeyResult.credential);
   const newSubscriberId = generateSubscriberId();
   const secret = await generateSecret();
 

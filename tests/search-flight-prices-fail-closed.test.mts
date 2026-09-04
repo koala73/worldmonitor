@@ -39,8 +39,18 @@ const originalFetch: FetchFn | undefined = globalThis.fetch;
 const originalToken = process.env.TRAVELPAYOUTS_API_TOKEN;
 const originalDemo = process.env.AVIATION_DEMO_PRICES;
 
+// search-flight-prices is metered (TravelPayouts, billed per search) and now
+// requires identity — see requireLiveAviationAccess. This suite is about the
+// fail-closed behaviour AFTER the gate, so it authenticates;
+// tests/aviation-live-routes-require-auth.test.mts owns the gate itself.
+const TEST_API_KEY = 'test-enterprise-key';
+const originalValidKeys = process.env.WORLDMONITOR_VALID_KEYS;
+process.env.WORLDMONITOR_VALID_KEYS = TEST_API_KEY;
+
 const CTX: ServerContext = {
-  request: new Request('https://example.com/'),
+  request: new Request('https://example.com/', {
+    headers: { 'X-WorldMonitor-Key': TEST_API_KEY },
+  }),
   pathParams: {},
   headers: {},
 };
@@ -78,6 +88,52 @@ after(() => {
   else process.env.TRAVELPAYOUTS_API_TOKEN = originalToken;
   if (originalDemo == null) delete process.env.AVIATION_DEMO_PRICES;
   else process.env.AVIATION_DEMO_PRICES = originalDemo;
+  if (originalValidKeys == null) delete process.env.WORLDMONITOR_VALID_KEYS;
+  else process.env.WORLDMONITOR_VALID_KEYS = originalValidKeys;
+});
+
+describe('searchFlightPrices — adult-count semantics (#7202)', () => {
+  it('keeps live and demo quotes per-person for adults:1 and adults:4', async (t) => {
+    t.mock.method(Math, 'random', () => 0.5);
+
+    process.env.TRAVELPAYOUTS_API_TOKEN = 'fake-token';
+    delete process.env.AVIATION_DEMO_PRICES;
+    globalThis.fetch = async () =>
+      new Response(JSON.stringify({
+        data: [{
+          origin: 'IST',
+          destination: 'LHR',
+          departure_at: '2026-08-15T10:00:00Z',
+          transfers: 0,
+          price: 125,
+          airline: 'TK',
+        }],
+      }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+
+    const liveOneAdult = await searchFlightPrices(CTX, { ...REQ, adults: 1 });
+    const liveFourAdults = await searchFlightPrices(CTX, { ...REQ, adults: 4 });
+    assert.equal(liveOneAdult.provider, 'travelpayouts_data');
+    assert.equal(liveFourAdults.provider, 'travelpayouts_data');
+    assert.deepEqual(
+      liveOneAdult.quotes.map((quote) => quote.priceAmount),
+      liveFourAdults.quotes.map((quote) => quote.priceAmount),
+    );
+
+    delete process.env.TRAVELPAYOUTS_API_TOKEN;
+    process.env.AVIATION_DEMO_PRICES = '1';
+    const demoOneAdult = await searchFlightPrices(CTX, { ...REQ, adults: 1 });
+    const demoFourAdults = await searchFlightPrices(CTX, { ...REQ, adults: 4 });
+    assert.equal(demoOneAdult.provider, 'demo');
+    assert.equal(demoFourAdults.provider, 'demo');
+    assert.deepEqual(
+      demoOneAdult.quotes.map((quote) => quote.priceAmount),
+      demoFourAdults.quotes.map((quote) => quote.priceAmount),
+      'demo quotes must use the same per-person semantics as the live provider',
+    );
+  });
 });
 
 describe('searchFlightPrices — fail-closed default (#3756)', () => {

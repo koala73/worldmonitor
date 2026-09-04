@@ -929,6 +929,22 @@
   constructStatus: observed-mechanism
   reviewNotes: Active informationCognitive Core scorer input.
 
+- indicator: femaleUpperSecondaryAttainment
+  dimension: education
+  domain: social-governance
+  weight: 1.0
+  direction: higher-better
+  scoringTier: core
+  source: World Bank
+  seriesId: SE.SEC.CUAT.UP.FE.ZS
+  seriesUrl: https://data.worldbank.org/indicator/SE.SEC.CUAT.UP.FE.ZS
+  coveragePct: 0.92
+  lastObservedYear: 2024
+  license: CC-BY-4.0
+  mechanismTestRationale: Female upper-secondary attainment of the 25+ population is the variant the causal literature reports an income-independent disaster-resilience effect for (Striessnig, Lutz & Patt 2013; Lutz, Muttarak & Striessnig 2014). Coverage is identical across the female, male and total series, so the mechanism-truest variant costs nothing. Measures an attainment stock, so it lags late-developing school systems by construction — bounded by three whole-index matched pairs rather than left implicit.
+  constructStatus: observed-mechanism
+  reviewNotes: Active education Core scorer input, activated 2026-08-11 (#6460). Sole indicator in the dimension. 181 of 196 rankable countries measured; the 15 absent impute to unmonitored rather than stable-absence.
+
 # HEALTH-FOOD DOMAIN (weight 0.13) ---------------------------------------
 
 - indicator: physiciansPer1k
@@ -1049,13 +1065,13 @@
   weight: 0.40
   direction: composite
   scoringTier: core
-  source: FAO AQUASTAT
-  seriesId: Indicator-tagged water stress / withdrawal / dependency / availability / renewable / access reading
-  seriesUrl: https://www.fao.org/aquastat/
+  source: World Bank WDI
+  seriesId: ER.H2O.FWST.ZS (current selected observation; legacy field accepts older indicator-tagged shapes)
+  seriesUrl: https://data.worldbank.org/indicator/ER.H2O.FWST.ZS
   coveragePct: 0.85
-  lastObservedYear: 2020
-  license: Open
-  mechanismTestRationale: The scorer uses one AQUASTAT slot. `scoreAquastatValue()` routes stress/withdrawal/dependency tags through lower-better 0-100 anchors and availability/renewable/access tags through higher-better 0-100 or 0-5000 anchors.
+  lastObservedYear: 2022
+  license: CC BY 4.0
+  mechanismTestRationale: The scorer uses one legacy `aquastatScore` slot. The current World Bank adapter publishes water stress; `scoreAquastatValue()` retains indicator-tag routing for backward-compatible seed shapes.
   constructStatus: observed-mechanism
 
 # RECOVERY DOMAIN (weight 0.25) ------------------------------------------

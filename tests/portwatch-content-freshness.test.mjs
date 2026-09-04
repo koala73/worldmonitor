@@ -3,8 +3,8 @@
 //
 // Regression shape from #6060: a 12:03 UTC run reports status OK, 174
 // countries seeded, 174/174 coverage complete and zero refreshFailures, while
-// `supply_chain:portwatch-ports:v1:CN` carries content that is more than 170
-// hours old — outside the widened 144-hour budget. Fresh transport metadata
+// `supply_chain:portwatch-ports:v1:CN` carries content past the content budget
+// (240h since 2026-08-18; 144h before that). Fresh transport metadata
 // plus complete country cardinality must not hide stale decision-critical data.
 //
 // These tests pin the seed-meta half of the split: the run publishes an
@@ -33,6 +33,12 @@ const { ACTIVATION_MARKERS, SEED_META } = __testing__;
 
 const MINUTE_MS = 60_000;
 const HOUR_MS = 60 * MINUTE_MS;
+// Fixture ages are expressed RELATIVE to the budget, never as literal hours.
+// They previously read 150h/170h/180h, which meant "past budget" only while the
+// budget happened to be 144h; raising it to 240h silently turned every one of
+// them into a fresh observation and the staleness assertions stopped testing
+// staleness at all.
+const BUDGET_H = PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES / 60;
 // Frozen to the audit hour in #6060 so ages are exact rather than clock-seeded.
 const NOW = Date.parse('2026-08-02T14:40:00.000Z');
 
@@ -60,8 +66,8 @@ function countryDataOf(entries) {
 }
 
 describe('buildContentFreshnessReport', () => {
-  it('matches the corridor adapter 144-hour content budget', () => {
-    assert.equal(PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES, 2 * 72 * 60);
+  it('matches the corridor adapter content budget', () => {
+    assert.equal(PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES, 10 * 24 * 60);
   });
 
   it('declares exactly the countries the China corridor adapter consumes', () => {
@@ -69,12 +75,17 @@ describe('buildContentFreshnessReport', () => {
   });
 
   it('reproduces the #6060 audit: complete cardinality with stale China content', () => {
-    // The exact shape of the production observation: CN is well beyond the
-    // two-rotation budget and HK remains fresh inside an otherwise complete
-    // 174-country run.
+    // The shape of the #6060 production observation: CN well beyond the budget,
+    // HK fresh, inside an otherwise complete 174-country run.
+    //
+    // Offsets are budget-relative. The original fixture used the literal
+    // observation dates (CN 170h, HK 62h), which encoded "stale" only while the
+    // budget was 144h — at 240h both became fresh and this stopped reproducing
+    // the audit it is named for.
+    const CN_OBSERVED_AT = NOW - (BUDGET_H + 26) * HOUR_MS;
     const entries = [
-      payload('CN', '2026-07-26T12:02:43.475Z'),
-      payload('HK', '2026-07-31T00:03:02.206Z'),
+      payload('CN', new Date(CN_OBSERVED_AT).toISOString()),
+      payload('HK', new Date(NOW - (BUDGET_H - 82) * HOUR_MS).toISOString()),
       ...Array.from({ length: 172 }, (_, index) =>
         payload(`X${index}`, new Date(NOW - HOUR_MS).toISOString())),
     ];
@@ -84,16 +95,16 @@ describe('buildContentFreshnessReport', () => {
     });
 
     assert.equal(report.coveredCount, 174, 'cardinality is still complete');
-    assert.equal(report.freshCount, 173, 'HK is 62h old — inside the 144h budget');
-    assert.equal(report.staleCount, 1, 'CN is 170h old — outside the 144h budget');
+    assert.equal(report.freshCount, 173, 'HK sits inside the budget');
+    assert.equal(report.staleCount, 1, 'CN sits past the budget');
     assert.equal(report.unknownCount, 0);
     assert.deepEqual(report.staleCountries, ['CN']);
     assert.equal(report.staleCountriesTruncated, 0);
-    assert.equal(report.oldestObservedAt, Date.parse('2026-07-26T12:02:43.475Z'));
+    assert.equal(report.oldestObservedAt, CN_OBSERVED_AT);
     assert.equal(report.oldestObservedCountry, 'CN');
     assert.equal(
       report.oldestAgeMinutes,
-      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
+      Math.round((NOW - CN_OBSERVED_AT) / MINUTE_MS),
     );
     assert.equal(report.budgetMinutes, PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES);
     assert.equal(report.assessedAt, NOW);
@@ -105,7 +116,7 @@ describe('buildContentFreshnessReport', () => {
     assert.equal(report.criticalOldestObservedCountry, 'CN');
     assert.equal(
       report.criticalOldestAgeMinutes,
-      Math.round((NOW - Date.parse('2026-07-26T12:02:43.475Z')) / MINUTE_MS),
+      Math.round((NOW - CN_OBSERVED_AT) / MINUTE_MS),
     );
   });
 
@@ -120,9 +131,10 @@ describe('buildContentFreshnessReport', () => {
       countryData: countryDataOf([
         payload('CN', new Date(NOW - HOUR_MS).toISOString()),
         payload('HK', new Date(NOW - HOUR_MS).toISOString()),
-        // Back of the rotation: refreshed 6-7 days ago, entirely normal.
-        payload('BR', new Date(NOW - 170 * HOUR_MS).toISOString()),
-        payload('ZA', new Date(NOW - 150 * HOUR_MS).toISOString()),
+        // Back of the rotation, past the content budget: visible as counts,
+        // but not decision-gating because neither is a critical country.
+        payload('BR', new Date(NOW - (BUDGET_H + 26) * HOUR_MS).toISOString()),
+        payload('ZA', new Date(NOW - (BUDGET_H + 6) * HOUR_MS).toISOString()),
       ]),
       now: NOW,
     });
@@ -211,7 +223,7 @@ describe('buildContentFreshnessReport', () => {
   });
 
   it('bounds the published stale-country list and reports what it dropped', () => {
-    const stale = new Date(NOW - 150 * HOUR_MS).toISOString();
+    const stale = new Date(NOW - (BUDGET_H + 6) * HOUR_MS).toISOString();
     const overflow = PORTWATCH_MAX_REPORTED_STALE_COUNTRIES + 7;
     const report = buildContentFreshnessReport({
       countryData: countryDataOf(
@@ -251,17 +263,19 @@ describe('buildContentFreshnessReport', () => {
 // The seeder reserves the first cold-fetch slots for CN/HK instead of letting
 // them follow the fleet rotation: MAX_COLD_FETCH_PER_RUN caps refreshes at 30
 // of 174 per run on a 12h cron, so a full sweep is ceil(174/30) = 6 runs = 72h,
-// one rotation inside the 144h content budget. CN and HK feed the China
+// comfortably inside the 240h content budget. CN and HK feed the China
 // corridor adapter and the activity-nowcast's maritime family, so they must be
 // refreshed every run they are due, not once per fleet sweep.
 // The alarm's clock must measure CONTENT, not retrieval. `fetchedAt` resets on
 // every successful fetch — including the forced refetch at MAX_CACHE_AGE_MS
 // (168h) that returns an UNCHANGED upstream `asof`. Ageing that would green the
-// alarm for 144h of every 168h during an indefinite upstream freeze, which is
-// the precise failure #6060 exists to end.
+// alarm for a full budget window out of every 168h cache lifetime during an
+// indefinite upstream freeze, which is the precise failure #6060 exists to end.
+// Since the budget moved to 240h that window now EXCEEDS the cache lifetime, so
+// ageing the retrieval clock would green the alarm permanently.
 describe('content clock survives a refetch that returns unchanged upstream data', () => {
   it('ages the upstream content date, not the retrieval timestamp', () => {
-    const frozenSince = NOW - 180 * HOUR_MS;
+    const frozenSince = NOW - (BUDGET_H + 36) * HOUR_MS;
     const report = buildContentFreshnessReport({
       countryData: countryDataOf([
         {
@@ -286,7 +300,7 @@ describe('content clock survives a refetch that returns unchanged upstream data'
     );
     assert.equal(report.criticalFreshCount, 1);
     assert.equal(report.criticalOldestObservedAt, frozenSince);
-    assert.equal(report.criticalOldestAgeMinutes, 180 * 60);
+    assert.equal(report.criticalOldestAgeMinutes, (BUDGET_H + 36) * 60);
   });
 
   it('counts content as fresh when the upstream date actually advanced', () => {
@@ -323,6 +337,21 @@ describe('content clock survives a refetch that returns unchanged upstream data'
     );
   });
 
+  it('carries the prior content clock forward when a fallback refresh cannot observe max(date)', () => {
+    const frozenSince = NOW - 120 * HOUR_MS;
+    for (const bad of [null, undefined, '', 'not-a-date', 42]) {
+      assert.equal(
+        contentClockFor(
+          { asof: '2026-07-24', contentAsOfChangedAt: frozenSince },
+          bad,
+          NOW,
+        ),
+        frozenSince,
+        'upstreamMaxDate=' + String(bad),
+      );
+    }
+  });
+
   it('resets the clock when the upstream date actually advances', () => {
     assert.equal(
       contentClockFor(
@@ -356,7 +385,7 @@ describe('content clock survives a refetch that returns unchanged upstream data'
     // Legacy payloads written before the content clock was introduced.
     const report = buildContentFreshnessReport({
       countryData: countryDataOf([
-        payload('CN', new Date(NOW - 150 * HOUR_MS).toISOString()),
+        payload('CN', new Date(NOW - (BUDGET_H + 6) * HOUR_MS).toISOString()),
         payload('HK', new Date(NOW - HOUR_MS).toISOString()),
       ]),
       now: NOW,
@@ -654,7 +683,7 @@ describe('buildPortActivityMetaPayload', () => {
   it('publishes content freshness alongside the transport/cardinality fields', () => {
     const meta = buildPortActivityMetaPayload({
       countryData: countryDataOf([
-        payload('CN', '2026-07-26T12:02:43.475Z'),
+        payload('CN', new Date(NOW - (BUDGET_H + 26) * HOUR_MS).toISOString()),
         ...Array.from({ length: 173 }, (_, index) =>
           payload(`X${index}`, new Date(NOW - HOUR_MS).toISOString())),
       ]),

@@ -25,6 +25,13 @@ import { createHash } from 'node:crypto';
 import { extractFirstJsonObject, cleanJsonText } from '../_llm-json.mjs';
 import { withRetry, httpRetryError, createLlmBudgetError, isLlmBudgetError } from '../_seed-utils.mjs';
 import { buildLlmCallEvent, emitLlmEvents } from '../lib/llm-telemetry.cjs';
+import {
+  GROQ_DEFAULT_MODEL,
+  GROQ_REASONING_EXTRA_BODY,
+  OPENROUTER_FREE_BACKUP_MODEL,
+  OPENROUTER_FREE_PRIMARY_MODEL,
+  OPENROUTER_PROVIDER_ROUTING,
+} from '../_llm-model-timeouts.mjs';
 
 const CHROME_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -50,7 +57,7 @@ const MAX_TRANSMISSIONS_IN_PROMPT = 5;
 const MAX_WATCH_ITEMS = 3;
 
 /**
- * Provider chain. Order matters: first provider with a configured env var wins.
+ * Provider chain. Order matters: the first successful configured provider wins.
  */
 const DEFAULT_PROVIDERS = [
   {
@@ -66,13 +73,46 @@ const DEFAULT_PROVIDERS = [
       'X-Title': 'World Monitor',
       'User-Agent': CHROME_UA,
     }),
-    extraBody: { reasoning: { enabled: false } },
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+  },
+  {
+    name: 'openrouter-free',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_PRIMARY_MODEL,
+    timeout: 20_000,
+    headers: (key) => ({
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://worldmonitor.app',
+      'X-Title': 'World Monitor',
+      'User-Agent': CHROME_UA,
+    }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    maxRetries: 0,
+  },
+  {
+    name: 'openrouter-free-backup',
+    envKey: 'OPENROUTER_API_KEY',
+    apiUrl: 'https://openrouter.ai/api/v1/chat/completions',
+    model: OPENROUTER_FREE_BACKUP_MODEL,
+    timeout: 20_000,
+    headers: (key) => ({
+      Authorization: `Bearer ${key}`,
+      'Content-Type': 'application/json',
+      'HTTP-Referer': 'https://worldmonitor.app',
+      'X-Title': 'World Monitor',
+      'User-Agent': CHROME_UA,
+    }),
+    extraBody: { reasoning: { enabled: false }, provider: OPENROUTER_PROVIDER_ROUTING },
+    maxRetries: 0,
   },
   {
     name: 'groq',
     envKey: 'GROQ_API_KEY',
     apiUrl: 'https://api.groq.com/openai/v1/chat/completions',
-    model: 'llama-3.3-70b-versatile',
+    model: GROQ_DEFAULT_MODEL,
+    extraBody: GROQ_REASONING_EXTRA_BODY,
     timeout: 20_000,
     headers: (key) => ({
       Authorization: `Bearer ${key}`,
@@ -362,10 +402,15 @@ export async function callLlmDefault({ systemPrompt, userPrompt }, opts = {}) {
           signal: AbortSignal.timeout(Math.max(1, Math.min(provider.timeout, usable))),
         });
         if (!response.ok) {
-          throw httpRetryError(response, { maxRetryAfterMs: NARRATIVE_LLM_RETRY_AFTER_MAX_MS, capMs: usableBudgetMs() });
+          // #6110: same as seed-insights — this is a real remaining wall clock,
+          // so a hint that exceeds it should fail over now rather than sleep.
+          throw httpRetryError(response, {
+            maxRetryAfterMs: NARRATIVE_LLM_RETRY_AFTER_MAX_MS,
+            remainingBudgetMs: usableBudgetMs(),
+          });
         }
         return response;
-      }, NARRATIVE_LLM_MAX_RETRIES, retryDelayMs);
+      }, provider.maxRetries ?? NARRATIVE_LLM_MAX_RETRIES, retryDelayMs);
 
       const json = /** @type {any} */ (await resp.json());
       const usage = {

@@ -13,6 +13,10 @@ import { isCallerPremium } from '../../../_shared/premium-check';
 import { sanitizeForPrompt } from '../../../_shared/llm-sanitize.js';
 import { ENERGY_SPINE_KEY_PREFIX } from '../../../_shared/cache-keys';
 import { deriveCountryIntelCacheKey, fetchSharedCountryContext } from './_country-brief-context';
+import {
+  resolveEnergyImportDependency,
+  UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY,
+} from './_energy-import-dependency';
 
 const INTEL_CACHE_TTL = 21600;
 
@@ -129,13 +133,22 @@ export async function getCountryIntelBrief(
 
   const frameworkRaw = isPremium && typeof req.framework === 'string' ? req.framework.slice(0, 2000) : '';
 
-  // Fetch energy mix early so its data-year can be included in the cache key.
-  // This ensures cached briefs are invalidated when OWID publishes updated annual
-  // data — without it, energy mix changes are silently ignored in cached briefs.
-  // Prefer reading from spine (single key); fall back to direct mix key on miss.
+  // Read energy data early so both source years can invalidate cached briefs.
+  // Prefer the spine for the OWID mix and use the direct mix key on a miss.
   let energyMixData: Record<string, unknown> | null = null;
+  let importDependency = UNAVAILABLE_ENERGY_IMPORT_DEPENDENCY;
   try {
-    const spine = await getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${req.countryCode.toUpperCase()}`, true) as Record<string, unknown> | null;
+    const countryCode = req.countryCode.toUpperCase();
+    const [spineResult, staticRecordResult] = await Promise.allSettled([
+      getCachedJson(`${ENERGY_SPINE_KEY_PREFIX}${countryCode}`, true),
+      getCachedJson(`resilience:static:${countryCode}`, true),
+    ]);
+    const spine = spineResult.status === 'fulfilled'
+      ? spineResult.value as Record<string, unknown> | null
+      : null;
+    importDependency = resolveEnergyImportDependency(
+      staticRecordResult.status === 'fulfilled' ? staticRecordResult.value : null,
+    );
     if (spine != null && typeof spine === 'object' && spine.mix != null) {
       const src = spine.sources as Record<string, unknown> | undefined;
       energyMixData = {
@@ -143,11 +156,12 @@ export async function getCountryIntelBrief(
         year: src?.mixYear ?? null,
       };
     } else {
-      const raw = await getCachedJson(`energy:mix:v1:${req.countryCode.toUpperCase()}`, true);
+      const raw = await getCachedJson(`energy:mix:v1:${countryCode}`, true);
       if (raw && typeof raw === 'object') energyMixData = raw as Record<string, unknown>;
     }
   } catch { /* graceful omit */ }
   const energyYear = typeof energyMixData?.year === 'number' ? String(energyMixData.year) : '';
+  const energyImportYear = importDependency.available ? String(importDependency.year) : '';
 
   const [contextHashFull, frameworkHashFull] = await Promise.all([
     contextSnapshot ? sha256Hex(contextSnapshot) : Promise.resolve('base'),
@@ -160,6 +174,7 @@ export async function getCountryIntelBrief(
     contextHash: contextSnapshot ? contextHashFull.slice(0, 16) : 'base',
     frameworkHash: frameworkRaw ? frameworkHashFull.slice(0, 8) : '',
     energyYear,
+    energyImportYear,
   });
   const countryName = TIER1_COUNTRIES[req.countryCode.toUpperCase()] || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
@@ -218,9 +233,12 @@ Rules:
         userPromptParts.push(
           `Energy generation mix (${yr}): coal ${energyMixData.coalShare ?? '?'}%, ` +
           `gas ${energyMixData.gasShare ?? '?'}%, renewables ${energyMixData.renewShare ?? '?'}%, ` +
-          `nuclear ${energyMixData.nuclearShare ?? '?'}%, net import dependency ${energyMixData.importShare ?? '?'}%.`,
+          `nuclear ${energyMixData.nuclearShare ?? '?'}%.`,
         );
       }
+      userPromptParts.push(importDependency.available
+        ? `Net energy import dependency (${importDependency.year}, ${importDependency.source}): ${importDependency.value}%.`
+        : 'Net energy import dependency: unavailable from audited sources.');
 
       if (promptContext) {
         userPromptParts.push(`Context snapshot:\n${promptContext}`);

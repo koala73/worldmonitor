@@ -47,11 +47,19 @@ GET https://api.worldmonitor.app/api/market/v1/list-market-quotes
   ],
   "finnhubSkipped": false,
   "skipReason": "",
-  "rateLimited": false
+  "rateLimited": false,
+  "unavailableSymbols": [
+    {
+      "symbol": "UNKNOWN",
+      "reason": "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND"
+    }
+  ]
 }
 ```
 
 `rateLimited: true` or `finnhubSkipped: true` means some quotes came from cache fallbacks (`skipReason` explains) — prices remain the latest cached values, not an error.
+
+Always inspect `unavailableSymbols` when `symbols` was supplied. Each requested symbol that has no quote is reported there with a machine-readable reason, such as `MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND`, `MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED`, `MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED`, `MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED`, or `MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE`. Do not treat an absent quote as a zero price.
 
 ## Worked example
 

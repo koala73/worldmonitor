@@ -13,6 +13,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 // behavior is pre-existing WM code, unchanged by U3.
 const utilsSrc = readFileSync(resolve(__dirname, '../src/utils/index.ts'), 'utf8');
 const searchModalSrc = readFileSync(resolve(__dirname, '../src/components/SearchModal.ts'), 'utf8');
+const searchManagerSrc = readFileSync(resolve(__dirname, '../src/app/search-manager.ts'), 'utf8');
 
 test('debounce util exposes the trailing-timer + cancel contract U3 relies on (R4)', () => {
   // The exact mechanism U3 wires into: setTimeout-based trailing debounce + cancel.
@@ -26,14 +27,58 @@ test('debounce util exposes the trailing-timer + cancel contract U3 relies on (R
 test('SearchModal keystroke input is debounced, not a direct handleSearch (R4)', () => {
   assert.match(
     searchModalSrc,
-    /addEventListener\('input',\s*\(\)\s*=>\s*this\.debouncedSearch\(\)\)/,
-    'input listener should call the debounced wrapper',
+    /addEventListener\('input',\s*\(\)\s*=>\s*\{\s*this\.onHumanInteraction\?\.\(\);\s*this\.debouncedSearch\(\);\s*\}\)/,
+    'input listener should claim human authority immediately, then call the debounced wrapper',
   );
   assert.doesNotMatch(
     searchModalSrc,
     /addEventListener\('input',\s*\(\)\s*=>\s*this\.handleSearch\(\)\)/,
     'input listener should not call handleSearch directly',
   );
+});
+
+test('SearchModal applyQuery seeds the open session without a keystroke debounce', () => {
+  assert.match(
+    searchModalSrc,
+    /public applyQuery\(term: string\): void \{\s*this\.applyProgrammaticQuery\(term\);\s*\}/,
+    'SearchAction / ?q= must reuse the programmatic query seam',
+  );
+});
+
+test('SearchModal exposes and wires a narrow human-interaction authority seam', () => {
+  assert.match(
+    searchModalSrc,
+    /public setOnHumanInteraction\(callback:\s*\(\)\s*=>\s*void\):\s*void\s*\{\s*this\.onHumanInteraction = callback;/,
+  );
+  assert.match(
+    searchManagerSrc,
+    /setOnHumanInteraction\(\(\) => this\.cancelPendingProgrammaticSelection\(\)\)/,
+    'SearchManager must route palette interaction through controller-level cancellation',
+  );
+});
+
+test('SearchModal claims human authority for keyboard and pointer navigation', () => {
+  assert.match(
+    searchModalSrc,
+    /addEventListener\('pointerdown', notifyHumanInteraction, \{ capture: true \}\)/,
+  );
+  assert.match(
+    searchModalSrc,
+    /addEventListener\('click', notifyHumanInteraction, \{ capture: true \}\)/,
+  );
+  const keydown = searchModalSrc.match(/private handleKeydown\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
+  assert.ok(keydown);
+  assert.match(keydown[0].slice(0, keydown[0].indexOf('switch')), /this\.onHumanInteraction\?\.\(\)/);
+});
+
+test('programmatic palette close bypasses the human-interaction callback', () => {
+  const publicClose = searchModalSrc.match(/public close\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
+  const programmaticClose = searchModalSrc.match(/public closeForProgrammaticSelection\([^)]*\)\s*:\s*void\s*\{[\s\S]*?\n {2}\}/);
+  assert.ok(publicClose);
+  assert.ok(programmaticClose);
+  assert.match(publicClose[0], /this\.onHumanInteraction\?\.\(\)/);
+  assert.match(programmaticClose[0], /this\.closeInternal\('control'\)/);
+  assert.doesNotMatch(programmaticClose[0], /this\.close\(/);
 });
 
 test('SearchModal builds the debounced wrapper from the shared debounce util (R4)', () => {
@@ -75,4 +120,13 @@ test('flushPendingSearch runs handleSearch only when input changed since last se
 
 test('handleSearch records lastSearchedQuery so staleness can be detected (R4)', () => {
   assert.match(searchModalSrc, /this\.lastSearchedQuery = query/, 'handleSearch stores the searched query');
+});
+
+test('decorateResultOptions skips option stamping in the all-commands view', () => {
+  assert.match(searchModalSrc, /import \{ decorateSearchResultOptions \} from '@\/components\/search-result-options'/);
+  assert.match(
+    searchModalSrc,
+    /decorateSearchResultOptions\(this\.resultsList, this\.input, \{\s*skipOptions:\s*this\.showingAllCommands,?\s*\}\)/,
+    'all-commands view must not stamp role=option on command rows',
+  );
 });

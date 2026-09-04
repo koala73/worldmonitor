@@ -60,7 +60,14 @@ const CLASSIFY_PATH = "/api/intelligence/v1/classify-event";
 const DEDUCT_PATH = "/api/intelligence/v1/deduct-situation";
 const COUNTRY_BRIEF_PATH = "/api/intelligence/v1/get-country-intel-brief";
 const ANALYZE_PATH = "/api/market/v1/analyze-stock";
-const MARKET_QUOTES_PATH = "/api/market/v1/list-market-quotes";
+const BACKTEST_PATH = "/api/market/v1/backtest-stock";
+// A Pro-fresh market route with NO endpoint rate policy, so it reaches the
+// GLOBAL limiter these tests exercise. The gateway skips the global limiter for
+// any route carrying an endpoint policy (gateway.ts, `!hasEndpointRatePolicy`),
+// so a policied route here would silently stop testing what it claims to.
+// list-market-quotes used to sit here and gained a policy in #6305 when its
+// seed misses started reaching a paid provider.
+const GLOBAL_LIMITED_PATH = "/api/market/v1/list-crypto-quotes";
 const CACHE_PATH = "/api/news/v1/summarize-article-cache";
 
 function json(body: unknown, status = 200) {
@@ -120,11 +127,24 @@ function makeAnalyzeGateway(handlerCalls: { analyze: number }) {
   ]);
 }
 
+function makeBacktestGateway(handlerCalls: { backtest: number }) {
+  return createDomainGateway([
+    {
+      method: "GET",
+      path: BACKTEST_PATH,
+      handler: async () => {
+        handlerCalls.backtest += 1;
+        return json({ ok: true, route: "backtest" });
+      },
+    },
+  ]);
+}
+
 function makeMarketQuotesGateway(handlerCalls: { quotes: number }) {
   return createDomainGateway([
     {
       method: "GET",
-      path: MARKET_QUOTES_PATH,
+      path: GLOBAL_LIMITED_PATH,
       handler: async () => {
         handlerCalls.quotes += 1;
         return json({ ok: true, route: "quotes" });
@@ -202,6 +222,26 @@ describe("gateway direct LLM quota", () => {
     );
     expect(calls.country).toBe(0);
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
+  });
+
+  test("Pro bearer HEAD country brief reserves the same GET quota and suppresses the body", async () => {
+    const calls = { classify: 0, deduct: 0, country: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+
+    const res = await makeGateway(calls)(
+      req(`${COUNTRY_BRIEF_PATH}?country_code=US`, {
+        method: "HEAD",
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    expect(calls.country).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_pro" }),
+    );
   });
 
   test("Pro bearer country brief reserves quota and reaches the handler", async () => {
@@ -286,6 +326,27 @@ describe("gateway direct LLM quota", () => {
     expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
+  test("Pro bearer HEAD classify-event reserves the same GET quota before the handler", async () => {
+    const calls = { classify: 0, deduct: 0, cache: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
+
+    const res = await makeGateway(calls)(
+      req(`${CLASSIFY_PATH}?title=Novel%20headline`, {
+        method: "HEAD",
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe("");
+    expect(calls.classify).toBe(1);
+    expect(reserveDirectLlmQuota).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: "user_pro" }),
+    );
+  });
+
   test("Pro bearer classify-event reserves direct LLM quota before the handler", async () => {
     const calls = { classify: 0, deduct: 0, cache: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
@@ -311,7 +372,7 @@ describe("gateway direct LLM quota", () => {
     );
   });
 
-  test("Pro bearer analyze-stock uses a principal-scoped global fallback bucket", async () => {
+  test("Pro bearer analyze-stock uses a principal-scoped endpoint bucket", async () => {
     const calls = { analyze: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
     validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
@@ -325,11 +386,36 @@ describe("gateway direct LLM quota", () => {
 
     expect(res.status).toBe(200);
     expect(calls.analyze).toBe(1);
-    expect(checkRateLimit).toHaveBeenCalledWith(
+    expect(checkEndpointRateLimit).toHaveBeenCalledWith(
       expect.any(Request),
+      ANALYZE_PATH,
       expect.any(Object),
       { principalUserId: "user_pro" },
     );
+    expect(checkRateLimit).not.toHaveBeenCalled();
+  });
+
+  test("Pro bearer backtest-stock does not reserve the direct-LLM daily counter", async () => {
+    const calls = { backtest: 0 };
+    resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
+    validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
+
+    const res = await makeBacktestGateway(calls)(
+      req(`${BACKTEST_PATH}?symbol=AAPL`, {
+        headers: { Authorization: "Bearer pro" },
+      }),
+      { waitUntil: () => {} },
+    );
+
+    expect(res.status).toBe(200);
+    expect(calls.backtest).toBe(1);
+    expect(checkEndpointRateLimit).toHaveBeenCalledWith(
+      expect.any(Request),
+      BACKTEST_PATH,
+      expect.any(Object),
+      { principalUserId: "user_pro" },
+    );
+    expect(reserveDirectLlmQuota).not.toHaveBeenCalled();
   });
 
   test("active Pro freshness bearer uses a principal-scoped global fallback bucket", async () => {
@@ -343,7 +429,7 @@ describe("gateway direct LLM quota", () => {
     });
 
     const res = await makeMarketQuotesGateway(calls)(
-      req(`${MARKET_QUOTES_PATH}?symbols=AAPL`, {
+      req(`${GLOBAL_LIMITED_PATH}?ids=bitcoin`, {
         headers: { Authorization: "Bearer pro" },
       }),
       { waitUntil: () => {} },
@@ -402,14 +488,14 @@ describe("gateway direct LLM quota", () => {
   });
 
   test("global limiter 429s emit a distinct telemetry reason", async () => {
-    const calls = { analyze: 0 };
+    const calls = { quotes: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
     validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
     checkRateLimit.mockResolvedValue(json({ error: "Too many requests" }, 429));
     const recorder = makeRecordingCtx();
 
-    const res = await makeAnalyzeGateway(calls)(
-      req(`${ANALYZE_PATH}?symbol=AAPL`, {
+    const res = await makeMarketQuotesGateway(calls)(
+      req(`${GLOBAL_LIMITED_PATH}?ids=bitcoin`, {
         headers: { Authorization: "Bearer pro" },
       }),
       recorder.ctx,
@@ -418,11 +504,11 @@ describe("gateway direct LLM quota", () => {
 
     expect(res.status).toBe(429);
     expect(lastTelemetryReason()).toBe("rate_limit_429_global");
-    expect(calls.analyze).toBe(0);
+    expect(calls.quotes).toBe(0);
   });
 
   test("global limiter degradation keeps the degraded telemetry reason", async () => {
-    const calls = { analyze: 0 };
+    const calls = { quotes: 0 };
     resolveClerkSession.mockResolvedValue({ userId: "user_pro", orgId: null, role: "pro" });
     validateApiKey.mockResolvedValue({ valid: false, required: true, error: "API key required" });
     checkRateLimit.mockResolvedValue(new Response(
@@ -431,8 +517,8 @@ describe("gateway direct LLM quota", () => {
     ));
     const recorder = makeRecordingCtx();
 
-    const res = await makeAnalyzeGateway(calls)(
-      req(`${ANALYZE_PATH}?symbol=AAPL`, {
+    const res = await makeMarketQuotesGateway(calls)(
+      req(`${GLOBAL_LIMITED_PATH}?ids=bitcoin`, {
         headers: { Authorization: "Bearer pro" },
       }),
       recorder.ctx,
@@ -441,7 +527,7 @@ describe("gateway direct LLM quota", () => {
 
     expect(res.status).toBe(503);
     expect(lastTelemetryReason()).toBe("rate_limit_degraded");
-    expect(calls.analyze).toBe(0);
+    expect(calls.quotes).toBe(0);
   });
 
   test("direct LLM quota 429s emit a distinct telemetry reason", async () => {

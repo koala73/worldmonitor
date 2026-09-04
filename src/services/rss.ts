@@ -1,6 +1,6 @@
 import type { Feed, NewsItem } from '@/types';
 import { SITE_VARIANT } from '@/config';
-import { chunkArray, fetchWithProxy, isMobileDevice } from '@/utils';
+import { chunkArray, fetchWithProxy, hasNoStoreCacheDirective, isMobileDevice } from '@/utils';
 import { classifyByKeyword, classifyWithAI } from './threat-classifier';
 import { inferGeoHubsFromTitle } from './geo-hub-index';
 import { getPersistentCache, setPersistentCache } from './persistent-cache';
@@ -14,6 +14,29 @@ import { mlWorker } from './ml-worker';
 import { isHeadlineMemoryEnabled } from './ai-flow-settings';
 import { yieldToMain } from '@/utils/after-paint';
 import { createYieldingWorkQueue } from '@/utils/yielding-work-queue';
+
+export interface RssFetchPolicy {
+  ingestGlobalTrends: boolean;
+  ingestVectorMemory: boolean;
+  classifyWithAi: boolean;
+}
+
+export const DEFAULT_RSS_FETCH_POLICY: RssFetchPolicy = Object.freeze({
+  ingestGlobalTrends: true,
+  ingestVectorMemory: true,
+  classifyWithAi: true,
+});
+
+export const BRIEF_ONLY_RSS_FETCH_POLICY: RssFetchPolicy = Object.freeze({
+  ingestGlobalTrends: false,
+  ingestVectorMemory: false,
+  classifyWithAi: false,
+});
+
+export interface FetchFeedOptions {
+  policy?: RssFetchPolicy;
+  signal?: AbortSignal;
+}
 
 const FEED_COOLDOWN_MS = 5 * 60 * 1000;
 const MAX_FAILURES = 2;
@@ -222,7 +245,20 @@ function extractImageUrl(item: Element): string | undefined {
   return undefined;
 }
 
-export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return;
+  if (signal.reason instanceof Error) throw signal.reason;
+  throw new DOMException('The operation was aborted.', 'AbortError');
+}
+
+function isAbortError(error: unknown): boolean {
+  return Boolean(error && typeof error === 'object' && 'name' in error && error.name === 'AbortError');
+}
+
+export async function fetchFeed(feed: Feed, options: FetchFeedOptions = {}): Promise<NewsItem[]> {
+  const policy = options.policy ?? DEFAULT_RSS_FETCH_POLICY;
+  const signal = options.signal;
+  throwIfAborted(signal);
   if (feedCache.size > MAX_CACHE_ENTRIES / 2) cleanupCaches();
   const currentLang = getCurrentLanguage();
   const feedScope = getFeedScope(feed.name, currentLang);
@@ -246,11 +282,15 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
 
     if (!url) throw new Error(`No URL found for feed ${feed.name}`);
 
-    const response = await fetchWithProxy(url);
+    const response = await fetchWithProxy(url, signal ? { signal } : {});
+    throwIfAborted(signal);
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const noStoreResponse = hasNoStoreCacheDirective(response.headers);
     const text = await response.text();
+    throwIfAborted(signal);
     const isMobile = isMobileDevice();
     const doc = await parseFeedXml(text, isMobile);
+    throwIfAborted(signal);
 
     // XML parsing is synchronous. It is serialized behind a yield so several
     // completed mobile feed requests cannot parse back-to-back in one
@@ -322,17 +362,29 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       if (isMobile && index < itemNodes.length - 1) await yieldToMain();
     }
 
-    feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
-    void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    throwIfAborted(signal);
+    if (!noStoreResponse) {
+      feedCache.set(feedScope, { items: parsed, timestamp: Date.now() });
+      void setPersistentCache(getPersistentFeedKey(feedScope), toSerializable(parsed));
+    }
     recordFeedSuccess(feedScope);
-    ingestHeadlines(parsed.map(item => ({
-      title: item.title,
-      pubDate: item.pubDate,
-      source: item.source,
-      link: item.link,
-    })));
+    if (policy.ingestGlobalTrends) {
+      ingestHeadlines(parsed.map(item => ({
+        title: item.title,
+        pubDate: item.pubDate,
+        pubDateMissing: item.pubDateMissing,
+        source: item.source,
+        link: item.link,
+      })));
+    }
 
-    if (isHeadlineMemoryEnabled() && mlWorker.isAvailable && mlWorker.isModelLoaded('embeddings') && parsed.length > 0) {
+    if (
+      policy.ingestVectorMemory
+      && isHeadlineMemoryEnabled()
+      && mlWorker.isAvailable
+      && mlWorker.isModelLoaded('embeddings')
+      && parsed.length > 0
+    ) {
       mlWorker.vectorStoreIngest(parsed.map(item => ({
         text: item.title,
         pubDate: item.pubDate.getTime(),
@@ -342,23 +394,28 @@ export async function fetchFeed(feed: Feed): Promise<NewsItem[]> {
       }))).catch(() => {});
     }
 
-    const aiCandidates = parsed
-      .filter(item => item.threat.source === 'keyword')
-      .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
-      .slice(0, AI_CLASSIFY_MAX_PER_FEED);
+    if (policy.classifyWithAi) {
+      const aiCandidates = parsed
+        .filter(item => item.threat.source === 'keyword')
+        .sort((a, b) => effectivePubDateMs(b) - effectivePubDateMs(a))
+        .slice(0, AI_CLASSIFY_MAX_PER_FEED);
 
-    for (const item of aiCandidates) {
-      if (!canQueueAiClassification({ link: item.link, title: item.title })) continue;
-      classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
-        if (aiResult && aiResult.confidence > item.threat.confidence) {
-          item.threat = aiResult;
-          item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
-        }
-      }).catch(() => { });
+      for (const item of aiCandidates) {
+        if (!canQueueAiClassification({ link: item.link, title: item.title })) continue;
+        classifyWithAI(item.title, SITE_VARIANT).then((aiResult) => {
+          if (aiResult && aiResult.confidence > item.threat.confidence) {
+            item.threat = aiResult;
+            item.isAlert = aiResult.level === 'critical' || aiResult.level === 'high';
+          }
+        }).catch(() => { });
+      }
     }
 
     return parsed;
   } catch (e) {
+    if (signal?.aborted || isAbortError(e)) {
+      throw e instanceof Error ? e : new DOMException('The operation was aborted.', 'AbortError');
+    }
     console.error(`Failed to fetch ${feed.name}:`, e);
     recordFeedFailure(feedScope);
     const persistent = await loadPersistentFeed(feedScope);
@@ -408,7 +465,7 @@ export async function fetchCategoryFeeds(
   };
 
   for (const batch of batches) {
-    const results = await Promise.all(batch.map(fetchFeed));
+    const results = await Promise.all(batch.map(feed => fetchFeed(feed)));
     results.flat().forEach(insertTopItem);
     options.onBatch?.(ensureSortedDescending());
   }

@@ -9,7 +9,13 @@ import { isIP } from 'node:net';
 import { promisify } from 'node:util';
 import { brotliCompress, gzipSync } from 'node:zlib';
 import path from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+
+const sharedResourceRoot = process.env.LOCAL_API_RESOURCE_DIR
+  || path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const { getConfiguredLlmHealthProviders } = await import(
+  pathToFileURL(path.join(sharedResourceRoot, 'shared/llm-health-providers.js')).href
+);
 
 const brotliCompressAsync = promisify(brotliCompress);
 const DESKTOP_AUTH_SECRET_ENV = 'WM_DESKTOP_SHARED_SECRET';
@@ -298,7 +304,7 @@ const ALLOWED_ENV_KEYS = new Set([
   'CLOUDFLARE_API_TOKEN', 'ACLED_ACCESS_TOKEN', 'URLHAUS_AUTH_KEY',
   'OTX_API_KEY', 'ABUSEIPDB_API_KEY', 'WINGBITS_API_KEY', 'WS_RELAY_URL',
   'VITE_OPENSKY_RELAY_URL', 'OPENSKY_CLIENT_ID', 'OPENSKY_CLIENT_SECRET',
-  'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'NASA_FIRMS_API_KEY',
+  'AISSTREAM_API_KEY', 'VITE_WS_RELAY_URL', 'FINNHUB_API_KEY', 'ALPHA_VANTAGE_API_KEY', 'NASA_FIRMS_API_KEY',
   'OLLAMA_API_URL', 'OLLAMA_MODEL', 'WORLDMONITOR_API_KEY', 'WTO_API_KEY',
   'AVIATIONSTACK_API', 'ICAO_API_KEY', 'UCDP_ACCESS_TOKEN', DESKTOP_AUTH_SECRET_ENV,
 ]);
@@ -433,7 +439,21 @@ function json(data, status = 200, extraHeaders = {}) {
 }
 
 function canCompress(headers, body) {
-  return body.length > 1024 && !headers['content-encoding'];
+  if (!(body.length > 1024) || headers['content-encoding']) return false;
+  const contentType = String(headers['content-type'] || '').toLowerCase();
+  // Already-compressed rasters/media gain nothing from gzip/br and waste CPU (#7382).
+  // SVG (image/svg+xml) is text and still compresses — keep it eligible.
+  if (
+    /^image\/(jpeg|jpg|png|gif|webp|avif|heic|heif|bmp|tiff)(?:;|$)/.test(contentType)
+    || contentType.startsWith('audio/')
+    || contentType.startsWith('video/')
+    || contentType.includes('zip')
+    || contentType.includes('gzip')
+    || contentType.includes('octet-stream')
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function appendVary(existing, token) {
@@ -685,6 +705,11 @@ const cloudPreferred = new Set();
 // Routes/prefixes that should always proxy to cloud. The sidecar lacks
 // WS_RELAY_URL (Yahoo/Finnhub relay) and seeded Redis data. These routes
 // return 200-with-empty-data locally, so normal cloudFallback won't trigger.
+//
+// `/api/market/v1/` covers ListMarketQuotes, so the desktop app gets the same
+// seed-first contract as the web dashboard — including custom watchlist
+// symbols resolved through the cloud provider adapter (#6305). Serving it
+// locally would find no seed snapshot and report every symbol unavailable.
 const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
   ? [
     '/api/market/v1/',
@@ -694,14 +719,23 @@ const cloudPreferredPrefixes = !process.env.WS_RELAY_URL
     '/api/research/v1/',
   ]
   : [];
-const cloudPreferredExact = !process.env.WS_RELAY_URL
-  ? new Set(['/api/bootstrap'])
-  : new Set();
+// These routes read seed-owned Redis snapshots that the local sidecar does not
+// hold. They must stay cloud-preferred even when a desktop configures WS relay;
+// relay availability does not provide Upstash credentials to local handlers.
+const cloudPreferredExact = new Set([
+  '/api/bootstrap',
+  '/api/military/v1/get-defense-industrial-base',
+  '/api/supply-chain/v1/get-country-vulnerabilities',
+  '/api/supply-chain/v1/get-chokepoint-dependencies',
+  '/api/supply-chain/v1/list-vulnerability-rankings',
+]);
+const cloudPreferredAlwaysPrefixes = ['/api/scorecard/v1/'];
 
 function isCloudPreferred(pathname) {
   if (cloudPreferred.has(pathname)) return true;
   if (cloudPreferredExact.has(pathname)) return true;
-  return cloudPreferredPrefixes.some(p => pathname.startsWith(p));
+  return cloudPreferredAlwaysPrefixes.some(p => pathname.startsWith(p))
+    || cloudPreferredPrefixes.some(p => pathname.startsWith(p));
 }
 
 const TRAFFIC_LOG_MAX = 200;
@@ -901,12 +935,24 @@ function makeCorsHeaders(req) {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
-  // Use node:https with IPv4 forced — Node.js built-in fetch (undici) tries IPv6
-  // first and some servers (EIA, NASA FIRMS) have broken IPv6 causing ETIMEDOUT.
+  // Use node:https with IPv4 by default — Node.js built-in fetch (undici) tries
+  // IPv6 first and some servers (EIA, NASA FIRMS) have broken IPv6. Callers
+  // with a validated address can instead pin its detected family below.
   const u = new URL(url);
   const allowPrivateNetwork = options.allowPrivateNetwork === true;
   const fetchOptions = { ...options };
   delete fetchOptions.allowPrivateNetwork;
+  const resolvedAddress = fetchOptions.resolvedAddress;
+  const requestedFamily = fetchOptions.resolvedFamily;
+  delete fetchOptions.resolvedAddress;
+  delete fetchOptions.resolvedFamily;
+  const resolvedFamily = resolvedAddress ? isIP(resolvedAddress) : 0;
+  if (resolvedAddress && resolvedFamily === 0) {
+    throw new TypeError('resolvedAddress must be an IPv4 or IPv6 address');
+  }
+  if (requestedFamily != null && requestedFamily !== resolvedFamily) {
+    throw new TypeError('resolvedFamily must match resolvedAddress');
+  }
   if (u.protocol === 'https:') {
     return new Promise((resolve, reject) => {
       const reqOpts = {
@@ -915,12 +961,12 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
         path: u.pathname + u.search,
         method: fetchOptions.method || 'GET',
         headers: fetchOptions.headers || {},
-        family: 4,
+        family: resolvedFamily || 4,
       };
       // Pin to a pre-resolved IP to prevent TOCTOU DNS rebinding.
       // The hostname is kept for SNI / TLS certificate validation.
-      if (fetchOptions.resolvedAddress) {
-        reqOpts.lookup = makePinnedLookup(fetchOptions.resolvedAddress, 4);
+      if (resolvedAddress) {
+        reqOpts.lookup = makePinnedLookup(resolvedAddress, resolvedFamily);
       }
       const req = https.request(reqOpts, (res) => {
         const chunks = [];
@@ -952,10 +998,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 12000) {
   // validated IP and set the Host header so virtual-host routing still works.
   let fetchUrl = url;
   const fetchHeaders = { ...(fetchOptions.headers || {}) };
-  if (fetchOptions.resolvedAddress && u.protocol === 'http:') {
+  if (resolvedAddress && u.protocol === 'http:') {
     const pinned = new URL(url);
     fetchHeaders['Host'] = pinned.host;
-    pinned.hostname = fetchOptions.resolvedAddress;
+    pinned.hostname = resolvedFamily === 6 ? `[${resolvedAddress}]` : resolvedAddress;
     fetchUrl = pinned.toString();
   }
   const controller = new AbortController();
@@ -1411,17 +1457,19 @@ async function dispatch(requestUrl, req, routes, context) {
     const vq = ['small','medium','large','hd720','hd1080'].includes(requestUrl.searchParams.get('vq') || '') ? requestUrl.searchParams.get('vq') : '';
     const origin = `http://localhost:${context.port}`;
     // parentOrigin is the actual parent window origin (tauri://localhost, asset://localhost, etc.)
-    // passed by the frontend so window.parent.postMessage reaches it. Only accept known desktop
-    // schemes; fall back to '*' if absent or unrecognised.
+    // passed by the frontend so bridge messages reach it. Only accept known desktop origins;
+    // an absent or unrecognized origin gets a local no-op bridge.
     const rawParentOrigin = requestUrl.searchParams.get('parentOrigin') || '';
     const isAllowedParentOrigin = /^(tauri|asset):\/\/localhost$/.test(rawParentOrigin)
       || /^https?:\/\/localhost(:\d{1,5})?$/.test(rawParentOrigin)
-      || /^https?:\/\/[\w-]+\.tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
-    const parentOrigin = isAllowedParentOrigin ? rawParentOrigin : '*';
+      || /^https?:\/\/(?:[\w-]+\.)?tauri\.localhost(:\d{1,5})?$/.test(rawParentOrigin);
     const safeVideoId = JSON.stringify(String(videoId));
     const safeOrigin = JSON.stringify(origin);
-    const safeParentOrigin = JSON.stringify(parentOrigin);
-    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)window.parent.postMessage({type:'yt-mute-state',muted:last},${safeParentOrigin});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;window.parent.postMessage({type:'yt-mute-state',muted:m},${safeParentOrigin})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');window.parent.postMessage({type:'yt-ready'},${safeParentOrigin});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${JSON.stringify(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');window.parent.postMessage({type:'yt-autoplay-failed'},${safeParentOrigin})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();window.parent.postMessage({type:'yt-error',code:e.data},${safeParentOrigin})},onStateChange:function(e){window.parent.postMessage({type:'yt-state',state:e.data},${safeParentOrigin});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
+    const safeParentOrigin = JSON.stringify(rawParentOrigin);
+    const bridgePostMessageScript = isAllowedParentOrigin
+      ? `function postToParent(message){window.parent.postMessage(message,${safeParentOrigin})}`
+      : 'function postToParent(){}';
+    const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="referrer" content="strict-origin-when-cross-origin"><style>html,body{margin:0;padding:0;width:100%;height:100%;background:#000;overflow:hidden}#player{width:100%;height:100%}#play-overlay{position:absolute;inset:0;z-index:10;display:flex;align-items:center;justify-content:center;pointer-events:none;background:rgba(0,0,0,0.15)}#play-overlay svg{width:72px;height:72px;opacity:0.9;filter:drop-shadow(0 2px 8px rgba(0,0,0,0.5))}#play-overlay.hidden{display:none}</style></head><body><div id="player"></div><div id="play-overlay" class="hidden"><svg viewBox="0 0 68 48"><path d="M66.52 7.74c-.78-2.93-2.49-5.41-5.42-6.19C55.79.13 34 0 34 0S12.21.13 6.9 1.55C3.97 2.33 2.27 4.81 1.48 7.74.06 13.05 0 24 0 24s.06 10.95 1.48 16.26c.78 2.93 2.49 5.41 5.42 6.19C12.21 47.87 34 48 34 48s21.79-.13 27.1-1.55c2.93-.78 4.64-3.26 5.42-6.19C67.94 34.95 68 24 68 24s-.06-10.95-1.48-16.26z" fill="red"/><path d="M45 24L27 14v20" fill="#fff"/></svg></div><script>${bridgePostMessageScript}function tryStorageAccess(){if(document.requestStorageAccess){document.requestStorageAccess().catch(function(){})}}tryStorageAccess();var tag=document.createElement('script');tag.src='https://www.youtube.com/iframe_api';document.head.appendChild(tag);var player,overlay=document.getElementById('play-overlay'),started=false,muteSyncId,retryTimers=[];var obs=new MutationObserver(function(muts){for(var i=0;i<muts.length;i++){var nodes=muts[i].addedNodes;for(var j=0;j<nodes.length;j++){if(nodes[j].tagName==='IFRAME'){var a=nodes[j].getAttribute('allow')||'';if(a.indexOf('autoplay')===-1){nodes[j].setAttribute('allow','autoplay; encrypted-media; picture-in-picture; storage-access'+(a?'; '+a:''));console.log('[yt-embed] patched iframe allow=autoplay+storage-access')}obs.disconnect();return}}}});obs.observe(document.getElementById('player'),{childList:true,subtree:true});function hideOverlay(){overlay.classList.add('hidden')}function readMuted(){if(!player)return null;if(typeof player.isMuted==='function')return player.isMuted();if(typeof player.getVolume==='function')return player.getVolume()===0;return null}function stopMuteSync(){if(muteSyncId){clearInterval(muteSyncId);muteSyncId=null}}function startMuteSync(){if(muteSyncId)return;var last=readMuted();if(last!==null)postToParent({type:'yt-mute-state',muted:last});muteSyncId=setInterval(function(){var m=readMuted();if(m!==null&&m!==last){last=m;postToParent({type:'yt-mute-state',muted:m})}},500)}function tryAutoplay(){if(!player||!player.playVideo)return;try{player.mute();player.playVideo();console.log('[yt-embed] tryAutoplay: mute+play')}catch(e){}}function onYouTubeIframeAPIReady(){player=new YT.Player('player',{videoId:${safeVideoId},host:'https://www.youtube.com',playerVars:{autoplay:${autoplay},mute:${mute},playsinline:1,rel:0,controls:1,modestbranding:1,enablejsapi:1,origin:${safeOrigin},widget_referrer:${safeOrigin}},events:{onReady:function(){console.log('[yt-embed] onReady');postToParent({type:'yt-ready'});${vq ? `if(player.setPlaybackQuality)player.setPlaybackQuality(${JSON.stringify(vq)});` : ''}if(${autoplay}===1){tryAutoplay();retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},500));retryTimers.push(setTimeout(function(){if(!started)tryAutoplay()},1500));retryTimers.push(setTimeout(function(){if(!started){console.log('[yt-embed] autoplay failed after retries');postToParent({type:'yt-autoplay-failed'})}},2500))}startMuteSync()},onError:function(e){console.log('[yt-embed] error code='+e.data);stopMuteSync();postToParent({type:'yt-error',code:e.data})},onStateChange:function(e){postToParent({type:'yt-state',state:e.data});if(e.data===1||e.data===3){hideOverlay();started=true;retryTimers.forEach(clearTimeout);retryTimers=[]}}}})}setTimeout(function(){if(!started)overlay.classList.remove('hidden')},4000);window.addEventListener('message',function(e){if(!player||!player.getPlayerState)return;var m=e.data;if(!m||!m.type)return;switch(m.type){case'play':player.playVideo();break;case'pause':player.pauseVideo();break;case'mute':player.mute();break;case'unmute':player.unMute();break;case'loadVideo':if(m.videoId)player.loadVideoById(m.videoId);break;case'setQuality':if(m.quality&&player.setPlaybackQuality)player.setPlaybackQuality(m.quality);break}});window.addEventListener('beforeunload',function(){stopMuteSync();obs.disconnect();retryTimers.forEach(clearTimeout)})<\/script></body></html>`;
     return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store', 'permissions-policy': 'autoplay=*, encrypted-media=*, storage-access=(self "https://www.youtube.com")', ...makeCorsHeaders(req) } });
   }
 
@@ -1464,8 +1512,6 @@ async function dispatch(requestUrl, req, routes, context) {
       routes: routes.length,
     });
   }
-  // LLM health endpoint — mirrors probe logic from server/_shared/llm-health.ts.
-  // TODO: refactor to import getLlmHealthStatus() once handlers share a process-level module cache.
   if (requestUrl.pathname === '/api/llm-health') {
     const PROBE_TIMEOUT = 2000;
     async function probeOrigin(url, options = {}) {
@@ -1476,33 +1522,15 @@ async function dispatch(requestUrl, req, routes, context) {
         return false;
       }
     }
-    const providers = [];
-    const providerChecks = [];
-    const ollamaUrl = process.env.OLLAMA_API_URL || process.env.LLM_API_URL;
-    const groqKey = process.env.GROQ_API_KEY;
-    const openrouterKey = process.env.OPENROUTER_API_KEY;
-
-    if (ollamaUrl) {
-      try {
-        const origin = new URL(ollamaUrl).origin;
-        providerChecks.push(
-          probeOrigin(origin, { allowPrivateNetwork: true }).then((available) => ({ name: 'ollama', url: origin, available })),
-        );
-      } catch {}
-    }
-    if (groqKey?.startsWith('gsk_')) {
-      providerChecks.push(
-        probeOrigin('https://api.groq.com').then((available) => ({ name: 'groq', url: 'https://api.groq.com', available })),
-      );
-    }
-    if (openrouterKey) {
-      providerChecks.push(
-        probeOrigin('https://openrouter.ai').then((available) => ({ name: 'openrouter', url: 'https://openrouter.ai', available })),
-      );
-    }
-    if (providerChecks.length > 0) {
-      providers.push(...(await Promise.all(providerChecks)));
-    }
+    const providers = await Promise.all(
+      getConfiguredLlmHealthProviders(process.env).map(async (provider) => ({
+        name: provider.name,
+        url: provider.url,
+        available: await probeOrigin(provider.url, {
+          allowPrivateNetwork: provider.allowPrivateNetwork,
+        }),
+      })),
+    );
 
     const anyAvailable = providers.some(p => p.available);
     return json({ available: anyAvailable, providers, checkedAt: Date.now() });
@@ -1606,17 +1634,22 @@ async function dispatch(requestUrl, req, routes, context) {
 
     try {
       const parsed = new URL(feedUrl);
-      // Pin to the first IPv4 address validated by isSafeUrl() so the
-      // actual TCP connection goes to the same IP we checked, closing
-      // the TOCTOU DNS-rebinding window.
-      const pinnedV4 = safety.resolvedAddresses?.find(a => a.includes('.'));
+      // Pin to an address validated by isSafeUrl() so the actual TCP
+      // connection goes to the same IP and family we checked, closing
+      // the TOCTOU DNS-rebinding window for IPv4 and IPv6-only feeds.
+      const pinned = pickPinnedAddress(safety.resolvedAddresses);
+      if (!pinned) {
+        context.logger.warn(`[local-api] rss-proxy SSRF blocked: no validated address (url=${feedUrl})`);
+        return json({ error: 'Could not resolve hostname' }, 403);
+      }
       const response = await fetchWithTimeout(feedUrl, {
         headers: {
           'User-Agent': CHROME_UA,
           'Accept': 'application/rss+xml, application/xml, text/xml, */*',
           'Accept-Language': 'en-US,en;q=0.9',
         },
-        ...(pinnedV4 ? { resolvedAddress: pinnedV4 } : {}),
+        resolvedAddress: pinned.address,
+        resolvedFamily: pinned.family,
       }, parsed.hostname.includes('news.google.com') ? 20000 : 12000);
       const contentType = response.headers?.get?.('content-type') || 'application/xml';
       const rssBody = await response.text();
@@ -1738,6 +1771,14 @@ async function dispatch(requestUrl, req, routes, context) {
     const body = ['GET', 'HEAD'].includes(req.method) ? undefined : await readBody(req);
     const hdrs = toHeaders(req.headers, { stripOrigin: true });
     hdrs.set('Origin', `http://127.0.0.1:${context.port}`);
+    // The OpenSky route is product-only. Its local handler requires the
+    // desktop product key in addition to the native transport token that was
+    // verified above. Inject it inside the sidecar so the renderer never sees
+    // or handles the key.
+    if (requestUrl.pathname === '/api/opensky') {
+      const productKey = process.env.WORLDMONITOR_API_KEY;
+      if (productKey) hdrs.set('X-WorldMonitor-Key', productKey);
+    }
     // The transport credential authenticates the nginx/sidecar hop only. Do
     // not expose it to route handlers, where Authorization is caller identity
     // (OAuth bearer) and X-WorldMonitor-Key is the caller's API key.
@@ -1782,6 +1823,8 @@ async function dispatch(requestUrl, req, routes, context) {
 // silent-stall test doesn't have to wait out the real 12s production value.
 // Production code never calls this.
 export const __testing__ = {
+  isCloudPreferred,
+  canCompress,
   setUpstreamIdleTimeoutMs(ms) {
     _upstreamIdleTimeoutMs = ms;
   },
@@ -1929,20 +1972,6 @@ export async function createLocalApiServer(options = {}) {
       }
 
       context.logger.log(`[local-api] listening on http://127.0.0.1:${boundPort} (apiDir=${context.apiDir}, routes=${routes.length}, cloudFallback=${context.cloudFallback})`);
-
-      // Warm LLM health cache in background (non-blocking)
-      (async () => {
-        const urls = [
-          process.env.OLLAMA_API_URL || process.env.LLM_API_URL,
-          process.env.GROQ_API_KEY ? 'https://api.groq.com' : null,
-          process.env.OPENROUTER_API_KEY ? 'https://openrouter.ai' : null,
-        ].filter(Boolean);
-        for (const url of urls) {
-          const allowPrivateNetwork = url === process.env.OLLAMA_API_URL || url === process.env.LLM_API_URL;
-          try { await fetchWithTimeout(url, { method: 'GET', allowPrivateNetwork }, 2000); } catch {}
-        }
-        if (urls.length) console.log(`[local-api] LLM health warmed for ${urls.length} provider(s)`);
-      })();
 
       return { port: boundPort };
     },

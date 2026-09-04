@@ -1,11 +1,12 @@
 import i18next from 'i18next';
 import LanguageDetector from 'i18next-browser-languagedetector';
 import en from './locales/en.json';
-import { resolveEffectiveWelcomeContentLanguage } from './welcome-language';
+import { throwOnMissingStaticTranslation } from './static-i18n-guard';
+import { isTraditionalChineseTag, resolveEffectiveWelcomeContentLanguage } from './welcome-language';
 
 type TranslationDictionary = Record<string, unknown>;
 
-const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi'] as const;
+const SUPPORTED_LANGUAGES = ['en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl', 'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'zh-TW', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi', 'sw'] as const;
 type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
 const SUPPORTED_SET = new Set<SupportedLanguage>(SUPPORTED_LANGUAGES);
 const loadedLanguages = new Set<SupportedLanguage>(['en']);
@@ -18,7 +19,11 @@ const localeModules = import.meta.glob<TranslationDictionary>(
 );
 
 function normalize(lng: string): SupportedLanguage {
-  const base = (lng || 'en').split('-')[0]?.toLowerCase() || 'en';
+  // isTraditionalChineseTag comes from welcome-language so this root has one
+  // copy of the rule, not two that can drift; the resolution has to run before
+  // the region suffix is stripped or zh-TW/zh-HK/zh-Hant collapse onto `zh`.
+  if (isTraditionalChineseTag(lng)) return 'zh-TW';
+  const base = (lng || 'en').toLowerCase().split('-')[0] || 'en';
   return SUPPORTED_SET.has(base as SupportedLanguage) ? base as SupportedLanguage : 'en';
 }
 
@@ -43,8 +48,9 @@ const OG_LOCALE: Record<string, string> = {
   en: 'en_US', bg: 'bg_BG', cs: 'cs_CZ', fr: 'fr_FR', de: 'de_DE', el: 'el_GR',
   es: 'es_ES', hr: 'hr_HR', hu: 'hu_HU', it: 'it_IT', pl: 'pl_PL', pt: 'pt_BR',
   nl: 'nl_NL', sv: 'sv_SE', ru: 'ru_RU', uk: 'uk_UA', ar: 'ar_SA', fa: 'fa_IR', zh: 'zh_CN',
+  'zh-TW': 'zh_TW',
   ja: 'ja_JP', ko: 'ko_KR', ro: 'ro_RO', tr: 'tr_TR', th: 'th_TH', vi: 'vi_VN',
-  hi: 'hi_IN',
+  hi: 'hi_IN', sw: 'sw_TZ',
 };
 
 function applyMetaTags(prefix = 'meta', contentLanguage = currentLanguageBase()): void {
@@ -99,7 +105,7 @@ export async function initI18n(options?: { metaPrefix?: string }): Promise<void>
   });
   const detected = await ensureLoaded(i18next.language || 'en');
   if (detected !== 'en') await i18next.changeLanguage(detected);
-  const base = (i18next.language || detected).split('-')[0] || 'en';
+  const base = normalize(i18next.language || detected);
   const contentLanguage = metaPrefix === 'welcome.meta'
     ? effectiveWelcomeContentLanguage()
     : base;
@@ -133,11 +139,15 @@ export async function initStaticI18n(): Promise<void> {
     lng: 'en',
     fallbackLng: 'en',
     interpolation: { escapeValue: false },
+    parseMissingKeyHandler: throwOnMissingStaticTranslation,
   });
 }
 
 export function currentLanguageBase(): string {
-  return (i18next.language || 'en').split('-')[0] || 'en';
+  // normalize(), not a raw split: resource bundles are registered under the
+  // normalized code, so stripping the region would look up a `zh` bundle that
+  // a Traditional-Chinese reader never loaded.
+  return normalize(i18next.language || 'en');
 }
 
 /**

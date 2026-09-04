@@ -18,7 +18,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 
-import { runClerkSurfaceOpen } from '../src/services/clerk.ts';
+import { runClerkSurfaceOpen, waitForClerkSurfaceOpen } from '../src/services/clerk.ts';
 
 describe('runClerkSurfaceOpen', () => {
   it('opens once and never schedules a retry when the surface is ready', () => {
@@ -86,5 +86,120 @@ describe('runClerkSurfaceOpen', () => {
     );
     assert.equal(opens, 1, 'retry must be deferred, not run inline');
     assert.equal(typeof scheduled, 'function');
+  });
+});
+
+describe('waitForClerkSurfaceOpen', () => {
+  it('settles false when the first open throws and the retry scheduler never runs', async () => {
+    const result = await waitForClerkSurfaceOpen(
+      () => { throw new Error('Clerk was not loaded with Ui components'); },
+      25,
+      () => {},
+    );
+    assert.equal(result, false);
+  });
+
+  it('does not open after the wait cap has already settled', async () => {
+    let opens = 0;
+    let lateRetry: (() => void) | undefined;
+    const result = await waitForClerkSurfaceOpen(
+      () => {
+        opens += 1;
+        throw new Error('not ready');
+      },
+      20,
+      (cb) => { lateRetry = cb; },
+    );
+    assert.equal(result, false);
+    lateRetry?.();
+    assert.equal(opens, 1);
+  });
+
+  it('does not report opened until isOpen is true', async () => {
+    let visible = false;
+    let sawPending = false;
+    const pending = waitForClerkSurfaceOpen(
+      () => {},
+      400,
+      (cb) => { setTimeout(cb, 15); },
+      { isOpen: () => visible },
+    );
+    const raced = await Promise.race([
+      pending.then((opened) => ({ opened })),
+      new Promise<{ pending: true }>((resolve) => {
+        setTimeout(() => resolve({ pending: true }), 40);
+      }),
+    ]);
+    if ('pending' in raced) {
+      sawPending = true;
+      visible = true;
+    }
+    assert.equal(sawPending, true);
+    assert.equal(await pending, true);
+  });
+
+  it('returns false when open succeeds but the modal never appears', async () => {
+    const result = await waitForClerkSurfaceOpen(
+      () => {},
+      30,
+      (cb) => { setTimeout(cb, 5); },
+      { isOpen: () => false },
+    );
+    assert.equal(result, false);
+  });
+
+  it('does not open when the signal is already aborted', async () => {
+    let opens = 0;
+    const controller = new AbortController();
+    controller.abort();
+    await assert.rejects(
+      waitForClerkSurfaceOpen(
+        () => { opens += 1; },
+        100,
+        () => {},
+        { signal: controller.signal },
+      ),
+      (error: unknown) => error instanceof Error && error.name === 'AbortError',
+    );
+    assert.equal(opens, 0);
+  });
+
+  it('rejects when the signal aborts before the modal is present', async () => {
+    const controller = new AbortController();
+    const pending = waitForClerkSurfaceOpen(
+      () => {},
+      400,
+      (cb) => { setTimeout(cb, 15); },
+      { isOpen: () => false, signal: controller.signal },
+    );
+    setTimeout(() => controller.abort(), 20);
+    await assert.rejects(
+      pending,
+      (error: unknown) => error instanceof Error && error.name === 'AbortError',
+    );
+  });
+
+  it('retries via setTimeout even when requestAnimationFrame never fires', async () => {
+    const previousRaf = Object.getOwnPropertyDescriptor(globalThis, 'requestAnimationFrame');
+    Object.defineProperty(globalThis, 'requestAnimationFrame', {
+      configurable: true,
+      writable: true,
+      value: () => 0,
+    });
+    try {
+      let opens = 0;
+      const opened = await waitForClerkSurfaceOpen(
+        () => {
+          opens += 1;
+          if (opens === 1) throw new Error('not ready');
+        },
+        500,
+      );
+      assert.equal(opens, 2);
+      assert.equal(opened, true);
+    } finally {
+      if (previousRaf) Object.defineProperty(globalThis, 'requestAnimationFrame', previousRaf);
+      else delete (globalThis as { requestAnimationFrame?: unknown }).requestAnimationFrame;
+    }
   });
 });

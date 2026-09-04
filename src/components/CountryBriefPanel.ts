@@ -1,8 +1,9 @@
 import type { CountryBriefSignals } from '@/types';
 import type { CountryScore } from '@/services/country-instability';
+import type { GetDefenseIndustrialBaseResponse } from '@/generated/client/worldmonitor/military/v1/service_client';
 import type { PredictionMarket } from '@/services/prediction';
 import type { NewsItem } from '@/types';
-import type { GetCountryChokepointIndexResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
+import type { GetCountryChokepointIndexResponse, GetCountryVulnerabilitiesResponse, SectorExposureSummary, CountryProductsResponse, MultiSectorShockResponse } from '@/services/supply-chain';
 import type { BriefSource } from '@/utils/brief-sources';
 import type { DecisionSignalProvenance } from '../../shared/decision-signal-provenance-contract';
 import type { ChinaDecisionSignalGroupId } from '../../shared/china-decision-signals';
@@ -129,6 +130,9 @@ export interface CountryEnergyProfileData {
   solarShare: number;
   hydroShare: number;
   importShare: number;
+  importShareAvailable: boolean;
+  importShareYear: number;
+  importShareSource: string;
   gasStorageAvailable: boolean;
   gasStorageFillPct: number;
   gasStorageChange1d: number;
@@ -216,6 +220,8 @@ export interface CountryBriefPanel {
   updateScore?(score: CountryScore | null, signals: CountryBriefSignals): void;
   updateSignalDetails?(details: CountryDeepDiveSignalDetails): void;
   updateMilitaryActivity?(summary: CountryDeepDiveMilitarySummary): void;
+  updateDefenseIndustrialBase?(data: GetDefenseIndustrialBaseResponse | null): void;
+  syncCountryPremiumSectionsAccess?(hasAccess: boolean): void;
   updateEconomicIndicators?(indicators: CountryDeepDiveEconomicIndicator[]): void;
   updateChinaCountrySummary?(data: ChinaCountrySummaryData): void;
   updateCountryFacts?(data: CountryFactsData): void;
@@ -232,6 +238,7 @@ export interface CountryBriefPanel {
   updateTariffTrends?(data: { currentRate: number; trend: string; datapoints: Array<{ year: number; tariffRate: number }> } | null): void;
   updateMultiSectorCostShock?(data: MultiSectorShockResponse | null): void;
   updateProductImports?(data: CountryProductsResponse | null): void;
+  updateCommodityVulnerabilities?(data: GetCountryVulnerabilitiesResponse | null): void;
   updateHousingCycle?(data: {
     residential?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;
     commercial?: { indexValue: number; qoqChange: number | null; yoyChange: number | null; period: string } | null;

@@ -12,12 +12,48 @@ import {
   FAA_AIRPORTS,
   DELAY_SEVERITY_THRESHOLDS,
 } from '../../../../src/config/airports';
+import { ApiError } from '../../../../src/generated/server/worldmonitor/aviation/v1/service_server';
 import { CHROME_UA } from '../../../_shared/constants';
 import { incrementProviderCounter } from './_counters';
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { requirePremiumRpcAccess } from '../../../_shared/premium-check';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../../../../api/_sentry-edge.js';
 export { parseStringArray } from '../../../_shared/parse-string-array';
+
+// ---------- Live (metered) aviation access ----------
+
+export const LIVE_AVIATION_PRO_MESSAGE =
+  'PRO subscription or API key required for live flight data';
+
+/**
+ * Gate for the AviationStack-metered routes: list-airport-flights,
+ * get-carrier-ops, get-flight-status.
+ *
+ * These three are the ONLY aviation surfaces that spend money per request —
+ * each cache miss buys an AviationStack call, and get-carrier-ops buys one per
+ * airport. They were anonymous, which is what made them free to abuse: in
+ * August 2026 a single scripted client took ~1,000 paid calls/day, ~43% of
+ * total spend, from an account already over its 50,000/cycle plan.
+ *
+ * Edge heuristics could not stop it. A Cloudflare rule blocking bot-like user
+ * agents missed a client rotating six real browser UAs, and an IP rule at
+ * Vercel could not match because Cloudflare fronts the domain and Vercel only
+ * ever sees a proxy address. Identity is checkable where the request is
+ * served; intent is not checkable at the edge.
+ *
+ * Deliberately NOT applied to the rest of the aviation surface. list-airport-
+ * delays and get-airport-ops-summary read `aviation:delays:intl:v3`, which the
+ * cron seeder already paid for — serving it to one more anonymous visitor
+ * costs nothing, so the map's airport-delay layer stays free and signup-free.
+ *
+ * Call FIRST in each handler, before the cache key is built and before any
+ * Redis read, so a denied request costs nothing and cannot probe which airport
+ * codes or flight numbers are valid.
+ */
+export async function requireLiveAviationAccess(request: Request): Promise<void> {
+  await requirePremiumRpcAccess(request, ApiError, LIVE_AVIATION_PRO_MESSAGE);
+}
 
 // ---------- Constants ----------
 
@@ -25,6 +61,18 @@ export const FAA_URL = 'https://nasstatus.faa.gov/api/airport-status-information
 export const AVIATIONSTACK_URL = 'https://api.aviationstack.com/v1/flights';
 export const ICAO_NOTAM_URL = 'https://dataservices.icao.int/api/notams-realtime-list';
 export const DEFAULT_WATCHED_AIRPORTS = ['IST', 'ESB', 'SAW', 'LHR', 'FRA', 'CDG'];
+
+// Shared by every route that turns a caller-supplied airport code into a PAID
+// AviationStack call. Rejecting non-IATA input before the fetch bounds cache-key
+// cardinality and stops arbitrary strings being used to probe upstream.
+export const IATA_RE = /^[A-Z]{3}$/;
+
+// Ceiling on how many airports one request may fan out to. get-carrier-ops
+// issues one paid AviationStack call PER AIRPORT, and `parseStringArray` puts no
+// bound on the list, so `?airports=A,B,...` was an unauthenticated multiplier on
+// spend — 26 codes meant 26 paid calls from one anonymous request. Sized to
+// DEFAULT_WATCHED_AIRPORTS so the full watched set still resolves in one call.
+export const MAX_AIRPORTS_PER_REQUEST = DEFAULT_WATCHED_AIRPORTS.length;
 const BATCH_CONCURRENCY = 10;
 const MIN_FLIGHTS_FOR_CLOSURE = 10;
 const RESOLVED_STATUSES = new Set(['cancelled', 'landed', 'active', 'arrived', 'diverted']);
@@ -528,9 +576,12 @@ export async function loadNotamClosures(): Promise<LoadedNotamResult | null> {
   let fromSeed = false;
 
   try {
-    const notamMeta = await getCachedJson('seed-meta:aviation:notam', true) as { fetchedAt?: number } | null;
+    // Two independent Redis reads — fetch them concurrently.
+    const [notamMeta, seedNotam] = await Promise.all([
+      getCachedJson('seed-meta:aviation:notam', true) as Promise<{ fetchedAt?: number } | null>,
+      getCachedJson(NOTAM_CACHE_KEY, true) as Promise<LoadedNotamResult | null>,
+    ]);
     const notamAge = notamMeta?.fetchedAt ? t0 - notamMeta.fetchedAt : Infinity;
-    const seedNotam = await getCachedJson(NOTAM_CACHE_KEY, true) as LoadedNotamResult | null;
     if (seedNotam && (notamAge < SEED_FRESHNESS_MS || !process.env.SEED_FALLBACK_NOTAM)) {
       notamResult = seedNotam;
       fromSeed = true;

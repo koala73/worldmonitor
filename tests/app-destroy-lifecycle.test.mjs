@@ -5,6 +5,7 @@ import { resolve } from 'node:path';
 
 const root = resolve(import.meta.dirname, '..');
 const appSrc = readFileSync(resolve(root, 'src/App.ts'), 'utf8');
+const mainSrc = readFileSync(resolve(root, 'src/main.ts'), 'utf8');
 const militaryFlightsSrc = readFileSync(resolve(root, 'src/services/military-flights.ts'), 'utf8');
 const militaryVesselsSrc = readFileSync(resolve(root, 'src/services/military-vessels.ts'), 'utf8');
 const lazyMilitaryVesselsSrc = readFileSync(resolve(root, 'src/services/military-vessels-lazy.ts'), 'utf8');
@@ -36,6 +37,36 @@ function appDestroyBody() {
 }
 
 describe('App.destroy lifecycle cleanup contract', () => {
+  it('tears down early WebMCP registration when asynchronous app initialization fails', () => {
+    const bootStart = mainSrc.indexOf("const app = new App('app');");
+    const bootEnd = mainSrc.indexOf('// Debug helpers for geo-convergence testing', bootStart);
+    assert.notEqual(bootStart, -1, 'could not locate the dashboard App boot');
+    assert.notEqual(bootEnd, -1, 'could not locate the end of the dashboard App boot');
+    const boot = mainSrc.slice(bootStart, bootEnd);
+    assert.match(boot, /\.catch\(\(error: unknown\) => \{/);
+    assert.match(boot, /try \{\s*\/\/[\s\S]*?app\.destroy\(\);\s*\} catch \(cleanupError\) \{/);
+
+    const destroyBody = appDestroyBody();
+    const wakePendingTools = destroyBody.indexOf('this.resolveAppDestroyed()');
+    const abortLifecycle = destroyBody.indexOf('this.lifecycleController.abort()');
+    const abortRegisteredTools = destroyBody.indexOf('this.webMcpController?.abort()');
+    const destroyModules = destroyBody.indexOf('// Destroy all modules in reverse order');
+    assert.ok(wakePendingTools >= 0, 'destroy() must wake WebMCP readiness waits');
+    assert.ok(
+      abortLifecycle > wakePendingTools && abortLifecycle < abortRegisteredTools,
+      'destroy() must abort App-owned waiters before unregistering WebMCP tools',
+    );
+    assert.ok(
+      abortRegisteredTools > wakePendingTools && abortRegisteredTools < destroyModules,
+      'destroy() must unregister WebMCP before partial module cleanup can throw',
+    );
+    assert.match(
+      destroyBody,
+      /try \{[\s\S]*Destroy all modules in reverse order[\s\S]*\} finally \{[\s\S]*this\.state\.map\?\.destroy\(\);[\s\S]*disconnectAisStream\(\);/,
+      'destroy() must still clean up the map and AIS stream if a module destructor throws',
+    );
+  });
+
   it('observes descendant scroll containers in capture phase and removes the matching listener', () => {
     const scrollRegistrations = [
       ...appSrc.matchAll(/window\.addEventListener\('scroll',\s*this\.handleViewportPrime,\s*\{([\s\S]*?)\}\);/g),
@@ -66,11 +97,21 @@ describe('App.destroy lifecycle cleanup contract', () => {
     );
 
     const slowTierAwait = appSrc.indexOf('await slowTierReady;');
+    const readyTimestamp = appSrc.indexOf('this.viewportHydrationReadyAt = typeof performance');
+    const readyFlag = appSrc.indexOf('this.viewportHydrationReady = true;', readyTimestamp);
     const scrollRegistration = appSrc.indexOf("window.addEventListener('scroll', this.handleViewportPrime");
     assert.notEqual(slowTierAwait, -1, 'could not locate the slow-tier readiness checkpoint');
     assert.ok(
       scrollRegistration > slowTierAwait,
       'captured descendant scrolls must not trigger hydration before the slow tier settles',
+    );
+    assert.ok(
+      readyTimestamp > slowTierAwait && readyTimestamp < scrollRegistration,
+      'viewport hydration must stamp the readiness time before registering scroll listeners',
+    );
+    assert.ok(
+      readyFlag > readyTimestamp && readyFlag < scrollRegistration,
+      'viewport hydration readiness must open after the readiness timestamp is captured',
     );
   });
 
@@ -90,6 +131,12 @@ describe('App.destroy lifecycle cleanup contract', () => {
     assert.match(handler, /event\?\.type === 'scroll'/);
     assert.match(handler, /event\.target instanceof Element/);
     assert.match(handler, /!event\.target\.matches\('\.main-content, \.panels-grid'\)/);
+    const staleEventGuard = handler.indexOf('event.timeStamp < this.viewportHydrationReadyAt');
+    const rafSchedule = handler.indexOf('this.visiblePanelPrimeRaf = window.requestAnimationFrame(');
+    assert.ok(
+      staleEventGuard >= 0 && staleEventGuard < rafSchedule,
+      'scroll events created before slow-tier readiness must not replay viewport hydration afterward',
+    );
     assert.match(handler, /this\.visiblePanelPrimeRaf = window\.requestAnimationFrame\(/);
     assert.match(handler, /this\.visiblePanelPrimeRaf = null;/);
     assert.match(handler, /void this\.primeVisiblePanelData\(\);/);
@@ -100,6 +147,11 @@ describe('App.destroy lifecycle cleanup contract', () => {
       body,
       /if \(this\.visiblePanelPrimeRaf !== null\) \{\s*window\.cancelAnimationFrame\(this\.visiblePanelPrimeRaf\);\s*this\.visiblePanelPrimeRaf = null;\s*\}/,
       'destroy() must cancel a queued frame before it can hydrate a disposed App',
+    );
+    assert.match(
+      body,
+      /this\.viewportHydrationReady = false;\s*this\.viewportHydrationReadyAt = 0;/,
+      'destroy() must reset the viewport hydration readiness timestamp',
     );
 
     const afterPanelMounted = methodBody(panelLayoutSrc, 'private afterPanelMounted(key: string, panel: Panel): void');

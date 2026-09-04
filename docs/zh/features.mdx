@@ -4,11 +4,13 @@ description: "World Monitor 功能完整参考指南，全面涵盖 3D 交互式
 ---
 World Monitor 提供了一套全面的实时全球情报监控功能，从交互式地图和数据图层到市场追踪和可自定义的面板布局。
 
+一组衍生数据集——实物金属溢价与背离、矿产产量集中度、国防工业基础、人口能力、粮食库存、韧性指标、商品供应脆弱性与五因子国家记分卡——在其支持的每个表面都需要 Pro 订阅。[Pro 情报套件](/zh/pro-intelligence-suite) 按数据集说明仪表盘、REST 与 MCP 可用性，因为并非每个数据集都有每一种表面。免费账户遇到受支持的仪表盘表面时，该部分会显示升级卡片，而不是空状态或失败状态。
+
 ## 交互式全球地图
 
 - **缩放与平移** - 使用鼠标/触控板手势进行流畅导航
 - **区域聚焦** - 8 个预设视图用于快速导航（全球、美洲、欧洲、中东、亚洲、拉丁美洲、非洲、大洋洲）
-- **图层系统** - 切换按类别组织的 56 个数据图层的可见性
+- **图层系统** - 切换共享目录中按类别组织的数据图层
 - **时间筛选** - 按时间范围筛选事件（1h、6h、24h、48h、7d）
 - **可固定地图** - 滚动浏览面板时将地图固定在顶部，或让其随页面滚动
 - **智能标记聚类** - 附近的标记在低缩放级别时聚合，放大后展开
@@ -74,7 +76,7 @@ World Monitor 提供了一套全面的实时全球情报监控功能，从交互
 | 图层 | 描述 |
 |-------|-------------|
 | **自然** | USGS 地震（M4.5+）+ NASA EONET 事件（风暴、野火、火山、洪水） |
-| **天气** | NWS 严重天气警报 |
+| **天气** | 官方恶劣天气预警（NWS, ECCC, WMO SWIC） |
 
 **叠加与标签**
 | 图层 | 描述 |
@@ -104,7 +106,7 @@ World Monitor 提供了一套全面的实时全球情报监控功能，从交互
 | **实时情报** | GDELT 驱动的主题信息流（军事、网络、核、制裁） |
 | **情报信息流** | 精选的国防和安全新闻来源 |
 | **国家简报** | AI 生成的国家概况，含关键指标、风险因素和近期发展 |
-| **航空情报** | 6 标签航空面板（运营、航班、航司、追踪、新闻、价格），含 111 个监控机场的 NOTAM 关闭检测 |
+| **航空情报** | 6 标签航空面板（运营、航班、航司、追踪、新闻、价格），含机场监控目录的 NOTAM 关闭检测 |
 | **气候异常** | 使用 Open-Meteo ERA5 数据对比滚动基线的 15 个区域的温度和降水偏差 |
 | **流离失所追踪** | UN OCHA HAPI 难民、寻求庇护者和境内流离失所者数据，含来源国/接收国视角 |
 | **海湾经济体** | 6 个海湾合作委员会国家（沙特、阿联酋、卡塔尔、科威特、巴林、阿曼）的指数、货币和石油数据 |
@@ -246,7 +248,7 @@ World Monitor 提供了一套全面的实时全球情报监控功能，从交互
 两个互补的国家评分系统：
 
 - **[国家不稳定指数](/zh/country-instability-index)** — 高频 CII v8 压力评分，含带符号的 24 小时变动增量，融合 31 个一级国家的动荡、冲突、安全和信息信号。
-- **[国家韧性指数](/zh/methodology/country-resilience-index)** — 针对涵盖 6 个领域和 20 个活跃维度（归入 3 大支柱：结构准备度、实时冲击暴露、恢复能力；另含 2 个为保持 schema 连续性而保留的退役维度）的 196 国公开可排序范围的 0-100 韧性评分，每 6 小时刷新，来源于官方/权威数据提供方，含透明的插补。
+- **[国家韧性指数](/zh/methodology/country-resilience-index)** — 针对由 72 个指标覆盖 21 个活跃维度和 6 个领域（归入 3 大支柱：结构准备度、实时冲击暴露、恢复能力；另含 2 个为保持 schema 连续性而保留的退役维度）的 196 国公开可排序范围的 0-100 韧性评分，每 6 小时刷新，来源于官方/权威数据提供方，含透明的插补。
 
 CII 和 CRI 回答不同的问题，不可互换：CII 是短期的压力；CRI 是结构韧性加实时冲击暴露。
 
@@ -263,7 +265,7 @@ CII 和 CRI 回答不同的问题，不可互换：CII 是短期的压力；CRI 
   - **贸易与供应链**：[贸易政策](/zh/panels/trade-policy)、[供应链](/zh/panels/supply-chain)、[制裁压力](/zh/panels/sanctions-pressure)、[霍尔木兹贸易追踪器](/zh/panels/hormuz-tracker)、[能源危机追踪器](/zh/panels/energy-crisis)
   - **追踪与健康**：[疾病暴发](/zh/panels/disease-outbreaks)、[辐射观察](/zh/panels/radiation-watch)、[热力升级](/zh/panels/thermal-escalation)、[消费价格](/zh/panels/consumer-prices)、火灾、UCDP 事件、流离失所、气候异常、安全公告、人口暴露
   - **新闻**：参见[新闻源](/zh/panels/news-feeds)目录，获取区域/主题/科技/金融/正面内容的新闻流。
-  - **实用工具**：[航空情报](/zh/panels/airline-intel)、[科技准备度指数](/zh/panels/tech-readiness)、[世界时钟](/zh/panels/world-clock)、[我的监控器](/zh/panels/monitors)、[OREF 警报](/zh/panels/oref-sirens)、[Telegram 情报](/zh/panels/telegram-intel)、[金融压力](/zh/panels/fsi)、网络摄像头、裁员
+  - **实用工具**：[航空情报](/zh/panels/airline-intel)、[科技准备度指数](/zh/panels/tech-readiness)、[世界时钟](/zh/panels/world-clock)、[我的监控器](/zh/panels/monitors)、[OREF 警报](/zh/panels/oref-sirens)、[Telegram 情报](/zh/panels/telegram-intel)、[X 新闻账号](/zh/panels/x-intel)、[金融压力](/zh/panels/fsi)、网络摄像头、裁员
 - **工作流**：直接从面板打开 Route Explorer 或激活 Scenario Engine 模板
 - **国家简报**：搜索任何国家名称以打开其情报简报或导航地图
 - **时间范围**：按 1h、6h、24h、48h 或 7 天筛选事件
@@ -480,7 +482,7 @@ APT 标记显示为具有独特样式的警告三角形。点击标记显示：
 
 ### 监控机场
 
-通过三个独立数据源（FAA ASWS、AviationStack、ICAO NOTAM）监控跨 5 个区域（美洲、欧洲、亚太、MENA、非洲）的 111 个机场：
+通过三个独立数据源（FAA ASWS、AviationStack、ICAO NOTAM）监控美洲、欧洲、亚太、MENA 和非洲的机场目录：
 
 - 美国主要枢纽：JFK、LAX、ORD、ATL、DFW、DEN、SFO
 - 具有高客流量的国际门户

@@ -10,6 +10,8 @@ export interface ListMarketQuotesResponse {
   finnhubSkipped: boolean;
   skipReason: string;
   rateLimited: boolean;
+  unavailableSymbols: MarketQuoteUnavailable[];
+  asOf: string;
 }
 
 export interface MarketQuote {
@@ -21,12 +23,19 @@ export interface MarketQuote {
   sparkline: number[];
 }
 
+export interface MarketQuoteUnavailable {
+  symbol: string;
+  reason: MarketQuoteUnavailableReason;
+}
+
 export interface ListCryptoQuotesRequest {
   ids: string[];
 }
 
 export interface ListCryptoQuotesResponse {
   quotes: CryptoQuote[];
+  unresolvedIds: string[];
+  provider: string;
 }
 
 export interface CryptoQuote {
@@ -55,6 +64,103 @@ export interface CommodityQuote {
   sparkline: number[];
 }
 
+export interface GetPhysicalPremiumsRequest {
+  metals: string[];
+}
+
+export interface GetPhysicalPremiumsResponse {
+  premiums: PhysicalPremium[];
+  fx?: FxSnapshot;
+}
+
+export interface PhysicalPremium {
+  metal: string;
+  physical?: BenchmarkLeg;
+  paper?: BenchmarkLeg;
+  premiumUsdPerOz: number;
+  premiumPct: number;
+  computedAt: string;
+}
+
+export interface BenchmarkLeg {
+  price: number;
+  currency: string;
+  unit: string;
+  source: string;
+  asOf: string;
+}
+
+export interface FxSnapshot {
+  pair: string;
+  rate: number;
+  source: string;
+  asOf: string;
+}
+
+export interface GetPhysicalDivergenceIndexRequest {
+  metals: string[];
+}
+
+export interface GetPhysicalDivergenceIndexResponse {
+  readings: PhysicalDivergenceReading[];
+  composite?: PhysicalStressComposite;
+  evaluatedAt: number;
+  methodologyVersion: string;
+}
+
+export interface PhysicalDivergenceReading {
+  metal: string;
+  state: PhysicalDivergenceState;
+  reason: string;
+  regime: PhysicalPremiumRegime;
+  index?: number;
+  premiumPct?: number;
+  premiumUsdPerOz?: number;
+  percentile?: number;
+  robustZ?: number;
+  delta5d?: number;
+  delta20d?: number;
+  trend5d: PhysicalPremiumTrend;
+  trend20d: PhysicalPremiumTrend;
+  historyPoints: number;
+  historyWindowStart: string;
+  historyWindowEnd: string;
+  physicalAsOf: string;
+  paperAsOf: number;
+  historyKey: string;
+  methodologyVersion: string;
+  provenance?: PhysicalDivergenceProvenance;
+}
+
+export interface PhysicalDivergenceProvenance {
+  physicalSource: string;
+  physicalSymbol: string;
+  physicalAsOf: string;
+  paperSource: string;
+  paperSymbol: string;
+  paperAsOf: number;
+  fxSource: string;
+  fxPair: string;
+  fxAsOf: number;
+  historyKey: string;
+  historyWindowPoints: number;
+  methodologyVersion: string;
+}
+
+export interface PhysicalStressComposite {
+  state: PhysicalDivergenceState;
+  reason: string;
+  index?: number;
+  weights: PhysicalStressWeight[];
+  methodologyVersion: string;
+}
+
+export interface PhysicalStressWeight {
+  metal: string;
+  weight: number;
+  methodologyVersion: string;
+}
+
 export interface GetSectorSummaryRequest {
   period: string;
 }
@@ -77,6 +183,8 @@ export interface ListStablecoinMarketsResponse {
   timestamp: string;
   summary?: StablecoinSummary;
   stablecoins: Stablecoin[];
+  unresolved: UnresolvedStablecoin[];
+  dataStatus: string;
 }
 
 export interface StablecoinSummary {
@@ -99,6 +207,11 @@ export interface Stablecoin {
   change24h: number;
   change7d: number;
   image: string;
+}
+
+export interface UnresolvedStablecoin {
+  id: string;
+  reason: string;
 }
 
 export interface ListEtfFlowsRequest {
@@ -255,6 +368,9 @@ export interface StockAnalysisHeadline {
   source: string;
   link: string;
   publishedAt: number;
+  marketSessionAtPublish: string;
+  alignedTradingDate: string;
+  alignmentRule: HeadlineAlignmentRule;
 }
 
 export interface AnalystConsensus {
@@ -461,6 +577,7 @@ export interface ListEarningsCalendarResponse {
   toDate: string;
   total: number;
   unavailable: boolean;
+  asOf: string;
 }
 
 export interface EarningsEntry {
@@ -496,6 +613,9 @@ export interface CotInstrument {
   dealerLong: string;
   dealerShort: string;
   netPct: number;
+  smallTraderLong: string;
+  smallTraderShort: string;
+  smallTraderAvailable: boolean;
 }
 
 export interface GetInsiderTransactionsRequest {
@@ -684,6 +804,16 @@ export interface HyperliquidAssetFlow {
   alerts: string[];
 }
 
+export type HeadlineAlignmentRule = "HEADLINE_ALIGNMENT_RULE_UNSPECIFIED" | "HEADLINE_ALIGNMENT_RULE_REGULAR_SESSION_SAME_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_PREMARKET_SAME_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_AFTER_HOURS_NEXT_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_NON_SESSION_NEXT_TRADING_DAY" | "HEADLINE_ALIGNMENT_RULE_OVERNIGHT_SAME_TRADING_DAY";
+
+export type MarketQuoteUnavailableReason = "MARKET_QUOTE_UNAVAILABLE_REASON_UNSPECIFIED" | "MARKET_QUOTE_UNAVAILABLE_REASON_NOT_FOUND" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_ERROR" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_RATE_LIMITED" | "MARKET_QUOTE_UNAVAILABLE_REASON_PROVIDER_NOT_CONFIGURED" | "MARKET_QUOTE_UNAVAILABLE_REASON_REQUEST_LIMIT_EXCEEDED" | "MARKET_QUOTE_UNAVAILABLE_REASON_UPSTREAM_BUDGET_EXHAUSTED" | "MARKET_QUOTE_UNAVAILABLE_REASON_SEED_UNAVAILABLE";
+
+export type PhysicalDivergenceState = "PHYSICAL_DIVERGENCE_STATE_UNSPECIFIED" | "PHYSICAL_DIVERGENCE_STATE_OK" | "PHYSICAL_DIVERGENCE_STATE_INSUFFICIENT_HISTORY" | "PHYSICAL_DIVERGENCE_STATE_STALE_INPUT" | "PHYSICAL_DIVERGENCE_STATE_MISSING_INPUT";
+
+export type PhysicalPremiumRegime = "PHYSICAL_PREMIUM_REGIME_UNSPECIFIED" | "PHYSICAL_PREMIUM_REGIME_NORMAL" | "PHYSICAL_PREMIUM_REGIME_ELEVATED" | "PHYSICAL_PREMIUM_REGIME_STRESSED" | "PHYSICAL_PREMIUM_REGIME_EXTREME";
+
+export type PhysicalPremiumTrend = "PHYSICAL_PREMIUM_TREND_UNSPECIFIED" | "PHYSICAL_PREMIUM_TREND_WIDENING" | "PHYSICAL_PREMIUM_TREND_STABLE" | "PHYSICAL_PREMIUM_TREND_NARROWING";
+
 export interface FieldViolation {
   field: string;
   description: string;
@@ -805,6 +935,56 @@ export class MarketServiceClient {
     }
 
     return await resp.json() as ListCommodityQuotesResponse;
+  }
+
+  async getPhysicalPremiums(req: GetPhysicalPremiumsRequest, options?: MarketServiceCallOptions): Promise<GetPhysicalPremiumsResponse> {
+    let path = "/api/market/v1/get-physical-premiums";
+    const params = new URLSearchParams();
+    if (req.metals && req.metals.length > 0) req.metals.forEach(v => params.append("metals", v));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPhysicalPremiumsResponse;
+  }
+
+  async getPhysicalDivergenceIndex(req: GetPhysicalDivergenceIndexRequest, options?: MarketServiceCallOptions): Promise<GetPhysicalDivergenceIndexResponse> {
+    let path = "/api/market/v1/get-physical-divergence-index";
+    const params = new URLSearchParams();
+    if (req.metals && req.metals.length > 0) req.metals.forEach(v => params.append("metals", v));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetPhysicalDivergenceIndexResponse;
   }
 
   async getSectorSummary(req: GetSectorSummaryRequest, options?: MarketServiceCallOptions): Promise<GetSectorSummaryResponse> {

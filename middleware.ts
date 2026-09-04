@@ -1,14 +1,19 @@
+import { isKnownPublicPagePath, originNotFoundResponse } from './src/config/agent-not-found';
+import {
+  DOCS_UPSTREAM_ORIGIN,
+  DOCS_UPSTREAM_TIMEOUT_MS,
+  isDocsFullDocumentRequest,
+  isDocsHtmlDocumentPath,
+  rewriteDocsLocaleHtml,
+  shouldTransformDocsUpstreamHtml,
+} from './src/config/docs-locale-seo';
+import { getRootlessDocsDestination } from './src/config/docs-root-redirects';
+
 const BOT_UA =
   /bot|crawl|spider|slurp|archiver|wget|curl\/|python-requests|scrapy|httpclient|go-http|java\/|libwww|perl|ruby|php\/|ahrefsbot|semrushbot|mj12bot|dotbot|baiduspider|yandexbot|sogou|bytespider|petalbot|gptbot|claudebot|ccbot/i;
 
 const SOCIAL_PREVIEW_UA =
   /twitterbot|facebookexternalhit|linkedinbot|slackbot|telegrambot|whatsapp|discordbot|redditbot/i;
-
-// AI crawlers / AEO scanners: serve a variant-aware static stub on subdomain
-// roots so each variant (tech / finance / commodity / happy / energy) is
-// indexed under its own identity rather than inheriting the 'full' SPA HTML.
-const AI_CRAWLER_UA =
-  /gptbot|claudebot|ccbot|google-extended|perplexitybot|anthropic-ai|bytespider|cohere-ai|youbot|applebot-extended|amazonbot/i;
 
 const SOCIAL_PREVIEW_PATHS = new Set(['/api/story', '/api/og-story']);
 const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRange', 'layers'] as const;
@@ -36,6 +41,11 @@ const LEGACY_DASHBOARD_ROOT_QUERY_KEYS = ['lat', 'lon', 'zoom', 'view', 'timeRan
 //   keyless, advertised as service-meta in /.well-known/api-catalog). Agents
 //   evaluating the product are a primary audience; an agent-journey run (#4854)
 //   got 403 here and concluded the endpoint didn't exist.
+// - /api/download.md: curated static markdown twin of GET /api/download.
+//   Kept on the exact allowlist so a future glob refactor cannot drop the
+//   sampled URL. All other GET/HEAD /api/**/*.md twins bypass via
+//   isPublicApiMarkdownTwin() below — the protocol is site-wide .md twins,
+//   not one sampled path.
 const PUBLIC_API_PATHS = new Set([
   '/api/version',
   '/api/health',
@@ -43,7 +53,15 @@ const PUBLIC_API_PATHS = new Set([
   '/api/internal/brief-why-matters',
   '/api/llms.txt',
   '/api/product-catalog',
+  '/api/download.md',
 ]);
+
+function isPublicApiMarkdownTwin(pathname: string, method: string): boolean {
+  if (method !== 'GET' && method !== 'HEAD') return false;
+  if (!pathname.startsWith('/api/') || !pathname.endsWith('.md')) return false;
+  if (pathname.includes('..') || pathname.includes('//')) return false;
+  return pathname.length > '/api/.md'.length;
+}
 
 const SOCIAL_IMAGE_UA =
   /Slack-ImgProxy|Slackbot|twitterbot|facebookexternalhit|linkedinbot|telegrambot|whatsapp|discordbot|redditbot/i;
@@ -67,7 +85,7 @@ const VARIANT_HOST_MAP: Record<string, string> = {
 };
 
 // Source of truth: src/config/variant-meta.ts — keep in sync when variant metadata changes.
-// `name` is the short brand for JSON-LD `WebApplication.name`; `title` is the full
+// `name` is the short brand for JSON-LD `SoftwareApplication.name`; `title` is the full
 // page <title>. They are split fields (not derived via title.split(' - ')) so a
 // future title format change cannot silently corrupt the JSON-LD name.
 const VARIANT_OG: Record<string, { name: string; title: string; description: string; image: string; url: string }> = {
@@ -138,10 +156,6 @@ function clientAcceptsSse(request: Request): boolean {
   });
 }
 
-// HTML-escape a string for safe interpolation into BOTH text content and
-// double-quoted attribute values. Required because VARIANT_OG values are
-// hand-edited prose and a future double-quote, ampersand, or angle bracket
-// would otherwise close the attribute early or corrupt the document.
 function escHtml(s: string): string {
   return s
     .replace(/&/g, '&amp;')
@@ -151,11 +165,59 @@ function escHtml(s: string): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Query keys that create duplicate index entries without changing document identity. */
+const INDEX_NOISE_QUERY_KEYS = new Set([
+  'ref',
+  'wm_referral',
+  'utm_source',
+  'utm_medium',
+  'utm_campaign',
+  'utm_content',
+  'utm_term',
+]);
+
+function stripIndexNoiseQuery(url: URL): URL | null {
+  let changed = false;
+  const next = new URL(url);
+  for (const key of [...next.searchParams.keys()]) {
+    if (INDEX_NOISE_QUERY_KEYS.has(key) || key.toLowerCase().startsWith('utm_')) {
+      next.searchParams.delete(key);
+      changed = true;
+    }
+  }
+  return changed ? next : null;
+}
 export default function middleware(request: Request) {
   const url = new URL(request.url);
   const ua = request.headers.get('user-agent') ?? '';
   const path = url.pathname;
   const host = normalizeHost(request.headers.get('host') ?? url.hostname);
+
+  // Bots indexing ?ref= / utm_* dashboard URLs as distinct pages (#7380).
+  // Humans still receive the param so referral-capture / analytics can run;
+  // crawlers are 308'd to the clean canonical document URL.
+  if (
+    (request.method === 'GET' || request.method === 'HEAD') &&
+    !path.startsWith('/api/') &&
+    BOT_UA.test(ua)
+  ) {
+    const cleaned = stripIndexNoiseQuery(url);
+    if (cleaned) {
+      // Built by hand rather than via Response.redirect() so the response can
+      // carry Vary + no-store. This redirect is decided by User-Agent; a 308
+      // is cacheable by default (RFC 9110 §15.4.9). Without those headers a
+      // crawler can warm the tagged URL and a shared edge cache can replay
+      // the clean Location to a human, stripping `ref` before referral capture.
+      return new Response(null, {
+        status: 308,
+        headers: {
+          Location: cleaned.toString(),
+          Vary: 'User-Agent',
+          'Cache-Control': 'private, no-store',
+        },
+      });
+    }
+  }
 
   if (path === '/' && hasLegacyDashboardRootState(url.searchParams)) {
     const dashboardUrl = new URL(request.url);
@@ -163,63 +225,40 @@ export default function middleware(request: Request) {
     return Response.redirect(dashboardUrl.toString(), 308);
   }
 
-  // Variant-aware crawlable stub for social preview bots AND AI crawlers
-  // (GPTBot, ClaudeBot, PerplexityBot, etc.) when hitting variant subdomain
-  // roots. Social bots get OG-only; AI crawlers additionally get JSON-LD
-  // WebApplication + a body with internal links and external citations so
-  // each variant is indexed under its own identity.
-  if (path === '/') {
-    const isSocial = SOCIAL_PREVIEW_UA.test(ua);
-    const isAI = AI_CRAWLER_UA.test(ua);
-    if (isSocial || isAI) {
-      const variant = VARIANT_HOST_MAP[host];
-      if (variant && isAllowedHost(host)) {
-        const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
-        if (og) {
-          // Pre-escape every VARIANT_OG field used in the template. JSON-LD is
-          // safe via JSON.stringify, but the OG/Twitter/canonical attributes
-          // and the visible <h1>/<p> body need explicit HTML escaping.
-          const eTitle = escHtml(og.title);
-          const eDesc = escHtml(og.description);
-          const eImage = escHtml(og.image);
-          const eUrl = escHtml(og.url);
-          const jsonLd = isAI ? `\n<script type="application/ld+json">${JSON.stringify({
-            '@context': 'https://schema.org',
-            '@type': 'WebApplication',
-            name: og.name,
-            url: og.url,
-            description: og.description,
-            applicationCategory: 'BusinessApplication',
-            operatingSystem: 'Web, Windows, macOS, Linux',
-            offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-            screenshot: og.image,
-            isPartOf: {
-              '@type': 'WebSite',
-              name: 'World Monitor',
-              url: 'https://www.worldmonitor.app/',
-            },
-            sameAs: [
-              'https://github.com/koala73/worldmonitor',
-              'https://x.com/worldmonitorai',
-            ],
-          })}</script>` : '';
-          const aiBody = isAI ? `
-<h1>${eTitle}</h1>
-<p>${eDesc}</p>
-<h2>Explore the platform</h2>
-<ul>
-<li><a href="https://www.worldmonitor.app/dashboard">World Monitor — geopolitics &amp; intelligence</a></li>
-<li><a href="https://tech.worldmonitor.app/dashboard">Tech Monitor</a></li>
-<li><a href="https://finance.worldmonitor.app/dashboard">Finance Monitor</a></li>
-<li><a href="https://commodity.worldmonitor.app/dashboard">Commodity Monitor</a></li>
-<li><a href="https://happy.worldmonitor.app/dashboard">Happy Monitor</a></li>
-<li><a href="https://www.worldmonitor.app/pro">World Monitor Pro</a></li>
-<li><a href="https://www.worldmonitor.app/blog/">Blog</a></li>
-<li><a href="https://github.com/koala73/worldmonitor">Open source on GitHub</a></li>
-</ul>
-<h2>Sources</h2>
-<p>Data ingested live from <a href="https://acleddata.com/">ACLED</a>, <a href="https://ucdp.uu.se/">UCDP</a>, <a href="https://firms.modaps.eosdis.nasa.gov/">NASA FIRMS</a>, <a href="https://earthquake.usgs.gov/">USGS</a>, <a href="https://opensky-network.org/">OpenSky</a>, <a href="https://aisstream.io/">AISStream</a>, <a href="https://fred.stlouisfed.org/">FRED</a>, <a href="https://www.imf.org/en/Data">IMF</a>, and <a href="https://www.bis.org/">BIS</a>.</p>` : '';
-          const html = `<!DOCTYPE html><html lang="en"><head>
+  if (request.method === 'GET' || request.method === 'HEAD') {
+    const docsDestination = getRootlessDocsDestination(path);
+    if (docsDestination) {
+      const canonicalUrl = new URL(docsDestination);
+      canonicalUrl.search = url.search;
+      return Response.redirect(canonicalUrl.toString(), 308);
+    }
+
+    // Mintlify rewrite cannot set zh-Hans <html lang> or reciprocal hreflang
+    // for /docs/zh/* (issue #7378). Proxy full-document HTML only — leave RSC
+    // flights and static assets on the direct Mintlify rewrite.
+    if (isDocsHtmlDocumentPath(path) && isDocsFullDocumentRequest(request)) {
+      return proxyDocsLocaleHtml(request, url);
+    }
+
+    // Real HTTP 404 for unknown pages. Agents get markdown (orank
+    // `agent-friendly-404`); browsers that send Accept: text/html get HTML.
+    // A rewrite to a static file would 200. Files with extensions skip this
+    // matcher and fall through to public/404.html.
+    if (!isKnownPublicPagePath(path)) {
+      return originNotFoundResponse(path, request);
+    }
+  }
+
+  if (path === '/' && SOCIAL_PREVIEW_UA.test(ua)) {
+    const variant = VARIANT_HOST_MAP[host];
+    if (variant && isAllowedHost(host)) {
+      const og = VARIANT_OG[variant as keyof typeof VARIANT_OG];
+      if (og) {
+        const eTitle = escHtml(og.title);
+        const eDesc = escHtml(og.description);
+        const eImage = escHtml(og.image);
+        const eUrl = escHtml(og.url);
+        const html = `<!DOCTYPE html><html lang="en"><head>
 <meta property="og:type" content="website"/>
 <meta property="og:title" content="${eTitle}"/>
 <meta property="og:description" content="${eDesc}"/>
@@ -230,17 +269,16 @@ export default function middleware(request: Request) {
 <meta name="twitter:description" content="${eDesc}"/>
 <meta name="twitter:image" content="${eImage}"/>
 <link rel="canonical" href="${eUrl}"/>
-<title>${eTitle}</title>${jsonLd}
-</head><body>${aiBody}</body></html>`;
-          return new Response(html, {
-            status: 200,
-            headers: {
-              'Content-Type': 'text/html; charset=utf-8',
-              'Cache-Control': 'no-store',
-              'Vary': 'User-Agent, Host',
-            },
-          });
-        }
+<title>${eTitle}</title>
+</head><body></body></html>`;
+        return new Response(html, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store',
+            'Vary': 'User-Agent, Host',
+          },
+        });
       }
     }
   }
@@ -321,7 +359,7 @@ export default function middleware(request: Request) {
   }
 
   // Public endpoints bypass all bot filtering
-  if (PUBLIC_API_PATHS.has(path)) {
+  if (PUBLIC_API_PATHS.has(path) || isPublicApiMarkdownTwin(path, request.method)) {
     return;
   }
 
@@ -358,6 +396,76 @@ export default function middleware(request: Request) {
   }
 }
 
+async function proxyDocsLocaleHtml(request: Request, url: URL): Promise<Response> {
+  const upstreamUrl = `${DOCS_UPSTREAM_ORIGIN}${url.pathname}${url.search}`;
+  const forwardHeaders = new Headers();
+  for (const name of ['accept', 'accept-language', 'user-agent', 'if-none-match', 'if-modified-since']) {
+    const value = request.headers.get(name);
+    if (value) forwardHeaders.set(name, value);
+  }
+  if (!forwardHeaders.has('user-agent')) {
+    forwardHeaders.set('user-agent', 'WorldMonitorDocsLocaleProxy/1.0');
+  }
+
+  let upstream: Response;
+  let html: string;
+  try {
+    upstream = await fetch(upstreamUrl, {
+      method: request.method,
+      headers: forwardHeaders,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(DOCS_UPSTREAM_TIMEOUT_MS),
+    });
+
+    // Pass through redirects / not-modified without rewriting.
+    if (upstream.status >= 300 && upstream.status < 400) {
+      return upstream;
+    }
+    if (upstream.status === 304 || request.method === 'HEAD') {
+      return upstream;
+    }
+
+    const contentType = upstream.headers.get('content-type');
+    if (!shouldTransformDocsUpstreamHtml(url.pathname, contentType)) {
+      return upstream;
+    }
+
+    html = await upstream.text();
+  } catch {
+    return new Response('Docs upstream unavailable', { status: 502 });
+  }
+
+  const rewritten = rewriteDocsLocaleHtml(html, url.pathname);
+  const headers = new Headers(upstream.headers);
+  // Fetch already decoded the body; hop-by-hop / recomputed framing must not
+  // be forwarded onto the rewritten string response (Mintlify serves br).
+  for (const name of ['content-encoding', 'content-length', 'transfer-encoding', 'connection']) {
+    headers.delete(name);
+  }
+  headers.set('x-wm-docs-locale-seo', '1');
+  // Ensure shared caches vary on the headers that select this proxy path.
+  const vary = headers.get('vary');
+  const varyParts = new Set(
+    (vary ? vary.split(',') : [])
+      .map((part) => part.trim())
+      .filter(Boolean)
+      .map((part) => part.toLowerCase()),
+  );
+  varyParts.add('accept');
+  varyParts.add('rsc');
+  headers.set('vary', [...varyParts].join(', '));
+
+  return new Response(rewritten, {
+    status: upstream.status,
+    statusText: upstream.statusText,
+    headers,
+  });
+}
+
 export const config = {
-  matcher: ['/', '/mcp', '/api/:path*'],
+  matcher: [
+    '/mcp',
+    '/api/:path*',
+    '/((?!api(?:/|$)|mcp(?:/|$)|.*\\.[^/]+$).*)',
+  ],
 };

@@ -3,6 +3,7 @@ import type {
   GetShippingRatesResponse,
   GetChokepointStatusResponse,
   GetCriticalMineralsResponse,
+  GetMineralProductionResponse,
   GetShippingStressResponse,
 } from '@/services/supply-chain';
 import { fetchBypassOptions, fetchChokepointHistory } from '@/services/supply-chain';
@@ -19,19 +20,34 @@ import { hasPremiumAccess } from '@/services/panel-gating';
 import { trackGateHit } from '@/services/analytics';
 import { runScenario, getScenarioStatus } from '@/services/scenario';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { bindActivationKeys } from '@/utils/activation';
 
 
 type TabId = 'chokepoints' | 'shipping' | 'indicators' | 'minerals' | 'stress';
 
 const FLOW_SUPPORTED_IDS = new Set(['hormuz_strait', 'malacca_strait', 'suez', 'bab_el_mandeb']);
 
+// Today's transits come from the relay's in-memory 24h AIS window, which is
+// empty far more often than it is zero-trafficked, and the relay cannot tell
+// the two apart. The RPC coerces the absent case to 0 to keep the int32 wire
+// contract, so a bare 0 is uninterpretable -- read todayCountsAvailable
+// instead (#7457). Responses cached before that field existed fall back to the
+// previous `> 0` inference rather than blanking real counts during rollout.
+function hasPublishedTransitCount(ts?: { todayTotal?: number; todayCountsAvailable?: boolean }): boolean {
+  if (!ts) return false;
+  return ts.todayCountsAvailable ?? ((ts.todayTotal ?? 0) > 0);
+}
+
 export class SupplyChainPanel extends Panel {
   private shippingData: GetShippingRatesResponse | null = null;
   private chokepointData: GetChokepointStatusResponse | null = null;
   private mineralsData: GetCriticalMineralsResponse | null = null;
+  private mineralProductionData: GetMineralProductionResponse | null = null;
+  private mineralsStage: 'mine' | 'refinery' = 'mine';
   private stressData: GetShippingStressResponse | null = null;
   private activeTab: TabId = 'chokepoints';
   private expandedChokepoint: string | null = null;
+  private pendingFocusChokepoint: string | null = null;
   private transitChart = new TransitChart();
   private chartObserver: MutationObserver | null = null;
   private chartMountTimer: ReturnType<typeof setTimeout> | null = null;
@@ -49,11 +65,21 @@ export class SupplyChainPanel extends Panel {
 
   constructor() {
     super({ id: 'supply-chain', title: t('panels.supplyChain'), defaultRowSpan: 2, infoTooltip: t('components.supplyChain.infoTooltip') });
+    bindActivationKeys(this.content, '.trade-restriction-header');
     this.content.addEventListener('click', (e) => {
+      const stageBtn = (e.target as HTMLElement).closest('[data-mineral-stage]') as HTMLElement | null;
+      if (stageBtn?.dataset.mineralStage === 'mine' || stageBtn?.dataset.mineralStage === 'refinery') {
+        const next = stageBtn.dataset.mineralStage as 'mine' | 'refinery';
+        if (next !== this.mineralsStage) {
+          this.mineralsStage = next;
+          this.render();
+        }
+        return;
+      }
       const tab = (e.target as HTMLElement).closest('.panel-tab') as HTMLElement | null;
-      if (tab) {
+      if (tab?.dataset.tab) {
         const tabId = tab.dataset.tab as TabId;
-        if (tabId && tabId !== this.activeTab) {
+        if (tabId !== this.activeTab) {
           this.clearTransitChart();
           this.activeTab = tabId;
           this.render();
@@ -72,9 +98,23 @@ export class SupplyChainPanel extends Panel {
         const newId = this.expandedChokepoint === card.dataset.cpId ? null : card.dataset.cpId;
         if (!newId) this.clearTransitChart();
         this.expandedChokepoint = newId;
+        this.pendingFocusChokepoint = card.dataset.cpId ?? null;
         this.render();
       }
     });
+  }
+
+  private restoreChokepointHeaderFocus(): void {
+    const name = this.pendingFocusChokepoint;
+    this.pendingFocusChokepoint = null;
+    if (!name) return;
+    const cards = this.content.querySelectorAll<HTMLElement>('.trade-restriction-card');
+    for (const card of cards) {
+      if (card.dataset.cpId === name) {
+        card.querySelector<HTMLElement>('.trade-restriction-header')?.focus();
+        return;
+      }
+    }
   }
 
   private clearTransitChart(): void {
@@ -97,6 +137,16 @@ export class SupplyChainPanel extends Panel {
 
   public updateCriticalMinerals(data: GetCriticalMineralsResponse): void {
     this.mineralsData = data;
+    this.render();
+  }
+
+  public updateMineralProduction(data: GetMineralProductionResponse): void {
+    this.mineralProductionData = data;
+    this.render();
+  }
+
+  public clearMineralProduction(): void {
+    this.mineralProductionData = null;
     this.render();
   }
 
@@ -136,12 +186,16 @@ export class SupplyChainPanel extends Panel {
           ? (this.shippingData?.indices?.length ?? 0) > 0
           : this.activeTab === 'stress'
             ? (this.stressData?.carriers?.length ?? 0) > 0
-            : (this.mineralsData?.minerals?.length ?? 0) > 0;
+            : (this.mineralProductionData?.commodities?.length ?? 0) > 0
+              || (this.mineralsData?.minerals?.length ?? 0) > 0;
     const activeData = this.activeTab === 'chokepoints' ? this.chokepointData
       : (this.activeTab === 'shipping' || this.activeTab === 'indicators') ? this.shippingData
       : this.activeTab === 'stress' ? this.stressData
-      : this.mineralsData;
-    const unavailableBanner = !activeHasData && activeData?.upstreamUnavailable
+      : this.mineralProductionData?.commodities?.length
+        ? this.mineralProductionData
+        : this.mineralsData;
+    const unavailableBanner = activeData?.upstreamUnavailable
+      && (this.activeTab === 'chokepoints' || !activeHasData)
       ? `<div class="economic-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
       : '';
 
@@ -158,7 +212,9 @@ export class SupplyChainPanel extends Panel {
       ${tabsHtml}
       ${unavailableBanner}
       <div class="economic-content">${contentHtml}</div>
-    `, 'legacy Panel.setContent() migration'));
+    `, 'legacy Panel.setContent() migration'), () => {
+      this.restoreChokepointHeaderFocus();
+    });
 
     if (this.activeTab === 'chokepoints' && this.expandedChokepoint) {
       const expandedCpName = this.expandedChokepoint;
@@ -276,7 +332,7 @@ export class SupplyChainPanel extends Panel {
         return `<tr><td>${escapeHtml(opt.name)}</td><td>${days}</td><td>${cost}</td><td>${escapeHtml(risk)}</td></tr>`;
       }).join('');
       return `<table class="sc-bypass-table">
-        <thead><tr><th>Corridor</th><th>+Days</th><th>+Cost</th><th>Risk</th></tr></thead>
+        <thead><tr><th scope="col">Corridor</th><th scope="col">+Days</th><th scope="col">+Cost</th><th scope="col">Risk</th></tr></thead>
         <tbody>${rows}</tbody>
       </table>`;
     };
@@ -344,10 +400,18 @@ export class SupplyChainPanel extends Panel {
         const isAffectedByScenario = affectedSet.has(cp.id);
         const statusClass = cp.status === 'red' ? 'status-active' : cp.status === 'yellow' ? 'status-notified' : 'status-terminated';
         const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
-        const aisDisruptions = cp.aisDisruptions ?? (cp.congestionLevel === 'normal' ? 0 : 1);
+        const sourceMetrics = [
+          cp.navigationalWarningsAvailable === true
+            ? `${cp.activeWarnings} ${t('components.supplyChain.warnings')}`
+            : '',
+          cp.aisSnapshotAvailable === true
+            ? `${cp.aisDisruptions} ${t('components.supplyChain.aisDisruptions')}`
+            : '',
+        ].filter(Boolean).join(' · ');
         const ts = cp.transitSummary;
         const wowPct = ts?.wowChangePct ?? 0;
         const hasWow = ts && wowPct !== 0;
+        const hasTransitCount = hasPublishedTransitCount(ts);
         const wowSpan = hasWow ? `<span class="${wowPct >= 0 ? 'change-positive' : 'change-negative'}">${wowPct >= 0 ? '\u25B2' : '\u25BC'}${Math.abs(wowPct).toFixed(1)}%</span>` : '';
         const disruptPct = ts?.disruptionPct ?? 0;
         const disruptClass = disruptPct > 10 ? 'sc-disrupt-red' : disruptPct > 3 ? 'sc-disrupt-yellow' : 'sc-disrupt-green';
@@ -362,7 +426,7 @@ export class SupplyChainPanel extends Panel {
         // data available for this chokepoint. If dataAvailable === false, the
         // per-id history key would also be zero (we skip the lazy-fetch).
         const chartPlaceholder = expanded && ts?.dataAvailable !== false
-          ? `<div data-chart-cp="${escapeHtml(cp.name)}" data-chart-cp-id="${escapeHtml(cp.id)}" style="margin-top:8px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:12px">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`
+          ? `<div data-chart-cp="${escapeHtml(cp.name)}" data-chart-cp-id="${escapeHtml(cp.id)}" style="margin-top:8px;min-height:200px;display:flex;align-items:center;justify-content:center;color:var(--text-dim,#888);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${t('components.supplyChain.loadingHistory') || 'Loading transit history\u2026'}</div>`
           : '';
 
         const tier = cp.warRiskTier ?? 'WAR_RISK_TIER_NORMAL';
@@ -439,23 +503,23 @@ export class SupplyChainPanel extends Panel {
           : `<span class="trade-badge">${cp.disruptionScore}/100</span>`;
 
         return `<div class="trade-restriction-card${expanded ? ' expanded' : ''}${isAffectedByScenario ? ' scenario-affected' : ''}" data-cp-id="${escapeHtml(cp.name)}" style="cursor:pointer${isAffectedByScenario ? ';border-left:3px solid #dc2626' : ''}">
-          <div class="trade-restriction-header">
+          <div class="trade-restriction-header" role="button" tabindex="0" aria-expanded="${expanded ? 'true' : 'false'}">
             <span class="trade-country">${escapeHtml(cp.name)}</span>
             <span class="sc-status-dot ${statusDot}"></span>
             ${badgeHtml}
             <span class="trade-status ${statusClass}">${escapeHtml(cp.status)}</span>
           </div>
           <div class="trade-restriction-body">
-            ${isAffectedByScenario && scenarioResult?.template ? `<div class="sc-metric-row" style="background:#7f1d1d22;padding:4px 6px;border-radius:3px;margin-bottom:4px;font-size:11px">
+            ${isAffectedByScenario && scenarioResult?.template ? `<div class="sc-metric-row" style="background:#7f1d1d22;padding:4px 6px;border-radius:3px;margin-bottom:4px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">
               <span style="color:#fca5a5;font-weight:600">\u26A0 Projected under scenario: ${scenarioResult.template.disruptionPct}% closure for ${scenarioResult.template.durationDays} days${scenarioResult.template.costShockMultiplier > 1 ? ` (+${Math.round((scenarioResult.template.costShockMultiplier - 1) * 100)}% cost)` : ''}</span>
             </div>` : ''}
-            <div class="sc-metric-row">
-              <span>${cp.activeWarnings} ${t('components.supplyChain.warnings')} · ${aisDisruptions} ${t('components.supplyChain.aisDisruptions')}</span>
+            <div class="sc-metric-row"${sourceMetrics || cp.directions?.length ? '' : ' hidden'}>
+              ${sourceMetrics ? `<span>${sourceMetrics}</span>` : ''}
               ${cp.directions?.length ? `<span>${cp.directions.map(d => escapeHtml(d)).join('/')}</span>` : ''}
             </div>
-            ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:11px"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
-            ${ts && ts.dataAvailable !== false && (ts.todayTotal > 0 || hasWow || disruptPct > 0) ? `<div class="sc-metric-row">
-              ${ts.todayTotal > 0 ? `<span>${ts.todayTotal} ${t('components.supplyChain.vessels')}</span>` : ''}
+            ${ts && ts.dataAvailable === false ? `<div class="sc-metric-row" style="opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1))"><span>${t('components.supplyChain.transitDataUnavailable') || 'Transit data unavailable (upstream partial)'}</span></div>` : ''}
+            ${ts && ts.dataAvailable !== false && (hasTransitCount || hasWow || disruptPct > 0) ? `<div class="sc-metric-row">
+              ${hasTransitCount ? `<span>${ts.todayTotal} ${t('components.supplyChain.vessels')}</span>` : ''}
               ${hasWow ? `<span>${t('components.supplyChain.wowChange')}: ${wowSpan}</span>` : ''}
               ${disruptPct > 0 ? `<span>${t('components.supplyChain.disruption')}: <span class="${disruptClass}">${disruptPct.toFixed(1)}%</span></span>` : ''}
             </div>` : ''}
@@ -469,12 +533,12 @@ export class SupplyChainPanel extends Panel {
               const pct = Math.round(fe.flowRatio * 100);
               const flowColor = fe.disrupted || pct < 85 ? '#ef4444' : pct < 95 ? '#f59e0b' : 'var(--text-dim,#888)';
               const hazardBadge = fe.hazardAlertLevel && fe.hazardAlertName
-                ? ` <span style="background:#ea580c;color:#fff;font-size:9px;padding:1px 5px;border-radius:3px;margin-left:4px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
+                ? ` <span style="background:#ea580c;color:#fff;font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:3px;margin-left:4px">&#9888; ${escapeHtml(fe.hazardAlertName.toUpperCase())}</span>`
                 : '';
               return `<div class="sc-metric-row" style="color:${flowColor}">
                 <span>~${fe.currentMbd} mb/d <span style="opacity:0.7">(${pct}% of ${fe.baselineMbd} baseline)</span>${hazardBadge}</span>
               </div>`;
-            })() : FLOW_SUPPORTED_IDS.has(cp.id) ? `<div class="sc-metric-row" style="color:var(--text-dim,#888);font-size:11px;opacity:0.7">
+            })() : FLOW_SUPPORTED_IDS.has(cp.id) ? `<div class="sc-metric-row" style="color:var(--text-dim,#888);font-size:calc(11px * var(--wm-panel-effective-scale, 1));opacity:0.7">
                 <span>${t('components.supplyChain.flowUnavailable')}</span>
               </div>` : ''}
             ${cp.description ? `<div class="trade-description">${escapeHtml(cp.description)}</div>` : ''}
@@ -518,6 +582,7 @@ export class SupplyChainPanel extends Panel {
       const ts = cp.transitSummary;
       const statusDot = cp.status === 'red' ? 'sc-dot-red' : cp.status === 'yellow' ? 'sc-dot-yellow' : 'sc-dot-green';
       const wowPct = ts?.wowChangePct ?? 0;
+      const hasTransitCount = hasPublishedTransitCount(ts);
       const wowCell = wowPct !== 0
         ? `<span class="${wowPct >= 0 ? 'change-positive' : 'change-negative'}">${wowPct >= 0 ? '\u25B2' : '\u25BC'}${Math.abs(wowPct).toFixed(1)}%</span>`
         : '-';
@@ -528,7 +593,7 @@ export class SupplyChainPanel extends Panel {
         : (riskLevel === 'elevated' || riskLevel === 'moderate') ? 'sc-disrupt-yellow' : '';
       return `<tr>
         <td><span class="sc-status-dot ${statusDot}"></span> ${escapeHtml(cp.name)}</td>
-        <td>${ts?.todayTotal ?? 0}</td>
+        <td>${hasTransitCount && ts ? ts.todayTotal : '-'}</td>
         <td>${wowCell}</td>
         <td><span class="${disruptClass}">${disruptPct > 0 ? disruptPct.toFixed(1) + '%' : '-'}</span></td>
         <td>${riskClass ? `<span class="${riskClass}">${escapeHtml(riskLevel)}</span>` : escapeHtml(riskLevel)}</td>
@@ -539,11 +604,11 @@ export class SupplyChainPanel extends Panel {
       <div class="trade-sector" style="font-weight:600;margin-bottom:4px">${t('components.supplyChain.corridorDisruption')}</div>
       <table class="sc-disruption-table">
         <thead><tr>
-          <th>${t('components.supplyChain.corridor')}</th>
-          <th>${t('components.supplyChain.vessels')}</th>
-          <th>${t('components.supplyChain.wowChange')}</th>
-          <th>${t('components.supplyChain.disruption')}</th>
-          <th>${t('components.supplyChain.risk')}</th>
+          <th scope="col">${t('components.supplyChain.corridor')}</th>
+          <th scope="col">${t('components.supplyChain.vessels')}</th>
+          <th scope="col">${t('components.supplyChain.wowChange')}</th>
+          <th scope="col">${t('components.supplyChain.disruption')}</th>
+          <th scope="col">${t('components.supplyChain.risk')}</th>
         </tr></thead>
         <tbody>${tableRows}</tbody>
       </table>
@@ -641,13 +706,13 @@ export class SupplyChainPanel extends Panel {
 
     const header = `<div style="margin-bottom:12px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <span style="font-size:11px;color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Composite Stress Score</span>
-        <span style="font-size:11px;font-weight:700;padding:2px 7px;border-radius:3px;background:${gaugeBg};color:${levelColor}">${escapeHtml(stressLevel.toUpperCase())}</span>
+        <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);text-transform:uppercase;letter-spacing:0.06em">Composite Stress Score</span>
+        <span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));font-weight:700;padding:2px 7px;border-radius:3px;background:${gaugeBg};color:${levelColor}">${escapeHtml(stressLevel.toUpperCase())}</span>
       </div>
       <div style="position:relative;height:6px;border-radius:3px;background:rgba(255,255,255,0.08)">
         <div style="position:absolute;left:0;top:0;height:100%;width:${gaugeWidth}%;border-radius:3px;background:${levelColor};transition:width 0.4s"></div>
       </div>
-      <div style="text-align:right;font-size:10px;color:var(--text-dim);margin-top:2px">${stressScore.toFixed(1)}/100</div>
+      <div style="text-align:right;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">${stressScore.toFixed(1)}/100</div>
     </div>`;
 
     const rows = carriers.map(c => {
@@ -657,12 +722,12 @@ export class SupplyChainPanel extends Panel {
       const spark = c.sparkline?.length >= 2 ? this.renderSparkline(c.sparkline) : '';
       return `<div class="trade-restriction-card">
         <div class="trade-restriction-header">
-          <span class="trade-country" style="font-size:11px">${escapeHtml(c.symbol)}</span>
-          <span style="font-size:9px;padding:1px 5px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim)">${typeLabel}</span>
+          <span class="trade-country" style="font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${escapeHtml(c.symbol)}</span>
+          <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));padding:1px 5px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim)">${typeLabel}</span>
           <span class="trade-badge">${c.price.toFixed(2)}</span>
           <span class="trade-flow-change ${changeClass}">${arrow} ${Math.abs(c.changePct).toFixed(2)}%</span>
         </div>
-        <div class="trade-restriction-body" style="font-size:10px;color:var(--text-dim)">${escapeHtml(c.name)}${spark}</div>
+        <div class="trade-restriction-body" style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(c.name)}${spark}</div>
       </div>`;
     }).join('');
 
@@ -684,8 +749,8 @@ export class SupplyChainPanel extends Panel {
     }).join(' ');
 
     const dateLabels = dates?.length ? `
-      <text x="0" y="${totalH - 1}" fill="var(--text-dim,#888)" font-size="9" text-anchor="start">${escapeHtml(dates[0]!.slice(0, 7))}</text>
-      <text x="${w}" y="${totalH - 1}" fill="var(--text-dim,#888)" font-size="9" text-anchor="end">${escapeHtml(dates[dates.length - 1]!.slice(0, 7))}</text>
+      <text x="0" y="${totalH - 1}" fill="var(--text-dim,#888)" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))" text-anchor="start">${escapeHtml(dates[0]!.slice(0, 7))}</text>
+      <text x="${w}" y="${totalH - 1}" fill="var(--text-dim,#888)" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1))" text-anchor="end">${escapeHtml(dates[dates.length - 1]!.slice(0, 7))}</text>
     ` : '';
 
     return `<svg width="${w}" height="${totalH}" viewBox="0 0 ${w} ${totalH}" style="display:block;margin:4px 0">
@@ -695,6 +760,64 @@ export class SupplyChainPanel extends Panel {
   }
 
   private renderMinerals(): string {
+    const production = this.mineralProductionData;
+    if (production?.commodities?.length) {
+      const stage = this.mineralsStage;
+      const rows = production.commodities.map((item) => {
+        const snap = stage === 'refinery' ? item.refinery : item.mine;
+        if (!snap) {
+          return `<tr>
+            <td>${escapeHtml(item.commodity)}</td>
+            <td colspan="2">${escapeHtml(t('components.supplyChain.stageUnavailable'))}</td>
+          </tr>`;
+        }
+        // `residual` is the USGS "Other countries" bucket -- an aggregate, not a
+        // producer. Without this it outranks real countries and occupies a named
+        // slot (copper mine renders it 3rd at 13%, displacing Peru).
+        const top3 = snap.countries.filter((c) => !c.withheld && !c.residual && c.share != null).slice(0, 3)
+          .map((p) => `${escapeHtml(p.country)} ${(p.share ?? 0).toFixed(0)}%`)
+          .join(', ');
+        const residual = snap.countries.find((c) => c.residual && c.share != null);
+        // Uses the upstream label ("Other countries") rather than a new i18n key,
+        // matching the untranslated country names already rendered in this table.
+        const residualNote = residual
+          ? ` <span class="sc-mineral-residual">+${(residual.share ?? 0).toFixed(0)}% ${escapeHtml(residual.country || 'other')}</span>`
+          : '';
+        const withheld = snap.withheldCount > 0
+          ? ` <span class="sc-risk-moderate">${escapeHtml(t('components.supplyChain.withheldNote'))}</span>`
+          : '';
+        // Each commodity-stage picks its own year, so a BGS-filled commodity can
+        // be years older than the caption's global max. Label the row when it
+        // differs rather than letting the caption imply one vintage for all.
+        const rowYear = snap.year && snap.year !== production.dataYear
+          ? ` <span class="sc-mineral-vintage">(${escapeHtml(String(snap.year))})</span>`
+          : '';
+        return `<tr>
+          <td>${escapeHtml(item.commodity)}${rowYear}</td>
+          <td>${top3 || '—'}${residualNote}${withheld}</td>
+          <td>${snap.hhi.toFixed(0)}</td>
+        </tr>`;
+      }).join('');
+      const year = production.dataYear ? String(production.dataYear) : '';
+      return `<div class="trade-tariffs-table">
+        <div class="panel-tabs" style="margin-bottom:8px">
+          <button class="panel-tab ${stage === 'mine' ? 'active' : ''}" data-mineral-stage="mine">${t('components.supplyChain.mineStage')}</button>
+          <button class="panel-tab ${stage === 'refinery' ? 'active' : ''}" data-mineral-stage="refinery">${t('components.supplyChain.refineryStage')}</button>
+        </div>
+        <p class="sc-mineral-caption">${t('components.supplyChain.productionCaption')}${year ? ` (${escapeHtml(year)})` : ''}</p>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col">${t('components.supplyChain.mineral')}</th>
+              <th scope="col">${t('components.supplyChain.topProducers')}</th>
+              <th scope="col">HHI</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>`;
+    }
+
     if (!this.mineralsData || !this.mineralsData.minerals?.length) {
       return `<div class="economic-empty">${t('components.supplyChain.noMinerals')}</div>`;
     }
@@ -715,18 +838,28 @@ export class SupplyChainPanel extends Panel {
       </tr>`;
     }).join('');
 
+    // Reached whenever the production snapshot is absent — for a free viewer
+    // that is now the steady state, because the mine/refinery shares are Pro
+    // (#6439) and the loader skips the fetch. The free deposits table above is
+    // a genuine fallback, not an error, so the only addition is a line naming
+    // what the upgrade buys.
+    const productionUpsell = hasPremiumAccess(getAuthState())
+      ? ''
+      : `<p class="sc-mineral-caption">${escapeHtml(t('components.supplyChain.productionProLocked'))}</p>`;
+
     return `<div class="trade-tariffs-table">
       <table>
         <thead>
           <tr>
-            <th>${t('components.supplyChain.mineral')}</th>
-            <th>${t('components.supplyChain.topProducers')}</th>
-            <th>HHI</th>
-            <th>${t('components.supplyChain.risk')}</th>
+            <th scope="col">${t('components.supplyChain.mineral')}</th>
+            <th scope="col">${t('components.supplyChain.topProducers')}</th>
+            <th scope="col">HHI</th>
+            <th scope="col">${t('components.supplyChain.risk')}</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
       </table>
+      ${productionUpsell}
     </div>`;
   }
 

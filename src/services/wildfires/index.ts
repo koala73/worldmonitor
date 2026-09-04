@@ -1,6 +1,6 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { FireDetection, FireConfidence, ListFireDetectionsResponse } from '@/generated/client/worldmonitor/wildfire/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { WildfireServiceClient } from '@/services/generated-rpc-clients';
 import { resolveFireDetectionTotalCount } from './payload';
@@ -48,9 +48,18 @@ const emptyFallback: ListFireDetectionsResponse = { fireDetections: [], fetchedA
 
 export async function fetchAllFires(_days?: number): Promise<FetchResult> {
   const hydrated = getHydratedData('wildfires') as ListFireDetectionsResponse | undefined;
-  const response = (hydrated?.fireDetections?.length ? hydrated : null) ?? await breaker.execute(async () => {
-    return client.listFireDetections({ start: 0, end: 0, pageSize: 0, cursor: '', neLat: 0, neLon: 0, swLat: 0, swLon: 0 });
-  }, emptyFallback);
+  let response: ListFireDetectionsResponse;
+  if (hydrated?.fireDetections?.length) {
+    breaker.recordSuccess(hydrated);
+    response = hydrated;
+  } else {
+    response = await breaker.execute(async () => {
+      return client.listFireDetections(
+        { start: 0, end: 0, pageSize: 0, cursor: '', neLat: 0, neLon: 0, swLat: 0, swLon: 0 },
+        { signal: AbortSignal.timeout(20_000) },
+      );
+    }, emptyFallback, { shouldCache: (r) => r.fireDetections.length > 0 });
+  }
   const detections = response.fireDetections;
 
   if (detections.length === 0) {

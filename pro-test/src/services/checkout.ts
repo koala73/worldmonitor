@@ -5,13 +5,14 @@
  * Dodo's HOSTED checkout (`window.location.assign`). The overlay iframe could
  * not host Dodo's nested 3DS/fraud stack (it hung at "Processing…"), so we
  * navigate full-page; the buyer returns to the dashboard via the guarded
- * `?wm_checkout=return` contract. The Dodo overlay SDK Initialize/onEvent
- * machinery below is DORMANT, pending removal.
+ * `?wm_checkout=return` contract. The dormant overlay SDK machinery
+ * (`initOverlay`, its onEvent handler, and the entitlement watchdog it was
+ * the sole caller of) was removed in #7222, along with this bundle's
+ * `dodopayments-checkout` dependency — the hosted redirect needs no SDK.
  * No Convex client needed — the edge endpoint handles relay.
  */
 
 import * as Sentry from '@sentry/react';
-import type { CheckoutEvent } from 'dodopayments-checkout';
 import { ensureClerk, type LoadedClerk } from './clerk';
 export { ensureClerk } from './clerk';
 
@@ -25,17 +26,17 @@ import {
   stripCheckoutIntentFromSearch,
   buildCheckoutReturnUrl,
 } from './checkout-intent-url';
-import { createEntitlementWatchdog, type EntitlementWatchdog } from './entitlement-watchdog';
 import {
   createDefaultCheckoutTransportDeps,
   postCreateCheckout,
 } from './checkout-transport';
+import { createTimeoutSignal } from './timeout-signal';
 import {
   checkoutRetryAtMs,
   checkoutRetryRemainingSeconds,
   parseCheckoutRetryAfterSeconds,
 } from './checkout-rate-limit';
-import { DASHBOARD_CHECKOUT_SUCCESS_URL, DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
+import { DASHBOARD_CHECKOUT_RETURN_URL } from '../routes';
 import fallbackTiers from '../generated/tiers.json';
 import {
   getContentAttributionForAnalytics,
@@ -227,202 +228,6 @@ function activateCheckoutRateLimit(retryAfterHeader: string | null): number {
   return retryAfterSeconds;
 }
 
-/**
- * Entitlement watchdog tuning.
- *
- * Why this exists at all: Dodo's overlay can navigate to
- * `/status/{id}/wallet-return` after a successful payment (observed on
- * subscription-trial `amount=0` flows) and never emit `checkout.status`
- * or `checkout.redirect_requested` back to the parent. Prior PRs (#3298
- * flip to manualRedirect:false, #3346 add redirect_requested handler,
- * #3354 Escape-key close hatch) all depended on Dodo emitting SOMETHING;
- * the wallet-return path emits nothing. The watchdog polls our own
- * entitlement endpoint so the post-checkout journey completes from the
- * webhook regardless of what Dodo's iframe does.
- *
- * INTERVAL: 3000ms floor. Below 2s our own pipeline is eventually
- * consistent (Convex + Upstash webhook latency) so faster polling just
- * burns Clerk token refreshes. 3s is imperceptible to humans.
- *
- * TIMEOUT: 10 minutes. A real user who paid and left the tab open 10min
- * without the webhook landing has a different problem (Dodo outage,
- * webhook pipeline broken) — the fix isn't a longer poll.
- */
-const WATCHDOG_INTERVAL_MS = 3_000;
-const WATCHDOG_TIMEOUT_MS = 10 * 60 * 1000;
-
-export function initOverlay(onSuccess?: () => void): void {
-  import('dodopayments-checkout').then(({ DodoPayments }) => {
-    const env = import.meta.env.VITE_DODO_ENVIRONMENT;
-
-    // Closure-scoped watchdog + idempotency state. Reset implicitly
-    // on each new overlay open because `checkout.opened` is what starts
-    // the watchdog and `_terminalFired` only gates within one session:
-    // `checkout.closed` clears both. The SDK Initialize is idempotent
-    // per the main-app comment in src/services/checkout.ts, so this
-    // closure wraps the one-and-only live onEvent handler.
-    let _terminalFired = false;
-    let watchdog: EntitlementWatchdog | null = null;
-
-    const stopWatchdog = (): void => {
-      watchdog?.stop();
-      watchdog = null;
-    };
-
-    const safeCloseOverlay = (): void => {
-      try {
-        if (DodoPayments.Checkout.isOpen?.()) {
-          DodoPayments.Checkout.close();
-        }
-      } catch {
-        // Overlay already gone / SDK mid-teardown.
-      }
-    };
-
-    // Single terminal-success entry point. Both the event handler and
-    // the watchdog route through here so double-fires are impossible.
-    // `redirectTo` optional: the event path supplies Dodo's
-    // redirect_to (which may embed payment_id etc.); the watchdog
-    // path falls back to our canonical success URL.
-    const fireTerminalSuccess = (
-      reason: 'event-status' | 'event-redirect' | 'watchdog',
-      redirectTo?: string,
-    ): void => {
-      if (_terminalFired) return;
-      _terminalFired = true;
-      stopWatchdog();
-
-      Sentry.addBreadcrumb({
-        category: 'checkout',
-        message: `terminal success (${reason})`,
-        level: 'info',
-        data: { reason },
-      });
-
-      // Counter-signal so Dodo's wallet-return deadlock prevalence is
-      // measurable in Sentry. We intentionally log `info`, not `error`
-      // — this is expected handling, not a failure. See
-      // `feedback_sentry_level_expected_user_states`.
-      if (reason === 'watchdog') {
-        Sentry.captureMessage('Dodo wallet-return deadlock — watchdog resolved', {
-          level: 'info',
-          tags: { surface: 'pro-marketing', code: 'watchdog_resolved' },
-        });
-      }
-
-      try {
-        onSuccess?.();
-      } catch (err) {
-        console.error('[checkout] onSuccess threw:', err);
-        Sentry.captureException(err, {
-          tags: { surface: 'pro-marketing', action: 'on-success' },
-        });
-      }
-
-      // The event-redirect path does its OWN navigation using the
-      // URL Dodo supplied (preserves payment_id / subscription_id
-      // query params downstream consumers may read). Watchdog and
-      // event-status paths use the canonical fallback — Dodo's
-      // status endpoint is authoritative for the entitlement; the
-      // URL params are informational at this point.
-      if (reason === 'event-redirect') {
-        window.location.href = redirectTo || DASHBOARD_CHECKOUT_SUCCESS_URL;
-      } else {
-        safeCloseOverlay();
-        window.location.href = DASHBOARD_CHECKOUT_SUCCESS_URL;
-      }
-    };
-
-    const startWatchdog = (): void => {
-      if (watchdog !== null || _terminalFired) return;
-      watchdog = createEntitlementWatchdog(
-        {
-          endpoint: `${API_BASE}/me/entitlement`,
-          intervalMs: WATCHDOG_INTERVAL_MS,
-          timeoutMs: WATCHDOG_TIMEOUT_MS,
-        },
-        {
-          getToken: getAuthToken,
-          fetch: (input, init) => fetch(input, init),
-          setInterval: (cb, ms) => window.setInterval(cb, ms),
-          clearInterval: (id) => window.clearInterval(id),
-          now: () => Date.now(),
-          onPro: () => fireTerminalSuccess('watchdog'),
-        },
-      );
-      watchdog.start();
-    };
-
-    DodoPayments.Initialize({
-      mode: env === 'live_mode' ? 'live' : 'test',
-      displayType: 'overlay',
-      onEvent: (event: CheckoutEvent) => {
-        // Breadcrumb every event — when a user reports "stuck on spinner
-        // after paying" we need the event log to tell whether we got
-        // `checkout.status=succeeded`, only `checkout.closed`, or
-        // nothing at all. Sentry picks up console.* via integration.
-        //
-        // Only log known-safe fields (event_type, status). Dodo's
-        // event.data can include customer PII (email, billing address,
-        // payment_id) depending on event type, and anything logged here
-        // lands in Sentry breadcrumbs via the console integration.
-        const data = event.data as Record<string, unknown> | undefined;
-        const msg = data?.message as Record<string, unknown> | undefined;
-        const status = msg?.status as string | undefined;
-        console.info('[checkout] dodo event', event.event_type,
-          status !== undefined ? { status } : undefined);
-
-        // `checkout.opened` is the only terminal-adjacent event Dodo
-        // emits reliably on BOTH the happy path and the wallet-return
-        // deadlock path (confirmed via HAR 2026-04-23). It's our
-        // earliest safe moment to arm the watchdog.
-        if (event.event_type === 'checkout.opened') {
-          _terminalFired = false;
-          startWatchdog();
-        }
-
-        // Dodo's documented `manualRedirect: true` flow emits TWO events
-        // on terminal success: `checkout.status` for UI updates, and
-        // `checkout.redirect_requested` carrying the URL WE must navigate
-        // to. The SDK explicitly hands navigation to the merchant in this
-        // mode — ignoring `checkout.redirect_requested` is what stranded
-        // users after paying (docs: overlay-checkout.mdx, inline-checkout.mdx).
-        //
-        // Status shape is ONLY `event.data.message.status` per docs — the
-        // legacy top-level `event.data.status` read was a guess against
-        // an older SDK version and most likely never matched.
-        if (event.event_type === 'checkout.status' && status === 'succeeded') {
-          fireTerminalSuccess('event-status');
-        }
-        if (event.event_type === 'checkout.redirect_requested') {
-          const redirectTo = msg?.redirect_to as string | undefined;
-          // DORMANT (#4449): this overlay handler no longer runs — checkout now
-          // redirects top-level to the hosted page (see startCheckout). The
-          // live return_url is the GUARDED `?wm_checkout=return` marker, which
-          // reconciles success only against authoritative Dodo evidence; it does
-          // NOT fire regardless of Dodo's appended params. Kept pending removal.
-          fireTerminalSuccess('event-redirect', redirectTo);
-        }
-        if (event.event_type === 'checkout.closed') {
-          // Cancel path. Do not fire success — user didn't pay, or
-          // the watchdog timed out gracefully.
-          stopWatchdog();
-        }
-        if (event.event_type === 'checkout.link_expired') {
-          // Not user-blocking — log-only for now; follow-up if Sentry
-          // shows volume.
-          Sentry.captureMessage('Dodo checkout link expired', {
-            level: 'info',
-            tags: { surface: 'pro-marketing', code: 'link_expired' },
-          });
-        }
-      },
-    });
-  }).catch((err) => {
-    console.error('[checkout] Failed to load Dodo overlay SDK:', err);
-  });
-}
-
 // Synchronous whole-start re-entrancy guard (#4934 round-4 F4):
 // `checkoutInFlight` is only set inside doCheckout, AFTER the awaited
 // ensureClerk() — rapid double-clicks both pass the entry check and
@@ -433,7 +238,12 @@ let startCheckoutEntryInFlight = false;
 
 export async function startCheckout(
   productId: string,
-  options?: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
+  options?: {
+    referralCode?: string;
+    discountCode?: string;
+    attributionSource?: string;
+    bypassPendingGuard?: boolean;
+  },
 ): Promise<boolean> {
   if (checkoutInFlight) return false;
   if (startCheckoutEntryInFlight) return false;
@@ -447,7 +257,12 @@ export async function startCheckout(
 
 async function startCheckoutInner(
   productId: string,
-  options?: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
+  options?: {
+    referralCode?: string;
+    discountCode?: string;
+    attributionSource?: string;
+    bypassPendingGuard?: boolean;
+  },
 ): Promise<boolean> {
   let c: LoadedClerk;
   try {
@@ -503,17 +318,22 @@ export async function tryResumeCheckoutFromUrl(): Promise<boolean> {
     return false;
   }
   if (!c.user) return false;
-  const { productId, referralCode, discountCode } = intent;
+  const { productId, referralCode, discountCode, attributionSource } = intent;
   // Funnel (#4931): post-sign-in auto-resume — the pre-auth click already
   // fired checkout-start{authed:false}; this marks the resumed attempt.
   // productId is URL-derived here — bucketed for analytics (round-4 F2).
   trackFunnelEvent('checkout-start', { productId: bucketProductIdForAnalytics(productId), surface: 'pro-resume', authed: true });
-  return doCheckout(productId, { referralCode, discountCode });
+  return doCheckout(productId, { referralCode, discountCode, attributionSource });
 }
 
 async function doCheckout(
   productId: string,
-  options: { referralCode?: string; discountCode?: string; bypassPendingGuard?: boolean },
+  options: {
+    referralCode?: string;
+    discountCode?: string;
+    attributionSource?: string;
+    bypassPendingGuard?: boolean;
+  },
 ): Promise<boolean> {
   const cooldownSeconds = currentCheckoutRateLimitSeconds();
   if (cooldownSeconds > 0) {
@@ -571,6 +391,7 @@ async function doCheckout(
         returnUrl: DASHBOARD_CHECKOUT_RETURN_URL,
         discountCode: options.discountCode,
         referralCode: options.referralCode,
+        attributionSource: options.attributionSource,
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
@@ -879,7 +700,7 @@ async function openBillingPortal(token: string, preopened?: Window | null): Prom
       headers: {
         Authorization: `Bearer ${token}`,
       },
-      signal: AbortSignal.timeout(15_000),
+      signal: createTimeoutSignal(15_000),
     });
 
     const result = await resp.json().catch(() => ({}));

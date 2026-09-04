@@ -73,6 +73,14 @@ Railway 种子任务每小时运行一次，并把规范快照写入 `economic:g
 
 MCP 工具与 HTTP 路由一样仅限 Pro，且不属于 bootstrap。无筛选工具调用会保留所有开放机会；`min_automation_score` 始终是可选项。完整参数契约见 [MCP 工具参考](/zh/mcp-tools-reference#get_procurement_opportunities)。
 
+## WebMCP 浏览器工具
+
+full、tech 和 finance 的全新默认布局会包含全球采购面板。由于面板可跨变体寻址，有权益的用户也可以在其他变体上启用它。已连接、可见、数据就绪且空闲的面板可以暴露声明式 WebMCP 工具 `search_procurement`；其可选输入直接来自人工表单：各自最多 160 个字符的 `query` 与 `buyer` 文本、恰好由两个 ASCII 字母组成的 `country`（`^[A-Za-z]{2}$`）、`source`、`sort` 和布尔值 `techRelevant`。
+
+智能体调用开始后，同一表单及其声明属性会一直保留到浏览器拥有的响应 Promise 完成；并发调用会收到可重试的 `request_in_progress` 结果。隐藏、锁定或销毁面板会使工具不可用；在没有活动智能体调用时，普通加载状态会移除该声明。
+
+调用会明显激活并提交同一表单，经规范请求路径执行，并且只返回匹配数、覆盖范围、已应用筛选、可用性和来源状态的受限摘要。重置/取消会中止待处理工作。它不暴露隐藏招标内容，也不绕过 Pro 权益。精确浏览器 schema 和生命周期见 [WebMCP](/zh/webmcp#声明式采购工具)。
+
 ## 技术相关性
 
 `automationFit` 是针对软件、AI、数据、网络安全、自动化、云服务及相关术语的透明关键词相关性信号。它包含评分、分类版本、匹配理由和文本证据，**不是**法律意见或采购资格判断；除非上游来源明确提供，`participationMode` 始终为 `unknown`。

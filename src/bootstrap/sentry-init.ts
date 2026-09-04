@@ -6,7 +6,8 @@
  * entry chunk. Keep pre-init queuing in `sentry-defer.ts`; keep SDK setup here.
  */
 
-import { isDebugBearRumScriptFrame } from './debugbear-rum';
+import { isIosLikeUserAgent } from './platform-ua';
+import { SENTRY_ALLOW_URLS } from './sentry-allow-urls';
 import { getSentryBuildMetadata } from './sentry-build-metadata';
 
 type SentryNs = typeof import('@sentry/browser');
@@ -64,10 +65,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       : location.hostname.includes('vercel.app') ? 'preview'
       : 'development',
     enabled: Boolean(sentryDsn) && !location.hostname.startsWith('localhost') && !('__TAURI_INTERNALS__' in window),
-    allowUrls: [
-      /https?:\/\/(www\.|tech\.|finance\.|commodity\.|happy\.)?worldmonitor\.app/,
-      /https?:\/\/.*\.vercel\.app/,
-    ],
+    allowUrls: SENTRY_ALLOW_URLS,
     sendDefaultPii: true,
     tracesSampleRate: 0.1,
     ignoreErrors: [
@@ -81,7 +79,42 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /^TypeError: Load failed( \(.*\))?$/,
       /^TypeError: (?:cancelled|avbruten)$/,
       /runtime\.sendMessage\(\)/,
-      /Java object is gone/,
+      // Chromium's Android WebView Java bridge. `android_webview` wraps every
+      // failed `@JavascriptInterface` call as
+      // `Error invoking <method>: <GinJavaBridgeError>`, and an in-app browser's
+      // own chrome script hits it when the Java object behind the bridge has
+      // been collected or detached. Both production values this project has
+      // ever recorded carry that envelope:
+      //   WORLDMONITOR-117 `Error invoking enableButtonsClickedMetaDataLogging: Java object is gone`
+      //   WORLDMONITOR-YN  `Error invoking process: Java bridge method invocation error`
+      //
+      // Anchored to the whole sentence, replacing the two bare substring
+      // entries (`/Java object is gone/` and `/Java bridge method invocation
+      // error/`) this supersedes. `ignoreErrors` is frame-blind, so a substring
+      // pattern also dropped any first-party message CONTAINING the phrase —
+      // `Our Java object is gone` was suppressed even with an `/assets/*.js`
+      // frame on the stack, which is the observability blind spot this array is
+      // supposed to avoid. That gate cannot be delegated to `beforeSend`
+      // either: WORLDMONITOR-YN's own stack carries `/assets/main-*.js`, so
+      // `hasFirstParty` is true and a `!hasFirstParty` rule would never fire.
+      //
+      // The method slot is matched as "anything but whitespace or a colon",
+      // not as `[\w$]+`, because it is whichever bridge the host app called and
+      // Java identifiers are NOT ASCII-only — `@JavascriptInterface
+      // obtenirDonnées()` is legal, and JavaScript's `\w` would miss it (PR
+      // #7356 review). Widening the slot cannot loosen the rule: the envelope
+      // is anchored at both ends and the reason is enumerated, so a message
+      // only matches if our own bundle emits the whole Chromium sentence, which
+      // the source scan below forbids. Java method names contain no colon, so
+      // excluding one keeps the slot from swallowing the reason separator. The
+      // reasons ARE enumerated: a Chromium reason we have not seen should
+      // surface as a new issue and be added deliberately, which is the safe
+      // failure direction — under-suppression announces itself, over-suppression
+      // does not. `Error invoking` appears nowhere in `src/`, `pro-test/src/`,
+      // `api/` or `index.html`, which is what licenses matching it at all;
+      // tests/sentry-beforesend.test.mjs pins that so the licence cannot rot.
+      // Marketing-surface copy of the first reason is PR #7356.
+      /^Error invoking [^\s:]+: (?:Java object is gone|Java bridge method invocation error)$/,
       /^Object captured as promise rejection with keys:/,
       /Unable to load image/,
       /Non-Error promise rejection captured with value:/,
@@ -102,7 +135,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Program failed to link/,
       /too much recursion/,
       /zaloJSV2/,
-      /Java bridge method invocation error/,
       /Could not compile fragment shader/,
       /can't redefine non-configurable property/,
       /Can.t find variable: (CONFIG|currentInset|NP|webkit|EmptyRanges|logMutedMessage|UTItemActionController|DarkReader|Readability|onPageLoaded|Game|frappe|getPercent|ucConfig|\$a)/,
@@ -114,6 +146,24 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /objectStoreNames/,
       /Unexpected identifier 'https'/,
       /Can't find variable: _0x/,
+      // The Chromium/Gecko half of the entry above. javascript-obfuscator names
+      // its identifiers `_0x<hex>`, and a userscript or extension bundle that
+      // reads its own obfuscated global before define throws
+      // `_0x58c9 is not defined` there and `Can't find variable: _0x58c9` on
+      // WebKit — so the entry above has covered only Safari since #4005.
+      // WORLDMONITOR-11P is the other half leaking through (Chrome 152 /
+      // Windows, three `<anonymous>:1` frames and nothing else); it landed on
+      // the marketing surface, which runs a separate Sentry client, and the
+      // same hole exists here.
+      //
+      // Added ALONGSIDE the WebKit entry rather than replacing it: keying on
+      // four-or-more hex digits is what makes the identifier unmistakably
+      // obfuscator output, but it would drop a non-hex `_0x…` name that the
+      // broader Safari-phrasing entry has been suppressing for months. Neither
+      // pattern subsumes the other. Vite's esbuild/terser minifier emits
+      // single-letter and `$`-prefixed names, never a `_0x` prefix, and the
+      // literal appears nowhere in src/, api/, shared/, public/ or index.html.
+      /\b_0x[0-9a-f]{4,}\b/,
       /Can't find variable: video/,
       /hackLocationFailed is not defined/,
       /userScripts is not defined/,
@@ -131,6 +181,18 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // WKScriptMessageHandler ourselves; this is browser-native and unactionable
       // (WORLDMONITOR-KJ — 15 events / 14 users in DuckDuckGo 26.3 on macOS).
       /WKWebView API client did not respond to this postMessage/,
+      // Apple's native WKWebView find-on-page bridge: the host app evaluates
+      // `WKWebView_RemoveAllHighlights()` in the page when the user dismisses
+      // the in-app find bar, and it is undefined in web content the host never
+      // instrumented. `WKWebView_` is Apple's native-bridge prefix and appears
+      // nowhere in src/, api/, public/ or index.html, so it can never come from
+      // our bundle, minified or not — same class as the two `WKWebView` entries
+      // around it. The existing `^(?:LIDNotify…|removeHighlight|…) is not
+      // defined$` entry covers other host-injected names but is anchored to the
+      // Chrome phrasing and an exact alternation, so it missed the Safari
+      // `Can't find variable:` wording (WORLDMONITOR-10W — Mobile Safari 26.6 /
+      // iOS 18.7, single frame on the /dashboard document).
+      /\bWKWebView_[A-Za-z]\w*/,
       /Unexpected end of(?: JSON)? input/,
       /window\.android\.\w+ is not a function/,
       /Attempted to assign to readonly property/,
@@ -161,6 +223,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Worker is not a constructor/,
       /_pcmBridgeCallbackHandler/,
       /UCShellJava/,
+      // UC Browser's native JS bridge object, injected into every page by the
+      // in-app WebView's own chrome script and referenced before (or after) the
+      // native side has defined it. Sibling of `UCShellJava` / `ucapi` /
+      // `ucConfig` / `ucbrowser_script` already here, and of the other named
+      // in-app-bridge globals (`zaloJSV2`, `iabjs_unified_bridge`,
+      // `SCDynimacBridge`). The double-underscore-prefixed vendor identifier
+      // appears nowhere in src/, api/, shared/, server/, public/ or index.html,
+      // so it can never come from our bundle, minified or not.
+      //
+      // Matched on the identifier rather than folded into the
+      // `Can.t find variable: (...)` alternation above so BOTH engine phrasings
+      // are covered from one entry — WebKit says `Can't find variable: X`,
+      // Chromium says `X is not defined`, and UC Browser ships on both engines.
+      // WORLDMONITOR-10W (UC Browser 12.2.1 / iOS 17.6.1, single `global code`
+      // frame on the /dashboard document).
+      /__BrowserJSBridgeObj/,
       /Cannot define multiple custom elements/,
       /maxTextureDimension2D/,
       /Container app not found/,
@@ -189,7 +267,6 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Se requiere plan premium/,
       /hybridExecute is not defined/,
       /reading 'postMessage'/,
-      /appendChild.*Unexpected token/,
       /\bmag is not defined\b/,
       /evaluating '[^']*\.luma/,
       /translateNotifyError/,
@@ -249,6 +326,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /\bcrusoe is not defined\b/, // WORLDMONITOR-R3 — injected userscript reference, anonymous-frames-only stack
       /\bvc_request_action is not defined\b/, // WORLDMONITOR-RB — Samsung Internet / Tizen smart-view-cast global injection
       /\bmainWorldSdk is not defined\b/, // WORLDMONITOR-TG — browser extension SDK injected into the page main world references its global before define; not in our bundle (Edge 148/Windows, anonymous-frames-only stack)
+      /\bextDomain is not defined\b/, // WORLDMONITOR-105 — same class as mainWorldSdk: extension content script reads its own `extDomain` global before define; absent from src/, api/, public/ and index.html (Chrome 151/Windows, three `<anonymous>:1` frames and nothing else)
       /navigationPerformanceLoggerJavascriptInterface/,
       /jQuery is not defined/,
       /illegal UTF-16 sequence/,
@@ -259,7 +337,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Can't find variable: caches/,
       /crypto\.randomUUID is not a function/,
       /ucapi is not defined/,
-      /Identifier '(?:script|reportPage|element|Shop|change_ua|originalPrompt)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users). originalPrompt: extension hooking window.prompt double-injected — WORLDMONITOR-TE (not in our bundle; build would fail on a duplicate top-level const)
+      /Identifier '(?:script|reportPage|element|Shop|change_ua|originalPrompt|SENDER)' has already been declared/, // change_ua: User-Agent-changer browser extension injecting same script twice — WORLDMONITOR-2D (88 events / 26 users). originalPrompt: extension hooking window.prompt double-injected — WORLDMONITOR-TE. SENDER: Kaspersky-style content-script double-injection — WORLDMONITOR-ZC (not in our bundle; build would fail on a duplicate top-level const)
       /getAttribute is not a function.*getAttribute\("role"\)/,
       /SCDynimacBridge/,
       /errTimes is not defined/,
@@ -335,6 +413,22 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       /Unexpected identifier 'm'/, // Foreign script injection on Opera; pre-compiled bundle can't parse-fail at runtime (WORLDMONITOR-NT)
       /PlayerControlsInterface\.\w+ is not a function/, // Android Chrome WebView native bridge injection (Bilibili/UC/QQ-style host) — never emitted by our code (WORLDMONITOR-P2)
       /github\.com\/styled-components\/styled-components\/blob/, // styled-components runtime error (errors.md#N URL); we don't depend on styled-components, so it can only be a browser extension (Grammarly et al.) injecting its own bundle — WORLDMONITOR-SE
+      // The Umami tracker's beacon POST failed at the network layer and the
+      // tracker (third-party, served from abacus.worldmonitor.app) leaked its
+      // own rejection. A dropped analytics beacon is invisible to the user and
+      // unactionable — same disposition as the host-suffixed
+      // `Failed to fetch (abacus.worldmonitor.app)` already covered by
+      // THIRD_PARTY_FETCH_HOST_ALLOWLIST above; this is the bare-message variant
+      // that carries no host to match on (WORLDMONITOR-Z6/ZG, #6746).
+      //
+      // This belongs in ignoreErrors, not the stack-gated beforeSend block,
+      // precisely BECAUSE the string is ours: `CollectorTransportError` is
+      // constructed at exactly one line (analytics-collector-transport.ts) for
+      // exactly one condition, so the match has no blind spot to trade away.
+      // The rule that keeps generic runtime/network phrasings out of this array
+      // exists because they can also come from our own minified bundle and would
+      // hide real bugs — an exact marker we mint ourselves is the opposite case.
+      /^(?:CollectorTransportError: )?Umami collector beacon transport rejected\b/,
     ],
     beforeSend(event) {
       const msg = event.exception?.values?.[0]?.value ?? '';
@@ -349,6 +443,14 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       const nonInfraFrames = frames.filter(f => f.filename && f.filename !== '<anonymous>' && f.filename !== '[native code]' && !/\/sentry-[A-Za-z0-9_-]+\.js/.test(f.filename));
       const hasFirstParty = nonInfraFrames.some(f => firstPartyFile(f.filename ?? ''));
       const hasAnyStack = nonInfraFrames.length > 0;
+      // Platform gate for the two iOS-scoped filters below. MUST come from the
+      // User-Agent, not `event.contexts.os` — the browser SDK never populates that
+      // context; Sentry derives it at ingest, long after beforeSend runs. Reading it
+      // here always yielded '' and left both filters unreachable (see platform-ua.ts).
+      const isIosLike = isIosLikeUserAgent(
+        typeof navigator === 'undefined' ? '' : navigator.userAgent ?? '',
+        typeof navigator === 'undefined' ? 0 : navigator.maxTouchPoints ?? 0,
+      );
       // Suppress maplibre internal null-access crashes (light, placement) only when stack is in map chunk
       if (/this\.style\._layers|reading '_layers'|this\.(light|sky) is null|can't access property "(id|type|setFilter|bind)"[,] ?[\w.]+ is (null|undefined)|can't access property "(id|type)" of null|Cannot read properties of null \(reading '(id|type|setFilter|_layers)'\)|null is not an object \(evaluating '\w{1,3}\.(id|style)|^\w{1,2} is null$/.test(msg)) {
         if (frames.some(f => /\/(map|maplibre|deck-stack)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''))) return null;
@@ -366,8 +468,17 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // engine-equivalent phrasing, e.g. an embedded SDK's beacon fetch —
       // WORLDMONITOR-RP). Both route through the host allowlist below, which is
       // the load-bearing safety; this match is just the shape detector.
+      // The optional `TypeError: ` prefix and optional trailing period keep this
+      // detector in step with `FETCH_FAILURE_MESSAGE` in
+      // `src/services/fetch-failure-attribution.ts`, which produces these
+      // annotated messages. The two regexes had already drifted: the module
+      // admits a period-less Gecko phrasing (`resource\.?`) that this detector
+      // required literally, so such a message was annotated and then never
+      // routed to the host allowlist — annotated but unsuppressable. Widening
+      // here is safe because it only decides whether to CONSULT the allowlist;
+      // the allowlist itself is the load-bearing safety (#6746).
       const isHostScopedFetchFailure = excType === 'TypeError'
-        && /^(?:Failed to fetch|NetworkError when attempting to fetch resource\.) \([^)]+\)$/.test(msg);
+        && /^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \([^)]+\)$/.test(msg);
       if (!isHostScopedFetchFailure
           && (excType === 'TypeError' || excType === 'RangeError' || /^(?:TypeError|RangeError):/.test(msg))
           && frames.length > 0) {
@@ -385,10 +496,45 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // bucket, `api.worldmonitor.app`) are intentionally NOT in the set so a
       // real basemap / API regression is never silently dropped
       // (WORLDMONITOR-NE/NF, WORLDMONITOR-QG).
+      //
+      // Surviving events are additionally FINGERPRINTED by host. Suppression
+      // already read the host; grouping did not, and Sentry groups these on the
+      // stack — which `fetch-failure-attribution.ts` establishes is identical
+      // for every fetch failure (all frames are `window.fetch` wrappers; the
+      // async boundary drops the calling frame). So every host that survives the
+      // allowlist landed in ONE issue, titled after whichever host arrived last.
+      // WORLDMONITOR-ZG held all three populations at once (2026-08-27 triage,
+      // 32 events): 21 bare pre-attribution `Failed to fetch`, 8
+      // `api.worldmonitor.app` from a real ~90s origin blip on 2026-08-16, and 3
+      // `motramby.com` adware-beacon failures on 2026-08-27. The origin failures
+      // — the exact population the attribution work existed to surface — were
+      // unreadable under an adware title.
+      //
+      // The split is by OWNERSHIP, not by raw host: each of our own hosts keeps
+      // its own issue, while every foreign host collapses into a single
+      // `third-party` bucket. Adware and tracker domains rotate, so bucketing
+      // them bounds cardinality at (our hosts + 1) instead of leaving it open to
+      // one new issue per injected domain.
       if (isHostScopedFetchFailure) {
-        const hostMatch = msg.match(/^(?:Failed to fetch|NetworkError when attempting to fetch resource\.) \(([^)]+)\)$/);
+        const hostMatch = msg.match(/^(?:TypeError: )?(?:Failed to fetch|NetworkError when attempting to fetch resource\.?) \(([^)]+)\)$/);
         const host = hostMatch?.[1];
         if (host && THIRD_PARTY_FETCH_HOST_ALLOWLIST.has(host)) return null;
+        if (host) {
+          // Anchored at the end so a lookalike (`worldmonitor.app.evil.example`)
+          // is foreign. The R2 bucket is matched EXACTLY, not by `.r2.dev`
+          // suffix: `r2.dev` is Cloudflare's shared public-bucket domain, so
+          // every account gets a `pub-<id>.r2.dev` host. A suffix match would
+          // hand each foreign tenant its own raw-host fingerprint — reopening
+          // the unbounded cardinality this bucket exists to close, and dressing
+          // an unrelated bucket up as a first-party incident. Our own bucket
+          // still needs naming here because it is deliberately absent from the
+          // suppression allowlist (WORLDMONITOR-NE/NF) so a basemap regression
+          // surfaces, and it must surface as itself rather than in the
+          // third-party bin. Kept in step with `docs/maps-and-geocoding.mdx`.
+          const isOwnHost = /(?:^|\.)worldmonitor\.app$/.test(host)
+            || host === 'pub-8ace9f6a86d74cb2bd5eb1de5590dd9e.r2.dev';
+          event.fingerprint = ['fetch-failure', isOwnHost ? host : 'third-party'];
+        }
       }
       // Suppress Three.js/globe.gl TypeError crashes in main bundle (reading 'type'/'pathType'/'count'/'__globeObjType' on undefined during WebGL traversal/raycast).
       // __globeObjType is exclusively set by three-globe on its own objects and we have no user onClick/onHover handler, so it is always globe.gl internal even when the stack shows the bundled main chunk (WORLDMONITOR-ME).
@@ -427,8 +573,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // so a real `t.x` regression elsewhere on desktop still surfaces.
       if (/undefined is not an object \(evaluating 't\.x'\)|Cannot read properties of undefined \(reading 'x'\)/.test(msg)) {
         if (!hasFirstParty || frames.some(f => /\b_handleTouch\w*Dolly|OrbitControls/.test(f.function ?? ''))) return null;
-        const osName = ((event.contexts as any)?.os?.name as string) ?? '';
-        const isTouchOs = /^(iOS|iPadOS)$/.test(osName);
+        const isTouchOs = isIosLike;
         const mainBundleFrames = nonInfraFrames.filter(f => /\/(main|index)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? ''));
         if (isTouchOs && mainBundleFrames.length === 1 && nonInfraFrames.length === mainBundleFrames.length) return null;
       }
@@ -557,52 +702,19 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // drop TypeScript assertions and would mangle a regex that contained it
       // (same harness trap as the Floot gate above).
       const bareFrameFunction = (fn: string) => fn.replace(/\s*\[[^\]]*\]$/, '');
+      // DELIBERATELY bare-only — do NOT widen this to accept ` (<host>)`.
+      // #6746 review considered exactly that (annotated SG/TZ/Y8 messages no
+      // longer match this gate and now surface instead of being suppressed) and
+      // rejected it: the host-suffixed form must stay OUT of this gate, because
+      // an annotated first-party failure carrying an extension frame would then
+      // be suppressed — silencing a real api.worldmonitor.app outage for every
+      // user who runs a fetch-wrapping extension. That is the precise blind spot
+      // #6746 exists to prevent, and the existing test at
+      // tests/sentry-beforesend.test.mjs:757 fails when this is widened.
+      // Annotated extension noise is instead handled correctly by the host
+      // allowlist above: allowlisted host -> suppressed, ours -> surfaces.
       if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
           && frames.some(f => /^(?:chrome|moz|safari(?:-web)?)-extension:\/\//.test(f.filename ?? '') && /^(?:(?:.*\.)?window\.|(?:window|Object)\.)?(?:fetch|apply)$/i.test(bareFrameFunction(f.function ?? '')))) {
-        return null;
-      }
-      // Bare `Failed to fetch` surfacing through the DebugBear RUM collector's
-      // window.fetch monkeypatch. DebugBear (src/bootstrap/debugbear-rum.ts →
-      // cdn.debugbear.com/<id>.js; Sentry attributes its frames to the script
-      // configured script path) wraps window.fetch to time it, so a
-      // transient network blip on ANY app fetch rejects and its wrapper
-      // re-surfaces the rejection as an unhandled rejection, injecting its own
-      // frames. Without DebugBear the identical failure is zero-frame and already
-      // suppressed above — the collector's frames are the ONLY reason it reaches
-      // here. The `/assets/*.js` frames it carries are `window.fetch` TRAMPOLINES
-      // (Vite code-split chunk names, e.g. panel-storage/widget-store, which do
-      // not themselves fetch — grep-verified), NOT real callers. Suppress only
-      // when a DebugBear collector frame is present AND every non-infra frame is
-      // either that collector or the observed caller-free `window.fetch`/`fetch`
-      // trampolines from panel-storage/widget-store. Other first-party fetch
-      // wrappers (notably runtime.ts) must surface. Mirrors the SG
-      // extension-wrapper gate above; collector identity comes from
-      // DEBUGBEAR_RUM_SCRIPT_SRC via the shared predicate.
-      // WORLDMONITOR-VC (93ev/69u, 2026-07-04+).
-      // The optional `\w{1,3}.` receiver prefix is WORLDMONITOR-VQ: a later Vite
-      // build emits the same trampoline as `Rt.window.fetch` rather than a bare
-      // `window.fetch`, and the anchored match rejected it, so the identical
-      // wrapper class re-surfaced as a new issue. The prefix is bounded to a
-      // minified identifier (≤3 chars) so a real named receiver — e.g.
-      // `apiClient.fetch` — is still read as a genuine caller and surfaces.
-      // WORLDMONITOR-Y4 is the third build-rename of the same wrapper: Vite
-      // emitted one hop of the trampoline as a BARE minified name (`t`) with no
-      // `fetch` in it at all, which no fetch-anchored pattern can match. Bare
-      // names are admitted only at ≤2 chars and only inside these two chunks —
-      // `fetchContent` (WORLDMONITOR-SG) and `apiClient.fetch` both stay above
-      // that bound and still surface, which their regression tests assert. What
-      // keeps the tolerance honest is that neither module backing these chunks
-      // issues a fetch of its own, so a bare minified frame in them cannot be
-      // the real caller; tests/debugbear-trampoline-chunks.test.mjs fails if
-      // either module ever gains one, rather than letting the gate rot silently.
-      const isTrampolineFrameFunction = (fn: string) =>
-        /^(?:\w{1,3}\.)?(?:window\.)?fetch$/.test(fn) || /^\w{1,2}$/.test(fn);
-      if (/^(?:TypeError: )?Failed to fetch$/.test(msg)
-          && frames.some(f => isDebugBearRumScriptFrame(f.filename ?? ''))
-          && nonInfraFrames.every(f =>
-            isDebugBearRumScriptFrame(f.filename ?? '')
-            || (/\/assets\/(?:panel-storage|widget-store)-[A-Za-z0-9_-]+\.js/.test(f.filename ?? '')
-              && isTrampolineFrameFunction(f.function ?? '')))) {
         return null;
       }
       // Suppress Sentry SDK DOM breadcrumb null-access on document.activeElement/contains.
@@ -638,9 +750,12 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
       // `Maximum call stack size exceeded` with a COMPLETELY empty stack, only on
       // iOS. A blown stack is exactly the case where the SDK cannot collect
       // frames, so zero frames alone proves nothing — the platform census is what
-      // does. WORLDMONITOR-WK is 23 events across 20 users and 100% iOS, 21 of
-      // them inside the Google app's in-app WebView (the rest Chrome iOS); zero
-      // desktop, zero Android, one release. Our own bundle is the same code on
+      // does. WORLDMONITOR-WK re-censused 2026-08-09 at 44 events / 37 users: 100%
+      // iOS, 100% zero-frame RangeError, overwhelmingly the Google app's in-app
+      // WebView; zero desktop, zero Android. (It reached 44 because this gate read
+      // the ingest-only `contexts.os` and could never fire — see platform-ua.ts. The
+      // census below is why the platform half is load-bearing, not why it was dead.)
+      // Our own bundle is the same code on
       // every platform, so a genuine first-party recursion cannot be confined to
       // one iOS WebView family — these are the host app's injected scripts
       // recursing (the Fireglass gate above is the same class, caught by name).
@@ -650,7 +765,7 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           && frames.length === 0
           && !hasFirstParty
           && /^Maximum call stack size exceeded\.?$/.test(msg)
-          && /^(iOS|iPadOS)$/.test(((event.contexts as any)?.os?.name as string) ?? '')) return null;
+          && isIosLike) return null;
       // Suppress Chrome Mobile WebView 105+ Request constructor quirk ONLY when
       // the Dodo checkout lazy chunk is in the stack (WORLDMONITOR-MH). The
       // exact message is unique to the Fetch § Request() duplex requirement, but
@@ -839,6 +954,62 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
           // This is the WebKit phrasing; the V8 `reading 'postMessage'` variant is
           // already suppressed via the ignoreErrors entry above.
           || /null is not an object \(evaluating '[^']*\.postMessage'\)/.test(msg)
+          // Chrome composes `Failed to execute 'appendChild' on 'Node': <parse
+          // error>` when a script element is inserted and its source fails to
+          // parse synchronously. The DOM-API prefix means SOME caller passed
+          // unparseable script text — and we do have first-party callers that
+          // append third-party scripts (analytics.ts → abacus, debugbear-rum.ts,
+          // clerk.ts, LiveNewsPanel.ts embeds). Those keep a source-mapped .ts
+          // frame, so `!hasFirstParty` is what separates them from an injected
+          // page script inserting its own broken source with only `<anonymous>`
+          // frames. This supersedes the ungated `/appendChild.*Unexpected token/`
+          // ignoreErrors entry, which both missed the `Unexpected identifier`
+          // phrasing and — having no access to frames — would have swallowed a
+          // parse failure attributable to one of those first-party loaders
+          // (WORLDMONITOR-YW: Chrome 150 on Chrome OS, two `<anonymous>:1`
+          // frames). Left deliberately phrasing-agnostic after `Unexpected ` so
+          // every engine's token/identifier/keyword/EOF wording is covered.
+          || /appendChild.*Unexpected /.test(msg)
+          // Platform-authenticator failure raised by the browser's WebAuthn /
+          // Credential Management layer — `NotReadableError: An unknown error
+          // occurred while talking to the credential manager.` The phrasing is
+          // Chromium's own CredMan bridge wording, emitted when the OS-side
+          // credential service is unavailable or wedged (observed on Android 10
+          // / Chrome Mobile). It reaches us as an unhandled rejection out of
+          // Clerk's sign-in passkey autofill (`navigator.credentials.get`),
+          // which runs entirely inside the Clerk bundle — the event carries zero
+          // captured frames. Our own passkey path never leaks: `createPasskey()`
+          // in src/services/passkeys.ts wraps `user.createPasskey()` in
+          // try/catch and returns a classified outcome, and `navigator.
+          // credentials` appears nowhere else in src/ or api/. So a
+          // no-first-party occurrence is third-party SDK / OS noise, while a
+          // future first-party WebAuthn call site would keep a source-mapped
+          // .ts frame and still surface (WORLDMONITOR-11B).
+          || /An unknown error occurred while talking to the credential manager/.test(msg)
+          // The overlapping-request half of the same WebAuthn surface. Chrome
+          // serialises `navigator.credentials` requests per page and rejects
+          // the second one with `OperationError: A request is already
+          // pending.`; the documented triggers are a double-clicked sign-in
+          // button and a submit issued while a conditional-mediation passkey
+          // autofill request is still open (keycloak/keycloak#41037;
+          // w3c/webauthn#1790 records that the spec leaves the overlap
+          // undefined and that Chrome errors). Clerk's sign-in UI opens exactly
+          // that conditional request, which is the same third-party origin as
+          // the CredMan entry above, and it arrives the same way — an unhandled
+          // rejection out of the Clerk bundle with zero captured frames.
+          //
+          // Kept HERE rather than in `ignoreErrors`, unlike the marketing
+          // copy in `pro-test/src/sentry-filter-policy.ts`, because the two
+          // surfaces have different licences: the marketing bundle calls no
+          // WebAuthn API at all, but this one does — `createPasskey()` in
+          // src/services/passkeys.ts drives `user.createPasskey()`. That path
+          // cannot leak today (it wraps the call in try/catch and returns a
+          // classified outcome), but a future first-party double-invoke is
+          // precisely the bug worth seeing, and it would keep a source-mapped
+          // .ts frame. `!hasFirstParty` is what preserves it (WORLDMONITOR-11T,
+          // observed on `/pro`; the same class reaches this surface through the
+          // dashboard's own Clerk sign-in).
+          || /^(?:Error: )?OperationError: A request is already pending\.$/.test(msg)
         )
       ) return null;
       if (hasAnyStack && !hasFirstParty && (
@@ -853,10 +1024,57 @@ function buildSentryInitOptions(): Parameters<SentryNs['init']>[0] {
         || (excType === 'SyntaxError' && /^Unexpected (?:token|keyword)/.test(msg))
         || /^SyntaxError: Unexpected (?:token|keyword)/.test(msg)
         || /Invalid or unexpected token/.test(msg)
+        // SpiderMonkey's wording for a malformed numeric literal (`3foo`,
+        // `0x1z`) — the Gecko sibling of the `Invalid or unexpected token` /
+        // `Unexpected token` entries above, and of the `literal not terminated
+        // before end of script` and `Octal literals are not allowed in strict
+        // mode` entries already in ignoreErrors. A runtime parse error cannot
+        // come from our own bundle: it is compiled and parsed at build time, and
+        // a genuine first-party SyntaxError keeps a source-mapped .ts frame or
+        // an owned hashed-chunk URL in the message (both preserved by the
+        // `!hasFirstParty` gate). Observed only with the page DOCUMENT url as
+        // the sole frame (`https://www.worldmonitor.app/:1`), which is how
+        // WebKit/Gecko attribute a main-world injected content script —
+        // WORLDMONITOR-10B (Firefox iOS 154.1 / iOS 18.7).
+        || (excType === 'SyntaxError' && /^No identifiers allowed directly after numeric literal$/.test(msg))
+        // SpiderMonkey's wording for a malformed numeric literal (`3foo`,
+        // `0x1z`) — the Gecko sibling of the `Invalid or unexpected token` /
+        // `Unexpected token` entries above, and of the `literal not terminated
+        // before end of script` and `Octal literals are not allowed in strict
+        // mode` entries already in ignoreErrors. A runtime parse error cannot
+        // come from our own bundle: it is compiled and parsed at build time, and
+        // a genuine first-party SyntaxError keeps a source-mapped .ts frame or
+        // an owned hashed-chunk URL in the message (both preserved by the
+        // `!hasFirstParty` gate). Observed only with the page DOCUMENT url as
+        // the sole frame (`https://www.worldmonitor.app/:1`), which is how
+        // WebKit/Gecko attribute a main-world injected content script —
+        // WORLDMONITOR-10B (Firefox iOS 154.1 / iOS 18.7).
+        // V8 wording when HTML (or other non-JS) is parsed as a script:
+        // Electron / in-app wrappers fetch the SPA document (`/dashboard`)
+        // as if it were JS, then report the parse failure against the
+        // document URL. Our compiled bundle cannot emit this at runtime —
+        // a genuine first-party SyntaxError keeps a source-mapped .ts /
+        // hashed-chunk frame (hasFirstParty → preserved). Same family as
+        // Unexpected token/keyword above (WORLDMONITOR-ZS).
+        || /^(?:SyntaxError: )?Malformed arrow function parameter list/.test(msg)
         || /^Operation timed out/.test(msg)
         || /Cannot inject key into script value/.test(msg)
         || /Connection lost while action was in flight/.test(msg)
         || /WEBGLRenderPipeline.*Link error/.test(msg)
+        // Firefox's window.onerror wording when a script throws a bare primitive
+        // (`throw undefined` / `throw null`) instead of an Error. The whole stack
+        // is the DOCUMENT url (`https://www.worldmonitor.app/#moments` at line 0),
+        // so there is no script file to attribute it to at all. Our bundle never
+        // throws a bare primitive — `throw undefined|null|void 0` appears nowhere
+        // in src/, shared/ or api/ (pinned by the source-level invariant test in
+        // tests/sentry-beforesend.test.mjs), and a rethrow (`throw err`) of a
+        // primitive caught from a third party still leaves the rethrowing
+        // first-party frame on the stack, which fails this block's
+        // `!hasFirstParty` gate and surfaces normally. Restricted to the only two
+        // thrown values we can prove are not ours — `undefined` and `null`; every
+        // other one, `uncaught exception: [object Object]` included, still reports
+        // (WORLDMONITOR-106 — Firefox 153 / Windows).
+        || /^uncaught exception: (?:undefined|null)$/.test(msg)
       )) return null;
       // `SyntaxError: Invalid or unexpected token` (and the Unexpected token/keyword/EOF
       // family) surfacing THROUGH the deck.gl/maplibre WebGL init path. Our compiled,

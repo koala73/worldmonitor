@@ -11,7 +11,7 @@ WorldMonitor 有四种身份验证模式。具体使用哪一种取决于你的�
 |------|--------|---------|------------------------------|
 | **浏览器会话** | `wm-session` HttpOnly cookie | 仪表盘浏览器读取 | 未设置 `forceKey: true` 的公开端点。 |
 | **API 密钥** | `X-WorldMonitor-Key: wm_0123456789abcdef0123456789abcdef01234567` | 服务器到服务器、脚本、SDK | 用户 API 密钥覆盖有权益的 API 访问；运营方签发的企业密钥覆盖内部/合作伙伴访问。 |
-| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP 客户端（Claude、Cursor、Inspector） | `/api/mcp`。处理器也接受直接的 `X-WorldMonitor-Key` 替代 OAuth 令牌 — 详见 [MCP](/zh/mcp-overview#authentication)。 |
+| **OAuth bearer** | `Authorization: Bearer <oauth-token>` | MCP 客户端（Claude、Cursor、Inspector） | `/api/mcp`。处理器也接受直接的 `X-WorldMonitor-Key` 替代 OAuth 令牌 — 详见 [MCP](/zh/mcp-overview#认证)。 |
 | **Clerk 会话 JWT** | `Authorization: Bearer <clerk-jwt>` | 已认证的浏览器用户 | 用户专属路由：`/api/latest-brief`、`/api/user-prefs`、`/api/notification-channels`、`/api/brief/share-url` 等。 |
 
 ## `forceKey: true` — 哪些端点会忽略浏览器会话 cookie？

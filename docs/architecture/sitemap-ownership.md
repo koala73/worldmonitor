@@ -9,7 +9,7 @@ its complete inventory so a second hand-maintained list cannot drift from it.
 | `/blog/sitemap-index.xml` | Astro blog build | Blog index, posts, glossary, and author/editorial pages |
 | `/docs/sitemap.xml` | Mintlify | Documentation and localized documentation |
 
-`public/robots.txt` advertises each endpoint exactly once. Root generation never
+`public/robots.www.txt` (served at `/robots.txt` on www/apex) advertises each endpoint exactly once. Root generation never
 copies `/blog` or `/docs` URLs.
 
 ## Material modification sources
@@ -23,8 +23,22 @@ that materially determine its content:
 - Dashboard entries use the app shell, orchestration, components, configuration,
   locales, styles, and the corresponding variant configuration.
 - Markdown and text references use the file served at the canonical URL.
-- Generated country, chokepoint, crisis, tool, and changelog entries use the
+- Generated country, chokepoint, crisis, tool, research, use-case, and changelog entries use the
   `lastmod` metadata emitted by `scripts/build-crawlable-corpus.mjs`.
+
+The `/use-cases/` family is a root crawlable corpus sibling of `/blog/`. The root
+sitemap owns the hub and child pages exactly once. Blog and docs sitemaps must
+not claim those URLs. Canonical treatment for the pilot pages:
+
+- `/use-cases/monitor-country-risk/` owns the evergreen country-risk task framing;
+  `/countries/` remains the live evidence surface; the blog workflow article
+  remains distinct supporting editorial (#6849).
+- `/use-cases/verify-breaking-news/` owns the evergreen verification procedure;
+  the OSINT blog article remains dated supporting editorial with no redirect
+  (#6850).
+- `/use-cases/monitor-supply-chain-disruptions/` owns the evergreen supply-chain
+  monitoring workflow; `/chokepoints/` and commodity surfaces remain evidence;
+  the supply-chain blog article remains distinct supporting editorial (#6851).
 
 Static-page dates are the latest Git commit date among the declared material
 sources. They are not file mtimes and never use build or deploy time. When a

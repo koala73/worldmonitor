@@ -25,11 +25,13 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 const BATCH_PATH = '/api/batch/v1/execute';
 
-const bundle = loadYaml(readFileSync(resolve(root, 'docs/api/worldmonitor.openapi.yaml'), 'utf8'));
+const bundle = loadUnifiedOpenApiSpec();
 const serviceJson = JSON.parse(readFileSync(resolve(root, 'docs/api/BatchService.openapi.json'), 'utf8'));
 const serviceYaml = loadYaml(readFileSync(resolve(root, 'docs/api/BatchService.openapi.yaml'), 'utf8'));
 

@@ -1,19 +1,30 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
+import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 import {
+  DEFAULT_CONCURRENCY,
   RAILWAY_CALL_TIMEOUT_MS,
   REPOSITORY,
   isRepositoryService,
   readArgument,
+  readEnvironmentConfig,
+  readExpectedRepositoryFleet,
+  readServices,
+  resolveRunDeadlineAt,
   runRailway,
+  selectExpectedRepositoryServices,
 } from './railway-cli.mjs';
 import {
   ROOT_DIRECTORY_BY_DEPLOY_MODE,
   normalizeRootDirectory,
 } from './railway-deploy-closure.mjs';
+import {
+  DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR,
+  readViewerDeploymentConfig,
+} from './railway-viewer-deployment-config.mjs';
 
 // Re-exported so the existing importers of this module keep working; the
 // definitions live in the shared files above so the audit, the drift check and
@@ -30,6 +41,47 @@ export {
 
 const REGISTRY_URL = new URL('./railway-services.json', import.meta.url);
 const DEFAULT_ENVIRONMENT = 'production';
+export const DEPLOYMENT_CONFIG_RUN_BUDGET_MS = 15 * 60 * 1000;
+export const CONFIGURATION_DRIFT_EXIT_CODE = 2;
+
+/**
+ * Mark an error as a configuration verdict: a deterministic refusal or drift
+ * report that re-running the same audit cannot change. The process exits with
+ * CONFIGURATION_DRIFT_EXIT_CODE for these, so the registry-sync runner spends
+ * its retry budget only on operational failures (CLI, network, deadline).
+ */
+export function markConfigurationVerdict(error) {
+  if (error instanceof Error) error.exitCode = CONFIGURATION_DRIFT_EXIT_CODE;
+  return error;
+}
+
+export function resolveAuditExitCode(error) {
+  return error?.exitCode === CONFIGURATION_DRIFT_EXIT_CODE ? CONFIGURATION_DRIFT_EXIT_CODE : 1;
+}
+
+export function resolveDeploymentConfigDeadlineAt({
+  jobStartedAtMs,
+  epochNow = Date.now(),
+  monotonicNow = performance.now(),
+}) {
+  return resolveRunDeadlineAt({
+    budgetMs: DEPLOYMENT_CONFIG_RUN_BUDGET_MS,
+    jobStartedAtMs,
+    epochNow,
+    monotonicNow,
+  });
+}
+
+export function validateAuditMode({ apply, deploymentOnly }) {
+  if (deploymentOnly && apply) {
+    throw new Error('deployment-only audit forbids --apply');
+  }
+}
+
+export function selectAuditServices(inventory, expectedServices, { apply, deploymentOnly }) {
+  if (!apply && !deploymentOnly) return inventory;
+  return selectExpectedRepositoryServices(inventory, expectedServices);
+}
 
 function hasOwn(value, key) {
   return Object.prototype.hasOwnProperty.call(value, key);
@@ -66,6 +118,29 @@ function sortedUniqueStrings(values) {
 
 function sameStringSet(left, right) {
   return JSON.stringify(sortedUniqueStrings(left)) === JSON.stringify(sortedUniqueStrings(right));
+}
+
+function mergeServiceDrift(entries) {
+  const byService = new Map();
+  for (const entry of entries) {
+    const key = entry.serviceId ?? `name:${entry.service}`;
+    const current = byService.get(key);
+    if (!current) {
+      byService.set(key, { ...entry });
+      continue;
+    }
+    for (const [field, value] of Object.entries(entry)) {
+      if (field === 'service' || field === 'serviceId' || value == null) continue;
+      if (field === 'missingRequiredEnv') {
+        current[field] = sortedUniqueStrings([...(current[field] ?? []), ...value]);
+      } else if (typeof value === 'boolean') {
+        current[field] = Boolean(current[field]) || value;
+      } else {
+        current[field] = value;
+      }
+    }
+  }
+  return [...byService.values()].sort((left, right) => left.service.localeCompare(right.service));
 }
 
 function serviceIdFor(serviceIdsByName, serviceName) {
@@ -202,7 +277,12 @@ export function unmanagedWatchPatternDrift(service) {
   return { actual: watchPatterns, expected };
 }
 
-export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
+export function auditRailwayServiceConfig(
+  config,
+  serviceIdsByName,
+  registry,
+  { evaluateRequiredEnv = true, requireMainTrigger = false } = {},
+) {
   const services = config?.services;
   if (!services || typeof services !== 'object' || Array.isArray(services)) {
     throw new Error('Railway environment config must contain a services object');
@@ -246,7 +326,29 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
       }];
     });
 
-  return managed
+  const repositorySourceDrift = requireMainTrigger
+    ? Object.entries(services).flatMap(([serviceId, service]) => {
+        if (service?.source?.repo !== REPOSITORY) return [];
+        const sourceBranch = service.source.branch !== 'main'
+          ? { actual: service.source.branch ?? null, expected: 'main' }
+          : null;
+        const checkSuites = service.source.checkSuites !== false
+          ? { actual: service.source.checkSuites ?? null, expected: false }
+          : null;
+        if (!sourceBranch && !checkSuites) return [];
+        return [{
+          service: nameByServiceId.get(serviceId) ?? serviceId,
+          serviceId,
+          missingService: false,
+          watchPatterns: null,
+          cronSchedule: null,
+          ...(sourceBranch ? { sourceBranch } : {}),
+          ...(checkSuites ? { checkSuites } : {}),
+        }];
+      })
+    : [];
+
+  const managedDrift = managed
     .flatMap((entry) => {
       const serviceId = serviceIdFor(serviceIdsByName, entry.service);
       if (!serviceId || !services[serviceId]) {
@@ -283,7 +385,9 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         && actualDockerfilePath !== expectedDockerfilePath
         ? { actual: actualDockerfilePath, expected: expectedDockerfilePath }
         : null;
-      const missingRequiredEnv = unsatisfiedRequiredEnv(entry.requiredEnv, service?.variables);
+      const missingRequiredEnv = evaluateRequiredEnv
+        ? unsatisfiedRequiredEnv(entry.requiredEnv, service?.variables)
+        : [];
       const expectedWatchPatterns = entry.watchPatterns;
       const actualWatchPatterns = service?.build?.watchPatterns ?? [];
       const watchPatterns = hasOwn(entry, 'watchPatterns')
@@ -316,40 +420,40 @@ export function auditRailwayServiceConfig(config, serviceIdsByName, registry) {
         ...(missingRequiredEnv.length > 0 ? { missingRequiredEnv } : {}),
       }];
     })
-    .concat(unmanagedDrift)
-    .sort((left, right) => left.service.localeCompare(right.service));
+    .concat(unmanagedDrift, repositorySourceDrift);
+  return mergeServiceDrift(managedDrift);
 }
 
 export function buildRailwayServiceConfigPatch(drift) {
   const missing = drift.filter((entry) => entry.missingService);
   if (missing.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       `${missing.map((entry) => entry.service).join(', ')} not present in Railway production; refusing a partial config apply`,
-    );
+    ));
   }
   const missingEnv = drift.filter((entry) => entry.missingRequiredEnv?.length > 0);
   if (missingEnv.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       missingEnv
         .map((entry) => `${entry.service} missing required environment: ${entry.missingRequiredEnv.join(', ')}`)
         .join('; '),
-    );
+    ));
   }
   // Both of these mean the registry's own claims are untrustworthy for this
   // service, so the watch paths derived from them must not be pushed.
   const incomplete = drift.filter((entry) => entry.missingWatchPatterns);
   if (incomplete.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       `${incomplete.map((entry) => entry.service).join(', ')} pins a cron without watchPatterns; refusing a partial config apply`,
-    );
+    ));
   }
   const wrongRoot = drift.filter((entry) => entry.rootDirectory);
   if (wrongRoot.length > 0) {
-    throw new Error(
+    throw markConfigurationVerdict(new Error(
       wrongRoot
         .map((entry) => `${entry.service} rootDirectory is ${JSON.stringify(entry.rootDirectory.actual)} but deployMode implies ${JSON.stringify(entry.rootDirectory.expected)}`)
         .join('; '),
-    );
+    ));
   }
 
   const services = {};
@@ -396,30 +500,6 @@ export function serializeRailwayServiceConfigPatch(drift) {
 }
 
 
-function readEnvironmentConfig(environment) {
-  return JSON.parse(runRailway([
-    'environment',
-    'config',
-    '--environment',
-    environment,
-    '--json',
-  ]));
-}
-
-function readServiceIds(environment) {
-  const services = JSON.parse(runRailway([
-    'service',
-    'list',
-    '--environment',
-    environment,
-    '--json',
-  ]));
-  if (!Array.isArray(services)) {
-    throw new Error('railway service list must return an array');
-  }
-  return new Map(services.map((service) => [service.name, service.id]));
-}
-
 function readRegistry() {
   return JSON.parse(readFileSync(REGISTRY_URL, 'utf8'));
 }
@@ -437,7 +517,7 @@ export async function waitForRailwayServiceConfigConvergence(
   let remaining = [];
   for (let attempt = 1; attempt <= attempts; attempt += 1) {
     remaining = auditRailwayServiceConfig(
-      readConfig(),
+      await readConfig(),
       serviceIdsByName,
       registry,
     );
@@ -447,9 +527,9 @@ export async function waitForRailwayServiceConfigConvergence(
   return remaining;
 }
 
-function printAudit(drift) {
+export function printAudit(drift) {
   if (drift.length === 0) {
-    console.log('Railway operational-config audit passed: registry-managed Dockerfile paths, cron schedules, and watch paths match production, and every other live seeder watches broadly enough not to miss a helper change.');
+    console.log('Railway operational-config audit passed: live Railway configuration matches repository policy.');
     return;
   }
 
@@ -490,6 +570,16 @@ function printAudit(drift) {
         `dockerfilePath ${JSON.stringify(entry.dockerfilePath.actual)} != ${JSON.stringify(entry.dockerfilePath.expected)}`,
       );
     }
+    if (entry.sourceBranch) {
+      details.push(
+        `source branch ${JSON.stringify(entry.sourceBranch.actual)} != ${JSON.stringify(entry.sourceBranch.expected)}`,
+      );
+    }
+    if (entry.checkSuites) {
+      details.push(
+        `source checkSuites ${JSON.stringify(entry.checkSuites.actual)} != ${JSON.stringify(entry.checkSuites.expected)}`,
+      );
+    }
     if (entry.cronSchedule) {
       details.push(
         `cron ${JSON.stringify(entry.cronSchedule.actual)} != ${JSON.stringify(entry.cronSchedule.expected)}`,
@@ -506,24 +596,76 @@ function printAudit(drift) {
 async function main() {
   const apply = process.argv.includes('--apply');
   const asJson = process.argv.includes('--json');
+  const deploymentOnly = process.argv.includes('--deployment-only');
+  validateAuditMode({ apply, deploymentOnly });
   const environment = readArgument(process.argv, '--environment', DEFAULT_ENVIRONMENT);
+  const concurrency = Number(readArgument(process.argv, '--concurrency', String(DEFAULT_CONCURRENCY)));
+  if (!Number.isInteger(concurrency) || concurrency <= 0) {
+    throw new Error('--concurrency must be a positive integer');
+  }
+  const deploymentDeadlineAt = deploymentOnly
+    ? resolveDeploymentConfigDeadlineAt({
+        jobStartedAtMs: Number(process.env.RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS),
+      })
+    : Number.POSITIVE_INFINITY;
+  if (deploymentOnly && performance.now() >= deploymentDeadlineAt) {
+    throw new Error(DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR);
+  }
+  const projectId = process.env.RAILWAY_PROJECT_ID;
+  if (deploymentOnly && !projectId) {
+    throw new Error('RAILWAY_PROJECT_ID is required for the Viewer deployment projection');
+  }
   const registry = readRegistry();
-  const serviceIdsByName = readServiceIds(environment);
-  const readConfig = () => readEnvironmentConfig(environment);
+  const inventory = readServices(environment, { projectId });
+  if (deploymentOnly && performance.now() >= deploymentDeadlineAt) {
+    throw new Error(DEPLOYMENT_CONFIG_READ_DEADLINE_ERROR);
+  }
+  const validatesFleetIdentity = apply || deploymentOnly;
+  const services = selectAuditServices(
+    inventory,
+    validatesFleetIdentity ? readExpectedRepositoryFleet() : null,
+    { apply, deploymentOnly },
+  );
+  const serviceIdsByName = new Map(services.map((service) => [service.name, service.id]));
+  const readConfig = deploymentOnly
+    ? () => readViewerDeploymentConfig(environment, services, {
+        projectId,
+        concurrency,
+        deadlineAt: deploymentDeadlineAt,
+      })
+    : () => readEnvironmentConfig(environment);
   const drift = auditRailwayServiceConfig(
-    readConfig(),
+    await readConfig(),
     serviceIdsByName,
     registry,
+    {
+      evaluateRequiredEnv: !deploymentOnly,
+      requireMainTrigger: deploymentOnly,
+    },
   );
   // Always name the target. --apply mutates live infrastructure and the
   // environment is resolved from argv, so it must never be implicit.
-  console.log(`Railway operational-config audit: environment=${environment} mode=${apply ? 'apply' : 'audit'}`);
-  if (asJson) console.log(JSON.stringify({ environment, apply, drift }, null, 2));
+  console.log(`Railway operational-config audit: environment=${environment} mode=${deploymentOnly ? 'deployment-only' : apply ? 'apply' : 'audit'}`);
+  if (deploymentOnly) {
+    console.log('Required environment variables were not evaluated: the Viewer projection cannot request their values.');
+  }
+  if (asJson) {
+    console.log(JSON.stringify({
+      environment,
+      apply,
+      deploymentOnly,
+      requiredEnvironmentEvaluated: !deploymentOnly,
+      drift,
+    }, null, 2));
+  }
   else printAudit(drift);
 
   if (drift.length === 0) return;
   if (!apply) {
-    process.exitCode = 1;
+    // Keep a policy verdict distinct from an observation/runtime failure. The
+    // registry-sync runner must not spend its retry budget re-reading a stable
+    // mismatch as though it were a transient CLI failure.
+    process.exitCode = CONFIGURATION_DRIFT_EXIT_CODE;
     return;
   }
 
@@ -546,6 +688,6 @@ async function main() {
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
   main().catch((error) => {
     console.error(error instanceof Error ? error.message : String(error));
-    process.exitCode = 1;
+    process.exitCode = resolveAuditExitCode(error);
   });
 }

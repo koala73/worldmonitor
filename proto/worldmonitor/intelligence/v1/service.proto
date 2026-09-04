@@ -18,6 +18,7 @@ import "worldmonitor/intelligence/v1/list_gps_interference.proto";
 import "worldmonitor/intelligence/v1/list_oref_alerts.proto";
 import "worldmonitor/intelligence/v1/list_satellites.proto";
 import "worldmonitor/intelligence/v1/list_telegram_feed.proto";
+import "worldmonitor/intelligence/v1/list_x_feed.proto";
 import "worldmonitor/intelligence/v1/search_gdelt_documents.proto";
 import "worldmonitor/intelligence/v1/get_gdelt_topic_timeline.proto";
 import "worldmonitor/intelligence/v1/list_cross_source_signals.proto";
@@ -120,6 +121,15 @@ service IntelligenceService {
     };
   }
 
+  // ListXFeed retrieves curated public news-account posts from monitored X
+  // accounts. Returns permalink plus derived facts only — post text is R4.
+  rpc ListXFeed(ListXFeedRequest) returns (ListXFeedResponse) {
+    option (sebuf.http.config) = {
+      path: "/list-x-feed"
+      method: HTTP_METHOD_GET
+    };
+  }
+
   // GetCompanyEnrichment aggregates a per-company intelligence composite: SEC EDGAR
   // identity and recent filings (via authoritative ticker-to-CIK resolution), market
   // profile and earnings surprises from Finnhub, and recent news mentions.
@@ -158,7 +168,7 @@ service IntelligenceService {
     };
   }
 
-  // GetCountryFacts retrieves factual country data from RestCountries and Wikipedia.
+  // GetCountryFacts retrieves factual country data from Wikidata and Wikipedia.
   rpc GetCountryFacts(GetCountryFactsRequest) returns (GetCountryFactsResponse) {
     option (sebuf.http.config) = {path: "/get-country-facts", method: HTTP_METHOD_GET};
   }

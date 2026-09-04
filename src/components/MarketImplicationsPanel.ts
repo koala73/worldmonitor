@@ -5,6 +5,7 @@ import { describeFreshness } from '@/services/persistent-cache';
 import type { MarketImplicationCard, MarketImplicationsData, TransmissionNode } from '@/services/market-implications';
 import { FrameworkSelector } from './FrameworkSelector';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { bindActivationKeys } from '@/utils/activation';
 
 function directionClass(dir: string): string {
   const d = dir.toUpperCase();
@@ -34,14 +35,14 @@ function renderChain(chain: TransmissionNode[] | undefined): string {
     const arrow = i < chain.length - 1
       ? ` <span style="color:var(--text-dim);margin:0 2px">&rarr;</span> `
       : '';
-    return `<span class="chain-node" data-chain-id="${id}" data-node-idx="${i}" data-logic="${escapeHtml(n.logic)}"
+    return `<span class="chain-node" data-chain-id="${id}" data-node-idx="${i}" data-logic="${escapeHtml(n.logic)}" role="button" tabindex="0" aria-expanded="false"
       style="cursor:pointer;border-bottom:1px dotted var(--text-dim)">${escapeHtml(n.node)}</span>${arrow}`;
   }).join('');
   return `
-    <div style="font-size:10px;color:var(--text-dim);margin-top:6px;line-height:1.8">
+    <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:6px;line-height:1.8">
       <span style="text-transform:uppercase;letter-spacing:0.06em;opacity:0.6">${escapeHtml(t('components.marketImplications.rationale'))}</span> ${nodes}
     </div>
-    <div id="chain-logic-${id}" style="display:none;font-size:10px;color:var(--text-dim);font-style:italic;margin-top:2px;padding-left:4px"></div>
+    <div id="chain-logic-${id}" style="display:none;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-style:italic;margin-top:2px;padding-left:4px"></div>
   `;
 }
 
@@ -50,16 +51,16 @@ function renderCard(card: MarketImplicationCard): string {
     <div class="signal-card">
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px">
         <span class="signal-badge ${directionClass(card.direction)}">${directionLabel(card.direction)}</span>
-        <strong style="font-size:14px;letter-spacing:-0.02em">${escapeHtml(card.ticker)}</strong>
-        ${card.name ? `<span style="font-size:11px;color:var(--text-dim)">${escapeHtml(card.name)}</span>` : ''}
+        <strong style="font-size:calc(14px * var(--wm-panel-effective-scale, 1));letter-spacing:-0.02em">${escapeHtml(card.ticker)}</strong>
+        ${card.name ? `<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(card.name)}</span>` : ''}
         ${card.timeframe ? `<span class="signal-badge badge-neutral" style="font-family:var(--font-mono)">${escapeHtml(card.timeframe)}</span>` : ''}
         ${card.confidence ? `<span class="signal-badge ${confidenceClass(card.confidence)}">${escapeHtml(card.confidence)}</span>` : ''}
       </div>
-      <div style="font-size:13px;font-weight:600;line-height:1.4;margin-bottom:6px">${escapeHtml(card.title)}</div>
-      <div style="font-size:12px;line-height:1.55;color:var(--text-dim)">${escapeHtml(card.narrative)}</div>
+      <div style="font-size:calc(13px * var(--wm-panel-effective-scale, 1));font-weight:600;line-height:1.4;margin-bottom:6px">${escapeHtml(card.title)}</div>
+      <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.55;color:var(--text-dim)">${escapeHtml(card.narrative)}</div>
       ${renderChain(card.transmissionChain)}
-      ${card.driver ? `<div style="font-size:11px;color:var(--text-dim);margin-top:6px"><span style="text-transform:uppercase;letter-spacing:0.06em">${escapeHtml(t('components.marketImplications.driver'))}</span> ${escapeHtml(card.driver)}</div>` : ''}
-      ${card.riskCaveat ? `<div style="font-size:11px;color:var(--yellow);padding:6px 8px;border:1px solid color-mix(in srgb,var(--yellow) 30%,transparent);background:color-mix(in srgb,var(--yellow) 8%,transparent);margin-top:6px">${escapeHtml(card.riskCaveat)}</div>` : ''}
+      ${card.driver ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:6px"><span style="text-transform:uppercase;letter-spacing:0.06em">${escapeHtml(t('components.marketImplications.driver'))}</span> ${escapeHtml(card.driver)}</div>` : ''}
+      ${card.riskCaveat ? `<div style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--yellow);padding:6px 8px;border:1px solid color-mix(in srgb,var(--yellow) 30%,transparent);background:color-mix(in srgb,var(--yellow) 8%,transparent);margin-top:6px">${escapeHtml(card.riskCaveat)}</div>` : ''}
     </div>
   `;
 }
@@ -77,6 +78,7 @@ export class MarketImplicationsPanel extends Panel {
     this.fwSelector = new FrameworkSelector({ panelId: 'market-implications', isPremium: hasPremiumAccess(), panel: this, note: t('components.marketImplications.appliesToNext') });
     this.header.appendChild(this.fwSelector.el);
 
+    bindActivationKeys(this.content, '.chain-node');
     this.content.addEventListener('click', (e) => {
       const node = (e.target as HTMLElement).closest('.chain-node') as HTMLElement | null;
       if (!node) return;
@@ -87,12 +89,16 @@ export class MarketImplicationsPanel extends Panel {
       if (!logicEl) return;
       const isOpen = logicEl.style.display !== 'none';
       const isSameNode = logicEl.getAttribute('data-open-idx') === nodeIdx;
+      for (const sibling of this.content.querySelectorAll(`.chain-node[data-chain-id="${chainId}"]`)) {
+        sibling.setAttribute('aria-expanded', 'false');
+      }
       if (isOpen && isSameNode) {
         logicEl.style.display = 'none';
       } else {
         logicEl.textContent = logic;
         logicEl.setAttribute('data-open-idx', nodeIdx);
         logicEl.style.display = 'block';
+        node.setAttribute('aria-expanded', 'true');
       }
     });
   }
@@ -115,7 +121,7 @@ export class MarketImplicationsPanel extends Panel {
     const html = `
       <div style="display:flex;flex-direction:column;gap:10px">
         ${data.cards.map(renderCard).join('')}
-        <div style="font-size:10px;color:var(--text-dim);padding:8px;border-top:1px solid var(--border);line-height:1.5;text-align:center">${escapeHtml(t('components.marketImplications.disclaimer'))}</div>
+        <div style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);padding:8px;border-top:1px solid var(--border);line-height:1.5;text-align:center">${escapeHtml(t('components.marketImplications.disclaimer'))}</div>
       </div>
     `;
 
@@ -125,7 +131,7 @@ export class MarketImplicationsPanel extends Panel {
   public showUnavailable(message = t('components.marketImplications.unavailable')): void {
     this.setDataBadge('unavailable');
     const html = `
-      <div style="font-size:12px;color:var(--text-dim);line-height:1.5;padding:16px 0;text-align:center">${escapeHtml(message)}</div>
+      <div style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);line-height:1.5;padding:16px 0;text-align:center">${escapeHtml(message)}</div>
     `;
     this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));
   }

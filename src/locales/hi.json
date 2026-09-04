@@ -136,6 +136,19 @@
       "stable": "स्थिर"
     },
     "militaryActivity": "सैन्य गतिविधि",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "आर्थिक संकेतक",
     "ownFlights": "अपनी उड़ानें",
     "foreignFlights": "विदेशी उड़ानें",
@@ -246,6 +259,113 @@
       "corridorConditions": "गलियारा स्थितियाँ",
       "activityNowcast": "गतिविधि नाउकास्ट",
       "decisionSignalsUnavailable": "चीन का निर्णय-संकेत स्नैपशॉट वर्तमान में अनुपलब्ध है।"
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "पाँच-कारक लचीलाता स्कोरकार्ड",
+      "help": "खान-पान, ऊर्जा, जनसांख्यिकी, प्रौद्योगिकी और रक्षा के लिए फ्रोज़न v1 प्रमाण स्कोर। इनपुट, स्रोत प्रामाणिकता और डेटा-अनुपलब्धता के कारणों की जाँच करने के लिए एक पंक्ति का विस्तार करें।",
+      "loading": "पाँच-कारक स्कोरकार्ड लोड हो रहा है…",
+      "unavailable": "पाँच-कारक स्कोरकार्ड अनुपलब्ध है।",
+      "proLocked": "पाँच-कारक लचीलाता स्कोरकार्ड के लिए PRO में अपग्रेड करें",
+      "insufficient": "अपर्याप्त डेटा",
+      "notAvailable": "अनुपलब्ध",
+      "noEvidence": "इस स्तंभ के लिए कोई प्रमाण उपलब्ध नहीं है।",
+      "score": "{{score}}/5",
+      "coverage": "{{coverage}}% कवरेज",
+      "methodologyVersion": "पद्धति v{{version}}",
+      "methodologyLink": "पद्धति देखें",
+      "pillars": {
+        "food": "खान-पान",
+        "energy": "ऊर्जा",
+        "demographics": "जनसांख्यिकी",
+        "technology": "प्रौद्योगिकी",
+        "defense": "रक्षा"
+      },
+      "reasons": {
+        "source-unavailable": "स्रोत अनुपलब्ध",
+        "country-unavailable": "देश अनुपलब्ध",
+        "invalid-value": "अमान्य स्रोत मान",
+        "stale": "सूचना पुरानी है",
+        "coverage-below-floor": "स्कोरिंग फ्लोर से कम कवरेज",
+        "required-group-missing": "आवश्यक प्रमाण समूह अनुपलब्ध",
+        "missing-population": "जनसंख्या अनुपलब्ध",
+        "redistribution-blocked": "स्रोत पुनर्वितरण की अनुमति नहीं है",
+        "pillar-unavailable": "स्तंभ अनुपलब्ध"
+      },
+      "inputs": {
+        "population": "Population",
+        "food_productionBalance": "उत्पादन संतुलन",
+        "food_stocksToUse": "उपयोग हेतु स्टॉक",
+        "food_waterSecurity": "जल सुरक्षा",
+        "food_importDiversity": "आयात विविधता",
+        "energy_productionBalance": "उत्पादन संतुलन",
+        "energy_lowCarbonShare": "कम-कार्बन ऊर्जा हिस्सा",
+        "energy_gridEfficiency": "ग्रिड दक्षता",
+        "demographics_totalDependency": "कुल निर्भरता",
+        "demographics_oldAgeDependency": "वृद्धावस्था निर्भरता",
+        "demographics_workingAgeProjection": "कार्यक्षम आयु वर्ग पूर्वानुमान",
+        "demographics_tertiaryEnrollment": "उच्च शिक्षा प्रवेश",
+        "demographics_researchersPerMillion": "प्रति मिलियन शोधकर्ता",
+        "demographics_stemGraduateShare": "STEM स्नातकों का हिस्सा",
+        "demographics_trainedIndustrialShare": "प्रशिक्षित औद्योगिक श्रम बल का हिस्सा",
+        "demographics_manufacturingEmploymentShare": "निर्माण रोजगार का हिस्सा",
+        "technology_internetUse": "इंटरनेट उपयोग",
+        "technology_mobileSubscriptions": "मोबाइल सब्सक्रिप्शन",
+        "technology_fixedBroadband": "फिक्स्ड ब्रॉडबैंड",
+        "technology_rdSpend": "शोध और विकास खर्च",
+        "technology_researchersPerMillion": "प्रति मिलियन शोधकर्ता",
+        "technology_stemGraduateShare": "STEM स्नातकों का हिस्सा",
+        "technology_electricityAccess": "बिजली की सुविधा",
+        "defense_expenditureUsd": "सैन्य व्यय",
+        "defense_expenditurePctGdp": "सैन्य बोझ",
+        "defense_personnel": "सशस्त्र बलों का जनशक्ति",
+        "defense_industrialBalance": "रक्षा औद्योगिक संतुलन",
+        "defense_supplierDiversity": "हथियार आपूर्तिकर्ता विविधता"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "हथियार आपूर्तिकर्ता निर्भरता और सैन्य क्षमता के लिए PRO में अपग्रेड करें"
     }
   },
   "header": {
@@ -383,6 +503,7 @@
     "securityAdvisories": "सुरक्षा सलाह",
     "orefSirens": "इज्राइल सायरन",
     "telegramIntel": "टेलीग्राम खुफिया",
+    "xIntel": "X News Accounts",
     "startups": "स्टार्टअप और वीसी",
     "vcblogs": "वीसी की जानकारी और लेख",
     "regionalStartups": "वैश्विक स्टार्टअप खबरें",
@@ -434,7 +555,8 @@
     "consumerPrices": "उपभोक्ता कीमतें",
     "fearGreed": "डर और लालच",
     "marketBreadth": "बाजार की पहुंच",
-    "climateNews": "जलवायु समाचार"
+    "climateNews": "जलवायु समाचार",
+    "fx": "FX दरें"
   },
   "commands": {
     "prefixes": {
@@ -514,7 +636,9 @@
         "displacement": "स्थानीय निकासी दिखाएं/छुपाएं",
         "climate": "जलवायु असामान्यताएं चालू/बंद करें",
         "outages": "इंटरनेट बंद दिखाएं/छुपाएं",
-        "tradeRoutes": "व्यापार मार्ग चालू/बंद करें"
+        "tradeRoutes": "व्यापार मार्ग चालू/बंद करें",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "डार्क मोड पर जाएं",
@@ -540,6 +664,8 @@
       "recent": "हाल की खोजें",
       "empty": "डेटा खोजें या कमांड चलाएं",
       "noResults": "कोई परिणाम नहीं",
+      "resultAnnouncement_one": "{{query}} के लिए {{count}} परिणाम",
+      "resultAnnouncement_other": "{{query}} के लिए {{count}} परिणाम",
       "commands": "कमांड्स",
       "results": "परिणाम",
       "addPanel": "जोड़ें",
@@ -677,7 +803,7 @@
         "URLHAUS_AUTH_KEY": "URLhaus और ThreatFox दोनों APIs के लिए उपयोग होता है।",
         "OTX_API_KEY": "साइबर खतरे के लेयर के लिए वैकल्पिक स्रोत।",
         "ABUSEIPDB_API_KEY": "खराब IP की प्रतिष्ठा के लिए वैकल्पिक स्रोत।",
-        "FINNHUB_API_KEY": "रियल-टाइम स्टॉक डेटा और मार्केट डाटा।",
+        "FINNHUB_API_KEY": "विलंबित या पहले से लोड किए गए स्टॉक भाव और मार्केट डेटा। कुंजी होना लाइव टेप नहीं है।",
         "NASA_FIRMS_API_KEY": "फायर सूचना सिस्टम के लिए।",
         "OLLAMA_API_URL": "जैसे http://127.0.0.1:11434 (Ollama) या http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-संगत एन्डपॉइंट।",
         "OLLAMA_MODEL": "जैसे llama3.1:8b — सारांश के लिए मॉडल टैग।"
@@ -952,7 +1078,13 @@
       "mineral": "खनिज",
       "topProducers": "शीर्ष उत्पादक",
       "risk": "जोखिम",
-      "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और जहाज गणना</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियां</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज सांद्रता जोखिम (HHI) और शीर्ष उत्पादक</li></ul>ट्रांजिट इतिहास चार्ट खोलने के लिए चोकपॉइंट कार्ड पर क्लिक करें।"
+      "infoTooltip": "<strong>सप्लाई चेन मॉनिटर</strong> वैश्विक लॉजिस्टिक्स और संसाधन ट्रैकिंग:<ul><li><strong>चोकपॉइंट</strong>: समुद्री पारगमन स्थिति, व्यवधान स्कोर, और जहाज गणना</li><li><strong>शिपिंग</strong>: बाल्टिक ड्राई इंडेक्स और फ्रेट दर प्रवृत्तियां</li><li><strong>खनिज</strong>: महत्वपूर्ण खनिज सांद्रता जोखिम (HHI) और शीर्ष उत्पादक</li></ul>ट्रांजिट इतिहास चार्ट खोलने के लिए चोकपॉइंट कार्ड पर क्लिक करें।",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "खान और रिफाइनरी देश शेयर के लिए PRO में अपग्रेड करें, चरण के अनुसार सांद्रता (HHI) के साथ।"
     },
     "tradePolicy": {
       "overview": "ओवरव्यू",
@@ -996,6 +1128,7 @@
       "noComtradeData": "कोई रणनीतिक प्रवाह डेटा उपलब्ध नहीं",
       "comtradeUnavailable": "UN Comtrade डेटा अस्थायी रूप से अनुपलब्ध",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "असामान्यता",
       "colReporter": "देश",
       "colCommodity": "वस्तु",
@@ -1274,7 +1407,7 @@
         "ucdpEvents": "सशस्त्र संघर्ष घटनाएं",
         "displacementFlows": "स्थानांतरण प्रवाह",
         "climateAnomalies": "जलवायु असामान्यता",
-        "weatherAlerts": "मौसम अलर्ट",
+        "weatherAlerts": "गंभीर मौसम चेतावनियाँ (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "चोकपॉइंट",
         "economicCenters": "आर्थिक केंद्र",
         "criticalMinerals": "महत्वपूर्ण खनिज",
@@ -1292,7 +1425,9 @@
         "kindness": "दयालुता के कार्य",
         "happiness": "विश्व खुशी",
         "speciesRecovery": "प्रजाति पुनर्प्राप्ति",
-        "renewableInstallations": "स्वच्छ ऊर्जा"
+        "renewableInstallations": "स्वच्छ ऊर्जा",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "भूकंप",
@@ -1353,7 +1488,7 @@
           "infraDatacenters": "एआई कंप्यूट क्लस्टर (>=10,000 GPU)",
           "infraOutages": "इंटरनेट ब्लैकआउट और सेवा व्यवधान",
           "naturalEventsTech": "भूकंप, तूफान, आग (डेटा केंद्र प्रभावित कर सकते हैं)",
-          "weatherAlerts": "कठोर मौसम अलर्ट",
+          "weatherAlerts": "राष्ट्रीय मौसम विज्ञान सेवाओं से आधिकारिक गंभीर मौसम चेतावनियाँ (NWS, ECCC, WMO SWIC)",
           "economicCenters": "शेयर बाजार और केंद्रीय बैंक",
           "countriesOverlay": "देश नाम ओवरले",
           "financeExchanges": "मुख्य वैश्विक एक्सचेंज",
@@ -1365,7 +1500,7 @@
           "financeOutages": "इंटरनेट व्यवधान जो बाजार संचालन को प्रभावित कर सकते हैं",
           "financeCyberThreats": "वित्तीय इन्फ्रास्ट्रक्चर से जुड़े सुरक्षा घटनाएं",
           "macroWaterways": "कमोडिटी शिपिंग के रणनीतिक चोकपॉइंट",
-          "weatherAlertsMarket": "बाजार से संबंधित कठोर मौसम घटनाएं",
+          "weatherAlertsMarket": "बाज़ार से संबंधित आधिकारिक गंभीर मौसम चेतावनियाँ (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "भूकंप, आग, बाढ़ और अन्य प्राकृतिक व्यवधान",
           "timeRecent": "समय-आधारित डेटा को हाल के घंटों तक फ़िल्टर करें",
           "timeExtended": "पिछले सप्ताह, महीने या सभी समय का डेटा दिखाएं",
@@ -1398,7 +1533,9 @@
           "tradeRoutes": "रणनीतिक संकरे बिंदुओं से होते हुए बंदरगाहों को जोड़ने वाले प्रमुख वैश्विक शिपिंग मार्ग",
           "dayNight": "वास्तविक समय सूरज की रोशनी और अंधेरा क्षेत्र",
           "geoBoundaries": "विसैन्यीकृत क्षेत्र, युद्धविराम रेखाएं और विवादित सीमाएं",
-          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)"
+          "ciiChoropleth": "देश अस्थिरता सूचकांक हीटमैप — CII स्कोर के अनुसार देशों को रंगों में दर्शाता है (हरा=स्थिर, लाल=गंभीर)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "प्रभाव: भूकंप, मौसम, प्रदर्शन, व्यवधान"
@@ -1770,7 +1907,9 @@
     "breakingNews": {
       "critical": "गंभीर",
       "high": "उच्च",
-      "dismiss": "खारिज करें"
+      "dismiss": "खारिज करें",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "ब्रेकिंग अलर्ट",
@@ -1821,6 +1960,16 @@
       "loading": "टेलीग्राम रिले से जुड़ रहे हैं...",
       "empty": "कोई संदेश उपलब्ध नहीं",
       "disabled": "टेलीग्राम रिले सक्रिय नहीं है",
+      "watchlistPlaceholder": "@username से सार्वजनिक चैनल जोड़ें",
+      "resolving": "चैनल खोजा जा रहा है...",
+      "invalidUsername": "सार्वजनिक टेलीग्राम @username का उपयोग करें",
+      "resolveFailed": "चैनल नहीं मिला",
+      "watchlistLimit": "आप अधिकतम {{count}} कस्टम चैनल फ़ॉलो कर सकते हैं",
+      "previewMembers": "{{count}} सदस्य",
+      "addChannel": "चैनल जोड़ें",
+      "added": "जोड़ा गया",
+      "remove": "हटाएँ",
+      "custom": "कस्टम",
       "filterAll": "सभी",
       "filterBreaking": "ब्रेकिंग",
       "filterConflict": "संघर्ष",
@@ -1830,6 +1979,21 @@
       "viewSource": "स्रोत देखें",
       "filterGeopolitics": "भू-राजनीति",
       "filterCyber": "साइबर"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "सऊदी अरब और UAE के वैश्विक महत्वपूर्ण इन्फ्रास्ट्रक्चर में विदेशी निवेशों का डेटाबेस। मानचित्र पर निवेश देखने के लिए पंक्ति पर क्लिक करें।",
@@ -1922,17 +2086,54 @@
       "infoTooltip": "<strong>आपदा कैस्केड</strong> प्राकृतिक आपदा और इन्फ्रास्ट्रक्चर संकेतों का संगम पता लगाता है:<ul><li>भूकंप, जंगल की आग, बाढ़, और मौसम की चरम घटनाओं का समन्वय</li><li>इन्फ्रास्ट्रक्चर और सप्लाई चेन पर कैस्केड प्रभाव ट्रैक करता है</li><li>मिल-जुल कर उच्च जोखिम वाले क्षेत्रों को दिखाता है</li></ul>प्रभावित क्षेत्र पर ज़ूम करने के लिए कार्ड क्लिक करें।"
     },
     "markets": {
-      "infoTooltip": "<strong>बाजार</strong> रियल-टाइम स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
+      "infoTooltip": "<strong>बाजार</strong> विलंबित स्टॉक इंडेक्स, स्टॉक्स, और क्रिप्टो कीमतें। अपनी वॉचलिस्ट बटन से कस्टमाइज़ करें। स्पार्कलाइन हाल की कीमत प्रवृत्ति दिखाती है।",
       "chart": {
         "title": "{{symbol}} मूल्य चार्ट",
         "close": "चार्ट बंद करें"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
       "infoTooltip": "<strong>सेक्टर हीटमैप</strong> S&P 500 सेक्टर प्रदर्शन एक नजर में। रंग तीव्रता दैनिक परिवर्तन का परिमाण दिखाती है। हरा = लाभ, लाल = हानि।"
     },
     "commodities": {
-      "infoTooltip": "<strong>कमोडिटी</strong> व्यापार योग्य गैर-ऊर्जा कमोडिटी टेप जो धातु और सामग्री पर केंद्रित है। ऊर्जा कीमतें ऊर्जा कॉम्प्लेक्स में लाइव; मैक्रो तनाव संकेत मैक्रो तनाव में।"
+      "infoTooltip": "<strong>कमोडिटी</strong> व्यापार योग्य गैर-ऊर्जा कमोडिटी टेप जो धातु और सामग्री पर केंद्रित है। ऊर्जा कीमतें ऊर्जा कॉम्प्लेक्स में लाइव; मैक्रो तनाव संकेत मैक्रो तनाव में।",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "भौतिक तनाव सूचकांक: {{value}} / 100",
+        "fiveDayTrend": "पाँच-कारोबारी-दिन प्रीमियम प्रवृत्ति",
+        "regimes": {
+          "normal": "सामान्य",
+          "elevated": "उन्नत",
+          "stressed": "दबाव में",
+          "extreme": "अत्यंत"
+        },
+        "states": {
+          "insufficientHistory": "तैयारी में: {{count}} / {{required}} कारोबारी बिंदु",
+          "staleInput": "भौतिक बेंचमार्क पुराना है",
+          "missingInput": "विचलन संकेत उपलब्ध नहीं"
+        },
+        "twentyDayTrend": "बीस कारोबारी दिन का प्रीमियम प्रवृत्ति"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>क्रिप्टो</strong> प्रमुख क्रिप्टोकरेंसी की लाइव कीमतें, 24 घंटे बदलाव, और वॉल्यूम। डेटा स्रोत: CoinGecko।"
@@ -1959,7 +2160,7 @@
       "infoTooltip": "<strong>केंद्रीय बैंक वॉच</strong> फेडरल रिजर्व, ECB, बैंक ऑफ इंग्लैंड, और अन्य प्रमुख केंद्रीय बैंकों के नवीनतम बयान, दर निर्णय, और संचार।"
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>गल्फ अर्थव्यवस्थाएं</strong> खाड़ी सहयोग परिषद (सऊदी अरब, यूएई, कुवैत, कतर, बहरीन, ओमान) के लिए रियल-टाइम स्टॉक इंडेक्स, मुद्रा दरें, और तेल कीमतें।"
+      "infoTooltip": "<strong>गल्फ अर्थव्यवस्थाएं</strong> खाड़ी सहयोग परिषद (सऊदी अरब, यूएई, कुवैत, कतर, बहरीन, ओमान) के लिए विलंबित स्टॉक इंडेक्स, मुद्रा दरें, और तेल कीमतें।"
     },
     "groceryBasket": {
       "infoTooltip": "<strong>किराने का सूचकांक</strong> 24 देशों में वैश्विक किराना बास्केट मूल्य तुलना — हेडलाइन CPI से परे वास्तविक उपभोक्ता वस्तु महंगाई ट्रैक करता है।"
@@ -2219,6 +2420,26 @@
         "failedToLoad": "लोड करने में विफल"
       }
     },
+    "supplyVulnerability": {
+      "title": "वस्तु संवेदनशीलता",
+      "help": "आपूर्तिकर्ता संकेंद्रण, समुद्री पारगमन और उपलब्ध रणनीतिक भंडार के आधार पर वस्तु-वार देश का जोखिम।",
+      "loading": "वस्तु संवेदनशीलता लोड हो रही है…",
+      "unavailable": "वस्तु संवेदनशीलता डेटा उपलब्ध नहीं है",
+      "noCoverage": "इस देश के लिए पर्याप्त साक्ष्य नहीं हैं",
+      "unknown": "अज्ञात",
+      "concentration": "संकेंद्रण",
+      "transit": "पारगमन",
+      "buffer": "भंडार",
+      "sources": "स्रोत",
+      "methodology": "कार्यप्रणाली",
+      "hormuzTitle": "वस्तु निर्भरताएँ",
+      "dependentCountries": "निर्भर देश",
+      "dependentCommodities": "निर्भर वस्तुएँ",
+      "stateOk": "वर्तमान",
+      "stateStale": "पुराना इनपुट",
+      "stateInsufficient": "अपर्याप्त डेटा",
+      "proLocked": "वस्तु कमजोरी स्कोरिंग के लिए PRO में अपग्रेड करें"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>हर्मुज व्यापार ट्रैकर</strong> हर्मुज स्ट्रेट के माध्यम से लाइव AIS जहाज ट्रैकिंग, विश्व का सबसे महत्वपूर्ण तेल चोकपॉइंट। टैंकर गिनती, व्यवधान घटनाएं, और साप्ताहिक प्रवाह परिवर्तन मॉनिटर करता है। लगभग 20% वैश्विक तेल दैनिक यहां से गुजरता है।",
       "title": "हर्मुज व्यापार ट्रैकर",
@@ -2373,13 +2594,14 @@
     },
     "sanctionsPressure": {
       "title": "प्रतिबंध और नामांकन",
-      "infoTooltip": "OFAC प्रतिबंध नामांकन SDN और संयोजित सूचियों से। दिखाता है कौन से देशों पर सबसे अधिक दबाव है, कौन से कार्यक्रम यह चला रहे हैं, और पिछली अपडेट से नया क्या जोड़ा गया।",
+      "infoTooltip": "OFAC SDN और संयोजित सूचियाँ तथा Global Affairs Canada SEMA/JVCFOA नामांकन। दिखाता है कौन से देशों पर सबसे अधिक दबाव है, कौन से कार्यक्रम यह चला रहे हैं, और पिछली अपडेट से नया क्या जोड़ा गया।",
       "loading": "प्रतिबंध डेटा लोड हो रहा है...",
       "unavailable": "प्रतिबंध डेटा उपलब्ध नहीं।",
       "summary": {
         "new": "नया",
         "vessels": "जहाज",
-        "aircraft": "विमान"
+        "aircraft": "विमान",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "प्रतिबंधित देश",
@@ -2394,11 +2616,12 @@
       "footer": {
         "updated": "अपडेट किया गया {{time}}",
         "dataset": "डेटासेट {{date}}",
-        "source": "स्रोत: OFAC"
+        "source": "स्रोत: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} नया",
-        "new": "नया"
+        "new": "नया",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} नामांकन",
       "designations_other": "{{count}} नामांकन",
@@ -2591,6 +2814,50 @@
       "upgradeCta": "अधिक के लिए अपग्रेड करें",
       "lockedAriaLabel": "टैब जोड़ें — लॉक्ड। {{reason}}",
       "unlockedAnnouncement": "डैशबोर्ड टैब सीमा हटाई गई।"
+    },
+    "fx": {
+      "infoTooltip": "<strong>FX दरें</strong> मुद्रा तनाव और स्पॉट दरें:<ul><li>FX Stress 45 मुद्राओं को पिछले 24 महीनों में उनके सबसे खराब शिखर-से-गर्त ड्रॉडाउन के आधार पर रैंक करता है, साथ ही 12 महीने का परिवर्तन भी दिखाता है</li><li>कवरेज में ARS, TRY, EGP, NGN, PKR और UAH शामिल हैं — ऐसी मुद्राएं जिन्हें BIS और ECB संदर्भ सेट छोड़ देते हैं</li><li>Spot दरें अमेरिकी डॉलर और ECB यूरो संदर्भ दरों के विरुद्ध अलग-अलग सूचीबद्ध करता है, क्योंकि दोनों को विभिन्न आधारों से उद्धृत किया जाता है</li><li>RUB — बैंक ऑफ रूस दरें, प्रति इकाई रूबल</li></ul> स्रोत: Yahoo Finance, European Central Bank और बैंक ऑफ रूस।",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "मुद्रा",
+      "pair": "जोड़ी",
+      "rate": "दर",
+      "yoy": "12m",
+      "drawdown": "24m ड्रॉडाउन",
+      "peakToTrough": "शिखर → गर्त",
+      "change1d": "1d",
+      "perUsd": "प्रति 1 USD",
+      "usdPerUnit": "प्रति इकाई USD",
+      "usdBase": "अमेरिकी डॉलर के विरुद्ध",
+      "eurBase": "ECB यूरो संदर्भ दरें",
+      "stressedCount": "{{total}} में से {{stressed}} मुद्राएं {{threshold}} से नीचे",
+      "sourceYahoo": "स्रोत: Yahoo Finance",
+      "sourceEcb": "स्रोत: ECB",
+      "degraded": "अभी उपलब्ध नहीं: {{sources}}। शीघ्र ही पुनः प्रयास किया जा रहा है।",
+      "source": {
+        "stress": "FX स्ट्रेस",
+        "usd": "US डॉलर दरें",
+        "eur": "ECB यूरो दरें",
+        "rub": "बैंक ऑफ रूस दरें"
+      },
+      "rubBase": "बैंक ऑफ रूस — प्रति 1 इकाई रूबल",
+      "rubPerUnit": "प्रति इकाई रूबल",
+      "sourceCbr": "स्रोत: बैंक ऑफ रूस"
+    },
+    "passkeyOffer": {
+      "title": "एक पासकी सेव करें?",
+      "body": "अगली बार अपने फिंगरप्रिंट, चेहरे या डिवाइस PIN से साइन इन करें — याद रखने के लिए कोई पासवर्ड नहीं।",
+      "accept": "पासकी सेव करें",
+      "dismiss": "अभी नहीं",
+      "close": "बंद करें",
+      "announce": "अगली बार तेजी से साइन इन करने के लिए एक पासकी सेव करें।",
+      "busy": "आपके डिवाइस की प्रतीक्षा की जा रही है…",
+      "succeeded": "पासकी सेव हो गई। आप इसे अगली बार साइन इन करते समय उपयोग कर सकते हैं।",
+      "retryable": "वह पूरी नहीं हुई। आप फिर से कोशिश कर सकते हैं।",
+      "failed": "हम इस डिवाइस पर एक पासकी सेव नहीं कर सके।"
     }
   },
   "popups": {
@@ -2634,9 +2901,9 @@
     },
     "gpsJamming": {
       "title": "GPS/GNSS व्यवधान",
-      "navPerformance": "नेविगेशन प्रदर्शन",
-      "samples": "ADS-B नमूने",
-      "aircraft": "विमान",
+      "navPerformance": "प्रभावित विमान",
+      "samples": "प्रभावित विमानों की संख्या",
+      "aircraft": "देखे गए विमान",
       "h3Hex": "H3 हेक्स"
     },
     "flight": {
@@ -2812,6 +3079,7 @@
     "moreEvents": "और घटनाएं",
     "monitoring": "निगरानी",
     "viewUSGS": "USGS पर देखें",
+    "viewNRCan": "Earthquakes Canada पर देखें",
     "expired": "समाप्त",
     "timeAgo": {
       "s": "{{count}} सेकंड पहले",
@@ -2931,7 +3199,11 @@
       "heading": "दिशा",
       "hexCode": "हेक्स कोड",
       "squawk": "स्क्वॉक",
-      "attribution": "स्रोत: OpenSky नेटवर्क"
+      "attribution": "स्रोत: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "चढ़ाई की दर",
+      "manufacturer": "निर्माता",
+      "owner": "मालिक",
+      "builtYear": "निर्माण वर्ष"
     },
     "militaryVessel": {
       "aisDark": "AIS डार्क",
@@ -2976,7 +3248,8 @@
       "moreVessels": "+{{count}} और जहाज",
       "vesselsCount": "{{count}} जहाज",
       "vessels": "जहाज",
-      "trackedVessels": "ट्रैक किए गए जहाज"
+      "trackedVessels": "ट्रैक किए गए जहाज",
+      "showLess": "कम दिखाएँ"
     },
     "naturalEvent": {
       "closed": "बंद",
@@ -3242,7 +3515,8 @@
     "currentVariant": "(वर्तमान)",
     "retry": "पुनः प्रयास करें",
     "refresh": "रिफ्रेश करें",
-    "all": "सभी"
+    "all": "सभी",
+    "dismiss": "Dismiss"
   },
   "connectivity": {
     "offlineCached": "ऑफ़लाइन — {{freshness}} का सेव किया हुआ डेटा दिखा रहा है।",
@@ -3269,7 +3543,9 @@
     "fontFamily": "फॉन्ट परिवार",
     "fontFamilyDesc": "तकनीकी लुक के लिए मोनोस्पेस, आसानी से पढ़ने के लिए सिस्टम डिफ़ॉल्ट।",
     "fontMono": "मोनोस्पेस",
-    "fontSystem": "सिस्टम डिफ़ॉल्ट"
+    "fontSystem": "सिस्टम डिफ़ॉल्ट",
+    "panelFontScale": "पाठ आकार",
+    "followGlobalFontScale": "वैश्विक सेटिंग का उपयोग करें"
   },
   "premium": {
     "pro": "PRO",
@@ -3282,7 +3558,9 @@
       "orefSirens1": "रियल-टाइम इज़राइल मिसाइल और रॉकेट अलर्ट",
       "orefSirens2": "सायरन क्षेत्र का नक्शा और खतरे की श्रेणीकरण",
       "telegramIntel1": "चुने हुए टेलीग्राम ओएसइंट चैनल",
-      "telegramIntel2": "करीब रियल-टाइम संघर्ष और भू-राजनीतिक अपडेट"
+      "telegramIntel2": "करीब रियल-टाइम संघर्ष और भू-राजनीतिक अपडेट",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "contextMenu": {
@@ -3292,7 +3570,8 @@
   "auth": {
     "signIn": "साइन इन करें",
     "createAccount": "खाता बनाएं",
-    "settings": "सेटिंग्स"
+    "settings": "सेटिंग्स",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "MCP से जुड़ें",

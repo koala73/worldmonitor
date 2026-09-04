@@ -23,8 +23,8 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Az Ön AI-elemzője. Személyes hírszerzési desk. Platform, amelyre építhet. Egy kulcs több mint 30 élő szolgáltatáshoz.",
-    "proF1": "WM Analyst chat — kérdezzen társalgási formában mind a 30+ szolgáltatástól",
+    "proDesc": "Az Ön AI elemzője. Egy személyes hírszerzési asztal. Egy platform, amelyre fejleszthetsz. Egy kulcs az összes élő szolgáltatáson.",
+    "proF1": "WM Analyst chat — élő szolgáltatások lekérdezése természetes nyelvon",
     "proF2": "AI digest — naponta, naponta kétszer vagy hetente — Slackre, Discordra, Telegramra, e-mailre vagy webhookra",
     "proF3": "Custom Widget Builder — HTML/CSS/JS AI-asszisztált módosítással",
     "proF4": "MCP-csatlakozók — kösse a WorldMonitort Claude-hoz, GPT-hez vagy saját LLM-ekhez",
@@ -32,15 +32,15 @@
     "proF6": "Repülőjárat-keresés és ár-összehasonlítás",
     "proF7": "Riasztási szabálymotor — egyéni triggerek, csendes órák, AES-256-tal titkosított csatornák",
     "proF8": "Piaci watchlist, makró és jegybanki követés",
-    "proF9": "AI Market Implications és Regional Intelligence (hamarosan: orbitális megfigyelés, prémium térképrétegek, hosszabb előzmények)",
+    "proF9": "AI piaci implikációk és regionális geopolitikai hírszerzés",
     "choosePlan": "Válasszon csomagot",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Csapatoknak, amelyeknek közös monitoring, API-hozzáférés, telepítési opciók, TV-alkalmazások és közvetlen támogatás kell.",
     "entF1": "Minden a Pro csomagban, plusz:",
     "entF2": "Live-edge + műholdképek és SAR",
     "entF3": "AI-ügynökök befektetői personákkal és MCP-vel",
-    "entF4": "50 000+ feltérképezett infrastrukturális eszköz",
-    "entF5": "100+ adatcsatlakozó (Splunk, Snowflake, Sentinel...)",
+    "entF4": "Infrastrukturális eszközök feltérképezve",
+    "entF5": "Adatösszekötők (Splunk, Snowflake, Sentinel...)",
     "entF6": "REST API + webhookok + tömeges export",
     "entF7": "Csapat-munkaterületek SSO/MFA/RBAC funkciókkal",
     "entF8": "White-label és beágyazható panelek",
@@ -48,14 +48,15 @@
     "entF10": "Felhő, on-prem vagy air-gapped telepítés",
     "entF11": "Dedikált bevezetés és támogatás",
     "entCta": "Beszéljen az értékesítéssel",
-    "freeF2": "500+ feed, 65+ forrás, 50+ térképréteg"
+    "freeF2": "Válogatott feedek, forrásokkal megjelölt tartalmak és térképrétegek",
+    "proF10": "Intel memória — historikus keresés, idősorok és hasonló események keresése"
   },
   "whyUpgrade": {
-    "title": "Miért érdemes frissíteni",
+    "title": "Miért érdemes frissíteni a World Monitor Pro-ra?",
     "noiseTitle": "Tudja meg elsőként",
     "noiseDesc": "AIS-anomália → Brent-ugrás → Slack-értesítés egy percen belül. Jel, nem címlapzaj.",
     "fasterTitle": "Kérdezzen bármit",
-    "fasterDesc": "Csevegjen ugyanazzal a 30+ szolgáltatással, amelyet az irányítópultja lát. WM Analyst, mindig bekapcsolva.",
+    "fasterDesc": "Beszélgess ugyanazokkal az élő szolgáltatásokkal, amelyeket az irányítópultod lát. WM Analyst, mindig elérhető.",
     "controlTitle": "Építsen bármit",
     "controlDesc": "Custom widget builder (HTML/CSS/JS + AI) és MCP a saját AI-munkafolyamataihoz.",
     "deeperTitle": "Ébredjen tájékozottan",
@@ -63,7 +64,7 @@
   },
   "pillars": {
     "askIt": "Kérdezze",
-    "askItDesc": "WM Analyst chat. Mind a 30+ szolgáltatás természetes nyelven lekérdezhető.",
+    "askItDesc": "WM Analyst chat. Élő szolgáltatások lekérdezhetők egyszerű angolsággal.",
     "subscribeIt": "Iratkozzon fel rá",
     "subscribeItDesc": "AI digest az Ön ütemezése szerint — naponta, naponta kétszer vagy hetente. Slack, Discord, Telegram, e-mail, webhook.",
     "buildOnIt": "Építsen rá",
@@ -71,8 +72,8 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "Az Ön személyes hírszerzési deskje",
-    "body": "Küldésenként legfeljebb 30 rangsorolt elem, 500+ forráson deduplikálva, az Ön watchlistje alapján pontozva. Válasszon ütemezést — napi, napi kétszeri vagy heti — AI Assessment és Signals to watch résszel, Slackre, Discordra, Telegramra, e-mailre vagy webhookra kézbesítve.",
+    "title": "Mi az a személyes intelligence desk?",
+    "body": "Legfeljebb 30 rangsorolt elem küldésenként, forrásokon közösen eltávolítva, figyelőlistádhoz képest pontozva. Válaszd meg az ütemezésedet — napi, naponta kétszer vagy hetente — AI Assessment és Signals to watch mellett a Slackre, Discordra, Telegramba, e-mailbe vagy webhookra.",
     "closer": "Nem hírlevél. Elemző.",
     "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 titkosítás · Csendes órák"
   },
@@ -81,7 +82,7 @@
     "openFullScreen": "Megnyitás teljes képernyőn",
     "tryLiveDashboard": "Próbálja ki az élő irányítópultot",
     "iframeTitle": "World Monitor — Élő hírszerzési irányítópult",
-    "description": "3D WebGL földgömb · 50+ interaktív térképréteg · Valós idejű piaci, makró, geopolitikai, energia- és infrastruktúraadatok"
+    "description": "3D WebGL földgömb · interaktív térképrétegek · valós idejű piaci, makroökonómiai, geopolitikai, energetikai és infrastrukturális adatok"
   },
   "socialProof": {
     "uniqueVisitors": "Egyedi látogatók",
@@ -93,7 +94,7 @@
     "asToldTo": "elmondva"
   },
   "audience": {
-    "title": "Azoknak készült, akiknek gyorsan kell a jel",
+    "title": "Kinek készült a World Monitor?",
     "investorsTitle": "Befektetők és portfóliókezelők",
     "investorsDesc": "Kövesse a globális részvényeket, elemzői célárakat, értékelési mutatókat és makróindikátorokat a geopolitikai kockázati jelekkel együtt.",
     "tradersTitle": "Energia- és árupiaci kereskedők",
@@ -108,8 +109,8 @@
     "teamsDesc": "Lépjen túl az egyéni használaton: közös munkafolyamatok, API-hozzáférés, TV-appok és menedzselt telepítések."
   },
   "dataCoverage": {
-    "title": "Mit követ a World Monitor",
-    "subtitle": "30+ szolgáltatási domén párhuzamos feldolgozása. Piacok, makró, geopolitika, energia, infrastruktúra — minden normalizálva és WebGL földgömbön megjelenítve.",
+    "title": "Mit követ nyomon a World Monitor?",
+    "subtitle": "Szolgáltatási tartományok párhuzamosan feldolgozva. Piacok, makroökonómia, geopolitika, energia, infrastruktúra — minden normalizálva és megjelenítve egy WebGL-földgömbön.",
     "markets": "Pénzügyi piacok és részvények",
     "marketsDesc": "Globális részvényelemzés, árupiacok, kripto, ETF-áramlások, elemzői célárak és FRED makróadatok",
     "economy": "Gazdaság és jegybankok",
@@ -121,7 +122,7 @@
     "aviation": "Légiközlekedés követése",
     "aviationDesc": "ADS-B transzponderes követés globális repülési mintákhoz",
     "infra": "Kritikus infrastruktúra",
-    "infraDesc": "Nukleáris létesítmények, villamos hálózatok, csővezetékek, finomítók — 50K+ feltérképezett eszköz",
+    "infraDesc": "Atomerőművek, elektromos hálózatok, vezetékek, finomítók — feltérképezett eszközök",
     "fire": "Műholdas tűzdetektálás",
     "fireDesc": "NASA FIRMS közel valós idejű adatok tüzekről és hőpontokról",
     "cables": "Tenger alatti kábelek",
@@ -131,7 +132,7 @@
     "cyber": "Kiberfenyegetések",
     "cyberDesc": "Ransomware feedek, BGP-hijackek, DDoS-detektálás",
     "gdelt": "GDELT és hírek",
-    "gdeltDesc": "500+ RSS feed, AI-pontozott GDELT események, élő közvetítések",
+    "gdeltDesc": "Válogatott RSS feedek, AI-pontozottan GDELT-események, élő közvetítések",
     "seismology": "Szeizmológia és természeti események",
     "seismologyDesc": "USGS földrengések, vulkáni aktivitás, szélsőséges időjárás"
   },
@@ -145,7 +146,7 @@
   },
   "proShowcase": {
     "proTier": "PRO SZINT",
-    "title": "Az AI-elemzője, aki sosem alszik",
+    "title": "Mit csinál a World Monitor AI elemző?",
     "subtitle": "Az ingyenes irányítópult megmutatja a világot. A Pro elemzőt ad, akit kérdezhet, digestet, amelyre feliratkozhat, és építőkockákat, amelyekre építhet. Részvények, makró, geopolitikai kockázat — és a köztük lévő kapcsolatok.",
     "equityResearch": "Részvénykutatás",
     "equityResearchDesc": "Globális részvényelemzés pénzügyi vizualizációval, elemzői célárakkal és értékelési mutatókkal. Kövesse, mi mozgatja a piacokat.",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "GDP, infláció, kamatlábak és növekedési ciklusok. Makróadatok piaci jelekkel és geopolitikai eseményekkel korrelálva.",
     "riskMonitoring": "Kockázatmonitoring és forgatókönyvek",
     "riskMonitoringDesc": "Globális kockázati pontozás, forgatókönyv-elemzés és geopolitikai kockázatértékelés. Konvergenciadetektálás piaci és politikai jelek között.",
-    "orbitalSurveillance": "Orbitális megfigyelés",
-    "orbitalSurveillanceDesc": "Áthaladási előrejelzések, visszatérési gyakoriság elemzése és képalkotási ablakokra vonatkozó riasztások. Tudja meg, mikor figyelik hírszerző műholdak az érdeklődési területeit.",
     "morningBriefs": "Személyes hírszerzési desk",
-    "morningBriefsDesc": "Digestenként legfeljebb 30 rangsorolt történet, 500+ forrásból deduplikálva. Válasszon napi, napi kétszeri vagy heti ütemezést — vagy valós idejű riasztásokat kritikus eseményekhez. AI Assessment és Signals to watch Slackre, Discordra, Telegramra, e-mailre vagy webhookra. Nem hírlevél — elemző.",
-    "oneKey": "30+ szolgáltatás, 1 kulcs",
+    "morningBriefsDesc": "Legfeljebb 30 rangsorolt történet összefoglalónként, forrásokon közösen eltávolítva. Válaszd meg a napi, naponta kétszer vagy heti ütemezést — vagy valós idejű riasztások kritikus eseményekhez. AI Assessment és Signals to watch a Slackre, Discordra, Telegramba, e-mailbe vagy webhookra. Nem hírlevél — egy elemzés.",
+    "oneKey": "Élő Szolgáltatások, 1 Kulcs",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky és még sok más — mind aktív, külön regisztrációk nélkül.",
-    "deliveryLabel": "Válassza ki, hogyan találjon Önre az intelligencia"
+    "deliveryLabel": "Válassza ki, hogyan találjon Önre az intelligencia",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Költségsokkot szimulálhat országok és szektorok között. Rangsorolhatja az árucikkek sebezhetőségét szűk keresztmetszetek függőségei alapján. Nyomon követheti a bánya-finomítókoncentrációt és az SGE–COMEX fizikai prémium divergenciáját — azt a mutatót, amely a hírek előtt változik meg.",
+    "roadmapNote": "Tervezett funkciók: műholdas megfigyelés, hosszabb történelem, prémium térképrétegek."
   },
   "slackMock": {
     "morningBrief": "Reggeli brief",
@@ -174,9 +176,9 @@
   },
   "apiSection": {
     "apiTier": "API SZINT",
-    "title": "Programozható intelligencia",
+    "title": "Hogyan használják az API-k és ágensek a World Monitor-t?",
     "subtitle": "Fejlesztőknek, elemzőknek és csapatoknak, akik World Monitor adatokra építenek. Különálló a Pro csomagtól — használhatja mindkettőt vagy bármelyiket.",
-    "restApi": "REST API mind a 30+ szolgáltatási doménen át — hivatalos SDK-k: JavaScript, Python, Ruby, Go",
+    "restApi": "REST API szolgáltatási tartományokon — hivatalos SDK-k JavaScripthez, Pythonhoz, Rubyhoz, Go-hoz",
     "authenticated": "Kulcsonként hitelesített, csomagonként rate-limitált",
     "structured": "Strukturált JSON cache fejlécekkel és OpenAPI 3.1 dokumentációval",
     "starter": "Starter",
@@ -190,7 +192,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE SZINT",
-    "title": "Hírszerzési infrastruktúra",
+    "title": "Mit tartalmaz a World Monitor Enterprise?",
     "subtitle": "Kormányoknak, intézményeknek, kereskedési deskeknek és szervezeteknek, amelyeknek a teljes platform kell maximális biztonsággal, AI-ügynökökkel, TV-appokkal és mély adatokkal.",
     "security": "Kormányzati szintű biztonság",
     "securityDesc": "Air-gapped telepítés, on-premises Docker, dedikált cloud tenant, SOC 2 Type II útvonal, SSO/MFA és teljes audit trail.",
@@ -198,7 +200,7 @@
     "aiAgentsDesc": "Autonóm hírszerzési ügynökök befektetői personákkal. Csatlakoztassa a World Monitort eszközként Claude-hoz, GPT-hez vagy saját LLM-ekhez MCP-n keresztül.",
     "dataLayers": "Bővített adatrétegek",
     "dataLayersDesc": "Tízezernyi infrastrukturális eszköz globálisan feltérképezve. Műholdkép-integráció változásdetektálással és SAR-ral.",
-    "connectors": "100+ adatcsatlakozó",
+    "connectors": "Adatösszekötők",
     "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams és további szolgáltatások. Exportálás PDF, CSV, JSON formátumban.",
     "whiteLabel": "White-label, TV és beágyazható",
     "whiteLabelDesc": "Az Ön márkája, domainje és desktop appja. Android TV app SOC-falakhoz és kereskedési termekhez. Beágyazható iframe panelek.",
@@ -227,7 +229,7 @@
     "contactFailed": "A küldés sikertelen. Írjon az enterprise@worldmonitor.app címre"
   },
   "pricingTable": {
-    "title": "Csomagok összehasonlítása",
+    "title": "Hogyan hasonlítanak össze a World Monitor-csomagok?",
     "feature": "Funkció",
     "freeHeader": "Ingyenes ($0)",
     "proHeader": "Pro ($39,99)",
@@ -248,7 +250,7 @@
     "fLt60s": "<60 másodperc",
     "fPerRequest": "Kérésenként",
     "fLiveEdge": "Live-edge",
-    "f50panels": "50+ panel",
+    "f50panels": "Panelek",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
     "fIncluded": "Tartalmazza",
@@ -264,17 +266,32 @@
     "fLiveTracking": "Élő követés",
     "fPassAlerts": "Áthaladási riasztások + elemzés",
     "fImagerySar": "Képalkotás + SAR",
-    "f100plus": "100+",
+    "f100plus": "Elérhető",
     "fCloud": "Felhő",
     "fCloudOnPrem": "Felhő/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Kulcsalapú auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Az alapplatform ingyenes marad. A fizetős csomagok részvénykutatást, makróanalitikát, AI-briefeket és szervezeti használatot nyitnak meg.",
-    "f50plus": "50+"
+    "f50plus": "Elérhető",
+    "sourcesRow": "Források",
+    "followedRow": "Követett országok",
+    "tabsRow": "Dashboard fülei",
+    "fUnlimited": "Korlátlan",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Összes réteg",
+    "fLayersNoResilience": "Összes, kivéve a Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Piaci árajánlatok: 30s",
+    "panelsRow": "Engedélyezett panelek",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Összes"
   },
   "faq": {
-    "title": "Gyakori kérdések",
+    "title": "Gyakran ismételt kérdések a World Monitor Pro-ról",
     "q1": "A World Monitor továbbra is ingyenes?",
     "a1": "Igen. Az alapplatform ingyenes marad. A Pro kiegészíti az értékpapír-kutatást, makroökonómiai elemzéseket és AI-összefoglalókat. A Pro Business hozzáadja a kereskedelmi licencet és adatexportálást. Az Enterprise csapatos telepítéseket és TV-alkalmazásokat biztosít.",
     "q2": "Miért érdemes a Pro csomagért fizetni?",
@@ -288,22 +305,22 @@
     "q6": "Miért marad ingyenes az alapplatform?",
     "a6": "Mert a nyilvános hozzáférés számít. A fizetős csomagok mélyebb munkafolyamatokat finanszíroznak komoly felhasználóknak és szervezeteknek.",
     "q7": "Továbbra is használhatom a saját API-kulcsaimat?",
-    "a7": "Igen. A bring-your-own-keys mindig működik. A Pro csak azt jelenti, hogy nem kell 20+ külön szolgáltatásra regisztrálnia.",
+    "a7": "Igen. A saját kulcsok behozatala mindig működik. A Pro egyszerűen azt jelenti, hogy nem kell külön szolgáltatásokra regisztrálnod.",
     "q8": "Mi az MCP?",
-    "a8": "Az MCP lehetővé teszi, hogy AI-ügynökök — Claude, GPT, saját LLM-ek — eszközként használják a WorldMonitort, és lekérdezzék mind a 30+ szolgáltatást. A Pro része. Az Enterprise privát MCP-szervereket és egyedi telepítéseket ad.",
+    "a8": "Az MCP lehetővé teszi a mesterséges intelligencia ügynököknek — Claude, GPT, egyéni LLM-ek — hogy a WorldMonitor-t eszközként használják, regisztrált szolgáltatások lekérdezésével. A Pro-ban szerepel. Az Enterprise magánMCP-szervereket és egyéni telepítéseket ad hozzá.",
     "q9": "Építhetek saját paneleket?",
     "a9": "Igen. A Pro tartalmazza a Custom Widget Buildert — építsen paneleket HTML-ből, CSS-ből és JavaScriptből, AI-asszisztált módosítással.",
     "q10": "Csatlakoztathatom Claude-ot vagy GPT-t a WorldMonitorhoz?",
     "a10": "Igen. Az MCP benne van a Pro csomagban — kösse a WorldMonitort Claude-hoz, GPT-hez vagy bármely MCP-kompatibilis LLM-hez élő eszközként.",
     "q11": "Mennyire személyre szabott a digest?",
-    "a11": "Válasszon ütemezést — napi, napi kétszeri vagy heti. Minden követett történetet újrapontozunk az Ön riasztási szabályai és watchlistje alapján, 500+ forrásból deduplikáljuk, és legfeljebb 30 rangsorolt elemet küldünk AI Assessmenttel és az Ön kontextusához írt Signals to watch résszel. Kritikus eseményekhez valós idejű riasztások is elérhetők.",
+    "a11": "Válaszd meg az ütemezésedet — napi, napanta kétszer vagy hetente. Minden nyomon követett történetet újrapontozunk a riasztási szabályaid és figyelőlistád szerint, forrásokon közösen eltávolítjuk, és legfeljebb 30 rangsorolt elemet küldünk AI Assessment és Signals to watch írásommal a kontextusodba. Valós idejű riasztások is elérhetők kritikus eseményekhez.",
     "q12": "Milyen gyakori a frissítés?",
-    "a12": "Pro esetén közel valós idejű. Ingyenes csomagban 5–15 perc.",
+    "a12": "A Pro 30 másodpercenként frissíti a piaci árakat. A többi adat a saját forrásának ütemét követi. A Free a standard forrásütemen marad.",
     "q13": "Hová kerülnek az adataim?",
     "a13": "Az értesítési csatornák nyugalmi állapotban AES-256-tal titkosítottak. A digestek soha nem hagyják el a pipeline-unkat az érzékeny adatok kitakarása nélkül."
   },
   "finalCta": {
-    "title": "Kezdje a Pro csomaggal. Skálázzon Enterprise-ra.",
+    "title": "Hogyan kezdhetek a Pro-val vagy beszélhetek az értékesítéssel?",
     "subtitle": "Használja tovább ingyen a World Monitort, vagy frissítsen részvénykutatásért, makróanalitikáért és AI-briefekért. Ha szervezetének csapathozzáférésre, TV-appokra vagy API-támogatásra van szüksége, beszéljen velünk.",
     "talkToSales": "Beszéljen az értékesítéssel"
   },
@@ -317,7 +334,7 @@
     "title": "World Monitor Pro | AI Intelligence & MCP",
     "description": "A World Monitor Pro AI-elemzőt, ütemezett hírösszefoglalókat, egyéni widgeteket, piackutatást és MCP-hozzáférést ad az élő geopolitikai és pénzügyi adatokhoz.",
     "ogTitle": "World Monitor Pro | Geopolitikai AI",
-    "ogDescription": "Kérdezze, iratkozzon fel rá, építsen rá. WM Analyst chat, AI digest az Ön ütemezése szerint (napi, napi kétszeri vagy heti), custom widget builder és MCP Claude/GPT-hez — 30+ élő szolgáltatáson át, egy kulcs alatt."
+    "ogDescription": "Kérdezd meg, iratkozz fel, fejlessz tovább. WM Analyst chat, mesterséges intelligencia alapú összefoglaló az ütemezésed szerint (napi, naponta kétszer vagy hetente), egyéni widget builder és MCP Claude/GPT-hez — összes élő szolgáltatás egy kulcssal."
   },
   "pricing": {
     "suffixForever": "örökre",
@@ -326,7 +343,7 @@
     "suffixPerYear": "/év",
     "amountCustom": "Egyedi",
     "opening": "Megnyitás…",
-    "headerTitle": "Válassza ki csomagját",
+    "headerTitle": "Mennyibe kerül a World Monitor?",
     "headerSubtitle": "A valós idejű monitoringtól a teljes hírszerzési infrastruktúráig. Válassza ki a küldetéséhez illő szintet.",
     "billingMonthly": "Havi",
     "billingAnnual": "Éves",
@@ -348,17 +365,18 @@
       "pro": {
         "description": "Teljes hírszerzési irányítópult",
         "features": [
-          "Minden az ingyenes csomagban",
-          "AI részvényelemzés és backtesting",
-          "Napi piaci briefek",
-          "Katonai és geopolitikai követés",
-          "Custom widget builder",
-          "10 egyéni irányítópult (vs 3)",
+          "Minden a Free-ben — panelek, források és követett országok korlátlanul",
+          "WM Analyst csevegés + AI részvényelemzés és backtesting",
+          "Költségsokkot modellezés és ellátási lánc stressztesztek",
+          "Intel memória — historikus keresés, idősorok és hasonló események",
+          "Fizikai fémek divergenciája, ásványi anyag koncentrációja és szuverén adósság adat",
+          "Ütemezett AI kivonat + riasztási szabálymotor",
           "MCP + SDK hozzáférés Claude Desktophoz és más AI kliensekhez (50 hívás/nap)",
-          "Prioritásos adatfrissítés"
+          "Egyéni widgetek és 10 dashboard (vs 3)"
         ],
         "highlightFeatures": [
-          "Személyes licenc"
+          "Személyes licenc",
+          "1 megnevezett felhasználó"
         ]
       },
       "api": {
@@ -368,7 +386,7 @@
           "Licenc- / API-kulcs mellékelve",
           "Valós idejű adatfolyamok",
           "60 kérés/perc",
-          "1 000 kérés/nap benne foglalt",
+          "1000 kérés/nap (REST + MCP kombinálva; egy élő MCP hívás 2-3-nak számít)",
           "Webhook-értesítések"
         ],
         "highlightFeatures": [
@@ -383,7 +401,12 @@
           "Dedikált támogatás",
           "Egyedi integrációk",
           "SLA-garancia",
-          "On-premise opció"
+          "On-premise opció",
+          "Adatfeldolgozási szerződés (DPA)",
+          "Beszerzési megrendelés alapú számlázás",
+          "SAML SSO, SCIM",
+          "Egyedi biztonsági és adatvédelmi beállítások",
+          "Teljes mértékben fehér címkés – bevételmegosztással vagy anélkül"
         ],
         "cta": "Kapcsolat az értékesítéssel"
       },
@@ -393,8 +416,8 @@
           "Minden az API Starter csomagból",
           "Terjesztési jogok — ágyazza be adatainkat az Ön termékeibe",
           "300 kérés/perc",
-          "10 000 kérés/nap foglalva",
-          "5 Pro licenc foglalva",
+          "10 000 kérés/nap (REST + MCP kombinálva; egy élő MCP hívás 2-3-nak számít)",
+          "5 Pro licenc — hívjon meg felhasználókat bármely vállalati e-mail-domainről",
           "Prioritásos támogatás"
         ],
         "highlightFeatures": [
@@ -412,7 +435,8 @@
           "Prioritásos támogatás"
         ],
         "highlightFeatures": [
-          "Kereskedelmi licenc mellékelve"
+          "Kereskedelmi licenc mellékelve",
+          "1 megnevezett felhasználó — nem megosztott bejelentkezés"
         ]
       }
     },
@@ -423,7 +447,7 @@
     "axisPersonal": "Személyes",
     "axisPersonalNote": "egyéni használat",
     "axisCommercial": "Kereskedelmi",
-    "axisCommercialNote": "munka, csapatok és termékek"
+    "axisCommercialNote": "munka, ügyfelek és termékek"
   },
   "welcome": {
     "meta": {
@@ -441,7 +465,8 @@
       "docs": "Dokumentáció",
       "launch": "Irányítópult indítása",
       "blog": "Blog",
-      "menu": "Menü"
+      "menu": "Menü",
+      "agents": "AI ágensekhez"
     },
     "hero": {
       "eyebrow": "Ingyenes globális hírszerzési irányítópult · most élő",
@@ -456,11 +481,14 @@
       "screenshotAlt": "World Monitor élő hírszerzési irányítópult — globális térkép konfliktus, szállítás és piaci rétegekkel",
       "plateNote": "Az élő térképről rögzítve — kattints a megnyitásához",
       "trustBuild": "Építs rá:",
-      "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir"
+      "positioningLink": "A WorldMonitor nem nyílt forráskódú Palantir",
+      "asOf": "2026. augusztus 31-i állapot szerint",
+      "whatIsTitle": "Mi az a World Monitor?",
+      "whatIsBody": "A World Monitor egy ingyenes, nyílt forráskódú dashboard, amely geopolitikai, piac-, szállítás-, légiközlekedési, infrastrukturális és kibervédelmi jeleket stream-el egy élő világtérképre. Egymástól független adatforrásokat korrelál egyetlen operatív képpé, és a konvergenciákat a hírek előtt flaggeli – minden adat forrásos és minden módszer dokumentált."
     },
     "live": {
       "eyebrow": "Most élő",
-      "title": "Ez az oldal ugyanazokkal az API-kkal csatlakozik, mint az irányítópult.",
+      "title": "Milyen élő adatokat mutat ez az oldal éppen most?",
       "subtitle": "A száz feletti jelzések közül négy, amelyet a World Monitor folyamatosan figyel.",
       "liveBadge": "Élő",
       "sampleBadge": "Minta",
@@ -479,7 +507,7 @@
     },
     "moments": {
       "eyebrow": "Korrelációs motor",
-      "title": "Az él a jelek együttes mozgását látja.",
+      "title": "Hogyan korrelál a World Monitor jeleket?",
       "sub": "A feedeket száz helyen megtalálhatod. Az él egy felület, ahol a geopolitika, a tengeri szállítás, az árucikkek, a makró, a piacok, az időjárás, az infrastruktúra, a kibernetika, a hírek és az országkockázat magyarázhatják egymást.",
       "signalStack": "Jelek fúzionálva",
       "correlation": "Korreláció",
@@ -534,7 +562,7 @@
         "s2": "Az internetes és BGP anomáliaforrások mutatják, hogy egy fizikai hiba digitális üzemszünetté alakul-e.",
         "s3": "A kereskedelmi folyosók, az ország rezilienciája és redundancia adatok azt mutatják, ki veszíti el először a tartalék útvonalakat.",
         "s4": "A kábel sérülése akkor számít, amikor a telekommunikációs redundancia, a kereskedelmi folyosók és az ország kitettségei egy vonalba kerülnek.",
-        "c1": "86 kábel",
+        "c1": "Tengeri kábelek",
         "c2": "BGP + üzemszünetek",
         "c3": "Kikötők + vezetékek",
         "c4": "Reziliencia",
@@ -543,51 +571,51 @@
     },
     "firstFive": {
       "eyebrow": "Nulla az orientációtól",
-      "title": "Az első öt perce az élő térképen.",
+      "title": "Mi történik az első öt percedben a térképen?",
       "sub": "Nincs túra, nincsenek üres állapotok, nincs regisztrációs fal. Ez történik valójában.",
       "f1Title": "A térkép már mozog",
       "f1Desc": "A konfliktusok, hajók, repülőgépek, tüzek és üzemszünetek az oldal betöltésével jelennek meg. Előzetes konfigurálásra nincs szükség.",
       "f2Title": "Kattintson bármely országra",
       "f2Desc": "Megnyílik egy teljes dosszié: instabilitási pontszám összetevőivel, AI-bejegyzés idézett címsorokkal, aktív jelzések, 7 napos idővonal.",
       "f3Title": "Nyomja meg a ⌘K / Ctrl-K",
-      "f3Desc": "154 parancs. Ugrás bármely rétegre, panelre vagy országra anélkül, hogy először megtanulná a felhasználói felületet.",
+      "f3Desc": "Parancsok. Ugrás bármely rétegre, panelre vagy országra a felhasználói felület megtanulása nélkül.",
       "f4Title": "Válassza ki az ön lencséjét",
-      "f4Desc": "Világ, Tech, Pénzügy, Áru, Energia vagy Boldog — ugyanaz a motor, hat hangolt monitor, egy kattintás távolságra.",
+      "f4Desc": "World, Tech, Finance, Commodity, Energy vagy Happy — ugyanaz a motor, hangolt monitorok, egy kattintás távolságra.",
       "f5Title": "Talán a tizedét látta",
       "f5Desc": "A többi akkor jelenik meg, amikor a világ mozdul — műholdas átmenetek, GPS jamming, sötét hajók, tüntetéscsoportok, siren figyelmeztetések.",
       "cta": "Indítsa el az órát"
     },
     "depth": {
       "eyebrow": "A motorháztető alatt",
-      "title": "A mélység a termék.",
+      "title": "Milyen mély a World Monitor adatmodell?",
       "sub": "Az alábbi minden szám ma élesben van az irányítópulton — nem egy ütemterv.",
-      "s1v": "56",
-      "s1l": "Térképrétegek",
-      "s2v": "500+",
-      "s2l": "Kurátori források",
-      "s3v": "65+",
-      "s3l": "Adatszolgáltatók",
-      "s4v": "13",
+      "s1v": "Megosztott",
+      "s1l": "Térképréteg-típusok",
+      "s2v": "Válogatott",
+      "s2l": "Hír- és OSINT-adatforrások",
+      "s3v": "Megjelölt",
+      "s3l": "Hozzárendelt szolgáltatók",
+      "s4v": "Élő",
       "s4l": "Szűk keresztmetszetek · élő AIS",
-      "s5v": "31",
+      "s5v": "1. szintű",
       "s5l": "Instabilitási index · élő",
-      "s6v": "196",
+      "s6v": "Nyilvános",
       "s6l": "Reziliencia rangsorok",
-      "s7v": "86",
+      "s7v": "Feltérképezett",
       "s7l": "Tengeralatti kábelek",
-      "s8v": "88",
+      "s8v": "Feltérképezett",
       "s8l": "Vezetékek és LNG",
-      "s9v": "313",
+      "s9v": "Feltérképezett",
       "s9l": "AI adatközpontok térképezve",
-      "s10v": "29",
+      "s10v": "Pontozott",
       "s10l": "Pontozható hotspotok",
-      "s11v": "92",
+      "s11v": "Élő",
       "s11l": "Tőzsdék és eszközök",
-      "s12v": "59",
+      "s12v": "Élő",
       "s12l": "MCP eszközök",
-      "s13v": "154",
+      "s13v": "Gyors",
       "s13l": "⌘K parancsok",
-      "s14v": "24",
+      "s14v": "Lokalizált",
       "s14l": "Nyelvek · RTL is",
       "s15v": "5",
       "s15l": "Független riasztásforrások",
@@ -600,7 +628,7 @@
       "n4Title": "AI adatközpont térkép",
       "n4Desc": "313 AI adatközpont feltérképezve teljesítmény- és üzemeltetői metaadatokkal — az AI verseny fizikai rétege.",
       "n5Title": "Tengeralattjáró kábelek",
-      "n5Desc": "86 tengeri kábel, amely az internetet szállítja, átfedésben a leállások és fenyegetések jeleivel.",
+      "n5Desc": "Az internetet hordozó tengeri kábelek, kimaradási és fenyegetési jelzésekkel átfedve.",
       "n6Title": "Tüntetéskövetés",
       "n6Desc": "Kettős forrásból származó tüntetésdetektálás keresztforrás-deduplikációval — jel, nem pletyka.",
       "faith": "Ne higgy csak a számoknak —",
@@ -609,10 +637,10 @@
     },
     "agents": {
       "eyebrow": "Építőknek és AI ágenseknek",
-      "title": "Építs élő világtudáson alapuló alkalmazásokat — bármilyen stackből.",
+      "title": "Hogyan építhetek rá a World Monitor-ra a saját stack-ből?",
       "sub": "A térkép minden eleme API is. Kösd össze Claudeval MCP-n keresztül, hívd meg a REST végpontokat bárhonnan, vagy telepítsen natív klienst Pythonhoz, Rubyhoz, Gohoz vagy JavaScripthez — a kódod élő adatokkal kutat az edzésadatok helyett.",
-      "b1": "59 MCP-eszköz — kockázati pontszámok, szűk keresztmetszetek, konfliktusok, piacok, összefoglalók",
-      "b2": "Dokumentált REST API — 193 művelet, egy OpenAPI 3.1 specifikáció, egy kulcs",
+      "b1": "MCP eszközök — kockázati pontszámok, szűk keresztmetszetek, konfliktusok, piacok, összefoglalók",
+      "b2": "Dokumentált REST API — egy OpenAPI 3.1 specifikáció, egy kulcs",
       "b3": "Hivatalos SDK-k az npm-en, PyPI-n, RubyGemsen és Go-n — zéró függőség, MCP-első",
       "b4": "JMESPath vetítés minden hívásban — csak a szükséges mezőket kérj le",
       "cta": "Olvass a fejlesztői dokumentációban",
@@ -620,7 +648,14 @@
       "termQuery": "Romlanak-e a vörös-tengeri kitettségünk ezekben a héten?",
       "termAnswer": "Az átmeneti számok csökkennek heti összehasonlítással; háborús kockázati szint megemelkedett; két sűrűség-anomália az utolsó 48 órában.",
       "termDocs": "Lásd a teljes eszközreferenciát →",
-      "promise": "Egy kulcs. 59 MCP-eszköz. Teljes REST API. Nyelvspecifikus kliensek."
+      "promise": "Egy kulcs. MCP eszközök. Egy teljes REST API. Nyelvspecifikus kliensek.",
+      "resources": {
+        "title": "Válassza ki a belépési pontot",
+        "briefing": "Ágens briefing",
+        "mcp": "MCP szerver",
+        "api": "REST API",
+        "agentView": "Ágens nézet"
+      }
     },
     "pricing": {
       "eyebrow": "Hozzáférés",
@@ -629,37 +664,37 @@
       "sub": "Az irányítópult ingyenes — minden térképréteg kivéve a Resilience, minden adatforrás, regisztráció nélkül. A Pro verzió hozzáadja a döntésmeghozatali réteget.",
       "freeTitle": "Ingyenes",
       "freeDesc": "Az ingyenes verzió egy teljes termék, nem egy próbaverzió. Minden térképréteg kivéve a Resilience, minden adatforrás, minden monitor — regisztráció nélkül, próbaperiódus nélkül.",
-      "freeF1": "Minden térképréteg a Resilience kivételével & 500+ adatforrás",
+      "freeF1": "Összes térképréteg kivéve a Resilience & válogatott feedek",
       "freeF2": "Országösszefoglalók, hotspotok, instabilitási pontok",
       "freeF3": "Szoros keresztmetszetek, kábelek, kaszkád-analízis",
       "freeF4": "Friss riasztási csatorna és figyelőlisták",
       "proTitle": "Pro",
       "proDesc": "Cselekedj. A döntési réteg, amelyet a fenti pillanatokban használunk:",
-      "proF1": "WM Analyst — csevegj 30+ élő szolgáltatáson keresztül, idézésekkel",
+      "proF1": "WM Analyst — beszélgetés élő szolgáltatások között, idézésekkel",
       "proF2": "Forgatókönyv-motor és Route Explorer — szimuláld a zavaroknak a becsapódása előtt",
       "proF3": "Személyes AI összefoglaló — naponta, naponta kétszer vagy hetente, Slackra, Telegramba vagy e-mailbe",
-      "proF4": "MCP, REST API és hivatalos SDK-k — 59 eszköz egy kulcs alatt",
+      "proF4": "MCP, REST API & hivatalos SDK-k — élő eszközök egy kulcs alatt",
       "proF5": "Egyéni widgetépítő saját panelek készítéséhez",
       "cta": "Tekintsd meg a csomagokat és árakat",
       "note": "Már $39,99/hó · 3 hónap ingyenes éves számlázás esetén"
     },
     "faq": {
       "eyebrow": "Nincs másodszándék",
-      "title": "Jogos kérdések.",
+      "title": "Milyen gyakori kérdések vannak a World Monitor-ról?",
       "q1": "Tényleg ingyenes a World Monitor?",
-      "a1": "Igen. Az élő térkép — minden réteg a Resilience kivételével, 500+ adatforrás, országjelentések, Breaking Alert értesítések, mind a hat monitor — ingyenes, regisztráció és próbaperiódus nélkül. A Pro verzió az adatforrásokért fizet: hozzáadja a WM Analyst alkalmazást, a forgatókönyv-motort, a Route Explorer funkciót, az ütemezett kivonatokat, MCP-hozzáférést AI-ügyfeleknek és a Resilience térképréteget. Nincs hirdetés, és nincs fiók, így nincs felhasználói adat az eladáshoz.",
+      "a1": "Igen. Az élő térkép — minden réteg kivéve a Resilience, válogatott feedek, országösszefoglalók, break riasztások és monitorozási felületek — ingyenes regisztráció és próbaidő nélkül. A Pro a feedekért fizet: hozzáadja a WM Analystr, a forgatókönyv motort, a Route Explorert, az ütemezett összefoglalókat, az MCP hozzáférést az AI-ügyfeleknek és a Resilience térképréteg. Nincsenek hirdetések, és mivel nincs fiók, nincsenek felhasználói adatok az eladáshoz.",
       "q2": "Mi az a globális hírszerzési irányítópult?",
       "a2": "Egy egyetlen élő nézet, amely olyan jeleket egyesít, amelyeket a legtöbb eszköz külön tárol: konfliktusesemények, hajó- és légiforgalom-követés, szállítási szűk keresztmetszetek, műholdak, tengeralatti kábelek, vezetékek, piacok és kiberfenyegetések — egy valós idejű világtérképen, AI-pontozással és összefoglalókkal. A World Monitor egy ingyenes ilyen.",
       "q3": "Honnan származnak az adatok?",
-      "a3": "65+ szolgáltatótól, név szerint: ACLED és UCDP a konfliktusokhoz, AISStream az élő hajókhoz, OpenSky a repülőgépekhez, NASA FIRMS a tüzekhez, USGS a földrengésekhez, IMF, BIS, FRED és Finnhub a piacokhoz és makrogazdasághoz — plusz 500+ válogatott hírhírforrás. Minden panel bemutatja forrásait és időbélyegeit.",
+      "a3": "Nevesített szolgáltatók közé tartozik az ACLED és UCDP a konfliktusokért, az AISStream az élő hajókért, az OpenSky a repülőgépekért, a NASA FIRMS a tüzekért, az USGS a földrengésekért, az IMF, BIS, FRED és Finnhub a piacokért és makroökonómiáért — valamint válogatott hírfeedek. Minden panel felsorolja a forrásait és az időbélyegeket beágyazva.",
       "q4": "Valós időben tudom követni a szűk keresztmetszetek, például Hormuz vagy Bab el-Mandeb?",
-      "a4": "Igen. 13 szűk keresztmetszetetet követünk élő AIS-hajószámokkal, heti változásokkal és zavaradási pontszámokkal — és a sűrűségi anomáliákat az egyes szorosok gördülő alapértékéhez képest jelezzük.",
+      "a4": "Igen. A szűk keresztmetszetek nyomon követésre kerülnek élő AIS hajóalakokkal, hét/hét fordulatváltás és zavar pontozásával — és a sűrűségi anomáliák mindegyik szoros alapvonalához képest jelzésre kerülnek.",
       "q5": "Miben különbözik ez egy konfliktustérképtől, mint a Liveuamap?",
-      "a5": "A konfliktus 56 rétegből csak egy. A World Monitor a konfliktusokat a szállítással, a katonai repülésekkel, az infrastruktúrával, a piacokkal és a kiberfenyegetésekkel egyesíti — majd az AI kipontozza a konvergenciát: instabilitási indexek, kritikus pontok eszkalációja, megerősített fontos riasztások és napi összefoglalók.",
+      "a5": "A konfliktus egyetlen térképréteg. A World Monitor összekapcsolja a konfliktusokat a szállítmányozással, katonai repülésekkel, infrastruktúrával, piacokkal és kibertámadásokkal — majd az AI kiértékeli a konvergenciát: instabilitási indexek, forrópontok eszkalációja, megerősített feltörési riasztások és napi tájékoztatók.",
       "q6": "Miért bízzak egy riasztásban?",
       "a6": "Egy fontos szalagcím csak akkor jelenik meg, ha független forrásfajták megerősítik — hírosztályozás, kulcsszósebesség, kritikus pont eskalációja, katonai ugrások, hivatalos szirénák — deduplikálva és sebességkorláttal. Kevesebb riasztás, valódi riasztások.",
       "q7": "Használhatják azt AI-ügynökök, mint a Claude vagy a GPT?",
-      "a7": "Igen. A World Monitor egy 59 eszközből álló MCP-szervert szállít, így a Claude, a GPT vagy bármilyen MCP-kompatibilis ügynök lekérdezheti az élő kockázati pontszámokat, szűk keresztmetszet-státuszt, konfliktusokat, piacokat és összefoglalókat — JMESPath-vetítéssel, hogy az ügynökök pontosan azt kapják meg, amire szükségük van.",
+      "a7": "Igen. A World Monitor MCP szerverrel érkezik egy élő eszközregisztrációval, így a Claude, a GPT vagy bármely MCP-kompatibilis ügynök lekérdezheti az élő kockázati pontszámokat, szoros pontok állapotát, konfliktusokat, piacokat és tájékoztatókat — JMESPath vetítéssel, így az ügynökök pontosan azt kapják meg, amire szükségük van.",
       "q8": "Szükségem van fiókra?",
       "a8": "Nem. Az irányítópult azonnal működik regisztráció nélkül. A fiók csak akkor számít, ha a Pro verzióra frissítesz vagy beállításokat szeretnél szinkronizálni az eszközök között.",
       "q9": "Nyílt forráskódú?",
@@ -670,11 +705,37 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "A világtérkép nem vár rád.",
-      "subtitle": "Amíg ezt az oldalt olvasod, az továbbra is mozgott — 13 szoros, 29 kritikus pont, 92 piac, 500+ hírforrás. Az egyik közülük holnap első oldala. Találd meg először — ingyenes, nincs fiók.",
+      "title": "Hogyan kezdhetek a világtérkép figyelésbe?",
+      "subtitle": "Míg ezt az oldalt olvasod, továbbra is mozgott — szorosok, forrópontok, piacok, kurátori feedek. Az egyikük holnap címlapja. Találd meg először — ingyenes, regisztráció nélkül.",
       "button": "Találd meg először",
       "note": "Ingyenes · Nincs regisztráció · Másodpercekben betöltődik",
       "secondary": "Vagy tekintsd meg a Pro csomagokat →"
+    },
+    "tasks": {
+      "eyebrow": "Kezdje a kérdéssel",
+      "title": "Mit szeretne megtudni?",
+      "sub": "Válassza ki az adott feladat megfelelő bizonyítéknyomvonalát. Minden útvonal forrásokkal alátámasztott nézetet nyit meg, nem pedig üres irányítópultot.",
+      "verifyTitle": "Friss esemény ellenőrzése",
+      "verifyDesc": "Az aktuális kríziskövetők, dátumozott metrikák és idézett kontextus ellenőrzésével biztosíthatod egy újdonság megbízhatóságát.",
+      "chokepointTitle": "Szoros pont ellenőrzése",
+      "chokepointDesc": "Vizsgálja meg a zavarok állapotát, a hajóáramlásokat és a kockázatokat a kritikus tengeri átjárókon.",
+      "countryRiskTitle": "Országkockázati lépés magyarázata",
+      "countryRiskDesc": "Kövesse nyomon az országváltozás mögött meghúzódó politikai, biztonsági, gazdasági és ellenálló képesség jeleket.",
+      "open": "Bizonyítékok megnyitása"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Szállítási napló",
+    "title": "Újdonságok a WorldMonitorban",
+    "subtitle": "Az elmúlt 30 nap új funkciói — hibajavítások és mérnöki munkák nélkül.",
+    "proTag": "PRO",
+    "m1": "Fizikai prémium divergencia index — SGE vs COMEX, történelemmel",
+    "m2": "Árucikk-ellátási sérülékenységi rangsorok — szűk keresztmetszetek függőségi felbontása",
+    "m3": "Ásványi anyag termeléskoncentrációja és a védelmi ipari bázis",
+    "m4": "Öt faktoros ellenálló képességi scorecardok mutatószintű pontszámokkal",
+    "m5": "Egyéni Telegram csatorna megfigyelési listák",
+    "m6": "Jelkulcs alapú bejelentkezés",
+    "m7": "Az AI ügynökök irányíthatják a dashboardot — panelek, lapok, térképrétegek és missions",
+    "m8": "Gazdagabb ország-ellenálló képességi oldalak"
   }
 }

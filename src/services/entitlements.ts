@@ -24,7 +24,9 @@ export interface EntitlementState {
     planLimits?: {
       apiRequestsPerDay: number | null;
       apiBurstRequestsPerMinute: number | null;
-      mcpCallsPerDay: number | null;
+      /** `"shared-api-budget"` = no separate MCP allowance; MCP calls charge
+       *  `apiRequestsPerDay`. Mirrors `PlanLimits` in convex/config/productCatalog.ts. */
+      mcpCallsPerDay: number | null | "shared-api-budget";
       mcpBurstRequestsPerMinute: number | null;
       dashboardAiCallsPerDay?: number | null;
     };
@@ -53,11 +55,51 @@ export interface EntitlementState {
   validUntil: number;
 }
 
+/**
+ * Account-scoped progress for resolving the current entitlement snapshot.
+ *
+ * `currentState === null` alone is ambiguous: it can mean that a signed-in
+ * account is still moving through the bounded Clerk/Convex auth retries, or
+ * that the handoff reached a terminal failure. Keep that distinction explicit
+ * so billing UI never converts an in-flight retry into a failure message.
+ */
+export type EntitlementVerificationStatus =
+  | 'idle'
+  | 'pending'
+  | 'ready'
+  | 'unavailable';
+
 // Module-level state
 let currentState: EntitlementState | null = null;
 const listeners = new Set<(state: EntitlementState | null) => void>();
+let verificationStatus: EntitlementVerificationStatus = 'idle';
+const verificationListeners = new Set<(status: EntitlementVerificationStatus) => void>();
 let initialized = false;
 let unsubscribeFn: (() => void) | null = null;
+
+function setEntitlementVerificationStatus(status: EntitlementVerificationStatus): void {
+  if (verificationStatus === status) return;
+  verificationStatus = status;
+  for (const cb of verificationListeners) {
+    try {
+      cb(status);
+    } catch (err) {
+      console.warn('[entitlements] verification listener threw; continuing fan-out:', err);
+    }
+  }
+}
+
+export function beginEntitlementVerification(): void {
+  setEntitlementVerificationStatus('pending');
+}
+
+export function markEntitlementVerificationUnavailable(): void {
+  if (currentState === null) setEntitlementVerificationStatus('unavailable');
+}
+
+export function resetEntitlementVerification(): void {
+  setEntitlementVerificationStatus('idle');
+}
 
 /**
  * Fan a new snapshot out to every subscriber, isolating failures.
@@ -92,17 +134,20 @@ export async function initEntitlementSubscription(
     isCurrent() && (_userId === undefined || getCurrentClerkUser()?.id === _userId)
   );
   if (initialized || !isExpectedAccount()) return;
+  if (currentState === null) beginEntitlementVerification();
 
   try {
     const client = await getConvexClient();
     if (!client) {
       console.log('[entitlements] No VITE_CONVEX_URL — skipping Convex subscription');
+      if (isExpectedAccount()) markEntitlementVerificationUnavailable();
       return;
     }
 
     const api = await getConvexApi();
     if (!api) {
       console.log('[entitlements] Could not load Convex API — skipping subscription');
+      if (isExpectedAccount()) markEntitlementVerificationUnavailable();
       return;
     }
 
@@ -117,6 +162,7 @@ export async function initEntitlementSubscription(
       : await waitForConvexAuth(10_000);
     if (!authed) {
       console.log('[entitlements] Convex auth not established — skipping subscription');
+      if (isExpectedAccount()) markEntitlementVerificationUnavailable();
       return;
     }
     if (!isExpectedAccount()) return;
@@ -127,11 +173,13 @@ export async function initEntitlementSubscription(
       (result: EntitlementState | null) => {
         if (!isExpectedAccount()) return;
         currentState = result;
+        setEntitlementVerificationStatus('ready');
         notifyListeners(result);
       },
       (err: Error) => {
         if (!isExpectedAccount()) return;
         console.warn('[entitlements] Subscription query error:', err.message);
+        markEntitlementVerificationUnavailable();
       },
     );
 
@@ -139,6 +187,7 @@ export async function initEntitlementSubscription(
     initialized = true;
   } catch (err) {
     console.error('[entitlements] Failed to initialize Convex subscription:', err);
+    if (isExpectedAccount()) markEntitlementVerificationUnavailable();
     // Do not rethrow — entitlement service failure must not break the dashboard
   }
 }
@@ -196,6 +245,25 @@ export function onEntitlementChange(
 }
 
 /**
+ * Register a callback for entitlement-verification progress.
+ * The current status is replayed immediately so late UI subscribers cannot
+ * recreate a local timeout with a different lifecycle.
+ */
+export function onEntitlementVerificationChange(
+  cb: (status: EntitlementVerificationStatus) => void,
+): () => void {
+  verificationListeners.add(cb);
+  cb(verificationStatus);
+  return () => {
+    verificationListeners.delete(cb);
+  };
+}
+
+export function getEntitlementVerificationStatus(): EntitlementVerificationStatus {
+  return verificationStatus;
+}
+
+/**
  * Returns the current entitlement state, or null if not yet loaded.
  */
 export function getEntitlementState(): EntitlementState | null {
@@ -225,6 +293,7 @@ export function hasTier(minTier: number): boolean {
  * snapshot they control — `currentState` is module-private and has no setter,
  * so the alternative is re-implementing these three conditions in a mock,
  * where they silently drift the moment this rule changes (#5632).
+ * @internal Only intended to be called by `isEntitled()` and test seams.
  */
 export function isEntitlementActive(
   state: EntitlementState | null,

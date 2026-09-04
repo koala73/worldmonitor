@@ -29,7 +29,7 @@ description: "主题标签页式 Telegram 频道聚合面板 — 通过后端 re
 
 | 访问面 | 端点 | 备注 |
 |---|---|---|
-| 面板 relay 路径 | `GET /api/telegram-feed` | 主题标签页式源的当前浏览器路径。 |
+| 面板 relay 路径 | `GET /api/telegram-feed` | 第一方浏览器路径。需要仪表盘会话凭证（`wms_`）；消息正文为 R4。 |
 | 生成的服务 RPC | `GET /api/intelligence/v1/list-telegram-feed` | 带 `topic`、`channel` 和 `limit` 查询参数的直接 IntelligenceService RPC；抓取同一 Railway relay。 |
 
 ## 刷新频率

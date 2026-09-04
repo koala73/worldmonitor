@@ -6,6 +6,7 @@ import { getForecastMacroRegion } from '../../shared/forecast-macro-regions.js';
 import { unsafeRawHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { mergeCachedCaseFiles, needsCaseFileRefetch, shouldFetchCaseFile } from './forecast-case-files';
+import { bindActivationKeys } from '@/utils/activation';
 
 const DOMAINS = ['all', 'conflict', 'market', 'supply_chain', 'political', 'military', 'cyber', 'infrastructure'] as const;
 const PANEL_MIN_PROBABILITY = 0.1;
@@ -113,9 +114,9 @@ function injectStyles(): void {
   _styleInjected = true;
   const style = document.createElement('style');
   style.textContent = `
-    .fc-panel { font-size: 12px; }
+    .fc-panel { font-size: calc(12px * var(--wm-panel-effective-scale, 1)); }
     .fc-filters { display: flex; flex-wrap: wrap; gap: 4px; padding: 6px 8px; border-bottom: 1px solid var(--border-color, #333); }
-    .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: 11px; font-family: inherit; }
+    .fc-filter { background: transparent; border: 1px solid var(--border-color, #444); color: var(--text-secondary, #aaa); padding: 2px 8px; border-radius: 3px; cursor: pointer; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-family: inherit; }
     .fc-filter.fc-active { background: var(--accent-color, #3b82f6); color: #fff; border-color: var(--accent-color, #3b82f6); }
 
     /* ── NEXUS: theater grid ─────────────────────────────────────────────── */
@@ -141,19 +142,19 @@ function injectStyles(): void {
     .fc-theater-card:hover { border-color: #40464f; transform: translateY(-1px); }
     .fc-theater-card.fc-theater-selected { border-color: var(--accent-color, #58a6ff); background: rgba(88,166,255,0.04); }
     .fc-theater-top { display: flex; align-items: flex-start; justify-content: space-between; margin-bottom: 10px; }
-    .fc-theater-name { font-size: 11px; font-weight: 700; line-height: 1.3; color: var(--text-primary, #e6edf3); flex: 1; padding-right: 8px; }
+    .fc-theater-name { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 700; line-height: 1.3; color: var(--text-primary, #e6edf3); flex: 1; padding-right: 8px; }
     .fc-gauge-wrap { position: relative; width: 38px; height: 38px; flex-shrink: 0; }
     .fc-gauge-svg { width: 38px; height: 38px; transform: rotate(-90deg); }
     .fc-gauge-bg { fill: none; stroke: var(--border-color, #30363d); stroke-width: 4; }
     .fc-gauge-fill { fill: none; stroke-width: 4; stroke-linecap: round; }
-    .fc-gauge-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: 9px; font-weight: 700; }
-    .fc-theater-path { font-size: 9px; color: var(--text-secondary, #7d8590); line-height: 1.4; margin-top: 4px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-    .fc-path-type { font-size: 8px; padding: 1px 4px; border-radius: 2px; font-weight: 600; letter-spacing: 0.03em; opacity: 0.75; white-space: nowrap; }
+    .fc-gauge-label { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; }
+    .fc-theater-path { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; margin-top: 4px; display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+    .fc-path-type { font-size: calc(8px * var(--wm-panel-effective-scale, 1)); padding: 1px 4px; border-radius: 2px; font-weight: 600; letter-spacing: 0.03em; opacity: 0.75; white-space: nowrap; }
     .fc-path-type-escalation    { background: rgba(224,82,82,0.2); color: #e05252; border: 1px solid rgba(224,82,82,0.3); }
     .fc-path-type-containment   { background: rgba(63,185,80,0.15); color: #3fb950; border: 1px solid rgba(63,185,80,0.25); }
     .fc-path-type-market_cascade { background: rgba(210,153,34,0.15); color: #d29922; border: 1px solid rgba(210,153,34,0.25); }
     .fc-cat-tag {
-      font-size: 9px; padding: 1px 5px; border-radius: 3px; white-space: nowrap;
+      font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 1px 5px; border-radius: 3px; white-space: nowrap;
       flex-shrink: 0; font-weight: 500; display: inline-block;
     }
 
@@ -166,70 +167,73 @@ function injectStyles(): void {
       overflow: hidden;
     }
     .fc-theater-detail-hdr { padding: 10px 12px; border-bottom: 1px solid var(--border-color, #30363d); display: flex; align-items: center; gap: 8px; }
-    .fc-theater-detail-name { font-size: 12px; font-weight: 700; color: var(--text-primary, #e6edf3); }
+    .fc-theater-detail-name { font-size: calc(12px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: var(--text-primary, #e6edf3); }
     .fc-theater-paths { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; padding: 10px 12px; }
     @media (max-width: 480px) { .fc-theater-paths { grid-template-columns: 1fr; } }
     .fc-path-card { background: rgba(0,0,0,0.25); border: 1px solid var(--border-color, #30363d); border-radius: 4px; padding: 9px 10px; }
-    .fc-path-label { font-size: 10px; font-weight: 700; color: var(--text-primary, #e6edf3); margin-bottom: 2px; }
-    .fc-path-conf { font-size: 9px; color: var(--text-secondary, #7d8590); margin-bottom: 5px; }
+    .fc-path-label { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: var(--text-primary, #e6edf3); margin-bottom: 2px; }
+    .fc-path-conf { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); margin-bottom: 5px; }
     .fc-path-bar { height: 2px; border-radius: 1px; margin: 4px 0; }
-    .fc-path-summary { font-size: 10px; color: var(--text-secondary, #7d8590); line-height: 1.5; }
+    .fc-path-summary { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.5; }
     .fc-path-actors { display: flex; flex-wrap: wrap; gap: 3px; margin-top: 5px; }
-    .fc-actor-chip { font-size: 9px; padding: 1px 5px; border: 1px solid var(--border-color, #30363d); border-radius: 2px; color: var(--text-secondary, #7d8590); background: rgba(255,255,255,0.02); }
+    .fc-actor-chip { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 1px 5px; border: 1px solid var(--border-color, #30363d); border-radius: 2px; color: var(--text-secondary, #7d8590); background: rgba(255,255,255,0.02); }
     .fc-theater-footer { padding: 8px 12px; border-top: 1px solid var(--border-color, #30363d); display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
     .fc-theater-footer-section { }
-    .fc-footer-title { font-size: 9px; color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
-    .fc-footer-item { font-size: 9px; color: var(--text-secondary, #7d8590); padding: 2px 0; line-height: 1.4; }
+    .fc-footer-title { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 5px; }
+    .fc-footer-item { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); padding: 2px 0; line-height: 1.4; }
     .fc-footer-item::before { content: '›'; margin-right: 4px; }
     .fc-stab-item::before { color: #3fb950; }
     .fc-inval-item::before { color: #e05252; }
     .fc-react-item::before { color: #58a6ff; }
 
     /* ── Section label ───────────────────────────────────────────────────── */
-    .fc-section-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary, #7d8590); padding: 6px 8px 4px; }
+    .fc-section-label { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.1em; color: var(--text-secondary, #7d8590); padding: 6px 8px 4px; }
 
     /* ── Forecast probability table ──────────────────────────────────────── */
     .fc-prob-table { border: 1px solid var(--border-color, #30363d); border-radius: 4px; overflow: hidden; margin: 0 8px 8px; }
     .fc-prob-hdr { display: grid; grid-template-columns: 1fr 80px 100px 60px; padding: 8px 14px; border-bottom: 1px solid var(--border-color, #30363d); }
-    .fc-prob-hdr span { font-size: 9px; color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.08em; }
+    .fc-prob-hdr span { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); text-transform: uppercase; letter-spacing: 0.08em; }
     .fc-prob-item { border-bottom: 1px solid var(--border-color, #30363d); }
+    .fc-prob-item:focus-visible { outline: 2px solid var(--text); outline-offset: -2px; }
     .fc-prob-item:last-child { border-bottom: none; }
     .fc-prob-row { display: grid; grid-template-columns: 1fr 80px 100px 60px; align-items: center; padding: 9px 14px; cursor: pointer; transition: background 0.1s; }
     .fc-prob-item:hover .fc-prob-row { background: rgba(255,255,255,0.02); }
-    .fc-prob-label { font-size: 10px; color: var(--text-secondary, #7d8590); line-height: 1.4; }
+    .fc-prob-label { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #7d8590); line-height: 1.4; }
     .fc-bar-wrap { display: flex; align-items: center; gap: 8px; }
     .fc-prob-bar-track { flex: 1; height: 4px; background: var(--border-color, #30363d); border-radius: 2px; overflow: hidden; min-width: 40px; }
     .fc-prob-bar-fill { height: 100%; border-radius: 2px; }
-    .fc-prob-pct { font-size: 11px; font-weight: 700; min-width: 30px; text-align: right; }
-    .fc-trend-text { font-size: 10px; }
-    .fc-domain-tag { font-size: 9px; padding: 2px 6px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .fc-prob-pct { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); font-weight: 700; min-width: 30px; text-align: right; }
+    .fc-trend-text { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
+    .fc-domain-tag { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding: 2px 6px; border-radius: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
     /* ── Detail toggle (hidden by default; shown on item hover) ──────────── */
     .fc-hidden { display: none; }
     .fc-toggle-row { display: none; flex-wrap: wrap; gap: 8px; padding: 0 14px 8px; }
-    .fc-prob-item:hover .fc-toggle-row { display: flex; }
-    .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: 11px; }
+    .fc-prob-item:hover .fc-toggle-row,
+    .fc-prob-item:focus-within .fc-toggle-row { display: flex; }
+    .fc-toggle:focus-visible { outline: 2px solid var(--text); outline-offset: 1px; }
+    .fc-toggle { cursor: pointer; color: var(--text-secondary, #7d8590); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
     .fc-toggle:hover { color: var(--text-primary, #e6edf3); }
     .fc-detail { padding: 8px 14px 4px; border-top: 1px solid var(--border-color, #2a2a2a); }
     .fc-detail-grid { display: grid; gap: 8px; }
     .fc-section { display: grid; gap: 4px; }
-    .fc-section-title { color: var(--text-secondary, #888); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; }
-    .fc-section-copy { font-size: 11px; color: var(--text-primary, #d3d3d3); line-height: 1.45; }
+    .fc-section-title { color: var(--text-secondary, #888); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.08em; }
+    .fc-section-copy { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-primary, #d3d3d3); line-height: 1.45; }
     .fc-list-block { display: grid; gap: 4px; }
-    .fc-list-item { font-size: 11px; color: var(--text-secondary, #a0a0a0); line-height: 1.4; }
+    .fc-list-item { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #a0a0a0); line-height: 1.4; }
     .fc-list-item::before { content: ''; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #666); margin-right: 6px; vertical-align: middle; }
     .fc-chip-row { display: flex; flex-wrap: wrap; gap: 6px; }
-    .fc-chip { border: 1px solid var(--border-color, #363636); border-radius: 999px; padding: 2px 8px; font-size: 10px; color: var(--text-secondary, #9a9a9a); background: rgba(255,255,255,0.02); }
+    .fc-chip { border: 1px solid var(--border-color, #363636); border-radius: 999px; padding: 2px 8px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #9a9a9a); background: rgba(255,255,255,0.02); }
     .fc-perspectives { margin-top: 2px; }
-    .fc-perspective { font-size: 11px; color: var(--text-secondary, #999); padding: 2px 0; line-height: 1.4; }
+    .fc-perspective { font-size: calc(11px * var(--wm-panel-effective-scale, 1)); color: var(--text-secondary, #999); padding: 2px 0; line-height: 1.4; }
     .fc-perspective strong { color: var(--text-primary, #ccc); font-weight: 600; }
     .fc-scenario { font-style: italic; }
     .fc-signals { padding: 8px 14px 4px; border-top: 1px solid var(--border-color, #2a2a2a); }
-    .fc-signals-title { color: var(--text-secondary, #888); font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
-    .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: 11px; padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
+    .fc-signals-title { color: var(--text-secondary, #888); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 4px; }
+    .fc-signal { color: var(--text-secondary, #a0a0a0); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); padding: 3px 0 3px 12px; line-height: 1.45; position: relative; margin-top: 2px; }
     .fc-signal::before { content: ''; position: absolute; left: 0; top: 9px; display: inline-block; width: 6px; height: 1px; background: var(--text-secondary, #555); }
     .fc-empty { padding: 20px; text-align: center; color: var(--text-secondary, #888); }
-    .fc-source-notice { margin: 6px 8px 0; padding: 6px 8px; border: 1px solid rgba(210,153,34,0.35); border-radius: 4px; color: #d29922; background: rgba(210,153,34,0.08); font-size: 10px; line-height: 1.35; }
+    .fc-source-notice { margin: 6px 8px 0; padding: 6px 8px; border: 1px solid rgba(210,153,34,0.35); border-radius: 4px; color: #d29922; background: rgba(210,153,34,0.08); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); line-height: 1.35; }
 
     /* ── Simulation confidence sub-bar (Option D) ────────────────────────── */
     /* Thin colored underbar below the forecast title. Width encodes sim       */
@@ -238,11 +242,11 @@ function injectStyles(): void {
     .fc-sim-bar-wrap { margin-top: 4px; }
     .fc-sim-bar { height: 2px; border-radius: 1px; opacity: 0.45; transition: opacity 0.15s; }
     .fc-prob-item:hover .fc-sim-bar { opacity: 0.9; }
-    .fc-sim-label { font-size: 9px; display: none; margin-top: 2px; line-height: 1.2; }
+    .fc-sim-label { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); display: none; margin-top: 2px; line-height: 1.2; }
     .fc-prob-item:hover .fc-sim-label { display: block; }
 
     /* ── Simulation verdict chip ─────────────────────────────────────────── */
-    .fc-sim-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: 9px; font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; flex-shrink: 0; line-height: 1.6; }
+    .fc-sim-chip { display: inline-flex; align-items: center; gap: 3px; padding: 1px 6px; border-radius: 3px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 600; letter-spacing: 0.03em; white-space: nowrap; flex-shrink: 0; line-height: 1.6; }
     .fc-sim-chip::before { content: ''; display: inline-block; width: 4px; height: 4px; border-radius: 50%; flex-shrink: 0; }
     .fc-sim-chip--backed   { background: rgba(63,185,80,0.12);  color: #3fb950; border: 1px solid rgba(63,185,80,0.28); }
     .fc-sim-chip--backed::before   { background: #3fb950; }
@@ -287,6 +291,7 @@ export class ForecastPanel extends Panel {
   constructor() {
     super({ id: 'forecast', title: 'AI Forecasts', showCount: true, infoTooltip: t('components.forecast.infoTooltip') });
     injectStyles();
+    bindActivationKeys(this.content, '[data-fc-toggle]');
     this.content.addEventListener('click', (e) => {
       const target = e.target as HTMLElement;
 
@@ -323,7 +328,10 @@ export class ForecastPanel extends Panel {
         const item = toggle.closest('.fc-prob-item');
         const panelId = toggle.dataset.fcToggle;
         const detail = panelId ? item?.querySelector(`[data-fc-panel="${panelId}"]`) as HTMLElement | null : null;
-        if (detail) detail.classList.toggle('fc-hidden');
+        if (detail) {
+          detail.classList.toggle('fc-hidden');
+          toggle.setAttribute('aria-expanded', String(!detail.classList.contains('fc-hidden')));
+        }
         // The bootstrap payload carries the LIST, not the dossiers — 78% of the old
         // key was caseFile prose nobody expands (#5300). Fetch them the first time
         // someone actually opens one; the feed is CDN-shielded, so this is cheap.
@@ -662,7 +670,7 @@ export class ForecastPanel extends Panel {
     const demoted = f.demotedBySimulation ?? false;
 
     return `
-      <div class="fc-prob-item">
+      <div class="fc-prob-item" tabindex="0">
         <div class="fc-prob-row"${demoted ? ' style="opacity:0.5"' : ''}>
           <div class="fc-prob-label"
                style="border-left:2px solid ${catColor}47;padding-left:6px">
@@ -685,8 +693,8 @@ export class ForecastPanel extends Panel {
           </span>
         </div>
         <div class="fc-toggle-row">
-          <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}">Analysis</span>
-          ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}">Signals (${sigs.length})</span>` : ''}
+          <span class="fc-toggle" data-fc-toggle="detail-${escapeHtml(f.id)}" role="button" tabindex="0" aria-expanded="false">Analysis</span>
+          ${sigs.length > 0 ? `<span class="fc-toggle" data-fc-toggle="signals-${escapeHtml(f.id)}" role="button" tabindex="0" aria-expanded="false">Signals (${sigs.length})</span>` : ''}
         </div>
         <div class="fc-detail fc-hidden" data-fc-panel="detail-${escapeHtml(f.id)}">${f.caseFile ? this.renderDetailBody(f) : ''}</div>
         ${signalsHtml ? `<div class="fc-signals fc-hidden" data-fc-panel="signals-${escapeHtml(f.id)}">${signalsHtml}</div>` : ''}

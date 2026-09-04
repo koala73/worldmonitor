@@ -343,6 +343,20 @@ describe('primeExportGateActivation — single-flight probe', () => {
     assert.equal(isExportGateActive(), true);
   });
 
+  it('requests the public catalog without browser credentials', async () => {
+    let requestInit: RequestInit | undefined;
+    await primeExportGateActivation(async (_input, init) => {
+      requestInit = init;
+      return {
+        ok: true,
+        json: async () => ({ tiers: [{ id: 'pro_business' }] }),
+      } as never;
+    });
+
+    assert.equal(requestInit?.credentials, 'omit');
+    assert.ok(requestInit?.signal, 'the catalog timeout signal must be preserved');
+  });
+
   it('stays inactive when the catalog lacks the tier', async () => {
     await primeExportGateActivation(async () => ({
       ok: true,

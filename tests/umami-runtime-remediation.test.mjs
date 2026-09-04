@@ -111,9 +111,21 @@ describe('Umami runtime remediation (#6024)', () => {
 
     assert.ok(declaration >= 0 && bodyEnd > declaration, 'getPoolOptions() missing from the patch');
 
-    const getPoolOptions = new Function(
-      `${addedSource.slice(declaration, bodyEnd)}\nreturn getPoolOptions;`,
-    )();
+    // The patch lands in a .ts file, so the helpers carry type annotations that
+    // `new Function` cannot parse. Strip only parameter and return-type
+    // annotations for primitives — deliberately narrow, so anything more exotic
+    // fails loudly here instead of being silently mangled into passing code.
+    const poolSource = addedSource
+      .slice(declaration, bodyEnd)
+      .replace(/:\s*(?:string|number|boolean)(?=\s*[,)])/g, '')
+      .replace(/\)\s*:\s*(?:string|number|boolean)\s*\{/g, ') {');
+
+    assert.ok(
+      !/:\s*(?:string|number|boolean)\s*[,)]/.test(poolSource),
+      'type-annotation stripping left annotations behind; the eval below would be testing mangled source',
+    );
+
+    const getPoolOptions = new Function(`${poolSource}\nreturn getPoolOptions;`)();
     const previous = process.env.DATABASE_CONNECT_TIMEOUT_MS;
 
     try {
@@ -138,6 +150,50 @@ describe('Umami runtime remediation (#6024)', () => {
         process.env.DATABASE_CONNECT_TIMEOUT_MS = previous;
       }
     }
+
+    // Pool SIZE, not just acquisition time. pg.Pool defaults `max` to 10 and
+    // nothing set it, so the ceiling was a library default rather than a sizing
+    // decision — measured 2026-08-21, umami sat at exactly 10 backends at peak
+    // while its Postgres allowed 500. Callers that could not get one of those 10
+    // surfaced as `timeout exceeded when trying to connect` and reached the
+    // browser as collector HTTP 500s (WORLDMONITOR-YK).
+    const previousMax = process.env.DATABASE_POOL_MAX;
+
+    try {
+      delete process.env.DATABASE_POOL_MAX;
+      const defaulted = getPoolOptions().max;
+      assert.equal(defaulted, 20, 'default pool size must be the deliberate value, not pg.Pool\'s 10');
+      // The regression that matters is silently falling back to the library
+      // default; assert the direction explicitly so a future edit to
+      // DEFAULT_POOL_MAX cannot quietly reintroduce the starved ceiling.
+      assert.ok(defaulted > 10, 'pool size must exceed the pg.Pool default that caused the starvation');
+
+      process.env.DATABASE_POOL_MAX = '35';
+      assert.equal(getPoolOptions().max, 35, 'operators must be able to raise the ceiling without a rebuild');
+
+      for (const invalid of ['0', '-1', 'abc', '']) {
+        process.env.DATABASE_POOL_MAX = invalid;
+        assert.equal(
+          getPoolOptions().max,
+          20,
+          `${JSON.stringify(invalid)} must fall back to the default — max:0 would make pg.Pool refuse every connection`,
+        );
+      }
+    } finally {
+      if (previousMax === undefined) {
+        delete process.env.DATABASE_POOL_MAX;
+      } else {
+        process.env.DATABASE_POOL_MAX = previousMax;
+      }
+    }
+
+    // Both bounds must survive together: an edit that returns only one of them
+    // silently restores the other's unsafe library default.
+    assert.deepEqual(
+      Object.keys(getPoolOptions()).sort(),
+      ['connectionTimeoutMillis', 'max'],
+      'getPoolOptions() must carry BOTH the acquisition bound and the pool size',
+    );
   });
 
   it('fails the image build when a PrismaPg pool loses its acquisition bound', () => {
@@ -174,7 +230,7 @@ describe('Umami runtime remediation (#6024)', () => {
 
     assert.match(
       dockerfile,
-      /^FROM postgres:17-alpine@sha256:[a-f0-9]{64}$/m,
+      /^FROM postgres:18-alpine@sha256:[a-f0-9]{64}$/m,
     );
     assert.match(
       dockerfile,
@@ -187,7 +243,10 @@ describe('Umami runtime remediation (#6024)', () => {
     );
     assert.doesNotMatch(dockerfile, /(?:sh|bash)\s+-c|\$\{?DATABASE_URL/i);
     assert.match(executableSql, /LIMIT 10000/);
-    assert.match(executableSql, /pg_advisory_xact_lock/);
+    // try-, not xact-: each delete commits on its own now, so the lock has to
+    // outlive one transaction, and an overlapping tick has to skip rather than
+    // block into lock_timeout and crash the cron (#6375).
+    assert.match(executableSql, /pg_try_advisory_lock/);
     assert.doesNotMatch(executableSql, /\bTRUNCATE\b/i);
   });
 
@@ -223,7 +282,20 @@ describe('Umami runtime remediation (#6024)', () => {
       dockerfile: 'Dockerfile.umami',
       service: 'umami',
       requiredEnv: ['APP_SECRET', 'DATABASE_URL'],
-      watchPatterns: [],
+      watchPatterns: [
+        '.dockerignore',
+        'Dockerfile.umami',
+        'docker/umami/21_update_session_data/migration.sql',
+        'docker/umami/runtime/21-update-session-data-prefix.sql',
+        'docker/umami/runtime/21-update-session-data-suffix.sql',
+        'docker/umami/runtime/package.json',
+        'docker/umami/runtime/pnpm-lock.yaml',
+        'docker/umami/runtime/pnpm-workspace.yaml',
+        'docker/umami/runtime/session-data-upsert.sql',
+        'docker/umami/runtime/upstream-23-update-session-data.sql',
+        'docker/umami/session-data-upsert.patch',
+        'docker/umami/v320-compat.patch',
+      ],
       cronSchedule: null,
       documentedAt: 'docs/analytics-collector-operations.md#patched-runtime-image',
     });
@@ -235,6 +307,7 @@ describe('Umami runtime remediation (#6024)', () => {
       lifecycle: 'active',
       requiredEnv: ['PGHOST', 'PGPORT', 'PGDATABASE', 'PGUSER', 'PGPASSWORD'],
       watchPatterns: [
+        '.dockerignore',
         'scripts/umami-retention.sql',
         'Dockerfile.umami-retention',
       ],

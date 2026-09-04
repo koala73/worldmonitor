@@ -21,6 +21,10 @@ export const config = { runtime: 'edge' };
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { timingSafeEqualSecret, timingSafeIncludes } from './_crypto.js';
+// @ts-expect-error — JS module, no declaration file
+import { isSessionTokenShape } from './_session.js';
+// @ts-expect-error — JS module, no declaration file
+import { captureSilentError } from './_sentry-edge.js';
 import { validateBearerToken } from '../server/auth-session';
 import { getBillingVerificationDenial, getEntitlements } from '../server/_shared/entitlement-check';
 
@@ -33,6 +37,44 @@ const WORLDMONITOR_VALID_KEYS = (process.env.WORLDMONITOR_VALID_KEYS ?? '')
   .filter(Boolean);
 
 const WIDGET_AGENT_BODY_TIMEOUT_MS = Number(process.env.WIDGET_AGENT_BODY_TIMEOUT_MS) || 5_000;
+
+/**
+ * A timer budget from the environment, or the default.
+ *
+ * `Number(x) || fallback` alone accepts negatives, fractions, Infinity, and
+ * values past the timer range — each of which turns a guard into an outage
+ * (a negative or overflowing delay fires immediately, aborting every request;
+ * `AbortSignal.timeout` throws `RangeError` on some of them). Only a positive
+ * safe integer inside the platform timer range is honoured.
+ *
+ * Deliberately not the `parseTimeoutEnv` in server/_shared/redis.ts, despite
+ * the near-identical job: importing it would pull that module's seed-envelope,
+ * cache-contract, and Axiom usage dependencies into this EDGE bundle for the
+ * sake of four lines. (It is also looser — `parseInt` there accepts fractional
+ * and overflowing input.) If a third caller ever appears, lift a shared helper
+ * into a dependency-free module rather than reaching into redis.ts.
+ */
+function timeoutFromEnv(raw: string | undefined, fallback: number): number {
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) && parsed > 0 && parsed <= 2_147_483_647
+    ? parsed
+    : fallback;
+}
+
+// The health check is a small JSON round-trip with no model call behind it, so
+// it can carry a tight budget.
+//
+// The POST relay call deliberately has NO timeout here. It cannot get a correct
+// one from this side: the relay calls `res.writeHead()` without
+// `res.flushHeaders()` (scripts/ais-relay.cjs:12388) and its first SSE write
+// lands only after a NON-streaming `client.messages.create(...)` completes, so
+// Node holds the buffered headers and `fetch` does not settle until that whole
+// model turn is done. Any budget short enough to be useful is therefore shorter
+// than a healthy Pro generation and would abort it mid-widget — strictly worse
+// than today's unbounded wait. Bounding this properly needs a relay-side change
+// (flush an immediate `: connected` prelude plus heartbeats) so the edge can
+// measure connect time rather than model latency; tracked as follow-up work.
+const WIDGET_AGENT_HEALTH_TIMEOUT_MS = timeoutFromEnv(process.env.WIDGET_AGENT_HEALTH_TIMEOUT_MS, 10_000);
 
 async function readRequestBody(req: Request): Promise<string> {
   // Adversarial DoS guard: a POST body stream that never ends must not hold the
@@ -72,7 +114,10 @@ function json(body: unknown, status: number, cors: Record<string, string>): Resp
   });
 }
 
-export default async function handler(req: Request): Promise<Response> {
+export default async function handler(
+  req: Request,
+  ctx?: { waitUntil: (p: Promise<unknown>) => void },
+): Promise<Response> {
   if (isDisallowedOrigin(req)) {
     return json({ error: 'Origin not allowed' }, 403, {});
   }
@@ -90,6 +135,46 @@ export default async function handler(req: Request): Promise<Response> {
     });
   }
 
+  // Top-level error boundary (#7204). Every other exit on this route carries
+  // `corsHeaders`; an uncaught throw does not — it becomes an opaque Vercel
+  // platform 5xx with no CORS headers at all, so the browser reports a CORS
+  // error instead of a readable status and the widget cannot tell "relay is
+  // down" from "you are not allowed". The relay fetches are the realistic
+  // source (DNS failure, connection reset, TLS error, hung upstream), but the
+  // pre-relay auth lookups are network-backed too, so the boundary sits at the
+  // handler edge rather than around the fetch alone. Mirrors the sibling
+  // premium edge routes api/chat-analyst.ts and api/latest-brief.ts: capture
+  // server-side for a real trace, and answer with a CORS-correct transient
+  // 503 — never 403, so a relay blip can never read as an entitlement denial.
+  //
+  // `proxyWidgetAgent` is a separate function purely so this boundary does not
+  // reindent 130 lines of unchanged routing logic.
+  try {
+    return await proxyWidgetAgent(req, corsHeaders);
+  } catch (err) {
+    // `name` + `message` are the phase discriminator on-call needs: an
+    // unreachable relay reads `TypeError: … ENOTFOUND proxy.worldmonitor.app`,
+    // a health check that outran its budget reads `TimeoutError` (the
+    // DOMException `AbortSignal.timeout` throws), and an entitlement-lookup
+    // blip reads as neither. Nothing here echoes a key or a token.
+    console.error('[widget-agent] unhandled proxy failure', JSON.stringify({
+      method: req.method,
+      name: err instanceof Error ? err.name : 'Error',
+      message: err instanceof Error ? err.message : String(err),
+    }));
+    void captureSilentError(err, {
+      tags: { route: 'api/widget-agent', step: 'proxy' },
+      extra: { method: req.method },
+      ctx,
+    });
+    return json({ error: 'service_unavailable', ok: false }, 503, corsHeaders);
+  }
+}
+
+async function proxyWidgetAgent(
+  req: Request,
+  corsHeaders: Record<string, string>,
+): Promise<Response> {
   // ── Auth ──────────────────────────────────────────────────────────────────
   let isPro = false;
 
@@ -97,10 +182,14 @@ export default async function handler(req: Request): Promise<Response> {
     req.headers.get('X-WorldMonitor-Key') ??
     req.headers.get('X-Api-Key') ??
     '';
+  const explicitWorldMonitorKey = isSessionTokenShape(headerWorldMonitorKey)
+    ? ''
+    : headerWorldMonitorKey;
   const worldMonitorKey =
-    headerWorldMonitorKey ||
+    explicitWorldMonitorKey ||
     getCookie(req, 'wm-pro-key') ||
-    getCookie(req, 'wm-widget-key');
+    getCookie(req, 'wm-widget-key') ||
+    headerWorldMonitorKey;
   if (await hasValidWorldMonitorKey(worldMonitorKey)) {
     isPro = true;
   } else {
@@ -209,9 +298,12 @@ export default async function handler(req: Request): Promise<Response> {
 
   // ── Health check (GET) ────────────────────────────────────────────────────
   if (req.method === 'GET') {
+    // No stream to protect here, so bound the whole exchange (headers AND the
+    // small JSON body) rather than just the headers.
     const healthRes = await fetch(`${RELAY_BASE}/widget-agent/health`, {
       method: 'GET',
       headers: relayHeaders,
+      signal: AbortSignal.timeout(WIDGET_AGENT_HEALTH_TIMEOUT_MS),
     });
     const body = await healthRes.text();
     return new Response(body, {
@@ -242,6 +334,8 @@ export default async function handler(req: Request): Promise<Response> {
     }
   } catch { /* malformed body — relay will return 400 */ }
 
+  // No timeout here on purpose — see WIDGET_AGENT_HEALTH_TIMEOUT_MS above for
+  // why a correct one is not expressible from this side yet.
   const relayRes = await fetch(`${RELAY_BASE}/widget-agent`, {
     method: 'POST',
     headers: relayHeaders,

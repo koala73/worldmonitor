@@ -1,4 +1,4 @@
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import { getHydratedData } from '@/services/bootstrap';
@@ -43,6 +43,8 @@ export interface SanctionsPressureResult {
   totalCount: number;
   sdnCount: number;
   consolidatedCount: number;
+  semaCount: number;
+  semaError: string | null;
   newEntryCount: number;
   vesselCount: number;
   aircraftCount: number;
@@ -59,6 +61,7 @@ const breaker = createCircuitBreaker<SanctionsPressureResult>({
   name: 'Sanctions Pressure',
   cacheTtlMs: 30 * 60 * 1000,
   persistCache: true,
+  revivePersistedData: reviveSanctionsPressureResult,
 });
 
 let latestSanctionsPressureResult: SanctionsPressureResult | null = null;
@@ -69,6 +72,8 @@ const emptyResult: SanctionsPressureResult = {
   totalCount: 0,
   sdnCount: 0,
   consolidatedCount: 0,
+  semaCount: 0,
+  semaError: null,
   newEntryCount: 0,
   vesselCount: 0,
   aircraftCount: 0,
@@ -76,6 +81,28 @@ const emptyResult: SanctionsPressureResult = {
   programs: [],
   entries: [],
 };
+
+function reviveDate(value: Date): Date {
+  if (value instanceof Date) return value;
+  const revived = new Date(value as unknown as string | number);
+  return Number.isNaN(revived.getTime()) ? new Date(0) : revived;
+}
+
+function reviveNullableDate(value: Date | null): Date | null {
+  return value === null ? null : reviveDate(value);
+}
+
+function reviveSanctionsPressureResult(result: SanctionsPressureResult): SanctionsPressureResult {
+  return {
+    ...result,
+    fetchedAt: reviveDate(result.fetchedAt),
+    datasetDate: reviveNullableDate(result.datasetDate),
+    entries: result.entries.map((entry) => ({
+      ...entry,
+      effectiveAt: reviveNullableDate(entry.effectiveAt),
+    })),
+  };
+}
 
 function mapEntityType(value: ProtoSanctionsEntityType): SanctionsEntityType {
   switch (value) {
@@ -131,6 +158,7 @@ function toProgram(raw: ProtoProgramPressure): ProgramSanctionsPressure {
   };
 }
 
+
 function toResult(response: ListSanctionsPressureResponse): SanctionsPressureResult {
   return {
     fetchedAt: parseEpoch(response.fetchedAt as string | number | undefined) || new Date(),
@@ -138,6 +166,8 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
     totalCount: response.totalCount ?? 0,
     sdnCount: response.sdnCount ?? 0,
     consolidatedCount: response.consolidatedCount ?? 0,
+    semaCount: Number(response.semaCount) || 0,
+    semaError: response.semaError || null,
     newEntryCount: response.newEntryCount ?? 0,
     vesselCount: response.vesselCount ?? 0,
     aircraftCount: response.aircraftCount ?? 0,
@@ -147,11 +177,20 @@ function toResult(response: ListSanctionsPressureResponse): SanctionsPressureRes
   };
 }
 
+function isCacheableSanctionsPressureResult(result: SanctionsPressureResult): boolean {
+  return result.totalCount > 0 && result.semaError === null;
+}
+
 export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult> {
   const hydrated = getHydratedData('sanctionsPressure') as ListSanctionsPressureResponse | undefined;
   if (hydrated?.entries?.length || hydrated?.countries?.length || hydrated?.programs?.length) {
     const result = toResult(hydrated);
     latestSanctionsPressureResult = result;
+    // Warm the breaker under the same key a later recurring premium call
+    // reads (#7048). The guard mirrors execute()'s shouldCache
+    // (complete, non-degraded data); the local mirror above already covers
+    // getLatestSanctionsPressure() consumers.
+    if (isCacheableSanctionsPressureResult(result)) breaker.recordSuccess(result);
     return result;
   }
 
@@ -163,41 +202,55 @@ export async function fetchSanctionsPressure(): Promise<SanctionsPressureResult>
   // endpoint as a second-best read path and surface whatever it serves
   // (or emptyResult on any failure).
   if (!hasPremiumAccess()) {
-    try {
+    const cached = breaker.getCached();
+    if (cached) {
+      latestSanctionsPressureResult = cached;
+      return cached;
+    }
+
+    const result = await breaker.execute(async () => {
       const resp = await fetch(toApiUrl('/api/bootstrap?keys=sanctionsPressure'), {
         signal: AbortSignal.timeout(5_000),
       });
-      if (resp.ok) {
-        const { data } = (await resp.json()) as { data?: { sanctionsPressure?: ListSanctionsPressureResponse } };
-        const payload = data?.sanctionsPressure;
-        if (payload?.entries?.length || payload?.countries?.length || payload?.programs?.length) {
-          const result = toResult(payload);
-          latestSanctionsPressureResult = result;
-          return result;
-        }
+      if (!resp.ok) {
+        throw new Error(`Sanctions bootstrap failed: HTTP ${resp.status}`);
       }
-    } catch { /* fall through to emptyResult */ }
-    return emptyResult;
+      const { data } = (await resp.json()) as { data?: { sanctionsPressure?: ListSanctionsPressureResponse } };
+      const payload = data?.sanctionsPressure;
+      if (payload?.entries?.length || payload?.countries?.length || payload?.programs?.length) {
+        const liveResult = toResult(payload);
+        latestSanctionsPressureResult = liveResult;
+        return liveResult;
+      }
+      latestSanctionsPressureResult = emptyResult;
+      return emptyResult;
+    }, emptyResult, {
+      shouldCache: isCacheableSanctionsPressureResult,
+    });
+    latestSanctionsPressureResult = result;
+    return result;
   }
 
-  return breaker.execute(async () => {
+  const result = await breaker.execute(async () => {
     const response = await client.listSanctionsPressure({
       maxItems: 30,
     }, {
       signal: AbortSignal.timeout(25_000),
     });
-    const result = toResult(response);
-    latestSanctionsPressureResult = result;
-    if (result.totalCount === 0) {
+    const liveResult = toResult(response);
+    if (liveResult.totalCount === 0) {
       // Seed is missing or the feed is down. Evict any stale cache so the
       // panel surfaces "unavailable" instead of serving old designations
       // indefinitely via stale-while-revalidate.
       breaker.clearCache();
     }
-    return result;
+    latestSanctionsPressureResult = liveResult;
+    return liveResult;
   }, emptyResult, {
-    shouldCache: (result) => result.totalCount > 0,
+    shouldCache: isCacheableSanctionsPressureResult,
   });
+  latestSanctionsPressureResult = result;
+  return result;
 }
 
 export function getLatestSanctionsPressure(): SanctionsPressureResult | null {

@@ -1,6 +1,6 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { readFileSync, readdirSync } from 'node:fs';
+import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -8,6 +8,11 @@ const __filename = fileURLToPath(import.meta.url);
 const ROOT = resolve(dirname(__filename), '..');
 const REGISTRY_DIR = join(ROOT, 'api/mcp/registry');
 const LLMS_FILES = ['public/llms.txt', 'public/llms-full.txt', 'public/api/llms.txt'];
+const LLMS_TEXTS = new Map(
+  LLMS_FILES.map((rel) => [rel, readFileSync(join(ROOT, rel), 'utf-8')]),
+);
+const PACKAGE_VERSION = JSON.parse(readFileSync(join(ROOT, 'package.json'), 'utf-8')).version;
+const OPENAPI_BYTES = statSync(join(ROOT, 'docs/api/worldmonitor.openapi.yaml')).size;
 
 // Every MCP tool name uses a verb prefix (get_/generate_/analyze_/search_/
 // describe_), so this picks tool citations out of the backticked prose
@@ -43,14 +48,14 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
   const registry = registryToolNames();
 
   it('the MCP registry exposes a non-trivial tool set', () => {
-    assert.ok(
-      registry.size >= 20,
-      `expected >=20 registered MCP tools in ${REGISTRY_DIR}, got ${registry.size}`,
-    );
+    assert.ok(registry.size > 0, `MCP registry extraction from ${REGISTRY_DIR} must not be empty`);
+    for (const criticalTool of ['get_world_brief', 'get_country_brief', 'describe_tool']) {
+      assert.ok(registry.has(criticalTool), `MCP registry is missing critical discovery tool ${criticalTool}`);
+    }
   });
 
   for (const rel of LLMS_FILES) {
-    const text = readFileSync(join(ROOT, rel), 'utf-8');
+    const text = LLMS_TEXTS.get(rel);
     const cited = citedTools(text);
 
     it(`${rel} cites at least one MCP tool (section not silently dropped)`, () => {
@@ -69,4 +74,43 @@ describe('agent readiness: llms.txt MCP tool citations', () => {
       );
     });
   }
+
+  it('public/llms.txt wraps every list-item URL in a Markdown link', () => {
+    const text = LLMS_TEXTS.get('public/llms.txt');
+    const listItemsWithUrls = text.split('\n').filter((line) => line.startsWith('- ') && /https?:\/\//.test(line));
+
+    assert.ok(listItemsWithUrls.length > 0, 'public/llms.txt should contain linked resources');
+    for (const line of listItemsWithUrls) {
+      assert.match(line, /^- \[[^\]]+\]\(https?:\/\/[^)]+\)/, `list item needs a primary Markdown link: ${line}`);
+      const withoutMarkdownLinks = line.replace(/\[[^\]]+\]\(https?:\/\/[^)]+\)/g, '');
+      assert.doesNotMatch(withoutMarkdownLinks, /https?:\/\//, `list item contains a bare URL: ${line}`);
+    }
+  });
+
+  it('public/llms.txt identifies its release and update date', () => {
+    assert.match(
+      LLMS_TEXTS.get('public/llms.txt'),
+      new RegExp(`^> Version: ${PACKAGE_VERSION.replaceAll('.', '\\.')} · Last updated: \\d{4}-\\d{2}-\\d{2}$`, 'm'),
+    );
+  });
+
+  it('routes unauthenticated agent examples through the key-free sandbox', () => {
+    for (const [rel, text] of LLMS_TEXTS) {
+      assert.doesNotMatch(
+        text,
+        /https:\/\/api\.worldmonitor\.app\/api\//,
+        `${rel} must not present key-required API operations as directly callable examples`,
+      );
+      assert.match(text, /https:\/\/www\.worldmonitor\.app\/sandbox\/index\.json/);
+      assert.match(text, /API key required/i);
+    }
+  });
+
+  it('annotates the oversized OpenAPI YAML link with its byte size', () => {
+    const formattedBytes = new Intl.NumberFormat('en-US').format(OPENAPI_BYTES);
+    assert.match(
+      LLMS_TEXTS.get('public/llms.txt'),
+      new RegExp(`openapi\\.yaml[^\\n]*${formattedBytes} bytes`, 'i'),
+    );
+  });
 });

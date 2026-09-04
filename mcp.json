@@ -1,0 +1,13 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "worldmonitor": {
+      "type": "streamable-http",
+      "url": "https://worldmonitor.app/mcp"
+    },
+    "worldmonitor-docs": {
+      "type": "streamable-http",
+      "url": "https://www.worldmonitor.app/docs/mcp"
+    }
+  }
+}

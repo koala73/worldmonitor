@@ -37,7 +37,7 @@ jobs:
     if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -47,6 +47,7 @@ jobs:
       - run: npm run lint
       - run: npm run lint:boundaries
       - run: npm run lint:api-contract
+      - run: npm run sync:bootstrap-tier-keys:check
       - run: npm run lint:rate-limit-policies
       - run: npm run lint:premium-fetch
       - run: npm run security:vite-env-secrets
@@ -58,7 +59,7 @@ jobs:
   public-docs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -67,8 +68,37 @@ jobs:
   mintlify-slugs:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
       - run: node scripts/enforce-mintlify-reserved-slugs.mjs
+
+  doc-anchors:
+    # Why this gate exists, and how Mintlify slugs a heading, is documented
+    # once in scripts/check-doc-anchors.mjs. Keep it there, not in both.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Export rendered docs
+        working-directory: docs
+        # The pin holds the CLI wrapper only. `mint export` downloads its
+        # RENDERER at run time, and that is what assigns the ids this gate
+        # trusts — so a slugging change can still arrive with no repo change.
+        # The version is printed below and the checker carries a canary on a
+        # punctuation-sensitive slug, which is the actual protection.
+        run: |
+          npm i -g mint@4.2.866
+          if ! mint export --output "$RUNNER_TEMP/docs-export.zip"; then
+            echo "::warning::Mint export failed once; retrying once."
+            rm -f "$RUNNER_TEMP/docs-export.zip"
+            mint export --output "$RUNNER_TEMP/docs-export.zip"
+          fi
+          echo "renderer: $(cat ~/.mintlify/previews/shared/mint/mint-version.txt 2>/dev/null || echo unknown)"
+      - name: Unpack export
+        run: unzip -q "$RUNNER_TEMP/docs-export.zip" -d "$RUNNER_TEMP/docs-export"
+      - name: Every doc anchor resolves
+        run: node scripts/check-doc-anchors.mjs "$RUNNER_TEMP/docs-export"

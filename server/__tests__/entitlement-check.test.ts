@@ -69,7 +69,13 @@ function makeEntitlements(tier: number, planKey = "free") {
       planLimits: {
         apiRequestsPerDay: tier >= 2 ? 1_000 : 0,
         apiBurstRequestsPerMinute: tier >= 2 ? 60 : 0,
-        mcpCallsPerDay: tier >= 1 ? 50 : 0,
+        // Third field to join the cache-staleness gate, for the same reason as
+        // the two above. An apiAccess plan carrying a NUMERIC mcpCallsPerDay is
+        // a pre-marker row by construction: the catalog gives the API tiers the
+        // shared-budget marker and enterprise `null`, so that pairing cannot
+        // occur in production. A tier-only factory reaches the API tiers at
+        // tier >= 2, so they take the marker here.
+        mcpCallsPerDay: tier >= 2 ? "shared-api-budget" : (tier >= 1 ? 50 : 0),
         dashboardAiCallsPerDay: tier >= 1 ? 500 : 0,
         mcpBurstRequestsPerMinute: tier >= 1 ? 60 : 0,
       },
@@ -139,6 +145,23 @@ describe("gateway entitlement check", () => {
     "/api/market/v1/backtest-stock",
     "/api/market/v1/list-stored-stock-backtests",
   ])("getRequiredTier returns 1 for %s (regression-lock against tier-2 revert)", (path) => {
+    expect(getRequiredTier(path)).toBe(1);
+  });
+
+  // The seven routes closed by the #6436-#6449 gating pass. Each shipped
+  // ungated because its originating issue scoped ingestion + exposure and never
+  // named an access tier; an anonymous wms_ session read full payloads from all
+  // seven in production. Pinned by path so a revert has to delete a named test,
+  // not just drop a line from a 37-entry object literal.
+  test.each([
+    "/api/market/v1/get-physical-premiums",
+    "/api/market/v1/get-physical-divergence-index",
+    "/api/supply-chain/v1/get-mineral-production",
+    "/api/military/v1/get-defense-industrial-base",
+    "/api/supply-chain/v1/get-country-vulnerabilities",
+    "/api/supply-chain/v1/get-chokepoint-dependencies",
+    "/api/supply-chain/v1/list-vulnerability-rankings",
+  ])("getRequiredTier returns 1 for newly gated %s (#6436-#6449)", (path) => {
     expect(getRequiredTier(path)).toBe(1);
   });
 

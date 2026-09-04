@@ -37,7 +37,7 @@
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 500,
-      "description": "Everything in Free, AI stock analysis & backtesting, Daily market briefs, Military & geopolitical tracking, Custom widget builder, 10 custom dashboards (vs 3), MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Priority data refresh, Personal license"
+      "description": "Everything in Free — panels, sources & followed countries uncapped, WM Analyst chat + AI stock analysis & backtesting, Cost-shock modelling & supply-chain stress tests, Intel memory — historical search, timelines & similar events, Physical metals divergence, minerals concentration & sovereign debt data, Scheduled AI digest + alert rules engine, MCP + SDK access for Claude Desktop & other AI clients (50 calls/day), Custom widgets & 10 dashboards (vs 3), Personal license, 1 named user"
     },
     {
       "planKey": "pro_annual",
@@ -67,7 +67,7 @@
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 2500,
-      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included"
+      "description": "Everything in Pro, Use for client work, internal tools & reporting, Data export — CSV, JSON & PDF reports, 25 custom dashboards (vs 10), MCP + SDK: 250 calls/day (vs 50), Priority support, Commercial license included, 1 named user — not a shared login"
     },
     {
       "planKey": "pro_business_annual",
@@ -97,7 +97,7 @@
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 1000,
-      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included, Webhook notifications, Commercial license — for your organization"
+      "description": "REST API + official SDKs (npm, PyPI, RubyGems, Go), License / API key included, Real-time data streams, 60 requests/minute, 1,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), Webhook notifications, Commercial license — for your organization"
     },
     {
       "planKey": "api_starter_annual",
@@ -127,7 +127,7 @@
       "currentForCheckout": true,
       "selfServe": true,
       "dashboardAiCallsPerDay": 10000,
-      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included, 5 Pro licenses included, Priority support, Commercial license — for your customers"
+      "description": "Everything in API Starter, Redistribution rights — embed our data in what you sell, 300 requests/minute, 10,000 requests/day included (REST + MCP combined; a live MCP call counts as 2-3), 5 Pro licenses — invite users at any corporate email domain, Priority support, Commercial license — for your customers"
     },
     {
       "planKey": "api_business_annual",
@@ -157,15 +157,13 @@
       "currentForCheckout": false,
       "selfServe": false,
       "dashboardAiCallsPerDay": null,
-      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option"
+      "description": "Everything in Pro + API, Unlimited API requests, Dedicated support, Custom integrations, SLA guarantee, On-premise option, Data processing agreement (DPA), Purchase-order billing, SAML SSO, SCIM, Custom security and privacy settings, Fully white-labeled — with or without revenue sharing"
     }
   ],
-  "capabilities": {
-    "mcpTools": 59,
-    "locales": 26,
-    "variants": 6,
-    "mapLayers": 56,
-    "feedDefinitions": 628,
-    "freshnessTrackedSourceGroups": 35
+  "heroProofStats": {
+    "mapLayers": 57,
+    "feeds": 461,
+    "providers": 747,
+    "alertOrigins": 5
   }
 }

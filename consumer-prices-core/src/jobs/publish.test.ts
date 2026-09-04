@@ -22,7 +22,7 @@ vi.mock('../snapshots/worldmonitor.js', () => ({
   buildRetailerSpreadSnapshot: vi.fn(),
 }));
 
-const { publishAll } = await import('./publish.js');
+const { publishAll, runPublishCli } = await import('./publish.js');
 
 const coverage = {
   marketCode: 'ae',
@@ -32,6 +32,7 @@ const coverage = {
   failedPages: 4,
   completionRatio: 0.6667,
   rejectedCount: 3,
+  failureReasons: { 'missing-price': 2, 'provider-error': 1 },
   status: 'partial',
   minimumCompletionRatio: 0.5,
   retailers: [{ slug: 'retailer-a', name: 'Retailer A', coverageStatus: 'partial', rejectedCount: 3 }],
@@ -70,13 +71,14 @@ describe('consumer-price coverage publication', () => {
       failedPages: 4,
       completionRatio: 0.6667,
       rejectedCount: 3,
+      failureReasons: { 'missing-price': 2, 'provider-error': 1 },
     });
     expect(JSON.parse(coverageMeta[2]).coverage.retailers).toEqual(coverage.retailers);
   });
 
   it('keeps the last-good coverage key untouched when coverage rebuild fails, then recovers on the next run', async () => {
     mockBuildCoverageSnapshot.mockRejectedValueOnce(new Error('coverage query unavailable'));
-    await publishAll();
+    await expect(publishAll()).rejects.toThrow('1 snapshot publication failed');
 
     let writes = commands();
     expect(writes.some((command) => command[0] === 'DEL' && command[1] === 'consumer-prices:coverage:ae')).toBe(false);
@@ -88,96 +90,23 @@ describe('consumer-price coverage publication', () => {
     writes = commands();
     expect(writes.some((command) => command[0] === 'SET' && command[1] === 'consumer-prices:coverage:ae')).toBe(true);
   });
-});
 
-// #6059 — WorldMonitor health softens the deploy-before-cron gap to a bounded
-// ROLLOUT_PENDING warn and revokes that softening permanently the instant this
-// marker appears. Writing it too eagerly re-arms the false critical; writing it
-// with a TTL lets an activated market read as pending-activation again.
-describe('coverage schema activation marker', () => {
-  const ACTIVATION_KEY = 'seed-activated:consumer-prices:coverage:v1:ae';
-  const activationWrites = () =>
-    commands().filter((command) => command[0] === 'SET' && command[1] === ACTIVATION_KEY);
+  it('fails the CLI after a caught snapshot write error without printing its success marker', async () => {
+    mockFetch.mockRejectedValueOnce(new Error('redis unavailable'));
+    const previousExitCode = process.exitCode;
+    const log = vi.spyOn(console, 'log').mockImplementation(() => undefined);
+    const error = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+    process.exitCode = undefined;
 
-  it('SETs a durable versioned marker after publishing real coverage', async () => {
-    await publishAll();
-
-    const writes = activationWrites();
-    expect(writes).toHaveLength(1);
-    const [, , value, ...rest] = writes[0];
-    expect(rest).toEqual([]); // no EX — must outlive the 7d seed-meta TTL
-    expect(JSON.parse(value)).toMatchObject({
-      schemaVersion: 1,
-      marketCode: 'ae',
-      attemptedPages: 12,
-    });
-  });
-
-  it('orders the marker after the coverage snapshot it attests to', async () => {
-    await publishAll();
-
-    const sequence = commands().map((command) => command[1]);
-    expect(sequence.indexOf(ACTIVATION_KEY)).toBeGreaterThan(
-      sequence.indexOf('consumer-prices:coverage:ae'),
-    );
-  });
-
-  it('withholds the marker when the market has never attempted a page', async () => {
-    mockBuildCoverageSnapshot.mockResolvedValue({ ...coverage, attemptedPages: 0, completedPages: 0, completionRatio: null });
-    await publishAll();
-
-    expect(activationWrites()).toHaveLength(0);
-    expect(commands().some((command) => command[1] === 'consumer-prices:coverage:ae')).toBe(true);
-  });
-
-  it('withholds the marker when the coverage snapshot could not be built', async () => {
-    mockBuildCoverageSnapshot.mockRejectedValueOnce(new Error('coverage query unavailable'));
-    await publishAll();
-
-    expect(activationWrites()).toHaveLength(0);
-  });
-
-  it('attributes a marker-write failure to the marker, not to the coverage publish', async () => {
-    // `publishAll() resolves` and `overview still published` are NOT evidence for
-    // the inner try/catch: overview publishes from its own independent try, and
-    // without the inner catch the error is simply swallowed by the enclosing
-    // coverage catch, so publishAll() resolves either way. Verified by deleting
-    // the inner catch — every assertion of that shape stayed green. The only
-    // observable the inner catch actually produces is WHICH failure gets logged:
-    // with it, `coverage-activation:ae failed`; without it, the coverage snapshot
-    // is falsely blamed via `coverage:ae failed` and pagesFailed is incremented
-    // for a coverage write that in fact succeeded.
-    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
-    mockFetch.mockImplementation(async (_url: string, init: { body: string }) => {
-      const command = JSON.parse(init.body);
-      if (command[1] === ACTIVATION_KEY) return { ok: false, status: 500 };
-      return { ok: true, status: 200 };
-    });
-
-    await expect(publishAll()).resolves.toBeUndefined();
-
-    const logged = errSpy.mock.calls.map((call) => call.join(' '));
-    expect(logged.some((line) => line.includes('coverage-activation:ae failed'))).toBe(true);
-    expect(
-      logged.some((line) => /coverage:ae failed/.test(line)),
-      'the coverage snapshot published fine — blaming it would send an operator to the wrong subsystem',
-    ).toBe(false);
-    expect(commands().some((command) => command[1] === 'consumer-prices:overview:ae')).toBe(true);
-    errSpy.mockRestore();
-  });
-
-  it('withholds the marker when the coverage snapshot itself fails to persist', async () => {
-    // Distinct from the build-failure case above: here buildCoverageSnapshot
-    // succeeds but the Redis SET of the coverage key throws. The marker must not
-    // claim activation for a snapshot that never landed.
-    mockFetch.mockImplementation(async (_url: string, init: { body: string }) => {
-      const command = JSON.parse(init.body);
-      if (command[1] === 'consumer-prices:coverage:ae') return { ok: false, status: 500 };
-      return { ok: true, status: 200 };
-    });
-
-    await publishAll();
-
-    expect(activationWrites()).toHaveLength(0);
+    try {
+      await expect(runPublishCli()).rejects.toThrow('1 snapshot publication failed');
+      expect(process.exitCode).toBe(1);
+      expect(log.mock.calls.some(([message]) => String(message).includes('=== Done'))).toBe(false);
+      expect(error).toHaveBeenCalled();
+    } finally {
+      process.exitCode = previousExitCode;
+      log.mockRestore();
+      error.mockRestore();
+    }
   });
 });

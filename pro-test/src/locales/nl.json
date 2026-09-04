@@ -23,8 +23,8 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Jouw AI-analist. Een persoonlijk intelligence desk. Een platform om op te bouwen. Eén sleutel voor 30+ live diensten.",
-    "proF1": "WM Analyst chat — bevraag alle 30+ diensten conversationeel",
+    "proDesc": "Je AI-analist. Een persoonlijk intelligence desk. Een platform waarop je kunt bouwen. Één sleutel voor alle live services.",
+    "proF1": "WM Analyst chat — query live services in natuurlijke taal",
     "proF2": "AI digest — dagelijks, tweemaal daags of wekelijks — naar Slack, Discord, Telegram, E-mail of webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS met AI-ondersteunde aanpassing",
     "proF4": "MCP-connectoren — koppel WorldMonitor aan Claude, GPT of eigen LLM's",
@@ -32,15 +32,15 @@
     "proF6": "Vluchten zoeken en prijsvergelijking",
     "proF7": "Alert rules engine — eigen triggers, stille uren, AES-256 versleutelde kanalen",
     "proF8": "Market watchlist, macro- en centralebank-tracking",
-    "proF9": "AI Market Implications en Regional Intelligence (Binnenkort: orbitale surveillance, premium kaartlagen, langere historiek)",
+    "proF9": "AI-marktgevolgen en regionale inlichtingen",
     "choosePlan": "Kies je plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "Voor teams die gedeelde monitoring, API-toegang, deployment-opties, TV-apps en directe support nodig hebben.",
     "entF1": "Alles van Pro, plus:",
     "entF2": "Live-edge satellietbeelden en SAR",
     "entF3": "AI-agents met investor-personas en MCP",
-    "entF4": "50.000+ infrastructuurobjecten in kaart",
-    "entF5": "100+ data-connectoren (Splunk, Snowflake, Sentinel…)",
+    "entF4": "Infrastructuurassets in kaart gebracht",
+    "entF5": "Dataconnectoren (Splunk, Snowflake, Sentinel...)",
     "entF6": "REST API + webhooks + bulk export",
     "entF7": "Team workspaces met SSO/MFA/RBAC",
     "entF8": "White-label en embedbare panels",
@@ -48,14 +48,15 @@
     "entF10": "Cloud, on-premises of air-gapped deployment",
     "entF11": "Dedicated onboarding en support",
     "entCta": "Praat met sales",
-    "freeF2": "500+ feeds, 65+ bronnen, 50+ kaartlagen"
+    "freeF2": "Samengestelde feeds, geattribueerde bronnen en kaartlagen",
+    "proF10": "Intel-geheugen — historisch zoeken, tijdlijnen en vergelijkbare gebeurtenissen opzoeken"
   },
   "whyUpgrade": {
-    "title": "Waarom upgraden",
+    "title": "Waarom upgraden naar World Monitor Pro?",
     "noiseTitle": "Weet het eerst",
     "noiseDesc": "AIS-anomalie → Brent-piek → jouw Slack in minder dan een minuut. Signaal, geen koppen.",
     "fasterTitle": "Vraag alles",
-    "fasterDesc": "Chat met dezelfde 30+ diensten die jouw dashboard ziet. WM Analyst, altijd aan.",
+    "fasterDesc": "Chat met dezelfde live services die je dashboard ziet. WM Analyst, altijd aan.",
     "controlTitle": "Bouw alles",
     "controlDesc": "Custom widget builder (HTML/CSS/JS + AI) plus MCP voor je eigen AI-workflows.",
     "deeperTitle": "Word geïnformeerd wakker",
@@ -63,7 +64,7 @@
   },
   "pillars": {
     "askIt": "Vraag het",
-    "askItDesc": "WM Analyst chat. Alle 30+ diensten in natuurlijke taal bevraagbaar.",
+    "askItDesc": "WM Analyst chat. Live services querybaar in gewoon Engels.",
     "subscribeIt": "Abonneer je",
     "subscribeItDesc": "AI digest op jouw cadans: dagelijks, tweemaal daags of wekelijks. Slack, Discord, Telegram, E-mail, webhook.",
     "buildOnIt": "Bouw erop voort",
@@ -71,8 +72,8 @@
   },
   "deliveryDesk": {
     "eyebrow": "DELIVERY DESK",
-    "title": "Jouw persoonlijk intelligence desk",
-    "body": "Tot 30 gerankte items per zending, gededupliceerd over 400+ bronnen, gescoord tegen jouw watchlist. Kies je cadans — dagelijks, tweemaal daags of wekelijks — met een AI Assessment en Signals to watch geleverd aan Slack, Discord, Telegram, E-mail of webhook.",
+    "title": "Wat is het persoonlijke inlichtingenburo?",
+    "body": "Tot 30 gerangschikte items per verzending, gededupliceerd over bronnen, gescoord tegen je watchlist. Kies je ritme — dagelijks, tweemaal per dag of wekelijks — met een AI-beoordeling en signalen om op te letten, verzonden naar Slack, Discord, Telegram, Email of webhook.",
     "closer": "Geen nieuwsbrief. Een analist.",
     "channels": "Slack · Discord · Telegram · E-mail · Webhook · AES-256 versleuteld · Stille uren"
   },
@@ -81,7 +82,7 @@
     "openFullScreen": "Open volledig scherm",
     "tryLiveDashboard": "Probeer het live dashboard",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D WebGL-globe · 50+ interactieve kaartlagen · Real-time markt-, macro-, geopolitieke, energie- en infrastructuurgegevens"
+    "description": "3D WebGL-globe · interactieve kaartlagen · real-time gegevens voor markten, macro-economie, geopolitiek, energie en infrastructuur"
   },
   "socialProof": {
     "uniqueVisitors": "Unieke bezoekers",
@@ -93,7 +94,7 @@
     "asToldTo": "verteld aan"
   },
   "audience": {
-    "title": "Gebouwd voor wie snel signaal nodig heeft",
+    "title": "Voor wie is World Monitor gebouwd?",
     "investorsTitle": "Beleggers en portefeuillemanagers",
     "investorsDesc": "Volg wereldwijde aandelen, analistenkoersen, waarderingsmetrics en macro-indicatoren samen met geopolitieke risicosignalen.",
     "tradersTitle": "Energie- en grondstoffentraders",
@@ -108,8 +109,8 @@
     "teamsDesc": "Ga van individueel gebruik naar gedeelde workflows, API-toegang, TV-apps en beheerde deployments."
   },
   "dataCoverage": {
-    "title": "Wat World Monitor volgt",
-    "subtitle": "30+ dienstdomeinen parallel ingenomen. Markten, macro, geopolitiek, energie, infrastructuur — alles genormaliseerd en gerenderd op een WebGL-globe.",
+    "title": "Wat volgt World Monitor?",
+    "subtitle": "Servicedomein tegelijk opgenomen. Markten, macro-economie, geopolitiek, energie, infrastructuur — alles genormaliseerd en weergegeven op een WebGL-globe.",
     "markets": "Financiële markten en aandelen",
     "marketsDesc": "Wereldwijde aandelenanalyse, grondstoffen, crypto, ETF-stromen, analistenkoersen en FRED macro-data",
     "economy": "Economie en centrale banken",
@@ -121,7 +122,7 @@
     "aviation": "Luchtvaart-tracking",
     "aviationDesc": "ADS-B-tracking van wereldwijde vluchtpatronen",
     "infra": "Kritieke infrastructuur",
-    "infraDesc": "Nucleaire sites, elektriciteitsnetten, pijpleidingen, raffinaderijen — 50K+ objecten in kaart",
+    "infraDesc": "Nucleaire sites, elektriciteitsnetwerken, pijpleidingen, raffinaderijen — assetkaarten",
     "fire": "Satelliet-branddetectie",
     "fireDesc": "NASA FIRMS bijna-realtime brand- en hotspot-data",
     "cables": "Onderzeese kabels",
@@ -131,7 +132,7 @@
     "cyber": "Cyberdreigingen",
     "cyberDesc": "Ransomware-feeds, BGP-kapingen, DDoS-detectie",
     "gdelt": "GDELT en nieuws",
-    "gdeltDesc": "500+ RSS-feeds, AI-gescoorde GDELT-events, live uitzendingen",
+    "gdeltDesc": "Samengestelde RSS-feeds, AI-gescoorde GDELT-events, live-uitzendingen",
     "seismology": "Seismologie en natuurrampen",
     "seismologyDesc": "USGS-aardbevingen, vulkanische activiteit, extreem weer"
   },
@@ -145,7 +146,7 @@
   },
   "proShowcase": {
     "proTier": "PRO-NIVEAU",
-    "title": "Jouw AI-analist die nooit slaapt",
+    "title": "Wat doet de World Monitor AI-analist?",
     "subtitle": "Het gratis dashboard toont je de wereld. Pro geeft je een analist om te bevragen, een digest om op te abonneren en primitieven om op te bouwen. Aandelen, macro, geopolitiek risico — en de verbanden ertussen.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Wereldwijde aandelenanalyse met visualisatie van cijfers, analistenkoersen en waarderingsmetrics. Volg wat markten beweegt.",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "BBP, inflatie, rente en groeicycli. Macro-data gecorreleerd aan marktsignalen en geopolitieke events.",
     "riskMonitoring": "Risicomonitoring en scenario's",
     "riskMonitoringDesc": "Wereldwijde risicoscoring, scenario-analyse en geopolitieke risicobeoordeling. Detectie van convergentie tussen markt- en politieke signalen.",
-    "orbitalSurveillance": "Orbitale surveillance",
-    "orbitalSurveillanceDesc": "(Binnenkort) Voorspellingen van satellietpassages, analyse van revisit-frequentie en opname-venster-alerts. Weet wanneer inlichtingensatellieten jouw interessegebieden bekijken.",
     "morningBriefs": "Persoonlijk intelligence desk",
-    "morningBriefsDesc": "Tot 30 gerankte verhalen per digest, gededupliceerd over 400+ bronnen. Kies dagelijks, tweemaal daags of wekelijks — of realtime alerts bij kritieke gebeurtenissen. AI Assessment en Signals to watch geleverd aan Slack, Discord, Telegram, E-mail of webhook. Geen nieuwsbrief — een analist.",
-    "oneKey": "30+ diensten, 1 sleutel",
+    "morningBriefsDesc": "Tot 30 gerangschikte verhalen per digest, gededupliceerd over bronnen. Kies dagelijks, tweemaal per dag of wekelijks ritme — of real-time waarschuwingen voor kritieke events. AI-beoordeling en signalen om op te letten verzonden naar Slack, Discord, Telegram, Email of webhook. Geen nieuwsbrief — een analist.",
+    "oneKey": "Live Services, 1 Sleutel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky en meer — alles actief, geen aparte registraties.",
-    "deliveryLabel": "Kies hoe intelligence jou vindt"
+    "deliveryLabel": "Kies hoe intelligence jou vindt",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Model een kostenschok over landen en sectoren. Rank grondstoffengevoeligheid op basis van chokepoint-afhankelijkheid. Volg concentratie van mijn tot raffinaderij en de SGE–COMEX fysieke premiumafwijking — de reeks die vóór het bericht beweegt.",
+    "roadmapNote": "Op de routekaart: orbitale bewaking, langere geschiedenis, premiumkaartlagen."
   },
   "slackMock": {
     "morningBrief": "Ochtendbriefing",
@@ -174,9 +176,9 @@
   },
   "apiSection": {
     "apiTier": "API-NIVEAU",
-    "title": "Programmatische intelligence",
+    "title": "Hoe gebruiken API's en agents World Monitor?",
     "subtitle": "Voor ontwikkelaars, analisten en teams die bouwen op World Monitor-data. Apart van Pro — gebruik beide of één.",
-    "restApi": "REST API over alle 30+ dienstdomeinen — officiële SDK's voor JavaScript, Python, Ruby, Go",
+    "restApi": "REST API over servicedomein — officïele SDK's voor JavaScript, Python, Ruby, Go",
     "authenticated": "Per sleutel geauthenticeerd, rate-limited per niveau",
     "structured": "Gestructureerde JSON met cache-headers en OpenAPI 3.1 docs",
     "starter": "Starter",
@@ -190,7 +192,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE-NIVEAU",
-    "title": "Intelligence-infrastructuur",
+    "title": "Wat is inbegrepen in World Monitor Enterprise?",
     "subtitle": "Voor overheden, instellingen, trading desks en organisaties die het volledige platform nodig hebben met maximale beveiliging, AI-agents, TV-apps en datadiepte.",
     "security": "Beveiliging op overheidsniveau",
     "securityDesc": "Air-gapped deployment, on-premises Docker, dedicated cloud-tenant, SOC 2 Type II-traject, SSO/MFA en volledig audit trail.",
@@ -198,7 +200,7 @@
     "aiAgentsDesc": "Autonome intelligence-agents met investor-personas. Koppel World Monitor als tool aan Claude, GPT of eigen LLM's via MCP.",
     "dataLayers": "Uitgebreide datalagen",
     "dataLayersDesc": "Tienduizenden infrastructuurobjecten wereldwijd in kaart. Satellietbeeld-integratie met change detection en SAR.",
-    "connectors": "100+ dataconnectoren",
+    "connectors": "Dataconnectoren",
     "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams en meer. Exporteren naar PDF, CSV, JSON.",
     "whiteLabel": "White-label, TV en embedbaar",
     "whiteLabelDesc": "Jouw merk, jouw domein, jouw desktop-app. Android TV-app voor SOC-muren en trading floors. Embedbare iframe-panels.",
@@ -227,7 +229,7 @@
     "contactFailed": "Verzenden mislukt. Mail naar enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Niveaus vergelijken",
+    "title": "Hoe vergelijken de World Monitor-plannen zich?",
     "feature": "Functie",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -248,7 +250,7 @@
     "fLt60s": "<60 seconden",
     "fPerRequest": "Per verzoek",
     "fLiveEdge": "Live-edge",
-    "f50panels": "50+ panels",
+    "f50panels": "Panels",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
     "fIncluded": "Inbegrepen",
@@ -264,17 +266,32 @@
     "fLiveTracking": "Live tracking",
     "fPassAlerts": "Passage-alerts + analyse",
     "fImagerySar": "Beelden + SAR",
-    "f100plus": "100+",
+    "f100plus": "Beschikbaar",
     "fCloud": "Cloud",
     "fCloudOnPrem": "Cloud/on-prem/air-gap",
     "fStandard": "Standaard",
     "fKeyAuth": "Sleutel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Het kernplatform blijft gratis. Betaalde plannen ontgrendelen equity research, macro-analytics, AI-briefings en organisatiegebruik.",
-    "f50plus": "50+"
+    "f50plus": "Beschikbaar",
+    "sourcesRow": "Bronnen",
+    "followedRow": "Gevolgde landen",
+    "tabsRow": "Dashboard-tabbladen",
+    "fUnlimited": "Onbeperkt",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alle lagen",
+    "fLayersNoResilience": "Alle behalve Resilience",
+    "fStandardCadence": "Standaard",
+    "fQuotes30s": "Marktkoersen: 30s",
+    "panelsRow": "Panelen ingeschakeld",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alles"
   },
   "faq": {
-    "title": "Veelgestelde vragen",
+    "title": "Veelgestelde vragen over World Monitor Pro",
     "q1": "Is World Monitor nog steeds gratis?",
     "a1": "Ja. Het kernplatform blijft gratis. Pro voegt aandelenonderzoek, macro-analyse en AI-briefs toe. Pro Business voegt de commerciële licentie en gegevensexport toe. Enterprise voegt teamdeployments en TV-apps toe.",
     "q2": "Waarom betalen voor Pro?",
@@ -288,22 +305,22 @@
     "q6": "Waarom blijft het kernplatform gratis?",
     "a6": "Omdat publieke toegang telt. Betaalde plannen financieren diepere workflows voor serieuze gebruikers en organisaties.",
     "q7": "Kan ik nog steeds mijn eigen API-sleutels gebruiken?",
-    "a7": "Ja. Bring-your-own-keys werkt altijd. Pro betekent gewoon dat je je niet bij 20+ aparte diensten hoeft te registreren.",
+    "a7": "Ja. Bring-your-own-keys werkt altijd. Pro betekent alleen dat je je niet voor aparte services hoeft in te schrijven.",
     "q8": "Wat is MCP?",
-    "a8": "MCP laat AI-agents — Claude, GPT, eigen LLM's — WorldMonitor als tool gebruiken en alle 30+ diensten bevragen. Inbegrepen in Pro. Enterprise voegt private MCP-servers en eigen deployments toe.",
+    "a8": "MCP stelt AI-agenten — Claude, GPT, custom LLM's — in staat WorldMonitor als tool te gebruiken en geregistreerde services te queryen. Inbegrepen in Pro. Enterprise voegt private MCP-servers en custom deployments toe.",
     "q9": "Kan ik eigen panels bouwen?",
     "a9": "Ja. Pro bevat de Custom Widget Builder — bouw panels vanuit HTML, CSS en JavaScript, met AI-ondersteunde wijziging.",
     "q10": "Kan ik Claude of GPT aan WorldMonitor koppelen?",
     "a10": "Ja. MCP is inbegrepen in Pro — koppel WorldMonitor aan Claude, GPT of elke MCP-compatibele LLM als live tool.",
     "q11": "Hoe gepersonaliseerd is de digest?",
-    "a11": "Kies je cadans: dagelijks, tweemaal daags of wekelijks. We hernieuwen de score van elk gevolgd verhaal tegen jouw alert rules en watchlist, dedupliceren over 400+ bronnen en sturen tot 30 gerankte items met een AI Assessment en Signals to watch geschreven voor jouw context. Realtime alerts zijn ook beschikbaar voor kritieke gebeurtenissen.",
+    "a11": "Kies je ritme — dagelijks, tweemaal per dag of wekelijks. We scoren elk gemonitord verhaal opnieuw tegen je waarschuwingsregels en watchlist, dededupliceren over bronnen, en verzenden tot 30 gerangschikte items met een AI-beoordeling en signalen om op te letten naar je context. Real-time waarschuwingen zijn ook beschikbaar voor kritieke events.",
     "q12": "Wat is de refresh-snelheid?",
-    "a12": "Bijna realtime voor Pro. 5–15 minuten op Free.",
+    "a12": "Pro vernieuwt marktkoersen elke 30 seconden. Overige datasets volgen de cadans van hun bron. Free blijft op de standaard broncadans.",
     "q13": "Waar gaat mijn data naartoe?",
     "a13": "Notificatiekanalen zijn AES-256 versleuteld in rust. Digests verlaten onze pipeline nooit ongeredigeerd."
   },
   "finalCta": {
-    "title": "Start met Pro. Schaal naar Enterprise.",
+    "title": "Hoe begin ik met Pro of spreek ik met sales?",
     "subtitle": "Gebruik World Monitor gratis, of upgrade voor equity research, macro-analytics en AI-briefings. Als je organisatie teamtoegang, TV-apps of API-support nodig heeft, praat met ons.",
     "talkToSales": "Praat met sales"
   },
@@ -316,7 +333,7 @@
   "meta": {
     "title": "World Monitor Pro | AI-intelligentie & MCP",
     "description": "World Monitor Pro voegt een AI-analist, geplande intelligentie-samenvattingen, aangepaste widgets, marktonderzoek en MCP-toegang tot live geopolitieke en financiële gegevens toe.",
-    "ogDescription": "Stel er vragen aan, abonneer je erop, bouw erop voort. WM Analyst chat, een AI-digest volgens je schema (dagelijks, twee keer per dag of wekelijks), custom widget builder en MCP voor Claude/GPT — over 30+ live services onder één sleutel.",
+    "ogDescription": "Vraag het, abonneer je erop, bouw erop voort. WM Analyst chat, een AI-digest op jouw schema (dagelijks, tweemaal per dag of wekelijks), custom widget builder, en MCP voor Claude/GPT — via live services onder één sleutel.",
     "ogTitle": "World Monitor Pro | Geopolitieke AI"
   },
   "pricing": {
@@ -326,7 +343,7 @@
     "suffixPerYear": "/jr",
     "amountCustom": "Aangepast",
     "opening": "Openen…",
-    "headerTitle": "Kies Uw Plan",
+    "headerTitle": "Hoeveel kost World Monitor?",
     "headerSubtitle": "Van real-time monitoring tot volledige intelligence-infrastructuur. Kies de laag die bij uw missie past.",
     "billingMonthly": "Maandelijks",
     "billingAnnual": "Jaarlijks",
@@ -348,17 +365,18 @@
       "pro": {
         "description": "Volledig intelligence-dashboard",
         "features": [
-          "Alles in Gratis",
-          "AI-aandelen analyse & backtesting",
-          "Dagelijkse marktbriefings",
-          "Militair- en geopolitieke tracking",
-          "Aangepaste widget builder",
-          "10 aangepaste dashboards (tegenover 3)",
+          "Alles in Gratis — panelen, bronnen en gevolgde landen onbeperkt",
+          "WM Analyst-chat + AI-voorraadanalyse en backtesting",
+          "Kostenschokmodellering en supply-chain stresstests",
+          "Intel-geheugen — historisch zoeken, tijdlijnen en vergelijkbare gebeurtenissen",
+          "Fysieke metalen afwijking, mineraalconcentratie en staatsschuldgegevens",
+          "Geplande AI-digest + waarschuwingsregelengine",
           "MCP + SDK-toegang voor Claude Desktop & andere AI-clients (50 oproepen/dag)",
-          "Prioriteitsgegevensvernieuwing"
+          "Aangepaste widgets en 10 dashboards (versus 3)"
         ],
         "highlightFeatures": [
-          "Persoonlijke licentie"
+          "Persoonlijke licentie",
+          "1 benoemde gebruiker"
         ]
       },
       "api": {
@@ -368,7 +386,7 @@
           "Licentie-/API-sleutel inbegrepen",
           "Real-time gegevensstromen",
           "60 aanvragen/minuut",
-          "1.000 aanvragen/dag inbegrepen",
+          "1.000 verzoeken/dag inbegrepen (REST + MCP gecombineerd; een live MCP-aanroep telt als 2-3)",
           "Webhook-meldingen"
         ],
         "highlightFeatures": [
@@ -383,7 +401,12 @@
           "Speciale ondersteuning",
           "Aangepaste integraties",
           "SLA-garantie",
-          "On-premise optie"
+          "On-premise optie",
+          "Data Processing Agreement (DPA)",
+          "Factuurbetaling per inkooporder",
+          "SAML SSO, SCIM",
+          "Aangepaste beveiligings- en privacyinstellingen",
+          "Volledig white-label — met of zonder revenue sharing"
         ],
         "cta": "Contact Verkoop"
       },
@@ -393,8 +416,8 @@
           "Alles in API Starter",
           "Herverdelingsrechten — integreer onze gegevens in wat u verkoopt",
           "300 verzoeken/minuut",
-          "10.000 verzoeken/dag inbegrepen",
-          "5 Pro-licenties inbegrepen",
+          "10.000 verzoeken/dag inbegrepen (REST + MCP gecombineerd; een live MCP-aanroep telt als 2-3)",
+          "5 Pro-licenties — nodig gebruikers uit met elk zakelijk e-maildomein",
           "Prioritaire ondersteuning"
         ],
         "highlightFeatures": [
@@ -412,7 +435,8 @@
           "Prioriteitsondersteuning"
         ],
         "highlightFeatures": [
-          "Commerciële licentie inbegrepen"
+          "Commerciële licentie inbegrepen",
+          "1 benoemde gebruiker — geen gedeelde login"
         ]
       }
     },
@@ -423,7 +447,7 @@
     "axisPersonal": "Persoonlijk",
     "axisPersonalNote": "individueel gebruik",
     "axisCommercial": "Commercieel",
-    "axisCommercialNote": "werk, teams & producten"
+    "axisCommercialNote": "werk, klanten & producten"
   },
   "welcome": {
     "meta": {
@@ -441,7 +465,8 @@
       "docs": "Documentatie",
       "launch": "Dashboard starten",
       "blog": "Blog",
-      "menu": "Menu"
+      "menu": "Menu",
+      "agents": "Voor AI-agenten"
     },
     "hero": {
       "eyebrow": "Gratis dashboard voor wereldwijd inlichtingen · nu live",
@@ -456,11 +481,14 @@
       "screenshotAlt": "World Monitor live inlichtingendashboard — wereldkaart met conflicten, scheepvaart- en marktlagen",
       "plateNote": "Vastgelegd van de live kaart — klik om deze te openen",
       "trustBuild": "Bouw erop:",
-      "positioningLink": "WorldMonitor is geen open-source Palantir"
+      "positioningLink": "WorldMonitor is geen open-source Palantir",
+      "asOf": "Per 31 augustus 2026",
+      "whatIsTitle": "Wat is World Monitor?",
+      "whatIsBody": "World Monitor is een gratis, open-source dashboard dat geopolitieke, markt-, scheepvaart-, luchtvaart-, infrastructuur- en cybersignalen op één live wereldkaart streamt. Het correleert afzonderlijke feeds in één operationeel beeld en markeert convergentie vóór headlines, waarbij elke cijfer van bron is voorzien en elke methode is gedocumenteerd."
     },
     "live": {
       "eyebrow": "Nu live",
-      "title": "Deze pagina is aangesloten op dezelfde API's als het dashboard.",
+      "title": "Welke live gegevens toont deze pagina nu?",
       "subtitle": "Vier van de meer dan honderd signalen die World Monitor rond de klok in de gaten houdt.",
       "liveBadge": "Live",
       "sampleBadge": "Voorbeeld",
@@ -479,7 +507,7 @@
     },
     "moments": {
       "eyebrow": "Correlatie-engine",
-      "title": "De voorkant ziet signalen samen bewegen.",
+      "title": "Hoe correleert World Monitor signalen?",
       "sub": "Je kunt feeds op honderd plekken vinden. De voorkant is één oppervlak waar geopolitiek, scheepvaart, grondstoffen, macro, markten, weer, infrastructuur, cyber, nieuws en landrisico elkaar kunnen verklaren.",
       "signalStack": "Gefuseerde signalen",
       "correlation": "Correlatie",
@@ -534,7 +562,7 @@
         "s2": "Internet- en BGP-anomaliefeeds tonen of een fysieke fout een digitale storing wordt.",
         "s3": "Handelscorridors, nationale veerkracht en redundantiegegevens tonen wie eerst terugvalroutes kwijtraken.",
         "s4": "Kabelschade is van belang wanneer telecom-redundantie, handelscorridors en landblootstelling op één lijn liggen.",
-        "c1": "86 kabels",
+        "c1": "Onderzeese kabels",
         "c2": "BGP + storingen",
         "c3": "Havens + pijpleidingen",
         "c4": "Veerkracht",
@@ -543,51 +571,51 @@
     },
     "firstFive": {
       "eyebrow": "Van nul tot georiënteerd",
-      "title": "Uw eerste vijf minuten op de live-kaart.",
+      "title": "Wat gebeurt er in je eerste vijf minuten op de kaart?",
       "sub": "Geen rondleiding, geen lege staten, geen inschrijvingsmuur. Dit is wat echt gebeurt.",
       "f1Title": "De kaart beweegt al",
       "f1Desc": "Conflicten, vaartuigen, vluchten, branden en storingen worden weergegeven terwijl de pagina wordt geladen. Niets om eerst in te stellen.",
       "f2Title": "Klik op een willekeurig land",
       "f2Desc": "Een volledig dossier opent: instabiliteitsscore met componenten, AI-samenvatting met geciteerde koppen, actieve signalen, een 7-daags tijdlijn.",
       "f3Title": "Druk ⌘K / Ctrl-K",
-      "f3Desc": "154 commando's. Spring naar elke laag, panel of land zonder eerst de UI te leren.",
+      "f3Desc": "Commando's. Spring naar elke laag, panel of land zonder eerst de UI te leren.",
       "f4Title": "Kies uw perspectief",
-      "f4Desc": "Wereld, Tech, Financiën, Grondstof, Energie of Positief — dezelfde engine, zes afgestemde monitoren, één klik uit elkaar.",
+      "f4Desc": "World, Tech, Finance, Commodity, Energy of Happy — dezelfde engine, aangepaste monitoren, één klik verderop.",
       "f5Title": "U heeft misschien een tiende gezien",
       "f5Desc": "De rest komt naar voren als de wereld verandert — satellietpassages, GPS-jamming, donkere schepen, protestclusters, sirenesignalen.",
       "cta": "Start de klok"
     },
     "depth": {
       "eyebrow": "Onder de motorkap",
-      "title": "De diepte is het product.",
+      "title": "Hoe diep is het World Monitor-gegevensmodel?",
       "sub": "Elk getal hieronder is vandaag live in het dashboard — niet een routekaart.",
-      "s1v": "56",
-      "s1l": "Kaartlagen",
-      "s2v": "500+",
-      "s2l": "Samengestelde feeds",
-      "s3v": "65+",
-      "s3l": "Gegevensproviders",
-      "s4v": "13",
+      "s1v": "Gedeeld",
+      "s1l": "Kaartlaagtypen",
+      "s2v": "Samengesteld",
+      "s2l": "Nieuws- en OSINT-feeds",
+      "s3v": "Geattribueerd",
+      "s3l": "Geattribueerde providers",
+      "s4v": "Live",
       "s4l": "Knelpunten · live AIS",
-      "s5v": "31",
+      "s5v": "Tier-1",
       "s5l": "Instabiliteitsindex · live",
-      "s6v": "196",
+      "s6v": "Openbaar",
       "s6l": "Veerkrachtrankingen",
-      "s7v": "86",
+      "s7v": "In kaart gebracht",
       "s7l": "Onderzeese kabels",
-      "s8v": "88",
+      "s8v": "In kaart gebracht",
       "s8l": "Pijpleidingen & LNG",
-      "s9v": "313",
+      "s9v": "In kaart gebracht",
       "s9l": "AI-datacenters in kaart",
-      "s10v": "29",
+      "s10v": "Gescoord",
       "s10l": "Gescoorde hotspots",
-      "s11v": "92",
+      "s11v": "Live",
       "s11l": "Beurzen & activa",
-      "s12v": "59",
+      "s12v": "Live",
       "s12l": "MCP-tools",
-      "s13v": "154",
+      "s13v": "Snel",
       "s13l": "⌘K-opdrachten",
-      "s14v": "24",
+      "s14v": "Gelokaliseerd",
       "s14l": "Talen · RTL incl.",
       "s15v": "5",
       "s15l": "Onafhankelijke waarschuwingsbronnen",
@@ -600,7 +628,7 @@
       "n4Title": "AI-datacentrumkaart",
       "n4Desc": "313 AI-datacentra in kaart gebracht met stroom- en bedrijfsmetagegevens — de fysieke laag van de AI-race.",
       "n5Title": "Onderzeese kabels",
-      "n5Desc": "86 onderzeese kabels die het internet dragen, overlay met uitval- en bedreigingssignalen.",
+      "n5Desc": "Onderzeese kabels die het internet dragen, gericht met uitval- en dreigingssignalen.",
       "n6Title": "Protesttracking",
       "n6Desc": "Tweeledige protestdetectie met cross-source deduplicatie — signaal, geen gerucht.",
       "faith": "Vertrouw de getallen niet zomaar op hun woord —",
@@ -609,10 +637,10 @@
     },
     "agents": {
       "eyebrow": "Voor makers & AI-agents",
-      "title": "Bouw op live wereldinformatie — van elke stack.",
+      "title": "Hoe bouw ik voort op World Monitor vanuit mijn eigen stack?",
       "sub": "Alles op de kaart is ook een API. Verbind het met Claude via MCP, roep de REST-endpoints overal aan, of installeer een native client voor Python, Ruby, Go of JavaScript — je code onderzoekt met live data in plaats van training-datamemories.",
-      "b1": "59 MCP-tools — risicobeoordelingen, knelpunten, conflicten, markten, samenvattingen",
-      "b2": "Gedocumenteerde REST-API — 193 operaties, één OpenAPI 3.1-spec, één sleutel",
+      "b1": "MCP-tools — risicocores, bottlenecks, conflicten, markten, briefs",
+      "b2": "Gedocumenteerde REST API — één OpenAPI 3.1-spec, één sleutel",
       "b3": "Officiële SDK's op npm, PyPI, RubyGems en Go — nul afhankelijkheden, MCP-first",
       "b4": "JMESPath-projectie bij elke aanroep — haal precies de velden op die je nodig hebt",
       "cta": "Lees de ontwikkelaarsdocumentatie",
@@ -620,7 +648,14 @@
       "termQuery": "Wordt onze blootstelling aan de Rode Zee deze week erger?",
       "termAnswer": "Transittelling omlaag week-over-week; oorlogsrisico-niveau verhoogd; twee dichtheidsafwijkingen in de laatste 48 uur.",
       "termDocs": "Zie de volledige toolreferentie →",
-      "promise": "Één sleutel. 59 MCP-tools. Een volledige REST API. Taal-native clients."
+      "promise": "Één sleutel. MCP-tools. Een volledige REST API. Taalspecifieke clients.",
+      "resources": {
+        "title": "Kies je ingang",
+        "briefing": "Agent-briefing",
+        "mcp": "MCP-server",
+        "api": "REST API",
+        "agentView": "Agentweergave"
+      }
     },
     "pricing": {
       "eyebrow": "Toegang",
@@ -629,37 +664,37 @@
       "sub": "Het dashboard is gratis — elke kaartlaag behalve Resilience, elke feed, geen registratie. Pro voegt de beslissingslaag toe.",
       "freeTitle": "Gratis",
       "freeDesc": "De gratis versie is een volledig product, geen proefperiode. Elke kaartlaag behalve Resilience, elke feed, elke monitor — geen registratie, geen proefklok.",
-      "freeF1": "Alle kaartlagen behalve Resilience en 500+ feeds",
+      "freeF1": "Alle kaartlagen behalve Resilience & samengestelde feeds",
       "freeF2": "Landensamenvattingen, hotspots, instabiliteitsscores",
       "freeF3": "Chokepoints, kabels, cascadeanalyse",
       "freeF4": "Pipeline voor brekend nieuws & watchlists",
       "proTitle": "Pro",
       "proDesc": "Pak het aan. De beslissingslaag die in de momenten hierboven wordt gebruikt:",
-      "proF1": "WM Analyst — chat met 30+ live services, met bronvermelding",
+      "proF1": "WM Analyst — chat over live services, met citaten",
       "proF2": "Scenario engine & Route Explorer — speel verstoringen door voordat ze toeslaan",
       "proF3": "Persoonlijke AI-samenvatting — dagelijks, twee keer per dag of wekelijks, naar Slack, Telegram of e-mail",
-      "proF4": "MCP, REST API en officiële SDK's — 59 tools onder één sleutel",
+      "proF4": "MCP, REST API & officïele SDK's — live tools onder één sleutel",
       "proF5": "Custom widget builder voor je eigen panelen",
       "cta": "Zie plannen & prijzen",
       "note": "Vanaf $39,99/mnd · 3 maanden gratis bij jaarlijkse betaling"
     },
     "faq": {
       "eyebrow": "Geen addertje onder het gras",
-      "title": "Eerlijke vragen.",
+      "title": "Wat zijn veelgestelde vragen over World Monitor?",
       "q1": "Is World Monitor echt gratis?",
-      "a1": "Ja. De live kaart — elke laag behalve Resilience, 500+ feeds, landensamenvattingen, breeknieuws, alle zes monitors — is gratis zonder registratie en zonder proefklok. Pro betaalt voor de feeds: het voegt WM Analyst, de scenario-engine, Route Explorer, geplande samengevat, MCP-toegang voor AI-clients en de Resilience-kaartlaag toe. Geen advertenties en geen account betekent dat er geen gebruikersgegevens te verkopen zijn.",
+      "a1": "Ja. De live kaart — elke laag behalve Resilience, samengestelde feeds, country briefs, breaking alerts en monitoring-oppervlakken — is gratis zonder inschrijving en geen trial-klok. Pro betaalt voor de feeds: het voegt WM Analyst, de scenario-engine, Route Explorer, geplande digests, MCP-toegang voor AI-clients en de Resilience-kaartlaag toe. Geen advertenties, en geen account betekent dat er geen gebruikersgegevens te verkopen zijn.",
       "q2": "Wat is een global intelligence dashboard?",
       "a2": "Een enkele live weergave die signalen samenvoegt die de meeste tools gescheiden houden: conflictgebeurtenissen, schip- en vliegtuigtracking, scheepvaartknelpunten, satellieten, onderzeese kabels, pijpleidingen, markten en cyberbedreigingen — op één realtime wereldkaart, met AI-scoring en samenvattingen erbovenop. World Monitor is een gratis versie.",
       "q3": "Waar komen de gegevens vandaan?",
-      "a3": "65+ providers, benoemd: ACLED en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro — plus 500+ gecureerde nieuwsfeeds. Elk paneel vermeldt zijn bronnen en tijdstempels inline.",
+      "a3": "Genoemde providers zijn ACLED en UCDP voor conflicten, AISStream voor live schepen, OpenSky voor vliegtuigen, NASA FIRMS voor branden, USGS voor aardbevingen, IMF, BIS, FRED en Finnhub voor markten en macro-economie — plus samengestelde nieuwsfeeds. Elk panel citeert zijn bronnen en timestamps inline.",
       "q4": "Kan ik knelpunten zoals Hormuz of Bab el-Mandeb in real time volgen?",
-      "a4": "Ja. 13 knelpunten worden gevolgd met live AIS-scheepstellingen, week-over-week transitieverandering en verstoringsscore — en dichtheidsafwijkingen worden gemarkeerd tegen de rolling baseline van elke zeestraat.",
+      "a4": "Ja. Bottlenecks worden gemonitord met live AIS-scheepstellingen, week-over-week transitverandering en verstoringsscoringen — en dichtheidsanomalieën worden gemarkeerd tegen elk zeeëngtebasislijncijfer.",
       "q5": "Hoe verschilt dit van een conflictkaart zoals Liveuamap?",
-      "a5": "Conflict is één laag van 56. World Monitor voegt conflicten samen met scheepvaart, militaire vluchten, infrastructuur, markten en cyber — en AI beoordeelt de convergentie: instabiliteitsindexen, hotspot-escalatie, bevestigde brekende berichten en dagelijkse samenvattingen.",
+      "a5": "Conflict is één kaartlaag. World Monitor combineert conflicten met scheepsverkeer, militaire vluchten, infrastructuur, markten en cyber — en AI berekent vervolgens de convergentie: instabiliteitsindices, hotspot-escalatie, geverifieerde breaking alerts en dagelijkse briefings.",
       "q6": "Waarom moet ik een waarschuwing vertrouwen?",
       "a6": "Een breaking banner verschijnt alleen wanneer onafhankelijke brontypen dit bevestigen — nieuwsclassificatie, trefwoord-snelheid, hotspot-escalatie, militaire pieken, officiële sirenes — gededupliceerd en frequentielimited. Minder waarschuwingen, echte.",
       "q7": "Kunnen AI-agenten zoals Claude of GPT het gebruiken?",
-      "a7": "Ja. World Monitor beschikt over een MCP-server met 59 tools, dus Claude, GPT of een willekeurige MCP-compatibele agent kan live risicobeoordelingen, knelpuntstatus, conflicten, markten en samenvattingen opvragen — met JMESPath-projectie zodat agents precies krijgen wat ze nodig hebben.",
+      "a7": "Ja. World Monitor biedt een MCP-server met een live tool registry, zodat Claude, GPT of elke MCP-compatibele agent live risicocijfers, chokepointsstatus, conflicten, markten en briefings kan bevragen — met JMESPath-projectie zodat agents precies krijgen wat ze nodig hebben.",
       "q8": "Heb ik een account nodig?",
       "a8": "Nee. Het dashboard werkt direct zonder registratie. Een account is alleen belangrijk wanneer je upgradet naar Pro of instellingen wilt synchroniseren op meerdere apparaten.",
       "q9": "Is het open source?",
@@ -670,11 +705,37 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "De wereldkaart wacht niet op je.",
-      "subtitle": "Terwijl je deze pagina leest, blijft het bewegen — 13 zeestraten, 29 hotspots, 92 markten, 500+ feeds. Een ervan is morgen's voorpagina. Vind het eerst — gratis, geen account.",
+      "title": "Hoe begin ik met het wereldwijde kaartvolgen?",
+      "subtitle": "Terwijl je deze pagina las, bleef het bewegen — zeestraten, hotspots, markten, gecureerde feeds. Een ervan is morgen's voorpagina. Vind het als eerste — gratis, geen account nodig.",
       "button": "Vind het eerst",
       "note": "Gratis · Geen registratie · Laadt in seconden",
       "secondary": "Of bekijk Pro-plannen →"
+    },
+    "tasks": {
+      "eyebrow": "Begin met de vraag",
+      "title": "Wat wil je ontdekken?",
+      "sub": "Kies het bewijspad dat aansluit bij je taak. Elke route opent een brongestuurde weergave, geen leeg dashboard.",
+      "verifyTitle": "Verifieer een breaking event",
+      "verifyDesc": "Controleer huidige crisisbewakers, actuele metrische gegevens en geciteerde context voordat u een breaking claim vertrouwt.",
+      "chokepointTitle": "Controleer een kritiek passage",
+      "chokepointDesc": "Inspecteer verstoringsstatus, scheepsbewegingen en risico's in kritieke zeepassages.",
+      "countryRiskTitle": "Leg een landenrisico-beweging uit",
+      "countryRiskDesc": "Traceer de politieke, veiligheids-, economische en veerkrachtssignalen achter een verandering van een land.",
+      "open": "Open bewijs"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Scheepsvrachtlogboek",
+    "title": "Wat is er nieuw in WorldMonitor",
+    "subtitle": "Nieuwe functies van de afgelopen 30 dagen — correcties en onderhoud niet inbegrepen.",
+    "proTag": "PRO",
+    "m1": "Fysieke premiumafwijkingsindex — SGE versus COMEX, met geschiedenis",
+    "m2": "Rankings grondstoffentoevoergebonden kwetsbaarheid — chokepoint-afhankelijkheid uitwaaier",
+    "m3": "Concentratie van mineraalproductie en de defensie-industriële basis",
+    "m4": "Vijf-factorveerkracht scorecards met scores op indicatorniveau",
+    "m5": "Aangepaste Telegram-kanaalwachtlijsten",
+    "m6": "Passkey-aanmelding",
+    "m7": "AI-agenten kunnen het dashboard aansturen — panelen, tabbladen, kaartlagen en missies",
+    "m8": "Rijkere pagina's voor landveerkracht"
   }
 }

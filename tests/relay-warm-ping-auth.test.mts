@@ -44,6 +44,7 @@ describe('relay warm-ping internal auth', () => {
         '/api/infrastructure/v1/list-service-statuses',
         '/api/infrastructure/v1/list-temporal-anomalies',
         '/api/intelligence/v1/get-risk-scores',
+        '/api/news/v1/list-feed-digest',
         '/api/supply-chain/v1/get-chokepoint-status',
       ],
     );

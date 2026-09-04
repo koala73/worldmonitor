@@ -17,11 +17,13 @@ import {
   pickNewerIsoTimestamp,
 } from '@/shared/pipeline-evidence';
 import {
+  ensurePipelineRegistriesHydrated,
   getCachedPipelineRegistries,
   setCachedPipelineRegistries,
   type RawPipelineRegistry,
 } from '@/shared/pipeline-registry-store';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
+import { bindActivationKeys } from '@/utils/activation';
 
 const getSupplyChainClient = createLazyClient(() => new SupplyChainServiceClient(getRpcBaseUrl(), {
   fetch: rpcFetch,
@@ -177,6 +179,7 @@ export class PipelineStatusPanel extends Panel {
   // alongside getPipelineDetail. undefined = not yet fetched;
   // empty array = fetched and no events on file.
   private detailEvents: EnergyDisruptionEntry[] | undefined = undefined;
+  private usedHydrationPaint = false;
   private openDetailHandler = (ev: Event): void => {
     const id = (ev as CustomEvent<{ pipelineId?: string }>).detail?.pipelineId;
     if (!id || !this.element?.isConnected) return;
@@ -200,7 +203,22 @@ export class PipelineStatusPanel extends Panel {
     if (typeof window !== 'undefined') {
       window.addEventListener('energy:open-pipeline-detail', this.openDetailHandler);
     }
+    this.content.addEventListener('click', this.handleContentClick);
+    bindActivationKeys(this.content, '.pp-row');
   }
+
+  private handleContentClick = (e: Event): void => {
+    const target = e.target as HTMLElement | null;
+    if (!target) return;
+    if (target.closest('.pp-drawer-close')) {
+      this.closeDetail();
+      return;
+    }
+    const row = target.closest<HTMLTableRowElement>('tr.pp-row');
+    if (!row || !this.content.contains(row)) return;
+    const id = row.dataset.pipelineId;
+    if (id) void this.loadDetail(id);
+  };
 
   public destroy(): void {
     if (typeof window !== 'undefined') {
@@ -211,58 +229,75 @@ export class PipelineStatusPanel extends Panel {
 
   public async fetchData(): Promise<void> {
     try {
-      // Bootstrap hydration lane via the shared store. Reads once across all
-      // consumers (this panel + DeckGLMap energy pipeline layer); returns the
-      // cached values on subsequent calls instead of draining bootstrap data.
-      const { gas, oil } = getCachedPipelineRegistries();
-      const hydrated = buildBootstrapResponse(gas, oil);
+      // Shared store: rolling-deploy leftover first, then one on-demand
+      // fetch. A response that arrives before this panel is inserted still
+      // lands in the store and is replayed via runWhenConnected.
+      // First paint skips RPC when hydration yields the complete gas + oil
+      // pair. Later fetchData ticks (24h scheduler) ask the store for a
+      // CDN-shielded refresh.
+      let { gas, oil } = getCachedPipelineRegistries();
+      if (!gas || !oil) {
+        const hydratedRegistries = await ensurePipelineRegistriesHydrated({
+          refresh: this.usedHydrationPaint,
+        });
+        gas = hydratedRegistries.gas;
+        oil = hydratedRegistries.oil;
+      } else if (this.usedHydrationPaint) {
+        const hydratedRegistries = await ensurePipelineRegistriesHydrated({ refresh: true });
+        gas = hydratedRegistries.gas;
+        oil = hydratedRegistries.oil;
+      }
+      // The RPC returns the combined registry. Do not let a rolling-deploy
+      // cache containing only one commodity become a terminal first paint.
+      const hydrated = gas && oil ? buildBootstrapResponse(gas, oil) : null;
       if (hydrated) {
-        this.data = hydrated;
-        this.render();
-        // Kick a fresh RPC in the background for any post-deploy badge
-        // re-derivation (classifier-version bumps, evidence changes since
-        // bootstrap was stamped). When the RPC lands, mirror the fresh
-        // classifierVersion + updatedAt into the shared store so the map's
-        // next re-render uses the newer stamps too — prevents map/panel
-        // drift during rollouts.
-        void getSupplyChainClient().listPipelines({ commodityType: '' }).then(live => {
-          if (!this.element?.isConnected || !live?.pipelines?.length) return;
-          this.data = live;
+        const apply = (): void => {
+          this.data = hydrated;
           this.render();
-          // Back-propagate RPC freshness into the store so map layers see
-          // the same data. We keep the raw-JSON shape (`pipelines` as a
-          // Record<id, PipelineEntry>) so the projection logic downstream
-          // doesn't care whether it came from bootstrap or RPC.
-          const toRecord = (filterCommodity: string): Record<string, PipelineEntry> =>
-            Object.fromEntries(live.pipelines.filter(p => p.commodityType === filterCommodity).map(p => [p.id, p]));
-          setCachedPipelineRegistries({
-            gas: { pipelines: toRecord('gas'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
-            oil: { pipelines: toRecord('oil'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
-          });
-        }).catch(() => {});
+        };
+        if (!this.element?.isConnected) {
+          this.runWhenConnected(apply);
+          this.usedHydrationPaint = true;
+          return;
+        }
+        apply();
+        this.usedHydrationPaint = true;
         return;
       }
 
       const live = await getSupplyChainClient().listPipelines({ commodityType: '' });
-      if (!this.element?.isConnected) return;
-      if (live.upstreamUnavailable || !live.pipelines?.length) {
-        this.showError('Pipeline registry unavailable', () => void this.fetchData());
-        return;
-      }
-      this.data = live;
-      this.render();
-      // Same store back-propagation as the bootstrap lane — prime the cache
-      // so the DeckGLMap energy layer has registry data on the cold path.
       const toRecord = (filterCommodity: string): Record<string, PipelineEntry> =>
         Object.fromEntries(live.pipelines.filter(p => p.commodityType === filterCommodity).map(p => [p.id, p]));
-      setCachedPipelineRegistries({
-        gas: { pipelines: toRecord('gas'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
-        oil: { pipelines: toRecord('oil'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
-      });
+      if (live.pipelines?.length && !live.upstreamUnavailable) {
+        setCachedPipelineRegistries({
+          gas: { pipelines: toRecord('gas'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+          oil: { pipelines: toRecord('oil'), classifierVersion: live.classifierVersion, updatedAt: live.fetchedAt },
+        });
+        this.usedHydrationPaint = true;
+      }
+      const applyLive = (): void => {
+        if (live.upstreamUnavailable || !live.pipelines?.length) {
+          this.showError('Pipeline registry unavailable', () => void this.fetchData());
+          return;
+        }
+        this.data = live;
+        this.render();
+      };
+      if (!this.element?.isConnected) {
+        this.runWhenConnected(applyLive);
+        return;
+      }
+      applyLive();
     } catch (err) {
       if (this.isAbortError(err)) return;
-      if (!this.element?.isConnected) return;
-      this.showError('Pipeline registry error', () => void this.fetchData());
+      const applyError = (): void => {
+        this.showError('Pipeline registry error', () => void this.fetchData());
+      };
+      if (!this.element?.isConnected) {
+        this.runWhenConnected(applyError);
+        return;
+      }
+      applyError();
     }
   }
 
@@ -362,10 +397,10 @@ export class PipelineStatusPanel extends Panel {
         <table class="pp-table">
           <thead>
             <tr>
-              <th>Asset</th>
-              <th>From → To</th>
-              <th>Capacity</th>
-              <th>Status</th>
+              <th scope="col">Asset</th>
+              <th scope="col">From → To</th>
+              <th scope="col">Capacity</th>
+              <th scope="col">Status</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -375,42 +410,33 @@ export class PipelineStatusPanel extends Panel {
       </div>
       ${ATTRIBUTION_FOOTER_CSS}
       <style>
-        .pp-wrap { position: relative; font-size: 11px; }
+        .pp-wrap { position: relative; font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
         .pp-table { width: 100%; border-collapse: collapse; }
-        .pp-table th { text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .pp-table th { text-align: left; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); text-transform: uppercase; letter-spacing: 0.04em; color: var(--text-dim, #888); padding: 4px 6px; border-bottom: 1px solid rgba(255,255,255,0.08); }
         .pp-table td { padding: 6px; border-bottom: 1px solid rgba(255,255,255,0.04); }
         .pp-table tr.pp-row { cursor: pointer; }
         .pp-table tr.pp-row:hover td { background: rgba(255,255,255,0.03); }
         .pp-name { font-weight: 600; color: var(--text, #eee); }
-        .pp-sub  { font-size: 9px; color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
-        .pp-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: 9px; font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
+        .pp-sub  { font-size: calc(9px * var(--wm-panel-effective-scale, 1)); color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; }
+        .pp-badge { display: inline-block; padding: 2px 8px; border-radius: 10px; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); font-weight: 700; color: #fff; text-transform: uppercase; letter-spacing: 0.04em; }
         .pp-drawer { position: absolute; inset: 0; background: var(--panel-bg, #0f1218); padding: 12px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.08); border-radius: 6px; }
-        .pp-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: 14px; }
-        .pp-drawer h3 { margin: 0 0 6px 0; font-size: 13px; color: var(--text, #eee); }
-        .pp-drawer .pp-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: 10px; margin-bottom: 10px; }
-        .pp-drawer .pp-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: 9px; padding-top: 2px; }
+        .pp-drawer-close { position: absolute; top: 8px; right: 10px; background: transparent; border: 0; color: var(--text-dim, #888); cursor: pointer; font-size: calc(14px * var(--wm-panel-effective-scale, 1)); }
+        .pp-drawer h3 { margin: 0 0 6px 0; font-size: calc(13px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); }
+        .pp-drawer .pp-kv { display: grid; grid-template-columns: 120px 1fr; gap: 4px 10px; font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-bottom: 10px; }
+        .pp-drawer .pp-kv-key { color: var(--text-dim, #888); text-transform: uppercase; letter-spacing: 0.04em; font-size: calc(9px * var(--wm-panel-effective-scale, 1)); padding-top: 2px; }
         .pp-evidence { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
-        .pp-ev-item { font-size: 10px; color: var(--text, #eee); margin-bottom: 6px; }
+        .pp-ev-item { font-size: calc(10px * var(--wm-panel-effective-scale, 1)); color: var(--text, #eee); margin-bottom: 6px; }
         .pp-ev-item a { color: #4ade80; text-decoration: none; }
         .pp-ev-item a:hover { text-decoration: underline; }
       </style>
     `, 'legacy Panel.setContent() migration'));
-
-    const table = this.element?.querySelector('.pp-table') as HTMLTableElement | null;
-    table?.querySelectorAll<HTMLTableRowElement>('tr.pp-row').forEach(tr => {
-      const id = tr.dataset.pipelineId;
-      if (!id) return;
-      tr.addEventListener('click', () => void this.loadDetail(id));
-    });
-    const closeBtn = this.element?.querySelector<HTMLButtonElement>('.pp-drawer-close');
-    closeBtn?.addEventListener('click', () => this.closeDetail());
   }
 
   private renderRow(p: PipelineEntry): string {
     const commodity = p.commodityType === 'gas' ? '⛽' : '🛢️';
     const route = `${escapeHtml(p.fromCountry)} → ${escapeHtml(p.toCountry)}`;
     return `
-      <tr class="pp-row" data-pipeline-id="${escapeHtml(p.id)}">
+      <tr class="pp-row" data-pipeline-id="${escapeHtml(p.id)}" tabindex="${this.selectedId ? '-1' : '0'}">
         <td>
           <div class="pp-name">${commodity} ${escapeHtml(p.name)}</div>
           <div class="pp-sub">${escapeHtml(p.operator || '')}</div>

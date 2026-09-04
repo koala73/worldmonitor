@@ -13,6 +13,8 @@ The World Monitor OpenAPI Specification is the machine-readable contract for the
 
 The spec is generated on every deploy from the canonical proto/service definitions, so it always matches the running gateway — there is no hand-maintained drift.
 
+The YAML and JSON forms describe the same API: identical paths, operations, parameters, request bodies and responses. They are not byte-for-byte the same document. Agent-readiness scanners cap the body they will analyse near 1 MB, so the JSON is minified, collapses repeated structures into `$ref`s, and omits component schemas that no operation, response or parameter can reach. After that collapse, every JSON operation still keeps at least one inline typed parameter or requestBody so scanners that do not follow `components.parameters` `$ref`s still see typed input. Generate clients from either; use the YAML if you want every generated message type, including request messages that GET operations express as query parameters.
+
 ## Related descriptors
 
 - **Commerce / pricing endpoints** live in a separate spec (kept out of the root bundle for size): https://www.worldmonitor.app/docs/openapi/CommerceService.openapi.yaml

@@ -3,14 +3,34 @@ import { t } from '@/services/i18n';
 import type { ConvergenceCard, CorrelationDomain } from '@/services/correlation-engine';
 import { h, replaceChildren } from '@/utils/dom-utils';
 import { readableTextColor } from '@/utils/contrast';
-import { getHydratedData } from '@/services/bootstrap';
+import { ensureHydrated, getHydratedData, waitForBootstrapSlowTier } from '@/services/bootstrap';
 
 let correlationBootstrap: Record<string, ConvergenceCard[]> | null | undefined;
-function getCorrelationBootstrap(): Record<string, ConvergenceCard[]> | null {
+let correlationBootstrapPromise: Promise<Record<string, ConvergenceCard[]> | null> | null = null;
+
+function getTierCorrelationBootstrap(): Record<string, ConvergenceCard[]> | null {
   if (correlationBootstrap === undefined) {
     correlationBootstrap = (getHydratedData('correlationCards') as Record<string, ConvergenceCard[]>) ?? null;
   }
   return correlationBootstrap;
+}
+
+function loadCorrelationBootstrap(): Promise<Record<string, ConvergenceCard[]> | null> {
+  const tierValue = getTierCorrelationBootstrap();
+  if (tierValue) return Promise.resolve(tierValue);
+  correlationBootstrapPromise ??= waitForBootstrapSlowTier()
+    .then(() => getHydratedData('correlationCards') ?? ensureHydrated('correlationCards'))
+    .then((value) => {
+      correlationBootstrap = (value as Record<string, ConvergenceCard[]> | undefined) ?? null;
+      if (correlationBootstrap === null) correlationBootstrapPromise = null;
+      return correlationBootstrap;
+    })
+    .catch(() => {
+      correlationBootstrap = null;
+      correlationBootstrapPromise = null;
+      return null;
+    });
+  return correlationBootstrapPromise;
 }
 
 // Score-badge BACKGROUND colors. Badge text color is chosen per-background via
@@ -42,13 +62,14 @@ export class CorrelationPanel extends Panel {
     super({ id, title, showCount: true, infoTooltip });
     this.domain = domain;
 
-    const bootstrap = getCorrelationBootstrap();
+    const bootstrap = getTierCorrelationBootstrap();
     const cards = bootstrap?.[domain] ?? null;
     if (cards && cards.length > 0) {
       this.cards = cards;
       this.requestRender();
     } else {
       this.showLoading(t('components.correlation.loading'));
+      this.observeNearViewport(() => this.loadBootstrapCards(), 400);
     }
 
     this.boundUpdateHandler = ((e: CustomEvent) => {
@@ -75,6 +96,19 @@ export class CorrelationPanel extends Panel {
 
   protected renderSupplement(): HTMLElement | null {
     return null;
+  }
+
+  private loadBootstrapCards(): void {
+    void loadCorrelationBootstrap().then((onDemand) => {
+      if (this.correlationDestroyed || this.hasLiveData) return;
+      const onDemandCards = onDemand?.[this.domain];
+      if (onDemandCards?.length) {
+        this.cards = onDemandCards;
+        this.requestRender();
+        return;
+      }
+      this.showError(t('common.failedToLoad'), () => this.loadBootstrapCards());
+    });
   }
 
   private pendingRender = false;
@@ -106,15 +140,16 @@ export class CorrelationPanel extends Panel {
     if (cards.length === 0) {
       const empty = h('div', {
         className: 'correlation-empty',
-        style: 'padding:12px;text-align:center;opacity:0.5;font-size:11px;',
+        style: 'padding:12px;text-align:center;opacity:0.5;font-size:calc(11px * var(--wm-panel-effective-scale, 1));',
       }, t('components.correlation.empty'));
-      replaceChildren(this.content, ...(supplement ? [supplement] : []), empty);
+      // #6557: a settled empty state is authoritative content.
+      this.setContentNodes(...(supplement ? [supplement] : []), empty);
       return;
     }
 
     const cardEls = cards.map(card => this.buildCard(card));
-    replaceChildren(
-      this.content,
+    // #6557: success render with data — route through the sanctioned helper.
+    this.setContentNodes(
       ...(supplement ? [supplement] : []),
       h('div', { className: 'correlation-cards' }, ...cardEls),
     );
@@ -134,22 +169,22 @@ export class CorrelationPanel extends Panel {
       style: 'display:flex;align-items:center;gap:6px;cursor:pointer;padding:8px;',
     },
       h('span', {
-        style: `display:inline-block;min-width:28px;text-align:center;padding:2px 6px;border-radius:10px;font-size:10px;font-weight:700;color:${readableTextColor(scoreColor)};background:${scoreColor};`,
+        style: `display:inline-block;min-width:28px;text-align:center;padding:2px 6px;border-radius:10px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:700;color:${readableTextColor(scoreColor)};background:${scoreColor};`,
       }, String(card.score)),
       h('span', {
-        style: 'flex:1;font-size:11px;line-height:1.3;',
+        style: 'flex:1;font-size:calc(11px * var(--wm-panel-effective-scale, 1));line-height:1.3;',
       }, card.title),
       h('span', {
-        style: 'font-size:9px;opacity:0.6;white-space:nowrap;',
+        style: 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));opacity:0.6;white-space:nowrap;',
       }, t('components.correlation.signals', { count: card.signals.length })),
       h('span', {
-        style: `font-size:12px;color:${trend.color};`,
+        style: `font-size:calc(12px * var(--wm-panel-effective-scale, 1));color:${trend.color};`,
       }, trend.symbol),
     );
 
     const detailEl = h('div', {
       className: 'correlation-card-detail',
-      style: `display:${isExpanded ? 'block' : 'none'};padding:0 8px 8px;font-size:10px;border-top:1px solid rgba(255,255,255,0.05);`,
+      style: `display:${isExpanded ? 'block' : 'none'};padding:0 8px 8px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));border-top:1px solid rgba(255,255,255,0.05);`,
     });
 
     if (isExpanded) {
@@ -171,7 +206,7 @@ export class CorrelationPanel extends Panel {
     const signalList = card.signals.slice(0, 10).map(s =>
       h('div', { style: 'padding:2px 0;display:flex;gap:6px;align-items:baseline;' },
         h('span', {
-          style: 'font-size:8px;padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.1);white-space:nowrap;',
+          style: 'font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:3px;background:rgba(255,255,255,0.1);white-space:nowrap;',
         }, s.type),
         h('span', { style: 'opacity:0.8;' }, s.label),
       ),
@@ -183,17 +218,17 @@ export class CorrelationPanel extends Panel {
 
     if (card.assessment) {
       children.push(h('div', {
-        style: 'padding:6px 8px;margin:4px 0;border-radius:4px;background:rgba(100,150,255,0.08);border-left:2px solid rgba(100,150,255,0.3);font-size:10px;line-height:1.4;',
+        style: 'padding:6px 8px;margin:4px 0;border-radius:4px;background:rgba(100,150,255,0.08);border-left:2px solid rgba(100,150,255,0.3);font-size:calc(10px * var(--wm-panel-effective-scale, 1));line-height:1.4;',
       }, card.assessment));
     } else if (card.score >= 60 && this.hasLiveData) {
       children.push(h('div', {
-        style: 'padding:4px;font-size:9px;opacity:0.4;font-style:italic;',
+        style: 'padding:4px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));opacity:0.4;font-style:italic;',
       }, t('components.correlation.analyzing')));
     }
 
     if (card.location) {
       const mapBtn = h('button', {
-        style: 'margin-top:4px;padding:3px 8px;font-size:9px;border:1px solid rgba(255,255,255,0.15);border-radius:3px;background:transparent;color:inherit;cursor:pointer;',
+        style: 'margin-top:4px;padding:3px 8px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));border:1px solid rgba(255,255,255,0.15);border-radius:3px;background:transparent;color:inherit;cursor:pointer;',
       }, t('components.correlation.viewOnMap'));
       mapBtn.addEventListener('click', (e) => {
         e.stopPropagation();

@@ -33,11 +33,23 @@ import { renderPreferences } from '@/services/preferences-content';
 import { renderNotificationsSettings, type NotificationsSettingsResult } from '@/services/notifications-settings';
 import { getAuthState, subscribeAuthState } from '@/services/auth-state';
 import { track, trackApiAction } from '@/services/analytics';
-import { isEntitled, hasFeature, onEntitlementChange, getEntitlementState } from '@/services/entitlements';
+import {
+  getEntitlementState,
+  getEntitlementVerificationStatus,
+  hasFeature,
+  isEntitled,
+  onEntitlementChange,
+  onEntitlementVerificationChange,
+} from '@/services/entitlements';
 import { hasPremiumAccess } from '@/services/panel-gating';
-import { getSubscription, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
+import { getSubscription, isSubscriptionLoaded, onSubscriptionChange, openBillingPortal, prereserveBillingPortalTab } from '@/services/billing';
 import { BusinessSeatsSection } from '@/components/BusinessSeatsSection';
-import { deriveBillingUxState, getReactivationHref } from '@/services/billing-state';
+import {
+  deriveBillingUxState,
+  getReactivationHref,
+  getSubscriptionStatusTone,
+  type BillingStatusTone,
+} from '@/services/billing-state';
 import { createApiKey, listApiKeys, revokeApiKey, type ApiKeyInfo } from '@/services/api-keys';
 import { listMcpClients, revokeMcpClient, fetchMcpQuota, type McpClientInfo, type McpQuota } from '@/services/mcp-clients';
 import {
@@ -46,23 +58,20 @@ import {
   type ApiPlanLimitNotice,
 } from '@/services/api-plan-limit-notices';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { checkoutConsentHtml, legalLinksHtml, LEGAL_LINK_ATTR } from '@/utils/legal-links';
+import { createFocusTrap, type FocusTrap } from '@/utils/focus-trap';
 import {
   overlayHistory,
   type OverlayCloseOrigin,
   type OverlayId,
 } from '@/utils/overlay-history';
 import { isMobileDevice } from '@/utils';
-
-
-function showToast(msg: string): void {
-  document.querySelector('.toast-notification')?.remove();
-  const el = document.createElement('div');
-  el.className = 'toast-notification';
-  el.textContent = msg;
-  document.body.appendChild(el);
-  requestAnimationFrame(() => el.classList.add('visible'));
-  setTimeout(() => { el.classList.remove('visible'); setTimeout(() => el.remove(), 300); }, 4000);
-}
+import {
+  FONT_SCALE_STEPS,
+  fontScaleLabel,
+  parseFontScale,
+} from '@/services/font-scale-settings';
+import { showToast } from '@/utils/toast';
 
 export interface UnifiedSettingsConfig {
   getPanelSettings: () => Record<string, PanelConfig>;
@@ -75,15 +84,50 @@ export interface UnifiedSettingsConfig {
   resetLayout: () => void;
   isDesktopApp: boolean;
   onMapProviderChange?: (provider: MapProvider) => void;
+  /**
+   * The user finished editing Settings → SOURCES and the enabled set is not
+   * what it was when the overlay opened.
+   *
+   * Sources apply to `ctx.disabledSources` on click (no draft/Save step like
+   * panels), but nothing subscribed to that write, so the change only reached
+   * the dashboard at the next `REFRESH_INTERVALS.feeds` tick — 20 minutes
+   * (#6380). This is the subscription.
+   *
+   * Fired on teardown rather than per click on purpose: the overlay covers the
+   * dashboard, so nothing is observable until it closes, and a per-click
+   * refetch would be a request storm while the user works through the grid
+   * (the budget guarded by e2e/dashboard-news-request-budget.spec.ts). Once per
+   * settings session, and only when the selection genuinely moved.
+   */
+  onSourcesChanged?: () => void;
 }
 
 type TabId = UnifiedSettingsTabId;
 type AccountRequest = { userId: string; generation: number };
 
+/**
+ * Plan-card palette per billing status tone (#7315).
+ *
+ * The tone comes from the shared coverage predicate in billing-state.ts, never
+ * from a status string compared here — a cancelled plan still inside its paid
+ * window is a paying customer and must not be painted like a dead account.
+ *
+ * `unknown` (a provider status this client does not model) is deliberately the
+ * neutral grey, not red: we are inside the isEntitled() branch, so claiming a
+ * problem we have not established would repeat the bug in a new colour.
+ *
+ * Colours live on `--billing-tone-*` in main.css so [data-theme="light"] can
+ * raise every tone to WCAG AA for the 13px-bold plan name. The card only
+ * stamps `data-billing-tone`; it must not inline hex, or those overrides
+ * never apply. The status sentence stays on theme-aware var(--text-dim).
+ */
+
 export class UnifiedSettings {
   private overlay: HTMLElement;
+  private focusTrap: FocusTrap;
   private config: UnifiedSettingsConfig;
   private activeTab: TabId = 'settings';
+  private legalLinkHandoffAttached = false;
   private activeSourceRegion = 'all';
   private sourceFilter = '';
   private activePanelCategory = 'all';
@@ -97,6 +141,15 @@ export class UnifiedSettings {
   private savedTimeout: ReturnType<typeof setTimeout> | null = null;
   private confirmingClose = false;
   private historyRegistered = false;
+  /**
+   * `sourceSelectionSignature()` as of the last open(), or null while closed.
+   *
+   * A signature rather than a "something was toggled" flag: a source click can
+   * legitimately fail to mutate anything (the free-tier cap toasts and returns
+   * without touching the set), and toggling a source off and back on again is a
+   * net no-op the dashboard must not be asked to reload for.
+   */
+  private sourceSelectionBaseline: string | null = null;
   private apiKeys: ApiKeyInfo[] = [];
   private apiKeysLoading = false;
   private apiKeysError = '';
@@ -118,15 +171,8 @@ export class UnifiedSettings {
   private accountEntitlementRefreshPending = false;
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
+  private unsubscribeEntitlementVerification: (() => void) | null = null;
   private unsubscribeSubscription: (() => void) | null = null;
-  // Bounded "entitlement snapshot might still arrive" window. Starts false
-  // on open() when currentState is null, flips true on first snapshot OR
-  // after a fallback timeout so signed-in free users aren't stranded on an
-  // empty placeholder when Convex is disabled / auth times out / init
-  // silently fails (all of which leave currentState === null forever — see
-  // src/services/entitlements.ts:41,47,58,78).
-  private entitlementReady = false;
-  private entitlementReadyTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(config: UnifiedSettingsConfig) {
     this.config = config;
@@ -135,7 +181,9 @@ export class UnifiedSettings {
     this.overlay.className = 'modal-overlay';
     this.overlay.id = 'unifiedSettingsModal';
     this.overlay.setAttribute('role', 'dialog');
+    this.overlay.setAttribute('aria-modal', 'true');
     this.overlay.setAttribute('aria-label', t('header.settings'));
+    this.focusTrap = createFocusTrap(this.overlay);
     this.businessSeatsSection = new BusinessSeatsSection(this.overlay);
 
     this.resetPanelDraft();
@@ -159,6 +207,11 @@ export class UnifiedSettings {
 
       if (target.closest('.upgrade-pro-cta')) {
         this.handleUpgradeClick();
+        return;
+      }
+
+      if (target.closest('.retry-plan-status-btn')) {
+        window.location.reload();
         return;
       }
 
@@ -384,6 +437,34 @@ export class UnifiedSettings {
       }
     });
 
+    this.overlay.addEventListener('change', (e) => {
+      const select = (e.target as HTMLElement).closest<HTMLSelectElement>('[data-panel-font-scale]');
+      const panelKey = select?.dataset.panelFontScale;
+      if (!select || !panelKey) return;
+      const panel = this.draftPanelSettings[panelKey];
+      if (!panel) return;
+
+      if (select.value === 'global') {
+        delete panel.fontScale;
+      } else {
+        const scale = parseFontScale(select.value);
+        if (scale === undefined) {
+          select.value = panel.fontScale === undefined ? 'global' : String(panel.fontScale);
+          return;
+        }
+        panel.fontScale = scale;
+      }
+
+      this.panelsJustSaved = false;
+      select.closest('.panel-settings-item')
+        ?.querySelector('.panel-toggle-item')
+        ?.classList.toggle(
+          'changed',
+          this.isPanelDraftChanged(panelKey, panel, this.config.getPanelSettings()),
+        );
+      this.updatePanelsFooter();
+    });
+
     this.overlay.addEventListener('input', (e) => {
       const target = e.target as HTMLInputElement;
       if (target.closest('.panels-search')) {
@@ -426,7 +507,6 @@ export class UnifiedSettings {
     // Replace any rendered A-owned plaintext/list data synchronously. Account
     // loaders stay suppressed until the new entitlement snapshot rerenders.
     if (this.overlay.classList.contains('active')) {
-      this.entitlementReady = false;
       this.render(false);
     }
   }
@@ -449,12 +529,17 @@ export class UnifiedSettings {
       ? 'settings'
       : requestedTab;
     this.resetPanelDraft();
-    // Seed entitlementReady BEFORE render() so the first paint of
-    // renderUpgradeSection branches on the current snapshot state, not the
-    // stale value left over from a previous open/close cycle.
-    this.entitlementReady = getEntitlementState() !== null;
+    // Only on a FRESH session. open() is re-entrant on an overlay that is
+    // already up (the deep-dive "Notify me about this country" jump to the
+    // notifications tab, an overlayHistory replace), and re-snapshotting there
+    // would adopt a source change already made in this session as the baseline
+    // — silently discarding the very reload this exists to trigger.
+    if (this.sourceSelectionBaseline === null) {
+      this.sourceSelectionBaseline = this.sourceSelectionSignature();
+    }
     this.render();
     this.overlay.classList.add('active');
+    this.focusTrap.activate();
     if (isMobileDevice()) {
       this.historyRegistered = true;
       const close = (origin: OverlayCloseOrigin) => this.close(origin);
@@ -471,7 +556,6 @@ export class UnifiedSettings {
     // delivers data, so a paid API Starter user sees the upgrade CTA briefly).
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = onEntitlementChange((state) => {
-      this.entitlementReady = true;
       if (this.accountEntitlementRefreshPending) {
         // Entitlements are account-scoped. Rebuild every account surface so a
         // direct A→B handoff removes/adds MCP and API tabs using B's snapshot.
@@ -501,34 +585,24 @@ export class UnifiedSettings {
       }
       this.replaceUpgradeSection();
     });
+    this.unsubscribeEntitlementVerification?.();
+    this.unsubscribeEntitlementVerification = onEntitlementVerificationChange(() => {
+      this.replaceUpgradeSection();
+    });
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = onSubscriptionChange(() => {
       this.replaceUpgradeSection();
-      const sub = getSubscription();
-      if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+      // Ask for seats whenever the account has ANY subscription row, and let
+      // the server decide who owns seats. Filtering here on the display row's
+      // plan/status would miss an owner whose Business row is outranked by
+      // another subscription (see BusinessSeatsSection.businessSubscriptionId);
+      // free accounts have no row at all, so they still never query.
+      if (getSubscription() !== null) {
         void this.businessSeatsSection.load();
       }
     });
-    const sub = getSubscription();
-    if (sub?.planKey === 'api_business' && sub?.status === 'active') {
+    if (getSubscription() !== null) {
       void this.businessSeatsSection.load();
-    }
-    // Bounded fallback: the entitlement listener can legitimately never
-    // fire (no VITE_CONVEX_URL, Convex API fails to load, waitForConvexAuth
-    // times out at 10s, or init throws — see entitlements.ts:41,47,58,78).
-    // Without this timer, the signed-in-free branch of renderUpgradeSection
-    // would show a blank placeholder for the entire session. 12s > the 10s
-    // auth timeout so the healthy-but-slow path lands on the real state;
-    // any later path falls back to "Upgrade to Pro" with handleUpgradeClick
-    // defensively re-checking isEntitled() at click time.
-    if (this.entitlementReadyTimer) clearTimeout(this.entitlementReadyTimer);
-    if (!this.entitlementReady) {
-      this.entitlementReadyTimer = setTimeout(() => {
-        this.entitlementReadyTimer = null;
-        if (this.entitlementReady) return;
-        this.entitlementReady = true;
-        this.replaceUpgradeSection();
-      }, 12_000);
     }
   }
 
@@ -576,6 +650,7 @@ export class UnifiedSettings {
     }
     this.historyRegistered = false;
     this.overlay.classList.remove('active');
+    this.focusTrap.deactivate();
     this.prefsCleanup?.();
     this.prefsCleanup = null;
     this.notifCleanup?.();
@@ -583,16 +658,46 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeEntitlementVerification?.();
+    this.unsubscribeEntitlementVerification = null;
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
-    if (this.entitlementReadyTimer) {
-      clearTimeout(this.entitlementReadyTimer);
-      this.entitlementReadyTimer = null;
-    }
     this.stopMcpQuotaPolling();
     this.resetPanelDraft();
     localStorage.removeItem('wm-settings-open');
     document.removeEventListener('keydown', this.escapeHandler);
+    // Last: the host reloads data in response, and the overlay covering the
+    // dashboard has to be gone before that lands for the user to see it.
+    this.notifySourceSelectionChanged();
+  }
+
+  /**
+   * Order-independent fingerprint of the currently DISABLED source names.
+   *
+   * NUL is the separator because source names contain spaces ("BBC World"):
+   * any separator a name can itself hold collapses `["A B"]` and `["A", "B"]`
+   * into one string, which is a silent miss for exactly the swap-one-source-
+   * for-another case this comparison exists to catch.
+   */
+  private sourceSelectionSignature(): string {
+    return [...this.config.getDisabledSources()].sort().join('\u0000');
+  }
+
+  /**
+   * Tell the host the source selection moved during this settings session.
+   *
+   * Every close path funnels through teardownSettings — the close button, Esc,
+   * the overlay backdrop, mobile history back, and the discard branch of the
+   * unsaved-panel-changes confirm — so this is the single chokepoint. `destroy()`
+   * deliberately does not reach it: the dashboard is going away.
+   */
+  private notifySourceSelectionChanged(): void {
+    const baseline = this.sourceSelectionBaseline;
+    this.sourceSelectionBaseline = null;
+    // null baseline = never opened. A teardown without an open has no session
+    // to compare against, and firing there would reload on a spurious close.
+    if (baseline === null || baseline === this.sourceSelectionSignature()) return;
+    this.config.onSourcesChanged?.();
   }
 
   public refreshPanelToggles(): void {
@@ -615,21 +720,17 @@ export class UnifiedSettings {
     this.pendingNotifs = null;
     this.unsubscribeEntitlement?.();
     this.unsubscribeEntitlement = null;
+    this.unsubscribeEntitlementVerification?.();
+    this.unsubscribeEntitlementVerification = null;
     this.unsubscribeSubscription?.();
     this.unsubscribeSubscription = null;
     this.unsubscribeAuth?.();
     this.unsubscribeAuth = null;
-    // Mirror close() — without this, a destroy() during the 12s fallback
-    // window leaves the timer live; it fires after teardown and calls
-    // replaceUpgradeSection() against a detached overlay (no-op via the
-    // querySelector early return, but a stray async callback + DOM
-    // reference alive longer than intended).
-    if (this.entitlementReadyTimer) {
-      clearTimeout(this.entitlementReadyTimer);
-      this.entitlementReadyTimer = null;
-    }
     this.stopMcpQuotaPolling();
     document.removeEventListener('keydown', this.escapeHandler);
+    // Teardown, not a user-initiated close: release the trap's document
+    // listener without handing focus back to a trigger that is also going away.
+    this.focusTrap.deactivate({ restoreFocus: false });
     this.overlay.remove();
   }
 
@@ -658,10 +759,11 @@ export class UnifiedSettings {
     this.notifCleanup = null;
     this.pendingNotifs = null;
 
-    const isSignedIn = !this.config.isDesktopApp && (getAuthState().user !== null);
+    const isSignedIn = getAuthState().user !== null;
     const prefs = renderPreferences({
       isDesktopApp: this.config.isDesktopApp,
       onMapProviderChange: this.config.onMapProviderChange,
+      onSettingSaved: () => showToast(t('modals.settingsWindow.saved')),
       isSignedIn,
     });
     const showNotificationsTab = !this.config.isDesktopApp;
@@ -714,7 +816,7 @@ export class UnifiedSettings {
             <div class="unified-settings-region-bar" id="usPanelCatBar"></div>
           </div>
           <div class="panels-search">
-            <input type="text" placeholder="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
+            <input type="text" placeholder="${t('header.filterPanels')}" aria-label="${t('header.filterPanels')}" value="${escapeHtml(this.panelFilter)}" />
           </div>
           <div class="panel-toggle-grid" id="usPanelToggles"></div>
           <div class="panels-footer">
@@ -736,7 +838,7 @@ export class UnifiedSettings {
           </div>
           ` : ''}
           <div class="sources-search">
-            <input type="text" placeholder="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
+            <input type="text" placeholder="${t('header.filterSources')}" aria-label="${t('header.filterSources')}" value="${escapeHtml(this.sourceFilter)}" />
           </div>
           <div class="sources-toggle-grid" id="usSourceToggles"></div>
           <div class="sources-footer">
@@ -758,6 +860,7 @@ export class UnifiedSettings {
           ${this.renderMcpClientsContent()}
         </div>
         ` : ''}
+        ${legalLinksHtml(WEB_APP_ORIGIN)}
       </div>
     `, "legacy direct innerHTML migration"));
 
@@ -780,6 +883,8 @@ export class UnifiedSettings {
       });
     }
 
+    this.attachLegalLinkHandoff();
+
     this.renderPanelCategoryPills();
     this.renderPanelsTab();
     this.renderRegionPills();
@@ -799,6 +904,28 @@ export class UnifiedSettings {
         this.startMcpQuotaPolling();
       }
     }
+  }
+
+  /**
+   * Desktop hands legal links to the OS browser (#5911 precedent). A plain
+   * `target="_blank"` anchor inside the Tauri WebView opens another WebView
+   * window with no chrome, which is how a user ends up stranded on the Terms
+   * with no way back. Delegated on the overlay so it covers the legal row AND
+   * every checkout-consent line rendered inside a tab panel, including the ones
+   * re-rendered after this handler is attached.
+   */
+  private attachLegalLinkHandoff(): void {
+    if (!this.config.isDesktopApp || this.legalLinkHandoffAttached) return;
+    // The overlay element outlives every re-render, so an unguarded attach
+    // would stack one listener per render and open N windows on one click.
+    this.legalLinkHandoffAttached = true;
+    this.overlay.addEventListener('click', (e) => {
+      const link = (e.target as HTMLElement | null)?.closest?.(`a[${LEGAL_LINK_ATTR}]`);
+      const href = link instanceof HTMLAnchorElement ? link.href : '';
+      if (!href) return;
+      e.preventDefault();
+      void openExternalUrl(href);
+    });
   }
 
   private switchTab(tab: TabId): void {
@@ -838,6 +965,18 @@ export class UnifiedSettings {
     }
   }
 
+  // Pending state shown while the plan is still resolving — used both before
+  // the entitlement snapshot arrives and, for an entitled owner, while the
+  // subscription watch is still settling (#6772).
+  private renderPlanCheckingState(): string {
+    return `
+        <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
+          <div class="upgrade-pro-title">Checking your plan…</div>
+          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
+        </div>
+      `;
+  }
+
   private renderUpgradeSection(): string {
     // Non-Dodo premium (API key / tester key / Clerk pro role without a
     // Convex subscription): neither "Upgrade" nor "Manage Billing" is
@@ -859,40 +998,44 @@ export class UnifiedSettings {
         <div class="upgrade-pro-section upgrade-pro-lapsed" data-billing-state="lapsed">
           <div class="upgrade-pro-title">${escapeHtml(t('components.billingState.resubscribe'))}: ${escapeHtml(planName)}</div>
           <div class="upgrade-pro-desc">${escapeHtml(t('components.billingState.lapsedDesc'))}</div>
-          <a class="upgrade-pro-cta-link" href="${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}${getReactivationHref(sub?.planKey)}" target="_blank" rel="noopener">${escapeHtml(t('components.billingState.resubscribe'))} →</a>
         </div>
       `;
     }
-    // Signed-in user whose Convex entitlement snapshot has not arrived yet
-    // AND whose bounded-wait window has not expired. Rendering "Upgrade to
-    // Pro" in this window is how paying users click through to
+    // Signed-in user whose Convex entitlement snapshot has not arrived yet.
+    // Rendering "Upgrade to Pro" in this window is how paying users click through to
     // /api/create-checkout and hit 409 duplicate_subscription — same race
     // as the 2026-04-17/18 panel-overlay incident fixed in panel-gating.ts,
-    // different surface. The entitlementReady flag is flipped either by
-    // the onEntitlementChange listener (healthy path) or by a 12s fallback
-    // timer in open() (Convex-disabled / auth-timeout / init-fail paths
-    // where currentState would otherwise stay null forever and strand a
-    // signed-in free user on an empty placeholder).
-    if (!this.entitlementReady && getAuthState().user && getEntitlementState() === null) {
-      return `
-        <div class="upgrade-pro-section upgrade-pro-loading" role="status" aria-live="polite">
-          <div class="upgrade-pro-title">Checking your plan…</div>
-          <div class="upgrade-pro-desc">This usually takes only a moment.</div>
-        </div>
-      `;
+    // different surface. The verification service stays pending across the
+    // complete Clerk/Convex retry schedule and publishes unavailable only
+    // after a terminal handoff or subscription failure.
+    const verificationStatus = getEntitlementVerificationStatus();
+    if (
+      getAuthState().user
+      && getEntitlementState() === null
+      && (verificationStatus === 'idle' || verificationStatus === 'pending')
+    ) {
+      return this.renderPlanCheckingState();
     }
     if (isEntitled()) {
       const sub = getSubscription();
+      // A Pro owner's entitlement snapshot can arrive before their own
+      // subscription watch settles. In that window getSubscription() is null
+      // but the user is NOT a Business invitee — falling through would render
+      // "Billing is managed by your plan owner" and hide Manage Billing from a
+      // paying owner. Treat an unresolved watch like the pending state above;
+      // the invitee copy below is reserved for a *settled* null (#6772).
+      if (sub === null && !isSubscriptionLoaded()) {
+        return this.renderPlanCheckingState();
+      }
       const planName = sub?.displayName ?? 'Pro';
+      const now = Date.now();
       // A Business Pro grant invitee has no own subscription row (sub === null)
-      // but IS entitled (we're inside the isEntitled() branch) — treat that as
-      // 'active' rather than falling through to the red "problem" color, which
-      // the ternaries below would otherwise do for every status value that
-      // isn't literally 'active'/'on_hold'.
-      const effectiveStatus = sub?.status ?? 'active';
-      const statusColor = effectiveStatus === 'active' ? '#22c55e' : effectiveStatus === 'on_hold' ? '#eab308' : '#ef4444';
-      const statusBorderColor = effectiveStatus === 'active' ? '#22c55e33' : effectiveStatus === 'on_hold' ? '#eab30833' : '#ef444433';
-      const statusBgColor = effectiveStatus === 'active' ? '#22c55e0a' : effectiveStatus === 'on_hold' ? '#eab3080a' : '#ef44440a';
+      // but IS entitled (we're inside the isEntitled() branch) — they hold a
+      // grant that is working, so paint them like an active plan.
+      const tone: BillingStatusTone = sub === null
+        ? 'active'
+        : getSubscriptionStatusTone(sub, now);
 
       let statusLine = '';
       if (sub?.currentPeriodEnd) {
@@ -905,6 +1048,12 @@ export class UnifiedSettings {
           statusLine = `Cancelled -- access until ${dateStr}`;
         } else if (sub.status === 'expired') {
           statusLine = 'Expired';
+        } else {
+          // A status this client does not model yet. We are inside the
+          // isEntitled() branch, so access is working — say only that, and
+          // point at the billing portal rather than leaving the `unknown`
+          // tone as a bare grey dot with no sentence at all.
+          statusLine = 'See Manage Billing for your current plan details.';
         }
       }
 
@@ -918,36 +1067,29 @@ export class UnifiedSettings {
       }
 
       return `
-        <div class="upgrade-pro-section upgrade-pro-active" style="margin-top:16px;padding:14px 16px;border:1px solid ${statusBorderColor};border-radius:6px;background:${statusBgColor};">
+        <div class="upgrade-pro-section upgrade-pro-active" data-billing-tone="${tone}">
           <div style="display:flex;align-items:center;gap:8px;margin-bottom:${statusLine ? '8' : '0'}px;">
-            <span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;"></span>
-            <span style="color:${statusColor};font-weight:600;font-size:13px;">${escapeHtml(planName)}</span>
+            <span class="upgrade-pro-tone-dot"></span>
+            <span class="upgrade-pro-plan-name">${escapeHtml(planName)}</span>
           </div>
           ${statusLine ? `<div class="upgrade-pro-status-line">${escapeHtml(statusLine)}</div>` : ''}
           ${sub?.planKey === 'api_starter' ? `<button class="upgrade-to-business-btn" style="margin-right:8px;">Upgrade to Business</button>` : ''}
           ${hasOwnSubscription ? `<button class="manage-billing-btn">Manage Billing</button>` : ''}
         </div>
-        ${sub?.planKey === 'api_business' && sub?.status === 'active' ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
+        ${hasOwnSubscription ? `<div id="usBusinessSeats">${this.businessSeatsSection.renderContent()}</div>` : ''}
       `;
     }
 
-    // Fallback branch: 12s timer fired but Convex never delivered a
-    // snapshot. entitlementReady===true does NOT prove the user is free —
-    // it just means we've given up waiting. A paying user whose auth/query
-    // is simply very slow (beyond the 10s waitForConvexAuth timeout) would
-    // otherwise race into in-modal startCheckout here and reproduce the
-    // 409 duplicate_subscription cascade this PR exists to eliminate.
-    // Render the card with a plain anchor to /pro instead: /pro has its
-    // own entitlement gating on fresh page load, and navigating away is a
-    // no-op for backend subscription state. The `upgrade-pro-cta-link`
-    // class does NOT match the `.upgrade-pro-cta` delegated click handler
-    // (line ~95), so the browser handles the navigation natively.
+    // A terminal auth/subscription failure still does not prove the user is
+    // free. Keep checkout unavailable, offer a fresh verification attempt,
+    // and retain the safe /pro link in a separate tab.
     if (getAuthState().user && getEntitlementState() === null) {
       return `
         <div class="upgrade-pro-section upgrade-pro-fallback">
           <div class="upgrade-pro-title">Plan status unavailable</div>
-          <div class="upgrade-pro-desc">We could not verify your current plan. View plans in a new tab or try again later.</div>
-          <a class="upgrade-pro-cta-link" href="/pro" target="_blank" rel="noopener">View plans →</a>
+          <div class="upgrade-pro-desc">We could not verify your current plan. Try again or view plans in a new tab.</div>
+          <button class="manage-billing-btn retry-plan-status-btn" style="margin-bottom:8px;">Try again</button>
+          <a class="upgrade-pro-cta-link" href="${WEB_APP_ORIGIN}/pro" target="_blank" rel="noopener">View plans →</a>
         </div>
       `;
     }
@@ -956,6 +1098,7 @@ export class UnifiedSettings {
       <div class="upgrade-pro-section" data-billing-state="free">
         <div class="upgrade-pro-title">WorldMonitor Free</div>
         <div class="upgrade-pro-desc">Your current plan is Free. Upgrade for all panels, AI analysis, and priority data refresh.</div>
+        ${checkoutConsentHtml(WEB_APP_ORIGIN)}
         <button class="upgrade-pro-cta">Upgrade to Pro</button>
       </div>
     `;
@@ -965,14 +1108,9 @@ export class UnifiedSettings {
   // BusinessSeatsSection — see this.businessSeatsSection.
 
   private handleUpgradeClick(): void {
-    // Defense in depth: the upgrade CTA can only be clicked when either (a)
-    // the user is genuinely free-tier, or (b) the 12s fallback timer fired
-    // before the Convex snapshot arrived. In (b), the snapshot might land
-    // AFTER the timer but BEFORE the click — re-check isEntitled() here so
-    // a late-arriving "you're a paying user" state routes to the billing
-    // portal instead of triggering /api/create-checkout against an active
-    // subscription (which would 409 and re-enter the duplicate_subscription
-    // → getCustomerPortalUrl cascade this PR is trying to eliminate).
+    // Defense in depth: re-check at click time so a late-arriving "you're a
+    // paying user" snapshot routes to the billing portal instead of creating
+    // a second checkout against an active subscription.
     if (isEntitled()) {
       this.close();
       const reservedWin = prereserveBillingPortalTab();
@@ -1063,21 +1201,34 @@ export class UnifiedSettings {
     const savedSettings = this.config.getPanelSettings();
     const pro = isProUser();
     const entries = this.getVisiblePanelEntries();
+    const panelFontScaleLabel = t('preferences.panelFontScale', { defaultValue: 'Text size' });
+    const followGlobalFontScaleLabel = t('preferences.followGlobalFontScale', { defaultValue: 'Use global' });
     setTrustedHtml(container, trustedHtml(entries.map(([key, panel]) => {
       // Preserve saved config for dynamic cw-* panels; unknown keys should not
       // collapse to getEffectivePanelConfig's disabled synthetic fallback.
       const resolvedPanel = ALL_PANELS[key] ? getEffectivePanelConfig(key, SITE_VARIANT) : panel;
       const entitled = isPanelEntitled(key, resolvedPanel, pro);
       const locked = !entitled;
-      const changed = !locked && this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled;
+      const changed = !locked && this.isPanelDraftChanged(key, panel, savedSettings);
       const displayName = this.config.getLocalizedPanelName(key, resolvedPanel.name ?? panel.name);
       const a11yState = getPanelToggleA11yState(locked, panel.enabled, displayName);
+      // Sandboxed MCP iframes cannot inherit the host panel's CSS scale.
+      const supportsPanelFontScale = key !== 'map' && !key.startsWith('mcp-');
       return `
-        <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
-          <div  class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
-          <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
-          ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
-        </button>
+        <div class="panel-settings-item">
+          <button type="button" class="panel-toggle-item ${panel.enabled && !locked ? 'active' : ''}${changed ? ' changed' : ''}${locked ? ' pro-locked' : ''}" data-panel="${escapeHtml(key)}" ${a11yState.ariaPressed === null ? '' : `aria-pressed="${a11yState.ariaPressed}"`} ${a11yState.ariaLabel === null ? '' : `aria-label="${escapeHtml(a11yState.ariaLabel)}"`} ${locked ? 'data-pro-locked="1"' : ''}>
+            <div class="panel-toggle-checkbox" aria-hidden="true">${panel.enabled && !locked ? '\u2713' : ''}${locked ? '\uD83D\uDD12' : ''}</div>
+            <span class="panel-toggle-label">${escapeHtml(displayName)}</span>
+            ${(locked || resolvedPanel.premium) ? '<span class="panel-toggle-pro-badge" aria-hidden="true">PRO</span>' : ''}
+          </button>
+          ${supportsPanelFontScale ? `<label class="panel-font-scale-control">
+            <span>${escapeHtml(panelFontScaleLabel)}</span>
+            <select data-panel-font-scale="${escapeHtml(key)}" aria-label="${escapeHtml(`${displayName}: ${panelFontScaleLabel}`)}"${locked ? ' disabled' : ''}>
+              <option value="global"${panel.fontScale === undefined ? ' selected' : ''}>${escapeHtml(followGlobalFontScaleLabel)}</option>
+              ${FONT_SCALE_STEPS.map(scale => `<option value="${scale}"${panel.fontScale === scale ? ' selected' : ''}>${fontScaleLabel(scale)}</option>`).join('')}
+            </select>
+          </label>` : ''}
+        </div>
       `;
     }).join(''), "legacy direct innerHTML migration"));
 
@@ -1107,10 +1258,26 @@ export class UnifiedSettings {
     return Boolean(ALL_PANELS[key]) && isPanelInVariantDefaults(key);
   }
 
+  private getSavedPanelFontScale(
+    key: string,
+    savedSettings: Record<string, PanelConfig>,
+  ): PanelConfig['fontScale'] {
+    return savedSettings[key]?.fontScale;
+  }
+
+  private isPanelDraftChanged(
+    key: string,
+    panel: PanelConfig,
+    savedSettings: Record<string, PanelConfig>,
+  ): boolean {
+    return this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled
+      || this.getSavedPanelFontScale(key, savedSettings) !== panel.fontScale;
+  }
+
   private hasPendingPanelChanges(): boolean {
     const savedSettings = this.config.getPanelSettings();
     return Object.entries(this.draftPanelSettings).some(
-      ([key, panel]) => this.getSavedPanelEnabled(key, savedSettings) !== panel.enabled,
+      ([key, panel]) => this.isPanelDraftChanged(key, panel, savedSettings),
     );
   }
 
@@ -1398,6 +1565,7 @@ export class UnifiedSettings {
                 </div>
               </div>
               <div class="api-plan-limit-notice-actions">
+                ${notice.ctaKind === 'checkout' ? checkoutConsentHtml(WEB_APP_ORIGIN) : ''}
                 ${cta ? `<button class="btn btn-primary api-plan-limit-notice-cta" data-plan-limit-cta="${escapeHtml(notice._id)}">${escapeHtml(cta)}</button>` : ''}
                 <button class="btn btn-ghost api-plan-limit-notice-ack" data-plan-limit-ack="${escapeHtml(notice._id)}">Dismiss</button>
               </div>
@@ -1531,6 +1699,7 @@ export class UnifiedSettings {
         <div class="panel-locked-state">
           <div class="panel-locked-icon">${upgradeIcon}</div>
           <div class="panel-locked-desc">Create and manage API keys to access WorldMonitor data programmatically.</div>
+          ${checkoutConsentHtml(WEB_APP_ORIGIN)}
           <button class="panel-locked-cta api-keys-gate-btn">Upgrade to API Starter</button>
         </div>`;
     }
@@ -1542,7 +1711,7 @@ export class UnifiedSettings {
           <p class="api-keys-desc">Create API keys to access WorldMonitor data programmatically. Keys are shown once on creation — store them securely.</p>
         </div>
         <div class="api-keys-create-form">
-          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" maxlength="64" />
+          <input type="text" class="api-keys-name-input" placeholder="Key name (e.g. my-app)" aria-label="API key name" maxlength="64" />
           <button class="btn btn-primary api-keys-create-btn">Create Key</button>
         </div>
         <div class="api-keys-created-banner" id="usApiKeysBanner" style="display:none;"></div>

@@ -3,9 +3,13 @@ title: "MCP Apps: interactive ui:// widgets for WorldMonitor"
 description: "Complete contract for WorldMonitor's MCP Apps interactive ui:// resources, tool links, host flow, security posture, and drift checks."
 ---
 
-WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) through the `io.modelcontextprotocol/ui` extension. The current fleet ships 10 MCP Apps: self-contained `ui://` HTML resources that an MCP Apps host can render inline after a linked tool call.
+WorldMonitor supports [MCP Apps](https://modelcontextprotocol.io/extensions/apps/build) through the `io.modelcontextprotocol/ui` extension. The current fleet ships MCP Apps: self-contained `ui://` HTML resources that an MCP Apps host can render inline after a linked tool call.
 
 This page is the source-of-truth guide for the interactive surface. Use it with the [MCP Server overview](/mcp-overview) for auth, quota, transport, and general JSON-RPC behavior.
+
+<Note>
+MCP Apps render WorldMonitor UI inside an MCP host after a hosted tool call. [WebMCP](/webmcp) instead lets a browser agent operate the existing WorldMonitor website in its current tab. WebMCP is not an MCP App and does not replace the hosted MCP server behind these resources.
+</Note>
 
 ## Contract
 
@@ -38,7 +42,7 @@ Three discovery signals must stay aligned:
 | `ui://worldmonitor/chokepoint-monitor.html` | `get_chokepoint_status` | Chokepoint Monitor (interactive) | Per-chokepoint transit summaries, week-over-week change, tanker split, and risk-level badge. |
 | `ui://worldmonitor/news-intelligence.html` | `get_news_intelligence` | News Intelligence (interactive) | AI-classified top stories with category, alert flag, country, and source. |
 | `ui://worldmonitor/conflict-events.html` | `get_conflict_events` | Conflict Events (interactive) | Active armed-conflict events (belligerents, violence type, country, fatalities, date) from UCDP. |
-| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Natural Disasters (interactive) | Recent earthquakes (USGS magnitude, place, time) and active wildfires (NASA FIRMS), grouped. |
+| `ui://worldmonitor/natural-disasters.html` | `get_natural_disasters` | Natural Disasters (interactive) | Recent M4.5+ earthquakes (USGS and Earthquakes Canada / NRCan: magnitude, place, time, source) and active wildfires (NASA FIRMS), grouped. |
 | `ui://worldmonitor/prediction-markets.html` | `get_prediction_markets` | Prediction Markets (interactive) | Event-contract odds grouped by category (geopolitical, tech, finance) with a probability bar per market. |
 | `ui://worldmonitor/forecasts.html` | `get_forecast_predictions` | Forecasts (interactive) | AI-generated geopolitical and economic forecasts as probability cards (title, domain, region). |
 
@@ -95,7 +99,7 @@ Important limitation: `frame-ancestors` inside a meta CSP is advisory only. Brow
 3. Add a canonical `*_UI_URI` constant and registry entry in `api/mcp/ui/registry.ts`.
 4. Set `_uiResourceUri` on exactly one backing tool in `api/mcp/registry/rpc-tools.ts` or `api/mcp/registry/cache-tools.ts`.
 5. Update `docs/mcp-apps.mdx`, the short [MCP overview](/mcp-overview#mcp-apps-interactive-ui), and `public/.well-known/mcp/server-card.json`.
-6. Run `npm run docs:stats` to refresh `docs/generated/stats.json`.
+6. Run `npm run inventory:facts:check` to validate the build-owned inventory snapshot.
 7. Run `npm run docs:check` and the focused MCP resource/tool tests.
 
 The docs-stat gate derives the app inventory from `api/mcp/ui/registry.ts` and the tool registries. It fails when:
@@ -103,7 +107,6 @@ The docs-stat gate derives the app inventory from `api/mcp/ui/registry.ts` and t
 - `docs/mcp-apps.mdx`, `docs/mcp-overview.mdx`, or `public/mcp-server.md` omits a linked tool or `ui://` URI.
 - `public/.well-known/mcp/server-card.json.metadata.mcpApps` drifts from the code-derived app list, spec version, or MIME type.
 - `docs/docs.json` drops this page from navigation.
-- The documented MCP tool count drifts from the server-card tool inventory.
 
 ## Source Files
 

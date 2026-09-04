@@ -58,6 +58,18 @@ let unsubscribeConvex: (() => void) | null = null;
 // and as `cause` (for Sentry's structured display) so events remain debuggable (WORLDMONITOR-ND).
 function normalizeCaughtError(action: string, err: unknown): Error {
   if (err instanceof Error) return err;
+  // Chrome iOS / WKWebView: DOMException is not always `instanceof Error`, so
+  // a SecurityError from window.open / location assignment fell through to the
+  // synthetic "threw non-Error: …" branch below and titled its Sentry issue
+  // after the wrapper rather than the fault (WORLDMONITOR-11D). Keep the
+  // `[billing] <action>:` prefix every other error from this module carries —
+  // without it the same fault produces two differently-shaped titles depending
+  // on which branch caught it, and neither says where it happened.
+  if (typeof DOMException !== 'undefined' && err instanceof DOMException) {
+    const wrapped = new Error(`[billing] ${action}: ${err.name}: ${err.message}`);
+    (wrapped as Error & { cause?: unknown }).cause = err;
+    return wrapped;
+  }
   const rendered = err === undefined ? 'undefined' : String(err);
   const wrapped = new Error(`[billing] ${action} threw non-Error: ${rendered}`);
   // Attach the original thrown value as `cause` so Sentry shows it as structured data.
@@ -182,6 +194,17 @@ export function destroySubscriptionWatch(): void {
  */
 export function getSubscription(): SubscriptionInfo | null {
   return currentSubscription;
+}
+
+/**
+ * Whether the subscription watch has produced a value at least once (including
+ * a legitimate `null` — no row, or a query error). Callers use this to tell an
+ * unresolved watch apart from a settled "no subscription": `getSubscription()`
+ * returns `null` in both cases, but only the settled null means the user truly
+ * has no own subscription row (e.g. a Business Pro grant invitee).
+ */
+export function isSubscriptionLoaded(): boolean {
+  return subscriptionLoaded;
 }
 
 export type ProActivationClaimOutcome =
@@ -367,10 +390,18 @@ export async function openBillingPortal(
     // documents this as its contract: a swallowed failure that still claims
     // "opened" is worse than no message, because the caller then tells the
     // user to look at a window that does not exist.
-    const navOutcome = await openExternalUrl(url, reservedWin);
-    return navOutcome === 'failed'
-      ? { outcome: 'open-failed', url }
-      : { outcome: 'opened', url };
+    //
+    // Never let a recoverable nav throw reject this promise: two CTA
+    // callers invoke `void openBillingPortal(...)` with no .catch, and a
+    // SecurityError on a reserved blank tab became WORLDMONITOR-11C.
+    try {
+      const navOutcome = await openExternalUrl(url, reservedWin);
+      return navOutcome === 'failed'
+        ? { outcome: 'open-failed', url }
+        : { outcome: 'opened', url };
+    } catch {
+      return { outcome: 'open-failed', url };
+    }
   };
 
   // NO_CUSTOMER means the user is entitled (comp grant, recently-restored
@@ -384,11 +415,20 @@ export async function openBillingPortal(
   // pre-reserved tab — still better UX than landing in a stranger's
   // portal. WORLDMONITOR-R5.
   const closeReserved = (): void => {
-    if (reservedWin && !reservedWin.closed) reservedWin.close();
+    if (!reservedWin) return;
+    try {
+      if (!reservedWin.closed) reservedWin.close();
+    } catch {
+      try {
+        reservedWin.close();
+      } catch {
+        // Chrome iOS can throw SecurityError on both `.closed` and `.close()`.
+      }
+    }
   };
 
   const userId = getCurrentClerkUser()?.id;
-  if (!userId) return navigate(DODO_PORTAL_FALLBACK_URL);
+  if (!userId) return await navigate(DODO_PORTAL_FALLBACK_URL);
 
   try {
     const client = await getConvexClient();
@@ -445,7 +485,10 @@ export async function openBillingPortal(
       closeReserved();
       return { outcome: 'no-customer' };
     }
-    return navigate(DODO_PORTAL_FALLBACK_URL);
+    // Same load-bearing `return await` as the try path: without it a throw
+    // from navigate rejects openBillingPortal, and two callers use bare
+    // `void openBillingPortal(...)` (WORLDMONITOR-11C).
+    return await navigate(DODO_PORTAL_FALLBACK_URL);
   }
 }
 
@@ -491,7 +534,7 @@ export async function listBusinessSeats(): Promise<ListBusinessSeatsResult> {
   );
 }
 
-/** Invite up to 4 same-domain teammates to Business Pro seats. */
+/** Invite up to 4 teammates at any corporate email domain to Business Pro seats. */
 export async function inviteBusinessSeats(emails: string[]): Promise<{
   invited: Array<{ email: string; grantId: string; status: 'created' | 'already_pending' | 'already_accepted' }>;
 }> {

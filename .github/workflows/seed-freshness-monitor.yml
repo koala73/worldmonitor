@@ -5,40 +5,30 @@ on:
     - cron: '*/15 * * * *'
   workflow_dispatch:
 
-# The drift check queries every service serially, so a slow run can outlast the
-# 15-minute interval. Superseding is correct for a read-only probe: the newer
-# run reads newer state and answers the same question better.
+# Transition publication must finish before the next observation can classify
+# the same incident; the publisher's checkedAt fence then rejects delayed writes.
 concurrency:
   group: seed-freshness-monitor
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 permissions:
   contents: read
-  statuses: read
+  # Per-source statuses live on a historical operational anchor. They never
+  # become part of the deployable main revision's check suite.
+  statuses: write
 
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    # Was 5, which predates the deploy-drift step: that step alone makes one
-    # service-list plus one deployment-list call per service (77 in production),
-    # each a CLI auth + GraphQL round trip. Per-call timeouts bound a hung call;
-    # this bounds the run.
     timeout-minutes: 20
     environment:
       name: ingestion-acceptance-production
       deployment: false
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          # The deploy-drift check answers two questions from local history:
-          # "is this service running something newer than the head we read"
-          # (`git merge-base --is-ancestor`, for a merge that landed mid-run),
-          # and since #6142 "has anything that reaches this service changed
-          # since the commit it is running". The second needs the RUNNING commit
-          # to exist locally, and a service that is legitimately weeks behind on
-          # code it does not contain sits far outside any fixed depth — where
-          # the answer becomes CLOSURE_UNKNOWN, which reports. Full history with
-          # no blobs: `git diff --name-only` walks trees and never needs blobs.
+          # The scheduled gate can fall back to the newest recent gated main
+          # ancestor. That first-parent walk needs full history but no blobs.
           fetch-depth: 0
           filter: blob:none
 
@@ -51,71 +41,102 @@ jobs:
         if: github.event_name == 'schedule'
         env:
           GH_TOKEN: ${{ github.token }}
+          # One commit is roughly 6 minutes of gate latency, so 25 spans far more
+          # merge traffic than the 15-minute schedule can outrun. The age bound is
+          # the real limit: past it, "main has not been gated in 6 hours" is itself
+          # the fault, and monitoring from that revision would hide it.
+          GATED_ANCESTOR_LIMIT: '25'
+          GATED_ANCESTOR_MAX_AGE_SECONDS: '21600'
         run: |
           set -o pipefail
           # GitHub guarantees newest-first status history. Preserve that order:
           # updated_at has only second resolution, so sorting can invert ties.
-          gate_state=$(
+          gate_state() {
             gh api --paginate --slurp \
-              "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/statuses?per_page=100" |
+              "repos/$GITHUB_REPOSITORY/commits/$1/statuses?per_page=100" |
               jq -r 'flatten | map(select(.context == "gate")) | first | .state // "missing"'
-          )
-          echo "gate_state=$gate_state"
-          if [ "$gate_state" != "success" ]; then
-            echo "::error::Cannot establish ingestion operational acceptance because main gate is $gate_state."
-            exit 1
+          }
+          head_state=$(gate_state "$GITHUB_SHA")
+          echo "gate_state=$head_state"
+          if [ "$head_state" = "success" ]; then
+            echo "sha=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+            echo "Exact main revision passed repository gates."
+            exit 0
           fi
-          echo "Exact main revision passed repository gates."
+          # Any non-success head falls through: pending/missing is the normal
+          # post-merge race (deploy gate ~6 minutes, this cron every 15), and
+          # failure/error is a verdict the `gate` status already owns. Echoing
+          # that verdict here reds the ingestion monitor without looking at
+          # seeds. Walk instead. This is not a skip: the probe still runs
+          # against a revision the repository gates accepted.
 
-      - name: Install pinned Railway CLI
-        run: npm install --global @railway/cli@5.30.1
+          now=$(date +%s)
+          while read -r sha committed; do
+            if [ -z "$sha" ] || [ "$sha" = "$GITHUB_SHA" ]; then continue; fi
+            if [ "$(gate_state "$sha")" != "success" ]; then continue; fi
+            age=$(( now - committed ))
+            if [ "$age" -gt "$GATED_ANCESTOR_MAX_AGE_SECONDS" ]; then
+              echo "::error::Cannot establish ingestion operational acceptance: main gate is $head_state and the newest gated ancestor $sha is ${age}s old (limit ${GATED_ANCESTOR_MAX_AGE_SECONDS}s)."
+              exit 1
+            fi
+            echo "sha=$sha" >> "$GITHUB_OUTPUT"
+            echo "Head gate is $head_state; monitoring the newest gated main revision $sha (${age}s old)."
+            exit 0
+          done <<EOF
+          $(git log --first-parent -n "$GATED_ANCESTOR_LIMIT" --format='%H %ct' "$GITHUB_SHA")
+          EOF
+          echo "::error::Cannot establish ingestion operational acceptance: main gate is $head_state and none of the last $GATED_ANCESTOR_LIMIT main revisions has a successful gate."
+          exit 1
 
-      - name: Verify Railway production context
+      # Separate from the gate step on purpose: that step stays a pure read, which
+      # is how tests/seed-freshness-workflow.test.mjs executes its bash.
+      - name: Check out the gated main revision
+        if: ${{ steps.gate.outputs.sha != '' && steps.gate.outputs.sha != github.sha }}
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
-          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
-        run: |
-          if [ -z "$RAILWAY_TOKEN" ]; then
-            echo "::error::RAILWAY_PRODUCTION_TOKEN is required for the read-only production config audit."
-            exit 1
-          fi
-          if [ -z "$RAILWAY_PROJECT_ID" ]; then
-            echo "::error::RAILWAY_PROJECT_ID Actions environment variable is required for the production config audit."
-            exit 1
-          fi
-          railway status --project "$RAILWAY_PROJECT_ID" --environment production --json > /dev/null
-          echo "Project-scoped Railway token is valid for the expected production context."
+          GATED_SHA: ${{ steps.gate.outputs.sha }}
+        run: git checkout --detach "$GATED_SHA"
 
-      - name: Audit Railway ingestion deployment controls
-        env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
-        run: node scripts/audit-railway-watch-paths.mjs
-
-      # `if` is an explicit gate reference, not decoration. With default success()
-      # semantics this step was SKIPPED on every run from 2026-08-03 onward
-      # because the config audit above failed on one service's watch paths —
-      # so a single unrelated drift silently switched off data-freshness
-      # monitoring for the whole fleet. Each probe now reports independently and
-      # the only thing that can stop it is the fail-closed green-main gate.
+      # This workflow owns only ingestion/data acceptance. Deployment
+      # configuration and image drift have their own six-hourly read-only workflow.
       - name: Check ingestion operational acceptance
+        id: acceptance
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
-        run: node scripts/check-seed-freshness.mjs
+        # The probe remains strict and exits non-zero for every active problem.
+        # The next step decides whether that problem is a new transition or the
+        # same durable incident already attached to the operational anchor.
+        continue-on-error: true
+        run: node scripts/check-seed-freshness.mjs --json-output "$RUNNER_TEMP/seed-freshness-observation.json"
 
-      # Last, and independently gated for the same reason compact health is.
-      #
-      # The audit above proves no service CAN silently skip a merge; this proves
-      # none actually did. Both are needed: a cleared filter does nothing for a
-      # webhook that stopped delivering (#6064), and this check catches that
-      # without knowing why.
-      - name: Check Railway deploy drift against main
+      - name: Publish ingestion operational transitions
         if: ${{ !cancelled() && steps.gate.conclusion != 'failure' }}
         env:
-          RAILWAY_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_TOKEN }}
+          GH_TOKEN: ${{ github.token }}
+          SEED_ACCEPTANCE_SHA: ${{ steps.gate.outputs.sha || github.sha }}
+          SEED_ACCEPTANCE_OUTCOME: ${{ steps.acceptance.outcome }}
+          # PR #6876 introduced the transition publisher. Its historical merge
+          # commit is an ancestor of every supported monitored revision and is
+          # never a future deployment candidate.
+          SEED_STATUS_SHA: b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3
+          SEED_STATUS_WRITER_LOGIN: github-actions[bot]
         run: |
-          set -o pipefail
-          # Pick up commits merged since the checkout so a service that already
-          # built one of them reads as ahead rather than behind. Deliberately no
-          # --depth: passing one to a full clone SHALLOWS it, which would strand
-          # exactly the running commits the closure comparison needs.
-          git fetch --quiet origin main || true
-          node scripts/check-railway-deploy-drift.mjs
+          # During the first post-merge race, the newest gated ancestor can
+          # predate this lifecycle. Wait for the new revision to pass `gate`
+          # instead of turning that expected bootstrap state into an alarm.
+          if [ ! -f scripts/update-seed-health-statuses.mjs ]; then
+            if [ "$SEED_ACCEPTANCE_OUTCOME" != "success" ]; then
+              echo "::error::Ingestion operational acceptance failed on gated revision $SEED_ACCEPTANCE_SHA, and no transition publisher is available to classify the failure."
+              exit 1
+            fi
+            echo "Transition publisher is not active on gated revision $SEED_ACCEPTANCE_SHA; waiting for a gated activation revision."
+            exit 0
+          fi
+          status_args=()
+          if grep -q -- "'status-sha':" scripts/update-seed-health-statuses.mjs; then
+            status_args=(--status-sha "$SEED_STATUS_SHA")
+          else
+            echo "Gated revision $SEED_ACCEPTANCE_SHA predates anchored statuses; using its compatible transition publisher until the activation revision is gated."
+          fi
+          node scripts/update-seed-health-statuses.mjs \
+            --sha "$SEED_ACCEPTANCE_SHA" \
+            "${status_args[@]}" \
+            --report "$RUNNER_TEMP/seed-freshness-observation.json"

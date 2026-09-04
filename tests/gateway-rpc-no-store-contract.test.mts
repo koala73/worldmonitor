@@ -69,12 +69,37 @@ function assertCacheable(res: Response): void {
 }
 
 describe('gateway RPC no-store contract', () => {
+  it('keeps paired physical-premium cohorts out of shared caches', async () => {
+    const premiumPath = '/api/market/v1/get-physical-premiums';
+    const divergencePath = '/api/market/v1/get-physical-divergence-index';
+    const handler = createDomainGateway([
+      jsonRoute(premiumPath, {
+        premiums: [],
+        asOf: '2026-08-30T00:00:00.000Z',
+      }),
+      jsonRoute(divergencePath, {
+        readings: [],
+        composite: { state: 'PHYSICAL_DIVERGENCE_STATE_STALE_INPUT' },
+        evaluatedAt: '2026-08-30T00:00:00.000Z',
+        methodologyVersion: 'physical-divergence-v2',
+      }),
+    ]);
+
+    for (const path of [premiumPath, divergencePath]) {
+      const res = await handler(request(path));
+      assert.equal(res.status, 200, path);
+      assertNoStore(res);
+    }
+  });
+
   it('forces no-store for degraded, unavailable, nonterminal, and error-shaped 200 payloads', async () => {
     const handler = createDomainGateway([
       jsonRoute('/api/scenario/v1/get-scenario-status', { status: 'pending', error: '' }),
       jsonRoute('/api/intelligence/v1/get-risk-scores', { ciiScores: [], strategicRisks: [], degraded: true, stale: true }),
       jsonRoute('/api/forecast/v1/get-forecasts', { forecasts: [], generatedAt: 0, degraded: true, stale: false, error: 'forecast_backend_unavailable' }),
-      jsonRoute('/api/market/v1/analyze-stock', { available: false, symbol: 'XYZ', error: '' }),
+      // Keep this cache-semantics test off provider-backed routes, whose
+      // fail-closed endpoint budgets intentionally require Redis to be live.
+      jsonRoute('/api/market/v1/get-stock-analysis-history', { available: false, symbol: 'XYZ', error: '' }),
       jsonRoute('/api/climate/v1/list-climate-anomalies', { anomalies: [], dataAvailable: false }),
     ]);
 
@@ -82,7 +107,7 @@ describe('gateway RPC no-store contract', () => {
       '/api/scenario/v1/get-scenario-status?jobId=scenario:1712345678901:abcdefgh',
       '/api/intelligence/v1/get-risk-scores',
       '/api/forecast/v1/get-forecasts',
-      '/api/market/v1/analyze-stock?symbol=XYZ',
+      '/api/market/v1/get-stock-analysis-history?symbol=XYZ',
       '/api/climate/v1/list-climate-anomalies',
     ]) {
       const res = await handler(request(path));

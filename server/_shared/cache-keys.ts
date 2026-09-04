@@ -4,7 +4,7 @@ import { BOOTSTRAP_CACHE_KEYS } from '../../shared/bootstrap-tier-keys.js';
 // Hash: firstSeen, lastSeen, mentionCount, currentScore,
 //       title, link, severity, lang, description, publishedAt,
 //       entityCorroborationCount, isOpinion, isFeelGood,
-//       isEphemeralLiveCoverage, category
+//       isEphemeralLiveCoverage, category, anchorEligible
 // sourceCount is not a hash field for current rows: distinct feed names live in
 // story:sources:v1 and should be counted from the Set. peakScore is held in
 // story:peak:v1's ZSet; the hash-side peakScore reader remains a reserved
@@ -24,7 +24,7 @@ export const DIGEST_ACCUMULATOR_KEY_PREFIX = 'digest:accumulator:v1:';
  * Story tracking keys — written by list-feed-digest.ts, read by digest cron (E2).
  * All keys use 32-char SHA-256 hex prefix of the normalised title as ${titleHash}.
  *
- *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category (always-written)
+ *   story:track:v1:${titleHash}     Hash   firstSeen/lastSeen/title/link/severity/mentionCount/currentScore/lang/description/publishedAt/entityCorroborationCount/isOpinion/isFeelGood/isEphemeralLiveCoverage/category/anchorEligible (always-written)
  *   story:sources:v1:${titleHash}   Set    feed IDs (SADD per appearance)
  *   story:peak:v1:${titleHash}      ZSet   single member "peak", score = highest importanceScore (ZADD GT)
  *   digest:accumulator:v1:${variant}:${lang} ZSet  member=titleHash, score=lastSeen_ms (updated every appearance)
@@ -48,8 +48,14 @@ export const STORY_SOURCES_KEY = (titleHash: string) => `story:sources:v1:${titl
 export const STORY_PEAK_KEY = (titleHash: string) => `story:peak:v1:${titleHash}`;
 // #4924: member exact-title hash -> canonical story hash, same TTL as the
 // track — lets a later cycle adopt the live canonical when the original
-// canonical member is absent from the batch.
+// canonical member is absent from the batch. Writers commit one complete
+// canonical alias group atomically under a fenced publication lease; an
+// oversized group is deferred.
 export const STORY_ALIAS_KEY = (titleHash: string) => `story:alias:v1:${titleHash}`;
+// A short lease serializes alias publication across digest isolates and scopes.
+// The publisher's Lua script verifies its unique token before it writes, so an
+// expired, delayed request cannot overwrite a newer alias cohort.
+export const STORY_ALIAS_PUBLICATION_LOCK_KEY = 'story:alias:publish-lock:v1';
 export const DIGEST_ACCUMULATOR_KEY = (variant: string, lang = 'en') => `digest:accumulator:v1:${variant}:${lang}`;
 export const DIGEST_LAST_SENT_KEY = (userId: string, variant: string) => `digest:last-sent:v1:${userId}:${variant}`;
 // NOTE: notification-relay.cjs owns the live value (shadow:score-log:v5 since prompt upgrade).
@@ -66,7 +72,6 @@ export const DIGEST_ACCUMULATOR_TTL = 172800; // 48h — lookback window for dig
  */
 export const SIMULATION_OUTCOME_LATEST_KEY = 'forecast:simulation-outcome:latest';
 export const SIMULATION_PACKAGE_LATEST_KEY = 'forecast:simulation-package:latest';
-export const REGULATORY_ACTIONS_KEY = 'regulatory:actions:v1';
 
 /**
  * CII risk-score payload key family. Keep runtime-local mirrors in

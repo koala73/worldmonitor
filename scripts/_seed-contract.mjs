@@ -36,6 +36,7 @@ const OPTIONAL_FIELDS = new Set([
   'lockTtlMs',
   'extraKeys',
   'afterPublish',
+  'publishAtomically',
   'publishTransform',
   'emptyDataIsFailure',
   'zeroIsValid',
@@ -45,9 +46,9 @@ const OPTIONAL_FIELDS = new Set([
   'recordCount',     // legacy — kept optional through PR 2, removed in PR 3 in favor of declareRecords
   'metaTtlSeconds',  // legacy — used today by writeSeedMeta / writeExtraKeyWithMeta (e.g. scripts/seed-jodi-gas.mjs); removed in PR 3 when legacy meta writes go away
   // Content-age contract (2026-05-04 health-readiness plan).
-  // `contentMeta` is a function `(rawData) => {newestItemAt, oldestItemAt} | null`
-  // invoked by runSeed BEFORE publishTransform so seeders can compute item-age
-  // metadata from helper fields that are stripped before publish.
+  // `contentMeta` is a function `(rawData, runStartedAtMs) => {newestItemAt, oldestItemAt} | null`
+  // invoked by runSeed BEFORE publishTransform with the immutable run clock, so
+  // seeders can compute item-age metadata from helper fields that are stripped before publish.
   // `maxContentAgeMin` is the seeder's content-staleness budget in minutes.
   // The two opt in TOGETHER: declaring contentMeta without maxContentAgeMin
   // (or vice-versa) is a contract violation — see the cross-field check below.

@@ -1,0 +1,336 @@
+{
+  "version": 1,
+  "repository": "koala73/worldmonitor",
+  "acceptedHead": "a3e735a089c66448c29c2f8c000249f31470956c",
+  "acceptedRunId": 31696921882,
+  "services": [
+    {
+      "id": "a5f66d97-217f-44a0-a42d-5f3b67752223",
+      "name": "ais-relay"
+    },
+    {
+      "id": "cc708db0-0bbc-4151-a199-4c03c1f15217",
+      "name": "company-monitoring-worker"
+    },
+    {
+      "id": "750bc68f-9840-49a3-95eb-7c8bcc060485",
+      "name": "deep-forecast-worker"
+    },
+    {
+      "id": "01d644b8-057f-4040-a50e-500bd684daa8",
+      "name": "digest-notifications"
+    },
+    {
+      "id": "aa37bd8e-c28d-4e9b-9d1e-0961f1b63d97",
+      "name": "notification-relay"
+    },
+    {
+      "id": "0afd5faf-1f52-4688-9183-f106d46eaeb6",
+      "name": "publish-bootstrap-tiers"
+    },
+    {
+      "id": "24dce1d4-cc37-4997-8909-1b701ea9c784",
+      "name": "scenario-worker"
+    },
+    {
+      "id": "423b2271-e98c-4bf3-b821-2d83462aabe8",
+      "name": "seed-aaii-sentiment"
+    },
+    {
+      "id": "a8e49386-64c1-4e1e-9f82-4eb69a55fce3",
+      "name": "seed-aviation"
+    },
+    {
+      "id": "e8269317-c717-498b-adcf-be693a2bb8d3",
+      "name": "seed-bigmac"
+    },
+    {
+      "id": "0a4b8757-7e87-4aec-b76f-30a3da23c383",
+      "name": "seed-bundle-canada"
+    },
+    {
+      "id": "26df1147-b2a1-4577-8a96-c3cd08a376cb",
+      "name": "seed-bundle-climate"
+    },
+    {
+      "id": "863133eb-ecc5-4076-8fb1-e14b82bfc677",
+      "name": "seed-bundle-derived-signals"
+    },
+    {
+      "id": "189e28f5-8c4a-4fac-a22f-18ba5f967e58",
+      "name": "seed-bundle-ecb-eu"
+    },
+    {
+      "id": "c989eee4-3336-46b7-b7cd-39700cd56a0f",
+      "name": "seed-bundle-energy-sources"
+    },
+    {
+      "id": "d64a9197-0f40-4d6e-aa91-d2c889105c60",
+      "name": "seed-bundle-health"
+    },
+    {
+      "id": "afb5546d-ddee-43d9-9bb1-1be0ad992958",
+      "name": "seed-bundle-imf-extended"
+    },
+    {
+      "id": "d4443ba5-3608-45e3-8ce1-2bdb342a75a0",
+      "name": "seed-bundle-macro"
+    },
+    {
+      "id": "77086a5d-c953-40a6-ba2a-6a4646214a1d",
+      "name": "seed-bundle-market-backup"
+    },
+    {
+      "id": "1cd4568b-9839-41e4-acd3-e0466b0eeb47",
+      "name": "seed-bundle-portwatch"
+    },
+    {
+      "id": "cc829686-a75d-42d1-ab0e-39daecce65ab",
+      "name": "seed-bundle-portwatch-port-activity"
+    },
+    {
+      "id": "6e4ee3e2-d2f9-42af-81ab-6ce4a802e593",
+      "name": "seed-bundle-regional"
+    },
+    {
+      "id": "6893b852-347b-490b-b033-3ce35522ea45",
+      "name": "seed-bundle-relay-backup"
+    },
+    {
+      "id": "6dae1d15-9b5b-48f9-a31c-88d0e8a9c738",
+      "name": "seed-bundle-resilience"
+    },
+    {
+      "id": "13f61136-8183-4ac7-b09c-f12b4fb79a73",
+      "name": "seed-bundle-resilience-energy-v2"
+    },
+    {
+      "id": "542ed79f-162a-44fd-9b2f-8cc9bff85173",
+      "name": "seed-bundle-resilience-recovery"
+    },
+    {
+      "id": "3617e981-faf7-40d2-b067-15c8f4e1e2b7",
+      "name": "seed-bundle-resilience-validation"
+    },
+    {
+      "id": "4dd3934d-e5f7-4af8-b34b-c1796226800b",
+      "name": "seed-bundle-static-ref"
+    },
+    {
+      "id": "6285c37b-1327-46f1-bfd0-7454612764fb",
+      "name": "seed-bundle-static-ref-heavy"
+    },
+    {
+      "id": "12e8e87d-1214-4ba3-a813-709f279a5ba9",
+      "name": "seed-chokepoint-exposure"
+    },
+    {
+      "id": "d2bb34ed-f6ce-4c91-a6dd-8ba125604f59",
+      "name": "seed-commodity-quotes"
+    },
+    {
+      "id": "3302b980-ce72-4a28-b6f4-db618e75d936",
+      "name": "seed-comtrade-bilateral-hs4"
+    },
+    {
+      "id": "e4188e09-ae3b-4398-bb24-04f4b4b48b52",
+      "name": "seed-conflict-intel"
+    },
+    {
+      "id": "4fdd1078-7884-48f8-92fc-06b390d0fdc4",
+      "name": "seed-consumer-aggregate"
+    },
+    {
+      "id": "2a369c41-cc5c-486a-a8d7-f0ca552e27a8",
+      "name": "seed-consumer-prices"
+    },
+    {
+      "id": "4492a338-cb37-40da-9e98-95a8d67e49c9",
+      "name": "seed-consumer-prices-publish"
+    },
+    {
+      "id": "23b2597f-1989-4904-9018-b3722a9e1bc2",
+      "name": "seed-cot"
+    },
+    {
+      "id": "fd27928b-0b9b-45d6-b056-92fa2f5d60a6",
+      "name": "seed-cyber-threats"
+    },
+    {
+      "id": "cd07f48e-6433-4847-9f7b-1f05d062e619",
+      "name": "seed-earnings-calendar"
+    },
+    {
+      "id": "5a953848-0678-4946-8ea0-b2269914ea12",
+      "name": "seed-earthquakes"
+    },
+    {
+      "id": "555fc987-a043-4f64-bfa3-c827157ec706",
+      "name": "seed-economic-calendar"
+    },
+    {
+      "id": "565a66c1-662d-4a3a-b8e2-83b79d75dbe4",
+      "name": "seed-economy"
+    },
+    {
+      "id": "1aee77cd-3af9-4640-a78d-e957c322adc0",
+      "name": "seed-electricity-prices"
+    },
+    {
+      "id": "67e01a64-d3cb-4b53-bf7d-cd5d223323b3",
+      "name": "seed-ember-electricity"
+    },
+    {
+      "id": "9c2135c6-d638-4137-955a-8819c4d969f6",
+      "name": "seed-energy-intelligence"
+    },
+    {
+      "id": "a6c1d05f-a639-4470-829d-9337ffbdcbbe",
+      "name": "seed-energy-spine"
+    },
+    {
+      "id": "fcff514b-7b32-46c2-9413-0a48bcf4968e",
+      "name": "seed-fear-greed"
+    },
+    {
+      "id": "1ebe342b-074b-4fb5-b012-c1dbfdef1971",
+      "name": "seed-fire-detections"
+    },
+    {
+      "id": "40eab80a-74d1-4b62-9f23-f25c804b7c19",
+      "name": "seed-forecast-bets"
+    },
+    {
+      "id": "4e57d84f-a0fc-4067-8e15-9800dace0211",
+      "name": "seed-forecast-resolutions"
+    },
+    {
+      "id": "9bcbf89e-2785-452b-b59f-144b4863bd95",
+      "name": "seed-forecasts"
+    },
+    {
+      "id": "ef18a7e0-96cf-4e59-b8f0-8740c5ce4171",
+      "name": "seed-fred-rates"
+    },
+    {
+      "id": "8d966e58-e01c-42cf-8d28-b85fd5d45460",
+      "name": "seed-fuel-prices"
+    },
+    {
+      "id": "5221253d-a22e-4560-a3db-ea4634c2049a",
+      "name": "seed-fx-rates"
+    },
+    {
+      "id": "33a6c0a6-8cdc-4e0f-a01d-69c03eae0169",
+      "name": "seed-fx-yoy"
+    },
+    {
+      "id": "3472577e-dff4-49f9-bc17-f32c2f366f75",
+      "name": "seed-gdelt-intel"
+    },
+    {
+      "id": "16949dc7-b908-4740-bfbe-74a213db7c0b",
+      "name": "seed-gpsjam"
+    },
+    {
+      "id": "c8438692-843d-46ae-bee7-8c19e6847fa4",
+      "name": "seed-grocery-basket"
+    },
+    {
+      "id": "e6156007-e917-4139-90bd-71b6333a6d0e",
+      "name": "seed-hormuz"
+    },
+    {
+      "id": "c615c211-1237-47cc-8d90-e23657437838",
+      "name": "seed-infra"
+    },
+    {
+      "id": "d1e092bb-6a5b-4225-8043-8ed93ccff268",
+      "name": "seed-insights"
+    },
+    {
+      "id": "5a07e099-14d8-42aa-ad6e-e66631fdd19f",
+      "name": "seed-internet-outages"
+    },
+    {
+      "id": "5d294bd6-7943-4454-aa9c-eb90bd9d9124",
+      "name": "seed-iran-events"
+    },
+    {
+      "id": "9b6973b8-2701-45da-ab91-ba36dfbf3008",
+      "name": "seed-market-breadth"
+    },
+    {
+      "id": "5ae562cb-7645-4115-887e-7ea6ea4e3be8",
+      "name": "seed-military-cii"
+    },
+    {
+      "id": "7953a066-0627-4550-b72c-d2aceb33fbd3",
+      "name": "seed-military-flights"
+    },
+    {
+      "id": "88768189-f80b-4615-87d1-dbc7803a6a28",
+      "name": "seed-military-maritime"
+    },
+    {
+      "id": "7119c932-05f5-4727-a54f-e4e2de2a907f",
+      "name": "seed-natural-events"
+    },
+    {
+      "id": "96fabace-d56d-4854-8096-3f5bcfe0d88a",
+      "name": "seed-prediction-markets"
+    },
+    {
+      "id": "3b76bb85-637c-43b7-ab90-5dee288f8bca",
+      "name": "seed-radiation-watch"
+    },
+    {
+      "id": "249ae8df-5746-4cdb-9978-ec61dce9121f",
+      "name": "seed-regulatory-actions"
+    },
+    {
+      "id": "ab850199-4d48-4af8-9681-aafbe2f31b8e",
+      "name": "seed-research"
+    },
+    {
+      "id": "e1686cdf-980f-426d-b5f2-a7757729fe9b",
+      "name": "seed-sanctions-pressure"
+    },
+    {
+      "id": "8fb9c6b7-0ae9-441b-ae02-0f31baa3aed6",
+      "name": "seed-security-advisories"
+    },
+    {
+      "id": "d7cc29f0-691b-40fd-84f2-ce8e8f12b567",
+      "name": "seed-supply-chain-trade"
+    },
+    {
+      "id": "71d124d5-a4fb-42c3-9c5b-2fb0e5645e5b",
+      "name": "seed-thermal-escalation"
+    },
+    {
+      "id": "dd3097f7-df65-4b0e-89ca-86a5fac7d558",
+      "name": "seed-trade-flows"
+    },
+    {
+      "id": "33c8c2a1-ad66-45ec-ac7e-609d69a59455",
+      "name": "seed-unrest-events"
+    },
+    {
+      "id": "2bf93afa-1922-4f9c-936d-f5054051b8a5",
+      "name": "seed-webcams"
+    },
+    {
+      "id": "67264e35-0b51-457b-984f-4ef20e36a117",
+      "name": "simulation-worker"
+    },
+    {
+      "id": "d7620480-e05a-4c09-b210-05166c3c0e59",
+      "name": "umami"
+    },
+    {
+      "id": "ad4184fa-51d1-487f-8b2b-61ebbdd9ab4d",
+      "name": "umami-retention"
+    }
+  ]
+}

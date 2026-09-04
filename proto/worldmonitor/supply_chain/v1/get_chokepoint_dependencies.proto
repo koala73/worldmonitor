@@ -1,0 +1,62 @@
+syntax = "proto3";
+
+package worldmonitor.supply_chain.v1;
+
+import "buf/validate/validate.proto";
+import "sebuf/http/annotations.proto";
+
+message ChokepointDependency {
+  // ISO 3166-1 alpha-2 code for the exposed country.
+  string country_iso2 = 1;
+  // English display name for the exposed country.
+  string country_name = 2;
+  // Stable reviewed commodity mapping identifier.
+  string commodity_id = 3;
+  // Human-readable commodity name.
+  string commodity = 4;
+  // Share of the country's mapped commodity exposure using this chokepoint, from 0 to 1.
+  optional double transit_share = 5;
+  // Disruption-adjusted transit share, from 0 to 1.
+  optional double weighted_transit_share = 6;
+  // Commodity vulnerability score from 0 to 100; absent when evidence is insufficient.
+  optional double score = 7;
+  // Score band: low, moderate, high, or critical; empty when the score is absent.
+  string band = 8;
+  // Evidence state: ok, insufficient_data, or stale_input.
+  string state = 9;
+  // Machine-readable explanations for an insufficient or stale state.
+  repeated string reasons = 10;
+  // Version of the scoring methodology that produced this dependency.
+  string methodology_version = 11;
+}
+
+message GetChokepointDependenciesRequest {
+  // Stable chokepoint identifier, such as hormuz_strait or suez.
+  string chokepoint_id = 1 [
+    (buf.validate.field).required = true,
+    (buf.validate.field).string.min_len = 1,
+    (buf.validate.field).string.max_len = 80,
+    (buf.validate.field).string.pattern = "^[a-z0-9_\\-]+$",
+    (sebuf.http.query) = {name: "chokepointId"}
+  ];
+  // Maximum dependencies to return; zero uses the server default and the maximum is 100.
+  int32 page_size = 2 [
+    (buf.validate.field).int32 = {gte: 0, lte: 100},
+    (sebuf.http.query) = {name: "pageSize"}
+  ];
+}
+
+message GetChokepointDependenciesResponse {
+  // Stable identifier of the requested chokepoint.
+  string chokepoint_id = 1;
+  // Human-readable chokepoint name.
+  string chokepoint = 2;
+  // Country and commodity dependencies ranked by commodity vulnerability score, then disruption-adjusted transit share.
+  repeated ChokepointDependency dependencies = 3;
+  // ISO 8601 timestamp when the inverse index was generated.
+  string generated_at = 4;
+  // Version of the scoring methodology used for every dependency.
+  string methodology_version = 5;
+  // True when the published inverse index could not be read.
+  bool upstream_unavailable = 6;
+}

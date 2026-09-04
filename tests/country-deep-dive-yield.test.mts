@@ -31,6 +31,16 @@ test('openCountryBriefByCode yields after the panel paint, before the map catch-
   assert.ok(fitIdx > yieldIdx, 'map fitCountry runs after the yield');
 });
 
+test('programmatic country selection acknowledges presentation before background enrichment (#6212)', () => {
+  const showIdx = src.indexOf('page.show(country, code, score, signals)');
+  const acknowledgementIdx = src.indexOf('opts?.onPresented?.()', showIdx);
+  const yieldIdx = src.indexOf('await yieldToMain()', showIdx);
+  const briefFetchIdx = src.indexOf('this.fetchCountryIntelBrief(', showIdx);
+  assert.ok(acknowledgementIdx > showIdx, 'acknowledgement follows the visible page transition');
+  assert.ok(acknowledgementIdx < yieldIdx, 'acknowledgement does not wait for map catch-up');
+  assert.ok(acknowledgementIdx < briefFetchIdx, 'acknowledgement does not wait for LLM enrichment');
+});
+
 test('openCountryBriefByCode re-checks the staleness guard after the new yield (#4617)', () => {
   const showIdx = src.indexOf('page.show(country, code, score, signals)');
   const yieldIdx = src.indexOf('await yieldToMain()', showIdx);

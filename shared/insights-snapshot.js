@@ -6,6 +6,29 @@
 
 export const INSIGHTS_MAX_AGE_MS = 60 * 60 * 1000;
 
+/**
+ * Hard ceiling on how old a snapshot may be and still be worth SERVING as
+ * last-known-good, for consumers that choose to (today: the MCP
+ * `get_world_brief`, which reports `stale: true` between these two bounds
+ * instead of failing — PR #7271).
+ *
+ * This exists because the producer's Redis TTL cannot be borrowed as a bound.
+ * `runSeed`'s LKG paths call `preserveExistingKeys()` on both fetch failure
+ * (`scripts/_seed-utils.mjs:2303`) and validation skip (`:2450`); that resolves
+ * the canonical key via `defaultPreservationKeys` (`:2183-2188`) into
+ * `extendExistingTtl(keys, ttlSeconds)` (`:2199, 2209`), which issues
+ * `EXPIRE <key> <ttl>` (`:1133`) — a full RESET, not a decrement. Every failed
+ * run therefore slides the key another 3h forward while `generatedAt` never
+ * advances, so a multi-day outage would keep a multi-day-old brief alive and
+ * nominally "within TTL". That sliding window is the producer protecting its
+ * data; it says nothing about whether the content is still worth reading.
+ *
+ * Deliberately equal to the seeder's own `CACHE_TTL` (3h) so the ceiling is one
+ * full retention window rather than a second invented number — but enforced
+ * HERE, against the `generatedAt` clock, which nothing renews.
+ */
+export const INSIGHTS_MAX_SERVEABLE_AGE_MS = 3 * 60 * 60 * 1000;
+
 function isRecord(value) {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -69,11 +92,22 @@ export function collectInsightSources(candidates, maxSources = 6, options = {}) 
   return out;
 }
 
-export function isAcceptedInsightsSnapshot(raw, nowMs = Date.now()) {
-  if (!isRecord(raw) || !Array.isArray(raw.topStories) || raw.topStories.length === 0) return false;
-  if (typeof raw.generatedAt !== 'string') return false;
+/**
+ * Names WHICH acceptance gate rejects a snapshot (null = accepted). A stale
+ * producer and a schema regression need opposite responses, so alarms built
+ * on the boolean alone were undiagnosable (WORLDMONITOR-YJ). Reasons are a
+ * bounded enum — safe for Sentry messages and log grouping.
+ */
+export function insightsSnapshotRejection(raw, nowMs = Date.now()) {
+  if (!isRecord(raw) || !Array.isArray(raw.topStories) || raw.topStories.length === 0) return 'malformed-snapshot';
+  if (typeof raw.generatedAt !== 'string') return 'missing-generated-at';
   const generatedMs = Date.parse(raw.generatedAt);
-  return Number.isFinite(generatedMs)
-    && generatedMs <= nowMs
-    && nowMs - generatedMs < INSIGHTS_MAX_AGE_MS;
+  if (!Number.isFinite(generatedMs)) return 'missing-generated-at';
+  if (generatedMs > nowMs) return 'future-generated-at';
+  if (nowMs - generatedMs >= INSIGHTS_MAX_AGE_MS) return 'stale-snapshot';
+  return null;
+}
+
+export function isAcceptedInsightsSnapshot(raw, nowMs = Date.now()) {
+  return insightsSnapshotRejection(raw, nowMs) === null;
 }

@@ -13,6 +13,15 @@ export interface WeatherAlert {
   expires: Date;
   coordinates: [number, number][];
   centroid?: [number, number];
+  countryCode?: string;
+  source?: string;
+  geometryPrecision?: 'polygon' | 'point' | 'country';
+  productKind?: string;
+  issuedBy?: string;
+  wind?: string;
+  visibility?: string;
+  seaState?: string;
+  sourceUrl?: string;
 }
 
 interface BootstrapAlert {
@@ -26,9 +35,12 @@ interface BootstrapAlert {
   expires: string;
   coordinates: [number, number][];
   centroid?: [number, number];
+  countryCode?: string;
+  source?: string;
+  geometryPrecision?: 'polygon' | 'point' | 'country';
 }
 
-const breaker = createCircuitBreaker<WeatherAlert[]>({ name: 'NWS Weather', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
+const breaker = createCircuitBreaker<WeatherAlert[]>({ name: 'NWS + ECCC + WMO SWIC Weather', cacheTtlMs: 30 * 60 * 1000, persistCache: true });
 
 function mapAlert(a: BootstrapAlert): WeatherAlert {
   return {
@@ -42,6 +54,9 @@ function mapAlert(a: BootstrapAlert): WeatherAlert {
     expires: new Date(a.expires),
     coordinates: a.coordinates,
     centroid: a.centroid,
+    countryCode: a.countryCode,
+    source: a.source,
+    geometryPrecision: a.geometryPrecision,
   };
 }
 

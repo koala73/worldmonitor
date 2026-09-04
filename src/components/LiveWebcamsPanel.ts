@@ -167,14 +167,23 @@ export class LiveWebcamsPanel extends Panel {
     this.fullscreenBtn.addEventListener('click', (e) => {
       e.stopPropagation();
       track('webcam-fullscreen', { entering: !this.isFullscreen });
-      this.toggleFullscreen();
+      this.setFullscreen(!this.isFullscreen);
     });
     const header = this.element.querySelector('.panel-header');
     header?.appendChild(this.fullscreenBtn);
   }
 
-  private toggleFullscreen(): void {
-    this.isFullscreen = !this.isFullscreen;
+  public override supportsFullscreen(): boolean {
+    return true;
+  }
+
+  public override isFullscreenActive(): boolean {
+    return this.isFullscreen;
+  }
+
+  public override setFullscreen(fullscreen: boolean): boolean {
+    if (this.isFullscreen === fullscreen) return true;
+    this.isFullscreen = fullscreen;
     this.element.classList.toggle('live-news-fullscreen', this.isFullscreen);
     document.body.classList.toggle('live-news-fullscreen-active', this.isFullscreen);
     if (this.fullscreenBtn) {
@@ -183,10 +192,11 @@ export class LiveWebcamsPanel extends Panel {
         ? '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/></svg>'
         : '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>', "legacy direct innerHTML migration"));
     }
+    return true;
   }
 
   private boundFullscreenEscHandler = (e: KeyboardEvent) => {
-    if (e.key === 'Escape' && this.isFullscreen) this.toggleFullscreen();
+    if (e.key === 'Escape' && this.isFullscreen) this.setFullscreen(false);
   };
 
   private savePrefs(): void {
@@ -311,6 +321,7 @@ export class LiveWebcamsPanel extends Panel {
       // The sidecar serves the embed from http://127.0.0.1:PORT which YouTube accepts.
       const params = new URLSearchParams({ videoId, autoplay: '1', mute: '1' });
       if (quality !== 'auto') params.set('vq', quality);
+      params.set('parentOrigin', window.location.origin);
       return `http://localhost:${getLocalApiPort()}/api/youtube-embed?${params.toString()}`;
     }
     const vq = quality !== 'auto' ? `&vq=${quality}` : '';
@@ -640,7 +651,8 @@ export class LiveWebcamsPanel extends Panel {
     this.destroyIframes();
 
     if (!this.isVisible || this.isIdle) {
-      setTrustedHtml(this.content, trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.paused'))}</div>`, "legacy direct innerHTML migration"));
+      // #6557: a paused/idle state is authoritative content.
+      this.setTrustedContent(trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.paused'))}</div>`, "legacy direct innerHTML migration"));
       return;
     }
 
@@ -844,7 +856,8 @@ export class LiveWebcamsPanel extends Panel {
         // Set isIdle before teardown so teardownPlayback skips its re-render; the placeholder is written below.
         this.isIdle = true;
         this.teardownPlayback('idle');
-        setTrustedHtml(this.content, trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`, "legacy direct innerHTML migration"));
+        // #6557: a settled idle state is authoritative content.
+        this.setTrustedContent(trustedHtml(`<div class="webcam-placeholder">${escapeHtml(t('components.webcams.pausedIdle'))}</div>`, "legacy direct innerHTML migration"));
       }, ECO_IDLE_PAUSE_MS);
     };
 
@@ -887,7 +900,7 @@ export class LiveWebcamsPanel extends Panel {
     IDLE_ACTIVITY_EVENTS.forEach(event => {
       document.removeEventListener(event, this.boundIdleResetHandler);
     });
-    if (this.isFullscreen) this.toggleFullscreen();
+    if (this.isFullscreen) this.setFullscreen(false);
     this.unsubscribeStreamSettings?.();
     this.unsubscribeStreamSettings = null;
     this.destroyIframes();

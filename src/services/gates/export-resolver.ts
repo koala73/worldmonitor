@@ -311,7 +311,10 @@ export function primeExportGateActivation(fetchImpl?: CatalogFetch): Promise<boo
   // Only a definitive verdict from a parsed catalog payload is cached.
   const probe = (async (): Promise<boolean | null> => {
     try {
-      const res = await doFetch(CATALOG_ENDPOINT, { signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS) });
+      const res = await doFetch(CATALOG_ENDPOINT, {
+        credentials: 'omit',
+        signal: AbortSignal.timeout(CATALOG_TIMEOUT_MS),
+      });
       if (!res.ok) return null;
       return catalogExposesProBusiness(await res.json());
     } catch {

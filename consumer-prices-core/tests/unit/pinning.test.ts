@@ -37,6 +37,7 @@ const makeCtx = (pinnedUrls?: Map<string, { sourceUrl: string; productId: string
     adapter: 'search',
     baseUrl: 'https://luluhypermarket.com',
     enabled: true,
+    discovery: { mode: 'search', seeds: [], maxPages: 20 },
   } as AdapterContext['config'],
   runId: 'run-1',
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },

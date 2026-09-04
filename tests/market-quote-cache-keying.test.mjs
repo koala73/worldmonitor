@@ -195,7 +195,7 @@ describe('CircuitBreaker keyed cache — market quote isolation', () => {
     }
   });
 
-  it('does not touch stale/getCachedOrDefault reads for LRU ordering', async () => {
+  it('does not touch stale cache reads for LRU ordering', async () => {
     const { createCircuitBreaker, clearAllCircuitBreakers } = await import(
       `${CIRCUIT_BREAKER_URL}?t=${Date.now()}`
     );
@@ -217,7 +217,7 @@ describe('CircuitBreaker keyed cache — market quote isolation', () => {
       await new Promise((r) => setTimeout(r, 10));
 
       // Stale accessor should not promote LRU order
-      assert.equal(breaker.getCachedOrDefault(fallback, 'A').quotes[0]?.symbol, 'A');
+      assert.equal(breaker.getCachedOrDefaultStale(fallback, 'A').quotes[0]?.symbol, 'A');
 
       await breaker.execute(async () => quoteResponse('C', 120), fallback, { cacheKey: 'C' });
 
@@ -346,7 +346,7 @@ describe('CircuitBreaker keyed cache — market quote isolation', () => {
     }
   });
 
-  it('getCachedOrDefault returns stale data when entry exists but is expired', async () => {
+  it('getCachedOrDefaultStale returns stale data when entry exists but is expired', async () => {
     const { createCircuitBreaker, clearAllCircuitBreakers } = await import(
       `${CIRCUIT_BREAKER_URL}?t=${Date.now()}`
     );
@@ -361,11 +361,11 @@ describe('CircuitBreaker keyed cache — market quote isolation', () => {
       await breaker.execute(async () => data, fallback, { cacheKey: 'AAPL' });
       await new Promise((r) => setTimeout(r, 10));
 
-      const result = breaker.getCachedOrDefault(fallback, 'AAPL');
+      const result = breaker.getCachedOrDefaultStale(fallback, 'AAPL');
       assert.equal(
         result.quotes[0]?.symbol,
         'AAPL',
-        'getCachedOrDefault must return stale data rather than default',
+        'getCachedOrDefaultStale must return stale data rather than default',
       );
     } finally {
       clearAllCircuitBreakers();
@@ -443,10 +443,10 @@ describe('CircuitBreaker keyed cache — market quote isolation', () => {
       assert.ok(techRefreshCalled, 'tech key must trigger its own SWR refresh');
       assert.ok(metalsRefreshCalled, 'metals key must trigger its own SWR refresh');
 
-      // After refresh, fresh data should be in cache (use getCachedOrDefault
+      // After refresh, confirm the cache (use the explicit stale accessor
       // because the 1ms TTL means even the refreshed entry expires instantly)
-      const freshTech = breaker.getCachedOrDefault(fallback, 'TECH');
-      const freshMetals = breaker.getCachedOrDefault(fallback, 'METALS');
+      const freshTech = breaker.getCachedOrDefaultStale(fallback, 'TECH');
+      const freshMetals = breaker.getCachedOrDefaultStale(fallback, 'METALS');
       assert.equal(freshTech.quotes[0]?.price, 155, 'tech key must have refreshed data');
       assert.equal(freshMetals.quotes[0]?.price, 305, 'metals key must have refreshed data');
     } finally {
@@ -486,7 +486,7 @@ describe('CircuitBreaker keyed cache — market quote isolation', () => {
       await new Promise((r) => setTimeout(r, 50));
 
       // The old good data must survive — SWR must NOT overwrite with empty
-      const cached = breaker.getCachedOrDefault(fallback, 'COMMODITY');
+      const cached = breaker.getCachedOrDefaultStale(fallback, 'COMMODITY');
       assert.equal(
         cached.quotes[0]?.symbol,
         'GC=F',

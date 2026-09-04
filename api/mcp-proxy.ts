@@ -1,12 +1,37 @@
-// @ts-nocheck — Migrated from .js to .ts only to unlock the
-// `isCallerPremium` import from server/ (PR #3768 review). Body remains
-// JS-shaped; not annotating types in this commit. Future PR can add
-// types incrementally; behaviour is unchanged.
+// @ts-nocheck — Migrated from .js to .ts to import server-side auth helpers
+// (PR #3768 review). Most of the body remains JS-shaped; types can be added
+// incrementally.
 import { getCorsHeaders, isDisallowedOrigin } from './_cors.js';
 import { jsonResponse } from './_json-response.js';
-import { isCallerPremium } from '../server/_shared/premium-check';
+import { resolvePremiumCallerIdentity } from '../server/_shared/premium-check';
 import { isBlockedResolvedAddress } from '../server/_shared/ip-address-classification';
+import { buildUsageIdentity } from '../server/_shared/usage-identity';
+import {
+  readBoundedRequestBody,
+  readBoundedResponseBody,
+  RequestBodyTooLargeError,
+  ResponseBodyTooLargeError,
+} from './mcp/bounded-body';
+import { MAX_JSON_RPC_BODY_BYTES, MAX_MCP_PROXY_RESPONSE_BYTES } from './mcp/body-limits';
+import { McpProxyJsonDepthError, parseMcpProxyJson } from './mcp/bounded-json';
 import { ENDPOINT_RATE_POLICIES, checkScopedRateLimit, getClientIp } from '../server/_shared/rate-limit';
+import { captureSilentError } from './_sentry-edge.js';
+import {
+  buildRequestEvent,
+  deriveAcceptLanguage,
+  deriveCountry,
+  deriveExecutionRegion,
+  deriveHost,
+  deriveIp,
+  deriveIpCity,
+  deriveIpRegion,
+  deriveReferer,
+  deriveReqBytes,
+  deriveRequestId,
+  deriveSentryTraceId,
+  deriveUserAgent,
+  emitUsageEvents,
+} from '../server/_shared/usage';
 
 export const config = { runtime: 'edge' };
 
@@ -56,6 +81,124 @@ function logProxyCall(entry: {
   });
 }
 
+// Map a terminal proxy status onto the closed RequestReason union. Mirrors
+// server/gateway.ts: `reason` names why WE short-circuited, and anything that
+// reached its natural outcome emits 'ok' with the real status alongside — so
+// an upstream 504/422 is `ok`/504, not a made-up rejection label.
+//
+// Exported as a test seam. This file is `@ts-nocheck`, so a typo here would
+// NOT be caught by tsc against the RequestReason union — it would ship a row
+// Axiom queries can never match. tests/mcp-proxy.test.mjs pins every branch.
+export function proxyReasonFor(status: number): string {
+  if (status === 403) return 'origin_403';
+  if (status === 401) return 'auth_401';
+  if (status === 429) return 'rate_limit_429';
+  if (status === 405) return 'method_not_allowed';
+  if (status === 400 || status === 413) return 'malformed_request';
+  return 'ok';
+}
+
+export function proxyUsageIdentityFor(req, identity) {
+  if (!identity?.isPremium) {
+    return buildUsageIdentity({
+      sessionUserId: null,
+      isUserApiKey: false,
+      enterpriseApiKey: null,
+      widgetKey: null,
+      clerkOrgId: null,
+      userApiKeyCustomerRef: null,
+      tier: null,
+      planKey: null,
+    });
+  }
+
+  if (identity.kind === 'internal-mcp') {
+    return {
+      auth_kind: 'mcp_oauth',
+      principal_id: identity.userId,
+      customer_id: identity.userId,
+      tier: 0,
+      plan_key: null,
+    };
+  }
+
+  const enterpriseApiKey = identity.kind === 'enterprise'
+    ? req.headers.get('X-WorldMonitor-Key') ?? req.headers.get('X-Api-Key')
+    : null;
+  return buildUsageIdentity({
+    sessionUserId: identity.userId,
+    isUserApiKey: identity.kind === 'user-api-key',
+    enterpriseApiKey,
+    widgetKey: null,
+    clerkOrgId: null,
+    userApiKeyCustomerRef: null,
+    tier: null,
+    planKey: null,
+  });
+}
+
+/**
+ * Emit one wm_api_usage RequestEvent per proxied call.
+ *
+ * Before this, `logProxyCall` was the ONLY record of a proxy request and it is
+ * `console.log` — Vercel runtime logs are a live tail with no historical query,
+ * so `/api/mcp-proxy` had ZERO rows in Axiom and its failure rate could not be
+ * asked about after the fact. That is the same hole #4866 closed for `/mcp`;
+ * this reuses the gateway's builders so rows are byte-compatible and joinable
+ * on customer_id. `logProxyCall` stays: it carries target_host/header_names,
+ * which the usage envelope has no field for, and existing log-ingest tooling
+ * parses its shape.
+ *
+ * OPTIONS preflights are deliberately NOT emitted — a static 204 that cannot
+ * fail would double row volume for no diagnostic value. /mcp skips them too
+ * (McpUsage.skip).
+ */
+function emitProxyUsage(req, status: number, durationMs: number, ctx, callerIdentity = null): void {
+  if (!ctx) return;
+  try {
+    const usageIdentity = proxyUsageIdentityFor(req, callerIdentity);
+    emitUsageEvents(ctx, [buildRequestEvent({
+      requestId: deriveRequestId(req),
+      domain: 'mcp',
+      route: '/api/mcp-proxy',
+      method: req.method,
+      status,
+      // Measured from handler entry, so this INCLUDES the auth/rate-limit
+      // gates — unlike logProxyCall's `started`, which begins after auth.
+      // The usage row is the end-to-end caller-visible latency.
+      durationMs,
+      reqBytes: deriveReqBytes(req),
+      // Not tracked: the proxy streams upstream bodies through bounded readers
+      // and jsonResponse sets no content-length, so there is no byte count to
+      // report without buffering a second time. Size questions belong to
+      // MAX_MCP_PROXY_RESPONSE_BYTES, not to this row.
+      resBytes: 0,
+      customerId: usageIdentity.customer_id,
+      principalId: usageIdentity.principal_id,
+      authKind: usageIdentity.auth_kind,
+      tier: usageIdentity.tier,
+      planKey: usageIdentity.plan_key,
+      country: deriveCountry(req),
+      ipCity: deriveIpCity(req),
+      ipRegion: deriveIpRegion(req),
+      executionRegion: deriveExecutionRegion(req),
+      executionPlane: 'vercel-edge',
+      originKind: 'mcp',
+      cacheTier: 'no-store',
+      ip: deriveIp(req),
+      userAgent: deriveUserAgent(req),
+      uaHash: null,
+      referer: deriveReferer(req),
+      acceptLanguage: deriveAcceptLanguage(req),
+      host: deriveHost(req),
+      sentryTraceId: deriveSentryTraceId(req),
+      reason: proxyReasonFor(status),
+    })]);
+  } catch {
+    // Telemetry must never change the caller's outcome.
+  }
+}
+
 const TIMEOUT_MS = 15_000;
 const SSE_CONNECT_TIMEOUT_MS = 10_000;
 const DNS_RESOLUTION_TIMEOUT_MS = 3_000;
@@ -95,6 +238,38 @@ class McpProxySsrfError extends Error {
   constructor(message) {
     super(message);
     this.name = 'McpProxySsrfError';
+  }
+}
+
+export class McpProxyUpstreamError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'McpProxyUpstreamError';
+  }
+}
+
+export function proxyFailureFor(error) {
+  const message = error instanceof Error ? error.message : String(error);
+  const isTimeout = (error instanceof Error && error.name === 'TimeoutError')
+    || message.includes('TimeoutError')
+    || message.includes('timed out');
+  const isExpectedExternal = error instanceof McpProxyUpstreamError
+    || error instanceof McpProxySsrfError
+    || error instanceof ResponseBodyTooLargeError
+    || error instanceof McpProxyJsonDepthError;
+  return {
+    isTimeout,
+    level: isTimeout || isExpectedExternal ? 'warning' : 'error',
+  };
+}
+
+async function fetchMcpUpstream(input, init) {
+  try {
+    return await fetch(input, init);
+  } catch (error) {
+    if (proxyFailureFor(error).isTimeout) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new McpProxyUpstreamError(message);
   }
 }
 
@@ -265,7 +440,7 @@ async function postJson(url, body, headers, sessionId) {
   const h = { ...headers };
   if (sessionId) h['Mcp-Session-Id'] = sessionId;
   await revalidateBeforeFetch(url);
-  const resp = await fetch(url.toString(), {
+  const resp = await fetchMcpUpstream(url.toString(), {
     method: 'POST',
     headers: h,
     body: JSON.stringify(body),
@@ -275,31 +450,45 @@ async function postJson(url, body, headers, sessionId) {
   return resp;
 }
 
+async function cancelResponseBody(response) {
+  await response.body?.cancel().catch(() => {});
+}
+
 async function parseJsonRpcResponse(resp) {
-  const ct = resp.headers.get('content-type') || '';
-  if (ct.includes('text/event-stream')) {
-    const text = await resp.text();
-    const lines = text.split('\n');
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          const parsed = JSON.parse(line.slice(6));
-          if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
-        } catch { /* skip */ }
+  try {
+    const body = await readBoundedResponseBody(resp, MAX_MCP_PROXY_RESPONSE_BYTES);
+    const text = new TextDecoder().decode(body);
+    const ct = resp.headers.get('content-type') || '';
+    if (ct.includes('text/event-stream')) {
+      const lines = text.split('\n');
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          try {
+            const parsed = parseMcpProxyJson(line.slice(6));
+            if (parsed.result !== undefined || parsed.error !== undefined) return parsed;
+          } catch (error) {
+            if (error instanceof McpProxyJsonDepthError) throw error;
+          }
+        }
       }
+      throw new McpProxyUpstreamError('No result found in SSE response');
     }
-    throw new Error('No result found in SSE response');
+    return parseMcpProxyJson(text);
+  } catch (error) {
+    if (error instanceof McpProxyUpstreamError) throw error;
+    const message = error instanceof Error ? error.message : String(error);
+    throw new McpProxyUpstreamError(message);
   }
-  return resp.json();
 }
 
 async function sendInitialized(serverUrl, headers, sessionId) {
   try {
-    await postJson(serverUrl, {
+    const response = await postJson(serverUrl, {
       jsonrpc: '2.0',
       method: 'notifications/initialized',
       params: {},
     }, headers, sessionId);
+    await cancelResponseBody(response);
   } catch (error) {
     if (error instanceof McpProxySsrfError) throw error;
     /* non-fatal */
@@ -309,35 +498,35 @@ async function sendInitialized(serverUrl, headers, sessionId) {
 async function mcpListTools(serverUrl, customHeaders) {
   const headers = buildHeaders(customHeaders);
   const initResp = await postJson(serverUrl, buildInitPayload(), headers, null);
-  if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`);
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
+  if (initData.error) throw new McpProxyUpstreamError(`Initialize error: ${initData.error.message}`);
   await sendInitialized(serverUrl, headers, sessionId);
   const listResp = await postJson(serverUrl, {
     jsonrpc: '2.0', id: 2, method: 'tools/list', params: {},
   }, headers, sessionId);
-  if (!listResp.ok) throw new Error(`tools/list failed: HTTP ${listResp.status}`);
+  if (!listResp.ok) throw new McpProxyUpstreamError(`tools/list failed: HTTP ${listResp.status}`);
   const listData = await parseJsonRpcResponse(listResp);
-  if (listData.error) throw new Error(`tools/list error: ${listData.error.message}`);
+  if (listData.error) throw new McpProxyUpstreamError(`tools/list error: ${listData.error.message}`);
   return listData.result?.tools || [];
 }
 
 async function mcpCallTool(serverUrl, toolName, toolArgs, customHeaders) {
   const headers = buildHeaders(customHeaders);
   const initResp = await postJson(serverUrl, buildInitPayload(), headers, null);
-  if (!initResp.ok) throw new Error(`Initialize failed: HTTP ${initResp.status}`);
+  if (!initResp.ok) throw new McpProxyUpstreamError(`Initialize failed: HTTP ${initResp.status}`);
   const sessionId = initResp.headers.get('Mcp-Session-Id') || initResp.headers.get('mcp-session-id');
   const initData = await parseJsonRpcResponse(initResp);
-  if (initData.error) throw new Error(`Initialize error: ${initData.error.message}`);
+  if (initData.error) throw new McpProxyUpstreamError(`Initialize error: ${initData.error.message}`);
   await sendInitialized(serverUrl, headers, sessionId);
   const callResp = await postJson(serverUrl, {
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: toolName, arguments: toolArgs || {} },
   }, headers, sessionId);
-  if (!callResp.ok) throw new Error(`tools/call failed: HTTP ${callResp.status}`);
+  if (!callResp.ok) throw new McpProxyUpstreamError(`tools/call failed: HTTP ${callResp.status}`);
   const callData = await parseJsonRpcResponse(callResp);
-  if (callData.error) throw new Error(`tools/call error: ${callData.error.message}`);
+  if (callData.error) throw new McpProxyUpstreamError(`tools/call error: ${callData.error.message}`);
   return callData.result;
 }
 
@@ -369,16 +558,17 @@ class SseSession {
     this._endpointDeferred = makeDeferred();
     this._pending = new Map(); // rpc id -> deferred
     this._reader = null;
+    this._terminalError = null;
   }
 
   async connect() {
     await revalidateBeforeFetch(new URL(this._sseUrl));
-    const resp = await fetch(this._sseUrl, {
+    const resp = await fetchMcpUpstream(this._sseUrl, {
       headers: { ...this._headers, Accept: 'text/event-stream', 'Cache-Control': 'no-cache' },
       redirect: 'manual',
       signal: AbortSignal.timeout(SSE_CONNECT_TIMEOUT_MS),
     });
-    if (!resp.ok) throw new Error(`SSE connect HTTP ${resp.status}`);
+    if (!resp.ok) throw new McpProxyUpstreamError(`SSE connect HTTP ${resp.status}`);
     this._reader = resp.body.getReader();
     this._startReadLoop();
     await this._endpointDeferred.promise;
@@ -388,19 +578,34 @@ class SseSession {
     const dec = new TextDecoder();
     let buf = '';
     let eventType = '';
+    let bytesRead = 0;
     const reader = this._reader;
+
+    const rejectSession = async (error) => {
+      this._terminalError = error;
+      this._endpointDeferred.reject(error);
+      for (const [, deferred] of this._pending) deferred.reject(error);
+      this._pending.clear();
+      await reader.cancel().catch(() => {});
+    };
 
     (async () => {
       try {
         while (true) {
           const { done, value } = await reader.read();
           if (done) {
-            // Stream closed — if endpoint never arrived, reject so connect() throws
-            if (!this._endpointUrl) {
-              this._endpointDeferred.reject(new Error('SSE stream closed before endpoint event'));
-            }
-            for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
+            const error = new McpProxyUpstreamError(
+              this._endpointUrl ? 'SSE stream closed' : 'SSE stream closed before endpoint event',
+            );
+            this._terminalError = error;
+            this._endpointDeferred.reject(error);
+            for (const [, d] of this._pending) d.reject(error);
+            this._pending.clear();
             break;
+          }
+          bytesRead += value?.byteLength ?? 0;
+          if (bytesRead > MAX_MCP_PROXY_RESPONSE_BYTES) {
+            throw new ResponseBodyTooLargeError(MAX_MCP_PROXY_RESPONSE_BYTES);
           }
           buf += dec.decode(value, { stream: true });
           const lines = buf.split('\n');
@@ -417,15 +622,15 @@ class SseSession {
                 try {
                   resolved = new URL(data.startsWith('http') ? data : data, this._sseUrl);
                 } catch {
-                  this._endpointDeferred.reject(new Error('SSE endpoint event contains invalid URL'));
+                  this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint event contains invalid URL'));
                   return;
                 }
                 if (resolved.protocol !== 'https:' && resolved.protocol !== 'http:') {
-                  this._endpointDeferred.reject(new Error('SSE endpoint protocol not allowed'));
+                  this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint protocol not allowed'));
                   return;
                 }
                 if (BLOCKED_HOSTNAMES.has(resolved.hostname.toLowerCase()) || isBlockedResolvedAddress(resolved.hostname)) {
-                  this._endpointDeferred.reject(new Error('SSE endpoint host is blocked'));
+                  this._endpointDeferred.reject(new McpProxyUpstreamError('SSE endpoint host is blocked'));
                   return;
                 }
                 // Pin endpoint to the same host as the original SSE URL to
@@ -433,7 +638,7 @@ class SseSession {
                 // event to an internal host (DNS rebinding / SSRF).
                 if (resolved.host !== this._originHost || resolved.protocol !== this._originProtocol) {
                   this._endpointDeferred.reject(
-                    new Error('SSE endpoint host or protocol does not match origin server'),
+                    new McpProxyUpstreamError('SSE endpoint host or protocol does not match origin server'),
                   );
                   return;
                 }
@@ -441,45 +646,48 @@ class SseSession {
                 this._endpointDeferred.resolve();
               } else {
                 try {
-                  const msg = JSON.parse(data);
+                  const msg = parseMcpProxyJson(data);
                   if (msg.id !== undefined) {
                     const d = this._pending.get(msg.id);
                     if (d) { this._pending.delete(msg.id); d.resolve(msg); }
                   }
-                } catch { /* skip non-JSON data lines */ }
+                } catch (error) {
+                  if (error instanceof McpProxyJsonDepthError) throw error;
+                }
               }
               eventType = '';
             }
           }
         }
       } catch (err) {
-        this._endpointDeferred.reject(err);
-        for (const [, d] of this._pending) d.reject(new Error('SSE stream closed'));
+        await rejectSession(err);
       }
     })();
   }
 
   async send(id, method, params) {
+    if (this._terminalError) throw this._terminalError;
     const deferred = makeDeferred();
     this._pending.set(id, deferred);
     const timer = setTimeout(() => {
       if (this._pending.has(id)) {
         this._pending.delete(id);
-        deferred.reject(new Error(`RPC ${method} timed out`));
+        deferred.reject(new McpProxyUpstreamError(`RPC ${method} timed out`));
       }
     }, SSE_RPC_TIMEOUT_MS);
     try {
       await revalidateBeforeFetch(new URL(this._endpointUrl));
-      const postResp = await fetch(this._endpointUrl, {
+      const postResp = await fetchMcpUpstream(this._endpointUrl, {
         method: 'POST',
         headers: { ...this._headers, 'Content-Type': 'application/json' },
         body: JSON.stringify({ jsonrpc: '2.0', id, method, params }),
         redirect: 'manual',
         signal: AbortSignal.timeout(SSE_RPC_TIMEOUT_MS),
       });
+      await cancelResponseBody(postResp);
       if (!postResp.ok) {
         this._pending.delete(id);
-        throw new Error(`${method} POST HTTP ${postResp.status}`);
+        throw new McpProxyUpstreamError(`${method} POST HTTP ${postResp.status}`);
       }
       return await deferred.promise;
     } finally {
@@ -489,17 +697,18 @@ class SseSession {
 
   async notify(method, params) {
     await revalidateBeforeFetch(new URL(this._endpointUrl));
-    await fetch(this._endpointUrl, {
+    const response = await fetch(this._endpointUrl, {
       method: 'POST',
       headers: { ...this._headers, 'Content-Type': 'application/json' },
       body: JSON.stringify({ jsonrpc: '2.0', method, params }),
       redirect: 'manual',
       signal: AbortSignal.timeout(5_000),
-    }).catch(() => {});
+    }).catch(() => null);
+    if (response) await cancelResponseBody(response);
   }
 
   close() {
-    try { this._reader?.cancel(); } catch { /* ignore */ }
+    this._reader?.cancel().catch(() => {});
   }
 }
 
@@ -513,10 +722,10 @@ async function mcpListToolsSse(serverUrl, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new Error(`Initialize error: ${initResp.error.message}`);
+    if (initResp.error) throw new McpProxyUpstreamError(`Initialize error: ${initResp.error.message}`);
     await session.notify('notifications/initialized', {});
     const listResp = await session.send(2, 'tools/list', {});
-    if (listResp.error) throw new Error(`tools/list error: ${listResp.error.message}`);
+    if (listResp.error) throw new McpProxyUpstreamError(`tools/list error: ${listResp.error.message}`);
     return listResp.result?.tools || [];
   } finally {
     session.close();
@@ -533,10 +742,10 @@ async function mcpCallToolSse(serverUrl, toolName, toolArgs, customHeaders) {
       capabilities: {},
       clientInfo: { name: 'worldmonitor', version: '1.0' },
     });
-    if (initResp.error) throw new Error(`Initialize error: ${initResp.error.message}`);
+    if (initResp.error) throw new McpProxyUpstreamError(`Initialize error: ${initResp.error.message}`);
     await session.notify('notifications/initialized', {});
     const callResp = await session.send(2, 'tools/call', { name: toolName, arguments: toolArgs || {} });
-    if (callResp.error) throw new Error(`tools/call error: ${callResp.error.message}`);
+    if (callResp.error) throw new McpProxyUpstreamError(`tools/call error: ${callResp.error.message}`);
     return callResp.result;
   } finally {
     session.close();
@@ -578,7 +787,19 @@ async function handleListTools(req: Request, cors: Record<string, string>, meta:
 }
 
 async function handleCallTool(req: Request, cors: Record<string, string>, meta: ProxyMeta): Promise<Response> {
-  const body = await req.json();
+  let body;
+  try {
+    const bodyBytes = await readBoundedRequestBody(req, MAX_JSON_RPC_BODY_BYTES);
+    body = parseMcpProxyJson(new TextDecoder().decode(bodyBytes));
+  } catch (err) {
+    if (err instanceof RequestBodyTooLargeError) {
+      return jsonResponse({ error: err.message }, 413, cors);
+    }
+    if (err instanceof McpProxyJsonDepthError) {
+      return jsonResponse({ error: err.message }, 400, cors);
+    }
+    return jsonResponse({ error: 'Invalid JSON' }, 400, cors);
+  }
   const { serverUrl: rawServer, toolName, toolArgs, customHeaders } = body;
   if (!rawServer) return jsonResponse({ error: 'Missing serverUrl' }, 400, cors);
   if (!toolName) return jsonResponse({ error: 'Missing toolName' }, 400, cors);
@@ -591,11 +812,15 @@ async function handleCallTool(req: Request, cors: Record<string, string>, meta: 
   return jsonResponse({ result }, 200, cors);
 }
 
-export default async function handler(req) {
-  if (isDisallowedOrigin(req))
+export default async function handler(req, ctx) {
+  const startedAt = Date.now();
+  if (isDisallowedOrigin(req)) {
+    emitProxyUsage(req, 403, Date.now() - startedAt, ctx);
     return new Response('Forbidden', { status: 403, headers: withProxyNoStore() });
+  }
 
   const cors = withProxyNoStore(getCorsHeaders(req, 'GET, POST, OPTIONS'));
+  // No emit: see emitProxyUsage — a static 204 preflight carries no signal.
   if (req.method === 'OPTIONS')
     return new Response(null, { status: 204, headers: cors });
 
@@ -610,7 +835,7 @@ export default async function handler(req) {
   // validateApiKey forceKey:true, which broke the Pro "Connect MCP" UI
   // for normal web Pro users (no enterprise key path).
   //
-  // isCallerPremium is the project's canonical premium-caller check. It
+  // resolvePremiumCallerIdentity is the project's canonical premium-caller check. It
   // accepts: enterprise key (WORLDMONITOR_VALID_KEYS), wm_ user API key
   // (Convex-validated + entitlement check), and Clerk Pro Bearer JWT
   // (role==='pro' or entitlement tier>=1). It rejects wms_ session tokens
@@ -622,8 +847,11 @@ export default async function handler(req) {
   // premiumFetch (not plain fetch) so the renderer attaches the Bearer
   // for Pro users; /api/mcp-proxy is now in PREMIUM_RPC_PATHS for that
   // path-gated injection.
-  if (!(await isCallerPremium(req)))
+  const callerIdentity = await resolvePremiumCallerIdentity(req);
+  if (!callerIdentity.isPremium) {
+    emitProxyUsage(req, 401, Date.now() - startedAt, ctx);
     return jsonResponse({ error: 'Pro authentication required' }, 401, cors);
+  }
 
   const started = Date.now();
   const ip = getClientIp(req);
@@ -646,6 +874,7 @@ export default async function handler(req) {
       status: 429,
       duration_ms: Date.now() - started,
     });
+    emitProxyUsage(req, 429, Date.now() - startedAt, ctx, callerIdentity);
     // JSON-RPC -32029 mirrors api/mcp.ts; HTTP 429 + Retry-After follows the
     // shared rate-limit response shape.
     return new Response(
@@ -679,9 +908,29 @@ export default async function handler(req) {
     }
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    const isTimeout = msg.includes('TimeoutError') || msg.includes('timed out');
+    const failure = proxyFailureFor(err);
+    // Until now this catch swallowed EVERY handler fault into a 422/422-shaped
+    // JSON body with no Sentry event, so a genuine proxy defect was visible
+    // only to the caller who hit it. Capture it.
+    //
+    // Expected upstream transport/protocol failures are the remote MCP server's
+    // outcome, not our defect, so they report at `warning`. Unknown failures
+    // stay at `error` so real proxy defects remain actionable.
+    //
+    // targetHost is caller-supplied, so it rides in `extra`, never a tag —
+    // an attacker-controlled tag value would shred Sentry's tag cardinality.
+    captureSilentError(err, {
+      tags: { route: 'api/mcp-proxy', step: 'proxy-dispatch' },
+      extra: { target_host: meta.targetHost, target_path: meta.targetPath, method: req.method },
+      level: failure.level,
+      ctx,
+    });
     // Return 422 (not 502) so Cloudflare proxy does not replace our JSON body with its own HTML error page
-    response = jsonResponse({ error: isTimeout ? 'MCP server timed out' : msg }, isTimeout ? 504 : 422, cors);
+    response = jsonResponse(
+      { error: failure.isTimeout ? 'MCP server timed out' : msg },
+      failure.isTimeout ? 504 : 422,
+      cors,
+    );
   }
 
   logProxyCall({
@@ -693,6 +942,7 @@ export default async function handler(req) {
     status: response.status,
     duration_ms: Date.now() - started,
   });
+  emitProxyUsage(req, response.status, Date.now() - startedAt, ctx, callerIdentity);
 
   return response;
 }

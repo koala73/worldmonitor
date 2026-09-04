@@ -91,11 +91,8 @@ variable. Distinct SZSE proxy attempts rotate eligible Decodo sticky gateway
 ports within the selected proxy configuration.
 
 SSE uses up to four direct and four proxy requests with bounded concurrency.
-SZSE uses one direct attempt, up to two proxy attempts on distinct eligible
-gateway ports, and then the fixed
-`https://api.worldmonitor.app/api/internal/china-exchange-egress` edge hop.
-The edge hop is authenticated with `RELAY_SHARED_SECRET`; the secret is never
-sent to the exchange.
+SZSE uses one direct attempt and up to two proxy attempts on distinct eligible
+gateway ports.
 
 The fallback order applies only to transport failures. HTTP or schema results
 that prove an application-level response are recorded and do not trigger
@@ -105,7 +102,7 @@ clear its durable transport-failure state.
 `SSE_PROXY_URL` is an optional SSE-specific override. `SZSE_PROXY_URL` is an
 optional shared China exit. `PROXY_URL` is selected only when the corresponding
 source-specific setting is absent and is also required by other market-bundle
-members. `RELAY_SHARED_SECRET` is required for the fixed edge fallback.
+members.
 
 ## Coverage and health
 

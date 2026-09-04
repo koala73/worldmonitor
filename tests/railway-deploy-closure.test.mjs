@@ -181,9 +181,9 @@ describe('build context containment', () => {
 
 describe('closure resolution', () => {
   it('unions the registry closure with the live filter', () => {
-    // Between a merged registry edit and the audit's --apply, each side knows a
-    // path the other does not; three of the fleet's apparent refusals sat in
-    // exactly that window. Building too much is the only safe direction.
+    // Between a merged registry edit and verified registry sync, each side
+    // knows a path the other does not; three of the fleet's apparent refusals
+    // sat in exactly that window. Building too much is the only safe direction.
     const closure = resolveServiceClosure({
       registryEntry: { watchPatterns: ['scripts/_seed-history.mjs'] },
       liveService: {
@@ -197,7 +197,7 @@ describe('closure resolution', () => {
   });
 
   it('reads an explicitly empty registry array as watching everything', () => {
-    // umami and publish-bootstrap-tiers use [] deliberately.
+    // publish-bootstrap-tiers uses [] deliberately.
     const closure = resolveServiceClosure({ registryEntry: { watchPatterns: [] } });
     assert.equal(closure.patterns, null);
     assert.ok(changeReachesService(closure, ['src/App.ts']));

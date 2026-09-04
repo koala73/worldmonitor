@@ -20,7 +20,33 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, '..');
 
 // Dynamic import so tsx handles the TS transpilation
-const { PRODUCT_CATALOG } = await import('../convex/config/productCatalog.ts');
+const { PRODUCT_CATALOG, SHARED_API_BUDGET } = await import('../convex/config/productCatalog.ts');
+
+/**
+ * Public projection of a plan's limits.
+ *
+ * Internally `mcpCallsPerDay` may carry the `SHARED_API_BUDGET` marker, which is
+ * what `resolveMcpBudget` reads to decide WHICH counter a call charges. That
+ * marker is a private encoding, and this object is not private: it reaches
+ * `pro-test/src/generated/tiers.json`, then `TIER_CONFIG`, which
+ * `GET /api/product-catalog` serves as the machine-readable catalog the MCP
+ * server card points agents at. Publishing the marker flips a documented number
+ * to a string on a response whose cache key is still pinned at v3.
+ *
+ * So publish the effective number and state the sharing in its own boolean —
+ * the same split `public/.well-known/mcp/server-card.json` already makes between
+ * real numbers in `dailyByPlan` and `dailyBudgetSharedWithRestByPlan`. The flag
+ * is present on every plan so a consumer never has to read absence as false.
+ */
+function publicPlanLimits(planLimits) {
+  if (!planLimits) return null;
+  const shared = planLimits.mcpCallsPerDay === SHARED_API_BUDGET;
+  return {
+    ...planLimits,
+    mcpCallsPerDay: shared ? planLimits.apiRequestsPerDay : planLimits.mcpCallsPerDay,
+    mcpDailyBudgetSharedWithRest: shared,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // 1. Generate src/config/products.generated.ts
@@ -140,7 +166,7 @@ for (const [tierGroup, entries] of tierGroups) {
   if (primary.highlightFeatures?.length) {
     tier.highlightFeatures = primary.highlightFeatures;
   }
-  tier.planLimits = primary.features.planLimits ?? null;
+  tier.planLimits = publicPlanLimits(primary.features.planLimits);
   if (localeFeaturesByKey[localeKey]) {
     throw new Error(`[product-config] Duplicate pro locale tier key "${localeKey}" generated for public tier group "${tierGroup}".`);
   }
@@ -172,7 +198,10 @@ if (syncedLocaleCount > 0) {
   console.log(`  ✓ refreshed pricing features in ${syncedLocaleCount} pro locale file(s)`);
 }
 
-console.log('\nDone. Remember to rebuild /pro: npm run build:pro');
+// The deploy rebuilds /pro itself since #6898, so this is no longer a "commit
+// the bundle too" instruction — but the built-output tests read public/pro/,
+// so a local rebuild is still what makes them run instead of skip.
+console.log('\nDone. Rebuild /pro to exercise its built-output tests: npm run build:pro');
 
 // ---------------------------------------------------------------------------
 // Helpers

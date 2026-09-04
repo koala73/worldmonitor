@@ -69,7 +69,26 @@ export const SearchConfigSchema = z.object({
   // the configured retailer (for example minutes.noon.com). The base URL
   // hostname is always allowed; aliases never broaden the check implicitly.
   allowedHosts: z.array(z.string().min(1)).min(1).optional(),
+  // Exa discovery mode. Neural ranks by semantic similarity over Exa's crawled
+  // index, so a retailer that has MOVED its product routes keeps being served
+  // the retired ones (JioMart: neural returned 0 live `/product/` URLs across
+  // five items, keyword returned 33). Leave unset to keep the provider default;
+  // set `keyword` for retailers whose live routes the index has not caught up to.
+  searchType: z.enum(['neural', 'keyword']).optional(),
+  // Ceiling on how many discovered URLs one target may be extracted from.
+  // Separates discovery breadth from extraction cost: a retailer whose live
+  // route ranks low needs a wide `numResults`, but every extra candidate is up
+  // to two more paid provider calls on a page that may never yield a price.
+  // Unset keeps the historical behaviour of attempting every survivor.
+  maxExtractionCandidates: z.number().int().positive().optional(),
   inStockFromPrice: z.boolean().default(false),
+  // Extra render settle time (ms) before Firecrawl captures the page. For
+  // storefronts whose product data hydrates late and otherwise captures as a
+  // breadcrumb shell with no price (Carrefour MAF domains rendered 2.2KB of
+  // breadcrumbs at the default settle vs 32KB with 8s, #6182). Costs its
+  // value in latency on every extraction call for the retailer — set it only
+  // where shell captures are observed.
+  renderWaitMs: z.number().int().positive().max(15_000).optional(),
   // A single bounded provider fallback is opt-in per retailer. `none` keeps
   // the historical Firecrawl-only extraction path.
   extractionFallback: z.enum(['none', 'exa']).default('none'),

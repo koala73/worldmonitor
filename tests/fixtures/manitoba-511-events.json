@@ -1,0 +1,15 @@
+[
+  {
+    "ID": 88001,
+    "Latitude": 49.8951,
+    "Longitude": -97.1384,
+    "EventType": "closures",
+    "IsFullClosure": true,
+    "Severity": "Unknown",
+    "RoadwayName": "PTH 1",
+    "LocationDescription": "Portage Avenue at Main Street",
+    "Description": "ALL LANES CLOSED — captured-shape fixture",
+    "LanesAffected": "ALL LANES CLOSED",
+    "EncodedPolyline": null
+  }
+]

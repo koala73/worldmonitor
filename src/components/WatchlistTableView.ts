@@ -17,12 +17,22 @@
 
 import { escapeHtml } from '@/utils/sanitize';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { bindActivationKeys } from '@/utils/activation';
 
 const VIRTUALIZE_ROW_THRESHOLD = 100;
-// MUST stay in sync with the pinned `--watchlist-row-height` custom property /
-// `.watchlist-row` height in panels.css. The CSS pins each data row to exactly
-// this height (single line, no wrap) so the spacer pixel math and the
-// scroll→index mapping below are exact instead of drifting with cell content.
+
+function ariaSortAttr(sortKey: string, activeSort: string): string {
+  if (sortKey !== activeSort) return '';
+  const direction = activeSort.endsWith('-asc')
+    ? 'ascending'
+    : activeSort.endsWith('-desc')
+      ? 'descending'
+      : 'none';
+  return ` aria-sort="${direction}"`;
+}
+// Unscaled base for the `--watchlist-row-height` custom property in panels.css.
+// Spacer generation uses this base; bind() measures the rendered row after
+// global or per-panel scaling for exact scroll-to-index mapping.
 const VIRTUAL_ROW_HEIGHT_PX = 33;
 const VIRTUAL_VISIBLE_ROWS = 32;
 const VIRTUAL_OVERSCAN_ROWS = 6;
@@ -91,8 +101,18 @@ export class WatchlistTableView<T> {
   // .slice()+filter+.sort() on every frame. Self-invalidates when items,
   // sort, filter, or search change (the key no longer matches).
   private sortedCache: { sort: string; filter: string; search: string; items: T[]; result: T[] } | null = null;
-  // Guards the scroll handler so at most one window update runs per frame.
-  private scrollRafPending = false;
+  // Generation stamps gate each async DOM update to the bind() that queued it.
+  // A stale frame must not mutate a replacement table or clear its pending gate.
+  private scrollRafGeneration: number | null = null;
+  private scaleRafGeneration: number | null = null;
+  private scaleObservers: MutationObserver[] = [];
+  private tableResizeObserver: ResizeObserver | null = null;
+  private scaleObservationGeneration = 0;
+  private lastMeasuredVirtualRowHeight: number | null = null;
+  private lastMeasuredTableHeaderHeight: number | null = null;
+  // Keyboard activation is delegated on the owning panel's stable content
+  // node so it survives innerHTML replace and same-HTML short-circuits.
+  private activationRoot: HTMLElement | null = null;
   private state: {
     sort: string;
     filter: string;
@@ -166,8 +186,11 @@ export class WatchlistTableView<T> {
       if (col.align === 'right') classes.push('watchlist-th-right');
       const classAttr = classes.length ? ` class="${classes.join(' ')}"` : '';
       const sortAttr = sortKey ? ` data-sortkey="${escapeHtml(sortKey)}"` : '';
+      const sortA11yAttr = sortKey
+        ? ` tabindex="0"${ariaSortAttr(sortKey, this.state.sort)}`
+        : '';
       const activeSortIndicator = sortKey && sortKey === this.state.sort ? ' ↓' : '';
-      return `<th${classAttr}${sortAttr}>${escapeHtml(col.label)}${activeSortIndicator}</th>`;
+      return `<th scope="col"${classAttr}${sortAttr}${sortA11yAttr}>${escapeHtml(col.label)}${activeSortIndicator}</th>`;
     }).join('');
     return `
       <div class="watchlist-table-view" data-watchlist-totalrows="${list.length}" data-watchlist-renderedrows="${this.getRenderedRowCount(list, start)}">
@@ -207,9 +230,11 @@ export class WatchlistTableView<T> {
   }
 
   private renderSpacerRow(rowCount: number, position: 'top' | 'bottom', extraHeight = 0): string {
-    const height = rowCount * VIRTUAL_ROW_HEIGHT_PX + extraHeight;
-    if (height <= 0) return '';
-    return `<tr class="watchlist-virtual-spacer watchlist-virtual-spacer-${position}" aria-hidden="true"><td colspan="${this.config.columns.length}" style="height:${height}px;padding:0;border:0"></td></tr>`;
+    const baseHeight = rowCount * VIRTUAL_ROW_HEIGHT_PX;
+    if (baseHeight + extraHeight <= 0) return '';
+    const extra = extraHeight > 0 ? ` + ${extraHeight}px` : '';
+    const height = `calc(${baseHeight}px * var(--wm-panel-effective-scale, 1)${extra})`;
+    return `<tr class="watchlist-virtual-spacer watchlist-virtual-spacer-${position}" aria-hidden="true"><td colspan="${this.config.columns.length}" style="height:${height};padding:0;border:0"></td></tr>`;
   }
 
   private shouldVirtualize(list: T[]): boolean {
@@ -227,11 +252,11 @@ export class WatchlistTableView<T> {
   // and subtracts the expanded-detail height when the expanded row sits above
   // the window — the top spacer includes that height, so the raw scrollTop is
   // offset by it and the uniform-row division would otherwise overshoot.
-  private computeVirtualStart(scrollTop: number, list: T[]): number {
+  private computeVirtualStart(scrollTop: number, list: T[], rowHeightPx = VIRTUAL_ROW_HEIGHT_PX): number {
     if (!this.shouldVirtualize(list)) return 0;
     const maxStart = Math.max(0, list.length - VIRTUAL_VISIBLE_ROWS);
     const startFrom = (top: number): number =>
-      Math.min(maxStart, Math.max(0, Math.floor(top / VIRTUAL_ROW_HEIGHT_PX) - VIRTUAL_OVERSCAN_ROWS));
+      Math.min(maxStart, Math.max(0, Math.floor(top / rowHeightPx) - VIRTUAL_OVERSCAN_ROWS));
     let start = startFrom(scrollTop);
     const expandedIndex = this.getExpandedIndex(list);
     if (expandedIndex >= 0 && expandedIndex < start && this.state.expandedDetailHeight > 0) {
@@ -271,7 +296,7 @@ export class WatchlistTableView<T> {
           data-watchlist-search="1">
         <div class="watchlist-control-row">
           <div class="watchlist-pills">${pills}</div>
-          <select class="watchlist-sort" data-watchlist-sort="1">${sortOpts}</select>
+          <select class="watchlist-sort" data-watchlist-sort="1" aria-label="Sort watchlist">${sortOpts}</select>
         </div>
       </div>
     `;
@@ -284,7 +309,7 @@ export class WatchlistTableView<T> {
       const alignClass = col.align === 'right' ? ' class="watchlist-td-right"' : '';
       return `<td${alignClass}>${col.cell(item)}</td>`;
     }).join('');
-    const row = `<tr class="watchlist-row${isExpanded ? ' watchlist-row-expanded' : ''}" data-rowkey="${escapeHtml(key)}">${cells}</tr>`;
+    const row = `<tr class="watchlist-row${isExpanded ? ' watchlist-row-expanded' : ''}" data-rowkey="${escapeHtml(key)}" tabindex="0" aria-expanded="${isExpanded ? 'true' : 'false'}">${cells}</tr>`;
     if (!isExpanded) return row;
     const detail = this.config.renderDetail(item);
     return `${row}<tr class="watchlist-detail-row"><td colspan="${this.config.columns.length}">${detail}</td></tr>`;
@@ -325,14 +350,29 @@ export class WatchlistTableView<T> {
   }
 
   public bind(root: HTMLElement, onRerender: () => void): void {
+    if (this.activationRoot !== root) {
+      this.activationRoot = root;
+      // Bind on the panel content, not the table: `closest` still finds
+      // rows/headers after a replace, and the helper is idempotent per
+      // root+selector so a same-HTML short-circuit cannot stack listeners.
+      bindActivationKeys(root, '.watchlist-row');
+      bindActivationKeys(root, '.watchlist-th-sortable');
+    }
+    this.disconnectScaleObserver();
     const rootEl = root.querySelector('.watchlist-table-view') as HTMLElement | null;
     if (!rootEl) return;
+    const generation = this.scaleObservationGeneration;
 
     // Row click → toggle expanded (one-at-a-time semantics: clicking a
     // different row collapses the previous one). Delegated on the stable
     // <table> element so it survives the in-place <tbody> swaps the scroll
     // handler performs (a per-row listener would be lost on every window shift).
     const tableEl = rootEl.querySelector('.watchlist-table') as HTMLElement | null;
+    const previousHeaderHeight = this.lastMeasuredTableHeaderHeight;
+    const initialHeaderHeight = this.measureTableHeaderHeight(tableEl);
+    let headerHeight = initialHeaderHeight
+      ?? previousHeaderHeight
+      ?? 0;
     if (tableEl) {
       tableEl.addEventListener('click', (event) => {
         const target = event.target as HTMLElement | null;
@@ -389,6 +429,29 @@ export class WatchlistTableView<T> {
     const scrollEl = rootEl.querySelector('[data-watchlist-scroll="1"]') as HTMLElement | null;
     if (scrollEl) {
       const tbodyEl = scrollEl.querySelector('.watchlist-table tbody') as HTMLElement | null;
+      const previousRowHeight = this.lastMeasuredVirtualRowHeight;
+      const initialRowHeight = this.measureVirtualRowHeight(scrollEl);
+      let rowHeight = initialRowHeight
+        ?? previousRowHeight
+        ?? VIRTUAL_ROW_HEIGHT_PX;
+      if (
+        initialRowHeight !== null
+        && previousRowHeight !== null
+        && initialRowHeight !== previousRowHeight
+      ) {
+        const reconciled = this.reconcileScaledVirtualState(
+          rootEl,
+          previousRowHeight,
+          initialRowHeight,
+          previousHeaderHeight ?? 0,
+          initialHeaderHeight ?? headerHeight,
+        );
+        if (reconciled && this.shouldVirtualize(reconciled.list)) {
+          this.replaceVirtualWindow(tbodyEl, rootEl, reconciled.list, reconciled.nextStart);
+        }
+      }
+      if (initialRowHeight !== null) this.lastMeasuredVirtualRowHeight = initialRowHeight;
+      if (initialHeaderHeight !== null) this.lastMeasuredTableHeaderHeight = initialHeaderHeight;
       scrollEl.scrollTop = this.state.virtualScrollTop;
       // Scroll updates the visible window IN PLACE (swap only the <tbody>) and
       // never call onRerender(). Going through the owning panel's setSafeContent
@@ -399,13 +462,66 @@ export class WatchlistTableView<T> {
       // only a user-action rerender needs. rAF-gated to one update per frame.
       scrollEl.addEventListener('scroll', () => {
         this.state.virtualScrollTop = scrollEl.scrollTop;
-        if (this.scrollRafPending) return;
-        this.scrollRafPending = true;
+        if (this.scrollRafGeneration === generation) return;
+        this.scrollRafGeneration = generation;
         scheduleFrame(() => {
-          this.scrollRafPending = false;
-          this.updateVirtualWindow(scrollEl, tbodyEl, rootEl);
+          if (this.scrollRafGeneration === generation) this.scrollRafGeneration = null;
+          if (generation !== this.scaleObservationGeneration || !rootEl.isConnected) return;
+          this.updateVirtualWindow(scrollEl, tbodyEl, rootEl, rowHeight);
         });
       }, { passive: true });
+
+      const reconcileScaledRows = (): void => {
+        if (this.scaleRafGeneration === generation) return;
+        this.scaleRafGeneration = generation;
+        scheduleFrame(() => {
+          if (this.scaleRafGeneration === generation) this.scaleRafGeneration = null;
+          if (generation !== this.scaleObservationGeneration || !rootEl.isConnected) return;
+          const nextRowHeight = this.measureVirtualRowHeight(scrollEl);
+          // A hidden panel reports zero-sized rows. Keep the last good
+          // measurement and retry when the panel's visibility class changes.
+          if (nextRowHeight === null) return;
+          this.lastMeasuredVirtualRowHeight = nextRowHeight;
+          if (nextRowHeight === rowHeight) return;
+          const nextHeaderHeight = this.measureTableHeaderHeight(tableEl);
+          if (nextHeaderHeight !== null) {
+            this.lastMeasuredTableHeaderHeight = nextHeaderHeight;
+          }
+          const reconciled = this.reconcileScaledVirtualState(
+            rootEl,
+            rowHeight,
+            nextRowHeight,
+            headerHeight,
+            nextHeaderHeight ?? headerHeight,
+          );
+          rowHeight = nextRowHeight;
+          headerHeight = nextHeaderHeight ?? headerHeight;
+          scrollEl.scrollTop = this.state.virtualScrollTop;
+          if (reconciled && this.shouldVirtualize(reconciled.list)) {
+            this.replaceVirtualWindow(tbodyEl, rootEl, reconciled.list, reconciled.nextStart);
+          }
+        });
+      };
+      if (typeof ResizeObserver !== 'undefined' && tableEl) {
+        // The table survives virtual tbody swaps. Its box changes whenever
+        // row scale or panel visibility changes, so it is a stable source for
+        // both global and panel-scale reconciliation.
+        this.tableResizeObserver = new ResizeObserver(reconcileScaledRows);
+        this.tableResizeObserver.observe(tableEl);
+      } else {
+        const globalScaleObserver = new MutationObserver(reconcileScaledRows);
+        globalScaleObserver.observe(document.documentElement, {
+          attributes: true,
+          attributeFilter: ['style'],
+        });
+        this.scaleObservers.push(globalScaleObserver);
+        const panel = rootEl.closest('.panel');
+        if (panel) {
+          const panelScaleObserver = new MutationObserver(reconcileScaledRows);
+          panelScaleObserver.observe(panel, { attributes: true, attributeFilter: ['class', 'style'] });
+          this.scaleObservers.push(panelScaleObserver);
+        }
+      }
     }
 
     this.syncExpandedDetailHeight(rootEl);
@@ -459,21 +575,159 @@ export class WatchlistTableView<T> {
     if (measured > 0) this.state.expandedDetailHeight = measured;
   }
 
+  private measureExpandedDetailHeight(rootEl: HTMLElement): number {
+    if (!this.state.expandedKey) return 0;
+
+    const mountedDetail = rootEl.querySelector<HTMLElement>('.watchlist-detail-row');
+    if (mountedDetail) {
+      return Math.ceil(mountedDetail.getBoundingClientRect().height || mountedDetail.offsetHeight || 0);
+    }
+
+    const item = this.getFilteredSorted().find(
+      candidate => this.config.getKey(candidate) === this.state.expandedKey,
+    );
+    const sourceTable = rootEl.querySelector<HTMLTableElement>('.watchlist-table');
+    if (!item || !sourceTable) return 0;
+
+    const measurementTable = sourceTable.cloneNode(false) as HTMLTableElement;
+    measurementTable.style.position = 'absolute';
+    measurementTable.style.visibility = 'hidden';
+    measurementTable.style.pointerEvents = 'none';
+    measurementTable.style.width = `${sourceTable.getBoundingClientRect().width}px`;
+    const body = document.createElement('tbody');
+    setTrustedHtml(
+      body,
+      trustedHtml(this.renderRow(item), 'watchlist expanded detail scale measurement'),
+    );
+    measurementTable.appendChild(body);
+    rootEl.appendChild(measurementTable);
+    const detail = measurementTable.querySelector<HTMLElement>('.watchlist-detail-row');
+    const measured = Math.ceil(detail?.getBoundingClientRect().height || detail?.offsetHeight || 0);
+    measurementTable.remove();
+    return measured;
+  }
+
   // Scroll-driven window update: recompute the visible window and swap ONLY the
   // <tbody> content, bypassing the panel's debounced full rerender + rebind.
-  // No re-sort (memoized list), no getBoundingClientRect, no focus restore — the
-  // detail-row height is stable across scroll, so it is not re-measured here.
-  private updateVirtualWindow(scrollEl: HTMLElement, tbodyEl: HTMLElement | null, rootEl: HTMLElement): void {
+  // No re-sort (memoized list) and no focus restore. The live row measurement
+  // keeps scroll math aligned with the current global or per-panel scale.
+  private updateVirtualWindow(
+    scrollEl: HTMLElement,
+    tbodyEl: HTMLElement | null,
+    rootEl: HTMLElement,
+    rowHeightPx: number,
+  ): void {
     const list = this.getFilteredSorted();
     if (!this.shouldVirtualize(list)) return;
-    const nextStart = this.computeVirtualStart(scrollEl.scrollTop, list);
+    const nextStart = this.computeVirtualStart(scrollEl.scrollTop, list, rowHeightPx);
     if (nextStart === this.state.virtualStart) return;
     this.state.virtualStart = nextStart;
+    this.replaceVirtualWindow(tbodyEl, rootEl, list, nextStart);
+  }
+
+  private replaceVirtualWindow(
+    tbodyEl: HTMLElement | null,
+    rootEl: HTMLElement,
+    list: T[],
+    start: number,
+  ): void {
     if (!tbodyEl) return;
     setTrustedHtml(
       tbodyEl,
-      trustedHtml(this.renderTableBody(list, nextStart), 'watchlist virtual window scroll update'),
+      trustedHtml(this.renderTableBody(list, start), 'watchlist virtual window scroll update'),
     );
-    rootEl.dataset.watchlistRenderedrows = String(this.getRenderedRowCount(list, nextStart));
+    rootEl.dataset.watchlistRenderedrows = String(this.getRenderedRowCount(list, start));
+  }
+
+  private measureVirtualRowHeight(scrollEl: HTMLElement): number | null {
+    const row = scrollEl.querySelector<HTMLElement>('.watchlist-row');
+    const height = row?.getBoundingClientRect().height || 0;
+    return height > 0 ? height : null;
+  }
+
+  private measureTableHeaderHeight(tableEl: HTMLElement | null): number | null {
+    const header = tableEl?.querySelector<HTMLElement>('thead');
+    const height = header?.getBoundingClientRect().height || 0;
+    return height > 0 ? height : null;
+  }
+
+  private reconcileScaledVirtualState(
+    rootEl: HTMLElement,
+    previousRowHeight: number,
+    nextRowHeight: number,
+    previousHeaderHeight: number,
+    nextHeaderHeight: number,
+  ): { list: T[]; nextStart: number } | null {
+    if (previousRowHeight <= 0 || nextRowHeight <= 0 || previousRowHeight === nextRowHeight) return null;
+    const ratio = nextRowHeight / previousRowHeight;
+    const list = this.getFilteredSorted();
+    const previousDetailHeight = this.state.expandedDetailHeight;
+    const expandedIndex = this.getExpandedIndex(list);
+    const detailIsAboveViewport = this.isExpandedDetailAboveViewport(
+      expandedIndex,
+      previousRowHeight,
+      previousHeaderHeight,
+      previousDetailHeight,
+    );
+    const nextDetailHeight = this.measureExpandedDetailHeight(rootEl);
+    this.state.virtualScrollTop = this.scaleVirtualScrollTop(
+      ratio,
+      previousHeaderHeight,
+      nextHeaderHeight,
+      detailIsAboveViewport ? previousDetailHeight : 0,
+      detailIsAboveViewport ? nextDetailHeight : 0,
+    );
+    this.state.expandedDetailHeight = nextDetailHeight;
+    const nextStart = this.computeVirtualStart(this.state.virtualScrollTop, list, nextRowHeight);
+    this.state.virtualStart = nextStart;
+    return { list, nextStart };
+  }
+
+  private scaleVirtualScrollTop(
+    ratio: number,
+    previousHeaderHeight: number,
+    nextHeaderHeight: number,
+    previousDetailHeight: number,
+    nextDetailHeight: number,
+  ): number {
+    const previousScrollTop = this.state.virtualScrollTop;
+    if (previousScrollTop <= 0) return 0;
+    if (previousHeaderHeight > 0 && previousScrollTop <= previousHeaderHeight) {
+      return previousScrollTop * (nextHeaderHeight / previousHeaderHeight);
+    }
+    const rowOffset = Math.max(
+      0,
+      previousScrollTop - previousHeaderHeight - previousDetailHeight,
+    );
+    return nextHeaderHeight + rowOffset * ratio + nextDetailHeight;
+  }
+
+  private isExpandedDetailAboveViewport(
+    expandedIndex: number,
+    rowHeight: number,
+    headerHeight: number,
+    detailHeight: number,
+  ): boolean {
+    if (expandedIndex < 0) return false;
+    // ResizeObserver runs after layout, when mounted detail geometry already
+    // reflects the new scale. Classify it in the cached old coordinate system
+    // so a scale-up cannot move an overscan detail below the viewport before
+    // we decide whether to preserve its height in the scroll anchor.
+    const detailEnd = headerHeight + (expandedIndex + 1) * rowHeight + detailHeight;
+    return this.state.virtualScrollTop >= detailEnd;
+  }
+
+  public destroy(): void {
+    this.disconnectScaleObserver();
+  }
+
+  private disconnectScaleObserver(): void {
+    this.scaleObservationGeneration += 1;
+    this.scrollRafGeneration = null;
+    this.scaleRafGeneration = null;
+    this.scaleObservers.forEach(observer => observer.disconnect());
+    this.scaleObservers = [];
+    this.tableResizeObserver?.disconnect();
+    this.tableResizeObserver = null;
   }
 }

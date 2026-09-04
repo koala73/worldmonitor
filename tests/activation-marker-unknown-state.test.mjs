@@ -35,7 +35,7 @@ const {
   SEED_META,
   STANDALONE_KEYS,
   ON_DEMAND_KEYS,
-  ROLLOUT_PENDING_UNTIL_MS,
+  RUNTIME_ROLLOUT_PENDING_POLICIES,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
 } = __testing__;
 
@@ -99,7 +99,15 @@ function installHealthPipelineMock(
       if (op === 'STRLEN') return { result: empty.has(key) ? 0 : 100 };
       if (op === 'LLEN') return { result: empty.has(key) ? 0 : 1 };
       if (op === 'EXISTS') {
-        assert.match(String(key), /^seed-activated:/, 'EXISTS is only used for activation markers');
+        // Activation keys are `seed-activated:*` by convention, with one
+        // deliberate exception: military:bases gates on its active-version
+        // pointer, which atomicSwitch writes in the SAME EVAL as seed-meta and
+        // therefore cannot disagree with "has published at least once" (#6845).
+        assert.match(
+          String(key),
+          /^seed-activated:|^military:bases:active$/,
+          'EXISTS is only used for activation markers',
+        );
         // Every OTHER marker reads cleanly absent, so a regression that made
         // the whole map unknown would show up as unrelated checks flipping
         // rather than as one assertion passing for the wrong reason.
@@ -342,7 +350,15 @@ function installSeedHealthPipelineMock(
     const commands = JSON.parse(init.body);
     const results = commands.map(([op, key]) => {
       if (op === 'EXISTS') {
-        assert.match(String(key), /^seed-activated:/, 'EXISTS is only used for activation markers');
+        // Activation keys are `seed-activated:*` by convention, with one
+        // deliberate exception: military:bases gates on its active-version
+        // pointer, which atomicSwitch writes in the SAME EVAL as seed-meta and
+        // therefore cannot disagree with "has published at least once" (#6845).
+        assert.match(
+          String(key),
+          /^seed-activated:|^military:bases:active$/,
+          'EXISTS is only used for activation markers',
+        );
         return markerEntries[key]?.() ?? { result: 0 };
       }
       assert.equal(op, 'GET');
@@ -566,7 +582,9 @@ describe('#6095 — every activation marker is claimed by exactly one policy', (
     const claims = Object.fromEntries(Object.keys(ACTIVATION_MARKERS).map((name) => {
       const policies = [];
       if (contentNames.has(name)) policies.push('content-freshness: fail closed on unknown');
-      if (ROLLOUT_PENDING_UNTIL_MS[name] != null) policies.push('rollout-pending: soft on unknown');
+      if (RUNTIME_ROLLOUT_PENDING_POLICIES[name] != null) {
+        policies.push('runtime-rollout-pending: soft on unknown');
+      }
       if (ON_DEMAND_KEYS.has(name)) policies.push('on-demand: soft on unknown');
       return [name, policies];
     }));

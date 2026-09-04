@@ -3,7 +3,8 @@ import { describe, it } from 'node:test';
 import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import YAML from 'yaml';
+
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const apiDir = resolve(root, 'docs/api');
@@ -121,7 +122,6 @@ const LEGACY_HIGH_RISK_DESCRIPTION_GAPS = new Set([
   'SupplyChainService.openapi.json:ChokepointInfo.activeWarnings',
   'SupplyChainService.openapi.json:ChokepointInfo.affectedRoutes',
   'SupplyChainService.openapi.json:ChokepointInfo.aisDisruptions',
-  'SupplyChainService.openapi.json:ChokepointInfo.congestionLevel',
   'SupplyChainService.openapi.json:ChokepointInfo.description',
   'SupplyChainService.openapi.json:ChokepointInfo.directions',
   'SupplyChainService.openapi.json:ChokepointInfo.disruptionScore',
@@ -164,7 +164,7 @@ function generatedQuerySpecs() {
     ...serviceJsonSpecs,
     {
       file: 'worldmonitor.openapi.yaml',
-      spec: YAML.parse(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8')),
+      spec: loadUnifiedOpenApiSpec(),
     },
   ];
 }

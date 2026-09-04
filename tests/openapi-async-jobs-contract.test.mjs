@@ -6,6 +6,9 @@ import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { load as loadYaml } from 'js-yaml';
 
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
+import { injectJson, injectYaml } from '../scripts/openapi-inject-async-jobs.mjs';
+
 // Guards the REST async-job pattern injected by
 // scripts/openapi-inject-async-jobs.mjs: RunScenario's success response is a
 // 202 Accepted job envelope with a Location header pointing at the
@@ -37,8 +40,8 @@ function assertAsyncJobContract(op, label) {
   assert.ok(String(location.example ?? '').startsWith(`${POLL_PATH}?jobId=`), `${label} Location example must target the poll endpoint`);
 
   // Injector composition: openapi-inject-idempotency.mjs stamps the
-  // replay-marker headers on the success response BEFORE the 200→202 rename;
-  // the async-jobs injector must merge Location in without clobbering them.
+  // replay-marker headers on the generated success BEFORE the 200→202 rename;
+  // the async-jobs injector must merge Location without clobbering them.
   assert.ok(accepted.headers?.['Idempotent-Replayed'], `${label} 202 must keep the Idempotent-Replayed replay marker`);
   assert.ok(accepted.headers?.['Idempotency-Key'], `${label} 202 must keep the Idempotency-Key echo header`);
 
@@ -69,7 +72,7 @@ describe('OpenAPI async-job pattern contract (RunScenario 202)', () => {
   });
 
   it('bundle (worldmonitor.openapi.yaml → /openapi.json) documents the 202 + Location pattern', () => {
-    const bundle = loadYaml(readFileSync(resolve(apiDir, 'worldmonitor.openapi.yaml'), 'utf8'));
+    const bundle = loadUnifiedOpenApiSpec();
     assertAsyncJobContract(bundle.paths?.[RUN_PATH]?.post, 'bundle run-scenario POST');
     assert.ok(bundle.paths?.[POLL_PATH]?.get, 'bundle must keep the poll endpoint published');
   });
@@ -93,5 +96,48 @@ describe('OpenAPI async-job pattern contract (RunScenario 202)', () => {
       cwd: root,
       stdio: 'pipe',
     });
+  });
+});
+
+describe('async-jobs injector canonicalizes generated success responses', () => {
+  it('renames a generated JSON 200 to 202 without losing headers', () => {
+    const generated = {
+      paths: {
+        [RUN_PATH]: {
+          post: {
+            responses: {
+              200: {
+                description: 'Generated success',
+                headers: { 'Idempotency-Key': { schema: { type: 'string' } } },
+                content: { 'application/json': { schema: { type: 'object' } } },
+              },
+            },
+          },
+        },
+      },
+    };
+
+    assert.equal(injectJson(generated), true);
+    const responses = generated.paths[RUN_PATH].post.responses;
+    assert.equal(responses['200'], undefined);
+    assert.ok(responses['202']);
+    assert.ok(responses['202'].headers['Idempotency-Key']);
+    assert.ok(responses['202'].headers.Location);
+    assert.equal(injectJson(generated), false, 'canonical JSON must be a fixed point');
+  });
+
+  it('renames a generated YAML 200 and reproduces the committed 202-only artifact', () => {
+    const committed = readFileSync(resolve(apiDir, 'ScenarioService.openapi.yaml'), 'utf8');
+    const pathStart = committed.indexOf(`    ${RUN_PATH}:`);
+    assert.ok(pathStart >= 0, 'run-scenario path must exist');
+    const prefix = committed.slice(0, pathStart);
+    const operation = committed.slice(pathStart);
+    const generated = prefix + operation.replace('                "202":', '                "200":');
+    assert.notEqual(generated, committed, 'fixture must model generated 200-only output');
+
+    const restored = injectYaml(generated);
+    assert.equal(restored.changed, true);
+    assert.equal(restored.text, committed);
+    assert.equal(injectYaml(restored.text).changed, false, 'canonical YAML must be a fixed point');
   });
 });

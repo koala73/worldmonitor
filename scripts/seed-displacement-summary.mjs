@@ -230,13 +230,31 @@ export function declareRecords(data) {
   return data?.summary?.countries?.length ?? 0;
 }
 
+// The canonical key rotates every Jan 1 while UNHCR current-year data is empty
+// early in the year — the fetcher falls back up to 2 years and publishes
+// OLD-year totals under the NEW-year key with fresh fetchedAt. Declare content
+// age from the ACTUAL data year so health can raise STALE_CONTENT instead of
+// presenting 12-24-month-old totals as current (mirrors
+// seed-mineral-production.mjs).
+export function contentMeta(data) {
+  const year = Number(data?.summary?.year);
+  if (!Number.isInteger(year) || year <= 0) return null;
+  const newestItemAt = Date.parse(`${year}-12-31T00:00:00.000Z`);
+  if (!Number.isFinite(newestItemAt) || newestItemAt <= 0) return null;
+  return { newestItemAt, oldestItemAt: newestItemAt };
+}
+
 export const seedOptions = {
   validateFn: validate,
   ttlSeconds: CACHE_TTL,
   sourceVersion: `unhcr-${currentYear}`,
   declareRecords,
+  contentMeta,
   schemaVersion: 1,
   maxStaleMin: 3600,
+  // Content-age ceiling sized to tolerate the normal Jan-Feb prior-year
+  // fallback (~13 months old) while still flagging genuinely frozen data.
+  maxContentAgeMin: 20 * 30 * 24 * 60,
   emptyDataIsFailure: true,
 };
 

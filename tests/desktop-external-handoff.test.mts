@@ -43,28 +43,71 @@ interface WindowProbe {
   invokeHangs: boolean;
   /** Simulates a popup blocker: window.open returns null. */
   popupBlocked: boolean;
+  /**
+   * Chrome Mobile iOS / WebKit THROWS SecurityError from `window.open` rather
+   * than returning null once the user-gesture window is spent. Distinct from
+   * `popupBlocked`, which is the well-behaved refusal.
+   */
+  openThrowsSecurityError: boolean;
+  /** Same-tab `location.assign` throws — the last fallback can refuse too. */
+  assignThrowsSecurityError: boolean;
 }
 
 let probe: WindowProbe;
 
-function makeTab(): {
+/**
+ * Chrome Mobile iOS / WKWebView throws this when a blank `window.open`
+ * handle later has `location.href` assigned (WORLDMONITOR-11C). Built as a
+ * DOMException when the runtime has one, otherwise an Error-like object
+ * whose `instanceof Error` is false — the same quirk that made billing
+ * log "threw non-Error".
+ */
+function makeSecurityError(): unknown {
+  if (typeof DOMException === 'function') {
+    return new DOMException('The operation is insecure.', 'SecurityError');
+  }
+  const err = { name: 'SecurityError', message: 'The operation is insecure.' };
+  Object.setPrototypeOf(err, null);
+  return err;
+}
+
+function makeTab(options?: {
+  hrefAssignThrows?: boolean;
+  closedAccessThrows?: boolean;
+}): {
   closed: boolean;
   location: { href: string };
   close: () => void;
   opener: unknown;
 } {
+  let closedState = false;
   const tab = {
-    closed: false,
+    get closed() {
+      if (options?.closedAccessThrows) throw makeSecurityError();
+      return closedState;
+    },
+    set closed(value: boolean) {
+      closedState = value;
+    },
     location: { href: '' },
     // Starts non-null so `opener === null` proves the code severed it, rather
     // than passing because the fake never had one. This is the property that
     // replaced `noopener` in the feature string.
     opener: {} as unknown,
     close(): void {
-      tab.closed = true;
+      closedState = true;
       probe.closedTabs += 1;
     },
   };
+  if (options?.hrefAssignThrows) {
+    Object.defineProperty(tab.location, 'href', {
+      configurable: true,
+      get: () => '',
+      set: () => {
+        throw makeSecurityError();
+      },
+    });
+  }
   probe.handedOutTabs.push(tab);
   return tab;
 }
@@ -86,6 +129,8 @@ function installWindow(kind: 'desktop' | 'web'): void {
     invokeRejects: false,
     invokeHangs: false,
     popupBlocked: false,
+    openThrowsSecurityError: false,
+    assignThrowsSecurityError: false,
   };
 
   const desktop = kind === 'desktop';
@@ -96,6 +141,7 @@ function installWindow(kind: 'desktop' | 'web'): void {
     origin: desktop ? 'tauri://localhost' : 'https://worldmonitor.app',
     href: desktop ? 'tauri://localhost/index.html' : 'https://worldmonitor.app/dashboard',
     assign: (url: string) => {
+      if (probe.assignThrowsSecurityError) throw makeSecurityError();
       probe.assigned.push(url);
     },
   };
@@ -111,6 +157,7 @@ function installWindow(kind: 'desktop' | 'web'): void {
     // the tab present in the tab list.
     open: (url: string, target?: string, features?: string) => {
       probe.opened.push([url, target, features]);
+      if (probe.openThrowsSecurityError) throw makeSecurityError();
       if (probe.popupBlocked) return null;
       // The tab opens either way; only the HANDLE is withheld. Recording it
       // in `handedOutTabs` would be wrong — nothing can sever an opener it
@@ -350,6 +397,94 @@ describe('openExternalUrl — web', () => {
       'a settings panel with staged secrets must not be navigated out from under the user',
     );
   });
+
+  // WORLDMONITOR-11C: Chrome Mobile iOS throws SecurityError (DOMException 18)
+  // when assigning location.href on a blank tab reserved via window.open('').
+  // The helper must swallow that, close the blank tab, and fall through the
+  // same popup / same-tab / failed policy — never reject.
+  it('falls back when assigning location.href on a reserved tab throws SecurityError', async () => {
+    installWindow('web');
+    const reserved = makeTab({ hrefAssignThrows: true });
+
+    let outcome: Awaited<ReturnType<typeof openExternalUrl>> | undefined;
+    await assert.doesNotReject(async () => {
+      outcome = await openExternalUrl(PORTAL_URL, reserved);
+    });
+    assert.ok(outcome !== undefined);
+
+    assert.ok(
+      outcome === 'popup' || outcome === 'same-tab' || outcome === 'failed',
+      `expected a settled nav outcome, got ${outcome}`,
+    );
+    assert.equal(outcome, 'popup', 'fresh window.open after the reserved tab is unusable');
+    assert.equal(reserved.closed, true, 'the blank reserved tab must be closed when it cannot be navigated');
+    assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
+    assert.deepEqual(probe.assigned, []);
+  });
+
+  it('falls back to same-tab when reserved-tab SecurityError and the fresh popup are both blocked', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    const reserved = makeTab({ hrefAssignThrows: true });
+
+    const outcome = await openExternalUrl(PORTAL_URL, reserved);
+
+    assert.equal(outcome, 'same-tab');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('returns failed, without rejecting, when reserved-tab SecurityError meets sameTabFallback:false', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    const reserved = makeTab({ hrefAssignThrows: true });
+
+    const outcome = await openExternalUrl(PORTAL_URL, reserved, { sameTabFallback: false });
+
+    assert.equal(outcome, 'failed');
+    assert.deepEqual(probe.assigned, []);
+  });
+
+  it('treats SecurityError on reserved-tab .closed as an unusable handle', async () => {
+    installWindow('web');
+    const reserved = makeTab({ closedAccessThrows: true });
+
+    const outcome = await openExternalUrl(PORTAL_URL, reserved);
+
+    assert.equal(outcome, 'popup');
+    assert.equal(probe.closedTabs, 1, 'an unreadable reserved handle must still be closed');
+    assert.deepEqual(probe.opened, [[PORTAL_URL, '_blank', undefined]]);
+  });
+
+  // `window.open` itself can THROW rather than return null once the gesture
+  // window is spent — which is the state the fresh-open fallback runs in,
+  // after the reserved tab has already been found unusable. Without the guard
+  // the recovery path throws on the way out of the recovery.
+  it('treats a SecurityError from window.open like a blocked popup', async () => {
+    installWindow('web');
+    probe.openThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'same-tab');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('recovers when the reserved tab AND window.open both refuse', async () => {
+    // The full iOS shape: the handle is poison, and re-opening is refused too.
+    installWindow('web');
+    const reserved = makeTab({ hrefAssignThrows: true });
+    probe.openThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL, reserved), 'same-tab');
+    assert.deepEqual(probe.assigned, [PORTAL_URL]);
+  });
+
+  it('returns failed, without throwing, when even same-tab assign refuses', async () => {
+    installWindow('web');
+    probe.popupBlocked = true;
+    probe.assignThrowsSecurityError = true;
+
+    assert.equal(await openExternalUrl(PORTAL_URL), 'failed');
+    assert.deepEqual(probe.assigned, []);
+  });
 });
 
 /**
@@ -482,5 +617,31 @@ describe('openBillingPortal — web', () => {
 
     assert.equal(reserved?.location.href, PORTAL_URL);
     assert.deepEqual(probe.invocations, []);
+  });
+
+  it('does not label a reserved-tab SecurityError as a portal-URL fetch failure', async () => {
+    installWindow('web');
+    installSignedInPortalUser();
+    const reserved = makeTab({ hrefAssignThrows: true });
+    const errors: string[] = [];
+    const originalError = console.error;
+    console.error = (...args: unknown[]) => {
+      errors.push(args.map(String).join(' '));
+    };
+
+    let result: Awaited<ReturnType<typeof openBillingPortal>>;
+    try {
+      result = await openBillingPortal(reserved);
+    } finally {
+      console.error = originalError;
+    }
+
+    assert.equal(result.outcome, 'opened');
+    if (result.outcome === 'opened') assert.equal(result.url, PORTAL_URL);
+    assert.equal(
+      errors.some((line) => line.includes('Failed to get customer portal URL')),
+      false,
+      'navigation SecurityError after a successful portal URL fetch must not be logged as a Convex/URL failure',
+    );
   });
 });

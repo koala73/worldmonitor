@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { crawlerDocumentSnapshot } from './_lib/crawler-visible-html.mjs';
+import { guardProBuiltOutput, shouldSkipProBuiltOutput } from './_lib/pro-built-output.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = resolve(__dirname, '..');
@@ -81,6 +83,38 @@ function inlineStyleTags(html) {
   return [...html.matchAll(/<style\b[^>]*>[\s\S]*?<\/style>/gi)].map((match) => match[0]);
 }
 
+/**
+ * Body of the first `@layer <name> {…}` block, brace-balanced. A non-greedy
+ * `[\s\S]*?}` stops at the first nested rule's closing brace, which silently
+ * returns an empty-looking block and makes the assertion below unfalsifiable.
+ */
+function layerBlock(css, name) {
+  const open = css.indexOf(`@layer ${name}{`);
+  if (open === -1) return null;
+  const start = css.indexOf('{', open);
+  let depth = 0;
+  for (let i = start; i < css.length; i++) {
+    if (css[i] === '{') depth += 1;
+    if (css[i] === '}' && --depth === 0) {
+      return { body: css.slice(start + 1, i), whole: css.slice(open, i + 1) };
+    }
+  }
+  return null;
+}
+
+function hasBareAnchorColorRule(css) {
+  return /(?:^|[;{}])\s*a\s*\{[^}]*\bcolor\s*:/.test(css);
+}
+
+/** The inline critical CSS, stripped of its <style> wrapper. */
+function criticalStyleText(html) {
+  const firstPreload = deferredStylePreloadTags(html)[0];
+  return inlineStyleTags(html)
+    .filter((tag) => html.indexOf(tag) < html.indexOf(firstPreload))
+    .map((tag) => tag.replace(/^<style\b[^>]*>/i, '').replace(/<\/style>$/i, ''))
+    .join('\n');
+}
+
 describe('pro critical CSS parser', () => {
   it('detects stylesheet links regardless of attribute order', () => {
     assert.deepEqual(
@@ -104,6 +138,17 @@ describe('pro critical CSS parser', () => {
       ['/assets/main.css', '/assets/screen.css'],
     );
   });
+
+  it('detects spaced bare-anchor colour rules left outside the base layer', () => {
+    for (const css of [
+      '@layer base{a{color:inherit}}a { color: inherit }',
+      '@layer base{a{color:inherit}}@media(min-width:640px){a { color: inherit }}',
+    ]) {
+      const base = layerBlock(css, 'base');
+      assert.ok(base);
+      assert.equal(hasBareAnchorColorRule(css.replace(base.whole, '')), true);
+    }
+  });
 });
 
 describe('pro critical CSS source contract', () => {
@@ -116,7 +161,11 @@ describe('pro critical CSS source contract', () => {
   });
 });
 
-describe('pro built HTML critical CSS contract', () => {
+// public/pro/ is built by `npm run build:pro`, not committed (#6898): skip when the
+// checkout has not built it, fail when WM_EXPECT_BUILT_OUTPUT=1 says CI did.
+describe('pro built HTML critical CSS contract', { skip: shouldSkipProBuiltOutput() }, () => {
+  guardProBuiltOutput();
+
   for (const { relPath, label } of PRO_PAGES) {
     it(`${label} inlines critical CSS before the deferred stylesheet preload`, () => {
       const html = builtSrc(relPath);
@@ -156,37 +205,47 @@ describe('pro built HTML critical CSS contract', () => {
 
     it(`${label} re-shows responsive nav/hero reveals so unlayered .hidden can't hide them at all widths`, () => {
       // Regression guard for #4603: the inline critical CSS is UNLAYERED and beats
-      // the @layer-wrapped Tailwind sheet, so `nav .hidden{display:none}` /
-      // `main .hidden{display:none}` permanently hide `hidden lg:flex` desktop nav,
-      // `hidden md:block` tablet nav, and `hidden sm:block` unless each breakpoint
-      // reveal is ALSO inlined here.
+      // the @layer-wrapped Tailwind sheet, so `nav[data-wm-nav] .hidden{display:none}`
+      // / `main .hidden{display:none}` permanently hide `hidden lg:flex` desktop nav,
+      // `hidden md:flex` /pro nav, `hidden md:block` tablet nav, and `hidden sm:block`
+      // unless each breakpoint reveal is ALSO inlined here. The `md:flex` row shipped
+      // without its reveal and was display:none at every width until #6983.
+      //
+      // The nav selectors carry the `[data-wm-nav]` header marker: unscoped, they
+      // reached every nav landmark on the page, and the legal footer row added in
+      // #6982 pinned itself over the header (see deploy-config.test.mjs).
       const html = builtSrc(relPath);
       const criticalCss = inlineStyleTags(html)
         .filter((tag) => html.indexOf(tag) < html.indexOf(deferredStylePreloadTags(html)[0]))
         .join('\n');
 
-      const navHideIdx = criticalCss.indexOf('nav .hidden{display:none}');
+      const nav = 'nav[data-wm-nav]';
+      const navHideIdx = criticalCss.indexOf(`${nav} .hidden{display:none}`);
       const mainHideIdx = criticalCss.indexOf('main .hidden{display:none}');
       const sm640Idx = criticalCss.indexOf('@media (min-width:640px){');
       const md768Idx = criticalCss.indexOf('@media (min-width:768px){');
       const lg1024Idx = criticalCss.indexOf('@media (min-width:1024px){');
-      const tabletNavRevealIdx = criticalCss.indexOf('nav [class~="md:block"]{display:block}');
-      const desktopNavRevealIdx = criticalCss.indexOf('nav [class~="lg:flex"]{display:flex}');
-      const tabletNavHideIdx = criticalCss.indexOf('nav [class~="lg:hidden"]{display:none}');
+      const tabletNavRevealIdx = criticalCss.indexOf(`${nav} [class~="md:block"]{display:block}`);
+      const proNavRevealIdx = criticalCss.indexOf(`${nav} [class~="md:flex"]{display:flex}`);
+      const desktopNavRevealIdx = criticalCss.indexOf(`${nav} [class~="lg:flex"]{display:flex}`);
+      const tabletNavHideIdx = criticalCss.indexOf(`${nav} [class~="lg:hidden"]{display:none}`);
       const smBlockRevealIdx = criticalCss.indexOf('main [class~="sm:block"]{display:block}');
 
       assert.notEqual(navHideIdx, -1, `${relPath} critical CSS should hide plain .hidden nav elements`);
       assert.notEqual(mainHideIdx, -1, `${relPath} critical CSS should hide plain .hidden main elements`);
       assert.notEqual(tabletNavRevealIdx, -1, `${relPath} critical CSS must re-show hidden md:block tablet nav at >=768px`);
+      assert.notEqual(proNavRevealIdx, -1, `${relPath} critical CSS must re-show the hidden md:flex /pro nav row at >=768px`);
       assert.notEqual(desktopNavRevealIdx, -1, `${relPath} critical CSS must re-show hidden lg:flex desktop nav at >=1024px`);
       assert.notEqual(tabletNavHideIdx, -1, `${relPath} critical CSS must hide lg:hidden tablet nav at >=1024px`);
       assert.notEqual(smBlockRevealIdx, -1, `${relPath} critical CSS must re-show hidden sm:block at >=640px`);
       // Equal-specificity rules: each reveal must come AFTER its unlayered hide to win the cascade.
-      assert.ok(tabletNavRevealIdx > navHideIdx, `${relPath} nav md:block reveal must follow nav .hidden to win the cascade`);
-      assert.ok(desktopNavRevealIdx > navHideIdx, `${relPath} nav lg:flex reveal must follow nav .hidden to win the cascade`);
+      assert.ok(tabletNavRevealIdx > navHideIdx, `${relPath} nav md:block reveal must follow ${nav} .hidden to win the cascade`);
+      assert.ok(proNavRevealIdx > navHideIdx, `${relPath} nav md:flex reveal must follow ${nav} .hidden to win the cascade`);
+      assert.ok(desktopNavRevealIdx > navHideIdx, `${relPath} nav lg:flex reveal must follow ${nav} .hidden to win the cascade`);
       assert.ok(smBlockRevealIdx > mainHideIdx, `${relPath} main sm:block reveal must follow main .hidden to win the cascade`);
       // Tablet nav appears in the 768–1023px band; the desktop row replaces it at 1024px.
       assert.ok(md768Idx !== -1 && tabletNavRevealIdx > md768Idx && tabletNavRevealIdx < lg1024Idx, `${relPath} nav md:block reveal must be inside the min-width:768px media block`);
+      assert.ok(proNavRevealIdx > md768Idx && proNavRevealIdx < lg1024Idx, `${relPath} nav md:flex reveal must be inside the min-width:768px media block`);
       assert.ok(lg1024Idx !== -1 && desktopNavRevealIdx > lg1024Idx, `${relPath} nav lg:flex reveal must be inside the min-width:1024px media block`);
       assert.ok(tabletNavHideIdx > lg1024Idx, `${relPath} nav lg:hidden hide must be inside the min-width:1024px media block`);
       // The sm:block reveal must sit inside the >=640px block (between the 640 and 768 media opens).
@@ -194,12 +253,13 @@ describe('pro built HTML critical CSS contract', () => {
     });
   }
 
-  it('/pro seeds a crawlable H1 in #root without duplicating it in the no-JavaScript fallback', () => {
+  it('/pro seeds crawlable pricing copy in #root without a hidden SEO sibling', () => {
     const html = builtSrc('public/pro/index.html');
-    const rootMatch = html.match(/<div id="root">(?<content>[\s\S]*?)<\/div>\s*<noscript>/);
-    assert.ok(rootMatch?.groups, 'the /pro static H1 should be seeded inside #root');
-    assert.equal([...rootMatch.groups.content.matchAll(/<h1\b/g)].length, 1);
+    const root = crawlerDocumentSnapshot(html).visibleRootMarkup;
+    assert.equal([...root.matchAll(/<h1\b/g)].length, 1);
     assert.equal([...stripNoscript(html).matchAll(/<h1\b/g)].length, 1);
+    assert.match(root, /How much does World Monitor Pro cost\?/);
+    assert.match(root, /\$39\.99/);
     assert.match(html, /World Monitor Pro/);
     assert.doesNotMatch(html, /id="seo-prerender"/);
     assert.doesNotMatch(html, /html\.js #seo-prerender/);
@@ -212,5 +272,51 @@ describe('pro built HTML critical CSS contract', () => {
     assert.doesNotMatch(html, /html\.js #seo-prerender/);
     assert.match(html, /<h1\b/);
     assert.match(html, /fetchPriority="high"/);
+  });
+
+  // The reset's `a{color:inherit}` used to sit unlayered, and unlayered CSS
+  // outranks every @layer. Tailwind v4 emits utilities into @layer utilities,
+  // so `text-wm-bg` lost to the reset on every anchor and the nav's "Upgrade
+  // to Pro" CTA painted #f3f4f6 on #4ade80 — 1.58:1 where 4.5:1 is required.
+  describe('critical-CSS reset loses to Tailwind utilities (cascade layers)', () => {
+    for (const { relPath, label } of PRO_PAGES) {
+      it(`${label} declares the Tailwind layer order before any rule`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        const order = critical.match(/@layer\s+([a-z,\s]+);/);
+        assert.ok(order, 'critical CSS must declare a cascade-layer order');
+        assert.deepEqual(
+          order[1].split(',').map((name) => name.trim()),
+          ['properties', 'theme', 'base', 'components', 'utilities'],
+          'layer order must match the order Tailwind emits in the external sheet',
+        );
+        assert.ok(
+          order.index < critical.indexOf('{'),
+          'the layer statement must precede every rule so later @layer blocks slot into it',
+        );
+      });
+
+      it(`${label} keeps the anchor reset inside @layer base`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        const base = layerBlock(critical, 'base');
+        assert.ok(base, 'critical CSS must ship an @layer base block');
+        assert.match(base.body, /a\{color:inherit/, 'the anchor reset belongs in @layer base');
+        // Outside the base block there must be no unlayered bare-`a` colour
+        // rule left to outrank the utilities again.
+        assert.equal(
+          hasBareAnchorColorRule(critical.replace(base.whole, '')),
+          false,
+          'no unlayered bare-anchor colour rule may survive',
+        );
+      });
+
+      it(`${label} mirrors text-wm-bg for the nav, not just main`, () => {
+        const critical = criticalStyleText(builtSrc(relPath));
+        assert.match(
+          critical,
+          /nav\[data-wm-nav\][^{]*\[class~=text-wm-bg\]\{color:#050505\}/,
+          'the nav CTA needs the dark-on-green colour during the pre-stylesheet window',
+        );
+      });
+    }
   });
 });

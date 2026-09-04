@@ -17,6 +17,7 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 import { describe, it } from 'node:test';
 
+import { __testing__ as health } from '../api/health.js';
 import { isGeopoliticalMarket } from '../scripts/_bet-templates-markets-classify.mjs';
 import {
   CATEGORIES,
@@ -41,6 +42,9 @@ import fixture from './fixtures/prediction-markets-raw-candidates.json' with { t
 
 const RAW = fixture.markets;
 const FIXTURE_NOW = Date.parse('2026-08-04T00:00:00Z');
+const COUNTRY_INDEX_KEY = 'prediction:markets-country-index:v1';
+const COUNTRY_INDEX_META_KEY = 'seed-meta:prediction:markets-country-index';
+const COUNTRY_INDEX_ACTIVATION_KEY = 'seed-activated:prediction:markets-country-index';
 
 // The seeder's REAL pool-building path — buildBootstrapPools is what
 // seed-prediction-markets.mjs calls, not a replica of it. This matters: an
@@ -602,6 +606,53 @@ describe('the seeder is wired to the tested pool-building path', () => {
       source,
       /afterPublish:[\s\S]{0,300}freshnessMetaPatch:[\s\S]{0,200}poolCounts:\s*predictionPoolCounts\(data\)/,
     );
+  });
+
+  it('builds the country index before publishing it to the on-demand key', () => {
+    assert.match(source, /projectCountryMarketIndex\(countryCandidates,\s*\{\s*complete:\s*countryProjectionComplete/);
+    assert.match(source, /countryProjectionComplete = false/);
+    assert.match(source, /onPageError:[\s\S]{0,180}complete = false/);
+    assert.match(source, /return \{ events: \[\], complete: false \}/);
+    assert.match(source, /if \(!kalshiMarkets\.complete\) countryProjectionComplete = false/);
+    assert.match(source, /key:\s*COUNTRY_INDEX_KEY/);
+    assert.match(source, /metaKey:\s*COUNTRY_INDEX_META_KEY/);
+    assert.match(source, /skipWhenEmpty:\s*true/);
+    assert.match(source, /publishTransform:\s*\(\{ countryMarkets:/);
+    assert.match(source, /markCountryIndexActivated\(data\)/);
+    assert.match(source, /SET', COUNTRY_INDEX_ACTIVATION_KEY, '1'/);
+    assert.match(
+      source,
+      /if \(countCountryMarkets\(data\?\.countryMarkets\) === 0\) return;[\s\S]{0,300}SET', COUNTRY_INDEX_ACTIVATION_KEY/,
+    );
+  });
+});
+
+describe('country prediction index health cutover', () => {
+  it('softens absence only before the first successful projection publish', () => {
+    assert.equal(health.STANDALONE_KEYS.predictionCountryMarkets, COUNTRY_INDEX_KEY);
+    assert.equal(health.SEED_META.predictionCountryMarkets.key, COUNTRY_INDEX_META_KEY);
+    assert.equal(health.ON_DEMAND_KEYS.has('predictionCountryMarkets'), true);
+    assert.equal(health.ACTIVATION_MARKERS.predictionCountryMarkets, COUNTRY_INDEX_ACTIVATION_KEY);
+
+    const base = {
+      keyStrens: new Map([[COUNTRY_INDEX_KEY, 0]]),
+      keyErrors: new Map(),
+      keyMetaValues: new Map([[COUNTRY_INDEX_META_KEY, null]]),
+      keyMetaErrors: new Map(),
+      now: 1_800_000_000_000,
+    };
+    assert.equal(health.classifyKey(
+      'predictionCountryMarkets',
+      COUNTRY_INDEX_KEY,
+      { allowOnDemand: true },
+      { ...base, activationStates: new Map([['predictionCountryMarkets', false]]) },
+    ).status, 'EMPTY_ON_DEMAND');
+    assert.equal(health.classifyKey(
+      'predictionCountryMarkets',
+      COUNTRY_INDEX_KEY,
+      { allowOnDemand: true },
+      { ...base, activationStates: new Map([['predictionCountryMarkets', true]]) },
+    ).status, 'EMPTY');
   });
 });
 

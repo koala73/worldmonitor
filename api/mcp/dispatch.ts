@@ -2,9 +2,10 @@ import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
-import { getMcpBillingVerificationDenial } from './auth';
-import { BillingDenialError } from './billing-denial';
+import { getMcpBillingVerificationDenial, wwwAuthHeader } from './auth';
+import { BillingDenialError, RpcValidationError } from './billing-denial';
 import {
+  BothSourcesFailedError,
   createMcpToolExecutionContext,
   downstreamErrorTags,
 } from './downstream';
@@ -12,8 +13,10 @@ import { mcpErrorFingerprint } from './error-fingerprint';
 import { argBool, summarizeData } from './filters';
 import { evaluateFreshness } from './freshness';
 import { applyJmespath } from './jmespath';
-import { reserveQuota } from './quota';
-import { TOOL_REGISTRY } from './registry/index';
+import { isSharedRestCounter, reserveQuota, type McpBudget } from './quota';
+import { reserveFreeAccountAllowance } from './free-account-allowance';
+import { buildMcpStructuredDenial, type McpDenial } from './upgrade';
+import { isQuotaExemptMetadataTool, toolWeight, TOOL_REGISTRY } from './registry/index';
 import { rpcError, rpcOk, withMcpNoStore } from './rpc';
 import { McpSourceUnavailableError } from './source-unavailable';
 import {
@@ -28,6 +31,9 @@ import type {
   McpToolExecutionContext,
 } from './types';
 import { utf8ByteLength } from './utils';
+// Currently the only stored-contract violation a post-filter can raise; add to this seam
+// rather than widening the catch below if another dataset grows one.
+import { isPhysicalDivergenceContractError as isMcpStoredContractError } from '../../server/_shared/physical-divergence-snapshot';
 
 // ---------------------------------------------------------------------------
 // Tool execution (cache tools — no _execute)
@@ -36,6 +42,15 @@ import { utf8ByteLength } from './utils';
 // throw/fall-back path can be exercised directly — it can't be triggered
 // through the public handler because every registry `_postFilter` is
 // defensively written and won't throw on JSON-RPC input.
+// Tools whose payloads carry attribution-bound provider evidence. A JMESPath
+// projection could detach the values from the source/licence/retrieval fields
+// that make their redistribution permissible, so projection is refused outright.
+const ATTRIBUTION_BOUND_TOOLS: ReadonlySet<string> = new Set([
+  'get_resilience_indicators',
+  'get_supply_vulnerabilities',
+  'get_chokepoint_dependencies',
+]);
+
 export async function executeTool(
   tool: CacheToolDef,
   params: Record<string, unknown> = {},
@@ -48,9 +63,7 @@ export async function executeTool(
   data: Record<string, unknown>;
 }> {
   const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
-  const freshnessChecks = tool._freshnessChecks?.length
-    ? tool._freshnessChecks
-    : [{ key: tool._seedMetaKey, maxStaleMin: tool._maxStaleMin }];
+  const freshnessChecks = tool._freshnessChecks;
   const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and
@@ -156,6 +169,11 @@ export async function executeTool(
     try {
       result = tool._postFilter(structuredClone(data), params);
     } catch (err) {
+      // A stored-contract violation must NOT fall through to `data`: that path serves the
+      // raw, unvalidated blob the filter just refused, which is the opposite of failing
+      // closed (#6448 — an unknown state "must surface as an error, never silently map to
+      // normal"). Let it out so the tool call errors instead.
+      if (isMcpStoredContractError(err)) throw err;
       // Same minified-frame over-grouping guard as the tool-execution catch
       // below — key on step + tool + error type so a post-filter bug in one
       // tool doesn't merge into the shared api/mcp catch-all (WORLDMONITOR-T8).
@@ -182,6 +200,57 @@ export async function executeTool(
   };
 }
 
+/**
+ * Structured JSON-RPC denial emitted from the dispatch seam (#6716).
+ *
+ * One builder for every denial here so the envelope cannot drift per site —
+ * the drift that shipped an auth-shaped 401 for a quota state and a 401 with
+ * no `WWW-Authenticate`. Callers choose code + status deliberately:
+ *   -32001 / 401 — authentication (re-auth may help); MUST pass
+ *                  `wwwAuthenticate` so RFC-9728 clients can discover metadata.
+ *   -32002 / 403 — terminal entitlement denial (re-auth cannot help).
+ *   -32029 / 429 — quota/allowance spent; pass `retryAfter`.
+ */
+function mcpDenialResponse(
+  denial: McpDenial,
+  code: number,
+  status: number,
+  id: unknown,
+  corsHeaders: Record<string, string>,
+  opts?: { retryAfter?: string; wwwAuthenticate?: string },
+): Response {
+  const { message, data } = buildMcpStructuredDenial(denial);
+  return new Response(
+    JSON.stringify({ jsonrpc: '2.0', id, error: { code, message, data } }),
+    {
+      status,
+      headers: withMcpNoStore({
+        'Content-Type': 'application/json',
+        ...(opts?.retryAfter === undefined ? {} : { 'Retry-After': opts.retryAfter }),
+        ...(opts?.wwwAuthenticate === undefined
+          ? {}
+          : { 'WWW-Authenticate': wwwAuthHeader(opts.wwwAuthenticate) }),
+        ...corsHeaders,
+      }),
+    },
+  );
+}
+
+/**
+ * Reservation backend unreachable. Identical on both metering paths — a single
+ * definition so the free branch and the Pro branch cannot answer the same
+ * condition differently.
+ */
+function quotaBackendUnavailableResponse(
+  id: unknown,
+  corsHeaders: Record<string, string>,
+): Response {
+  return new Response(
+    JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
+    { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+  );
+}
+
 export async function dispatchToolsCall(
   req: Request,
   context: McpAuthContext,
@@ -189,11 +258,18 @@ export async function dispatchToolsCall(
   body: { id?: unknown; params?: unknown },
   corsHeaders: Record<string, string>,
   ctx?: { waitUntil: (p: Promise<unknown>) => void },
-  // Daily allowance resolved by the context pre-check (api/mcp/auth.ts) from
-  // the entitlement it already fetched. Omitted → `PRO_DAILY_QUOTA_LIMIT`;
-  // null → unlimited. Only the `pro` context ever supplies one (KTD6), so a
-  // caller that skips the pre-check simply inherits the plan default.
-  mcpDailyLimit?: number | null,
+  // Budget resolved by the context pre-check (api/mcp/auth.ts) from the
+  // entitlement it already fetched: which counter to charge and its ceiling.
+  // Omitted → the dedicated Pro counter at `PRO_DAILY_QUOTA_LIMIT`, so a caller
+  // that skips the pre-check inherits the plan default rather than a wider cap.
+  budget?: McpBudget,
+  // Free-account paid-funnel path (#6716). When set, meters via the idle-gap
+  // + call counters instead of reserveQuota.
+  freeAccountAllowance?: boolean,
+  // Resource-metadata URL for `WWW-Authenticate` on the 401 emitted here.
+  // Optional so existing callers keep compiling; omitted → header omitted
+  // rather than emitted with a guessed URL.
+  resourceMetadataUrl?: string,
 ): Promise<Response> {
   const id = body.id ?? null;
   const p = body.params as { name?: string; arguments?: Record<string, unknown> } | null;
@@ -202,44 +278,142 @@ export async function dispatchToolsCall(
   }
   const tool = TOOL_REGISTRY.find((t) => t.name === p.name);
   if (!tool) {
-    return rpcError(id, -32602, `Unknown tool: ${p.name}`, corsHeaders);
+    // Cap the echoed tool name — same reflection-amplification class as the
+    // handler.ts method echo (see a2a.ts Greptile #4824 precedent).
+    return rpcError(id, -32602, `Unknown tool: ${p.name.slice(0, 100)}`, corsHeaders);
   }
 
-  // Pro-only INCR-first reservation. Both cache-only AND RPC tools count
-  // toward the caller's daily cap — EXCEPT `describe_tool` (v1.5.0), which
-  // is metadata-only and is actively encouraged by SERVER_INSTRUCTIONS
+  // Raw resilience values are redistribution-safe only when they remain
+  // attached to their source, licence, retrieval time, and provenance fields.
+  // Reject projection before quota reservation and execution so a caller
+  // cannot use the universal JMESPath facility to separate those fields.
+  // The supply-vulnerability tools carry BGS mineral evidence under the same
+  // "attribution required; redistribution restricted" licence.
+  if (
+    ATTRIBUTION_BOUND_TOOLS.has(tool.name)
+    && typeof p.arguments?.jmespath === 'string'
+    && p.arguments.jmespath.length > 0
+  ) {
+    return rpcError(
+      id,
+      -32602,
+      'JMESPath projection is not available for this attribution-bound response',
+      corsHeaders,
+    );
+  }
+
+  // U7 fail-closed guard (defence in depth). A `free` principal is minted in
+  // exactly one place — the handler's free-tier branch, after matching this
+  // same `_freeTier` flag — but a free context reaching any other tool would be
+  // an unauthenticated, unquota'd read of gated data. Re-checking here means
+  // the promotion and the authorisation are not the same line of code, so a
+  // future edit to the handler's matching cannot silently widen what a free
+  // caller can reach.
+  if (context.kind === 'free' && tool._freeTier !== true) {
+    return mcpDenialResponse({ reason: 'no-account' }, -32001, 401, id, corsHeaders, {
+      // Every 401 on this surface carries WWW-Authenticate — docs/mcp-error-catalog.mdx
+      // states it as an invariant, and RFC-9728 clients discover the OAuth resource
+      // metadata through it. `resourceMetadataUrl` is optional only because the
+      // resources/read seam predates this parameter; when absent the header is
+      // omitted rather than emitted with a wrong URL.
+      wwwAuthenticate: resourceMetadataUrl,
+    });
+  }
+
+  // Credentialed INCR-first reservation. Both cache-only AND RPC tools count
+  // toward the caller's daily cap — EXCEPT free-tier tools and `describe_tool`
+  // (v1.5.0). The latter is metadata-only and is actively encouraged by
+  // SERVER_INSTRUCTIONS
   // when the compressed tools/list entry is ambiguous. Charging quota for
   // schema lookups would (a) discourage the LLM from using it, defeating
   // the v1.5.0 compression's UX hedge, and (b) lock out Pro users at the
   // daily cap from even seeing tool definitions. Exempt by name; rate-
   // limiter (60/min) still applies as the abuse guard.
-  const isMetadataTool = p.name === 'describe_tool';
-  // user_key (#4859) consumes the same per-user daily quota as pro: cache
+  const isMetadataTool = isQuotaExemptMetadataTool(tool);
+
+  // #6716 F1: the free-account allowance covers CACHE-BACKED tools only.
+  // A tool with `_execute` fans out to server/gateway.ts, which runs its own
+  // checkProMcpAccess re-check that this feature deliberately does not relax
+  // (see api/mcp/types.ts's `freeAccountAllowance` note). Admitting one would
+  // charge a free slot and then hand the caller a gateway 401 — burning the
+  // day's allowance on errors it can never convert into data. Refuse BEFORE the
+  // reservation so no slot is spent.
+  //
+  // Metadata and free-tier tools are exempt for the same reason they are exempt
+  // from metering below: `describe_tool` has an `_execute`, but it is a purely
+  // local registry read that never reaches the gateway, and it is the tool an
+  // agent needs most while deciding what it may call.
+  if (freeAccountAllowance && tool._execute && !isMetadataTool && tool._freeTier !== true) {
+    return mcpDenialResponse({ reason: 'upgrade-required' }, -32002, 403, id, corsHeaders);
+  }
+
+  // user_key (#4859) consumes the same per-user daily budget as pro: cache
   // tools read Upstash directly (no downstream gateway metering), so an
   // unquota'd user_key would be an unmetered data loophole bounded only by
-  // the 60/min limiter. Raising API-plan MCP allowances above the Pro cap is
-  // a deliberate follow-up, not a default — which is why `mcpDailyLimit`
-  // arrives unset for that kind (api/mcp/auth.ts::runUserKeyPreChecks).
-  if ((context.kind === 'pro' || context.kind === 'user_key') && !isMetadataTool) {
-    const reservation = await reserveQuota(context.userId, deps.redisPipeline, mcpDailyLimit);
-    if (!reservation.ok) {
-      if (reservation.reason === 'cap-exceeded') {
-        // `floor` is the limit the reservation actually enforced, so the copy
-        // can never quote a different number from the one that rejected.
-        return new Response(
-          JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32029, message: `Daily MCP quota exceeded (${reservation.floor}/day). Resets at next UTC midnight.` } }),
-          { status: 429, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': String(secondsUntilUtcMidnight()), ...corsHeaders }) },
-        );
-      }
-      // Hard-cap correctness: NEVER dispatch on reservation failure.
-      return new Response(
-        JSON.stringify({ jsonrpc: '2.0', id, error: { code: -32603, message: 'Service temporarily unavailable, retry in a moment.' } }),
-        { status: 503, headers: withMcpNoStore({ 'Content-Type': 'application/json', 'Retry-After': '5', ...corsHeaders }) },
+  // the 60/min limiter. Both credential classes resolve their budget through
+  // the same `resolveMcpBudget`, so an API-tier caller charges its REST budget
+  // whichever door it arrives through.
+  if (
+    (context.kind === 'pro' || context.kind === 'user_key')
+    && tool._freeTier !== true
+    && !isMetadataTool
+  ) {
+    if (freeAccountAllowance) {
+      const reservation = await reserveFreeAccountAllowance(
+        context.userId,
+        deps.redisPipeline,
       );
+      if (!reservation.ok) {
+        if (reservation.reason === 'allowance-exhausted') {
+          // #6716 F2: a spent allowance is a QUOTA state, so it rides the same
+          // envelope as the Pro cap below — -32029 at HTTP 429 with Retry-After.
+          // It must never be -32001/401: docs/mcp-error-catalog.mdx documents that
+          // pair as "re-authenticate via OAuth", so an RFC-9728 client would loop
+          // (OAuth succeeds, retry, 401 again) on a condition re-auth cannot fix.
+          return mcpDenialResponse({ reason: 'allowance-exhausted' }, -32029, 429, id, corsHeaders, {
+            retryAfter: String(secondsUntilUtcMidnight()),
+          });
+        }
+        return quotaBackendUnavailableResponse(id, corsHeaders);
+      }
+      // Slot charged for good once dispatch begins (same GHSA-hcq5 posture as
+      // reserveQuota). No caller-side rollback after this point.
+    } else {
+      const reservation = await reserveQuota(
+        context.userId,
+        deps.redisPipeline,
+        budget,
+        toolWeight(tool),
+      );
+      if (!reservation.ok) {
+        if (reservation.reason === 'cap-exceeded') {
+          // `floor` is the limit the reservation actually enforced, so the copy
+          // can never quote a different number from the one that rejected.
+          // `sharedWithRestApi` is the fact the message alone cannot carry:
+          // once REST enforcement is on, an API-tier budget IS the REST meter,
+          // so this exhaustion may be traffic the agent never made. It rides
+          // `data` like every other denial rather than leaving the agent to
+          // string-match, and matches the field the allowance resource reports.
+          return mcpDenialResponse(
+            {
+              reason: 'quota-exceeded',
+              limit: reservation.floor,
+              sharedWithRestApi: isSharedRestCounter(budget),
+            },
+            -32029,
+            429,
+            id,
+            corsHeaders,
+            { retryAfter: String(secondsUntilUtcMidnight()) },
+          );
+        }
+        // Hard-cap correctness: NEVER dispatch on reservation failure.
+        return quotaBackendUnavailableResponse(id, corsHeaders);
+      }
+      // No caller-side rollback of the reservation: once we pass this point the
+      // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
+      // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
     }
-    // No caller-side rollback of the reservation: once we pass this point the
-    // tool runs and the daily slot is charged for good (GHSA-hcq5). The only
-    // rollback is INSIDE reserveQuota, for the pre-dispatch cap-exceeded case.
   }
 
   const jmespathArg = p.arguments?.jmespath;
@@ -356,6 +530,7 @@ export async function dispatchToolsCall(
     const isExpectedDenial = err instanceof BillingDenialError;
     const isExpectedSourceOutage = err instanceof McpSourceUnavailableError;
     const downstreamTags = downstreamErrorTags(err);
+    const isBothFailed = err instanceof BothSourcesFailedError;
     const log = isClient4xx || isExpectedDenial || isExpectedSourceOutage ? console.warn : console.error;
     log('[mcp] tool execution error:', err);
     captureSilentError(err, {
@@ -370,6 +545,12 @@ export async function dispatchToolsCall(
         } : {}),
         ...downstreamTags,
       },
+      ...(isBothFailed ? {
+        extra: {
+          civilian_failure_detail: err.civilianFailureDetail,
+          military_failure_detail: err.militaryFailureDetail,
+        },
+      } : {}),
       ctx,
       // Split the api/mcp catch-all (WORLDMONITOR-T8) into per-tool,
       // per-status groups — see api/mcp/error-fingerprint.ts.
@@ -419,6 +600,15 @@ export async function dispatchToolsCall(
           failed_inputs: err.failedInputs,
         },
       );
+    }
+    // #6559: proto/sebuf ValidationError 400s keep their field/detail pairs as
+    // structured JSON-RPC error data (`error.data.violations`). This is NOT a
+    // tools/call result envelope (`result.content` / `isError`) — agents read
+    // `error.code === -32602` and `error.data.violations[]`.
+    if (err instanceof RpcValidationError) {
+      return rpcError(id, -32602, 'Invalid params', corsHeaders, {
+        violations: err.violations,
+      });
     }
     return rpcError(id, -32603, 'Internal error: data fetch failed', corsHeaders);
   }

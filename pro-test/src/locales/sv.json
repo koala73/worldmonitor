@@ -23,8 +23,8 @@
   },
   "twoPath": {
     "proTitle": "World Monitor Pro",
-    "proDesc": "Din AI-analytiker. Ett personligt intelligence-skrivbord. En plattform att bygga på. En nyckel till 30+ live-tjänster.",
-    "proF1": "WM Analyst-chatt — fråga alla 30+ tjänster konversationellt",
+    "proDesc": "Din AI-analytiker. Ett personligt underrättelsebord. En plattform du kan bygga på. En nyckel över live-tjänster.",
+    "proF1": "WM Analyst chat — fråga live-tjänster i naturligt språk",
     "proF2": "AI-digest — dagligen, två gånger om dagen eller veckovis — till Slack, Discord, Telegram, E-post eller webhook",
     "proF3": "Custom Widget Builder — HTML/CSS/JS med AI-assisterad modifiering",
     "proF4": "MCP-konnektorer — koppla WorldMonitor till Claude, GPT, egna LLM:er",
@@ -32,15 +32,15 @@
     "proF6": "Flygsökning och prisjämförelse",
     "proF7": "Regelmotor för larm — egna triggers, tysta timmar, AES-256-krypterade kanaler",
     "proF8": "Market watchlist, makro- och centralbanksspårning",
-    "proF9": "AI Market Implications och Regional Intelligence (Snart: orbital övervakning, premiumkartlager, utökad historik)",
+    "proF9": "AI-marknadsimplikationer och regional underrättelse",
     "choosePlan": "Välj din plan",
     "entTitle": "World Monitor Enterprise",
     "entDesc": "För team som behöver delad övervakning, API-åtkomst, deployment-alternativ, TV-appar och direkt support.",
     "entF1": "Allt i Pro, plus:",
     "entF2": "Live-edge satellitbilder och SAR",
     "entF3": "AI-agenter med investor-personas och MCP",
-    "entF4": "50 000+ infrastrukturtillgångar kartlagda",
-    "entF5": "100+ datakonnektorer (Splunk, Snowflake, Sentinel…)",
+    "entF4": "Infrastrukturresurser kartlagda",
+    "entF5": "Dataöverbindningar (Splunk, Snowflake, Sentinel...)",
     "entF6": "REST API + webhooks + massexport",
     "entF7": "Team-workspaces med SSO/MFA/RBAC",
     "entF8": "White-label och inbäddbara paneler",
@@ -48,14 +48,15 @@
     "entF10": "Moln, on-premises eller air-gapped deployment",
     "entF11": "Dedikerad onboarding och support",
     "entCta": "Prata med sälj",
-    "freeF2": "500+ flöden, 65+ källor, 50+ kartlager"
+    "freeF2": "Kurerade flöden, attribuerade källor och kartlager",
+    "proF10": "Intel-minne — historisk sökning, tidslinjer och sökning efter liknande händelser"
   },
   "whyUpgrade": {
-    "title": "Varför uppgradera",
+    "title": "Varför uppgradera till World Monitor Pro?",
     "noiseTitle": "Vet först",
     "noiseDesc": "AIS-anomali → Brent-spik → din Slack på mindre än en minut. Signal, inte rubriker.",
     "fasterTitle": "Fråga vad som helst",
-    "fasterDesc": "Chatta med samma 30+ tjänster som din dashboard ser. WM Analyst, alltid på.",
+    "fasterDesc": "Chatta med samma live-tjänster som din instrumentpanel ser. WM Analyst, alltid aktiv.",
     "controlTitle": "Bygg vad som helst",
     "controlDesc": "Custom widget builder (HTML/CSS/JS + AI) plus MCP för dina egna AI-flöden.",
     "deeperTitle": "Vakna informerad",
@@ -63,7 +64,7 @@
   },
   "pillars": {
     "askIt": "Fråga det",
-    "askItDesc": "WM Analyst-chatt. Alla 30+ tjänster frågbara på naturligt språk.",
+    "askItDesc": "WM Analyst chat. Live-tjänster som kan frågas på vanlig engelska.",
     "subscribeIt": "Prenumerera",
     "subscribeItDesc": "AI-digest i din takt: dagligen, två gånger om dagen eller veckovis. Slack, Discord, Telegram, E-post, webhook.",
     "buildOnIt": "Bygg på det",
@@ -71,8 +72,8 @@
   },
   "deliveryDesk": {
     "eyebrow": "LEVERANSSKRIVBORD",
-    "title": "Ditt personliga intelligence-skrivbord",
-    "body": "Upp till 30 rankade poster per sändning, deduplicerade över 400+ källor, poängsatta mot din watchlist. Välj takt — dagligen, två gånger om dagen eller veckovis — med AI-Assessment och Signals to watch levererade till Slack, Discord, Telegram, E-post eller webhook.",
+    "title": "Vad är det personliga intelligensskribordet?",
+    "body": "Upp till 30 rankade objekt per sändning, avduplicerade över källor, poängsatta mot din bevakningslista. Välj din cadence — dagligen, två gånger dagligen eller veckovis — med en AI-bedömning och signaler att bevaka levererade till Slack, Discord, Telegram, E-post eller webhook.",
     "closer": "Inte ett nyhetsbrev. En analytiker.",
     "channels": "Slack · Discord · Telegram · E-post · Webhook · AES-256-krypterat · Tysta timmar"
   },
@@ -81,7 +82,7 @@
     "openFullScreen": "Öppna helskärm",
     "tryLiveDashboard": "Prova live-dashboarden",
     "iframeTitle": "World Monitor — Live Intelligence Dashboard",
-    "description": "3D WebGL-glob · 50+ interaktiva kartlager · Realtidsdata för marknader, makroekonomi, geopolitik, energi och infrastruktur"
+    "description": "3D WebGL-globs · interaktiva kartlager · realtids marknads-, makro-, geopolitiska, energi- och infrastrukturdata"
   },
   "socialProof": {
     "uniqueVisitors": "Unika besökare",
@@ -93,7 +94,7 @@
     "asToldTo": "berättat för"
   },
   "audience": {
-    "title": "Byggt för dem som behöver signal snabbt",
+    "title": "Vem är World Monitor utformat för?",
     "investorsTitle": "Investerare och portföljförvaltare",
     "investorsDesc": "Följ globala aktier, analytikermål, värderingsmått och makroindikatorer tillsammans med geopolitiska risksignaler.",
     "tradersTitle": "Energi- och råvaruhandlare",
@@ -108,8 +109,8 @@
     "teamsDesc": "Gå från individuellt bruk till delade flöden, API-åtkomst, TV-appar och hanterade deployments."
   },
   "dataCoverage": {
-    "title": "Vad World Monitor spårar",
-    "subtitle": "30+ tjänstedomäner intagna samtidigt. Marknader, makro, geopolitik, energi, infrastruktur — allt normaliserat och renderat på en WebGL-jordglob.",
+    "title": "Vad spårar World Monitor?",
+    "subtitle": "Tjänstedomäner inmatade samtidigt. Marknader, makro, geopolitik, energi, infrastruktur — allt normaliserat och renderat på en WebGL-glob.",
     "markets": "Finansmarknader och aktier",
     "marketsDesc": "Global aktieanalys, råvaror, krypto, ETF-flöden, analytikermål och FRED-makrodata",
     "economy": "Ekonomi och centralbanker",
@@ -121,7 +122,7 @@
     "aviation": "Flygspårning",
     "aviationDesc": "ADS-B-spårning av globala flygmönster",
     "infra": "Kritisk infrastruktur",
-    "infraDesc": "Kärnkraftsanläggningar, elnät, pipelines, raffinaderier — 50K+ kartlagda tillgångar",
+    "infraDesc": "Kärnkraftsanläggningar, elnät, ledningar, raffinerier — kartlagda resurser",
     "fire": "Satellit-branddetektering",
     "fireDesc": "NASA FIRMS nästan realtidsdata om bränder och hotspots",
     "cables": "Undervattenskablar",
@@ -131,7 +132,7 @@
     "cyber": "Cyberhot",
     "cyberDesc": "Ransomware-feeds, BGP-kapningar, DDoS-detektering",
     "gdelt": "GDELT och nyheter",
-    "gdeltDesc": "500+ RSS-feeds, AI-poängsatta GDELT-händelser, liveutsändningar",
+    "gdeltDesc": "Kurerade RSS-flöden, AI-poängsatta GDELT-händelser, live-sändningar",
     "seismology": "Seismologi och natur",
     "seismologyDesc": "USGS-jordbävningar, vulkanisk aktivitet, extremväder"
   },
@@ -145,7 +146,7 @@
   },
   "proShowcase": {
     "proTier": "PRO-NIVÅ",
-    "title": "Din AI-analytiker som aldrig sover",
+    "title": "Vad gör World Monitor AI-analytikern?",
     "subtitle": "Den kostnadsfria dashboarden visar dig världen. Pro ger dig en analytiker att fråga, en digest att prenumerera på och primitiver att bygga på. Aktier, makro, geopolitisk risk — och kopplingarna mellan dem.",
     "equityResearch": "Equity research",
     "equityResearchDesc": "Global aktieanalys med visualisering av finansiella data, analytikermål och värderingsmått. Följ vad som rör marknader.",
@@ -155,13 +156,14 @@
     "economyAnalyticsDesc": "BNP, inflation, räntor och tillväxtcykler. Makrodata korrelerade med marknadssignaler och geopolitiska händelser.",
     "riskMonitoring": "Riskövervakning och scenarier",
     "riskMonitoringDesc": "Global riskpoäng, scenarieanalys och geopolitisk riskbedömning. Konvergensdetektering över marknads- och politiska signaler.",
-    "orbitalSurveillance": "Orbital övervakning",
-    "orbitalSurveillanceDesc": "(Snart) Prognoser för satellitpassager, revisit-frekvensanalys och fönstervarning för bildtagning. Vet när underrättelsesatelliter observerar dina intresseområden.",
     "morningBriefs": "Personligt intelligence-skrivbord",
-    "morningBriefsDesc": "Upp till 30 rankade stories per digest, deduplicerade över 400+ källor. Välj dagligen, två gånger om dagen eller veckovis — eller realtidslarm vid kritiska händelser. AI-Assessment och Signals to watch levererade till Slack, Discord, Telegram, E-post eller webhook. Inte ett nyhetsbrev — en analytiker.",
-    "oneKey": "30+ tjänster, 1 nyckel",
+    "morningBriefsDesc": "Upp till 30 rankade nyhetsartiklar per sammandrag, avduplicerade över källor. Välj daglig, två gånger daglig eller veckovis cadence — eller realtidsaviseringar för kritiska händelser. AI-bedömning och signaler att bevaka levererade till Slack, Discord, Telegram, E-post eller webhook. Inte ett nyhetsbrev — en analytiker.",
+    "oneKey": "Live-tjänster, 1 nyckel",
     "oneKeyDesc": "Finnhub, FRED, ACLED, UCDP, NASA FIRMS, AISStream, OpenSky och fler — alla aktiva, inga separata registreringar.",
-    "deliveryLabel": "Välj hur intelligence hittar dig"
+    "deliveryLabel": "Välj hur intelligence hittar dig",
+    "supplyChainLab": "Supply-Chain Stress Lab",
+    "supplyChainLabDesc": "Modellera en kostnadschock över länder och sektorer. Rangordna råvaruöversälj efter beroende av flaskhalsar. Spåra koncentration från gruva till raffin och SGE–COMEX-premiumskillnaden — serien som rör sig före rubrikerna.",
+    "roadmapNote": "På vägkartan: orbitövervakning, längre historik, premiumkartlager."
   },
   "slackMock": {
     "morningBrief": "Morgonbriefing",
@@ -174,9 +176,9 @@
   },
   "apiSection": {
     "apiTier": "API-NIVÅ",
-    "title": "Programmatisk intelligence",
+    "title": "Hur använder API:er och agenter World Monitor?",
     "subtitle": "För utvecklare, analytiker och team som bygger på World Monitor-data. Separat från Pro — använd båda eller endera.",
-    "restApi": "REST API över alla 30+ tjänstedomäner — officiella SDK:er för JavaScript, Python, Ruby, Go",
+    "restApi": "REST API över tjänstedomäner — officiella SDK:er för JavaScript, Python, Ruby, Go",
     "authenticated": "Autentiserat per nyckel, rate-limited per nivå",
     "structured": "Strukturerad JSON med cache-headers och OpenAPI 3.1-dokumentation",
     "starter": "Starter",
@@ -190,7 +192,7 @@
   },
   "enterpriseShowcase": {
     "enterpriseTier": "ENTERPRISE-NIVÅ",
-    "title": "Intelligence-infrastruktur",
+    "title": "Vad ingår i World Monitor Enterprise?",
     "subtitle": "För regeringar, institutioner, trading desks och organisationer som behöver hela plattformen med maximal säkerhet, AI-agenter, TV-appar och datadjup.",
     "security": "Säkerhet på myndighetsnivå",
     "securityDesc": "Air-gapped deployment, on-premises Docker, dedikerad cloud-tenant, SOC 2 Type II-väg, SSO/MFA och fullständigt audit trail.",
@@ -198,7 +200,7 @@
     "aiAgentsDesc": "Autonoma intelligence-agenter med investor-personas. Koppla World Monitor som verktyg till Claude, GPT eller egna LLM:er via MCP.",
     "dataLayers": "Utökade datalager",
     "dataLayersDesc": "Tiotusentals infrastrukturtillgångar kartlagda globalt. Satellitbildsintegration med change detection och SAR.",
-    "connectors": "100+ datakonnektorer",
+    "connectors": "Dataöverbindningar",
     "connectorsDesc": "PostgreSQL, Snowflake, Splunk, Sentinel, Jira, Slack, Teams och mer. Exportera till PDF, CSV, JSON.",
     "whiteLabel": "White-label, TV och inbäddbar",
     "whiteLabelDesc": "Ditt varumärke, din domän, din desktop-app. Android TV-app för SOC-väggar och trading floors. Inbäddbara iframe-paneler.",
@@ -227,7 +229,7 @@
     "contactFailed": "Skickning misslyckades. Mejla till enterprise@worldmonitor.app"
   },
   "pricingTable": {
-    "title": "Jämför nivåer",
+    "title": "Hur jämför World Monitor-planerna?",
     "feature": "Funktion",
     "freeHeader": "Free ($0)",
     "proHeader": "Pro ($39.99)",
@@ -248,7 +250,7 @@
     "fLt60s": "<60 sekunder",
     "fPerRequest": "Per begäran",
     "fLiveEdge": "Live-edge",
-    "f50panels": "50+ paneler",
+    "f50panels": "Paneler",
     "fWhiteLabel": "White-label",
     "fBYOK": "BYOK",
     "fIncluded": "Ingår",
@@ -264,17 +266,32 @@
     "fLiveTracking": "Live-spårning",
     "fPassAlerts": "Passagelarm + analys",
     "fImagerySar": "Bilder + SAR",
-    "f100plus": "100+",
+    "f100plus": "Tillgänglig",
     "fCloud": "Moln",
     "fCloudOnPrem": "Moln/on-prem/air-gap",
     "fStandard": "Standard",
     "fKeyAuth": "Nyckel-auth",
     "fSsoMfa": "SSO/MFA/RBAC/audit",
     "noteBelow": "Kärnplattformen förblir gratis. Betalplaner låser upp equity research, makroanalys, AI-briefingar och organisatorisk användning.",
-    "f50plus": "50+"
+    "f50plus": "Tillgänglig",
+    "sourcesRow": "Källor",
+    "followedRow": "Övervakade länder",
+    "tabsRow": "Instrumentpanelflikar",
+    "fUnlimited": "Obegränsat",
+    "f3": "3",
+    "f10": "10",
+    "f25": "25",
+    "fAllLayers": "Alla lager",
+    "fLayersNoResilience": "Alla förutom Resilience",
+    "fStandardCadence": "Standard",
+    "fQuotes30s": "Marknadsnoteringar: 30s",
+    "panelsRow": "Paneler aktiverade",
+    "f40": "40",
+    "f80": "80",
+    "fAll": "Alla"
   },
   "faq": {
-    "title": "Vanliga frågor",
+    "title": "Vanliga frågor om World Monitor Pro",
     "q1": "Är World Monitor fortfarande gratis?",
     "a1": "Ja. Kärnplattformen förblir gratis. Pro lägger till aktieanalys, makroanalys och AI-sammanfattningar. Pro Business lägger till den kommersiella licensen och dataexport. Enterprise lägger till teamdistributioner och TV-appar.",
     "q2": "Varför betala för Pro?",
@@ -288,22 +305,22 @@
     "q6": "Varför behålla kärnplattformen gratis?",
     "a6": "För att offentlig åtkomst är viktig. Betalplaner finansierar djupare flöden för seriösa användare och organisationer.",
     "q7": "Kan jag fortfarande använda mina egna API-nycklar?",
-    "a7": "Ja. Bring-your-own-keys fungerar alltid. Pro betyder bara att du inte behöver registrera dig hos 20+ separata tjänster.",
+    "a7": "Ja. Egna nycklar fungerar alltid. Pro betyder bara att du inte behöver registrera dig för separata tjänster.",
     "q8": "Vad är MCP?",
-    "a8": "MCP låter AI-agenter — Claude, GPT, egna LLM:er — använda WorldMonitor som verktyg och fråga alla 30+ tjänsterna. Ingår i Pro. Enterprise lägger till privata MCP-servrar och anpassade deployments.",
+    "a8": "MCP låter AI-agenter — Claude, GPT, anpassade LLM:er — använda WorldMonitor som ett verktyg, fråga registrerade tjänster. Ingår i Pro. Enterprise lägger till privata MCP-servrar och anpassade distributioner.",
     "q9": "Kan jag bygga egna paneler?",
     "a9": "Ja. Pro inkluderar Custom Widget Builder — bygg paneler från HTML, CSS och JavaScript med AI-assisterad modifiering.",
     "q10": "Kan jag koppla Claude eller GPT till WorldMonitor?",
     "a10": "Ja. MCP ingår i Pro — koppla WorldMonitor till Claude, GPT eller vilken MCP-kompatibel LLM som helst som live-verktyg.",
     "q11": "Hur personlig är digesten?",
-    "a11": "Välj takt: dagligen, två gånger om dagen eller veckovis. Vi omvärderar varje spårad story mot dina larm-regler och watchlist, deduplicerar över 400+ källor och skickar upp till 30 rankade poster med AI-Assessment och Signals to watch skrivna för din kontext. Realtidslarm finns också för kritiska händelser.",
+    "a11": "Välj din cadence — dagligen, två gånger dagligen eller veckovis. Vi omvärdesätter varje övervakad nyhetsartikel mot dina varningsregler och bevakningslista, avduplicerar över källor och skickar upp till 30 rankade objekt med en AI-bedömning och signaler att bevaka skrivna till din kontext. Realtidsaviseringar är också tillgängliga för kritiska händelser.",
     "q12": "Vad är uppdateringsfrekvensen?",
-    "a12": "Nästan realtid för Pro. 5–15 minuter på Free.",
+    "a12": "Pro uppdaterar marknadsnoteringar var 30:e sekund. Övriga data följer källans egen kadens. Free stannar på standardkällans kadens.",
     "q13": "Vart tar min data vägen?",
     "a13": "Notifikationskanaler är AES-256-krypterade i vila. Digester lämnar aldrig vår pipeline oredigerade."
   },
   "finalCta": {
-    "title": "Börja med Pro. Skala till Enterprise.",
+    "title": "Hur kommer jag igång med Pro eller talar med försäljning?",
     "subtitle": "Fortsätt använda World Monitor gratis, eller uppgradera för equity research, makroanalys och AI-briefingar. Om din organisation behöver teamåtkomst, TV-appar eller API-support — prata med oss.",
     "talkToSales": "Prata med sälj"
   },
@@ -317,7 +334,7 @@
     "title": "World Monitor Pro | AI Intelligence & MCP",
     "description": "World Monitor Pro lägger till en AI-analytiker, schemalagda intelligenssammanfattningar, anpassade widgetar, marknadsundersökningar och MCP-åtkomst till live-data för geopolitik och finans.",
     "ogTitle": "World Monitor Pro | Geopolitisk AI",
-    "ogDescription": "Fråga den, prenumerera på den, bygga på den. WM Analyst-chatt, en AI-sammanfattning enligt ditt schema (dagligen, två gånger dagligen eller veckovis), anpassad widgetbyggare och MCP för Claude/GPT — över 30+ live-tjänster under en nyckel."
+    "ogDescription": "Fråga den, prenumerera på den, bygg på den. WM Analyst chat, en AI-sammandrag enligt ditt schema (dagligen, två gånger dagligen eller veckovis), anpassad widgetbyggare och MCP för Claude/GPT — över live-tjänster under en nyckel."
   },
   "pricing": {
     "suffixForever": "för alltid",
@@ -326,7 +343,7 @@
     "suffixPerYear": "/år",
     "amountCustom": "Anpassad",
     "opening": "Öppnar…",
-    "headerTitle": "Välj din plan",
+    "headerTitle": "Hur mycket kostar World Monitor?",
     "headerSubtitle": "Från realtidsövervakning till fullständig underrättelseinfrastruktur. Välj den nivå som passar din uppdrag.",
     "billingMonthly": "Månadsvis",
     "billingAnnual": "Årligen",
@@ -348,17 +365,18 @@
       "pro": {
         "description": "Fullständig underrättelsepanel",
         "features": [
-          "Allt i Free",
-          "AI-aktieanalys och backtesting",
-          "Dagliga marknadsöversikter",
-          "Militär- och geopolitisk spårning",
-          "Anpassad widgetbyggare",
-          "10 anpassade instrumentpaneler (mot 3)",
+          "Allt i Gratis — paneler, källor och följda länder obegränsade",
+          "WM Analyst-chatt + AI-aktieanalys och backtesting",
+          "Kostnadschockmodellering och tester av försörjningskedjestress",
+          "Intel-minne — historisk sökning, tidslinjer och liknande händelser",
+          "Data om fysisk metallskillnad, mineralkoncentration och statsskuld",
+          "Schemalagd AI-sammanfattning och varningsregelmotor",
           "MCP + SDK-åtkomst för Claude Desktop och andra AI-klienter (50 samtal/dag)",
-          "Prioriterad datauppdatering"
+          "Anpassade widgetar och 10 instrumentpaneler (mot 3)"
         ],
         "highlightFeatures": [
-          "Personlig licens"
+          "Personlig licens",
+          "1 namngiven användare"
         ]
       },
       "api": {
@@ -368,7 +386,7 @@
           "Licens-/API-nyckel ingår",
           "Realtidsdataströmmar",
           "60 förfrågningar/minut",
-          "1 000 förfrågningar/dag ingår",
+          "1 000 förfrågningar/dag inkluderat (REST + MCP kombinerat; ett live MCP-anrop räknas som 2–3)",
           "Webhook-meddelanden"
         ],
         "highlightFeatures": [
@@ -383,7 +401,12 @@
           "Dedikerad support",
           "Anpassade integreringar",
           "SLA-garanti",
-          "On-premise-alternativ"
+          "On-premise-alternativ",
+          "Databehandlingsavtal (DPA)",
+          "Faktureringsviainköpsorder",
+          "SAML SSO, SCIM",
+          "Anpassade säkerhet- och sekretessinställningar",
+          "Helt vitmärkt — med eller utan intäktsdelning"
         ],
         "cta": "Kontakta försäljning"
       },
@@ -393,8 +416,8 @@
           "Allt i API Starter",
           "Omfördelningsrättigheter — integrera vår data i det du säljer",
           "300 begäranden/minut",
-          "10 000 begäranden/dag inkluderat",
-          "5 Pro-licenser inkluderade",
+          "10 000 förfrågningar/dag inkluderat (REST + MCP kombinerat; ett live MCP-anrop räknas som 2–3)",
+          "5 Pro-licenser — bjud in användare med valfri företagsdomän för e-post",
           "Prioriterad support"
         ],
         "highlightFeatures": [
@@ -412,7 +435,8 @@
           "Prioriterad support"
         ],
         "highlightFeatures": [
-          "Kommersiell licens inkluderad"
+          "Kommersiell licens inkluderad",
+          "1 namngiven användare — inte en delad inloggning"
         ]
       }
     },
@@ -423,7 +447,7 @@
     "axisPersonal": "Personlig",
     "axisPersonalNote": "individuell användning",
     "axisCommercial": "Kommersiell",
-    "axisCommercialNote": "arbete, team & produkter"
+    "axisCommercialNote": "arbete, klienter och produkter"
   },
   "welcome": {
     "meta": {
@@ -441,7 +465,8 @@
       "docs": "Dokumentation",
       "launch": "Starta instrumentpanel",
       "blog": "Blogg",
-      "menu": "Meny"
+      "menu": "Meny",
+      "agents": "För AI-agenter"
     },
     "hero": {
       "eyebrow": "Gratis global underrättelseinstrumentpanel · live nu",
@@ -456,11 +481,14 @@
       "screenshotAlt": "World Monitor live underrättelseinstrumentpanel — global karta med konflikt-, sjöfarts- och marknadslager",
       "plateNote": "Fångad från live-kartan — klicka för att öppna den",
       "trustBuild": "Bygg på den:",
-      "positioningLink": "WorldMonitor är inte en öppen källkod Palantir"
+      "positioningLink": "WorldMonitor är inte en öppen källkod Palantir",
+      "asOf": "Per den 31 augusti 2026",
+      "whatIsTitle": "Vad är World Monitor?",
+      "whatIsBody": "World Monitor är en gratis dashboard med öppen källkod som strömmar geopolitik, marknader, sjöfart, luftfart, infrastruktur och cybersignaler till en direkt världskarta. Den korrelerar separata feeds till en enda operativ bild och flaggar konvergens före rubrikerna, där varje siffra är källhänvisad och varje metod är dokumenterad."
     },
     "live": {
       "eyebrow": "Live just nu",
-      "title": "Den här sidan är ansluten till samma API:er som instrumentpanelen.",
+      "title": "Vilka aktiva data visar denna sida just nu?",
       "subtitle": "Fyra av de hundratals signaler som World Monitor övervakar dygnet runt.",
       "liveBadge": "Live",
       "sampleBadge": "Exempel",
@@ -479,7 +507,7 @@
     },
     "moments": {
       "eyebrow": "Korrelationsmotor",
-      "title": "Fördelen är att se signalerna röra sig tillsammans.",
+      "title": "Hur korrelerar World Monitor signaler?",
       "sub": "Du kan hitta flödena på hundra ställen. Fördelen är en yta där geopolitik, sjöfart, råvaror, makro, marknader, väder, infrastruktur, cyber, nyheter och landsrisk kan förklara varandra.",
       "signalStack": "Signaler sammanslagna",
       "correlation": "Korrelation",
@@ -534,7 +562,7 @@
         "s2": "Internet- och BGP-anomaliflöden visar om ett fysiskt fel blir ett digitalt avbrott.",
         "s3": "Handelskorridorer, landsresiliens och redundansdata visar vem som förlorar reservvägar först.",
         "s4": "Kabelskador är viktiga när telekommunikationsredundans, handelskorridorer och landsexponering överensstämmer.",
-        "c1": "86 kablar",
+        "c1": "Undersjökablar",
         "c2": "BGP + avbrott",
         "c3": "Hamnar + pipelines",
         "c4": "Resiliens",
@@ -543,51 +571,51 @@
     },
     "firstFive": {
       "eyebrow": "Från noll till orienterad",
-      "title": "Din första fem minuter på den direkta kartan.",
+      "title": "Vad händer under dina första fem minuter på kartan?",
       "sub": "Ingen guidad tur, inga tomma tillstånd, ingen registreringsväggstopp. Det här är vad som faktiskt händer.",
       "f1Title": "Kartan rör sig redan",
       "f1Desc": "Konflikter, fartyg, flygplan, bränder och avbrott återges när sidan läses in. Inget att konfigurera först.",
       "f2Title": "Klicka på ett land",
       "f2Desc": "En fullständig rapport öppnas: instabilitetspoäng med dess komponenter, ett AI-sammanfattning med citerade rubriker, aktiva signaler, en 7-dagars tidslinje.",
       "f3Title": "Tryck på ⌘K / Ctrl-K",
-      "f3Desc": "154 kommandon. Hoppa till vilket lager, panel eller land som helst utan att först lära dig gränssnittet.",
+      "f3Desc": "Kommandon. Hoppa till vilket lager, panel eller land som helst utan att först lära dig användargränssnittet.",
       "f4Title": "Välj ditt perspektiv",
-      "f4Desc": "Värld, Teknik, Finans, Råvara, Energi eller Lycklig — samma motor, sex justerade övervakare, ett klick bort.",
+      "f4Desc": "World, Tech, Finance, Commodity, Energy eller Happy — samma motor, justerade övervakningar, ett klick bort.",
       "f5Title": "Du har sett kanske en tiondel av det",
       "f5Desc": "Resten dyker upp när världen rör sig — satellitpass, GPS-störning, mörka fartyg, protestkluster, sirenvarningar.",
       "cta": "Starta klockan"
     },
     "depth": {
       "eyebrow": "Under huven",
-      "title": "Djupet är produkten.",
+      "title": "Hur djup är World Monitor-datamodellen?",
       "sub": "Varje siffra nedan är direkt i instrumentpanelen idag — inte en vägkarta.",
-      "s1v": "56",
-      "s1l": "Kartlager",
-      "s2v": "500+",
-      "s2l": "Kurerade flöden",
-      "s3v": "65+",
-      "s3l": "Dataleverantörer",
-      "s4v": "13",
+      "s1v": "Delad",
+      "s1l": "Kartlagertyper",
+      "s2v": "Kurerad",
+      "s2l": "Nyhets- och OSINT-flöden",
+      "s3v": "Attribuerad",
+      "s3l": "Tillskrivna leverantörer",
+      "s4v": "Live",
       "s4l": "Flaskhalsar · direkt AIS",
-      "s5v": "31",
+      "s5v": "Tier-1",
       "s5l": "Instabilitetsindex · direkt",
-      "s6v": "196",
+      "s6v": "Offentlig",
       "s6l": "Resilienserbjudanden",
-      "s7v": "86",
+      "s7v": "Kartlagd",
       "s7l": "Undersjöiska kablar",
-      "s8v": "88",
+      "s8v": "Kartlagd",
       "s8l": "Pipelines & LNG",
-      "s9v": "313",
+      "s9v": "Kartlagd",
       "s9l": "AI-datacenter kartlagda",
-      "s10v": "29",
+      "s10v": "Poängsatt",
       "s10l": "Bedömda hotspots",
-      "s11v": "92",
+      "s11v": "Live",
       "s11l": "Börser & tillgångar",
-      "s12v": "59",
+      "s12v": "Live",
       "s12l": "MCP-verktyg",
-      "s13v": "154",
+      "s13v": "Snabb",
       "s13l": "⌘K-kommandon",
-      "s14v": "24",
+      "s14v": "Lokaliserad",
       "s14l": "Språk · RTL inkl.",
       "s15v": "5",
       "s15l": "Oberoende varningsursprung",
@@ -600,7 +628,7 @@
       "n4Title": "AI-datacenterkarta",
       "n4Desc": "313 AI-datacenter kartlagda med kraft- och operatörsmetadata — det fysiska lagret i AI-kapplöpningen.",
       "n5Title": "Undersjökablar",
-      "n5Desc": "86 undersjöiska kablar som bär internet, överlappade med avbrotts- och hotsignaler.",
+      "n5Desc": "Undersjökablar som bär internet, överlagrade med avbrott och hotsignaler.",
       "n6Title": "Protestspårning",
       "n6Desc": "Dubbelkällsprotestdetektering med tvärkällsdeduplikering — signal, inte rykte.",
       "faith": "Lita inte på siffrorna blint —",
@@ -609,10 +637,10 @@
     },
     "agents": {
       "eyebrow": "För utvecklare och AI-agenter",
-      "title": "Bygg på live-världsintelligens — från vilken stack som helst.",
+      "title": "Hur bygger jag på World Monitor från min egen stack?",
       "sub": "Allt på kartan är också ett API. Integrera det med Claude via MCP, anropa REST-slutpunkterna från var som helst, eller installera en inbyggd klient för Python, Ruby, Go eller JavaScript — din kod forskar med livedata istället för träningsdata.",
-      "b1": "59 MCP-verktyg — riskvärderingar, flaskhalsar, konflikter, marknader, sammanfattningar",
-      "b2": "Dokumenterad REST API — 193 operationer, en OpenAPI 3.1-specifikation, en nyckel",
+      "b1": "MCP-verktyg — riskpoäng, flaskhalsar, konflikter, marknader, sammanfattningar",
+      "b2": "Dokumenterad REST API — en OpenAPI 3.1-specifikation, en nyckel",
       "b3": "Officiella SDK:er på npm, PyPI, RubyGems och Go — nollberoenden, MCP-först",
       "b4": "JMESPath-projektion på varje anrop — hämta exakt de fält du behöver",
       "cta": "Läs utvecklardokumentationen",
@@ -620,7 +648,14 @@
       "termQuery": "Blir vår Red Sea-exponering värre den här veckan?",
       "termAnswer": "Transitantal ned vecka för vecka; krigsriskskikt höjt; två täthetskaviteter de senaste 48 timmarna.",
       "termDocs": "Se den fullständiga verktygslistan →",
-      "promise": "En nyckel. 59 MCP-verktyg. Ett fullständigt REST API. Språknativa klienter."
+      "promise": "En nyckel. MCP-verktyg. Ett fullständigt REST API. Språkspecifika klienter.",
+      "resources": {
+        "title": "Välj ditt startläge",
+        "briefing": "Agentöversikt",
+        "mcp": "MCP-server",
+        "api": "REST API",
+        "agentView": "Agentvy"
+      }
     },
     "pricing": {
       "eyebrow": "Åtkomst",
@@ -629,37 +664,37 @@
       "sub": "Instrumentpanelen är gratis — varje kartlager utom Resilience, alla flöden, ingen registrering. Pro lägger till beslutlagret.",
       "freeTitle": "Gratis",
       "freeDesc": "Den kostnadsfria nivån är en fullständig produkt, inte en provversion. Varje kartlager utom Resilience, alla flöden, alla övervakningar — ingen registrering, ingen provklocka.",
-      "freeF1": "Alla kartlager utom Resilience & 500+ flöden",
+      "freeF1": "Alla kartlager utom Resilience & kurerade flöden",
       "freeF2": "Landsbeskrivningar, hotspots, instabilitetsscore",
       "freeF3": "Flaskhalsar, kablar, kaskadanalys",
       "freeF4": "Breaking-varningstransport och bevakningslistor",
       "proTitle": "Pro",
       "proDesc": "Agera på det. Beslutslagret som används i momenten ovan:",
-      "proF1": "WM Analyst — chatta över 30+ live-tjänster, med citering",
+      "proF1": "WM Analyst — chatta över live-tjänster, med citat",
       "proF2": "Scenariomotor & Route Explorer — simulera störningar innan de inträffar",
       "proF3": "Personlig AI-sammanfattning — daglig, två gånger daglig eller veckovis, till Slack, Telegram eller e-post",
-      "proF4": "MCP, REST API & officiella SDK:er — 59 verktyg under en nyckel",
+      "proF4": "MCP, REST API & officiella SDK:er — live-verktyg under en nyckel",
       "proF5": "Anpassad widgetbyggare för dina egna paneler",
       "cta": "Se planer och prissättning",
       "note": "Från 39,99 USD/mån · 3 månader gratis vid årlig fakturering"
     },
     "faq": {
       "eyebrow": "Ingen fålla",
-      "title": "Rättvisa frågor.",
+      "title": "Vilka är vanliga frågor om World Monitor?",
       "q1": "Är World Monitor verkligen gratis?",
-      "a1": "Ja. Livekartan — varje lager utom Resilience, 500+ flöden, landsrapporter, breaking-aviseringar, alla sex övervakningar — är gratis utan registrering och utan provklocka. Pro betalar för flödena: det lägger till WM Analyst, scenariomotorn, Route Explorer, schemalagda sammandrag, MCP-åtkomst för AI-klienter och kartlagret Resilience. Ingen reklam, och inget konto betyder att det inte finns någon användardata att sälja.",
+      "a1": "Ja. Live-kartan — varje lager utom Resilience, kurerade flöden, landssammanfattningar, kritiska aviseringar och övervakningsytor — är gratis utan registrering och utan provperiod. Pro betalar för flödena: det lägger till WM Analyst, scenariomotorn, Route Explorer, schemalagda sammanfattningar, MCP-åtkomst för AI-klienter och Resilience-kartlagret. Ingen reklam, och inget konto betyder att det inte finns användardata att sälja.",
       "q2": "Vad är en global intelligence-instrumentbräda?",
       "a2": "En enda live-vy som sammanfogar signaler som de flesta verktyg håller åtskilda: konflikthändelser, fartygs- och flygspårning, sjövägsflaskhalsar, satelliter, undersjökablar, pipelines, marknader och cyberhotningar — på en realtids-världskarta, med AI-poäng och sammanfattningar överst. World Monitor är en gratis sådan.",
       "q3": "Var kommer data från?",
-      "a3": "65+ leverantörer, namngivna: ACLED och UCDP för konflikter, AISStream för live-fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus 500+ utvalda nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
+      "a3": "Namngivna leverantörer inkluderar ACLED och UCDP för konflikt, AISStream för live-fartyg, OpenSky för flygplan, NASA FIRMS för bränder, USGS för jordbävningar, IMF, BIS, FRED och Finnhub för marknader och makro — plus kurerade nyhetsflöden. Varje panel citerar sina källor och tidsstämplar inline.",
       "q4": "Kan jag övervaka flaskhalsar som Hormuz eller Bab el-Mandeb i realtid?",
-      "a4": "Ja. 13 flaskhalsar spåras med live AIS-fartygsantal, vecka-för-vecka transitförändring och störningspoäng — och densitetsavvikelser flaggas mot varje sunds löpande baslinjen.",
+      "a4": "Ja. Flaskhalsar spåras med live AIS-fartygsräkningar, vecka-över-vecka transiteringsändring och disruptionspoäng — och densitetsavvikelser flaggas mot varje sunds rullande baslinje.",
       "q5": "Hur skiljer sig detta från en konfliktkarta som Liveuamap?",
-      "a5": "Konflikt är ett av 56 lager. World Monitor sammanfogar konflikter med sjöfart, militärflygningar, infrastruktur, marknader och cyber — sedan AI-poängsätter konvergensen: instabilitetsindex, hotspot-eskalering, bekräftade breaking-aviseringar och dagliga sammanfattningar.",
+      "a5": "Konflikter är ett kartlager. World Monitor kombinerar konflikter med sjöfart, militära flygningar, infrastruktur, marknader och cyber — sedan utvärderar AI konvergensen: instabilitetsindex, eskalering av hotspots, bekräftade breaking-aviseringar och dagliga briefningar.",
       "q6": "Varför ska jag lita på en avisering?",
       "a6": "En breaking-banner startar endast när oberoende ursprungstyper bekräftar — nyhetsklassificering, nyckelordshastighet, hotspot-eskalering, militär ökning, officiella sirener — deduplicerad och hastighetsbegränsad. Färre aviseringar, verkliga.",
       "q7": "Kan AI-agenter som Claude eller GPT använda det?",
-      "a7": "Ja. World Monitor levereras med en 59-verktygs MCP-server, så Claude, GPT eller vilken MCP-kompatibel agent som helst kan fråga live-riskvärderingar, flaskhalssstatus, konflikter, marknader och sammanfattningar — med JMESPath-projektion så att agenter hämtar exakt vad de behöver.",
+      "a7": "Ja. World Monitor levereras med en MCP-server med ett live-verktygsregister, så Claude, GPT eller vilken MCP-kompatibel agent som helst kan fråga live-riskpoäng, flaskhalssstatus, konflikter, marknader och briefningar — med JMESPath-projektion så agenter hämtar exakt vad de behöver.",
       "q8": "Behöver jag ett konto?",
       "a8": "Nej. Instrumentbrädan fungerar omedelbar utan registrering. Ett konto spelar endast roll när du uppgraderar till Pro eller vill synkronisera inställningar mellan enheter.",
       "q9": "Är det öppen källkod?",
@@ -670,11 +705,37 @@
       "a11": "Choose based on who will use the output. Pro's Personal license is for one person using World Monitor for their own research and decisions. Pro Business lets one licensed user use it for company or client work, internal tools, and reports. API Starter covers API use inside one organization, with no customer redistribution. API Business lets that organization embed World Monitor data in products and services for its customers. Enterprise covers custom seats, white-labeling, and deployments. These subscription licenses are separate from the AGPL/MIT source-code licenses. Full terms: worldmonitor.app/docs/terms."
     },
     "cta": {
-      "title": "Världskartan väntar inte på dig.",
-      "subtitle": "Medan du läser denna sida fortsatte den att röra sig — 13 sund, 29 hotspots, 92 marknader, 500+ flöden. En av dem är morgondagens förstasida. Hitta den först — gratis, ingen konto.",
+      "title": "Hur kommer jag igång med att övervaka världskartan?",
+      "subtitle": "Medan du läste denna sida fortsatte den att röra sig — sund, hotspots, marknader, kurerade flöden. En av dem är morgondagens första sida. Hitta den först — kostnadsfritt, ingen konto krävs.",
       "button": "Hitta den först",
       "note": "Gratis · Ingen registrering · Laddar på sekunder",
       "secondary": "Eller se Pro-planer →"
+    },
+    "tasks": {
+      "eyebrow": "Börja med frågan",
+      "title": "Vad försöker du ta reda på?",
+      "sub": "Välj beviskedjan som motsvarar ditt uppdrag. Varje väg öppnar en källstödd vy, inte en tom instrumentpanel.",
+      "verifyTitle": "Verifiera en breaking-händelse",
+      "verifyDesc": "Kontrollera aktuella krishanterare, uppdaterade mätvärden och citerad kontext innan du litar på ett breaking-claim.",
+      "chokepointTitle": "Kontrollera en flaskhal",
+      "chokepointDesc": "Inspektera avbrottsstatus, fartygsflöden och risk över kritiska sjövägspassager.",
+      "countryRiskTitle": "Förklara ett landrisksteg",
+      "countryRiskDesc": "Spåra de politiska, säkerhetsmässiga, ekonomiska och motståndskraftssignaler bakom ett lands förändring.",
+      "open": "Öppna bevis"
     }
+  },
+  "whatsNew": {
+    "eyebrow": "Fraktlogg",
+    "title": "Vad är nytt i WorldMonitor",
+    "subtitle": "Nya funktioner från de senaste 30 dagarna — felrättningar och inte inkluderad.",
+    "proTag": "PRO",
+    "m1": "Index för fysisk premiumskillnad — SGE mot COMEX, med historik",
+    "m2": "Rangordning av råvarutillgångssårbarhet — beroendespridning för flaskhalsar",
+    "m3": "Mineralproduktionskoncentration och försvarets industriell bas",
+    "m4": "Femfaktorers motståndskraftskort med poäng på indikatornivå",
+    "m5": "Anpassade Telegram-kanalövervakarlistor",
+    "m6": "Passkey-inloggning",
+    "m7": "AI-agenter kan styra instrumentpanelen — paneler, flikar, kartlager och uppdrag",
+    "m8": "Rikare landsöversidor för motståndskraft"
   }
 }

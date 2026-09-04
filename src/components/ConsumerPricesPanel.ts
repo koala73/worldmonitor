@@ -373,7 +373,7 @@ export class ConsumerPricesPanel extends Panel {
         break;
       case 'movers':
         bodyHtml = rangeHtml + (categoryFilter
-          ? `<div class="cp-filter-bar">Filtered: <strong>${escapeHtml(categoryFilter)}</strong> <button data-clear-filter>✕</button></div>`
+          ? `<div class="cp-filter-bar">Filtered: <strong>${escapeHtml(categoryFilter)}</strong> <button data-clear-filter aria-label="Clear category filter">✕</button></div>`
           : '') + this.renderMovers();
         break;
       case 'spread':
@@ -422,7 +422,7 @@ export class ConsumerPricesPanel extends Panel {
       <table class="cp-global-table">
         <thead>
           <tr>
-            <th>Market</th><th>Index</th><th>WoW</th><th>Spread</th><th>Updated</th>
+            <th scope="col">Market</th><th scope="col">Index</th><th scope="col">WoW</th><th scope="col">Spread</th><th scope="col">Updated</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>
@@ -486,10 +486,10 @@ export class ConsumerPricesPanel extends Panel {
       <table class="cp-global-table cp-world-table">
         <thead>
           <tr>
-            <th>${escapeHtml(t('components.consumerPrices.world.country'))}</th>
-            <th>${escapeHtml(t('components.consumerPrices.world.inflationYoY'))}</th>
-            <th>${escapeHtml(t('components.consumerPrices.world.endOfPeriod'))}</th>
-            <th>${escapeHtml(t('components.consumerPrices.world.year'))}</th>
+            <th scope="col">${escapeHtml(t('components.consumerPrices.world.country'))}</th>
+            <th scope="col">${escapeHtml(t('components.consumerPrices.world.inflationYoY'))}</th>
+            <th scope="col">${escapeHtml(t('components.consumerPrices.world.endOfPeriod'))}</th>
+            <th scope="col">${escapeHtml(t('components.consumerPrices.world.year'))}</th>
           </tr>
         </thead>
         <tbody>${this.inflationTbodyHtml(visible)}</tbody>
@@ -564,11 +564,11 @@ export class ConsumerPricesPanel extends Panel {
       <table class="cp-table">
         <thead>
           <tr>
-            <th>Category</th>
-            <th>WoW</th>
-            <th>MoM</th>
-            <th>Trend</th>
-            <th>Coverage</th>
+            <th scope="col">Category</th>
+            <th scope="col">WoW</th>
+            <th scope="col">MoM</th>
+            <th scope="col">Trend</th>
+            <th scope="col">Coverage</th>
           </tr>
         </thead>
         <tbody>
@@ -577,7 +577,7 @@ export class ConsumerPricesPanel extends Panel {
               <td><strong>${escapeHtml(c.name)}</strong></td>
               <td>${pctBadge(c.wowPct, true)}</td>
               <td>${pctBadge(c.momPct, true)}</td>
-              <td>${c.sparkline?.length ? sparkline(c.sparkline, 'var(--accent)', 48, 18) : '—'}</td>
+              <td>${c.sparkline?.length ? sparkline(c.sparkline, 'var(--accent)', 48, 18, '', { label: `${c.name} price trend` }) : '—'}</td>
               <td>${c.coveragePct > 0 ? `${c.coveragePct.toFixed(0)}%` : '—'}</td>
             </tr>
           `).join('')}

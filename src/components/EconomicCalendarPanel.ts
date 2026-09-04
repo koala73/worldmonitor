@@ -1,5 +1,6 @@
 import type { EconomicServiceClient } from '@/generated/client/worldmonitor/economic/v1/service_client';
 import { Panel } from './Panel';
+import { addLocalDays, localYmd } from '@/utils/local-date';
 import { t } from '@/services/i18n';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
@@ -107,8 +108,10 @@ export class EconomicCalendarPanel extends Panel {
     try {
       const client = await getEconomicClient();
       const today = new Date();
-      const fromDate = today.toISOString().slice(0, 10);
-      const toDate = new Date(today.getTime() + 30 * 86400_000).toISOString().slice(0, 10);
+      // Local-time day keys: toISOString() is UTC-based and shifted the
+      // window a day for users far from UTC, dropping their local "today".
+      const fromDate = localYmd(today);
+      const toDate = localYmd(addLocalDays(today, 30));
       const resp = await client.getEconomicCalendar({ fromDate, toDate });
 
       if (resp.unavailable || !resp.events || resp.events.length === 0) {
@@ -143,7 +146,7 @@ export class EconomicCalendarPanel extends Panel {
       tabs.map(({ key, label }) => {
         const active = this._region === key;
         return `<button data-region="${key}" style="
-          padding:3px 10px;font-size:10px;font-weight:600;letter-spacing:0.04em;
+          padding:3px 10px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;letter-spacing:0.04em;
           border-radius:3px;border:none;cursor:pointer;
           background:${active ? 'rgba(255,255,255,0.15)' : 'transparent'};
           color:${active ? 'var(--text)' : 'rgba(255,255,255,0.35)'};
@@ -170,7 +173,7 @@ export class EconomicCalendarPanel extends Panel {
       bodyRows += `<tr>
         <td colspan="3" style="
           padding:10px 0 3px;
-          font-size:10px;font-weight:600;
+          font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;
           color:rgba(255,255,255,0.35);
           text-transform:uppercase;letter-spacing:0.06em;
           ${borderTop}
@@ -194,7 +197,7 @@ export class EconomicCalendarPanel extends Panel {
           rightStyle = 'color:rgba(255,255,255,0.35);font-style:italic';
         }
 
-        bodyRows += `<tr style="font-size:12px;line-height:1.2">
+        bodyRows += `<tr style="font-size:calc(12px * var(--wm-panel-effective-scale, 1));line-height:1.2">
           <td style="padding:4px 8px 4px 0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:0">
             <span style="margin-right:5px">${flag}</span><span style="font-weight:${isHigh ? 600 : 400}">${escapeHtml(ev.event)}</span>
           </td>
@@ -210,7 +213,7 @@ export class EconomicCalendarPanel extends Panel {
       ? 'No upcoming economic events'
       : 'No events for selected region';
     const emptyMsg = filtered.length === 0
-      ? `<tr><td colspan="3" style="padding:20px 0;text-align:center;color:rgba(255,255,255,0.3);font-size:12px">${escapeHtml(emptyMsgText)}</td></tr>`
+      ? `<tr><td colspan="3" style="padding:20px 0;text-align:center;color:rgba(255,255,255,0.3);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${escapeHtml(emptyMsgText)}</td></tr>`
       : '';
 
     const html = `${this._renderRegionTabs()}<div style="padding:0 14px 12px;max-height:440px;overflow-y:auto">
@@ -221,10 +224,10 @@ export class EconomicCalendarPanel extends Panel {
           <col style="width:64px">
         </colgroup>
         <thead>
-          <tr style="font-size:9px;font-weight:600;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.06em">
-            <th style="text-align:left;padding:0 8px 8px 0;font-weight:600">EVENT</th>
-            <th style="padding:0 0 8px;font-weight:600"></th>
-            <th style="text-align:right;padding:0 0 8px;font-weight:600"></th>
+          <tr style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:600;color:rgba(255,255,255,0.25);text-transform:uppercase;letter-spacing:0.06em">
+            <th scope="col" style="text-align:left;padding:0 8px 8px 0;font-weight:600">EVENT</th>
+            <th scope="col" style="padding:0 0 8px;font-weight:600"></th>
+            <th scope="col" style="text-align:right;padding:0 0 8px;font-weight:600"></th>
           </tr>
         </thead>
         <tbody>${emptyMsg}${bodyRows}</tbody>

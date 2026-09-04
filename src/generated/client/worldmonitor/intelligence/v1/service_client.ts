@@ -279,6 +279,33 @@ export interface TelegramMessage {
   topic: string;
 }
 
+export interface ListXFeedRequest {
+  limit: number;
+  topic: string;
+  account: string;
+}
+
+export interface ListXFeedResponse {
+  enabled: boolean;
+  posts: XFeedItem[];
+  count: number;
+  error: string;
+}
+
+export interface XFeedItem {
+  id: string;
+  accountId: string;
+  accountName: string;
+  handle: string;
+  topic: string;
+  timestampMs: number;
+  permalink: string;
+  facts: string[];
+  hasMedia: boolean;
+  lang: string;
+  contentState: string;
+}
+
 export interface GetCompanyEnrichmentRequest {
   /** @deprecated */
   domain: string;
@@ -659,6 +686,9 @@ export interface GetCountryEnergyProfileResponse {
   sprAvailable: boolean;
   jodiOilObservedMeasurements: string[];
   jodiGasObservedMeasurements: string[];
+  importShareAvailable: boolean;
+  importShareYear: number;
+  importShareSource: string;
 }
 
 export interface ComputeEnergyShockScenarioRequest {
@@ -1042,7 +1072,7 @@ export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RI
 
 export type CrossSourceSignalSeverity = "CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_SEVERITY_LOW" | "CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM" | "CROSS_SOURCE_SIGNAL_SEVERITY_HIGH" | "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL";
 
-export type CrossSourceSignalType = "CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING" | "CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER" | "CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK" | "CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION" | "CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT" | "CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY" | "CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE" | "CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS" | "CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME" | "CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE";
+export type CrossSourceSignalType = "CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING" | "CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER" | "CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK" | "CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION" | "CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT" | "CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY" | "CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE" | "CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS" | "CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME" | "CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION" | "CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION";
 
 export type DataFreshness = "DATA_FRESHNESS_UNSPECIFIED" | "DATA_FRESHNESS_FRESH" | "DATA_FRESHNESS_STALE";
 
@@ -1380,6 +1410,33 @@ export class IntelligenceServiceClient {
     }
 
     return await resp.json() as ListTelegramFeedResponse;
+  }
+
+  async listXFeed(req: ListXFeedRequest, options?: IntelligenceServiceCallOptions): Promise<ListXFeedResponse> {
+    let path = "/api/intelligence/v1/list-x-feed";
+    const params = new URLSearchParams();
+    if (req.limit != null && req.limit !== 0) params.set("limit", String(req.limit));
+    if (req.topic != null && req.topic !== "") params.set("topic", String(req.topic));
+    if (req.account != null && req.account !== "") params.set("account", String(req.account));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListXFeedResponse;
   }
 
   async getCompanyEnrichment(req: GetCompanyEnrichmentRequest, options?: IntelligenceServiceCallOptions): Promise<GetCompanyEnrichmentResponse> {

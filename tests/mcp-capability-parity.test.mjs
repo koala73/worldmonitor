@@ -31,6 +31,9 @@ import { strict as assert } from 'node:assert';
 import { readFileSync } from 'node:fs';
 
 import { BASE_URL } from './helpers/mcp-pro-deps.mjs';
+import { resolveMcpBudget } from '../api/mcp/quota.ts';
+import { MCP_DEFAULT_BURST_PER_MINUTE, resolveMcpBurstPerMinute } from '../api/mcp/auth.ts';
+import { PRODUCT_CATALOG } from '../convex/config/productCatalog.ts';
 
 const originalFetch = globalThis.fetch;
 const originalEnv = { ...process.env };
@@ -43,14 +46,16 @@ const VALID_KEY = 'wm_test_key_capability_parity';
 //     `logging/setLevel` but the stateless edge transport can't push
 //     `notifications/message` (same reason `listChanged: false` on
 //     prompts/resources).
-//   - `extensions`: the MCP-Apps negotiation key
-//     (`extensions['io.modelcontextprotocol/ui']`, spec 2026-01-26). It is a
-//     handshake declaration, not a listable collection — the extension's
-//     CONTENT (ui:// app-shell resources, tool `_meta.ui.resourceUri`) is
-//     enumerated via resources/list + tools/list under the existing
-//     `resources`/`tools` capabilities, and is asserted directly in
-//     tests/mcp-resources.test.mjs. Non-emptiness of `extensions` itself is
-//     guarded below (the declared value must name the ui extension).
+//   - `extensions`: the MCP Apps / skills negotiation key
+//     (`extensions['io.modelcontextprotocol/ui']` and
+//     `extensions['io.modelcontextprotocol/skills']`, spec 2026-01-26). It is
+//     a handshake declaration, not a listable collection — the ui:// app-shell
+//     resources and tool `_meta.ui.resourceUri` are enumerated via
+//     resources/list + tools/list under the existing `resources`/`tools`
+//     capabilities, while skills/list + skills/get are asserted directly in
+//     tests/mcp-skills-extension.test.mts. Non-emptiness of `extensions`
+//     itself is guarded below (the declared value must name the ui and skills
+//     extensions).
 // Future passive/declaration-only additions require an explicit edit to this
 // allowlist AND a positive assertion in the "structurally exempt" tests below.
 const REGISTRYLESS_CAPABILITIES = new Set(['logging', 'extensions']);
@@ -207,7 +212,7 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     );
   });
 
-  it('extensions capability (MCP Apps) is advertised, structurally exempt, AND names the ui extension on the wire', async () => {
+  it('extensions capability (MCP Apps + skills) is advertised, structurally exempt, AND names both extension keys on the wire', async () => {
     const advertised = advertisedFromCard(cardCaps);
     assert.ok(advertised.has('extensions'),
       `'extensions' must remain advertised on the server-card — the MCP-Apps ` +
@@ -220,9 +225,9 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     );
 
     // Advertised-but-empty guard, extensions edition: the initialize wire must
-    // declare the ui extension key, not just an empty `extensions: {}` object.
-    // An empty extensions map reads (to a scanner) as "no MCP Apps support",
-    // the exact failure this capability exists to prevent.
+    // declare both extension keys, not just an empty `extensions: {}` object.
+    // An empty extensions map reads (to a scanner) as "no MCP Apps/skills
+    // support", the exact failure this capability exists to prevent.
     const res = await handler(makeReq({
       jsonrpc: '2.0', id: 3, method: 'initialize',
       params: { protocolVersion: '2025-03-26', capabilities: {}, clientInfo: { name: 'test', version: '1.0' } },
@@ -231,34 +236,83 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
     const extensions = body.result?.capabilities?.extensions;
     assert.ok(extensions && typeof extensions === 'object',
       'initialize.result.capabilities.extensions must be an object');
-    assert.ok(
-      Object.prototype.hasOwnProperty.call(extensions, 'io.modelcontextprotocol/ui'),
-      `initialize must declare the MCP Apps extension key 'io.modelcontextprotocol/ui'; ` +
-      `got extensions=${JSON.stringify(extensions)}`,
-    );
+    assert.deepEqual(extensions['io.modelcontextprotocol/ui'], {});
+    assert.deepEqual(extensions['io.modelcontextprotocol/skills'], {});
   });
 
   it('server-card daily-quota notes mirror metadata exemptions', () => {
     const card = JSON.parse(
       readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'),
     );
+    // Derived from the resolver enforcement calls, never restated as literals.
+    // A literal table is what let the card publish 1,000/day while
+    // `resolveMcpBudget` returned 50 — the number was true of the price list
+    // and false of the meter, and a hardcoded expectation agreed with the card
+    // rather than with the code. Read in BOTH flag states, because the card is
+    // static and the ceiling it names must not depend on a deploy variable.
+    for (const restEnforced of [false, true]) {
+      const enforcedFor = (planKey) => {
+        const planLimits = PRODUCT_CATALOG[planKey]?.features?.planLimits;
+        assert.ok(planLimits, `${planKey} must exist in the catalog`);
+        return resolveMcpBudget(
+          planLimits.mcpCallsPerDay,
+          planLimits.apiRequestsPerDay,
+          restEnforced,
+        ).limit;
+      };
+      assert.deepEqual(
+        card.rateLimits?.dailyByPlan,
+        {
+          pro: enforcedFor('pro_monthly'),
+          proBusiness: enforcedFor('pro_business_monthly'),
+          apiStarter: enforcedFor('api_starter'),
+          apiBusiness: enforcedFor('api_business'),
+          enterprise: enforcedFor('enterprise'),
+        },
+        `server-card must mirror the caps the handler enforces (API_RATE_LIMIT_ENFORCE=${restEnforced})`,
+      );
+    }
+
+    // Same derivation for the burst ceiling, which had the identical failure
+    // mode: one hardcoded `slidingWindow(60)` throttled API Business to a fifth
+    // of the 300/min it sells, and a literal table here would have agreed with
+    // the price list rather than with the limiter.
+    const burstFor = (planKey) => {
+      const planLimits = PRODUCT_CATALOG[planKey]?.features?.planLimits;
+      assert.ok(planLimits, `${planKey} must exist in the catalog`);
+      return resolveMcpBurstPerMinute(planLimits.mcpBurstRequestsPerMinute);
+    };
     assert.deepEqual(
-      card.rateLimits?.dailyByPlan,
+      card.rateLimits?.perMinuteByPlan,
       {
-        pro: 50,
-        apiStarter: null,
-        apiBusiness: null,
-        enterprise: null,
+        pro: burstFor('pro_monthly'),
+        proBusiness: burstFor('pro_business_monthly'),
+        apiStarter: burstFor('api_starter'),
+        apiBusiness: burstFor('api_business'),
+        enterprise: burstFor('enterprise'),
       },
-      'server-card must not advertise API-tier MCP daily caps that the handler does not enforce',
+      'server-card must mirror the per-minute ceilings applyPerMinuteLimit actually applies',
     );
+    assert.equal(
+      card.rateLimits?.perMinute,
+      MCP_DEFAULT_BURST_PER_MINUTE,
+      'the scalar perMinute is the documented DEFAULT — it must be the one the code falls back to',
+    );
+
     const notes = card.rateLimits?.notes;
     assert.equal(typeof notes, 'string', 'server-card rateLimits.notes must be a string');
-    assert.match(notes, /Pro\/OAuth contexts only/i, 'notes must scope the hard daily reservation to Pro/OAuth contexts');
-    assert.match(notes, /API-key .* do not use this MCP daily reservation path/i,
-      'notes must disclose that env_key/API-key MCP callers do not use the daily reservation path');
-    assert.doesNotMatch(notes, /1,000|1000|10,000|10000/,
-      'notes must not publish API Starter/Business MCP daily caps that are not enforced');
+    assert.match(notes, /identical on the OAuth and dashboard-issued wm_ API-key doors/i,
+      'notes must disclose that both credential doors resolve the same budget');
+    assert.match(notes, /Legacy operator keys[\s\S]*outside this daily reservation path/i,
+      'notes must keep operator keys outside the daily reservation path');
+    // This assertion used to be `doesNotMatch(/1,000|10,000/)`, banning those
+    // numbers because the API tiers advertised MCP caps the meter never applied.
+    // They are enforced now, so the ban inverts: an agent planning a workload
+    // needs the real budget AND the weight, or it cannot predict its own spend.
+    assert.match(notes, /API Starter \(1000\/day\) and API Business \(10000\/day\)/,
+      'notes must publish the API-tier budgets now that they are enforced');
+    assert.match(notes, /per-tool weight of 1 for a cache-backed read, 2 for a tool that fetches live data/i,
+      'notes must publish the weight, or the shared budget is unpredictable');
     for (const method of [
       'initialize',
       'tools/list',
@@ -270,6 +324,8 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
       'notifications/initialized',
       'ping',
       'describe_tool',
+      'skills/list',
+      'skills/get',
     ]) {
       assert.ok(notes.includes(method), `${method} must be named in daily-quota notes`);
     }
@@ -293,17 +349,23 @@ describe('api/mcp.ts — capability parity (advertised AND non-empty)', () => {
 });
 
 describe('docs/mcp-overview.mdx — API-key quota contract', () => {
-  it('keeps API-key auth separate from the Pro/OAuth daily reservation path', () => {
+  it('distinguishes dashboard-issued and legacy operator API keys', () => {
     const docs = readFileSync(new URL('../docs/mcp-overview.mdx', import.meta.url), 'utf8');
     assert.doesNotMatch(docs, /Both modes check the same PRO entitlement/i,
       'docs must not claim API-key requests use the OAuth/Pro entitlement pre-check path');
-    assert.match(docs, /OAuth bearer requests re-check[\s\S]*active entitlement[\s\S]*before dispatch/i,
+    assert.match(docs, /OAuth bearer requests re-check[\s\S]*entitlement[\s\S]*before dispatch/i,
       'docs must describe the OAuth entitlement re-check path');
-    assert.match(docs, /Direct `X-WorldMonitor-Key` requests[\s\S]*configured API key[\s\S]*per-key (?:rate )?limiter/i,
-      'docs must describe API-key MCP auth and per-key minute limiting without implying Pro daily quota reservation');
-    assert.match(docs, /REST\/API plan allowances[\s\S]*outside[\s\S]*Pro\/OAuth MCP daily reservation path/i,
-      'docs must keep REST/API plan allowances separate from MCP daily reservation semantics');
-    assert.match(docs, /`wm_…` MCP calls[\s\S]*no MCP daily reservation/i,
-      'docs must state that wm_ API-key MCP calls have no MCP daily reservation');
+    assert.match(docs, /Dashboard-issued `X-WorldMonitor-Key: wm_…` requests[\s\S]*active entitlement[\s\S]*same per-user minute bucket and the same plan-resolved budget/i,
+      'docs must describe dashboard-key entitlement, minute, and daily enforcement');
+    assert.match(docs, /Legacy deployment-allowlisted operator keys[\s\S]*per-key minute bucket[\s\S]*skip the daily reservation/i,
+      'docs must keep operator-key limiting separate from dashboard-key metering');
+    // The API tiers no longer have a separate MCP number to keep apart from
+    // their REST allowance: one budget covers both. What must stay documented is
+    // that they are SHARED and at what weight, or a reader plans against a
+    // second allowance that does not exist.
+    assert.match(docs, /their MCP calls and REST requests share/i,
+      'docs must state that API-tier MCP calls and REST requests share one budget');
+    assert.match(docs, /cached MCP read costs 1 unit and a live downstream fetch costs 2/i,
+      'docs must publish the per-tool weight, or the shared budget is unpredictable');
   });
 });

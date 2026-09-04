@@ -250,7 +250,7 @@ export const RUNTIME_FEATURES: RuntimeFeatureDefinition[] = [
   {
     id: 'finnhubMarkets',
     name: 'Finnhub market data',
-    description: 'Real-time stock quotes and market data from Finnhub.',
+    description: 'Delayed or seeded stock quotes via Finnhub when configured. A key is not a live tape.',
     requiredSecrets: ['FINNHUB_API_KEY'],
     fallback: 'Stock ticker uses limited free data.',
   },

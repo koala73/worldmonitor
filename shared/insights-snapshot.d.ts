@@ -12,6 +12,8 @@ export interface InsightSourceOptions {
 }
 
 export const INSIGHTS_MAX_AGE_MS: number;
+/** Ceiling on how old a snapshot may be and still be served as flagged LKG. */
+export const INSIGHTS_MAX_SERVEABLE_AGE_MS: number;
 
 export function normalizeInsightSourceUrl(value: unknown): string;
 
@@ -25,5 +27,16 @@ export function collectInsightSources(
   maxSources?: number,
   options?: InsightSourceOptions,
 ): InsightSource[];
+
+export type InsightsSnapshotRejection =
+  | 'malformed-snapshot'
+  | 'missing-generated-at'
+  | 'future-generated-at'
+  | 'stale-snapshot';
+
+export function insightsSnapshotRejection(
+  raw: unknown,
+  nowMs?: number,
+): InsightsSnapshotRejection | null;
 
 export function isAcceptedInsightsSnapshot(raw: unknown, nowMs?: number): boolean;

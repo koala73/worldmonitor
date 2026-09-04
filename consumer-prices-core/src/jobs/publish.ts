@@ -12,11 +12,6 @@ import {
   buildRetailerSpreadSnapshot,
 } from '../snapshots/worldmonitor.js';
 import { buildCoverageSnapshot } from '../snapshots/coverage.js';
-import {
-  COVERAGE_ACTIVATION_SCHEMA_VERSION,
-  coverageActivationKey,
-  isActivatingCoverage,
-} from '../ops/coverage.js';
 import { loadAllBasketConfigs, loadAllRetailerConfigs } from '../config/loader.js';
 import { closePool } from '../db/client.js';
 
@@ -90,6 +85,7 @@ async function writeSnapshot(
     pagesFailed: number;
     rejectedCount: number;
     completionRatio?: number | null;
+    failureReasons?: Record<string, number>;
     retailers?: unknown[];
   },
 ): Promise<void> {
@@ -111,6 +107,7 @@ async function writeSnapshot(
         failedPages: coverage.pagesFailed,
         completionRatio,
         rejectedCount: coverage.rejectedCount,
+        ...(coverage.failureReasons ? { failureReasons: coverage.failureReasons } : {}),
         ...(coverage.retailers ? { retailers: coverage.retailers } : {}),
       };
     }
@@ -149,6 +146,7 @@ export async function publishAll() {
     }
   }
 
+  let totalPagesFailed = 0;
   for (const marketCode of markets) {
     const freshnessSnapshot = marketFreshnessSnapshots[marketCode];
     // hasFreshData = at least one retailer scraped within last 2 hours
@@ -178,41 +176,11 @@ export async function publishAll() {
           rejectedCount: coverage.rejectedCount,
           completionRatio: coverage.completionRatio,
           status: coverage.status,
+          failureReasons: coverage.failureReasons,
           retailers: coverage.retailers,
         },
       );
       pagesOk++;
-      // #6059 activation handshake. Written AFTER the snapshot lands and only
-      // for real coverage, so WorldMonitor health leaves its bounded
-      // ROLLOUT_PENDING window for this market and becomes strict forever.
-      // Durable by design: no EX, so it outlives the 7d seed-meta TTL and a
-      // publisher that ran once and then died can never read as
-      // pending-activation again.
-      //
-      // Its own try/catch: a marker write failure must not be logged as a
-      // coverage failure (the coverage snapshot already published) and must not
-      // abort the market's remaining snapshots. The next run retries, and the
-      // compiled rollout deadline bounds the window regardless.
-      if (isActivatingCoverage(coverage)) {
-        try {
-          await upstashCommand(url, token, [
-            'SET',
-            coverageActivationKey(marketCode),
-            JSON.stringify({
-              schemaVersion: COVERAGE_ACTIVATION_SCHEMA_VERSION,
-              marketCode,
-              activatedAt: Date.now(),
-              attemptedPages: coverage.attemptedPages,
-            }),
-          ]);
-        } catch (err) {
-          logger.error(`coverage-activation:${marketCode} failed: ${err}`);
-        }
-      } else {
-        logger.warn(
-          `coverage:${marketCode} published without attempted pages — activation marker withheld`,
-        );
-      }
     } catch (err) {
       pagesFailed++;
       logger.error(`coverage:${marketCode} failed: ${err}`);
@@ -299,19 +267,47 @@ export async function publishAll() {
     const totalSnapshots = pagesOk + pagesFailed;
     const completionRatio = totalSnapshots > 0 ? Number((pagesOk / totalSnapshots).toFixed(4)) : 0;
     logger.info(`  market ${marketCode} done: ${pagesOk}/${totalSnapshots} ok, ratio=${completionRatio}`);
+    totalPagesFailed += pagesFailed;
+  }
+
+  if (totalPagesFailed > 0) {
+    throw new Error(`${totalPagesFailed} snapshot publication${totalPagesFailed === 1 ? '' : 's'} failed`);
   }
 
   logger.info('Publish complete');
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+export async function runPublishCli(): Promise<void> {
   // Terminal success marker (format mirrors runSeed() in scripts/_seed-utils.mjs) so the crash
-  // diagnostic can distinguish a clean run from a silent death. Chained BEFORE .catch so a
-  // rejection skips it. Plain console.log, not the logger, so the marker survives whatever
-  // transport/format the logger uses.
+  // diagnostic can distinguish a clean run from a silent death. Emit it only after publication
+  // resolves. Plain console.log, not the logger, so the marker survives whatever transport/format
+  // the logger uses.
   const runStartedAt = Date.now();
-  publishAll()
-    .then(() => console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`))
-    .finally(() => closePool())
-    .catch(console.error);
+  let failure: unknown;
+  let failed = false;
+  try {
+    await publishAll();
+    console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`);
+  } catch (err) {
+    // Mirror scrape.ts: failed publishes must fail the cron, not exit 0.
+    console.error(err);
+    process.exitCode = 1;
+    failure = err;
+    failed = true;
+  }
+
+  try {
+    await closePool();
+  } catch (err) {
+    console.error(err);
+    process.exitCode = 1;
+    if (!failed) failure = err;
+    failed = true;
+  }
+
+  if (failed) throw failure;
+}
+
+if (import.meta.url === `file://${process.argv[1]}`) {
+  void runPublishCli().catch(() => {});
 }

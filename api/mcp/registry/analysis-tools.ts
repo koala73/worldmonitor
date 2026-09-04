@@ -1,4 +1,5 @@
 import { CII_RISK_SCORE_CACHE_KEYS } from '../../_cii-risk-cache-keys.js';
+import { hasRedistributableProviderAttribution } from '../../../shared/provider-redistribution';
 import { buildAlertDigest, buildWeeklyTrends } from '../../../shared/analysis-alert-digest';
 import {
   anomaliesToDigestInput,
@@ -191,6 +192,11 @@ function resolveLimit(raw: unknown, fallback: number): number {
   return parsed;
 }
 
+// Keep the analysis schemas aligned with cacheEnvelope(). Content age is not a
+// universal rule: evaluateFreshness() applies it only to checks that explicitly
+// declare honorContentAge.
+const ANALYSIS_STALE_DESCRIPTION = 'True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help.';
+
 export const ANALYSIS_TOOLS: ToolDef[] = [
   {
     name: 'get_signal_convergence',
@@ -223,7 +229,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -367,7 +373,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -458,7 +464,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Fetch time of the seeded cable table.' },
-        stale: { type: 'boolean', description: 'True when the cable table is older than its freshness budget.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -544,7 +550,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -607,8 +613,11 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         aircraftCount: alert.aircraftCount,
       }));
 
-      const seededSurges = Array.isArray((surgesPayload as { surges?: unknown[] } | null)?.surges)
-        ? ((surgesPayload as { surges: unknown[] }).surges as Array<Record<string, unknown>>)
+      const redistributableSurgesPayload = hasRedistributableProviderAttribution(
+        (surgesPayload as { sourceVersion?: unknown } | null)?.sourceVersion,
+      ) ? surgesPayload : null;
+      const seededSurges = Array.isArray((redistributableSurgesPayload as { surges?: unknown[] } | null)?.surges)
+        ? ((redistributableSurgesPayload as { surges: unknown[] }).surges as Array<Record<string, unknown>>)
         : [];
 
       const theaterFilter = typeof params.theater === 'string' ? params.theater.trim().toLowerCase() : '';
@@ -633,7 +642,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
               alert.region.toLowerCase().includes(theaterFilter))
             : foreignPresence,
           seeded_surges: seededSurges.filter((surge) => matchesTheater(surge.theaterId, surge.theater)),
-          seeded_surges_available: surgesPayload !== null,
+          seeded_surges_available: redistributableSurgesPayload !== null,
           history_available: historyPayload !== null,
           cii_available: riskScores !== null,
           flight_count: flights.length,
@@ -676,7 +685,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the feeds read; null in point and countries modes.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -806,7 +815,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',
@@ -847,7 +856,9 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
         { key: 'seed-meta:military-surges', maxStaleMin: 30 },
         { key: 'seed-meta:cable-health', maxStaleMin: 90 },
         { key: 'seed-meta:infra:outages', maxStaleMin: 30 },
-        { key: 'seed-meta:temporal:anomalies', maxStaleMin: 45 },
+        // liveness 45min; content-age (newestItemAt vs maxContentAgeMin) is stamped
+        // on the same key and evaluated by evaluateFreshness via honorContentAge.
+        { key: 'seed-meta:temporal:anomalies', maxStaleMin: 45, honorContentAge: true },
         { key: 'seed-meta:thermal:escalation', maxStaleMin: 360 },
         { key: 'seed-meta:supply_chain:shipping_stress', maxStaleMin: 45 },
       ];
@@ -923,7 +934,7 @@ export const ANALYSIS_TOOLS: ToolDef[] = [
       type: 'object',
       properties: {
         cached_at: { type: ['string', 'null'], description: 'Oldest fetch time across the contributing feeds.' },
-        stale: { type: 'boolean', description: 'True when any contributing feed is older than its freshness budget.' },
+        stale: { type: 'boolean', description: ANALYSIS_STALE_DESCRIPTION },
         ...ANALYSIS_CACHE_STATUS_PROPERTIES,
         data: {
           type: 'object',

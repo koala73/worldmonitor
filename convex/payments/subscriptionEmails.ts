@@ -10,6 +10,10 @@ import { internalAction, internalMutation, internalQuery } from "../_generated/s
 import { internal } from "../_generated/api";
 import { PRODUCT_CATALOG } from "../config/productCatalog";
 import { createCustomerPortalUrlForUser } from "./billing";
+import { buildCancellationConfirmEmail } from "./cancellationEmailCopy";
+import { isCoveringAt } from "./subscriptionHelpers";
+
+export { formatAccessEndDate } from "./cancellationEmailCopy";
 
 const RESEND_URL = "https://api.resend.com/emails";
 const FROM = "World Monitor <noreply@worldmonitor.app>";
@@ -162,7 +166,75 @@ function featureCardsHtml(planKey: string): string {
       </tr>`;
 }
 
-function userWelcomeHtml(planName: string, planKey: string): string {
+/**
+ * Minimal HTML-escape for user-influenced strings (email addresses) that get
+ * interpolated into email markup. Addresses come from Clerk identities and
+ * buyer-typed Dodo checkout fields — treat both as untrusted display text.
+ */
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
+ * Mask a login address for disclosure to the UNVERIFIED checkout inbox:
+ * "login@example.com" → "l•••@example.com". Recognizable to its owner,
+ * useless to a stranger who received the pointer because the buyer typo'd
+ * the checkout address. The full address is only ever written to the login
+ * inbox itself and to the admin alert.
+ */
+function maskEmail(address: string): string {
+  const at = address.indexOf("@");
+  if (at <= 1) return address;
+  return `${address[0]}•••${address.slice(at)}`;
+}
+
+/**
+ * Best-effort sign-in pointer to the checkout inbox (#6330). The buyer typed
+ * this address at checkout and demonstrably watches it (it also receives the
+ * Dodo receipt) — without this, the only inbox they may check goes silent
+ * while the welcome lands somewhere they may not think to look. The address
+ * is buyer-typed and may be one Resend rejects outright (typo'd domain), so
+ * a failure here must never propagate — log and continue.
+ */
+async function sendSignInPointer(
+  apiKey: string,
+  checkoutEmail: string,
+  loginEmail: string,
+  planName: string,
+): Promise<void> {
+  try {
+    await sendEmail(
+      apiKey,
+      checkoutEmail,
+      `Your World Monitor subscription is active — where to sign in`,
+      `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
+        <div style="background: #4ade80; height: 4px;"></div>
+        <div style="padding: 40px 32px;">
+          <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">Payment received — you're all set.</p>
+          <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 12px;">Your ${planName} subscription is active. This address (${escapeHtml(checkoutEmail)}) is the billing contact for the subscription.</p>
+          <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">To open your dashboard, sign in with <strong style="color: #fff;">${escapeHtml(maskEmail(loginEmail))}</strong> — your sign-in code will arrive in that inbox.</p>
+          <div style="text-align: center;">
+            <a href="https://worldmonitor.app" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Open World Monitor</a>
+          </div>
+          <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">Questions? Reply to this email or contact ${ADMIN_EMAIL}.</p>
+        </div>
+      </div>`,
+      ADMIN_EMAIL,
+    );
+    console.log(`[subscriptionEmails] Sign-in pointer sent to checkout address`);
+  } catch (err) {
+    console.error(
+      `[subscriptionEmails] Sign-in pointer to checkout address failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+function userWelcomeHtml(planName: string, planKey: string, signInEmail?: string): string {
   const isPro = PRO_PLANS.has(planKey);
   // Pro path: headline leads with the value prop, CTA points at the brief
   // (the single highest-retention action for a new Pro). API path preserved
@@ -195,6 +267,11 @@ function userWelcomeHtml(planName: string, planKey: string): string {
     <div style="background: #111; border: 1px solid #1a1a1a; border-left: 3px solid #4ade80; padding: 20px 24px; margin-bottom: 28px;">
       <p style="font-size: 18px; font-weight: 600; color: #fff; margin: 0 0 8px;">${headline}</p>
       <p style="font-size: 14px; color: #999; margin: 0; line-height: 1.5;">Your subscription is now active. Here's what's unlocked:</p>
+      ${
+        signInEmail
+          ? `<p style="font-size: 13px; color: #999; margin: 12px 0 0; line-height: 1.5;">Sign in with <strong style="color: #fff;">${escapeHtml(signInEmail)}</strong> — the address you entered at checkout is kept as your billing contact.</p>`
+          : ""
+      }
     </div>
 
     <table cellpadding="0" cellspacing="0" border="0" width="100%" style="margin-bottom: 28px;">
@@ -310,6 +387,10 @@ export const sendSubscriptionEmails = internalAction({
     currency: v.optional(v.string()),
     taxInclusive: v.optional(v.boolean()),
     discountId: v.optional(v.string()),
+    // #6330: set only when the Dodo checkout email differs from the login
+    // email in `userEmail`. Adds the sign-in line to the welcome, a pointer
+    // email to the checkout inbox, and the Billing Email row for admin.
+    checkoutEmail: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.RESEND_API_KEY;
@@ -320,17 +401,35 @@ export const sendSubscriptionEmails = internalAction({
 
     const planName = PLAN_DISPLAY[args.planKey] ?? args.planKey;
 
+    // Each of the three sends is independently guarded: a rejection or outage
+    // on any one of them must not swallow the others. A scheduled
+    // internalAction is not auto-retried, so an unguarded throw is a permanent
+    // loss of everything sequenced after it — the welcome (customer), the
+    // pointer (customer's checkout inbox), and the admin alert (the only ops
+    // signal that a paid conversion happened) each matter on their own.
+
     // 1. Welcome email to user. reply_to routes "Reply to this email" (in the
     // Pro support line) to ADMIN_EMAIL — FROM is noreply@ and Gmail honours
     // Reply-To over From when both are present.
-    await sendEmail(
-      apiKey,
-      args.userEmail,
-      `Welcome to World Monitor ${planName}`,
-      userWelcomeHtml(planName, args.planKey),
-      ADMIN_EMAIL,
-    );
-    console.log(`[subscriptionEmails] Welcome email sent to ${args.userEmail}`);
+    try {
+      await sendEmail(
+        apiKey,
+        args.userEmail,
+        `Welcome to World Monitor ${planName}`,
+        userWelcomeHtml(planName, args.planKey, args.checkoutEmail ? args.userEmail : undefined),
+        ADMIN_EMAIL,
+      );
+      console.log(`[subscriptionEmails] Welcome email sent to ${args.userEmail}`);
+    } catch (err) {
+      console.error(
+        `[subscriptionEmails] Welcome email failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    // 1b. Sign-in pointer to the checkout inbox (#6330) — see sendSignInPointer.
+    if (args.checkoutEmail) {
+      await sendSignInPointer(apiKey, args.checkoutEmail, args.userEmail, planName);
+    }
 
     // 2. Admin notification — leads with what the user actually paid (and how
     // it compares to list price) instead of the opaque subscription_id, which
@@ -342,21 +441,28 @@ export const sendSubscriptionEmails = internalAction({
       taxInclusive: args.taxInclusive,
       discountId: args.discountId,
     });
-    await sendEmail(
-      apiKey,
-      ADMIN_EMAIL,
-      `[WM] New User Subscribed to ${planName}`,
-      `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
+    try {
+      await sendEmail(
+        apiKey,
+        ADMIN_EMAIL,
+        `[WM] New User Subscribed to ${planName}`,
+        `<div style="font-family: monospace; padding: 20px; background: #0a0a0a; color: #e0e0e0;">
         <p style="color: #4ade80; font-size: 16px; font-weight: bold;">New Subscription</p>
         <table style="font-size: 14px; line-height: 1.8;">
           <tr><td style="color: #888; padding-right: 16px;">Plan:</td><td style="color: #fff;">${planName}</td></tr>
-          <tr><td style="color: #888; padding-right: 16px;">Email:</td><td style="color: #fff;">${args.userEmail}</td></tr>
+          <tr><td style="color: #888; padding-right: 16px;">Email:</td><td style="color: #fff;">${escapeHtml(args.userEmail)}</td></tr>
+          ${args.checkoutEmail ? `<tr><td style="color: #888; padding-right: 16px;">Billing Email:</td><td style="color: #fff;">${escapeHtml(args.checkoutEmail)}</td></tr>` : ""}
           ${priceRows}
-          <tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${args.userId}</td></tr>
+          <tr><td style="color: #888; padding-right: 16px;">User ID:</td><td style="color: #fff; font-size: 12px;">${escapeHtml(args.userId)}</td></tr>
         </table>
       </div>`,
-    );
-    console.log(`[subscriptionEmails] Admin notification sent for ${args.userEmail}`);
+      );
+      console.log(`[subscriptionEmails] Admin notification sent for ${args.userEmail}`);
+    } catch (err) {
+      console.error(
+        `[subscriptionEmails] Admin notification failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   },
 });
 
@@ -371,6 +477,10 @@ export const sendReactivationEmail = internalAction({
   args: {
     userEmail: v.string(),
     planKey: v.string(),
+    // #6330: same contract as sendSubscriptionEmails — set only when the Dodo
+    // checkout email differs from the login email in `userEmail`. A returning
+    // checkout is exactly as capable of alias divergence as a first one.
+    checkoutEmail: v.optional(v.string()),
   },
   handler: async (_ctx, args) => {
     const apiKey = process.env.RESEND_API_KEY;
@@ -380,24 +490,40 @@ export const sendReactivationEmail = internalAction({
     }
 
     const planName = PLAN_DISPLAY[args.planKey] ?? args.planKey;
-    await sendEmail(
-      apiKey,
-      args.userEmail,
-      `Welcome back to World Monitor ${planName}`,
-      `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
+    const signInLine = args.checkoutEmail
+      ? `<p style="font-size: 13px; color: #999; line-height: 1.5; margin: 0 0 24px;">Sign in with <strong style="color: #fff;">${escapeHtml(args.userEmail)}</strong> — the address you entered at checkout is kept as your billing contact.</p>`
+      : "";
+    try {
+      await sendEmail(
+        apiKey,
+        args.userEmail,
+        `Welcome back to World Monitor ${planName}`,
+        `<div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 600px; margin: 0 auto; background: #0a0a0a; color: #e0e0e0;">
         <div style="background: #4ade80; height: 4px;"></div>
         <div style="padding: 40px 32px;">
           <p style="font-size: 22px; font-weight: 700; color: #fff; margin: 0 0 12px;">Welcome back.</p>
-          <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 24px;">Your ${planName} subscription is active again and your premium access has been restored.</p>
+          <p style="font-size: 14px; color: #999; line-height: 1.5; margin: 0 0 ${args.checkoutEmail ? "12px" : "24px"};">Your ${planName} subscription is active again and your premium access has been restored.</p>
+          ${signInLine}
           <div style="text-align: center;">
             <a href="https://worldmonitor.app/dashboard" style="display: inline-block; background: #4ade80; color: #0a0a0a; padding: 14px 36px; text-decoration: none; font-weight: 800; font-size: 13px; text-transform: uppercase; letter-spacing: 1.5px; border-radius: 2px;">Open World Monitor</a>
           </div>
           <p style="font-size: 11px; color: #666; text-align: center; margin: 24px 0 0;">Questions? Reply to this email or contact ${ADMIN_EMAIL}.</p>
         </div>
       </div>`,
-      ADMIN_EMAIL,
-    );
-    console.log(`[subscriptionEmails] Reactivation email sent to ${args.userEmail}`);
+        ADMIN_EMAIL,
+      );
+      console.log(`[subscriptionEmails] Reactivation email sent to ${args.userEmail}`);
+    } catch (err) {
+      console.error(
+        `[subscriptionEmails] Reactivation email failed (continuing): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    // Sign-in pointer to the checkout inbox — same rationale as the welcome
+    // path (#6330); best-effort by construction.
+    if (args.checkoutEmail) {
+      await sendSignInPointer(apiKey, args.checkoutEmail, args.userEmail, planName);
+    }
   },
 });
 
@@ -422,6 +548,14 @@ export const DUNNING_DAY7_AGE_MS = 7 * DAY_MS;
 // Winback window bounds, measured from currentPeriodEnd (access end).
 export const WINBACK_MIN_AGE_MS = 30 * DAY_MS;
 export const WINBACK_MAX_AGE_MS = 60 * DAY_MS;
+// How long after `cancelledAt` the daily scan will still retry an unsent
+// cancellation confirmation (#7314, PR #7328 review). This is a RETRY window,
+// not a backfill: an annual subscriber who cancelled months ago is still paid
+// through, so an unbounded sweep would mail every historic canceller on the
+// first tick after deploy — the same trap WINBACK_MAX_AGE_MS exists to avoid.
+// Three days outlives a multi-day Resend outage while keeping the message
+// timely enough to still be about a cancellation the subscriber remembers.
+export const CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS = 3 * DAY_MS;
 
 const DASHBOARD_URL = "https://www.worldmonitor.app/dashboard";
 const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
@@ -449,16 +583,23 @@ const PRICING_URL = "https://www.worldmonitor.app/pro#pricing";
 export const SEND_SPACING_MS = 250;
 
 // Shared-cursor key in the generic `counters` table: the epoch-ms timestamp of
-// the next free Resend send slot for the dunning/winback fleet.
-const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
+// the next free Resend send slot for the dunning/winback fleet. Exported so
+// tests can park a future slot and mutate state during the uncapped wait.
+export const RESEND_SLOT_COUNTER = "dunning_resend_next_slot";
 
 const dunningStepValidator = v.union(
   v.literal("dunning_day0"),
   v.literal("dunning_day3"),
   v.literal("dunning_day7"),
   v.literal("winback_day30"),
+  v.literal("cancellation_confirm"),
 );
-type DunningStep = "dunning_day0" | "dunning_day3" | "dunning_day7" | "winback_day30";
+type DunningStep =
+  | "dunning_day0"
+  | "dunning_day3"
+  | "dunning_day7"
+  | "winback_day30"
+  | "cancellation_confirm";
 
 /** Everything the send action needs to decide + address one email. */
 export const getDunningContext = internalQuery({
@@ -487,23 +628,13 @@ export const getDunningContext = internalQuery({
       email = customer?.email ?? "";
     }
 
-    // Winback guard: skip users who are still covered by any OTHER sub.
-    // "Live" mirrors the entitlement recompute's coverage definition:
-    // active, on_hold, or cancelled-but-paid-through — a user with an
-    // ended monthly sub plus a cancelled annual that runs another 8 months
-    // is still entitled and must NOT get "your access has ended" (PR #4935
-    // review round 2, finding 2).
     const now = Date.now();
     const siblingSubs = await ctx.db
       .query("subscriptions")
       .withIndex("by_userId", (q) => q.eq("userId", sub.userId))
       .collect();
     const hasLiveSub = siblingSubs.some(
-      (s) =>
-        s.dodoSubscriptionId !== sub.dodoSubscriptionId &&
-        (s.status === "active" ||
-          s.status === "on_hold" ||
-          (s.status === "cancelled" && s.currentPeriodEnd > now)),
+      (s) => s.dodoSubscriptionId !== sub.dodoSubscriptionId && isCoveringAt(s, now),
     );
 
     // Entitlement coverage beyond subscriptions (PR #4935 review round 4):
@@ -613,8 +744,11 @@ export function buildDunningEmail(
   step: DunningStep,
   planName: string,
   ctaUrl: string,
+  accessUntil?: number,
 ): { subject: string; html: string } {
   switch (step) {
+    case "cancellation_confirm":
+      return buildCancellationConfirmEmail(planName, ctaUrl, accessUntil);
     case "dunning_day0":
       return {
         subject: `Your World Monitor payment failed — access continues while you fix it`,
@@ -709,6 +843,76 @@ export function resendPacingWaitMs(slotAt: number, now: number): number {
   return Math.max(0, slotAt - now);
 }
 
+type DunningContext = {
+  userId: string;
+  planKey: string;
+  status: string;
+  episodeAnchor: number;
+  cancelledAt: number | null;
+  currentPeriodEnd: number;
+  email: string;
+  hasLiveSub: boolean;
+  entitlementCoveredUntil: number;
+};
+
+type DunningSkipReason =
+  | "unknown_subscription"
+  | "not_cancelled"
+  | "stale_episode"
+  | "not_covering"
+  | "still_entitled"
+  | "resubscribed"
+  | "recovered"
+  | "no_email"
+  | "suppressed"
+  | "already_sent";
+
+/**
+ * Live-state gates for a detached send. The Resend wait is uncapped, so
+ * eligibility / episode / coverage can change while queued — this is run
+ * before the pacer and again immediately after it (PR #7328 review).
+ */
+function evaluateDunningEligibility(
+  step: DunningStep,
+  episodeAt: number,
+  sub: DunningContext,
+  now: number,
+): { ok: true } | { ok: false; reason: DunningSkipReason } {
+  if (step === "winback_day30") {
+    // Winback only for genuinely-gone users: still cancelled, paid period
+    // actually over, and no other covering subscription on the account.
+    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
+    // Same stale-episode discipline as dunning (PR #4935 review round 2,
+    // finding 1): a pending winback scheduled for cancellation T1 must not
+    // fire after the row moved to a different cancellation episode T2 —
+    // the T2 window gets its own ledger entry and its own single send.
+    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    if (sub.currentPeriodEnd > now) return { ok: false, reason: "still_entitled" };
+    // Comp floor / recomputed entitlement window (round-4 F5): a comped
+    // user is covered even with every subscription ended.
+    if (sub.entitlementCoveredUntil > now) return { ok: false, reason: "still_entitled" };
+    if (sub.hasLiveSub) return { ok: false, reason: "resubscribed" };
+    return { ok: true };
+  }
+  if (step === "cancellation_confirm") {
+    // Mirror-image of the winback guards: this email is only correct while
+    // the cancelled sub is STILL covering. Re-checked here, not just at
+    // schedule time, because the action runs detached — a reactivation or
+    // an expiry can land in between, and "your access continues until
+    // <past date>" is worse than saying nothing.
+    if (sub.status !== "cancelled") return { ok: false, reason: "not_cancelled" };
+    if (sub.cancelledAt !== episodeAt) return { ok: false, reason: "stale_episode" };
+    if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
+    return { ok: true };
+  }
+  // Dunning only while THIS episode is still open — a recovery or a
+  // newer episode (different anchor) invalidates the scheduled send.
+  if (sub.status !== "on_hold") return { ok: false, reason: "recovered" };
+  if (sub.episodeAnchor !== episodeAt) return { ok: false, reason: "stale_episode" };
+  if (sub.currentPeriodEnd <= now) return { ok: false, reason: "not_covering" };
+  return { ok: true };
+}
+
 export const sendDunningEmail = internalAction({
   args: {
     dodoSubscriptionId: v.string(),
@@ -722,57 +926,51 @@ export const sendDunningEmail = internalAction({
       return { sent: false, reason: "no_api_key" as const };
     }
 
-    const sub = await ctx.runQuery(
-      internal.payments.subscriptionEmails.getDunningContext,
-      { dodoSubscriptionId: args.dodoSubscriptionId },
-    );
-    if (!sub) return { sent: false, reason: "unknown_subscription" as const };
+    const resolveSend = async (): Promise<
+      { ok: true; sub: DunningContext } | { ok: false; reason: DunningSkipReason }
+    > => {
+      const sub = await ctx.runQuery(
+        internal.payments.subscriptionEmails.getDunningContext,
+        { dodoSubscriptionId: args.dodoSubscriptionId },
+      );
+      if (!sub) return { ok: false, reason: "unknown_subscription" };
+      const eligibility = evaluateDunningEligibility(
+        args.step,
+        args.episodeAt,
+        sub,
+        Date.now(),
+      );
+      if (!eligibility.ok) return eligibility;
+      if (!sub.email) {
+        console.warn(`[dunning] no resolvable email for ${args.dodoSubscriptionId} — skipping ${args.step}`);
+        return { ok: false, reason: "no_email" };
+      }
+      const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
+        email: sub.email,
+      });
+      if (suppressed) return { ok: false, reason: "suppressed" };
+      const alreadySent = await ctx.runQuery(
+        internal.payments.subscriptionEmails.wasDunningStepSent,
+        args,
+      );
+      if (alreadySent) return { ok: false, reason: "already_sent" };
+      return { ok: true, sub };
+    };
 
-    if (args.step === "winback_day30") {
-      // Winback only for genuinely-gone users: still cancelled, paid period
-      // actually over, and no other covering subscription on the account.
-      if (sub.status !== "cancelled") return { sent: false, reason: "not_cancelled" as const };
-      // Same stale-episode discipline as dunning (PR #4935 review round 2,
-      // finding 1): a pending winback scheduled for cancellation T1 must not
-      // fire after the row moved to a different cancellation episode T2 —
-      // the T2 window gets its own ledger entry and its own single send.
-      if (sub.cancelledAt !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
-      if (sub.currentPeriodEnd > Date.now()) return { sent: false, reason: "still_entitled" as const };
-      // Comp floor / recomputed entitlement window (round-4 F5): a comped
-      // user is covered even with every subscription ended.
-      if (sub.entitlementCoveredUntil > Date.now()) return { sent: false, reason: "still_entitled" as const };
-      if (sub.hasLiveSub) return { sent: false, reason: "resubscribed" as const };
-    } else {
-      // Dunning only while THIS episode is still open — a recovery or a
-      // newer episode (different anchor) invalidates the scheduled send.
-      if (sub.status !== "on_hold") return { sent: false, reason: "recovered" as const };
-      if (sub.episodeAnchor !== args.episodeAt) return { sent: false, reason: "stale_episode" as const };
-    }
+    const first = await resolveSend();
+    if (!first.ok) return { sent: false, reason: first.reason };
 
-    if (!sub.email) {
-      console.warn(`[dunning] no resolvable email for ${args.dodoSubscriptionId} — skipping ${args.step}`);
-      return { sent: false, reason: "no_email" as const };
-    }
-
-    const suppressed = await ctx.runQuery(internal.emailSuppressions.isEmailSuppressed, {
-      email: sub.email,
-    });
-    if (suppressed) return { sent: false, reason: "suppressed" as const };
-
-    const alreadySent = await ctx.runQuery(
-      internal.payments.subscriptionEmails.wasDunningStepSent,
-      args,
-    );
-    if (alreadySent) return { sent: false, reason: "already_sent" as const };
-
-    // CTA: a freshly minted Dodo portal session for dunning (card update is
-    // the whole point); pricing page for winback. Portal minting can fail
-    // (no customer id, Dodo error) — fall back to the dashboard, where the
-    // payment-failure banner routes to the same portal after sign-in.
+    // CTA: only the dunning steps mint a freshly minted Dodo portal session —
+    // card update is their whole point. Winback goes to pricing. A
+    // cancellation confirmation goes to the dashboard the subscriber still
+    // has access to; a billing-portal link there would read as "there's
+    // something left to fix", the opposite of the message. Portal minting can
+    // fail (no customer id, Dodo error) — fall back to the dashboard, where
+    // the payment-failure banner routes to the same portal after sign-in.
     let ctaUrl = args.step === "winback_day30" ? PRICING_URL : DASHBOARD_URL;
-    if (args.step !== "winback_day30") {
+    if (args.step !== "winback_day30" && args.step !== "cancellation_confirm") {
       try {
-        ctaUrl = (await createCustomerPortalUrlForUser(ctx, sub.userId)).portal_url;
+        ctaUrl = (await createCustomerPortalUrlForUser(ctx, first.sub.userId)).portal_url;
       } catch (err) {
         // Designed degradation, not a failure (Sentry-coverage gate: no
         // warn without capture; convex has no silent-capture helper and
@@ -786,8 +984,6 @@ export const sendDunningEmail = internalAction({
       }
     }
 
-    const planName = PLAN_DISPLAY[sub.planKey] ?? sub.planKey;
-    const { subject, html } = buildDunningEmail(args.step, planName, ctaUrl);
     // Pace the actual POST (not just the scheduled start): the portal mint above
     // has variable latency, so reserve the Resend slot HERE — after the mint —
     // and wait for it. This bounds the true POST rate to <= 1/SEND_SPACING_MS
@@ -801,7 +997,21 @@ export const sendDunningEmail = internalAction({
     );
     const waitMs = resendPacingWaitMs(slotAt, Date.now());
     if (waitMs > 0) await new Promise((resolve) => setTimeout(resolve, waitMs));
-    await sendEmail(apiKey, sub.email, subject, html, ADMIN_EMAIL);
+
+    // Re-read after the uncapped wait. Resume / expiry / a new cancellation
+    // episode / suppression / a concurrent ledger write can all land while
+    // queued; sending the pre-wait snapshot would be the wrong email.
+    const fresh = await resolveSend();
+    if (!fresh.ok) return { sent: false, reason: fresh.reason };
+
+    const planName = PLAN_DISPLAY[fresh.sub.planKey] ?? fresh.sub.planKey;
+    const { subject, html } = buildDunningEmail(
+      args.step,
+      planName,
+      ctaUrl,
+      fresh.sub.currentPeriodEnd,
+    );
+    await sendEmail(apiKey, fresh.sub.email, subject, html, ADMIN_EMAIL);
     // Ledger write AFTER the send: a Resend failure throws above, leaving no
     // row, so the next cron tick retries. The narrow crash window between
     // send and record risks one duplicate email — the right side to err on.
@@ -812,7 +1022,7 @@ export const sendDunningEmail = internalAction({
     // trade it for silently never sending on a crash, which is worse.
     await ctx.runMutation(internal.payments.subscriptionEmails.recordDunningStepSent, {
       ...args,
-      email: sub.email,
+      email: fresh.sub.email,
     });
     console.log(`[dunning] sent ${args.step} for ${args.dodoSubscriptionId}`);
     return { sent: true as const };
@@ -872,6 +1082,46 @@ export const runDunningScan = internalMutation({
       due.push({ dodoSubscriptionId: sub.dodoSubscriptionId, step: "winback_day30", episodeAt: sub.cancelledAt });
     }
 
+    // Durable retry for the cancellation confirmation (#7314, PR #7328
+    // review). The webhook enqueues it once, on the enteringCancelled
+    // transition — but sendEmail throws BEFORE the ledger write and
+    // internalActions are not auto-retried, so a transient Resend error (or a
+    // RESEND_API_KEY missing at webhook time) would otherwise lose that
+    // customer's confirmation permanently. Every other step in this module
+    // recovers through this scan; this one now does too.
+    //
+    // The still-covering filter is DISJOINT from the winback range above —
+    // currentPeriodEnd >= now versus lapsed 30-60 days — so no subscription
+    // can be due for both steps in the same tick.
+    //
+    // Bound the READ by cancelledAt, not currentPeriodEnd. An annual who
+    // cancelled months ago stays paid-through until period end, so a
+    // currentPeriodEnd >= now collect() would re-read that row every day
+    // for the rest of the year and can exceed Convex's per-transaction
+    // read cap (PR #7328 review). The three-day retry window is the
+    // natural cohort; period-end is then an in-memory still-covering check.
+    const recentCancellations = await ctx.db
+      .query("subscriptions")
+      .withIndex("by_status_cancelledAt", (q) =>
+        q
+          .eq("status", "cancelled")
+          .gte("cancelledAt", now - CANCELLATION_CONFIRM_RETRY_MAX_AGE_MS),
+      )
+      .collect();
+    const paidThroughCancelled: typeof recentCancellations = [];
+    for (const sub of recentCancellations) {
+      // Same rule as winback: no cancelledAt means no stable episode key.
+      // The index omits missing fields; this guard keeps episodeAt typed.
+      if (sub.cancelledAt === undefined) continue;
+      if (sub.currentPeriodEnd < now) continue;
+      paidThroughCancelled.push(sub);
+      due.push({
+        dodoSubscriptionId: sub.dodoSubscriptionId,
+        step: "cancellation_confirm",
+        episodeAt: sub.cancelledAt,
+      });
+    }
+
     let scheduled = 0;
     for (const item of due) {
       // Ledger pre-check keeps the steady-state tick write-free; the send
@@ -897,8 +1147,13 @@ export const runDunningScan = internalMutation({
     }
 
     console.log(
-      `[dunning] scan: ${onHold.length} on_hold, ${cancelled.length} cancelled, ${scheduled} sends scheduled`,
+      `[dunning] scan: ${onHold.length} on_hold, ${cancelled.length} cancelled, ${paidThroughCancelled.length} paid-through cancelled, ${scheduled} sends scheduled`,
     );
-    return { onHold: onHold.length, cancelled: cancelled.length, scheduled };
+    return {
+      onHold: onHold.length,
+      cancelled: cancelled.length,
+      paidThroughCancelled: paidThroughCancelled.length,
+      scheduled,
+    };
   },
 });

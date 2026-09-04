@@ -46,12 +46,15 @@ import { shouldSkipSentryForAction } from './checkout-sentry-policy';
 import { isEntitled, onEntitlementChange } from './entitlements';
 import {
   CLASSIC_AUTO_DISMISS_MS,
+  ENTITLEMENT_POLL_MS,
   EXTENDED_UNLOCK_TIMEOUT_MS,
+  LATE_ACTIVATION_GRACE_MS,
   maskEmail,
   type CheckoutSuccessBannerState,
 } from './checkout-banner-state';
-import { loadActiveReferral } from './referral-capture';
-import { trackCheckoutStart } from './analytics';
+import { startEntitlementWait } from './checkout-entitlement-wait';
+import { isAffiliateCode, loadActiveReferral } from './referral-capture';
+import { trackCheckoutStart, type CheckoutAttribution, type CheckoutSurface } from './analytics';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
@@ -165,6 +168,8 @@ interface PendingCheckoutIntent {
   productId: string;
   referralCode?: string;
   discountCode?: string;
+  /** Mission/panel attribution from the originating surface; re-bucketed on emit. */
+  analyticsAttribution?: CheckoutAttribution;
   /**
    * User id who saved this intent, or null if saved anonymously (the
    * common "click Buy, get sign-in modal" path). On resume, we only
@@ -737,7 +742,11 @@ export async function resumePendingCheckout(options?: {
       referralCode: intent.referralCode,
       discountCode: intent.discountCode,
     },
-    { fallbackToPricingPage: false, analyticsSurface: 'dashboard-resume' },
+    {
+      fallbackToPricingPage: false,
+      analyticsSurface: 'dashboard-resume',
+      analyticsAttribution: intent.analyticsAttribution,
+    },
   );
   if (success) clearPendingCheckoutIntent();
   return success;
@@ -831,8 +840,17 @@ async function isProBusinessCheckoutTarget(productId: string): Promise<boolean> 
  */
 export async function startCheckout(
   productId: string,
-  options?: { discountCode?: string; referralCode?: string; bypassPendingGuard?: boolean },
-  behavior?: { fallbackToPricingPage?: boolean; analyticsSurface?: 'dashboard' | 'dashboard-resume' },
+  options?: {
+    discountCode?: string;
+    referralCode?: string;
+    attributionSource?: string;
+    bypassPendingGuard?: boolean;
+  },
+  behavior?: {
+    fallbackToPricingPage?: boolean;
+    analyticsSurface?: CheckoutSurface;
+    analyticsAttribution?: CheckoutAttribution;
+  },
 ): Promise<boolean> {
   if (_checkoutInFlight) return false;
   const fallbackToPricingPage = behavior?.fallbackToPricingPage ?? true;
@@ -843,12 +861,16 @@ export async function startCheckout(
   // intent clicks are counted (flagged authed:false). The post-sign-in
   // auto-resume passes 'dashboard-resume' so a signed-out conversion isn't
   // read as two independent attempts.
-  trackCheckoutStart(productId, Boolean(user), behavior?.analyticsSurface ?? 'dashboard');
+  trackCheckoutStart(productId, Boolean(user), behavior?.analyticsSurface ?? 'dashboard', behavior?.analyticsAttribution);
   if (!user) {
     const intent = {
       productId,
       referralCode: options?.referralCode,
       discountCode: options?.discountCode,
+      // Kept so the post-sign-in auto-resume re-emits checkout-start with the
+      // originating mission/panel; trackCheckoutStart re-buckets on emit, so a
+      // tampered stored value still collapses to 'unknown'.
+      analyticsAttribution: behavior?.analyticsAttribution,
     };
     reportCheckoutError(
       classifySyntheticCheckoutError('unauthorized'),
@@ -900,7 +922,20 @@ export async function startCheckout(
   // session or within the 7-day TTL on another tab. loadActiveReferral
   // returns null (and clears) on stale records, so this is safe to
   // call unconditionally.
-  const effectiveReferral = options?.referralCode ?? loadActiveReferral() ?? undefined;
+  //
+  // The passed code is validated here, not only inside loadActiveReferral:
+  // three callers hand us a value that never went through referral capture —
+  // the failure-retry banner replaying a saved attempt, a resumed pending
+  // intent, and the `?checkoutReferral=` URL param, which reaches this
+  // function straight off the URL with no charset check at all. Without this,
+  // a `welcome-*` tag captured before #6493 rides into Dodo's
+  // `affonso_referral`, which is the one thing that guard exists to prevent.
+  // An unusable passed code falls through to the stored one rather than
+  // suppressing it — it is not evidence that the visitor has no referral.
+  const passedReferral = options?.referralCode && isAffiliateCode(options.referralCode)
+    ? options.referralCode
+    : undefined;
+  const effectiveReferral = passedReferral ?? loadActiveReferral() ?? undefined;
   // Record the attempt BEFORE the network call so the failure-retry
   // banner has context even if every subsequent step fails (timeout,
   // user closes tab before Dodo redirects, SDK crashes, etc.).
@@ -942,6 +977,7 @@ export async function startCheckout(
         ),
         discountCode: options?.discountCode,
         referralCode: effectiveReferral,
+        attributionSource: options?.attributionSource,
         // #4438: only set when the user confirmed "start a new checkout anyway"
         // from the pending-payment dialog. Skips the backend pending guard.
         ...(options?.bypassPendingGuard ? { bypassPendingGuard: true } : {}),
@@ -1043,6 +1079,7 @@ export async function startCheckout(
           productId,
           referralCode: options?.referralCode,
           discountCode: options?.discountCode,
+          analyticsAttribution: behavior?.analyticsAttribution,
         });
         openSignIn();
         return false;
@@ -1448,42 +1485,45 @@ export function showCheckoutSuccess(
     return;
   }
 
-  let resolved = false;
-  const timeoutHandle = setTimeout(() => {
-    if (resolved) return;
-    resolved = true;
-    unsubscribe();
-    stopEmailWatchers();
-    _currentBannerCleanup = null;
-    currentState = 'timeout';
-    setBannerText(banner, 'timeout', currentMaskedEmail);
-    enqueueSentryCall((s) => s.captureMessage('Checkout entitlement-activation timeout', {
-      level: 'warning',
-      tags: { component: 'dodo-checkout', action: 'entitlement-timeout' },
-    }));
-  }, EXTENDED_UNLOCK_TIMEOUT_MS);
-
-  const unsubscribe = onEntitlementChange(() => {
-    if (resolved) return;
-    if (!isEntitled()) return;
-    resolved = true;
-    clearTimeout(timeoutHandle);
-    unsubscribe();
-    stopEmailWatchers();
-    _currentBannerCleanup = null;
-    currentState = 'active';
-    setBannerText(banner, 'active', currentMaskedEmail);
-  });
+  // The wait settles on a change event, a poll, or a re-check at the deadline,
+  // and keeps watching for a bounded grace period afterwards — see
+  // `checkout-entitlement-wait.ts` for why one signal was not enough
+  // (WORLDMONITOR-PZ / #6760).
+  const stopWait = startEntitlementWait(
+    {
+      timeoutMs: EXTENDED_UNLOCK_TIMEOUT_MS,
+      pollMs: ENTITLEMENT_POLL_MS,
+      lateGraceMs: LATE_ACTIVATION_GRACE_MS,
+    },
+    {
+      isEntitled,
+      onEntitlementChange,
+      setTimeout: (handler, ms) => window.setTimeout(handler, ms),
+      clearTimeout: (id) => window.clearTimeout(id),
+      setInterval: (handler, ms) => window.setInterval(handler, ms),
+      clearInterval: (id) => window.clearInterval(id),
+      onState: (state) => {
+        stopEmailWatchers();
+        currentState = state;
+        setBannerText(banner, state, currentMaskedEmail);
+        // Only an `active` verdict is final. After a `timeout` the wait is
+        // still watching for a late activation, so the cleanup must stay
+        // registered or a re-entrant banner would orphan those watchers.
+        if (state === 'active') _currentBannerCleanup = null;
+      },
+      onTimeoutReport: () => {
+        enqueueSentryCall((s) => s.captureMessage('Checkout entitlement-activation timeout', {
+          level: 'warning',
+          tags: { component: 'dodo-checkout', action: 'entitlement-timeout' },
+        }));
+      },
+    },
+  );
 
   // Register cleanup so a re-entrant showCheckoutSuccess call (e.g. a
   // double-fire of `checkout.status=succeeded`) tears down this
-  // banner's listener + timer before mounting a replacement.
-  _currentBannerCleanup = () => {
-    if (resolved) return;
-    resolved = true;
-    clearTimeout(timeoutHandle);
-    unsubscribe();
-  };
+  // banner's watchers before mounting a replacement.
+  _currentBannerCleanup = stopWait;
 }
 
 function setBannerText(

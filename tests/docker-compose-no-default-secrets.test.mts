@@ -4,6 +4,7 @@ import { chmod, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises
 import { tmpdir } from 'node:os';
 import { delimiter, join } from 'node:path';
 import { describe, it } from 'node:test';
+import { parse } from 'yaml';
 
 // Regression coverage for issue #3804: the self-hosted Docker stack must
 // not ship default Redis credentials. Earlier releases defaulted SRH_TOKEN
@@ -33,6 +34,53 @@ function serviceBlock(compose: string, serviceName: string): string {
   );
   assert.ok(match, `docker-compose.yml must define ${serviceName} service`);
   return match[1];
+}
+
+interface ComposeService {
+  environment?: Record<string, unknown>;
+}
+
+interface ComposeConfig {
+  services?: Record<string, ComposeService>;
+}
+
+function assertRequiredRelaySecretWiring(compose: string): void {
+  const parsed = parse(compose) as ComposeConfig;
+  const requiredSecret = /^\$\{RELAY_SHARED_SECRET:\?[^}\r\n]+\}$/;
+  const worldmonitorSecret = parsed.services?.worldmonitor?.environment?.RELAY_SHARED_SECRET;
+  const relaySecret = parsed.services?.['ais-relay']?.environment?.RELAY_SHARED_SECRET;
+  const allRelaySecretExpansions = compose.match(/\$\{RELAY_SHARED_SECRET[^}\r\n]*\}/g) ?? [];
+
+  assert.equal(
+    typeof worldmonitorSecret,
+    'string',
+    'worldmonitor must receive RELAY_SHARED_SECRET through its environment mapping',
+  );
+  assert.match(
+    worldmonitorSecret,
+    requiredSecret,
+    'worldmonitor RELAY_SHARED_SECRET must use a ${RELAY_SHARED_SECRET:?...} guard',
+  );
+  assert.equal(
+    typeof relaySecret,
+    'string',
+    'ais-relay must receive RELAY_SHARED_SECRET through its environment mapping',
+  );
+  assert.match(
+    relaySecret,
+    requiredSecret,
+    'ais-relay RELAY_SHARED_SECRET must use a ${RELAY_SHARED_SECRET:?...} guard',
+  );
+  assert.equal(
+    worldmonitorSecret,
+    relaySecret,
+    'worldmonitor and ais-relay must receive the same required secret expansion',
+  );
+  assert.deepEqual(
+    allRelaySecretExpansions,
+    [worldmonitorSecret, relaySecret],
+    'the two consumer mappings must be the only RELAY_SHARED_SECRET expansions, with no bare or defaulted bypass',
+  );
 }
 
 async function writeExecutable(path: string, contents: string): Promise<void> {
@@ -148,6 +196,78 @@ describe('docker self-hosting — no default credentials (#3804)', () => {
       relay,
       /depends_on:\s*\n\s+redis-rest:\s*\n\s+condition:\s*service_started/,
       'ais-relay must wait for redis-rest so Redis-backed seed loops can start in the bundled stack',
+    );
+  });
+
+  it('docker-compose.yml points ais-relay Classify at the in-network app (#7437)', async () => {
+    const compose = await read('docker-compose.yml');
+    const relay = serviceBlock(compose, 'ais-relay');
+    const worldmonitor = serviceBlock(compose, 'worldmonitor');
+
+    assert.match(
+      relay,
+      /API_BASE_URL:\s*"\$\{API_BASE_URL:-http:\/\/worldmonitor:8080\}"/,
+      'ais-relay must default API_BASE_URL to the compose-network worldmonitor service',
+    );
+    assert.match(
+      relay,
+      /WORLDMONITOR_RELAY_KEY:\s*"\$\{WORLDMONITOR_RELAY_KEY:-\}"/,
+      'ais-relay must receive WORLDMONITOR_RELAY_KEY so Classify can send X-WorldMonitor-Key',
+    );
+    assert.match(
+      worldmonitor,
+      /WORLDMONITOR_RELAY_KEY:\s*"\$\{WORLDMONITOR_RELAY_KEY:-\}"/,
+      'worldmonitor must receive the same WORLDMONITOR_RELAY_KEY so the gateway can accept the Classify digest fetch',
+    );
+    assert.doesNotMatch(
+      relay,
+      /depends_on:[\s\S]*worldmonitor/,
+      'ais-relay must not depend_on worldmonitor — that would cycle with the app depends_on',
+    );
+  });
+
+  it('docker-compose.yml bounds redis-rest memory against its per-request body buffer (#7099)', async () => {
+    const compose = await read('docker-compose.yml');
+    const redisRest = serviceBlock(compose, 'redis-rest');
+
+    // The proxy buffers each accepted body in full (SRH_MAX_BODY_BYTES, 16MB
+    // default), and those Buffers are off-heap so a Node heap flag cannot cap
+    // them. Measured: 64 concurrent 16MB POSTs reached ~933MB RSS. Without a
+    // container limit an unbounded proxy sits next to a Redis capped at 256mb
+    // and can starve the whole stack.
+    const limit = redisRest.match(/mem_limit:\s*(\d+)([mg])/i);
+    assert.ok(limit, 'redis-rest must declare a mem_limit');
+
+    const megabytes = limit[2].toLowerCase() === 'g' ? Number(limit[1]) * 1024 : Number(limit[1]);
+    // One max-size publish costs ~64MB transient (16MB body + concat + UTF-16
+    // string). Too low turns a legitimate 16MB seeder publish into an OOM kill.
+    assert.ok(megabytes >= 256, `mem_limit ${limit[0]} is too low to serve one max-size publish`);
+    assert.ok(megabytes <= 2048, `mem_limit ${limit[0]} is high enough to defeat the point of bounding it`);
+  });
+
+  it('docker-compose.yml passes one fail-closed relay secret to both consumers (#6537)', async () => {
+    const compose = await read('docker-compose.yml');
+    assertRequiredRelaySecretWiring(compose);
+  });
+
+  it('rejects a relay secret guard outside a service environment mapping', () => {
+    const misplacedSecret = '${RELAY_SHARED_SECRET:?RELAY_SHARED_SECRET required}';
+    const compose = [
+      'services:',
+      '  worldmonitor:',
+      '    environment:',
+      '      LOCAL_API_MODE: docker',
+      '    labels:',
+      `      RELAY_SHARED_SECRET: "${misplacedSecret}"`,
+      '  ais-relay:',
+      '    environment:',
+      `      RELAY_SHARED_SECRET: "${misplacedSecret}"`,
+      '',
+    ].join('\n');
+
+    assert.throws(
+      () => assertRequiredRelaySecretWiring(compose),
+      /worldmonitor must receive RELAY_SHARED_SECRET through its environment mapping/,
     );
   });
 

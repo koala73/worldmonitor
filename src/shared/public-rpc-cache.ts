@@ -1,3 +1,14 @@
+// Membership here is an ANONYMOUS-ACCESS decision, not a caching one: the
+// gateway consults isPublicSharedRpcRequest() before the tier gate, so a path
+// listed here is reachable with no credential whatever ENDPOINT_ENTITLEMENTS
+// says. Never add a path that is (or may become) tier-gated —
+// tests/public-shared-rpc-not-tier-gated.test.mts fails the build if the two
+// sets ever intersect.
+//
+// `/api/military/v1/get-defense-industrial-base` was removed when the arms-
+// supplier data became Pro (#6438): its `public=1` shape was a standing
+// bypass of the new gate. The CDN shield it bought is gone with it, which is
+// the accepted cost of the paywall.
 const PUBLIC_SHARED_RPC_PATHS = new Set([
   '/api/news/v1/list-feed-digest',
   '/api/displacement/v1/get-displacement-summary',
@@ -7,7 +18,7 @@ const PUBLIC_SHARED_RPC_PATHS = new Set([
 const NEWS_VARIANTS = new Set(['full', 'tech', 'finance', 'happy', 'commodity', 'energy']);
 const NEWS_LANGUAGES = new Set([
   'en', 'bg', 'cs', 'fr', 'de', 'el', 'es', 'hr', 'hu', 'it', 'pl', 'pt', 'nl',
-  'sv', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
+  'sv', 'sw', 'ru', 'uk', 'ar', 'fa', 'zh', 'ja', 'ko', 'ro', 'tr', 'th', 'vi', 'hi',
 ]);
 const NEWS_QUERY_KEYS = new Set(['variant', 'lang', 'public']);
 // Exact raw-query contract (no leading `?`): exactly one public displacement shape,
@@ -75,7 +86,8 @@ function isNewsDigestShape(params: URLSearchParams): boolean {
 }
 
 export function isPublicSharedRpcRequest(urlLike: string | URL, method = 'GET'): boolean {
-  if (method.toUpperCase() !== 'GET') return false;
+  const normalizedMethod = method.toUpperCase();
+  if (normalizedMethod !== 'GET' && normalizedMethod !== 'HEAD') return false;
 
   let url: URL;
   try {

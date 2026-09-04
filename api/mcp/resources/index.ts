@@ -40,15 +40,26 @@
 // `stale`. mimeType is `application/json` for every resource here.
 
 import type {
+  McpAccessClass,
   McpAuthContext,
   McpHandlerDeps,
   PublicResourceDef,
   TemplateResourceDef,
 } from '../types';
+import { TOOL_REGISTRY, toolAccess } from '../registry/index';
 import { dispatchToolsCall } from '../dispatch';
 import { evaluateFreshness } from '../freshness';
+import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, type McpBudget } from '../quota';
 import { rpcError, rpcOk, withMcpNoStore } from '../rpc';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
+import {
+  FREE_ACCOUNT_CALLS_PER_DAY,
+  FREE_ACCOUNT_IDLE_GAP_MS,
+  FREE_ACCOUNT_REQUESTS_PER_DAY,
+  freeAccountCallsKey,
+  freeAccountLastActivityKey,
+  freeAccountRequestsKey,
+} from '../free-account-allowance';
 import { CHOKEPOINT_SLUGS } from './slugs';
 
 // ---------------------------------------------------------------------------
@@ -83,6 +94,186 @@ export const PUBLIC_RESOURCE_REGISTRY: PublicResourceDef[] = [
   },
 ];
 
+// Account-specific status is deliberately separate from the anonymous public
+// registry and the data-bearing templates. It is returned by resources/list
+// only after a user-bound credential is resolved, and its read path performs
+// only a GET or read-only GET/PTTL Lua snapshot: no tool dispatch and no
+// allowance reservation.
+export const MCP_ALLOWANCE_RESOURCE_URI = 'worldmonitor://account/mcp-allowance';
+export const ACCOUNT_RESOURCE_LIST_RESPONSE = [{
+  uri: MCP_ALLOWANCE_RESOURCE_URI,
+  name: 'MCP Allowance Status',
+  description: 'Current authenticated account MCP usage, remaining daily calls, UTC reset time, and free-account request-window status when applicable. Reading this resource consumes no allowance.',
+  mimeType: 'application/json',
+  _meta: { 'worldmonitor/access': 'free-account' as const },
+}];
+
+export function isAccountResourceUri(uri: unknown): boolean {
+  return uri === MCP_ALLOWANCE_RESOURCE_URI;
+}
+
+// A pipeline is not a Redis transaction. Read all three free-account keys in
+// one read-only Lua command so the resource cannot expose an impossible
+// snapshot while a concurrent allowance reservation is committing.
+const READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT = `
+local calls = redis.call('GET', KEYS[1])
+local requests = redis.call('GET', KEYS[2])
+local activityPttl = redis.call('PTTL', KEYS[3])
+return {calls or false, requests or false, activityPttl}
+`;
+
+function redisInteger(raw: unknown, missingValue?: number): number | null {
+  if (raw === null || raw === undefined) return missingValue ?? null;
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  if (typeof raw === 'string' && raw.trim() === '') return null;
+  const parsed = Number(raw);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function countFromRedis(raw: unknown, limit: number | null): number | null {
+  const used = redisInteger(raw, 0);
+  if (used === null || used < 0) return null;
+  return limit === null ? used : Math.min(used, limit);
+}
+
+function hasRedisResult(entry: unknown): entry is { result: unknown; error?: unknown } {
+  return typeof entry === 'object'
+    && entry !== null
+    && Object.prototype.hasOwnProperty.call(entry, 'result');
+}
+
+/** Quota-exempt authenticated resources/read handler for current allowance. */
+export async function buildAccountAllowanceResourceResponse(
+  context: McpAuthContext,
+  deps: McpHandlerDeps,
+  body: { id?: unknown; params?: unknown },
+  corsHeaders: Record<string, string>,
+  budget?: McpBudget,
+  freeAccountAllowance = false,
+  nowMs = Date.now(),
+): Promise<Response> {
+  const id = body.id ?? null;
+  const params = body.params as { uri?: unknown } | null;
+  if (!params || params.uri !== MCP_ALLOWANCE_RESOURCE_URI) {
+    return rpcError(id, -32602, 'Invalid params: missing account allowance resource uri', corsHeaders);
+  }
+  if (context.kind !== 'pro' && context.kind !== 'user_key') {
+    return rpcError(id, -32002, 'Account allowance status requires a user-bound credential.', corsHeaders);
+  }
+
+  const now = new Date(nowMs);
+  const resetsAt = new Date(Date.UTC(
+    now.getUTCFullYear(),
+    now.getUTCMonth(),
+    now.getUTCDate() + 1,
+  )).toISOString();
+  const limit = freeAccountAllowance
+    ? FREE_ACCOUNT_CALLS_PER_DAY
+    : resolveDailyLimit(budget?.limit);
+
+  const commands: Array<Array<string | number>> = freeAccountAllowance
+    ? [[
+        'EVAL',
+        READ_FREE_ACCOUNT_ALLOWANCE_SCRIPT,
+        3,
+        freeAccountCallsKey(context.userId, nowMs),
+        freeAccountRequestsKey(context.userId, nowMs),
+        freeAccountLastActivityKey(context.userId, nowMs),
+      ]]
+    : [['GET', budgetCounterKey(budget, context.userId, now)]];
+
+  let result: Array<{ result?: unknown; error?: unknown }> | null;
+  try {
+    result = await deps.redisPipeline(commands);
+  } catch {
+    result = null;
+  }
+  const firstResult = Array.isArray(result) ? result[0] : undefined;
+  if (
+    !Array.isArray(result)
+    || result.length < commands.length
+    || !hasRedisResult(firstResult)
+    || result.some((entry) => entry?.error !== undefined && entry?.error !== null)
+  ) {
+    return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
+  }
+
+  let used: number | null = null;
+  let requestWindows: {
+    used: number;
+    limit: number;
+    remaining: number;
+    idleGapMs: number;
+    active: boolean;
+    expiresAt: string | null;
+  } | null = null;
+
+  if (freeAccountAllowance) {
+    const tuple = firstResult.result;
+    if (!Array.isArray(tuple) || tuple.length !== 3) {
+      return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
+    }
+    const [rawCalls, rawRequests, rawActivityPttl] = tuple;
+    const callsMissing = rawCalls === null;
+    const requestsMissing = rawRequests === null;
+    const storedCalls = redisInteger(rawCalls, 0);
+    const storedRequests = redisInteger(rawRequests, 0);
+    const rawPttl = redisInteger(rawActivityPttl);
+    if (
+      rawCalls === undefined
+      || rawRequests === undefined
+      || storedCalls === null
+      || storedCalls < 0
+      || storedRequests === null
+      || storedRequests < 0
+      || callsMissing !== requestsMissing
+      || storedRequests > storedCalls
+      || rawPttl === null
+      || rawPttl < -2
+      || rawPttl === -1
+      || (rawPttl > 0 && storedCalls === 0)
+    ) {
+      return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
+    }
+    used = Math.min(storedCalls, FREE_ACCOUNT_CALLS_PER_DAY);
+    const requestUsed = Math.min(storedRequests, FREE_ACCOUNT_REQUESTS_PER_DAY);
+    const pttl = rawPttl > 0 ? rawPttl : null;
+    requestWindows = {
+      used: requestUsed,
+      limit: FREE_ACCOUNT_REQUESTS_PER_DAY,
+      remaining: Math.max(0, FREE_ACCOUNT_REQUESTS_PER_DAY - requestUsed),
+      idleGapMs: FREE_ACCOUNT_IDLE_GAP_MS,
+      active: pttl !== null,
+      expiresAt: pttl === null ? null : new Date(nowMs + pttl).toISOString(),
+    };
+  } else {
+    used = countFromRedis(firstResult.result, limit);
+    if (used === null) {
+      return rpcError(id, -32603, 'Allowance status is temporarily unavailable.', corsHeaders);
+    }
+  }
+
+  const remaining = limit === null ? null : Math.max(0, limit - used);
+
+  const text = JSON.stringify({
+    access: freeAccountAllowance ? 'free-account' : 'subscription',
+    used,
+    limit,
+    remaining,
+    resetsAt,
+    requestWindows,
+    // Whose traffic `used` counts. On an API plan with REST enforcement on,
+    // this budget IS the REST meter, so `used` includes requests the agent
+    // never made and it must not read the number as its own tool history. A
+    // boolean rather than the counter name: the agent can act on "someone else
+    // spends this too", and the Redis key is ours to move.
+    sharedWithRestApi: !freeAccountAllowance && isSharedRestCounter(budget),
+  });
+  return rpcOk(id, {
+    contents: [{ uri: MCP_ALLOWANCE_RESOURCE_URI, mimeType: 'application/json', text }],
+  }, corsHeaders);
+}
+
 // ---------------------------------------------------------------------------
 // Template (data-bearing, gated, quota-symmetric) resources
 //   → resources/templates/list
@@ -96,7 +287,7 @@ export const TEMPLATE_RESOURCE_REGISTRY: TemplateResourceDef[] = [
   {
     uriTemplate: 'worldmonitor://countries/{iso2}/risk',
     name: 'Country Risk',
-    description: 'Composite Instability Index (CII) score 0–100 with unrest/conflict/security/news components, travel-advisory level, and OFAC sanctions exposure for a single ISO 3166-1 alpha-2 country. URI param {iso2} is lowercase alpha-2 (e.g. "de", "us", "ir").',
+    description: 'Composite Instability Index at cii.combinedScore (0–100) with its four contributing components under cii.components — historical names whose meanings are domestic unrest, armed conflict, security and mobility, and the information environment — plus advisoryLevel and OFAC exposure as sanctionsActive/sanctionsCount, for a single ISO 3166-1 alpha-2 country. Check upstreamUnavailable before trusting a low score: when true, at least one required upstream read failed and the whole response was withheld, so the zeroed fields mean UNKNOWN, not calm. URI param {iso2} is lowercase alpha-2 (e.g. "de", "us", "ir").',
     mimeType: 'application/json',
     tool: 'get_country_risk',
     // RPC tool — wrap freshness against the regional-snapshot-canonical
@@ -180,6 +371,7 @@ export interface PublicResourceShape {
   name: string;
   description: string;
   mimeType: string;
+  _meta: { 'worldmonitor/access': 'free' };
 }
 
 export interface ResourceTemplateShape {
@@ -187,6 +379,7 @@ export interface ResourceTemplateShape {
   name: string;
   description: string;
   mimeType: string;
+  _meta: { 'worldmonitor/access': McpAccessClass };
 }
 
 export const RESOURCE_LIST_RESPONSE: PublicResourceShape[] = PUBLIC_RESOURCE_REGISTRY.map((r) => ({
@@ -194,14 +387,20 @@ export const RESOURCE_LIST_RESPONSE: PublicResourceShape[] = PUBLIC_RESOURCE_REG
   name: r.name,
   description: r.description,
   mimeType: r.mimeType,
+  _meta: { 'worldmonitor/access': 'free' },
 }));
 
-export const RESOURCE_TEMPLATE_LIST_RESPONSE: ResourceTemplateShape[] = TEMPLATE_RESOURCE_REGISTRY.map((r) => ({
-  uriTemplate: r.uriTemplate,
-  name: r.name,
-  description: r.description,
-  mimeType: r.mimeType,
-}));
+export const RESOURCE_TEMPLATE_LIST_RESPONSE: ResourceTemplateShape[] = TEMPLATE_RESOURCE_REGISTRY.map((r) => {
+  const tool = TOOL_REGISTRY.find((candidate) => candidate.name === r.tool);
+  if (!tool) throw new Error(`Resource template ${r.uriTemplate} references unknown tool ${r.tool}`);
+  return {
+    uriTemplate: r.uriTemplate,
+    name: r.name,
+    description: r.description,
+    mimeType: r.mimeType,
+    _meta: { 'worldmonitor/access': toolAccess(tool) },
+  };
+});
 
 // Exact-match set of the concrete public URIs. The handler consults this to
 // decide whether a `resources/read` is anonymously servable — ONLY the exact
@@ -220,7 +419,7 @@ export function isPublicResourceUri(uri: unknown): boolean {
 // Serves a concrete PUBLIC_RESOURCE_REGISTRY entry via its direct `read()`.
 // No auth context, no dispatchToolsCall, no Pro reservation — the content is
 // metadata-only (a freshness envelope), so this is safe to serve to an
-// anonymous caller, mirroring `prompts/list` / `describe_tool`. The handler
+// anonymous caller, mirroring `prompts/list`. The handler
 // only routes a request here when `isPublicResourceUri(uri)` is true, so the
 // `-32602` fallback below is a fail-explicit guard for a broken invariant.
 export async function buildPublicResourceResponse(
@@ -288,7 +487,11 @@ export async function buildResourceResponse(
   // Forwarded verbatim to the dispatcher so a template read is capped at the
   // caller's PLAN allowance, exactly like the equivalent tools/call. Dropping
   // it here would reopen the quota asymmetry this path exists to close.
-  mcpDailyLimit?: number | null,
+  budget?: McpBudget,
+  freeAccountAllowance?: boolean,
+  // Forwarded so a denial raised inside the dispatcher carries the same
+  // WWW-Authenticate as the equivalent tools/call (#6716).
+  resourceMetadataUrl?: string,
 ): Promise<Response> {
   const outerId = body.id ?? null;
   const params = body.params as { uri?: unknown } | null;
@@ -333,7 +536,17 @@ export async function buildResourceResponse(
   // budget gate, and telemetry emission. Returns a Response with
   // the standard JSON-RPC envelope. We parse, repackage, and re-emit
   // under the OUTER id.
-  const dispatched = await dispatchToolsCall(req, context, deps, innerBody, corsHeaders, ctx, mcpDailyLimit);
+  const dispatched = await dispatchToolsCall(
+    req,
+    context,
+    deps,
+    innerBody,
+    corsHeaders,
+    ctx,
+    budget,
+    freeAccountAllowance,
+    resourceMetadataUrl,
+  );
 
   // Parse the dispatched body. dispatched.json() is safe — the dispatcher
   // always emits JSON-RPC, never streams or returns null bodies for these
@@ -348,15 +561,17 @@ export async function buildResourceResponse(
     // a 200 with _budget_exceeded inside content[0].text — handled below
     // as a success-shape envelope, not an error — see PR 4 design).
     //
-    // Forward Retry-After from the inner response so quota-exhaustion
-    // (429 with seconds-until-UTC-midnight) and reservation-failure (503
-    // with 5s) honour the same client back-off contract tools/call does.
-    // Without this, a correctly-implemented client back-off would retry
-    // immediately on resources/read while waiting correctly on tools/call
-    // — directly contradicting the auth-symmetry contract.
+    // Forward Retry-After and X-Billing-Verification from the inner response
+    // so quota-exhaustion (429 with seconds-until-UTC-midnight),
+    // reservation-failure (503 with 5s), and mid-call billing denials
+    // honour the same client contract tools/call does. Dropping
+    // X-Billing-Verification (#7269) made a 503 look like rate-limit
+    // degradation and a 403 look like an ordinary tier precheck.
     const errorHeaders: Record<string, string> = withMcpNoStore({ 'Content-Type': 'application/json', ...corsHeaders });
-    const retryAfter = dispatched.headers.get('Retry-After');
-    if (retryAfter !== null) errorHeaders['Retry-After'] = retryAfter;
+    for (const name of ['Retry-After', 'X-Billing-Verification'] as const) {
+      const value = dispatched.headers.get(name);
+      if (value !== null) errorHeaders[name] = value;
+    }
     return new Response(
       JSON.stringify({ jsonrpc: '2.0', id: outerId, error: innerBodyParsed.error }),
       { status: dispatched.status, headers: errorHeaders },

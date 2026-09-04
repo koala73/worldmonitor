@@ -28,7 +28,7 @@
 #   AI_DIGEST_ENABLED=0           (kill switch for AI summary LLM call)
 # =============================================================================
 
-FROM node:24-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd
+FROM node:24-alpine@sha256:e67514e5d0f6c46656005e1b693b2ec9d52e80b641307de684d4a015ba7a4eaf
 
 WORKDIR /app
 
@@ -74,6 +74,9 @@ COPY shared/url-classifier.js ./shared/
 # brief-filter.js and digest compose paths import ephemeral-live-classifier.js
 # to drop expiring WATCH LIVE / live-event programming from delayed briefs.
 COPY shared/ephemeral-live-classifier.js shared/ephemeral-live-classifier.d.ts ./shared/
+# seed-digest-notifications.mjs imports shared/story-phase.js for the
+# notification-path phase derivation and digest email badge rendering.
+COPY shared/story-phase.js shared/story-phase.d.ts ./shared/
 # brief-filter.js imports diplomacy-keywords.json (canonical lead-coherence
 # keyword set). seed-digest-notifications.mjs ALSO imports it directly.
 # Without this COPY, the cron crashes at startup with ERR_MODULE_NOT_FOUND
@@ -88,6 +91,14 @@ COPY shared/diplomacy-keywords.json ./shared/
 COPY shared/ticker-extract.js shared/ticker-extract.d.ts ./shared/
 COPY shared/stocks.json ./shared/
 COPY scripts/shared/notification-dedup.cjs ./scripts/shared/
+# #6428: corroboration counts publishers, not feed labels. Imported by
+# seed-digest-notifications.mjs (the corroboration run metric) as
+# shared/publisher-families.js, and by scripts/lib/digest-delivery-plan.mjs
+# (the cooldown source-evolution bypass) as scripts/shared/publisher-families.js
+# — the same module reached through two roots, so BOTH copies must ship.
+# Guarded by tests/dockerfile-digest-notifications-imports.test.mjs.
+COPY shared/publisher-families.js shared/publisher-families.d.ts ./shared/
+COPY scripts/shared/publisher-families.js ./scripts/shared/
 COPY shared/brief-llm-core.js shared/brief-llm-core.d.ts ./shared/
 COPY server/_shared/brief-render.js server/_shared/brief-render.d.ts ./server/_shared/
 # llm-sanitize is imported by scripts/lib/brief-llm.mjs on the fallback

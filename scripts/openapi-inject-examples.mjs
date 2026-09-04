@@ -169,9 +169,37 @@ const GDELT_TOPIC_EXAMPLE_ID = (() => {
 // undefined to fall through. `series_id` / `series_ids` is shared by FRED (no
 // enum, needs an override) and BLS (enum-resolved upstream) — disambiguate by
 // operation.
+// Real, documented fields a specific operation's example should not FEATURE.
+//
+// Distinct from honeypots (security decoys that must never be advertised):
+// these are legitimate response fields whose only truthful value in the state
+// the example depicts is the enum zero value — which
+// tests/openapi-examples-contract.test.mjs rightly bans from examples, since a
+// sample showing `_UNSPECIFIED` teaches nothing. Emitting any other member
+// instead would contradict the rest of the payload, so the honest option is to
+// leave the field out and let the schema below document it.
+//
+// Dropping it here also frees a MAX_OPTIONAL_PROPERTIES slot for a field that
+// IS informative in that state.
+function isCuratedOmission(key, context = {}) {
+  const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
+  // GetTradeFlows / GetTariffTrends: a 200 carrying rows always has
+  // unavailableReason at the UNSPECIFIED zero value. The generic enum picker
+  // skips the zero value and so paired rows with INVALID_REQUEST — a response
+  // the handler cannot produce. See #6309 / #6316.
+  return key === 'unavailableReason'
+    && (where.includes('gettradeflows') || where.includes('get-trade-flows')
+      || where.includes('gettarifftrends') || where.includes('get-tariff-trends'));
+}
+
 function overrideStringExample(key, context = {}) {
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   if (key === 'jmespath') return 'keys(@)';
+  if (where.includes('listvulnerabilityrankings') || where.includes('list-vulnerability-rankings')) {
+    if (key === 'commodityid') return 'crude_oil';
+    if (key === 'band') return 'high';
+    if (key === 'state') return 'ok';
+  }
   // RunScenario's async-job envelope (202 Accepted, see
   // openapi-inject-async-jobs.mjs): status is ALWAYS "pending" at enqueue
   // time, and statusUrl is the server-computed GetScenarioStatus poll URL —
@@ -184,6 +212,39 @@ function overrideStringExample(key, context = {}) {
         ? 'pending'
         : '/api/scenario/v1/get-scenario-status?jobId=scenario%3A1717200000000%3Aabcd1234';
     }
+  }
+  // GetTradeFlows' 200 example must depict a SERVED response. The field-name
+  // heuristic otherwise picks "156" for partnerCountry (China — a partner the
+  // WTO indicators behind this RPC cannot answer at all, so it could never
+  // appear on a served row) and the first enum member other than the zero value
+  // for unavailableReason, producing rows and INVALID_REQUEST together: a state
+  // the handler cannot emit. See #6309.
+  if (where.includes('gettradeflows') || where.includes('get-trade-flows')) {
+    if (key === 'partnercountry') return '000';
+    if (key === 'reportingcountry') return '840';
+    if (key === 'unavailablereason') return 'TRADE_FLOW_UNAVAILABLE_REASON_UNSPECIFIED';
+    if (key === 'productsector') return 'Total merchandise';
+  }
+  // GetTariffTrends' 200 example must depict a SERVED response. productSector
+  // on a served row is the All-products aggregate label; partnerCountry on the
+  // datapoint is "World" (TP_A_0010 has no partner dimension). Request
+  // parameters stay inside their buf.validate patterns — constrainedString
+  // maps empty string to the literal "example", so use non-empty valid values.
+  // See #6316.
+  if (where.includes('gettarifftrends') || where.includes('get-tariff-trends')) {
+    if (key === 'reportingcountry') return '840';
+    if (key === 'unavailablereason') return 'TARIFF_TREND_UNAVAILABLE_REASON_UNSPECIFIED';
+    const isParam = context.exampleSurface === 'parameter' || context.exampleSurface === 'request';
+    if (key === 'partnercountry') return isParam ? '156' : 'World';
+    if (key === 'productsector') return isParam ? 'all' : 'All products';
+  }
+  // GetFoodStocks' commodity is a closed slug set enforced by
+  // normalizeFoodStocksCommodity; the heuristic's empty-string -> "example"
+  // fallback published a value the handler rejects with 400, so anyone running
+  // the documented example got a validation error. countryCode already resolves
+  // to a real ISO-2 via the country heuristic.
+  if (where.includes('getfoodstocks') || where.includes('get-food-stocks')) {
+    if (key === 'commodity') return 'corn';
   }
   if (key === 'period' && where.includes('getsectorsummary')) return '1d';
   if (key === 'timespan' && where.includes('searchgdeltdocuments')) return '15min';
@@ -223,6 +284,14 @@ function overrideStringExample(key, context = {}) {
   }
   if (key === 'seriesid' || key === 'seriesids') {
     if (where.includes('fred')) return FRED_SERIES_EXAMPLE_ID;
+  }
+  // ListCommodityQuotes only accepts supported commodity symbols (see #6307);
+  // the generic `symbol`/`symbols` heuristic emits `AAPL` which the handler
+  // now rejects with HTTP 400. Pin a supported commodity futures symbol for
+  // both the query param (`symbols`) and response quote fields (`symbol`).
+  if ((key === 'symbols' || key === 'symbol')
+      && (where.includes('listcommodityquotes') || where.includes('list-commodity-quotes'))) {
+    return 'GC=F';
   }
   return undefined;
 }
@@ -506,6 +575,7 @@ function patternString(pattern, key) {
 
 function stringExample(name, schema = {}, context = {}) {
   const key = normalizeKey(name || context.name || context.operationId);
+  const parent = normalizeKey(context.parent || '');
   const description = String(schema.description ?? context.description ?? '').toLowerCase();
   const where = `${context.operationId ?? ''} ${context.path ?? ''}`.toLowerCase();
   // The ODP Patent File Wrapper source cannot populate this compatibility
@@ -517,6 +587,18 @@ function stringExample(name, schema = {}, context = {}) {
   // If the contract's pattern ever changes this falls through to the generic
   // heuristic and the schema-validity check reds — the correct failure mode.
   if (schema.pattern === '^(conflict|military|energy)?$') return 'conflict';
+  if (schema.pattern === '^(?:|USMCA|EU27|BRICS|GCC|ASEAN|NATO)$') return 'NATO';
+  if (key === 'unavailablereason') return '';
+  if (key === 'countrycode' && parent === 'inputs') return '';
+  if (key === 'quality') return 'observed';
+  if (schema.pattern === '^(?:food|energy|demographics|technology|defense)$') return 'food';
+  if (schema.pattern === '^(?:|severe-deficit|material-deficit|mixed-capability|strong-capability|high-capability)$') return 'mixed-capability';
+  if (schema.pattern === '^(?:country-weighted-components|aggregate-physical-inputs|population-weighted-continuous-score)$') return 'country-weighted-components';
+  if (schema.pattern?.includes('source-unavailable|country-unavailable|invalid-value')) return 'source-unavailable';
+  if (schema.pattern === '^(?:|observed|retained|derived)$') return 'observed';
+  if (schema.pattern === '^[A-Z]{2}$') return 'US';
+  if (schema.pattern === '^(?:|[A-Z]{2})$') return 'US';
+  if (key === 'reason' && where.includes('getphysicaldivergenceindex')) return '';
   // get-similar-events `situation` enforces min_len 10; the generic
   // placeholder is shorter and produces an un-runnable request sample.
   if (key === 'situation') return constrainedString('chokepoint closure with an energy price spike', schema);
@@ -556,6 +638,7 @@ function stringExample(name, schema = {}, context = {}) {
   if (key.includes('toiso')) return constrainedString('US', schema);
   if (key.includes('iso3')) return constrainedString('USA', schema);
   if (key.includes('iso2') || key.includes('country') || key.includes('countrycode')) return constrainedString('US', schema);
+  if (key === 'members' || key === 'includedmembers') return constrainedString('US', schema);
   if (key.includes('bbox')) return constrainedString('-74.10,40.60,-73.70,40.90', schema);
   if (key.includes('lat')) return constrainedString('40.7128', schema);
   if (key.includes('lng') || key.includes('lon')) return constrainedString('-74.0060', schema);
@@ -595,6 +678,7 @@ function numberExample(name, schema = {}, integer = false) {
   // Deliberately `ordinal` only, NOT `index`: in this repo `index` is a price index
   // (base = 100) on ConsumerPricesService, where 0 is a nonsense example value.
   if (key === 'ordinal') value = 0;
+  else if (key === 'score' && schema.minimum === 0 && schema.maximum === 5) value = 3;
   else if (key.includes('page') || key.includes('limit')) value = 25;
   else if (key.includes('days')) value = 7;
   else if (key.includes('closuredays')) value = 30;
@@ -754,6 +838,33 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
   if (ref) {
     if (seen.has(ref)) return {};
     seen = new Set([...seen, ref]);
+    const resolvedName = refName(ref);
+    if (resolvedName === 'ScorecardObservation') {
+      return {
+        name: 'internetUsePercent',
+        value: 92.4,
+        year: 2025,
+        unit: 'percent',
+        source: 'World Bank',
+        indicatorCode: 'IT.NET.USER.ZS',
+      };
+    }
+    if (resolvedName === 'GetFiveFactorScorecardResponse' || resolvedName === 'GetBlocScorecardResponse') {
+      return {
+        scorecard: exampleForSchema(schema.properties.scorecard, spec, { ...context, name: 'scorecard' }, depth + 1, seen),
+        unavailable: false,
+        unavailableReason: '',
+      };
+    }
+    if (resolvedName === 'ListFiveFactorScorecardsResponse') {
+      return {
+        methodologyVersion: '1.0.0',
+        computedAt: '2026-01-15T12:00:00Z',
+        scorecards: exampleForSchema(schema.properties.scorecards, spec, { ...context, name: 'scorecards' }, depth + 1, seen),
+        unavailable: false,
+        unavailableReason: '',
+      };
+    }
   }
 
   if (schema.example !== undefined) return clone(schema.example);
@@ -786,9 +897,12 @@ function exampleForSchema(schema, spec, context = {}, depth = 0, seen = new Set(
     // Drop honeypot fields before slot selection so they never appear in the
     // example and never consume a MAX_OPTIONAL_PROPERTIES slot from a real field.
     const isHoneypot = (key) => isHoneypotField(props[key], spec);
-    const required = new Set((Array.isArray(schema.required) ? schema.required : []).filter((key) => !isHoneypot(key)));
+    // Curated omissions join honeypots in being dropped BEFORE slot selection,
+    // so the freed slot goes to a field that actually informs the example.
+    const isDropped = (key) => isHoneypot(key) || isCuratedOmission(key, context);
+    const required = new Set((Array.isArray(schema.required) ? schema.required : []).filter((key) => !isDropped(key)));
     const optional = Object.keys(props)
-      .filter((key) => !required.has(key) && !isHoneypot(key))
+      .filter((key) => !required.has(key) && !isDropped(key))
       .slice(0, MAX_OPTIONAL_PROPERTIES);
     const keys = [...required, ...optional];
     if (keys.length === 0) {

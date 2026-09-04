@@ -1,9 +1,14 @@
 #!/usr/bin/env node
 import { runBundle, HOUR, DAY } from './_bundle-runner.mjs';
 import { CHINA_MACRO_CACHE_KEY } from './_china-macro-contract.mjs';
+import { EDUCATION_SECTION_TIMEOUT_MS } from './seed-education-attainment.mjs';
+import { PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS } from './seed-physical-premiums.mjs';
 
-await runBundle('macro', [
-  { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', canonicalKey: 'economic:bis:policy:v1', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
+const EDUCATION_PRIORITY_UTC_DAY = 0;
+const EDUCATION_SECTION = { label: 'Education-Attainment', script: 'seed-education-attainment.mjs', seedMetaKey: 'resilience:education-attainment', canonicalKey: 'resilience:education-attainment:v1', completionMetaKey: 'seed-completion:resilience:education-attainment', intervalMs: 7 * DAY, timeoutMs: EDUCATION_SECTION_TIMEOUT_MS };
+
+const MACRO_SECTIONS = [
+  { label: 'BIS-Data', script: 'seed-bis-data.mjs', seedMetaKey: 'economic:bis', canonicalKey: 'economic:bis:policy:v1', completionMetaKey: 'seed-completion:economic:bis', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
   // Bank of Russia official RUB rates + key policy rate. Three sequential cbr.ru
   // calls (daily table, prior day for change1d, KeyRate SOAP history); the two
   // required ones use withRetry(fn, 1, 2000) = 2 attempts x 15s + 2s backoff, so
@@ -12,7 +17,12 @@ await runBundle('macro', [
   // ddos-guard — aborts through runSeed's graceful last-good path rather than
   // being SIGTERM'd here, which the runner counts as a hard section failure.
   // 300_000 matches the peer sections and leaves the publish phase headroom.
-  { label: 'CBR-Rates', script: 'seed-cbr-rates.mjs', seedMetaKey: 'economic:cbr-rates', canonicalKey: 'economic:cbr-rates:v1', intervalMs: DAY, timeoutMs: 300_000 },
+  { label: 'CBR-Rates', script: 'seed-cbr-rates.mjs', seedMetaKey: 'economic:cbr-rates', canonicalKey: 'economic:cbr-rates:v1', completionMetaKey: 'seed-completion:economic:cbr-rates', intervalMs: DAY, timeoutMs: 300_000 },
+  // Bank of Canada Valet (CAD FX + overnight target + 2/5/10y yields) and
+  // Statistics Canada WDS (same-day cube radar + CPI/LFS for the CA overlay).
+  // Independent clocks: Valet is recent=1, WDS is the seeder UTC date path.
+  { label: 'BoC-Valet', script: 'seed-boc-valet.mjs', seedMetaKey: 'economic:boc-valet', canonicalKey: 'economic:boc-valet:v1', completionMetaKey: 'seed-completion:economic:boc-valet', intervalMs: DAY, timeoutMs: 120_000 },
+  { label: 'StatCan-WDS', script: 'seed-statcan-wds.mjs', seedMetaKey: 'economic:statcan-wds', canonicalKey: 'economic:statcan-wds:v1', completionMetaKey: 'seed-completion:economic:statcan-wds', intervalMs: DAY, timeoutMs: 120_000 },
   // Official-source requests are sequential and bounded per host. Blocked
   // PBoC/GACC candidates stay explicitly unavailable rather than using proxies.
   { label: 'China-Macro', script: 'seed-china-macro.mjs', seedMetaKey: 'economic:china-macro', freshnessMetaKey: 'seed-meta:economic:china-macro-transport', completionMetaKey: 'seed-meta:economic:china-macro-complete', canonicalKey: CHINA_MACRO_CACHE_KEY, requireCanonical: true, intervalMs: 36 * HOUR, timeoutMs: 240_000 },
@@ -21,8 +31,14 @@ await runBundle('macro', [
   // a 400ms same-host cadence. The section is independent from macro sources:
   // failures retain the last valid policy event set through runSeed.
   { label: 'China-Policy-Events', script: 'seed-china-policy-events.mjs', seedMetaKey: 'china:policy-events', canonicalKey: 'china:policy-events:v1', intervalMs: 6 * HOUR, timeoutMs: 220_000 },
-  { label: 'BIS-Extended', script: 'seed-bis-extended.mjs', seedMetaKey: 'economic:bis-extended', canonicalKey: 'economic:bis:dsr:v1', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
-  { label: 'BLS-Series', script: 'seed-bls-series.mjs', seedMetaKey: 'economic:bls-series', canonicalKey: 'bls:series:v1', intervalMs: DAY, timeoutMs: 120_000 },
+  { label: 'BIS-Extended', script: 'seed-bis-extended.mjs', seedMetaKey: 'economic:bis-extended', canonicalKey: 'economic:bis:dsr:v1', completionMetaKey: 'seed-completion:economic:bis-extended', intervalMs: 12 * HOUR, timeoutMs: 300_000 },
+  { label: 'BLS-Series', script: 'seed-bls-series.mjs', seedMetaKey: 'economic:bls-series', canonicalKey: 'bls:series:v1', completionMetaKey: 'seed-completion:economic:bls-series', intervalMs: DAY, timeoutMs: 120_000 },
+  // SGE SHAU/SHAG daily PM benchmarks joined only to the already-seeded
+  // commodity and FX snapshots. The seeder fails closed unless the deployment
+  // has explicitly activated the documented redistribution/display license.
+  // The fetch, canonical switch, three derived Redis waves, and shared
+  // bookkeeping all fit this exported structural budget with failure headroom.
+  { label: 'Physical-Premiums', script: 'seed-physical-premiums.mjs', seedMetaKey: 'market:physical-premium', canonicalKey: 'market:physical-premium:v1', completionMetaKey: 'seed-completion:market:physical-premium', intervalMs: DAY, timeoutMs: PHYSICAL_PREMIUM_SECTION_TIMEOUT_MS },
   { label: 'Eurostat', script: 'seed-eurostat-country-data.mjs', seedMetaKey: 'economic:eurostat-country-data', canonicalKey: 'economic:eurostat-country-data:v1', intervalMs: DAY, timeoutMs: 300_000 },
   { label: 'Eurostat-HousePrices', script: 'seed-eurostat-house-prices.mjs', seedMetaKey: 'economic:eurostat-house-prices', canonicalKey: 'economic:eurostat:house-prices:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
   { label: 'Eurostat-GovDebtQ', script: 'seed-eurostat-gov-debt-q.mjs', seedMetaKey: 'economic:eurostat-gov-debt-q', canonicalKey: 'economic:eurostat:gov-debt-q:v1', intervalMs: 2 * DAY, timeoutMs: 300_000 },
@@ -35,11 +51,29 @@ await runBundle('macro', [
   // than provisioning a new bundle service). All 3 feed the new dim's
   // fail-closed preflight (RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true).
   { label: 'WB-External-Debt', script: 'seed-wb-external-debt.mjs', seedMetaKey: 'economic:wb-external-debt', canonicalKey: 'economic:wb-external-debt:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
-  { label: 'BIS-LBS', script: 'seed-bis-lbs.mjs', seedMetaKey: 'economic:bis-lbs', canonicalKey: 'economic:bis-lbs:v1', intervalMs: 7 * DAY, timeoutMs: 600_000 },
+  { label: 'BIS-LBS', script: 'seed-bis-lbs.mjs', seedMetaKey: 'economic:bis-lbs', canonicalKey: 'economic:bis-lbs:v1', intervalMs: 7 * DAY, timeoutMs: 300_000 },
   // FATF fetches 3 URLs (entry sequential, black+grey parallel) through a 6-tier
   // fallback chain (direct → proxy → wayback-cdx-direct → wayback-cdx-proxy →
   // wayback-snap-direct → wayback-snap-proxy, ≤125s/URL). Worst-case ≤250s;
   // 300_000 gives ~50s margin and matches peer sections. Pre-PR-#3415 the section
   // was 120_000 — too tight for the multi-tier fallback, would SIGTERM mid-fetch.
   { label: 'FATF-Listing', script: 'seed-fatf-listing.mjs', seedMetaKey: 'economic:fatf-listing', canonicalKey: 'economic:fatf-listing:v1', intervalMs: 30 * DAY, timeoutMs: 300_000 },
-]);
+];
+
+// Education is normally last so a persistent failure in the new flag-dark
+// producer cannot starve established production members every day. Give it
+// first priority on one UTC day each week so sustained production load cannot
+// defer its first successful envelope forever. A persistent education outage
+// can consume at most one day's first slot per week; production keeps the other
+// six days.
+const educationRunsFirst = new Date().getUTCDay() === EDUCATION_PRIORITY_UTC_DAY;
+const sections = educationRunsFirst
+  ? [EDUCATION_SECTION, ...MACRO_SECTIONS]
+  : [...MACRO_SECTIONS, EDUCATION_SECTION];
+
+await runBundle('macro', sections, {
+  // Railway kills cron containers at 10 minutes. Defer sections whose full
+  // timeout plus SIGTERM/SIGKILL grace cannot fit, preserving completed work
+  // and the terminal reason in logs.
+  maxBundleMs: 570_000,
+});

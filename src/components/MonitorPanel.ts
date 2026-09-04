@@ -4,7 +4,7 @@ import type { Monitor, NewsItem } from '@/types';
 import { MONITOR_COLORS } from '@/config';
 import { generateId, formatTime, getCSSColor } from '@/utils';
 import { sanitizeUrl } from '@/utils/sanitize';
-import { h, replaceChildren, clearChildren } from '@/utils/dom-utils';
+import { h, replaceChildren } from '@/utils/dom-utils';
 
 export class MonitorPanel extends Panel {
   private monitors: Monitor[] = [];
@@ -17,8 +17,6 @@ export class MonitorPanel extends Panel {
   }
 
   private renderInput(): void {
-    clearChildren(this.content);
-
     const input = h('input', {
       type: 'text',
       className: 'monitor-input',
@@ -37,9 +35,9 @@ export class MonitorPanel extends Panel {
     const monitorsList = h('div', { id: 'monitorsList' });
     const monitorsResults = h('div', { id: 'monitorsResults' });
 
-    this.content.appendChild(inputContainer);
-    this.content.appendChild(monitorsList);
-    this.content.appendChild(monitorsResults);
+    // Route through the sanctioned helper (#6557): the monitor UI is the
+    // panel's authoritative content — atomic replace with error-state clear.
+    this.setContentNodes(inputContainer, monitorsList, monitorsResults);
 
     this.renderMonitorsList();
   }
@@ -92,7 +90,7 @@ export class MonitorPanel extends Panel {
 
     if (this.monitors.length === 0) {
       replaceChildren(results,
-        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+        h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 12px;' },
           t('components.monitor.addKeywords'),
         ),
       );
@@ -127,7 +125,7 @@ export class MonitorPanel extends Panel {
 
     if (unique.length === 0) {
       replaceChildren(results,
-        h('div', { style: 'color: var(--text-dim); font-size: 10px; margin-top: 12px;' },
+        h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin-top: 12px;' },
           t('components.monitor.noMatches', { count: String(news.length) }),
         ),
       );
@@ -139,7 +137,7 @@ export class MonitorPanel extends Panel {
       : `${unique.length} ${unique.length === 1 ? t('components.monitor.match') : t('components.monitor.matches')}`;
 
     replaceChildren(results,
-      h('div', { style: 'color: var(--text-dim); font-size: 10px; margin: 12px 0 8px;' }, countText),
+      h('div', { style: 'color: var(--text-dim); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); margin: 12px 0 8px;' }, countText),
       ...unique.slice(0, 10).map((item) =>
         h('div', {
           className: 'item',

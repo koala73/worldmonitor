@@ -36,6 +36,15 @@ export const IN_FLIGHT_STATUSES = Object.freeze([
 // even though this record carries the newest commit SHA.
 export const FAILED_STATUSES = Object.freeze(['FAILED']);
 
+const VIEWER_ACTIVE_DEPLOYMENTS = new WeakSet();
+const RFC3339_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/;
+
+export function isValidDeploymentTimestamp(value) {
+  return typeof value === 'string'
+    && RFC3339_TIMESTAMP.test(value)
+    && Number.isFinite(Date.parse(value));
+}
+
 export function isKnownStatus(status) {
   return status === REJECTED_STATUS
     || RUNNING_STATUSES.includes(status)
@@ -67,7 +76,27 @@ export function orderByRecency(deployments) {
 
 /** The newest record that actually reached a running state, or undefined. */
 export function newestRunning(orderedDeployments) {
-  return orderedDeployments.find((deployment) => RUNNING_STATUSES.includes(deployment?.status));
+  return orderedDeployments.find((deployment) => (
+    VIEWER_ACTIVE_DEPLOYMENTS.has(deployment)
+    && RUNNING_STATUSES.includes(deployment?.status)
+  )) ?? orderedDeployments.find((deployment) => RUNNING_STATUSES.includes(deployment?.status));
+}
+
+/**
+ * Keep the requested recent-event window plus an older running baseline.
+ *
+ * A busy service can have `window` newer SKIPPED records. Dropping the next
+ * record in that case also drops the Viewer-provided answer to "what is
+ * running", so retain at most that one extra record.
+ */
+export function limitDeploymentHistory(orderedDeployments, window) {
+  const limited = orderedDeployments.slice(0, window);
+  const activeRunning = orderedDeployments.find((deployment) => (
+    VIEWER_ACTIVE_DEPLOYMENTS.has(deployment)
+    && RUNNING_STATUSES.includes(deployment?.status)
+  ));
+  if (activeRunning && !limited.includes(activeRunning)) limited.push(activeRunning);
+  return limited;
 }
 
 /**
@@ -85,38 +114,139 @@ export function newestRunning(orderedDeployments) {
  *      only exist at or after head's commit time, so once the stream is older
  *      than that, no later page can hold one.
  *
- * A service still missing a RUNNING record when paging stops is `unresolved` —
- * NOT "a service with no deployments". Conflating those would let an exhausted
- * page budget fabricate NEVER_DEPLOYED for a healthy service, which is the same
- * fail-open shape as every other bug in this file's history. The caller falls
- * back to a direct per-service read for those.
+ * The Viewer-safe service projection seeds each service's active deployments,
+ * so the fleet stream only has to cross the comparison-head timestamp. That
+ * captures every recent SKIPPED/FAILED/in-flight event without paging through
+ * days of skip noise to rediscover the image Railway already identifies as
+ * active. A service still missing a RUNNING record at that boundary is
+ * `unresolved` — NOT "a service with no deployments" — and only that service
+ * falls back to a direct history read.
  */
-export function createFleetAccumulator({ serviceIds, notBefore = Number.NEGATIVE_INFINITY }) {
+export function createFleetAccumulator({
+  serviceIds,
+  notBefore = Number.NEGATIVE_INFINITY,
+  initialDeploymentsByService = new Map(),
+}) {
+  if (!(initialDeploymentsByService instanceof Map)) {
+    throw new TypeError('initial Railway deployments must be a Map keyed by service id');
+  }
   const wanted = new Set(serviceIds);
   const byService = new Map(wanted.size > 0 ? [...wanted].map((id) => [id, []]) : []);
   const covered = new Set();
+  const seenIds = new Map([...wanted].map((id) => [id, new Map()]));
+  const activeEvidenceServices = new Set();
+  const newestActiveAt = new Map();
+  const staleActiveEvidence = new Set();
   let oldestSeen = Number.POSITIVE_INFINITY;
   let exhausted = false;
+
+  const refreshCoverage = (serviceId) => {
+    const deployments = byService.get(serviceId);
+    const hasRunning = activeEvidenceServices.has(serviceId)
+      ? !staleActiveEvidence.has(serviceId) && deployments.some((deployment) => (
+        VIEWER_ACTIVE_DEPLOYMENTS.has(deployment)
+        && RUNNING_STATUSES.includes(deployment?.status)
+      ))
+      : deployments.some((deployment) => RUNNING_STATUSES.includes(deployment?.status));
+    if (hasRunning) covered.add(serviceId);
+    else covered.delete(serviceId);
+  };
+
+  const absorbDeployment = (node, { active = false } = {}) => {
+    const id = node?.serviceId;
+    if (!wanted.has(id)) return;
+    const deployments = byService.get(id);
+    const seen = seenIds.get(id);
+    if (!active
+      && !seen.has(node?.id)
+      && activeEvidenceServices.has(id)
+      && node?.status !== 'REMOVED'
+      && RUNNING_STATUSES.includes(node?.status)
+      && createdAtMs(node) >= (newestActiveAt.get(id) ?? Number.POSITIVE_INFINITY)) {
+      // A distinct deployable record newer than the earlier Viewer snapshot
+      // can be a manual upload or rollback that became active mid-scan. The
+      // old active marker is no longer proof; force a fresh direct read unless
+      // this fleet stream exhausts and therefore contains the full history.
+      staleActiveEvidence.add(id);
+      for (const deployment of deployments) VIEWER_ACTIVE_DEPLOYMENTS.delete(deployment);
+      refreshCoverage(id);
+    }
+    if (typeof node?.id === 'string' && node.id.length > 0) {
+      const existing = seen.get(node.id);
+      if (existing) {
+        // The active projection is read first. The later fleet stream can
+        // carry the same deployment after BUILDING became FAILED/SUCCESS, so
+        // replace only that older snapshot. Repeated fleet records stay
+        // newest-first and the first one wins.
+        if (!active && existing.active) {
+          const preserveActive = !staleActiveEvidence.has(id)
+            && deployments[existing.index]?.status === node?.status;
+          if (preserveActive) VIEWER_ACTIVE_DEPLOYMENTS.add(node);
+          deployments[existing.index] = node;
+          seen.set(node.id, { index: existing.index, active: preserveActive });
+          refreshCoverage(id);
+        }
+        return;
+      }
+      seen.set(node.id, { index: deployments.length, active });
+    }
+    if (active) VIEWER_ACTIVE_DEPLOYMENTS.add(node);
+    deployments.push(node);
+    refreshCoverage(id);
+  };
+
+  for (const [serviceId, deployments] of initialDeploymentsByService) {
+    if (!wanted.has(serviceId)) continue;
+    if (!Array.isArray(deployments)) {
+      throw new TypeError(`initial Railway deployments for ${serviceId} must be an array`);
+    }
+    activeEvidenceServices.add(serviceId);
+    for (const deployment of deployments) {
+      if (deployment?.serviceId !== serviceId) {
+        throw new Error(`initial Railway deployment belongs to another service while reading ${serviceId}`);
+      }
+      if (!isValidDeploymentTimestamp(deployment.createdAt)) {
+        throw new Error(`initial Railway deployment for ${serviceId} must have a valid createdAt timestamp`);
+      }
+      newestActiveAt.set(
+        serviceId,
+        Math.max(newestActiveAt.get(serviceId) ?? Number.NEGATIVE_INFINITY, Date.parse(deployment.createdAt)),
+      );
+      // Active deployment evidence answers what is serving, but it must not
+      // advance the recent-event cursor. The fleet stream still has to cross
+      // the comparison-head timestamp so a skipped or failed push cannot hide
+      // behind an older active image.
+      absorbDeployment(deployment, { active: true });
+    }
+  }
 
   return {
     absorb(nodes) {
       for (const node of nodes ?? []) {
-        const at = createdAtMs(node);
+        if (!isValidDeploymentTimestamp(node?.createdAt)) {
+          throw new Error('Railway fleet deployment must have a valid createdAt timestamp');
+        }
+        const at = Date.parse(node.createdAt);
         if (at < oldestSeen) oldestSeen = at;
-        const id = node?.serviceId;
-        if (!wanted.has(id)) continue;
-        byService.get(id).push(node);
-        if (RUNNING_STATUSES.includes(node?.status)) covered.add(id);
+        absorbDeployment(node);
       }
     },
     markExhausted() { exhausted = true; },
-    /** Every service located AND the stream is older than head — or there is no more stream. */
+    /** Recent head events are complete, or Railway proved there is no more stream. */
     get done() {
-      return exhausted || (covered.size === wanted.size && oldestSeen < notBefore);
+      return exhausted || (
+        oldestSeen < notBefore
+        && (activeEvidenceServices.size > 0 || covered.size === wanted.size)
+      );
     },
     result() {
       return {
-        byService,
+        byService: new Map(
+          [...byService].map(([serviceId, deployments]) => [
+            serviceId,
+            orderByRecency(deployments),
+          ]),
+        ),
         // Exhausting the stream proves a service genuinely has no running
         // deployment; running out of budget proves nothing.
         unresolved: exhausted ? [] : [...wanted].filter((id) => !covered.has(id)),

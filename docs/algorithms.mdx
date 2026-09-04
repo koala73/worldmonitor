@@ -9,9 +9,9 @@ description: "Detailed reference for World Monitor scoring formulas, detection a
 
 ### Country Instability Index (CII)
 
-Every Tier-1 country receives a live instability score (0-100). CII v8 tracks 31 Tier-1 countries with shared server/frontend `baselineRisk` and `eventMultiplier` coefficients plus signed 24-hour movement deltas: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
+Every Tier-1 country receives a live instability score (0-100). CII v8 tracks 31 Tier-1 countries with server-side `baselineRisk` and `eventMultiplier` coefficients plus signed 24-hour movement deltas: US, Russia, China, Ukraine, Iran, Israel, Taiwan, North Korea, Saudi Arabia, Turkey, Poland, Germany, France, UK, India, Pakistan, Syria, Yemen, Myanmar, Venezuela, Cuba, Mexico, Brazil, UAE, South Korea, Iraq, Afghanistan, Lebanon, Egypt, Japan, and Qatar. Countries outside the curated Tier-1 set use the default editorial coefficients when they are scored by supporting systems (`DEFAULT_CII_BASELINE_RISK = 15`, `DEFAULT_CII_EVENT_MULTIPLIER = 1.0`).
 
-Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get-risk-scores` RPC (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`) and are served to the browser through the cached risk-score feed. The frontend `country-instability.ts` path shares the published `baselineRisk` / `eventMultiplier` coefficients and v3 conflict curve constants, but it is a fallback/local renderer path after cached backend scores, not the source of truth for published scores:
+Authoritative CII scores come from the server-side `GET /api/intelligence/v1/get-risk-scores` RPC (`server/worldmonitor/intelligence/v1/get-risk-scores.ts`); the browser consumes them through the cached risk-score feed. The former `country-instability.ts` fallback/local renderer path after cached backend scores has been removed. The module now keeps selected raw per-country signals for country-detail surfaces and learning-state gating, but it does not compute or render CII scores.
 
 | Component            | Weight | Details |
 | -------------------- | ------ | ------- |
@@ -105,7 +105,7 @@ If an event falls outside the priority centroid table, the fallback density uses
 
 ### Strategic Theater Posture Assessment
 
-Nine operational theaters are continuously assessed for military posture escalation:
+The operational-theater registry is continuously assessed for military posture escalation:
 
 | Theater               | Key Trigger                                 |
 | --------------------- | ------------------------------------------- |
@@ -165,7 +165,7 @@ Enrichment queries are batched (up to 50 aircraft per request) and cached with a
 
 ### Undersea Cable Health Monitoring
 
-Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing two live data sources:
+Beyond displaying static cable routes on the map, the system actively monitors cable health by cross-referencing its live sources:
 
 1. **NGA Navigational Warnings** — the U.S. National Geospatial-Intelligence Agency publishes maritime safety broadcasts that frequently mention cable repair operations. The system filters these warnings for cable-related keywords (`CABLE`, `CABLESHIP`, `SUBMARINE CABLE`, `FIBER OPTIC`, etc.) and extracts structured data: vessel names, DMS/decimal coordinates, advisory severity, and repair ETAs. Each warning is matched to the nearest cataloged undersea cable within a 5° geographic radius.
 
@@ -268,7 +268,7 @@ Every RSS headline is tokenized into individual terms and tracked in per-term fr
 
 The tokenizer extracts CVE identifiers (`CVE-2024-xxxxx`), APT/FIN threat actor designators, and 16 tracked world-leader names, including multi-word names such as "Xi Jinping" and "Kim Jong Un" that would be lost by naive whitespace splitting. A configurable blocklist suppresses common noise terms.
 
-Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
+Detected spikes are auto-summarized via Groq (rate-limited to 5 summaries/hour) and emitted as `keyword_spike` signals into the correlation engine, where they compound with other signal types for convergence detection. Each emitted signal carries the evidence it was built from — the distinct source names behind its source count, and up to 6 contributing articles with their title, source, link and publication time when supplied by the feed — so the alert can be drilled into rather than only silenced. The term registry is capped at 10,000 entries with LRU eviction to bound memory usage. All thresholds (spike multiplier, min count, cooldown, blocked terms) are configurable via the Settings panel.
 
 ### Temporal Baseline Anomaly Detection
 
@@ -303,6 +303,7 @@ Keyword spikes, hotspot escalations, and military surges remain inputs to correl
 - **RSS source tier gating** — Tier 3+ sources (niche outlets, aggregators) require a non-keyword classification (`threat.source` is `ml` or `llm`) to fire an alert; Tier 1–2 sources bypass this gate
 - **RSS story-phase gate** — sustained and fading stories are suppressed; the banner is reserved for breaking/developing stories or items without story metadata
 - **RSS importance floor** — items with `importanceScore < 30` are too low-signal for the banner
+- **RSS credibility score** — each headline also carries a 0-100 `credibilityScore` for source reliability (tier, propaganda risk, corroboration), distinct from importance; see [News Credibility Score](/methodology/news-credibility)
 - **RSS startup grace** — RSS alerts are suppressed for the first 10 seconds after app load so the initial feed fetch does not replay old articles as breaking news
 - **RSS user sensitivity control** — configurable between `critical-only` (only critical severity fires) and `critical-and-high` (critical and high severities both fire)
 - **OREF direct escalation** — OREF siren alerts are exempt from the RSS gates and global cooldown; any non-empty siren batch raises a critical alert when alerts are enabled and the event is not a duplicate
@@ -323,24 +324,26 @@ All real-time data sources feed into a central signal aggregator that builds a u
 
 ### Cross-Stream Correlation Engine
 
-Beyond aggregating signals by geography, the system detects meaningful correlations *across* data streams — identifying patterns that no single source would reveal. 14 signal types are continuously evaluated:
+Beyond aggregating signals by geography, the system detects meaningful correlations *across* data streams — identifying patterns that no single source would reveal. The correlation engine emits 11 signal types. The `SignalType` union declares 14; two remaining rows are reserved names with no detector, and `hotspot_escalation` has an unwired decision function. They are marked **Not emitted**:
 
 | Signal Type               | Detection Logic                                                                 | Why It Matters                                           |
 | ------------------------- | ------------------------------------------------------------------------------- | -------------------------------------------------------- |
 | `prediction_leads_news`   | Polymarket probability shifts >5% before matching news headlines appear        | Prediction markets as early-warning indicators           |
-| `news_leads_markets`      | News velocity spike precedes equity/crypto price move by 15–60 min             | Informational advantage detection                        |
+| `news_leads_markets`      | **Not emitted** — no detector constructs it                                     | Reserved name; produces nothing today                    |
 | `silent_divergence`       | Significant market movement with no corresponding news volume                   | Potential insider activity or unreported events           |
 | `velocity_spike`          | News cluster sources-per-hour exceeds 6+ from Tier 1–2 outlets                | Breaking story detection                                 |
 | `keyword_spike`           | Trending term exceeds 3× its 7-day baseline                                   | Emerging narrative detection                             |
 | `convergence`             | 3+ signal types co-locate in same 1°×1° geographic cell                        | Multi-domain crisis indicator                            |
 | `triangulation`           | Same entity appears across news + military tracking + market signals           | High-confidence focal point identification               |
-| `flow_drop`               | ETF flow estimates reverse direction while price continues                     | Smart money divergence                                   |
+| `flow_drop`               | Headlines carry both a pipeline keyword and a flow-disruption keyword           | Physical commodity supply constraint                     |
 | `flow_price_divergence`   | Commodity prices move opposite to shipping flow indicators                     | Supply chain disruption signal                           |
 | `geo_convergence`         | Geographic convergence alert from the spatial binning system                   | Regional crisis acceleration                             |
 | `explained_market_move`   | Market price change has a matching news cluster with causal keywords           | Attributable market reaction                             |
-| `hotspot_escalation`      | Hotspot escalation score exceeds threshold                                     | Conflict zone intensification                            |
-| `sector_cascade`          | Multiple companies in same sector move in same direction simultaneously        | Sector-wide event detection                              |
+| `hotspot_escalation`      | **Not emitted** — `shouldEmitSignal()` exists but has no caller                 | Reserved name; produces nothing today                    |
+| `sector_cascade`          | **Not emitted** — no detector constructs it                                     | Reserved name; produces nothing today                    |
 | `military_surge`          | Theater posture assessment detects unusual force concentration                 | Military escalation warning                              |
+
+`news_leads_markets`, `sector_cascade` and `hotspot_escalation` are declared in the `SignalType` union, but no code path constructs a signal with those types: they are never evaluated, never deduplicated and never surfaced. Their reserved names in the union — and the labels, emoji and locale strings that exist for them — do not make them active producers. `hotspot_escalation` has a complete decision function, `shouldEmitSignal()` in `src/services/hotspot-escalation.ts`, that nothing calls; its two-hour cooldown is never armed because `markSignalEmitted()` is never called either.
 
 Each signal carries a severity (low/medium/high), geographic coordinates, a human-readable summary, and the raw data that triggered it. Signals are deduplicated per-type with configurable cooldown windows (30 minutes to 6 hours) to prevent alert fatigue. The correlation output feeds into the AI Insights panel, where the narrative synthesis engine weaves detected correlations into a structured intelligence brief.
 

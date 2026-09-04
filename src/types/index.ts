@@ -13,6 +13,11 @@ export type DataSourceId =
   | 'outages'
   | 'cyber_threats'
   | 'weather'
+  | 'ontario_511'
+  | 'alberta_511'
+  | 'manitoba_511'
+  | 'toronto_roads'
+  | 'bc_open511'
   | 'economic'
   | 'oil'
   | 'spending'
@@ -126,6 +131,12 @@ export interface NewsItem {
   happyCategory?: HappyContentCategory;
   imageUrl?: string;
   importanceScore?: number;
+  /**
+   * 0-100 source-reliability score, distinct from importanceScore.
+   * Measures truthfulness inputs (tier, propaganda risk, corroboration),
+   * not newsworthiness. 0 is a real low score and must not be treated as absent.
+   */
+  credibilityScore?: number;
   corroborationCount?: number;
   storyMeta?: StoryMeta;
   /**
@@ -161,7 +172,14 @@ export interface ClusteredEvent {
   primaryTitle: string;
   primarySource: string;
   primaryLink: string;
+  /** Articles in the cluster — a volume signal, not a corroboration signal. */
   sourceCount: number;
+  /**
+   * Distinct PUBLISHERS behind those articles (#6428). Any "N sources"
+   * corroboration claim shown to a user reads this, never sourceCount:
+   * one newsroom's editions are one publisher.
+   */
+  uniquePublisherCount: number;
   topSources: Array<{ name: string; tier: number; url: string }>;
   allItems: NewsItem[];
   firstSeen: Date;
@@ -628,11 +646,14 @@ export interface PanelConfig {
   enabled: boolean;
   priority?: number;
   premium?: 'locked' | 'enhanced';
+  /** Absolute panel text scale. When absent, the panel follows the global scale. */
+  fontScale?: 0.9 | 1 | 1.1 | 1.25 | 1.5 | 2;
   /**
    * Set by `enforceFreePanelLimit` when the free-tier pro gate — not the user —
    * is what turned this panel off. Distinguishes "hidden because you aren't Pro"
    * from "you hid it in settings", so the gate can be reversed on upgrade
-   * without overriding a deliberate choice. Only ever set on `cw-*` panels.
+   * without overriding a deliberate choice. Used for both `cw-*` panels and
+   * ordinary panels disabled by the free panel-count cap.
    */
   proGated?: boolean;
 }
@@ -649,6 +670,10 @@ export interface MapLayers {
   radiationWatch?: boolean;
   sanctions: boolean;
   weather: boolean;
+  /** Official Canada road events and conditions from Ontario, Alberta, Toronto, and British Columbia. */
+  canadaRoads: boolean;
+  /** Alberta, B.C., and Saskatchewan province-owned emergency alerts (#6610, #6659). */
+  canadaAlerts: boolean;
   economic: boolean;
   waterways: boolean;
   outages: boolean;
@@ -883,6 +908,7 @@ export type MilitaryOperator =
 
 export interface MilitaryFlight {
   id: string;
+  source?: string;
   callsign: string;
   hexCode: string;             // ICAO 24-bit address
   registration?: string;
@@ -1110,6 +1136,7 @@ export interface ForecastPoint {
   hour: number;
   windKt: number;
   category: number;
+  geometryKind?: string;
 }
 
 export interface PastTrackPoint {
@@ -1117,6 +1144,7 @@ export interface PastTrackPoint {
   lon: number;
   windKt: number;
   timestamp: number;
+  geometryKind?: string;
 }
 
 /** A single agency report retained on a canonical tropical cyclone event. */
@@ -1160,6 +1188,13 @@ export interface NaturalEvent {
   movementSpeedKt?: number;
   forecastTrack?: ForecastPoint[];
   conePolygon?: number[][][];
+  coneGeometryKind?: string;
+  windRadii?: Array<{
+    thresholdKt?: number | null;
+    thresholdLabel?: string;
+    polygons?: number[][][][];
+    geometryKind?: string;
+  }>;
   pastTrack?: PastTrackPoint[];
   canonicalId?: string;
   matchingConfidence?: string;
@@ -1474,6 +1509,8 @@ export interface GulfInvestment {
 
 export interface MapProtestCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1492,6 +1529,8 @@ export interface MapProtestCluster {
 
 export interface MapTechHQCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1508,6 +1547,8 @@ export interface MapTechHQCluster {
 
 export interface MapTechEventCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;
@@ -1522,6 +1563,8 @@ export interface MapTechEventCluster {
 
 export interface MapDatacenterCluster {
   id: string;
+  /** Explicit leaf/group discriminant set at Supercluster flatten time (see DeckGLMap). */
+  _kind: 'leaf' | 'group';
   _clusterId?: number;
   lat: number;
   lon: number;

@@ -170,7 +170,7 @@ export function normalizeCompanyClaimInput(input: CompanyClaimInput): Normalized
   if (!input || typeof input !== 'object') throw new Error('company claim is required');
   // Own-property lookup: a plain object literal inherits `__proto__`, `constructor`,
   // `toString`, etc., and a truthiness check would let those through as a "valid" type.
-  const type = Object.hasOwn(COMPANY_CLAIM_TYPE_BY_INPUT, input.type)
+  const type = Object.prototype.hasOwnProperty.call(COMPANY_CLAIM_TYPE_BY_INPUT, input.type)
     ? COMPANY_CLAIM_TYPE_BY_INPUT[input.type]
     : undefined;
   if (!type) throw new Error('company claim type is invalid');
@@ -239,7 +239,7 @@ export interface NormalizedCompanyImportRow extends NormalizedMonitoredCompanyIn
 export function normalizeMonitoredCompanyInput(input: MonitoredCompanyInput): NormalizedMonitoredCompanyInput {
   if (!input || typeof input !== 'object') throw new Error('company input is required');
   const domicileInput = String(input.domicileCountry ?? '').trim().toUpperCase();
-  const domicileCountry = Object.hasOwn(DOMICILE_COUNTRY_BY_INPUT, domicileInput)
+  const domicileCountry = Object.prototype.hasOwnProperty.call(DOMICILE_COUNTRY_BY_INPUT, domicileInput)
     ? DOMICILE_COUNTRY_BY_INPUT[domicileInput as keyof typeof DOMICILE_COUNTRY_BY_INPUT]
     : undefined;
   if (!domicileCountry) {
@@ -314,7 +314,7 @@ export function normalizeCompanyImportBatch(inputs: CompanyImportRowInput[]): No
   const normalized = inputs.map(normalizeCompanyImportRow).sort((left, right) => left.ordinal - right.ordinal);
   const importId = normalized[0]?.clientImportId;
   for (let index = 0; index < normalized.length; index += 1) {
-    const row = normalized[index];
+    const row = normalized[index]!;
     if (row.clientImportId !== importId) throw new Error('batch rows must share one clientImportId');
     if (row.ordinal !== index) throw new Error('batch ordinals must be contiguous from 0');
   }
@@ -454,12 +454,14 @@ const MATERIAL_IMPACT_LIFECYCLE_BY_INPUT: Readonly<Record<string, string>> = {
 };
 const COVERAGE_STATE_BY_INPUT: Readonly<Record<string, string>> = {
   awaiting_first_scan: 'awaiting_first_scan',
+  identity_unresolved: 'identity_unresolved',
   adequate: 'adequate',
   partial: 'partial',
   stale: 'stale',
   unavailable: 'unavailable',
   needs_confirmation: 'needs_confirmation',
   COMPANY_COVERAGE_STATE_AWAITING_FIRST_SCAN: 'awaiting_first_scan',
+  COMPANY_COVERAGE_STATE_IDENTITY_UNRESOLVED: 'identity_unresolved',
   COMPANY_COVERAGE_STATE_ADEQUATE: 'adequate',
   COMPANY_COVERAGE_STATE_PARTIAL: 'partial',
   COMPANY_COVERAGE_STATE_STALE: 'stale',
@@ -485,10 +487,10 @@ function normalizeFilterValues(
     // Own-property lookup — see normalizeCompanyClaimInput. A truthiness check on a
     // plain object literal accepts inherited keys like `__proto__` and `constructor`
     // and returns a non-string, silently violating this function's own return type.
-    if (typeof value !== 'string' || !Object.hasOwn(vocabulary, value)) {
+    if (typeof value !== 'string' || !Object.prototype.hasOwnProperty.call(vocabulary, value)) {
       throw new Error(`${field} contains an unsupported value`);
     }
-    return vocabulary[value];
+    return vocabulary[value]!;
   });
   return [...new Set(normalized)].sort();
 }
@@ -507,7 +509,7 @@ export const normalizeImpactDirectionFilters = (values: readonly string[]): stri
 );
 
 export interface CompanyMonitoringCoverageContract {
-  coverage: 'awaiting_first_scan' | 'adequate' | 'partial' | 'stale' | 'unavailable' | 'needs_confirmation';
+  coverage: 'awaiting_first_scan' | 'identity_unresolved' | 'adequate' | 'partial' | 'stale' | 'unavailable' | 'needs_confirmation';
   observation: 'events_observed' | 'no_events_observed' | 'unknown';
   providers: Array<{
     provider: 'exa' | 'x';
@@ -519,7 +521,7 @@ export interface CompanyMonitoringCoverageContract {
 }
 
 export function assertCoverageObservation(contract: CompanyMonitoringCoverageContract): void {
-  const coverageStates = new Set(['awaiting_first_scan', 'adequate', 'partial', 'stale', 'unavailable', 'needs_confirmation']);
+  const coverageStates = new Set(['awaiting_first_scan', 'identity_unresolved', 'adequate', 'partial', 'stale', 'unavailable', 'needs_confirmation']);
   const observationStates = new Set(['events_observed', 'no_events_observed', 'unknown']);
   const providerNames = new Set(['exa', 'x']);
   const providerStates = new Set(['complete', 'partial', 'failed']);
@@ -658,7 +660,7 @@ export async function verifyOpaqueCursor<T extends CompanyMonitoringCursorClaims
   options: VerifyOpaqueCursorOptions<T>,
 ): Promise<T> {
   assertOpaqueCursorShape(cursor);
-  const [version, encodedPayload, signature] = cursor.split('.');
+  const [version, encodedPayload, signature] = cursor.split('.') as [string, string, string];
   if (!(await options.verifySignature(`${version}.${encodedPayload}`, signature))) {
     throw new Error('cursor signature is invalid');
   }

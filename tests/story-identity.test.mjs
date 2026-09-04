@@ -235,6 +235,30 @@ describe('assignStoryIdentity (#4919 acceptance)', () => {
     assert.equal(first.get(a).titleHash, second.get(a).titleHash);
   });
 
+  it('#6428: one publisher across its own feed labels is not corroboration', async () => {
+    const items = [
+      { title: 'Iran threatens to close Strait of Hormuz if US blockade continues', source: 'Reuters World' },
+      { title: 'Iran threatens to close Strait of Hormuz — live updates', source: 'Reuters US' },
+      { title: 'Iran threatens to close Strait of Hormuz if US blockade continues', source: 'Reuters Business' },
+    ];
+    const assignment = await assignStoryIdentity(items, normalizeTitle, sha256Hex);
+    assert.equal(
+      assignment.get(items[0]).corroborationCount,
+      1,
+      'three Reuters feed labels are one wire, not three independent sources',
+    );
+
+    // Premise check: the same three wordings under three real publishers must
+    // still corroborate, or the assertion above would pass on a clustering
+    // failure rather than on the family collapse.
+    const distinct = items.map((item, i) => ({
+      ...item,
+      source: ['Reuters World', 'BBC World', 'Al Jazeera'][i],
+    }));
+    const distinctAssignment = await assignStoryIdentity(distinct, normalizeTitle, sha256Hex);
+    assert.equal(distinctAssignment.get(distinct[0]).corroborationCount, 3);
+  });
+
   it('duplicate sources within a cluster count once', async () => {
     const items = [
       { title: 'Turkey hikes interest rates to 50% in surprise move', source: 'Reuters' },
@@ -386,6 +410,30 @@ describe('list-feed-digest story-identity wiring (#4924 review)', () => {
   it('coverage-miss fallback is observable, not silent', () => {
     assert.match(digestSrc, /story-identity coverage miss/, 'fallback branch must log');
   });
+
+  it('canonical adoption requires persisted anchor eligibility', () => {
+    assert.match(digestSrc, /'anchorEligible', anchorEligible \? '1' : '0'/);
+    assert.match(
+      digestSrc,
+      /isIdentityAnchorEligible\(item, identity\.corroborationCount\)/,
+      'the batch-default gate must use cluster-wide corroboration before items are mutated',
+    );
+    assert.match(digestSrc, /clusterAnchorEligibleByFinalHash/,
+      'the persisted eligibility stamp must retain trusted members excluded by the display cap');
+    assert.match(digestSrc, /'firstSeen', 'lastSeen', 'anchorEligible'/);
+    assert.match(digestSrc, /parseFreshEligibleTrackFirstSeen\(/,
+      'legacy or explicitly ineligible tracks must not anchor on firstSeen alone');
+    assert.match(digestSrc, /MAX_REDIS_PIPELINE_COMMANDS = 1000/,
+      'tracking writes must declare the hard Redis command limit');
+    assert.match(digestSrc, /STORY_ALIAS_PUBLISH_SCRIPT/,
+      'each alias cohort must use the fenced atomic publication script');
+    assert.match(digestSrc, /STORY_ALIAS_PUBLICATION_LOCK_KEY/,
+      'alias publication must use one shared cross-isolate lease');
+    assert.match(digestSrc, /aliasLockToken/,
+      'the publication script must receive the writer token as a fence');
+    assert.match(digestSrc, /memberHashes\.size > MAX_REDIS_PIPELINE_COMMANDS/,
+      'an oversized alias cohort must be deferred instead of split into a partial generation');
+  });
 });
 
 describe('hot-bucket mega-story pre-union (#4924 external review)', () => {
@@ -440,6 +488,229 @@ describe('cross-cycle canonical adoption (#4924 external review P1)', () => {
   });
 });
 
+describe('adopt-existing-track canonical (#4925 item 1)', () => {
+  it('REGRESSION: a backdated hostile wording cannot seize a live story identity', async () => {
+    // The genuine story, seen first. Its canonical anchors a story:track row
+    // whose firstSeen the digest HSETNXd at that moment.
+    const genuine = { title: 'Iran threatens to close Strait of Hormuz', source: 'Reuters', publishedAt: 5_000 };
+    const genuineIdentity = [...(await assignStoryIdentity([genuine], normalizeBasic, sha256HexNode)).values()][0];
+    const genuineHash = genuineIdentity.titleHash;
+
+    // The hostile feed backdates INSIDE the freshness window, so it wins the
+    // publishedAt comparison that picks the batch-derived canonical, and it
+    // publishes two wordings so its own alias rows out-number the genuine
+    // story's single one.
+    const hostileA = { title: 'Iran threatens to close the Strait of Hormuz soon', source: 'Farm A', publishedAt: 1_000 };
+    const hostileB = { title: 'Iran threatens to close Strait of Hormuz shortly', source: 'Farm B', publishedAt: 2_000 };
+    const batch = await assignStoryIdentity([genuine, hostileA, hostileB], normalizeBasic, sha256HexNode);
+    const clustered = batch.get(genuine);
+    assert.equal(clustered.titleHash, batch.get(hostileA).titleHash, 'all three wordings must land in one cluster');
+    assert.equal(clustered.titleHash, batch.get(hostileB).titleHash, 'all three wordings must land in one cluster');
+    const hostileHashA = await sha256HexNode(normalizeBasic(hostileA.title));
+    const hostileHashB = await sha256HexNode(normalizeBasic(hostileB.title));
+    assert.equal(clustered.titleHash, hostileHashA, 'backdating does win the batch-derived default');
+
+    // The alias vote is most-common-wins, so two hostile wordings out-vote the
+    // genuine story and absorb its track: phase re-fires, counts reset.
+    const hostileCanonical = 'hostile-canonical-hash';
+    const aliasMap = new Map([
+      [genuineHash, genuineHash],
+      [hostileHashA, hostileCanonical],
+      [hostileHashB, hostileCanonical],
+    ]);
+    assert.equal(
+      adoptExistingCanonical(clustered.memberTitleHashes, clustered.titleHash, aliasMap),
+      hostileCanonical,
+      'alias-only adoption hands the cluster to the hostile canonical',
+    );
+
+    // firstSeen is not publisher-controlled: the digest HSETNXs it when it
+    // first observes the hash. The genuine story was seen first, so its track
+    // is older and the cluster keeps its identity.
+    const trackFirstSeen = new Map([
+      [genuineHash, 1_000_000],
+      [hostileHashA, 9_000_000],
+      [hostileHashB, 9_000_001],
+    ]);
+    assert.equal(
+      adoptExistingCanonical(clustered.memberTitleHashes, clustered.titleHash, aliasMap, trackFirstSeen),
+      genuineHash,
+      'the oldest live story:track row must win over both the backdated default and the alias vote',
+    );
+  });
+
+  it('REGRESSION: a hostile pre-seed cannot outrank a later trusted anchor', async () => {
+    const hostile = {
+      title: 'Iran threatens to close Strait of Hormuz',
+      source: 'Farm A',
+      publishedAt: 1_000,
+    };
+    const trusted = {
+      title: 'Iran warns it may close the Strait of Hormuz',
+      source: 'Reuters',
+      publishedAt: 2_000,
+    };
+    const batch = await assignStoryIdentity([hostile, trusted], normalizeBasic, sha256HexNode);
+    const clustered = batch.get(hostile);
+    const hostileHash = await sha256HexNode(normalizeBasic(hostile.title));
+    const trustedHash = await sha256HexNode(normalizeBasic(trusted.title));
+
+    assert.equal(clustered.titleHash, batch.get(trusted).titleHash, 'trusted and hostile wordings must cluster');
+    assert.ok(clustered.memberTitleHashes.includes(hostileHash));
+    assert.ok(clustered.memberTitleHashes.includes(trustedHash));
+
+    // The reader drops the hostile self-alias/track because its persisted
+    // anchorEligible stamp is not '1'. The later trusted member has a valid
+    // eligible track, so it wins even though the hostile batch default was
+    // backdated earlier.
+    const eligibleAliases = new Map([[trustedHash, trustedHash]]);
+    const eligibleTracks = new Map([[trustedHash, 2_000_000]]);
+    assert.equal(
+      adoptExistingCanonical(clustered.memberTitleHashes, hostileHash, eligibleAliases, eligibleTracks),
+      trustedHash,
+    );
+  });
+
+  it('REGRESSION: an ineligible hostile A+B alias cannot bypass a later Reuters anchor', async () => {
+    const hostileA = { title: 'Iran threatens to close Strait of Hormuz', source: 'Farm A', publishedAt: 1_000 };
+    const hostileB = { title: 'Iran warns it may close the Strait of Hormuz', source: 'Farm A', publishedAt: 1_100 };
+    const trusted = { title: 'Iran warns it could close the Strait of Hormuz, Reuters reports', source: 'Reuters', publishedAt: 2_000 };
+
+    // Cycle 1: the hostile feed pre-seeds an A+B canonical and persists B's
+    // alias to that canonical. Its target track is explicitly ineligible.
+    const cycle1 = await assignStoryIdentity([hostileA, hostileB], normalizeBasic, sha256HexNode);
+    const hostileCanonical = cycle1.get(hostileA).titleHash;
+    const hostileBHash = await sha256HexNode(normalizeBasic(hostileB.title));
+
+    // Cycle 2: B + Reuters cluster. The hostile alias target is absent from
+    // the eligible alias map because its target track failed the anchor gate;
+    // Reuters remains the batch-derived/default canonical.
+    const cycle2 = await assignStoryIdentity([hostileB, trusted], normalizeBasic, sha256HexNode);
+    const clustered = cycle2.get(hostileB);
+    const trustedHash = await sha256HexNode(normalizeBasic(trusted.title));
+    assert.equal(clustered.titleHash, cycle2.get(trusted).titleHash, 'B and Reuters must cluster');
+    assert.ok(clustered.memberTitleHashes.includes(hostileBHash));
+    assert.ok(clustered.memberTitleHashes.includes(trustedHash));
+
+    const aliasesAfterTargetValidation = new Map([[trustedHash, trustedHash]]);
+    assert.equal(
+      adoptExistingCanonical(
+        clustered.memberTitleHashes,
+        trustedHash,
+        aliasesAfterTargetValidation,
+        new Map(),
+      ),
+      trustedHash,
+      'a hostile alias whose target track is not anchor-eligible must be ignored',
+    );
+    assert.notEqual(hostileCanonical, trustedHash, 'the hostile pre-seed must not remain the default');
+  });
+
+  it('precedence: oldest live track, then most-common alias, then the batch default', () => {
+    const members = ['m1', 'm2', 'm3'];
+    const aliasMap = new Map([['m1', 'alias-target'], ['m2', 'alias-target']]);
+
+    // 1. A live track with no superseding alias outranks the alias vote even
+    //    when the alias vote is unanimous, because only firstSeen is beyond
+    //    a feed's reach.
+    assert.equal(
+      adoptExistingCanonical(members, 'default', aliasMap, new Map([['m3', 500]])),
+      'm3',
+    );
+    // 2. No track row -> the #4924 alias vote is unchanged.
+    assert.equal(adoptExistingCanonical(members, 'default', aliasMap, new Map()), 'alias-target');
+    // 3. Neither -> the batch-derived canonical, as before.
+    assert.equal(adoptExistingCanonical(members, 'default', new Map(), new Map()), 'default');
+    // 4. Omitting the argument entirely keeps the pre-#4925 behaviour, so the
+    //    17 existing three-argument call sites are unaffected.
+    assert.equal(adoptExistingCanonical(members, 'default', aliasMap), 'alias-target');
+  });
+
+  it('REGRESSION: a superseded member track cannot defeat alias continuity across three cycles', () => {
+    // Cycle 1: A-only creates A's track and self-alias.
+    const tracks = new Map([['A', 100]]);
+    let aliases = new Map([['A', 'A']]);
+    assert.equal(adoptExistingCanonical(['A'], 'A', aliases, tracks), 'A');
+
+    // Cycle 2: B-only creates its own live track and self-alias.
+    tracks.set('B', 200);
+    aliases = new Map([['A', 'A'], ['B', 'B']]);
+    assert.equal(adoptExistingCanonical(['B'], 'B', aliases, tracks), 'B');
+
+    // Cycle 3: A+B keeps the older A identity. The digest then persists the
+    // final aliases, including B -> A, while B's old track is still live.
+    assert.equal(adoptExistingCanonical(['A', 'B'], 'A', aliases, tracks), 'A');
+    aliases = new Map([['A', 'A'], ['B', 'A']]);
+
+    // Cycle 4: A is absent. B's own live row must not re-fork the story;
+    // alias adoption must retain A even though the canonical is not a member.
+    assert.equal(
+      adoptExistingCanonical(['B'], 'B', aliases, tracks),
+      'A',
+      'a member track superseded by B -> A must defer to the aliased canonical',
+    );
+  });
+
+  it('skips only tracks with a different alias and preserves deterministic alias ties', () => {
+    const members = ['m1', 'm2'];
+    const aliases = new Map([['m1', 'z-canonical'], ['m2', 'a-canonical']]);
+    const tracks = new Map([['m1', 1], ['m2', 2]]);
+
+    // Both member tracks are superseded, so the alias tie-break remains
+    // lexicographic and independent of member/track insertion order.
+    assert.equal(
+      adoptExistingCanonical([...members].reverse(), 'default', aliases, tracks),
+      'a-canonical',
+    );
+
+    // A self-alias is not a supersession: the canonical member's own track
+    // remains eligible under rule 1.
+    assert.equal(
+      adoptExistingCanonical(['m1', 'm2'], 'default', new Map([['m1', 'm1'], ['m2', 'other']]), tracks),
+      'm1',
+    );
+  });
+
+  it('track adoption is deterministic and ignores unusable stamps', () => {
+    const members = ['m1', 'm2', 'm3'];
+    assert.equal(
+      adoptExistingCanonical(members, 'default', new Map(), new Map([['m1', 900], ['m2', 100], ['m3', 400]])),
+      'm2',
+      'oldest firstSeen wins',
+    );
+    assert.equal(
+      adoptExistingCanonical(members, 'default', new Map(), new Map([['m3', 100], ['m1', 100]])),
+      'm1',
+      'equal firstSeen ties break to the lexicographically smallest hash',
+    );
+    assert.equal(
+      adoptExistingCanonical(members, 'default', new Map(), { m2: 250 }),
+      'm2',
+      'a plain object is accepted, matching the alias parameter',
+    );
+    for (const unusable of [Number.NaN, Infinity, null, undefined, '100']) {
+      assert.equal(
+        adoptExistingCanonical(members, 'default', new Map(), new Map([['m1', unusable]])),
+        'default',
+        `an unusable firstSeen (${String(unusable)}) must not anchor the story`,
+      );
+    }
+  });
+
+  it('a canonical absent from the batch still needs the alias vote', () => {
+    // Rule 1 reads story:track rows keyed by MEMBER hashes. A canonical that
+    // dropped out of the batch is not a member, so it has no row to find here
+    // — which is exactly the #4924 case the alias vote exists for. The two
+    // rules cover different gaps; neither replaces the other.
+    const members = ['m1', 'm2'];
+    const aliasMap = new Map([['m1', 'absent-canonical'], ['m2', 'absent-canonical']]);
+    assert.equal(
+      adoptExistingCanonical(members, 'default', aliasMap, new Map([['nobody', 1]])),
+      'absent-canonical',
+    );
+  });
+});
+
 describe('story key TTL ordering (#4924 external review P2)', () => {
   it('EXPIRE for sources/peak keys is queued with the per-member creating writes, never before them', () => {
     const src = readFileSync(
@@ -452,11 +723,44 @@ describe('story key TTL ordering (#4924 external review P2)', () => {
     assert.ok(!onceBlock.includes("['EXPIRE', peakKey"),
       'peak EXPIRE must not sit in the once-per-hash pre-block');
     const memberBlockStart = src.indexOf("['ZADD', peakKey, 'GT'");
-    const memberBlock = src.slice(memberBlockStart, src.indexOf('runRedisPipeline(commands)', memberBlockStart));
+    const memberBlock = src.slice(memberBlockStart, src.indexOf('const evidenceTimeoutMs', memberBlockStart));
     assert.ok(memberBlock.includes("['EXPIRE', sourcesKey") && memberBlock.includes("['EXPIRE', peakKey"),
       'both EXPIREs must follow the creating SADD/ZADD in the per-member block');
-    assert.match(src, /STORY_ALIAS_KEY\(memberHash\), hash, 'EX', ttl/, 'alias rows persisted with story TTL');
-    assert.match(src, /adoptExistingCanonical\(identity\.memberTitleHashes, identity\.titleHash, aliasTargetByHash\)/,
-      'digest must adopt live canonicals before assigning hashes');
+    assert.match(src, /String\(STORY_TTL\)/, 'alias rows persisted with story TTL');
+    assert.match(src, /aliasResults\.length !== aliasScriptChunk\.length/,
+      'a short alias-script batch response must stop remaining groups');
+    assert.match(src, /aliasResults\.some\(\(result\) => result\?\.result !== 1\)/,
+      'an unconfirmed or stale fenced alias publication must stop remaining groups');
+    assert.match(
+      src,
+      /adoptExistingCanonical\(\s*identity\.memberTitleHashes,\s*batchDefaultHash,\s*aliasTargetByHash,\s*trackFirstSeenByHash,\s*\)/,
+      'digest must adopt live canonicals from alias targets AND story:track first-seen stamps (#4925 item 1) before assigning hashes',
+    );
+    // #4925 item 1: a member hash's alias row and its track row must be read
+    // in the SAME atomic transaction, or a cluster can decide from two Redis
+    // states observed at different moments.
+    assert.match(
+      src,
+      /runRedisTransaction\(\[\s*\.\.\.chunk\.map\(\(h\) => \['GET', STORY_ALIAS_KEY\(h\)\]\),\s*\.\.\.chunk\.map\(\(h\) => \['HMGET', STORY_TRACK_KEY\(h\), 'firstSeen', 'lastSeen', 'anchorEligible'\]\),\s*\], false, timeoutMs\)/,
+      'alias and story:track reads for a hash must share one atomic transaction',
+    );
+    // ...and that call must stay bounded: two commands per hash means the hash
+    // budget is half the command budget STORY_BATCH_SIZE is sized against.
+    const adoptionBatch = src.match(/const ADOPTION_BATCH_SIZE = (\d+);/);
+    assert.ok(adoptionBatch, 'canonical adoption must declare a chunk size');
+    assert.ok(
+      Number(adoptionBatch[1]) * 2 <= 1000,
+      `ADOPTION_BATCH_SIZE ${adoptionBatch[1]} issues ${Number(adoptionBatch[1]) * 2} commands per call, over the 1000-command budget STORY_BATCH_SIZE is sized against`,
+    );
+    assert.match(
+      src,
+      /offset \+= ADOPTION_BATCH_SIZE/,
+      'the adoption read must stride by ADOPTION_BATCH_SIZE, not read every hash in one call',
+    );
+    assert.match(
+      src,
+      /lastSeen < freshnessCutoff/,
+      'a track outside the digest freshness floor must not be adopted — it is ageing out and the story would re-fork',
+    );
   });
 });

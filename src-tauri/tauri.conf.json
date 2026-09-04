@@ -34,6 +34,7 @@
   },
   "bundle": {
     "active": true,
+    "licenseFile": "../LICENSE",
     "targets": [
       "app",
       "dmg",
@@ -53,11 +54,13 @@
     ],
     "resources": [
       "../api",
+      "../shared/llm-health-providers.js",
       "sidecar/local-api-server.mjs",
       "sidecar/package.json",
       "sidecar/node",
       "../data",
-      "../src/config"
+      "../src/config",
+      "notices"
     ],
     "windows": {
       "digestAlgorithm": "sha256",

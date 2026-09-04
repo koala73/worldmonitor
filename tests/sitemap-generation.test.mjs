@@ -12,8 +12,10 @@ import {
   STATIC_ROUTE_MANIFEST,
   buildSitemapEntries,
   createMaterialLastmodResolver,
+  generateSitemapIndexXml,
   generateSitemapXml,
   validateSitemapEntries,
+  validateSitemapIndex,
 } from '../scripts/build-sitemap.mjs';
 import { gitFileLastmod } from '../scripts/build-crawlable-corpus.mjs';
 
@@ -28,7 +30,7 @@ function isolatedGitEnv(overrides = {}) {
   return env;
 }
 
-function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots = 'index, follow' }) {
+function writeCorpusPage(publicDir, relativePath, { canonical, lastmod, robots = 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1' }) {
   const target = join(publicDir, relativePath);
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(
@@ -49,6 +51,8 @@ describe('root sitemap generator', () => {
     assert.ok(locations.includes(`${SITE_ORIGIN}/pro`));
     assert.ok(locations.includes('https://worldmonitor.app/mcp'));
     assert.ok(locations.includes(`${SITE_ORIGIN}/pricing.md`));
+    assert.ok(locations.includes(`${SITE_ORIGIN}/world-monitor.md`));
+    assert.ok(locations.includes(`${SITE_ORIGIN}/api-versioning.md`));
     assert.ok(locations.includes('https://tech.worldmonitor.app/dashboard'));
     assert.ok(locations.every((loc) => !new URL(loc).pathname.startsWith('/blog')));
     assert.ok(locations.every((loc) => !new URL(loc).pathname.startsWith('/docs')));
@@ -74,11 +78,19 @@ describe('root sitemap generator', () => {
         canonical: `${SITE_ORIGIN}/tools/natural-hazard-pulse/`,
         lastmod: '2026-07-20',
       });
+      writeCorpusPage(publicDir, 'country-instability-index/index.html', {
+        canonical: `${SITE_ORIGIN}/country-instability-index/`,
+        lastmod: '2026-07-20',
+      });
 
       const resolveMaterialLastmod = () => '2026-07-21';
+      const existingSitemapSource = `<?xml version="1.0"?><urlset><url>`
+        + `<loc>${SITE_ORIGIN}/countries/norway/</loc>`
+        + '<lastmod>2026-07-20</lastmod></url></urlset>';
       const firstEntries = buildSitemapEntries({
         repoRoot,
         publicDir,
+        existingSitemapSource,
         resolveMaterialLastmod,
         requireCompleteCorpus: false,
         today: '2026-07-27',
@@ -86,6 +98,7 @@ describe('root sitemap generator', () => {
       const secondEntries = buildSitemapEntries({
         repoRoot,
         publicDir,
+        existingSitemapSource,
         resolveMaterialLastmod,
         requireCompleteCorpus: false,
         today: '2026-07-27',
@@ -97,6 +110,10 @@ describe('root sitemap generator', () => {
       assert.equal(XMLValidator.validate(first), true);
       assert.match(first, /<loc>https:\/\/www\.worldmonitor\.app\/countries\/norway\/<\/loc>/);
       assert.match(first, /<loc>https:\/\/www\.worldmonitor\.app\/tools\/natural-hazard-pulse\/<\/loc>/);
+      assert.equal(
+        first.split(`<loc>${SITE_ORIGIN}/country-instability-index/</loc>`).length - 1,
+        1,
+      );
       assert.match(first, /<lastmod>2026-05-28<\/lastmod>/);
       assert.match(first, /<lastmod>2026-07-20<\/lastmod>/);
       assert.doesNotMatch(first, /<changefreq>|<priority>/);
@@ -105,6 +122,41 @@ describe('root sitemap generator', () => {
 
       const locations = firstEntries.map((entry) => entry.loc);
       assert.equal(new Set(locations).size, locations.length);
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true });
+    }
+  });
+
+  it('requires the exact Country Instability Index route in a complete corpus', () => {
+    const tempRoot = mkdtempSync(join(tmpdir(), 'wm-sitemap-complete-'));
+    const publicDir = join(tempRoot, 'public');
+    try {
+      for (const pathname of [
+        '/countries/norway/',
+        '/chokepoints/strait-of-hormuz/',
+        '/crises/red-sea-security/',
+        '/tools/natural-hazard-pulse/',
+        '/research/example/',
+        '/reference/changelog/',
+        '/country-instability-index/archive/',
+      ]) {
+        writeCorpusPage(publicDir, `${pathname.slice(1)}index.html`, {
+          canonical: `${SITE_ORIGIN}${pathname}`,
+          lastmod: '2026-07-20',
+        });
+      }
+
+      assert.throws(
+        () => buildSitemapEntries({
+          repoRoot,
+          publicDir,
+          existingSitemapSource: '',
+          resolveMaterialLastmod: () => '2026-07-21',
+          requireCompleteCorpus: true,
+          today: '2026-07-27',
+        }),
+        /no \/country-instability-index\/ page/,
+      );
     } finally {
       rmSync(tempRoot, { recursive: true, force: true });
     }
@@ -274,8 +326,18 @@ describe('root sitemap generator', () => {
   });
 
   it('keeps the committed artifact generated and robots ownership exact', () => {
-    const sitemap = readFileSync(join(repoRoot, 'public/sitemap.xml'), 'utf8');
-    const robots = readFileSync(join(repoRoot, 'public/robots.txt'), 'utf8');
+    const index = readFileSync(join(repoRoot, 'public/sitemap.xml'), 'utf8');
+    const sitemap = readFileSync(join(repoRoot, 'public/sitemap-main.xml'), 'utf8');
+    const robots = readFileSync(join(repoRoot, 'public/robots.www.txt'), 'utf8');
+
+    assert.match(index, /<sitemapindex/);
+    for (const url of [
+      `${SITE_ORIGIN}/sitemap-main.xml`,
+      `${SITE_ORIGIN}/blog/sitemap-index.xml`,
+      `${SITE_ORIGIN}/docs/sitemap.xml`,
+    ]) {
+      assert.ok(index.includes(`<loc>${url}</loc>`), `root index must list ${url}`);
+    }
 
     assert.match(sitemap, /Generated by npm run build:sitemap\. Do not edit by hand\./);
     assert.doesNotMatch(sitemap, /<changefreq>|<priority>/);
@@ -290,5 +352,45 @@ describe('root sitemap generator', () => {
       const occurrences = robots.split(`Sitemap: ${url}`).length - 1;
       assert.equal(occurrences, 1, `${url} must be advertised exactly once`);
     }
+  });
+});
+
+describe('root sitemap index validator', () => {
+  const members = (overrides = {}) => ([
+    { loc: `${SITE_ORIGIN}/sitemap-main.xml`, lastmod: '2026-09-03' },
+    { loc: `${SITE_ORIGIN}/blog/sitemap-index.xml` },
+    { loc: `${SITE_ORIGIN}/docs/sitemap.xml` },
+  ].map((member) => ({ ...member, ...(overrides[member.loc] ?? {}) })));
+
+  it('accepts the three robots-declared sitemaps with a measured local lastmod', () => {
+    assert.deepEqual(validateSitemapIndex(members()), members());
+    const xml = generateSitemapIndexXml(members());
+    assert.equal(XMLValidator.validate(xml), true);
+    assert.match(xml, /<sitemapindex/);
+    assert.match(xml, new RegExp(`<loc>${SITE_ORIGIN.replace(/\./g, '\\.')}/sitemap-main\\.xml<\\/loc>\\s*<lastmod>2026-09-03<\\/lastmod>`));
+    assert.doesNotMatch(xml, /blog\/sitemap-index\.xml<\/loc>\s*<lastmod>/);
+  });
+
+  it('rejects wrong membership, missing local lastmod, and fabricated foreign lastmod', () => {
+    assert.throws(
+      () => validateSitemapIndex(members().slice(0, 2)),
+      /exactly the robots-declared sitemaps/,
+    );
+    assert.throws(
+      () => validateSitemapIndex([...members().slice(0, 2), { loc: `${SITE_ORIGIN}/sitemap-extra.xml` }]),
+      /exactly the robots-declared sitemaps/,
+    );
+    assert.throws(
+      () => validateSitemapIndex(members({ [`${SITE_ORIGIN}/sitemap-main.xml`]: { lastmod: undefined } })),
+      /measured lastmod/,
+    );
+    assert.throws(
+      () => validateSitemapIndex(members({ [`${SITE_ORIGIN}/blog/sitemap-index.xml`]: { lastmod: '2026-09-03' } })),
+      /never fabricate/,
+    );
+    assert.throws(
+      () => validateSitemapIndex(members({ [`${SITE_ORIGIN}/sitemap-main.xml`]: { lastmod: '2999-01-01' } }), { today: '2026-09-03' }),
+      /future lastmod/,
+    );
   });
 });

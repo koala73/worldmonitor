@@ -31,8 +31,10 @@ message SearchFlightPricesRequest {
   // Return date (ISO 8601), empty for one-way.
   string return_date = 4 [(sebuf.http.query) = { name: "return_date" }];
   // Number of adult passengers (1-9).
+  // Accepted but currently ignored; quotes are per-person and the count does not filter.
   int32 adults = 5 [
     (sebuf.http.query) = { name: "adults" },
+    (sebuf.http.unimplemented) = true,
     (buf.validate.field).ignore = IGNORE_IF_ZERO_VALUE,
     (buf.validate.field).int32.gte = 1,
     (buf.validate.field).int32.lte = 9

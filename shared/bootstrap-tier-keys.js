@@ -69,6 +69,13 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   ucdpEvents: 'conflict:ucdp-events-bootstrap:v1',
   temporalAnomalies: 'temporal:anomalies:v1',
   weatherAlerts: 'weather:alerts:v1',
+  imdCycloneMarine: 'weather:imd-cyclone-marine:v1',
+  canadaRoads: 'infra:ontario-511:v1',
+  albertaRoads: 'infra:alberta-511:v1',
+  manitobaRoads: 'infra:manitoba-511:v1',
+  torontoRoads: 'infra:toronto-roads:v1',
+  bcOpen511: 'infra:bc-open511:v1',
+  canadaAlerts: 'alerts:canada:v1',
   spending: 'economic:spending:v1',
   techEvents: 'research:tech-events-bootstrap:v1',
   gdeltIntel: 'intelligence:gdelt-intel:v1',
@@ -98,6 +105,9 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   crudeInventories: 'economic:crude-inventories:v1',
   natGasStorage: 'economic:nat-gas-storage:v1',
   ecbFxRates: 'economic:ecb-fx-rates:v1',
+  cbrRates: 'economic:cbr-rates:v1',
+  fxYoy: 'economic:fx:yoy:v1',
+  sharedFxRates: 'shared:fx-rates:v1',
   euFsi: 'economic:fsi-eu:v1',
   shippingStress: 'supply_chain:shipping_stress:v1',
   socialVelocity: 'intelligence:social:reddit:v1',
@@ -121,6 +131,7 @@ export const BOOTSTRAP_CACHE_KEYS = Object.freeze({
   energyCrisisPolicies: 'energy:crisis-policies:v1',
   aaiiSentiment: 'market:aaii-sentiment:v1',
   breadthHistory: 'market:breadth-history:v1',
+  marketCorrelationSeries: 'market:correlation-series:v1',
 });
 
 const SLOW_KEY_NAMES = new Set([
@@ -156,9 +167,6 @@ const SLOW_KEY_NAMES = new Set([
   'pizzint',
   'oilStocksAnalysis',
   'lngVulnerability',
-  'pipelinesGas',
-  'pipelinesOil',
-  'storageFacilities',
   'fuelShortages',
   'energyCrisisPolicies',
   'aaiiSentiment',
@@ -167,20 +175,72 @@ const SLOW_KEY_NAMES = new Set([
 
 const FAST_KEY_NAMES = new Set([
   'earthquakes', 'outages', 'serviceStatuses', 'ddosAttacks', 'trafficAnomalies', 'macroSignals', 'chokepoints',
-  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'flightDelays', 'insights', 'predictions',
-  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel',
-  'correlationCards', 'forecasts', 'shippingRates', 'shippingStress', 'socialVelocity', 'wsbTickers',
+  'marketQuotes', 'commodityQuotes', 'positiveGeoEvents', 'riskScores', 'insights', 'predictions',
+  'iranEvents', 'temporalAnomalies', 'weatherAlerts', 'spending', 'theaterPosture', 'gdeltIntel', 'canadaAlerts',
+  'shippingRates', 'shippingStress', 'socialVelocity',
 ]);
 
 const ON_DEMAND_KEY_NAMES = new Set([
   'cyberThreats',
   'chinaPolicyEvents', 'chinaDecisionSignals',
   'bisDsr', 'bisPropertyResidential', 'bisPropertyCommercial',
+  // One row of this feeds the Central Banks tab's policy-rate list, which BIS
+  // cannot supply for Russia. On-demand rather than tiered: the tab fetches it
+  // through the credential-less per-key URL when it renders, so the ~8KB never
+  // rides a payload every visitor downloads.
+  'cbrRates',
   'imfMacro', 'imfGrowth', 'imfLabor', 'imfExternal',
   'eurostatHousePrices', 'eurostatGovDebtQ', 'eurostatIndProd',
   'electricityPrices', 'jodiOil', 'chokepointBaselines',
   'portwatchChokepointsRef', 'portwatchPortActivity', 'sprPolicies',
   'energyDisruptions',
+  // Oil/gas pipeline and storage registries. Previously slow-tier freight:
+  // every visitor downloaded ~528 KB decoded even when the map layers were
+  // off (full/happy defaults) and the panels were below the fold. Demand
+  // comes from an enabled layer or a near-viewport energy panel (#7046).
+  'pipelinesGas',
+  'pipelinesOil',
+  'storageFacilities',
+  // Flights layer ships disabled on every variant, so this never rendered
+  // from the fast payload for a default visitor.
+  'flightDelays',
+  // Premium WSB scanner — not a default-startup surface.
+  'wsbTickers',
+  // The minimum further FAST demotion needed by #7046. Both consumers are
+  // demand-gated and read the credential-less per-key URL. Putting them in
+  // SLOW would erase the energy-registry reduction; moving additional FAST
+  // keys would add default-startup requests after the 20% target is met.
+  'forecasts',
+  'correlationCards',
+  // Both back the opt-in FX panel (#6199). On-demand rather than tiered
+  // because that panel ships disabled by default: neither payload should ride
+  // a tier every visitor downloads to render a surface almost nobody has on.
+  // NOTE: no apostrophes in this block. scripts/docs-stats.mjs scans these
+  // Sets with a bare quote matcher, so one apostrophe in prose opens a phantom
+  // string and gets registered as a duplicate key.
+  'fxYoy', 'sharedFxRates',
+  'marketCorrelationSeries',
+  // Toronto's live road-restrictions snapshot is about 2 MB. Keep it off the
+  // global FAST payload and fetch it only when the Canada-roads layer renders.
+  'torontoRoads',
+  // DriveBC is also too large for every visitor's startup payload.
+  'bcOpen511',
+  // The other two feeds behind the same map layer, moved off FAST in #6763.
+  // Together they were 507,639 of the fast tier's 1,343,003 bytes — 37.8%, more
+  // than marketQuotes — and a tier is not layer-gated, so every visitor on every
+  // variant downloaded them, mobile included, where this layer ships disabled
+  // and nothing ever rendered a byte of it.
+  //
+  // All five road sources are on-demand now, which is what lets the layer stay
+  // off by default: with none of them tiered, a visitor who never enables
+  // Canada roads pays nothing at all for them.
+  'canadaRoads',
+  'albertaRoads',
+  'manitobaRoads',
+  // IMD cyclone/port/coastal/marine products (#7005). On-demand: the weather
+  // and natural layers fetch this key only when those layers are on, so it
+  // never rides a payload every visitor downloads.
+  'imdCycloneMarine',
 ]);
 
 /**

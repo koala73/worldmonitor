@@ -121,6 +121,21 @@ describe('extractDescription — RSS', () => {
     assert.ok(desc.includes('comfortably above'));
   });
 
+  it('preserves a CDATA summary after encoded publisher thumbnail markup', () => {
+    // Times of India emits an entity-encoded thumbnail anchor followed by a
+    // literal CDATA section inside the same <description> body. Decoding the
+    // entities before unwrapping CDATA used to make the HTML-strip regex
+    // consume the summary together with the CDATA wrapper.
+    const block = `
+      <title>India policy update</title>
+      <description>&lt;a href="https://timesofindia.indiatimes.com/india/example/articleshow/123456.cms"&gt;&lt;img src="https://static.toiimg.com/photo/123456.cms" /&gt;&lt;/a&gt;<![CDATA[The policy update includes enough original context for the digest summary and downstream analysis surfaces.]]></description>
+    `;
+    const desc = extractDescription(block, false, 'India policy update');
+
+    assert.ok(desc.includes('enough original context'));
+    assert.doesNotMatch(desc, /<img|toiimg|CDATA/i);
+  });
+
   it('malformed CDATA with a premature ]]> sequence falls back to the plain regex', () => {
     // Feeds in the wild sometimes malform CDATA by embedding a literal ]]>
     // that is not the terminator (spec-violating). Our CDATA regex is

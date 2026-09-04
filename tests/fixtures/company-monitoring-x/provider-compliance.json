@@ -1,0 +1,133 @@
+{
+  "version": 1,
+  "capturedAt": "2026-08-10T06:30:00.000Z",
+  "liveTracers": [
+    {
+      "companyId": "cm_company_01K23AAAAAAAAAAAAAAAAAAAAA",
+      "name": "Stripe",
+      "domicileCountry": "US",
+      "officialDomain": "stripe.com",
+      "officialPageUrl": "https://stripe.com/",
+      "domainClaimId": "cm_claim_01K24AAAAAAAAAAAAAAAAAAAAA",
+      "xHandleClaimId": "cm_claim_01K25AAAAAAAAAAAAAAAAAAAAA",
+      "currentHandle": "stripe",
+      "accountId": "102812444",
+      "profileName": "Stripe",
+      "authorityRole": "company",
+      "officialHtml": "<script type=\"application/ld+json\">{\"name\":\"Stripe\",\"address\":{\"addressCountry\":\"US\"}}</script><a href=\"https://twitter.com/stripe\">X</a>",
+      "identitySourceUrl": "https://www.wikidata.org/wiki/Q34856042"
+    },
+    {
+      "companyId": "cm_company_01K23BBBBBBBBBBBBBBBBBBBBB",
+      "name": "Cloudflare",
+      "domicileCountry": "US",
+      "officialDomain": "cloudflare.com",
+      "officialPageUrl": "https://www.cloudflare.com/",
+      "domainClaimId": "cm_claim_01K24BBBBBBBBBBBBBBBBBBBBB",
+      "xHandleClaimId": "cm_claim_01K25BBBBBBBBBBBBBBBBBBBBB",
+      "currentHandle": "Cloudflare",
+      "accountId": "32499999",
+      "profileName": "Cloudflare",
+      "authorityRole": "company",
+      "officialHtml": "<script type=\"application/ld+json\">{\"name\":\"Cloudflare\",\"address\":{\"addressCountry\":\"US\"}}</script><a href=\"https://x.com/cloudflare\">X</a>",
+      "identitySourceUrl": "https://www.wikidata.org/wiki/Q4778915"
+    },
+    {
+      "companyId": "cm_company_01K23CCCCCCCCCCCCCCCCCCCCC",
+      "name": "GitHub",
+      "domicileCountry": "US",
+      "officialDomain": "github.com",
+      "officialPageUrl": "https://github.com/",
+      "domainClaimId": "cm_claim_01K24CCCCCCCCCCCCCCCCCCCCC",
+      "xHandleClaimId": "cm_claim_01K25CCCCCCCCCCCCCCCCCCCCC",
+      "currentHandle": "github",
+      "accountId": "13334762",
+      "profileName": "GitHub",
+      "authorityRole": "company",
+      "officialHtml": "<script type=\"application/ld+json\">{\"name\":\"GitHub\",\"address\":{\"addressCountry\":\"US\"}}</script><a href=\"https://x.com/github\">X</a>",
+      "identitySourceUrl": "https://www.wikidata.org/wiki/Q28771536"
+    },
+    {
+      "companyId": "cm_company_01K23DDDDDDDDDDDDDDDDDDDDD",
+      "name": "Anthropic",
+      "domicileCountry": "US",
+      "officialDomain": "anthropic.com",
+      "officialPageUrl": "https://www.anthropic.com/",
+      "domainClaimId": "cm_claim_01K24DDDDDDDDDDDDDDDDDDDDD",
+      "xHandleClaimId": "cm_claim_01K25DDDDDDDDDDDDDDDDDDDDD",
+      "currentHandle": "AnthropicAI",
+      "accountId": "1353836358901501952",
+      "profileName": "Anthropic",
+      "authorityRole": "company",
+      "officialHtml": "<script type=\"application/ld+json\">{\"name\":\"Anthropic\",\"address\":{\"addressCountry\":\"US\"}}</script><a href=\"https://x.com/AnthropicAI\">X</a>",
+      "identitySourceUrl": "https://www.wikidata.org/wiki/Q116758847"
+    },
+    {
+      "companyId": "cm_company_01K23EEEEEEEEEEEEEEEEEEEEE",
+      "name": "Datadog",
+      "domicileCountry": "US",
+      "officialDomain": "datadoghq.com",
+      "officialPageUrl": "https://www.datadoghq.com/",
+      "domainClaimId": "cm_claim_01K24EEEEEEEEEEEEEEEEEEEEE",
+      "xHandleClaimId": "cm_claim_01K25EEEEEEEEEEEEEEEEEEEEE",
+      "currentHandle": "datadoghq",
+      "accountId": "123093566",
+      "profileName": "Datadog",
+      "authorityRole": "company",
+      "officialHtml": "<script type=\"application/ld+json\">{\"name\":\"Datadog\",\"address\":{\"addressCountry\":\"US\"}}</script><a href=\"https://twitter.com/datadoghq\">X</a>",
+      "identitySourceUrl": "https://www.wikidata.org/wiki/Q16248637"
+    }
+  ],
+  "recentSearchPage": {
+    "data": [
+      {
+        "id": "2000000000000000001",
+        "author_id": "102812444",
+        "created_at": "2026-08-10T06:10:00.000Z",
+        "text": "A new Stripe product update.",
+        "edit_history_tweet_ids": ["2000000000000000001"]
+      },
+      {
+        "id": "2000000000000000003",
+        "author_id": "32499999",
+        "created_at": "2026-08-10T06:15:00.000Z",
+        "text": "An updated Cloudflare announcement.",
+        "edit_history_tweet_ids": ["2000000000000000002", "2000000000000000003"]
+      },
+      {
+        "id": "2000000000000000004",
+        "author_id": "13334762",
+        "created_at": "2026-08-10T06:20:00.000Z",
+        "text": "This text must not be retained when withheld.",
+        "edit_history_tweet_ids": ["2000000000000000004"],
+        "withheld": { "country_codes": ["DE", "FR"] }
+      }
+    ],
+    "includes": {
+      "users": [
+        { "id": "102812444", "username": "stripe", "name": "Stripe", "verified": true, "protected": false },
+        { "id": "32499999", "username": "Cloudflare", "name": "Cloudflare", "verified": true, "protected": false },
+        { "id": "13334762", "username": "github", "name": "GitHub", "verified": true, "protected": false }
+      ]
+    },
+    "meta": {
+      "result_count": 3,
+      "newest_id": "2000000000000000004",
+      "oldest_id": "2000000000000000001"
+    },
+    "compliance": [
+      {
+        "type": "delete",
+        "postId": "1999999999999999999",
+        "authorAccountId": "102812444",
+        "observedAt": "2026-08-10T06:25:00.000Z"
+      },
+      {
+        "type": "protected",
+        "postId": "1999999999999999998",
+        "authorAccountId": "32499999",
+        "observedAt": "2026-08-10T06:26:00.000Z"
+      }
+    ]
+  }
+}

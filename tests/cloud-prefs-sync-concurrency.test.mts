@@ -13,6 +13,8 @@ const stubs: Record<string, string> = {
   '@/services/clerk': 'export const getClerkToken = async () => globalThis.__cloudPrefsToken;',
   '@/config/feeds': [
     "export const CANADA_ARCTIC_OPT_IN_SOURCES = ['Globe and Mail', 'Global News', 'Yle News', 'NRK', 'Aftenposten', 'DR Nyheder', 'Arctic Today'];",
+    "export const CANADA_DEPTH_OPT_IN_SOURCES = [];",
+    "export const CRISIS_FLOOR_OPT_IN_SOURCES = ['WAFA English'];",
     'export const FEEDS = {};',
     'export const FRONTLINE_EUROPE_PROTECTED_SOURCES = [];',
     'export const INTEL_SOURCES = [];',
@@ -55,6 +57,10 @@ interface HeldRequest {
 
 interface HarnessControls {
   dispatchHidden: () => void;
+  events: Array<{ detail: unknown; type: string }>;
+  failNextGetTemporarily: () => void;
+  fireSignInRetry: () => void;
+  holdNextGet: () => HeldRequest;
   holdNextPost: () => HeldRequest;
   seedRow: (token: string, data: Record<string, string>, syncVersion: number, schemaVersion?: number) => void;
   setToken: (token: string) => void;
@@ -63,14 +69,17 @@ interface HarnessControls {
 }
 
 let harnessSequence = 0;
-let bundledSourcePromise: Promise<string> | null = null;
+const bundledSourcePromises = new Map<boolean, Promise<string>>();
 
 after(() => {
   stop();
 });
 
-async function getBundledSource(): Promise<string> {
-  bundledSourcePromise ??= build({
+async function getBundledSource(enabled = true): Promise<string> {
+  let bundledSourcePromise = bundledSourcePromises.get(enabled);
+  if (bundledSourcePromise) return bundledSourcePromise;
+
+  bundledSourcePromise = build({
     absWorkingDir: root,
     entryPoints: ['src/utils/cloud-prefs-sync.ts'],
     bundle: true,
@@ -78,7 +87,7 @@ async function getBundledSource(): Promise<string> {
     platform: 'browser',
     write: false,
     define: {
-      'import.meta.env.VITE_CLOUD_PREFS_ENABLED': '"true"',
+      'import.meta.env.VITE_CLOUD_PREFS_ENABLED': enabled ? '"true"' : '"false"',
     },
     plugins: [{
       name: 'cloud-prefs-test-stubs',
@@ -98,11 +107,12 @@ async function getBundledSource(): Promise<string> {
       },
     }],
   }).then((bundled) => bundled.outputFiles[0]!.text);
+  bundledSourcePromises.set(enabled, bundledSourcePromise);
   return bundledSourcePromise;
 }
 
-async function loadCloudPrefsModule() {
-  const source = await getBundledSource();
+async function loadCloudPrefsModule(enabled = true) {
+  const source = await getBundledSource(enabled);
   const encoded = Buffer.from(source).toString('base64');
   harnessSequence += 1;
   return import(`data:text/javascript;base64,${encoded}#harness-${harnessSequence}`);
@@ -113,6 +123,7 @@ async function runHarness(
     cloudPrefs: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
     controls: HarnessControls,
   ) => Promise<void>,
+  { enabled = true }: { enabled?: boolean } = {},
 ): Promise<HarnessResult> {
   const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
   const originalCloudPrefsToken = Object.getOwnPropertyDescriptor(globalThis, '__cloudPrefsToken');
@@ -125,7 +136,9 @@ async function runHarness(
     localStorage: globalThis.localStorage,
     window: globalThis.window,
   };
+  const originalSetTimeout = globalThis.setTimeout;
   const stateHistory: string[] = [];
+  const events: Array<{ detail: unknown; type: string }> = [];
   class TestStorage extends MiniStorage {
     override setItem(key: string, value: string): void {
       super.setItem(key, value);
@@ -172,7 +185,14 @@ async function runHarness(
 
   Object.assign(globalThis, {
     __cloudPrefsToken: 'test-token',
-    CustomEvent: class TestCustomEvent {},
+    CustomEvent: class TestCustomEvent {
+      detail: unknown;
+      type: string;
+      constructor(type: string, init?: { detail?: unknown }) {
+        this.type = type;
+        this.detail = init?.detail;
+      }
+    },
     Storage: TestStorage,
     document: documentStub,
     localStorage: storage,
@@ -182,7 +202,12 @@ async function runHarness(
         listeners.push(listener);
         windowListeners.set(type, listeners);
       },
-      dispatchEvent() {},
+      dispatchEvent(event: { detail?: unknown; type?: string }) {
+        const type = event.type ?? '';
+        events.push({ type, detail: event.detail });
+        for (const listener of windowListeners.get(type) ?? []) listener();
+        return true;
+      },
     },
   });
   Object.defineProperty(globalThis, 'navigator', {
@@ -205,6 +230,25 @@ async function runHarness(
     resolveStarted: () => void;
   } | null = null;
   let timeoutNextRequest = false;
+  let failNextGetTemporarily = false;
+  let captureSignInRetryTimer = false;
+  let pendingSignInRetry: (() => void) | null = null;
+  let pendingGetHold: {
+    releasePromise: Promise<void>;
+    resolveRelease: () => void;
+    resolveStarted: () => void;
+  } | null = null;
+
+  globalThis.setTimeout = ((callback: TimerHandler, delay?: number, ...args: unknown[]) => {
+    if (captureSignInRetryTimer && (delay ?? 0) >= 1000) {
+      captureSignInRetryTimer = false;
+      pendingSignInRetry = () => {
+        if (typeof callback === 'function') callback(...args);
+      };
+      return 987_654 as unknown as ReturnType<typeof setTimeout>;
+    }
+    return originalSetTimeout(callback, delay, ...args);
+  }) as typeof setTimeout;
 
   AbortSignal.timeout = ((_delay: number) => {
     const controller = new AbortController();
@@ -223,6 +267,20 @@ async function runHarness(
     const token = authorization.replace(/^Bearer\s+/, '') || 'anonymous';
     const row = rows.get(token) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
     if (method === 'GET') {
+      if (failNextGetTemporarily) {
+        failNextGetTemporarily = false;
+        captureSignInRetryTimer = true;
+        return Response.json(
+          { error: 'SERVICE_UNAVAILABLE' },
+          { status: 503, headers: { 'Retry-After': '1' } },
+        );
+      }
+      const held = pendingGetHold;
+      if (held) {
+        pendingGetHold = null;
+        held.resolveStarted();
+        await held.releasePromise;
+      }
       return Response.json({
         data: row.data,
         schemaVersion: row.schemaVersion,
@@ -241,7 +299,7 @@ async function runHarness(
     }
 
     await new Promise<void>((resolveDelay, rejectDelay) => {
-      const timer = setTimeout(resolveDelay, 5);
+      const timer = originalSetTimeout(resolveDelay, 5);
       const signal = init.signal;
       signal?.addEventListener('abort', () => {
         clearTimeout(timer);
@@ -274,6 +332,28 @@ async function runHarness(
       documentStub.visibilityState = 'hidden';
       for (const listener of documentListeners.get('visibilitychange') ?? []) listener();
     },
+    events,
+    failNextGetTemporarily: () => {
+      failNextGetTemporarily = true;
+    },
+    fireSignInRetry: () => {
+      const retry = pendingSignInRetry;
+      pendingSignInRetry = null;
+      if (!retry) throw new Error('no sign-in retry is pending');
+      retry();
+    },
+    holdNextGet: () => {
+      let resolveRelease!: () => void;
+      let resolveStarted!: () => void;
+      const releasePromise = new Promise<void>((resolveReleasePromise) => {
+        resolveRelease = resolveReleasePromise;
+      });
+      const started = new Promise<void>((resolveStartedPromise) => {
+        resolveStarted = resolveStartedPromise;
+      });
+      pendingGetHold = { releasePromise, resolveRelease, resolveStarted };
+      return { release: resolveRelease, started };
+    },
     holdNextPost: () => {
       let resolveRelease!: () => void;
       let resolveStarted!: () => void;
@@ -299,7 +379,7 @@ async function runHarness(
   };
 
   try {
-    const cloudPrefs = await loadCloudPrefsModule();
+    const cloudPrefs = await loadCloudPrefsModule(enabled);
     await invoke(cloudPrefs, controls);
     const activeToken = String(Reflect.get(globalThis, '__cloudPrefsToken'));
     const activeRow = rows.get(activeToken) ?? { data: {}, schemaVersion: 2, syncVersion: 0 };
@@ -320,6 +400,7 @@ async function runHarness(
     };
   } finally {
     globalThis.fetch = originalFetch;
+    globalThis.setTimeout = originalSetTimeout;
     AbortSignal.timeout = originalAbortSignalTimeout;
     Object.assign(globalThis, originals);
     if (originalNavigator) {
@@ -401,8 +482,8 @@ describe('cloud preference write serialization', () => {
       await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
     });
 
-    assert.equal(result.localSchemaVersion, 6);
-    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [6, 6]);
+    assert.equal(result.localSchemaVersion, 8);
+    assert.deepEqual(result.acceptedSchemaVersionsByToken['test-token'], [8, 8]);
   });
 
   it('preserves edits made for a new account while its sign-in waits in the queue', async () => {
@@ -480,5 +561,270 @@ describe('cloud preference write serialization', () => {
     assert.equal(result.conflictCount, 0);
     assert.equal(result.postCount, 2);
     assert.equal(result.serverSyncVersion, 1);
+  });
+
+  it('keeps a sign-in retry pending after its timer fires until the request settles', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', {}, 1, 7);
+      controls.failNextGetTemporarily();
+
+      await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 41 });
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), true);
+
+      const heldGet = controls.holdNextGet();
+      controls.fireSignInRetry();
+      await heldGet.started;
+      assert.equal(
+        cloudPrefs.hasPendingCloudPrefsRetry(),
+        true,
+        'firing the timer must not expose an idle gap while the retry fetch is unresolved',
+      );
+      assert.equal(
+        controls.events.filter((event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT).length,
+        0,
+      );
+
+      heldGet.release();
+      await new Promise((resolveDelay) => setTimeout(resolveDelay, 20));
+      assert.equal(cloudPrefs.hasPendingCloudPrefsRetry(), false);
+      const terminalEvents = controls.events.filter(
+        (event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      );
+      assert.deepEqual(terminalEvents.map((event) => event.detail), [{
+        accountId: 'user-1',
+        authGeneration: 1,
+        handoffGeneration: 41,
+        origin: 'sign-in',
+        outcome: 'synced',
+      }]);
+    });
+  });
+
+  it('emits a scoped terminal event even when cloud apply changes no keys', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      controls.seedRow('test-token', {}, 1, 7);
+      await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 73 });
+
+      assert.equal(
+        controls.events.filter((event) => event.type === cloudPrefs.CLOUD_PREFS_APPLIED_EVENT).length,
+        0,
+        'unchanged apply has no generic change event',
+      );
+      const terminal = controls.events.find(
+        (event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      );
+      assert.deepEqual(terminal?.detail, {
+        accountId: 'user-1',
+        authGeneration: 1,
+        handoffGeneration: 73,
+        origin: 'sign-in',
+        outcome: 'synced',
+      });
+    });
+  });
+
+  it('releases the scoped handoff immediately when cloud sync is disabled', async () => {
+    const result = await runHarness(async (cloudPrefs, controls) => {
+      await cloudPrefs.onSignIn('user-1', 'full', { handoffGeneration: 89 });
+
+      const terminal = controls.events.find(
+        (event) => event.type === cloudPrefs.CLOUD_PREFS_SIGN_IN_TERMINAL_EVENT,
+      );
+      assert.deepEqual(terminal?.detail, {
+        accountId: 'user-1',
+        authGeneration: 0,
+        handoffGeneration: 89,
+        origin: 'sign-in',
+        outcome: 'skipped',
+      });
+    }, { enabled: false });
+
+    assert.equal(result.postCount, 0);
+    assert.equal(result.state, null);
+  });
+
+  it('does not retain account A ownership for account B legacy cloud rows', async () => {
+    await runHarness(async (cloudPrefs, controls) => {
+      const sourceOwnership = 'worldmonitor-free-tier-source-ownership';
+      const layerOwnership = 'worldmonitor-free-tier-layer-ownership';
+      controls.seedRow('user-a-token', {
+        [sourceOwnership]: '["source-a"]',
+        [layerOwnership]: '["resilienceScore"]',
+      }, 1, 7);
+      controls.setToken('user-a-token');
+      await cloudPrefs.onSignIn('user-a', 'full');
+      assert.equal(localStorage.getItem(sourceOwnership), '["source-a"]');
+      assert.equal(localStorage.getItem(layerOwnership), '["resilienceScore"]');
+
+      cloudPrefs.onSignOut();
+      controls.seedRow('user-b-token', { 'worldmonitor-theme': 'light' }, 1, 7);
+      controls.setToken('user-b-token');
+      await cloudPrefs.onSignIn('user-b', 'full');
+
+      assert.equal(localStorage.getItem(sourceOwnership), null);
+      assert.equal(localStorage.getItem(layerOwnership), null);
+      assert.equal(localStorage.getItem('worldmonitor-theme'), 'light');
+    });
+  });
+});
+
+// #4746 - two same-user tabs share one KEY_DIRTY_KEYS entry. A faithful
+// simulation needs each tab's install() patch to fire only for that tab's
+// writes, so each tab gets its own Storage prototype over one shared backing
+// map (a single shared prototype would stack both patches and make tab A
+// observe tab B's writes, which real renderer isolation never does).
+async function runTwoTabDirtyKeyHarness(
+  drive: (
+    tabA: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
+    tabB: Awaited<ReturnType<typeof loadCloudPrefsModule>>,
+    readPersistedDirtyKeys: () => string[],
+    withTabA: <T>(fn: () => Promise<T>) => Promise<T>,
+    withTabB: <T>(fn: () => Promise<T>) => Promise<T>,
+  ) => Promise<void>,
+): Promise<void> {
+  const backing = new Map<string, string>();
+  const makeStorageClass = () => class SharedBackingStorage {
+    get length(): number { return backing.size; }
+    getItem(key: string): string | null { return backing.has(key) ? backing.get(key)! : null; }
+    setItem(key: string, value: string): void { backing.set(key, String(value)); }
+    removeItem(key: string): void { backing.delete(key); }
+    clear(): void { backing.clear(); }
+    key(index: number): string | null { return [...backing.keys()][index] ?? null; }
+  };
+  const StorageA = makeStorageClass();
+  const StorageB = makeStorageClass();
+  const storageA = new StorageA();
+  const storageB = new StorageB();
+  const documentListeners = new Map<string, Array<() => void>>();
+  const originals = {
+    CustomEvent: globalThis.CustomEvent,
+    Storage: globalThis.Storage,
+    document: globalThis.document,
+    localStorage: globalThis.localStorage,
+    window: globalThis.window,
+  };
+  const originalNavigator = Object.getOwnPropertyDescriptor(globalThis, 'navigator');
+  const originalCloudPrefsToken = Object.getOwnPropertyDescriptor(globalThis, '__cloudPrefsToken');
+  const originalFetch = globalThis.fetch;
+
+  const installGlobals = (StorageClass: unknown, storageInstance: unknown): void => {
+    Object.assign(globalThis, {
+      __cloudPrefsToken: 'two-tab-token',
+      CustomEvent: class TestCustomEvent {
+        detail: unknown;
+        type: string;
+        constructor(type: string, init?: { detail?: unknown }) {
+          this.type = type;
+          this.detail = init?.detail;
+        }
+      },
+      Storage: StorageClass,
+      document: {
+        visibilityState: 'visible',
+        addEventListener(type: string, listener: () => void) {
+          const arr = documentListeners.get(type) ?? [];
+          arr.push(listener);
+          documentListeners.set(type, arr);
+        },
+        body: { appendChild() {} },
+        createElement() { return { addEventListener() {}, className: '', innerHTML: '', remove() {} }; },
+        querySelector() { return null; },
+      },
+      localStorage: storageInstance,
+      window: {
+        addEventListener() {},
+        dispatchEvent() { return true; },
+      },
+    });
+    Object.defineProperty(globalThis, 'navigator', {
+      configurable: true,
+      value: { onLine: true },
+    });
+  };
+
+  globalThis.fetch = (async (_input: unknown, init: RequestInit = {}) => {
+    const method = init.method ?? 'GET';
+    if (method === 'GET') {
+      return Response.json({ data: {}, schemaVersion: 2, syncVersion: 0 });
+    }
+    return Response.json({ ok: true, syncVersion: 1 });
+  }) as typeof fetch;
+
+  const readPersistedDirtyKeys = (): string[] => {
+    const raw = backing.get('wm-cloud-prefs-dirty-keys');
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw) as { keys?: unknown };
+      return Array.isArray(parsed.keys) ? parsed.keys.filter((k): k is string => typeof k === 'string') : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const withTabA = async <T>(fn: () => Promise<T>): Promise<T> => {
+    installGlobals(StorageA, storageA);
+    return fn();
+  };
+  const withTabB = async <T>(fn: () => Promise<T>): Promise<T> => {
+    installGlobals(StorageB, storageB);
+    return fn();
+  };
+
+  try {
+    const tabA = await withTabA(() => loadCloudPrefsModule());
+    const tabB = await withTabB(() => loadCloudPrefsModule());
+    await drive(tabA, tabB, readPersistedDirtyKeys, withTabA, withTabB);
+  } finally {
+    Object.assign(globalThis, originals);
+    if (originalNavigator) Object.defineProperty(globalThis, 'navigator', originalNavigator);
+    if (originalCloudPrefsToken) Object.defineProperty(globalThis, '__cloudPrefsToken', originalCloudPrefsToken);
+    else delete (globalThis as { __cloudPrefsToken?: unknown }).__cloudPrefsToken;
+    globalThis.fetch = originalFetch;
+  }
+}
+describe('two-tab dirty-key persistence (#4746)', () => {
+  it('unions markers across concurrent same-user tabs and settles only the uploading tab keys', async () => {
+    await runTwoTabDirtyKeyHarness(async (tabA, tabB, readPersistedDirtyKeys, withTabA, withTabB) => {
+      // Each tab signs in and installs while ITS Storage prototype is the
+      // global one, so its write patch lands on its own prototype. Writes and
+      // uploads then run through the same per-tab globals — exactly the
+      // renderer isolation two real tabs have over one shared profile.
+      await withTabA(async () => {
+        await tabA.onSignIn('user-1', 'full');
+        tabA.install('full');
+      });
+      await withTabB(async () => {
+        await tabB.onSignIn('user-1', 'full');
+        tabB.install('full');
+      });
+
+      // Tab A dirties the watchlist key. Old code: disk = {A}.
+      await withTabA(async () => {
+        globalThis.localStorage.setItem('wm-market-watchlist-v1', 'tab-a-edit');
+      });
+      assert.deepEqual(readPersistedDirtyKeys(), ['wm-market-watchlist-v1']);
+
+      // Tab B (same user, same browser profile) dirties a different key.
+      // Old wholesale overwrite: disk = {B}, A's marker lost.
+      await withTabB(async () => {
+        globalThis.localStorage.setItem('worldmonitor-theme', 'tab-b-edit');
+      });
+      assert.deepEqual(
+        [...readPersistedDirtyKeys()].sort(),
+        ['wm-market-watchlist-v1', 'worldmonitor-theme'],
+        'the second tab write must union, not clobber, the first tab marker',
+      );
+
+      // Tab A uploads and settles only its own key: B's still-pending marker
+      // must survive on disk for B's own upload/hydrate.
+      await withTabA(async () => {
+        await tabA.syncNow();
+      });
+      assert.deepEqual(
+        readPersistedDirtyKeys(),
+        ['worldmonitor-theme'],
+        'a settled upload must remove only the keys that tab durably synced',
+      );
+    });
   });
 });

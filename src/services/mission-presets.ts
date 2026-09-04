@@ -8,7 +8,7 @@ import {
 } from '@/config/panels';
 import { SITE_VARIANT } from '@/config/variant';
 import { isLayerExecutable, sanitizeLayersForVariant } from '@/config/map-layer-definitions';
-import type { MapRenderer, MapVariant } from '@/config/map-layer-definitions';
+import type { RendererKind, MapVariant } from '@/config/map-layer-definitions';
 
 export const MISSION_PRESET_STORAGE_KEY = 'worldmonitor-mission-preset-v1';
 export const MISSION_PRESET_DISMISSED_KEY = 'worldmonitor-mission-preset-dismissed-v1';
@@ -20,7 +20,8 @@ export type MissionPresetId =
   | 'osint-newsroom'
   | 'macro-market-watch'
   | 'tech-ai-watch'
-  | 'good-news-explorer';
+  | 'good-news-explorer'
+  | 'nq-day-trader';
 
 export type MissionMapView = 'global' | 'america' | 'mena' | 'eu' | 'asia' | 'latam' | 'africa' | 'oceania';
 export type MissionTimeRange = '1h' | '6h' | '24h' | '48h' | '7d' | 'all';
@@ -36,6 +37,8 @@ export interface MissionPreset {
   timeRange: MissionTimeRange;
   panels: string[];
   layers: Array<keyof MapLayers>;
+  /** When set, the preset is offered and applicable only on these variants. */
+  variants?: string[];
 }
 
 export interface AppliedMissionPreset {
@@ -325,6 +328,37 @@ export const MISSION_PRESETS: readonly MissionPreset[] = [
       'renewableInstallations',
     ],
   },
+  {
+    id: 'nq-day-trader',
+    label: 'NQ Day Trader',
+    shortLabel: 'NQ',
+    description: 'E-mini Nasdaq-100 context, catalysts, and curated NQ news.',
+    icon: 'N',
+    view: 'america',
+    zoom: 3.4,
+    timeRange: '24h',
+    variants: ['finance'],
+    panels: [
+      'map',
+      'nq-pulse',
+      'nq-catalysts',
+      'nq-news',
+      'live-news',
+      'heatmap',
+      'economic',
+      'fear-greed',
+      'fsi',
+      'yield-curve',
+      'markets',
+    ],
+    layers: [
+      'stockExchanges',
+      'financialCenters',
+      'centralBanks',
+      'economic',
+      'outages',
+    ],
+  },
 ];
 
 const DYNAMIC_PANEL_PREFIXES = ['cw-', 'mcp-'];
@@ -349,9 +383,23 @@ export function getMissionPreset(id: string | null | undefined): MissionPreset |
   return MISSION_PRESETS.find((preset) => preset.id === id) ?? null;
 }
 
-export function loadStoredMissionPreset(): MissionPreset | null {
+export function isMissionPresetAvailableForVariant(
+  preset: MissionPreset,
+  variant: string,
+): boolean {
+  if (!preset.variants || preset.variants.length === 0) return true;
+  return preset.variants.includes(variant);
+}
+
+export function getMissionPresetsForVariant(variant: string = SITE_VARIANT): readonly MissionPreset[] {
+  return MISSION_PRESETS.filter((preset) => isMissionPresetAvailableForVariant(preset, variant));
+}
+
+export function loadStoredMissionPreset(variant: string = SITE_VARIANT): MissionPreset | null {
   try {
-    return getMissionPreset(localStorage.getItem(MISSION_PRESET_STORAGE_KEY));
+    const preset = getMissionPreset(localStorage.getItem(MISSION_PRESET_STORAGE_KEY));
+    if (!preset || !isMissionPresetAvailableForVariant(preset, variant)) return null;
+    return preset;
   } catch {
     return null;
   }
@@ -399,6 +447,9 @@ export function applyMissionPresetToState(
 ): AppliedMissionPreset {
   const preset = getMissionPreset(presetId);
   if (!preset) throw new Error(`Unknown mission preset: ${presetId}`);
+  if (!isMissionPresetAvailableForVariant(preset, variant)) {
+    throw new Error(`Mission preset ${presetId} is not available on this variant`);
+  }
 
   const variantPanels = getVariantDefaultPanels(variant);
   const variantPanelSet = new Set(variantPanels);
@@ -501,14 +552,13 @@ export function resetMissionPresetState(
 
 export function filterMissionLayersForRenderer(
   layers: MapLayers,
-  renderer: MapRenderer,
-  isDeckGLActive: boolean,
+  kind: RendererKind,
   fallbackLayers: MapLayers = DEFAULT_MAP_LAYERS,
 ): MapLayers {
   const filter = (candidateLayers: MapLayers): MapLayers => {
     const next = { ...candidateLayers };
     for (const key of Object.keys(next) as Array<keyof MapLayers>) {
-      if (next[key] && !isLayerExecutable(key, renderer, isDeckGLActive)) {
+      if (next[key] && !isLayerExecutable(key, kind)) {
         next[key] = false;
       }
     }

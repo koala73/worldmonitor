@@ -51,7 +51,7 @@ function buildYAxis(minVal: number, maxVal: number, unit: string, steps = 4): st
     const v = minVal + (i / steps) * range;
     const y = MT + CH - (i / steps) * CH;
     return `<line x1="${ML}" y1="${y.toFixed(1)}" x2="${SVG_W - MR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-      <text x="${ML - 4}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" font-size="7" dominant-baseline="middle">${escapeHtml(fmtNum(v, 0))}${escapeHtml(unit)}</text>`;
+      <text x="${ML - 4}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))" dominant-baseline="middle">${escapeHtml(fmtNum(v, 0))}${escapeHtml(unit)}</text>`;
   }).join('');
 }
 
@@ -60,7 +60,7 @@ function buildXAxis(labels: string[], total: number): string {
   return labels.map((lbl, i) => {
     if (i % step !== 0 && i !== total - 1) return '';
     const x = ML + (i / Math.max(1, total - 1)) * CW;
-    return `<text x="${x.toFixed(1)}" y="${CHART_H - 2}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7">${escapeHtml(lbl)}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${CHART_H - 2}" text-anchor="middle" fill="rgba(255,255,255,0.4)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))">${escapeHtml(lbl)}</text>`;
   }).join('');
 }
 
@@ -79,7 +79,7 @@ function buildStackedCrudeSprChart(merged: MergedWeek[]): string {
   if (complete.length < 2) {
     // Fall back to crude-only if SPR is entirely absent
     const crudeOnly = merged.filter(w => w.crudeMb != null);
-    if (crudeOnly.length < 2) return '<div style="text-align:center;color:var(--text-dim);padding:16px;font-size:11px">Insufficient data for chart</div>';
+    if (crudeOnly.length < 2) return '<div style="text-align:center;color:var(--text-dim);padding:16px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">Insufficient data for chart</div>';
     return buildCrudeOnlyChart(crudeOnly);
   }
 
@@ -103,7 +103,7 @@ function buildStackedCrudeSprChart(merged: MergedWeek[]): string {
   const yAxis = buildYAxis(minV, maxV, '');
   const xAxis = buildXAxis(complete.map(w => fmtDate(w.period)), complete.length);
 
-  return `<svg viewBox="0 0 ${SVG_W} ${CHART_H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${yAxis}${xAxis}${sprArea}${sprLine}${crudeArea}${totalLine}</svg>`;
+  return `<svg viewBox="0 0 ${SVG_W} ${CHART_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Crude oil inventory history: commercial stocks and SPR" style="width:100%;height:auto;display:block">${yAxis}${xAxis}${sprArea}${sprLine}${crudeArea}${totalLine}</svg>`;
 }
 
 function buildCrudeOnlyChart(weeks: MergedWeek[]): string {
@@ -112,7 +112,7 @@ function buildCrudeOnlyChart(weeks: MergedWeek[]): string {
 }
 
 function buildLineChart(data: Array<{ x: string; y: number }>, color: string, unit: string, h = CHART_H): string {
-  if (data.length < 2) return '<div style="text-align:center;color:var(--text-dim);padding:12px;font-size:11px">Insufficient data</div>';
+  if (data.length < 2) return '<div style="text-align:center;color:var(--text-dim);padding:12px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">Insufficient data</div>';
   const ch = h - MT - MB;
   const vals = data.map(d => d.y);
   const maxV = Math.max(...vals) * 1.02;
@@ -128,10 +128,10 @@ function buildLineChart(data: Array<{ x: string; y: number }>, color: string, un
     const v = minV + (i / 3) * range;
     const y = MT + ch - (i / 3) * ch;
     return `<line x1="${ML}" y1="${y.toFixed(1)}" x2="${SVG_W - MR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-      <text x="${ML - 4}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" font-size="7" dominant-baseline="middle">${escapeHtml(fmtNum(v, 0))}${escapeHtml(unit)}</text>`;
+      <text x="${ML - 4}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))" dominant-baseline="middle">${escapeHtml(fmtNum(v, 0))}${escapeHtml(unit)}</text>`;
   }).join('');
   const xAxis = buildXAxis(data.map(d => d.x.slice(5)), data.length);
-  return `<svg viewBox="0 0 ${SVG_W} ${h}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${yAxis}${xAxis}<path d="${area}" fill="${color}" opacity="0.12"/><polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.9"/></svg>`;
+  return `<svg viewBox="0 0 ${SVG_W} ${h}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Inventory trend" style="width:100%;height:auto;display:block">${yAxis}${xAxis}<path d="${area}" fill="${color}" opacity="0.12"/><polyline points="${line}" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.9"/></svg>`;
 }
 
 function buildIeaBarChart(members: IeaMember[]): string {
@@ -143,7 +143,7 @@ function buildIeaBarChart(members: IeaMember[]): string {
       return (a.daysOfCover ?? 999) - (b.daysOfCover ?? 999);
     })
     .slice(0, 20);
-  if (!sorted.length) return '<div style="text-align:center;color:var(--text-dim);padding:12px;font-size:11px">No IEA data</div>';
+  if (!sorted.length) return '<div style="text-align:center;color:var(--text-dim);padding:12px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">No IEA data</div>';
   const maxDays = Math.max(200, ...sorted.filter(m => m.daysOfCover != null).map(m => m.daysOfCover!));
   const barH = Math.min(14, (BAR_H_MAX - 20) / sorted.length);
   const plotW = SVG_W - ML - 10;
@@ -155,20 +155,20 @@ function buildIeaBarChart(members: IeaMember[]): string {
     const color = m.netExporter ? '#6b7280' : m.belowObligation ? '#ef4444' : '#22c55e';
     const label = m.netExporter ? 'Exp' : d > 0 ? `${d.toFixed(0)}d` : 'N/A';
     return `<rect x="${ML}" y="${y.toFixed(1)}" width="${barW.toFixed(1)}" height="${(barH - 2).toFixed(1)}" fill="${color}" opacity="0.6" rx="1"/>
-      <text x="${ML - 3}" y="${(y + barH / 2).toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.5)" font-size="7" dominant-baseline="middle">${escapeHtml(m.iso2)}</text>
-      <text x="${(ML + barW + 3).toFixed(1)}" y="${(y + barH / 2).toFixed(1)}" fill="rgba(255,255,255,0.6)" font-size="7" dominant-baseline="middle">${escapeHtml(label)}</text>`;
+      <text x="${ML - 3}" y="${(y + barH / 2).toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.5)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))" dominant-baseline="middle">${escapeHtml(m.iso2)}</text>
+      <text x="${(ML + barW + 3).toFixed(1)}" y="${(y + barH / 2).toFixed(1)}" fill="rgba(255,255,255,0.6)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))" dominant-baseline="middle">${escapeHtml(label)}</text>`;
   }).join('');
   const obligX = ML + (90 / maxDays) * plotW;
   const obligLine = `<line x1="${obligX.toFixed(1)}" y1="10" x2="${obligX.toFixed(1)}" y2="${svgH - 5}" stroke="rgba(255,255,255,0.25)" stroke-width="1" stroke-dasharray="4 3"/>
-    <text x="${obligX.toFixed(1)}" y="9" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7">90d</text>`;
-  return `<svg viewBox="0 0 ${SVG_W} ${svgH}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${bars}${obligLine}</svg>`;
+    <text x="${obligX.toFixed(1)}" y="9" text-anchor="middle" fill="rgba(255,255,255,0.4)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))">90d</text>`;
+  return `<svg viewBox="0 0 ${SVG_W} ${svgH}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Supply obligation coverage by month" style="width:100%;height:auto;display:block">${bars}${obligLine}</svg>`;
 }
 
 function section(title: string, content: string, meta = ''): string {
   return `<div class="energy-tape-section" style="margin-top:8px">
     <div class="energy-section-title">${escapeHtml(title)}</div>
     <div style="border-radius:6px;background:rgba(255,255,255,0.02);padding:4px 0">${content}</div>
-    ${meta ? `<div style="margin-top:3px;font-size:10px;color:var(--text-dim)">${meta}</div>` : ''}
+    ${meta ? `<div style="margin-top:3px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${meta}</div>` : ''}
   </div>`;
 }
 
@@ -263,7 +263,7 @@ export class OilInventoriesPanel extends Panel {
     // Section 5: Refinery
     if (d.refinery) {
       const meta = `US Refinery Crude Inputs: <span class="commodity-price">${escapeHtml(fmtNum(d.refinery.inputsMbpd))} Mb/d</span> (${escapeHtml(d.refinery.period)})`;
-      parts.push(section('Refinery Throughput', `<div style="padding:4px 8px;font-size:12px">${meta}</div>`, ''));
+      parts.push(section('Refinery Throughput', `<div style="padding:4px 8px;font-size:calc(12px * var(--wm-panel-effective-scale, 1))">${meta}</div>`, ''));
     }
 
     if (parts.length === 0) {
@@ -271,9 +271,9 @@ export class OilInventoriesPanel extends Panel {
       return;
     }
 
-    const legend = `<div style="display:flex;gap:12px;font-size:9px;color:var(--text-dim);margin-top:2px">
-      <span><svg width="14" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="14" y2="2" stroke="#3b82f6" stroke-width="2"/></svg> Commercial</span>
-      <span><svg width="14" height="4" style="vertical-align:middle"><line x1="0" y1="2" x2="14" y2="2" stroke="#f59e0b" stroke-width="2"/></svg> SPR</span>
+    const legend = `<div style="display:flex;gap:12px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:2px">
+      <span><svg width="14" height="4" style="vertical-align:middle" aria-hidden="true"><line x1="0" y1="2" x2="14" y2="2" stroke="#3b82f6" stroke-width="2"/></svg> Commercial</span>
+      <span><svg width="14" height="4" style="vertical-align:middle" aria-hidden="true"><line x1="0" y1="2" x2="14" y2="2" stroke="#f59e0b" stroke-width="2"/></svg> SPR</span>
     </div>`;
 
     this.setSafeContent(unsafeRawHtml(`<div class="energy-complex-content">${parts[0]}${legend}${parts.slice(1).join('')}

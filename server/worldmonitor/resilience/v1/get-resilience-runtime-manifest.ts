@@ -14,12 +14,13 @@ import {
   RESILIENCE_INTERVAL_METHODOLOGY,
   RESILIENCE_INTERVALS_META_KEY,
   getCurrentCacheFormula,
+  getCurrentResilienceConstructVersions,
   isCurrentResilienceIntervalPayload,
-  isEnergyV2Enabled,
+  toResilienceDataVersion,
   type ResilienceIntervalPayload,
 } from './_shared';
 
-const MANIFEST_VERSION = 4;
+const MANIFEST_VERSION = 6;
 const INTERVAL_SAMPLE_COUNTRY = 'US';
 
 const PUBLIC_CACHE_STATE = {
@@ -30,10 +31,12 @@ const PUBLIC_CACHE_STATE = {
   intervalMethodology: '',
 };
 
-function getConstructVersions(): { energy: 'legacy' | 'v2' } {
-  return {
-    energy: isEnergyV2Enabled() ? 'v2' : 'legacy',
-  };
+export function getConstructVersions(): {
+  energy: 'legacy' | 'v2';
+  education: 'active' | 'rollback';
+  financialSystemExposure: 'active' | 'rollback';
+} {
+  return getCurrentResilienceConstructVersions();
 }
 
 interface SeedMeta {
@@ -45,11 +48,6 @@ interface RankingMeta {
   count?: unknown;
   scored?: unknown;
   total?: unknown;
-}
-
-function toIsoDate(value: unknown): string {
-  const iso = toIsoTimestamp(value);
-  return iso ? iso.slice(0, 10) : '';
 }
 
 function toIsoTimestamp(value: unknown): string {
@@ -109,7 +107,7 @@ export const getResilienceRuntimeManifest: ResilienceServiceHandler['getResilien
     deployedCommitSha: '',
     vercelEnv: '',
     formulaTag: getCurrentCacheFormula(),
-    dataVersion: toIsoDate(staticMeta?.fetchedAt),
+    dataVersion: toResilienceDataVersion(staticMeta?.fetchedAt),
     flags: [],
     cache: PUBLIC_CACHE_STATE,
     rankingCache: {

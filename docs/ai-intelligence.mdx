@@ -203,7 +203,7 @@ This hybrid approach means the UI is never blocked waiting for AI — users see 
 | Surface | Endpoint | Notes |
 |---|---|---|
 | Event classification | `GET /api/intelligence/v1/classify-event` | Direct REST RPC used by the generated client; server results are cached by headline hash. |
-| Country factual context | `GET /api/intelligence/v1/get-country-facts` | RestCountries / Wikipedia context for country-brief and dossier workflows. |
+| Country factual context | `GET /api/intelligence/v1/get-country-facts` | Wikidata / Wikipedia context for country-brief and dossier workflows. |
 | Summary cache lookup | `GET /api/news/v1/summarize-article-cache` | CDN-cacheable lookup for deterministic summary keys; generation remains `POST /api/news/v1/summarize-article`. |
 
 ## Alerts
@@ -389,13 +389,13 @@ The Focal Point Detector is the intelligence synthesis layer that correlates new
 
 Without synthesis, intelligence streams operate in silos:
 
-- News feeds show 500+ sources with thousands of headlines
+- News feeds show the curated source registry with its current headlines
 - Map layers display military flights, protests, outages independently
 - No automated way to see that IRAN appears in news AND has military activity AND an internet outage
 
 ### How It Works
 
-1. **Entity Extraction**: Extract countries, companies, and organizations from all news clusters using the entity registry (66 entities with aliases)
+1. **Entity Extraction**: Extract countries, companies, and organizations from all news clusters using the alias-rich entity registry
 
 2. **Signal Aggregation**: Collect all map signals (military flights, protests, outages, vessels) and group by country
 

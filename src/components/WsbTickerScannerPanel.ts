@@ -1,7 +1,6 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
-import { getHydratedData } from '@/services/bootstrap';
-import { toApiUrl } from '@/services/runtime';
+import { ensureHydrated, getHydratedData } from '@/services/bootstrap';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 
 export interface WsbTicker {
@@ -50,34 +49,27 @@ export class WsbTickerScannerPanel extends Panel {
       const sortBtn = target.closest<HTMLElement>('[data-sort]');
       if (!sortBtn) return;
       const field = sortBtn.dataset.sort as SortField;
+      const focusedSortButton = target.closest<HTMLButtonElement>('button[data-sort]');
+      const shouldRestoreFocus = focusedSortButton === document.activeElement;
       if (field === this._sortField) {
         this._sortAsc = !this._sortAsc;
       } else {
         this._sortField = field;
         this._sortAsc = false;
       }
-      this._render();
+      this._render(shouldRestoreFocus ? field : null);
     });
   }
 
   public async fetchData(): Promise<boolean> {
-    const hydrated = getHydratedData('wsbTickers') as { tickers?: WsbTicker[] } | undefined;
+    const leftover = getHydratedData('wsbTickers') as { tickers?: WsbTicker[] } | undefined;
+    const hydrated = leftover?.tickers?.length
+      ? leftover
+      : await ensureHydrated('wsbTickers') as { tickers?: WsbTicker[] } | undefined;
     if (hydrated?.tickers?.length) {
       this.updateData(hydrated.tickers);
       return true;
     }
-    try {
-      const resp = await fetch(toApiUrl('/api/bootstrap?keys=wsbTickers'), {
-        signal: AbortSignal.timeout(5_000),
-      });
-      if (resp.ok) {
-        const { data } = (await resp.json()) as { data: { wsbTickers?: { tickers?: WsbTicker[] } } };
-        if (data.wsbTickers?.tickers?.length) {
-          this.updateData(data.wsbTickers.tickers);
-          return true;
-        }
-      }
-    } catch { /* fallback failed */ }
     this.showError('No ticker data available yet', () => { void this.fetchData(); }, 60);
     return false;
   }
@@ -99,23 +91,30 @@ export class WsbTickerScannerPanel extends Panel {
     return [...this._tickers].sort((a, b) => dir * (a[this._sortField] - b[this._sortField]));
   }
 
+  /** aria-sort for a header cell — present only on the active column. */
+  private _ariaSort(field: SortField): string {
+    if (field !== this._sortField) return '';
+    return ` aria-sort="${this._sortAsc ? 'ascending' : 'descending'}"`;
+  }
+
   private _sortIndicator(field: SortField): string {
     if (field !== this._sortField) return '';
     return this._sortAsc ? ' \u25B2' : ' \u25BC';
   }
 
-  private _render(): void {
+  private _render(focusField: SortField | null = null): void {
     const sorted = this._sorted();
     const maxVelocity = Math.max(1, ...sorted.map(t => t.velocityScore));
 
-    const headerStyle = 'font-size:9px;font-weight:700;color:var(--text-dim);text-transform:uppercase;padding:4px 6px;cursor:pointer;user-select:none;white-space:nowrap';
-    const cellStyle = 'font-size:11px;padding:5px 6px;vertical-align:middle';
+    const headerStyle = 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700;color:var(--text-dim);text-transform:uppercase;padding:4px 6px;cursor:pointer;user-select:none;white-space:nowrap';
+    const sortButtonStyle = 'display:block;width:100%;appearance:none;border:0;padding:0;background:transparent;color:inherit;font:inherit;text-transform:inherit;letter-spacing:inherit;cursor:inherit;white-space:inherit';
+    const cellStyle = 'font-size:calc(11px * var(--wm-panel-effective-scale, 1));padding:5px 6px;vertical-align:middle';
 
     const rows = sorted.slice(0, 50).map((tk, i) => {
       const vColor = velocityColor(tk.velocityScore);
       const barPct = Math.max(4, Math.round((tk.velocityScore / maxVelocity) * 100));
       const subs = tk.subreddits.map(s =>
-        `<span style="font-size:8px;padding:1px 4px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim);margin-right:2px">r/${escapeHtml(s)}</span>`
+        `<span style="font-size:calc(8px * var(--wm-panel-effective-scale, 1));padding:1px 4px;border-radius:2px;background:rgba(255,255,255,0.06);color:var(--text-dim);margin-right:2px">r/${escapeHtml(s)}</span>`
       ).join('');
 
       return `<tr style="border-bottom:1px solid var(--border)">
@@ -125,7 +124,7 @@ export class WsbTickerScannerPanel extends Panel {
         <td style="${cellStyle};text-align:right;color:var(--text)">${formatCompact(tk.totalScore)}</td>
         <td style="${cellStyle};min-width:80px">
           <div style="display:flex;align-items:center;gap:4px">
-            <span style="font-size:10px;font-weight:600;color:${vColor};min-width:24px;text-align:right">${Math.round(tk.velocityScore)}</span>
+            <span style="font-size:calc(10px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${vColor};min-width:24px;text-align:right">${Math.round(tk.velocityScore)}</span>
             <div style="flex:1;height:4px;border-radius:2px;background:rgba(255,255,255,0.08)">
               <div style="height:100%;width:${barPct}%;border-radius:2px;background:${vColor}"></div>
             </div>
@@ -140,18 +139,27 @@ export class WsbTickerScannerPanel extends Panel {
         <table style="width:100%;border-collapse:collapse;border-spacing:0">
           <thead>
             <tr style="border-bottom:1px solid var(--border)">
-              <th style="${headerStyle};text-align:right">#</th>
-              <th style="${headerStyle};text-align:left">Ticker</th>
-              <th style="${headerStyle};text-align:right" data-sort="mentionCount">Mentions${this._sortIndicator('mentionCount')}</th>
-              <th style="${headerStyle};text-align:right" data-sort="totalScore">Score${this._sortIndicator('totalScore')}</th>
-              <th style="${headerStyle};text-align:left" data-sort="velocityScore">Velocity${this._sortIndicator('velocityScore')}</th>
-              <th style="${headerStyle};text-align:left">Source</th>
+              <th scope="col" style="${headerStyle};text-align:right">#</th>
+              <th scope="col" style="${headerStyle};text-align:left">Ticker</th>
+              <th scope="col" style="${headerStyle};text-align:right" data-sort="mentionCount"${this._ariaSort('mentionCount')}>
+                <button type="button" data-sort="mentionCount" style="${sortButtonStyle};text-align:right">Mentions<span aria-hidden="true">${this._sortIndicator('mentionCount')}</span></button>
+              </th>
+              <th scope="col" style="${headerStyle};text-align:right" data-sort="totalScore"${this._ariaSort('totalScore')}>
+                <button type="button" data-sort="totalScore" style="${sortButtonStyle};text-align:right">Score<span aria-hidden="true">${this._sortIndicator('totalScore')}</span></button>
+              </th>
+              <th scope="col" style="${headerStyle};text-align:left" data-sort="velocityScore"${this._ariaSort('velocityScore')}>
+                <button type="button" data-sort="velocityScore" style="${sortButtonStyle};text-align:left">Velocity<span aria-hidden="true">${this._sortIndicator('velocityScore')}</span></button>
+              </th>
+              <th scope="col" style="${headerStyle};text-align:left">Source</th>
             </tr>
           </thead>
-          <tbody>${rows || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim);font-size:12px">No ticker data</td></tr>'}</tbody>
+          <tbody>${rows || '<tr><td colspan="6" style="padding:16px;text-align:center;color:var(--text-dim);font-size:calc(12px * var(--wm-panel-effective-scale, 1))">No ticker data</td></tr>'}</tbody>
         </table>
       </div>
-      <div style="margin-top:6px;font-size:9px;color:var(--text-dim)">Reddit \u00B7 r/wallstreetbets, r/stocks, r/investing \u00B7 sorted by ${this._sortField.replace(/([A-Z])/g, ' $1').toLowerCase()}</div>
-    `, 'legacy Panel.setContent() migration'));
+      <div style="margin-top:6px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">Reddit \u00B7 r/wallstreetbets, r/stocks, r/investing \u00B7 sorted by ${this._sortField.replace(/([A-Z])/g, ' $1').toLowerCase()}</div>
+    `, 'legacy Panel.setContent() migration'), focusField ? () => {
+      this.content.querySelector<HTMLButtonElement>(`button[data-sort="${focusField}"]`)
+        ?.focus({ preventScroll: true });
+    } : undefined);
   }
 }

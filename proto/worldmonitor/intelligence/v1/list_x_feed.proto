@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+package worldmonitor.intelligence.v1;
+
+import "sebuf/http/annotations.proto";
+
+// Request to fetch the curated public news-account X feed.
+message ListXFeedRequest {
+  // Maximum number of posts to return (default 50).
+  int32 limit = 1 [(sebuf.http.query) = {name: "limit"}];
+  // Filter by topic keyword (e.g. "breaking", "cyber").
+  string topic = 2 [(sebuf.http.query) = {name: "topic"}];
+  // Filter by account handle.
+  string account = 3 [(sebuf.http.query) = {name: "account"}];
+}
+
+// Curated X news-account feed. Post text is R4 and is not included —
+// partners receive permalink plus derived facts only.
+message ListXFeedResponse {
+  // Whether the ais-relay poller currently has X_BEARER_TOKEN configured.
+  bool enabled = 1;
+  // Collection of posts matching the criteria.
+  repeated XFeedItem posts = 2;
+  // Number of posts returned in this response, after the limit is applied.
+  int32 count = 3;
+  // Detailed error message if the fetch failed.
+  string error = 4;
+}
+
+// Derived facts for one curated public news-account post. No tweet body.
+message XFeedItem {
+  // Unique post identifier (handle:postId).
+  string id = 1;
+  // Numeric X account id (stable across handle renames).
+  string account_id = 2;
+  // Human-readable account label.
+  string account_name = 3;
+  // Current @handle without the leading @.
+  string handle = 4;
+  // Curated topic bucket.
+  string topic = 5;
+  // Unix timestamp in milliseconds for when the post was created.
+  int64 timestamp_ms = 6 [(sebuf.http.int64_encoding) = INT64_ENCODING_NUMBER];
+  // Canonical permalink to the original post.
+  string permalink = 7;
+  // Derived facts only (no tweet body).
+  repeated string facts = 8;
+  // Whether the post had media attachments when ingested.
+  bool has_media = 9;
+  // Publisher language code when provided by the API.
+  string lang = 10;
+  // "active" or "deleted" (tombstoned within 24h of deletion).
+  string content_state = 11;
+}

@@ -18,17 +18,25 @@ export function clearGlobalTenderCache(): void {
   tenderBreaker.clearCache();
 }
 
-export async function fetchGlobalTenders(filters: GlobalTenderFilters = {}): Promise<ListGlobalTendersResponse> {
+export async function fetchGlobalTenders(
+  filters: GlobalTenderFilters = {},
+  signal?: AbortSignal,
+): Promise<ListGlobalTendersResponse> {
   const request: ListGlobalTendersRequest = {
     country: '', countries: [], region: '', source: '', status: '', deadlineFrom: '', deadlineTo: '', minValue: 0, maxValue: 0,
     currency: '', category: '', query: '', pageSize: 25, cursor: '', sort: 'closing_soon', buyer: '', publishedFrom: '', publishedTo: '', minAutomationScore: 0, ...filters,
   };
   return tenderBreaker.execute(
-    () => client.listGlobalTenders(request, { signal: AbortSignal.timeout(20_000) }),
+    () => client.listGlobalTenders(request, {
+      signal: signal
+        ? AbortSignal.any([signal, AbortSignal.timeout(20_000)])
+        : AbortSignal.timeout(20_000),
+    }),
     EMPTY_TENDERS,
     {
       cacheKey: JSON.stringify(request),
       shouldCache: (response) => response.dataAvailable || response.availability === 'empty',
+      ignoreError: () => signal?.aborted === true,
     },
   );
 }

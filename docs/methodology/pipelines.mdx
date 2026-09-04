@@ -3,6 +3,44 @@ title: "Pipeline Registry Methodology"
 description: "How World Monitor curates and attributes operational status for the world's oil and gas pipelines displayed on the Energy Atlas map layer."
 ---
 
+## Start here
+
+Roughly 150 oil and gas pipelines on the map, chosen because closing them would
+matter — Nord Stream, Druzhba, Power of Siberia, BTC, Trans-Alaska, and the rest
+of the arteries that turn a regional dispute into a continental energy problem.
+
+### The rule that shapes everything here
+
+**WorldMonitor does not publish a conclusion about why a pipeline stopped.**
+
+That sounds like a limitation. It is the point. "Russia cut the gas" and "the
+pipeline is offline and the operator has issued no statement" are different
+claims, and only one of them is a fact. Attributing a stoppage to political
+intent is a judgement that gets made wrong constantly, in public, with
+consequences.
+
+So each pipeline carries an **evidence bundle** instead: what is physically
+flowing, what the operator has actually said, what the commercial contract
+status is, and which sanctions instruments name it — each with its own source
+and date. The status badge you see is derived from that bundle, and you can
+always open it to see what the badge was derived from.
+
+If the evidence is thin, the badge says so rather than picking the most
+newsworthy explanation.
+
+### What a status means
+
+| Physical state | What it asserts |
+|---|---|
+| `flowing` | Observed to be moving product. |
+| `reduced` | Moving, below normal. |
+| `offline` | Not moving. **Says nothing about why.** |
+| `unknown` | We do not have current evidence. Not a synonym for `offline`. |
+
+Every entry also carries where that reading came from — vessel tracking, the
+operator, satellite, or press — because a press report and an operator filing
+are not the same grade of evidence.
+
 ## Scope
 
 Release 1 launches with a curated registry of critical oil & gas pipelines, not a claim of global completeness:

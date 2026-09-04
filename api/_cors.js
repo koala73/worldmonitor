@@ -57,14 +57,72 @@ const EXPOSED_HEADERS = [
   'X-RateLimit-Limit',
   'X-RateLimit-Remaining',
   'X-RateLimit-Reset',
+  // Fail-open limiter degradation (oauth/token, wm-session, gateway). Mode is
+  // not part of the Limit/Remaining/Reset triplet; omitting it left
+  // `response.headers.get('X-RateLimit-Mode')` null for cross-origin JS
+  // even though the header is on the wire (#7270).
+  'X-RateLimit-Mode',
   'X-WorldMonitor-Bbox',
   'X-WorldMonitor-Bbox-Missing',
   'X-WorldMonitor-Bbox-Invalid',
   'X-Military-Bbox',
+  // RFC 9745 / RFC 8594 lifecycle signals. Link rel="deprecation" is present
+  // on current responses for policy discovery; Deprecation and Sunset appear
+  // only when a surface is actually deprecated.
+  'Link',
+  'Deprecation',
+  'Sunset',
 ].join(', ');
 
+/**
+ * Browsers occasionally emit the FQDN form of a hostname (trailing DNS dot),
+ * e.g. `https://tech.worldmonitor.app.`. Allowlist patterns are anchored at `$`,
+ * so that form would otherwise be refused even though it is first-party (#6411).
+ * Normalize only for matching; callers still echo the raw Origin into ACAO
+ * because browsers compare ACAO to the request Origin byte-for-byte.
+ */
+function originForAllowlistMatch(origin) {
+  if (!origin) return '';
+  try {
+    const url = new URL(origin);
+    const host = url.hostname.replace(/\.+$/, '');
+    if (!host || host === url.hostname) return origin;
+    url.hostname = host;
+    return url.origin;
+  } catch {
+    return origin;
+  }
+}
+
+/**
+ * Google Translate rewrites `https://www.worldmonitor.app` to
+ * `https://www-worldmonitor-app.translate.goog` (`.` → `-`, and literal `-` →
+ * `--`). Suffix-matching the encoded label would admit
+ * `evil--worldmonitor-app.translate.goog` (`evil-worldmonitor.app`). Decode
+ * first, then require the reconstructed host to be `worldmonitor.app` or a
+ * subdomain (#6411 review).
+ */
+function isWorldMonitorGoogleTranslateOrigin(origin) {
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== 'https:') return false;
+    const host = url.hostname.replace(/\.+$/, '');
+    const suffix = '.translate.goog';
+    if (!host.endsWith(suffix)) return false;
+    const encoded = host.slice(0, -suffix.length);
+    if (!encoded || encoded.includes('.')) return false;
+    const decoded = encoded.replace(/--/g, '\0').replace(/-/g, '.').replace(/\0/g, '-');
+    return decoded === 'worldmonitor.app' || decoded.endsWith('.worldmonitor.app');
+  } catch {
+    return false;
+  }
+}
+
 function isAllowedOrigin(origin) {
-  return Boolean(origin) && ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(origin));
+  if (!origin) return false;
+  if (isWorldMonitorGoogleTranslateOrigin(origin)) return true;
+  const candidate = originForAllowlistMatch(origin);
+  return ALLOWED_ORIGIN_PATTERNS.some((pattern) => pattern.test(candidate));
 }
 
 export function getCorsHeaders(req, methods = 'GET, OPTIONS') {
@@ -72,6 +130,33 @@ export function getCorsHeaders(req, methods = 'GET, OPTIONS') {
   const allowOrigin = isAllowedOrigin(origin) ? origin : 'https://worldmonitor.app';
   return {
     'Access-Control-Allow-Origin': allowOrigin,
+    'Access-Control-Allow-Credentials': 'true',
+    'Access-Control-Allow-Methods': methods,
+    'Access-Control-Allow-Headers': ALLOWED_HEADERS,
+    'Access-Control-Expose-Headers': EXPOSED_HEADERS,
+    'Access-Control-Max-Age': '3600',
+    'Vary': 'Origin',
+  };
+}
+
+/**
+ * CORS headers for an explicit origin refusal.
+ *
+ * `getCorsHeaders` falls back to `https://worldmonitor.app` for disallowed
+ * origins, which makes a 403 opaque to the calling browser (same class of blind
+ * spot as WORLDMONITOR-WG: the client cannot tell "refused" from "never
+ * arrived"). Echo the request Origin with credentials so a credentials:include
+ * fetch can read the status. Safe only for refusal bodies — never use this for
+ * successful authenticated responses (#6411).
+ *
+ * Preflight (OPTIONS) for disallowed origins must also use these headers (or
+ * the browser never sends the POST). On api.worldmonitor.app the Cloudflare
+ * Worker mirrors this: echo on OPTIONS / denial statuses, allowlist on success.
+ */
+export function getOriginDeniedCorsHeaders(req, methods = 'GET, OPTIONS') {
+  const origin = req.headers.get('origin') || '';
+  return {
+    'Access-Control-Allow-Origin': origin || 'https://worldmonitor.app',
     'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': methods,
     'Access-Control-Allow-Headers': ALLOWED_HEADERS,

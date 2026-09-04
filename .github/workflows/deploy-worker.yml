@@ -16,6 +16,13 @@ on:
     paths:
       - 'workers/api-cors-preflight/**'
       - 'api/_bootstrap-public-tier.js'
+      - 'api/_bootstrap-tier-keys.js'
+      # The deployed-URL guard and the contract it asserts. Without these, a change
+      # to the shared contract helper alone deploys nothing and runs no live smoke —
+      # so the half of "one definition, both sides" that runs against production
+      # would silently never be re-checked.
+      - 'tests/cors-preflight-live.test.mjs'
+      - 'tests/helpers/public-bootstrap-contract.mjs'
       - '.github/workflows/deploy-worker.yml'
   workflow_dispatch:
 
@@ -30,7 +37,7 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -47,7 +54,7 @@ jobs:
       run:
         working-directory: workers/api-cors-preflight
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -85,7 +92,7 @@ jobs:
     needs: deploy
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'

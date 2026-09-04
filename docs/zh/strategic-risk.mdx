@@ -22,7 +22,7 @@ headline = round(weightedAvg * 0.70 + 15)
 ```
 
 具体的 top-5 窗口、缩放因子、下限和严重性等级，请参见
-[CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores#3-strategic-risk-roll-up)。
+[CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores#3-战略风险汇总)。
 
 当缓存的服务端分数不可用时，浏览器可渲染一个本地
 回退概览，综合地图侧的聚合、基础设施、战区
@@ -97,7 +97,7 @@ Priority: Critical
 
 告警优先级与服务端 Strategic Risk High/Medium/Low
 等级分离。下文对 Critical 和 High CII 的引用使用
-[国家不稳定指数](/zh/country-instability-index#instability-levels) 中记录的国家不稳定指数国家评分等级。
+[国家不稳定指数](/zh/country-instability-index#不稳定性等级) 中记录的国家不稳定指数国家评分等级。
 
 | 优先级 | 判定条件 |
 |----------|----------|
@@ -187,7 +187,7 @@ Strategic Risk 趋势合约。
 |------|--------|----------|
 | **管道** | 88 条全球路线 | Nord Stream、Keystone、Trans-Siberian |
 | **海底电缆** | 86 条主要电缆 | TAT-14、SEA-ME-WE、Pacific Crossing |
-| **AI 数据中心** | 313 个集群 | Azure East US、GCP Council Bluffs |
+| **AI 数据中心** | Epoch AI 注册表 | Azure East US、GCP Council Bluffs |
 | **军事基地** | 226 处设施 | Ramstein、Diego Garcia、Guam |
 | **核设施** | 100+ 处地点 | 核电站、武器实验室、浓缩设施 |
 
@@ -237,7 +237,7 @@ Strategic Risk 与国家不稳定指数（CII）评分在服务端预计算，�
 
 每个国家的评分将静态基线（40%）与动态事件评分（60%）相结合，外加补充加成与下限。
 
-**基线风险**（0-50 分）：反映结构性脆弱性的静态地缘政治风险。按国家的权威数值位于 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores#2-per-country-baselinerisk-and-eventmultiplier)。
+**基线风险**（0-50 分）：反映结构性脆弱性的静态地缘政治风险。按国家的权威数值位于 [CII Risk Scoring Methodology](/zh/methodology/cii-risk-scores#2-各国-baselinerisk-和-eventmultiplier)。
 
 **事件评分**融合四个子组成：
 

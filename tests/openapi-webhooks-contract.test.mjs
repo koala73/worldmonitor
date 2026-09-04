@@ -4,7 +4,7 @@ import { createHmac } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { load as loadYaml } from 'js-yaml';
+import { loadUnifiedOpenApiSpec } from './_lib/openapi-spec-cache.mjs';
 
 import {
   injectYamlWebhooks,
@@ -27,7 +27,7 @@ const bundlePath = resolve(root, 'docs/api/worldmonitor.openapi.yaml');
 const deliverPath = resolve(root, 'server/worldmonitor/shipping/v2/deliver-webhook.ts');
 
 const bundleRaw = readFileSync(bundlePath, 'utf8');
-const bundle = loadYaml(bundleRaw);
+const bundle = loadUnifiedOpenApiSpec();
 const deliverSrc = readFileSync(deliverPath, 'utf8');
 
 const webhook = bundle.webhooks?.[WEBHOOK_EVENT]?.post;
@@ -117,6 +117,18 @@ describe('OpenAPI webhooks contract', () => {
   it('the committed bundle is up to date with the injector (idempotent)', () => {
     const result = injectYamlWebhooks(bundleRaw);
     assert.equal(result.changed, false, 'run `npm run gen:openapi:webhooks` — committed bundle is stale');
+  });
+
+  it('documents a body-agnostic any-2xx acknowledgement', () => {
+    assert.equal(webhook.responses?.['200'], undefined, 'webhook must not invent an exact 200 response');
+    const acknowledgement = webhook.responses?.['2XX'];
+    assert.ok(acknowledgement, 'webhook must document the any-2xx acknowledgement');
+    assert.equal(
+      acknowledgement.content,
+      undefined,
+      'acknowledgement must not require a response body or media type',
+    );
+    assert.match(acknowledgement.description ?? '', /any 2xx/i);
   });
 
   it('webhooks live at the top level, not under paths (no phantom REST op)', () => {

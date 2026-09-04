@@ -26,6 +26,7 @@ export interface NewsItemCore {
   locationName?: string;
   lang?: string;
   pubDateMissing?: boolean;
+  credibilityScore?: number;
 }
 
 export type NewsItemWithTier = NewsItemCore & { tier: number };
@@ -35,7 +36,11 @@ export interface ClusteredEventCore {
   primaryTitle: string;
   primarySource: string;
   primaryLink: string;
+  credibilityScore?: number;
+  /** Articles in the cluster — a volume signal, not a corroboration signal. */
   sourceCount: number;
+  /** Distinct publishers behind those articles (#6428). */
+  uniquePublisherCount: number;
   topSources: Array<{ name: string; tier: number; url: string }>;
   allItems: NewsItemCore[];
   firstSeen: Date;

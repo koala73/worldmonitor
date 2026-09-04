@@ -22,6 +22,12 @@ const VALID_PAYLOAD = ZONES.map((z) => ({
   daily: { time: ['2020-01-01'], temperature_2m_mean: [10] },
 }));
 
+const VALID_NORMALS_DAILY = {
+  time: Array.from({ length: 12 }, (_, index) => `2020-${String(index + 1).padStart(2, '0')}-15`),
+  temperature_2m_mean: Array(12).fill(10),
+  precipitation_sum: Array(12).fill(1),
+};
+
 const ARCHIVE_OPTS = {
   startDate: '2020-01-01',
   endDate: '2020-01-02',
@@ -135,11 +141,15 @@ test('non-retryable status (500): falls through to proxy attempt without extra r
 test('429 + proxy configured + proxy succeeds: returns proxy data, never throws', async () => {
   const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
 
-  globalThis.fetch = async () => ({
-    ok: false, status: 429,
-    headers: { get: () => null },
-    json: async () => ({}),
-  });
+  let directCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    return {
+      ok: false, status: 429,
+      headers: { get: () => null },
+      json: async () => ({}),
+    };
+  };
 
   let proxyCalls = 0;
   let receivedProxyAuth = null;
@@ -155,10 +165,256 @@ test('429 + proxy configured + proxy succeeds: returns proxy data, never throws'
     },
   });
 
+  assert.equal(directCalls, 1, 'a configured proxy should own the next attempt after a throttle');
   assert.equal(proxyCalls, 1);
   assert.equal(receivedProxyAuth, 'user:pass@gate.decodo.com:7000');
   assert.equal(result.length, 2);
   assert.equal(result[1].latitude, 80);
+});
+
+test('multiple throttled batches transfer directly to CONNECT without retry waits', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  let status = 429;
+  let directCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    return {
+      ok: false, status,
+      headers: { get: () => null },
+      json: async () => ({}),
+    };
+  };
+
+  let nowMs = 0;
+  let connectCalls = 0;
+  const retryWaits = [];
+  for (const throttleStatus of [429, 503, 429]) {
+    status = throttleStatus;
+    const result = await fetchOpenMeteoArchiveBatch(ZONES, {
+      ...ARCHIVE_OPTS,
+      maxRetries: 4,
+      retryBaseMs: 1,
+      deadlineAtMs: 225_000,
+      _now: () => nowMs,
+      _sleep: async (waitMs) => {
+        retryWaits.push(waitMs);
+        nowMs += waitMs;
+      },
+      _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+      _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+      _proxyFetcher: async () => {
+        connectCalls += 1;
+        nowMs += 1_000;
+        return { buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'), contentType: 'application/json' };
+      },
+    });
+    assert.equal(result.length, ZONES.length);
+  }
+
+  assert.equal(directCalls, 3, 'each batch should make one direct attempt');
+  assert.equal(connectCalls, 3, 'each throttled batch should reach CONNECT');
+  assert.deepEqual(retryWaits, [], 'the helper should not wait before changing egress routes');
+  assert.ok(nowMs < 225_000, 'the proxy cascade should finish inside the shared soft deadline');
+});
+
+test('shared deadline clamps CONNECT and rejects a response that finishes after expiry', async () => {
+  const { OPEN_METEO_DEADLINE_CODE, fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  let nowMs = 5;
+  globalThis.fetch = async () => ({
+    ok: false, status: 503,
+    headers: { get: () => null },
+    json: async () => ({}),
+  });
+
+  let connectCalls = 0;
+  await assert.rejects(
+    () => fetchOpenMeteoArchiveBatch(ZONES, {
+      ...ARCHIVE_OPTS,
+      deadlineAtMs: 100,
+      _now: () => nowMs,
+      _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+      _curlProxyResolver: () => null,
+      _proxyFetcher: async (_url, _proxyAuth, options) => {
+        connectCalls += 1;
+        assert.equal(options.timeoutMs, 95);
+        assert.ok(options.signal instanceof AbortSignal, 'CONNECT should share one abort signal across tunnel and response work');
+        nowMs = 101;
+        return { buffer: Buffer.from(JSON.stringify(VALID_PAYLOAD), 'utf8'), contentType: 'application/json' };
+      },
+    }),
+    (err) => {
+      assert.equal(err.code, OPEN_METEO_DEADLINE_CODE);
+      return true;
+    },
+  );
+  assert.equal(connectCalls, 1);
+});
+
+test('shared deadline gives CONNECT failure time to reach the curl route', async () => {
+  const { fetchOpenMeteoArchiveBatch } = await import(`../scripts/_open-meteo-archive.mjs?t=${Date.now()}`);
+
+  let nowMs = 100;
+  let directCalls = 0;
+  globalThis.fetch = async () => {
+    directCalls += 1;
+    return {
+      ok: false, status: 429,
+      headers: { get: () => null },
+      json: async () => ({}),
+    };
+  };
+
+  let connectCalls = 0;
+  let curlCalls = 0;
+  const result = await fetchOpenMeteoArchiveBatch(ZONES, {
+    ...ARCHIVE_OPTS,
+    deadlineAtMs: 1_000,
+    _now: () => nowMs,
+    _connectProxyResolver: () => 'user:pass@gate.decodo.com:7000',
+    _curlProxyResolver: () => 'user:pass@us.decodo.com:10001',
+    _proxyFetcher: async (_url, _proxyAuth, options) => {
+      connectCalls += 1;
+      assert.equal(options.timeoutMs, 900);
+      nowMs = 400;
+      throw new Error('CONNECT 502');
+    },
+    _proxyCurlFetcher: (_url, _proxyAuth, _headers, options) => {
+      curlCalls += 1;
+      assert.equal(options.timeoutMs, 600);
+      return JSON.stringify(VALID_PAYLOAD);
+    },
+  });
+
+  assert.equal(directCalls, 1);
+  assert.equal(connectCalls, 1);
+  assert.equal(curlCalls, 1);
+  assert.equal(result.length, ZONES.length);
+});
+
+test('normals caller shares one run-anchored deadline across every batch', async () => {
+  const { CLIMATE_ZONES } = await import('../scripts/_climate-zones.mjs');
+  const {
+    NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+    fetchClimateZoneNormals,
+  } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+
+  const runStartedAtMs = 10_000;
+  let nowMs = runStartedAtMs;
+  const deadlines = [];
+  const result = await fetchClimateZoneNormals({
+    runStartedAtMs,
+    _now: () => nowMs,
+    _sleep: async (waitMs) => { nowMs += waitMs; },
+    _fetchArchiveBatch: async (batch, options) => {
+      deadlines.push(options.deadlineAtMs);
+      nowMs += 100;
+      return batch.map((zone) => ({
+        latitude: zone.lat,
+        longitude: zone.lon,
+        daily: VALID_NORMALS_DAILY,
+      }));
+    },
+  });
+
+  const expectedDeadlineAtMs = runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS;
+  assert.equal(deadlines.length, Math.ceil(CLIMATE_ZONES.length / 2));
+  assert.ok(deadlines.every((deadlineAtMs) => deadlineAtMs === expectedDeadlineAtMs));
+  assert.equal(result.normals.length, CLIMATE_ZONES.length);
+  assert.ok(result.fetchedAt < expectedDeadlineAtMs);
+});
+
+test('normals caller stops launching batches when the soft deadline expires', async () => {
+  const {
+    NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+    fetchClimateZoneNormals,
+  } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+
+  const runStartedAtMs = 20_000;
+  let nowMs = runStartedAtMs;
+  let batchCalls = 0;
+  await assert.rejects(
+    () => fetchClimateZoneNormals({
+      runStartedAtMs,
+      _now: () => nowMs,
+      _sleep: async (waitMs) => { nowMs += waitMs; },
+      _fetchArchiveBatch: async (batch) => {
+        batchCalls += 1;
+        nowMs = runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS;
+        return batch.map((zone) => ({
+          latitude: zone.lat,
+          longitude: zone.lon,
+          daily: VALID_NORMALS_DAILY,
+        }));
+      },
+    }),
+    /Only 2\/25 zones returned normals \(23 errors\)/,
+  );
+  assert.equal(batchCalls, 1);
+});
+
+test('normals deadline failure stops the outer seed retry loop', async () => {
+  const { OPEN_METEO_DEADLINE_CODE } = await import('../scripts/_open-meteo-archive.mjs');
+  const { withRetry } = await import('../scripts/_seed-utils.mjs');
+  const { fetchClimateZoneNormals } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+
+  let batchCalls = 0;
+  await assert.rejects(
+    () => withRetry(
+      () => fetchClimateZoneNormals({
+        runStartedAtMs: 0,
+        _now: () => 1,
+        _sleep: async () => {},
+        _fetchArchiveBatch: async () => {
+          batchCalls += 1;
+          throw Object.assign(new Error('deadline'), { code: OPEN_METEO_DEADLINE_CODE });
+        },
+      }),
+      3,
+      0,
+    ),
+    (err) => {
+      assert.equal(err.code, OPEN_METEO_DEADLINE_CODE);
+      assert.equal(err.nonRetryable, true);
+      return true;
+    },
+  );
+  assert.equal(batchCalls, 1);
+});
+
+test('normals pre-batch deadline check is non-retryable', async () => {
+  const {
+    NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+    fetchClimateZoneNormals,
+  } = await import(`../scripts/seed-climate-zone-normals.mjs?t=${Date.now()}`);
+  const { OPEN_METEO_DEADLINE_CODE } = await import('../scripts/_open-meteo-archive.mjs');
+  const { withRetry } = await import('../scripts/_seed-utils.mjs');
+
+  const runStartedAtMs = 10_000;
+  let fetchCalls = 0;
+  await assert.rejects(
+    () => withRetry(
+      () => {
+        fetchCalls += 1;
+        return fetchClimateZoneNormals({
+          runStartedAtMs,
+          _now: () => runStartedAtMs + NORMALS_FETCH_PHASE_SOFT_DEADLINE_MS,
+          _fetchArchiveBatch: async () => {
+            throw new Error('must not start a batch');
+          },
+        });
+      },
+      3,
+      0,
+    ),
+    (err) => {
+      assert.equal(err.code, OPEN_METEO_DEADLINE_CODE);
+      assert.equal(err.nonRetryable, true);
+      return true;
+    },
+  );
+  assert.equal(fetchCalls, 1);
 });
 
 test('thrown fetch error (timeout/ECONNRESET) on final direct attempt → proxy fallback runs (P1 fix)', async () => {

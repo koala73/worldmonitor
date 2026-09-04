@@ -1,67 +1,123 @@
 #!/usr/bin/env node
 
-import { loadEnvFile, CHROME_UA, runSeed } from './_seed-utils.mjs';
+import { loadEnvFile, CHROME_UA, readCanonicalValue, runSeed } from './_seed-utils.mjs';
+import {
+  ECCC_MAX_BYTES,
+  NWS_ALERTS_URL,
+  NWS_HOST,
+  SWIC_MAX_BYTES,
+  WEATHER_ALERTS_SOURCE_VERSION,
+  carryFailedWeatherAlertSources,
+  fetchApprovedWeatherJson,
+  fetchEcccAlertFeatures,
+  fetchSwicAlertCatalog,
+  formatTruncationWarning,
+  mergeAlertSources,
+  rankEligibleAlerts,
+  requireAlertFeatures,
+  selectEcccAlerts,
+  selectSwicAlerts,
+  validateSelectedAlerts,
+  weatherAlertsAfterPublish,
+} from './_weather-alert-select.mjs';
 
 loadEnvFile(import.meta.url);
 
-const NWS_API = 'https://api.weather.gov/alerts/active';
 const CANONICAL_KEY = 'weather:alerts:v1';
-const CACHE_TTL = 900; // 15 min
+const CACHE_TTL = 900; // 15 min — standalone is planned; live writer is the relay (TTL 5400s)
 
-function extractCoordinates(geometry) {
-  if (!geometry) return [];
+async function fetchSourceFeatures(url, allowedHosts, label) {
   try {
-    if (geometry.type === 'Polygon') {
-      return geometry.coordinates[0]?.map(c => [c[0], c[1]]) || [];
-    }
-    if (geometry.type === 'MultiPolygon') {
-      return geometry.coordinates[0]?.[0]?.map(c => [c[0], c[1]]) || [];
-    }
-  } catch { /* ignore */ }
-  return [];
-}
-
-function calculateCentroid(coords) {
-  if (coords.length === 0) return undefined;
-  const sum = coords.reduce((acc, [lon, lat]) => [acc[0] + lon, acc[1] + lat], [0, 0]);
-  return [sum[0] / coords.length, sum[1] / coords.length];
+    const data = await fetchApprovedWeatherJson(url, {
+      allowedHosts,
+      maxBytes: ECCC_MAX_BYTES,
+      userAgent: CHROME_UA,
+      accept: 'application/geo+json',
+    });
+    return requireAlertFeatures(data);
+  } catch (err) {
+    console.warn(`weather-alerts: ${label} fetch failed: ${err.message || err}`);
+    return null;
+  }
 }
 
 async function fetchAlerts() {
-  const resp = await fetch(NWS_API, {
-    headers: { Accept: 'application/geo+json', 'User-Agent': CHROME_UA },
-    signal: AbortSignal.timeout(15_000),
-  });
-  if (!resp.ok) throw new Error(`NWS API error: ${resp.status}`);
+  const [nwsFeatures, ecccResult, swicResult] = await Promise.all([
+    fetchSourceFeatures(NWS_ALERTS_URL, [NWS_HOST], 'NWS'),
+    fetchEcccAlertFeatures({
+      userAgent: CHROME_UA,
+      maxBytes: ECCC_MAX_BYTES,
+    }).catch((err) => {
+      console.warn(`weather-alerts: ECCC fetch failed: ${err.message || err}`);
+      return null;
+    }),
+    fetchSwicAlertCatalog({
+      userAgent: CHROME_UA,
+      maxBytes: SWIC_MAX_BYTES,
+    }).catch((err) => {
+      console.warn(`weather-alerts: SWIC fetch failed: ${err.message || err}`);
+      return null;
+    }),
+  ]);
 
-  const data = await resp.json();
-  const features = data.features || [];
+  if (nwsFeatures == null && ecccResult == null && swicResult == null) {
+    throw new Error('NWS, ECCC, and SWIC weather alert fetches all failed');
+  }
 
-  const alerts = features
-    .filter(f => f?.properties?.severity !== 'Unknown')
-    .slice(0, 50)
-    .map(f => {
-      const p = f.properties;
-      const coords = extractCoordinates(f.geometry);
-      return {
-        id: f.id || '',
-        event: p.event || '',
-        severity: p.severity || 'Unknown',
-        headline: p.headline || '',
-        description: (p.description || '').slice(0, 500),
-        areaDesc: p.areaDesc || '',
-        onset: p.onset || '',
-        expires: p.expires || '',
-        coordinates: coords,
-        centroid: calculateCentroid(coords),
-      };
-    });
+  const degraded = [];
+  const failedSources = [];
+  if (ecccResult?.partial) {
+    degraded.push(`eccc-partial:${ecccResult.failedStatuses.join('+')}`);
+    failedSources.push('eccc');
+    console.warn(
+      `weather-alerts: ECCC PARTIAL — status ${ecccResult.failedStatuses.join(', ')} failed `
+      + `(${ecccResult.failureDetail}); carrying the previous complete ECCC slice`,
+    );
+  }
+  if (nwsFeatures == null) {
+    degraded.push('nws-unavailable');
+    failedSources.push('nws');
+  }
+  if (ecccResult == null) {
+    degraded.push('eccc-unavailable');
+    failedSources.push('eccc');
+  }
+  if (swicResult == null) {
+    degraded.push('swic-unavailable');
+    failedSources.push('swic');
+  }
 
-  return { alerts };
-}
+  let previousAlerts = [];
+  if (failedSources.length > 0) {
+    try {
+      const previous = await readCanonicalValue(CANONICAL_KEY);
+      previousAlerts = Array.isArray(previous?.alerts) ? previous.alerts : [];
+    } catch (err) {
+      console.warn(`weather-alerts: last-good read failed: ${err.message || err}`);
+    }
+  }
+  const carried = carryFailedWeatherAlertSources(previousAlerts, failedSources);
+  const nwsAlerts = failedSources.includes('nws') ? carried.nws : rankEligibleAlerts(nwsFeatures);
+  const ecccAlerts = failedSources.includes('eccc') ? carried.eccc : selectEcccAlerts(ecccResult.features);
+  const swicAlerts = failedSources.includes('swic')
+    ? carried.swic
+    : selectSwicAlerts(swicResult.items, swicResult.membersByMid);
+  const alerts = mergeAlertSources({ nws: nwsAlerts, eccc: ecccAlerts, swic: swicAlerts });
+  const truncationWarning = formatTruncationWarning(
+    nwsAlerts.length + ecccAlerts.length + swicAlerts.length,
+    alerts.length,
+  );
+  if (truncationWarning) console.warn(truncationWarning);
 
-function validate(data) {
-  return Array.isArray(data?.alerts) && data.alerts.length >= 1;
+  return degraded.length
+    ? {
+        alerts,
+        sourceState: 'degraded',
+        errorCode: 'WEATHER_ALERT_SOURCE_INCOMPLETE',
+        failedSources,
+        skipReason: degraded.join(','),
+      }
+    : { alerts };
 }
 
 export function declareRecords(data) {
@@ -69,13 +125,15 @@ export function declareRecords(data) {
 }
 
 runSeed('weather', 'alerts', CANONICAL_KEY, fetchAlerts, {
-  validateFn: validate,
+  validateFn: validateSelectedAlerts,
   ttlSeconds: CACHE_TTL,
-  sourceVersion: 'nws-active',
+  sourceVersion: WEATHER_ALERTS_SOURCE_VERSION,
 
   declareRecords,
+  zeroIsValid: true,
   schemaVersion: 1,
   maxStaleMin: 45,
+  afterPublish: weatherAlertsAfterPublish,
 }).catch((err) => {
   const _cause = err.cause ? ` (cause: ${err.cause.message || err.cause.code || err.cause})` : ''; console.error('FATAL:', (err.message || err) + _cause);
   process.exit(1);

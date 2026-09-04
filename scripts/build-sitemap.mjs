@@ -11,6 +11,28 @@ import {
 
 export const SITE_ORIGIN = 'https://www.worldmonitor.app';
 
+/**
+ * Local URL-set filename. The root /sitemap.xml is the index; crawlers and
+ * tools that need page URLs read this file. Exported so consumers derive
+ * paths from one constant instead of repeating the literal.
+ */
+export const SITEMAP_MAIN_FILENAME = 'sitemap-main.xml';
+
+/**
+ * Canonical root-sitemap-index membership.
+ *
+ * /sitemap.xml itself is the index. The three members below are the sitemap
+ * locations crawlers must discover: the local URL set plus the blog (Astro)
+ * and docs (Mintlify) sitemaps, whose publishers own those families. robots
+ * declares the index alongside each member URL, so crawlers that parse robots
+ * and crawlers that fetch /sitemap.xml directly converge on the same three.
+ */
+export const SITEMAP_INDEX_MEMBERS = Object.freeze([
+  `${SITE_ORIGIN}/${SITEMAP_MAIN_FILENAME}`,
+  `${SITE_ORIGIN}/blog/sitemap-index.xml`,
+  `${SITE_ORIGIN}/docs/sitemap.xml`,
+]);
+
 const REPO_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const TODAY = new Date().toISOString().slice(0, 10);
 const DASHBOARD_MATERIAL_SOURCES = [
@@ -77,6 +99,8 @@ export const STATIC_ROUTE_MANIFEST = Object.freeze([
   route(`${SITE_ORIGIN}/mcp-server.md`, 'machine-readable-developer', ['public/mcp-server.md']),
   route(`${SITE_ORIGIN}/openapi.md`, 'machine-readable-developer', ['public/openapi.md']),
   route(`${SITE_ORIGIN}/sdks.md`, 'machine-readable-developer', ['public/sdks.md']),
+  route(`${SITE_ORIGIN}/world-monitor.md`, 'machine-readable-brand', ['public/world-monitor.md']),
+  route(`${SITE_ORIGIN}/api-versioning.md`, 'machine-readable-developer', ['public/api-versioning.md']),
   route(`${SITE_ORIGIN}/llms.txt`, 'machine-readable-developer', ['public/llms.txt']),
   route(`${SITE_ORIGIN}/llms-full.txt`, 'machine-readable-developer', ['public/llms-full.txt']),
   route(`${SITE_ORIGIN}/api/llms.txt`, 'machine-readable-developer', ['public/api/llms.txt']),
@@ -273,12 +297,20 @@ export function validateSitemapEntries(entries, { today = TODAY } = {}) {
   return entries;
 }
 
+function readFirstExistingFile(paths) {
+  for (const path of paths) {
+    if (existsSync(path)) return readFileSync(path, 'utf8');
+  }
+  return null;
+}
+
 export function buildSitemapEntries({
   repoRoot = REPO_ROOT,
   publicDir = join(repoRoot, 'public'),
-  existingSitemapSource = existsSync(join(publicDir, 'sitemap.xml'))
-    ? readFileSync(join(publicDir, 'sitemap.xml'), 'utf8')
-    : '',
+  existingSitemapSource = readFirstExistingFile([
+    join(publicDir, SITEMAP_MAIN_FILENAME),
+    join(publicDir, 'sitemap.xml'), // legacy pre-index location
+  ]) ?? '',
   resolveMaterialLastmod = createMaterialLastmodResolver({
     repoRoot,
     existingSitemapSource,
@@ -286,7 +318,6 @@ export function buildSitemapEntries({
   requireCompleteCorpus = true,
   today = TODAY,
 } = {}) {
-  const existingLastmods = parseExistingSitemapLastmods(existingSitemapSource);
   const entries = STATIC_ROUTE_MANIFEST.map((manifestEntry) => {
     assertMaterialSourcesExist(repoRoot, manifestEntry);
     return {
@@ -299,7 +330,14 @@ export function buildSitemapEntries({
 
   const corpusPages = discoverContentCorpusPages({ publicDir });
   if (requireCompleteCorpus) {
-    for (const prefix of ['/countries/', '/chokepoints/', '/crises/', '/tools/', '/research/', '/reference/']) {
+    const corpusPathnames = new Set(corpusPages.map((page) => new URL(page.loc).pathname));
+    if (!corpusPathnames.has('/country-instability-index/')) {
+      throw new Error(
+        'generated content corpus is incomplete: no /country-instability-index/ page; '
+        + 'run npm run build:crawlable-corpus before npm run build:sitemap',
+      );
+    }
+    for (const prefix of ['/countries/', '/chokepoints/', '/compare/', '/crises/', '/tools/', '/research/', '/reference/']) {
       if (!corpusPages.some((page) => new URL(page.loc).pathname.startsWith(prefix))) {
         throw new Error(
           `generated content corpus is incomplete: no ${prefix} pages; `
@@ -312,7 +350,7 @@ export function buildSitemapEntries({
   for (const page of corpusPages) {
     entries.push({
       loc: page.loc,
-      lastmod: laterDate(page.lastmod, existingLastmods.get(page.loc)),
+      lastmod: page.lastmod,
       family: 'content-corpus',
       owner: 'root',
     });
@@ -340,10 +378,59 @@ export function generateSitemapXml(entries) {
   return lines.join('\n');
 }
 
+export function validateSitemapIndex(members, { today = TODAY } = {}) {
+  if (!isIsoDate(today)) throw new Error(`validation today must be YYYY-MM-DD, saw ${today}`);
+  const locs = members.map((member) => member.loc).sort();
+  const expected = [...SITEMAP_INDEX_MEMBERS].sort();
+  if (JSON.stringify(locs) !== JSON.stringify(expected)) {
+    throw new Error(
+      `sitemap index must list exactly the robots-declared sitemaps: ${expected.join(', ')}`,
+    );
+  }
+  for (const member of members) {
+    // Membership above pins the exact three canonical https URLs, so only the
+    // lastmod rules remain: measured for the local member, absent for foreign.
+    if (member.loc === `${SITE_ORIGIN}/${SITEMAP_MAIN_FILENAME}`) {
+      if (!isIsoDate(member.lastmod)) {
+        throw new Error('the local index member must carry a measured lastmod date');
+      }
+      if (member.lastmod > today) {
+        throw new Error(`the local index member has a future lastmod ${member.lastmod}`);
+      }
+    } else if (member.lastmod != null) {
+      throw new Error(
+        `never fabricate a lastmod for the foreign index member: ${member.loc}`,
+      );
+    }
+  }
+  return members;
+}
+
+export function generateSitemapIndexXml(members) {
+  const lines = [
+    '<?xml version="1.0" encoding="UTF-8"?>',
+    '<sitemapindex xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">',
+    '  <!-- Generated by npm run build:sitemap. Do not edit by hand. -->',
+  ];
+
+  for (const member of members) {
+    lines.push('  <sitemap>');
+    lines.push(`    <loc>${escapeXml(member.loc)}</loc>`);
+    if (member.lastmod != null) {
+      lines.push(`    <lastmod>${member.lastmod}</lastmod>`);
+    }
+    lines.push('  </sitemap>');
+  }
+
+  lines.push('</sitemapindex>', '');
+  return lines.join('\n');
+}
+
 export function buildSitemap({
   repoRoot = REPO_ROOT,
   publicDir = join(repoRoot, 'public'),
-  sitemapPath = join(publicDir, 'sitemap.xml'),
+  sitemapPath = join(publicDir, 'sitemap-main.xml'),
+  indexPath = join(publicDir, 'sitemap.xml'),
   check = false,
   today = TODAY,
 } = {}) {
@@ -357,19 +444,35 @@ export function buildSitemap({
   const next = generateSitemapXml(entries);
   const changed = next !== current;
 
-  if (check && changed) {
-    throw new Error('public/sitemap.xml is out of date; run npm run build:sitemap');
+  // The local member lastmod is measured from the emitted URL set, never the
+  // build clock; foreign members carry no lastmod rather than a stale guess.
+  const localLastmod = entries.map((entry) => entry.lastmod).sort().at(-1);
+  const members = SITEMAP_INDEX_MEMBERS.map((loc) => (
+    loc === `${SITE_ORIGIN}/sitemap-main.xml` ? { loc, lastmod: localLastmod } : { loc }
+  ));
+  validateSitemapIndex(members, { today });
+  const nextIndex = generateSitemapIndexXml(members);
+  const currentIndex = existsSync(indexPath) ? readFileSync(indexPath, 'utf8') : '';
+  const indexChanged = nextIndex !== currentIndex;
+
+  if (check && (changed || indexChanged)) {
+    const stale = [
+      changed ? 'public/sitemap-main.xml' : null,
+      indexChanged ? 'public/sitemap.xml' : null,
+    ].filter(Boolean).join(' and ');
+    throw new Error(`${stale} is out of date; run npm run build:sitemap`);
   }
   if (!check && changed) writeFileSync(sitemapPath, next);
-  return { entries, changed, source: next };
+  if (!check && indexChanged) writeFileSync(indexPath, nextIndex);
+  return { entries, members, changed: changed || indexChanged, source: next, indexSource: nextIndex };
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   try {
     const check = process.argv.slice(2).includes('--check');
-    const { entries, changed } = buildSitemap({ check });
+    const { entries, members, changed } = buildSitemap({ check });
     const verb = check ? 'verified' : changed ? 'updated' : 'checked';
-    console.log(`[sitemap] ${verb} public/sitemap.xml with ${entries.length} canonical URL(s)`);
+    console.log(`[sitemap] ${verb} public/sitemap.xml index (${members.length} members) and public/sitemap-main.xml (${entries.length} canonical URL(s))`);
   } catch (error) {
     console.error(`[sitemap] ${error?.message ?? error}`);
     process.exit(1);

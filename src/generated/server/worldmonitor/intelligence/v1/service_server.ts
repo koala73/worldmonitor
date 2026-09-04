@@ -279,6 +279,33 @@ export interface TelegramMessage {
   topic: string;
 }
 
+export interface ListXFeedRequest {
+  limit: number;
+  topic: string;
+  account: string;
+}
+
+export interface ListXFeedResponse {
+  enabled: boolean;
+  posts: XFeedItem[];
+  count: number;
+  error: string;
+}
+
+export interface XFeedItem {
+  id: string;
+  accountId: string;
+  accountName: string;
+  handle: string;
+  topic: string;
+  timestampMs: number;
+  permalink: string;
+  facts: string[];
+  hasMedia: boolean;
+  lang: string;
+  contentState: string;
+}
+
 export interface GetCompanyEnrichmentRequest {
   /** @deprecated */
   domain: string;
@@ -659,6 +686,9 @@ export interface GetCountryEnergyProfileResponse {
   sprAvailable: boolean;
   jodiOilObservedMeasurements: string[];
   jodiGasObservedMeasurements: string[];
+  importShareAvailable: boolean;
+  importShareYear: number;
+  importShareSource: string;
 }
 
 export interface ComputeEnergyShockScenarioRequest {
@@ -1042,7 +1072,7 @@ export type TrendDirection = "TREND_DIRECTION_UNSPECIFIED" | "TREND_DIRECTION_RI
 
 export type CrossSourceSignalSeverity = "CROSS_SOURCE_SIGNAL_SEVERITY_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_SEVERITY_LOW" | "CROSS_SOURCE_SIGNAL_SEVERITY_MEDIUM" | "CROSS_SOURCE_SIGNAL_SEVERITY_HIGH" | "CROSS_SOURCE_SIGNAL_SEVERITY_CRITICAL";
 
-export type CrossSourceSignalType = "CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING" | "CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER" | "CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK" | "CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION" | "CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT" | "CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY" | "CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE" | "CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS" | "CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME" | "CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE";
+export type CrossSourceSignalType = "CROSS_SOURCE_SIGNAL_TYPE_UNSPECIFIED" | "CROSS_SOURCE_SIGNAL_TYPE_COMPOSITE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_THERMAL_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_GPS_JAMMING" | "CROSS_SOURCE_SIGNAL_TYPE_MILITARY_FLIGHT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_UNREST_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_OREF_ALERT_CLUSTER" | "CROSS_SOURCE_SIGNAL_TYPE_VIX_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_COMMODITY_SHOCK" | "CROSS_SOURCE_SIGNAL_TYPE_CYBER_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_SHIPPING_DISRUPTION" | "CROSS_SOURCE_SIGNAL_TYPE_SANCTIONS_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_EARTHQUAKE_SIGNIFICANT" | "CROSS_SOURCE_SIGNAL_TYPE_RADIATION_ANOMALY" | "CROSS_SOURCE_SIGNAL_TYPE_INFRASTRUCTURE_OUTAGE" | "CROSS_SOURCE_SIGNAL_TYPE_WILDFIRE_ESCALATION" | "CROSS_SOURCE_SIGNAL_TYPE_DISPLACEMENT_SURGE" | "CROSS_SOURCE_SIGNAL_TYPE_FORECAST_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_MARKET_STRESS" | "CROSS_SOURCE_SIGNAL_TYPE_WEATHER_EXTREME" | "CROSS_SOURCE_SIGNAL_TYPE_MEDIA_TONE_DETERIORATION" | "CROSS_SOURCE_SIGNAL_TYPE_RISK_SCORE_SPIKE" | "CROSS_SOURCE_SIGNAL_TYPE_PHYSICAL_PREMIUM_REGIME_TRANSITION" | "CROSS_SOURCE_SIGNAL_TYPE_REGULATORY_ACTION";
 
 export type DataFreshness = "DATA_FRESHNESS_UNSPECIFIED" | "DATA_FRESHNESS_FRESH" | "DATA_FRESHNESS_STALE";
 
@@ -1106,6 +1136,7 @@ export interface IntelligenceServiceHandler {
   listGpsInterference(ctx: ServerContext, req: ListGpsInterferenceRequest): Promise<ListGpsInterferenceResponse>;
   listOrefAlerts(ctx: ServerContext, req: ListOrefAlertsRequest): Promise<ListOrefAlertsResponse>;
   listTelegramFeed(ctx: ServerContext, req: ListTelegramFeedRequest): Promise<ListTelegramFeedResponse>;
+  listXFeed(ctx: ServerContext, req: ListXFeedRequest): Promise<ListXFeedResponse>;
   getCompanyEnrichment(ctx: ServerContext, req: GetCompanyEnrichmentRequest): Promise<GetCompanyEnrichmentResponse>;
   listCompanySignals(ctx: ServerContext, req: ListCompanySignalsRequest): Promise<ListCompanySignalsResponse>;
   searchSecFilings(ctx: ServerContext, req: SearchSecFilingsRequest): Promise<SearchSecFilingsResponse>;
@@ -1635,6 +1666,55 @@ export function createIntelligenceServiceRoutes(
 
           const result = await handler.listTelegramFeed(ctx, body);
           return new Response(JSON.stringify(result as ListTelegramFeedResponse), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
+        } catch (err: unknown) {
+          if (err instanceof ValidationError) {
+            return new Response(JSON.stringify({ violations: err.violations }), {
+              status: 400,
+              headers: { "Content-Type": "application/json" },
+            });
+          }
+          if (options?.onError) {
+            return options.onError(err, req);
+          }
+          const message = err instanceof Error ? err.message : String(err);
+          return new Response(JSON.stringify({ message }), {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          });
+        }
+      },
+    },
+    {
+      method: "GET",
+      path: "/api/intelligence/v1/list-x-feed",
+      handler: async (req: Request): Promise<Response> => {
+        try {
+          const pathParams: Record<string, string> = {};
+          const url = new URL(req.url, "http://localhost");
+          const params = url.searchParams;
+          const body: ListXFeedRequest = {
+            limit: Number(params.get("limit") ?? "0"),
+            topic: params.get("topic") ?? "",
+            account: params.get("account") ?? "",
+          };
+          if (options?.validateRequest) {
+            const bodyViolations = options.validateRequest("listXFeed", body);
+            if (bodyViolations) {
+              throw new ValidationError(bodyViolations);
+            }
+          }
+
+          const ctx: ServerContext = {
+            request: req,
+            pathParams,
+            headers: Object.fromEntries(req.headers.entries()),
+          };
+
+          const result = await handler.listXFeed(ctx, body);
+          return new Response(JSON.stringify(result as ListXFeedResponse), {
             status: 200,
             headers: { "Content-Type": "application/json" },
           });

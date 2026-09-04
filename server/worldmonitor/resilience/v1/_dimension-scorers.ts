@@ -1,17 +1,92 @@
 import countryNames from '../../../../shared/country-names.json';
 import iso2ToIso3Json from '../../../../shared/iso2-to-iso3.json';
 import wgiIndicatorKeys from '../../../../shared/wgi-indicator-keys.json';
+import { wgiObservationSource } from '../../../../shared/wgi-source-provenance.js';
 import { normalizeCountryToken } from '../../../_shared/country-token';
-import { getCachedJson } from '../../../_shared/redis';
+import { getCachedEnvelopeJson, getCachedJson, readCachedEnvelopeJson, readCachedJson } from '../../../_shared/redis';
+import { unwrapEnvelope } from '../../../_shared/seed-envelope';
 import { classifyDimensionFreshness, readFreshnessMap, resolveSeedMetaKey } from './_dimension-freshness';
 import { getLanguageCoverageFactor } from './_language-coverage';
 import { MACRO_FISCAL_INDICATOR_WEIGHTS } from './_macro-fiscal-weights';
+import { isInRankableUniverse } from './_rankable-universe';
+import { getEnergyImportDependencyObservedSources } from './_energy-import-dependency-source';
 import {
   failedDimensionsFromDatasets,
   readFailedDatasets,
   readStandaloneSourceFailureDimensions,
   STANDALONE_SOURCE_META_MAX_STALE_MIN,
 } from './_source-failure';
+import {
+  applyCanadaNationalOverlay,
+  RESILIENCE_BOC_VALET_KEY,
+  RESILIENCE_STATCAN_WDS_KEY,
+  STATCAN_SCORE_PROVIDER,
+  STATCAN_WDS_SOURCE_URL,
+  statcanOverlayUsed,
+} from './_canada-national-overlay';
+import type {
+  IndicatorObservedSource,
+  IndicatorTraceMetric,
+  ResilienceScoreOptions,
+} from './_indicator-trace';
+import type { ResilienceIndicatorId } from './_indicator-registry';
+
+function worldBankSources(...indicatorIds: readonly string[]): readonly IndicatorObservedSource[] {
+  return indicatorIds.map((indicatorId) => ({
+    providerName: 'World Bank Open Data',
+    sourceUrl: `https://api.worldbank.org/v2/country/all/indicator/${indicatorId}`,
+  }));
+}
+
+const WORLD_BANK_FX_RESERVES_SOURCE = worldBankSources('FI.RES.TOTL.MO');
+const WORLD_BANK_TARIFF_SOURCE = worldBankSources('TM.TAX.MRCH.WM.AR.ZS');
+const WORLD_BANK_SHORT_TERM_DEBT_GNI_SOURCES = worldBankSources('DT.DOD.DSTC.CD', 'NY.GNP.MKTP.CD');
+const WORLD_BANK_ROADS_PAVED_SOURCE = worldBankSources('IS.ROD.PAVE.ZS');
+const WORLD_BANK_ELECTRICITY_ACCESS_SOURCE = worldBankSources('EG.ELC.ACCS.ZS');
+const WORLD_BANK_BROADBAND_SOURCE = worldBankSources('IT.NET.BBND.P2');
+const WORLD_BANK_ELECTRICITY_CONSUMPTION_SOURCE = worldBankSources('EG.USE.ELEC.KH.PC');
+const WORLD_BANK_POWER_LOSSES_SOURCE = worldBankSources('EG.ELC.LOSS.ZS');
+const WORLD_BANK_WATER_STRESS_SOURCE = worldBankSources('ER.H2O.FWST.ZS');
+const WORLD_BANK_RECOVERY_DEBT_RESERVE_SOURCES = worldBankSources('DT.DOD.DSTC.CD', 'FI.RES.TOTL.CD');
+const UNESCO_VIA_WORLD_BANK_SOURCES = [
+  { providerName: 'UNESCO Institute for Statistics via World Bank WDI', sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/SE.SEC.CUAT.UP.FE.ZS' },
+] as const;
+const OWID_ENERGY_SOURCE = [{ providerName: 'Our World in Data', sourceUrl: 'https://ourworldindata.org/energy' }] as const;
+const OWID_LOW_CARBON_SOURCE = [{
+  providerName: 'Our World in Data',
+  sourceUrl: 'https://ourworldindata.org/grapher/share-electricity-low-carbon',
+}] as const;
+const WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE = [{
+  providerName: 'World Bank Open Data',
+  sourceUrl: 'https://api.worldbank.org/v2/country/all/indicator/EG.ELC.FOSL.ZS',
+}] as const;
+
+function oldestSourceYear(...years: readonly (number | null | undefined)[]): number | null {
+  const observed = years.filter((year): year is number => Number.isFinite(year));
+  return observed.length > 0 ? Math.min(...observed) : null;
+}
+
+function statcanSourceYear(observedAt: string | null | undefined): number | null {
+  if (typeof observedAt !== 'string') return null;
+  const match = /^(\d{4})/.exec(observedAt);
+  return match ? Number(match[1]) : null;
+}
+
+function statcanObservedAtMs(observedAt: string | null | undefined): number | null {
+  if (typeof observedAt !== 'string') return null;
+  const parsed = Date.parse(observedAt);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function statcanObservedSources(used: boolean): readonly IndicatorObservedSource[] {
+  return used
+    ? [{
+        sourceKey: RESILIENCE_STATCAN_WDS_KEY,
+        providerName: STATCAN_SCORE_PROVIDER,
+        sourceUrl: STATCAN_WDS_SOURCE_URL,
+      }]
+    : [];
+}
 
 export type ResilienceDimensionId =
   | 'macroFiscal'
@@ -26,6 +101,7 @@ export type ResilienceDimensionId =
   | 'socialCohesion'
   | 'borderSecurity'
   | 'informationCognitive'
+  | 'education'             // female upper-secondary attainment (WB SE.SEC.CUAT.UP.FE.ZS)
   | 'healthPublicService'
   | 'foodWater'
   | 'fiscalSpace'
@@ -66,9 +142,14 @@ export interface ResilienceDimensionScore {
 
 export type ResilienceSeedReader = (key: string) => Promise<unknown | null>;
 
-interface WeightedMetric {
+export interface WeightedMetric {
   score: number | null;
   weight: number;
+  // A known malformed reading can preserve its design weight with a
+  // conservative fallback instead of letting weightedBlend renormalize the
+  // missing weight onto unrelated survivors. Genuine absence leaves this
+  // unset and keeps the existing coverage-weighted drop behavior.
+  fallbackScore?: number;
   // When a sub-metric is imputed (absence is a typed signal, not a gap), certaintyCoverage
   // expresses how confident we are in the imputation: 1.0 = real data, 0 = fully absent.
   // Omit for real data (auto: 1.0 if score != null, 0 if null).
@@ -88,6 +169,15 @@ interface WeightedMetric {
   // countries — the inverse of the intended semantic. Omit when `weight` is
   // already the nominal design-time value (default = weight).
   nominalWeight?: number;
+}
+
+export type TracedWeightedMetric = WeightedMetric & IndicatorTraceMetric;
+
+function tracedMetric(
+  indicatorId: ResilienceIndicatorId,
+  metric: Omit<TracedWeightedMetric, 'indicatorId'>,
+): TracedWeightedMetric {
+  return Object.assign(metric, { indicatorId });
 }
 
 function hasFiniteMetricScore(metric: WeightedMetric): metric is WeightedMetric & { score: number } {
@@ -182,6 +272,15 @@ export const IMPUTE = {
   // deliberate penalty over-fired for advanced economies that hold
   // reserves through Treasury / central-bank channels).
   recoverySovereignFiscalBuffer: { score: 50, certaintyCoverage: 0.3, imputationClass: 'unmonitored' },
+  // #6459 — financialSystemExposure Component 1 for jurisdictions that the
+  // World Bank country catalog explicitly classifies as outside its borrower
+  // programs (`lendingType=LNX`). That means no reported short-term external
+  // commercial debt to roll over, so the slot is
+  // `not-applicable` rather than an unknown; 0.3 certainty keeps the
+  // dimension's coverage honest about the reading being inferred. Before this
+  // entry the slot was dropped and its 0.35 weight renormalized onto the
+  // punitive cross-border-claims leg. See `resolveNonDrsDebtImputation`.
+  finSysExposureNonDrsShortTermDebt: { score: 75, certaintyCoverage: 0.3, imputationClass: 'not-applicable' },
   // Plan 2026-04-26-001 §U2 — gated GPI-only impute for socialCohesion.
   // This entry fires ONLY when the dimension is operating in degraded
   // GPI-only mode (i.e. country is absent from the displacement registry).
@@ -199,6 +298,7 @@ interface StaticIndicatorValue {
 }
 
 interface ResilienceStaticCountryRecord {
+  seededAt?: string;
   wgi?: { indicators?: Record<string, StaticIndicatorValue> } | null;
   infrastructure?: { indicators?: Record<string, StaticIndicatorValue> } | null;
   gpi?: { score?: number; rank?: number; year?: number | null } | null;
@@ -210,6 +310,19 @@ interface ResilienceStaticCountryRecord {
   tradeToGdp?: { tradeToGdpPct?: number; year?: number | null; source?: string } | null;
   fxReservesMonths?: { months?: number; year?: number | null; source?: string } | null;
   appliedTariffRate?: { value?: number; year?: number | null; source?: string } | null;
+}
+
+type ResilienceStaticDatasetField = Exclude<keyof ResilienceStaticCountryRecord, 'seededAt'>;
+
+function staticDatasetRetrievedAt(
+  record: ResilienceStaticCountryRecord | null,
+  datasetField: ResilienceStaticDatasetField,
+): string {
+  const dataset = record?.[datasetField] as { _recovered?: { seededAt?: unknown } } | null | undefined;
+  const recovered = dataset != null && Object.prototype.hasOwnProperty.call(dataset, '_recovered');
+  const value = recovered ? dataset?._recovered?.seededAt : record?.seededAt;
+  if (typeof value !== 'string' || !Number.isFinite(Date.parse(value))) return '';
+  return new Date(Date.parse(value)).toISOString();
 }
 
 interface ImfMacroEntry {
@@ -307,6 +420,7 @@ const RESILIENCE_TRADE_RESTRICTIONS_KEY = 'trade:restrictions:v1:tariff-overview
 const RESILIENCE_TRADE_BARRIERS_KEY = 'trade:barriers:v1:tariff-gap:50';
 // plan 2026-04-25-004 Phase 2: financialSystemExposure component seed keys.
 const RESILIENCE_WB_EXTERNAL_DEBT_KEY = 'economic:wb-external-debt:v1';
+const RESILIENCE_WB_EXTERNAL_DEBT_SCHEMA_VERSION = 2;
 const RESILIENCE_BIS_LBS_KEY = 'economic:bis-lbs:v1';
 const RESILIENCE_FATF_LISTING_KEY = 'economic:fatf-listing:v1';
 const RESILIENCE_CYBER_KEY = 'cyber:threats:v2';
@@ -483,6 +597,11 @@ export const RESILIENCE_DIMENSION_WEIGHTS: Record<ResilienceDimensionId, number>
   socialCohesion: 1.0,
   borderSecurity: 1.0,
   informationCognitive: 1.0,
+  // 0.5 mirrors the financialSystemExposure precedent for a new dimension:
+  // it caps education at ~11% of the social-governance domain rather than the
+  // ~20% an equal-weight entry would take. Deliberately conservative for a
+  // first ship; raising it later is a separate, evidenced decision.
+  education: 0.5,
   healthPublicService: 1.0,
   foodWater: 1.0,
   fiscalSpace: 1.0,
@@ -508,6 +627,7 @@ export const RESILIENCE_DIMENSION_DOMAINS: Record<ResilienceDimensionId, Resilie
   socialCohesion: 'social-governance',
   borderSecurity: 'social-governance',
   informationCognitive: 'social-governance',
+  education: 'social-governance',
   healthPublicService: 'health-food',
   foodWater: 'health-food',
   fiscalSpace: 'recovery',
@@ -533,6 +653,7 @@ export const RESILIENCE_DIMENSION_ORDER: ResilienceDimensionId[] = [
   'socialCohesion',
   'borderSecurity',
   'informationCognitive',
+  'education',
   'healthPublicService',
   'foodWater',
   'fiscalSpace',
@@ -569,6 +690,9 @@ export const RESILIENCE_DIMENSION_TYPES: Record<ResilienceDimensionId, Resilienc
   socialCohesion: 'baseline',
   borderSecurity: 'stress',
   informationCognitive: 'stress',
+  // Attainment of the 25+ population is a structural stock, not a live shock
+  // signal — it moves on a survey cadence, not a news cycle.
+  education: 'baseline',
   healthPublicService: 'baseline',
   foodWater: 'mixed',
   fiscalSpace: 'baseline',
@@ -599,22 +723,68 @@ function safeNum(value: unknown): number | null {
   return Number.isFinite(numeric) ? numeric : null;
 }
 
+function optionalNum(value: unknown): number | null {
+  return value == null || value === '' ? null : safeNum(value);
+}
+
 export function sqrtCount(value: number): number {
   return Math.sqrt(Math.max(0, Number.isFinite(value) ? value : 0));
 }
 
-function normalizeLowerBetter(value: number, best: number, worst: number): number {
+export function normalizeLowerBetter(value: number, best: number, worst: number): number {
   if (!Number.isFinite(value)) return Number.NaN;
   if (worst <= best) return 50;
   const ratio = (worst - value) / (worst - best);
   return roundScore(ratio * 100);
 }
 
-function normalizeHigherBetter(value: number, worst: number, best: number): number {
+export function normalizeHigherBetter(value: number, worst: number, best: number): number {
   if (!Number.isFinite(value)) return Number.NaN;
   if (best <= worst) return 50;
   const ratio = (value - worst) / (best - worst);
   return roundScore(ratio * 100);
+}
+
+// Education attainment transform (female upper-secondary, 25+).
+// See the "Education" section of docs/methodology/country-resilience-index.mdx
+// for the construct.
+//
+// Two segments with a slope drop at the bend. Decreasing slope is concave,
+// which is what the construct contract asks for on a development-adjacent
+// indicator — the score must stop paying for attainment past the point where
+// it stops buying shock absorption.
+//
+// It is deliberately NOT a log or logistic squash. The measured distribution
+// does not saturate: median 50.0 across the 181 covered countries, near-uniform
+// deciles, only 1.7% above 95% (adult literacy, by contrast, puts 42% there).
+// Squashing would erase discrimination in the 20-80 band that holds two-thirds
+// of the universe. The bend affects 22 of 181 countries.
+//
+// Goalposts are fixed 0 and 100, never observed min/max. Eight of the top ten
+// are post-Soviet states reporting near-universal legacy completion, so an
+// observed-max anchor would let Turkmenistan define a perfect score; a
+// percentile lower anchor would tie 18 Sahel and Horn countries at the floor,
+// which is exactly the band this series was chosen to resolve.
+export const EDUCATION_BEND = 85;
+export const EDUCATION_BEND_SCORE = 92;
+
+export function normalizeEducationAttainment(value: unknown): number | null {
+  // `value == null` must be checked before coercion: Number(null) === 0 is
+  // finite, and 0 is a plausible reading here, so a null would silently score
+  // an unsurveyed country as the worst on earth instead of dropping its slot.
+  if (value == null) return null;
+  const numeric = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(numeric)) return null;
+
+  const pct = clamp(numeric, 0, 100);
+  if (pct <= EDUCATION_BEND) {
+    // Linear across the band where countries actually sit.
+    return roundScore((pct / EDUCATION_BEND) * EDUCATION_BEND_SCORE);
+  }
+  // Shallower slope above the bend: the remaining 15 points of attainment buy
+  // only the remaining 8 points of score.
+  const topBandFraction = (pct - EDUCATION_BEND) / (100 - EDUCATION_BEND);
+  return roundScore(EDUCATION_BEND_SCORE + topBandFraction * (100 - EDUCATION_BEND_SCORE));
 }
 
 export function scoreInflationStability(inflationPct: number): number {
@@ -634,34 +804,145 @@ export function scoreInflationStability(inflationPct: number): number {
 //
 // Plan 2026-04-25-004 Phase 2 § Component 2 score shape — re-anchored
 // for piecewise-CONTINUOUS transitions per Greptile P1 catch (PR #3407
-// review 2026-04-25). Original draft had a 30-point cliff at the 25%
+// review 2026-04-25). The original draft had a 30-point cliff at the 25%
 // boundary (sweet spot ended at 100, over-exposed started at 70) and a
 // 5-point jump at 5%. Cliffs in piecewise-linear scorers cause ranking
 // instability for countries near band edges — a 24.9% reading scores
-// dramatically different than 25.1%. Endpoints now share values across
+// dramatically different than 25.1%. Endpoints share values across
 // adjacent segments so the function is monotone-then-monotone with no
-// discontinuities:
+// discontinuities.
 //
-//   0% ≤ value < 5%      → 60-75  (low integration; slope +3/pct)
-//   5% ≤ value ≤ 25%     → 75-100 (sweet spot; slope +1.25/pct)
-//   25% < value ≤ 60%    → 100-30 (over-exposed; slope −2/pct)
-//   value > 60%           → 30 → 0 at 120% (Iceland-2008; slope −0.5/pct, clamped)
-function normalizeBandLowerBetter(value: number): number {
+// #6459 re-anchoring — the ASYMMETRY was inverting the ranking. The
+// original band floored ZERO cross-border integration at 60 while decaying
+// over-integration all the way to 0 at 120% of GDP. 0% claims is the
+// signature of a sanctions-severed banking system, so the shape scored
+// severance above integration by construction: Russia's 1.45% of GDP took
+// 64 while Luxembourg's 1041% took 0. The two legs are now sized so that
+// isolation is the worse extreme:
+//
+//   0% ≤ value < 5%      → 30-75  (isolation → low integration; slope +9/pct)
+//   5% ≤ value ≤ 25%     → 75-100 (sweet spot; slope +1.25/pct, unchanged)
+//   25% < value ≤ 60%    → 100-45 (over-exposed; slope −1.571/pct)
+//   value > 60%          → 45 → 35 at 80%, then flat (Iceland-2008 floor)
+//
+// The invariants, which `tests/resilience-financial-system-exposure.test.mts`
+// pins directly rather than inferring from sample points:
+//   - the isolation floor (value 0) is ≤ 40 and strictly below every
+//     sweet-spot value, so severance can never out-score integration;
+//   - the over-exposure leg floors at 35 — above the isolation floor,
+//     because an over-banked entrepôt still has working correspondent
+//     access that a severed state does not;
+//   - every segment boundary is continuous.
+//
+// Exported for direct testing. The whole lesson of #6459 is that a
+// calibration claim nobody can execute is not a calibration claim, and these
+// invariants are not observable through the blended dimension score: any
+// fixture that varies the band also moves the debt-slot imputation, so a
+// test driven through `scoreFinancialSystemExposure` alone measures the
+// blend rather than the band shape.
+export const FIN_SYS_BAND_ISOLATION_FLOOR = 30;
+export const FIN_SYS_BAND_OVEREXPOSED_FLOOR = 35;
+// The band SCORE at which the premium region begins — the value
+// `normalizeBandLowerBetter` returns, not a claims percentage. The band reaches
+// it twice: rising off the low-integration leg at 5% of GDP and falling back
+// through it on the over-exposure descent near 40.6%. Everything SCORING at or
+// below it is a pure level reading the diversity conditioning must not touch;
+// everything above is premium, on either leg.
+export const FIN_SYS_BAND_PREMIUM_FLOOR = 75;
+
+export function normalizeBandLowerBetter(value: number): number {
   if (!Number.isFinite(value) || value < 0) return 50;
   if (value < 5) {
-    // Low integration: 0% → 60, 5% → 75 (continuous to sweet-spot start).
-    return roundScore(60 + (value / 5) * 15);
+    // Isolation → low integration: 0% → 30, 5% → 75 (continuous to sweet spot).
+    return roundScore(FIN_SYS_BAND_ISOLATION_FLOOR + (value / 5) * (75 - FIN_SYS_BAND_ISOLATION_FLOOR));
   }
   if (value <= 25) {
     // Sweet spot: 5% → 75, 25% → 100.
     return roundScore(75 + ((value - 5) / 20) * 25);
   }
   if (value <= 60) {
-    // Over-exposed: 25% → 100 (continuous from sweet-spot peak), 60% → 30.
-    return roundScore(100 - ((value - 25) / 35) * 70);
+    // Over-exposed: 25% → 100 (continuous from sweet-spot peak), 60% → 45.
+    return roundScore(100 - ((value - 25) / 35) * 55);
   }
-  // Iceland-2008 territory: 60% → 30 (continuous), drops 0.5pt per pct; clamped 0.
-  return roundScore(Math.max(0, 30 - (value - 60) * 0.5));
+  // Iceland-2008 territory: 60% → 45 (continuous), drops 0.5pt per pct down
+  // to the over-exposure floor at 80% and stays there. It does NOT decay to
+  // 0: an entrepôt balance sheet is a different failure mode from severance,
+  // and letting it fall below the isolation floor is what inverted the band.
+  return roundScore(Math.max(FIN_SYS_BAND_OVEREXPOSED_FLOOR, 45 - (value - 60) * 0.5));
+}
+
+// The band's premium region (raw band > 75, i.e. claims in (5.4%, 40.59%] of
+// GDP — the ROUNDED band's actual crossings, since 75.5 is where it rounds
+// above 75; the unrounded 5%/40.9% figures pull in two countries that round to
+// exactly 75 and earn no premium, per the derivation in
+// docs/methodology/financial-system-exposure.md) is documented as "healthy
+// DIVERSIFIED financial system" —
+// but `normalizeBandLowerBetter` reads only the integration LEVEL. On the
+// 2026-08-12 production payload, 29 of the 77 premium-region countries held
+// that premium through ≤ 2 reporting parents: Bosnia took a 90 band on ONE
+// parent, Albania a 91 on two (its parents map is dominated by one Austrian
+// and one Italian group). Moderate integration through two doors is not a
+// diversified system — it is the 1997-Thailand / 2011-Greek-deleveraging
+// withdrawal channel, and the construct's own Component 4 scores that same
+// fact 11/100. Level and breadth are not independent: the level's meaning
+// flips with concentration, which is the same cross-component insight behind
+// `isMarketAccessConstrainedDebtSignal` (#6461).
+//
+// So the premium above the 75 low-integration boundary is scaled by the
+// construct's OWN redundancy transform — `normalizeHigherBetter(parents,
+// 1, 10)`, verbatim the Component 4 scale, no new constants. Everything at
+// or below 75 (both floors, the isolation leg, the deep over-exposure legs)
+// is untouched, so every #6459 band invariant survives:
+//
+//   conditioned = min(band, 75) + max(0, band − 75) × redundancy/100
+//
+//   - parents ≥ 10 → full premium (identical to the raw band everywhere);
+//   - parents ≤ 1  → no premium (band caps at the 75 boundary value);
+//   - continuous in claims for any fixed parent count (a scaled continuous
+//     premium added to a continuous base), monotone in parents;
+//   - a non-finite or absent `parentCount` earns NO premium: absence of
+//     diversity evidence is not diversity. Non-finite is handled explicitly
+//     rather than left to arithmetic — `normalizeHigherBetter` returns NaN for
+//     it, and `roundScore(NaN)` is 0, which would put a premium-region country
+//     BELOW the isolation floor and invert the very ranking this function
+//     exists to fix. The sibling `normalizeBandLowerBetter` neutralises
+//     malformed input the same way.
+//
+// Capping the band is necessary but not sufficient to make a `parentCount`
+// parse regression fail closed. The reader marks a present-but-invalid count
+// as malformed, and the blend retains that slot with a conservative fallback
+// score of zero. A genuinely absent count remains null without a fallback, so
+// it keeps the existing absence and coverage semantics.
+//
+// This distinction matters because `weightedBlend` otherwise renormalises a
+// missing Component 4 slot onto the survivors. For a country whose debt and
+// FATF legs read high, that can raise the published score. The generic blend
+// now supports an explicit fallback for this known-corrupt-input case; the
+// conditioning function only supplies the bounded band value and its signal.
+//
+// Known conservative edge: parentCount counts only parents above 1% of GDP,
+// so a country integrated through many sub-threshold parents forfeits a
+// premium its true breadth might merit. No production row currently has
+// premium-region claims with parentCount 0. The forfeit is bounded by the
+// premium itself: ≤ 25 points of band, and ≤ 7.5 of dimension ONLY while all
+// four slots resolve. `weightedBlend` renormalises the band's 0.30 onto the
+// surviving weight, so the dimension cost grows as siblings drop — 8.8 points
+// at coverage 0.85 (Component 4 gone), 11.5 at 0.65 (debt gone), 15 at 0.50.
+// It reaches ~14 band points at the worst arithmetically reachable case — 16
+// enumerated reporting parents each sitting just under the 1%-of-GDP counting
+// threshold, summing to ~16% of GDP for a raw band of 89.
+export function normalizeDiversityConditionedBand(
+  claimsPctGdp: number,
+  parentCount: number | null,
+): number {
+  const raw = normalizeBandLowerBetter(claimsPctGdp);
+  if (raw <= FIN_SYS_BAND_PREMIUM_FLOOR) return raw;
+  const redundancy = parentCount != null && Number.isFinite(parentCount)
+    ? normalizeHigherBetter(parentCount, 1, 10)
+    : 0;
+  return roundScore(
+    FIN_SYS_BAND_PREMIUM_FLOOR + (raw - FIN_SYS_BAND_PREMIUM_FLOOR) * (redundancy / 100),
+  );
 }
 
 // `normalizeSanctionCount` retired in plan 2026-04-25-004 Phase 1. The
@@ -693,16 +974,49 @@ const IMPUTATION_CLASS_TIE_BREAK: readonly ImputationClass[] = [
 const MINUTE_MS = 60 * 1000;
 const WGI_INDICATOR_KEYS: readonly string[] = wgiIndicatorKeys;
 
-function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
+export interface WeightedBlendTraceOptions {
+  dimensionId: ResilienceDimensionId;
+  trace?: ResilienceScoreOptions['trace'];
+}
+
+export function weightedBlend(
+  metrics: readonly TracedWeightedMetric[],
+  traceOptions: WeightedBlendTraceOptions,
+): ResilienceDimensionScore;
+export function weightedBlend(
+  metrics: readonly WeightedMetric[],
+  traceOptions?: WeightedBlendTraceOptions,
+): ResilienceDimensionScore;
+export function weightedBlend(
+  metrics: readonly WeightedMetric[],
+  traceOptions?: WeightedBlendTraceOptions,
+): ResilienceDimensionScore {
   const totalWeight = metrics.reduce((sum, metric) => sum + metric.weight, 0);
   const available = metrics.filter(hasFiniteMetricScore);
   const availableWeight = available.reduce((sum, metric) => sum + metric.weight, 0);
+  const fallback = metrics.filter((metric) => !hasFiniteMetricScore(metric) && Number.isFinite(metric.fallbackScore));
+  const fallbackWeight = fallback.reduce((sum, metric) => sum + metric.weight, 0);
+  const scoringWeight = availableWeight + fallbackWeight;
 
-  if (!availableWeight || !totalWeight) {
-    return { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } };
+  if (!scoringWeight || !totalWeight) {
+    const empty = { score: 0, coverage: 0, observedWeight: 0, imputedWeight: 0, imputationClass: null, freshness: { lastObservedAtMs: 0, staleness: '' } } as const;
+    if (traceOptions?.trace) {
+      traceOptions.trace.recordBlend(
+        traceOptions.dimensionId,
+        empty.score,
+        metrics as readonly IndicatorTraceMetric[],
+      );
+    }
+    return empty;
   }
 
-  const weightedScore = available.reduce((sum, metric) => sum + metric.score * metric.weight, 0) / availableWeight;
+  // A malformed slot with an explicit fallback keeps its weight in the
+  // denominator. This prevents a low leg from disappearing and raising the
+  // published score, while ordinary absence still renormalizes as before.
+  const weightedScore = (
+    available.reduce((sum, metric) => sum + metric.score * metric.weight, 0)
+    + fallback.reduce((sum, metric) => sum + (metric.fallbackScore ?? 0) * metric.weight, 0)
+  ) / scoringWeight;
 
   // Coverage: weighted average of certainty per metric, computed against the
   // NOMINAL design-time weight rather than the runtime weight. Real data → 1.0;
@@ -761,7 +1075,7 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
     imputationClass = bestClass;
   }
 
-  return {
+  const result: ResilienceDimensionScore = {
     score: roundScore(weightedScore),
     coverage: roundCoverage(weightedCertainty),
     observedWeight: Number(observedWeight.toFixed(4)),
@@ -769,6 +1083,24 @@ function weightedBlend(metrics: WeightedMetric[]): ResilienceDimensionScore {
     imputationClass,
     freshness: { lastObservedAtMs: 0, staleness: '' },
   };
+  if (traceOptions?.trace) {
+    traceOptions.trace.recordBlend(
+      traceOptions.dimensionId,
+      result.score,
+      metrics as readonly IndicatorTraceMetric[],
+    );
+  }
+  return result;
+}
+
+function tracedBlend(
+  dimensionId: ResilienceDimensionId,
+  metrics: readonly TracedWeightedMetric[],
+  options?: ResilienceScoreOptions,
+): ResilienceDimensionScore {
+  return options?.trace
+    ? weightedBlend(metrics, { dimensionId, trace: options.trace })
+    : weightedBlend(metrics);
 }
 
 function isSeedMetaPreflightUnhealthy(sourceKey: string, meta: unknown, nowMs = Date.now()): boolean {
@@ -877,19 +1209,125 @@ export function matchesCountryText(value: unknown, countryCode: string): boolean
 // dateToSortableNumber() removed in PR 3 §3.5: only the now-removed
 // getCountryBisExchangeRates() used it.
 
-async function defaultSeedReader(key: string): Promise<unknown | null> {
-  return getCachedJson(key, true);
+// `seed-meta:` reads gate FAIL-CLOSED preflights, so for them a read ERROR and
+// a genuine MISS must not be the same answer. `getCachedJson` collapses both to
+// `null` (see `readCachedJson`, which does distinguish them), and a preflight
+// reading that `null` declares the producer dead.
+//
+// #6484: within 25 minutes of the education activation deploying, that turned a
+// 1500 ms Upstash timeout under the concurrent ranking warm into
+// `source-failure` for 196/196 countries — published, and cached for six hours,
+// while the seeder was healthy and the payload was present.
+//
+// Retrying only the ERROR case keeps the alarm honest: a genuinely absent
+// seed-meta still returns `null` on the first read and still fails closed,
+// which is the signal that a Railway bundle is not publishing.
+const SEED_META_READ_ATTEMPTS = 3;
+const SEED_META_RETRY_BASE_MS = 120;
+
+function isSeedMetaKey(key: string): boolean {
+  return key.startsWith('seed-meta:');
 }
 
-export function createMemoizedSeedReader(reader: ResilienceSeedReader = defaultSeedReader): ResilienceSeedReader {
-  const cache = new Map<string, Promise<unknown | null>>();
-  return async (key: string) => {
-    if (!cache.has(key)) {
-      const p = Promise.resolve(reader(key));
-      cache.set(key, p);
-      p.catch(() => cache.delete(key));
+async function readSeedMetaResilient(key: string): Promise<unknown | null> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < SEED_META_READ_ATTEMPTS; attempt++) {
+    const read = await readCachedJson(key, true);
+    if (read.status === 'hit') return read.value;
+    // A genuine miss is information, not a failure — return it immediately so
+    // a dead producer still fails closed on the first attempt.
+    if (read.status === 'miss') return null;
+    lastError = read.error;
+    if (attempt < SEED_META_READ_ATTEMPTS - 1) {
+      await new Promise((resolve) => { setTimeout(resolve, SEED_META_RETRY_BASE_MS * 2 ** attempt); });
     }
-    return cache.get(key)!;
+  }
+  // Still failing after retries. Return null so behaviour matches today's
+  // fail-closed path rather than introducing a new throwing mode under load,
+  // but say so — an operator seeing source-failure needs to know whether the
+  // producer is dead or Redis was unreachable.
+  console.warn(
+    `[Resilience] seed-meta read failed after ${SEED_META_READ_ATTEMPTS} attempts key=${key} `
+    + `error=${lastError instanceof Error ? lastError.message : String(lastError)} — `
+    + 'downstream preflights will fail closed; this is a READ failure, not proof the producer is dead',
+  );
+  return null;
+}
+
+async function defaultSeedReader(key: string): Promise<unknown | null> {
+  if (isSeedMetaKey(key)) return readSeedMetaResilient(key);
+  // Preserve the contract envelope for WB debt so its numeric schemaVersion
+  // remains available to the fail-closed scorer. Other seed readers retain
+  // the established bare-data behavior.
+  return key === RESILIENCE_WB_EXTERNAL_DEBT_KEY
+    ? getCachedEnvelopeJson(key, true)
+    : getCachedJson(key, true);
+}
+
+/** Strict reader for diagnostic surfaces that must distinguish a miss from an outage. */
+export async function strictResilienceSeedReader(key: string): Promise<unknown | null> {
+  const read = key === RESILIENCE_WB_EXTERNAL_DEBT_KEY
+    ? await readCachedEnvelopeJson(key, true)
+    : await readCachedJson(key, true);
+  if (read.status === 'hit') return read.value;
+  if (read.status === 'miss') return null;
+  const error = new Error(`Resilience diagnostic seed read failed for ${key}`) as Error & { cause?: unknown };
+  error.cause = read.error;
+  throw error;
+}
+
+interface MemoizedSeedReaderOptions {
+  retryJoinedSeedMetaNull?: boolean;
+}
+
+export function createMemoizedSeedReader(
+  reader: ResilienceSeedReader = defaultSeedReader,
+  options: MemoizedSeedReaderOptions = {},
+): ResilienceSeedReader {
+  const cache = new Map<string, Promise<unknown | null>>();
+  const seedMetaRecoveryReads = new Map<string, Promise<unknown | null>>();
+  return async (key: string) => {
+    let pendingRead = cache.get(key);
+    const joinedExistingRead = pendingRead != null;
+    if (!pendingRead) {
+      pendingRead = Promise.resolve(reader(key));
+      cache.set(key, pendingRead);
+      pendingRead.catch(() => {
+        if (cache.get(key) === pendingRead) cache.delete(key);
+      });
+      // Do NOT retain a null seed-meta result. This memo is shared across every
+      // country in a ranking build, so caching one unresolved read propagates it
+      // to all 196 — the #6484 amplifier.
+      if (isSeedMetaKey(key)) {
+        pendingRead.then((value) => {
+          if (value == null && cache.get(key) === pendingRead) cache.delete(key);
+        }, () => {});
+      }
+    }
+    const value = await pendingRead;
+    // #6510: eviction after resolution is too late for callers that already
+    // joined the same in-flight promise. If its retries exhaust, let only the
+    // creator observe that fail-closed null; joined countries share one recovery
+    // read instead of turning one transient failure into either a batch-wide
+    // outage or a 195-request retry herd. A genuine missing producer costs one
+    // extra read for the batch and stays fail-closed for every caller.
+    if (options.retryJoinedSeedMetaNull && joinedExistingRead && isSeedMetaKey(key) && value == null) {
+      let recoveryRead = seedMetaRecoveryReads.get(key);
+      if (!recoveryRead) {
+        recoveryRead = Promise.resolve(reader(key));
+        seedMetaRecoveryReads.set(key, recoveryRead);
+        cache.set(key, recoveryRead);
+        recoveryRead.then((recoveredValue) => {
+          if (seedMetaRecoveryReads.get(key) === recoveryRead) seedMetaRecoveryReads.delete(key);
+          if (recoveredValue == null && cache.get(key) === recoveryRead) cache.delete(key);
+        }, () => {
+          if (seedMetaRecoveryReads.get(key) === recoveryRead) seedMetaRecoveryReads.delete(key);
+          if (cache.get(key) === recoveryRead) cache.delete(key);
+        });
+      }
+      return recoveryRead;
+    }
+    return value;
   };
 }
 
@@ -904,25 +1342,40 @@ function getStaticIndicatorValue(
   indicatorKey: string,
 ): number | null {
   const dataset = record?.[datasetField];
-  const value = safeNum(dataset?.indicators?.[indicatorKey]?.value);
+  const value = optionalNum(dataset?.indicators?.[indicatorKey]?.value);
   return value == null ? null : value;
 }
 
 function getStaticWgiValues(record: ResilienceStaticCountryRecord | null): number[] {
   const indicators = record?.wgi?.indicators ?? {};
   return WGI_INDICATOR_KEYS
-    .map((key) => safeNum(indicators[key]?.value))
+    .map((key) => optionalNum(indicators[key]?.value))
     .filter((value): value is number => value != null);
 }
 
-function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): WeightedMetric[] {
+const WGI_TRACE_ROWS = [
+  ['VA.EST', 'wgiVoiceAccountability'],
+  ['PV.EST', 'wgiPoliticalStability'],
+  ['GE.EST', 'wgiGovernmentEffectiveness'],
+  ['RQ.EST', 'wgiRegulatoryQuality'],
+  ['RL.EST', 'wgiRuleOfLaw'],
+  ['CC.EST', 'wgiControlOfCorruption'],
+] as const satisfies readonly (readonly [string, ResilienceIndicatorId])[];
+
+function getStaticWgiRows(record: ResilienceStaticCountryRecord | null): TracedWeightedMetric[] {
   const indicators = record?.wgi?.indicators ?? {};
-  return WGI_INDICATOR_KEYS.map((key) => {
-    const value = safeNum(indicators[key]?.value);
-    return {
+  return WGI_TRACE_ROWS.map(([key, indicatorId]) => {
+    const value = optionalNum(indicators[key]?.value);
+    return tracedMetric(indicatorId, {
       score: value == null ? null : normalizeHigherBetter(value, -2.5, 2.5),
       weight: 1,
-    };
+      rawValue: value,
+      rawUnit: 'wgi_estimate',
+      sourceYear: indicators[key]?.year ?? null,
+      retrievedAt: staticDatasetRetrievedAt(record, 'wgi'),
+      observedSources: [wgiObservationSource(key)],
+      provenanceHint: key,
+    });
   });
 }
 
@@ -1283,54 +1736,88 @@ function getBisDsrEntry(
 export async function scoreMacroFiscal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
-  const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw] = await Promise.all([
+  const [debtRaw, imfMacroRaw, imfLaborRaw, bisDsrRaw, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_NATIONAL_DEBT_KEY),
     reader(RESILIENCE_IMF_MACRO_KEY),
     reader(RESILIENCE_IMF_LABOR_KEY),
     reader(RESILIENCE_BIS_DSR_KEY),
+    countryCode === 'CA' ? reader(RESILIENCE_BOC_VALET_KEY) : Promise.resolve(null),
+    countryCode === 'CA' ? reader(RESILIENCE_STATCAN_WDS_KEY) : Promise.resolve(null),
   ]);
   const debtEntry = getLatestDebtEntry(debtRaw, countryCode);
-  const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
-  const laborEntry = getImfLaborEntry(imfLaborRaw, countryCode);
+  const overlay = applyCanadaNationalOverlay(
+    countryCode,
+    getImfMacroEntry(imfMacroRaw, countryCode),
+    getImfLaborEntry(imfLaborRaw, countryCode),
+    { boc: bocRaw as never, statcan: statcanRaw as never },
+  );
+  const imfEntry = overlay.imfEntry;
+  const laborEntry = overlay.laborEntry;
   const dsrEntry = getBisDsrEntry(bisDsrRaw, countryCode);
 
-  return weightedBlend([
+  return tracedBlend('macroFiscal', [
     // Government revenue/GDP: fiscal capacity — how much the state can actually mobilise.
     // Replaces raw debt/GDP which HIPC debt relief and credit exclusion invert for fragile
     // states (Somalia 5% debt ≠ fiscal prudence; it reflects that no one will lend to them).
     // Anchor: 5% (Somalia, war-torn states) → 0, 45% (OECD median) → 100.
-    imfMacroRaw == null
+    tracedMetric('govRevenuePct', imfMacroRaw == null
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct }
       : {
           score: imfEntry?.govRevenuePct == null ? null : normalizeHigherBetter(imfEntry.govRevenuePct, 5, 45),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.govRevenuePct,
-        },
+          rawValue: imfEntry?.govRevenuePct ?? null,
+          rawUnit: 'percent_gdp',
+          sourceYear: imfEntry?.year ?? null,
+          provenanceHint: overlay.usedStatcanInflation ? 'canada-national-overlay' : '',
+        }),
     // Debt growth rate: rapid debt accumulation = fiscal stress even at moderate levels.
-    {
+    tracedMetric('debtGrowthRate', {
       score: extractMetric(debtEntry, (entry) => normalizeLowerBetter(Math.max(0, safeNum(entry.annualGrowth) ?? 0), 0, 20)),
       weight: MACRO_FISCAL_INDICATOR_WEIGHTS.debtGrowthRate,
-    },
+      rawValue: safeNum(debtEntry?.annualGrowth),
+      rawUnit: 'percent_per_year',
+    }),
     // Current account balance: external position — deficit = more vulnerable to FX shocks.
-    imfMacroRaw == null
+    tracedMetric('currentAccountPct', imfMacroRaw == null
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct }
       : {
           score: imfEntry?.currentAccountPct == null ? null : normalizeHigherBetter(Math.max(-20, Math.min(imfEntry.currentAccountPct, 20)), -20, 20),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.currentAccountPct,
-        },
-    imfLaborRaw == null
+          rawValue: imfEntry?.currentAccountPct ?? null,
+          rawUnit: 'percent_gdp',
+          sourceYear: imfEntry?.year ?? null,
+        }),
+    tracedMetric('unemploymentPct', imfLaborRaw == null && !overlay.usedStatcanUnemployment
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct }
       : {
           score: laborEntry?.unemploymentPct == null ? null : normalizeLowerBetter(Math.max(3, Math.min(laborEntry.unemploymentPct, 25)), 3, 25),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.unemploymentPct,
-        },
-    bisDsrRaw == null || dsrEntry == null
+          rawValue: laborEntry?.unemploymentPct ?? null,
+          rawUnit: 'percent_labor_force',
+          sourceYear: overlay.usedStatcanUnemployment
+            ? statcanSourceYear(overlay.unemploymentFreshness?.observedAt)
+            : laborEntry?.year ?? null,
+          retrievedAt: overlay.usedStatcanUnemployment
+            ? overlay.unemploymentFreshness?.retrievedAt ?? undefined
+            : undefined,
+          observedAtMs: overlay.usedStatcanUnemployment
+            ? statcanObservedAtMs(overlay.unemploymentFreshness?.observedAt)
+            : null,
+          observedSources: statcanObservedSources(overlay.usedStatcanUnemployment),
+          provenanceHint: overlay.usedStatcanUnemployment ? 'statcan-wds' : 'imf-weo',
+        }),
+    tracedMetric('householdDebtService', bisDsrRaw == null || dsrEntry == null
       ? { score: null, weight: MACRO_FISCAL_INDICATOR_WEIGHTS.householdDebtService }
       : {
           score: normalizeLowerBetter(Math.max(0, Math.min(dsrEntry.dsrPct, 20)), 0, 20),
           weight: MACRO_FISCAL_INDICATOR_WEIGHTS.householdDebtService,
-        },
-  ]);
+          rawValue: dsrEntry.dsrPct,
+          rawUnit: 'percent_income',
+          provenanceHint: dsrEntry.date,
+        }),
+  ], options);
 }
 
 function getFxReservesMonths(staticRecord: ResilienceStaticCountryRecord | null): number | null {
@@ -1361,25 +1848,70 @@ function scoreFxReserves(months: number): number {
 export async function scoreCurrencyExternal(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
-  const [imfMacroRaw, staticRecord] = await Promise.all([
+  const [imfMacroRaw, staticRecord, bocRaw, statcanRaw] = await Promise.all([
     reader(RESILIENCE_IMF_MACRO_KEY),
     readStaticCountry(countryCode, reader),
+    countryCode === 'CA' ? reader(RESILIENCE_BOC_VALET_KEY) : Promise.resolve(null),
+    countryCode === 'CA' ? reader(RESILIENCE_STATCAN_WDS_KEY) : Promise.resolve(null),
   ]);
 
-  const imfEntry = getImfMacroEntry(imfMacroRaw, countryCode);
+  const overlay = applyCanadaNationalOverlay(
+    countryCode,
+    getImfMacroEntry(imfMacroRaw, countryCode),
+    null,
+    { boc: bocRaw as never, statcan: statcanRaw as never },
+  );
+  const imfEntry = overlay.imfEntry;
   const inflationPct = safeNum(imfEntry?.inflationPct);
-  const hasInflation = imfMacroRaw != null && inflationPct != null;
+  // StatCan CPI must score even when the IMF macro envelope is missing.
+  const hasInflation = inflationPct != null;
   const inflationScore = hasInflation
     ? scoreInflationStability(inflationPct!)
     : null;
 
   const reservesMonths = getFxReservesMonths(staticRecord);
   const reservesScore = reservesMonths != null ? scoreFxReserves(reservesMonths) : null;
+  const currencyMetrics: TracedWeightedMetric[] = [
+    tracedMetric('inflationStability', {
+      score: inflationScore,
+      weight: 0.6,
+      rawValue: inflationPct,
+      rawUnit: 'percent_year_over_year',
+      sourceYear: overlay.usedStatcanInflation
+        ? statcanSourceYear(overlay.inflationFreshness?.observedAt)
+        : imfEntry?.year ?? null,
+      retrievedAt: overlay.usedStatcanInflation
+        ? overlay.inflationFreshness?.retrievedAt ?? undefined
+        : undefined,
+      observedAtMs: overlay.usedStatcanInflation
+        ? statcanObservedAtMs(overlay.inflationFreshness?.observedAt)
+        : null,
+      observedSources: statcanObservedSources(overlay.usedStatcanInflation),
+      provenanceHint: overlay.usedStatcanInflation ? 'statcan-wds' : 'imf-weo',
+    }),
+    tracedMetric('fxReservesAdequacy', {
+      score: reservesScore,
+      weight: 0.4,
+      rawValue: reservesMonths,
+      rawUnit: 'months_of_imports',
+      sourceYear: staticRecord?.fxReservesMonths?.year ?? null,
+      retrievedAt: staticDatasetRetrievedAt(staticRecord, 'fxReservesMonths'),
+      observedSources: WORLD_BANK_FX_RESERVES_SOURCE,
+    }),
+  ];
+  const returnWithCurrencyTrace = (
+    result: ResilienceDimensionScore,
+    metrics: readonly TracedWeightedMetric[] = currencyMetrics,
+  ): ResilienceDimensionScore => {
+    options?.trace?.recordManual('currencyExternal', result.score, metrics);
+    return result;
+  };
 
   if (hasInflation && reservesScore != null) {
     const blended = inflationScore! * 0.6 + reservesScore * 0.4;
-    return {
+    const result: ResilienceDimensionScore = {
       score: roundScore(blended),
       coverage: 0.85,
       observedWeight: 1,
@@ -1387,9 +1919,10 @@ export async function scoreCurrencyExternal(
       imputationClass: null,
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    return returnWithCurrencyTrace(result);
   }
   if (hasInflation) {
-    return {
+    const result: ResilienceDimensionScore = {
       score: inflationScore!,
       coverage: 0.55,
       observedWeight: 1,
@@ -1397,9 +1930,10 @@ export async function scoreCurrencyExternal(
       imputationClass: null,
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    return returnWithCurrencyTrace(result);
   }
   if (reservesScore != null) {
-    return {
+    const result: ResilienceDimensionScore = {
       score: reservesScore,
       coverage: 0.4,
       observedWeight: 1,
@@ -1407,6 +1941,7 @@ export async function scoreCurrencyExternal(
       imputationClass: null,
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    return returnWithCurrencyTrace(result);
   }
 
   // Neither global-coverage source present. True structural absence;
@@ -1415,7 +1950,7 @@ export async function scoreCurrencyExternal(
   // outage. (IMPUTE.bisEer is the existing entry; we keep its
   // identity/name for snapshot continuity but the semantics now read
   // as "no IMF + no WB reserves" rather than "no BIS".)
-  return {
+  const result: ResilienceDimensionScore = {
     score: IMPUTE.bisEer.score,
     coverage: IMPUTE.bisEer.certaintyCoverage,
     observedWeight: 0,
@@ -1423,6 +1958,13 @@ export async function scoreCurrencyExternal(
     imputationClass: IMPUTE.bisEer.imputationClass,
     freshness: { lastObservedAtMs: 0, staleness: '' },
   };
+  return returnWithCurrencyTrace(result, currencyMetrics.map((metric) => ({
+    ...metric,
+    score: IMPUTE.bisEer.score,
+    certaintyCoverage: IMPUTE.bisEer.certaintyCoverage,
+    imputed: true,
+    imputationClass: IMPUTE.bisEer.imputationClass,
+  })));
 }
 
 // Renamed from scoreTradeSanctions in plan 2026-04-25-004 Phase 1 (Ship 1).
@@ -1444,6 +1986,7 @@ export async function scoreCurrencyExternal(
 export async function scoreTradePolicy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [restrictionsRaw, barriersRaw, staticRecord] = await Promise.all([
     reader(RESILIENCE_TRADE_RESTRICTIONS_KEY),
@@ -1461,19 +2004,27 @@ export async function scoreTradePolicy(
   // 0% = perfect free trade (score 100), 20%+ = heavily restricted (score 0).
   const tariffRate = safeNum(staticRecord?.appliedTariffRate?.value);
 
-  return weightedBlend([
-    restrictionsRaw == null
+  return tracedBlend('tradePolicy', [
+    tracedMetric('tradeRestrictions', restrictionsRaw == null
       ? { score: null, weight: 0.30 }
       : !inRestrictionsReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(restrictionCount, 0, 2), weight: 0.30 },
-    barriersRaw == null
+        : { score: normalizeLowerBetter(restrictionCount, 0, 2), weight: 0.30, rawValue: restrictionCount, rawUnit: 'severity_count' }),
+    tracedMetric('tradeBarriers', barriersRaw == null
       ? { score: null, weight: 0.30 }
       : !inBarriersReporterSet
         ? { score: IMPUTE.wtoData.score, weight: 0.30, certaintyCoverage: IMPUTE.wtoData.certaintyCoverage, imputed: true, imputationClass: IMPUTE.wtoData.imputationClass }
-        : { score: normalizeLowerBetter(barrierCount, 0, 2), weight: 0.30 },
-    { score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20), weight: 0.40 },
-  ]);
+        : { score: normalizeLowerBetter(barrierCount, 0, 2), weight: 0.30, rawValue: barrierCount, rawUnit: 'severity_count' }),
+    tracedMetric('appliedTariffRate', {
+      score: tariffRate == null ? null : normalizeLowerBetter(tariffRate, 0, 20),
+      weight: 0.40,
+      rawValue: tariffRate,
+      rawUnit: 'percent',
+      sourceYear: staticRecord?.appliedTariffRate?.year ?? null,
+      retrievedAt: staticDatasetRetrievedAt(staticRecord, 'appliedTariffRate'),
+      observedSources: WORLD_BANK_TARIFF_SOURCE,
+    }),
+  ], options);
 }
 
 // plan 2026-04-25-004 Phase 2: structural sanctions vulnerability via 4
@@ -1483,10 +2034,18 @@ export async function scoreTradePolicy(
 // corporate domicile with host-country risk.
 //
 // Components (weights total 1.0):
-//   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%)
-//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — U-shape band)
-//   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=30, compliant=100)
+//   short_term_external_debt_pct_gni     0.35 (WB IDS — lowerBetter; goalpost worst=15% best=0%;
+//                                              non-DRS jurisdictions impute — see resolveNonDrsDebtImputation)
+//   bis_lbs_xborder_us_eu_uk_pct_gdp     0.30 (BIS CBS by-parent — asymmetric U-shape band;
+//                                              premium above 75 scaled by parent redundancy —
+//                                              see normalizeDiversityConditionedBand)
+//   fatf_listing_status                   0.20 (FATF — discrete: black=0, gray=55, compliant=100)
 //   financial_center_redundancy           0.15 (BIS CBS by-parent count — higherBetter; goalpost worst=1 best=10)
+//
+// ...then capped at 15 for comprehensively embargoed jurisdictions (#6459 —
+// see FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO). The cap is not a component:
+// three of the four graded components read financial severance as strength,
+// so the signal cannot be carried by reweighting them.
 //
 // Flag-gated rollout. `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED` defaults off
 // so the dim ships dark until the 3 component seeders (seed-bis-lbs,
@@ -1508,12 +2067,73 @@ function isFinSysExposureEnabledLocal(): boolean {
   return (process.env.RESILIENCE_FIN_SYS_EXPOSURE_ENABLED ?? 'false').toLowerCase() === 'true';
 }
 
-export async function scoreFinancialSystemExposure(
+const RESILIENCE_EDUCATION_KEY = 'resilience:education-attainment:v1';
+export const EDUCATION_ACTIVATION_MIN_COUNTRIES = 180;
+
+function readEducationRankableRecordCount(meta: unknown): number | null {
+  if (meta == null || typeof meta !== 'object' || Array.isArray(meta)) return null;
+  const numeric = Number((meta as { rankableRecordCount?: unknown }).rankableRecordCount);
+  if (Number.isSafeInteger(numeric) && numeric >= 0) return numeric;
+
+  // Transition support for seed-meta written before rankableRecordCount was
+  // added. The prior seeder already persisted the exact rankable country set,
+  // so it can prove the same floor without waiting for the next weekly publish.
+  const rawCountrySet = (meta as { countrySet?: unknown }).countrySet;
+  if (typeof rawCountrySet !== 'string' || rawCountrySet.length === 0) return null;
+  const codes = rawCountrySet.split(',').map((code) => code.trim());
+  if (codes.some((code) => !/^[A-Z]{2}$/.test(code) || !isInRankableUniverse(code))) return null;
+  return new Set(codes).size;
+}
+
+// #6460 activation contract. The default is `true`, so the promotion PR is the
+// flip rather than a config change that has to land separately.
+//
+// Why the default and not a production env var, unlike energy v2 and
+// financialSystemExposure: education is the first dimension whose activation is
+// CI-COUPLED to its own flag. The active release gate removes `education` from
+// its fixture allow-list, while `RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE`
+// retains the dimension for the explicit false rollback. That runtime helper
+// keys on the unique triple-zero shape, so active observations and source
+// failures remain counted. A default of `false` would require the env var in
+// BOTH CI and Vercel, splitting "is education on" across two config surfaces.
+//
+// `RESILIENCE_EDUCATION_ENABLED=false` in the production environment remains
+// the rollback kill switch — identical to the previous rollback story, just
+// inverted in which direction needs the explicit setting. See
+// `docs/methodology/education-flag-flip-runbook.md` § Rollback.
+export function isEducationEnabled(): boolean {
+  return (process.env.RESILIENCE_EDUCATION_ENABLED ?? 'true').toLowerCase() === 'true';
+}
+
+// Certainty ladder for a stale-but-present observation. Attainment of the 25+
+// population is a slow-moving stock, so a 2015 reading still carries real
+// information in a way a 2015 unemployment rate would not — reduce certainty
+// rather than dropping the country.
+//
+// Deliberately NOT a drop rule. 39 of the 181 covered countries have an
+// observation older than 5 years, including JP, CN, NZ, and KZ, so a 5-year
+// drop would cut major economies for survey cadence alone. Only 5 countries
+// (FM, NI, CG, MR, SB) are past 10 years, and two of those sit in the low band
+// this series was chosen to resolve.
+export function educationObservationCertainty(observationYear: number, nowYear: number): number {
+  if (!Number.isFinite(observationYear) || !Number.isFinite(nowYear)) return 0.6;
+  const age = nowYear - observationYear;
+  if (age <= 5) return 1.0;
+  if (age <= 10) return 0.8;
+  return 0.6;
+}
+
+export async function scoreEducation(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
-  if (!isFinSysExposureEnabledLocal()) {
-    // Flag off — emit empty-data shape. Matches `weightedBlend([])` semantics.
+  if (!isEducationEnabled()) {
+    // Flag off — empty-data shape, contributes zero weight to the domain mean.
+    // imputationClass stays null: a dark dimension is a deliberate construct
+    // state, not an outage, and tagging it `source-failure` would render a
+    // false "Source down" badge on every country in the widget.
+    options?.trace?.recordInactiveDimension('education', 'education-feature-disabled');
     return {
       score: 0,
       coverage: 0,
@@ -1523,6 +2143,224 @@ export async function scoreFinancialSystemExposure(
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
   }
+
+  // Fail-closed preflight. A missing envelope means the Railway bundle is not
+  // publishing, which is an operator problem — surface it as source-failure
+  // rather than silently imputing every country to the midpoint.
+  const meta = await reader(resolveSeedMetaKey(RESILIENCE_EDUCATION_KEY));
+  if (isSeedMetaPreflightUnhealthy(RESILIENCE_EDUCATION_KEY, meta)) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_EDUCATION_ENABLED=true but required seed-meta absent or unhealthy for: ${RESILIENCE_EDUCATION_KEY}. ` +
+        'Provision the macro bundle component seeder (seed-education-attainment) and confirm Redis ' +
+        'populates BEFORE flipping the flag. Or set RESILIENCE_EDUCATION_ENABLED=false to keep the dim dark. ' +
+        'See docs/methodology/education-flag-flip-runbook.md.',
+      [RESILIENCE_EDUCATION_KEY],
+    );
+  }
+
+  const rankableRecordCount = readEducationRankableRecordCount(meta);
+  if (rankableRecordCount == null || rankableRecordCount < EDUCATION_ACTIVATION_MIN_COUNTRIES) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_EDUCATION_ENABLED=true but ${RESILIENCE_EDUCATION_KEY} rankable coverage is ` +
+        `${rankableRecordCount ?? 'unproven'}/${EDUCATION_ACTIVATION_MIN_COUNTRIES}. ` +
+        'Wait for a healthy education seed above the activation floor, or set RESILIENCE_EDUCATION_ENABLED=false to roll back.',
+      [RESILIENCE_EDUCATION_KEY],
+    );
+  }
+
+  const raw = await reader(RESILIENCE_EDUCATION_KEY);
+  const countries = raw != null && typeof raw === 'object' && !Array.isArray(raw)
+    ? (raw as { countries?: unknown }).countries
+    : null;
+  if (
+    countries == null ||
+    typeof countries !== 'object' ||
+    Array.isArray(countries)
+  ) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_EDUCATION_ENABLED=true but the ${RESILIENCE_EDUCATION_KEY} data payload is missing, malformed, or empty. ` +
+        'Confirm the education seeder wrote a non-empty countries envelope, or set RESILIENCE_EDUCATION_ENABLED=false to roll back.',
+      [RESILIENCE_EDUCATION_KEY],
+    );
+  }
+  const record = readEducationAttainment(raw, countryCode);
+
+  if (Object.prototype.hasOwnProperty.call(countries, countryCode) && record == null) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_EDUCATION_ENABLED=true but ${RESILIENCE_EDUCATION_KEY} has a malformed record for ${countryCode}. ` +
+        'Confirm the education seeder wrote finite value/year fields in the expected range, or set RESILIENCE_EDUCATION_ENABLED=false to roll back.',
+      [RESILIENCE_EDUCATION_KEY],
+    );
+  }
+
+  let usableRankableRecordCount = 0;
+  for (const country in countries) {
+    if (
+      Object.prototype.hasOwnProperty.call(countries, country) &&
+      Object.prototype.hasOwnProperty.call(ISO2_TO_ISO3, country) &&
+      isInRankableUniverse(country) &&
+      readEducationAttainment(raw, country) != null
+    ) {
+      usableRankableRecordCount += 1;
+    }
+  }
+  if (usableRankableRecordCount < EDUCATION_ACTIVATION_MIN_COUNTRIES) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_EDUCATION_ENABLED=true but the ${RESILIENCE_EDUCATION_KEY} data payload has usable rankable coverage ` +
+        `${usableRankableRecordCount}/${EDUCATION_ACTIVATION_MIN_COUNTRIES}. ` +
+        'Confirm the education seeder wrote enough finite value/year records, or set RESILIENCE_EDUCATION_ENABLED=false to roll back.',
+      [RESILIENCE_EDUCATION_KEY],
+    );
+  }
+
+  if (record == null) {
+    // Country absent from the envelope. This is `unmonitored`, NOT
+    // `stable-absence`: the World Bank does not survey everywhere, so absence
+    // means "not measured", not "the phenomenon is not happening". Treating it
+    // as stable-absence would hand DPRK and Syria a score near 85.
+    return tracedBlend('education', [
+      tracedMetric('femaleUpperSecondaryAttainment', {
+        score: IMPUTATION.curated_list_absent.score,
+        weight: 1.0,
+        certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
+        imputed: true,
+        imputationClass: IMPUTATION.curated_list_absent.imputationClass,
+      }),
+    ], options);
+  }
+
+  const nowYear = new Date().getUTCFullYear();
+  return tracedBlend('education', [
+    tracedMetric('femaleUpperSecondaryAttainment', {
+      score: normalizeEducationAttainment(record.value),
+      weight: 1.0,
+      // Observed data at reduced certainty when the survey is old. NOT
+      // `imputed` — this is a real reading, just an aging one, and flagging it
+      // imputed would misreport the dimension's provenance.
+      certaintyCoverage: educationObservationCertainty(record.year, nowYear),
+      rawValue: record.value,
+      rawUnit: 'percent_population_25_plus',
+      sourceYear: record.year,
+      observedSources: UNESCO_VIA_WORLD_BANK_SOURCES,
+    }),
+  ], options);
+}
+
+// Payload accessor. Shape: { countries: { [iso2]: { value, year } } }.
+// Defensive against unexpected shapes; returns null on any deviation.
+function readEducationAttainment(
+  raw: unknown,
+  countryCode: string,
+): { value: number; year: number } | null {
+  if (raw == null || typeof raw !== 'object') return null;
+  const countries = (raw as { countries?: Record<string, unknown> }).countries;
+  if (countries == null || typeof countries !== 'object') return null;
+  const entry = countries[countryCode];
+  if (entry == null || typeof entry !== 'object') return null;
+
+  // Reject nullish BEFORE coercion. `safeNum` runs Number() first, and
+  // Number(null) === 0 is finite — so a `value: null` in the envelope would
+  // resolve to a real 0% attainment scored at full coverage, publishing "worst
+  // on earth, fully observed" for a country we simply have no reading for. Same
+  // trap the seeder and the transform each guard on the write side; this is the
+  // read side of it. `year: null` would likewise become year 0 and silently
+  // derate a fresh observation into the >10-year certainty bucket.
+  //
+  // The current seeder cannot emit either (it skips nulls before publishing),
+  // so this is defense in depth — but the sibling energy envelopes are typed
+  // `year: number | null`, so a future producer plausibly can.
+  const rawValue = (entry as { value?: unknown }).value;
+  const rawYear = (entry as { year?: unknown }).year;
+  if (rawValue == null || rawYear == null) return null;
+
+  const value = safeNum(rawValue);
+  const year = safeNum(rawYear);
+  if (value == null || year == null) return null;
+  // Percentage of population; anything outside 0..100 is upstream corruption,
+  // matching the range check the seeder enforces on write.
+  if (value < 0 || value > 100) return null;
+  // World Bank observation years are whole Gregorian years. Keep this read
+  // contract aligned with the seeder and the Edge health payload probe so a
+  // record cannot count as healthy while the scorer interprets a corrupt year.
+  if (!Number.isSafeInteger(year) || year < 1900 || year > 2200) return null;
+  return { value, year };
+}
+
+// #6459 — comprehensive-embargo cap.
+//
+// The construct's question is "how vulnerable is this financial system to
+// coordinated action by major Western banking jurisdictions?". For a
+// jurisdiction already under a comprehensive or government-wide blocking
+// programme that vulnerability is not a forecast, it is realized in full:
+// correspondent relationships are gone, reserves are immobilised, messaging
+// access is revoked. Yet three of the four components read that severance as
+// strength — thin short-term external debt (no market access), low
+// cross-border claims (nobody lends), and FATF-compliant-by-absence (FATF
+// enumerates AML/CFT deficiencies, not sanctions).
+//
+// A band retune alone cannot fix this. With the band leg at 0 and the
+// redundancy leg at 0, Russia still holds 0.35x80 (debt) + 0.20x100 (FATF)
+// = 48, more than double the methodology doc's < 20 activation anchor. The
+// signal has to enter the construct as its own input.
+//
+// This is NOT the "transit-hub exclusion list" rejected as Alternative 2 in
+// the methodology doc. That list would have been an editorial carve-out of
+// jurisdictions the construct scored inconveniently. This list IS the
+// construct's subject, and its membership is externally defined by published
+// US OFAC and EU Council programmes rather than drawn by us.
+//
+// Membership criterion: a comprehensive/territory-wide embargo, or a
+// government-wide blocking programme that severs the sovereign from Western
+// correspondent clearing. Individual-entity designations, sectoral measures
+// and arms embargoes do NOT qualify — those are ordinary policy friction and
+// belong in the graded components.
+export const FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO: ReadonlySet<string> = new Set([
+  'RU', // EO 14024 + G7 reserve immobilisation + SWIFT exclusion of major banks (2022–)
+  'BY', // EO 14038 + EU Reg. 765/2006 as amended; SWIFT exclusion (2022–)
+  'IR', // 31 CFR 560 Iranian Transactions and Sanctions Regulations (comprehensive)
+  'KP', // 31 CFR 510 North Korea Sanctions Regulations (comprehensive)
+  'CU', // 31 CFR 515 Cuban Assets Control Regulations (comprehensive, 1963–)
+  'MM', // EO 14014 Burma blocking programme + EU Reg. 2013/184
+  'VE', // EO 13884 blocks all property of the Government of Venezuela
+  'LY', // EO 13566 blocks all property of the Government of Libya; UNSCR 1970/1973
+]);
+
+// Static policy state must expire rather than age silently. OFAC revoked the
+// comprehensive Syria programme effective 2025-07-01
+// (https://ofac.treasury.gov/recent-actions/20250630), but the first #6459 list
+// still included SY in August 2026. Tests enforce this review window so
+// every entry is re-checked against current primary sources before the policy
+// can drift for another release cycle.
+export const FIN_SYS_EXPOSURE_EMBARGO_POLICY_REVIEWED_ON = '2026-08-11';
+export const FIN_SYS_EXPOSURE_EMBARGO_POLICY_MAX_AGE_DAYS = 120;
+
+// Cap, not a floor-to-zero: the graded components still order jurisdictions
+// WITHIN the embargoed set (DPRK's FATF black listing keeps it at 0, below
+// Russia's 15), and a country that already scores below the cap is untouched.
+// 15 sits deliberately below the methodology doc's < 20 activation anchor so
+// the anchor has headroom rather than passing by exactly zero margin.
+export const FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP = 15;
+
+export async function scoreFinancialSystemExposure(
+  countryCode: string,
+  reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
+): Promise<ResilienceDimensionScore> {
+  if (!isFinSysExposureEnabledLocal()) {
+    // Flag off — emit empty-data shape. Matches `weightedBlend([])` semantics.
+    options?.trace?.recordInactiveDimension('financialSystemExposure', 'financial-system-exposure-feature-disabled');
+    return {
+      score: 0,
+      coverage: 0,
+      observedWeight: 0,
+      imputedWeight: 0,
+      imputationClass: null,
+      freshness: { lastObservedAtMs: 0, staleness: '' },
+    };
+  }
+
+  const normalizedCountryCode = countryCode.toUpperCase();
+  const isComprehensiveEmbargo = FIN_SYS_EXPOSURE_COMPREHENSIVE_EMBARGO.has(normalizedCountryCode);
 
   // Preflight: verify the 3 required seed envelopes are published and fresh.
   // `runSeed` (scripts/_seed-utils.mjs) STRIPS the trailing :v\d+ from the
@@ -1540,9 +2378,10 @@ export async function scoreFinancialSystemExposure(
     RESILIENCE_FATF_LISTING_KEY,
   ] as const;
   const unhealthy: string[] = [];
-  for (const key of requiredSeedKeys) {
-    const meta = await reader(resolveSeedMetaKey(key));
-    if (isSeedMetaPreflightUnhealthy(key, meta)) unhealthy.push(key);
+  // Independent keys — read concurrently instead of serially (saves ~2 Redis RTTs of latency).
+  const metas = await Promise.all(requiredSeedKeys.map((key) => reader(resolveSeedMetaKey(key))));
+  for (const [i, key] of requiredSeedKeys.entries()) {
+    if (isSeedMetaPreflightUnhealthy(key, metas[i])) unhealthy.push(key);
   }
   if (unhealthy.length > 0) {
     throw new ResilienceConfigurationError(
@@ -1563,11 +2402,26 @@ export async function scoreFinancialSystemExposure(
     reader(RESILIENCE_FATF_LISTING_KEY),
   ]);
 
+  // Seed-meta can remain healthy while the subsequent Redis data read misses,
+  // times out, or returns malformed JSON. Without this envelope check that
+  // source-level failure is indistinguishable from a country outside DRS and
+  // can be converted into the positive score-75 imputation below.
+  const debtEnvelope = readWbExternalDebtEnvelope(debtRaw);
+  if (debtEnvelope == null) {
+    throw new ResilienceConfigurationError(
+      `RESILIENCE_FIN_SYS_EXPOSURE_ENABLED=true requires ${RESILIENCE_WB_EXTERNAL_DEBT_KEY} schema v2 with valid countries and nonDrsCountryCodes after a healthy seed-meta preflight. ` +
+        'Re-run seed-wb-external-debt and confirm the published envelope schema before scoring.',
+      [RESILIENCE_WB_EXTERNAL_DEBT_KEY],
+    );
+  }
+
   // Component 1: short-term external debt as % of GNI. WB IDS coverage is
-  // ~125 LMICs; HIC fall through to per-component-null and the blend
-  // covers the gap via the BIS CBS structural-exposure component.
-  // Payload shape: { countries: { [iso2]: { value: number, year: number } } }.
-  const debtPct = readWbExternalDebtPct(debtRaw, countryCode);
+  // ~125 borrowers. Countries explicitly classified by World Bank as outside
+  // its lending scope can receive the guarded non-DRS imputation below.
+  // Payload shape: { countries: { [iso2]: { value, year } },
+  //   nonDrsCountryCodes: string[] }.
+  const debtPct = readWbExternalDebtPct(debtEnvelope, countryCode);
+  const debtYear = readWbExternalDebtYear(debtEnvelope, countryCode);
 
   // Component 2 + 4 share the retained economic:bis-lbs payload, sourced
   // from BIS CBS (WS_CBS_PUB). Component 2: sum of by-parent foreign
@@ -1578,50 +2432,378 @@ export async function scoreFinancialSystemExposure(
   //   parentCount: number, parents: { [parentIso2]: number } } } }.
   const bisCountry = readBisLbsCountry(bisRaw, countryCode);
 
-  // Component 3: FATF listing status. Discrete classification.
+  // Component 3: FATF listing status. Discrete classification. Preserve
+  // whether `compliant` was explicitly published or inferred from absence so
+  // a data-desert country cannot turn list absence into a perfect score.
   // Payload shape: { listings: { [iso2]: 'black' | 'gray' | 'compliant' },
   //   publicationDate: string }.
-  const fatfStatus = readFatfStatus(fatfRaw, countryCode);
+  const fatfObservation = readFatfStatus(fatfRaw, countryCode);
 
-  return weightedBlend([
-    {
-      score: debtPct == null ? null : normalizeLowerBetter(debtPct, 0, 15),
-      weight: 0.35,
-    },
-    {
+  // #6459 Component 1 slot. WB International Debt Statistics is the output of
+  // the Debtor Reporting System, whose membership is World Bank BORROWERS —
+  // 119 countries in the 2026-08-11 production payload. Non-borrowing
+  // jurisdictions are absent by design, not by data gap.
+  //
+  // Dropping the slot for them was the defect: `weightedBlend` renormalizes
+  // onto the surviving slots, so the 0.35 weight redistributed onto a
+  // denominator of 0.65 and the punitive band leg alone went from 30% to 46%
+  // of the score. Luxembourg was scored almost entirely on "your banks are too
+  // integrated", with no offsetting credit for having no rollover risk at all.
+  //
+  // Imputing at 75 with certaintyCoverage 0.3 keeps the weight where the
+  // design put it while being explicit that the reading is inferred:
+  // `not-applicable` is the right class because non-participation in the DRS
+  // means there is no reported short-term external commercial debt to roll
+  // over, which is a mild positive rather than an unknown.
+  const nonDrsDebtImputation = resolveNonDrsDebtImputation(
+    debtPct,
+    bisCountry,
+    debtEnvelope.nonDrsCountryCodes.has(normalizedCountryCode),
+  );
+
+  const marketAccessConstrainedDebt = isMarketAccessConstrainedDebtSignal(debtPct, bisCountry);
+  const fatfIsOnlyResolvingComponent = debtPct == null
+    && nonDrsDebtImputation == null
+    && bisCountry?.totalXborderPctGdp == null
+    && bisCountry?.parentCount == null;
+  const dropFatfCompliantByAbsence = fatfObservation?.assignedByAbsence === true
+    && fatfIsOnlyResolvingComponent
+    // CU is intentionally preserved: the comprehensive-embargo cap is an
+    // external construct signal, and its non-zero observed FATF slot keeps the
+    // executable sanctions anchor from passing vacuously at zero coverage.
+    && !isComprehensiveEmbargo;
+
+  const blended = tracedBlend('financialSystemExposure', [
+    tracedMetric('shortTermExternalDebtPctGni', {
+      score: debtPct != null
+        ? normalizeLowerBetter(debtPct, 0, 15)
+        : (nonDrsDebtImputation?.score ?? null),
+      // #6461: a tiny debt stock is not full-strength evidence of low
+      // rollover vulnerability when the same country has near-zero BIS
+      // claims and no foreign reporting parents. Those three observed signals
+      // together proxy market-access constraint using data already in the
+      // construct. Retain the reading at low confidence instead of deleting it
+      // or introducing a new editorial country list.
+      weight: marketAccessConstrainedDebt
+        ? FIN_SYS_SHORT_TERM_DEBT_WEIGHT * FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY
+        : FIN_SYS_SHORT_TERM_DEBT_WEIGHT,
+      nominalWeight: FIN_SYS_SHORT_TERM_DEBT_WEIGHT,
+      certaintyCoverage: marketAccessConstrainedDebt
+        ? FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY
+        : nonDrsDebtImputation?.certaintyCoverage,
+      imputed: nonDrsDebtImputation != null ? true : undefined,
+      imputationClass: nonDrsDebtImputation?.imputationClass,
+      rawValue: debtPct,
+      rawUnit: 'percent_gni',
+      sourceYear: debtYear,
+      observedSources: debtPct == null ? [] : WORLD_BANK_SHORT_TERM_DEBT_GNI_SOURCES,
+    }),
+    tracedMetric('bisLbsXborderPctGdp', {
+      // Diversity-conditioned: the sweet-spot premium is earned only in
+      // proportion to demonstrated parent breadth (see
+      // `normalizeDiversityConditionedBand`). Passing `parentCount` from the
+      // same BIS row keeps level and breadth reads consistent per country.
+      // A missing count caps the premium here. A malformed claims field is
+      // also retained as a conservative zero fallback by weightedBlend so a
+      // parser regression cannot free this slot's weight onto unrelated legs.
+      //
+      // This slot now has TWO designed inputs (level and breadth), so it can
+      // resolve only half-observed. `certaintyCoverage` says which: a withheld
+      // premium is a substituted floor, not a redundancy-scaled reading, and
+      // reporting it at full certainty would claim evidence that never arrived.
+      // The sibling debt slot already draws exactly this distinction via
+      // `nonDrsDebtImputation` / #6461. Only `certaintyCoverage` is set, never
+      // `imputed`/`imputationClass`: the score is a conservative bound taken
+      // from the observed level, not a value inferred from an absence model,
+      // and it must not enter the imputed-weight accounting as if it were.
       score: bisCountry?.totalXborderPctGdp == null
         ? null
-        : normalizeBandLowerBetter(bisCountry.totalXborderPctGdp),
-      weight: 0.30,
-    },
-    {
-      score: fatfStatus == null ? null : fatfStatusToScore(fatfStatus),
-      weight: 0.20,
-    },
-    {
+        : normalizeDiversityConditionedBand(bisCountry.totalXborderPctGdp, bisCountry.parentCount),
+      weight: FIN_SYS_BAND_WEIGHT,
+      fallbackScore: bisCountry?.totalXborderPctGdpMalformed ? 0 : undefined,
+      certaintyCoverage: resolveFinSysBandCertainty(bisCountry),
+      rawValue: bisCountry?.totalXborderPctGdp ?? null,
+      rawUnit: 'percent_gdp',
+      observedSources: bisCountry?.totalXborderPctGdp == null
+        ? []
+        : [{ providerName: 'Bank for International Settlements', sourceUrl: 'https://data.bis.org/' }],
+      provenanceHint: 'diversity-conditioned-by-parent-count',
+    }),
+    tracedMetric('fatfListingStatus', {
+      score: fatfObservation == null || dropFatfCompliantByAbsence
+        ? null
+        : fatfStatusToScore(fatfObservation.status),
+      weight: FIN_SYS_FATF_WEIGHT,
+      rawValue: fatfObservation == null || dropFatfCompliantByAbsence ? null : fatfObservation.status,
+      rawUnit: 'fatf_status',
+      observedSources: fatfObservation == null || dropFatfCompliantByAbsence
+        ? []
+        : [{ providerName: 'Financial Action Task Force', sourceUrl: 'https://www.fatf-gafi.org/en/countries/black-and-grey-lists.html' }],
+      provenanceHint: fatfObservation?.assignedByAbsence ? 'assigned-by-list-absence' : 'explicit-listing',
+    }),
+    tracedMetric('financialCenterRedundancy', {
       score: bisCountry?.parentCount == null
         ? null
         : normalizeHigherBetter(bisCountry.parentCount, 1, 10),
-      weight: 0.15,
-    },
-  ]);
+      weight: FIN_SYS_REDUNDANCY_WEIGHT,
+      fallbackScore: bisCountry?.parentCountMalformed ? 0 : undefined,
+      // A count computed over an incomplete reporting-parent set is an
+      // undercount, not an observation — same reasoning as the band slot.
+      certaintyCoverage: bisCountry != null && !bisCountry.parentSetComplete
+        ? FIN_SYS_BIS_DEGRADED_PARENT_SET_CERTAINTY
+        : undefined,
+      rawValue: bisCountry?.parentCount ?? null,
+      rawUnit: 'reporting_parent_count',
+      observedSources: bisCountry?.parentCount == null
+        ? []
+        : [{ providerName: 'Bank for International Settlements', sourceUrl: 'https://data.bis.org/' }],
+    }),
+  ], options);
+
+  // #6459 comprehensive-embargo cap. Applied POST-blend so it constrains the
+  // published score without distorting the component provenance: coverage,
+  // observedWeight, imputedWeight and imputationClass all still describe what
+  // was actually read. An operator inspecting a capped country still sees
+  // which components resolved.
+  if (
+    isComprehensiveEmbargo
+    && blended.score > FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP
+  ) {
+    options?.trace?.recordPolicyCap(
+      'financialSystemExposure',
+      'comprehensive-embargo-cap',
+      blended.score,
+      FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP,
+    );
+    return { ...blended, score: FIN_SYS_EXPOSURE_EMBARGO_SCORE_CAP };
+  }
+  return blended;
+}
+
+// #6459 — decides whether an absent WB IDS row is "not applicable" (the
+// jurisdiction does not report to the Debtor Reporting System) or a genuine
+// data gap.
+//
+// DISCRIMINATOR: the WB seeder publishes `nonDrsCountryCodes` from the World
+// Bank country catalog's `lendingType=LNX` classification. The imputation
+// requires both that explicit non-borrower signal and a valid BIS row. A
+// borrower missing from a partial IDS payload therefore stays null/drop, and
+// a country in neither source remains a genuine data desert.
+function resolveNonDrsDebtImputation(
+  debtPct: number | null,
+  bisCountry: BisLbsCountry | null,
+  confirmedNonDrsCountry: boolean,
+): ImputationEntry | null {
+  if (debtPct != null) return null;
+  // Per-country absence is not enough: accepted WB payloads may omit an
+  // otherwise eligible borrower. Only the seeder's World Bank lending-type
+  // metadata can confirm that the country is outside the DRS borrower scope.
+  if (!confirmedNonDrsCountry) return null;
+  // A BIS row whose every field failed to parse is a corrupt entry, not
+  // evidence the jurisdiction participates in cross-border banking — do not
+  // let it trigger the imputation.
+  if (bisCountry == null) return null;
+  if (bisCountry.totalXborderPctGdp == null && bisCountry.parentCount == null) return null;
+  return IMPUTE.finSysExposureNonDrsShortTermDebt;
 }
 
 // Small payload accessors for scoreFinancialSystemExposure. Defensive
 // against unexpected shapes; return null on any deviation.
+interface WbExternalDebtEnvelope {
+  countries: Record<string, unknown>;
+  nonDrsCountryCodes: ReadonlySet<string>;
+}
 
-function readWbExternalDebtPct(raw: unknown, countryCode: string): number | null {
+function readWbExternalDebtEnvelope(raw: unknown): WbExternalDebtEnvelope | null {
   if (raw == null || typeof raw !== 'object') return null;
-  const countries = (raw as { countries?: Record<string, unknown> }).countries;
-  if (!countries || typeof countries !== 'object') return null;
-  const entry = countries[countryCode];
+  const unwrapped = unwrapEnvelope(raw);
+  const schemaVersion = unwrapped._seed?.schemaVersion
+    ?? (raw as { schemaVersion?: unknown }).schemaVersion;
+  if (
+    typeof schemaVersion !== 'number'
+    || !Number.isInteger(schemaVersion)
+    || schemaVersion < RESILIENCE_WB_EXTERNAL_DEBT_SCHEMA_VERSION
+  ) return null;
+  const payload = unwrapped.data;
+  if (payload == null || typeof payload !== 'object' || Array.isArray(payload)) return null;
+  const countries = (payload as { countries?: Record<string, unknown> }).countries;
+  if (!countries || typeof countries !== 'object' || Array.isArray(countries) || Object.keys(countries).length === 0) {
+    return null;
+  }
+
+  const rawNonDrsCountryCodes = (payload as { nonDrsCountryCodes?: unknown }).nonDrsCountryCodes;
+  // Match the producer's fail-closed floor so an empty or truncated cohort
+  // cannot preserve the schema shape while silently disabling imputation.
+  if (!Array.isArray(rawNonDrsCountryCodes) || rawNonDrsCountryCodes.length < 40) return null;
+
+  const nonDrsCountryCodes = new Set<string>();
+  for (const code of rawNonDrsCountryCodes) {
+    if (typeof code !== 'string' || !/^[A-Z]{2}$/.test(code) || nonDrsCountryCodes.has(code)) return null;
+    nonDrsCountryCodes.add(code);
+  }
+
+  return {
+    countries,
+    // The active scorer requires schema v2. Accepting the former v1 shape here
+    // silently disables the non-DRS imputation for every eligible country.
+    nonDrsCountryCodes,
+  };
+}
+
+function readWbExternalDebtPct(envelope: WbExternalDebtEnvelope, countryCode: string): number | null {
+  const entry = envelope.countries[countryCode];
   if (!entry || typeof entry !== 'object') return null;
   return safeNum((entry as { value?: unknown }).value);
+}
+
+function readWbExternalDebtYear(envelope: WbExternalDebtEnvelope, countryCode: string): number | null {
+  const entry = envelope.countries[countryCode];
+  if (!entry || typeof entry !== 'object') return null;
+  const year = (entry as { year?: unknown }).year;
+  return Number.isSafeInteger(year) ? Number(year) : null;
 }
 
 interface BisLbsCountry {
   totalXborderPctGdp: number | null;
   parentCount: number | null;
+  // True when the field was present but failed the reader's type/range
+  // contract. A genuinely absent field remains distinguishable and keeps the
+  // scorer's existing coverage-weighted absence behavior.
+  totalXborderPctGdpMalformed: boolean;
+  parentCountMalformed: boolean;
+  /**
+   * False when the seed envelope reports that the BIS collection ran with an
+   * incomplete reporting-parent set (`successfulParents < parentCountries`).
+   * `seed-bis-lbs.mjs` tolerates up to 4 of its 16 parent fetches failing with
+   * only a `console.warn` (`MIN_SUCCESSFUL_PARENTS`), and a missing parent feed
+   * silently lowers `parentCount` for every country it would have covered. That
+   * used to move only Component 4 (weight 0.15); since the band premium is
+   * conditioned on the same count it now moves Component 2 (0.30) as well, so
+   * the incompleteness has to reach the blend as reduced certainty instead of
+   * passing as an observed reading. True when the envelope does not report the
+   * ratio at all — absence of the field is not evidence of degradation.
+   */
+  parentSetComplete: boolean;
+}
+
+// #6461 market-access proxy. Reuse the construct's existing component
+// boundaries instead of adding an unverified source: <=1% short-term debt is
+// structurally tiny, <5% BIS claims is below the healthy integration band, and
+// zero reporting parents means no independent foreign-bank route clears the
+// redundancy floor. All three must hold, so ordinary low-debt borrowers keep
+// full weight when either banking signal shows real market access.
+// Component weights, total 1.0. Exported and named rather than inline literals
+// so the calibration tests can blend against the SAME numbers production uses.
+// A test that restates `0.35` / `0.30` in its own arithmetic silently diverges
+// the moment a weight is retuned, and the divergence shows up as a wrong
+// baseline rather than as a failure.
+export const FIN_SYS_SHORT_TERM_DEBT_WEIGHT = 0.35;
+export const FIN_SYS_BAND_WEIGHT = 0.30;
+export const FIN_SYS_FATF_WEIGHT = 0.20;
+export const FIN_SYS_REDUNDANCY_WEIGHT = 0.15;
+// Component 4's goalposts, shared with the band premium's redundancy scale, and
+// Component 1's (short-term external debt, % of GNI; lowerBetter).
+//
+// These are re-exported for the calibration mirror but MUST stay numeric
+// literals at their call sites: `tests/helpers/resilience-scorer-doc-parity-specs.mts`
+// parses this file's source text and asserts the normalizer anchors are literals
+// so it can cross-check them against the methodology doc's goalposts. Naming
+// them at the call site makes that gate fail closed ("anchors must be numeric
+// literals"), which is the gate working as intended — the doc/code parity check
+// cannot resolve an identifier.
+export const FIN_SYS_REDUNDANCY_WORST_PARENTS = 1;
+export const FIN_SYS_REDUNDANCY_BEST_PARENTS = 10;
+export const FIN_SYS_DEBT_BEST_PCT_GNI = 0;
+export const FIN_SYS_DEBT_WORST_PCT_GNI = 15;
+export const FIN_SYS_MARKET_ACCESS_CONSTRAINED_DEBT_CERTAINTY = 0.3;
+export const FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX = 1;
+export const FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX = 5;
+
+// Certainty for the band slot when its integration LEVEL resolved but parent
+// BREADTH did not, so `normalizeDiversityConditionedBand` had to withhold the
+// premium for absence of evidence. One of the slot's two designed inputs was
+// observed, hence 0.5 — the fraction of the slot's evidence that arrived, on
+// the same "retain the reading at reduced confidence" principle as #6461's
+// market-access attenuation rather than a tuned constant.
+export const FIN_SYS_BAND_BREADTH_UNOBSERVED_CERTAINTY = 0.5;
+
+// Certainty for BOTH BIS-derived slots when the seed envelope reports an
+// incomplete reporting-parent collection. The count is then an undercount of
+// unknown size, so neither the redundancy reading nor the premium it scales is
+// a full observation.
+export const FIN_SYS_BIS_DEGRADED_PARENT_SET_CERTAINTY = 0.5;
+
+/**
+ * Certainty for the diversity-conditioned band slot.
+ *
+ * Two independent reasons the slot can be less than fully observed, and they
+ * can co-occur, so the lower one wins rather than compounding:
+ *   - breadth never resolved (`parentCount == null`) AND the raw band sits in
+ *     the premium region, so the withheld premium actually cost the score
+ *     something. Below the premium floor the conditioning is a no-op and the
+ *     band is a pure level reading, fully observed.
+ *   - the collection ran with an incomplete parent set, so any count it did
+ *     produce is an undercount.
+ *
+ * Note the deliberate `null` vs `0` distinction: `parentCount === 0` is an
+ * OBSERVATION (no parent clears the 1%-of-GDP counting threshold) and keeps
+ * full certainty; `null` is an absence.
+ */
+function resolveFinSysBandCertainty(bisCountry: BisLbsCountry | null): number | undefined {
+  if (bisCountry == null || bisCountry.totalXborderPctGdp == null) return undefined;
+  const reductions: number[] = [];
+  if (
+    bisCountry.parentCount == null
+    && normalizeBandLowerBetter(bisCountry.totalXborderPctGdp) > FIN_SYS_BAND_PREMIUM_FLOOR
+  ) {
+    reductions.push(FIN_SYS_BAND_BREADTH_UNOBSERVED_CERTAINTY);
+  }
+  if (!bisCountry.parentSetComplete) {
+    reductions.push(FIN_SYS_BIS_DEGRADED_PARENT_SET_CERTAINTY);
+  }
+  return reductions.length === 0 ? undefined : Math.min(...reductions);
+}
+
+function isMarketAccessConstrainedDebtSignal(
+  debtPct: number | null,
+  bisCountry: BisLbsCountry | null,
+): boolean {
+  if (debtPct == null || debtPct < 0 || debtPct > FIN_SYS_MARKET_ACCESS_LOW_DEBT_PCT_GNI_MAX) return false;
+  const claims = bisCountry?.totalXborderPctGdp;
+  const parents = bisCountry?.parentCount;
+  return claims != null
+    && claims >= 0
+    && claims < FIN_SYS_MARKET_ACCESS_LOW_CLAIMS_PCT_GDP_MAX
+    && parents === 0;
+}
+
+// Upper bound on a plausible `parentCount`: the BIS CBS seeder counts parents
+// from an enumerated list (`PARENT_COUNTRIES` in `scripts/seed-bis-lbs.mjs`, 16
+// entries), so no country can legitimately report more. Used only when the
+// envelope does not carry `parentCountries` to derive the bound from.
+const FIN_SYS_BIS_REPORTING_PARENTS_MAX = 16;
+
+/**
+ * A `parentCount` the BIS seeder could actually have produced: it is
+ * `Object.values(parents).filter(...).length` over an enumerated list, so a
+ * legitimate value is a non-negative integer no larger than that list.
+ *
+ * The type, finiteness, integer, and range checks reject malformed or
+ * impossible values. `readBisLbsCountry` keeps the nullable result for the
+ * conditioning arithmetic, and separately records when a non-null raw field
+ * failed these checks so the blend can retain its design weight with a
+ * conservative fallback.
+ *
+ * An implausible value is therefore treated as absent for diversity evidence,
+ * but not as an ordinary missing slot when it was present in the payload.
+ * Genuine absence remains distinguishable and keeps the existing
+ * coverage-weighted absence semantics.
+ */
+function readPlausibleParentCount(rawParentCount: unknown, maxParents: number): number | null {
+  if (typeof rawParentCount !== 'number') return null;
+  const numeric = safeNum(rawParentCount);
+  if (numeric == null || !Number.isInteger(numeric) || numeric < 0 || numeric > maxParents) return null;
+  return numeric;
 }
 
 function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | null {
@@ -1630,15 +2812,48 @@ function readBisLbsCountry(raw: unknown, countryCode: string): BisLbsCountry | n
   if (!countries || typeof countries !== 'object') return null;
   const entry = countries[countryCode];
   if (!entry || typeof entry !== 'object') return null;
+  const rawClaims = (entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp;
+  const rawParentCount = (entry as { parentCount?: unknown }).parentCount;
+
+  // Collection completeness is an envelope-level fact, not a per-country one:
+  // the seeder publishes `successfulParents` alongside the `parentCountries`
+  // list it attempted. Absent or malformed → assume complete, so a payload
+  // predating the fields is not retroactively marked degraded.
+  const rawParentCountries = (raw as { parentCountries?: unknown }).parentCountries;
+  const attemptedParents = Array.isArray(rawParentCountries) && rawParentCountries.length > 0
+    ? rawParentCountries.length
+    : FIN_SYS_BIS_REPORTING_PARENTS_MAX;
+  const rawSuccessfulParents = (raw as { successfulParents?: unknown }).successfulParents;
+  const parentSetComplete = typeof rawSuccessfulParents === 'number'
+    && Number.isFinite(rawSuccessfulParents)
+    ? rawSuccessfulParents >= attemptedParents
+    : true;
+
+  const totalXborderPctGdp = typeof rawClaims === 'number' && rawClaims >= 0
+    ? safeNum(rawClaims)
+    : null;
+  const parentCount = readPlausibleParentCount(rawParentCount, attemptedParents);
+
   return {
-    totalXborderPctGdp: safeNum((entry as { totalXborderPctGdp?: unknown }).totalXborderPctGdp),
-    parentCount: safeNum((entry as { parentCount?: unknown }).parentCount),
+    // `safeNum(null)` and `safeNum('')` are numeric zero by design. These
+    // fields use zero as a real financial-isolation signal, so require a raw
+    // number rather than manufacturing an observed zero from malformed data.
+    totalXborderPctGdp,
+    parentCount,
+    totalXborderPctGdpMalformed: rawClaims != null && totalXborderPctGdp == null,
+    parentCountMalformed: rawParentCount != null && parentCount == null,
+    parentSetComplete,
   };
 }
 
 type FatfStatus = 'black' | 'gray' | 'compliant';
 
-function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
+interface FatfObservation {
+  status: FatfStatus;
+  assignedByAbsence: boolean;
+}
+
+function readFatfStatus(raw: unknown, countryCode: string): FatfObservation | null {
   if (raw == null || typeof raw !== 'object') return null;
   const listings = (raw as { listings?: Record<string, unknown> }).listings;
   if (!listings || typeof listings !== 'object') return null;
@@ -1652,16 +2867,33 @@ function readFatfStatus(raw: unknown, countryCode: string): FatfStatus | null {
   // reaching production, but defense-in-depth costs nothing.
   if (Object.keys(listings).length === 0) return null;
   const status = listings[countryCode];
-  if (status === 'black' || status === 'gray' || status === 'compliant') return status;
+  if (status === 'black' || status === 'gray' || status === 'compliant') {
+    return { status, assignedByAbsence: false };
+  }
   // Unknown country = compliant (FATF only enumerates non-compliant
   // jurisdictions; absence from both lists means compliant).
-  return 'compliant';
+  return { status: 'compliant', assignedByAbsence: true };
 }
 
-function fatfStatusToScore(status: FatfStatus): number {
+// #6459: gray rescaled 30 → 55. FATF grey-listing means "increased
+// monitoring under an agreed action plan" — a jurisdiction actively
+// remediating with FATF, not one a step away from the call-for-action
+// black list. At 30 the gap to black (0) was 30 points and the gap to
+// compliant (100) was 70, which put ordinary grey-listed economies closer
+// to Iran and DPRK than to their actual peers. 55 keeps grey clearly
+// penalised while leaving black as the distinct, much worse state.
+//
+// `compliant` stays at 100 for countries with other observed financial-system
+// components. #6461 drops it only when it was assigned by absence and is the
+// sole resolving component; listed gray/black jurisdictions remain real
+// observations, and the comprehensive-embargo cap remains authoritative for
+// its externally defined cohort.
+const FATF_GRAY_SCORE = 55;
+
+export function fatfStatusToScore(status: FatfStatus): number {
   switch (status) {
     case 'black': return 0;
-    case 'gray': return 30;
+    case 'gray': return FATF_GRAY_SCORE;
     case 'compliant': return 100;
   }
 }
@@ -1669,7 +2901,7 @@ function fatfStatusToScore(status: FatfStatus): number {
 export async function scoreCyberDigital(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
-  options?: CyberDiscoveryOptions,
+  options?: CyberDiscoveryOptions & ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [cyberRaw, outagesRaw, gpsRaw] = await Promise.all([
     reader(RESILIENCE_CYBER_KEY),
@@ -1682,16 +2914,17 @@ export async function scoreCyberDigital(
   const outagePenalty = outages.total * 4 + outages.major * 2 + outages.partial;
   const gpsPenalty = gps.high * 3 + gps.medium;
 
-  return weightedBlend([
-    { score: hasNonEmptyArrayField(cyberRaw, 'threats') ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45 },
-    { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35 },
-    { score: hasNonEmptyArrayField(gpsRaw, 'hexes') ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2 },
-  ]);
+  return tracedBlend('cyberDigital', [
+    tracedMetric('cyberThreats', { score: hasNonEmptyArrayField(cyberRaw, 'threats') ? normalizeLowerBetter(cyber.weightedCount, 0, 25) : null, weight: 0.45, rawValue: cyber.weightedCount, rawUnit: 'decayed_severity_weight' }),
+    tracedMetric('internetOutages', { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.35, rawValue: outagePenalty, rawUnit: 'weighted_outage_penalty' }),
+    tracedMetric('gpsJamming', { score: hasNonEmptyArrayField(gpsRaw, 'hexes') ? normalizeLowerBetter(gpsPenalty, 0, 20) : null, weight: 0.2, rawValue: gpsPenalty, rawUnit: 'weighted_hex_penalty' }),
+  ], options);
 }
 
 export async function scoreLogisticsSupply(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, shippingStressRaw, transitSummariesRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -1717,16 +2950,17 @@ export async function scoreLogisticsSupply(
   const shippingScore = shippingStress == null ? null : normalizeLowerBetter(shippingStress, 0, 100);
   const transitScore = transitStress == null ? null : normalizeLowerBetter(transitStress, 0, 30);
 
-  return weightedBlend([
-    { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5 },
-    { score: shippingScore == null || tradeExposure == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
-    { score: transitScore == null || tradeExposure == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25 },
-  ]);
+  return tracedBlend('logisticsSupply', [
+    tracedMetric('roadsPavedLogistics', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.5, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ROADS_PAVED_SOURCE }),
+    tracedMetric('shippingStress', { score: shippingScore == null || tradeExposure == null ? null : shippingScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25, rawValue: shippingStress, rawUnit: 'global_stress_score', provenanceHint: tradeExposure == null ? '' : `trade-exposure=${tradeExposure}` }),
+    tracedMetric('transitDisruption', { score: transitScore == null || tradeExposure == null ? null : transitScore * tradeExposure + 100 * (1 - tradeExposure), weight: 0.25, rawValue: transitStress, rawUnit: 'global_disruption_score', provenanceHint: tradeExposure == null ? '' : `trade-exposure=${tradeExposure}` }),
+  ], options);
 }
 
 export async function scoreInfrastructure(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, outagesRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -1738,12 +2972,12 @@ export async function scoreInfrastructure(
   const outages = summarizeOutages(outagesRaw, countryCode);
   const outagePenalty = outages.total * 4 + outages.major * 2 + outages.partial;
 
-  return weightedBlend([
-    { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3 },
-    { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3 },
-    { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25 },
-    { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15 },
-  ]);
+  return tracedBlend('infrastructure', [
+    tracedMetric('electricityAccess', { score: electricityAccess == null ? null : normalizeHigherBetter(electricityAccess, 40, 100), weight: 0.3, rawValue: electricityAccess, rawUnit: 'percent_population', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.ELC.ACCS.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ELECTRICITY_ACCESS_SOURCE }),
+    tracedMetric('roadsPavedInfra', { score: roadsPaved == null ? null : normalizeHigherBetter(roadsPaved, 0, 100), weight: 0.3, rawValue: roadsPaved, rawUnit: 'percent_roads', sourceYear: staticRecord?.infrastructure?.indicators?.['IS.ROD.PAVE.ZS']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ROADS_PAVED_SOURCE }),
+    tracedMetric('infraOutages', { score: hasNonEmptyArrayField(outagesRaw, 'outages') ? normalizeLowerBetter(outagePenalty, 0, 20) : null, weight: 0.25, rawValue: outagePenalty, rawUnit: 'weighted_outage_penalty' }),
+    tracedMetric('broadband', { score: broadband == null ? null : normalizeHigherBetter(broadband, 0, 40), weight: 0.15, rawValue: broadband, rawUnit: 'subscriptions_per_100', sourceYear: staticRecord?.infrastructure?.indicators?.['IT.NET.BBND.P2']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_BROADBAND_SOURCE }),
+  ], options);
 }
 
 // Legacy energy scorer. Default path. Kept intact for one release
@@ -1753,6 +2987,7 @@ export async function scoreInfrastructure(
 async function scoreEnergyLegacy(
   countryCode: string,
   reader: ResilienceSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, energyPricesRaw, energyMixRaw, storageRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -1792,15 +3027,17 @@ async function scoreEnergyLegacy(
     ? null
     : energyStressScore * energyExposure + 100 * (1 - energyExposure);
 
-  return weightedBlend([
-    { score: dependency             == null ? null : normalizeLowerBetter(dependency, 0, 100),              weight: 0.25 },
-    { score: gasShare               == null ? null : normalizeLowerBetter(gasShare, 0, 100),                weight: 0.12 },
-    { score: coalShare              == null ? null : normalizeLowerBetter(coalShare, 0, 100),               weight: 0.08 },
-    { score: renewShare             == null ? null : normalizeHigherBetter(renewShare, 0, 100),             weight: 0.05 },
-    { score: storageStress          == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100),     weight: 0.10 },
-    { score: exposedEnergyStress,                                                                           weight: 0.10 },
-    { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30 },
-  ]);
+  const dependencyRecord = staticRecord?.iea?.energyImportDependency;
+  const mixYear = safeNum(mix?.year);
+  return tracedBlend('energy', [
+    tracedMetric('energyImportDependency', { score: dependency == null ? null : normalizeLowerBetter(dependency, 0, 100), weight: 0.25, rawValue: dependency, rawUnit: 'percent_consumption', sourceYear: dependencyRecord?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'iea'), observedSources: getEnergyImportDependencyObservedSources(dependencyRecord?.source), provenanceHint: dependencyRecord?.source ?? '' }),
+    tracedMetric('gasShare', { score: gasShare == null ? null : normalizeLowerBetter(gasShare, 0, 100), weight: 0.12, rawValue: gasShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
+    tracedMetric('coalShare', { score: coalShare == null ? null : normalizeLowerBetter(coalShare, 0, 100), weight: 0.08, rawValue: coalShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
+    tracedMetric('renewShare', { score: renewShare == null ? null : normalizeHigherBetter(renewShare, 0, 100), weight: 0.05, rawValue: renewShare, rawUnit: 'percent_generation', sourceYear: mixYear, observedSources: OWID_ENERGY_SOURCE }),
+    tracedMetric('euGasStorageStress', { score: storageStress == null ? null : normalizeLowerBetter(storageStress * 100, 0, 100), weight: 0.10, rawValue: storageFillPct, rawUnit: 'percent_fill' }),
+    tracedMetric('energyPriceStress', { score: exposedEnergyStress, weight: 0.10, rawValue: energyStress, rawUnit: 'mean_absolute_percent_change', provenanceHint: energyExposure == null ? '' : `energy-exposure=${energyExposure}` }),
+    tracedMetric('electricityConsumption', { score: electricityConsumption == null ? null : normalizeHigherBetter(electricityConsumption, 200, 8000), weight: 0.30, rawValue: electricityConsumption, rawUnit: 'kwh_per_capita', sourceYear: staticRecord?.infrastructure?.indicators?.['EG.USE.ELEC.KH.PC']?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'infrastructure'), observedSources: WORLD_BANK_ELECTRICITY_CONSUMPTION_SOURCE }),
+  ], options);
 }
 
 // PR 1 v2 energy scorer under Option B (power-system security framing).
@@ -1826,6 +3063,7 @@ async function scoreEnergyLegacy(
 async function scoreEnergyV2(
   countryCode: string,
   reader: ResilienceSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   // reserveMarginPct is DEFERRED per plan §3.1 (IEA coverage too sparse;
   // open-question whether the indicator ships at all). Its 0.10 weight
@@ -1848,15 +3086,20 @@ async function scoreEnergyV2(
 
   // Per-country value lookup on the bulk-payload shape emitted by the
   // three PR 1 seeders: { countries: { [ISO2]: { value, year } } }.
-  const bulkValue = (raw: unknown): number | null => {
-    const entry = (raw as { countries?: Record<string, { value?: number }> } | null)
+  const bulkEntry = (raw: unknown): { value: number; year: number | null } | null => {
+    const entry = (raw as { countries?: Record<string, { value?: number; year?: number }> } | null)
       ?.countries?.[countryCode];
-    return typeof entry?.value === 'number' ? entry.value : null;
+    return typeof entry?.value === 'number'
+      ? { value: entry.value, year: Number.isFinite(entry.year) ? Number(entry.year) : null }
+      : null;
   };
 
-  const fossilElectricityShare = bulkValue(fossilShareRaw);
-  const lowCarbonGenerationShare = bulkValue(lowCarbonRaw);
-  const powerLosses = bulkValue(powerLossesRaw);
+  const fossilEntry = bulkEntry(fossilShareRaw);
+  const lowCarbonEntry = bulkEntry(lowCarbonRaw);
+  const powerLossesEntry = bulkEntry(powerLossesRaw);
+  const fossilElectricityShare = fossilEntry?.value ?? null;
+  const lowCarbonGenerationShare = lowCarbonEntry?.value ?? null;
+  const powerLosses = powerLossesEntry?.value ?? null;
   const netImports = safeNum(staticRecord?.iea?.energyImportDependency?.value);
 
   // importedFossilDependence composite. `max(netImports, 0)` collapses
@@ -1894,22 +3137,35 @@ async function scoreEnergyV2(
     ? null
     : energyStressScore * exposure + 100 * (1 - exposure);
 
-  return weightedBlend([
-    { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35 },
-    { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80),  weight: 0.20 },
-    { score: powerLosses              == null ? null : normalizeLowerBetter(powerLosses, 3, 25),                weight: 0.20 },
-    { score: euStorageStress          == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100),     weight: 0.10 },
-    { score: exposedEnergyStress,                                                                                weight: 0.15 },
-  ]);
+  const dependencyRecord = staticRecord?.iea?.energyImportDependency;
+  const dependencySources = getEnergyImportDependencyObservedSources(dependencyRecord?.source);
+  return tracedBlend('energy', [
+    tracedMetric('importedFossilDependence', { score: importedFossilDependence == null ? null : normalizeLowerBetter(importedFossilDependence, 0, 100), weight: 0.35, rawValue: importedFossilDependence, rawUnit: 'percent_weighted_dependency', sourceYear: oldestSourceYear(fossilEntry?.year, dependencyRecord?.year), observedSources: importedFossilDependence == null ? [] : [...WORLD_BANK_FOSSIL_ELECTRICITY_SOURCE, ...dependencySources], provenanceHint: dependencyRecord?.source ?? '' }),
+    tracedMetric('lowCarbonGenerationShare', { score: lowCarbonGenerationShare == null ? null : normalizeHigherBetter(lowCarbonGenerationShare, 0, 80), weight: 0.20, rawValue: lowCarbonGenerationShare, rawUnit: 'percent_generation', sourceYear: lowCarbonEntry?.year ?? null, observedSources: OWID_LOW_CARBON_SOURCE }),
+    tracedMetric('powerLossesPct', { score: powerLosses == null ? null : normalizeLowerBetter(powerLosses, 3, 25), weight: 0.20, rawValue: powerLosses, rawUnit: 'percent_output', sourceYear: powerLossesEntry?.year ?? null, observedSources: WORLD_BANK_POWER_LOSSES_SOURCE }),
+    tracedMetric('euGasStorageStress', { score: euStorageStress == null ? null : normalizeLowerBetter(euStorageStress * 100, 0, 100), weight: 0.10, rawValue: storageFillPct, rawUnit: 'percent_fill' }),
+    tracedMetric('energyPriceStress', { score: exposedEnergyStress, weight: 0.15, rawValue: energyStress, rawUnit: 'mean_absolute_percent_change', provenanceHint: `fossil-exposure=${exposure}` }),
+  ], options);
 }
+
+const ENERGY_V2_TRACE_INDICATOR_IDS = [
+  'importedFossilDependence',
+  'lowCarbonGenerationShare',
+  'powerLossesPct',
+  'euGasStorageStress',
+  'energyPriceStress',
+] as const satisfies readonly ResilienceIndicatorId[];
 
 export async function scoreEnergy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   if (!isEnergyV2EnabledLocal()) {
-    return scoreEnergyLegacy(countryCode, reader);
+    return scoreEnergyLegacy(countryCode, reader, options);
   }
+
+  options?.trace?.recordSelectedIndicators('energy', ENERGY_V2_TRACE_INDICATOR_IDS);
 
   // Flag is ON — preflight the required seeds before routing to v2.
   // A null from any of these would let scoreEnergyV2 score every country
@@ -1936,20 +3192,22 @@ export async function scoreEnergy(
     );
   }
 
-  return scoreEnergyV2(countryCode, reader);
+  return scoreEnergyV2(countryCode, reader, options);
 }
 
 export async function scoreGovernanceInstitutional(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
-  return weightedBlend(getStaticWgiRows(staticRecord));
+  return tracedBlend('governanceInstitutional', getStaticWgiRows(staticRecord), options);
 }
 
 export async function scoreSocialCohesion(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, displacementRaw, unrestRaw, imfLaborRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -1977,10 +3235,13 @@ export async function scoreSocialCohesion(
   // GPI empirical range: 1.1 (Iceland) – 3.4 (Yemen 2024). Anchor worst=3.6 (slightly
   // above observed max) so the worst-peace countries score near 0, not 20.
   // The old anchor of 4.0 gave Yemen (3.4) a score of 20 instead of ~8.
-  const gpiRow: WeightedMetric = {
+  const gpiRow: TracedWeightedMetric = tracedMetric('gpiScore', {
     score: gpiScore == null ? null : normalizeLowerBetter(gpiScore, 1.0, 3.6),
     weight: 0.55,
-  };
+    rawValue: gpiScore,
+    rawUnit: 'gpi_score',
+    sourceYear: staticRecord?.gpi?.year ?? null,
+  });
 
   // Plan 2026-04-26-001 §U2: gated impute logic for displacement and unrest.
   //
@@ -2001,33 +3262,35 @@ export async function scoreSocialCohesion(
   // GPI-only mode pull the blend down. Countries WITH observed displacement
   // and zero unrest events keep the historical "stable-absence ≈ 85" anchor
   // so Iceland/Norway don't regress.
-  let displacementRow: WeightedMetric;
-  let unrestRow: WeightedMetric;
+  let displacementRow: TracedWeightedMetric;
+  let unrestRow: TracedWeightedMetric;
 
   if (displacementRaw == null) {
     // Seed outage — drop displacement weight (NOT imputed).
-    displacementRow = { score: null, weight: 0.25 };
+    displacementRow = tracedMetric('displacementTotal', { score: null, weight: 0.25 });
   } else if (displacementMetric == null) {
     // Country not in registry → GPI-only mode. Impute at lower-than-GPI
     // value to pull the blend down for tiny peaceful states.
-    displacementRow = {
+    displacementRow = tracedMetric('displacementTotal', {
       score: IMPUTE.socialCohesionGpiOnlyDisplacement.score,
       weight: 0.25,
       certaintyCoverage: IMPUTE.socialCohesionGpiOnlyDisplacement.certaintyCoverage,
       imputed: true,
       imputationClass: IMPUTE.socialCohesionGpiOnlyDisplacement.imputationClass,
-    };
+    });
   } else {
     // Happy path: country observed in displacement registry.
-    displacementRow = {
+    displacementRow = tracedMetric('displacementTotal', {
       score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7),
       weight: 0.25,
-    };
+      rawValue: displacementMetric,
+      rawUnit: 'people',
+    });
   }
 
   if (unrestRaw == null) {
     // Seed outage — drop unrest weight (NOT imputed).
-    unrestRow = { score: null, weight: 0.2 };
+    unrestRow = tracedMetric('unrestEvents', { score: null, weight: 0.2 });
   } else if (unrest.unrestCount === 0 && unrest.fatalities === 0) {
     // Zero unrest events. Three sub-cases — distinguished by displacement state:
     //   (a) Displacement OUTAGE (displacementRaw == null) → impute at 85
@@ -2064,33 +3327,35 @@ export async function scoreSocialCohesion(
       // wrapping in `isIndicatorComprehensive('unrestEvents') ? ...`)
       // keeps the code path active and tested instead of relying on a
       // dead-by-construction conditional.
-      unrestRow = {
+      unrestRow = tracedMetric('unrestEvents', {
         score: IMPUTATION.curated_list_absent.score,
         weight: 0.2,
         certaintyCoverage: IMPUTATION.curated_list_absent.certaintyCoverage,
         imputed: true,
         imputationClass: IMPUTATION.curated_list_absent.imputationClass,
-      };
+      });
     } else {
-      unrestRow = {
+      unrestRow = tracedMetric('unrestEvents', {
         score: IMPUTE.unhcrDisplacement.score,
         weight: 0.2,
         certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage,
         imputed: true,
         imputationClass: IMPUTE.unhcrDisplacement.imputationClass,
-      };
+      });
     }
   } else {
     // Observed unrest events — score directly. Plan §U6 per-capita
     // anchor: 10 events/M = "worst" (Lebanon-class), 0 events/M = "best"
     // (Iceland). Was 0..20 in raw event-count units before §U6.
-    unrestRow = {
+    unrestRow = tracedMetric('unrestEvents', {
       score: normalizeLowerBetter(unrestMetric, 0, 10),
       weight: 0.2,
-    };
+      rawValue: unrestMetric,
+      rawUnit: 'events_per_million_weighted',
+    });
   }
 
-  return weightedBlend([gpiRow, displacementRow, unrestRow]);
+  return tracedBlend('socialCohesion', [gpiRow, displacementRow, unrestRow], options);
 }
 
 // #3737 — despite the legacy `scoreBorderSecurity` / `borderSecurity` name,
@@ -2110,6 +3375,7 @@ export async function scoreSocialCohesion(
 export async function scoreBorderSecurity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [ucdpRaw, displacementRaw, imfLaborRaw] = await Promise.all([
     reader(RESILIENCE_UCDP_KEY),
@@ -2134,22 +3400,23 @@ export async function scoreBorderSecurity(
   const conflictMetric = (ucdp.eventCount * 2 + ucdp.typeWeight + sqrtCount(ucdp.deaths)) / popDenominator;
   const displacementMetric = safeNum(displacement?.hostTotal) ?? safeNum(displacement?.totalDisplaced);
 
-  return weightedBlend([
-    { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 15) : null, weight: 0.65 },
+  return tracedBlend('borderSecurity', [
+    tracedMetric('ucdpConflict', { score: ucdpRaw != null ? normalizeLowerBetter(conflictMetric, 0, 15) : null, weight: 0.65, rawValue: ucdpRaw == null ? null : conflictMetric, rawUnit: 'events_per_million_weighted' }),
     // Not in UNHCR displacement registry → crisis_monitoring_absent (country is not a
     // significant refugee source or host). Only impute if source was loaded; null source
     // means seed outage, not country absence.
     displacementRaw == null
-      ? { score: null, weight: 0.35 }
+      ? tracedMetric('displacementHosted', { score: null, weight: 0.35 })
       : displacementMetric == null
-        ? { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage, imputed: true, imputationClass: IMPUTE.unhcrDisplacement.imputationClass }
-        : { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35 },
-  ]);
+        ? tracedMetric('displacementHosted', { score: IMPUTE.unhcrDisplacement.score, weight: 0.35, certaintyCoverage: IMPUTE.unhcrDisplacement.certaintyCoverage, imputed: true, imputationClass: IMPUTE.unhcrDisplacement.imputationClass })
+        : tracedMetric('displacementHosted', { score: normalizeLowerBetter(Math.log10(Math.max(1, displacementMetric)), 0, 7), weight: 0.35, rawValue: displacementMetric, rawUnit: 'people' }),
+  ], options);
 }
 
 export async function scoreInformationCognitive(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, socialVelocityRaw, threatSummaryRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -2186,16 +3453,17 @@ export async function scoreInformationCognitive(
   // independent of the confidence-weighting applied to the score.
   const langFactor = getLanguageCoverageFactor(countryCode);
 
-  return weightedBlend([
-    { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55 },
-    { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 * langFactor, nominalWeight: 0.15 },
-    { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.30 * langFactor, nominalWeight: 0.30 },
-  ]);
+  return tracedBlend('informationCognitive', [
+    tracedMetric('rsfPressFreedom', { score: rsfScore == null ? null : normalizeLowerBetter(rsfScore, 0, 100), weight: 0.55, rawValue: rsfScore, rawUnit: 'rsf_score', sourceYear: staticRecord?.rsf?.year ?? null }),
+    tracedMetric('socialVelocity', { score: velocity > 0 ? normalizeLowerBetter(Math.log10(velocity + 1), 0, 3) : null, weight: 0.15 * langFactor, nominalWeight: 0.15, rawValue: velocity, rawUnit: 'velocity_sum', provenanceHint: `language-coverage-factor=${langFactor}` }),
+    tracedMetric('newsThreatScore', { score: threatScore == null ? null : normalizeLowerBetter(threatScore, 0, 20), weight: 0.30 * langFactor, nominalWeight: 0.30, rawValue: threatScore, rawUnit: 'weighted_threat_count', provenanceHint: `language-coverage-factor=${langFactor}` }),
+  ], options);
 }
 
 export async function scoreHealthPublicService(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
   const hospitalBeds = getStaticIndicatorValue(staticRecord, 'who', 'hospitalBeds');
@@ -2204,18 +3472,20 @@ export async function scoreHealthPublicService(
   const physiciansPer1k = getStaticIndicatorValue(staticRecord, 'who', 'physiciansPer1k');
   const healthExpPerCapitaUsd = getStaticIndicatorValue(staticRecord, 'who', 'healthExpPerCapitaUsd');
 
-  return weightedBlend([
-    { score: uhcIndex == null ? null : normalizeHigherBetter(uhcIndex, 40, 90), weight: 0.35 },
-    { score: measlesCoverage == null ? null : normalizeHigherBetter(measlesCoverage, 50, 99), weight: 0.25 },
-    { score: hospitalBeds == null ? null : normalizeHigherBetter(hospitalBeds, 0, 8), weight: 0.10 },
-    { score: physiciansPer1k == null ? null : normalizeHigherBetter(physiciansPer1k, 0, 5), weight: 0.15 },
-    { score: healthExpPerCapitaUsd == null ? null : normalizeHigherBetter(healthExpPerCapitaUsd, 20, 3000), weight: 0.15 },
-  ]);
+  const who = staticRecord?.who?.indicators ?? {};
+  return tracedBlend('healthPublicService', [
+    tracedMetric('uhcIndex', { score: uhcIndex == null ? null : normalizeHigherBetter(uhcIndex, 40, 90), weight: 0.35, rawValue: uhcIndex, rawUnit: 'index', sourceYear: who.uhcIndex?.year ?? null }),
+    tracedMetric('measlesCoverage', { score: measlesCoverage == null ? null : normalizeHigherBetter(measlesCoverage, 50, 99), weight: 0.25, rawValue: measlesCoverage, rawUnit: 'percent', sourceYear: who.measlesCoverage?.year ?? null }),
+    tracedMetric('hospitalBeds', { score: hospitalBeds == null ? null : normalizeHigherBetter(hospitalBeds, 0, 8), weight: 0.10, rawValue: hospitalBeds, rawUnit: 'per_1000', sourceYear: who.hospitalBeds?.year ?? null }),
+    tracedMetric('physiciansPer1k', { score: physiciansPer1k == null ? null : normalizeHigherBetter(physiciansPer1k, 0, 5), weight: 0.15, rawValue: physiciansPer1k, rawUnit: 'per_1000', sourceYear: who.physiciansPer1k?.year ?? null }),
+    tracedMetric('healthExpPerCapitaUsd', { score: healthExpPerCapitaUsd == null ? null : normalizeHigherBetter(healthExpPerCapitaUsd, 20, 3000), weight: 0.15, rawValue: healthExpPerCapitaUsd, rawUnit: 'usd_per_capita', sourceYear: who.healthExpPerCapitaUsd?.year ?? null }),
+  ], options);
 }
 
 export async function scoreFoodWater(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const staticRecord = await readStaticCountry(countryCode, reader);
   const fao = staticRecord?.fao ?? null;
@@ -2226,27 +3496,30 @@ export async function scoreFoodWater(
   // But only impute if the static bundle was loaded (seeder wrote fao: null explicitly).
   // A missing resilience:static:{ISO2} key means the seeder never ran — not crisis-free.
   if (fao == null) {
-    return weightedBlend([
+    return tracedBlend('foodWater', [
       staticRecord == null
-        ? { score: null, weight: 0.6 }
-        : { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true, imputationClass: IMPUTE.ipcFood.imputationClass },
-      { score: aquastatScore, weight: 0.4 },
-    ]);
+        ? tracedMetric('ipcPeopleInCrisis', { score: null, weight: 0.6 })
+        : tracedMetric('ipcPeopleInCrisis', { score: IMPUTE.ipcFood.score, weight: 0.6, certaintyCoverage: IMPUTE.ipcFood.certaintyCoverage, imputed: true, imputationClass: IMPUTE.ipcFood.imputationClass }),
+      tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'aquastat'), observedSources: WORLD_BANK_WATER_STRESS_SOURCE }),
+    ], options);
   }
 
   const peopleInCrisis = safeNum(fao.peopleInCrisis);
   const phase = safeNum(String(fao.phase || '').match(/\d+/)?.[0]);
 
-  return weightedBlend([
-    {
+  return tracedBlend('foodWater', [
+    tracedMetric('ipcPeopleInCrisis', {
       score: peopleInCrisis == null
         ? null
         : normalizeLowerBetter(Math.log10(Math.max(1, peopleInCrisis)), 0, 7),
       weight: 0.45,
-    },
-    { score: phase == null ? null : normalizeLowerBetter(phase, 1, 5), weight: 0.15 },
-    { score: aquastatScore, weight: 0.4 },
-  ]);
+      rawValue: peopleInCrisis,
+      rawUnit: 'people',
+      sourceYear: fao.year ?? null,
+    }),
+    tracedMetric('ipcPhase', { score: phase == null ? null : normalizeLowerBetter(phase, 1, 5), weight: 0.15, rawValue: phase, rawUnit: 'ipc_phase', sourceYear: fao.year ?? null }),
+    tracedMetric('aquastatScore', { score: aquastatScore, weight: 0.4, rawValue: safeNum(staticRecord?.aquastat?.value), rawUnit: staticRecord?.aquastat?.indicator ?? '', sourceYear: staticRecord?.aquastat?.year ?? null, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'aquastat'), observedSources: WORLD_BANK_WATER_STRESS_SOURCE }),
+  ], options);
 }
 
 interface RecoveryFiscalSpaceCountry {
@@ -2313,18 +3586,14 @@ function getRecoveryCountryEntry<T>(raw: unknown, countryCode: string): T | null
 export async function scoreFiscalSpace(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_FISCAL_SPACE_KEY);
   const entry = getRecoveryCountryEntry<RecoveryFiscalSpaceCountry>(raw, countryCode);
   if (!entry) {
-    return {
-      score: IMPUTE.recoveryFiscalSpace.score,
-      coverage: IMPUTE.recoveryFiscalSpace.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryFiscalSpace.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('fiscalSpace', [
+      tracedMetric('recoveryGovRevenue', { score: IMPUTE.recoveryFiscalSpace.score, weight: 1, certaintyCoverage: IMPUTE.recoveryFiscalSpace.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryFiscalSpace.imputationClass }),
+    ], options);
   }
 
   // Weight rebalance + new indicator (debtSustainabilityGap) per
@@ -2333,12 +3602,12 @@ export async function scoreFiscalSpace(
   // g, and d with their interaction term — and earns the largest slice.
   // The other three are co-signals confirming the direction.
   //   sum = 0.25 + 0.20 + 0.20 + 0.35 = 1.0
-  return weightedBlend([
-    { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.25 },
-    { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.20 },
-    { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.20 },
-    { score: entry.debtSustainabilityGapPct == null ? null : normalizeHigherBetter(entry.debtSustainabilityGapPct, -5, 3), weight: 0.35 },
-  ]);
+  return tracedBlend('fiscalSpace', [
+    tracedMetric('recoveryGovRevenue', { score: entry.govRevenuePct == null ? null : normalizeHigherBetter(entry.govRevenuePct, 5, 45), weight: 0.25, rawValue: entry.govRevenuePct ?? null, rawUnit: 'percent_gdp', sourceYear: entry.year ?? null }),
+    tracedMetric('recoveryFiscalBalance', { score: entry.fiscalBalancePct == null ? null : normalizeHigherBetter(entry.fiscalBalancePct, -15, 5), weight: 0.20, rawValue: entry.fiscalBalancePct ?? null, rawUnit: 'percent_gdp', sourceYear: entry.year ?? null }),
+    tracedMetric('recoveryDebtToGdp', { score: entry.debtToGdpPct == null ? null : normalizeLowerBetter(entry.debtToGdpPct, 0, 150), weight: 0.20, rawValue: entry.debtToGdpPct ?? null, rawUnit: 'percent_gdp', sourceYear: entry.year ?? null }),
+    tracedMetric('debtSustainabilityGap', { score: entry.debtSustainabilityGapPct == null ? null : normalizeHigherBetter(entry.debtSustainabilityGapPct, -5, 3), weight: 0.35, rawValue: entry.debtSustainabilityGapPct ?? null, rawUnit: 'percentage_points', sourceYear: entry.gapYear ?? null }),
+  ], options);
 }
 
 // RETIRED in PR 2 §3.4. Superseded by `scoreLiquidReserveAdequacy` +
@@ -2357,7 +3626,9 @@ export async function scoreFiscalSpace(
 export async function scoreReserveAdequacy(
   _countryCode: string,
   _reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
+  options?.trace?.recordRetiredDimension('reserveAdequacy', 'split-into-liquid-reserve-and-sovereign-fiscal-buffer');
   return {
     score: 50,
     coverage: 0,
@@ -2391,38 +3662,35 @@ export async function scoreReserveAdequacy(
 async function readReexportShareForCountry(
   countryCode: string,
   reader: ResilienceSeedReader,
-): Promise<number | null> {
+): Promise<{ share: number; year: number | null } | null> {
   const raw = await reader(RESILIENCE_RECOVERY_REEXPORT_SHARE_KEY);
-  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null } | undefined> } | null | undefined;
-  const share = payload?.countries?.[countryCode]?.reexportShareOfImports;
+  const payload = raw as { countries?: Record<string, { reexportShareOfImports?: number | null; year?: number | null } | undefined> } | null | undefined;
+  const entry = payload?.countries?.[countryCode];
+  const share = entry?.reexportShareOfImports;
   if (typeof share !== 'number' || !Number.isFinite(share)) return null;
   if (share < 0 || share >= 1) return null;
-  return share;
+  return { share, year: Number.isFinite(entry?.year) ? Number(entry?.year) : null };
 }
 
 export async function scoreLiquidReserveAdequacy(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_RESERVE_ADEQUACY_KEY);
   const entry = getRecoveryCountryEntry<RecoveryReserveAdequacyCountry>(raw, countryCode);
   if (!entry || entry.reserveMonths == null) {
-    return {
-      score: IMPUTE.recoveryLiquidReserveAdequacy.score,
-      coverage: IMPUTE.recoveryLiquidReserveAdequacy.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryLiquidReserveAdequacy.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('liquidReserveAdequacy', [
+      tracedMetric('recoveryLiquidReserveMonths', { score: IMPUTE.recoveryLiquidReserveAdequacy.score, weight: 1, certaintyCoverage: IMPUTE.recoveryLiquidReserveAdequacy.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryLiquidReserveAdequacy.imputationClass }),
+    ], options);
   }
   const reexportShare = await readReexportShareForCountry(countryCode, reader);
   const adjustedMonths = reexportShare !== null
-    ? entry.reserveMonths / (1 - reexportShare)
+    ? entry.reserveMonths / (1 - reexportShare.share)
     : entry.reserveMonths;
-  return weightedBlend([
-    { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0 },
-  ]);
+  return tracedBlend('liquidReserveAdequacy', [
+    tracedMetric('recoveryLiquidReserveMonths', { score: normalizeHigherBetter(Math.min(adjustedMonths, 12), 1, 12), weight: 1.0, rawValue: adjustedMonths, rawUnit: 'adjusted_months_of_imports', sourceYear: oldestSourceYear(entry.year, reexportShare?.year), observedSources: reexportShare == null ? WORLD_BANK_FX_RESERVES_SOURCE : [...WORLD_BANK_FX_RESERVES_SOURCE, { providerName: 'United Nations Comtrade', sourceUrl: 'https://comtradeplus.un.org/' }], provenanceHint: reexportShare == null ? '' : `reexport-share=${reexportShare.share}` }),
+  ], options);
 }
 
 // PR 2 §3.4 — new SWF haircut dimension. Reads per-country SWF records
@@ -2469,19 +3737,15 @@ interface RecoverySovereignWealthPayload {
 export async function scoreSovereignFiscalBuffer(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_SOVEREIGN_WEALTH_KEY);
   const payload = raw as RecoverySovereignWealthPayload | null | undefined;
   // Path 1 — seed key absent entirely. IMPUTE.
   if (!payload || typeof payload !== 'object' || !payload.countries || typeof payload.countries !== 'object') {
-    return {
-      score: IMPUTE.recoverySovereignFiscalBuffer.score,
-      coverage: IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoverySovereignFiscalBuffer.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('sovereignFiscalBuffer', [
+      tracedMetric('recoverySovereignWealthEffectiveMonths', { score: IMPUTE.recoverySovereignFiscalBuffer.score, weight: 1, certaintyCoverage: IMPUTE.recoverySovereignFiscalBuffer.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoverySovereignFiscalBuffer.imputationClass }),
+    ], options);
   }
   const entry = payload.countries[countryCode.toUpperCase()] ?? null;
   // Path 3 — seed present, country not in manifest → no SWF.
@@ -2503,7 +3767,7 @@ export async function scoreSovereignFiscalBuffer(
   // not applicable to this country" sentinel and is what allows
   // client surfaces to mirror the server's exclusion symmetrically.
   if (!entry) {
-    return {
+    const result: ResilienceDimensionScore = {
       score: 0,
       coverage: 0,
       observedWeight: 0,
@@ -2511,6 +3775,10 @@ export async function scoreSovereignFiscalBuffer(
       imputationClass: 'not-applicable',
       freshness: { lastObservedAtMs: 0, staleness: '' },
     };
+    options?.trace?.recordManual('sovereignFiscalBuffer', 0, [
+      { indicatorId: 'recoverySovereignWealthEffectiveMonths', score: null, weight: 1, state: 'not-applicable' },
+    ]);
+    return result;
   }
   // Path 2 — country has SWF(s). Saturating transform on totalEffectiveMonths.
   const em = typeof entry.totalEffectiveMonths === 'number' && Number.isFinite(entry.totalEffectiveMonths)
@@ -2520,56 +3788,48 @@ export async function scoreSovereignFiscalBuffer(
   const completeness = typeof entry.completeness === 'number' && Number.isFinite(entry.completeness)
     ? Math.max(0, Math.min(1, entry.completeness))
     : 1.0;
-  return weightedBlend([
+  return tracedBlend('sovereignFiscalBuffer', [
     // certaintyCoverage = completeness so partial-scrapes derate confidence
     // without zeroing the observed weight. The country is still a real
     // observation — just with fewer of its manifest funds resolved.
-    { score, weight: 1.0, certaintyCoverage: completeness },
-  ]);
+    tracedMetric('recoverySovereignWealthEffectiveMonths', { score, weight: 1.0, certaintyCoverage: completeness, rawValue: em, rawUnit: 'effective_months' }),
+  ], options);
 }
 
 export async function scoreExternalDebtCoverage(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_EXTERNAL_DEBT_KEY);
   const entry = getRecoveryCountryEntry<RecoveryExternalDebtCountry>(raw, countryCode);
   if (!entry || entry.debtToReservesRatio == null) {
-    return {
-      score: IMPUTE.recoveryExternalDebt.score,
-      coverage: IMPUTE.recoveryExternalDebt.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryExternalDebt.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('externalDebtCoverage', [
+      tracedMetric('recoveryDebtToReserves', { score: IMPUTE.recoveryExternalDebt.score, weight: 1, certaintyCoverage: IMPUTE.recoveryExternalDebt.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryExternalDebt.imputationClass }),
+    ], options);
   }
   // PR 3 §3.5 point 3: goalpost re-anchored on Greenspan-Guidotti.
   // Ratio 1.0 (short-term debt matches reserves) = score 50; ratio 2.0
   // = score 0 (acute rollover-shock exposure). See registry entry
   // recoveryDebtToReserves for the construct rationale.
-  return weightedBlend([
-    { score: normalizeLowerBetter(entry.debtToReservesRatio, 0, 2), weight: 1.0 },
-  ]);
+  return tracedBlend('externalDebtCoverage', [
+    tracedMetric('recoveryDebtToReserves', { score: normalizeLowerBetter(entry.debtToReservesRatio, 0, 2), weight: 1.0, rawValue: entry.debtToReservesRatio, rawUnit: 'ratio', sourceYear: entry.year ?? null, observedSources: WORLD_BANK_RECOVERY_DEBT_RESERVE_SOURCES }),
+  ], options);
 }
 
 export async function scoreImportConcentration(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const raw = await reader(RESILIENCE_RECOVERY_IMPORT_HHI_KEY);
   const entry = getRecoveryCountryEntry<RecoveryImportHhiCountry>(raw, countryCode);
   if (!entry || entry.hhi == null) {
-    return {
-      score: IMPUTE.recoveryImportHhi.score,
-      coverage: IMPUTE.recoveryImportHhi.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryImportHhi.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('importConcentration', [
+      tracedMetric('recoveryImportHhi', { score: IMPUTE.recoveryImportHhi.score, weight: 1, certaintyCoverage: IMPUTE.recoveryImportHhi.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryImportHhi.imputationClass }),
+    ], options);
   }
-  return weightedBlend([
+  return tracedBlend('importConcentration', [
     // HHI is on a 0..1 scale (0 = perfectly diversified, 1 = single partner).
     // Multiply by 10000 to convert to the traditional 0..10000 HHI scale,
     // then normalize against the 0..5000 goalpost range (where 5000+ = max concentration).
@@ -2578,17 +3838,21 @@ export async function scoreImportConcentration(
     // many late reporters publish 1-3 years behind. Older fallback vintages
     // still carry a real HHI signal, but coverage is derated so stale source
     // years reduce certainty instead of looking equivalent to current data.
-    {
+    tracedMetric('recoveryImportHhi', {
       score: normalizeLowerBetter(entry.hhi * 10000, 0, 5000),
       weight: 1.0,
       certaintyCoverage: computeImportHhiCertaintyCoverage(entry.year),
-    },
-  ]);
+      rawValue: entry.hhi,
+      rawUnit: 'hhi_0_to_1',
+      sourceYear: entry.year ?? null,
+    }),
+  ], options);
 }
 
 export async function scoreStateContinuity(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   const [staticRecord, ucdpRaw, displacementRaw] = await Promise.all([
     readStaticCountry(countryCode, reader),
@@ -2598,34 +3862,49 @@ export async function scoreStateContinuity(
 
   const wgiValues = getStaticWgiValues(staticRecord);
   const wgiMean = mean(wgiValues);
+  const wgiIndicators = staticRecord?.wgi?.indicators ?? {};
+  const contributingWgiKeys = WGI_INDICATOR_KEYS.filter(
+    (key) => optionalNum(wgiIndicators[key]?.value) != null,
+  );
+  const wgiSourceYear = oldestSourceYear(...contributingWgiKeys.map(
+    (key) => optionalNum(wgiIndicators[key]?.year),
+  ));
+  const contributingWgiKeySet = new Set(contributingWgiKeys);
+  const wgiObservedSources = WGI_TRACE_ROWS
+    .filter(([key]) => contributingWgiKeySet.has(key))
+    .map(([key]) => wgiObservationSource(key));
 
   const ucdpSummary = summarizeUcdp(ucdpRaw, countryCode);
+  const ucdpObservationAvailable = Array.isArray((ucdpRaw as { events?: unknown[] } | null)?.events);
   const ucdpRawScore = ucdpSummary.eventCount * 2 + ucdpSummary.typeWeight + sqrtCount(ucdpSummary.deaths);
 
   const displacement = getCountryDisplacement(displacementRaw, countryCode);
   const totalDisplaced = safeNum(displacement?.totalDisplaced);
 
   if (wgiMean == null && ucdpSummary.eventCount === 0 && totalDisplaced == null) {
-    return {
-      score: IMPUTE.recoveryStateContinuity.score,
-      coverage: IMPUTE.recoveryStateContinuity.certaintyCoverage,
-      observedWeight: 0,
-      imputedWeight: 1,
-      imputationClass: IMPUTE.recoveryStateContinuity.imputationClass,
-      freshness: { lastObservedAtMs: 0, staleness: '' },
-    };
+    return tracedBlend('stateContinuity', [
+      tracedMetric('recoveryWgiContinuity', { score: IMPUTE.recoveryStateContinuity.score, weight: 1, certaintyCoverage: IMPUTE.recoveryStateContinuity.certaintyCoverage, imputed: true, imputationClass: IMPUTE.recoveryStateContinuity.imputationClass }),
+    ], options);
   }
 
-  return weightedBlend([
-    { score: wgiMean == null ? null : normalizeHigherBetter(wgiMean, -2.5, 2.5), weight: 0.5 },
-    { score: normalizeLowerBetter(ucdpRawScore, 0, 30), weight: 0.3 },
-    {
+  return tracedBlend('stateContinuity', [
+    tracedMetric('recoveryWgiContinuity', { score: wgiMean == null ? null : normalizeHigherBetter(wgiMean, -2.5, 2.5), weight: 0.5, rawValue: wgiMean, rawUnit: 'mean_wgi_estimate', sourceYear: wgiSourceYear, retrievedAt: staticDatasetRetrievedAt(staticRecord, 'wgi'), observedSources: wgiObservedSources }),
+    tracedMetric('recoveryConflictPressure', {
+      score: normalizeLowerBetter(ucdpRawScore, 0, 30),
+      weight: 0.3,
+      state: ucdpObservationAvailable ? undefined : 'fallback',
+      rawValue: ucdpObservationAvailable ? ucdpRawScore : null,
+      rawUnit: 'weighted_event_score',
+    }),
+    tracedMetric('recoveryDisplacementVelocity', {
       score: totalDisplaced == null
         ? null
         : normalizeLowerBetter(Math.log10(Math.max(1, totalDisplaced)), 0, 7),
       weight: 0.2,
-    },
-  ]);
+      rawValue: totalDisplaced,
+      rawUnit: 'people',
+    }),
+  ], options);
 }
 
 // PR 3 §3.5 point 1: retired permanently from the core score. IEA
@@ -2716,11 +3995,59 @@ export const RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE: ReadonlySet<Resilienc
 // it MUST drag down user-facing confidence so an operator notices.
 // The triple-zero check is the unique fingerprint of the Path-3
 // "no manifest entry" return shape.
+// A dimension that is dark behind a feature flag is a deliberate construct
+// state, not a data gap, so it must not drag down user-facing confidence and
+// coverage while it waits for its seeder rollout.
+//
+// This is load-bearing, not cosmetic. `headlineEligible` gates public ranking
+// inclusion on `overallCoverage >= 0.65`, and the coverage mean is taken across
+// dimensions — so every dark dimension pulls every country's coverage down. With
+// `education` counted, the US happy-path build fell below the threshold and
+// dropped out of the headline ranking entirely.
+//
+// RECONCILIATION, updated 2026-08-13 for the finance activation (#6511). The
+// prior note here said the two dark dimensions "should be reconciled together
+// when either flag flips". Education flipped on 2026-08-11 and
+// `financialSystemExposure` is now live in production through its owner-set
+// environment flag. Keep finance OUT of this exclusion set:
+//
+//   - Adding it would change `overallCoverage` for every country, and
+//     `headlineEligible` gates public ranking inclusion on `>= 0.65`. That is a
+//     published-number change for all 196 countries and needs its own
+//     measurement and its own cache-generation reasoning — it cannot ride along
+//     with a different dimension's activation.
+//   - #6459's retuned construct has now completed its separate activation phase;
+//     active observations and source failures must remain visible in confidence
+//     and headline eligibility. The code default remains false for CI and for
+//     the explicit production rollback path, but production runs with the
+//     owner-controlled flag on.
+//
+// Education remains in this set after activation for its explicit false
+// rollback. The triple-zero discriminator below means active observations and
+// source failures automatically rejoin the confidence and pillar means.
+export const RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE: ReadonlySet<ResilienceDimensionId> = new Set([
+  'education',
+]);
+
+export function isFlagDarkDimension(
+  dimension: { id: string; coverage: number; observedWeight?: number; imputedWeight?: number },
+): boolean {
+  const id = dimension.id as ResilienceDimensionId;
+  return RESILIENCE_FLAG_DARK_WHEN_ZERO_COVERAGE.has(id)
+    && dimension.coverage === 0
+    && (dimension.observedWeight ?? 0) === 0
+    && (dimension.imputedWeight ?? 0) === 0;
+}
+
 export function isExcludedFromConfidenceMean(
   dimension: { id: string; coverage: number; observedWeight?: number; imputedWeight?: number },
 ): boolean {
   const id = dimension.id as ResilienceDimensionId;
   if (RESILIENCE_RETIRED_DIMENSIONS.has(id)) return true;
+  // Same triple-zero fingerprint as the not-applicable path below: a dark dim
+  // emits score=0/coverage=0/observedWeight=0/imputedWeight=0. Once the flag
+  // flips the dim carries real coverage and rejoins the mean automatically.
+  if (isFlagDarkDimension(dimension)) return true;
   if (
     RESILIENCE_NOT_APPLICABLE_WHEN_ZERO_COVERAGE.has(id) &&
     dimension.coverage === 0 &&
@@ -2735,6 +4062,7 @@ export function isExcludedFromConfidenceMean(
 export async function scoreFuelStockDays(
   _countryCode: string,
   _reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<ResilienceDimensionScore> {
   // imputationClass is `null` (not 'source-failure') because the dimension
   // is retired by design, not failing at runtime. 'source-failure' renders
@@ -2747,6 +4075,7 @@ export async function scoreFuelStockDays(
   // the widget's `formatResilienceConfidence`. The filter is registry-keyed
   // (not `coverage === 0`) so genuinely sparse-data countries still surface
   // as low-confidence from non-retired coverage=0 dims.
+  options?.trace?.recordRetiredDimension('fuelStockDays', 'globally-incomparable-net-importer-construct');
   return {
     score: 50,
     coverage: 0,
@@ -2759,7 +4088,7 @@ export async function scoreFuelStockDays(
 
 export const RESILIENCE_DIMENSION_SCORERS: Record<
 ResilienceDimensionId,
-(countryCode: string, reader?: ResilienceSeedReader) => Promise<ResilienceDimensionScore>
+(countryCode: string, reader?: ResilienceSeedReader, options?: ResilienceScoreOptions) => Promise<ResilienceDimensionScore>
 > = {
   macroFiscal: scoreMacroFiscal,
   currencyExternal: scoreCurrencyExternal,
@@ -2773,6 +4102,7 @@ ResilienceDimensionId,
   socialCohesion: scoreSocialCohesion,
   borderSecurity: scoreBorderSecurity,
   informationCognitive: scoreInformationCognitive,
+  education: scoreEducation,
   healthPublicService: scoreHealthPublicService,
   foodWater: scoreFoodWater,
   fiscalSpace: scoreFiscalSpace,
@@ -2788,13 +4118,17 @@ ResilienceDimensionId,
 export async function scoreAllDimensions(
   countryCode: string,
   reader: ResilienceSeedReader = defaultSeedReader,
+  options?: ResilienceScoreOptions,
 ): Promise<Record<ResilienceDimensionId, ResilienceDimensionScore>> {
   const memoizedReader = createMemoizedSeedReader(reader);
+  const statcanUsed = countryCode === 'CA'
+    ? statcanOverlayUsed(await memoizedReader(RESILIENCE_STATCAN_WDS_KEY))
+    : undefined;
   const [entries, freshnessMap, failedDatasets, standaloneFailures] = await Promise.all([
     Promise.all(
       RESILIENCE_DIMENSION_ORDER.map(async (dimensionId) => {
         try {
-          const score = await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader);
+          const score = await RESILIENCE_DIMENSION_SCORERS[dimensionId](countryCode, memoizedReader, options);
           return [dimensionId, score] as const;
         } catch (err) {
           // ResilienceConfigurationError (e.g. v2 energy flag flipped without
@@ -2804,6 +4138,7 @@ export async function scoreAllDimensions(
           // consumer sees the gap explicitly. The T1.7 decoration pass below
           // reads this shape and leaves it alone; no double-tagging.
           if (err instanceof ResilienceConfigurationError) {
+            options?.trace?.recordSourceFailure(dimensionId);
             console.warn(
               `[Resilience] configuration-error dim=${dimensionId} country=${countryCode} missing=${err.missingKeys.join(',')} — routing to source-failure`,
             );
@@ -2835,7 +4170,7 @@ export async function scoreAllDimensions(
     // with the scorer keys in practice, the shared reader is cheap).
     readFreshnessMap(memoizedReader),
     readFailedDatasets(memoizedReader),
-    readStandaloneSourceFailureDimensions(memoizedReader),
+    readStandaloneSourceFailureDimensions(memoizedReader, undefined, countryCode, statcanUsed),
   ]);
   const scores = Object.fromEntries(entries) as Record<ResilienceDimensionId, ResilienceDimensionScore>;
 
@@ -2843,10 +4178,12 @@ export async function scoreAllDimensions(
   // derived from the aggregated seed-meta map. Runs before the T1.7
   // source-failure pass because source-failure only touches
   // imputationClass and does not interact with freshness.
+  // CA inflation/unemployment that consumed StatCan must stamp StatCan
+  // seed-meta, not the IMF registry key the overlay replaced.
   for (const dimensionId of RESILIENCE_DIMENSION_ORDER) {
     scores[dimensionId] = {
       ...scores[dimensionId],
-      freshness: classifyDimensionFreshness(dimensionId, freshnessMap),
+      freshness: classifyDimensionFreshness(dimensionId, freshnessMap, undefined, countryCode, statcanUsed),
     };
   }
 
@@ -2858,7 +4195,7 @@ export async function scoreAllDimensions(
   // source-failure. Real-data and not-applicable dimensions are untouched:
   // a seed failing does not invalidate a country that was served from prior
   // snapshot data or a structural non-applicability path.
-  const affected = failedDimensionsFromDatasets(failedDatasets);
+  const affected = failedDimensionsFromDatasets(failedDatasets, countryCode);
   for (const dimId of standaloneFailures.dimensions) {
     affected.add(dimId);
   }
@@ -2882,6 +4219,7 @@ export async function scoreAllDimensions(
         && current.imputedWeight > 0
       ) {
         scores[dimId] = { ...current, imputationClass: 'source-failure' };
+        options?.trace?.recordSourceFailure(dimId);
       }
     }
   }

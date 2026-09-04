@@ -1,12 +1,12 @@
 ---
 name: fetch-news-digest
 version: 1
-description: Retrieve the pre-aggregated digest of World Monitor's 500+ curated news feeds, bucketed by category, with per-article threat classification and alert flags. Use when the user asks what's in the news right now, wants headlines by topic, or needs a current-events sweep.
+description: Retrieve the pre-aggregated digest of World Monitor's curated news feeds, bucketed by category, with per-article threat classification and alert flags. Use when the user asks what's in the news right now, wants headlines by topic, or needs a current-events sweep.
 ---
 
 # fetch-news-digest
 
-Use this skill when the user asks what's happening in the news — the latest headlines overall, by category (geopolitics, tech, finance, commodities…), or in a specific language. This is World Monitor's core surface: one call returns the aggregated output of 500+ curated RSS feeds, already de-duplicated, categorized, and threat-classified.
+Use this skill when the user asks what's happening in the news — the latest headlines overall, by category (geopolitics, tech, finance, commodities…), or in a specific language. This is World Monitor's core surface: one call returns the aggregated output of the curated RSS catalog, already de-duplicated, categorized, and threat-classified.
 
 ## Authentication
 
@@ -52,7 +52,14 @@ GET https://api.worldmonitor.app/api/news/v1/list-feed-digest
     }
   },
   "feedStatuses": { "SomeFeed": "timeout" },
-  "generatedAt": "2026-07-05T12:00:00Z"
+  "generatedAt": "2026-07-05T12:00:00Z",
+  "coverage": {
+    "state": "complete",
+    "servedStale": false,
+    "staleAgeSeconds": 0,
+    "staleReason": "",
+    "attemptedAt": "2026-07-05T12:00:02Z"
+  }
 }
 ```
 
@@ -60,6 +67,9 @@ GET https://api.worldmonitor.app/api/news/v1/list-feed-digest
 - `publishedAt` is Unix epoch **milliseconds**.
 - `isAlert` marks articles that triggered an alert condition; `threat` carries the AI threat classification when assessed.
 - `feedStatuses` lists only unhealthy feeds (`empty`, `timeout`, `all-undated`, `partial-undated`) — an absent key means the feed is healthy.
+- `coverage` reports digest freshness. `servedStale: true` means the endpoint returned an older accepted snapshot because the latest rebuild failed. `staleAgeSeconds`, `staleReason`, and `attemptedAt` describe that fallback and its latest attempt. `staleAgeSeconds` is bounded at 21600 (6 hours) — past that window the endpoint reports `state: "unavailable"` rather than serving older content, so a policy like "accept stale up to N minutes" can be calibrated against a known ceiling.
+
+For time-sensitive automated decisions, reject a response when `coverage.servedStale` is `true` or `coverage.state` is `stale`. Use retained content only when the caller explicitly allows stale inputs, and preserve the `coverage` fields in downstream output so another agent can apply the same policy.
 
 ## Worked example
 

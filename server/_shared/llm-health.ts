@@ -9,6 +9,8 @@
 // The origin probe cannot answer (2): it GETs the bare origin, so a provider
 // that is up but does not serve the configured model ID still looks healthy.
 
+import { getConfiguredLlmHealthProviders } from '../../shared/llm-health-providers.js';
+
 const PROBE_TIMEOUT_MS = 2_000;
 const CACHE_TTL_MS = 60_000; // re-probe every 60s
 
@@ -275,26 +277,9 @@ export async function reprobeAll(): Promise<void> {
  * Fire-and-forget — does not block the caller.
  */
 export function warmHealthCache(): void {
-  const providerUrls: string[] = [];
-
-  const ollamaUrl = typeof process !== 'undefined'
-    ? (process.env?.OLLAMA_API_URL || process.env?.LLM_API_URL)
-    : undefined;
-  if (ollamaUrl) providerUrls.push(ollamaUrl);
-
-  if (typeof process !== 'undefined' && process.env?.GROQ_API_KEY) {
-    providerUrls.push('https://api.groq.com/openai/v1/chat/completions');
-  }
-  if (typeof process !== 'undefined' && process.env?.ATLASCLOUD_API_KEY) {
-    const atlasBaseUrl = process.env.ATLASCLOUD_API_BASE || 'https://api.atlascloud.ai/v1';
-    providerUrls.push(`${atlasBaseUrl.replace(/\/+$/, '')}/chat/completions`);
-  }
-  if (typeof process !== 'undefined' && process.env?.OPENROUTER_API_KEY) {
-    providerUrls.push('https://openrouter.ai/api/v1/chat/completions');
-  }
-
-  for (const url of providerUrls) {
-    void isProviderAvailable(url);
+  if (typeof process === 'undefined') return;
+  for (const provider of getConfiguredLlmHealthProviders(process.env)) {
+    void isProviderAvailable(provider.url);
   }
 }
 

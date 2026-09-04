@@ -13,6 +13,11 @@ For example, `/api/market/v1/list-market-quotes` is a version 1 operation.
 Different domains may advance independently, so clients should use the version
 present in each path rather than assuming one global API version.
 
+One domain currently deviates from that shape: shipping v2 puts the version
+before the domain — `/api/v2/shipping/<operation>` (e.g.
+`/api/v2/shipping/route-intelligence`). Every other domain is at v1 with the
+standard `/api/<domain>/v1/` prefix.
+
 ## Compatibility within a major version
 
 Within a published major version, WorldMonitor may add optional request fields,
@@ -47,8 +52,9 @@ When WorldMonitor replaces or retires a public REST version or operation:
 2. The deprecated surface remains available for at least **six months** after
    the public deprecation announcement.
 3. We publish a specific shutdown date at least **90 days** before that date.
-4. Until shutdown, requests to the deprecated surface carry the HTTP signals
-   below.
+4. Until shutdown, requests to the deprecated surface will carry the HTTP
+   signals below. (This is forward-looking policy: nothing is deprecated
+   today, so no endpoint currently emits them.)
 
 Security, privacy, legal, or upstream-provider emergencies may require a faster
 change. When that happens, we publish notice and migration guidance as soon as
@@ -56,19 +62,37 @@ practical.
 
 ## Machine-readable signals
 
-Responses from a deprecated operation or version include:
+### Policy discovery on current (non-deprecated) responses
+
+[RFC 9745](https://www.rfc-editor.org/rfc/rfc9745.html) allows a `Link` with
+`rel="deprecation"` without a `Deprecation` header, so agents can find this
+policy before any surface is retired. Current WorldMonitor API and homepage
+responses may include:
+
+```http
+Link: <https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"
+```
+
+That header is **not** a deprecation notice. It points at the static
+[markdown policy](https://www.worldmonitor.app/api-versioning.md) (this HTML
+page is the human twin).
+
+### Signals on a deprecated operation or version
+
+Responses from a deprecated operation or version also include:
 
 ```http
 Deprecation: @1782864000
 Sunset: Thu, 31 Dec 2026 23:59:59 GMT
-Link: <https://www.worldmonitor.app/docs/api-versioning>; rel="deprecation"; type="text/html"
+Link: <https://www.worldmonitor.app/api-versioning.md>; rel="deprecation"; type="text/markdown"
 ```
 
 - [`Deprecation`](https://www.rfc-editor.org/rfc/rfc9745.html) is the date the
   surface became deprecated, expressed as an HTTP Structured Field date.
 - [`Sunset`](https://www.rfc-editor.org/rfc/rfc8594.html) is the final
   availability date in HTTP-date format.
-- `Link` with `rel="deprecation"` points to migration guidance or this policy.
+- `Link` with `rel="deprecation"` points to this policy or to migration
+  guidance. On current surfaces it is policy discovery only.
 
 The OpenAPI operation is also marked `deprecated: true`. Agents should treat
 `Deprecation` as a migration warning and stop scheduling calls beyond the

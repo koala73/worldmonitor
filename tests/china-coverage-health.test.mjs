@@ -14,6 +14,7 @@ import {
   chinaCoverageReadCommands,
   evaluateChinaCoverage,
   formatChinaCoverageHuman,
+  normalizeChinaProblemIdentity,
   readChinaCoverageInputs,
 } from '../scripts/china-coverage-health.mjs';
 import { chinaCoverageActivationCommand } from '../scripts/seed-china-coverage-health.mjs';
@@ -49,6 +50,25 @@ function singleEntry(overrides = {}) {
 
 function evaluate(entry, data = {}, meta = {}) {
   return evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW });
+}
+
+function degradedEntry(id) {
+  return singleEntry({
+    id,
+    transport: { ...singleEntry().transport, key: `seed-meta:${id}` },
+    content: { ...singleEntry().content, key: `data:${id}` },
+  });
+}
+
+function evaluateDegraded(id, previous = null) {
+  const entry = degradedEntry(id);
+  return evaluateChinaCoverage({
+    entries: [entry],
+    data: { [`data:${id}`]: { rows: [{ countryCode: 'US', observedAt: '2026-07-13T11:30:00Z' }] } },
+    meta: { [`seed-meta:${id}`]: { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+    now: NOW,
+    previous,
+  });
 }
 
 describe('China coverage manifest', () => {
@@ -472,9 +492,14 @@ describe('China coverage manifest', () => {
       let requestInit;
       globalThis.fetch = async (_url, init) => {
         requestInit = init;
+        // Three commands now: the entry's data key, its meta key, and the
+        // previous summary that readChinaCoverageInputs reads to carry the
+        // degraded streak. A short response would trip the length check first
+        // and never reach the error-count branch this asserts.
         return new Response(JSON.stringify([
           { result: null },
           { error: 'ERR injected' },
+          { result: null },
         ]), { status: 200 });
       };
       await assert.rejects(readChinaCoverageInputs([singleEntry()]), /1 command error/);
@@ -482,6 +507,7 @@ describe('China coverage manifest', () => {
 
       globalThis.fetch = async () => new Response(JSON.stringify([
         { result: '{not-json' },
+        { result: null },
         { result: null },
       ]), { status: 200 });
       await assert.rejects(readChinaCoverageInputs([singleEntry()]), /malformed JSON/);
@@ -492,6 +518,139 @@ describe('China coverage manifest', () => {
       if (priorToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
       else process.env.UPSTASH_REDIS_REST_TOKEN = priorToken;
     }
+  });
+
+  it('ignores malformed previous summary history so the next run can repair it', async () => {
+    const priorUrl = process.env.UPSTASH_REDIS_REST_URL;
+    const priorToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+    const priorFetch = globalThis.fetch;
+    const dataValue = { rows: [{ countryCode: 'CN', value: 42 }] };
+    const metaValue = { fetchedAt: NOW, status: 'ok' };
+    try {
+      process.env.UPSTASH_REDIS_REST_URL = 'https://redis.example.test';
+      process.env.UPSTASH_REDIS_REST_TOKEN = 'test-token';
+      globalThis.fetch = async () => new Response(JSON.stringify([
+        { result: JSON.stringify(dataValue) },
+        { result: JSON.stringify(metaValue) },
+        { result: '{not-json' },
+      ]), { status: 200 });
+
+      const inputs = await readChinaCoverageInputs([singleEntry()]);
+
+      assert.deepEqual(inputs, {
+        data: { 'data:test': dataValue },
+        meta: { 'seed-meta:test': metaValue },
+        previous: null,
+      });
+    } finally {
+      globalThis.fetch = priorFetch;
+      if (priorUrl == null) delete process.env.UPSTASH_REDIS_REST_URL;
+      else process.env.UPSTASH_REDIS_REST_URL = priorUrl;
+      if (priorToken == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+      else process.env.UPSTASH_REDIS_REST_TOKEN = priorToken;
+    }
+  });
+});
+
+describe('China coverage degraded streak', () => {
+  // The evaluator samples 16 sources once an hour. A source degraded at the
+  // sampling instant and healthy moments later pinned CHINA_DEGRADED for the
+  // whole cycle: on 2026-08-25 it sampled market.china-stock-connect at
+  // 17:03:23 and that snapshot published `status: healthy` at 17:05:26 — a
+  // two-minute miss that cost ~50 minutes, with 13 of the surrounding 16
+  // monitor runs clean. The streak lets the consumer wait for a second look.
+  const degradedInputs = () => [
+    singleEntry(),
+    { 'data:test': { rows: [{ countryCode: 'US', observedAt: '2026-07-13T11:30:00Z' }] } },
+    { 'seed-meta:test': { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+  ];
+
+  it('starts at 1 on the first degraded evaluation', () => {
+    const [entry, data, meta] = degradedInputs();
+    const result = evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW });
+    assert.equal(result.status, 'degraded');
+    assert.equal(result.degradedStreak, 1);
+  });
+
+  it('increments while the degradation persists', () => {
+    const [entry, data, meta] = degradedInputs();
+    const first = evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW });
+    const second = evaluateChinaCoverage({
+      entries: [entry], data, meta, now: NOW, previous: first,
+    });
+    assert.equal(second.degradedStreak, 2);
+    const third = evaluateChinaCoverage({
+      entries: [entry], data, meta, now: NOW, previous: second,
+    });
+    assert.equal(third.degradedStreak, 3, 'the previous summary can be fed back verbatim');
+  });
+
+  it('resets to 0 as soon as an evaluation lands healthy', () => {
+    const entry = singleEntry();
+    const healthy = evaluateChinaCoverage({
+      entries: [entry],
+      // hasSubstantiveValue: a row carrying only its match field and timestamp
+      // scores empty, so a healthy fixture needs a real value on it.
+      data: { 'data:test': { rows: [{ countryCode: 'CN', observedAt: new Date(NOW - 60_000).toISOString(), value: 42 }] } },
+      meta: { 'seed-meta:test': { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+      now: NOW,
+      previous: { degradedStreak: 7 },
+    });
+    assert.equal(healthy.status, 'healthy');
+    assert.equal(healthy.degradedStreak, 0, 'a recovery must not stay one observation away from alarming');
+  });
+
+  it('treats a missing or malformed previous streak as no history', () => {
+    const [entry, data, meta] = degradedInputs();
+    for (const previous of [null, undefined, {}, { degradedStreak: -3 }, { degradedStreak: 'two' }]) {
+      const result = evaluateChinaCoverage({ entries: [entry], data, meta, now: NOW, previous });
+      assert.equal(result.degradedStreak, 1, `previous=${JSON.stringify(previous)} must restart the streak`);
+    }
+  });
+
+  it('does not combine different problem identities into one confirmation', () => {
+    const corporate = evaluateDegraded('corporate');
+    const news = evaluateDegraded('news', corporate);
+
+    assert.equal(corporate.degradedStreak, 1);
+    assert.equal(news.degradedStreak, 1);
+    assert.notEqual(news.degradedProblemKey, corporate.degradedProblemKey);
+  });
+
+  it('confirms the same normalized problem identity twice', () => {
+    const first = evaluateDegraded('corporate');
+    const second = evaluateDegraded('corporate', first);
+
+    assert.equal(second.degradedStreak, 2);
+    assert.equal(second.degradedProblemKey, first.degradedProblemKey);
+  });
+
+  it('normalizes problem ordering before storing the identity', () => {
+    const first = normalizeChinaProblemIdentity([
+      { id: 'news', launchStatus: 'launched', status: 'degraded', reasonCodes: ['B', 'A'] },
+      { id: 'corporate', launchStatus: 'launched', status: 'degraded', reasonCodes: ['C'] },
+    ]);
+    const second = normalizeChinaProblemIdentity([
+      { id: 'corporate', launchStatus: 'launched', status: 'degraded', reasonCodes: ['C'] },
+      { id: 'news', launchStatus: 'launched', status: 'degraded', reasonCodes: ['A', 'B', 'A'] },
+    ]);
+
+    assert.equal(second, first);
+  });
+
+  it('clears the problem identity on a healthy run', () => {
+    const first = evaluateDegraded('corporate');
+    const healthy = evaluateChinaCoverage({
+      entries: [degradedEntry('corporate')],
+      data: { 'data:corporate': { rows: [{ countryCode: 'CN', observedAt: new Date(NOW - 60_000).toISOString(), value: 42 }] } },
+      meta: { 'seed-meta:corporate': { fetchedAt: NOW - 10 * 60_000, status: 'ok' } },
+      now: NOW,
+      previous: first,
+    });
+
+    assert.equal(healthy.status, 'healthy');
+    assert.equal(healthy.degradedStreak, 0);
+    assert.equal(healthy.degradedProblemKey, null);
   });
 });
 

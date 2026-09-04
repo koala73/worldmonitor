@@ -1,0 +1,43 @@
+{
+  "693": {
+    "departed": true,
+    "arrived": false,
+    "from": "WINNIPEG",
+    "to": "CHURCHILL",
+    "instance": "2026-09-01",
+    "times": [
+      {
+        "station": "Winnipeg",
+        "code": "WNPG",
+        "tz": "America/Winnipeg",
+        "estimated": "2026-09-01T12:54:32-05:00",
+        "scheduled": "2026-09-01T12:05:00-05:00",
+        "eta": "ARR",
+        "departure": {
+          "estimated": "2026-09-01T12:54:32-05:00",
+          "scheduled": "2026-09-01T12:05:00-05:00"
+        },
+        "diff": "bad",
+        "diffMin": 49
+      },
+      {
+        "station": "Portage La Prairie",
+        "code": "PLPX",
+        "tz": "America/Winnipeg",
+        "estimated": "2026-09-01T14:09:43-05:00",
+        "scheduled": "2026-09-01T13:15:00-05:00",
+        "eta": "ARR",
+        "arrival": {
+          "estimated": "2026-09-01T14:09:43-05:00",
+          "scheduled": "2026-09-01T13:15:00-05:00"
+        },
+        "departure": {
+          "estimated": "2026-09-01T14:09:43-05:00",
+          "scheduled": "2026-09-01T13:15:22-05:00"
+        },
+        "diff": "bad",
+        "diffMin": 54
+      }
+    ]
+  }
+}

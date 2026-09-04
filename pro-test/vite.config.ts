@@ -17,10 +17,23 @@ function isWelcomeHydrationPreload(dep: string) {
 export default defineConfig({
   plugins: [react(), tailwindcss()],
   base: '/pro/',
+  // Local WebMCP testing uses chrome://flags/#enable-webmcp-testing instead of
+  // an origin-trial token. Keep the browser security gates aligned with the
+  // production homepage so the flag-based smoke exercises the real boundary.
+  server: {
+    headers: {
+      'Origin-Agent-Cluster': '?1',
+      'Permissions-Policy': 'tools=(self)',
+    },
+  },
   html: {
     cspNonce: STATIC_SCRIPT_NONCE,
   },
   build: {
+    // @clerk/clerk-js ships as one monolithic vendor SDK (~3MB) that can't be
+    // split further; it's already dynamically imported (services/clerk.ts)
+    // so it never loads on first paint. Raise the warning threshold to match.
+    chunkSizeWarningLimit: 3500,
     modulePreload: {
       resolveDependencies: (filename, deps, context) => {
         if (context.hostType !== 'html') return deps;

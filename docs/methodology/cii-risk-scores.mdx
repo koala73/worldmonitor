@@ -1,146 +1,92 @@
 ---
 title: "CII Risk Scoring Methodology"
-description: "Editorial methodology behind the Composite Instability Index — baseline risk, event multiplier, four-component score, and strategic-risk bands."
+description: "Editorial methodology behind the Country Instability Index: baseline risk, event multiplier, four-component score, and strategic-risk bands."
 ---
 
-Published methodology note for the **Composite Instability Index (CII)** and
-the **Strategic Risk** roll-up surfaced by `GET /api/intelligence/v1/get-risk-scores`
-(proto `worldmonitor.intelligence.v1.GetRiskScoresResponse`).
+## Start here
 
-These weights are **editorial** — authored by the WorldMonitor intelligence
-team based on internal review of historical incidents and current geopolitical
-posture. They are **not derived from a published academic index**, a
-peer-reviewed paper, or a third-party risk product. Treat the scores as
-opinionated, not empirical. The point of this note is to make the
-opinions inspectable so downstream consumers can decide whether they
-agree.
+The Country Instability Index answers one operational question:
+**which country should I look at first today?**
 
-The on-the-wire `methodology_version` field on every `CiiScore` reflects
-which revision of this document was active when the score was computed.
-The current version is **v8**.
+It is a 0-100 stress reading, recomputed continuously for a curated watchlist of
+countries. It rises when protests, fighting, military movement, and news
+pressure pick up at the same time in the same place.
 
-> **v8 (2026-06-06).** Fixed dead UCDP conflict-floor attribution. The server
-> scorer read non-existent `intensity_level` / `type_of_violence` fields from the
-> cached `conflict:ucdp-events:v1` feed (whose rows actually carry
-> `violenceType` / `deathsBest` / `dateStart`), so UCDP never applied its
-> war (floor 70) / minor (floor 50) score floor and never counted toward
-> `riskScores` realtime health/cache signal coverage. UCDP is now classified
-> per country over a 2-year trailing window (war when total deaths > 1000 or
-> event count > 100; minor when event count > 10), matching the frontend
-> `deriveUcdpClassifications` heuristic. The classifier is configured for that
-> 2-year window, but the Redis writers currently fetch the newest six UCDP pages
-> and retain at most 2,000 mapped events from a 365-day trailing slice. The relay
-> `/ucdp-events` reader can fetch up to 12 pages, but it applies the same 365-day
-> filter. Live scoring is therefore seed-input-bounded until UCDP retention is
-> widened with production API-volume and Redis-payload safeguards.
-> The health coverage metric's conflict
-> family is now satisfied by EITHER the ACLED API path OR UCDP, so a thin/empty
-> ACLED window no longer flips health to `COVERAGE_PARTIAL` while UCDP is healthy.
-> See [Country Instability Index](/country-instability-index) for the current
-> ACLED-or-UCDP health coverage semantics.
-> `combinedScore` values rise for active UCDP conflict countries (e.g. UA/PK/MX
-> gain a war floor); the risk-score cache key family moved to
-> `risk:scores:sebuf:v8` and emitted `methodology_version` is now `v8`, so clients
-> pinned on `methodology_version` should re-baseline.
+A high CII does not mean "dangerous country." It means **a lot is happening
+here right now**. A stable country having a genuinely bad week will out-score a
+chronically troubled country having a quiet one, and that is the intended
+behavior — CII is a triage dial, not a verdict.
 
-> **v8 amendment (2026-06-07).** Source discovery and observability were
-> clarified without changing scoring coefficients, CII formula version, or
-> `risk:scores:sebuf:v8` cache keys. The UCDP seeder now prefers the newest GED
-> release that returns events instead of stopping at the first responding
-> version ([#4200](https://github.com/koala73/worldmonitor/issues/4200)), and
-> the CII refresh path warns when ACLED returns zero events for both comparison
-> windows so operators can distinguish a quiet feed from an auth/upstream gap.
+### The four things it watches
 
-> **v7 (2026-06-06).** Score attribution changed for the second CII gap-closure
-> batch. Coordinate attribution now handles three-way bbox overlaps before
-> pairwise border rules, so Punggye-ri resolves to KP instead of CN and Lublin
-> resolves to PL instead of UA; the seed mirror uses the same resolver. Targeted
-> rectangular-bbox probes were added for Lhasa, Gaziantep, Kermanshah, Quetta,
-> Islamabad, Dammam, Tabuk, Ruili, Belogorsk, north Hokkaido, and Amman. Climate
-> anomaly boosts now cover the producer-emitted `Europe`, `East Asia`, and
-> `Latin America` zones, restoring boost coverage for KP/KR/JP/PL/DE/FR/GB/VE,
-> and unknown future zone names can fall back through anomaly coordinates when
-> present. `combinedScore` values can shift where affected records were
-> previously attributed to the wrong country or ignored. The risk-score cache key
-> family moved to `risk:scores:sebuf:v7`; clients pinned on
-> `methodology_version` should re-baseline. Remaining coordinate attribution is
-> still a rectangular approximation, not full point-in-polygon border geometry.
+| Component | What it picks up |
+|---|---|
+| **Unrest** | Protests, riots, and the outages that follow them — friction before violence. |
+| **Conflict** | Actual fighting: battles, explosions, violence against civilians. |
+| **Security** | Military tempo nearby — military flights and vessels, airspace disruption, GPS jamming. |
+| **Information** | How hard the news environment is running on this country. |
 
-> **v6 (2026-06-06).** Score attribution changed for country text, coordinate,
-> and climate anomaly inputs. Text attribution now recognizes `north korean`
-> as KP and `taiwanese` as TW while still rejecting ambiguous bare `korean`.
-> Coordinate attribution keeps the seed and server in parity for high-value
-> overlap zones: Rio Grande US/MX border segments, the western Korean DMZ,
-> RU/UA, IN/PK, CN/RU and RU/JP. Climate anomaly boosts now consume the zone
-> names emitted by the climate producer (`Ukraine`, `California`, `Amazon`,
-> `Taiwan Strait`, `Caribbean`, etc.) and map enum severities into the
-> numeric boost scale. `combinedScore` values can shift where affected military,
-> fire, GPS, earthquake, news, or climate records were previously attributed
-> to the wrong country or ignored. The risk-score cache key family moved to
-> `risk:scores:sebuf:v6`; clients pinned on `methodology_version` should
-> re-baseline.
+### How the number is assembled
 
-> **v5 (2026-06-06).** `dynamicScore` is now a signed movement delta in the
-> range `-100..100`, derived from a valid CII snapshot from approximately 24
-> hours earlier. Positive values mean the country score rose, negative values
-> mean it fell, and `0` means stable or no valid prior snapshot. The server
-> trend label uses a strict one-point deadband: whole-point score changes of
-> `+1` or `-1` remain stable, while `+2` and `-2` are the first rising/falling
-> labels. The browser fallback uses the same trend deadband. `combinedScore`
-> coefficients are unchanged by this bump, but API clients that previously
-> treated `dynamicScore` as a non-negative live score should re-baseline.
+Every country carries a **baseline** — how volatile it is in normal times — and
+an **event multiplier** that scales how much a given incident should move the
+needle there. The headline score is 40% baseline and 60% live events, then
+adjusted by situational boosts for things like earthquakes, cyber incidents, and
+travel advisories.
 
-> **v4 (2026-06-06).** Attribution and source-input semantics changed while
-> keeping the published coefficient table intact. Country text attribution now
-> uses normalized token exact-match / phrase matching instead of raw substring
-> matches, coordinate attribution routes known bounding-box overlaps through
-> explicit border heuristics, the earthquake seed uses the USGS 4.5-week
-> (`4.5_week`) feed, and sanctions scoring reads the full country-count map
-> from `sanctions:country-counts:v1` instead of relying on the top-pressure
-> display list. `combinedScore` values can shift where these sources previously
-> misattributed or omitted country pressure; clients pinned on
-> `methodology_version` should re-baseline.
+That 40/60 split is the whole design. It is why a fragile country never reads as
+calm, and why a genuine crisis in a stable one still moves the number fast.
 
-> **v3 (2026-05-27).** Conflict event activity now uses a log-scaled curve
-> before the final component cap (`cap = 70`, `pivot = 4000`), replacing the
-> earlier linear early cap that could compress moderate and extreme
-> political-violence volumes into the same component value. The browser-side
-> legacy CII path now uses the same displacement log-ramp as the server
-> (`100K ≈ +4`, `500K ≈ +10`,
-> `1M ≈ +12`, `5M ≈ +18`, `10M+ = +20`) instead of the old two-tier
-> `+4/+8` boost. Browser news-alert pressure is no longer multiplied by
-> per-country `eventMultiplier`; it remains an Information component signal,
-> not a country-tuned proxy for domestic instability. Clients pinned on
-> `methodology_version` should re-baseline.
+```mermaid
+flowchart TD
+  U["Unrest<br/>protests, riots, outages"] --> E["Event score<br/>U 25% + C 30% + S 20% + I 25%"]
+  C["Conflict<br/>battles, explosions,<br/>violence against civilians"] --> E
+  S["Security<br/>military flights, vessels,<br/>GPS jamming"] --> E
+  I["Information<br/>weighted critical news"] --> E
+  B["Baseline risk<br/>how volatile this country<br/>is in normal times"] --> M["Composite<br/>baseline 40% + events 60%"]
+  E --> M
+  M --> X["Situational boosts<br/>climate, cyber, fire, earthquake,<br/>advisory, sanctions, displacement"]
+  X --> R["combinedScore 0-100"]
+```
 
-> **Implementation note (2026-05-27).** `baselineRisk` and `eventMultiplier`
-> now come from one shared coefficient table used by both the server and
-> frontend. This resolves the 7-country drift tracked in
-> [#3789](https://github.com/koala73/worldmonitor/issues/3789) by keeping the
-> previously published server/API values for AF, EG, IQ, JP, KR, LB and QA.
-> Frontend client-side CII rendering now uses those same values. Server/API
-> values were unchanged by this refactor — the v3 bump above is from the
-> calibration changes, not this source-of-truth move.
+### What it is and is not
 
-> **v2 (2026-05-22).** The `Security` component is no longer GPS-jamming-only
-> — it now scores military flights, military vessels and aviation disruptions
-> alongside GPS jamming (issue #3738). The composite blend gains
-> `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost` and an AIS-disruption
-> boost, and `cyberBoost`/`fireBoost` are now severity-weighted rather than raw
-> counts. `combinedScore` values shift accordingly — clients pinned on
-> `methodology_version` should re-baseline.
+**It is** a single number to help an operator triage where to look first on a
+fast-moving dashboard.
 
-> **Heads up — score contract changes.** Any edit that changes server/API
-> per-country baselines, event multipliers, strategic-risk roll-up
-> coefficients, inline server formula literals, guarded top-level formula
-> constants, or CII movement semantics MUST
-> come with a bump of
-> `CII_FORMULA_VERSION` in
-> `server/worldmonitor/intelligence/v1/_risk-config.ts`, an update to this
-> document in the same commit, and a public CHANGELOG entry. Source-of-truth
-> refactors that preserve server/API scores do not bump the wire version. Tests
-> in `tests/cii-scoring.test.mts` enforce that this document lists every
-> country code in `CURATED_COUNTRIES`.
+**It is not** a forecast, an insurance pricing input, or a substitute for
+travel-advisory guidance from a sovereign government. It is also **not** the
+[Country Resilience Index](/methodology/country-resilience-index), which asks
+the opposite question: not *what is happening to this country*, but *how well
+could it take a hit*. The dashboard shows them together because a country can
+be calm and fragile, or under heavy pressure and structurally tough.
+
+<Warning>
+**These weights are editorial, not empirical.** They were authored by the
+WorldMonitor intelligence team from internal review of historical incidents and
+current geopolitical posture. They are **not** derived from a published academic
+index, a peer-reviewed paper, or a third-party risk product. Reasonable analysts
+will disagree with individual entries.
+
+The entire point of publishing this page is to make those opinions inspectable,
+so you can decide whether you agree before you rely on them. If a consequential
+decision depends on these scores, pin against the `methodology_version` field on
+each `CiiScore`, watch for version bumps, and weigh the per-country
+`event_multiplier` against your own ground truth.
+</Warning>
+
+The countries covered are a **curated monitoring universe**, not every sovereign
+state — see [the Tier-1 criteria](#2-per-country-baselinerisk-and-eventmultiplier).
+CRI covers the broader 196-country universe.
+
+<Note>
+**For developers.** CII and the Strategic Risk roll-up are served from
+`GET /api/intelligence/v1/get-risk-scores` (proto
+`worldmonitor.intelligence.v1.GetRiskScoresResponse`). The on-the-wire
+`methodology_version` field on every `CiiScore` records which revision of this
+document was active when the score was computed. The current version is **v8** —
+see [Version history](#version-history).
+</Note>
 
 ---
 
@@ -278,11 +224,25 @@ These flags are runtime quality markers and do not change `methodology_version`.
 
 ## 2. Per-country `baselineRisk` and `eventMultiplier`
 
-These are the editorial values applied by both server-side API scoring and
-frontend client-side CII rendering. The source of truth is
-[`shared/cii-weights.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-weights.ts); server and frontend
-tables derive from that module so coefficient drift fails in tests instead of
-shipping silently.
+**What these two numbers do.** `baselineRisk` is where a country sits when
+nothing much is happening — its resting pulse. `eventMultiplier` is how loudly a
+given incident should register there: one protest in a country with no recent
+history of unrest is more informative than one protest somewhere they happen
+weekly, and the multiplier is what encodes that judgment.
+
+Both are hand-set values, published here so you can argue with them.
+
+These are the editorial values applied by server-side API scoring. The source
+of truth is
+[`shared/cii-weights.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-weights.ts); the scorer derives its coefficients from that module so
+coefficient drift fails in tests instead of shipping silently. The browser
+consumes cached server-produced CII scores rather than calculating a local
+fallback.
+
+Climate anomaly attribution uses the canonical
+[`shared/cii-climate-zones.ts`](https://github.com/koala73/worldmonitor/blob/main/shared/cii-climate-zones.ts)
+map. Changes to that map can shift server/API scores and follow the score
+contract-change protocol above.
 
 The Tier-1 country set is a curated monitoring universe, not an automatic
 ranking of all sovereign states. Countries enter the set when they satisfy at
@@ -380,6 +340,16 @@ away.
 
 ## 3. Strategic Risk roll-up
 
+**This is the single global number** at the top of the dashboard — the "how
+tense is the world today" dial. It is built only from the five most-stressed
+countries, weighted so the worst one counts most, then compressed into a 15-85
+band.
+
+Two deliberate choices explain its behavior. It never reads zero, because the
+global picture is never genuinely all-clear. And it never saturates at 100 from
+one country's crisis, because a dial that pins on every bad day stops carrying
+information.
+
 The global Strategic Risk score in `StrategicRisk[0]` is a weighted average
 of the top-5 highest-scoring countries' `combinedScore` values:
 
@@ -419,18 +389,131 @@ The resulting severity band exposed on `StrategicRisk.level` is:
 
 ---
 
-## 4. What this score is and is not
+## 4. Score contract changes
 
-**It is** a single number to help operators triage where to look first on a
-news-velocity dashboard.
+The scope and limits of this score are stated up front in
+[What it is and is not](#what-it-is-and-is-not). One operational rule belongs
+here with the formulas:
 
-**It is not** a forecast, an insurance pricing input, or a substitute for
-travel-advisory guidance from a sovereign government. The published values
-in section 2 are editorial; reasonable analysts will disagree with
-individual entries.
+Any edit that changes server/API per-country baselines, event multipliers,
+climate-zone country attribution, strategic-risk roll-up coefficients, inline
+server formula literals, guarded top-level formula constants, or CII movement
+semantics **must** ship with a bump of `CII_FORMULA_VERSION` in
+`server/worldmonitor/intelligence/v1/_risk-config.ts`, an update to this
+document in the same commit, and a public CHANGELOG entry. Source-of-truth
+refactors that preserve server/API scores do not bump the wire version. Tests in
+`tests/cii-scoring.test.mts` enforce that this document lists every country code
+in `CURATED_COUNTRIES`.
 
-If you depend on these scores for any consequential decision, pin against
-the `methodology_version` field on each `CiiScore`, watch for version
-bumps in the public CHANGELOG, and consider the per-country weight you see
-in `event_multiplier` against your own ground truth before relying on the
-composite.
+## Version history
+
+> **v8 (2026-06-06).** Fixed dead UCDP conflict-floor attribution. The server
+> scorer read non-existent `intensity_level` / `type_of_violence` fields from the
+> cached `conflict:ucdp-events:v1` feed (whose rows actually carry
+> `violenceType` / `deathsBest` / `dateStart`), so UCDP never applied its
+> war (floor 70) / minor (floor 50) score floor and never counted toward
+> `riskScores` realtime health/cache signal coverage. UCDP is now classified
+> per country over a 2-year trailing window (war when total deaths > 1000 or
+> event count > 100; minor when event count > 10), matching the frontend
+> `deriveUcdpClassifications` heuristic. The classifier is configured for that
+> 2-year window, but the Redis writers currently fetch the newest six UCDP pages
+> and retain at most 2,000 mapped events from a 365-day trailing slice. The relay
+> `/ucdp-events` reader can fetch up to 12 pages, but it applies the same 365-day
+> filter. Live scoring is therefore seed-input-bounded until UCDP retention is
+> widened with production API-volume and Redis-payload safeguards.
+> The health coverage metric's conflict
+> family is now satisfied by EITHER the ACLED API path OR UCDP, so a thin/empty
+> ACLED window no longer flips health to `COVERAGE_PARTIAL` while UCDP is healthy.
+> See [Country Instability Index](/country-instability-index) for the current
+> ACLED-or-UCDP health coverage semantics.
+> `combinedScore` values rise for active UCDP conflict countries (e.g. UA/PK/MX
+> gain a war floor); the risk-score cache key family moved to
+> `risk:scores:sebuf:v8` and emitted `methodology_version` is now `v8`, so clients
+> pinned on `methodology_version` should re-baseline.
+
+> **v8 amendment (2026-06-07).** Source discovery and observability were
+> clarified without changing scoring coefficients, CII formula version, or
+> `risk:scores:sebuf:v8` cache keys. The UCDP seeder now prefers the newest GED
+> release that returns events instead of stopping at the first responding
+> version ([#4200](https://github.com/koala73/worldmonitor/issues/4200)), and
+> the CII refresh path warns when ACLED returns zero events for both comparison
+> windows so operators can distinguish a quiet feed from an auth/upstream gap.
+
+> **v7 (2026-06-06).** Score attribution changed for the second CII gap-closure
+> batch. Coordinate attribution now handles three-way bbox overlaps before
+> pairwise border rules, so Punggye-ri resolves to KP instead of CN and Lublin
+> resolves to PL instead of UA; the seed mirror uses the same resolver. Targeted
+> rectangular-bbox probes were added for Lhasa, Gaziantep, Kermanshah, Quetta,
+> Islamabad, Dammam, Tabuk, Ruili, Belogorsk, north Hokkaido, and Amman. Climate
+> anomaly boosts now cover the producer-emitted `Europe`, `East Asia`, and
+> `Latin America` zones, restoring boost coverage for KP/KR/JP/PL/DE/FR/GB/VE,
+> and unknown future zone names can fall back through anomaly coordinates when
+> present. `combinedScore` values can shift where affected records were
+> previously attributed to the wrong country or ignored. The risk-score cache key
+> family moved to `risk:scores:sebuf:v7`; clients pinned on
+> `methodology_version` should re-baseline. Remaining coordinate attribution is
+> still a rectangular approximation, not full point-in-polygon border geometry.
+
+> **v6 (2026-06-06).** Score attribution changed for country text, coordinate,
+> and climate anomaly inputs. Text attribution now recognizes `north korean`
+> as KP and `taiwanese` as TW while still rejecting ambiguous bare `korean`.
+> Coordinate attribution keeps the seed and server in parity for high-value
+> overlap zones: Rio Grande US/MX border segments, the western Korean DMZ,
+> RU/UA, IN/PK, CN/RU and RU/JP. Climate anomaly boosts now consume the zone
+> names emitted by the climate producer (`Ukraine`, `California`, `Amazon`,
+> `Taiwan Strait`, `Caribbean`, etc.) and map enum severities into the
+> numeric boost scale. `combinedScore` values can shift where affected military,
+> fire, GPS, earthquake, news, or climate records were previously attributed
+> to the wrong country or ignored. The risk-score cache key family moved to
+> `risk:scores:sebuf:v6`; clients pinned on `methodology_version` should
+> re-baseline.
+
+> **v5 (2026-06-06).** `dynamicScore` is now a signed movement delta in the
+> range `-100..100`, derived from a valid CII snapshot from approximately 24
+> hours earlier. Positive values mean the country score rose, negative values
+> mean it fell, and `0` means stable or no valid prior snapshot. The server
+> trend label uses a strict one-point deadband: whole-point score changes of
+> `+1` or `-1` remain stable, while `+2` and `-2` are the first rising/falling
+> labels. The browser fallback uses the same trend deadband. `combinedScore`
+> coefficients are unchanged by this bump, but API clients that previously
+> treated `dynamicScore` as a non-negative live score should re-baseline.
+
+> **v4 (2026-06-06).** Attribution and source-input semantics changed while
+> keeping the published coefficient table intact. Country text attribution now
+> uses normalized token exact-match / phrase matching instead of raw substring
+> matches, coordinate attribution routes known bounding-box overlaps through
+> explicit border heuristics, the earthquake seed uses the USGS 4.5-week
+> (`4.5_week`) feed, and sanctions scoring reads the full country-count map
+> from `sanctions:country-counts:v1` instead of relying on the top-pressure
+> display list. `combinedScore` values can shift where these sources previously
+> misattributed or omitted country pressure; clients pinned on
+> `methodology_version` should re-baseline.
+
+> **v3 (2026-05-27).** Conflict event activity now uses a log-scaled curve
+> before the final component cap (`cap = 70`, `pivot = 4000`), replacing the
+> earlier linear early cap that could compress moderate and extreme
+> political-violence volumes into the same component value. The browser-side
+> legacy CII path now uses the same displacement log-ramp as the server
+> (`100K ≈ +4`, `500K ≈ +10`,
+> `1M ≈ +12`, `5M ≈ +18`, `10M+ = +20`) instead of the old two-tier
+> `+4/+8` boost. Browser news-alert pressure is no longer multiplied by
+> per-country `eventMultiplier`; it remains an Information component signal,
+> not a country-tuned proxy for domestic instability. Clients pinned on
+> `methodology_version` should re-baseline.
+
+> **Implementation note (2026-05-27).** `baselineRisk` and `eventMultiplier`
+> now come from one shared coefficient table used by both the server and
+> frontend. This resolves the 7-country drift tracked in
+> [#3789](https://github.com/koala73/worldmonitor/issues/3789) by keeping the
+> previously published server/API values for AF, EG, IQ, JP, KR, LB and QA.
+> Frontend client-side CII rendering now uses those same values. Server/API
+> values were unchanged by this refactor — the v3 bump above is from the
+> calibration changes, not this source-of-truth move.
+
+> **v2 (2026-05-22).** The `Security` component is no longer GPS-jamming-only
+> — it now scores military flights, military vessels and aviation disruptions
+> alongside GPS jamming (issue #3738). The composite blend gains
+> `newsUrgencyBoost`, `earthquakeBoost`, `sanctionsBoost` and an AIS-disruption
+> boost, and `cyberBoost`/`fireBoost` are now severity-weighted rather than raw
+> counts. `combinedScore` values shift accordingly — clients pinned on
+> `methodology_version` should re-baseline.

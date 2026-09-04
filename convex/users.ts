@@ -17,8 +17,9 @@
  * so a transient validation or auth blip on session init never crashes
  * the auth path. Client retries on next session.
  */
-import { mutation } from "./_generated/server";
+import { internalMutation, mutation } from "./_generated/server";
 import { v } from "convex/values";
+import { TERMS_VERSION } from "../shared/legal";
 
 // Validation invariants. Length-bounded BEFORE regex (defense in depth
 // against memory-exhaustion via huge strings).
@@ -33,6 +34,16 @@ const LOCALE_TAG_RE = /^[a-zA-Z]{2,3}(-[a-zA-Z0-9]{2,8})*$/;
 const LOCALE_PRIMARY_RE = /^[a-z]{2,3}$/;
 // ISO 3166-1 alpha-2.
 const COUNTRY_RE = /^[A-Z]{2}$/;
+
+// A call that changes no material field refreshes `lastSeenAt` at most this
+// often; inside the window it is read-only. Why: every-call patching made
+// concurrent tabs / auth-refresh storms rewrite the same users doc — Convex
+// Insights recorded 1,618 OCC write conflicts on `users` on 2026-07-28 alone.
+// Read-only mutations cannot conflict. The #6335 email-freshness comparison
+// stays sound: any write still stamps `lastSeenAt` in the same patch, so the
+// timestamp remains a dated-address lower bound that lags by at most this
+// window. Matches the 5-min touch debounce convention (apiKeys.ts).
+export const LAST_SEEN_REFRESH_WINDOW_MS = 5 * 60 * 1000;
 
 function isValidTimezone(tz: string): boolean {
   // Use try/catch around `new Intl.DateTimeFormat(undefined, { timeZone })`
@@ -122,6 +133,28 @@ export const ensureRecord = mutation({
       //   supplies a non-empty value (Clerk identity is source of truth;
       //   users do change their primary email). Empty incoming → leave
       //   existing alone (defends transient gaps during email-change flows).
+      //
+      // No-change debounce: when NONE of the above would change the row and
+      // lastSeenAt is inside LAST_SEEN_REFRESH_WINDOW_MS, return without
+      // writing. A read-only mutation cannot OCC-conflict, which is the fix
+      // for concurrent tabs / auth-refresh storms all patching the same doc
+      // (1,618 conflicts on 2026-07-28 alone). The #6335 invariant — an
+      // email rewrite always stamps lastSeenAt in the same patch — holds
+      // because the skip requires the email to be identical.
+      const emailChanged =
+        incomingEmail.length > 0 &&
+        (existing.email !== incomingEmail ||
+          existing.normalizedEmail !== incomingNormalizedEmail);
+      const materialChange =
+        existing.localeTag !== args.localeTag ||
+        existing.localePrimary !== args.localePrimary ||
+        (args.timezone !== undefined && existing.timezone !== args.timezone) ||
+        (args.country !== undefined && existing.country !== args.country) ||
+        emailChanged;
+      if (!materialChange && now - existing.lastSeenAt < LAST_SEEN_REFRESH_WINDOW_MS) {
+        return { ok: true as const, action: "unchanged" as const };
+      }
+
       const patch: Record<string, unknown> = {
         localeTag: args.localeTag,
         localePrimary: args.localePrimary,
@@ -137,6 +170,11 @@ export const ensureRecord = mutation({
       return { ok: true as const, action: "patched" as const };
     }
 
+    // First authenticated session === account creation, which is where Clerk
+    // renders the Terms and Privacy links on the sign-up card (#6976). Assent
+    // is stamped ONLY here, never in the patch branch above: signing in again
+    // is not accepting again, and back-stamping a returning user would claim
+    // consent from someone who was shown nothing.
     await ctx.db.insert("users", {
       userId,
       email: incomingEmail.length > 0 ? incomingEmail : undefined,
@@ -148,7 +186,83 @@ export const ensureRecord = mutation({
       country: args.country,
       firstSeenAt: now,
       lastSeenAt: now,
+      termsAcceptedAt: now,
+      termsFirstAcceptedAt: now,
+      termsVersion: TERMS_VERSION,
     });
     return { ok: true as const, action: "inserted" as const };
+  },
+});
+
+/**
+ * Record Terms assent at checkout start (#6976).
+ *
+ * INTERNAL: called by `internalCreateCheckout` with a userId already derived
+ * from a validated Clerk bearer token, never from a request body. The version
+ * is read from `shared/legal.ts` here rather than accepted as an argument, so a
+ * caller cannot record a version that was never in effect — and because both
+ * ship from the same deploy, the value always names text that git history can
+ * resolve (locked by tests/legal-version.test.mts).
+ *
+ * Inserts when no row exists. That is not a corner case: `pro-test` has no
+ * Convex client, so a buyer who signs in on the /pro pricing page and checks
+ * out may never have run `ensureRecord` — the main purchase path.
+ *
+ * Re-accepting an already-recorded version is a READ, not a write. Repeat
+ * checkouts and retries therefore cannot OCC-conflict on the same `users` doc,
+ * the same reason `ensureRecord` debounces `lastSeenAt`.
+ *
+ * Never throws: the caller treats a failed audit write as loggable, not as a
+ * reason to fail a paid conversion.
+ */
+export const recordTermsAcceptance = internalMutation({
+  args: {
+    userId: v.string(),
+    email: v.optional(v.string()),
+  },
+  handler: async (ctx, args) => {
+    const userId = args.userId.trim();
+    if (!userId) {
+      console.warn("[users:recordTermsAcceptance] empty userId rejected");
+      return { ok: false as const, reason: "invalid-input" as const };
+    }
+
+    const now = Date.now();
+    const email = (args.email ?? "").trim();
+    const existing = await ctx.db
+      .query("users")
+      .withIndex("by_userId", (q) => q.eq("userId", userId))
+      .unique();
+
+    if (!existing) {
+      await ctx.db.insert("users", {
+        userId,
+        email: email.length > 0 ? email : undefined,
+        normalizedEmail: email.length > 0 ? email.toLowerCase() : undefined,
+        firstSeenAt: now,
+        lastSeenAt: now,
+        termsAcceptedAt: now,
+        termsFirstAcceptedAt: now,
+        termsVersion: TERMS_VERSION,
+      });
+      return { ok: true as const, action: "inserted" as const };
+    }
+
+    if (existing.termsVersion === TERMS_VERSION) {
+      return { ok: true as const, action: "unchanged" as const };
+    }
+
+    // `lastSeenAt` moves with every write to this table, so the timestamp keeps
+    // meaning "as of the last write" rather than drifting behind one (#6335).
+    await ctx.db.patch(existing._id, {
+      termsAcceptedAt: now,
+      // Preserved across every later version. A row written before this field
+      // existed has no first-acceptance date to keep, so it adopts the one
+      // acceptance we can prove: the one being recorded now.
+      termsFirstAcceptedAt: existing.termsFirstAcceptedAt ?? existing.termsAcceptedAt ?? now,
+      termsVersion: TERMS_VERSION,
+      lastSeenAt: now,
+    });
+    return { ok: true as const, action: "recorded" as const };
   },
 });

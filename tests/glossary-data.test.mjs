@@ -1,6 +1,11 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { GLOSSARY_TERMS, GLOSSARY_CATEGORIES } from '../blog-site/src/data/glossary.ts';
+import {
+  RESILIENCE_DIMENSION_ORDER,
+  RESILIENCE_RETIRED_DIMENSIONS,
+} from '../server/worldmonitor/resilience/v1/_dimension-scorers.ts';
+import { INDICATOR_REGISTRY } from '../server/worldmonitor/resilience/v1/_indicator-registry.ts';
 
 // The glossary (#4960) renders one crawlable DefinedTerm page per entry under
 // /blog/glossary. These guards keep the data self-consistent (every related
@@ -32,14 +37,20 @@ describe('glossary data integrity', () => {
     }
   });
 
-  it('the short definition restates the term (answer-block shape)', () => {
+  it('short definitions stay answer-shaped and ≤25 words (#7381)', () => {
     // AEO/citation surfaces read the first sentence as a standalone answer;
-    // it should name the thing it defines, not open with a pronoun.
+    // it should name the thing it defines, not open with a pronoun, and stay
+    // short enough to quote before the body elaborates.
     for (const t of GLOSSARY_TERMS) {
       const needle = (t.abbr || t.term.split(' ')[0]).toLowerCase();
       assert.ok(
         t.short.toLowerCase().includes(needle),
         `short definition for ${t.slug} should name the term (looked for "${needle}")`
+      );
+      const wordCount = t.short.trim().split(/\s+/).length;
+      assert.ok(
+        wordCount <= 25,
+        `short definition for ${t.slug} is ${wordCount} words (max 25)`
       );
     }
   });
@@ -73,7 +84,7 @@ describe('glossary data integrity', () => {
     // The first draft sourced from docs/snapshots/resilience-ranking-2026-04-21
     // (a dated claim artifact) and shipped 19 dimensions + a 0.4 grey-out gate.
     // The live contract (server/.../resilience/v1/_shared.ts + methodology doc)
-    // is 20 active dimensions, a 0.55 low-confidence coverage gate, and a
+    // is 21 active dimensions, a 0.55 low-confidence coverage gate, and a
     // pillar-combined penalized formula. Pin it so the stale figures can't
     // return unnoticed.
     const cov = GLOSSARY_TERMS.find((t) => t.slug === 'dimension-coverage');
@@ -82,7 +93,9 @@ describe('glossary data integrity', () => {
     const covBlob = [cov.short, ...cov.body].join(' ');
     const criBlob = [cri.short, ...cri.body].join(' ');
 
-    assert.match(covBlob, /\b20\b/, 'dimension-coverage must state 20 active dimensions');
+    const activeDimensionCount = RESILIENCE_DIMENSION_ORDER.length - RESILIENCE_RETIRED_DIMENSIONS.size;
+    assert.match(covBlob, new RegExp(`\\b${activeDimensionCount}\\b`), `dimension-coverage must state ${activeDimensionCount} active dimensions`);
+    assert.match(criBlob, new RegExp(`\\b${INDICATOR_REGISTRY.length} indicators\\b`), `CRI must state the ${INDICATOR_REGISTRY.length}-indicator registry`);
     assert.match(covBlob, /0\.55/, 'dimension-coverage must state the 0.55 low-confidence gate');
     assert.doesNotMatch(covBlob, /\b19 per-dimension/, 'stale 19-dimension figure must not return');
     assert.doesNotMatch(covBlob, /falls below 0\.4\b/, 'stale 0.4 grey-out gate must not return');

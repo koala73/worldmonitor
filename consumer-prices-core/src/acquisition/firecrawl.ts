@@ -19,6 +19,7 @@ interface FirecrawlExtractResponse {
   success: boolean;
   data?: {
     extract?: Record<string, unknown>;
+    markdown?: string;
     metadata?: Record<string, unknown>;
   };
   error?: string;
@@ -99,6 +100,9 @@ export class FirecrawlProvider implements AcquisitionProvider {
         includeDomains: opts.includeDomains,
         scrapeOptions: { formats: ['markdown'] },
       }),
+      // Same bound as fetch/extract: a wedged provider connection must not
+      // eat the whole run budget for one retailer.
+      signal: AbortSignal.timeout(30_000),
     });
 
     if (!resp.ok) throw new Error(`Firecrawl search failed: HTTP ${resp.status}`);
@@ -116,6 +120,13 @@ export class FirecrawlProvider implements AcquisitionProvider {
     schema: ExtractSchema,
     opts: FetchOptions = {},
   ): Promise<ExtractResult<T>> {
+    // Nullable is encoded DIFFERENTLY here than in ExaProvider.extract, and the
+    // divergence is deliberate — do not "unify" these without re-testing both
+    // providers live. Firecrawl accepts the JSON Schema `type: [T,'null']`
+    // union (verified: HTTP 200, extract returned). Exa's /contents validator
+    // rejects an array `type` outright with HTTP 400 INVALID_REQUEST_BODY, so
+    // it must use `anyOf` instead (#6182 — that mismatch silently disabled
+    // every Exa extraction call and, after two failures, the whole fallback).
     const jsonSchema: Record<string, unknown> = {
       type: 'object',
       properties: Object.fromEntries(
@@ -134,11 +145,16 @@ export class FirecrawlProvider implements AcquisitionProvider {
       headers: this.headers(),
       body: JSON.stringify({
         url,
-        formats: ['extract'],
+        // markdown rides along in the same render so the caller can verify an
+        // extracted price actually appears on the page (price-evidence.ts).
+        formats: ['extract', 'markdown'],
         extract: { schema: jsonSchema, ...(schema.prompt ? { prompt: schema.prompt } : {}) },
         timeout: opts.timeout ?? 30_000,
+        // Late-hydrating storefronts capture as a breadcrumb shell without a
+        // settle delay; the abort deadline below must absorb it too.
+        ...(opts.waitFor ? { waitFor: opts.waitFor } : {}),
       }),
-      signal: AbortSignal.timeout(extractAbortMs(opts.timeout)),
+      signal: AbortSignal.timeout(extractAbortMs(opts.timeout) + (opts.waitFor ?? 0)),
     });
 
     if (!resp.ok) throw new Error(`Firecrawl extract failed: HTTP ${resp.status}`);
@@ -160,6 +176,9 @@ export class FirecrawlProvider implements AcquisitionProvider {
       data: (data.data?.extract ?? {}) as T,
       provider: this.name,
       fetchedAt: new Date(),
+      ...(typeof data.data?.markdown === 'string' && data.data.markdown.trim()
+        ? { pageContent: data.data.markdown }
+        : {}),
     };
   }
 

@@ -3,6 +3,14 @@ import { clearPanelColSpanEntry, clearPanelSpanEntry } from '@/utils/panel-stora
 
 const STORAGE_KEY = 'wm-mcp-panels';
 const MAX_PANELS = 10;
+export const MIN_MCP_REFRESH_INTERVAL_MS = 60_000;
+
+/** Keep persisted MCP specs and their runtime timers within the supported cadence. */
+export function normalizeMcpRefreshIntervalMs(value: unknown): number {
+  const interval = typeof value === 'number' ? value : Number(value);
+  if (!Number.isFinite(interval)) return MIN_MCP_REFRESH_INTERVAL_MS;
+  return Math.max(MIN_MCP_REFRESH_INTERVAL_MS, Math.floor(interval));
+}
 
 export interface McpPreset {
   name: string;
@@ -18,6 +26,16 @@ export interface McpPreset {
   defaultTitle?: string;
 }
 
+/** Quick Connect catalog. Presets only prefill the connect form — /api/mcp-proxy
+ *  keeps no host allowlist, so a preset grants no reach a user could not get by
+ *  typing the URL. Adding one is therefore a curation decision, not a capability
+ *  change.
+ *
+ *  Every `serverUrl` host here is discovered by scripts/source-attribution.mjs
+ *  and must have a curated row in shared/source-attribution-manifest.json, or
+ *  `npm run sources:check` and `test:data` go red. After adding a preset, run
+ *  `npm run sources:generate`; for a named provider identity, add the host to
+ *  PROVIDER_OVERRIDES and bump PROVIDER_IDENTITY_REVIEW. */
 export const MCP_PRESETS: McpPreset[] = [
   {
     name: 'Exa Search',
@@ -40,6 +58,18 @@ export const MCP_PRESETS: McpPreset[] = [
     defaultTool: 'tavily_search',
     defaultArgs: { query: 'breaking news today', search_depth: 'advanced', max_results: 5 },
     defaultTitle: 'Tavily Search',
+  },
+  {
+    name: 'Parallel Search',
+    icon: '🧭',
+    description: 'Free web search and URL fetching with no account or API key required',
+    serverUrl: 'https://search.parallel.ai/mcp',
+    defaultTool: 'web_search',
+    defaultArgs: {
+      objective: 'Find the latest major geopolitical developments',
+      search_queries: ['latest geopolitical developments'],
+    },
+    defaultTitle: 'Parallel Search',
   },
   {
     name: 'Perigon News',
@@ -268,7 +298,11 @@ export function loadMcpPanels(): McpPanelSpec[] {
 
 export function saveMcpPanel(spec: McpPanelSpec): void {
   const existing = loadMcpPanels().filter(p => p.id !== spec.id);
-  const updated = [...existing, spec].slice(-MAX_PANELS);
+  const normalizedSpec = {
+    ...spec,
+    refreshIntervalMs: normalizeMcpRefreshIntervalMs(spec.refreshIntervalMs),
+  };
+  const updated = [...existing, normalizedSpec].slice(-MAX_PANELS);
   saveToStorage(STORAGE_KEY, updated);
 }
 

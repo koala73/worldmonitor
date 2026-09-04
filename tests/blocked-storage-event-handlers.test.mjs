@@ -20,7 +20,7 @@ describe('blocked-storage event handlers', () => {
   it('reloads local variant navigation after a guarded storage write', () => {
     assert.match(
       eventHandlersSrc,
-      /if \(this\.ctx\.isDesktopApp \|\| options\.isLocalDev\) \{\s*writeStorageValue\('worldmonitor-variant', variant\);\s*window\.location\.reload\(\);/,
+      /if \(this\.ctx\.isDesktopApp \|\| options\.isLocalDev\) \{\s*if \(stageVariantSelection\(SITE_VARIANT, variant, writeStorageValue\)\) \{\s*window\.location\.reload\(\);/,
     );
   });
 
@@ -33,6 +33,9 @@ describe('blocked-storage event handlers', () => {
     assert.doesNotMatch(resetLayout, /localStorage\./);
     assert.match(resetLayout, /removeStorageValue\(this\.ctx\.PANEL_ORDER_KEY\)/);
     assert.match(resetLayout, /removeStorageValue\('map-height'\)/);
+    assert.match(resetLayout, /removeStorageValue\('map-split-height'\)/);
+    assert.match(resetLayout, /removeStorageValue\('map-col-width'\)/);
+    assert.match(resetLayout, /removeStorageValue\('map-side'\)/);
   });
 
   it('keeps the globe webcam marker control functional without persistence', () => {

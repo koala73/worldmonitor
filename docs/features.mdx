@@ -4,11 +4,13 @@ description: "Complete guide to World Monitor features: interactive 3D globe, da
 ---
 World Monitor provides a comprehensive set of features for real-time global intelligence monitoring, from interactive maps and data layers to market tracking and customizable panel layouts.
 
+A family of derived datasets — physical-metals premiums and divergence, mineral production concentration, defense industrial base, demographics capability, food stocks, resilience indicators, commodity supply vulnerability, and the five-factor country scorecard — requires a Pro subscription on each supported surface. The [Pro Intelligence Suite](/pro-intelligence-suite) documents dashboard, REST, and MCP availability per dataset because not every dataset has every surface. Where a free account meets a supported dashboard surface, the section renders an upgrade card rather than an empty or failed state.
+
 ## Interactive Global Map
 
 - **Zoom & Pan** - Smooth navigation with mouse/trackpad gestures
-- **Regional Focus** - 8 preset views for rapid navigation (Global, Americas, Europe, MENA, Asia, Latin America, Africa, Oceania)
-- **Layer System** - Toggle visibility of 56 data layers organized by category
+- **Regional Focus** - named preset views for rapid navigation (Global, Americas, Europe, MENA, Asia, Latin America, Africa, Oceania)
+- **Layer System** - Toggle visibility of data layers organized by category
 - **Time Filtering** - Filter events by time range (1h, 6h, 24h, 48h, 7d)
 - **Pinnable Map** - Pin the map to the top while scrolling through panels, or let it scroll with the page
 - **Smart Marker Clustering** - Nearby markers group at low zoom, expand on zoom in
@@ -47,7 +49,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Military & Strategic**
 | Layer | Description |
 |-------|-------------|
-| **Military Bases** | 226 global military installations from 9 operators |
+| **Military Bases** | Global military installations from the authoritative base registry |
 | **Nuclear Facilities** | Power plants, weapons labs, enrichment sites |
 | **Gamma Irradiators** | IAEA-tracked Category 1-3 radiation sources |
 | **APT Groups** | State-sponsored cyber threat actors with geographic attribution |
@@ -65,7 +67,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Transport**
 | Layer | Description |
 |-------|-------------|
-| **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and 62 strategic ports* |
+| **Ships (AIS)** | Live vessel tracking via AIS with chokepoint monitoring and the strategic-port registry* |
 | **Delays** | FAA airport delay status and ground stops |
 
 *\*AIS data via [AISStream.io](https://aisstream.io) uses terrestrial receivers with stronger coverage in European/Atlantic waters. Middle East, Asia, and open ocean coverage is limited. Satellite AIS providers (Spire, Kpler) offer global coverage but require commercial licenses.*
@@ -74,7 +76,7 @@ Layers are organized into logical groups for efficient monitoring:
 | Layer | Description |
 |-------|-------------|
 | **Natural** | USGS earthquakes (M4.5+) + NASA EONET events (storms, wildfires, volcanoes, floods) |
-| **Weather** | NWS severe weather warnings |
+| **Weather** | Official severe weather alerts (NWS, ECCC, WMO SWIC) |
 
 **Overlays & Labels**
 | Layer | Description |
@@ -89,7 +91,7 @@ Layers are organized into logical groups for efficient monitoring:
 **Webcams**
 | Layer | Description |
 |-------|-------------|
-| **Live Webcams** | 22 live streams across 5 geopolitical regions (Middle East, Eastern Europe, Asia-Pacific, Africa, Americas) with automatic fallback handling |
+| **Live Webcams** | Registry-backed streams across geopolitical regions with automatic fallback handling |
 
 ## Intelligence Panels
 
@@ -104,12 +106,12 @@ Beyond raw data feeds, the dashboard provides synthesized intelligence panels:
 | **Live Intelligence** | GDELT-powered topic feeds (Military, Cyber, Nuclear, Sanctions) |
 | **Intel Feed** | Curated defense and security news sources |
 | **Country Brief** | AI-generated country profiles with key indicators, risk factors, and recent developments |
-| **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across 111 monitored airports |
+| **Aviation Intelligence** | 6-tab aviation panel (Ops, Flights, Airlines, Tracking, News, Prices) with NOTAM closure detection across the registered airport watchlist |
 | **Climate Anomalies** | Temperature and precipitation deviations across 15 zones using Open-Meteo ERA5 data against rolling baselines |
 | **Displacement Tracking** | UN OCHA HAPI refugee, asylum seeker, and IDP data with origin/host country perspectives |
 | **Gulf Economies** | Indices, currencies, and oil data for 6 GCC countries (Saudi, UAE, Qatar, Kuwait, Bahrain, Oman) |
 | **WTO Trade Policy** | Active trade restrictions, tariff trends, bilateral trade flows, and SPS/TBT barriers |
-| **Central Banks, BIS & IMF** | Policy-rate and institutional finance signals from 14 central-bank and supranational finance institutions |
+| **Central Banks, BIS & IMF** | Policy-rate and institutional finance signals from central-bank and supranational finance institutions |
 | **Market Watchlist** | User-defined stock/commodity/crypto symbol lists (up to 50 symbols) |
 
 These panels transform raw signals into actionable intelligence by applying scoring algorithms, trend detection, and cross-source correlation.
@@ -246,7 +248,7 @@ Two full-screen, keyboard-first workflows complement the map + panels experience
 Two complementary country-scoring surfaces:
 
 - **[Country Instability Index](/country-instability-index)** — a high-frequency CII v8 stress score with signed 24-hour movement deltas, blending unrest, conflict, security, and information signals for 31 Tier-1 countries.
-- **[Country Resilience Index](/methodology/country-resilience-index)** — a 0-100 resilience score for the 196-country public rankable universe across 6 domains and 20 active dimensions (grouped into 3 pillars: structural readiness, live shock exposure, recovery capacity; plus 2 retired dimensions kept for schema continuity), refreshed every 6 hours and sourced from official/authoritative providers with transparent imputation.
+- **[Country Resilience Index](/methodology/country-resilience-index)** — a 0-100 resilience score for the 196-country public rankable universe built from 72 indicators across 21 active dimensions and 6 domains. Live API scores refresh every 6 hours. Crawlable country snapshots publish monthly with their capture date and revision note.
 
 CII and CRI answer different questions and are not interchangeable: CII is short-horizon stress; CRI is structural resilience plus live shock exposure.
 
@@ -263,7 +265,7 @@ Universal command palette for navigating the entire application. Every panel, ma
   - **Trade & supply chain**: [Trade Policy](/panels/trade-policy), [Supply Chain](/panels/supply-chain), [Sanctions Pressure](/panels/sanctions-pressure), [Hormuz Trade Tracker](/panels/hormuz-tracker), [Energy Crisis Tracker](/panels/energy-crisis)
   - **Tracking & health**: [Disease Outbreaks](/panels/disease-outbreaks), [Radiation Watch](/panels/radiation-watch), [Thermal Escalation](/panels/thermal-escalation), [Consumer Prices](/panels/consumer-prices), fires, UCDP events, displacement, climate anomalies, security advisories, population exposure
   - **News**: see the [News Feeds](/panels/news-feeds) catalogue for regional / topical / tech / finance / happy content streams.
-  - **Utilities**: [Airline Intelligence](/panels/airline-intel), [Tech Readiness Index](/panels/tech-readiness), [World Clock](/panels/world-clock), [My Monitors](/panels/monitors), [OREF Sirens](/panels/oref-sirens), [Telegram Intel](/panels/telegram-intel), [Financial Stress](/panels/fsi), Webcams, Layoffs
+  - **Utilities**: [Airline Intelligence](/panels/airline-intel), [Tech Readiness Index](/panels/tech-readiness), [World Clock](/panels/world-clock), [My Monitors](/panels/monitors), [OREF Sirens](/panels/oref-sirens), [Telegram Intel](/panels/telegram-intel), [X News Accounts](/panels/x-intel), [Financial Stress](/panels/fsi), Webcams, Layoffs
 - **Workflows**: open Route Explorer or activate a Scenario Engine template directly from the palette
 - **Country briefs**: search any country name to open its intelligence brief or navigate the map
 - **Time range**: filter events by 1h, 6h, 24h, 48h, or 7 days
@@ -480,7 +482,7 @@ The Flights layer tracks airport delays and ground stops at major US airports us
 
 ### Monitored Airports
 
-111 airports across 5 regions (Americas, Europe, Asia-Pacific, MENA, Africa) are monitored through three independent data sources (FAA ASWS, AviationStack, ICAO NOTAM):
+Airports in the global registry span the Americas, Europe, Asia-Pacific, MENA, and Africa and are monitored through three independent data sources (FAA ASWS, AviationStack, ICAO NOTAM):
 
 - Major US hubs: JFK, LAX, ORD, ATL, DFW, DEN, SFO
 - International gateways with high traffic volume

@@ -116,9 +116,10 @@ export async function listPipelines(
   const wantGas = !req.commodityType || req.commodityType === 'gas';
   const wantOil = !req.commodityType || req.commodityType === 'oil';
 
+  // Seeder writes via raw key (no env-prefix) — match it on read.
   const [gasRaw, oilRaw] = await Promise.all([
-    wantGas ? getCachedJson(PIPELINES_GAS_KEY) as Promise<RawRegistry | null> : Promise.resolve(null),
-    wantOil ? getCachedJson(PIPELINES_OIL_KEY) as Promise<RawRegistry | null> : Promise.resolve(null),
+    wantGas ? getCachedJson(PIPELINES_GAS_KEY, true) as Promise<RawRegistry | null> : Promise.resolve(null),
+    wantOil ? getCachedJson(PIPELINES_OIL_KEY, true) as Promise<RawRegistry | null> : Promise.resolve(null),
   ]);
 
   // upstreamUnavailable = "we tried to read a registry and Redis returned

@@ -22,11 +22,15 @@ const {
   SEED_META,
   ACTIVATION_MARKERS,
   CONTENT_FRESHNESS_ROLLOUT_UNTIL_MS,
+  STALE_CONTENT_GRACE_MS,
+  staleContentGraceEvidence,
+  applyStaleContentGrace,
+  healthStatusBucket,
 } = __testing__;
 
 const NOW = Date.parse('2026-08-03T14:42:58.000Z');
 const MINUTE_MS = 60_000;
-const PORTWATCH_CONTENT_BUDGET_MINUTES = 2 * 72 * 60;
+const PORTWATCH_CONTENT_BUDGET_MINUTES = 10 * 24 * 60;
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PORTWATCH_DATA_KEY = 'supply_chain:portwatch-ports:v1:_countries';
 const PORTWATCH_ACTIVATION_KEY = ACTIVATION_MARKERS.portwatchContentFreshness;
@@ -84,6 +88,22 @@ function classifyPortwatch(meta, { activated = true, now = NOW } = {}) {
     },
   );
 }
+
+// Runs the real post-classification projection so these tests exercise the same
+// path production does: classify, read back the durable anchor, then publish.
+function gracePortwatch(entry, meta, { now = NOW, staleContentDeadline = null } = {}) {
+  const checks = { portwatchPortActivity: entry };
+  const { keyMetaValues, keyMetaErrors } = portwatchCtx(meta, now);
+  const seedMeta = readSeedMeta(SEED_META.portwatchPortActivity, keyMetaValues, keyMetaErrors, now);
+  applyStaleContentGrace(
+    checks,
+    new Map([['portwatchPortActivity', staleContentGraceEvidence(seedMeta.contentAge, seedMeta.contentFreshness, now)]]),
+    staleContentDeadline === null ? new Map() : new Map([['portwatchPortActivity', staleContentDeadline]]),
+    now,
+  );
+  return entry;
+}
+
 
 // A run exactly like the 12:03 UTC production run: OK, 174 seeded, complete
 // coverage, zero refreshFailures — the transport half is genuinely healthy.
@@ -180,9 +200,13 @@ describe('portwatchPortActivity classification', () => {
   // count alone lets OK persist while the observation ages past budget — the
   // exact green-while-dead failure this alarm exists to prevent.
   it('re-ages the producer measurement instead of trusting a frozen count', () => {
-    // Seeder measured CN just inside the 144h budget. Health reads that same
-    // meta after the observation crosses the pinned boundary at 145h.
-    const observedAt = NOW - 145 * 60 * MINUTE_MS;
+    // Seeder measured CN just inside the budget. Health reads that same meta
+    // after the observation crosses the pinned boundary.
+    //
+    // Derived from PORTWATCH_CONTENT_BUDGET_MINUTES, never hardcoded hours: the
+    // fixture means "one hour PAST the boundary", and a literal 145h silently
+    // became "well inside it" the moment the budget moved 144h -> 240h.
+    const observedAt = NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 60) * MINUTE_MS;
     const entry = classifyPortwatch({
       fetchedAt: NOW - 12 * 60 * MINUTE_MS,
       recordCount: 174,
@@ -191,7 +215,8 @@ describe('portwatchPortActivity classification', () => {
         criticalStaleCountries: [],
         criticalOldestObservedAt: observedAt,
         criticalOldestObservedCountry: 'CN',
-        criticalOldestAgeMinutes: 143 * 60,
+        // The producer's own frozen number, one hour INSIDE the boundary.
+        criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES - 60,
       }),
     });
 
@@ -202,9 +227,43 @@ describe('portwatchPortActivity classification', () => {
     );
     assert.equal(
       entry.contentFreshness.criticalOldestAgeMinutes,
-      145 * 60,
+      PORTWATCH_CONTENT_BUDGET_MINUTES + 60,
       'the published age is recomputed against now, not echoed from the producer',
     );
+  });
+
+  it('gives a just-over-budget critical-country observation the finite stale-content grace', () => {
+    const observedAt = NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 1) * MINUTE_MS;
+    const graceUntil = observedAt
+      + PORTWATCH_CONTENT_BUDGET_MINUTES * MINUTE_MS
+      + STALE_CONTENT_GRACE_MS;
+    const meta = completeRun(contentFreshnessOf({
+      criticalOldestObservedAt: observedAt,
+      criticalOldestAgeMinutes: PORTWATCH_CONTENT_BUDGET_MINUTES + 1,
+    }));
+    const entry = gracePortwatch(classifyPortwatch(meta), meta, { staleContentDeadline: graceUntil });
+
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.equal(entry.staleContentGraceUntil, new Date(graceUntil).toISOString());
+    assert.equal(healthStatusBucket(entry, NOW), 'ok');
+  });
+
+  it('uses one stored deadline when stale counts trip before the per-entity time boundary', () => {
+    const firstObservedDeadline = NOW + STALE_CONTENT_GRACE_MS;
+    const meta = completeRun(contentFreshnessOf({
+      freshCount: 173,
+      staleCount: 1,
+      staleCountries: ['CN'],
+      criticalFreshCount: 1,
+      criticalStaleCountries: ['CN'],
+      criticalOldestObservedAt: NOW - 60 * MINUTE_MS,
+      criticalOldestAgeMinutes: 60,
+    }));
+    const entry = gracePortwatch(classifyPortwatch(meta), meta, { staleContentDeadline: firstObservedDeadline });
+
+    assert.equal(entry.status, 'STALE_CONTENT');
+    assert.equal(entry.staleContentGraceUntil, new Date(firstObservedDeadline).toISOString());
+    assert.equal(healthStatusBucket(entry, NOW), 'ok');
   });
 
   it('keeps OK while the re-aged observation is still inside the pinned budget', () => {
@@ -212,12 +271,12 @@ describe('portwatchPortActivity classification', () => {
       fetchedAt: NOW - 12 * 60 * MINUTE_MS,
       recordCount: 174,
       contentFreshness: contentFreshnessOf({
-        criticalOldestObservedAt: NOW - 143 * 60 * MINUTE_MS,
+        criticalOldestObservedAt: NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES - 60) * MINUTE_MS,
         criticalOldestAgeMinutes: 142 * 60,
       }),
     });
     assert.equal(entry.status, 'OK');
-    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, 143 * 60);
+    assert.equal(entry.contentFreshness.criticalOldestAgeMinutes, PORTWATCH_CONTENT_BUDGET_MINUTES - 60);
   });
 
   it('uses the raw millisecond boundary when re-aging content', () => {
@@ -240,7 +299,7 @@ describe('portwatchPortActivity classification', () => {
     // certify a 180h-old observation as fresh.
     const entry = classifyPortwatch(completeRun(contentFreshnessOf({
       budgetMinutes: 30 * 24 * 60,
-      criticalOldestObservedAt: NOW - 180 * 60 * MINUTE_MS,
+      criticalOldestObservedAt: NOW - (PORTWATCH_CONTENT_BUDGET_MINUTES + 36 * 60) * MINUTE_MS,
       criticalOldestAgeMinutes: 180 * 60,
     })));
     assert.equal(entry.status, 'STALE_CONTENT');

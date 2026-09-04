@@ -16,7 +16,7 @@
 import { strict as assert } from 'node:assert';
 import { after, describe, test } from 'node:test';
 import { execFileSync } from 'node:child_process';
-import { chmodSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -39,7 +39,13 @@ after(() => rmSync(WORK, { recursive: true, force: true }));
 // argument containing a space from two separate arguments.
 const STUB_BODY = (name, log) =>
   `#!/bin/sh\necho "== ${name}" >> ${JSON.stringify(log)}\n` +
-  `for a in "$@"; do echo ">$a" >> ${JSON.stringify(log)}; done\nexit 0\n`;
+  `for a in "$@"; do echo ">$a" >> ${JSON.stringify(log)}; done\n` +
+  `if [ "${'$'}{WM_PREPUSH_STUB_REQUIRE_SLOT_FOR:-}" = "${name} ${'$'}1" ]; then\n` +
+  `  common=$(/usr/bin/git rev-parse --path-format=absolute --git-common-dir) || exit 86\n` +
+  `  [ -d "${'$'}common/wm-prepush-admission/slot-1" ] || [ -d "${'$'}common/wm-prepush-admission/slot-2" ] || exit 86\n` +
+  `fi\n` +
+  `[ "${'$'}{WM_PREPUSH_STUB_FAIL:-}" = "${name} $*" ] && exit 1\n` +
+  `exit 0\n`;
 
 /**
  * Stubs live OUTSIDE the fixture repo: an untracked `stub-bin/` inside it would
@@ -51,7 +57,12 @@ function makeStubs(auxDir) {
   mkdirSync(bin, { recursive: true });
   for (const name of ['npm', 'npx', 'node', 'gh', 'make']) {
     const stub = join(bin, name);
-    writeFileSync(stub, STUB_BODY(name, log));
+    const realScriptDispatch = name === 'node'
+      ? `case "$1" in\n` +
+        `  scripts/prepush-admission.mjs|*/scripts/prepush-admission.mjs) exec ${JSON.stringify(process.execPath)} "$@" ;;\n` +
+        `esac\n`
+      : '';
+    writeFileSync(stub, STUB_BODY(name, log).replace('#!/bin/sh\n', `#!/bin/sh\n${realScriptDispatch}`));
     chmodSync(stub, 0o755);
   }
   return { bin, log };
@@ -73,58 +84,89 @@ function hookEnv(bin) {
 
 let fixtureCount = 0;
 /**
- * A repo carrying the real hook and the two scripts it delegates to, with
+ * A repo carrying the real hook and its delegated scripts, with
  * `refs/remotes/origin/main` at the base commit so branch scoping resolves.
  */
-function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = null } = {}) {
+function makeFixture({
+  branchFiles = {},
+  scriptsCjs = true,
+  failAttestMode = null,
+  baseGuardResponse = null,
+  proTestNodeModules = true,
+} = {}) {
   const id = fixtureCount++;
   const root = join(WORK, `repo-${id}`);
   const { bin, log } = makeStubs(join(WORK, `aux-${id}`));
   const env = hookEnv(bin);
   const git = (args) => execFileSync('git', args, { cwd: root, env, encoding: 'utf8' });
 
-  for (const dir of ['.husky', 'scripts', 'tests', 'node_modules']) {
+  for (const dir of ['.husky', 'scripts', 'scripts/lib', 'tests', 'node_modules']) {
     mkdirSync(join(root, dir), { recursive: true });
   }
+  // Simulate a COMPLETED install, not merely a present directory. npm writes
+  // .package-lock.json only when an install finishes, and the gate keys on that
+  // marker — an empty node_modules/ is the half-installed state it must catch.
+  // node_modules/ is gitignored above so this stays invisible to `dirty`.
+  writeFileSync(join(root, 'node_modules', '.package-lock.json'), '{}\n');
   copyFileSync(HOOK, join(root, '.husky', 'pre-push'));
-  for (const script of ['prepush-attest.sh', 'prepush-changed-tests.sh']) {
+  for (const script of ['prepush-admission.mjs', 'prepush-attest.sh', 'prepush-changed-tests.sh', 'prepush-identity-gate.sh']) {
     copyFileSync(join(REPO_ROOT, 'scripts', script), join(root, 'scripts', script));
   }
+  copyFileSync(
+    join(REPO_ROOT, 'scripts', 'lib', 'main-module.mjs'),
+    join(root, 'scripts', 'lib', 'main-module.mjs'),
+  );
   // Fault injection: make one attest mode fail while its siblings still work,
   // so the hook's handling of a broken enumeration can be executed rather than
-  // reasoned about.
-  if (failAttestMode) {
+  // reasoned about. The base-guard response injection exercises the hook
+  // boundary separately: helper status and output are both untrusted inputs.
+  if (failAttestMode || baseGuardResponse) {
+    const injectedBaseGuard = baseGuardResponse
+      ? `if [ "$1" = base-guard ]; then\n` +
+        (baseGuardResponse.stdout
+          ? `  printf '%b\\n' ${JSON.stringify(baseGuardResponse.stdout)}\n`
+          : '') +
+        `  exit ${baseGuardResponse.status};\nfi\n`
+      : '';
     writeFileSync(
       join(root, 'scripts', 'prepush-attest.sh'),
       `#!/usr/bin/env bash\n` +
-        `if [ "$1" = ${JSON.stringify(failAttestMode)} ]; then exit 1; fi\n` +
+        injectedBaseGuard +
+        (failAttestMode
+          ? `if [ "$1" = ${JSON.stringify(failAttestMode)} ]; then exit 1; fi\n`
+          : '') +
         `exec bash ${JSON.stringify(join(REPO_ROOT, 'scripts', 'prepush-attest.sh'))} "$@"\n`,
     );
   }
   writeFileSync(join(root, 'package.json'), '{"name":"fixture"}\n');
   writeFileSync(join(root, 'README.md'), 'base\n');
+  writeFileSync(join(root, '.gitignore'), 'public/pro/\nnode_modules/\n');
   // RUN_ALL fires the CJS syntax check, which iterates `scripts/*.cjs`.
   if (scriptsCjs) writeFileSync(join(root, 'scripts', 'noop.cjs'), 'module.exports = {};\n');
 
-  // RUN_ALL also forces the pro-test bundle freshness check. Its `git diff
-  // --exit-code` lists these paths explicitly and git exits 128 on an unknown
-  // one, so they all have to exist and be tracked for the gate to reach its
-  // own verdict. An empty pro-test/node_modules skips the install branch
-  // (git does not track empty directories, so it stays invisible to `dirty`).
-  mkdirSync(join(root, 'pro-test', 'node_modules'), { recursive: true });
+  // RUN_ALL also forces the pro-test build + generated-config freshness check.
+  // Its `git diff --exit-code` lists these paths explicitly and git exits 128
+  // on an unknown one, so they all have to exist and be tracked for the gate to
+  // reach its own verdict. public/pro/ is deliberately absent: it is gitignored
+  // since #6898 and no longer part of that diff. An empty pro-test/node_modules
+  // skips the install branch (git does not track empty directories, so it stays
+  // invisible to `dirty`).
+  if (proTestNodeModules) {
+    mkdirSync(join(root, 'pro-test', 'node_modules'), { recursive: true });
+    writeFileSync(join(root, 'pro-test', 'node_modules', '.package-lock.json'), '{}\n');
+  }
   for (const [path, contents] of Object.entries({
     'src/config/products.generated.ts': 'export const PRODUCTS = [];\n',
     'src/config/product-ids.generated.ts': 'export const PRODUCT_IDS = [];\n',
     'pro-test/src/generated/tiers.json': '[]\n',
     'pro-test/src/locales/en.json': '{}\n',
-    'public/pro/index.html': '<!doctype html>\n',
   })) {
     mkdirSync(join(root, dirname(path)), { recursive: true });
     writeFileSync(join(root, path), contents);
   }
 
   git(['init', '--quiet', '--initial-branch=main', '.']);
-  git(['config', 'user.email', 'prepush-hook@example.invalid']);
+  git(['config', 'user.email', 'prepush-hook@wm-fixture.localhost']);
   git(['config', 'user.name', 'Prepush Hook Fixture']);
   git(['add', '-A']);
   git(['commit', '--quiet', '-m', 'base']);
@@ -138,6 +180,7 @@ function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = nul
     git(['add', '-A']);
     git(['commit', '--quiet', '-m', 'branch work']);
   }
+  if (baseGuardResponse) git(['switch', '--quiet', '-c', 'feature']);
 
   const run = (extraEnv = {}) => {
     let status = 0;
@@ -169,6 +212,107 @@ function makeFixture({ branchFiles = {}, scriptsCjs = true, failAttestMode = nul
 }
 
 /**
+ * A real linked worktree whose shared config points at the main checkout's
+ * hook. The main hook has a poisoned body after the identity tripwire, so a
+ * successful push proves the tripwire handed off to the feature worktree's
+ * hook instead of continuing in the foreign copy.
+ */
+function pushWithPoisonedSharedHooksPath() {
+  const id = fixtureCount++;
+  const base = join(WORK, `poisoned-hooks-${id}`);
+  const main = join(base, 'main');
+  const worktree = join(base, 'feature');
+  const remote = join(base, 'remote.git');
+  const { bin, log } = makeStubs(join(base, 'aux'));
+  const env = hookEnv(bin);
+  delete env.WM_ALLOW_FOREIGN_HOOKS;
+
+  // Identity repair and admission must run their real helpers. Other node
+  // calls in the gate stay stubbed, as in makeFixture().
+  const nodeStub = join(bin, 'node');
+  writeFileSync(
+    nodeStub,
+    `#!/bin/sh\n` +
+      `case "$1" in\n` +
+      `  */scripts/bootstrap-worktree.mjs) exec ${JSON.stringify(process.execPath)} "$@" ;;\n` +
+      `  scripts/prepush-admission.mjs|*/scripts/prepush-admission.mjs) exec ${JSON.stringify(process.execPath)} "$@" ;;\n` +
+      `esac\n` +
+      STUB_BODY('node', log).replace('#!/bin/sh\n', ''),
+  );
+  chmodSync(nodeStub, 0o755);
+
+  const git = (cwd, args) => execFileSync('git', args, { cwd, env, encoding: 'utf8' }).trim();
+  mkdirSync(main, { recursive: true });
+  execFileSync('git', ['init', '--quiet', '--bare', remote], { env });
+  git(main, ['init', '--quiet', '--initial-branch=main', '.']);
+  git(main, ['config', 'user.email', 'prepush-hook@wm-fixture.localhost']);
+  git(main, ['config', 'user.name', 'Prepush Hook Fixture']);
+  git(main, ['remote', 'add', 'origin', remote]);
+
+  for (const dir of ['.husky', 'scripts', 'scripts/lib', 'node_modules']) {
+    mkdirSync(join(main, dir), { recursive: true });
+  }
+  copyFileSync(HOOK, join(main, '.husky', 'pre-push'));
+  for (const script of [
+    'bootstrap-worktree.mjs',
+    'check-local-secret-dumps.mjs',
+    'prepush-admission.mjs',
+    'prepush-attest.sh',
+    'prepush-changed-tests.sh',
+    'prepush-identity-gate.sh',
+  ]) {
+    copyFileSync(join(REPO_ROOT, 'scripts', script), join(main, 'scripts', script));
+  }
+  copyFileSync(
+    join(REPO_ROOT, 'scripts', 'lib', 'main-module.mjs'),
+    join(main, 'scripts', 'lib', 'main-module.mjs'),
+  );
+  writeFileSync(join(main, 'package.json'), '{"name":"fixture"}\n');
+  writeFileSync(join(main, 'README.md'), 'base\n');
+  git(main, ['add', '-A']);
+  git(main, ['commit', '--quiet', '-m', 'base']);
+  git(main, ['push', '--quiet', '--set-upstream', 'origin', 'main']);
+  git(main, ['worktree', 'add', '--quiet', '-b', 'feature', worktree]);
+  mkdirSync(join(worktree, 'node_modules'), { recursive: true });
+  writeFileSync(join(worktree, 'node_modules', '.package-lock.json'), '{}\n');
+  writeFileSync(join(worktree, 'README.md'), 'feature\n');
+  git(worktree, ['add', 'README.md']);
+  git(worktree, ['commit', '--quiet', '-m', 'feature']);
+
+  const foreignHook = join(main, '.husky', 'pre-push');
+  const originalHook = readFileSync(foreignHook, 'utf8');
+  const poisonedHook = originalHook.replace(
+    '\necho "Checking for local environment dumps..."',
+    '\necho "FOREIGN HOOK BODY RAN"\nexit 97\n\necho "Checking for local environment dumps..."',
+  );
+  assert.notEqual(poisonedHook, originalHook, 'fixture must poison the foreign hook body');
+  writeFileSync(foreignHook, poisonedHook);
+  git(main, ['config', 'core.hooksPath', join(main, '.husky')]);
+
+  let status = 0;
+  let output = '';
+  try {
+    output = execFileSync('git', ['push', '--set-upstream', 'origin', 'HEAD:feature'], {
+      cwd: worktree,
+      env,
+      encoding: 'utf8',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+  } catch (error) {
+    status = error.status;
+    output = `${error.stdout ?? ''}${error.stderr ?? ''}`;
+  }
+
+  return {
+    status,
+    output,
+    hooksPath: git(worktree, ['config', '--get', 'core.hooksPath']),
+    localHead: git(worktree, ['rev-parse', 'HEAD']),
+    remoteHead: git(worktree, ['ls-remote', '--heads', 'origin', 'feature']).split(/\s+/)[0] || '',
+  };
+}
+
+/**
  * The argument list of EVERY `npx tsx --test ...` the hook issued, in order.
  * All of them, not just the first: asserting one invocation cannot see a
  * second, duplicate dispatch — which is the failure the TESTS_CHANGED dedup
@@ -188,14 +332,65 @@ function tsxRuns(invocations) {
   return runs;
 }
 
+function admissionSlots(root) {
+  const admissionRoot = join(root, '.git', 'wm-prepush-admission');
+  try {
+    return readdirSync(admissionRoot).filter((entry) => /^slot-[1-9]\d*$/.test(entry));
+  } catch (error) {
+    if (error.code === 'ENOENT') return [];
+    throw error;
+  }
+}
+
+describe('a poisoned shared hooksPath self-heals at push time (#6104)', () => {
+  test('repairs the shared value and runs this worktree hook in the same push', () => {
+    const result = pushWithPoisonedSharedHooksPath();
+
+    assert.equal(result.status, 0, result.output);
+    assert.equal(result.hooksPath, '.husky');
+    assert.equal(result.remoteHead, result.localHead);
+    assert.match(result.output, /repairing shared hooksPath/);
+    assert.doesNotMatch(result.output, /FOREIGN HOOK BODY RAN/);
+  });
+});
+
 describe('a clean push runs the changed tests and attests the tree', () => {
   test('dispatches the changed test and caches HEAD^{tree}', () => {
     const fixture = makeFixture({ branchFiles: { 'tests/alpha.test.mjs': 'x\n' } });
-    const { status, stdout, invocations } = fixture.run();
+    const { status, stdout, invocations } = fixture.run({
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npx tsx',
+    });
 
     assert.equal(status, 0, stdout);
-    assert.deepEqual(tsxRuns(invocations), [['tsx', '--test', 'tests/alpha.test.mjs']]);
+    assert.deepEqual(tsxRuns(invocations), [
+      ['tsx', '--test', '--test-concurrency=2', 'tests/alpha.test.mjs'],
+    ]);
     assert.equal(fixture.cached(), fixture.tree(), 'a clean, resolved, green run is attestable');
+    assert.deepEqual(admissionSlots(fixture.root), [], 'EXIT cleanup releases the heavy-phase slot');
+  });
+
+  test('a heavy-phase failure still releases its admission slot', () => {
+    const fixture = makeFixture({ branchFiles: { 'scripts/failing-change.mjs': 'x\n' } });
+    const { status } = fixture.run({
+      WM_PREPUSH_STUB_FAIL: 'npm run typecheck',
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npm run',
+    });
+
+    assert.equal(status, 1);
+    assert.deepEqual(admissionSlots(fixture.root), [], 'an || exit 1 path must not wedge later pushes');
+  });
+
+  test('a fresh worktree installs dependencies while holding an admission slot', () => {
+    const fixture = makeFixture({ branchFiles: { 'tests/alpha.test.mjs': 'x\n' } });
+    rmSync(join(fixture.root, 'node_modules'), { recursive: true });
+
+    const { status, stdout, invocations } = fixture.run({
+      WM_PREPUSH_STUB_REQUIRE_SLOT_FOR: 'npm ci',
+    });
+
+    assert.equal(status, 0, stdout);
+    assert.match(invocations, /== npm\n>ci\n/);
+    assert.deepEqual(admissionSlots(fixture.root), [], 'EXIT cleanup releases the install lease');
   });
 
   test('the second push of that tree skips the gates entirely', () => {
@@ -268,7 +463,9 @@ describe('worktree drift blocks the push (#5800 item 1)', () => {
 
     const { status, stdout, invocations } = fixture.run();
     assert.equal(status, 0, stdout);
-    assert.deepEqual(tsxRuns(invocations), [['tsx', '--test', 'tests/gamma.test.mjs']]);
+    assert.deepEqual(tsxRuns(invocations), [
+      ['tsx', '--test', '--test-concurrency=2', 'tests/gamma.test.mjs'],
+    ]);
     assert.match(stdout, /not byte-identical to HEAD/);
     assert.equal(fixture.cached(), null);
   });
@@ -300,7 +497,14 @@ describe('C-quoted and space-bearing paths still reach the runner (#5800 item 2)
     assert.equal(status, 0, stdout);
     assert.deepEqual(
       tsxRuns(invocations),
-      [['tsx', '--test', 'tests/back\\slash.test.mjs', 'tests/café.test.mjs', 'tests/with space.test.mjs']],
+      [[
+        'tsx',
+        '--test',
+        '--test-concurrency=2',
+        'tests/back\\slash.test.mjs',
+        'tests/café.test.mjs',
+        'tests/with space.test.mjs',
+      ]],
       'every path must arrive intact and as a single argument',
     );
   });
@@ -360,6 +564,172 @@ describe('a broken enumeration blocks the push, it does not empty the list', () 
       assert.equal(fixture.cached(), null);
     });
   }
+});
+
+describe('a broken base guard blocks the push, it does not default to zero', () => {
+  const cases = [
+    ['status 1', { status: 1, stdout: '' }],
+    ['status 2', { status: 2, stdout: '' }],
+    ['empty output', { status: 0, stdout: '' }],
+    ['missing tab field', { status: 0, stdout: 'main' }],
+    ['multiple records', { status: 0, stdout: 'main\t0\nmain\t0' }],
+    ['non-numeric count', { status: 0, stdout: 'main\tnot-a-count' }],
+  ];
+
+  for (const [label, baseGuardResponse] of cases) {
+    test(`${label} refuses the push and does not cache`, () => {
+      const fixture = makeFixture({
+        branchFiles: { 'tests/base-guard.test.mjs': 'x\n' },
+        baseGuardResponse,
+      });
+
+      const { status, stdout, invocations } = fixture.run();
+      assert.equal(status, 1, stdout);
+      assert.match(stdout, /branch-contamination guard/);
+      assert.deepEqual(tsxRuns(invocations), []);
+      assert.equal(fixture.cached(), null, 'a failed guard must not mint an attestation');
+    });
+  }
+
+  test('status 3 with a valid record preserves the contamination verdict', () => {
+    const fixture = makeFixture({
+      branchFiles: { 'tests/base-guard.test.mjs': 'x\n' },
+      baseGuardResponse: { status: 3, stdout: 'main\t21' },
+    });
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /21 commits ahead of origin\/main/);
+    assert.deepEqual(tsxRuns(invocations), []);
+    assert.equal(fixture.cached(), null);
+  });
+});
+
+function npmRuns(invocations) {
+  const lines = invocations.split('\n');
+  const runs = [];
+  for (let i = 0; i < lines.length; i += 1) {
+    if (lines[i] !== '== npm') continue;
+    const args = [];
+    for (let j = i + 1; j < lines.length && lines[j].startsWith('>'); j += 1) {
+      args.push(lines[j].slice(1));
+    }
+    runs.push(args);
+  }
+  return runs;
+}
+
+describe('Pro built-output tests rebuild before dispatch', () => {
+  test('does not trust a stale ignored artifact for a test-only branch delta', () => {
+    const fixture = makeFixture({
+      branchFiles: {
+        'tests/pro-built-output.test.mjs': "import './_lib/pro-built-output.mjs';\n",
+      },
+    });
+    mkdirSync(join(fixture.root, 'public', 'pro'), { recursive: true });
+    writeFileSync(join(fixture.root, 'public', 'pro', 'welcome.html'), 'stale branch output\n');
+    assert.equal(fixture.git(['check-ignore', 'public/pro/welcome.html']).trim(), 'public/pro/welcome.html');
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 0, stdout);
+    const buildIndex = invocations.indexOf('== npm\n>run\n>build\n');
+    const testIndex = invocations.indexOf('== npx\n>tsx\n>--test\n');
+    assert.notEqual(buildIndex, -1, `expected the Pro build, got:\n${invocations}`);
+    assert.notEqual(testIndex, -1, `expected the changed test dispatch, got:\n${invocations}`);
+    assert.ok(buildIndex < testIndex, `expected the Pro build before test dispatch, got:\n${invocations}`);
+  });
+});
+
+describe('pro-test freshness install prefers the shared npm cache (#6766)', () => {
+  test('npm ci --prefer-offline when pro-test/node_modules is missing', () => {
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+      proTestNodeModules: false,
+    });
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 0, stdout);
+    const ci = npmRuns(invocations).find((args) => args[0] === 'ci');
+    assert.ok(ci, `expected npm ci, got:\n${invocations}`);
+    assert.ok(ci.includes('--prefer-offline'), ci.join(' '));
+    assert.ok(ci.includes('--cache'), ci.join(' '));
+  });
+
+  test('shares Vite cache via .vite link, never a node_modules symlink', () => {
+    const fixture = makeFixture({
+      branchFiles: {
+        'pro-test/src/stale.ts': 'export const n = 1;\n',
+        'pro-test/package-lock.json': '{"lockfileVersion":3}\n',
+      },
+    });
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 0, stdout);
+    const nodeModules = join(fixture.root, 'pro-test', 'node_modules');
+    assert.equal(lstatSync(nodeModules).isSymbolicLink(), false);
+    const viteCache = join(nodeModules, '.vite');
+    assert.equal(lstatSync(viteCache).isSymbolicLink(), true);
+    assert.match(readlinkSync(viteCache), /wm-vite-cache\/pro-test-[0-9a-f]{12}$/);
+  });
+
+  // public/pro/ left this gate in #6898 (Vercel builds it), but the generated
+  // config pro-test compiles AGAINST is still committed and can still go stale.
+  // Teeth for the reduced diff list: dirty one of its surviving paths.
+  test('still fails when committed generated pro config is stale', () => {
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    writeFileSync(join(fixture.root, 'pro-test/src/generated/tiers.json'), '[{"stale":true}]\n');
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /product catalog, generated config, or pro locales is stale/);
+  });
+
+  test('git diff 128 is not reported as a stale catalog (#7445)', () => {
+    // `git diff --exit-code` exits 128 on an unknown path — the same status
+    // as "fatal: this operation must be run in a work tree". Drop a listed
+    // freshness path from the index and the worktree so the command cannot
+    // run, then assert the hook does not print the regenerate-config recipe.
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    fixture.git(['rm', '--cached', '--quiet', 'src/config/products.generated.ts']);
+    rmSync(join(fixture.root, 'src/config/products.generated.ts'));
+
+    const { status, stdout } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /freshness check could not run/);
+    assert.doesNotMatch(stdout, /product catalog, generated config, or pro locales is stale/);
+    assert.doesNotMatch(stdout, /npx tsx scripts\/generate-product-config/);
+  });
+
+  test('refuses a pro-test/node_modules symlink instead of installing through it', (t) => {
+    const fixture = makeFixture({
+      branchFiles: { 'pro-test/src/stale.ts': 'export const n = 1;\n' },
+    });
+    const stolen = join(WORK, `stolen-nm-${fixtureCount}`);
+    mkdirSync(stolen, { recursive: true });
+    rmSync(join(fixture.root, 'pro-test', 'node_modules'), { recursive: true, force: true });
+    try {
+      symlinkSync(stolen, join(fixture.root, 'pro-test', 'node_modules'));
+    } catch (error) {
+      if (error?.code === 'EPERM' || error?.code === 'EACCES') {
+        t.skip('symlink creation is unavailable in this environment');
+        return;
+      }
+      throw error;
+    }
+
+    const { status, stdout, invocations } = fixture.run();
+    assert.equal(status, 1, stdout);
+    assert.match(stdout, /pro-test\/node_modules is a symlink/);
+    assert.equal(
+      npmRuns(invocations).filter((args) => args[0] === 'ci').length,
+      0,
+      'must not npm ci through a symlink',
+    );
+  });
 });
 
 describe('the gate does not fail closed on its own edge cases', () => {

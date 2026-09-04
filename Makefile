@@ -8,7 +8,9 @@ GEN_SERVER_DIR := src/generated/server
 DOCS_API_DIR := docs/api
 
 # Go install settings
-GO_PROXY := GOPROXY=direct
+# Use the public module proxy for public dependencies, with direct fallback.
+# GOPRIVATE keeps the private sebuf module off the public proxy.
+GO_PROXY := GOPROXY=https://proxy.golang.org,direct
 GO_PRIVATE := GOPRIVATE=github.com/SebastienMelki
 GO_INSTALL := $(GO_PROXY) $(GO_PRIVATE) go install
 
@@ -104,6 +106,9 @@ generate: clean ## Generate code from proto definitions
 	@# would let `buf generate` fall through to a stale copy of the
 	@# others on PATH, recreating the mixed-version failure mode. Keep
 	@# this list in sync with proto/buf.gen.yaml.
+	@#
+	@# `buf` stays on the caller's PATH (never PLUGIN_DIR). CI must put
+	@# GOPATH/bin on PATH after `make install-buf` — see proto-check.yml.
 	cd $(PROTO_DIR) && \
 		PLUGIN_DIR=$$(gobin=$$(go env GOBIN); if [ -n "$$gobin" ]; then printf '%s' "$$gobin"; else printf '%s/bin' "$$(go env GOPATH | cut -d: -f1)"; fi) && \
 		[ -n "$$PLUGIN_DIR" ] || { echo 'Could not resolve Go install dir from GOBIN/GOPATH — refusing to run buf generate without a pinned plugin location.' >&2; exit 1; } && \
@@ -121,17 +126,22 @@ generate: clean ## Generate code from proto definitions
 	@node scripts/openapi-inject-security.mjs
 	@node scripts/openapi-inject-company-monitoring-contract.mjs
 	@node scripts/apply-openapi-filter-param-schemas.mjs
+	@node scripts/openapi-inject-jmespath.mjs
 	@node scripts/openapi-inject-required.mjs
 	@node scripts/openapi-inject-examples.mjs
 	@node scripts/openapi-inject-servers.mjs
 	@node scripts/openapi-inject-deprecated.mjs
-	@node scripts/openapi-inject-jmespath.mjs
 	@node scripts/openapi-inject-webhooks.mjs
 	@node scripts/openapi-inject-idempotency.mjs
 	@node scripts/openapi-inject-rate-limit-errors.mjs
+	@node scripts/openapi-inject-billing-verification.mjs
 	@node scripts/openapi-inject-async-jobs.mjs
 	@node scripts/openapi-inject-china-corridors.mjs
 	@node scripts/openapi-inject-china-decision-signals.mjs
+	@# Product-only provider values must be removed after every schema/example
+	@# injector so a later generator step cannot reintroduce them.
+	@node scripts/openapi-restrict-provider-redistribution.mjs
+	@node scripts/generate-scorecard-edge-mirrors.mjs
 	@echo "Code generation complete!"
 
 breaking: ## Check for breaking changes against main

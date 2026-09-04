@@ -42,7 +42,15 @@ const CAPTURED_RECOMPUTE_SOURCE = 'country-sliced Redis input snapshot recompute
 // plus the PR #4101 governance WGI slot-semantics cleanup. The historical-
 // manifest drift guard allows the union of fields already proven to drift from
 // the frozen v18 reference capture.
-const CURRENT_COMBINED_SCORER_CACHE_PREFIX = 'resilience:score:v25:';
+//
+// REVISITED at the v27 -> v28 bump (#6511 finance activation), as the
+// assertion below demands. The drift set is deliberately UNCHANGED, and that is
+// a finding rather than an omission: the frozen manifest predates both live
+// activations, so `recomputeReferenceManifest` reproduces the captured
+// construct with those dimensions disabled (see `manifestPredatesEducation`).
+// Activation therefore cannot move this comparison until the reference edition
+// is re-frozen with the new keys present, which is a post-deploy capture.
+const CURRENT_COMBINED_SCORER_CACHE_PREFIX = 'resilience:score:v28:';
 const EXPECTED_CURRENT_SCORER_DRIFT_COUNTRIES = new Set(EXPECTED_COUNTRIES);
 const EXPECTED_CURRENT_SCORER_DRIFT_FIELDS = new Set([
   'overallScore',

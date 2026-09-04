@@ -58,7 +58,10 @@ npm run deploy
 cd workers/api-cors-preflight && npm test
 
 # Live smoke test against prod. Gated by env var so it doesn't run in PR gates
-# (false positives during deploys).
+# (false positives during deploys). CI already runs it after every Worker deploy
+# (the live-smoke job); run it by hand to check the currently-deployed Worker.
+# It is the only guard that reads the bytes users receive, including the
+# KV-served bootstrap tiers that never reach api/bootstrap.js.
 LIVE_SMOKE=1 tsx --test tests/cors-preflight-live.test.mjs
 ```
 
@@ -69,6 +72,46 @@ The Worker's allowlist + Allow-Headers list **must be a superset of** what
 function would accept, the browser sees a mismatched origin echo and CORS
 rejects the request. Drift between the two is the load-bearing trap this
 package exists to make visible. Update both files together.
+
+### Explicit public bootstrap URLs are the exception
+
+The origin and Worker share `classifyPublicBootstrapRequest()` for these URLs:
+
+- `?tier=<fast|slow>&public=1`
+- `?keys=weatherAlerts&public=1`
+- `?keys=<on-demand key>&public=1`
+
+They return ACAO `*`, no `Access-Control-Allow-Credentials`, and no
+`Vary: Origin`. The payload is identical for every caller, so an Origin-specific
+cache entry buys nothing. The single-key classifier reads the generated
+bootstrap registry. A registry change therefore deploys the Worker through
+`api/_bootstrap-tier-keys.js`.
+
+The marker does not make an arbitrary key public. For example,
+`?keys=marketQuotes&public=1` stays credentialed and returns 401 without a key.
+The unmarked `?keys=weatherAlerts` URL also stays outside the edge classifier
+because its origin auth kind depends on attached credentials.
+
+Two deliberate carve-outs inside the exception:
+
+- **A disallowed Origin keeps the credentialed bag.** For tier URLs, the request
+  still uses KV. Header policy and routing remain separate, so an Origin header
+  cannot force Vercel or Redis work.
+- **The KV-served response stays `Cache-Control: no-store` with no
+  `CDN-Cache-Control`.** Rationale lives with the code it explains —
+  `src/kv-serve.js#serveFromKv`. The origin fallback for the same URL does sit
+  behind Vercel's CDN and keeps its `CDN-Cache-Control` shield untouched.
+
+Note the second carve-out means the browser cache directive for one URL differs
+by which path answered (`no-store` from KV, `TIER_CACHE[tier]` from the origin).
+The CORS shape is unified; caching deliberately is not.
+
+`tests/cors-preflight-live.test.mjs` asserts all of this against a **deployed**
+URL, and the `live-smoke` job in `.github/workflows/deploy-worker.yml` runs it
+automatically after every Worker deploy. The handler-level guard in
+`api/bootstrap-auth.test.mjs` cannot: it calls `handler()` directly, so it never
+sees what the edge does to the bytes afterwards. Both read the same assertions
+from `tests/helpers/public-bootstrap-contract.mjs`.
 
 ## Related learning
 

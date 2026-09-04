@@ -126,13 +126,13 @@ function runToPolylinePoints(run: SeriesRun): string {
 }
 
 function buildChart(points: BreadthSnapshot[]): string {
-  if (points.length < 2) return '<div style="text-align:center;color:var(--text-dim);padding:20px;font-size:11px">Collecting data. Chart appears after 2+ days.</div>';
+  if (points.length < 2) return '<div style="text-align:center;color:var(--text-dim);padding:20px;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">Collecting data. Chart appears after 2+ days.</div>';
 
   const yAxis = [0, 25, 50, 75, 100].map(v => {
     const y = yPos(v);
     return `
       <line x1="${ML}" y1="${y.toFixed(1)}" x2="${SVG_W - MR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-      <text x="${(ML - 3).toFixed(0)}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" font-size="8" dominant-baseline="middle">${v}%</text>`;
+      <text x="${(ML - 3).toFixed(0)}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" style="font-size:calc(8px * var(--wm-panel-effective-scale, 1))" dominant-baseline="middle">${v}%</text>`;
   }).join('');
 
   const step = Math.max(1, Math.floor(points.length / 6));
@@ -140,7 +140,7 @@ function buildChart(points: BreadthSnapshot[]): string {
     if (i % step !== 0 && i !== points.length - 1) return '';
     const x = xPos(i, points.length);
     const label = p.date.slice(5);
-    return `<text x="${x.toFixed(1)}" y="${SVG_H - MB + 13}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7">${escapeHtml(label)}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${SVG_H - MB + 13}" text-anchor="middle" fill="rgba(255,255,255,0.4)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))">${escapeHtml(label)}</text>`;
   }).join('');
 
   // Render each contiguous run separately so null/missing days leave visible
@@ -170,7 +170,7 @@ function buildChart(points: BreadthSnapshot[]): string {
   const midLine = yPos(50);
   const mid = `<line x1="${ML}" y1="${midLine.toFixed(1)}" x2="${SVG_W - MR}" y2="${midLine.toFixed(1)}" stroke="rgba(255,255,255,0.12)" stroke-width="1" stroke-dasharray="4 3"/>`;
 
-  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${yAxis}${mid}${xAxis}${areas}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Market breadth: advancing versus declining issues over time" style="width:100%;height:auto;display:block">${yAxis}${mid}${xAxis}${areas}${lines}</svg>`;
 }
 
 function readingBadge(val: number, color: string): string {
@@ -178,7 +178,7 @@ function readingBadge(val: number, color: string): string {
   const fg = val >= 60 ? '#22c55e' : val >= 40 ? '#f59e0b' : '#ef4444';
   return `<span style="display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;background:${bg}">
     <span style="width:6px;height:6px;border-radius:50%;background:${color}"></span>
-    <span style="font-size:14px;font-weight:600;color:${fg}">${val.toFixed(1)}%</span>
+    <span style="font-size:calc(14px * var(--wm-panel-effective-scale, 1));font-weight:600;color:${fg}">${val.toFixed(1)}%</span>
   </span>`;
 }
 
@@ -245,11 +245,11 @@ export class MarketBreadthPanel extends Panel {
       // failure shows "—", a legit zero renders a badge at 0.0%.
       const hasCurrent = typeof val === 'number' && Number.isFinite(val) && val >= 0;
       return `<div style="display:flex;align-items:center;justify-content:space-between;padding:4px 0">
-        <span style="display:flex;align-items:center;gap:6px;font-size:11px;color:var(--text-dim)">
+        <span style="display:flex;align-items:center;gap:6px;font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">
           <span style="width:8px;height:3px;border-radius:1px;background:${s.color}"></span>
           % Above ${escapeHtml(s.label)}
         </span>
-        ${hasCurrent ? readingBadge(val as number, s.color) : '<span style="font-size:11px;color:var(--text-dim)">\u2014</span>'}
+        ${hasCurrent ? readingBadge(val as number, s.color) : '<span style="font-size:calc(11px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">\u2014</span>'}
       </div>`;
     }).join('');
 
@@ -257,7 +257,7 @@ export class MarketBreadthPanel extends Panel {
       <div style="padding:12px 14px">
         <div style="margin-bottom:8px">${legend}</div>
         <div style="border-radius:6px;background:rgba(255,255,255,0.02);padding:4px 0">${chart}</div>
-        ${d.updatedAt ? `<div style="text-align:right;font-size:9px;color:var(--text-dim);margin-top:4px">${escapeHtml(new Date(d.updatedAt).toLocaleString())}</div>` : ''}
+        ${d.updatedAt ? `<div style="text-align:right;font-size:calc(9px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);margin-top:4px">${escapeHtml(new Date(d.updatedAt).toLocaleString())}</div>` : ''}
       </div>`;
 
     this.setSafeContent(unsafeRawHtml(html, 'legacy Panel.setContent() migration'));

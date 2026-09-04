@@ -20,6 +20,7 @@
   "response": {
     "status": 200,
     "body": {
+      "asOf": "example",
       "finnhubSkipped": true,
       "quotes": [
         {

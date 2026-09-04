@@ -211,7 +211,11 @@ describe('relay startup auth guard (#3801)', () => {
       assert.equal(r.child.exitCode, null, 'relay should remain available without the optional AIS upstream');
       const res = await httpGet(port, '/health');
       assert.equal(res.status, 200);
-      assert.equal(JSON.parse(res.body).connected, false);
+      const health = JSON.parse(res.body);
+      assert.equal(health.status, 'ok', 'an intentionally disabled optional AIS source is not an outage');
+      assert.equal(health.connected, false);
+      assert.equal(health.ingestion.aisSnapshot.enabled, false);
+      assert.equal(health.ingestion.aisSnapshot.status, 'disabled');
 
       const snapshot = await httpGet(port, '/ais/snapshot', { 'x-relay-key': 'good-secret' });
       assert.equal(snapshot.status, 200);
@@ -298,6 +302,51 @@ describe('relay /health exposes auth.enabled (#3812)', () => {
       const body = JSON.parse(res.body);
       assert.equal(body.auth.enabled, true, 'auth.enabled mirrors actual isAuthorizedRequest() behavior: secret wins');
       assert.equal(body.auth.sharedSecretEnabled, true);
+    } finally {
+      await killRelay(r.child);
+    }
+  });
+});
+
+describe('relay /status protects X Post budget telemetry', () => {
+  it('rejects unauthenticated requests and serves telemetry to the relay key', async () => {
+    const port = await pickFreePort();
+    const r = spawnRelay({
+      AISSTREAM_API_KEY: '',
+      VITE_AISSTREAM_API_KEY: '',
+      RELAY_SHARED_SECRET: 'good-secret',
+      PORT: String(port),
+    });
+    try {
+      await r.waitForLog('WebSocket relay on port', 15_000);
+      const denied = await httpGet(port, '/status');
+      assert.equal(denied.status, 401);
+
+      const allowed = await httpGet(port, '/status', { 'x-relay-key': 'good-secret' });
+      assert.equal(allowed.status, 503, 'missing Redis makes budget telemetry explicitly degraded');
+      assert.match(String(allowed.headers['cache-control']), /no-store/);
+      const body = JSON.parse(allowed.body);
+      assert.equal(body.status, 'degraded');
+      assert.equal(body.xFeed.postBudget.available, false);
+      assert.ok(Object.hasOwn(body.xFeed, 'lastCycleUsage'));
+    } finally {
+      await killRelay(r.child);
+    }
+  });
+
+  it('stays private when the rest of the relay uses the explicit auth bypass', async () => {
+    const port = await pickFreePort();
+    const r = spawnRelay({
+      AISSTREAM_API_KEY: '',
+      VITE_AISSTREAM_API_KEY: '',
+      I_UNDERSTAND_THIS_DISABLES_AUTH: 'true',
+      PORT: String(port),
+    });
+    try {
+      await r.waitForLog('WebSocket relay on port', 15_000);
+      const denied = await httpGet(port, '/status');
+      assert.equal(denied.status, 401);
+      assert.doesNotMatch(denied.body, /postBudget|dailyLimit|monthlyLimit/);
     } finally {
       await killRelay(r.child);
     }

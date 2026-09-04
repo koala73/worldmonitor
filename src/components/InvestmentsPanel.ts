@@ -10,6 +10,7 @@ import type {
 import { toUniqueSorted } from '@/utils';
 import { escapeHtml, unsafeRawHtml } from '@/utils/sanitize';
 import { t } from '@/services/i18n';
+import { bindActivationKeys } from '@/utils/activation';
 
 interface InvestmentFilters {
   investingCountry: GulfInvestorCountry | 'ALL';
@@ -80,6 +81,7 @@ export class InvestmentsPanel extends Panel {
     });
     this.onInvestmentClick = onInvestmentClick;
     this.setupEventDelegation();
+    bindActivationKeys(this.content, '.fdi-row');
     this.render();
   }
 
@@ -130,7 +132,7 @@ export class InvestmentsPanel extends Panel {
       const sectorLabel = getSectorLabel(inv.sector);
       const year = inv.yearAnnounced ?? inv.yearOperational ?? '—';
       return `
-        <div class="fdi-row" data-id="${escapeHtml(inv.id)}">
+        <div class="fdi-row" data-id="${escapeHtml(inv.id)}" role="button" tabindex="0">
           <div class="fdi-row-line1">
             <span class="fdi-flag">${flag}</span>
             <span class="fdi-asset-name">${escapeHtml(inv.assetName)}</span>
@@ -158,20 +160,20 @@ export class InvestmentsPanel extends Panel {
         <button class="${toggleCls}" data-action="toggle-filters" title="Filters" aria-label="Toggle filters" aria-pressed="${this.filtersExpanded}">⚙</button>
       </div>
       <div class="${filtersCls}">
-        <select class="fdi-filter" data-filter="investingCountry">
+        <select class="fdi-filter" data-filter="investingCountry" aria-label="Filter by investing country">
           <option value="ALL">🌐 ${t('components.investments.allCountries')}</option>
           <option value="SA"${this.filters.investingCountry === 'SA' ? ' selected' : ''}>🇸🇦 ${t('components.investments.saudiArabia')}</option>
           <option value="UAE"${this.filters.investingCountry === 'UAE' ? ' selected' : ''}>🇦🇪 ${t('components.investments.uae')}</option>
         </select>
-        <select class="fdi-filter" data-filter="sector">
+        <select class="fdi-filter" data-filter="sector" aria-label="Filter by sector">
           <option value="ALL">${t('components.investments.allSectors')}</option>
           ${sectors.map(s => `<option value="${s}"${this.filters.sector === s ? ' selected' : ''}>${escapeHtml(getSectorLabel(s as GulfInvestmentSector))}</option>`).join('')}
         </select>
-        <select class="fdi-filter" data-filter="entity">
+        <select class="fdi-filter" data-filter="entity" aria-label="Filter by entity">
           <option value="ALL">${t('components.investments.allEntities')}</option>
           ${entities.map(e => `<option value="${escapeHtml(e)}"${this.filters.entity === e ? ' selected' : ''}>${escapeHtml(e)}</option>`).join('')}
         </select>
-        <select class="fdi-filter" data-filter="status">
+        <select class="fdi-filter" data-filter="status" aria-label="Filter by status">
           <option value="ALL">${t('components.investments.allStatuses')}</option>
           <option value="operational"${sel('operational')}>${t('components.investments.operational')}</option>
           <option value="under-construction"${sel('under-construction')}>${t('components.investments.underConstruction')}</option>

@@ -1,6 +1,6 @@
 ---
 title: "What Is a Maritime Chokepoint?"
-description: "Learn what maritime chokepoints are, how WorldMonitor tracks 13 waterways, and how to interpret live flow estimates, disruptions, and status scores."
+description: "Learn what maritime chokepoints are, how WorldMonitor tracks its waterway registry, and how to interpret live flow estimates, disruptions, and status scores."
 metaTitle: "What Is a Maritime Chokepoint? | WorldMonitor"
 keywords: "maritime chokepoint, shipping chokepoint, Strait of Hormuz, Suez Canal, supply chain risk, chokepoint monitoring"
 audience: "Logistics teams, maritime analysts, commodity traders, students, geopolitical risk readers"
@@ -35,9 +35,9 @@ Chokepoints matter for five reasons:
 
 A chokepoint does not need to close completely to matter. A credible threat, navigation warning, or traffic anomaly can be enough to change routing and pricing.
 
-## The 13 monitored waterways
+## The monitored-waterway registry
 
-WorldMonitor's canonical chokepoint registry currently monitors 13 waterways:
+WorldMonitor's canonical chokepoint registry includes:
 
 | Canonical id | Public name |
 |---|---|
@@ -111,7 +111,7 @@ For independently published baselines and current definitions, see the U.S. Ener
 
 No. Red means the combined disruption score is high. It can reflect military threat, active warnings, AIS disruption, anomaly signals, or several of those at once.
 
-**Why do only seven waterways have live flow estimates?**
+**Why do only some waterways have live flow estimates?**
 
 Because those seven have EIA baseline IDs in the current energy-flow seeder. The other canonical waterways can still have status and risk context without publishing an oil/gas flow estimate.
 

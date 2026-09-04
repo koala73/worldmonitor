@@ -21,6 +21,24 @@ const UMAMI_SCRIPT_TAG =
   + 'data-domains="worldmonitor.app,www.worldmonitor.app,happy.worldmonitor.app" '
   + 'nonce="wm-static-bootstrap"></script>';
 
+const DATASET_LICENSE = {
+  '@type': 'CreativeWork',
+  name: 'World Monitor Terms of Service (27 July 2026)',
+  url: 'https://www.worldmonitor.app/docs/terms',
+};
+
+// Mirrors WORLD_MONITOR_ORG in scripts/build-crawlable-corpus.mjs. Declared here
+// rather than imported because that module injects this one's template functions,
+// so importing back would close a cycle. Carries `@type` + `name` alongside the
+// `@id`: parsers resolve `@id` within one document and no /research/ page declares
+// the canonical Organization, so a bare reference would not resolve (#7459b).
+const WORLD_MONITOR_ORG = Object.freeze({
+  '@id': 'https://www.worldmonitor.app/#organization',
+  '@type': 'Organization',
+  name: 'World Monitor',
+  url: 'https://www.worldmonitor.app/',
+});
+
 const CHART_WIDTH = 720;
 const LINE_CHART_HEIGHT = 260;
 const BAR_CHART_HEIGHT = 240;
@@ -675,7 +693,17 @@ function trackedLink(href, text, target, escapeHtml, extraAttrs = '') {
   return `<a href="${escapeHtml(href)}" data-umami-event="research-cta" data-umami-event-target="${escapeHtml(target)}"${extraAttrs}>${text}</a>`;
 }
 
-export function renderResearchReportPage({ report, snapshot, metrics, tpl, baseUrl, lastmod, chokepointSlug }) {
+export function renderResearchReportPage({
+  report,
+  snapshot,
+  metrics,
+  tpl,
+  baseUrl,
+  lastmod,
+  chokepointSlug,
+  dataCatalog,
+  includedInDataCatalog,
+}) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, withUtmSource, pageDocument } = tpl;
   const SLUG_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
   if (!SLUG_PATTERN.test(report.slug) || !SLUG_PATTERN.test(report.id)) {
@@ -846,6 +874,7 @@ ${justification}
 
   const jsonLd = {
     '@context': 'https://schema.org',
+    '@id': `${canonical}#report`,
     '@type': 'Report',
     headline: report.title,
     name: report.title,
@@ -855,8 +884,12 @@ ${justification}
     dateModified: report.dateModified,
     version: report.version,
     inLanguage: 'en-US',
-    author: { '@type': 'Organization', name: report.author.name, url: report.author.url },
-    publisher: { '@type': 'Organization', name: 'World Monitor', url: 'https://www.worldmonitor.app/' },
+    // The "World Monitor Research" byline stays in the visible page text and the
+    // citation block; in the entity graph it folds into the canonical Organization
+    // so the page stops publishing a second, differently-named org claiming the
+    // same homepage url (#7459b).
+    author: { ...WORLD_MONITOR_ORG },
+    publisher: { ...WORLD_MONITOR_ORG },
     isBasedOn: 'https://portwatch.imf.org/',
     temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
     hasPart: {
@@ -864,7 +897,23 @@ ${justification}
       name: `Strait of Hormuz daily transit calls, ${focus.observationStart} to ${focus.observationEnd}`,
       description:
         'Daily AIS-observed vessel transit calls by class with deadweight-tonnage aggregates, from IMF PortWatch, frozen in a versioned snapshot.',
+      keywords: ['AIS vessel transits', 'Strait of Hormuz', 'maritime trade', 'IMF PortWatch'],
+      creator: { ...WORLD_MONITOR_ORG },
+      license: DATASET_LICENSE,
+      datePublished: report.datePublished,
       temporalCoverage: `${focus.observationStart}/${focus.observationEnd}`,
+      isAccessibleForFree: true,
+      includedInDataCatalog,
+      variableMeasured: [
+        'Daily vessel transit calls',
+        'Transit calls by vessel class',
+        'Deadweight-tonnage aggregates',
+      ],
+      spatialCoverage: {
+        '@type': 'Place',
+        name: focus.portwatchName,
+        identifier: report.focusChokepointId,
+      },
       isBasedOn: 'https://portwatch.imf.org/',
       distribution: [
         {
@@ -887,7 +936,7 @@ ${justification}
     title: `${report.metaTitle} | World Monitor`,
     description,
     lastmod,
-    jsonLd,
+    jsonLd: [jsonLd, dataCatalog].filter(Boolean),
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Research', path: '/research/' },
@@ -901,7 +950,7 @@ ${justification}
   return html;
 }
 
-export function renderResearchIndex({ reports, tpl, baseUrl, lastmod }) {
+export function renderResearchIndex({ reports, tpl, baseUrl, lastmod, dataCatalog }) {
   const { escapeHtml, absoluteUrl, breadcrumbLd, pageDocument } = tpl;
   const path = '/research/';
   const description =
@@ -922,14 +971,17 @@ ${reports.map((report) => `        <a class="card" href="/research/${escapeHtml(
     title: 'Research Reports | World Monitor',
     description,
     lastmod,
-    jsonLd: {
-      '@context': 'https://schema.org',
-      '@type': 'CollectionPage',
-      name: 'World Monitor research reports',
-      description,
-      url: absoluteUrl(baseUrl, path),
-      inLanguage: 'en-US',
-    },
+    jsonLd: [
+      {
+        '@context': 'https://schema.org',
+        '@type': 'CollectionPage',
+        name: 'World Monitor research reports',
+        description,
+        url: absoluteUrl(baseUrl, path),
+        inLanguage: 'en-US',
+      },
+      dataCatalog,
+    ].filter(Boolean),
     breadcrumbs: breadcrumbLd(baseUrl, [
       { name: 'Home', path: '/' },
       { name: 'Research', path },
@@ -943,7 +995,12 @@ ${reports.map((report) => `        <a class="card" href="/research/${escapeHtml(
 // Renders and writes the whole /research/ section (hub, report pages,
 // downloads). Owns its own file IO so build-crawlable-corpus.mjs stays the
 // template owner without also carrying the research wiring.
-export function writeResearchSection({ data, outDir, baseUrl, tpl }) {
+export function writeResearchSection({ data, outDir, baseUrl, tpl, dataCatalog, includedInDataCatalog }) {
+  if (!dataCatalog?.['@id'] || !includedInDataCatalog?.['@id']) {
+    throw new Error(
+      'writeResearchSection requires the canonical DataCatalog identity so research Datasets can join the catalog graph',
+    );
+  }
   mkdirSync(join(outDir, 'research'), { recursive: true });
   writeFileSync(
     join(outDir, 'research', 'index.html'),
@@ -952,6 +1009,7 @@ export function writeResearchSection({ data, outDir, baseUrl, tpl }) {
       tpl,
       baseUrl,
       lastmod: data.lastmod.research,
+      dataCatalog,
     }),
   );
   const chokepointSlugById = new Map(data.chokepoints.map((entry) => [entry.id, entry.slug]));
@@ -969,6 +1027,8 @@ export function writeResearchSection({ data, outDir, baseUrl, tpl }) {
         baseUrl,
         lastmod: data.lastmod.research,
         chokepointSlug: chokepointSlugById.get(report.focusChokepointId),
+        dataCatalog,
+        includedInDataCatalog,
       }),
     );
     const downloadFiles = downloadFileNames(report);

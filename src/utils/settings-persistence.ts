@@ -27,6 +27,9 @@ const SETTINGS_KEY_PREFIXES: readonly string[] = [
   'worldmonitor-webcam-prefs',
   'wm-map-theme:',
   'map-height',
+  'map-split-height',
+  'map-col-width',
+  'map-side',
   'map-pinned',
   'mobile-map-collapsed',
   'positive-threshold',
@@ -35,6 +38,8 @@ const SETTINGS_KEY_PREFIXES: readonly string[] = [
 function isSettingsKey(key: string): boolean {
   return SETTINGS_KEY_PREFIXES.some(prefix => key.startsWith(prefix));
 }
+
+export const __testing__ = { isSettingsKey };
 
 export function exportSettings(): void {
   const data: Record<string, string> = {};

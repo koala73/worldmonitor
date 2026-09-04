@@ -4,11 +4,19 @@
  * Clerk-authenticated read-only endpoint that returns the caller's current
  * Pro MCP daily quota usage. Reads the SAME Redis key shape that U7 writes
  * via INCR-first reservation in `api/mcp.ts` (`mcp:pro-usage:<userId>:<YYYY-MM-DD>`).
- * Single source of truth — `dailyCounterKey` is imported from
- * `server/_shared/pro-mcp-token.ts` so a writer/reader drift cannot occur.
+ * Single source of truth — the counter key comes from `budgetCounterKey` in
+ * `api/mcp/quota.ts`, the same helper the reservation writes through, so a
+ * writer/reader drift cannot occur.
  *
  * Response shape:
- *   200 { used: number, limit: number | null, resetsAt: <ISO at next UTC midnight> }
+ *   200 { used: number, limit: number | null, resetsAt: <ISO at next UTC midnight>,
+ *         sharedWithRestApi: boolean }
+ *
+ * `sharedWithRestApi` says whether `used` counts REST requests too. It mirrors
+ * the same field on the `worldmonitor://account/mcp-allowance` MCP resource,
+ * from the same `isSharedRestCounter` predicate that picks the key both read —
+ * so the settings display and the agent-facing resource cannot describe one
+ * number two different ways.
  *
  * `limit` is the caller's PLAN allowance (plan 2026-07-25-001 U3b), resolved
  * from `features.planLimits.mcpCallsPerDay` through the SAME `resolveDailyLimit`
@@ -42,12 +50,18 @@ import { getCorsHeaders } from '../_cors.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { resolveClerkSession } from '../../server/_shared/auth-session';
-import { getEntitlements } from '../../server/_shared/entitlement-check';
-import { resolveDailyLimit, resolvePlanDrivenMcpAllowance } from '../mcp/quota';
 import {
-  dailyCounterKey,
-  secondsUntilUtcMidnight,
-} from '../../server/_shared/pro-mcp-token';
+  getEntitlements,
+  isEntitlementBackendConfigured,
+  type CachedEntitlements,
+} from '../../server/_shared/entitlement-check';
+import { checkProMcpAccess } from '../../server/_shared/pro-mcp-gate';
+import { budgetCounterKey, isSharedRestCounter, resolveDailyLimit, resolveMcpBudget, type McpBudget } from '../mcp/quota';
+import {
+  FREE_ACCOUNT_CALLS_PER_DAY,
+  freeAccountCallsKey,
+} from '../mcp/free-account-allowance';
+import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
 
 /** Inner handler — exported for unit tests with injected deps. */
 export interface QuotaDeps {
@@ -60,16 +74,11 @@ export interface QuotaDeps {
    */
   redisGet: (key: string) => Promise<string | null>;
   /**
-   * Cached entitlement read for the plan allowance. Only `planKey` and
-   * `features.planLimits.mcpCallsPerDay` are consumed; null/throw fall back
-   * to the plan default via `resolveDailyLimit`.
+   * Cached entitlement read for both the plan allowance and the shared Pro MCP
+   * decision. Keep this as the complete cached shape so the compiler checks
+   * every field consumed by `checkProMcpAccess`.
    */
-  getEntitlements: (userId: string) => Promise<{
-    planKey?: string;
-    features?: {
-      planLimits?: { mcpCallsPerDay?: number | null };
-    };
-  } | null>;
+  getEntitlements: (userId: string) => Promise<CachedEntitlements | null>;
   /** Injectable for deterministic tests. */
   now: () => Date;
 }
@@ -116,18 +125,30 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   }
 
   const now = deps.now();
-  const key = dailyCounterKey(userId, now);
 
-  // Plan allowance first — `used` is clamped to THIS number, not to the
-  // historical 50. An unreadable entitlement leaves `planDailyLimit`
-  // undefined, which resolveDailyLimit turns into the plan default. The
-  // plan-family gate mirrors enforcement (`checkMcpEntitlementGate`): an
-  // API-tier plan's catalog allowance is NOT what the meter applies, so it
-  // must not be what this endpoint displays.
-  let planDailyLimit: number | null | undefined;
+  // Budget first — `used` is clamped to THIS number, not to the historical 50.
+  // An unreadable entitlement leaves `budget` undefined, which resolves to the
+  // dedicated Pro default. `resolveMcpBudget` is the same resolver enforcement
+  // uses, so an API-tier caller displays the shared REST budget it is actually
+  // metered against rather than a separate MCP number that never existed.
+  let budget: McpBudget | undefined;
+  // #6716 F7: which METER applies decides which counter to read. A caller the
+  // Pro gate classifies as `free_account` is metered by
+  // `reserveFreeAccountAllowance` against `mcp:free-acct:calls:*`, NOT by
+  // `reserveQuota` against the budget counter. Reading the Pro key for such a
+  // caller reports a permanent `used: 0` — the display/enforcement drift this
+  // endpoint exists to prevent. Resolve the meter from the same verdict the
+  // enforcement site uses, then read that meter's key.
+  let onFreeAllowance = false;
   try {
     const ent = await deps.getEntitlements(userId);
-    planDailyLimit = resolvePlanDrivenMcpAllowance(ent?.planKey, ent?.features?.planLimits?.mcpCallsPerDay);
+    budget = resolveMcpBudget(
+      ent?.features?.planLimits?.mcpCallsPerDay,
+      ent?.features?.planLimits?.apiRequestsPerDay,
+    );
+    onFreeAllowance = checkProMcpAccess(ent, now.getTime(), {
+      backendConfigured: isEntitlementBackendConfigured(),
+    })?.kind === 'free_account';
   } catch (err) {
     console.warn(
       '[mcp-quota] entitlement lookup failed:',
@@ -137,7 +158,19 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
       tags: { route: 'api/user/mcp-quota', step: 'entitlements' },
     });
   }
-  const limit = resolveDailyLimit(planDailyLimit);
+  // The free ceiling is NOT a plan allowance — it comes from the constant the
+  // reservation enforces, so the catalog's free `mcpCallsPerDay: 0` cannot make
+  // this endpoint under-report.
+  const limit = onFreeAllowance
+    ? FREE_ACCOUNT_CALLS_PER_DAY
+    : resolveDailyLimit(budget?.limit);
+  const key = onFreeAllowance
+    ? freeAccountCallsKey(userId, now.getTime())
+    : budgetCounterKey(budget, userId, now);
+  // Derived from the SAME branch that picked the key, so the flag describes the
+  // counter `used` was actually read from rather than a budget that was
+  // resolved and then not used.
+  const sharedWithRestApi = !onFreeAllowance && isSharedRestCounter(budget);
 
   let raw: string | null = null;
   try {
@@ -174,7 +207,7 @@ export async function quotaHandler(req: Request, deps: QuotaDeps): Promise<Respo
   const resetsAt = new Date(resetsAtMs).toISOString();
 
   return new Response(
-    JSON.stringify({ used, limit, resetsAt }),
+    JSON.stringify({ used, limit, resetsAt, sharedWithRestApi }),
     { status: 200, headers: jsonHeaders },
   );
 }

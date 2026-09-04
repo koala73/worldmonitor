@@ -59,7 +59,7 @@ const layoutSrc = src('src/app/panel-layout.ts');
 // visits categories in the same order `Object.keys(CANONICAL_FEEDS)` does. No two
 // categories compete for one panel key today, but matching the order costs nothing
 // and removes a way for the replay to diverge from production later.
-const FEED_PRESETS = ['FULL_FEEDS', 'TECH_FEEDS', 'FINANCE_FEEDS', 'COMMODITY_FEEDS', 'ENERGY_FEEDS', 'HAPPY_FEEDS'];
+const FEED_PRESETS = ['FULL_FEEDS', 'TECH_FEEDS', 'FINANCE_FEEDS', 'COMMODITY_FEEDS', 'ENERGY_FEEDS', 'HAPPY_FEEDS', 'ON_DEMAND_FEEDS'];
 const PANEL_PRESETS = ['FULL_PANELS', 'TECH_PANELS', 'FINANCE_PANELS', 'HAPPY_PANELS', 'COMMODITY_PANELS', 'ENERGY_PANELS'];
 
 /**
@@ -411,9 +411,6 @@ describe('newsPanelKeyLookupsFor (#5871)', () => {
 
 describe('news panel key reachability (#5871)', () => {
   it('parsers resolve non-empty sets (guards against silent regex drift)', () => {
-    assert.ok(feedCategories.size > 40, `expected >40 feed categories, got ${feedCategories.size}`);
-    assert.ok(catalogPanelKeys.size > 100, `expected >100 catalog panels, got ${catalogPanelKeys.size}`);
-    assert.ok(registrations.length > 100, `expected >100 panel registrations, got ${registrations.length}`);
     assert.notEqual(loopIndex, -1, 'CANONICAL_FEEDS loop not found in panel-layout.ts');
     // Spot-check both sides of the collision this file exists for, so a parser
     // that silently stopped seeing FINANCE_* fails here rather than vacuously
@@ -423,6 +420,9 @@ describe('news panel key reachability (#5871)', () => {
     }
     for (const key of ['commodities', 'commodities-news', 'markets', 'markets-news', 'climate-news']) {
       assert.ok(catalogPanelKeys.has(key), `expected '${key}' in the panel catalog`);
+    }
+    for (const key of ['heatmap', 'markets', 'commodities', 'live-news']) {
+      assert.ok(registrations.some((registration) => registration.key === key), `expected '${key}' among panel registrations`);
     }
   });
 

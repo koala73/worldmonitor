@@ -236,6 +236,54 @@ describe('extractConvexErrorKind — Convex client error → kind', () => {
     });
   });
 
+  describe('Convex response-body JSON parse failure — truncated/corrupt body (WORLDMONITOR-YV)', () => {
+    it('detects SERVICE_UNAVAILABLE from a JSON.parse SyntaxError (truncated body)', () => {
+      // The Convex HTTP client's `response.json()` throws a raw SyntaxError
+      // when the response body is truncated mid-transfer (connection dropped
+      // after headers). `.data` is undefined — the request never yielded a
+      // parseable Convex response. Same transient retry-with-back-off
+      // remediation as the platform 503; without this match the catch fell
+      // to the 'unknown' bucket at error level and returned a hard 500
+      // (WORLDMONITOR-YV: `Unterminated string in JSON at position 12997`).
+      const err = new SyntaxError('Unterminated string in JSON at position 12997 (line 1 column 12998)');
+      assert.equal(extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE');
+    });
+
+    it('covers the other V8 JSON.parse shapes (end-of-input, invalid-JSON snippet)', () => {
+      const shapes = [
+        'Unexpected end of JSON input',
+        `Unexpected token '<', "<html><bod"... is not valid JSON`,
+        'Expected \',\' or \'}\' after property value in JSON at position 42',
+      ];
+      for (const msg of shapes) {
+        const err = new SyntaxError(msg);
+        assert.equal(
+          extractConvexErrorKind(err, err.message), 'SERVICE_UNAVAILABLE',
+          `expected SERVICE_UNAVAILABLE for: ${msg}`,
+        );
+      }
+    });
+
+    it('does NOT match a plain Error whose message merely mentions JSON (name gate)', () => {
+      // The detector keys on err.name === 'SyntaxError' so free-form server
+      // prose about JSON is not mis-bucketed as a transport failure.
+      const err = new Error('Unterminated string in JSON at position 5');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('does NOT match a SyntaxError without JSON in the message', () => {
+      const err = new SyntaxError('Invalid regular expression: missing /');
+      assert.equal(extractConvexErrorKind(err, err.message), null);
+    });
+
+    it('structured-data path still wins over a JSON-parse-shaped message (forward-compat)', () => {
+      const err = Object.assign(new SyntaxError('Unexpected end of JSON input'), {
+        data: { kind: 'CONFLICT' },
+      });
+      assert.equal(extractConvexErrorKind(err, err.message), 'CONFLICT');
+    });
+  });
+
   describe('legacy substring-match fallback (string-data ConvexError that arrived without errorData)', () => {
     it('matches CONFLICT in the message', () => {
       const err = new Error('CONFLICT');

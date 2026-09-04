@@ -25,7 +25,7 @@ Prefer the canonical URLs in new code — the aliases will retire at the next v1
 
 ### `GET /api/scenario/v1/list-scenario-templates`
 
-Returns the catalog of pre-defined scenario templates. Cached `public, max-age=3600`.
+Returns the catalog of pre-defined scenario templates. Cached `public, max-age=3600, s-maxage=14400, stale-while-revalidate=7200` (CDN holds it up to a day).
 
 **Response** — abbreviated example using one of the live shipped templates (`server/worldmonitor/supply-chain/v1/scenario-templates.ts`):
 ```json
@@ -90,9 +90,9 @@ Treat any `2xx` as enqueue success. The interim guidance to branch on response b
 
 | Status | `message` | Cause |
 |--------|-----------|-------|
-| 400 | `Validation failed` (violations include `scenarioId`) | Missing or unknown `scenarioId` |
-| 400 | `Validation failed` (violations include `iso2`) | Malformed `iso2` |
-| 403 | `PRO subscription required` | Not PRO |
+| 400 | — (body is `{"violations":[…]}`, no `message`; violations include `scenarioId`) | Missing or unknown `scenarioId` |
+| 400 | — (body is `{"violations":[…]}`; violations include `iso2`) | Malformed `iso2` |
+| 403 | `Pro subscription required` | Not Pro |
 | 405 | — | Method other than `POST` (enforced by sebuf service-config) |
 | 429 | `Too many requests` | Per-IP 10/min gateway rate limit |
 | 429 | `Scenario queue is at capacity, please try again later` | Pending queue depth is greater than 100 before enqueue |
@@ -173,8 +173,8 @@ Poll loop: treat `pending` and `processing` as non-terminal; only `done` and `fa
 
 | Status | `message` | Cause |
 |--------|-----------|-------|
-| 400 | `Validation failed` (violations include `jobId`) | Missing or malformed `jobId` |
-| 403 | `PRO subscription required` | Not PRO |
+| 400 | — (body is `{"violations":[…]}`, no `message`; violations include `jobId`) | Missing or malformed `jobId` |
+| 403 | `Pro subscription required` | Not Pro |
 | 405 | — | Method other than `GET` (enforced by sebuf service-config) |
 | 502 | `Failed to fetch job status` | Redis read failure |
 

@@ -7,13 +7,18 @@
  *      (historical path; Dodo-owned URL shape)
  *   2. Dodo full-page redirect with failure: `?status=failed|declined|
  *      cancelled` (same URL shape, different status)
- *   3. `/pro` overlay-success bridge: `?wm_checkout=success` — set by
- *      the /pro marketing page when its embedded Dodo overlay
- *      resolves; used when the buyer is redirected from /pro to the
- *      main dashboard and the overlay's manualRedirect means Dodo
- *      itself doesn't write any URL params. The marker is a WorldMonitor-
- *      namespaced param (not `?success=`) to avoid collision with
- *      unrelated query strings and to make the origin intent-explicit.
+ *   3. Overlay-success bridge: `?wm_checkout=success` — historically set
+ *      by /pro when its embedded Dodo overlay resolved, because the
+ *      overlay's manualRedirect meant Dodo itself wrote no URL params.
+ *      The marker is a WorldMonitor-namespaced param (not `?success=`) to
+ *      avoid collision with unrelated query strings and to make the origin
+ *      intent-explicit. NO PRODUCER REMAINS: #7222 deleted /pro's
+ *      `initOverlay` and `DASHBOARD_CHECKOUT_SUCCESS_URL`, and the
+ *      dashboard's own `openCheckout` is dormant with zero callers. The
+ *      acceptor below is retained only for the dormant dashboard overlay —
+ *      retire it together with that machinery, or an attacker-supplied link
+ *      stays the only way to reach it. It grants no entitlement (Convex
+ *      stays authoritative); the effect is UX/analytics only.
  *   4. Dashboard full-page return bridge: `?wm_checkout=return` — set
  *      as the merchant return URL for Dodo sessions so 3DS returns land
  *      on the dashboard route instead of `/`, which is now the public
@@ -46,34 +51,38 @@ export type CheckoutReturnResult =
   | { kind: 'success'; source?: CheckoutReturnSource }
   | { kind: 'failed'; rawStatus: string };
 
-export interface CheckoutReturnRouting {
-  returnedFromDesktopBrowser: boolean;
-  returnedFromOverlay: boolean;
-  returnedFromCheckout: boolean;
-  returnedFromAccountCheckout: boolean;
-}
+/**
+ * The routing outcome after page-level checkout signals are resolved — a closed
+ * set of the real cases, so impossible combinations (e.g. a desktop success
+ * that is also an overlay return) are unrepresentable rather than sitting as a
+ * 16-combination boolean product. Consumers derive their booleans from `kind`:
+ *   - 'none'    → not a checkout return (or a failed return that must not seed)
+ *   - 'overlay' → /pro overlay-success bridge (no URL outcome, stale flag only)
+ *   - 'desktop' → desktop-source success; acknowledge but stay account-agnostic
+ *   - 'account' → browser account-checkout success; seed activation + reload
+ */
+export type CheckoutReturnRouting =
+  | { kind: 'none' }
+  | { kind: 'overlay' }
+  | { kind: 'desktop' }
+  | { kind: 'account' };
 
 /**
  * Resolve page-level checkout signals after URL parsing and overlay-flag
- * consumption. A URL result wins over a stale overlay flag, including a
- * failed Dodo result that must never be promoted to success.
+ * consumption. A URL result wins over a stale overlay flag: a failed Dodo
+ * result resolves to 'none' and is never promoted to an overlay return.
  */
 export function resolveCheckoutReturnRouting(
   result: CheckoutReturnResult,
   overlayFlag: boolean,
 ): CheckoutReturnRouting {
-  const returnedFromDesktopBrowser =
-    result.kind === 'success' && result.source === DESKTOP_CHECKOUT_SOURCE;
-  const returnedFromOverlay = result.kind === 'none' && overlayFlag;
-  const returnedFromCheckout = result.kind === 'success' || returnedFromOverlay;
-  const returnedFromAccountCheckout =
-    (result.kind === 'success' && !returnedFromDesktopBrowser) || returnedFromOverlay;
-  return {
-    returnedFromDesktopBrowser,
-    returnedFromOverlay,
-    returnedFromCheckout,
-    returnedFromAccountCheckout,
-  };
+  if (result.kind === 'success') {
+    return result.source === DESKTOP_CHECKOUT_SOURCE ? { kind: 'desktop' } : { kind: 'account' };
+  }
+  if (result.kind === 'none' && overlayFlag) {
+    return { kind: 'overlay' };
+  }
+  return { kind: 'none' };
 }
 
 const SUCCESS_STATUSES = new Set(['active', 'succeeded']);

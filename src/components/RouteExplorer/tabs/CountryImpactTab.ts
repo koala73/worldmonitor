@@ -169,7 +169,7 @@ export class CountryImpactTab {
     );
     return [
       '<table class="re-impact__products">',
-      '<thead><tr><th>HS4</th><th>Product</th><th>Value</th><th>Top Exporter</th><th>Chokepoint</th></tr></thead>',
+      '<thead><tr><th scope="col">HS4</th><th scope="col">Product</th><th scope="col">Value</th><th scope="col">Top Exporter</th><th scope="col">Chokepoint</th></tr></thead>',
       `<tbody>${rows.join('')}</tbody>`,
       '</table>',
     ].join('');
@@ -184,7 +184,7 @@ export class CountryImpactTab {
       const drill = () => this.opts.onDrillSideways?.(hs2);
       row.addEventListener('click', drill);
       row.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') { e.preventDefault(); drill(); }
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); drill(); }
       });
     });
   }

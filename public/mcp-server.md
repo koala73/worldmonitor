@@ -1,8 +1,10 @@
 # World Monitor MCP Server
 
-Last updated: July 7, 2026
+Last updated: August 19, 2026
 
 The World Monitor MCP Server exposes World Monitor's real-time global-intelligence stack over the [Model Context Protocol](https://modelcontextprotocol.io), so any MCP-compatible client — Claude Desktop, Claude web, Cursor, MCP Inspector, or a custom agent — can pull live conflict, market, aviation, maritime, economic, cyber, and forecasting data directly into a model's context. It is the recommended way for AI agents to consume World Monitor data.
+
+This persistent hosted server is distinct from [WorldMonitor WebMCP](https://www.worldmonitor.app/docs/webmcp), an experimental, page-local Chrome interface that operates the visible website. WebMCP does not replace the hosted MCP server; remote, background, headless, and direct-data agents should use the endpoint below.
 
 ## Endpoint
 
@@ -12,11 +14,11 @@ The World Monitor MCP Server exposes World Monitor's real-time global-intelligen
 
 ## Tools
 
-The server ships **59 tools** covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. Every tool accepts an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath), typically an 80–95% response-size cut.
+The server ships tools covering world and country briefs, country risk and resilience, China decision signals, conflict events, markets, commodities, global procurement opportunities, energy, maritime and aviation activity, cyber threats, sanctions, natural disasters, health signals, prediction markets, and AI forecasts. Issue `tools/list` for the live inventory, `prompts/list` for pre-built workflow templates, and `resources/list` for read-only resources. `tools/list`, `prompts/list`, and `resources/list` are **public** — no key required. Every tool accepts an optional `jmespath` argument for [server-side projection](https://www.worldmonitor.app/docs/mcp-jmespath), typically an 80–95% response-size cut.
 
 ## MCP Apps
 
-World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with ten interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, and `get_forecast_predictions`; their UI resources are:
+World Monitor supports MCP Apps (`io.modelcontextprotocol/ui`) with interactive `ui://` app shells. The linked tools are `get_country_risk`, `get_world_brief`, `get_country_brief`, `get_market_data`, `get_chokepoint_status`, `get_news_intelligence`, `get_conflict_events`, `get_natural_disasters`, `get_prediction_markets`, and `get_forecast_predictions`; their UI resources are:
 
 - `ui://worldmonitor/country-risk.html`
 - `ui://worldmonitor/world-brief.html`
@@ -34,9 +36,10 @@ Hosts discover the links through `_meta.ui.resourceUri` in `tools/list`, enumera
 ## Authentication
 
 - **`tools/list` and other discovery calls:** anonymous, no key.
-- **`tools/call` and `resources/read` (data):** need either an API key or OAuth.
-  - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://worldmonitor.app/pro. Rate limit: 60 requests/minute/key.
-  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. Any OAuth-connected context — Pro *or* API tier — shares one 50 quota-consuming `tools/call` / `resources/read` counter per UTC day; API-tier clients that authenticate with a `wm_…` key instead have no daily reservation (only the 60 requests/minute limiter).
+- **`get_sources` via `tools/call`:** no credentials and no daily quota; separate fail-closed limit of 10 anonymous calls/minute/IP. Its `tools/list` and server-card entries carry `_meta["worldmonitor/access"]: "free"`.
+- **All other data-bearing `tools/call` and `resources/read`:** need subscription access through an API key or OAuth.
+  - **API key:** header `X-WorldMonitor-Key: wm_<40-hex>` — issue one at https://worldmonitor.app/pro. Per-minute burst is plan-resolved and shared per user across all of an account's keys and OAuth tokens: 60/minute on Pro, Pro Business and API Starter, 300 on API Business, 1,000 on Enterprise. Legacy operator-issued keys stay at a flat 60/minute/key.
+  - **OAuth 2.1 (`scope=mcp`):** Pro and API tiers can both connect via OAuth with no API key. Dynamic Client Registration (RFC 7591) at `https://worldmonitor.app/oauth/register`; authorization and token endpoints follow OAuth 2.1 with PKCE. The daily allowance is plan-resolved and identical on both doors, so a dashboard-issued `wm_…` key gets the same budget as an OAuth token for the same account. Pro is 50 quota-consuming `tools/call` / `resources/read` calls per UTC day and Pro Business is 250, one unit per call on a dedicated MCP counter. API Starter is 1,000 units/day and API Business is 10,000, drawn from the same allowance as their REST requests and charged at a per-tool weight of 1 for a cache read, 2 for a live downstream fetch, 3 for `get_country_brief` and `get_airspace`. Enterprise can be unlimited. Quota-free metadata methods and `get_sources` do not reserve a daily slot.
 
 Full agent walkthrough: [auth.md](https://worldmonitor.app/auth.md). Authorization-server metadata: https://worldmonitor.app/.well-known/oauth-authorization-server · protected-resource metadata: https://worldmonitor.app/.well-known/oauth-protected-resource
 
@@ -52,6 +55,7 @@ Add the server to Claude Desktop / Cursor via their MCP settings using the URL `
 ## Learn more
 
 - [MCP Overview](https://www.worldmonitor.app/docs/mcp-overview) — auth modes, plans, OAuth setup, full tool catalog
+- [WebMCP](https://www.worldmonitor.app/docs/webmcp) — experimental visible-tab browser tools and their security/debugging contract
 - [MCP Apps](https://www.worldmonitor.app/docs/mcp-apps) — interactive `ui://` resources, host flow, view security, and drift checks
 - [MCP Quickstart](https://www.worldmonitor.app/docs/mcp-quickstart) · [Tool reference](https://www.worldmonitor.app/docs/mcp-tools-reference) · [JMESPath projection](https://www.worldmonitor.app/docs/mcp-jmespath) · [Error catalog](https://www.worldmonitor.app/docs/mcp-error-catalog)
 - [Developer Portal](https://worldmonitor.app/developers.md) · [REST API OpenAPI spec](https://worldmonitor.app/openapi.md) · [SDKs](https://worldmonitor.app/sdks.md) · [agents.md](https://worldmonitor.app/agents.md)

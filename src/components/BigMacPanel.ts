@@ -50,7 +50,7 @@ export class BigMacPanel extends Panel {
     const minCode = sorted[sorted.length - 1]?.code;
 
     const showWow = data.wowAvailable && data.wowAvgPct !== undefined;
-    const wowHeader = showWow ? `<th class="gb-cell">${t('panels.bigmacWow')}</th>` : '';
+    const wowHeader = showWow ? `<th scope="col" class="gb-cell">${t('panels.bigmacWow')}</th>` : '';
 
     const rows = sorted.map(c => {
       const cls = c.code === minCode ? 'gb-cheapest' : c.code === maxCode ? 'gb-priciest' : '';
@@ -88,8 +88,8 @@ export class BigMacPanel extends Panel {
         <div class="gb-scroll">
           <table class="gb-table">
             <thead><tr>
-              <th class="gb-item-col">${t('panels.bigmacCountry')}</th>
-              <th class="gb-cell">USD</th>
+              <th scope="col" class="gb-item-col">${t('panels.bigmacCountry')}</th>
+              <th scope="col" class="gb-cell">USD</th>
               ${wowHeader}
             </tr></thead>
             <tbody>${rows}</tbody>

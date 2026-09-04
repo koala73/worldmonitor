@@ -69,7 +69,7 @@ function buildChart(points: FaoFoodPricePoint[]): string {
     const y = yPos(v, yMin, yMax);
     return `
       <line x1="${ML}" y1="${y.toFixed(1)}" x2="${SVG_W - MR}" y2="${y.toFixed(1)}" stroke="rgba(255,255,255,0.06)" stroke-width="1"/>
-      <text x="${(ML - 3).toFixed(0)}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" font-size="8" dominant-baseline="middle">${v.toFixed(0)}</text>`;
+      <text x="${(ML - 3).toFixed(0)}" y="${y.toFixed(1)}" text-anchor="end" fill="rgba(255,255,255,0.35)" style="font-size:calc(8px * var(--wm-panel-effective-scale, 1))" dominant-baseline="middle">${v.toFixed(0)}</text>`;
   }).join('');
 
   // X-axis labels (show every 3rd month to avoid crowding)
@@ -77,7 +77,7 @@ function buildChart(points: FaoFoodPricePoint[]): string {
     if (i % 3 !== 0 && i !== points.length - 1) return '';
     const x = xPos(i, points.length);
     const label = p.date;
-    return `<text x="${x.toFixed(1)}" y="${SVG_H - MB + 12}" text-anchor="middle" fill="rgba(255,255,255,0.4)" font-size="7">${escapeHtml(label)}</text>`;
+    return `<text x="${x.toFixed(1)}" y="${SVG_H - MB + 12}" text-anchor="middle" fill="rgba(255,255,255,0.4)" style="font-size:calc(7px * var(--wm-panel-effective-scale, 1))">${escapeHtml(label)}</text>`;
   }).join('');
 
   // Series lines
@@ -87,7 +87,7 @@ function buildChart(points: FaoFoodPricePoint[]): string {
     return `<polyline points="${coords}" fill="none" stroke="${s.color}" stroke-width="${s.key === 'ffpi' ? 2 : 1.2}" opacity="${s.key === 'ffpi' ? 1 : 0.7}"/>`;
   }).join('');
 
-  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" style="width:100%;height:auto;display:block">${yAxis}${xAxis}${lines}</svg>`;
+  return `<svg viewBox="0 0 ${SVG_W} ${SVG_H}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="FAO food price index history by commodity group" style="width:100%;height:auto;display:block">${yAxis}${xAxis}${lines}</svg>`;
 }
 
 function buildLegend(): string {

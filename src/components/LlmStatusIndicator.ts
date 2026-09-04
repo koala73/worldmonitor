@@ -22,7 +22,7 @@ export class LlmStatusIndicator {
       style: 'display:inline-block;width:6px;height:6px;border-radius:50%;background:#ff4444;margin-right:4px;',
     });
     this.label = h('span', {
-      style: 'font-size:9px;letter-spacing:0.5px;opacity:0.7;',
+      style: 'font-size:calc(9px * var(--wm-panel-effective-scale, 1));letter-spacing:0.5px;opacity:0.7;',
     }, 'LLM');
     this.element = h('div', {
       className: 'llm-status-indicator',

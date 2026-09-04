@@ -20,7 +20,8 @@ import {
 import type { CountryScore } from '@/services/country-instability';
 import { fetchCachedRiskScores, isElevatedCiiScore, toCountryScore, type CachedRiskScores } from '@/services/cached-risk-scores';
 import { getCachedPosture } from '@/services/cached-theater-posture';
-import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
+import { trustedHtml } from '@/utils/dom-utils';
+import { bindActivationKeys } from '@/utils/activation';
 
 type StrategicRiskDisplayLevel = 'critical' | 'high' | 'elevated' | 'normal' | 'low';
 type StrategicRiskDisplayBand = {
@@ -57,6 +58,7 @@ export class StrategicRiskPanel extends Panel {
       infoTooltip: t('components.strategicRisk.infoTooltip'),
     });
     this.init();
+    bindActivationKeys(this.content, '.risk-item-clickable, .risk-alert-clickable');
   }
 
   private async init(): Promise<void> {
@@ -407,7 +409,7 @@ export class StrategicRiskPanel extends Panel {
       const isConvergence = i === 0 && risk.startsWith('Convergence:') && topZone;
       if (isConvergence) {
         return `
-                <div class="risk-item risk-item-clickable" data-lat="${topZone.lat}" data-lon="${topZone.lon}">
+                <div class="risk-item risk-item-clickable" data-lat="${topZone.lat}" data-lon="${topZone.lon}" role="button" tabindex="0">
                   <span class="risk-rank">${i + 1}.</span>
                   <span class="risk-text">${escapeHtml(risk)}</span>
                   <span class="risk-location-icon">↗</span>
@@ -441,7 +443,7 @@ export class StrategicRiskPanel extends Panel {
       const hasLocation = alert.location?.lat && alert.location.lon;
       const clickableClass = hasLocation ? 'risk-alert-clickable' : '';
       const locationAttrs = hasLocation
-        ? `data-lat="${alert.location!.lat}" data-lon="${alert.location!.lon}"`
+        ? `data-lat="${alert.location!.lat}" data-lon="${alert.location!.lon}" role="button" tabindex="0"`
         : '';
 
       return `
@@ -487,7 +489,7 @@ export class StrategicRiskPanel extends Panel {
         return;
       }
 
-      setTrustedHtml(this.content, trustedHtml(this.renderFullData(), "legacy direct innerHTML migration"));
+      this.setTrustedContent(trustedHtml(this.renderFullData(), "legacy direct innerHTML migration"));
       this.attachEventListeners();
     } catch (e: unknown) {
       console.error('[StrategicRiskPanel] Render error:', e);

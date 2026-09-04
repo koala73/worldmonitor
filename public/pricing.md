@@ -16,14 +16,14 @@ Live tier/price/product-ID data (JSON): `GET https://www.worldmonitor.app/api/pr
 
 World Monitor attribution is optional in reports, presentations and derived analysis permitted by your plan. If you choose to credit us, "Source: World Monitor" or "via World Monitor" is sufficient. Source-specific notices supplied with an output still apply.
 
-These subscription licenses cover the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. Full scope, examples and restrictions: https://worldmonitor.app/docs/terms#subscription-license-scope
+These subscription licenses cover the hosted Service and its outputs. They are separate from the AGPL-3.0-only platform source-code license and the MIT licenses on the official thin clients. Full scope, examples, output-retention classes and restrictions, covering the dashboard, desktop apps, API, MCP server, SDKs, embeds and alerts: https://worldmonitor.app/docs/eula
 
 ## Free
 
 - Price: $0/month
 - Signup required: No
 - Best for: Public situational awareness, OSINT research, market/geopolitical context, news monitoring
-- Includes: 56 map layers (all free except Resilience, which is Pro), 500+ curated feeds, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
+- Includes: all registered map layers except the Pro-only Resilience layer, curated feeds backed by observed upstream hosts, country briefs, hotspots, instability scores, chokepoints, cables, cascade analysis, breaking alert pipeline and watchlists
 - Limits: 3 dashboard tabs; free dashboard refresh cadence is typically 5-15 minutes; advanced analyst, digest, API and team workflows require paid plans
 
 ## Pro
@@ -32,7 +32,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $359.99/year
 - Annual savings: 3 months free versus monthly billing
 - Best for: Investors, analysts, researchers, traders and operators who need the decision layer on top of the free dashboard
-- Includes: WM Analyst chat across 30+ live services with citations, Scenario Engine, Route Explorer, personal AI digest, custom widget builder, the Resilience map layer, MCP access and 59 tools under one key
+- Seats: 1 named user
+- Includes: WM Analyst chat across live services with citations, Scenario Engine, Route Explorer, cost-shock modelling and supply-chain stress tests (chokepoints, cascades, vulnerability rankings), intel memory with historical search and similar-event lookup, physical metals divergence, mineral production concentration, sovereign debt series, personal AI digest, custom widget builder, the Resilience map layer, uncapped panels, sources and followed countries, and MCP access under one key
 - License: Personal use
 - Limits: 10 custom dashboards, 500 dashboard-AI requests/day, MCP + SDK 50 calls/day
 - Digest cadence: Daily, twice-daily or weekly
@@ -43,7 +44,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Price: $49.99/month
 - Annual price: $449.99/year
 - Annual savings: 3 months free versus monthly billing
-- Best for: Consultants, agencies and teams who use the Pro dashboard for client work, internal tools or reporting
+- Best for: Consultants, agencies and independent analysts who use the Pro dashboard for client work, internal tools or reporting
+- Seats: 1 named user — a seat is one person, not a shared login
 - Includes: Everything in Pro, plus data export (CSV, JSON and PDF reports)
 - License: Commercial license included — use WorldMonitor for client work, internal tools and reporting
 - Limits: 25 custom dashboards, 2,500 dashboard-AI requests/day, MCP + SDK 250 calls/day
@@ -58,7 +60,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Best for: Developers and teams that want programmatic access to World Monitor intelligence data
 - Includes: REST API access, license / API key creation (the `wm_` key used by the desktop app and API), structured JSON, cache headers, OpenAPI docs, real-time data streams and webhook notifications
 - License: Commercial license for your organization — build internal tools and reporting on the data; redistributing it to your own customers requires API Business
-- Starter limit: 1,000 requests/day
+- Starter limit: 1,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
 - Starter webhooks: 5 webhook rules
 
 ## API Business
@@ -67,9 +69,9 @@ These subscription licenses cover the hosted Service and its outputs. They are s
 - Annual price: $2,699.99/year
 - Annual savings: about 25 percent versus monthly billing
 - Best for: Teams with high-volume programmatic workloads that outgrow the Starter quota
-- Includes: Everything in API Starter, redistribution rights, 5 Pro licenses included and priority support
-- License: Commercial license for your customers — embed WorldMonitor data in what you sell; the 5 bundled Pro seats all require the same company email domain
-- Limits: 300 requests/minute, 10,000 requests/day
+- Includes: Everything in API Starter, redistribution rights, 5 Pro licenses — invite users at any corporate email domain and priority support
+- License: Commercial license for your customers — embed WorldMonitor data in what you sell; the 5 bundled Pro seats may be assigned to users at any corporate email domain
+- Limits: 300 requests/minute, 10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)
 - Upgrading from Starter: manage the switch from the billing portal (prorated immediately); new customers can subscribe directly at https://worldmonitor.app/pro
 
 ## Enterprise
@@ -102,8 +104,8 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "price_usd_monthly": 0,
       "signup_required": false,
       "features": [
-        "56 map layers (Resilience is Pro)",
-        "500+ feeds",
+        "global map coverage (Resilience is Pro)",
+        "curated feeds",
         "country briefs",
         "chokepoints",
         "instability scores",
@@ -148,7 +150,7 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "features": [
         "REST API",
         "license / API key included",
-        "1,000 requests/day starter limit",
+        "1,000 requests/day starter limit (REST + MCP combined; a live MCP call counts as 2-3)",
         "1,000 dashboard-AI requests/day",
         "webhooks",
         "structured JSON",
@@ -163,10 +165,9 @@ These subscription licenses cover the hosted Service and its outputs. They are s
       "features": [
         "Everything in API Starter",
         "300 requests/minute",
-        "10,000 requests/day",
+        "10,000 requests/day (REST + MCP combined; a live MCP call counts as 2-3)",
         "10,000 dashboard-AI requests/day",
-        "5 Pro licenses included",
-        "same company email required",
+        "5 Pro licenses — invite users at any corporate email domain",
         "commercial license — for your customers",
         "priority support"
       ]

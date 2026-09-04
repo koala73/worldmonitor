@@ -101,7 +101,7 @@ export class EnergyComplexPanel extends Panel {
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">IEA Oil Stocks — Days of Cover</div>
         <table class="oil-stocks-table">
-          <thead><tr><th>#</th><th>Ctry</th><th>Days</th><th>vs 90d</th></tr></thead>
+          <thead><tr><th scope="col">#</th><th scope="col">Ctry</th><th scope="col">Days</th><th scope="col">vs 90d</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div class="oil-stocks-regional" style="margin-top:6px">
@@ -127,7 +127,7 @@ export class EnergyComplexPanel extends Panel {
       <div class="energy-tape-section" style="margin-top:8px">
         <div class="energy-section-title">LNG Vulnerability</div>
         <table class="oil-stocks-table">
-          <thead><tr><th>Country</th><th>LNG Share</th><th>LNG Imports</th></tr></thead>
+          <thead><tr><th scope="col">Country</th><th scope="col">LNG Share</th><th scope="col">LNG Imports</th></tr></thead>
           <tbody>${rows}</tbody>
         </table>
         <div class="indicator-date" style="margin-top:4px">Data: ${escapeHtml(d.dataMonth)} (JODI Gas)</div>
@@ -237,7 +237,7 @@ export class EnergyComplexPanel extends Panel {
               <div>
                 <span class="commodity-price">${escapeHtml(euFillPct.toFixed(1))}%</span>
                 ${euChange1d !== null ? `<span class="commodity-change ${escapeHtml(euClass)}" style="margin-left:6px">${escapeHtml(euSign + euChange1d.toFixed(2))}% 1d</span>` : ''}
-                ${euTrend ? `<span style="margin-left:6px;font-size:10px;color:var(--text-dim)">${escapeHtml(euTrend)}</span>` : ''}
+                ${euTrend ? `<span style="margin-left:6px;font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim)">${escapeHtml(euTrend)}</span>` : ''}
               </div>
             </div>
             <div class="indicator-date" style="margin-top:2px">${escapeHtml(this.euGas?.updatedAt ?? '')}</div>

@@ -163,7 +163,7 @@ export class DeductionPanel extends Panel {
                 labelEl.textContent = group.label;
                 if (timeMatch) {
                     const timeSpan = document.createElement('span');
-                    timeSpan.style.cssText = 'font-size:10px;color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0';
+                    timeSpan.style.cssText = 'font-size:calc(10px * var(--wm-panel-effective-scale, 1));color:var(--text-dim);font-weight:400;text-transform:none;letter-spacing:0';
                     timeSpan.textContent = timeMatch[1] ?? '';
                     labelEl.appendChild(timeSpan);
                 }

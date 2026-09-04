@@ -57,7 +57,7 @@ export const REGIONS = [
     signalAliases: ['middle east', 'mena'],
     feedRegion: 'middleeast',
     mapView: 'mena',
-    keyCountries: ['SA', 'IR', 'IL', 'AE', 'EG', 'IQ', 'TR'],
+    keyCountries: ['SA', 'IR', 'IL', 'AE', 'EG', 'IQ', 'TR', 'YE', 'SY', 'PS', 'LB', 'LY'],
   },
   {
     id: 'east-asia',
@@ -115,7 +115,7 @@ export const REGIONS = [
     signalAliases: ['latam'],
     feedRegion: 'latam',
     mapView: 'latam',
-    keyCountries: ['BR', 'AR', 'CO', 'CL', 'VE', 'PE'],
+    keyCountries: ['BR', 'AR', 'CO', 'CL', 'VE', 'PE', 'HT', 'CU'],
   },
   {
     id: 'sub-saharan-africa',
@@ -126,7 +126,7 @@ export const REGIONS = [
     signalAliases: ['sub-saharan africa', 'subsaharan africa'],
     feedRegion: 'africa',
     mapView: 'africa',
-    keyCountries: ['NG', 'ZA', 'KE', 'ET', 'SD', 'CD'],
+    keyCountries: ['NG', 'ZA', 'KE', 'ET', 'SD', 'CD', 'ML', 'BF', 'NE', 'CM'],
   },
   {
     id: 'global',

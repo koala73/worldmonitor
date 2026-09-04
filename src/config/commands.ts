@@ -1,7 +1,7 @@
 import type { MapLayers } from '@/types';
 import { CURATED_COUNTRIES } from '@/config/countries';
 // boundary-ignore: commands are built lazily at runtime via getAllCommands()
-import { getCurrentLanguage, t } from '@/services/i18n';
+import { getCurrentLanguage, getCurrentLanguageTag, t } from '@/services/i18n';
 import { toFlagEmoji } from '@/utils/country-flag';
 
 export interface Command {
@@ -95,6 +95,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:cascade', keywords: ['cascade', 'infrastructure cascade', 'cascading failure', 'contagion'], label: 'Panel: Infrastructure Cascade', icon: '\u{1F517}', category: 'panels' },
   { id: 'panel:strategic-risk', keywords: ['risk', 'strategic risk', 'threat level'], label: 'Panel: Strategic Risk', icon: '\u26A0\uFE0F', category: 'panels' },
   { id: 'panel:threat-timeline', keywords: ['threat timeline', 'threat levels', 'threat trend', 'security escalation'], label: 'Panel: Threat Timeline', icon: '\u26A0\uFE0F', category: 'panels' },
+  { id: 'panel:toronto-safety', keywords: ['toronto safety', 'tps crime', 'calls attended', 'major crime indicators'], label: 'Panel: Toronto Safety', icon: '\u{1F6E1}\uFE0F', category: 'panels' },
   { id: 'panel:cross-source-signals', keywords: ['cross source', 'signal aggregator', 'composite escalation', 'multi signal'], label: 'Panel: Cross-Source Signals', icon: '\u{1F4E1}', category: 'panels' },
   { id: 'panel:politics', keywords: ['world news', 'politics', 'geopolitics'], label: 'Panel: World News', icon: '\u{1F30D}', category: 'panels' },
   { id: 'panel:us', keywords: ['united states', 'us news', 'america news'], label: 'Panel: United States', icon: '\u{1F1FA}\u{1F1F8}', category: 'panels' },
@@ -118,6 +119,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:polymarket', keywords: ['predictions', 'polymarket', 'forecasts'], label: 'Panel: Predictions', icon: '\u{1F52E}', category: 'panels' },
   { id: 'panel:commodities', keywords: ['commodities', 'gold', 'silver'], label: 'Panel: Commodities', icon: '\u{1F4E6}', category: 'panels' },
   { id: 'panel:markets', keywords: ['markets', 'stocks', 'indices'], label: 'Panel: Markets', icon: '\u{1F4C8}', category: 'panels' },
+  { id: 'panel:news-market-correlation', keywords: ['news market correlation', 'gdelt markets', 'lead lag', 'market returns'], label: 'Panel: News ↔ Markets', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:economic', keywords: ['economic', 'economy', 'fred'], label: 'Panel: Economic Indicators', icon: '\u{1F4CA}', category: 'panels' },
   { id: 'panel:global-procurement', keywords: ['procurement', 'tenders', 'contracts', 'rfp', 'opportunities', 'government bids'], label: 'Panel: Global Procurement', icon: '\u{1F4CB}', category: 'panels' },
   { id: 'panel:trade-policy', keywords: ['trade', 'tariffs', 'wto', 'trade policy', 'sanctions', 'restrictions'], label: 'Panel: Trade Policy', icon: '\u{1F4CA}', category: 'panels' },
@@ -171,6 +173,7 @@ export const COMMANDS: Command[] = [
   { id: 'panel:security-advisories', keywords: ['advisories', 'travel advisory', 'security advisory', 'travel warning'], label: 'Panel: Security Advisories', icon: '\u{1F6C2}', category: 'panels' },
   { id: 'panel:oref-sirens', keywords: ['sirens', 'oref', 'israel sirens', 'red alert', 'iron dome'], label: 'Panel: Israel Sirens', icon: '\u{1F6A8}', category: 'panels' },
   { id: 'panel:telegram-intel', keywords: ['telegram', 'telegram intel', 'osint'], label: 'Panel: Telegram Intel', icon: '\u{1F4E8}', category: 'panels' },
+  { id: 'panel:x-intel', keywords: ['x news', 'twitter', 'x accounts', 'news accounts'], label: 'Panel: X News Accounts', icon: '\u{1F426}', category: 'panels' },
   { id: 'panel:airline-intel', keywords: ['airline', 'airline intelligence', 'aviation intel', 'flight news'], label: 'Panel: Airline Intelligence', icon: '\u2708\uFE0F', category: 'panels' },
   { id: 'panel:tech-readiness', keywords: ['tech readiness', 'digital readiness', 'technology index'], label: 'Panel: Tech Readiness Index', icon: '\u{1F4F1}', category: 'panels' },
   { id: 'panel:world-clock', keywords: ['clock', 'world clock', 'time zones', 'timezone'], label: 'Panel: World Clock', icon: '\u{1F570}\uFE0F', category: 'panels' },
@@ -189,10 +192,19 @@ export const COMMANDS: Command[] = [
   { id: 'panel:consumer-prices@world', keywords: ['inflation', 'global inflation', 'inflation by country', 'country inflation', 'inflation ranking', 'world inflation', 'imf inflation', 'highest inflation', 'cpi by country'], label: 'Panel: Global Inflation (by country)', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:grocery-basket', keywords: ['grocery', 'grocery basket', 'grocery index', 'food prices', 'supermarket'], label: 'Panel: Grocery Index', icon: '\u{1F96C}', category: 'panels' },
   { id: 'panel:bigmac', keywords: ['bigmac', 'big mac', 'big mac index', 'purchasing power parity', 'ppp'], label: 'Panel: Big Mac Index', icon: '\u{1F354}', category: 'panels' },
+  // Deliberately shares NO keyword with `panel:forex` (:240), which opens the
+  // currency NEWS feed under the same 'fx'/'currencies'/'exchange rates' terms.
+  // Duplicating those would put two same-icon entries side by side in CMD+K
+  // with nothing to tell them apart, so this one owns only the rate- and
+  // crisis-specific phrasing — the queries no headline feed can answer.
+  { id: 'panel:fx', keywords: ['fx rates', 'spot rates', 'currency stress', 'currency crisis', 'devaluation', 'depreciation', 'fx stress', 'drawdown'], label: 'Panel: FX Rates', icon: '\u{1F4C9}', category: 'panels' },
   { id: 'panel:fuel-prices', keywords: ['fuel prices', 'gas prices', 'gasoline', 'diesel', 'petrol', 'fuel cost', 'pump prices'], label: 'Panel: Fuel Prices', icon: '\u26FD', category: 'panels' },
   { id: 'panel:fao-food-price-index', keywords: ['fao', 'food price index', 'ffpi', 'food prices', 'cereals', 'fao food', 'global food prices', 'food inflation'], label: 'Panel: FAO Food Price Index', icon: '\u{1F33E}', category: 'panels' },
   { id: 'panel:national-debt', keywords: ['national debt', 'debt clock', 'government debt', 'deficit'], label: 'Panel: National Debt Clock', icon: '\u{1F4B8}', category: 'panels' },
   { id: 'panel:fsi', keywords: ['fsi', 'financial stress', 'financial stress indicator', 'systemic risk'], label: 'Panel: Financial Stress Indicator', icon: '\u{1F4C9}', category: 'panels' },
+  { id: 'panel:nq-pulse', keywords: ['nq pulse', 'nasdaq futures', 'emini nasdaq', 'nq=f', 'vxn', 'qqq context'], label: 'Panel: NQ Pulse', icon: '\u{1F4C8}', category: 'panels' },
+  { id: 'panel:nq-catalysts', keywords: ['nq catalysts', 'nasdaq earnings', 'us macro calendar', 'fomc nq', 'influence basket'], label: 'Panel: NQ Catalysts', icon: '\u{1F4C5}', category: 'panels' },
+  { id: 'panel:nq-news', keywords: ['nq news', 'nasdaq futures news', 'qqq headlines', 'fed press', 'semiconductor news'], label: 'Panel: NQ News', icon: '\u{1F4F0}', category: 'panels' },
   { id: 'panel:yield-curve', keywords: ['yield curve', 'rates', 'treasury', 'ecb rates', 'bond yield', 'inversion'], label: 'Panel: Yield Curve & Rates', icon: '\u{1F4C8}', category: 'panels' },
   { id: 'panel:earnings-calendar', keywords: ['earnings', 'earnings calendar', 'eps', 'quarterly results'], label: 'Panel: Earnings Calendar', icon: '\u{1F4C5}', category: 'panels' },
   { id: 'panel:economic-calendar', keywords: ['economic calendar', 'macro events', 'nonfarm payrolls', 'gdp release', 'fomc'], label: 'Panel: Economic Calendar', icon: '\u{1F4C6}', category: 'panels' },
@@ -337,7 +349,12 @@ function injectLocalizedKeywords(commands: Command[]): Command[] {
 }
 
 function buildCountryCommands(): Command[] {
-  const lang = getCurrentLanguage();
+  // Script-sensitive, so the full tag: Intl.DisplayNames renders `zh` as
+  // Simplified — 美国, and 韩国 where Traditional readers say 南韓, a different
+  // word rather than a different character. The memo key reads the same
+  // accessor on purpose; keying it on the stripped code would let whichever
+  // catalogue built first answer for both.
+  const lang = getCurrentLanguageTag();
   if (lang === _cachedLang && _cachedCountryCommands.length > 0) {
     return _cachedCountryCommands;
   }

@@ -953,11 +953,11 @@ domain-specific markup.
 
 | Field | Detail |
 |---|---|
-| **File** | `src/components/StatusPanel.ts` (251 lines) |
+| **File** | `src/components/StatusPanel.ts` |
 | **Panel ID** | `status` |
-| **Purpose** | Internal feed & API health status dashboard. |
-| **Key methods** | `updateFeed(name, status)`, `updateApi(name, status)`, `setFeedDisabled(name)` |
-| **DOM** | `div.status-panel-container` with toggle button, sections: `feeds-list`, `apis-list`, `storage-info`. |
+| **Purpose** | Write-only feed & API status model plus the digest coverage row (#7085) — its historical rendering (feed/API lists, storage info, toggle) was removed. |
+| **Key methods** | `updateFeed(name, status)`, `updateApi(name, status)`, `updateDigestCoverage(coverage)` |
+| **DOM** | `div.status-panel-container` holding only `div.digest-coverage-row` (`role="status"`, `aria-live="polite"`); self-mounts into `footer.site-footer` on the first coverage update. Feed/API maps have no DOM — nothing reads `getFeeds()`/`getApis()`. |
 | **Variant data** | `tech` → `TECH_FEEDS` / `TECH_APIS`. `world` / `full` → `WORLD_FEEDS` / `WORLD_APIS`. |
 
 #### RuntimeConfigPanel

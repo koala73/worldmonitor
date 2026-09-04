@@ -55,6 +55,14 @@ message NewsItem {
   // (shared/stocks.json). Uppercase symbols, deduplicated, capped at 8.
   // Empty when no tracked ticker is mentioned. See shared/ticker-extract.js.
   repeated string tickers = 13 [(buf.validate.field).repeated.max_items = 8];
+  // Credibility score (0-100), distinct from importance_score. Measures
+  // source reliability / truthfulness, not newsworthiness. The base score
+  // uses source tier × 30% + propaganda risk × 50% + independent
+  // corroboration × 20%. High propaganda-risk sources (state-controlled
+  // media) are capped at 40 so a highly newsworthy RT/TASS story still
+  // scores low. Third-party bias/factuality ratings are reserved and not
+  // currently applied. See docs/methodology/news-credibility.mdx.
+  int32 credibility_score = 14;
 }
 
 // StoryMeta carries cross-cycle persistence data attached to each news item.
@@ -82,7 +90,23 @@ enum StoryPhase {
   STORY_PHASE_DEVELOPING = 2;
   // 6+ mentions or older than 2 hours; still active.
   STORY_PHASE_SUSTAINED = 3;
-  // currentScore dropped below 50% of peakScore — story losing traction.
+  // Reserved. ListFeedDigest does not emit this value.
+  //
+  // The value previously documented a "currentScore dropped below 50% of
+  // peakScore" rule. Issue #7081 tested that rule against frozen production
+  // evidence and recorded a no-go. importanceScore weights severity at 55% and
+  // recency at 10%, so the ratio measures how old an article is, not how much
+  // traction a story has: a critical or high story cannot reach half its peak
+  // without a severity downgrade, while an info story crosses the threshold on
+  // the recency term alone once its article passes 24 hours. Fading is also not
+  // observable at that point in the digest build, because the phase is derived
+  // only for stories that appear in the current cycle.
+  //
+  // The value stays in the enum and clients must keep handling it. The
+  // notification cron uses its own silence-based fading rule for digest
+  // delivery; that rule is internal and does not reach this field today.
+  // Evidence: tests/fixtures/story-phase-fading-study.json,
+  // scripts/study-story-phase-fading.mjs.
   STORY_PHASE_FADING = 4;
 }
 

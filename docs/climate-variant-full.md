@@ -14,7 +14,7 @@
 
 ---
 
-## Target State: 6 Data Layers
+## Target State: Complete Data-Layer Set
 
 ### Layer 1: Climate Anomalies (EXISTING — fix + expand)
 
@@ -211,7 +211,6 @@ message IceTrendPoint {
 - NOAA Climate News: `https://www.noaa.gov/taxonomy/term/28/rss`
 - Phys.org Earth Science: `https://phys.org/rss-feed/earth-news/earth-sciences/`
 - Copernicus/ECMWF: `https://atmosphere.copernicus.eu/rss`
-- Inside Climate News: `https://insideclimatenews.org/feed/`
 - Climate Central: `https://www.climatecentral.org/rss`
 
 **Redis key:** `climate:news-intelligence:v1`

@@ -138,6 +138,19 @@
       "stable": "Stable"
     },
     "militaryActivity": "Military Activity",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Economic Indicators",
     "ownFlights": "Own Flights",
     "foreignFlights": "Foreign Flights",
@@ -246,6 +259,113 @@
       "corridorConditions": "شرایط دالان",
       "activityNowcast": "پیش‌بینی آنی فعالیت",
       "decisionSignalsUnavailable": "عکس‌فوری از سیگنال‌های تصمیم‌گیری چین در حال حاضر در دسترس نیست."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "کارت امتیازدهی تاب‌آوری پنج‌عاملی",
+      "help": "امتیازهای ثابت نسخه ۱ شواهد برای غذا، انرژی، جمعیت‌شناسی، فناوری و دفاع. برای بررسی ورودی‌ها، مبدأ منابع و دلایل داده‌های گمشده، یک ردیف را باز کنید.",
+      "loading": "در حال بارگذاری کارت امتیازدهی پنج‌عاملی…",
+      "unavailable": "کارت امتیازدهی پنج‌عاملی در دسترس نیست.",
+      "proLocked": "برای دسترسی به کارت امتیازدهی تاب‌آوری پنج‌عاملی به نسخه PRO ارتقا دهید",
+      "insufficient": "داده‌های ناکافی",
+      "notAvailable": "در دسترس نیست",
+      "noEvidence": "شواهدی برای این ستون در دسترس نیست.",
+      "score": "{{score}}/5",
+      "coverage": "پوشش {{coverage}}٪",
+      "methodologyVersion": "روش‌شناسی نسخه {{version}}",
+      "methodologyLink": "مشاهده روش‌شناسی",
+      "pillars": {
+        "food": "غذا",
+        "energy": "انرژی",
+        "demographics": "جمعیت‌شناسی",
+        "technology": "فناوری",
+        "defense": "دفاع"
+      },
+      "reasons": {
+        "source-unavailable": "منبع در دسترس نیست",
+        "country-unavailable": "کشور در دسترس نیست",
+        "invalid-value": "مقدار منبع نامعتبر است",
+        "stale": "شواهد منقضی شده‌اند",
+        "coverage-below-floor": "پوشش زیر حد نصاب امتیازدهی",
+        "required-group-missing": "گروه شواهد الزامی یافت نشد",
+        "missing-population": "جمعیت در دسترس نیست",
+        "redistribution-blocked": "توزیع مجدد منبع مجاز نیست",
+        "pillar-unavailable": "ستون در دسترس نیست"
+      },
+      "inputs": {
+        "population": "جمعیت",
+        "food_productionBalance": "توازن تولید",
+        "food_stocksToUse": "موجودی‌های قابل استفاده",
+        "food_waterSecurity": "امنیت آب",
+        "food_importDiversity": "تنوع واردات",
+        "energy_productionBalance": "توازن تولید",
+        "energy_lowCarbonShare": "سهم انرژی کم‌کربن",
+        "energy_gridEfficiency": "بهره‌وری شبکه",
+        "demographics_totalDependency": "وابستگی کل",
+        "demographics_oldAgeDependency": "وابستگی سالمندی",
+        "demographics_workingAgeProjection": "پیش‌بینی جمعیت در سن کار",
+        "demographics_tertiaryEnrollment": "نرخ ثبت‌نام در آموزش عالی",
+        "demographics_researchersPerMillion": "پژوهشگران به ازای هر میلیون نفر",
+        "demographics_stemGraduateShare": "سهم فارغ‌التحصیلان علوم، فناوری، مهندسی و ریاضیات",
+        "demographics_trainedIndustrialShare": "سهم نیروی کار صنعتی آموزش‌دیده",
+        "demographics_manufacturingEmploymentShare": "سهم اشتغال در صنعت",
+        "technology_internetUse": "استفاده از اینترنت",
+        "technology_mobileSubscriptions": "اشتراک‌های موبایل",
+        "technology_fixedBroadband": "باند پهن ثابت",
+        "technology_rdSpend": "مصرف تحقیق و توسعه",
+        "technology_researchersPerMillion": "پژوهشگران به ازای هر میلیون نفر",
+        "technology_stemGraduateShare": "سهم فارغ‌التحصیلان علوم، فناوری، مهندسی و ریاضیات",
+        "technology_electricityAccess": "دسترسی به برق",
+        "defense_expenditureUsd": "مصرف نظامی",
+        "defense_expenditurePctGdp": "بار نظامی",
+        "defense_personnel": "نیروهای مسلح",
+        "defense_industrialBalance": "تراز صنعت دفاعی",
+        "defense_supplierDiversity": "تنوع تأمین‌کنندگان تسلیحات"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "برای دسترسی به وابستگی تامین‌کننده تسلیحات و ظرفیت نظامی به PRO ارتقا دهید."
     }
   },
   "header": {
@@ -383,6 +503,7 @@
     "securityAdvisories": "Security Advisories",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Telegram Intel",
+    "xIntel": "X News Accounts",
     "startups": "Startups & VC",
     "vcblogs": "VC Insights & Essays",
     "regionalStartups": "Global Startup News",
@@ -434,7 +555,8 @@
     "consumerPrices": "Consumer Prices",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Climate News"
+    "climateNews": "Climate News",
+    "fx": "نرخ‌های ارز"
   },
   "commands": {
     "prefixes": {
@@ -514,7 +636,9 @@
         "displacement": "Toggle displacement flows",
         "climate": "Toggle climate anomalies",
         "outages": "Toggle internet outages",
-        "tradeRoutes": "Toggle trade routes"
+        "tradeRoutes": "Toggle trade routes",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Switch to dark mode",
@@ -540,6 +664,8 @@
       "recent": "Recent Searches",
       "empty": "Search data or run commands",
       "noResults": "No results",
+      "resultAnnouncement_one": "{{count}} نتیجه برای {{query}}",
+      "resultAnnouncement_other": "{{count}} نتیجه برای {{query}}",
       "commands": "Commands",
       "results": "Results",
       "addPanel": "Add",
@@ -677,7 +803,7 @@
         "URLHAUS_AUTH_KEY": "Used for both URLhaus and ThreatFox APIs.",
         "OTX_API_KEY": "Optional enrichment source for the cyber threat layer.",
         "ABUSEIPDB_API_KEY": "Optional enrichment source for malicious IP reputation.",
-        "FINNHUB_API_KEY": "Real-time stock quotes and market data.",
+        "FINNHUB_API_KEY": "Delayed or seeded stock quotes and market data. A key is not a live tape.",
         "NASA_FIRMS_API_KEY": "Fire Information for Resource Management System.",
         "OLLAMA_API_URL": "e.g. http://127.0.0.1:11434 (Ollama) or http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-compatible endpoint.",
         "OLLAMA_MODEL": "e.g. llama3.1:8b — model tag to use for summarization."
@@ -952,7 +1078,13 @@
       "mineral": "Mineral",
       "topProducers": "Top Producers",
       "risk": "Risk",
-      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart."
+      "infoTooltip": "<strong>Supply Chain Monitor</strong> Global logistics and resource tracking:<ul><li><strong>Chokepoints</strong>: Maritime transit status, disruption scores, and vessel counts</li><li><strong>Shipping</strong>: Baltic Dry Index and freight rate trends</li><li><strong>Minerals</strong>: Critical mineral concentration risk (HHI) and top producers</li></ul>Click a chokepoint card to expand transit history chart.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "برای دسترسی به سهم کشورهای معدن و پالایشگاه با غلظت (HHI) براساس مرحله به PRO ارتقا دهید."
     },
     "tradePolicy": {
       "overview": "Overview",
@@ -996,6 +1128,7 @@
       "noComtradeData": "No strategic flow data available",
       "comtradeUnavailable": "UN Comtrade data temporarily unavailable",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Anomaly",
       "colReporter": "Country",
       "colCommodity": "Commodity",
@@ -1274,7 +1407,7 @@
         "ucdpEvents": "Armed Conflict Events",
         "displacementFlows": "Displacement Flows",
         "climateAnomalies": "Climate Anomalies",
-        "weatherAlerts": "Weather Alerts",
+        "weatherAlerts": "هشدارهای آب‌وهوای شدید (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Chokepoints",
         "economicCenters": "Economic Centers",
         "criticalMinerals": "Critical Minerals",
@@ -1292,7 +1425,9 @@
         "kindness": "Acts of Kindness",
         "happiness": "World Happiness",
         "speciesRecovery": "Species Recovery",
-        "renewableInstallations": "Clean Energy"
+        "renewableInstallations": "Clean Energy",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Earthquake",
@@ -1353,7 +1488,7 @@
           "infraDatacenters": "AI compute clusters >=10,000 GPUs",
           "infraOutages": "Internet blackouts and service disruptions",
           "naturalEventsTech": "Earthquakes, storms, fires (may affect data centers)",
-          "weatherAlerts": "Severe weather alerts",
+          "weatherAlerts": "هشدارهای رسمی آب‌وهوای شدید از خدمات هواشناسی ملی (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Stock exchanges & central banks",
           "countriesOverlay": "Country name overlays",
           "financeExchanges": "Major global exchanges by market tier",
@@ -1365,7 +1500,7 @@
           "financeOutages": "Internet disruptions that can impact market operations",
           "financeCyberThreats": "Security events around financial infrastructure",
           "macroWaterways": "Strategic chokepoints for commodity shipping",
-          "weatherAlertsMarket": "Severe weather events with market relevance",
+          "weatherAlertsMarket": "هشدارهای رسمی آب‌وهوای شدید مرتبط با بازار (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Earthquakes, fires, floods, and other natural disruptions",
           "timeRecent": "Filter time-based data to recent hours",
           "timeExtended": "Show data from past week, month, or all time",
@@ -1398,7 +1533,9 @@
           "tradeRoutes": "Major global shipping lanes connecting ports through strategic chokepoints",
           "dayNight": "Real-time solar terminator showing day and night zones",
           "geoBoundaries": "Demilitarized zones, ceasefire lines, and disputed boundaries",
-          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)"
+          "ciiChoropleth": "Country Instability Index heat-map — colors countries by CII score (green=stable, red=critical)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Affects: Earthquakes, Weather, Protests, Outages"
@@ -1773,7 +1910,9 @@
     "breakingNews": {
       "critical": "CRITICAL",
       "high": "HIGH",
-      "dismiss": "Dismiss"
+      "dismiss": "Dismiss",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Breaking Alerts",
@@ -1824,6 +1963,31 @@
       "loading": "Connecting to Telegram relay...",
       "empty": "No messages available",
       "disabled": "Telegram relay not active",
+      "watchlistPlaceholder": "افزودن کانال عمومی با @username",
+      "resolving": "در حال بررسی کانال...",
+      "invalidUsername": "از یک @username عمومی تلگرام استفاده کنید",
+      "resolveFailed": "کانال پیدا نشد",
+      "watchlistLimit": "می‌توانید حداکثر {{count}} کانال سفارشی را دنبال کنید",
+      "previewMembers": "{{count}} عضو",
+      "addChannel": "افزودن کانال",
+      "added": "افزوده شد",
+      "remove": "حذف",
+      "custom": "سفارشی",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
       "filterAll": "All",
       "filterBreaking": "Breaking",
       "filterConflict": "Conflict",
@@ -1925,17 +2089,54 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Detects converging natural disaster and infrastructure signals:<ul><li>Correlates earthquakes, wildfires, floods, and weather extremes</li><li>Tracks cascading effects on infrastructure and supply chains</li><li>Highlights regions with compounding disaster risk</li></ul>Click a card to zoom to the affected region."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Real-time stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend.",
+      "infoTooltip": "<strong>Markets</strong> Delayed or seeded stock indices, equities, and crypto prices. Customize your watchlist with the Watchlist button. Sparklines show recent price trend.",
       "chart": {
         "title": "نمودار قیمت {{symbol}}",
         "close": "بستن نمودار"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
       "infoTooltip": "<strong>Sector Heatmap</strong> S&P 500 sector performance at a glance. Color intensity reflects the magnitude of daily change. Green = gains, Red = losses."
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "شاخص تنش فیزیکی: {{value}} / 100",
+        "fiveDayTrend": "روند حق‌الاضافه پنج روز معاملاتی",
+        "regimes": {
+          "normal": "عادی",
+          "elevated": "افزایش‌یافته",
+          "stressed": "تحت فشار",
+          "extreme": "شدید"
+        },
+        "states": {
+          "insufficientHistory": "گرم‌شدن: {{count}} / {{required}} نقطه معاملاتی",
+          "staleInput": "معیار فیزیکی منسوخ است",
+          "missingInput": "سیگنال واگرایی در دسترس نیست"
+        },
+        "twentyDayTrend": "روند حق بیمه بیست روز معاملاتی"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
@@ -1962,7 +2163,7 @@
       "infoTooltip": "<strong>Central Bank Watch</strong> Latest statements, rate decisions, and communications from the Federal Reserve, ECB, Bank of England, and other major central banks worldwide."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2222,6 +2423,26 @@
         "failedToLoad": "Failed to load"
       }
     },
+    "supplyVulnerability": {
+      "title": "آسیب‌پذیری کالاها",
+      "help": "میزان مواجهه کشور به تفکیک کالا بر پایه تمرکز تأمین‌کنندگان، ترانزیت دریایی و ذخایر راهبردی موجود.",
+      "loading": "در حال بارگیری آسیب‌پذیری کالاها…",
+      "unavailable": "داده‌های آسیب‌پذیری کالاها در دسترس نیست",
+      "noCoverage": "شواهد برای این کشور کافی نیست",
+      "unknown": "نامشخص",
+      "concentration": "تمرکز",
+      "transit": "ترانزیت",
+      "buffer": "ذخیره",
+      "sources": "منابع",
+      "methodology": "روش‌شناسی",
+      "hormuzTitle": "وابستگی‌های کالایی",
+      "dependentCountries": "کشورهای وابسته",
+      "dependentCommodities": "کالاهای وابسته",
+      "stateOk": "به‌روز",
+      "stateStale": "ورودی قدیمی",
+      "stateInsufficient": "داده ناکافی",
+      "proLocked": "برای دسترسی به امتیازدهی آسیب‌پذیری کالا به PRO ارتقا دهید."
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Hormuz Trade Tracker</strong> Live AIS vessel tracking through the Strait of Hormuz, the world's most critical oil chokepoint. Monitors tanker counts, disruption events, and weekly flow changes. Approximately 20% of global oil supply transits here daily.",
       "title": "Hormuz Trade Tracker",
@@ -2376,13 +2597,14 @@
     },
     "sanctionsPressure": {
       "title": "Sanctions & Designations",
-      "infoTooltip": "OFAC sanctions designations from the SDN and Consolidated Lists. Shows which countries face the highest designation pressure, what programs are driving it, and what has been newly added since the last update.",
+      "infoTooltip": "فهرست‌های SDN و یکپارچه OFAC به‌علاوه تعیین‌های SEMA/JVCFOA وزارت امور جهانی کانادا. نشان می‌دهد کدام کشورها بیشترین فشار تعیین را دارند، کدام برنامه‌ها آن را هدایت می‌کنند و از آخرین به‌روزرسانی چه موارد جدیدی اضافه شده است.",
       "loading": "Loading sanctions data...",
       "unavailable": "Sanctions data unavailable.",
       "summary": {
         "new": "New",
         "vessels": "Vessels",
-        "aircraft": "Aircraft"
+        "aircraft": "Aircraft",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Sanctioned countries",
@@ -2397,11 +2619,12 @@
       "footer": {
         "updated": "Updated {{time}}",
         "dataset": "dataset {{date}}",
-        "source": "Source: OFAC"
+        "source": "منبع: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} new",
-        "new": "new"
+        "new": "new",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} designation",
       "designations_other": "{{count}} designations",
@@ -2591,6 +2814,50 @@
       "upgradeCta": "ارتقا برای بیشتر",
       "lockedAriaLabel": "افزودن برگه — قفل‌شده. {{reason}}",
       "unlockedAnnouncement": "محدودیت برگه‌های داشبورد برداشته شد."
+    },
+    "fx": {
+      "infoTooltip": "<strong>نرخ‌های ارز</strong> تنش ارزی و نرخ‌های پایه:<ul><li>تنش ارزی (FX Stress) ۴۵ ارز را بر اساس بدترین کاهش قله‌به‌دره در ۲۴ ماه گذشته، همراه با تغییر ۱۲ ماهه رتبه‌بندی می‌کند</li><li>پوشش شامل ARS، TRY، EGP، NGN، PKR و UAH است — ارزهایی که مجموعه‌های ارجاعی BIS و ECB حذف کرده‌اند</li><li>نرخ‌های پایه نرخ‌ها را در برابر دلار آمریکایی و نرخ‌های ارجاعی یورو ECB به‌طور جداگانه فهرست می‌کند، زیرا این دو از مبانی مختلفی نقل قول می‌شوند</li><li>RUB — نرخ‌های بانک مرکزی روسیه، روبل به ازای هر واحد</li></ul> منابع: Yahoo Finance، بانک مرکزی اروپا و بانک مرکزی روسیه.",
+      "tabs": {
+        "stress": "تنش ارزی",
+        "spot": "نرخ پایه",
+        "rub": "RUB"
+      },
+      "currency": "ارز",
+      "pair": "جفت ارزی",
+      "rate": "نرخ",
+      "yoy": "۱۲ ماه",
+      "drawdown": "کاهش ۲۴ ماهه",
+      "peakToTrough": "قله → دره",
+      "change1d": "۱ روز",
+      "perUsd": "به ازای ۱ دلار آمریکایی",
+      "usdPerUnit": "دلار آمریکایی به ازای هر واحد",
+      "usdBase": "در برابر دلار آمریکایی",
+      "eurBase": "نرخ‌های ارجاعی یورو ECB",
+      "stressedCount": "{{stressed}} از {{total}} ارز زیر {{threshold}}",
+      "sourceYahoo": "منبع: Yahoo Finance",
+      "sourceEcb": "منبع: ECB",
+      "degraded": "در حال حاضر در دسترس نیست: {{sources}}. به زودی دوباره تلاش می‌شود.",
+      "source": {
+        "stress": "تنش ارز",
+        "usd": "نرخ دلار آمریکا",
+        "eur": "نرخ یورو بانک مرکزی اروپا",
+        "rub": "نرخ‌های بانک مرکزی روسیه"
+      },
+      "rubBase": "بانک مرکزی روسیه — روبل به ازای هر ۱ واحد",
+      "rubPerUnit": "روبل به ازای هر واحد",
+      "sourceCbr": "منبع: بانک مرکزی روسیه"
+    },
+    "passkeyOffer": {
+      "title": "ذخیره کلید دسترسی؟",
+      "body": "دفعه بعد با اثر انگشت، چهره یا کد PIN دستگاه خود وارد شوید — نیازی نیست رمز عبور را یادداشت کنید.",
+      "accept": "ذخیره کلید دسترسی",
+      "dismiss": "اکنون نه",
+      "close": "بستن",
+      "announce": "کلید دسترسی را ذخیره کنید تا دفعه بعد سریع‌تر وارد شوید.",
+      "busy": "در انتظار دستگاه شما…",
+      "succeeded": "کلید دسترسی ذخیره شد. می‌توانید آن را دفعه بعد هنگام ورود استفاده کنید.",
+      "retryable": "این کار تکمیل نشد. می‌توانید دوباره تلاش کنید.",
+      "failed": "نتوانستیم کلید دسترسی را در این دستگاه ذخیره کنیم."
     }
   },
   "popups": {
@@ -2633,10 +2900,10 @@
       "highSeverity": "High Severity"
     },
     "gpsJamming": {
-      "title": "GPS/GNSS Interference",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "title": "تداخل GPS/GNSS",
+      "navPerformance": "هواگردهای تحت تأثیر",
+      "samples": "تعداد هواگردهای تحت تأثیر",
+      "aircraft": "تعداد کل هواگردهای مشاهده‌شده",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -2812,6 +3079,7 @@
     "moreEvents": "more events",
     "monitoring": "Monitoring",
     "viewUSGS": "View on USGS",
+    "viewNRCan": "View on Earthquakes Canada",
     "expired": "Expired",
     "timeAgo": {
       "s": "{{count}}s ago",
@@ -2931,7 +3199,11 @@
       "heading": "HEADING",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Source: OpenSky Network"
+      "attribution": "Source: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "سرعت صعود",
+      "manufacturer": "سازنده",
+      "owner": "مالک",
+      "builtYear": "سال ساخت"
     },
     "militaryVessel": {
       "aisDark": "AIS DARK",
@@ -2976,7 +3248,8 @@
       "moreVessels": "+{{count}} more vessels",
       "vesselsCount": "{{count}} VESSELS",
       "vessels": "VESSELS",
-      "trackedVessels": "TRACKED VESSELS"
+      "trackedVessels": "TRACKED VESSELS",
+      "showLess": "نمایش کمتر"
     },
     "naturalEvent": {
       "closed": "CLOSED",
@@ -3242,7 +3515,8 @@
     "currentVariant": "(current)",
     "retry": "Retry",
     "refresh": "Refresh",
-    "all": "All"
+    "all": "All",
+    "dismiss": "Dismiss"
   },
   "connectivity": {
     "offlineCached": "Offline — showing cached data from {{freshness}}.",
@@ -3269,7 +3543,9 @@
     "fontFamily": "Font Family",
     "fontFamilyDesc": "Monospace for a technical look, system default for easier reading.",
     "fontMono": "Monospace",
-    "fontSystem": "System Default"
+    "fontSystem": "System Default",
+    "panelFontScale": "اندازه متن",
+    "followGlobalFontScale": "استفاده از تنظیم سراسری"
   },
   "premium": {
     "pro": "PRO",
@@ -3282,7 +3558,9 @@
       "orefSirens1": "Real-time Israel missile & rocket alerts",
       "orefSirens2": "Siren zone mapping with threat classification",
       "telegramIntel1": "Curated Telegram OSINT channels",
-      "telegramIntel2": "Near-real-time conflict & geopolitical updates"
+      "telegramIntel2": "Near-real-time conflict & geopolitical updates",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "contextMenu": {
@@ -3292,7 +3570,8 @@
   "auth": {
     "signIn": "Sign In",
     "createAccount": "Create account",
-    "settings": "Settings"
+    "settings": "Settings",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Connect MCP",

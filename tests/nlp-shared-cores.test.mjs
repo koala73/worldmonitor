@@ -160,6 +160,179 @@ describe('keyword-spike-core', () => {
     assert.equal(spike.count, 5);
     assert.equal(spike.uniqueSources, 3);
     assert.ok(spike.sampleHeadlines.length > 0 && spike.sampleHeadlines.length <= 3);
+    assert.deepEqual(
+      [...spike.sourceNames].sort(),
+      ['source-0', 'source-1', 'source-2'],
+      'sourceNames must name the publishers uniqueSources counts',
+    );
+    assert.equal(spike.sourceNames.length, spike.uniqueSources);
+    for (const sample of spike.sampleHeadlines) {
+      assert.equal(typeof sample, 'object', 'sample headlines must be attributed objects, not title strings');
+      assert.equal(typeof sample.title, 'string');
+      assert.equal(typeof sample.source, 'string');
+      assert.equal(typeof sample.link, 'string');
+      assert.match(sample.source, /^source-[012]$/);
+      assert.equal(sample.link, '');
+    }
+  });
+
+  it('attributes sample headlines with publisher name and link', () => {
+    const HOUR = 60 * 60 * 1000;
+    const nowMs = 1_800_000_000_000;
+    const windowMs = 2 * HOUR;
+    const stories = [
+      {
+        title: 'Zaporizhzhia plant shelling escalates (0)',
+        lastSeenMs: nowMs - 10 * 60 * 1000,
+        sources: ['Reuters World'],
+        link: 'https://example.test/reuters-0',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (1)',
+        lastSeenMs: nowMs - 20 * 60 * 1000,
+        sources: ['BBC World'],
+        link: 'https://example.test/bbc-1',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (2)',
+        lastSeenMs: nowMs - 30 * 60 * 1000,
+        sources: ['Al Jazeera'],
+        link: 'https://example.test/aj-2',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (3)',
+        lastSeenMs: nowMs - 40 * 60 * 1000,
+        sources: ['Reuters US'],
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (4)',
+        lastSeenMs: nowMs - 50 * 60 * 1000,
+        sources: ['BBC Africa'],
+        link: 'https://example.test/bbc-4',
+      },
+    ];
+    for (let i = 0; i < 30; i++) {
+      stories.push({
+        title: `Weather outlook stays calm (${i})`,
+        lastSeenMs: nowMs - windowMs - (i * 90 * 60 * 1000),
+        sources: ['weather-wire'],
+      });
+    }
+
+    const spikes = computeKeywordSpikesFromStories(stories, {
+      nowMs, windowMs, baselineDurationMs: 46 * HOUR,
+    });
+    const spike = spikes.find((s) => s.term === 'zaporizhzhia');
+    assert.ok(spike, `expected zaporizhzhia spike, got: ${spikes.map((s) => s.term).join(', ')}`);
+    assert.equal(spike.uniqueSources, 3);
+    assert.deepEqual(spike.sourceNames, ['Al Jazeera', 'BBC', 'Reuters']);
+    assert.deepEqual(spike.sampleHeadlines, [
+      { title: 'Zaporizhzhia plant shelling escalates (0)', source: 'Reuters', link: 'https://example.test/reuters-0' },
+      { title: 'Zaporizhzhia plant shelling escalates (1)', source: 'BBC', link: 'https://example.test/bbc-1' },
+      { title: 'Zaporizhzhia plant shelling escalates (2)', source: 'Al Jazeera', link: 'https://example.test/aj-2' },
+    ]);
+  });
+
+  it('joins every publisher on a collapsed multi-outlet title instead of picking one owner', () => {
+    const HOUR = 60 * 60 * 1000;
+    const nowMs = 1_800_000_000_000;
+    const windowMs = 2 * HOUR;
+    const stories = [
+      {
+        title: 'Zaporizhzhia plant shelling escalates (0)',
+        lastSeenMs: nowMs - 10 * 60 * 1000,
+        sources: ['BBC World', 'Reuters World'],
+        link: 'https://example.test/reuters-canonical',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (1)',
+        lastSeenMs: nowMs - 20 * 60 * 1000,
+        sources: ['Al Jazeera'],
+        link: 'https://example.test/aj-1',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (2)',
+        lastSeenMs: nowMs - 30 * 60 * 1000,
+        sources: ['AP News'],
+        link: 'https://example.test/ap-2',
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (3)',
+        lastSeenMs: nowMs - 40 * 60 * 1000,
+        sources: ['BBC Africa'],
+      },
+      {
+        title: 'Zaporizhzhia plant shelling escalates (4)',
+        lastSeenMs: nowMs - 50 * 60 * 1000,
+        sources: ['Reuters US'],
+      },
+    ];
+    for (let i = 0; i < 30; i++) {
+      stories.push({
+        title: `Weather outlook stays calm (${i})`,
+        lastSeenMs: nowMs - windowMs - (i * 90 * 60 * 1000),
+        sources: ['weather-wire'],
+      });
+    }
+
+    const spikes = computeKeywordSpikesFromStories(stories, {
+      nowMs, windowMs, baselineDurationMs: 46 * HOUR,
+    });
+    const spike = spikes.find((s) => s.term === 'zaporizhzhia');
+    assert.ok(spike, `expected zaporizhzhia spike, got: ${spikes.map((s) => s.term).join(', ')}`);
+    assert.equal(spike.sampleHeadlines[0].source, 'BBC, Reuters');
+    assert.equal(spike.sampleHeadlines[0].link, 'https://example.test/reuters-canonical');
+    assert.ok(
+      spike.sampleHeadlines[0].source !== 'BBC',
+      'must not invent a single owner for a multi-outlet title hash',
+    );
+  });
+
+  // #6428: `uniqueSources` gates the spike alert and is surfaced to agents by
+  // get_keyword_spikes. It counted feed LABELS read back from
+  // story:sources:v1 (raw `item.source` values, 7-day TTL), so one newsroom's
+  // own editions cleared MIN_SPIKE_SOURCE_COUNT on their own.
+  it('counts publishers, not feed labels, for spike source diversity', () => {
+    const HOUR = 60 * 60 * 1000;
+    const nowMs = 1_800_000_000_000;
+    const windowMs = 2 * HOUR;
+    const baselineDurationMs = 46 * HOUR;
+    const ONE_WIRE = ['Reuters World', 'Reuters US', 'Reuters Business'];
+
+    const build = (sources) => {
+      const stories = [];
+      for (let i = 0; i < 6; i++) {
+        stories.push({
+          title: `Zaporizhzhia plant shelling escalates (${i})`,
+          lastSeenMs: nowMs - (i * 10 * 60 * 1000),
+          sources: [sources[i % sources.length]],
+        });
+      }
+      for (let i = 0; i < 30; i++) {
+        stories.push({
+          title: `Weather outlook stays calm (${i})`,
+          lastSeenMs: nowMs - windowMs - (i * 90 * 60 * 1000),
+          sources: ['weather-wire'],
+        });
+      }
+      return stories;
+    };
+
+    const oneWire = computeKeywordSpikesFromStories(build(ONE_WIRE), { nowMs, windowMs, baselineDurationMs });
+    assert.ok(
+      !oneWire.map((s) => s.term).includes('zaporizhzhia'),
+      'three Reuters feed labels are one publisher and must not clear the diversity gate',
+    );
+
+    // Premise check: three real publishers on the same fixture must still spike,
+    // or the assertion above would hold because the term never spiked at all.
+    const distinct = computeKeywordSpikesFromStories(
+      build(['Reuters World', 'BBC World', 'Al Jazeera']),
+      { nowMs, windowMs, baselineDurationMs },
+    );
+    const spike = distinct.find((s) => s.term === 'zaporizhzhia');
+    assert.ok(spike, 'three distinct publishers must still spike');
+    assert.equal(spike.uniqueSources, 3);
   });
 
   it('rejects spikes that lack source diversity', () => {

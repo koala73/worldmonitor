@@ -127,6 +127,15 @@ describe('matchesAnyPathFilter', () => {
     expect(matchesAnyPathFilter('https://x.com/category/foo', ['/product/', '/item/'])).toBe(false);
   });
 
+  it('matches only the pathname and fails closed for malformed URLs', () => {
+    const filters = ['/produto/'];
+
+    expect(matchesAnyPathFilter('https://x.com/busca?next=/produto/144583', filters)).toBe(false);
+    expect(matchesAnyPathFilter('https://x.com/busca#/produto/144583', filters)).toBe(false);
+    expect(matchesAnyPathFilter('https://x.com/produto/144583?next=/busca', filters)).toBe(true);
+    expect(matchesAnyPathFilter('not-a-url/produto/144583', filters)).toBe(false);
+  });
+
   // Documents a known tradeoff for the carrefour_br fix: `/p` over-matches
   // non-product paths like `/promo/`, `/pages/`, `/popular/`, `/help/`.
   // Acceptable because (a) the host check already pins us to the storefront,
@@ -201,8 +210,10 @@ describe('looksLikeQuantityAsPrice', () => {
   it('falls back to the canonical size when sizeText is blank or unparseable', () => {
     expect(looksLikeQuantityAsPrice(400, '', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
     expect(looksLikeQuantityAsPrice(400, '   ', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
-    // `gm` and `pack` are absent from UNIT_MAP, so parseSize returns null.
-    expect(looksLikeQuantityAsPrice(400, '400 gm', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
+    // `loaf` and `pack` are absent from UNIT_MAP, so parseSize returns null.
+    // (`gm` used to sit here; #6267 mapped it to grams, which would have let
+    // this case pass through the direct path and stop exercising the fallback.)
+    expect(looksLikeQuantityAsPrice(400, '400 loaf', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
     expect(looksLikeQuantityAsPrice(400, '24 pack', { baseUnit: 'g' }, 'White Bread 400g')).toBe(true);
   });
 

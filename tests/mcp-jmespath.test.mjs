@@ -263,12 +263,26 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       assert.ok(/initialize\.instructions/i.test(mod.JMESPATH_SCHEMA.description));
     });
 
-    it('every tool in tools/list advertises jmespath in inputSchema.properties', async () => {
+    it('every projection-safe tool in tools/list advertises jmespath', async () => {
       const res = await mod.default(makeReq({ jsonrpc: '2.0', id: 1, method: 'tools/list', params: {} }));
       const body = await res.json();
       const tools = body.result.tools;
       assert.ok(tools.length > 0);
+      // Derived from the registry's own `_jmespathDisabled` flag, not a hardcoded
+      // name: a newly added attribution-bound tool used to slip past this
+      // assertion, which is how the supply-vulnerability tools shipped
+      // advertising a projection over BGS-licensed evidence.
+      const { TOOL_REGISTRY } = await import('../api/mcp/registry/index.ts');
+      const attributionBound = new Set(
+        TOOL_REGISTRY.filter((t) => t._jmespathDisabled === true).map((t) => t.name),
+      );
+      assert.ok(attributionBound.size > 0, 'expected attribution-bound tools to be declared');
       for (const tool of tools) {
+        if (attributionBound.has(tool.name)) {
+          assert.equal(tool.inputSchema?.properties?.jmespath, undefined,
+            `attribution-bound tool "${tool.name}" must not advertise jmespath`);
+          continue;
+        }
         assert.ok(tool.inputSchema?.properties?.jmespath,
           `tool "${tool.name}" missing inputSchema.properties.jmespath`);
         assert.equal(tool.inputSchema.properties.jmespath.type, 'string');
@@ -292,7 +306,10 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const withoutSummary = tools.filter(t => !t.inputSchema?.properties?.summary);
       assert.ok(withSummary.length > 0, 'expected at least one cache tool with summary');
       assert.ok(withoutSummary.length > 0, 'expected at least one RPC tool without summary');
-      // All of them advertise jmespath universally (already asserted above).
+      assert.equal(
+        tools.find((tool) => tool.name === 'get_resilience_indicators')?.inputSchema?.properties?.jmespath,
+        undefined,
+      );
     });
   });
 
@@ -300,12 +317,12 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
   // Initialize handshake — version + instructions
   // ============================================================
   describe('initialize handshake', () => {
-    it('serverInfo.version === "1.15.0"', async () => {
+    it('serverInfo.version === "1.18.0"', async () => {
       // Tracks current SERVER_VERSION. Each minor bump needs to update
       // this assertion + the cross-check at line 327 below.
       const res = await mod.default(makeReq(initBody(1)));
       const body = await res.json();
-      assert.equal(body.result?.serverInfo?.version, '1.15.0');
+      assert.equal(body.result?.serverInfo?.version, '1.18.0');
     });
 
     it('result.instructions is present and mentions jmespath', async () => {
@@ -321,17 +338,18 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const body = await res.json();
       const inst = body.result.instructions;
       assert.ok(inst.includes('https://jmespath.org'), 'missing grammar URL');
+      assert.match(inst, /when a tool input schema advertises it/i);
       assert.ok(inst.includes(String(mod.JMESPATH_MAX_EXPR_BYTES)), 'missing expression cap value');
       assert.ok(inst.includes(String(mod.JMESPATH_MAX_OUTPUT_BYTES)), 'missing output cap value');
       assert.ok(/daily quota/i.test(inst), 'missing quota note');
     });
 
-    it('server-card.json version matches SERVER_VERSION (currently 1.15.0)', () => {
+    it('server-card.json version matches SERVER_VERSION (currently 1.18.0)', () => {
       // Cross-check the comment at api/mcp.ts:~56 — discovery scanners
       // verify both values; a future bump that misses one would break
       // discovery. This is the test that prevents that drift.
       const card = JSON.parse(readFileSync(new URL('../public/.well-known/mcp/server-card.json', import.meta.url), 'utf8'));
-      assert.equal(card.serverInfo.version, '1.15.0');
+      assert.equal(card.serverInfo.version, '1.18.0');
       assert.equal(card.features?.responseProjection, 'jmespath');
     });
 
@@ -344,7 +362,7 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
         logging: {},
         prompts: { listChanged: false },
         resources: { subscribe: false, listChanged: false },
-        extensions: { 'io.modelcontextprotocol/ui': {} },
+        extensions: { 'io.modelcontextprotocol/ui': {}, 'io.modelcontextprotocol/skills': {} },
       });
       assert.equal(body.result?.serverInfo?.name, 'worldmonitor');
     });
@@ -407,6 +425,21 @@ describe('api/mcp.ts — JMESPath projection (v1.7.0)', () => {
       const body = await res.json();
       return { res, body };
     }
+
+    it('rejects projection for attribution-bound resilience raw values before execution', async () => {
+      let executed = false;
+      globalThis.fetch = async () => {
+        executed = true;
+        throw new Error('resilience downstream must not execute');
+      };
+      const { body } = await callTool('get_resilience_indicators', {
+        country_code: 'DE',
+        jmespath: 'indicators[].rawValue',
+      });
+      assert.equal(body.error?.code, -32602);
+      assert.match(body.error?.message ?? '', /JMESPath.*attribution-bound/);
+      assert.equal(executed, false);
+    });
 
     it('omitting jmespath returns the v1.3.0 payload byte-for-byte (additive guarantee)', async () => {
       mockMarketDataCache();

@@ -34,7 +34,7 @@ import {
   collectRelativeRuntimeImports,
   extractEdges,
   parseDockerfileCopy,
-  stripComments,
+  readStrippedSource,
 } from './_lib/import-graph-walk.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -96,7 +96,7 @@ function collectBundleSectionScripts(filePath: string): string[] {
   // in the BFS (a bundle that spawns a sub-bundle), but skip unrelated files
   // (and files that mention `_bundle-runner` only in a comment) so a stray
   // `script: 'x.mjs'` literal can't fake an escape.
-  const src = stripComments(readFileSync(filePath, 'utf8'));
+  const src = readStrippedSource(filePath);
   if (!BUNDLE_ENTRY_FILES.has(filePath) && !src.includes('_bundle-runner')) {
     return [];
   }

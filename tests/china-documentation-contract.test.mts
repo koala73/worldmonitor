@@ -60,7 +60,7 @@ const englishNavigation = docsConfig.navigation.languages.find(
   (entry: { language?: string }) => entry.language === 'en',
 );
 const chineseNavigation = docsConfig.navigation.languages.find(
-  (entry: { language?: string }) => entry.language === 'zh-Hans',
+  (entry: { language?: string }) => entry.language === 'zh',
 );
 const englishPages = new Set(collectPagePaths(englishNavigation));
 const chinesePages = new Set(collectPagePaths(chineseNavigation));
@@ -178,7 +178,7 @@ describe('China documentation contract', () => {
     assertIncludesEvery(chinese, securityCodes, 'Chinese reviewed-issuer documentation');
     assertIncludesEvery(
       english,
-      ['SSE_PROXY_URL', 'SZSE_PROXY_URL', 'PROXY_URL', 'RELAY_SHARED_SECRET'],
+      ['SSE_PROXY_URL', 'SZSE_PROXY_URL', 'PROXY_URL'],
       'English disclosure transport documentation',
     );
     assertIncludesEvery(
@@ -187,7 +187,6 @@ describe('China documentation contract', () => {
         'SSE_PROXY_URL',
         'SZSE_PROXY_URL',
         'PROXY_URL',
-        'RELAY_SHARED_SECRET',
         '不是按 URL 顺序回退',
       ],
       'Chinese disclosure transport documentation',

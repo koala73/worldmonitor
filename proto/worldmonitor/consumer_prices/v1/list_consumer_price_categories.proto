@@ -11,7 +11,7 @@ message ListConsumerPriceCategoriesRequest {
   string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
   // basket_slug selects the basket scope.
   string basket_slug = 2 [(sebuf.http.query) = { name: "basket_slug" }];
-  // range is one of "7d", "30d", "90d", "180d".
+  // range is one of "7d", "30d", "90d". Unsupported values use "30d".
   string range = 3 [(sebuf.http.query) = { name: "range" }];
 }
 
@@ -21,7 +21,7 @@ message ListConsumerPriceCategoriesResponse {
   string market_code = 1 [(sebuf.http.query) = { name: "market_code" }];
   // as_of is the Unix millisecond timestamp of the snapshot.
   int64 as_of = 2;
-  // range echoes the requested range.
+  // range is the effective normalized range used for the returned snapshot.
   string range = 3 [(sebuf.http.query) = { name: "range" }];
   // categories holds all category snapshots, sorted by absolute mom_pct descending.
   repeated CategorySnapshot categories = 4;

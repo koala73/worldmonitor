@@ -25,10 +25,25 @@ on:
 permissions:
   contents: read
 
+env:
+  # Records which commit Convex production is actually running. Moved by the
+  # deploy job immediately after a successful `convex deploy`, and read by the
+  # `changes` job as its diff baseline (#7359). A tag, not the Actions API:
+  # the answer is a commit, git already has it locally at fetch-depth 0, and it
+  # cannot be wrong the way "the newest run looked green" can.
+  DEPLOYED_TAG: convex-deployed
+
 concurrency:
   # Serialize deploys so two back-to-back merges don't race against each other.
-  # `cancel-in-progress: false` is intentional — every merge that touches
-  # convex/ should reach prod, even if a later merge follows quickly.
+  #
+  # `cancel-in-progress: false` protects a run that is ALREADY EXECUTING. It does
+  # NOT guarantee every merge reaches prod, and the comment here used to claim it
+  # did (#7359): GitHub keeps at most one PENDING run per concurrency group and
+  # cancels the older pending one when a newer arrives, so a merge burst silently
+  # drops the runs in the middle. That is survivable only because the `changes`
+  # job below diffs against what production actually runs rather than this push's
+  # own range — a dropped run's commits stay in the diff until something deploys
+  # them.
   group: convex-deploy-prod
   cancel-in-progress: false
 
@@ -39,21 +54,22 @@ jobs:
     # the deploy gate evaluates main pushes too and `changes` is one of its
     # required names: sharing the name would let this job's result stand in for
     # test.yml's there. Not gated itself — deploy-gate.yml only aggregates Test,
-    # Typecheck, Lint Code and Security Audit.
+    # Typecheck, Lint Code, Security Audit and Stacked Merge Guard.
     name: convex-changes
     runs-on: ubuntu-latest
     outputs:
       convex: ${{ steps.diff.outputs.convex }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
-          # Need both BEFORE and AFTER commits locally so `git diff` can name
-          # the changed files authoritatively. `fetch-depth: 0` (full history)
-          # is the cheapest way; the alternative — `gh api compare` — paginates
-          # at 300 files and silently empties on API failure, which fails OPEN
-          # (would skip a real convex/ change → recreates the exact drift this
-          # workflow is meant to prevent). git diff fails CLOSED: if it can't
-          # answer, the job errors and the deploy doesn't silently skip.
+          # Need the deployed-baseline tag and the pushed head locally so
+          # `git diff` can name the changed files authoritatively. `fetch-depth: 0`
+          # (full history) is the cheapest way and also brings the tags; the
+          # alternative — `gh api compare` — paginates at 300 files and silently
+          # empties on API failure, which fails OPEN (would skip a real convex/
+          # change → recreates the exact drift this workflow is meant to
+          # prevent). git diff fails CLOSED: if it can't answer, the job errors
+          # and the deploy doesn't silently skip.
           fetch-depth: 0
       - id: diff
         run: |
@@ -63,12 +79,27 @@ jobs:
             echo "convex=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
-          BEFORE="${{ github.event.before }}"
           AFTER="${{ github.event.after }}"
-          # Brand-new branch / first push (BEFORE is the all-zero SHA): we
-          # can't diff against a non-existent prior state. Fall through to
-          # deploy — this is the safe default for first-push scenarios.
-          if [ "$BEFORE" = "0000000000000000000000000000000000000000" ]; then
+          # The baseline is what production is ACTUALLY RUNNING — the commit the
+          # deploy job tagged after its last successful `convex deploy` — not
+          # this push's `github.event.before` (#7359).
+          #
+          # Diffing the push's own range is what stranded #7344: its run was
+          # cancelled while queued by the concurrency group, and no LATER push
+          # could rescue it, because no later push's before..after range
+          # contains a commit from an earlier push. Every subsequent run
+          # honestly reported convex=false and skipped, forever. Diffing from
+          # the deployed commit instead keeps an undeployed change in the diff
+          # until something actually deploys it, so the next push self-heals —
+          # and it is equally immune to a failed deploy, a force-push, and a
+          # path-filter edit.
+          # `^{commit}` dereferences, so an annotated tag resolves to its commit
+          # rather than the tag object (which `git diff` would not accept).
+          BEFORE="$(git rev-parse --verify --quiet "refs/tags/$DEPLOYED_TAG^{commit}" || true)"
+          # No tag yet (first run after this change) — nothing proves what is
+          # deployed, so deploy. Same fail-CLOSED default as the cases below.
+          if [ -z "$BEFORE" ]; then
+            echo "::warning::no $DEPLOYED_TAG tag yet — deploying to establish the baseline"
             echo "convex=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -83,9 +114,28 @@ jobs:
             exit 0
           fi
           # Authoritative path-scoped diff. `--` separates revisions from
-          # pathspecs, so `convex/` is interpreted as a path filter even if
+          # pathspecs, so these are interpreted as path filters even if
           # something weird is going on with the SHAs.
-          if git diff --name-only "$BEFORE" "$AFTER" -- 'convex/' | grep -q .; then
+          #
+          # `convex/` alone is NOT the deployed bundle. Convex modules import
+          # runtime values from outside it — shared/mcp-attribution,
+          # shared/company-monitoring-*, scripts/lib/company-monitoring-
+          # classification.mjs, src/utils/country-codes — and `convex deploy`
+          # bundles whatever those imports reach. A change to one of them alters
+          # what production runs while touching nothing under convex/, so a
+          # convex/-only filter skips a deploy that was genuinely due. Same
+          # silent-staleness class as #7359, through a different door.
+          # tests/check-postmerge-deploys.test.mjs derives the real set from the
+          # source and fails if this list stops covering it.
+          if git diff --name-only "$BEFORE" "$AFTER" -- \
+              'convex/' \
+              'shared/cloud-preferences-contract.ts' \
+              'shared/mcp-attribution.ts' \
+              'shared/company-monitoring-contract.ts' \
+              'shared/company-monitoring-evidence.ts' \
+              'shared/legal.ts' \
+              'scripts/lib/company-monitoring-classification.mjs' \
+              'src/utils/country-codes.ts' | grep -q .; then
             echo "convex=true" >> "$GITHUB_OUTPUT"
           else
             echo "convex=false" >> "$GITHUB_OUTPUT"
@@ -96,8 +146,17 @@ jobs:
     if: needs.changes.outputs.convex == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    # Deliberately READ-ONLY (the workflow default). This job runs `npm ci`,
+    # whose dependency lifecycle scripts are third-party code, so it must never
+    # hold a repo-write credential — see the `record-baseline` job below.
+    outputs:
+      deployed: ${{ steps.deploy.outcome }}
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          # Belt and braces with the read-only permission above: no ambient
+          # credential in .git/config while third-party install code runs.
+          persist-credentials: false
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
@@ -164,6 +223,81 @@ jobs:
             || [ "${{ steps.seed_intel_history_append_lock.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_shards.outcome }}" != "success" ] \
             || [ "${{ steps.seed_followed_countries_country_locks.outcome }}" != "success" ]; then
-            echo "::error::One or more post-deploy seeds failed; inspect the seed steps above"
+            echo "::error::One or more post-deploy repairs/seeds failed; inspect the steps above"
             exit 1
           fi
+
+  # Temporary, independently retryable production repair. Remove this job and
+  # its contract assertions only after a production main-push run reports
+  # `alreadyCompleted: true` for marker
+  # `payments.repairStaleOnHoldDerivedState.v1.completedAt`.
+  repair-stale-on-hold-derived-state:
+    needs: [changes, deploy]
+    if: >-
+      always()
+      && needs.changes.result == 'success'
+      && (
+        needs.deploy.outputs.deployed == 'success'
+        || (
+          needs.changes.outputs.convex == 'false'
+          && needs.deploy.result == 'skipped'
+        )
+      )
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+          cache: 'npm'
+      - run: npm ci --no-audit --no-fund
+      - name: Repair stale on_hold derived state (idempotent)
+        run: npx convex run --prod payments/repairStaleOnHoldDerivedState:run
+        env:
+          CONVEX_DEPLOY_KEY: ${{ secrets.CONVEX_DEPLOY_KEY }}
+
+  record-baseline:
+    # The ONLY job holding `contents: write`, and it deliberately runs no
+    # dependency or repository code: no `npm ci`, no build, no project scripts.
+    #
+    # Keeping the marker write inside the deploy job was unsafe even with
+    # `persist-credentials: false` (#7359 review finding 4): `npm ci` runs
+    # third-party lifecycle scripts in that job, and lifecycle code can install a
+    # git hook or rewrite git config that survives to a later step — so a token
+    # introduced afterwards for the tag push could still be read or redirected by
+    # it. A separate job with a fresh checkout has no such prior code execution.
+    #
+    # Gated on the DEPLOY STEP's outcome, not the deploy job's conclusion: the
+    # marker answers "what convex code is in production", which is true the
+    # moment `convex deploy` returns. A post-deploy seed failure still reds the
+    # deploy job (and the monitor alarms on that), but it must not make the next
+    # push re-deploy code that is already live.
+    needs: deploy
+    if: always() && needs.deploy.outputs.deployed == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - name: Record the deployed commit
+        # Force-moved deliberately — a pointer to the current deployment, not
+        # release history. `--force` on the push too: a moved tag is not a
+        # fast-forward.
+        #
+        # A transient push failure must not restate a successful production
+        # deploy as a failed run, and failing to RECORD is self-healing (the tag
+        # stays put, so the next push simply redeploys), so this warns rather
+        # than failing the workflow.
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          git tag -f "$DEPLOYED_TAG" "$GITHUB_SHA"
+          git push --force origin "refs/tags/$DEPLOYED_TAG" \
+            || {
+              echo "::warning::could not move $DEPLOYED_TAG to $GITHUB_SHA — the deploy SUCCEEDED; the next push will redeploy redundantly until this recovers"
+              exit 1
+            }

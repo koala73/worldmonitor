@@ -1,0 +1,109 @@
+name: Railway Registry Sync
+
+# The repository registry is the desired production configuration. This job
+# applies that state from the exact merged main checkout, then verifies it with
+# a separate Viewer identity. The six-hourly health workflow still detects
+# out-of-band dashboard edits.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/railway-registry-sync.yml
+      - scripts/audit-railway-watch-paths.mjs
+      - scripts/railway-native-autodeploy-fleet.json
+      - 'scripts/railway-*.mjs'
+      - scripts/railway-services.json
+      - scripts/run-railway-registry-sync.mjs
+  workflow_dispatch:
+
+concurrency:
+  group: railway-registry-sync-production
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  reconcile:
+    name: Reconcile registry to live configuration
+    runs-on: ubuntu-latest
+    # Apply: three bounded attempts (5 min each) plus 20 s of backoff. Verify:
+    # one 15-minute Viewer read budget plus backoff. Setup: about 3 min. The
+    # workflow test pins this cap against the runner and audit constants.
+    timeout-minutes: 35
+    environment:
+      name: ingestion-acceptance-production
+      deployment: false
+    steps:
+      - id: checkout
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          persist-credentials: false
+
+      - id: admit-current-main
+        name: Admit only the current main revision
+        run: |
+          current_main_sha="$(git ls-remote --exit-code origin refs/heads/main | awk 'NR == 1 { print $1 }' || true)"
+          if [[ ! "$current_main_sha" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::Could not resolve the current main revision"
+            exit 1
+          fi
+          if [[ "$GITHUB_SHA" != "$current_main_sha" ]]; then
+            echo "::error::Refusing stale registry sync: checkout=$GITHUB_SHA current-main=$current_main_sha"
+            exit 1
+          fi
+
+      - id: setup-node
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+
+      - id: install-railway
+        name: Install pinned Railway CLI
+        run: npm install --global @railway/cli@5.30.1
+
+      - name: Reconcile registry-managed Railway configuration
+        env:
+          RAILWAY_TOKEN: ${{ secrets.RAILWAY_RECONCILE_DEPLOY_TOKEN_V2 }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: node scripts/run-railway-registry-sync.mjs --mode apply
+
+      - id: start-viewer-budget
+        name: Start Viewer verification budget
+        if: >-
+          always()
+          && steps.checkout.outcome == 'success'
+          && steps.admit-current-main.outcome == 'success'
+          && steps.setup-node.outcome == 'success'
+          && steps.install-railway.outcome == 'success'
+        run: echo "RAILWAY_CONFIG_AUDIT_JOB_STARTED_AT_MS=$(date +%s%3N)" >> "$GITHUB_ENV"
+
+      - name: Verify live configuration with the Viewer identity
+        if: >-
+          always()
+          && steps.checkout.outcome == 'success'
+          && steps.admit-current-main.outcome == 'success'
+          && steps.setup-node.outcome == 'success'
+          && steps.install-railway.outcome == 'success'
+          && steps.start-viewer-budget.outcome == 'success'
+        env:
+          RAILWAY_API_TOKEN: ${{ secrets.RAILWAY_PRODUCTION_VIEWER_API_TOKEN }}
+          RAILWAY_PROJECT_ID: ${{ vars.RAILWAY_PROJECT_ID }}
+        run: node scripts/run-railway-registry-sync.mjs --mode verify
+
+      - name: Explain a failed reconciliation
+        if: failure()
+        run: |
+          {
+            echo '### Railway Registry Sync did not converge'
+            echo
+            echo 'Use the failed step and its drift list to choose the repair:'
+            echo
+            echo '- **Stale revision:** run the workflow from the current `main`; never re-run an older workflow attempt.'
+            echo '- **Registry-managed drift:** fix the registry or the reconciler, then run the current `main` workflow.'
+            echo '- **Source branch, check-suite, or required-variable drift:** repair the named Railway service setting; the registry patch cannot write these fields.'
+            echo '- **CLI or observation failure:** restore Railway access, then run the current `main` workflow.'
+            echo
+            echo 'Do not run a local production `--apply` from a stale checkout.'
+          } >> "$GITHUB_STEP_SUMMARY"

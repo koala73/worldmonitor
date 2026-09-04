@@ -1,0 +1,43 @@
+retailer:
+  slug: waitrose_gb
+  name: Waitrose UK
+  marketCode: gb
+  currencyCode: GBP
+  adapter: search
+  # added 2026-08-10 (#6358) replacing the anti-bot-blocked tesco_gb. Probed live:
+  # Exa discovery ranks exact-match /ecom/products/ pages first and Firecrawl
+  # extraction returns priced, in-stock renders. Third roster member adds
+  # single-retailer-loss headroom: on the 2026-08-10 measured baselines
+  # (ocado 11/12, morrisons 11/12, waitrose 8/12) losing one retailer outright
+  # leaves 19/36 = 0.53 -- above the 0.5 floor, but thinly; treat a second
+  # simultaneously-degraded retailer as a page-worthy event, not noise.
+  baseUrl: https://www.waitrose.com
+  enabled: true
+
+  searchConfig:
+    # Exa's neural ranking on waitrose.com drifts to adjacent products (sugar →
+    # bread flour, eggs → pork mince; 6/12 pages on the 2026-08-10 baseline run)
+    # while keyword search returns the exact product for the same queries
+    # (sugar/eggs/oil/cheddar all recovered, probed 2026-08-10). Same failure
+    # shape and fix as jiomart_in. Search wide, extract from at most 4.
+    numResults: 10
+    searchType: keyword
+    maxExtractionCandidates: 4
+    urlPathContains: /ecom/products/
+    queryTemplate: "{canonicalName} grocery {market} {currency} price"
+    # Strict from day one (like jiomart_in): shadow mode counts a wrong-size
+    # accept (Evian 12x330ml for "Still Water 6x1.5L" on the 2026-08-10 probe)
+    # toward pagesSucceeded while aggregate.ts excludes its candidate match —
+    # coverage would read healthy without adding usable prices. Strict rejects
+    # it and escalates to the next candidate URL instead.
+    requireStrictValidator: true
+
+  rateLimit:
+    requestsPerMinute: 10
+    maxConcurrency: 1
+    delayBetweenRequestsMs: 6000
+
+  discovery:
+    mode: search
+    maxPages: 20
+    seeds: []

@@ -27,10 +27,15 @@ message ResilienceRankingCacheState {
 message ResilienceRuntimeConstructVersions {
   // Safe derived energy construct version. Valid values: "legacy" or "v2".
   string energy = 1;
+  // Safe derived education construct version. Valid values: "active" or "rollback".
+  string education = 2;
+  // Safe derived financial-system construct version. Valid values: "active" or "rollback".
+  string financial_system_exposure = 3;
 }
 
 message ResilienceRuntimeIntervalState {
-  // True only when the public sample interval can be read for the active formula.
+  // True only when the public sample interval matches the active formula,
+  // education construct version, and interval methodology.
   bool available = 1;
   // Public methodology tag used to audit scoreInterval/rankStable semantics.
   string methodology = 2;

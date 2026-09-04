@@ -18,6 +18,20 @@
       "twitter:card": "summary_large_image",
       "twitter:site": "@worldmonitorai",
       "twitter:image": "https://www.worldmonitor.app/favico/og-image.png"
+    },
+    "organization": {
+      "id": "https://www.worldmonitor.app/#organization",
+      "name": "World Monitor",
+      "url": "https://www.worldmonitor.app/",
+      "logo": "https://www.worldmonitor.app/favico/apple-touch-icon.png",
+      "sameAs": [
+        "https://github.com/koala73/worldmonitor",
+        "https://www.npmjs.com/package/worldmonitor",
+        "https://x.com/worldmonitorai",
+        "https://x.com/eliehabib",
+        "https://discord.gg/re63kWKxaz",
+        "https://www.wired.com/story/world-monitor-elie-habib/"
+      ]
     }
   },
   "colors": {
@@ -85,6 +99,8 @@
                 "pages": [
                   "overview",
                   "features",
+                  "pro-intelligence-suite",
+                  "data-sources",
                   "global-procurement-intelligence",
                   "hotspots"
                 ]
@@ -100,8 +116,17 @@
                   "china-logistics-corridors",
                   "methodology/china-activity-nowcast",
                   "methodology/news-digest-and-briefing",
+                  "methodology/news-credibility",
                   "country-instability-index",
                   "methodology/country-resilience-index",
+                  "methodology/resilience-indicators",
+                  "methodology/resilience-indicator-licensing",
+                  "methodology/five-factor-scorecard",
+                  "methodology/demographics-capability",
+                  "methodology/food-stocks",
+                  "methodology/defense-industrial-base",
+                  "methodology/mineral-production",
+                  "methodology/supply-vulnerability",
                   "methodology/chokepoints",
                   "methodology/pipelines",
                   "methodology/storage",
@@ -110,6 +135,7 @@
                   "methodology/cii-risk-scores",
                   "methodology/disease-alert-level",
                   "methodology/thermal-escalation",
+                  "methodology/physical-divergence-index",
                   "corrections",
                   "geographic-convergence",
                   "strategic-risk",
@@ -180,6 +206,7 @@
                   "panels/monitors",
                   "panels/oref-sirens",
                   "panels/telegram-intel",
+                  "panels/x-intel",
                   "panels/fsi"
                 ]
               },
@@ -205,6 +232,7 @@
                   "cli",
                   "sdks",
                   "mcp-overview",
+                  "webmcp",
                   "mcp-apps",
                   "mcp-tools-reference",
                   "mcp-jmespath",
@@ -230,6 +258,7 @@
                   "contributing",
                   "authentication",
                   "adding-endpoints",
+                  "webmcp-maintenance",
                   "api-key-deployment",
                   "releasing-cli",
                   "release-packaging",
@@ -238,7 +267,7 @@
                   "relay-parameters",
                   "decision-signal-provenance",
                   "china-decision-signals",
-                  "data-sources"
+                  "source-attribution"
                 ]
               },
               {
@@ -250,16 +279,19 @@
               {
                 "group": "Legal",
                 "pages": [
+                  "eula",
+                  "terms",
+                  "dpa",
                   "license",
                   "trademark-policy",
-                  "privacy",
-                  "terms"
+                  "privacy"
                 ]
               }
             ]
           },
           {
             "tab": "API Reference",
+            "openapi": "api/worldmonitor.openapi.yaml",
             "groups": [
               {
                 "group": "Overview",
@@ -446,7 +478,7 @@
         ]
       },
       {
-        "language": "zh-Hans",
+        "language": "zh",
         "navbar": {
           "links": [
             {
@@ -550,6 +582,8 @@
                 "pages": [
                   "zh/overview",
                   "zh/features",
+                  "zh/pro-intelligence-suite",
+                  "zh/data-sources",
                   "zh/hotspots"
                 ]
               },
@@ -564,8 +598,17 @@
                   "zh/china-logistics-corridors",
                   "zh/methodology/china-activity-nowcast",
                   "zh/methodology/news-digest-and-briefing",
+                  "zh/methodology/news-credibility",
                   "zh/country-instability-index",
                   "zh/methodology/country-resilience-index",
+                  "zh/methodology/resilience-indicators",
+                  "zh/methodology/resilience-indicator-licensing",
+                  "zh/methodology/five-factor-scorecard",
+                  "zh/methodology/demographics-capability",
+                  "zh/methodology/food-stocks",
+                  "zh/methodology/defense-industrial-base",
+                  "zh/methodology/mineral-production",
+                  "zh/methodology/supply-vulnerability",
                   "zh/methodology/chokepoints",
                   "zh/methodology/pipelines",
                   "zh/methodology/storage",
@@ -574,6 +617,7 @@
                   "zh/methodology/cii-risk-scores",
                   "zh/methodology/disease-alert-level",
                   "zh/methodology/thermal-escalation",
+                  "zh/methodology/physical-divergence-index",
                   "zh/corrections",
                   "zh/geographic-convergence",
                   "zh/strategic-risk",
@@ -644,6 +688,7 @@
                   "zh/panels/monitors",
                   "zh/panels/oref-sirens",
                   "zh/panels/telegram-intel",
+                  "zh/panels/x-intel",
                   "zh/panels/fsi"
                 ]
               },
@@ -669,6 +714,7 @@
                   "zh/cli",
                   "zh/sdks",
                   "zh/mcp-overview",
+                  "zh/webmcp",
                   "zh/mcp-apps",
                   "zh/mcp-tools-reference",
                   "zh/mcp-jmespath",
@@ -694,6 +740,7 @@
                   "zh/contributing",
                   "zh/authentication",
                   "zh/adding-endpoints",
+                  "zh/webmcp-maintenance",
                   "zh/api-key-deployment",
                   "zh/releasing-cli",
                   "zh/release-packaging",
@@ -702,7 +749,7 @@
                   "zh/relay-parameters",
                   "zh/decision-signal-provenance",
                   "zh/china-decision-signals",
-                  "zh/data-sources"
+                  "zh/source-attribution"
                 ]
               },
               {
@@ -714,16 +761,19 @@
               {
                 "group": "法律",
                 "pages": [
+                  "zh/eula",
+                  "zh/terms",
+                  "zh/dpa",
                   "zh/license",
                   "zh/trademark-policy",
-                  "zh/privacy",
-                  "zh/terms"
+                  "zh/privacy"
                 ]
               }
             ]
           },
           {
             "tab": "API 参考",
+            "openapi": "api/worldmonitor.openapi.yaml",
             "groups": [
               {
                 "group": "概览",

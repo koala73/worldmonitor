@@ -56,6 +56,8 @@ import type { ClimateAnomaly } from '@/services/climate';
 import type { RadiationObservation } from '@/services/radiation';
 import { ArcLayer } from '@deck.gl/layers';
 import type { WeatherAlert } from '@/services/weather';
+import type { CanadaRoadRecord } from '@/services/canada-roads';
+import type { CanadaAlert } from '@/services/canada-alerts';
 import { escapeHtml } from '@/utils/sanitize';
 import {
   derivePipelinePublicBadge,
@@ -170,6 +172,7 @@ import { fetchWebcamImage } from '@/services/webcams';
 import { setTrustedHtml, trustedHtml } from '@/utils/dom-utils';
 import { summarizeRenderTiming, formatRenderTiming } from '@/components/map/render-timing';
 import { DeferredHeavyCommit } from '@/components/map/deferred-layer-commit';
+import { dispatchWebcamLayerClick, resolveWebcamStreamUrl, type WebcamLeafLike } from '@/components/map/webcam-click';
 import {
   type BBox,
   type BoundedFeature,
@@ -242,6 +245,12 @@ const VIEW_PRESETS: Record<DeckMapView, { longitude: number; latitude: number; z
   oceania: { longitude: 135, latitude: -25, zoom: 3.5 },
 };
 
+const VIEWPORT_MOVEMENT_EVENT_KEY = 'worldMonitorViewportGeneration';
+
+type ViewportMovementEventData = {
+  worldMonitorViewportGeneration?: unknown;
+};
+
 const MAP_INTERACTION_MODE: MapInteractionMode =
   import.meta.env.VITE_MAP_INTERACTION_MODE === 'flat' ? 'flat' : '3d';
 
@@ -298,6 +307,9 @@ function getOverlayColors() {
     trafficAnomaly: [255, 160, 0, 200] as [number, number, number, number],
     ddosHit: [180, 0, 255, 200] as [number, number, number, number],
     weather: [100, 150, 255, 180] as [number, number, number, number],
+    canadaRoads: [255, 140, 0, 190] as [number, number, number, number],
+    canadaRoadsClosure: [220, 40, 40, 210] as [number, number, number, number],
+    canadaAlerts: [220, 50, 50, 200] as [number, number, number, number],
     startupHub: isLight
       ? [22, 163, 74, 220] as [number, number, number, number]
       : [0, 255, 150, 200] as [number, number, number, number],
@@ -415,6 +427,16 @@ type HighlightedMarker = { id: string; lon: number; lat: number; name: string; s
 
 /** GpsJamHex with its H3 cell boundary precomputed once at ingestion (see setGpsJamming). */
 type GpsJamHexWithPolygon = GpsJamHex & { polygon: [number, number][] };
+
+/**
+ * Webcam markers carry an explicit leaf/group discriminant tagged at setWebcams
+ * ingestion, mirroring GlobeMap's `_kind: 'webcam' | 'webcam-cluster'` union.
+ * Existing consumers still narrow on `'count' in d`; `_kind` makes the
+ * distinction available at the type level for new code without re-deriving it.
+ */
+type WebcamLeafMarker = WebcamEntry & { _kind: 'webcam' };
+type WebcamClusterMarker = WebcamCluster & { _kind: 'webcam-cluster' };
+type WebcamMarker = WebcamLeafMarker | WebcamClusterMarker;
 
 interface BypassArcDatum {
   source: [number, number];
@@ -562,6 +584,8 @@ export class DeckGLMap {
   private hotspots: HotspotWithBreaking[];
   private earthquakes: Earthquake[] = [];
   private weatherAlerts: WeatherAlert[] = [];
+  private canadaRoads: CanadaRoadRecord[] = [];
+  private canadaAlerts: CanadaAlert[] = [];
   private outages: InternetOutage[] = [];
   private trafficAnomalies: ProtoTrafficAnomaly[] = [];
   private ddosLocations: DdosLocationHit[] = [];
@@ -633,7 +657,7 @@ export class DeckGLMap {
   private happinessSource = '';
   private speciesRecoveryZones: Array<SpeciesRecovery & { recoveryZone: { name: string; lat: number; lon: number } }> = [];
   private renewableInstallations: RenewableInstallation[] = [];
-  private webcamData: Array<WebcamEntry | WebcamCluster> = [];
+  private webcamData: WebcamMarker[] = [];
   private countriesGeoJsonData: FeatureCollection<Geometry> | null = null;
   private conflictZoneGeoJson: GeoJSON.FeatureCollection | null = null;
   // #4561: all zone features + their precomputed bounds, built once (cheap — no
@@ -820,6 +844,12 @@ export class DeckGLMap {
     this.render();
   };
   private moveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private viewportSettleTimeoutId: ReturnType<typeof setTimeout> | null = null;
+  private viewportSettledPromise: Promise<boolean> = Promise.resolve(true);
+  private resolveViewportSettled: ((completed: boolean) => void) | null = null;
+  private viewportTarget: { lat: number; lon: number; zoom: number } | null = null;
+  private viewportSettleDeadline = 0;
+  private viewportMovementGeneration = 0;
   /** Target center set eagerly by setView() so getCenter() returns the correct
    *  destination before moveend fires, preventing stale intermediate coords
    *  from being written to the URL during flyTo. Cleared on moveend. */
@@ -1224,7 +1254,14 @@ export class DeckGLMap {
       }
     });
 
-    this.maplibreMap.on('moveend', () => {
+    this.maplibreMap.on('moveend', (event) => {
+      // Snapshot before publishing state: a synchronous subscriber can start a
+      // newer movement, and this old event must never settle that generation.
+      const viewportMovementGeneration = this.viewportTarget
+        ? this.viewportMovementGeneration
+        : null;
+      const eventGeneration = (event as unknown as ViewportMovementEventData)[VIEWPORT_MOVEMENT_EVENT_KEY];
+      if (eventGeneration !== undefined && eventGeneration !== viewportMovementGeneration) return;
       this.pendingCenter = null;
       this.lastSCZoom = -1;
       this.rafUpdateLayers();
@@ -1232,6 +1269,11 @@ export class DeckGLMap {
       this.debouncedFetchAircraft();
       this.state.zoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
       this.onStateChange?.(this.getState());
+      if (viewportMovementGeneration !== null) {
+        queueMicrotask(() => {
+          this.trySettleViewportMovement(true, viewportMovementGeneration);
+        });
+      }
       if (this.state.layers.satellites) {
         if (this.imagerySearchTimer) clearTimeout(this.imagerySearchTimer);
         this.imagerySearchTimer = setTimeout(() => this.fetchImageryForViewport(), 500);
@@ -1612,6 +1654,7 @@ export class DeckGLMap {
           const riotTimeMs = Number(props.riotTimeMs ?? 0);
           return {
             id: `pc-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1629,7 +1672,7 @@ export class DeckGLMap {
         }
         const item = this.protestSuperclusterSource[f.properties.index]!;
         return {
-          id: `pp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          id: `pp-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lon,
           count: 1, items: [item], country: item.country,
           maxSeverity: item.severity, hasRiot: item.eventType === 'riot',
           latestRiotEventTimeMs:
@@ -1663,6 +1706,7 @@ export class DeckGLMap {
               : 'public';
           return {
             id: `hc-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1678,7 +1722,7 @@ export class DeckGLMap {
         }
         const item = TECH_HQS[f.properties.index]!;
         return {
-          id: `hp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          id: `hp-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lon,
           count: 1, items: [item], city: item.city, country: item.country,
           primaryType: item.type,
           faangCount: item.type === 'faang' ? 1 : 0,
@@ -1701,6 +1745,7 @@ export class DeckGLMap {
           const soonCount = Number(props.soonCount ?? 0);
           return {
             id: `ec-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1714,7 +1759,7 @@ export class DeckGLMap {
         }
         const item = this.techEvents[f.properties.index]!;
         return {
-          id: `ep-${f.properties.index}`, lat: item.lat, lon: item.lng,
+          id: `ep-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lng,
           count: 1, items: [item], location: item.location, country: item.country,
           soonestDaysUntil: item.daysUntil,
           soonCount: item.daysUntil <= 14 ? 1 : 0,
@@ -1738,6 +1783,7 @@ export class DeckGLMap {
           const totalPowerMW = Number(props.totalPowerMW ?? 0);
           return {
             id: `dc-${f.properties.cluster_id}`,
+            _kind: 'group' as const,
             _clusterId: f.properties.cluster_id!,
             lat: coords[1], lon: coords[0],
             count: clusterCount,
@@ -1754,7 +1800,7 @@ export class DeckGLMap {
         }
         const item = activeDCs[f.properties.index]!;
         return {
-          id: `dp-${f.properties.index}`, lat: item.lat, lon: item.lon,
+          id: `dp-${f.properties.index}`, _kind: 'leaf' as const, lat: item.lat, lon: item.lon,
           count: 1, items: [item], region: item.country, country: item.country,
           totalChips: item.chipCount, totalPowerMW: item.powerMW ?? 0,
           majorityExisting: item.status === 'existing',
@@ -1804,6 +1850,8 @@ export class DeckGLMap {
     const filteredKindnessPoints = mapLayers.kindness ? this.filterByTimeCached(this.kindnessPoints, (p) => p.timestamp) : [];
     const filteredImageryScenes = mapLayers.satellites ? this.filterByTimeCached(this.imageryScenes, (s) => s.datetime) : [];
     const filteredWeatherAlerts = mapLayers.weather ? this.filterByTimeCached(this.weatherAlerts, (alert) => alert.onset) : [];
+    const canadaRoadItems = mapLayers.canadaRoads ? this.canadaRoads : [];
+    const canadaAlertItems = mapLayers.canadaAlerts ? this.filterByTimeCached(this.canadaAlerts, (alert) => alert.updatedAt) : [];
     const filteredOutages = mapLayers.outages ? this.filterByTimeCached(this.outages, (outage) => outage.pubDate) : [];
     const filteredCableAdvisories = mapLayers.cables ? this.filterByTimeCached(this.cableAdvisories, (advisory) => advisory.reported) : [];
     const filteredFlightDelays = mapLayers.flights ? this.filterByTimeCached(this.flightDelays, (delay) => delay.updatedAt) : [];
@@ -1873,7 +1921,7 @@ export class DeckGLMap {
 
     // Live tanker positions inside chokepoint bounding boxes. AIS ship type
     // 80-89 (tanker class). Refreshed every 60s; one Map<chokepointId, ...>
-    // fetch per layer-tick. deckGLOnly per src/config/map-layer-definitions.ts.
+    // fetch per layer-tick. renderers: ['deck'] per src/config/map-layer-definitions.ts.
     // Powered by the relay's tankerReports field (added in PR 3 U7 alongside
     // the existing military-only candidateReports). Energy Atlas parity-push.
     if (mapLayers.liveTankers) {
@@ -1976,6 +2024,20 @@ export class DeckGLMap {
     // Weather alerts layer
     if (mapLayers.weather && filteredWeatherAlerts.length > 0) {
       layers.push(this.createWeatherLayer(filteredWeatherAlerts));
+    }
+
+    // Canada roads layer (provincial 511 feeds and municipal restrictions)
+    if (mapLayers.canadaRoads && canadaRoadItems.length > 0) {
+      layers.push(...this.createCanadaRoadsLayers(canadaRoadItems));
+    } else {
+      this.layerCache.delete('canada-roads-layer');
+      this.layerCache.delete('canada-roads-paths-layer');
+    }
+    // canadaAlerts layer (AB + BC + SK provincial alerts; ScatterplotLayer dots)
+    if (mapLayers.canadaAlerts && canadaAlertItems.length > 0) {
+      layers.push(this.createCanadaAlertsLayer(canadaAlertItems));
+    } else {
+      this.layerCache.delete('canada-alerts-layer');
     }
 
     // Internet outages layer
@@ -2224,7 +2286,7 @@ export class DeckGLMap {
 
     // Webcam layer (server-side clustered markers)
     if (mapLayers.webcams && this.webcamData.length > 0) {
-      layers.push(new ScatterplotLayer<WebcamEntry | WebcamCluster>({
+      layers.push(new ScatterplotLayer<WebcamMarker>({
         id: 'webcam-layer',
         data: this.webcamData,
         getPosition: (d) => [d.lng, d.lat],
@@ -2232,6 +2294,9 @@ export class DeckGLMap {
         getFillColor: (d) => ('count' in d ? [0, 212, 255, 180] : [255, 215, 0, 200]) as [number, number, number, number],
         radiusUnits: 'pixels',
         pickable: true,
+        // Consume the pick (return true) so MapboxOverlay onClick → handleClick
+        // does not double-fire. Cluster vs leaf is routed in handleWebcamLayerClick.
+        onClick: (info) => this.handleWebcamLayerClick(info),
       }));
     }
 
@@ -3186,6 +3251,40 @@ export class DeckGLMap {
       }));
     }
 
+    const windRadiiData: { polygon: number[][]; thresholdKt: number; stormName: string; _event: NaturalEvent }[] = [];
+    for (const e of cyclones) {
+      for (const band of e.windRadii || []) {
+        if (band.geometryKind && band.geometryKind !== 'forecast-wind-radii') continue;
+        for (const polygon of band.polygons || []) {
+          const ring = polygon[0];
+          if (ring?.length) {
+            windRadiiData.push({
+              polygon: ring,
+              thresholdKt: band.thresholdKt || 0,
+              stormName: e.stormName || e.title,
+              _event: e,
+            });
+          }
+        }
+      }
+    }
+    if (windRadiiData.length > 0) {
+      layers.push(new PolygonLayer({
+        id: 'storm-imd-wind-radii-layer',
+        data: windRadiiData,
+        getPolygon: (d: { polygon: number[][] }) => d.polygon,
+        getFillColor: (d: { thresholdKt: number }) => {
+          if (d.thresholdKt >= 64) return [180, 0, 0, 40] as [number, number, number, number];
+          if (d.thresholdKt >= 50) return [220, 80, 0, 36] as [number, number, number, number];
+          if (d.thresholdKt >= 34) return [220, 160, 0, 32] as [number, number, number, number];
+          return [200, 200, 0, 28] as [number, number, number, number];
+        },
+        getLineColor: [255, 180, 0, 120],
+        lineWidthMinPixels: 1,
+        pickable: true,
+      }));
+    }
+
     // Past track segments (per-segment wind coloring)
     const pastSegments: { path: [number, number][]; windKt: number; stormName: string; _event: NaturalEvent }[] = [];
     for (const e of cyclones) {
@@ -3279,6 +3378,59 @@ export class DeckGLMap {
       getFillColor: (d: IranEvent) => getIranEventColor(d),
       radiusMinPixels: 4,
       radiusMaxPixels: 16,
+      pickable: true,
+    });
+  }
+
+  private createCanadaRoadsLayers(items: CanadaRoadRecord[]): Layer[] {
+    const withCentroid = items.filter((d) => Array.isArray(d.centroid) && d.centroid.length === 2);
+    const withPath = items.filter((d) => Array.isArray(d.path) && d.path.length >= 2);
+    const fill = (d: CanadaRoadRecord): [number, number, number, number] => {
+      if (d.isFullClosure || d.severity === 'Extreme') return COLORS.canadaRoadsClosure;
+      if (d.severity === 'Severe') return [255, 100, 0, 200];
+      if (d.severity === 'Moderate') return [255, 170, 0, 170];
+      return COLORS.canadaRoads;
+    };
+    const layers: Layer[] = [];
+    layers.push(new ScatterplotLayer<CanadaRoadRecord>({
+      id: 'canada-roads-layer',
+      data: withCentroid,
+      getPosition: (d) => d.centroid as [number, number],
+      getRadius: (d) => (d.isFullClosure || d.kind === 'event' ? 18000 : 12000),
+      getFillColor: fill,
+      radiusMinPixels: 6,
+      radiusMaxPixels: 18,
+      pickable: true,
+    }));
+    if (withPath.length > 0) {
+      layers.push(new PathLayer<CanadaRoadRecord>({
+        id: 'canada-roads-paths-layer',
+        data: withPath,
+        getPath: (d) => d.path as [number, number][],
+        getColor: fill,
+        getWidth: 2,
+        widthMinPixels: 1,
+        widthMaxPixels: 4,
+        pickable: true,
+      }));
+    }
+    return layers;
+  }
+  private createCanadaAlertsLayer(alerts: CanadaAlert[]): ScatterplotLayer {
+    const alertsWithCoords = alerts.filter(a => a.centroid && a.centroid.length === 2);
+    return new ScatterplotLayer({
+      id: 'canada-alerts-layer',
+      data: alertsWithCoords,
+      getPosition: (d: CanadaAlert) => d.centroid as [number, number],
+      getRadius: 25000,
+      getFillColor: (d: CanadaAlert) => {
+        if (d.severity === 'Extreme') return [255, 0, 0, 200] as [number, number, number, number];
+        if (d.severity === 'Severe') return [255, 100, 0, 180] as [number, number, number, number];
+        if (d.severity === 'Moderate') return [255, 170, 0, 160] as [number, number, number, number];
+        return COLORS.canadaAlerts;
+      },
+      radiusMinPixels: 8,
+      radiusMaxPixels: 20,
       pickable: true,
     });
   }
@@ -4778,7 +4930,9 @@ export class DeckGLMap {
       case 'storm-past-track-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Past Track (${obj.windKt} kt)</div>` };
       case 'storm-cone-layer':
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast Cone</div>` };
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName)}</strong><br/>Forecast cone of uncertainty<br/><small>Not an observed storm footprint</small></div>` };
+      case 'storm-imd-wind-radii-layer':
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.stormName || 'IMD cyclone')}</strong><br/>Forecast wind radii ${text(String(obj.thresholdKt || ''))} kt<br/><small>India Meteorological Department · not an observed footprint</small></div>` };
       case 'ais-density-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${t('components.deckgl.layers.shipTraffic')}</strong><br/>${t('popups.intensity')}: ${text(obj.intensity)}</div>` };
       case 'waterways-layer':
@@ -4811,7 +4965,7 @@ export class DeckGLMap {
         const lvlColor = item.alertLevel === 'alert' ? '#e74c3c' : item.alertLevel === 'warning' ? '#e67e22' : '#f1c40f';
         const casesHtml = item.cases ? ` | ${item.cases} case${item.cases !== 1 ? 's' : ''}` : '';
         const dateStr = new Date(item.publishedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-        const metaHtml = `<br/><span style="opacity:.6;font-size:11px">${text(item.sourceName || '')} | ${dateStr}${casesHtml}</span>`;
+        const metaHtml = `<br/><span style="opacity:.6;font-size:calc(11px * var(--wm-panel-effective-scale, 1))">${text(item.sourceName || '')} | ${dateStr}${casesHtml}</span>`;
         const summaryHtml = item.summary ? `<br/><span style="opacity:.75">${text(item.summary.slice(0, 100))}${item.summary.length > 100 ? '…' : ''}</span>` : '';
         return { html: `<div class="deckgl-tooltip"><strong style="color:${lvlColor}">${text(item.alertLevel.toUpperCase())}</strong> ${text(item.disease)}<br/>${text(item.location)}${summaryHtml}${metaHtml}</div>` };
       }
@@ -4867,7 +5021,30 @@ export class DeckGLMap {
       case 'weather-layer': {
         const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
         const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
-        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${area}</div>` };
+        const issuedBy = typeof obj.issuedBy === 'string' && obj.issuedBy ? `<br/>${text(obj.issuedBy)}` : '';
+        const marine = [obj.wind, obj.seaState, obj.visibility].filter((value) => typeof value === 'string' && value).join(' · ');
+        const marineLine = marine ? `<br/><small>${text(marine)}</small>` : '';
+        const sourceLine = obj.sourceUrl ? `<br/><small>${text(String(obj.sourceUrl))}</small>` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.event || t('components.deckgl.layers.weatherAlerts'))}</strong><br/>${text(obj.severity)}${issuedBy}${area}${marineLine}${sourceLine}</div>` };
+      }
+      case 'canada-roads-layer':
+      case 'canada-roads-paths-layer': {
+        const title = obj.headline || obj.roadwayName || t('components.deckgl.layers.canadaRoads');
+        const origin = obj.jurisdiction
+          || (obj.source === 'manitoba-511' ? 'MB'
+            : obj.source === 'alberta-511' ? 'AB'
+            : obj.source === 'bc-open511' ? 'BC'
+            : obj.source === 'toronto-roads' ? 'Toronto'
+            : 'ON');
+        const detail = obj.lanesAffected || obj.currImpact || obj.district;
+        const extra = detail ? `<br/>${text(detail)}` : '';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(title)}</strong><br/>${text(origin)} · ${text(obj.severity || obj.eventType || '')}${extra}</div>` };
+      }
+      case 'canada-alerts-layer': {
+        const areaDesc = typeof obj.areaDesc === 'string' ? obj.areaDesc : '';
+        const area = areaDesc ? `<br/><small>${text(areaDesc.slice(0, 50))}${areaDesc.length > 50 ? '...' : ''}</small>` : '';
+        const province = obj.province || 'AB';
+        return { html: `<div class="deckgl-tooltip"><strong>${text(obj.headline || obj.event || t('components.deckgl.layers.canadaAlerts'))}</strong><br/>${text(province)} · ${text(obj.severity)}${area}</div>` };
       }
       case 'outages-layer':
         return { html: `<div class="deckgl-tooltip"><strong>${text(obj.title || t('components.deckgl.tooltip.internetOutage'))}</strong><br/>${text(obj.country)}</div>` };
@@ -4954,7 +5131,7 @@ export class DeckGLMap {
         let imgHtml = `<div class="deckgl-tooltip"><strong>&#128752; ${text(obj.satellite)}</strong><br/>${text(obj.datetime)}<br/>Res: ${Number(obj.resolutionM)}m \u00B7 ${text(obj.mode)}`;
         if (isAllowedPreviewUrl(obj.previewUrl)) {
           const safeHref = escapeHtml(new URL(obj.previewUrl).href);
-          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview">`;
+          imgHtml += `<br><img src="${safeHref}" referrerpolicy="no-referrer" style="max-width:180px;max-height:120px;margin-top:4px;border-radius:4px;" class="imagery-preview" alt="">`;
         }
         imgHtml += '</div>';
         return { html: imgHtml };
@@ -5152,8 +5329,8 @@ export class DeckGLMap {
       return;
     }
 
-    if (layerId === 'webcam-layer' && !('count' in info.object)) {
-      this.showWebcamClickPopup(info.object as WebcamEntry, info.x, info.y);
+    if (layerId === 'webcam-layer') {
+      this.handleWebcamLayerClick(info);
       return;
     }
 
@@ -5195,6 +5372,7 @@ export class DeckGLMap {
       'storm-forecast-track-layer': 'natEvent',
       'storm-past-track-layer': 'natEvent',
       'storm-cone-layer': 'natEvent',
+      'storm-imd-wind-radii-layer': 'natEvent',
       'waterways-layer': 'waterway',
       'economic-centers-layer': 'economic',
       'stock-exchanges-layer': 'stockExchange',
@@ -5273,7 +5451,24 @@ export class DeckGLMap {
     }
   }
 
-  private async showWebcamClickPopup(webcam: WebcamEntry, x: number, y: number): Promise<void> {
+  /**
+   * Layer-level webcam pick. Returns true so deck.gl consumes the event and the
+   * global MapboxOverlay handler does not run a second time (#3877 / #4230).
+   * Clusters zoom in instead of opening a tab per camera.
+   */
+  private handleWebcamLayerClick(info: PickingInfo): boolean {
+    return dispatchWebcamLayerClick(info.object, {
+      onLeaf: (webcam) => {
+        this.showWebcamClickPopup(webcam, info.x, info.y);
+      },
+      onCluster: (cluster) => {
+        const currentZoom = this.maplibreMap?.getZoom() ?? this.state.zoom;
+        this.setCenter(cluster.lat, cluster.lng, Math.min(currentZoom + 2, 14));
+      },
+    });
+  }
+
+  private async showWebcamClickPopup(webcam: WebcamLeafLike, x: number, y: number): Promise<void> {
     // Remove any existing popup
     this.container.querySelector('.deckgl-webcam-popup')?.remove();
 
@@ -5295,12 +5490,20 @@ export class DeckGLMap {
     popup.appendChild(locationEl);
 
     const id = webcam.webcamId;
-
-    // Fetch playerUrl for when user pins
-    const imageData = await fetchWebcamImage(id).catch(() => null);
+    const streamUrl = resolveWebcamStreamUrl(webcam);
+    if (streamUrl) {
+      const link = document.createElement('a');
+      link.className = 'deckgl-webcam-popup-link';
+      link.href = streamUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+      link.textContent = 'Open on Windy \u2197';
+      popup.appendChild(link);
+    }
 
     const pinBtn = document.createElement('button');
     pinBtn.className = 'webcam-pin-btn';
+    let imageData: Awaited<ReturnType<typeof fetchWebcamImage>> | null = null;
     if (isPinned(id)) {
       pinBtn.classList.add('webcam-pin-btn--pinned');
       pinBtn.textContent = '\u{1F4CC} Pinned';
@@ -5336,7 +5539,16 @@ export class DeckGLMap {
     const autoDismiss = setTimeout(cleanup, 8000);
     setTimeout(() => document.addEventListener('click', closeHandler), 0);
 
+    // Show immediately so a slow image fetch cannot look like a dead click.
     this.container.appendChild(popup);
+
+    imageData = await fetchWebcamImage(id).catch(() => null);
+    if (!popup.isConnected) return;
+
+    if (imageData?.windyUrl) {
+      const existing = popup.querySelector<HTMLAnchorElement>('.deckgl-webcam-popup-link');
+      if (existing) existing.href = imageData.windyUrl;
+    }
   }
 
   // Utility methods
@@ -5359,12 +5571,12 @@ export class DeckGLMap {
     controls.className = 'map-controls deckgl-controls';
     setTrustedHtml(controls, trustedHtml(`
       <div class="zoom-controls">
-        <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}">+</button>
-        <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}">-</button>
-        <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}">&#8962;</button>
+        <button class="map-btn zoom-in" title="${t('components.deckgl.zoomIn')}" aria-label="${t('components.deckgl.zoomIn')}">+</button>
+        <button class="map-btn zoom-out" title="${t('components.deckgl.zoomOut')}" aria-label="${t('components.deckgl.zoomOut')}">-</button>
+        <button class="map-btn zoom-reset" title="${t('components.deckgl.resetView')}" aria-label="${t('components.deckgl.resetView')}">&#8962;</button>
       </div>
       <div class="view-selector">
-        <select class="view-select">
+        <select class="view-select" aria-label="${t('header.selectRegion')}">
           <option value="global">${t('components.deckgl.views.global')}</option>
           <option value="america">${t('components.deckgl.views.americas')}</option>
           <option value="mena">${t('components.deckgl.views.mena')}</option>
@@ -5439,7 +5651,7 @@ export class DeckGLMap {
     const toggles = document.createElement('div');
     toggles.className = 'layer-toggles deckgl-layer-toggles';
 
-    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat');
+    const layerDefs = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'deck');
     const premiumUnlocked = hasPremiumAccess(getAuthState());
     const layerConfig = layerDefs.map(def => ({
       key: def.key,
@@ -5623,7 +5835,7 @@ export class DeckGLMap {
     this.container.querySelector('.layer-help-popup')?.remove();
     this.container.querySelectorAll('.layer-explain-btn.active').forEach(btn => btn.classList.remove('active'));
 
-    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'flat').find(item => item.key === layer);
+    const def = getLayersForVariant((SITE_VARIANT || 'full') as MapVariant, 'deck').find(item => item.key === layer);
     const layerLabel = def ? resolveLayerLabel(def, t) : String(layer);
     const explanation = getLayerExplanation(layer);
     const popup = document.createElement('div');
@@ -5721,6 +5933,8 @@ export class DeckGLMap {
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('strategicWaterways'), 'macroWaterways'),
       helpItem(label('weatherAlerts'), 'weatherAlertsMarket'),
+      helpItem(label('canadaRoads'), 'canadaRoads'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('naturalEvents'), 'naturalEventsMacro'),
       helpItem(label('dayNight'), 'dayNight'),
     ])}
@@ -5766,6 +5980,8 @@ export class DeckGLMap {
       helpItem(label('naturalEvents'), 'naturalEventsFull'),
       helpItem(label('fires'), 'firesFull'),
       helpItem(label('weatherAlerts'), 'weatherAlerts'),
+      helpItem(label('canadaRoads'), 'canadaRoads'),
+      helpItem(label('canadaAlerts'), 'canadaAlerts'),
       helpItem(label('climateAnomalies'), 'climateAnomalies'),
       helpItem(label('economicCenters'), 'economicCenters'),
       helpItem(label('criticalMinerals'), 'mineralsFull'),
@@ -5905,11 +6121,11 @@ export class DeckGLMap {
     ciiLegend.id = 'ciiChoroplethLegend';
     ciiLegend.style.display = this.state.layers.ciiChoropleth ? 'block' : 'none';
     setTrustedHtml(ciiLegend, trustedHtml(`
-      <span class="legend-label-title" style="font-size:9px;letter-spacing:0.5px;">CII SCALE</span>
+      <span class="legend-label-title" style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));letter-spacing:0.5px;">CII SCALE</span>
       <div style="display:flex;align-items:center;gap:2px;margin-top:2px;">
         <div style="width:100%;height:8px;border-radius:3px;background:linear-gradient(to right,#28b33e,#dcc030,#e87425,#dc2626,#7f1d1d);"></div>
       </div>
-      <div style="display:flex;justify-content:space-between;font-size:8px;opacity:0.7;margin-top:1px;">
+      <div style="display:flex;justify-content:space-between;font-size:calc(8px * var(--wm-panel-effective-scale, 1));opacity:0.7;margin-top:1px;">
         <span>0</span><span>31</span><span>51</span><span>66</span><span>81</span><span>100</span>
       </div>
     `, "legacy direct innerHTML migration"));
@@ -6006,6 +6222,86 @@ export class DeckGLMap {
     }
   }
 
+  private markViewportMoving(target: { lat: number; lon: number; zoom: number }, fallbackMs: number): number {
+    // Every concrete renderer command owns a distinct settlement generation.
+    // This also catches renderer-local controls that bypass MapContainer's
+    // facade token: superseding them must never make the older caller succeed.
+    this.resolveViewportSettled?.(false);
+    this.viewportSettledPromise = new Promise((resolve) => {
+      this.resolveViewportSettled = resolve;
+    });
+    const generation = ++this.viewportMovementGeneration;
+    this.viewportTarget = target;
+    this.viewportSettleDeadline = Date.now() + 15_000;
+    if (this.viewportSettleTimeoutId) clearTimeout(this.viewportSettleTimeoutId);
+    // MapLibre normally resolves this through moveend. The timer only resolves
+    // when the live camera actually reached the requested target; background
+    // tabs may throttle animation frames while allowing timers to continue.
+    this.viewportSettleTimeoutId = setTimeout(
+      () => this.trySettleViewportMovement(false, generation),
+      fallbackMs,
+    );
+    return generation;
+  }
+
+  private trySettleViewportMovement(
+    finalMovementEvent = false,
+    generation = this.viewportMovementGeneration,
+  ): void {
+    if (generation !== this.viewportMovementGeneration) return;
+    if (this.destroyed) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    const target = this.viewportTarget;
+    const center = this.maplibreMap?.getCenter();
+    const zoom = this.maplibreMap?.getZoom();
+    const longitudeDelta = target && center
+      ? Math.abs((((center.lng - target.lon) + 540) % 360) - 180)
+      : Number.POSITIVE_INFINITY;
+    const atTarget = Boolean(target && center && zoom != null
+      && Math.abs(center.lat - target.lat) <= 0.0001
+      && longitudeDelta <= 0.0001
+      && Math.abs(zoom - target.zoom) <= 0.01);
+    if (!this.maplibreMap?.isMoving() && atTarget) {
+      this.settleViewportMovement(true, generation);
+      return;
+    }
+    if (finalMovementEvent && !this.maplibreMap?.isMoving()) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    if (Date.now() >= this.viewportSettleDeadline) {
+      this.settleViewportMovement(false, generation);
+      return;
+    }
+    this.viewportSettleTimeoutId = setTimeout(
+      () => this.trySettleViewportMovement(false, generation),
+      100,
+    );
+  }
+
+  private settleViewportMovement(
+    completed: boolean,
+    generation = this.viewportMovementGeneration,
+  ): void {
+    if (generation !== this.viewportMovementGeneration) return;
+    if (this.viewportSettleTimeoutId) {
+      clearTimeout(this.viewportSettleTimeoutId);
+      this.viewportSettleTimeoutId = null;
+    }
+    this.viewportTarget = null;
+    this.viewportSettleDeadline = 0;
+    this.viewportMovementGeneration++;
+    const resolve = this.resolveViewportSettled;
+    this.resolveViewportSettled = null;
+    resolve?.(completed);
+  }
+
+  public whenViewportSettled(): Promise<boolean> {
+    return this.viewportSettledPromise;
+  }
+
   public setView(view: DeckMapView, zoom?: number): void {
     const preset = VIEW_PRESETS[view];
     if (!preset) return;
@@ -6018,11 +6314,16 @@ export class DeckGLMap {
     this.pendingCenter = { lat: preset.latitude, lon: preset.longitude };
 
     if (this.maplibreMap) {
+      const viewportMovementGeneration = this.markViewportMoving({
+        lat: preset.latitude,
+        lon: preset.longitude,
+        zoom: this.state.zoom,
+      }, 1_300);
       this.maplibreMap.flyTo({
         center: [preset.longitude, preset.latitude],
         zoom: this.state.zoom,
         duration: 1000,
-      });
+      }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
 
     const viewSelect = this.container.querySelector('.view-select') as HTMLSelectElement;
@@ -6039,13 +6340,24 @@ export class DeckGLMap {
   }
 
   public setCenter(lat: number, lon: number, zoom?: number): void {
+    // Publish the requested destination immediately, matching setView(). This
+    // keeps URL/context reads truthful even if flyTo is interrupted or its
+    // moveend arrives after a programmatic caller's bounded settlement wait.
+    this.pendingCenter = { lat, lon };
+    if (zoom != null) this.state.zoom = zoom;
     if (this.maplibreMap) {
+      const viewportMovementGeneration = this.markViewportMoving({
+        lat,
+        lon,
+        zoom: zoom ?? this.maplibreMap.getZoom(),
+      }, 800);
       this.maplibreMap.flyTo({
         center: [lon, lat],
         ...(zoom != null && { zoom }),
         duration: 500,
-      });
+      }, { [VIEWPORT_MOVEMENT_EVENT_KEY]: viewportMovementGeneration });
     }
+    this.onStateChange?.(this.getState());
   }
 
   public fitCountry(code: string): void {
@@ -6594,6 +6906,14 @@ export class DeckGLMap {
     this.render();
   }
 
+  public setCanadaRoads(records: CanadaRoadRecord[]): void {
+    this.canadaRoads = records;
+  }
+  public setCanadaAlerts(alerts: CanadaAlert[]): void {
+    this.canadaAlerts = alerts;
+    this.render();
+  }
+
   public setImageryScenes(scenes: ImageryScene[]): void {
     this.imageryScenes = scenes;
     this.render();
@@ -6732,11 +7052,16 @@ export class DeckGLMap {
         this.debouncedFetchAircraft();
       }
     } else {
+      // Invalidate any viewport request that can still resolve after the
+      // layer is disabled. Its response must not repopulate the search source.
+      this.aircraftFetchSeq += 1;
+      this.setLayerReady('flights', false);
       if (this.aircraftFetchTimer) {
         clearInterval(this.aircraftFetchTimer);
         this.aircraftFetchTimer = null;
       }
       this.aircraftPositions = [];
+      this.onAircraftPositionsUpdate?.([]);
     }
   }
 
@@ -6757,8 +7082,12 @@ export class DeckGLMap {
     if (!this.state.layers.flights) return;
     const zoom = this.maplibreMap.getZoom();
     if (zoom < 2) {
+      // Zooming out also makes an in-flight viewport response ineligible.
+      this.aircraftFetchSeq += 1;
+      this.setLayerReady('flights', false);
       if (this.aircraftPositions.length > 0) {
         this.aircraftPositions = [];
+        this.onAircraftPositionsUpdate?.([]);
         this.render();
       }
       return;
@@ -6785,7 +7114,12 @@ export class DeckGLMap {
       this.render();
     }).catch((err) => {
       console.error('[aircraft] fetch error', err);
-      this.setLayerLoading('flights', false);
+      if (seq === this.aircraftFetchSeq) {
+        this.aircraftPositions = [];
+        this.onAircraftPositionsUpdate?.([]);
+        this.setLayerReady('flights', false);
+        this.render();
+      }
     });
   }
 
@@ -6826,7 +7160,11 @@ export class DeckGLMap {
   }
 
   public setWebcams(markers: Array<WebcamEntry | WebcamCluster>): void {
-    this.webcamData = markers;
+    this.webcamData = markers.map((m) =>
+      'count' in m
+        ? { ...m, _kind: 'webcam-cluster' as const }
+        : { ...m, _kind: 'webcam' as const },
+    );
     this.render();
   }
 
@@ -7845,6 +8183,8 @@ export class DeckGLMap {
 
   public destroy(): void {
     this.destroyed = true;
+    this.aircraftFetchSeq += 1;
+    this.settleViewportMovement(false);
     this.stopTradeAnimation();
     this.activeFlightTrails.clear();
     this.clearTrailsBtn = null;

@@ -56,7 +56,7 @@ async function getBasketRows(basketSlug: string, marketCode: string): Promise<Ba
        SELECT price, unit_price, currency_code, observed_at
        FROM price_observations
        WHERE retailer_product_id = rp.id AND in_stock = true
-       ORDER BY observed_at DESC LIMIT 1
+       ORDER BY observed_at DESC, id DESC LIMIT 1
      ) po ON true
      WHERE b.slug = $1`,
     [basketSlug, marketCode],
@@ -313,5 +313,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   validateAndAggregateAll()
     .then(() => console.log(`\n=== Done (${Date.now() - runStartedAt}ms) ===`))
     .finally(() => closePool())
-    .catch(console.error);
+    // Mirror scrape.ts: a failed aggregate must fail the cron (Railway green
+    // deploys on exit 0 — console.error alone reported success on 0/N).
+    .catch((err) => {
+      console.error(err);
+      process.exitCode = 1;
+    });
 }

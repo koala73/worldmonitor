@@ -27,9 +27,9 @@ export WM_KEY="wm_0123456789abcdef0123456789abcdef01234567"  # or use the OAuth 
 
 ## 发现工具
 
-在深入逐工具参考之前，两种机制使发现工具的成本低于从头到尾阅读本页。如果您从 REST 路由而非工具名称开始，请使用 [API 覆盖表](/zh/mcp-overview#api-coverage)；逐工具的 **API 端点** 行表示确切的 `_apiPaths` 声明，而 `none directly` 表示该工具返回数据但不声明等价的 REST 路由。
+在深入逐工具参考之前，两种机制使发现工具的成本低于从头到尾阅读本页。如果您从 REST 路由而非工具名称开始，请使用 [API 覆盖表](/zh/mcp-overview#api-覆盖)；逐工具的 **API 端点** 行表示确切的 `_apiPaths` 声明，而 `none directly` 表示该工具返回数据但不声明等价的 REST 路由。
 
-MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们会修改状态、传递 LLM 成本、在缓存未命中时获取付费/高基数上游，或需要手动缓存键映射。[API 覆盖部分](/zh/mcp-overview#api-coverage) 列出了强制类别并链接了当前的跟进追踪。
+MCP 覆盖是有意精选的。某些 OpenAPI 操作仅限 REST，因为它们会修改状态、传递 LLM 成本、在缓存未命中时获取付费/高基数上游，或需要手动缓存键映射。[API 覆盖部分](/zh/mcp-overview#api-覆盖) 列出了强制类别并链接了当前的跟进追踪。
 
 ### `describe_tool` — 按需获取完整未压缩定义
 
@@ -85,19 +85,31 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 {
   "type": "object",
   "properties": {
-    "country_code": { "type": "string" },
-    "cii": { "type": ["number", "null"], "description": "Composite Instability Index 0-100." },
-    "components": {
-      "type": "object",
+    "countryCode": { "type": "string" },
+    "countryName": { "type": "string" },
+    "cii": {
+      "type": ["object", "null"],
+      "description": "Absent when the country is not tracked, and always absent when upstreamUnavailable is true.",
       "properties": {
-        "unrest":   { "type": ["number", "null"] },
-        "conflict": { "type": ["number", "null"] },
-        "security": { "type": ["number", "null"] },
-        "news":     { "type": ["number", "null"] }
+        "combinedScore": { "type": "number", "description": "The headline CII, 0-100." },
+        "trend": { "type": "string", "enum": ["TREND_DIRECTION_UNSPECIFIED", "TREND_DIRECTION_RISING", "TREND_DIRECTION_STABLE", "TREND_DIRECTION_FALLING"] },
+        "components": {
+          "type": "object",
+          "description": "Names are historical and do NOT describe their contents -- read the descriptions.",
+          "properties": {
+            "ciiContribution":  { "type": "number", "description": "DOMESTIC UNREST contribution." },
+            "geoConvergence":   { "type": "number", "description": "ARMED CONFLICT contribution." },
+            "militaryActivity": { "type": "number", "description": "SECURITY AND MOBILITY contribution." },
+            "newsActivity":     { "type": "number", "description": "INFORMATION ENVIRONMENT contribution." }
+          }
+        }
       }
     },
-    "travelAdvisory":    { "type": ["object", "string", "null"] },
-    "sanctionsExposure": { "type": ["object", "array", "null"] }
+    "advisoryLevel":   { "type": "string" },
+    "sanctionsActive": { "type": "boolean" },
+    "sanctionsCount":  { "type": "number" },
+    "fetchedAt":       { "type": "number", "description": "Unix epoch ms; 0 means unknown." },
+    "upstreamUnavailable": { "type": "boolean", "description": "True when ANY required upstream read failed; the whole response is withheld, so the zeroed risk fields mean UNKNOWN, not low." }
   }
 }
 ```
@@ -110,7 +122,7 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
   "required": ["cached_at", "stale", "data"],
   "properties": {
     "cached_at": { "type": ["string", "null"], "description": "ISO-8601 timestamp of the OLDEST contributing cache key." },
-    "stale":     { "type": "boolean", "description": "True when any contributing cache key is older than its per-key maxStaleMin freshness budget." },
+    "stale":     { "type": "boolean", "description": "True when any contributing cache key fails its freshness contract: fetched longer ago than its per-key maxStaleMin budget, below a declared minRecordCount, or — for keys that declare a content-age contract — carrying upstream observations older than maxContentAgeMin even though the fetch itself is recent. A recent cached_at with stale:true means the fetch is current but the underlying data has stopped advancing, so refetching will not help." },
     "data":      { "type": "object", "properties": { /* per-tool fields */ } }
   }
 }
@@ -121,11 +133,24 @@ Schemas 在每次 `tools/list` 时**无条件**输出，无论协商的 `protoco
 ```ts
 // Synthesise types from the schema once (e.g. with json-schema-to-typescript).
 type CountryRisk = {
-  country_code: string;
-  cii: number | null;
-  components: { unrest: number | null; conflict: number | null; security: number | null; news: number | null };
-  travelAdvisory: object | string | null;
-  sanctionsExposure: object | unknown[] | null;
+  countryCode: string;
+  countryName: string;
+  // The four component names are historical misnomers: ciiContribution is
+  // domestic unrest, geoConvergence is armed conflict, militaryActivity is
+  // security/mobility, newsActivity is the information environment.
+  cii?: {
+    combinedScore: number;
+    trend: 'TREND_DIRECTION_UNSPECIFIED' | 'TREND_DIRECTION_RISING' | 'TREND_DIRECTION_STABLE' | 'TREND_DIRECTION_FALLING';
+    components?: { ciiContribution: number; geoConvergence: number; militaryActivity: number; newsActivity: number };
+  };
+  advisoryLevel: string;
+  sanctionsActive: boolean;
+  sanctionsCount: number;
+  fetchedAt: number;
+  // Check this BEFORE reading any score: true means a required upstream
+  // read failed and the response was withheld — the zeroed fields are
+  // unknown, not calm.
+  upstreamUnavailable: boolean;
 };
 
 const reply = await callTool('get_country_risk', { country_code: 'IR' });
@@ -145,7 +170,7 @@ if ('_budget_exceeded' in parsed) {
 } else if ('_jmespath_error' in parsed) {
   // fix the projection using `original_keys` as the schema hint — see /mcp-error-catalog
 } else {
-  console.log(parsed.cii, parsed.components.conflict);
+  console.log(parsed.cii?.combinedScore, parsed.cii?.components?.geoConvergence);
 }
 ```
 
@@ -165,19 +190,19 @@ if ('_budget_exceeded' in parsed) {
 
 ### `get_market_data`
 
-来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格（包括黄金期货 GC=F）、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现及估值覆盖、ETF 资金流和海湾市场报价。
+来自 WorldMonitor 精选引导缓存的实时股票报价、大宗商品价格、SGE 实物金银相对 COMEX 的溢价与背离状态、加密货币价格、外汇汇率（USD/EUR、USD/JPY 等）、板块表现及估值覆盖、ETF 资金流和海湾市场报价。
 
 **参数（工具特定）：**
 
 | 名称 | 类型 | 描述 |
 |------|------|-------------|
-| `symbols` | `array<string>` | 要保留的代码，例如 ["AAPL","GC=F","BTC"]。不区分大小写；匹配股票/大宗商品/加密货币/海湾报价、板块 ETF 和 ETF 资金流代码。省略则返回完整快照。 |
+| `symbols` | `array<string>` | 要保留的代码，例如 ["AAPL","GC=F","BTC"]。不区分大小写；匹配股票/大宗商品/加密货币/海湾报价、实物溢价与背离别名、板块 ETF 和 ETF 资金流代码。省略则返回完整快照。 |
 | `asset_class` | `array<string: equity / commodity / crypto / sectors / etf / gulf / sentiment>` | 将响应限制为一个或多个资产类别。省略则返回全部。 |
 | `limit` | number | 将每个类别的报价列表（股票/大宗商品/加密货币/海湾/板块/ETF 资金流）限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
-- **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
+- **API 端点：** `GET /api/market/v1/get-fear-greed-index`, `GET /api/market/v1/get-physical-divergence-index`, `GET /api/market/v1/get-physical-premiums`, `GET /api/market/v1/get-sector-summary`, `GET /api/market/v1/list-commodity-quotes`, `GET /api/market/v1/list-crypto-quotes`, `GET /api/market/v1/list-etf-flows`, `GET /api/market/v1/list-gulf-quotes`, `GET /api/market/v1/list-market-quotes`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
+- **新鲜度预算：** `stale` 仅追踪市场和板块快照（各 **30 分钟**）。每日 `physicalPremiums` 与 `physicalDivergence` 由 `/api/health` 监控。需要判断年龄时，请读取时间戳和背离状态。详见[实物贵金属背离指数方法](/zh/methodology/physical-divergence-index)。
 - 板块 `valuationCoverage` 将写入年龄（`stale`）与完整度（`sourceStatus`：`ok`、`partial` 或 `degraded`）分开。`stale` 描述的是种子写入本身，而非单条记录——刚写入的负载中仍可能包含较旧的估值。提供 `symbols` 筛选时，`valuationCount` 与 `expectedValuationCount` 会按筛选结果计算。`valuationCount` 同时统计实时获取与回放的记录；`currentValuationCount` 给出本轮真正实时获取的子集，当所有记录均为最新时会省略该字段。`staleValuationSymbols` 列出来自旧快照的代码——这些代码在 `valuations` 中**确实**有数值，其年龄由 `lastGood.fetchedAt` 给出（上限为 7 天快照 TTL）。`unavailableSymbols` 列出完全没有发布估值的代码，与 `staleValuationSymbols` 互不相交。`lastGood` 同时涵盖整条记录与借用的收益指标，并包含该快照时间戳。当没有任何记录是最新时 `sourceStatus` 为 `degraded`，当部分记录陈旧或缺失时为 `partial`。`valuationDiagnostics` 是按代码限制的路由元数据，覆盖 `v7Quote`、`v7QuoteBatch` 与 `quoteSummary` 路由，展示独立的 direct/proxy 结果、响应类别和缺失字段，绝不包含凭据。
 
 <CodeGroup>
@@ -454,6 +479,38 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_wto_trade_flows`
+
+查询一个报告国与世界之间、可配置年份窗口内的 WTO 商品贸易流量。数据来自 WTO `ITS_MTV_AX`（出口）和 `ITS_MTV_AM`（进口）指标，每 6 小时播种一次；该工具读取与仪表板相同的播种快照，不会在每次请求时调用 WTO。
+
+**参数（工具特定）：**
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `reporter` | string | WTO 报告国的 3 位 UN M49 代码（例如 "840" 表示美国）。默认为 "840"。目前仅提供与世界（"000"）之间的数据；其他伙伴代码会返回 `not_covered`。 |
+| `years` | integer | 从最新发布年份向前回看的年数，包含起止年份（10 会返回 11 个日历年）。默认为 10；30 是完整播种窗口。 |
+
+**响应区分：** `unavailableReason` 使用 RPC 的封闭 `TradeFlowUnavailableReason` 枚举。`TRADE_FLOW_UNAVAILABLE_REASON_NOT_COVERED` 是合约答案：该组合不在播种覆盖范围内，重试无效。其他非 UNSPECIFIED 原因均表示故障（`seed_missing`、`coverage_unknown`、`cache_unavailable`），并带有 `upstreamUnavailable: true`。
+
+- **API 端点：** `GET /api/trade/v1/get-trade-flows`
+- **类型：** 规范贸易流量路由的 RPC 代理（handler 负责窗口切片和未命中分类）。
+- **新鲜度预算：** 最多 **7 小时**后标记为 `stale`（6 小时播种节奏加 1 小时宽限）。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_wto_trade_flows","arguments":{"reporter":"840","years":20}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_consumer_prices`
 
 逐国消费价格情报：30 天概览、类别级通胀、零售商价差（必需品篮子）、涨跌榜和来源新鲜度。需要 country_code（当前仅播种 'ae'）。
@@ -482,6 +539,128 @@ curl -s https://worldmonitor.app/mcp \
 ```
 
 </CodeGroup>
+
+### `get_five_factor_scorecard`
+
+返回冻结版 v1 五因素评分卡。一次调用必须且只能选择一个国家、一个官方集团，或一个自定义成员列表。响应读取同一个原子快照，因此国家与集团使用相同的证据批次和方法版本。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `country_code` | string | 三选一 | ISO 3166-1 alpha-2 国家代码，不区分大小写。 |
+| `preset` | string | 三选一 | `USMCA`、`EU27`、`BRICS`、`GCC`、`ASEAN` 或 `NATO`。 |
+| `members` | string[] | 三选一 | 2–30 个唯一的大写 ISO-2 代码组成的自定义集团。 |
+
+- **API 端点：** `GET /api/scorecard/v1/get-five-factor-scorecard`、`GET /api/scorecard/v1/get-bloc-scorecard`
+- **访问：** `subscription`，需要 Pro 订阅。
+- **类型：** 规范 RPC 代理，读取 `scorecard:five-factor:v1`；请求时不获取上游来源。
+- **新鲜度：** 每日播种，新鲜度预算为 36 小时。
+
+读取每个支柱的 `score` 与 `subScore` 前，必须先检查 `hasScore`。当标志为 false 时，proto3 的零只是占位值，不是评分。读取输入数值前，必须先检查 `available` 与 `hasValue`。`insufficientReasons` 与 `unavailableReason` 会说明缺失原因，包括来源政策限制 `redistribution-blocked`。
+
+集团的食品和能源支柱先汇总实际生产与消费，再计算评分。人口结构、科技与国防的连续子分数按人口加权。因此，集团评分不是成员档位的简单平均。参见[五因素评分卡方法](/zh/methodology/five-factor-scorecard)。
+
+<CodeGroup>
+
+```bash 国家
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"country_code":"DE"}}
+  }'
+```
+
+```bash 官方集团
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_five_factor_scorecard","arguments":{"preset":"ASEAN"}}
+  }'
+```
+
+</CodeGroup>
+
+### `list_five_factor_scorecards`
+
+紧凑列出冻结评分卡批次中的所有国家。每条记录保留支柱评分、档位、输入覆盖率和数据不足原因，但省略原始输入和来源观测，确保完整国家集合不超过 MCP 输出预算。
+
+- **参数：** 无
+- **API 端点：** `GET /api/scorecard/v1/list-five-factor-scorecards`
+- **访问：** `subscription`，需要 Pro 订阅。
+- **类型：** 同一个原子 `scorecard:five-factor:v1` 快照的紧凑投影。
+
+如需输入来源、原始观测或集团汇总，请使用 `get_five_factor_scorecard`。
+读取 `score` 或 `subScore` 前必须检查 `hasScore`。若 `hasScore` 为 false，两个数值零只是 protobuf 的数据不足占位符，并不表示韧性实测为零。
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_five_factor_scorecards","arguments":{}}
+  }'
+```
+
+### `get_resilience_indicators`
+
+在完整的 72 行指标注册表上解释单个国家的国家韧性指数分数。每一行都带有归一化分量分数、活动评分器使用的运行时权重、策略生效后的有效贡献、已观测或插补状态、观测年龄与来源溯源。各项贡献会与每个已发布的维度分数对账，因此无需重新实现条件公式即可审计一个分数。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 说明 |
+|------|------|-----:|------|
+| `country_code` | string | 是 | ISO 3166-1 alpha-2 国家代码，例如 `DE`。不区分大小写。 |
+
+- **API 端点：** `GET /api/resilience/v1/get-resilience-indicators`
+- **访问权限：** `subscription` — REST 与 MCP 两条路径都需要 Pro 订阅。
+- **类型：** 对实际运行的评分器分支所做的请求内追踪，并非第二套评分实现。
+- **新鲜度：** 读取由六小时公共分数缓存引用的不可变追踪代次。该追踪存放在独立的七小时边车中，使分数与排名读取保持轻量。
+
+该工具不接受 `jmespath`。两个运行时都会以 JSON-RPC `-32602` 或 HTTP 400 拒绝非空投影，因为投影可能使被允许的原始值脱离授权其再分发的署名与抓取字段。
+
+各行区分 `observed`、`imputed`、`missing`、`fallback`、`source-failure`、`inactive`、`retired` 与 `not-applicable` 状态。请先读状态再读值：已退役或未启用的行是显式的，不会声称虚假的对账结果。
+
+原始来源值是选择性提供的，并且失败关闭。只有在观测值为实测、每个参与贡献的提供方都已完成再分发审查、所需署名齐备，且贡献种子具有抓取时间戳时，该行才会包含原始值。受限行仍会返回 WorldMonitor 的归一化分数、贡献、来源署名以及已知时的来源年份——抑制通过原始值策略状态与原因报告，绝不用数值零表示。`observationProvenance` 用于区分确切的选定来源与仅来自注册表的署名。逐来源的决策表参见[指标许可决策](/zh/methodology/resilience-indicator-licensing)。
+
+`sourceYear` 是提供方测量该现象的时间，`retrievedAt` 是 WorldMonitor 抓取它的时间。两者不可互换，观测年龄始终依据观测日期推导。对于复合指标，`sourceYear` 取贡献年份中最早的一个。
+
+公共的 `get_resilience_score` 响应不受该工具影响，并保持模式兼容。
+
+```bash
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"get_resilience_indicators","arguments":{"country_code":"DE"}}
+  }'
+```
+
+### `get_mineral_production`
+
+各国矿产开采与冶炼份额及 HHI，来自 USGS Mineral Commodity Summaries 年度种子（BGS 补 USGS 缺表的品种，尤其是铀）。用于“谁精炼 X / 某国生产什么”。矿床位置仍用 `get_commodity_geo`。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|-----:|------|
+| `commodity` | string | 否 | 品种 id 或名称（`cobalt`、`lithium`、`ree` 等） |
+| `iso2` | string | 否 | ISO 3166-1 alpha-2 生产国过滤 |
+| `stage` | string: mine / refinery | 否 | 限制为开采或冶炼阶段 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-mineral-production`
+- **类型：** 缓存读取 — Redis 种子 `supply-chain:mineral-production:v1`。
+- **新鲜度：** 年度 MCS 版本。USGS 的 W（withheld）保持标记，不会被当成 0。
 
 ### `get_commodity_geo`
 
@@ -612,7 +791,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_country_risk`
 
-特定国家的结构化风险情报：综合不稳定指数（CII）评分 0-100、组成部分细分（动荡/冲突/安全/新闻）、旅行警示级别和 OFAC 制裁风险敞口。快速 Redis 读取 — 无 LLM。用于量化风险筛选或回答"X 现在有多危险？"
+特定国家的结构化风险情报：综合不稳定指数（CII）位于 `cii.combinedScore`（0-100），四个贡献项位于 `cii.components`（国内动荡、武装冲突、安全与出行、信息环境），政府旅行警示级别，以及以 `sanctionsActive` 和 `sanctionsCount` 表示的 OFAC 制裁敞口。快速 Redis 读取 - 无 LLM。解读低分前先检查 `upstreamUnavailable`：为 true 表示至少一个必需的上游读取失败，归零的风险字段代表 UNKNOWN，而不是平静。用于量化风险筛选或回答“X 现在有多危险？”
 
 **参数：**
 
@@ -638,6 +817,37 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `list_x_feed`
+
+精选公开新闻账号的 X 动态。仅返回永久链接与派生事实 — 从不返回帖文正文。用于查看哪些账号最近发帖，而不是转载正文。
+
+**参数：**
+
+| 名称 | 类型 | 必填 | 描述 |
+|------|------|---------:|-------------|
+| `limit` | number | 否 | 返回的最大帖文数（1-200，默认 50） |
+| `topic` | string | 否 | 可选主题过滤，例如 breaking、conflict、geopolitics、cyber |
+| `account` | string | 否 | 可选账号 handle（不含 @） |
+
+- **API 端点：** `GET /api/intelligence/v1/list-x-feed`
+- **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。Edge 运行时超时：**10.0s**。
+- **内容政策：** 帖文正文为 R4。MCP/embed 合作方仅获得事实 + 永久链接。
+
+<CodeGroup>
+
+```bash curl
+curl -s https://worldmonitor.app/mcp \
+  -H "X-WorldMonitor-Key: $WM_KEY" \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "jsonrpc":"2.0","id":1,
+    "method":"tools/call",
+    "params":{"name":"list_x_feed","arguments":{"limit":20,"topic":"breaking"}}
+  }'
+```
+
+</CodeGroup>
+
 ### `get_country_brief`
 
 AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治和经济评估。支持分析框架以提供结构化视角。
@@ -652,6 +862,7 @@ AI 生成的逐国情报简报。为给定国家生成 LLM 分析的地缘政治
 - **API 端点：** `GET /api/intelligence/v1/get-country-intel-brief`
 - **类型：** 实时 RPC — 每次调用代理对 WorldMonitor API 的请求。最坏情况总预算 **~24s**（2s 上下文摘要抓取 + 22s 简报生成，顺序执行）。
 - **来源：** 返回有界的 `sources` 数组，含来自用于为国家上下文提供依据的摘要条目的原始文章链接。URL 从订阅源数据复制，而非由 LLM 生成。
+- **交叉印证：** 为用作依据的摘要文章额外返回一个 `groundingStories` 数组，每项包含 `corroborationCount`（摘要生成时报道该故事的不同媒体数）、`mentionCount` 和生命周期 `storyPhase`。它独立于 `sources`（后者可能改为承载服务端依据集），并在摘要读取失败时为空。引用请使用 `sources`；使用 `groundingStories` 判断底层报道的充分程度。
 
 <CodeGroup>
 
@@ -684,6 +895,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/list-cross-source-signals`, `GET /api/intelligence/v1/search-gdelt-documents`
 - **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
+- **交叉印证：** 每个顶级故事都包含 `uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`、`sources` 中参与报道的媒体名称，以及 `memberTitles` 中该聚类的全部标题，另有 `lastUpdated`、`upstreamImportanceScore`、`effectiveImportanceScore` 和 `credibilityScore`（0-100 来源可靠性，与重要性不同；国家控制媒体上限为 40）。
 - **新鲜度预算：** 标记 `stale: true` 前最多 **30 分钟**（由 seeder cron 的预期间隔设定）。
 
 <CodeGroup>
@@ -713,7 +925,7 @@ curl -s https://worldmonitor.app/mcp \
 
 - **API 端点：** `GET /api/intelligence/v1/classify-event`
 - **类型：** 对 LLM 分类器的受约束规范路由代理。该操作此前以 `llm-passthrough` 理由被排除在 MCP 对等之外；按标题的 24 小时缓存吸收重复请求，且分类器输出上限为 50 个 token。
-- **配额：** 标准 —— OAuth（Pro）与仪表盘密钥上下文每次调用均消耗 MCP 每日预留（每 UTC 日 50 次）。环境 API 密钥（`wm_…`）调用方不受该每日预留约束，与其他所有 MCP 工具一样，仍受 60 次请求/分钟/密钥 的限流保护。
+- **配额：** 标准 —— OAuth 与控制面板签发的 `wm_…` 密钥上下文每次调用均消耗 MCP 每日预留（默认每 UTC 日 50 次）。只有部署中明确列入许可名单的旧版运营方密钥跳过每日预留；每个已认证上下文仍受每分钟 60 次的限流保护。
 
 <CodeGroup>
 
@@ -763,7 +975,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_news_clusters`
 
-使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别以及时间跨度。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
+使用与仪表盘完全相同的 Jaccard 聚类（0.5 标题分词相似度）对实时头条摘要计算当前话题簇，因此 agent 看到的故事分组与 UI 一致。每个簇报告主标题、成员数、`distinctSourceCount`（`min_sources` 所过滤的交叉印证信号）、来源名称、热门关键词（过滤停用词与泛化词）、聚合威胁级别/类别、时间跨度，以及主来源的 `credibilityScore`（0-100 来源可靠性，与重要性不同）。服务器端主标题按新近度选取，因为摘要条目不携带每来源层级。
 
 **参数（工具专用）：**
 
@@ -794,7 +1006,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_keyword_spikes`
 
-相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
+相对基线的关键词、CVE 与 APT/FIN 威胁组织飙升趋势，使用与仪表盘趋势关键词引擎相同的词项候选与飙升判定数学（最低近期计数、严格基线倍数、来源多样性门槛）。每条飙升包含 `sourceNames`（有对照表时为出版机构名称，否则为原始 feed 标签）以及最多三条 `{title, source, link}` 形式的 `sampleHeadlines`，以便代理归因并打开计数背后的报道。样本上的 `source` 是承载该折叠标题的全部出版机构；`link` 是规范的 `story:track:v1` URL，不一定属于某一个具名来源。工具会分别查询近期窗口与窗口前的基线数据，每组最多 800 条故事，因此高流量的近期窗口不会挤占基线样本。`baseline_hours` 报告实际采样的窗口前基线时长；`sample_truncated: true` 表示任一数据组触及上限。若没有窗口前故事，工具会返回空的飙升列表与明确的 `baseline unavailable` 说明，并且不会缓存该结果。结果按 `(window_hours, min_count)` 组合缓存 10 分钟。
 
 **参数（工具专用）：**
 
@@ -931,8 +1143,8 @@ curl -s https://worldmonitor.app/mcp \
 | `limit` | number | 将异常列表限制为最多这么多项（默认 30，传 0 表示不限）。 |
 
 - **API 端点：** 无（仅 MCP；底层 REST 基线端点为写穿式，已从对等性检查中排除）。
-- **类型：** 缓存读取 — 来自 Redis 引导缓存的亚秒级响应。
-- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**（生产者每小时刷新，并由 infra seeder 保持热度）。
+- **类型：** 仅缓存读取 — 从 Redis 引导缓存亚秒级返回。MCP 调用不会调用生产者，也不会触发重建。
+- **新鲜度预算：** 标记 `stale: true` 前最多 **45 分钟**。只有底层生产者路由/RPC（`GET /api/infrastructure/v1/list-temporal-anomalies`）收到流量时，才会在快照超过 20 分钟后按需重建。`cached_at` 记录该次重建的时间，而不是 MCP 调用时间，因此仅在生产者路由重建快照时推进。如果该路由没有流量，这个请求驱动的时间戳可能超过新鲜度预算。
 
 <CodeGroup>
 
@@ -1182,6 +1394,41 @@ curl -s https://worldmonitor.app/mcp \
 
 </CodeGroup>
 
+### `get_supply_vulnerabilities`
+
+返回一个国家的已审核大宗商品脆弱性组合。每行包含绝对评分和等级（证据足够时）、组成、覆盖状态、过期原因、来源和 `methodologyVersion`。缺失评分表示未知，不是零。
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `country_code` | string | 必填 ISO 3166-1 alpha-2 国家代码，例如 `AE`、`JP` 或 `DE`。不区分大小写。 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-country-vulnerabilities`
+- **访问：** `free-account`
+- **类型：** 从 `supply-chain:vulnerability:v1` 读取 Redis 投影。
+- **方法：** [大宗商品脆弱性方法论](/zh/methodology/supply-vulnerability)。
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_supply_vulnerabilities","arguments":{"country_code":"AE"}}}
+```
+
+### `get_chokepoint_dependencies`
+
+返回一个海运咽喉要道中评分最高的国家和商品依赖。反向索引与国家索引在同一次计算中生成，因此评分、状态、运输份额和方法版本可对账。
+
+| 名称 | 类型 | 描述 |
+|------|------|-------------|
+| `chokepoint_id` | string | 必填规范 id，例如 `hormuz_strait` 或 `malacca_strait`。 |
+| `page_size` | integer | 可选结果上限，1–100，默认 25。 |
+
+- **API 端点：** `GET /api/supply-chain/v1/get-chokepoint-dependencies`
+- **访问：** `free-account`
+- **类型：** 从 `supply-chain:chokepoint-dependencies:v1` 读取 Redis 投影。
+- **方法：** [大宗商品脆弱性方法论](/zh/methodology/supply-vulnerability)。
+
+```json
+{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"get_chokepoint_dependencies","arguments":{"chokepoint_id":"hormuz_strait","page_size":25}}}
+```
+
 ### `get_positive_events`
 
 积极的地缘政治事件：外交协议、人道主义援助、发展里程碑和全球和平倡议。
@@ -1276,7 +1523,7 @@ curl -s https://worldmonitor.app/mcp \
 | `country` | string | 二选一 | ISO 3166-1 alpha-2 大写代码，例如 "UA"。未设置 `domain` 时必填 |
 | `from` | number | 否 | 最早的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无下界 |
 | `to` | number | 否 | 最晚的 `occurredAt`，Unix 纪元毫秒，含边界。省略表示无上界 |
-| `limit` | integer | 否 | 最大事件数。省略时路由返回 50 条，上限为 200 |
+| `limit` | integer | 否 | 最大事件数。省略时返回 40 条，上限为 40 —— schema 声明 `maximum: 40`，更大的值会被钳制 |
 
 - **API 端点：** `GET /api/intelligence/v1/get-intel-timeline`
 - **类型：** 实时 RPC — 一次存储读取，无嵌入。Edge 运行时超时：**8.0s**。
@@ -1366,7 +1613,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_airspace`
 
-某国上空的实时 ADS-B 航空器。返回民用航班（OpenSky）和识别出的军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
+某国上空的实时 ADS-B 航空器。返回由 Wingbits 支持的民用航班，以及来自可再分发提供方的已识别军用飞机，含呼号、位置、高度和航向。回答诸如"现在阿联酋上空有多少架飞机？"或"台湾上空有军用飞机吗？"之类的问题。
 
 **参数：**
 
@@ -1590,7 +1837,7 @@ curl -s https://worldmonitor.app/mcp \
 
 ### `get_natural_disasters`
 
-近期地震（USGS）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置和威胁严重程度。
+近期 M4.5+ 地震（USGS 与加拿大地震局 / NRCan）、活跃野火（NASA FIRMS）和自然灾害事件。包含震级、位置、来源和威胁严重程度。
 
 **参数（工具特定）：**
 
@@ -1764,6 +2011,7 @@ curl -s https://worldmonitor.app/mcp \
 - **API 端点：** `GET /api/infrastructure/v1/get-bootstrap-data?keys=insights` —— 通过已认证网关读取仪表板使用的同一 `news:insights:v1` payload。
 - **类型：** 缓存支撑的 RPC —— 返回最新的种子程序已接受快照，在缺失、过期或降级时 fail closed。不在请求时调用 LLM。
 - **来源：** 按生产者顺序返回种子 payload 发布的有界 `worldBriefSources` 数组。URL 从显式来源记录复制，而不是在 MCP 执行时生成；保留空 URL 回退项，避免引用编号错位。
+- **交叉印证：** `headlines` 中的每一项在 `topStories` 中都有一个按下标对齐的条目（`topStories[i]` 描述 `headlines[i]`），包含 `sourceCount`、`uniqueSourceCount`、`corroborationSourceCount`、`entityCorroboration`、`sourceTier`，以及 `sources` 中参与报道的媒体名称（上限 12 个）。这些全部由洞察种子程序发布，因此不在请求时计算。注意这里每个故事的 `sources` 是媒体名称列表，与该工具顶层的 `sources`（承载引用记录）不同。`memberTitles` 在此处刻意不返回 —— 它可在输出预算更大的 `get_news_intelligence` 上获取。
 
 <CodeGroup>
 

@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import { afterEach, describe, it } from 'node:test';
+import sovereignStatus from '../scripts/shared/sovereign-status.json' with { type: 'json' };
 
 import { issueSessionToken } from '../api/_session.js';
 import seedHealthHandler from '../api/seed-health.js';
@@ -15,10 +16,12 @@ const CHINA_META_KEY = 'seed-meta:intelligence:china-decision-signals';
 const PORTWATCH_META_KEY = 'seed-meta:supply_chain:portwatch-ports';
 const PREDICTION_META_KEY = 'seed-meta:prediction:markets';
 const OPERATOR_KEY = 'china-decision-test-operator-key';
-const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v9:US';
+const RESILIENCE_INTERVAL_PROBE_KEY = 'resilience:intervals:v11:US';
 const RESILIENCE_INTERVAL_METHODOLOGY = 'weight-perturbation-sensitivity-v3';
 const RESILIENCE_INTERVAL_SOURCE_VERSION =
-  `resilience-intervals:resilience:intervals:v9:${RESILIENCE_INTERVAL_METHODOLOGY}`;
+  `resilience-intervals:resilience:intervals:v11:${RESILIENCE_INTERVAL_METHODOLOGY}`;
+const EDUCATION_META_KEY = 'seed-meta:resilience:education-attainment';
+const EDUCATION_DATA_KEY = 'resilience:education-attainment:v1';
 const originalFetch = globalThis.fetch;
 const originalEnv = {
   WM_SESSION_SECRET: process.env.WM_SESSION_SECRET,
@@ -27,6 +30,7 @@ const originalEnv = {
   WORLDMONITOR_VALID_KEYS: process.env.WORLDMONITOR_VALID_KEYS,
   RESILIENCE_PILLAR_COMBINE_ENABLED: process.env.RESILIENCE_PILLAR_COMBINE_ENABLED,
   RESILIENCE_SCHEMA_V2_ENABLED: process.env.RESILIENCE_SCHEMA_V2_ENABLED,
+  RESILIENCE_EDUCATION_ENABLED: process.env.RESILIENCE_EDUCATION_ENABLED,
 };
 
 afterEach(() => {
@@ -51,6 +55,7 @@ function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
   process.env.WORLDMONITOR_VALID_KEYS = OPERATOR_KEY;
   process.env.RESILIENCE_PILLAR_COMBINE_ENABLED = 'false';
   process.env.RESILIENCE_SCHEMA_V2_ENABLED = 'true';
+  process.env.RESILIENCE_EDUCATION_ENABLED = 'true';
 
   globalThis.fetch = async (_url, init) => {
     const commands = JSON.parse(String(init?.body));
@@ -63,8 +68,31 @@ function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
             p05: 65.2,
             p95: 72.8,
             _formula: 'd6',
+            _educationState: 'education-on',
             methodology: RESILIENCE_INTERVAL_METHODOLOGY,
             computedAt: new Date(chinaMeta.fetchedAt).toISOString(),
+          }),
+        };
+      }
+      if (key === EDUCATION_META_KEY) {
+        return {
+          result: JSON.stringify({
+            fetchedAt: chinaMeta.fetchedAt,
+            recordCount: sovereignStatus.entries.length,
+            rankableRecordCount: sovereignStatus.entries.length,
+            sourceVersion: 'test',
+          }),
+        };
+      }
+      if (key === EDUCATION_DATA_KEY) {
+        return {
+          result: JSON.stringify({
+            countries: Object.fromEntries(
+              sovereignStatus.entries.map((entry, index) => [
+                entry.iso2,
+                { value: 35 + (index % 45), year: 2024 },
+              ]),
+            ),
           }),
         };
       }
@@ -105,6 +133,8 @@ function installSeedHealthPipelineMock(chinaMeta: ChinaMeta) {
           // Must clear EVERY seed's minRecordCount floor (sec-cik-map: 5000)
           // so only the China entry under test can degrade `overall`.
           recordCount: 1_000_000,
+          rankableRecordCount: 1_000_000,
+          redistributionPolicyVersion: 1,
           sourceVersion: key === 'seed-meta:resilience:intervals'
             ? RESILIENCE_INTERVAL_SOURCE_VERSION
             : 'test',

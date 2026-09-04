@@ -8,7 +8,7 @@ description: "在本地环境安装、配置并运行 WorldMonitor 的完整分�
 
 | 层 | 技术 | 用途 |
 |-------|------------|---------|
-| **语言** | TypeScript 5.x | 为 60+ 源文件提供类型安全 |
+| **语言** | TypeScript 5.x | 为源文件提供类型安全 |
 | **构建** | Vite | 快速 HMR，优化的生产构建 |
 | **地图（桌面）** | deck.gl + MapLibre GL | 为大型数据集提供 WebGL 加速渲染 |
 | **地图（移动）** | D3.js + TopoJSON | SVG 备选以节省电池 |
@@ -115,7 +115,7 @@ npm run dev
 | CoinGecko | 加密货币价格 | 否 |
 | USGS | 地震数据 | 否 |
 | NASA EONET | 自然事件（风暴、火灾、火山、洪水） | 否 |
-| NWS | 天气警报 | 否 |
+| NWS + ECCC + WMO SWIC | 官方天气警报（全球 CAP + 美加多边形） | 否 |
 | FRED | 经济指标（美联储数据） | 否 |
 | EIA | 石油分析（价格、产量、库存） | 是（免费） |
 | USASpending.gov | 联邦政府合同和拨款 | 否 |
@@ -177,17 +177,17 @@ src/
 │   ├── ServiceStatusPanel.ts # External service health monitoring
 │   └── ...
 ├── config/
-│   ├── feeds.ts              # 500+ RSS feeds, source tiers, regional sources
-│   ├── geo.ts                # 30+ hotspots, conflicts, 86 cables, waterways, spaceports, minerals
-│   ├── pipelines.ts          # 88 oil & gas pipelines
-│   ├── ports.ts              # 62 strategic ports worldwide
-│   ├── bases-expanded.ts     # 226 military bases
-│   ├── ai-datacenters.ts     # 313 AI compute clusters (Epoch AI dataset)
-│   ├── airports.ts           # 111 airports across 5 regions
+│   ├── feeds.ts              # RSS feeds, source tiers, regional sources
+│   ├── geo.ts                # Hotspots, conflicts, cables, waterways, spaceports, minerals
+│   ├── pipelines.ts          # Oil & gas pipeline registry
+│   ├── ports.ts              # Strategic port registry
+│   ├── bases-expanded.ts     # Military base registry
+│   ├── ai-datacenters.ts     # AI compute clusters (Epoch AI dataset)
+│   ├── airports.ts           # Regional airport registry
 │   ├── irradiators.ts        # IAEA gamma irradiator sites
 │   ├── nuclear-facilities.ts # Global nuclear infrastructure
 │   ├── markets.ts            # Stock symbols, sectors
-│   ├── entities.ts           # 66 entity definitions (companies, indices, commodities, countries)
+│   ├── entities.ts           # Entity definitions (companies, indices, commodities, countries)
 │   └── panels.ts             # Panel configs, layer defaults, mobile optimizations
 ├── services/
 │   ├── ais.ts                # WebSocket vessel tracking with density analysis
@@ -206,7 +206,7 @@ src/
 │   ├── rss.ts                # RSS parsing with circuit breakers
 │   ├── markets.ts            # Finnhub, Yahoo Finance, CoinGecko
 │   ├── earthquakes.ts        # USGS integration
-│   ├── weather.ts            # NWS alerts
+│   ├── weather.ts            # NWS + ECCC + WMO SWIC alerts
 │   ├── fred.ts               # Federal Reserve data
 │   ├── oil-analytics.ts      # EIA oil prices, production, inventory
 │   ├── usa-spending.ts       # USASpending.gov contracts & awards
@@ -242,7 +242,7 @@ src/
 api/                          # Vercel Edge Functions (two kinds, see Architecture)
 ├── <domain>/v<N>/[rpc].ts    # Generated domain gateways — aviation, market,
 │                             #   conflict, climate, cyber, sanctions, maritime,
-│                             #   resilience, ... (34 proto-backed domains)
+│                             #   resilience, ... (registered proto-backed domains)
 ├── bootstrap.js              # Two-tier Redis hydration for the SPA
 ├── health/                   # Per-key freshness + cascade status
 ├── mcp.ts / mcp-proxy.ts     # Model Context Protocol server endpoints
@@ -252,7 +252,7 @@ api/                          # Vercel Edge Functions (two kinds, see Architectu
 └── notify.ts                 # Notification dispatch (hand-written operational)
 server/                       # Server-side handlers (bundled into Edge functions)
 ├── gateway.ts                # createDomainGateway — per-domain Edge bundles
-├── worldmonitor/<domain>/    # 34 proto-backed domain handler implementations
+├── worldmonitor/<domain>/    # Proto-backed domain handler implementations
 └── _shared/                  # Redis client, source tiers, shared utilities
 ```
 
@@ -283,7 +283,7 @@ server/                       # Server-side handlers (bundled into Edge function
 
 - **地震**：[美国地质调查局](https://earthquake.usgs.gov/)，ANSS 综合目录
 - **自然事件**：[NASA EONET](https://eonet.gsfc.nasa.gov/) — 地球观测自然事件追踪器（风暴、野火、火山、洪水）
-- **天气警报**：[国家气象局](https://www.weather.gov/) — 开放数据，免费使用
+- **天气警报**：[国家气象局](https://www.weather.gov/)、[ECCC](https://weather.gc.ca/) 与 [WMO SWIC](https://severeweather.wmo.int/) — 官方警报合并进同一 `weather:alerts:v1` 源
 
 ### 基础设施与交通
 

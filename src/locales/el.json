@@ -67,6 +67,19 @@
       "stable": "Σταθερό"
     },
     "militaryActivity": "Στρατιωτική δραστηριότητα",
+    "defenseIndustrial": {
+      "title": "Defense Industrial Base",
+      "expenditure": "Military spend",
+      "personnel": "Personnel",
+      "armsImports": "Arms imports",
+      "concentration": "Supplier HHI",
+      "suppliers": "Arms suppliers ({{start}}–{{end}})",
+      "source": "Sources: World Bank and SIPRI Arms Transfers Database. TIV measures transfer volume, not financial value.",
+      "sourceWorldBank": "Source: World Bank.",
+      "unavailable": "Not available",
+      "coverage": "Mapped coverage",
+      "supplierRetained": "Supplier data retained from the last successful importer refresh."
+    },
     "economicIndicators": "Οικονομικοί δείκτες",
     "ownFlights": "Ιδίες πτήσεις",
     "foreignFlights": "Ξένες πτήσεις",
@@ -177,6 +190,113 @@
       "corridorConditions": "Συνθήκες διαδρόμου",
       "activityNowcast": "Nowcast δραστηριότητας",
       "decisionSignalsUnavailable": "Το στιγμιότυπο σημάτων απόφασης της Κίνας δεν είναι διαθέσιμο αυτή τη στιγμή."
+    },
+    "foodStocks": "Food stocks",
+    "foodStocksHelp": "USDA PSD commodity stocks-to-use by marketing year, with the world ratio alongside for context. FAOSTAT Food Balances supplies production and domestic supply when PSD has no complete country balance.",
+    "loadingFoodStocks": "Loading food stocks…",
+    "foodStocksUnavailable": "Food stocks unavailable.",
+    "foodStocksProLocked": "Upgrade to PRO for commodity stocks-to-use",
+    "foodStocksCommodity": "Commodity",
+    "foodStocksMarketingYear": "Marketing year",
+    "foodStocksRatio": "Stocks-to-use",
+    "foodStocksWorld": "World",
+    "commodities": {
+      "wheat": "Wheat",
+      "corn": "Corn",
+      "rice": "Rice",
+      "soybeans": "Soybeans",
+      "barley": "Barley",
+      "palmOil": "Palm oil"
+    },
+    "demographicsCapability": {
+      "title": "Demographics & Workforce",
+      "help": "Age structure, education pipeline, and industrial workforce capacity from UN WPP, UNESCO UIS and World Bank WDI, and ILOSTAT.",
+      "loading": "Loading demographics and workforce data…",
+      "unavailable": "Demographics and workforce data unavailable.",
+      "proLocked": "Upgrade to PRO for demographics and workforce data",
+      "notAvailable": "Not available",
+      "ageStructure": "Age structure",
+      "education": "Education pipeline",
+      "industrialWorkforce": "Industrial workforce",
+      "medianAge": "Median age",
+      "oldAgeDependency": "Old-age dependency",
+      "totalDependency": "Total dependency",
+      "workingAgePopulation": "Working-age population",
+      "workingAgeProjection": "Working-age population (+10 years)",
+      "tertiaryEnrollment": "Tertiary enrollment",
+      "stemGraduates": "STEM graduates",
+      "researchers": "Researchers",
+      "craftTrades": "Craft and trades workers",
+      "plantOperators": "Plant and machine operators",
+      "trainedIndustrialWorkforce": "Combined industrial workforce",
+      "manufacturingShare": "Manufacturing employment",
+      "source": "Sources: {{sources}}.",
+      "retained": "{{stage}} data retained from the last successful refresh."
+    },
+    "fiveFactorScorecard": {
+      "title": "Σκορκαρντ Ανθεκτικότητας Πέντε Παράγοντων",
+      "help": "Σταθεροποιημένες βαθμολογίες αποδείξεων v1 για τροφή, ενέργεια, δημογραφία, τεχνολογία και άμυνα. Επεκτείνετε μια γραμμή για να εξετάσετε τις εισόδους, την προέλευση των πηγών και τους λόγους έλλειψης δεδομένων.",
+      "loading": "Φόρτωση του σκορκαρντ πέντε παραγόντων…",
+      "unavailable": "Το σκορκαρντ πέντε παραγόντων δεν είναι διαθέσιμο.",
+      "proLocked": "Αναβαθμίστε σε PRO για το σκορκαρντ ανθεκτικότητας πέντε παραγόντων",
+      "insufficient": "Ανεπαρκή δεδομένα",
+      "notAvailable": "Δεν είναι διαθέσιμο",
+      "noEvidence": "Δεν υπάρχουν διαθέσιμες αποδείξεις για αυτόν τον πυλώνα.",
+      "score": "{{score}}/5",
+      "coverage": "Κάλυψη {{coverage}}%",
+      "methodologyVersion": "Μεθοδολογία v{{version}}",
+      "methodologyLink": "Προβολή μεθοδολογίας",
+      "pillars": {
+        "food": "Τρόφιμα",
+        "energy": "Ενέργεια",
+        "demographics": "Δημογραφία",
+        "technology": "Τεχνολογία",
+        "defense": "Άμυνα"
+      },
+      "reasons": {
+        "source-unavailable": "Η πηγή δεν είναι διαθέσιμη",
+        "country-unavailable": "Η χώρα δεν είναι διαθέσιμη",
+        "invalid-value": "Μη έγκυρη τιμή πηγής",
+        "stale": "Τα αποδεικτικά στοιχεία είναι παρωχημένα",
+        "coverage-below-floor": "Κάλυψη κάτω από το όριο βαθμολογίας",
+        "required-group-missing": "Λείπει απαιτούμενη ομάδα αποδεικτικών στοιχείων",
+        "missing-population": "Η πληθυσμιακή πληροφορία δεν είναι διαθέσιμη",
+        "redistribution-blocked": "Η αναδιανομή πηγής δεν επιτρέπεται",
+        "pillar-unavailable": "Η στήλη δεν είναι διαθέσιμη"
+      },
+      "inputs": {
+        "population": "Πληθυσμός",
+        "food_productionBalance": "Ισορροπία παραγωγής τροφίμων",
+        "food_stocksToUse": "Αποθέματα προς χρήση",
+        "food_waterSecurity": "Ασφάλεια νερού",
+        "food_importDiversity": "Ποικιλία εισαγωγών",
+        "energy_productionBalance": "Ισορροπία παραγωγής",
+        "energy_lowCarbonShare": "Κεφάλαιο χαμηλού άνθρακα",
+        "energy_gridEfficiency": "Αποδοτικότητα δικτύου",
+        "demographics_totalDependency": "Συνολική εξάρτηση",
+        "demographics_oldAgeDependency": "Εξάρτηση ηλικιωμένων",
+        "demographics_workingAgeProjection": "Προβλέψεις εργαζομένων",
+        "demographics_tertiaryEnrollment": "Εγγραφή τριτοβάθμιας εκπαίδευσης",
+        "demographics_researchersPerMillion": "Ερευνητές ανά εκατομμύριο",
+        "demographics_stemGraduateShare": "Ποσοστό αποφοίτων STEM",
+        "demographics_trainedIndustrialShare": "Ποσοστό εκπαιδευμένης βιομηχανικής εργατικότητας",
+        "demographics_manufacturingEmploymentShare": "Ποσοστό απασχόλησης στην παραγωγή",
+        "technology_internetUse": "Χρήση διαδικτύου",
+        "technology_mobileSubscriptions": "Συνδρομές κινητής τηλεφωνίας",
+        "technology_fixedBroadband": "Σταθερή ευρυζωνική σύνδεση",
+        "technology_rdSpend": "Δαπάνες Έρευνας & Ανάπτυξης",
+        "technology_researchersPerMillion": "Ερευνητές ανά εκατομμύριο",
+        "technology_stemGraduateShare": "Ποσοστό αποφοίτων STEM",
+        "technology_electricityAccess": "Πρόσβαση σε ηλεκτρικό ρεύμα",
+        "defense_expenditureUsd": "Στρατιωτική δαπάνη",
+        "defense_expenditurePctGdp": "Στρατιωτικό βάρος",
+        "defense_personnel": "Προσωπικό ενόπλων δυνάμεων",
+        "defense_industrialBalance": "Ισορροπία βιομηχανίας άμυνας",
+        "defense_supplierDiversity": "Ποικιλία προμηθευτών όπλων"
+      }
+    },
+    "defenseIndustrialBase": {
+      "proLocked": "Αναβαθμίστε σε PRO για εξάρτηση προμηθευτών όπλων και στρατιωτική ικανότητα"
     }
   },
   "header": {
@@ -308,6 +428,7 @@
     "securityAdvisories": "Προειδοποιήσεις Ασφαλείας",
     "orefSirens": "Israel Sirens",
     "telegramIntel": "Πληροφορίες Telegram",
+    "xIntel": "X News Accounts",
     "startups": "Startups & VC",
     "vcblogs": "Αναλύσεις & Άρθρα VC",
     "regionalStartups": "Παγκόσμια Νέα Startups",
@@ -365,7 +486,8 @@
     "consumerPrices": "Τιμές Καταναλωτή",
     "fearGreed": "Fear & Greed",
     "marketBreadth": "Market Breadth",
-    "climateNews": "Ειδήσεις για το Κλίμα"
+    "climateNews": "Ειδήσεις για το Κλίμα",
+    "fx": "Ισοτιμίες Συναλλάγματος"
   },
   "commands": {
     "prefixes": {
@@ -445,7 +567,9 @@
         "displacement": "Εναλλαγή ροών εκτοπισμένων",
         "climate": "Εναλλαγή κλιματικών ανωμαλιών",
         "outages": "Εναλλαγή διακοπών ίντερνετ",
-        "tradeRoutes": "Εναλλαγή εμπορικών δρόμων"
+        "tradeRoutes": "Εναλλαγή εμπορικών δρόμων",
+        "canadaRoads": "Toggle Canada roads overlay",
+        "canadaAlerts": "Toggle Canada provincial emergency alerts overlay"
       },
       "view": {
         "dark": "Μετάβαση σε σκοτεινή λειτουργία",
@@ -471,6 +595,8 @@
       "recent": "Πρόσφατες Αναζητήσεις",
       "empty": "Αναζήτηση δεδομένων ή εκτέλεση εντολών",
       "noResults": "Κανένα αποτέλεσμα",
+      "resultAnnouncement_one": "{{count}} αποτέλεσμα για {{query}}",
+      "resultAnnouncement_other": "{{count}} αποτελέσματα για {{query}}",
       "commands": "Εντολές",
       "results": "Αποτελέσματα",
       "seeAllCommands": "Εμφάνιση όλων των εντολών",
@@ -607,7 +733,7 @@
         "URLHAUS_AUTH_KEY": "Χρησιμοποιείται για τα APIs URLhaus και ThreatFox.",
         "OTX_API_KEY": "Προαιρετική πηγή εμπλουτισμού για το επίπεδο κυβερνοαπειλών.",
         "ABUSEIPDB_API_KEY": "Προαιρετική πηγή εμπλουτισμού για φήμη κακόβουλων IP.",
-        "FINNHUB_API_KEY": "Τιμές μετοχών σε πραγματικό χρόνο και δεδομένα αγοράς.",
+        "FINNHUB_API_KEY": "Καθυστερημένες ή προφορτωμένες τιμές μετοχών και δεδομένα αγοράς. Ένα κλειδί δεν είναι ζωντανή ροή.",
         "NASA_FIRMS_API_KEY": "Σύστημα Πληροφοριών Πυρκαγιών για Διαχείριση Πόρων.",
         "OLLAMA_API_URL": "π.χ. http://127.0.0.1:11434 (Ollama) ή http://127.0.0.1:1234/v1 (LM Studio) — OpenAI-συμβατό endpoint.",
         "OLLAMA_MODEL": "π.χ. llama3.1:8b — ετικέτα μοντέλου για περίληψη."
@@ -851,7 +977,13 @@
       "loadingHistory": "Φόρτωση ιστορικού διέλευσης…",
       "historyUnavailable": "Ιστορικό διέλευσης μη διαθέσιμο",
       "transitDataUnavailable": "Δεδομένα διέλευσης μη διαθέσιμα (upstream μερικό)",
-      "infoTooltip": "<strong>Οθόνη αλυσίδας εφοδιασμού</strong> Παγκόσμια παρακολούθηση logistics και πόρων:<ul><li><strong>Σημεία συμφόρησης</strong>: Κατάσταση ναυτικής διέλευσης, βαθμολογίες διακοπής και καταμέτρηση σκαφών</li><li><strong>Ναυτιλία</strong>: Τάσεις Baltic Dry Index και ναύλων</li><li><strong>Ορυκτά</strong>: Κίνδυνος συγκέντρωσης κρίσιμου ορυκτού (HHI) και κορυφαίοι παραγωγοί</li></ul>Κάντε κλικ σε κάρτα σημείου συμφόρησης για επέκταση του διαγράμματος ιστορικού διέλευσης."
+      "infoTooltip": "<strong>Οθόνη αλυσίδας εφοδιασμού</strong> Παγκόσμια παρακολούθηση logistics και πόρων:<ul><li><strong>Σημεία συμφόρησης</strong>: Κατάσταση ναυτικής διέλευσης, βαθμολογίες διακοπής και καταμέτρηση σκαφών</li><li><strong>Ναυτιλία</strong>: Τάσεις Baltic Dry Index και ναύλων</li><li><strong>Ορυκτά</strong>: Κίνδυνος συγκέντρωσης κρίσιμου ορυκτού (HHI) και κορυφαίοι παραγωγοί</li></ul>Κάντε κλικ σε κάρτα σημείου συμφόρησης για επέκταση του διαγράμματος ιστορικού διέλευσης.",
+      "mineStage": "Mine",
+      "refineryStage": "Refine",
+      "stageUnavailable": "No published figures for this stage",
+      "withheldNote": "W withheld",
+      "productionCaption": "Country shares of actual production. The map deposits layer shows where resources sit; this table shows who mines or refines them.",
+      "productionProLocked": "Αναβαθμίστε σε PRO για μετοχές χώρας ορυχείου και διυλιστηρίου με συγκέντρωση (HHI) ανά στάδιο."
     },
     "tradePolicy": {
       "tariffs": "Δασμοί",
@@ -895,6 +1027,7 @@
       "noComtradeData": "Δεν υπάρχουν διαθέσιμα δεδομένα στρατηγικής ροής",
       "comtradeUnavailable": "Δεδομένα UN Comtrade προσωρινά μη διαθέσιμα",
       "sourceComtrade": "UN Comtrade",
+      "comtradeNationalScope": "UN Comtrade rows are national-level official statistics for the reporting country. They are not a town, corridor, factory, port, or shipment export ledger.",
       "anomalyBadge": "Ανωμαλία",
       "colReporter": "Χώρα",
       "colCommodity": "Εμπόρευμα",
@@ -1131,7 +1264,7 @@
         "ucdpEvents": "Συμβάντα UCDP",
         "displacementFlows": "Ροές Εκτοπισμού",
         "climateAnomalies": "Κλιματικές Ανωμαλίες",
-        "weatherAlerts": "Καιρικές Προειδοποιήσεις",
+        "weatherAlerts": "Προειδοποιήσεις έντονων καιρικών φαινομένων (NWS, ECCC, WMO SWIC)",
         "strategicWaterways": "Στρατηγικές Υδάτινες Οδοί",
         "economicCenters": "Οικονομικά Κέντρα",
         "criticalMinerals": "Κρίσιμα Ορυκτά",
@@ -1151,7 +1284,9 @@
         "speciesRecovery": "Ανάκαμψη ειδών",
         "renewableInstallations": "Καθαρή ενέργεια",
         "radiationSpike": "Αιχμή ραδιενέργειας",
-        "radiationElevated": "Αυξημένη ραδιενέργεια"
+        "radiationElevated": "Αυξημένη ραδιενέργεια",
+        "canadaRoads": "Canada Roads",
+        "canadaAlerts": "Canada Alerts (AB + BC + SK)"
       },
       "tooltip": {
         "earthquake": "Σεισμός",
@@ -1212,7 +1347,7 @@
           "infraDatacenters": "Συστοιχίες υπολογιστών AI >=10.000 GPUs",
           "infraOutages": "Blackout διαδικτύου και διακοπές υπηρεσιών",
           "naturalEventsTech": "Σεισμοί, καταιγίδες, πυρκαγιές (μπορεί να επηρεάσουν κέντρα δεδομένων)",
-          "weatherAlerts": "Σοβαρές καιρικές προειδοποιήσεις",
+          "weatherAlerts": "Επίσημες προειδοποιήσεις έντονων καιρικών φαινομένων από εθνικές μετεωρολογικές υπηρεσίες (NWS, ECCC, WMO SWIC)",
           "economicCenters": "Χρηματιστήρια & κεντρικές τράπεζες",
           "countriesOverlay": "Επικαλύψεις ονομάτων χωρών",
           "financeExchanges": "Σημαντικά παγκόσμια χρηματιστήρια ανά βαθμίδα αγοράς",
@@ -1224,7 +1359,7 @@
           "financeOutages": "Διακοπές διαδικτύου που μπορούν να επηρεάσουν τις λειτουργίες αγοράς",
           "financeCyberThreats": "Γεγονότα ασφαλείας γύρω από χρηματοπιστωτικές υποδομές",
           "macroWaterways": "Στρατηγικά σημεία ελέγχου για ναυτιλία εμπορευμάτων",
-          "weatherAlertsMarket": "Σοβαρά καιρικά φαινόμενα με σημασία για τις αγορές",
+          "weatherAlertsMarket": "Επίσημες προειδοποιήσεις έντονων καιρικών φαινομένων με σημασία για τις αγορές (NWS, ECCC, WMO SWIC)",
           "naturalEventsMacro": "Σεισμοί, πυρκαγιές, πλημμύρες και άλλες φυσικές καταστροφές",
           "timeRecent": "Φιλτράρισμα χρονικών δεδομένων σε πρόσφατες ώρες",
           "timeExtended": "Εμφάνιση δεδομένων από την προηγούμενη εβδομάδα, μήνα ή όλα",
@@ -1257,7 +1392,9 @@
           "tradeRoutes": "Κύριες παγκόσμιες ναυτιλιακές γραμμές που συνδέουν λιμάνια μέσω στρατηγικών σημείων",
           "dayNight": "Ηλιακός τερματισμός σε πραγματικό χρόνο που δείχνει ζώνες ημέρας και νύχτας",
           "geoBoundaries": "Αποστρατικοποιημένες ζώνες, γραμμές εκεχειρίας και αμφισβητούμενα σύνορα",
-          "ciiChoropleth": "Θερμικός χάρτης αστάθειας χωρών — χρωματισμός κατά CII (πράσινο=σταθερό, κόκκινο=κρίσιμο)"
+          "ciiChoropleth": "Θερμικός χάρτης αστάθειας χωρών — χρωματισμός κατά CII (πράσινο=σταθερό, κόκκινο=κρίσιμο)",
+          "canadaRoads": "Official road incidents, alerts, conditions, closures, construction, and hazards across supported Canadian jurisdictions",
+          "canadaAlerts": "Provincial public-safety alerts from Alberta Emergency Alert, B.C. Evacuation Orders and Alerts, and SaskAlert"
         },
         "notes": {
           "timeAffects": "Επηρεάζει: Σεισμούς, Καιρό, Διαμαρτυρίες, Διακοπές"
@@ -1629,7 +1766,9 @@
     "breakingNews": {
       "critical": "ΚΡΙΣΙΜΟ",
       "high": "ΥΨΗΛΟ",
-      "dismiss": "Απόρριψη"
+      "dismiss": "Απόρριψη",
+      "alertsRegion": "Breaking news alerts",
+      "viewPanel": "View related panel"
     },
     "intelligenceFindings": {
       "breakingAlerts": "Έκτακτες Ειδοποιήσεις",
@@ -1680,6 +1819,16 @@
       "loading": "Σύνδεση στο αναμεταδότη Telegram...",
       "empty": "Δεν υπάρχουν μηνύματα",
       "disabled": "Ο αναμεταδότης Telegram δεν είναι ενεργός",
+      "watchlistPlaceholder": "Προσθήκη δημόσιου καναλιού με @username",
+      "resolving": "Έλεγχος καναλιού...",
+      "invalidUsername": "Χρησιμοποιήστε ένα δημόσιο @username στο Telegram",
+      "resolveFailed": "Δεν ήταν δυνατή η εύρεση του καναλιού",
+      "watchlistLimit": "Μπορείτε να ακολουθείτε έως {{count}} προσαρμοσμένα κανάλια",
+      "previewMembers": "{{count}} μέλη",
+      "addChannel": "Προσθήκη καναλιού",
+      "added": "Προστέθηκε",
+      "remove": "Αφαίρεση",
+      "custom": "Προσαρμοσμένο",
       "filterAll": "Όλα",
       "filterBreaking": "Έκτακτο",
       "filterConflict": "Συγκρούσεις",
@@ -1689,6 +1838,21 @@
       "viewSource": "Προβολή πηγής",
       "filterGeopolitics": "Γεωπολιτική",
       "filterCyber": "Κυβερνο"
+    },
+    "xIntel": {
+      "infoTooltip": "Curated public news-account posts from X. Official API only.",
+      "loading": "Connecting to X news-account relay...",
+      "empty": "No posts available",
+      "disabled": "X news-account relay not active",
+      "filterAll": "All",
+      "filterBreaking": "Breaking",
+      "filterConflict": "Conflict",
+      "filterOsint": "OSINT",
+      "filterMiddleeast": "Middle East",
+      "live": "LIVE",
+      "viewSource": "View Source",
+      "filterGeopolitics": "Geopolitics",
+      "filterCyber": "Cyber"
     },
     "investments": {
       "infoTooltip": "Βάση δεδομένων άμεσων ξένων επενδύσεων Σαουδικής Αραβίας και ΗΑΕ σε παγκόσμιες κρίσιμες υποδομές. Κάντε κλικ σε μια γραμμή για μετάβαση στην επένδυση στον χάρτη.",
@@ -1866,13 +2030,39 @@
       "topTargets": "Κορυφαίες Χώρες-Στόχοι"
     },
     "commodities": {
-      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress."
+      "infoTooltip": "<strong>Commodities</strong> Tradeable non-energy commodity tape focused on metals and materials. Energy prices live in Energy Complex; macro stress indicators live in Macro Stress.",
+      "commodities": "Commodities",
+      "physicalPremiums": "Physical premium",
+      "physical": "Physical",
+      "paper": "Paper",
+      "premium": "Premium",
+      "asOf": "As of {{date}}",
+      "metals": {
+        "gold": "Gold",
+        "silver": "Silver"
+      },
+      "divergence": {
+        "compositeValue": "Δείκτης φυσικής πίεσης: {{value}} / 100",
+        "fiveDayTrend": "Τάση ασφαλίστρου πέντε ημερών διαπραγμάτευσης",
+        "regimes": {
+          "normal": "Κανονικό",
+          "elevated": "Υψηλό",
+          "stressed": "Επιβαρυμένο",
+          "extreme": "Ακραίο"
+        },
+        "states": {
+          "insufficientHistory": "Προθέρμανση: {{count}} / {{required}} σημεία διαπραγμάτευσης",
+          "staleInput": "Φυσικό σημείο αναφοράς ανενημέρωτο",
+          "missingInput": "Σήμα απόκλισης μη διαθέσιμο"
+        },
+        "twentyDayTrend": "Τάση premium είκοσι ημερών διαπραγμάτευσης"
+      }
     },
     "crypto": {
       "infoTooltip": "<strong>Crypto</strong> Live prices, 24h changes, and volume for major cryptocurrencies. Data sourced from CoinGecko."
     },
     "gulfEconomies": {
-      "infoTooltip": "<strong>Gulf Economies</strong> Real-time Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
+      "infoTooltip": "<strong>Gulf Economies</strong> Seeded Gulf stock indices, currency rates, and oil prices for GCC economies (Saudi Arabia, UAE, Kuwait, Qatar, Bahrain, Oman)."
     },
     "groceryBasket": {
       "infoTooltip": "<strong>Grocery Index</strong> Global grocery basket price comparison across 24 countries — tracks real-world consumer goods inflation beyond headline CPI."
@@ -2023,6 +2213,26 @@
       },
       "cissStale": "Η ΕΚΤ δεν έχει δημοσιεύσει νεότερη τιμή — αυτή η ανάγνωση μπορεί να είναι ξεπερασμένη."
     },
+    "supplyVulnerability": {
+      "title": "Τρωτότητα εμπορευμάτων",
+      "help": "Έκθεση χώρας ανά εμπόρευμα από τη συγκέντρωση προμηθευτών, τη θαλάσσια διέλευση και τα διαθέσιμα στρατηγικά αποθέματα.",
+      "loading": "Φόρτωση τρωτότητας εμπορευμάτων…",
+      "unavailable": "Τα δεδομένα τρωτότητας εμπορευμάτων δεν είναι διαθέσιμα",
+      "noCoverage": "Ανεπαρκή στοιχεία για αυτή τη χώρα",
+      "unknown": "Άγνωστο",
+      "concentration": "Συγκέντρωση",
+      "transit": "Διέλευση",
+      "buffer": "Απόθεμα",
+      "sources": "Πηγές",
+      "methodology": "Μεθοδολογία",
+      "hormuzTitle": "Εξαρτήσεις εμπορευμάτων",
+      "dependentCountries": "Εξαρτώμενες χώρες",
+      "dependentCommodities": "Εξαρτώμενα εμπορεύματα",
+      "stateOk": "Τρέχον",
+      "stateStale": "Παρωχημένη είσοδος",
+      "stateInsufficient": "Ανεπαρκή δεδομένα",
+      "proLocked": "Αναβαθμίστε σε PRO για βαθμολόγηση ευπάθειας εμπορευμάτων"
+    },
     "hormuzTracker": {
       "infoTooltip": "<strong>Ιχνηλάτης Εμπορίου Χορμούζ</strong> Ζωντανή παρακολούθηση πλοίων AIS μέσω του Στενού του Χορμούζ, του πιο κρίσιμου σημείου συμφόρησης πετρελαίου στον κόσμο. Παρακολουθεί αριθμούς δεξαμενόπλοιων, γεγονότα διαταραχής και εβδομαδιαίες αλλαγές ροών. Περίπου 20% της παγκόσμιας προσφοράς πετρελαίου διέρχεται καθημερινά.",
       "title": "Hormuz Trade Tracker",
@@ -2134,10 +2344,21 @@
       "infoTooltip": "<strong>Disaster Cascade</strong> Ανιχνεύει συγκλίνοντα σήματα φυσικής καταστροφής και υποδομής:<ul><li>Συσχετίζει σεισμούς, δασικές πυρκαγιές, πλημμύρες και ακραία καιρικά φαινόμενα</li><li>Παρακολουθεί κασκαδικές επιπτώσεις στην υποδομή και την αλυσίδα εφοδιασμού</li><li>Επισημαίνει περιοχές με σύνθετο κίνδυνο καταστροφής</li></ul>Κάντε κλικ σε μια κάρτα για μεγέθυνση στην πληγείσα περιοχή."
     },
     "markets": {
-      "infoTooltip": "<strong>Markets</strong> Δείκτες αγοράς σε πραγματικό χρόνο, μετοχές και τιμές κρυπτογράφησης. Προσαρμόστε τη λίστα παρακολούθησής σας με το κουμπί Watchlist. Τα sparklines δείχνουν την πρόσφατη τάση τιμής.",
+      "infoTooltip": "<strong>Markets</strong> Καθυστερημένοι ή προφορτωμένοι δείκτες αγοράς, μετοχές και τιμές κρυπτογράφησης. Προσαρμόστε τη λίστα παρακολούθησής σας με το κουμπί Watchlist. Τα sparklines δείχνουν την πρόσφατη τάση τιμής.",
       "chart": {
         "title": "Γράφημα τιμής {{symbol}}",
         "close": "Κλείσιμο γραφήματος"
+      },
+      "unavailable": {
+        "symbols": "{{symbols}} — {{reason}}",
+        "symbolsMore": "{{symbols}} +{{count}} more — {{reason}}",
+        "notFound": "no quote available",
+        "providerError": "quote lookup failed, retrying shortly",
+        "rateLimited": "quote provider rate limited, retrying shortly",
+        "notConfigured": "quote provider not configured",
+        "requestLimit": "too many symbols requested",
+        "budget": "not loaded yet, retrying shortly",
+        "seed": "market data temporarily unavailable"
       }
     },
     "heatmap": {
@@ -2304,13 +2525,14 @@
     },
     "sanctionsPressure": {
       "title": "Κυρώσεις & Χαρακτηρισμοί",
-      "infoTooltip": "Χαρακτηρισμοί κυρώσεων OFAC από τις λίστες SDN και Consolidated. Δείχνει ποιες χώρες αντιμετωπίζουν τη μεγαλύτερη πίεση χαρακτηρισμού, ποια προγράμματα την οδηγούν και τι έχει προστεθεί πρόσφατα από την τελευταία ενημέρωση.",
+      "infoTooltip": "Λίστες SDN και Consolidated του OFAC συν χαρακτηρισμοί SEMA/JVCFOA του Global Affairs Canada. Δείχνει ποιες χώρες αντιμετωπίζουν τη μεγαλύτερη πίεση χαρακτηρισμού, ποια προγράμματα την οδηγούν και τι έχει προστεθεί πρόσφατα από την τελευταία ενημέρωση.",
       "loading": "Φόρτωση δεδομένων κυρώσεων...",
       "unavailable": "Τα δεδομένα κυρώσεων δεν είναι διαθέσιμα.",
       "summary": {
         "new": "Νέο",
         "vessels": "Σκάφη",
-        "aircraft": "Αεροσκάφη"
+        "aircraft": "Αεροσκάφη",
+        "sema": "SEMA"
       },
       "sections": {
         "countries": "Χώρες υπό κυρώσεις",
@@ -2325,11 +2547,12 @@
       "footer": {
         "updated": "Ενημερώθηκε {{time}}",
         "dataset": "σύνολο δεδομένων {{date}}",
-        "source": "Πηγή: OFAC"
+        "source": "Πηγή: OFAC · GAC SEMA"
       },
       "pills": {
         "newCount": "+{{count}} νέα",
-        "new": "νέο"
+        "new": "νέο",
+        "sema": "sema-ca"
       },
       "designations_one": "{{count}} χαρακτηρισμός",
       "designations_other": "{{count}} χαρακτηρισμοί",
@@ -2522,6 +2745,50 @@
       "upgradeCta": "Αναβάθμιση για περισσότερα",
       "lockedAriaLabel": "Προσθήκη καρτέλας — κλειδωμένο. {{reason}}",
       "unlockedAnnouncement": "Το όριο καρτελών πίνακα ελέγχου αρθρώθηκε."
+    },
+    "fx": {
+      "infoTooltip": "<strong>Ισοτιμίες Συναλλάγματος</strong> Stress συναλλάγματος και spot rates:<ul><li>FX Stress κατατάσσει 45 νομίσματα ανά τη χειρότερη μέγιστη πτώση τους τα τελευταία 24 μήνες, αναφορικά με την αλλαγή 12 μηνών</li><li>Η κάλυψη περιλαμβάνει ARS, TRY, EGP, NGN, PKR και UAH — νομίσματα που δεν περιλαμβάνονται στα σετ αναφοράς της BIS και ECB</li><li>Spot παραθέτει ισοτιμίες έναντι του δολαρίου ΗΠΑ και των ισοτιμιών αναφοράς ευρώ ECB ξεχωριστά, καθώς οι δύο προέρχονται από διαφορετικές βάσεις</li><li>RUB — ισοτιμίες της Τράπεζας της Ρωσίας, ρούβλια ανά μονάδα</li></ul> Πηγές: Yahoo Finance, European Central Bank και Τράπεζα της Ρωσίας.",
+      "tabs": {
+        "stress": "FX Stress",
+        "spot": "Spot",
+        "rub": "RUB"
+      },
+      "currency": "Νόμισμα",
+      "pair": "Ζεύγος",
+      "rate": "Ισοτιμία",
+      "yoy": "12m",
+      "drawdown": "Πτώση 24m",
+      "peakToTrough": "Κορυφή → Κατώφλι",
+      "change1d": "1d",
+      "perUsd": "Ανά 1 USD",
+      "usdPerUnit": "USD ανά μονάδα",
+      "usdBase": "Έναντι του δολαρίου ΗΠΑ",
+      "eurBase": "Ισοτιμίες αναφοράς ευρώ ECB",
+      "stressedCount": "{{stressed}} από {{total}} νομίσματα κάτω του {{threshold}}",
+      "sourceYahoo": "Πηγή: Yahoo Finance",
+      "sourceEcb": "Πηγή: ECB",
+      "degraded": "Προς το παρόν μη διαθέσιμο: {{sources}}. Επανάληψη σε λίγο.",
+      "source": {
+        "stress": "Ένταση συναλλάγματος",
+        "usd": "Ισοτιμίες δολαρίου ΗΠΑ",
+        "eur": "Ισοτιμίες ευρώ ΕΚΤ",
+        "rub": "Ισοτιμίες της Τράπεζας της Ρωσίας"
+      },
+      "rubBase": "Τράπεζα της Ρωσίας — ρούβλια ανά 1 μονάδα",
+      "rubPerUnit": "Ρούβλια ανά μονάδα",
+      "sourceCbr": "Πηγή: Τράπεζα της Ρωσίας"
+    },
+    "passkeyOffer": {
+      "title": "Να αποθηκευθεί ένα κλειδί πρόσβασης;",
+      "body": "Συνδέσου την επόμενη φορά με το δακτυλικό σου αποτύπωμα, το πρόσωπό σου ή το PIN της συσκευής σου — χωρίς κωδικό πρόσβασης να θυμάσαι.",
+      "accept": "Αποθήκευση κλειδιού πρόσβασης",
+      "dismiss": "Όχι τώρα",
+      "close": "Κλείσιμο",
+      "announce": "Αποθήκευσε ένα κλειδί πρόσβασης για να συνδεθείς πιο γρήγορα την επόμενη φορά.",
+      "busy": "Αναμονή της συσκευής σου…",
+      "succeeded": "Το κλειδί πρόσβασης αποθηκεύτηκε. Μπορείς να το χρησιμοποιήσεις την επόμενη φορά που θα συνδεθείς.",
+      "retryable": "Δεν ολοκληρώθηκε. Μπορείς να προσπαθήσεις ξανά.",
+      "failed": "Δεν μπορέσαμε να αποθηκεύσουμε ένα κλειδί πρόσβασης σε αυτήν τη συσκευή."
     }
   },
   "popups": {
@@ -2565,9 +2832,9 @@
     },
     "gpsJamming": {
       "title": "Παρεμβολή GPS/GNSS",
-      "navPerformance": "Nav Performance",
-      "samples": "ADS-B Samples",
-      "aircraft": "Aircraft",
+      "navPerformance": "Επηρεαζόμενα αεροσκάφη",
+      "samples": "Αριθμός επηρεαζόμενων αεροσκαφών",
+      "aircraft": "Εντοπισμένα αεροσκάφη",
       "h3Hex": "H3 Hex"
     },
     "flight": {
@@ -2743,6 +3010,7 @@
     "moreEvents": "περισσότερα συμβάντα",
     "monitoring": "Παρακολούθηση",
     "viewUSGS": "Προβολή στο USGS",
+    "viewNRCan": "Προβολή στο Earthquakes Canada",
     "expired": "Έληξε",
     "timeAgo": {
       "s": "{{count}}δ πριν",
@@ -2862,7 +3130,11 @@
       "heading": "ΠΟΡΕΙΑ",
       "hexCode": "HEX CODE",
       "squawk": "SQUAWK",
-      "attribution": "Πηγή: OpenSky Network"
+      "attribution": "Πηγή: adsb.lol (ODbL) · OpenSky Network",
+      "climbRate": "ΡΥΘΜΟΣ ΑΝΟΔΟΥ",
+      "manufacturer": "ΚΑΤΑΣΚΕΥΑΣΤΗΣ",
+      "owner": "ΙΔΙΟΚΤΗΤΗΣ",
+      "builtYear": "ΕΤΟ ΚΑΤΑΣΚΕΥΗΣ"
     },
     "militaryVessel": {
       "aisDark": "AIS ΣΚΟΤΕΙΝΟ",
@@ -2907,7 +3179,8 @@
       "moreVessels": "+{{count}} ακόμη πλοία",
       "vesselsCount": "{{count}} ΠΛΟΙΑ",
       "vessels": "ΠΛΟΙΑ",
-      "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ"
+      "trackedVessels": "ΠΑΡΑΚΟΛΟΥΘΟΥΜΕΝΑ ΠΛΟΙΑ",
+      "showLess": "Εμφάνιση λιγότερων"
     },
     "naturalEvent": {
       "closed": "ΚΛΕΙΣΤΟ",
@@ -3173,7 +3446,8 @@
     "retry": "Επανάληψη",
     "refresh": "Ανανέωση",
     "all": "Όλα",
-    "cancel": "Ακύρωση"
+    "cancel": "Ακύρωση",
+    "dismiss": "Dismiss"
   },
   "preferences": {
     "display": "Οθόνη",
@@ -3195,7 +3469,9 @@
     "fontFamily": "Οικογένεια Γραμματοσειράς",
     "fontFamilyDesc": "Monospace για τεχνικό περιβάλλον, προεπιλογή συστήματος για ευκολότερη ανάγνωση.",
     "fontMono": "Monospace",
-    "fontSystem": "Προεπιλογή Συστήματος"
+    "fontSystem": "Προεπιλογή Συστήματος",
+    "panelFontScale": "Μέγεθος κειμένου",
+    "followGlobalFontScale": "Χρήση παγκόσμιας"
   },
   "contextMenu": {
     "openCountryBrief": "Άνοιγμα επισκόπησης χώρας",
@@ -3286,13 +3562,16 @@
       "orefSirens1": "Ειδοποιήσεις πυραύλων και ρακετών του Ισραήλ σε πραγματικό χρόνο",
       "orefSirens2": "Χαρτογραφία ζωνών σειρήνας με ταξινόμηση απειλών",
       "telegramIntel1": "Επιλεγμένα κανάλια OSINT του Telegram",
-      "telegramIntel2": "Ενημερώσεις συγκρούσεων και γεωπολιτικών ζητημάτων σε σχεδόν πραγματικό χρόνο"
+      "telegramIntel2": "Ενημερώσεις συγκρούσεων και γεωπολιτικών ζητημάτων σε σχεδόν πραγματικό χρόνο",
+      "xIntel1": "Curated public news accounts on X",
+      "xIntel2": "API-fresh posts with official permalinks"
     }
   },
   "auth": {
     "signIn": "Σύνδεση",
     "createAccount": "Δημιουργία λογαριασμού",
-    "settings": "Ρυθμίσεις"
+    "settings": "Ρυθμίσεις",
+    "passkeyOffer": {}
   },
   "mcp": {
     "connectPanel": "Σύνδεση MCP",

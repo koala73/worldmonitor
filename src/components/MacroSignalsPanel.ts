@@ -88,7 +88,7 @@ function sparklineSvg(data: number[], width = 80, height = 24, color = '#4fc3f7'
     const y = height - ((v - min) / range) * (height - 2) - 1;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(' ');
-  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="signal-sparkline"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  return `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" class="signal-sparkline" aria-hidden="true"><polyline points="${points}" fill="none" stroke="${color}" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
 }
 
 function donutGaugeSvg(value: number | null, size = 48): string {
@@ -101,10 +101,10 @@ function donutGaugeSvg(value: number | null, size = 48): string {
   if (v >= 75) color = '#4caf50';
   else if (v >= 50) color = '#ff9800';
   else if (v >= 25) color = '#ff5722';
-  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="fg-donut">
+  return `<svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}" class="fg-donut" role="img" aria-label="Fear and greed index: ${v}">
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="rgba(255,255,255,0.1)" stroke-width="5"/>
     <circle cx="${size / 2}" cy="${size / 2}" r="${r}" fill="none" stroke="${color}" stroke-width="5" stroke-dasharray="${circumference}" stroke-dashoffset="${offset}" stroke-linecap="round" transform="rotate(-90 ${size / 2} ${size / 2})"/>
-    <text x="${size / 2}" y="${size / 2 + 4}" text-anchor="middle" fill="${color}" font-size="12" font-weight="bold">${v}</text>
+    <text x="${size / 2}" y="${size / 2 + 4}" text-anchor="middle" fill="${color}" style="font-size:calc(12px * var(--wm-panel-effective-scale, 1))" font-weight="bold">${v}</text>
   </svg>`;
 }
 
@@ -201,7 +201,7 @@ export class MacroSignalsPanel extends Panel {
       <div class="macro-signals-container">
         <div class="macro-verdict ${verdictClass}">
           <span class="verdict-label">${t('components.macroSignals.overall')}</span>
-          <span style="font-size:9px;background:rgba(247,147,26,0.15);color:#f7931a;border:1px solid rgba(247,147,26,0.3);padding:1px 5px;border-radius:3px;font-weight:700;letter-spacing:0.04em;vertical-align:middle">&#x20bf; BTC</span>
+          <span style="font-size:calc(9px * var(--wm-panel-effective-scale, 1));background:rgba(247,147,26,0.15);color:#f7931a;border:1px solid rgba(247,147,26,0.3);padding:1px 5px;border-radius:3px;font-weight:700;letter-spacing:0.04em;vertical-align:middle">&#x20bf; BTC</span>
           <span class="verdict-value">${d.verdict === 'BUY' ? t('components.macroSignals.verdict.buy') : d.verdict === 'CASH' ? t('components.macroSignals.verdict.cash') : escapeHtml(d.verdict)}</span>
           <span class="verdict-detail">${t('components.macroSignals.bullish', { count: String(d.bullishCount), total: String(d.totalCount) })}</span>
         </div>

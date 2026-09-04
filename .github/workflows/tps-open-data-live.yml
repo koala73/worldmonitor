@@ -1,0 +1,84 @@
+name: TPS Open Data Live Contract
+
+# Live contract probe for the two official Toronto Police open-data sources.
+#
+# Why this workflow exists: tests/tps-open-data-live-contract.test.mjs is
+# wrapped in `describe(..., { skip: !LIVE })` where LIVE comes from
+# LIVE_TPS_OPEN_DATA_TESTS=1. Nothing in the repo set that variable, so the file
+# was inert from the moment it landed — it is inside the `test:data` glob, so
+# every CI run "passed" it without executing a single assertion. That is the
+# same inert-suite shape that live-api-cache-auth.yml and
+# china-decision-parity-live.yml were created to fix.
+#
+# This matters more here than for a normal regression test: the adapters exist
+# because BOTH upstream contracts broke silently in production (ArcGIS MCI
+# started returning http_414 on a 2,000-object-ID GET URL, and the Calls
+# FeatureServer was retired outright, returning http_404). Mock-based tests
+# cannot see either failure — tests/tps-open-data.test.mjs asserts against
+# fixtures and stays green while production serves stale snapshots. Only a live
+# probe catches the next endpoint retirement, CKAN resource swap, datastore
+# format relabel, or schema drift.
+#
+# No secrets and no `npm ci`: both sources are public, and the suite's import
+# graph reaches only repo-local modules plus node builtins (verified by running
+# it with node_modules removed).
+#
+# Triggers:
+#   - schedule (twice daily at :11, offset from live-api-cache-auth's :47 and
+#     mcp-live-smoke's :23 so the live probes do not leave the same runner IP in
+#     the same minute): upstream catalogs drift independently of our commits,
+#     which is the entire failure class this guards.
+#   - push to main touching the adapter, the suite, or this workflow.
+#   - workflow_dispatch: manual re-runs from the Actions UI.
+# NOT pull_request: the target is a live third-party service, so a PR run could
+# fail for reasons the PR did not cause.
+#
+# Request budget per run: MCI is 1 metadata + 1 object-ID sweep + up to 3 pages;
+# Calls is 1 package_show + 1 _id sweep + up to 12 datastore_search pages.
+# ~19 requests, twice daily — negligible against both public endpoints.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'scripts/lib/tps-open-data.mjs'
+      - 'tests/tps-open-data-live-contract.test.mjs'
+      - '.github/workflows/tps-open-data-live.yml'
+  schedule:
+    - cron: '11 */12 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  live-contract:
+    runs-on: ubuntu-latest
+    # Each case carries a 120s test timeout; two cases plus checkout/setup-node
+    # leaves generous headroom without letting a hung upstream pin a runner.
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
+        with:
+          node-version: '24'
+      - name: Probe the official TPS Open Data source contracts
+        env:
+          LIVE_TPS_OPEN_DATA_TESTS: '1'
+        # Setting the env var alone reintroduces the very bug this workflow
+        # fixes one rename away: the whole suite is a single
+        # `describe(..., { skip: !LIVE })`, and `node --test` exits 0 when every
+        # test is skipped (verified here: `tests 0 / pass 0 / fail 0`, exit 0).
+        # So assert the two mandatory cases actually ran. `--test-reporter=tap`
+        # is pinned explicitly rather than relying on the default, because Node
+        # selects the reporter from TTY-ness and a format change would silently
+        # break the grep — turning this guard into the vacuous pass it exists to
+        # prevent. TAP's `# pass N` line is stable and documented.
+        run: |
+          set -o pipefail
+          node --test --test-reporter=tap tests/tps-open-data-live-contract.test.mjs 2>&1 | tee /tmp/tps-live.log
+          pass_count=$(awk '/^# pass [0-9]+$/ { value = $3 } END { print value + 0 }' /tmp/tps-live.log)
+          if [ "$pass_count" -lt 2 ]; then
+            echo "::error::TPS live contract run completed only $pass_count/2 mandatory source probes — the suite did not execute."
+            exit 1
+          fi

@@ -57,6 +57,8 @@ export interface ChokepointInfo {
   transitSummary?: TransitSummary;
   flowEstimate?: FlowEstimate;
   warRiskTier: WarRiskTier;
+  navigationalWarningsAvailable: boolean;
+  aisSnapshotAvailable: boolean;
 }
 
 export interface DirectionalDwt {
@@ -78,6 +80,7 @@ export interface TransitSummary {
   riskSummary: string;
   riskReportAction: string;
   dataAvailable: boolean;
+  todayCountsAvailable: boolean;
 }
 
 export interface TransitDayCount {
@@ -140,6 +143,63 @@ export interface MineralProducer {
   countryCode: string;
   productionTonnes: number;
   sharePct: number;
+}
+
+export interface GetMineralProductionRequest {
+  commodity: string;
+  iso2: string;
+  stage: string;
+}
+
+export interface GetMineralProductionResponse {
+  commodities: MineralProductionRecord[];
+  countries: MineralCountryPortfolio[];
+  fetchedAt: string;
+  upstreamUnavailable: boolean;
+  dataYear: number;
+}
+
+export interface MineralProductionRecord {
+  commodityId: string;
+  commodity: string;
+  year: number;
+  unit: string;
+  mine?: MineralStageSnapshot;
+  refinery?: MineralStageSnapshot;
+  sources: string[];
+}
+
+export interface MineralStageSnapshot {
+  year: number;
+  unit: string;
+  countries: MineralCountryShare[];
+  hhi: number;
+  worldTotal?: number;
+  withheldCount: number;
+}
+
+export interface MineralCountryShare {
+  iso2: string;
+  country: string;
+  output?: number;
+  share?: number;
+  withheld: boolean;
+  estimated: boolean;
+  residual: boolean;
+}
+
+export interface MineralCountryPortfolio {
+  iso2: string;
+  holdings: MineralCountryHolding[];
+}
+
+export interface MineralCountryHolding {
+  commodityId: string;
+  commodity: string;
+  stage: string;
+  output?: number;
+  share?: number;
+  withheld: boolean;
 }
 
 export interface GetShippingStressRequest {
@@ -646,6 +706,124 @@ export interface GetChinaCorridorControlTowersResponse {
   upstreamUnavailable: boolean;
 }
 
+export interface GetCountryVulnerabilitiesRequest {
+  iso2: string;
+}
+
+export interface GetCountryVulnerabilitiesResponse {
+  iso2: string;
+  country: string;
+  vulnerabilities: CommodityVulnerability[];
+  generatedAt: string;
+  methodologyVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface CommodityVulnerability {
+  countryIso2: string;
+  countryName: string;
+  commodityId: string;
+  commodity: string;
+  score?: number;
+  band: string;
+  components?: VulnerabilityComponents;
+  coverage: string[];
+  state: string;
+  reasons: string[];
+  methodologyVersion: string;
+}
+
+export interface VulnerabilityComponents {
+  sourceConcentration?: VulnerabilitySourceConcentration;
+  transitExposure?: VulnerabilityTransitExposure;
+  buffer?: VulnerabilityBuffer;
+}
+
+export interface VulnerabilitySourceConcentration {
+  value?: number;
+  importHhi?: number;
+  mineHhi?: number;
+  refineryHhi?: number;
+  productionHhi?: number;
+  productionCoverage: string;
+  coverage: string;
+  inputs: VulnerabilityInput[];
+}
+
+export interface VulnerabilityInput {
+  sourceKey: string;
+  sourceName: string;
+  sourceUrl: string;
+  value?: number;
+  year?: number;
+  fetchedAt: string;
+  stale: boolean;
+  detail: string;
+}
+
+export interface VulnerabilityTransitExposure {
+  value?: number;
+  chokepoints: VulnerabilityTransitRoute[];
+}
+
+export interface VulnerabilityTransitRoute {
+  id: string;
+  name: string;
+  transitShare?: number;
+  weightedTransitShare?: number;
+  status: string;
+  inputs: VulnerabilityInput[];
+}
+
+export interface VulnerabilityBuffer {
+  state: string;
+  vulnerability?: number;
+  kind: string;
+  inputs: VulnerabilityInput[];
+}
+
+export interface GetChokepointDependenciesRequest {
+  chokepointId: string;
+  pageSize: number;
+}
+
+export interface GetChokepointDependenciesResponse {
+  chokepointId: string;
+  chokepoint: string;
+  dependencies: ChokepointDependency[];
+  generatedAt: string;
+  methodologyVersion: string;
+  upstreamUnavailable: boolean;
+}
+
+export interface ChokepointDependency {
+  countryIso2: string;
+  countryName: string;
+  commodityId: string;
+  commodity: string;
+  transitShare?: number;
+  weightedTransitShare?: number;
+  score?: number;
+  band: string;
+  state: string;
+  reasons: string[];
+  methodologyVersion: string;
+}
+
+export interface ListVulnerabilityRankingsRequest {
+  commodityId: string;
+  band: string;
+  state: string;
+  pageSize: number;
+}
+
+export interface ListVulnerabilityRankingsResponse {
+  vulnerabilities: CommodityVulnerability[];
+  generatedAt: string;
+  methodologyVersion: string;
+  upstreamUnavailable: boolean;
+}
+
 export type CorridorStatus = "CORRIDOR_STATUS_UNSPECIFIED" | "CORRIDOR_STATUS_ACTIVE" | "CORRIDOR_STATUS_PROPOSED" | "CORRIDOR_STATUS_UNAVAILABLE";
 
 export type DependencyFlag = "DEPENDENCY_FLAG_UNSPECIFIED" | "DEPENDENCY_FLAG_SINGLE_SOURCE_CRITICAL" | "DEPENDENCY_FLAG_SINGLE_CORRIDOR_CRITICAL" | "DEPENDENCY_FLAG_COMPOUND_RISK" | "DEPENDENCY_FLAG_DIVERSIFIABLE";
@@ -796,6 +974,33 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetCriticalMineralsResponse;
+  }
+
+  async getMineralProduction(req: GetMineralProductionRequest, options?: SupplyChainServiceCallOptions): Promise<GetMineralProductionResponse> {
+    let path = "/api/supply-chain/v1/get-mineral-production";
+    const params = new URLSearchParams();
+    if (req.commodity != null && req.commodity !== "") params.set("commodity", String(req.commodity));
+    if (req.iso2 != null && req.iso2 !== "") params.set("iso2", String(req.iso2));
+    if (req.stage != null && req.stage !== "") params.set("stage", String(req.stage));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetMineralProductionResponse;
   }
 
   async getShippingStress(_req: GetShippingStressRequest, options?: SupplyChainServiceCallOptions): Promise<GetShippingStressResponse> {
@@ -1234,6 +1439,85 @@ export class SupplyChainServiceClient {
     }
 
     return await resp.json() as GetChinaCorridorControlTowersResponse;
+  }
+
+  async getCountryVulnerabilities(req: GetCountryVulnerabilitiesRequest, options?: SupplyChainServiceCallOptions): Promise<GetCountryVulnerabilitiesResponse> {
+    let path = "/api/supply-chain/v1/get-country-vulnerabilities";
+    const params = new URLSearchParams();
+    if (req.iso2 != null && req.iso2 !== "") params.set("iso2", String(req.iso2));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetCountryVulnerabilitiesResponse;
+  }
+
+  async getChokepointDependencies(req: GetChokepointDependenciesRequest, options?: SupplyChainServiceCallOptions): Promise<GetChokepointDependenciesResponse> {
+    let path = "/api/supply-chain/v1/get-chokepoint-dependencies";
+    const params = new URLSearchParams();
+    if (req.chokepointId != null && req.chokepointId !== "") params.set("chokepointId", String(req.chokepointId));
+    if (req.pageSize != null && req.pageSize !== 0) params.set("pageSize", String(req.pageSize));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetChokepointDependenciesResponse;
+  }
+
+  async listVulnerabilityRankings(req: ListVulnerabilityRankingsRequest, options?: SupplyChainServiceCallOptions): Promise<ListVulnerabilityRankingsResponse> {
+    let path = "/api/supply-chain/v1/list-vulnerability-rankings";
+    const params = new URLSearchParams();
+    if (req.commodityId != null && req.commodityId !== "") params.set("commodityId", String(req.commodityId));
+    if (req.band != null && req.band !== "") params.set("band", String(req.band));
+    if (req.state != null && req.state !== "") params.set("state", String(req.state));
+    if (req.pageSize != null && req.pageSize !== 0) params.set("pageSize", String(req.pageSize));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as ListVulnerabilityRankingsResponse;
   }
 
   private async handleError(resp: Response): Promise<never> {

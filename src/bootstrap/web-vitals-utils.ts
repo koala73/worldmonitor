@@ -7,12 +7,30 @@ export const roundMs = (n: number | undefined): number | undefined =>
  * The good-trim (#4565) drops the `good` bucket, but the surviving
  * needs-improvement/poor tail still runs ~12k events/day — ~92% of ALL Sentry
  * volume — which is pure telemetry, not errors. This uniformly samples that tail
- * to cut that volume ~80%. Uniform (not rating-aware) sampling is deliberate: it
- * leaves the rating split, formFactor split, attribution-target distribution, and
- * p75 unbiased — only the sample size shrinks. Captured events carry a
- * `sampleRate` tag so absolute field volume is reconstructable (× 1/sampleRate).
- * At current traffic 20% still yields ~2.4k events/day — ample for weekly
- * page-level CrUX cross-checks and per-target histograms.
+ * to cut that volume ~80%. Captured events carry a `sampleRate` tag so absolute
+ * field volume is reconstructable (× 1/sampleRate).
+ *
+ * WHAT THIS SAMPLING DOES AND DOES NOT PRESERVE — read before computing anything.
+ *
+ * Uniform (not rating-aware) sampling is deliberate, and *within the tail it is
+ * handed* it preserves shape: the rating split, formFactor split and
+ * attribution-target distribution over CAPTURED events are unbiased estimates of
+ * those same distributions over BAD events. Only the sample size shrinks.
+ *
+ * It does NOT make any percentile of captured events an estimate of that
+ * percentile of the field, because the good-trim upstream has already removed
+ * ~70% of the distribution. Captured p75 is p75 of `metric | metric >= bad
+ * threshold`, and that conditional statistic moves the WRONG WAY as the field
+ * improves: a fix pushes moderate interactions across the threshold into `good`,
+ * which DELETES them from the sample and leaves the surviving tail worse on
+ * average. A real win can read as a flat or rising number. Worked example in
+ * docs/perf/reading-field-web-vitals.md.
+ *
+ * The honest Sentry-side series is a RATE, not a percentile: count events with
+ * the rating tag `poor`, scale by 1/sampleRate, and divide by a traffic
+ * denominator Sentry does not hold (Umami pageviews) — see the doc. For an
+ * actual page-level p75, use CrUX `queryHistoryRecord`, which observes the whole
+ * distribution and none of this applies to it.
  */
 export const WEB_VITAL_SAMPLE_RATE = 0.2;
 

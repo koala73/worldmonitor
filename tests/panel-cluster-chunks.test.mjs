@@ -15,6 +15,7 @@ const startupModulePaths = [
   'src/app/event-handlers.ts',
   'src/app/panel-layout.ts',
   'src/app/search-manager.ts',
+  'src/app/webmcp-panel-tab-binding.ts',
 ].map((path) => resolve(repoRoot, path));
 const viteConfigPath = resolve(repoRoot, 'vite.config.ts');
 const viteConfigSource = readFileSync(viteConfigPath, 'utf8');
@@ -290,13 +291,26 @@ function startupPanelValueImportOffenders(panelCluster) {
   return offenders;
 }
 
+function lazyPreloadOffendersFromHtml(html) {
+  const preloadHrefs = [...html.matchAll(/<link\b[^>]*\brel=["']modulepreload["'][^>]*\bhref=["']([^"']+)["'][^>]*>/g)]
+    .map((match) => match[1]);
+  const lazyChunkNames = [
+    ...extractStringArray('PANEL_CHUNK_NAMES'),
+    ...extractStringArray('PANEL_SUPPORT_CHUNK_NAMES'),
+    'UnifiedSettings',
+    'settings-window',
+    'checkout',
+  ];
+  return preloadHrefs.filter((href) => {
+    const fileName = href.slice(href.lastIndexOf('/') + 1);
+    return lazyChunkNames.some((name) => fileName.startsWith(`${name}-`) && fileName.endsWith('.js'));
+  });
+}
+
 function builtDashboardLazyPreloadOffenders() {
   const htmlPath = resolve(repoRoot, 'dist/dashboard.html');
   if (!existsSync(htmlPath)) return null;
-  const html = readFileSync(htmlPath, 'utf8');
-  const preloadHrefs = [...html.matchAll(/<link\b[^>]*\brel=["']modulepreload["'][^>]*\bhref=["']([^"']+)["'][^>]*>/g)]
-    .map((match) => match[1]);
-  return preloadHrefs.filter((href) => /\/assets\/(?:panels-[a-z]+|panel-support|UnifiedSettings|settings-window|checkout)-[A-Za-z0-9_-]+\.js$/.test(href));
+  return lazyPreloadOffendersFromHtml(readFileSync(htmlPath, 'utf8'));
 }
 
 // When a build is present, confirm each secondary flow actually emitted its own
@@ -395,6 +409,17 @@ describe('panel cluster chunk guardrails', () => {
       hasTrueProperty(viteConfigAst, 'onlyExplicitManualChunks'),
       true,
       'Rollup must keep manual chunk dependencies explicit so app-shared modules do not make main import panel chunks. (DeckGLMap is co-located into the deck-stack chunk to avoid the circular-chunk TDZ this flag otherwise caused on the WebGL map.)',
+    );
+  });
+
+  it('does not mistake a hyphenated panels chunk hash for a panel domain chunk', () => {
+    assert.deepEqual(
+      lazyPreloadOffendersFromHtml('<link rel="modulepreload" href="/assets/panels-oa-R0t2X.js">'),
+      [],
+    );
+    assert.deepEqual(
+      lazyPreloadOffendersFromHtml('<link rel="modulepreload" href="/assets/panels-news-R0t2X.js">'),
+      ['/assets/panels-news-R0t2X.js'],
     );
   });
 

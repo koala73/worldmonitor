@@ -152,6 +152,28 @@ same `gate` status branch protection requires.
 
 ## Solution
 
+### Keep operational status off deployable commits
+
+The Seed Freshness Monitor observes the newest gated `main` revision but writes
+its durable `ingestion/seed/*` projection to the fixed historical merge commit
+`b93afd05d0f4ea2c465e79fd064e87fc1f9fb2f3`. That commit introduced the
+transition publisher, is required to be an ancestor of the observed revision,
+and cannot become a future deployment candidate.
+
+This keeps the protection without recreating the lag source described above:
+a new or materially changed incident still fails one monitor run, the anchor
+keeps the source status non-green until live recovery, and unchanged polls
+append nothing. The first anchored run imports the newest trusted legacy
+projection from recent first-parent history, so already-active incidents move
+to the anchor without being reported as new failures. Because the acceptance
+context is written last, a later poll can also distinguish an empty anchor from
+a partial write, repair that write, and avoid reporting the same transition
+twice.
+
+Do not move this projection back to `main`, a gated ancestor selected for the
+probe, or any other commit Railway may be asked to deploy. GitHub commit status
+is deployment input in this repository, not only an observability surface.
+
 ### The audit: the registry contract, unchanged
 
 `scripts/railway-services.json` remains the repository-side contract. Each
@@ -192,10 +214,10 @@ real production verdicts:
   it makes the matcher disagree with Railway on every scripts-rooted service
   that lists `shared/**`.
 - **Registry ∪ live, never one or the other.** The registry is edited in a PR
-  and only reaches Railway when someone runs the audit with `--apply`, so
-  between those two events each source knows a path the other does not. The
-  remaining 3 apparent refusals sat in exactly that window. A union is wrong
-  only in the direction that builds too much.
+  and reaches Railway when the main-only registry-sync workflow applies it.
+  Between the merge and verified convergence, each source can know a path the
+  other does not. The remaining 3 apparent refusals sat in exactly that window.
+  A union is wrong only in the direction that builds too much.
 
 Everything uncertain resolves to "this change reaches the service": an
 unsupported glob shape, a commit git cannot reach, a service neither source
@@ -215,6 +237,83 @@ running commit makes the run idempotent, removes any dependence on
 `github.event.before`, and self-heals after a failed trigger, a webhook outage,
 or a manual `railway up` recovery — none of which a push-shaped trigger
 recovers from.
+
+**What wakes it (#6203, #6378).** One offset ten-minute schedule plus protected
+manual dispatch. The former `workflow_run` on every **Deploy Gate** completion
+produced 577 target runs in one measured day, including 273 failed or cancelled
+runs. The watchdog then exhausted its 250-request budget while reading every
+non-success job and became blind to the durable mutation barrier it was meant
+to report.
+
+The schedule gives the three-hour liveness window 18 opportunities and every
+tick re-reads the exact current `main` SHA and newest `gate` status before it can
+touch Railway. GitHub schedules remain best-effort, so missing ticks do not
+count as success: a window with no completed strict acceptance stays red. The
+bounded cadence also keeps a first-activation 24-hour history below the
+watchdog request ceiling.
+
+**Why workflow success is not reconciliation success.** "Railway returned a
+deployment ID", "nothing needed a build", and "the fleet reached terminal
+zero-drift convergence" can all end in a green GitHub workflow unless the
+acceptance boundary is explicit. The lease-aware design records a versioned
+intent/result digest chain, waits every triggered or adopted deployment to an
+allowed terminal state, then runs strict exact-head drift with no pending-build
+acceptance and no baseline suppression. Only the final strict-acceptance step
+refreshes reconciliation liveness. A verified no-op also reaches terminal
+acceptance; a skipped/contended/trigger-only run does not.
+
+The liveness observer is a separate **Railway Deploy Trigger Watchdog** on an
+offset best-effort schedule. It remains observe-only unless both the
+lease-aware target cutover flag and `RAILWAY_RECONCILE_AUTO_RECOVERY_ENABLED`
+are exactly true. `RECOVERY_AUTHORIZED` names the durable-hold boundary before
+the actions-write job; it is not reported as observe-only or dispatched. When
+enabled, the watchdog may dispatch one correlated replacement for stale green
+`main`, but has no
+code path to cancel, force-cancel, rerun, or approve an existing run. A
+runner-less orphan may remain visible forever without blocking production: it
+owns no workflow-level production lock and any later runner must contend for
+the same bounded Durable Object lease.
+
+The watchdog treats the durable control record as its history boundary. An
+active mutation barrier needs only active and explicitly referenced run jobs,
+because that barrier already forbids recovery. After strict terminal
+acceptance, `lastAccepted.acceptedAt` retires older failures while failures that
+finish after the watermark are still hydrated. Before the first acceptance it
+keeps the full fail-closed non-success scan.
+
+GitHub evidence is bounded instead of rescanning the permanent Actions archive.
+The watchdog combines a 24-hour target-workflow summary window with separate
+queries for every active status, repeats the active sweep around the history
+read, and defers if that inventory changes. Its durable barrier and strict
+acceptance watermark bound which attempt jobs need hydration, under a 10-page
+ceiling, 250-request ceiling, and 10-second per-request timeout. The protected
+recovery reader uses exact run IDs when supplied and applies its own
+page/request/time bounds. An exhausted budget fails closed.
+
+The dormant control-plane foundation does not retire the existing
+`scripts/check-railway-reconcile-age.mjs` alarm: the unchanged target workflow
+and Seed Freshness Monitor continue to require a recent successful reconcile.
+Only the lease-aware cutover transfers stale-run ownership to the independent
+watchdog, and that cutover must land before either activation flag is enabled.
+
+The safety boundary changes at the first possible provider call. A dead
+`LEASED`/`PREPARED` owner becomes recoverable only after its fixed lease expires.
+`MUTATION_STARTED` raises one project/environment-wide barrier which lease
+expiry cannot clear; failed or unreadable terminal verification leaves every
+automatic head blocked until matching strict proof or the protected **Railway
+Reconcile Manual Recovery** workflow records an immutable, evidence-bound
+resolution. Pre-action observer faults warn without adding another red check to
+`main`; post-mutation verification remains truthfully failing.
+
+Rollout is credential-fenced, not inferred from merged YAML. The control Worker,
+watchdog, verifier primitives, and manual surface land dormant first. The target
+workflow remains on its legacy credential/concurrency contract until operators
+disable it, drain every legacy run, provision the protected environments and
+independent route credentials, revoke the legacy Railway token, and land the
+lease-aware cutover. Keep `RAILWAY_RECONCILE_CUTOVER_ACTIVE=false` through that
+drain; operator-authorized retries fail before changing control state while the
+target still has the legacy input contract. CI green before those gates is
+readiness, not deployed or production-verified recovery.
 
 Two things it deliberately does not do:
 
@@ -274,21 +373,24 @@ Three details in that file are load-bearing and easy to get wrong:
   blobs. Re-fetching with `--depth` afterwards would re-shallow the clone and
   strand exactly those commits, so neither workflow does.
 
-Accepted degradations go in `scripts/railway-deploy-drift-baseline.json`, which
-has the same shape as `scripts/seed-freshness-baseline.json` and is split by the
-same `applyAcceptanceBaseline` implementation, imported from
-`scripts/check-seed-freshness.mjs`. Sharing the function keeps expiry,
-prune-on-recovery, and "a service failing with a different verdict than the one
-baselined still blocks" from acquiring two meanings — so a baselined
-`REJECTED_PUSH` that turns into `BEHIND` still fails the run, which is the case
-where someone cleared the filter and the service went stale anyway. Every entry
-carries an owner issue and the file carries an expiry, so a suppression cannot
-outlive its cause unnoticed.
+The original implementation used
+`scripts/railway-deploy-drift-baseline.json` and ran deployment drift inside
+`Seed Freshness Monitor`. That design is retired. The permanent monitor accepts
+no deployment suppression: every unknown, failed, overdue, contradictory, or
+otherwise unaccepted result is directly red.
 
-`.github/workflows/seed-freshness-monitor.yml` runs the drift check in the step
-**Check Railway deploy drift against main**, between the config audit and the
-compact-health check. Its checkout uses `fetch-depth: 50` and the step re-fetches
-main first, for the ancestry reason above.
+`.github/workflows/railway-deploy-drift.yml` now owns one combined read-only job:
+the Viewer-safe source/build/trigger audit and deployment-history drift share a
+single per-service projection. It runs every six hours and on manual dispatch,
+only on `main`, with deployment tracking disabled for its GitHub environment.
+`Seed Freshness Monitor` owns ingestion acceptance only and no longer installs
+Railway or reports a fleet conclusion.
+
+The deployment job checks out full history with `fetch-depth: 0` and a blobless
+filter, freezes the event SHA, and refreshes the explicit `origin/main` tracking
+ref before evaluating ancestry. An `AHEAD` deployment is healthy only when its
+running commit is proven reachable from the authorized current `main` ref;
+otherwise it reports `AHEAD_LINEAGE_UNPROVEN`.
 
 ### Still true, and unchanged
 
@@ -330,13 +432,38 @@ left every genuinely-behind service reported — and all 53 remaining
 `REJECTED_PUSH` verdicts carried `skippedReason: CI check suite failed`, not one
 a path refusal.
 
-The scheduled workflow checks live Railway config and operational health only
-after the current main commit has a successful `gate` status. A missing,
-pending, or failed gate fails the workflow; it is never converted into a green
-skip. It deliberately does not run on an ingestion push because Railway may not
-have deployed or executed that revision yet. That separates a code failure from
-the operational case this guard targets: repository checks are green while a
-Railway producer, deployment trigger, or composed coverage is still unhealthy.
+`Seed Freshness Monitor` keeps the gate-dependent ingestion acceptance. A
+missing, pending, failed, or errored head gate is not a green skip and is not
+an ingestion failure: the job monitors the newest gated ancestor in the
+window, and fails closed only when none exists. It deliberately does not run
+on an ingestion push because Railway may not have deployed or executed that
+revision yet.
+
+Its live health probe remains fail-closed on every actionable source problem.
+The scheduled workflow now projects that strict result into durable
+`ingestion/seed/<source>` statuses. A new or changed problem fails one run;
+unchanged later observations keep the source status red without manufacturing
+another incident, and live recovery posts success. Transport failures,
+malformed health evidence, and expired acknowledgements still fail directly.
+This distinction is operationally important: a red status means "still
+broken", while a newly failed workflow run means "new information needs
+attention".
+
+`Railway Native Deploy Health` is a separate six-hourly workflow and has no
+dependency on the Seed Freshness gate. The gate and deployment drift share an
+upstream: an ungated or red main is exactly when Railway can refuse a push, so
+using the gate to skip the drift probe would hide the blast radius. Its one job
+publishes both Railway configuration and deployment conclusions directly,
+without changing the ingestion workflow's verdict.
+
+The earlier two-job hourly layout duplicated the expensive Viewer projection:
+both jobs queried all 80 services, so each scheduled run produced about 160
+per-service GraphQL calls before deployment-history reads. On 2026-08-15 this
+exhausted Railway's rolling API allowance and both jobs failed with HTTP 429.
+The combined job queries each service once with concurrency two, reuses that
+projection for both conclusions, and runs every six hours. A quota failure
+still fails closed; lowering request volume prevents the monitor from creating
+the condition it is meant to observe.
 
 ## Prevention
 
@@ -352,12 +479,12 @@ Railway producer, deployment trigger, or composed coverage is still unhealthy.
   do not treat it as unreliable either. It matches accurately; it just cannot
   see outside the service's build context, and a pattern pointing outside that
   context (`shared/**` on a `rootDirectory: scripts` service) is dead weight.
-- Run `node scripts/audit-railway-watch-paths.mjs` after adding or replacing a
-  Railway seeder, changing its imports, or changing its cron. Keep the registry
-  dependency-closure test green.
+- Keep the registry dependency-closure test green after adding or replacing a
+  Railway seeder, changing its imports, or changing its cron. The main-only
+  registry-sync workflow applies and independently verifies the merged state.
 - Never narrow a seeder's watch paths in the Railway dashboard. Add its closure
-  to the registry instead — a dashboard-only narrowing is drift the audit will
-  push back to the broad contract on the next `--apply`.
+  to the registry instead. The scheduled audit reports dashboard-only drift,
+  and the next registry-sync run pushes it back to the declared contract.
 - Run `node scripts/check-railway-deploy-drift.mjs` whenever a merge looks like
   it did not take effect; `--json` gives the machine-readable form. A
   `REJECTED_PUSH` verdict names the SHAs Railway refused **and the reason it

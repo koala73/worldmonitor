@@ -1,9 +1,10 @@
 name: IndexNow Submission
 
-# Submit the canonical apex MCP URL and the www product/blog surfaces only after
-# Vercel reports that the exact production deployment succeeded. The changed-
-# file gate avoids resubmitting unchanged URLs on unrelated deploys;
-# workflow_dispatch remains available for an operator-requested recovery.
+# Submit the canonical apex MCP URL, the www product/blog surfaces, and every
+# variant dashboard host only after Vercel reports that the exact production
+# deployment succeeded. The changed-file gate avoids resubmitting unchanged URLs
+# on unrelated deploys; workflow_dispatch remains available for an
+# operator-requested recovery.
 on:
   deployment_status:
   workflow_dispatch:
@@ -12,7 +13,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: indexnow-production
+  group: indexnow-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
   cancel-in-progress: false
 
 jobs:
@@ -25,9 +26,12 @@ jobs:
         github.event.deployment.creator.login == 'vercel[bot]'
       )
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # Seven hosts are now submitted sequentially rather than two; each request
+    # carries its own 15s deadline (REQUEST_TIMEOUT_MS), so this bounds a stuck
+    # run rather than being the only thing that ever stops one.
+    timeout-minutes: 10
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
         with:
           ref: ${{ github.event_name == 'deployment_status' && github.event.deployment.sha || github.sha }}
           fetch-depth: 2
@@ -55,26 +59,70 @@ jobs:
               process.stdout.write(new URL(batch.keyLocation).pathname.slice(1));
             "
           )"
+          # Derived from the committed sitemap, so a newly published variant host
+          # is submitted without editing this workflow (#6563).
+          VARIANT_HOSTS="$(
+            node --input-type=module -e "
+              import { INDEXNOW_VARIANT_HOSTS } from './scripts/seo-indexnow-submit.mjs';
+              process.stdout.write(INDEXNOW_VARIANT_HOSTS.join(' '));
+            "
+          )"
+          # Every distinct key file the variants own, so a per-variant key added
+          # later still triggers a resubmission when it is rotated.
+          VARIANT_KEY_PATHS="$(
+            node --input-type=module -e "
+              import { INDEXNOW_BATCHES, INDEXNOW_VARIANT_HOSTS } from './scripts/seo-indexnow-submit.mjs';
+              const hosts = new Set(INDEXNOW_VARIANT_HOSTS);
+              const paths = new Set(
+                INDEXNOW_BATCHES
+                  .filter(({ host }) => hosts.has(host))
+                  .map(({ keyLocation }) => new URL(keyLocation).pathname.slice(1)),
+              );
+              process.stdout.write([...paths].join(' '));
+            "
+          )"
+          echo "variant_hosts=$VARIANT_HOSTS" >> "$GITHUB_OUTPUT"
           if [[ "$EVENT_NAME" == "workflow_dispatch" ]]; then
             echo "submit_apex=true" >> "$GITHUB_OUTPUT"
             echo "submit_www=true" >> "$GITHUB_OUTPUT"
+            echo "submit_variants=true" >> "$GITHUB_OUTPUT"
           elif ! git rev-parse "${DEPLOYED_SHA}^" >/dev/null 2>&1; then
             echo "submit_apex=true" >> "$GITHUB_OUTPUT"
             echo "submit_www=true" >> "$GITHUB_OUTPUT"
+            echo "submit_variants=true" >> "$GITHUB_OUTPUT"
           else
             CHANGED_FILES="$(git diff-tree --no-commit-id --name-only -r "${DEPLOYED_SHA}^" "$DEPLOYED_SHA")"
             SUBMIT_APEX=false
             SUBMIT_WWW=false
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|api/mcp\.ts|api/mcp/.*|middleware\.ts|public/mcp-server\.md|public/sitemap\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+            SUBMIT_VARIANTS=false
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|api/mcp\.ts|api/mcp/.*|middleware\.ts|public/mcp-server\.md|public/sitemap\.xml|public/sitemap-main\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${APEX_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_APEX=true
             fi
-            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|pro-test/index\.html|pro-test/src/.*|public/blog/.*|public/sitemap\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|blog-site/src/.*|docs/snapshots/github-stars-[0-9]{4}-[0-9]{2}-[0-9]{2}\.json|pro-test/.*|public/blog/.*|public/sitemap\.xml|public/sitemap-main\.xml|scripts/build-crawlable-corpus\.mjs|scripts/build-sitemap\.mjs|scripts/github-stars-snapshot\.mjs|scripts/seo-indexnow-submit\.mjs|vercel\.json)$' <<< "$CHANGED_FILES" \
               || grep -Fxq "public/${WWW_KEY_PATH}" <<< "$CHANGED_FILES"; then
               SUBMIT_WWW=true
             fi
+            # Each variant batch submits the bare root as well as /dashboard, and
+            # vercel.json rewrites every variant root to /pro/welcome.html — so
+            # the welcome page's SOURCES change what five submitted URLs serve.
+            # public/pro/ itself is gitignored since #6898 and can never appear
+            # in a commit diff, so the whole pro-test/ subtree stands in for it.
+            # Deliberately the SUBTREE, not a list of named files: prerender.mjs
+            # injects the critical CSS and SSR welcome markup, and vite.config.ts
+            # decides the emitted chunks, so both change what these URLs serve
+            # without touching index.html, welcome.html, or src/.
+            if grep -Eq '^(\.github/workflows/indexnow-submit\.yml|middleware\.ts|pro-test/.*|public/sitemap\.xml|public/sitemap-main\.xml|scripts/build-sitemap\.mjs|scripts/seo-indexnow-submit\.mjs|src/config/variant-dashboard-html\.ts|src/config/variant-meta\.ts|vercel\.json)$' <<< "$CHANGED_FILES"; then
+              SUBMIT_VARIANTS=true
+            fi
+            for key_path in $VARIANT_KEY_PATHS; do
+              if grep -Fxq "public/${key_path}" <<< "$CHANGED_FILES"; then
+                SUBMIT_VARIANTS=true
+              fi
+            done
             echo "submit_apex=$SUBMIT_APEX" >> "$GITHUB_OUTPUT"
             echo "submit_www=$SUBMIT_WWW" >> "$GITHUB_OUTPUT"
+            echo "submit_variants=$SUBMIT_VARIANTS" >> "$GITHUB_OUTPUT"
           fi
       - name: Submit the canonical MCP URL
         if: steps.relevant.outputs.submit_apex == 'true'
@@ -82,3 +130,25 @@ jobs:
       - name: Submit canonical www product and blog URLs
         if: steps.relevant.outputs.submit_www == 'true'
         run: node scripts/seo-indexnow-submit.mjs --host www.worldmonitor.app
+      - name: Submit canonical variant dashboard URLs
+        if: steps.relevant.outputs.submit_variants == 'true'
+        env:
+          VARIANT_HOSTS: ${{ steps.relevant.outputs.variant_hosts }}
+        # Every host is attempted even when one fails, so a single broken
+        # variant cannot hide the state of the others.
+        run: |
+          # An empty list would iterate zero times and exit 0 — green with zero
+          # submissions, the exact silent failure this step exists to end. Fail
+          # closed instead, so a lost gate output cannot look like success.
+          if [[ -z "${VARIANT_HOSTS// /}" ]]; then
+            echo "::error::no IndexNow variant hosts were derived from public/sitemap.xml"
+            exit 1
+          fi
+          # Split on whitespace without also glob-expanding: an unquoted $VAR
+          # would let a '*' in a host name expand against the workspace.
+          read -ra hosts <<< "$VARIANT_HOSTS"
+          status=0
+          for host in "${hosts[@]}"; do
+            node scripts/seo-indexnow-submit.mjs --host "$host" || status=1
+          done
+          exit $status

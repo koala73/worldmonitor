@@ -94,7 +94,17 @@ const SOURCE_METADATA: Record<DataSourceId, { name: string; requiredForRisk: boo
   pizzint: { name: 'PizzINT Monitoring', requiredForRisk: false, panelId: 'intel' },
   outages: { name: 'Internet Outages', requiredForRisk: false, panelId: 'outages' },
   cyber_threats: { name: 'Cyber Threat IOCs', requiredForRisk: false, panelId: 'map' },
-  weather: { name: 'Weather Alerts', requiredForRisk: false, panelId: 'weather' },
+  // This branch widened the weather source to cover ECCC as well as NWS; main's
+  // road entries below are untouched by that.
+  weather: { name: 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)', requiredForRisk: false, panelId: 'weather' },
+  // One entry per CANADA_ROAD_SOURCES descriptor. Five sources union onto the
+  // canadaRoads layer, and recording them all as ontario_511 made an Alberta,
+  // Toronto or BC outage read as an Ontario one — or vanish entirely.
+  ontario_511: { name: 'Ontario Roads (511)', requiredForRisk: false, panelId: 'map' },
+  alberta_511: { name: 'Alberta Roads (511)', requiredForRisk: false, panelId: 'map' },
+  manitoba_511: { name: 'Manitoba Roads (511)', requiredForRisk: false, panelId: 'map' },
+  toronto_roads: { name: 'Toronto Road Restrictions', requiredForRisk: false, panelId: 'map' },
+  bc_open511: { name: 'BC Roads (Open511)', requiredForRisk: false, panelId: 'map' },
   economic: { name: 'Economic Data (FRED)', requiredForRisk: false, panelId: 'economic' },
   oil: { name: 'Oil Analytics (EIA)', requiredForRisk: false, panelId: 'economic' },
   spending: { name: 'Gov Spending', requiredForRisk: false, panelId: 'economic' },
@@ -462,6 +472,9 @@ class DataFreshnessTracker {
     if (age <= freshThreshold) return source.healthStatus === 'COVERAGE_PARTIAL'
       || source.healthStatus === 'STALE_CONTENT'
       || source.healthStatus === 'STALE_SEED'
+      || source.healthStatus === 'COVERAGE_DEGRADED'
+      || source.healthStatus === 'CHINA_DEGRADED'
+      || source.healthStatus === 'ROLLOUT_PENDING'
       ? 'stale'
       : 'fresh';
     if (age <= staleThreshold) return 'stale';
@@ -470,7 +483,10 @@ class DataFreshnessTracker {
   }
 
   private healthStatusIsError(status: string): boolean {
-    return status === 'SEED_ERROR' || status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL';
+    return status === 'SEED_ERROR' || status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL'
+      // Server-crit: a fresh-aged CHINA_UNAVAILABLE must render as an error, not
+      // pass through calculateStatus's age check as 'fresh' (api/health.js crit).
+      || status === 'CHINA_UNAVAILABLE';
   }
 
   private healthStatusHasNoData(status: string): boolean {
@@ -549,7 +565,12 @@ const INTELLIGENCE_GAP_MESSAGES: Record<DataSourceId, string> = {
   pizzint: 'PizzINT monitor unavailable—location/tension tracking degraded',
   outages: 'Internet disruptions may be unreported—outage monitoring offline',
   cyber_threats: 'Cyber IOC map points unavailable—malicious infrastructure visibility reduced',
-  weather: 'Severe weather warnings may be missed—weather alerts unavailable',
+  weather: 'Official weather warnings may be missed—NWS, ECCC, or WMO SWIC alerts unavailable',
+  ontario_511: 'Ontario highway incidents may be missed—511 feed unavailable',
+  alberta_511: 'Alberta highway incidents may be missed—511 feed unavailable',
+  manitoba_511: 'Manitoba highway incidents may be missed—511 feed unavailable',
+  toronto_roads: 'Toronto road restrictions may be missed—City of Toronto feed unavailable',
+  bc_open511: 'BC highway incidents may be missed—Open511 feed unavailable',
   economic: 'Economic indicators stale—Fed/Treasury data not updating',
   oil: 'Oil market analytics unavailable—EIA data not updating',
   spending: 'Government spending data unavailable',

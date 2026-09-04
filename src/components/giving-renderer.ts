@@ -155,8 +155,8 @@ function renderPlatforms(data: GivingSummary, translate: GivingTranslate): strin
     <table class="giving-table">
       <thead>
         <tr>
-          <th>${escapeHtml(translate('components.giving.platform'))}</th>
-          <th>${escapeHtml(translate('components.giving.benchmark'))}</th>
+          <th scope="col">${escapeHtml(translate('components.giving.platform'))}</th>
+          <th scope="col">${escapeHtml(translate('components.giving.benchmark'))}</th>
         </tr>
       </thead>
       <tbody>${rows}</tbody>

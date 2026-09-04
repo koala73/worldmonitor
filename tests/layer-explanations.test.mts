@@ -115,6 +115,8 @@ describe('layer explanation metadata', () => {
       'ucdpEvents',
       'ciiChoropleth',
       'natural',
+      'weather',
+      'canadaRoads', 'canadaAlerts',
       'flights',
       'ais',
       'waterways',
@@ -168,6 +170,17 @@ describe('layer explanation metadata', () => {
     const naturalTtlMin = constNumber('scripts/seed-natural-events.mjs', 'CACHE_TTL') / 60;
     assert.equal(naturalTtlMin, naturalCadenceMin * 6, 'natural TTL must keep the documented 6x cadence buffer');
     assertDuration(renderedFreshnessText('natural'), /every\s+([0-9]+)\s+(hour)s?/i, naturalCadenceMin, 'natural event seed cadence');
+
+    assertDuration(renderedFreshnessText('weather'), /every\s+([0-9]+)\s+(minute)s?/i, relayConstMinutes('WEATHER_SEED_INTERVAL_MS'), 'weather relay seed cadence');
+    assertDuration(renderedFreshnessText('weather'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('weatherAlerts'), 'weather health freshness budget');
+
+    assertDuration(renderedFreshnessText('canadaRoads'), /every\s+([0-9]+)\s+(minute)s?/i, 15, 'ontario 511 seed cadence');
+    assert.equal(healthMaxStale('albertaRoads'), healthMaxStale('canadaRoads'), 'Alberta 511 shares the 45-minute 3x cron budget');
+    assert.equal(healthMaxStale('manitobaRoads'), healthMaxStale('canadaRoads'), 'Manitoba 511 shares the 45-minute 3x cron budget');
+    assertDuration(renderedFreshnessText('canadaRoads'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('canadaRoads'), 'ontario 511 health freshness budget');
+    assertDuration(renderedFreshnessText('canadaAlerts'), /every\s+([0-9]+)\s+(minute)s?/i, 15, 'alberta AEA seed cadence');
+    assertDuration(renderedFreshnessText('canadaAlerts'), /([0-9]+)-\s*(minute)\s+freshness budget/i, healthMaxStale('canadaAlerts'), 'alberta AEA health freshness budget');
+    assert.equal(healthMaxStale('canadaAlerts'), maxStaleMin('scripts/seed-alberta-emergency-alert.mjs', 'alberta-aea'), 'canadaAlerts health budget must match seeder maxStaleMin');
 
     const aviationCadenceMin = maxStaleMin('scripts/seed-aviation.mjs', 'intl') / 3;
     assertDuration(renderedFreshnessText('flights'), /([0-9]+)-\s*(minute)\s+cadence/i, aviationCadenceMin, 'aviation disruption seed cadence');
@@ -224,6 +237,67 @@ describe('layer explanation metadata', () => {
 
     assert.match(cyberThreats.source, /ransomware\.live RSS\/news feed/i);
     assert.match(cyberThreats.source, /IP geolocation enrichment/i);
+  });
+
+  test('canadaRoads explanation discloses provincial and Toronto coverage on one layer', () => {
+    const roads = getLayerExplanation('canadaRoads');
+    assert.match(LAYER_REGISTRY.canadaRoads.fallbackLabel, /Canada/i);
+    assert.match(roads.source, /Ontario 511/i);
+    assert.match(roads.source, /Alberta 511/i);
+    assert.match(roads.source, /Manitoba 511/i);
+    assert.match(roads.source, /Toronto Road Restrictions/i);
+    assert.match(roads.source, /DriveBC Open511/i);
+    assert.match(roads.purpose, /closures/i);
+    assert.doesNotMatch(roads.source, /Alberta 511[^.]{0,80}road-conditions/i);
+    assert.equal(
+      roads.limitations.some(limitation => /Manitoba 511 is not ingested/i.test(limitation)),
+      false,
+      'canadaRoads limitations must not still name Manitoba as not ingested',
+    );
+    assert.ok(
+      roads.limitations.some(limitation => /Alberta 511 roadconditions is not ingested/i.test(limitation)),
+      'canadaRoads limitations must say Alberta roadconditions is not ingested',
+    );
+    for (const path of ['scripts/seed-provincial-511.mjs', 'scripts/seed-toronto-road-restrictions.mjs', 'scripts/seed-open511.mjs', 'api/health.js', 'src/services/canada-roads.ts']) {
+      assert.ok(roads.evidence.includes(path), `canadaRoads evidence must cite ${path}`);
+    }
+  });
+
+
+  test('weather explanation discloses NWS, ECCC, and WMO SWIC coverage', () => {
+    const weather = getLayerExplanation('weather');
+
+    assert.equal(LAYER_REGISTRY.weather.fallbackLabel, 'Severe Weather Alerts (NWS, ECCC, WMO SWIC)');
+    assert.match(weather.source, /National Weather Service \(NWS\)/i);
+    assert.match(weather.source, /Environment and Climate Change Canada \(ECCC\)/i);
+    assert.match(weather.source, /WMO Severe Weather Information Centre \(SWIC\)/i);
+    assert.ok(
+      weather.limitations.some(limitation => /country-level points/i.test(limitation)),
+      'weather limitations must say SWIC geocoded alerts render as country-level points',
+    );
+    assert.ok(
+      !weather.limitations.some(limitation => /outside the United States and Canada/i.test(limitation)),
+      'weather limitations must not still claim coverage is US + Canada only',
+    );
+    for (const path of ['scripts/ais-relay.cjs', 'scripts/_weather-alert-select.mjs', 'api/health.js', 'src/services/weather.ts']) {
+      assert.ok(weather.evidence.includes(path), `weather evidence must cite ${path}`);
+    }
+  });
+
+  test('canadaAlerts explanation discloses Alberta, B.C., and Saskatchewan coverage', () => {
+    const canadaAlerts = getLayerExplanation('canadaAlerts');
+
+    assert.equal(LAYER_REGISTRY.canadaAlerts.fallbackLabel, 'Canada Alerts (AB + BC + SK)');
+    assert.match(canadaAlerts.source, /Alberta Emergency Alert/i);
+    assert.match(canadaAlerts.source, /OGL-BC Evacuation Orders and Alerts/i);
+    assert.match(canadaAlerts.source, /SaskAlert/i);
+    assert.ok(
+      canadaAlerts.limitations.some(limitation => /Alberta, British Columbia, and Saskatchewan/i.test(limitation)),
+      'canadaAlerts limitations must state the supported provincial scope',
+    );
+    for (const path of ['scripts/seed-alberta-emergency-alert.mjs', 'scripts/seed-bc-emergency-info.mjs', 'scripts/seed-saskalert.mjs', 'api/health.js', 'src/services/canada-alerts.ts']) {
+      assert.ok(canadaAlerts.evidence.includes(path), `canadaAlerts evidence must cite ${path}`);
+    }
   });
 
   test('curated explanations are not accidentally added outside the declared v1 set', () => {

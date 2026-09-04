@@ -7,8 +7,8 @@
  *
  * Pin path: if a matching pin exists in ctx.pinnedUrls, discovery is skipped and the
  * configured extraction providers are called directly on the stored URL. On failure,
- * the adapter falls back to the normal Exa discovery flow in the same run so the basket
- * item is never left uncovered.
+ * the adapter tries a configured item seed, then the normal Exa discovery flow in the
+ * same run so the basket item is never left uncovered.
  *
  * Replaces ExaSearchAdapter's fragile regex-on-AI-summary approach.
  * Firecrawl renders JS so dynamic prices (Noon, etc.) are visible.
@@ -22,9 +22,11 @@ import type { RetailerConfig } from '../config/types.js';
 import type { AdapterContext, FetchResult, ParsedProduct, RetailerAdapter, Target } from './types.js';
 import { MARKET_NAMES } from './market-names.js';
 import { parseSize } from '../normalizers/size.js';
-import { validateSearchHit, type ValidatorResult } from './validator.js';
+import { AUTO_MATCH_THRESHOLD, validateSearchHit, type ValidatorResult } from './validator.js';
+import { normalizeExaBrlMinorUnitPrice, priceEvidenceOnPage, type PriceEvidence } from './price-evidence.js';
+import { ProviderCooldownGate } from './provider-cooldown.js';
 import type { BasketItem } from '../config/types.js';
-import type { AcquisitionProviderName } from '../acquisition/types.js';
+import type { AcquisitionProviderName, SearchOptions, SearchResult } from '../acquisition/types.js';
 
 /** Packaging/container words that are not product identity tokens. */
 const PACKAGING_WORDS = new Set(['pack', 'box', 'bag', 'container', 'bottle', 'can', 'jar', 'tin', 'set', 'kit', 'bundle']);
@@ -111,8 +113,9 @@ export function looksLikeQuantityAsPrice(
 ): boolean {
   if (item.baseUnit === 'ct' || !Number.isFinite(price) || price < 20) return false;
   // Fall back to the canonical size whenever the provider's sizeText does not
-  // PARSE, not merely when it is absent: `??` would accept `''` or `'400 gm'`
-  // (UNIT_MAP has no `gm`/`pack`) as a present size and silently skip the check.
+  // PARSE, not merely when it is absent: `??` would accept `''` or `'400 loaf'`
+  // (UNIT_MAP has no `loaf`/`pack`) as a present size and silently skip the
+  // check. `gm` used to be the example here; #6267 mapped it to grams.
   const parsed = parseSize(sizeText) ?? parseSize(fallbackSizeText);
   if (!parsed || parsed.baseUnit !== item.baseUnit || parsed.baseQuantity < 100) return false;
   return Math.abs(price - parsed.baseQuantity) < 0.005;
@@ -129,13 +132,18 @@ export function normalizePathFilters(value: string | string[] | undefined): stri
 
 /**
  * URL passes the path filter if filters list is empty OR any listed substring
- * appears in the URL. Multi-pattern support is required for retailers like
+ * appears in the pathname. Multi-pattern support is required for retailers like
  * Carrefour BR that mix legacy `/produto/<slug>` URLs with VTEX `<slug>/p`
  * URLs — a single substring can't match both.
  */
 export function matchesAnyPathFilter(url: string, filters: string[]): boolean {
   if (filters.length === 0) return true;
-  return filters.some((p) => url.includes(p));
+  try {
+    const { pathname } = new URL(url);
+    return filters.some((filter) => pathname.includes(filter));
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -160,6 +168,46 @@ export function matchesRequiredPathSegments(url: string, segments: string[]): bo
   }
 }
 
+export function isUrlInPolicy(url: string, cfg: RetailerConfig['searchConfig'], hosts: readonly string[]): boolean {
+  return (
+    isAllowedHost(url, hosts) &&
+    matchesAnyPathFilter(url, normalizePathFilters(cfg?.urlPathContains)) &&
+    matchesRequiredPathSegments(url, cfg?.urlPathMustContain ?? [])
+  );
+}
+
+/** Build the exact Exa discovery request shared by production and diagnostics. */
+export function buildExaDiscoveryRequest(input: {
+  searchConfig: RetailerConfig['searchConfig'];
+  canonicalName: string;
+  category: string;
+  currency: string;
+  marketName: string;
+  includeDomains: string[];
+}): { query: string; options: SearchOptions } {
+  const { searchConfig, canonicalName, category, currency, marketName, includeDomains } = input;
+  const query = searchConfig?.queryTemplate
+    ? searchConfig.queryTemplate
+        .replace('{canonicalName}', canonicalName)
+        .replace('{category}', category)
+        .replace('{currency}', currency)
+        .replace('{market}', marketName)
+        .trim()
+    : `${canonicalName} grocery ${marketName} ${currency}`.trim();
+
+  return {
+    query,
+    options: {
+      numResults: searchConfig?.numResults ?? 3,
+      includeDomains,
+      // Omitted unless configured so retailers on the provider default are
+      // untouched; ExaProvider.search falls back to neural on undefined.
+      ...(searchConfig?.searchType ? { type: searchConfig.searchType } : {}),
+      timeout: 30_000,
+    },
+  };
+}
+
 interface ExtractedProduct {
   productName?: string;
   price?: number;
@@ -174,6 +222,7 @@ export type ExtractionFailureReason =
   | 'provider-error'
   | 'provider-cooldown'
   | 'missing-price'
+  | 'price-evidence-missing'
   | 'title-mismatch'
   | 'validator-rejected'
   | 'quantity-as-price'
@@ -189,6 +238,12 @@ interface ExtractionSuccess {
   extracted: ExtractedProduct;
   validator: ValidatorResult;
   provider: ExtractionProviderName;
+  /** Outcome of the on-page price verification for the accepted extraction.
+   * 'no-content' means the gate could NOT run (provider returned no rendered
+   * content) — persisted so an audit can tell a proven price from an
+   * unproven one; a fleet-wide drift to 'no-content' is the gate silently
+   * dying (#6182 review). */
+  priceEvidence: PriceEvidence;
 }
 
 interface ExtractionAttempt {
@@ -207,16 +262,30 @@ interface SearchPayload {
   itemConstraints?: ItemConstraints;
   validator?: ValidatorResult;
   extractionProvider?: ExtractionProviderName;
+  priceEvidence?: PriceEvidence;
   direct?: boolean;
   pinnedProductId?: string;
   matchId?: string;
 }
+
+type SearchTargetMetadata = {
+  canonicalName: string;
+  domain: string;
+  basketSlug: string;
+  currency: string;
+  itemConstraints?: ItemConstraints;
+  direct: boolean;
+  seedUrl: string | undefined;
+  pinnedProductId?: string;
+  matchId?: string;
+};
 
 const REJECTION_FAILURES = new Set<ExtractionFailureReason>([
   'validator-rejected',
   'quantity-as-price',
   'currency-mismatch',
   'title-mismatch',
+  'price-evidence-missing',
 ]);
 
 export class SearchTargetError extends Error {
@@ -242,14 +311,14 @@ export class SearchAdapter implements RetailerAdapter {
 
   // A provider outage should not multiply into one failed call per candidate
   // URL for the rest of a retailer's scrape. Two consecutive transport errors
-  // open a per-scrape cooldown; an explicitly configured fallback can still
-  // make one bounded attempt per candidate.
-  private firecrawlFailureStreak = 0;
-  private firecrawlCooldownOpen = false;
-  private exaExtractionFailureStreak = 0;
-  private exaExtractionCooldownOpen = false;
-  private exaDiscoveryFailureStreak = 0;
-  private exaDiscoveryCooldownOpen = false;
+  // open a per-scrape cooldown. The gate is HALF-OPEN (#6182): it skips a
+  // bounded window of attempts and then lets one probe through, so a
+  // transient blip costs a few pages instead of the whole retailer (Tesco GB
+  // 2026-08-08: two Firecrawl 500s wiped 11/12 pages under the always-open
+  // version of this cooldown).
+  private firecrawlGate = new ProviderCooldownGate();
+  private exaExtractionGate = new ProviderCooldownGate();
+  private exaDiscoveryGate = new ProviderCooldownGate();
 
   constructor(
     private readonly exa: ExaProvider,
@@ -263,12 +332,9 @@ export class SearchAdapter implements RetailerAdapter {
   }
 
   async discoverTargets(ctx: AdapterContext): Promise<Target[]> {
-    this.firecrawlFailureStreak = 0;
-    this.firecrawlCooldownOpen = false;
-    this.exaExtractionFailureStreak = 0;
-    this.exaExtractionCooldownOpen = false;
-    this.exaDiscoveryFailureStreak = 0;
-    this.exaDiscoveryCooldownOpen = false;
+    this.firecrawlGate = new ProviderCooldownGate();
+    this.exaExtractionGate = new ProviderCooldownGate();
+    this.exaDiscoveryGate = new ProviderCooldownGate();
 
     const baskets = loadAllBasketConfigs().filter((b) => b.marketCode === ctx.config.marketCode);
     const domain = new URL(ctx.config.baseUrl).hostname;
@@ -283,6 +349,11 @@ export class SearchAdapter implements RetailerAdapter {
       for (const item of basket.items) {
         const pinKey = `${basket.slug}:${item.canonicalName}`;
         const pinned = ctx.pinnedUrls?.get(pinKey);
+        const seed = ctx.config.discovery.seeds.find((candidate) => candidate.id === item.id);
+        const seedUrl = seed && isUrlInPolicy(seed.url, ctx.config.searchConfig, allowedHosts) ? seed.url : undefined;
+        if (seed && !seedUrl) {
+          ctx.logger.warn(`  [search:seed] ignored out-of-policy URL for "${item.canonicalName}": ${seed.url}`);
+        }
         const itemConstraints: ItemConstraints = {
           baseUnit: item.baseUnit,
           minBaseQty: item.minBaseQty,
@@ -307,9 +378,10 @@ export class SearchAdapter implements RetailerAdapter {
               currency: ctx.config.currencyCode,
               itemConstraints,
               direct: true,
+              seedUrl,
               pinnedProductId: pinned.productId,
               matchId: pinned.matchId,
-            },
+            } satisfies SearchTargetMetadata,
           });
         } else {
           if (pinned) {
@@ -320,7 +392,7 @@ export class SearchAdapter implements RetailerAdapter {
           }
           targets.push({
             id: item.id,
-            url: ctx.config.baseUrl,
+            url: seedUrl ?? ctx.config.baseUrl,
             category: item.category,
             metadata: {
               canonicalName: item.canonicalName,
@@ -329,7 +401,8 @@ export class SearchAdapter implements RetailerAdapter {
               currency: ctx.config.currencyCode,
               itemConstraints,
               direct: false,
-            },
+              seedUrl,
+            } satisfies SearchTargetMetadata,
           });
         }
       }
@@ -351,25 +424,41 @@ export class SearchAdapter implements RetailerAdapter {
       : ` You are looking for "${canonicalName}".`;
 
     const extractSchema = {
-      prompt: `Extract the retail price of THIS specific product from the main product section of the page.${sizeClause} The price may be displayed as two parts split across lines — like "3" and ".95" next to "${currency}" — combine them to get 3.95. ONLY extract the price shown for the main product itself. If the page shows "Out of Stock" and no price is displayed for the main product, return null for price — do NOT use prices from related products, recommendations, or carousels. Return the product name, the numeric price in ${currency} (null if not shown), the currency code, whether it is in stock, and the size or quantity shown on the page.`,
+      // No numeric example here, deliberately. A worked example ("combine them
+      // to get 3.95") is an anchor the extractor emits VERBATIM when the page
+      // has no price: varying only the example on a priceless page returned
+      // 3.95, then 7.31, then 12.48, each with the canonical name echoed back
+      // as the product name — a fabricated observation that clears the price,
+      // currency, title and strict-validator gates alike. Describe the split
+      // layout in words instead.
+      prompt: `Extract the retail price of THIS specific product from the main product section of the page.${sizeClause} The price may be rendered split across separate elements, with the whole-currency part and the fractional part in different nodes; join them into one number. Never invent, estimate, or complete a price: read every digit off the page, and if no price for the main product itself is printed anywhere on the page return null for price. If a price IS printed for the main product, return it even when the product is out of stock, unavailable, or the page asks for a delivery location first — a printed price next to an "Out of Stock" notice is still the price; report availability through inStock instead of nulling the price. ONLY use the price of the main product itself — never prices from related products, recommendations, or carousels. If the page is an error, "not found", or empty-state page, return null for price. Return the product name EXACTLY as printed on the page (never restate the product you were asked to find), the numeric price in ${currency} (null if not shown), the currency code, whether it is in stock, and the size or quantity shown on the page.`,
+      // Field descriptions are model-visible too: Exa appends them to the
+      // summary query and Firecrawl sends them in the extraction schema. Keep
+      // every description free of worked numeric examples for the same reason.
       fields: {
         productName: { type: 'string' as const, required: true, description: 'Name or title of the product' },
         price: {
           type: 'number' as const,
           required: true,
           nullable: true,
-          description: `Retail price in ${currency} as a single number (e.g. 4.69)`,
+          description: `Retail price in ${currency}, expressed as one numeric value`,
         },
         currency: { type: 'string' as const, required: true, description: `Currency code, should be ${currency}` },
         inStock: {
           type: 'boolean' as const,
-          required: false,
+          // Required (#6182 review): the softened prompt now admits printed
+          // prices on out-of-stock pages, and parseListing defaults a MISSING
+          // inStock to true — so an extractor that omits availability would
+          // record an OOS product as purchasable. Requiring the field makes
+          // the extractor state it explicitly; the downstream default remains
+          // as a last-resort for off-contract responses.
+          required: true,
           description: 'Whether the product is currently in stock and purchasable',
         },
         sizeText: {
           type: 'string' as const,
           required: false,
-          description: 'Size or quantity shown on the page (e.g. "32 oz", "1 gallon", "24 pack")',
+          description: 'Size or quantity exactly as shown on the page',
         },
       },
     };
@@ -381,52 +470,92 @@ export class SearchAdapter implements RetailerAdapter {
     const validationConstraints: ItemConstraints = itemConstraints ?? { baseUnit: '' };
 
     for (const provider of providers) {
-      if (provider === 'firecrawl' && this.firecrawlCooldownOpen) {
-        failures.push({ provider, reason: 'provider-cooldown' });
-        continue;
-      }
-      if (provider === 'exa' && this.exaExtractionCooldownOpen) {
+      const gate = provider === 'firecrawl' ? this.firecrawlGate : this.exaExtractionGate;
+      if (gate.consumeSkip()) {
         failures.push({ provider, reason: 'provider-cooldown' });
         continue;
       }
 
       let data: ExtractedProduct;
+      let pageContent: string | undefined;
       try {
+        // renderWaitMs: late-hydrating storefronts (Carrefour MAF) capture as
+        // a breadcrumb shell without a settle delay — Firecrawl only; the Exa
+        // fallback reads Exa's own crawl and has no render to wait on.
         const result =
           provider === 'firecrawl'
-            ? await this.firecrawl.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 })
+            ? await this.firecrawl.extract<ExtractedProduct>(url, extractSchema, {
+                timeout: 30_000,
+                ...(ctx.config.searchConfig?.renderWaitMs ? { waitFor: ctx.config.searchConfig.renderWaitMs } : {}),
+              })
             : await this.exa.extract<ExtractedProduct>(url, extractSchema, { timeout: 30_000 });
         data = result.data ?? {};
-        if (provider === 'firecrawl') this.firecrawlFailureStreak = 0;
-        if (provider === 'exa') this.exaExtractionFailureStreak = 0;
+        pageContent = result.pageContent;
+        // The open->closed transition deserves the same log visibility as the
+        // opening warn: without it, "did the provider recover" is only
+        // answerable by the absence of further warnings (#6182 review).
+        if (gate.recordSuccess()) {
+          ctx.logger.info(
+            `  [search:provider-cooldown] ${ctx.config.slug}: ${provider === 'firecrawl' ? 'Firecrawl' : 'Exa'} extraction recovered — cooldown closed after a successful probe`,
+          );
+        }
       } catch (err) {
         const detail = err instanceof Error ? err.message : String(err);
         failures.push({ provider, reason: 'provider-error', detail });
-        if (provider === 'firecrawl') {
-          this.firecrawlFailureStreak++;
-          if (this.firecrawlFailureStreak >= 2) {
-            this.firecrawlCooldownOpen = true;
-            ctx.logger.warn(
-              `  [search:provider-cooldown] ${ctx.config.slug}: Firecrawl disabled for the remainder of this scrape after ${this.firecrawlFailureStreak} consecutive errors`,
-            );
-          }
-        }
-        if (provider === 'exa') {
-          this.exaExtractionFailureStreak++;
-          if (this.exaExtractionFailureStreak >= 2) {
-            this.exaExtractionCooldownOpen = true;
-            ctx.logger.warn(
-              `  [search:provider-cooldown] ${ctx.config.slug}: Exa extraction disabled for the remainder of this scrape after ${this.exaExtractionFailureStreak} consecutive errors`,
-            );
-          }
+        if (gate.recordFailure()) {
+          ctx.logger.warn(
+            `  [search:provider-cooldown] ${ctx.config.slug}: ${provider === 'firecrawl' ? 'Firecrawl' : 'Exa'} extraction cooling down after consecutive errors — skipping a bounded window, then probing (last: ${detail})`,
+          );
         }
         continue;
       }
 
-      const price = data.price;
+      let price = data.price;
       if (typeof price !== 'number' || !Number.isFinite(price) || price <= 0) {
         failures.push({ provider, reason: 'missing-price' });
         continue;
+      }
+
+      if (provider === 'exa' && currency.toUpperCase() === 'BRL') {
+        const normalizedPrice = normalizeExaBrlMinorUnitPrice(price, pageContent);
+        if (normalizedPrice !== price) {
+          if (looksLikeQuantityAsPrice(price, data.sizeText, validationConstraints, canonicalName)) {
+            failures.push({ provider, reason: 'quantity-as-price', detail: `${price} for ${data.sizeText}` });
+            continue;
+          }
+          ctx.logger.info(
+            `  [search:price-normalized] ${ctx.config.slug}/${canonicalName}: Exa BRL minor units ${price} -> ${normalizedPrice}`,
+          );
+          price = normalizedPrice;
+          data.price = normalizedPrice;
+        }
+      }
+
+      // Anti-fabrication proof (#6182): an accepted price must be visible in
+      // the rendered content the SAME provider call returned. This is what
+      // makes the softer printed-price-wins prompt safe — a fabricated value
+      // (the #6270 class) has no digits on the page and dies here regardless
+      // of prompt wording. 'no-content' (provider returned no render) keeps
+      // the historical accept-on-extract behavior rather than failing closed —
+      // but it must never be SILENT: the abstention is logged per candidate
+      // and stamped into the payload, because a fleet-wide drift to
+      // 'no-content' (a provider quietly dropping rendered content from its
+      // response) is this gate dying while every run still looks verified.
+      const priceEvidence = priceEvidenceOnPage(price, pageContent);
+      if (priceEvidence === 'unverified') {
+        failures.push({ provider, reason: 'price-evidence-missing', detail: `${price} not found in page content` });
+        // Escalates: the other provider renders the page independently and can
+        // both re-read and re-evidence the price.
+        continue;
+      }
+      if (priceEvidence === 'no-content') {
+        if (provider === 'exa' && currency.toUpperCase() === 'BRL' && Number.isInteger(price)) {
+          failures.push({ provider, reason: 'price-evidence-missing', detail: `${price} has no page content` });
+          continue;
+        }
+        ctx.logger.warn(
+          `  [search:price-evidence] ${ctx.config.slug}/${canonicalName}: no page content from ${provider} — evidence gate skipped`,
+        );
       }
 
       const extractedCurrency = data.currency?.trim();
@@ -508,62 +637,119 @@ export class SearchAdapter implements RetailerAdapter {
         data.inStock = true;
       }
 
-      return { result: { extracted: data, validator, provider }, failures };
+      return { result: { extracted: data, validator, provider, priceEvidence }, failures };
     }
 
     return { result: null, failures };
   }
 
   async fetchTarget(ctx: AdapterContext, target: Target): Promise<FetchResult> {
-    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, pinnedProductId, matchId } = target.metadata as {
-      canonicalName: string;
-      domain: string;
-      currency: string;
-      basketSlug: string;
-      itemConstraints?: ItemConstraints;
-      direct: boolean;
-      pinnedProductId?: string;
-      matchId?: string;
-    };
+    const { canonicalName, domain, currency, basketSlug, itemConstraints, direct, seedUrl, pinnedProductId, matchId } =
+      target.metadata as SearchTargetMetadata;
     const hostAllowlist = normalizeAllowedHosts(domain, ctx.config.searchConfig?.allowedHosts);
+    const failures: ExtractionFailure[] = [];
+    const attemptedUrls = new Set<string>();
+    let seedCandidate: { url: string; result: ExtractionSuccess } | null = null;
+
+    const buildFetchResult = (
+      productUrl: string,
+      result: ExtractionSuccess,
+      wasDirect: boolean,
+    ): FetchResult => ({
+      url: productUrl,
+      html: JSON.stringify({
+        extracted: result.extracted,
+        productUrl,
+        canonicalName,
+        basketSlug,
+        itemCategory: target.category,
+        itemConstraints,
+        validator: result.validator,
+        extractionProvider: result.provider,
+        priceEvidence: result.priceEvidence,
+        direct: wasDirect,
+        ...(wasDirect ? { pinnedProductId, matchId } : {}),
+      } satisfies SearchPayload),
+      statusCode: 200,
+      fetchedAt: new Date(),
+    });
+
+    const fallbackToSeedCandidate = (reason: string): FetchResult | null => {
+      if (!seedCandidate) return null;
+      ctx.logger.info(
+        `  [search:seed] ${ctx.config.slug}/${canonicalName}: using candidate score=${seedCandidate.result.validator.score.toFixed(3)} after ${reason}`,
+      );
+      return buildFetchResult(seedCandidate.url, seedCandidate.result, false);
+    };
 
     // Direct path: skip Exa discovery, call the configured extractor on the pinned URL.
     if (direct) {
+      attemptedUrls.add(target.url);
       try {
         const attempt = await this._extractFromUrl(ctx, target.url, canonicalName, currency, itemConstraints);
+        failures.push(...attempt.failures);
         if (attempt.result) {
           const result = attempt.result;
           ctx.logger.info(
             `  [search:pin] ${ctx.config.slug}/${canonicalName}: price=${result.extracted.price} ${result.extracted.currency} provider=${result.provider} from ${target.url}`,
           );
-          return {
-            url: target.url,
-            html: JSON.stringify({
-              extracted: result.extracted,
-              productUrl: target.url,
-              canonicalName,
-              basketSlug,
-              itemCategory: target.category,
-              itemConstraints,
-              validator: result.validator,
-              extractionProvider: result.provider,
-              direct: true,
-              pinnedProductId,
-              matchId,
-            } satisfies SearchPayload),
-            statusCode: 200,
-            fetchedAt: new Date(),
-          };
+          return buildFetchResult(target.url, result, true);
         }
         ctx.logger.warn(
-          `  [search:pin] ${ctx.config.slug}/${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa`,
+          `  [search:pin] ${ctx.config.slug}/${canonicalName}: pin extraction failed (${formatExtractionFailures(attempt.failures)}), trying configured recovery paths`,
         );
       } catch (err) {
-        ctx.logger.warn(`  [search:pin] ${ctx.config.slug}/${canonicalName}: pin fetch error, falling back to Exa: ${err}`);
+        const detail = err instanceof Error ? err.message : String(err);
+        failures.push({ provider: 'firecrawl', reason: 'provider-error', detail });
+        ctx.logger.warn(`  [search:pin] ${ctx.config.slug}/${canonicalName}: pin fetch error, trying configured recovery paths: ${err}`);
       }
     }
 
-    if (this.firecrawlCooldownOpen && ctx.config.searchConfig?.extractionFallback !== 'exa') {
+    if (seedUrl && !attemptedUrls.has(seedUrl)) {
+      attemptedUrls.add(seedUrl);
+      try {
+        const attempt = await this._extractFromUrl(ctx, seedUrl, canonicalName, currency, itemConstraints);
+        failures.push(...attempt.failures);
+        if (
+          attempt.result &&
+          (!attempt.result.validator.ok || attempt.result.validator.score < AUTO_MATCH_THRESHOLD)
+        ) {
+          const validator = attempt.result.validator;
+          const reasons = validator.reasons.join(',') || 'unknown';
+          if (validator.ok) {
+            seedCandidate = { url: seedUrl, result: attempt.result };
+            ctx.logger.warn(
+              `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page score ${validator.score.toFixed(3)} below automatic admission ${AUTO_MATCH_THRESHOLD}, falling back to Exa discovery`,
+            );
+          } else {
+            failures.push({ provider: attempt.result.provider, reason: 'validator-rejected', detail: reasons });
+            ctx.logger.warn(
+              `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed page rejected by validator (${reasons}), falling back to Exa discovery`,
+            );
+          }
+        } else if (attempt.result) {
+          ctx.logger.info(
+            `  [search:seed] ${ctx.config.slug}/${canonicalName}: price=${attempt.result.extracted.price} ${attempt.result.extracted.currency} provider=${attempt.result.provider} from ${seedUrl}`,
+          );
+          return buildFetchResult(seedUrl, attempt.result, false);
+        } else {
+          ctx.logger.warn(
+            `  [search:seed] ${ctx.config.slug}/${canonicalName}: seed extraction failed (${formatExtractionFailures(attempt.failures)}), falling back to Exa discovery`,
+          );
+        }
+      } catch (err) {
+        const detail = err instanceof Error ? err.message : String(err);
+        failures.push({ provider: 'firecrawl', reason: 'provider-error', detail });
+        ctx.logger.warn(`  [search:seed] ${ctx.config.slug}/${canonicalName}: seed fetch error, falling back to Exa discovery: ${err}`);
+      }
+    }
+
+    // Half-open (#6182): while the skip window lasts, the target fails fast on
+    // provider-cooldown; the attempt after the window proceeds as the recovery
+    // probe (the probe call itself happens inside _extractFromUrl).
+    if (ctx.config.searchConfig?.extractionFallback !== 'exa' && this.firecrawlGate.consumeSkip()) {
+      const fallback = fallbackToSeedCandidate('Firecrawl cooldown opened');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `Firecrawl extraction cooldown is open for "${canonicalName}"`,
         0,
@@ -579,7 +765,9 @@ export class SearchAdapter implements RetailerAdapter {
     // provider per candidate. Aborting here would turn a fallback outage into
     // a whole-basket loss, which is the COVERAGE_PARTIAL this adapter exists
     // to prevent.
-    if (this.exaDiscoveryCooldownOpen) {
+    if (this.exaDiscoveryGate.consumeSkip()) {
+      const fallback = fallbackToSeedCandidate('Exa discovery cooldown opened');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `Exa discovery cooldown is open for "${canonicalName}"`,
         0,
@@ -589,34 +777,33 @@ export class SearchAdapter implements RetailerAdapter {
 
     const marketName = MARKET_NAMES[ctx.config.marketCode] ?? ctx.config.marketCode.toUpperCase();
     const cfg = ctx.config.searchConfig;
-
-    const searchQuery = cfg?.queryTemplate
-      ? cfg.queryTemplate
-          .replace('{canonicalName}', canonicalName)
-          .replace('{category}', target.category)
-          .replace('{currency}', currency)
-          .replace('{market}', marketName)
-          .trim()
-      : `${canonicalName} grocery ${marketName} ${currency}`.trim();
+    const discoveryRequest = buildExaDiscoveryRequest({
+      searchConfig: cfg,
+      canonicalName,
+      category: target.category,
+      currency,
+      marketName,
+      includeDomains: hostAllowlist,
+    });
 
     // Stage 1: Exa URL discovery
-    let exaResults;
+    let exaResults: SearchResult[];
     try {
-      exaResults = await this.exa.search(searchQuery, {
-        numResults: cfg?.numResults ?? 3,
-        includeDomains: hostAllowlist,
-        timeout: 30_000,
-      });
-      this.exaDiscoveryFailureStreak = 0;
-    } catch (err) {
-      const detail = err instanceof Error ? err.message : String(err);
-      this.exaDiscoveryFailureStreak++;
-      if (this.exaDiscoveryFailureStreak >= 2) {
-        this.exaDiscoveryCooldownOpen = true;
-        ctx.logger.warn(
-          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery disabled for the remainder of this scrape after ${this.exaDiscoveryFailureStreak} consecutive errors (last: ${detail})`,
+      exaResults = await this.exa.search(discoveryRequest.query, discoveryRequest.options);
+      if (this.exaDiscoveryGate.recordSuccess()) {
+        ctx.logger.info(
+          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery recovered — cooldown closed after a successful probe`,
         );
       }
+    } catch (err) {
+      const detail = err instanceof Error ? err.message : String(err);
+      if (this.exaDiscoveryGate.recordFailure()) {
+        ctx.logger.warn(
+          `  [search:provider-cooldown] ${ctx.config.slug}: Exa discovery cooling down after consecutive errors — skipping a bounded window, then probing (last: ${detail})`,
+        );
+      }
+      const fallback = fallbackToSeedCandidate('Exa discovery failed');
+      if (fallback) return fallback;
       // Carry `detail` into the message: nothing downstream reads `.failures`,
       // so without it the log cannot tell an auth failure from a rate limit
       // from a timeout — the distinction the cooldown exists to surface.
@@ -625,26 +812,69 @@ export class SearchAdapter implements RetailerAdapter {
       ]);
     }
 
-    if (exaResults.length === 0) {
-      throw new Error(`Exa: no pages found for "${canonicalName}" on ${domain}`);
-    }
-
     const pathFilters = normalizePathFilters(cfg?.urlPathContains);
     const requiredSegments = cfg?.urlPathMustContain ?? [];
-    const attemptedUrls = direct ? new Set([target.url]) : new Set<string>();
-    const discoveredUrls = exaResults
-      .map((r) => r.url)
-      .filter(
-        (url) =>
-          !!url &&
-          isAllowedHost(url, hostAllowlist) &&
-          matchesAnyPathFilter(url, pathFilters) &&
-          matchesRequiredPathSegments(url, requiredSegments),
-      );
-    const safeUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
+    const filterInPolicy = (results: SearchResult[]) =>
+      results.map((r) => r.url).filter((url) => !!url && isUrlInPolicy(url, cfg, hostAllowlist));
+    let discoveredUrls = filterInPolicy(exaResults);
+    let survivingUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
 
+    // One bounded re-draw when a search round yields NOTHING extractable
+    // (#6182). Exa's ranking for a domain+query is not stable run to run —
+    // Pão de Açúcar's 2026-08-08 02:00 scrape drew store-flyer PDFs and
+    // marketing pages for 7 of 11 items (0 in-policy URLs each) while the
+    // identical query minutes later drew 4-5/5 live /produto/ pages. An EMPTY
+    // first draw earns the same single retry as an out-of-policy one — a
+    // transient zero is no more permanent than a transient bad ranking. A
+    // single wider retry converts either into a normal page; a genuinely
+    // empty index still fails after exactly one extra search call. The width
+    // is clamped so a config with a large numResults cannot double into an
+    // unbounded (and unusable — extraction is candidate-capped anyway) draw.
+    if (survivingUrls.length === 0) {
+      const retryOptions = {
+        ...discoveryRequest.options,
+        numResults: Math.min(Math.max((discoveryRequest.options.numResults ?? 3) * 2, 8), 20),
+      };
+      try {
+        const retryResults = await this.exa.search(discoveryRequest.query, retryOptions);
+        ctx.logger.info(
+          `  [search:discovery-retry] ${ctx.config.slug}/${canonicalName}: ${exaResults.length === 0 ? 'empty first draw' : '0 in-policy URLs on first draw'}, retried wider (numResults=${retryOptions.numResults}) -> ${retryResults.length} results`,
+        );
+        exaResults = [...exaResults, ...retryResults];
+        discoveredUrls = filterInPolicy(exaResults);
+        survivingUrls = [...new Set(discoveredUrls)].filter((url) => !attemptedUrls.has(url));
+      } catch (retryErr) {
+        // The retry is best-effort on top of an already-answered search: a
+        // failure here falls through to the normal zero-candidate error and
+        // deliberately does not feed the discovery cooldown (the primary call
+        // just succeeded, so the provider is not down).
+        ctx.logger.warn(
+          `  [search:discovery-retry] ${ctx.config.slug}/${canonicalName}: retry failed: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}`,
+        );
+      }
+    }
+
+    if (exaResults.length === 0) {
+      const fallback = fallbackToSeedCandidate('discovery found no pages');
+      if (fallback) return fallback;
+      throw new SearchTargetError(`Exa: no pages found for "${canonicalName}" on ${domain}`, 0, failures);
+    }
+    // Discovery may legitimately need a wide net (a retailer whose live route
+    // ranks low), but extraction cost must not scale with it — each extra
+    // candidate is up to two more paid provider calls on a page that may never
+    // price. Truncation happens AFTER host/path filtering so the bound spends
+    // its budget on in-policy URLs, never on rejects.
+    const candidateLimit = cfg?.maxExtractionCandidates;
+    const safeUrls = candidateLimit ? survivingUrls.slice(0, candidateLimit) : survivingUrls;
+
+    // Report the pre-truncation count and the bound separately. Logging only
+    // the truncated number would read as "the filter rejected the rest",
+    // hiding a deliberate cost bound behind what looks like a policy reject.
     ctx.logger.info(
-      `  [search:discovery] ${ctx.config.slug}/${canonicalName}: ${exaResults.length} URLs from Exa, ${safeUrls.length} passed host/path check`,
+      `  [search:discovery] ${ctx.config.slug}/${canonicalName}: ${exaResults.length} URLs from Exa, ${survivingUrls.length} passed host/path check` +
+        (safeUrls.length < survivingUrls.length
+          ? `, extracting from the first ${safeUrls.length} (maxExtractionCandidates=${candidateLimit})`
+          : ''),
     );
 
     if (safeUrls.length === 0) {
@@ -654,15 +884,23 @@ export class SearchAdapter implements RetailerAdapter {
       // run goes from "0 passed domain check" straight to a thrown error
       // with no record of what Exa actually returned.
       const sample = exaResults.slice(0, 5).map((r) => r.url).filter(Boolean).join(' | ');
-      const excludedPinnedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
+      const repeatedAttemptedUrl = attemptedUrls.size > 0 && discoveredUrls.some((url) => attemptedUrls.has(url));
       ctx.logger.warn(
-        `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${excludedPinnedUrl ? ', pinned URL already attempted' : ''}). Rejected: ${sample}`,
+        `  [search:discovery] ${ctx.config.slug}/${canonicalName}: 0 of ${exaResults.length} URLs passed filter (hosts=${hostAllowlist.join('|')}, path=${pathFilters.length ? pathFilters.join('|') : '<none>'}${requiredSegments.length ? `, required=${requiredSegments.join('+')}` : ''}${repeatedAttemptedUrl ? ', URL already attempted' : ''}). Rejected: ${sample}`,
       );
-      if (excludedPinnedUrl) {
-        throw new Error(`Exa: all ${exaResults.length} results repeated the pinned URL already attempted for "${canonicalName}"`);
+      const fallback = fallbackToSeedCandidate('discovery found no usable page');
+      if (fallback) return fallback;
+      if (repeatedAttemptedUrl) {
+        throw new SearchTargetError(
+          `Exa: all ${exaResults.length} results repeated a URL already attempted for "${canonicalName}"`,
+          0,
+          failures,
+        );
       }
-      throw new Error(
+      throw new SearchTargetError(
         `Exa: all ${exaResults.length} results failed host/path check (expected hostnames: ${hostAllowlist.join('|')}${pathFilters.length ? `, path: *${pathFilters.join('|')}*` : ''}${requiredSegments.length ? `, required path: ${requiredSegments.join('+')}` : ''})`,
+        0,
+        failures,
       );
     }
 
@@ -671,7 +909,6 @@ export class SearchAdapter implements RetailerAdapter {
     // the reason each provider/page was rejected for the scrape-run diagnostics.
     let picked: ExtractionSuccess | null = null;
     let usedUrl = safeUrls[0];
-    const failures: ExtractionFailure[] = [];
 
     for (const url of safeUrls) {
       try {
@@ -693,6 +930,8 @@ export class SearchAdapter implements RetailerAdapter {
     }
 
     if (picked === null) {
+      const fallback = fallbackToSeedCandidate('discovered pages failed extraction');
+      if (fallback) return fallback;
       throw new SearchTargetError(
         `All ${safeUrls.length} URLs failed extraction for "${canonicalName}". Last: ${formatExtractionFailures(failures.slice(-3))}`,
         // Only retailers that opted into the strict validator contribute to
@@ -713,26 +952,11 @@ export class SearchAdapter implements RetailerAdapter {
       `  [search:extract] ${ctx.config.slug}/${canonicalName}: price=${picked.extracted.price} ${picked.extracted.currency} provider=${picked.provider} from ${usedUrl}`,
     );
 
-    return {
-      url: usedUrl,
-      html: JSON.stringify({
-        extracted: picked.extracted,
-        productUrl: usedUrl,
-        canonicalName,
-        basketSlug,
-        itemCategory: target.category,
-        itemConstraints,
-        validator: picked.validator,
-        extractionProvider: picked.provider,
-        direct: false,
-      } satisfies SearchPayload),
-      statusCode: 200,
-      fetchedAt: new Date(),
-    };
+    return buildFetchResult(usedUrl, picked, false);
   }
 
   async parseListing(ctx: AdapterContext, result: FetchResult): Promise<ParsedProduct[]> {
-    const { extracted, productUrl, canonicalName, basketSlug, itemCategory, itemConstraints, validator, extractionProvider, direct, pinnedProductId, matchId } =
+    const { extracted, productUrl, canonicalName, basketSlug, itemCategory, itemConstraints, validator, extractionProvider, priceEvidence, direct, pinnedProductId, matchId } =
       JSON.parse(result.html) as SearchPayload;
 
     const priceResult = z.number().positive().finite().safeParse(extracted?.price);
@@ -773,7 +997,7 @@ export class SearchAdapter implements RetailerAdapter {
         // inStock defaults to true when the structured extractor does not return the field.
         // This is a conservative assumption — monitor for out-of-stock false positives.
         inStock: extracted.inStock ?? true,
-        rawPayload: { extracted, basketSlug, itemCategory, canonicalName, itemConstraints, validator, extractionProvider, direct, pinnedProductId, matchId },
+        rawPayload: { extracted, basketSlug, itemCategory, canonicalName, itemConstraints, validator, extractionProvider, priceEvidence, direct, pinnedProductId, matchId },
       },
     ];
   }

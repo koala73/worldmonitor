@@ -31,6 +31,8 @@ const WORLD_TOPOLOGY = {
   ],
 };
 
+const WEBMCP_MIN_CHROME_MAJOR = 149;
+
 async function stubWorldAtlas(page: Page): Promise<void> {
   await page.route('**/data/countries-50m.json', async (route) => {
     await route.fulfill({
@@ -70,7 +72,11 @@ async function expectCurrentMapRendererInFrame(frame: FrameLocator, page: Page):
 
 async function serveThirdPartyHostPage(html: string): Promise<{ url: string; close: () => Promise<void> }> {
   const server: Server = createServer((_req, res) => {
-    res.writeHead(200, { 'Content-Type': 'text/html' });
+    res.writeHead(200, {
+      'Content-Type': 'text/html',
+      'Origin-Agent-Cluster': '?1',
+      'Permissions-Policy': 'tools=(self)',
+    });
     res.end(html);
   });
 
@@ -138,8 +144,17 @@ test.describe('public map embed', () => {
     await testInfo.attach('embed-direct', { path: screenshotPath, contentType: 'image/png' });
   });
 
-  test('loads inside a third-party iframe host page', async ({ page, baseURL }, testInfo) => {
+  test('loads inside a third-party iframe host page', async ({ page, baseURL, browser }, testInfo) => {
     await stubWorldAtlas(page);
+    const requireWebMcp = process.env.WM_REQUIRE_WEBMCP === '1';
+    if (requireWebMcp) {
+      const browserVersion = browser.version();
+      const browserMajor = Number.parseInt(browserVersion.split('.')[0] ?? '', 10);
+      expect(
+        Number.isFinite(browserMajor) && browserMajor >= WEBMCP_MIN_CHROME_MAJOR,
+        `WM_REQUIRE_WEBMCP requires Chrome ${WEBMCP_MIN_CHROME_MAJOR}+; launched ${browserVersion}`,
+      ).toBe(true);
+    }
     const localBaseUrl = baseURL ?? 'http://127.0.0.1:4173';
     const embedUrl = new URL(embedPath, localBaseUrl).toString();
     const embedOrigin = new URL(embedUrl).origin;
@@ -197,13 +212,84 @@ test.describe('public map embed', () => {
     `);
 
     try {
+      const embedResponsePromise = page.waitForResponse((response) => {
+        const url = new URL(response.url());
+        return url.pathname === '/embed' && response.request().resourceType() === 'document';
+      });
       await page.goto(host.url);
+      const embedResponse = await embedResponsePromise;
+      const embedHeaders = await embedResponse.allHeaders();
 
       const frame = page.frameLocator('#wm');
       await expect(frame.locator('.wm-embed-attribution')).toHaveText('Live map by World Monitor');
       await expectCurrentMapRendererInFrame(frame, page);
       await expect(frame.locator('.map-controls, .time-slider, .layer-toggles, .map-legend')).toHaveCount(0);
       await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+      expect(embedHeaders['origin-agent-cluster']).toBe('?1');
+      expect(embedHeaders['permissions-policy']).toContain('tools=()');
+      await expect(page.locator('#wm')).not.toHaveAttribute('allow', /\btools\b/);
+
+      const embeddedFrame = page.frames().find((candidate) => candidate.url().includes('/embed?'));
+      expect(embeddedFrame, 'cross-origin embed frame must be available for the WebMCP denial probe').toBeTruthy();
+      const hostHasModelContext = await page.evaluate(() => Boolean(document.modelContext));
+      const embedProbe = await embeddedFrame!.evaluate(async () => {
+        type PolicyProbe = { allowsFeature?: (feature: string) => boolean };
+        const policyDocument = document as Document & {
+          featurePolicy?: PolicyProbe;
+          permissionsPolicy?: PolicyProbe;
+        };
+        const policy = policyDocument.permissionsPolicy ?? policyDocument.featurePolicy;
+        const policyAllowsTools = policy?.allowsFeature?.('tools') ?? null;
+        const provider = document.modelContext;
+        if (!provider) {
+          return {
+            modelContextAvailable: false,
+            policyAllowsTools,
+            registration: 'unavailable' as const,
+            toolNames: [] as string[],
+          };
+        }
+
+        let registration: 'fulfilled' | 'rejected' = 'fulfilled';
+        try {
+          await provider.registerTool({
+            name: 'wmEmbedDeniedProbe',
+            description: 'Must never register inside the public World Monitor embed.',
+            inputSchema: { type: 'object', properties: {}, additionalProperties: false },
+            execute: () => 'unexpected-success',
+          });
+        } catch {
+          registration = 'rejected';
+        }
+
+        const tools = await provider.getTools().catch(() => []);
+        return {
+          modelContextAvailable: true,
+          policyAllowsTools,
+          registration,
+          toolNames: tools.map((tool) => tool.name),
+        };
+      });
+
+      expect(embedProbe.policyAllowsTools).not.toBe(true);
+      expect(embedProbe.registration).not.toBe('fulfilled');
+      expect(embedProbe.toolNames).not.toContain('wmEmbedDeniedProbe');
+
+      if (requireWebMcp) {
+        expect(
+          hostHasModelContext,
+          'WM_REQUIRE_WEBMCP requires Chrome with #enable-webmcp-testing or an active origin trial',
+        ).toBe(true);
+        expect(embedProbe.policyAllowsTools).toBe(false);
+        const crossOriginTools = await page.evaluate(async (origin) => {
+          const provider = document.modelContext;
+          if (!provider) return null;
+          const tools = await provider.getTools({ fromOrigins: [origin] });
+          return tools.map((tool) => tool.name);
+        }, embedOrigin);
+        expect(crossOriginTools).toEqual([]);
+      }
+
       await expect.poll(() => publicEmbedApiPaths.filter((path) => statuses.has(path)).sort()).toEqual([...publicEmbedApiPaths].sort());
       const mapClass = await frame.locator('.wm-embed-map').getAttribute('class') ?? '';
       if (/\bsvg-mode\b/.test(mapClass)) {
@@ -265,5 +351,170 @@ test.describe('public map embed', () => {
     await expect(page.locator('.wm-embed-map')).toHaveClass(/(?:^|\s)deckgl-mode(?:\s|$)/);
     await expect(page.locator('body')).toHaveAttribute('data-embed-ready', 'true');
     expect(conflictRequests).toHaveLength(0);
+  });
+});
+
+test.describe('allowlisted panel embeds', () => {
+  const embeddingKey = 'wm_0123456789abcdef0123456789abcdef01234567';
+
+  async function stubPanelApis(page: Page): Promise<void> {
+    await page.route('**/api/embed/entitlement**', async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const panel = url.searchParams.get('panel') ?? '';
+      const key = request.headers()['x-worldmonitor-key'] ?? '';
+      const allowed = key === embeddingKey;
+      await route.fulfill({
+        status: allowed ? 200 : 401,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          allowed,
+          panel,
+          public: false,
+          accountId: allowed ? 'embed-account' : undefined,
+          error: allowed ? undefined : 'embedding_api_key_required',
+        }),
+      });
+    });
+
+    await page.route('**/api/supply-chain/v1/get-chokepoint-status**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          fetchedAt: '2026-08-18T00:00:00.000Z',
+          upstreamUnavailable: false,
+          chokepoints: [
+            {
+              id: 'hormuz_strait',
+              name: 'Strait of Hormuz',
+              lat: 26.6,
+              lon: 56.3,
+              disruptionScore: 12,
+              status: 'normal',
+              activeWarnings: 0,
+              congestionLevel: 'low',
+              affectedRoutes: [],
+              description: '',
+              aisDisruptions: 0,
+              directions: [],
+              directionalDwt: [],
+              warRiskTier: 'WAR_RISK_TIER_NORMAL',
+              flowEstimate: {
+                currentMbd: 17,
+                baselineMbd: 17,
+                flowRatio: 1,
+                disrupted: false,
+                source: 'ais',
+                hazardAlertLevel: '',
+                hazardAlertName: '',
+              },
+            },
+          ],
+        }),
+      });
+    });
+
+    await page.route('**/api/market/v1/get-fear-greed-index**', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({
+          compositeScore: 42,
+          compositeLabel: 'Fear',
+          previousScore: 40,
+          seededAt: '2026-08-18T00:00:00.000Z',
+          vix: 18,
+          hySpread: 3,
+          yield10y: 4,
+          putCallRatio: 1,
+          pctAbove200d: 50,
+          cnnFearGreed: 41,
+          cnnLabel: 'Fear',
+          aaiiBull: 30,
+          aaiiBear: 40,
+          fedRate: '4.25',
+          unavailable: false,
+          fsiValue: 0,
+          fsiLabel: '',
+          hygPrice: 0,
+          tltPrice: 0,
+          sectorPerformance: [],
+        }),
+      });
+    });
+  }
+
+  test('renders the live map when panel=map', async ({ page }) => {
+    await stubWorldAtlas(page);
+    await page.goto('/embed?panel=map&layers=conflicts,earthquakes,weather&center=0,0&zoom=1&theme=dark&variant=full');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-panel', 'map');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+    await expect(page.locator('.wm-embed-map')).toBeVisible();
+  });
+
+  test('renders chokepoint-strip from the script loader with an embedding key', async ({ page, baseURL }) => {
+    await stubPanelApis(page);
+    const localBaseUrl = baseURL ?? 'http://127.0.0.1:4173';
+    const keyedRequests: string[] = [];
+    page.on('request', (request) => {
+      const url = new URL(request.url());
+      if (url.pathname === '/api/supply-chain/v1/get-chokepoint-status') {
+        keyedRequests.push(request.headers()['x-worldmonitor-key'] ?? '');
+      }
+    });
+
+    const host = await serveThirdPartyHostPage(`
+      <!doctype html>
+      <html>
+        <body style="margin:0;background:#111">
+          <script src="${localBaseUrl}/embed.js" data-panel="chokepoint-strip" data-key="${embeddingKey}" data-theme="dark" data-height="360"></script>
+        </body>
+      </html>
+    `);
+
+    try {
+      await page.goto(host.url);
+      const frame = page.frameLocator('iframe[title="World Monitor embed"]');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-panel', 'chokepoint-strip');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+      await expect(frame.locator('.wm-embed-chokepoints')).toBeVisible();
+      await expect(frame.locator('.wm-embed-cp-chip')).toHaveCount(1);
+      expect(keyedRequests.some((key) => key === embeddingKey)).toBe(true);
+    } finally {
+      await host.close();
+    }
+  });
+
+  test('renders fear-greed from the script loader with an embedding key', async ({ page, baseURL }) => {
+    await stubPanelApis(page);
+    const localBaseUrl = baseURL ?? 'http://127.0.0.1:4173';
+    const host = await serveThirdPartyHostPage(`
+      <!doctype html>
+      <html>
+        <body style="margin:0;background:#111">
+          <script src="${localBaseUrl}/embed.js" data-panel="fear-greed" data-key="${embeddingKey}" data-theme="dark" data-height="360"></script>
+        </body>
+      </html>
+    `);
+
+    try {
+      await page.goto(host.url);
+      const frame = page.frameLocator('iframe[title="World Monitor embed"]');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-panel', 'fear-greed');
+      await expect(frame.locator('body')).toHaveAttribute('data-embed-ready', 'true');
+      await expect(frame.locator('.wm-embed-fear-greed')).toBeVisible();
+      await expect(frame.locator('.wm-embed-fg-score')).toHaveText('42');
+    } finally {
+      await host.close();
+    }
+  });
+
+  test('rejects a keyed panel when the embedding API key is missing', async ({ page }) => {
+    await stubPanelApis(page);
+    await page.goto('/embed?panel=fear-greed&theme=dark');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-panel', 'fear-greed');
+    await expect(page.locator('body')).toHaveAttribute('data-embed-ready', 'error');
+    await expect(page.locator('.wm-embed-error')).toContainText('embedding API key');
   });
 });

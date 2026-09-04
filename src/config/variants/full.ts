@@ -70,6 +70,14 @@ export const DEFAULT_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: true,
   weather: true,
+  // Opt-in: all five road feeds are on-demand bootstrap keys. Default-on made
+  // every visitor fetch them, which is exactly what the on-demand tier is meant
+  // to prevent. Narrowest surface on the map, so it follows military/flights/fires
+  // rather than the global layers above it (#6763).
+  canadaRoads: false,
+  // Stays on: it rides the fast tier already hydrated, so enabling it costs no
+  // extra request, and it carries provincial emergency alerts.
+  canadaAlerts: true,
   economic: false,
   waterways: true,
   outages: true,
@@ -132,6 +140,8 @@ export const MOBILE_DEFAULT_MAP_LAYERS: MapLayers = {
   irradiators: false,
   sanctions: true,
   weather: true,
+  canadaRoads: false,
+  canadaAlerts: false,
   economic: false,
   waterways: false,
   outages: true,

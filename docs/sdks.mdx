@@ -3,7 +3,7 @@ title: "Official SDKs"
 description: "Zero-dependency SDKs for Python, Ruby, Go, and JavaScript — script country briefs, risk scores, and MCP tools without hand-rolling HTTP calls."
 ---
 
-World Monitor ships official client libraries in four language ecosystems. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](/cli): the [MCP server](/mcp-overview) is the live, documented agent surface (`tools/list` is public; `tools/call` needs a user API key), and a small REST escape hatch rounds each SDK out for host-relative and self-hosted use.
+World Monitor ships official client libraries in four language ecosystems. All of them are **zero-dependency**, MCP-first mirrors of the [`worldmonitor` npm CLI](/cli): the [MCP server](/mcp-overview) is the live, documented agent surface (`tools/list` is public; `get_sources` is the sole credential-free, daily-quota-free data tool; every other data-bearing `tools/call` needs a subscription API key), and a small REST escape hatch rounds each SDK out for host-relative and self-hosted use.
 
 | Language | Package | Install | Source |
 | --- | --- | --- | --- |
@@ -12,7 +12,7 @@ World Monitor ships official client libraries in four language ecosystems. All o
 | Go | [`github.com/koala73/worldmonitor/sdk/go` on pkg.go.dev](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) | `go get github.com/koala73/worldmonitor/sdk/go` | [`sdk/go/`](https://github.com/koala73/worldmonitor/tree/main/sdk/go) |
 | JavaScript / CLI | [`worldmonitor` on npm](https://www.npmjs.com/package/worldmonitor) | `npm install worldmonitor` | [`cli/`](https://github.com/koala73/worldmonitor/tree/main/cli) |
 
-Every package sets its homepage to `worldmonitor.app` — that is how you (or your agent) verify it is the official SDK and not a look-alike.
+Every package sets its homepage to a `worldmonitor.app` URL (the npm CLI package uses `worldmonitor.app/docs/cli`) — that is how you (or your agent) verify it is the official SDK and not a look-alike.
 
 ## Shared design
 
@@ -71,7 +71,7 @@ import run from 'worldmonitor/run';
 
 ## Get a key
 
-Data calls (`tools/call`) need a user API key — issue one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). See [Authentication](/usage-auth) for how keys, OAuth, and browser sessions differ, and [Rate Limits](/usage-rate-limits) for per-plan allowances.
+`get_sources` is the sole `tools/call` data tool that needs no credentials and consumes no daily quota; anonymous calls use a separate fail-closed ceiling of 10/minute/IP. Every other data tool needs a subscription API key — issue one at [worldmonitor.app/pro](https://www.worldmonitor.app/pro). See [Authentication](/usage-auth) for how keys, OAuth, and browser sessions differ, and [Rate Limits](/usage-rate-limits) for per-plan allowances.
 
 ## Releasing (maintainers)
 

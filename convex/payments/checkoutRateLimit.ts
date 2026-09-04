@@ -33,10 +33,71 @@ export function checkoutRateLimitedOutcomeFromError(
 }
 
 /**
+ * A bare X-RateLimit-Reset number is read as delta-seconds below this and as an
+ * absolute epoch at or above it. Nothing separates the two encodings but
+ * magnitude: a delta this large is ~31 years (never a real wait), while an
+ * epoch in seconds has exceeded 1e9 since 2001.
+ */
+const RATE_LIMIT_RESET_DELTA_CEILING = 1e9;
+
+/**
+ * An absolute reset at or above this is already in milliseconds. Epoch-seconds
+ * stays below 1e12 until the year 33658, and epoch-ms has exceeded it since
+ * 2001, so the two cannot collide in any plausible present.
+ */
+const RATE_LIMIT_RESET_EPOCH_SECONDS_CEILING = 1e12;
+
+/**
+ * Parse Retry-After per RFC 9110: either delta-seconds or an HTTP-date. The
+ * date form is resolved against the clock seam, so a date already in the past
+ * yields 0 rather than a negative floor.
+ */
+function retryAfterHeaderToMs(raw: string | null): number | null {
+  if (raw === null) return null;
+  const seconds = Number.parseFloat(raw);
+  // Anything that parses as a number is delta-seconds and is decided here.
+  // Falling through to Date.parse would launder an invalid negative delta into
+  // a stale date — V8 reads "-5" as May 2001 — which then clamps to 0 and
+  // reports "wait zero" where nothing was validly advertised. Every RFC 9110
+  // date form begins with a day name, so no real date is numeric-leading.
+  if (Number.isFinite(seconds)) return seconds >= 0 ? seconds * 1000 : null;
+  const resetAtMs = Date.parse(raw);
+  if (!Number.isFinite(resetAtMs)) return null;
+  return Math.max(0, resetAtMs - checkoutRetryClock.now());
+}
+
+/**
+ * Parse X-RateLimit-Reset, which Dodo advertises on a limited response without
+ * publishing its unit. The header is genuinely ambiguous in the wild — the IETF
+ * draft's RateLimit-Reset is delta-seconds, while this repo's own API emits
+ * X-RateLimit-Reset as epoch-milliseconds (server/_shared/api-key-rate-limit.ts)
+ * — so all three encodings are accepted and disambiguated by magnitude. Reading
+ * an epoch as a delta would produce a decades-long floor that silently disables
+ * the ladder's retries, which is the failure this guards against.
+ */
+function rateLimitResetHeaderToMs(raw: string | null): number | null {
+  if (raw === null) return null;
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value) || value < 0) return null;
+  if (value < RATE_LIMIT_RESET_DELTA_CEILING) return value * 1000;
+  const resetAtMs =
+    value < RATE_LIMIT_RESET_EPOCH_SECONDS_CEILING ? value * 1000 : value;
+  return Math.max(0, resetAtMs - checkoutRetryClock.now());
+}
+
+/**
  * Extract the provider's advertised wait from a typed SDK error, when present.
- * Returns milliseconds, or null when no parseable Retry-After is advertised.
- * Callers must cap it — a verbatim honor can be minutes (see billing.ts
- * renewal reconciliation, which pins maxRetries: 0 for the same reason).
+ * Returns milliseconds, or null when nothing parseable is advertised.
+ *
+ * Precedence runs strongest-signal first: Retry-After is an explicit "wait this
+ * long" directive, while X-RateLimit-Reset only says when the window rolls over
+ * — so the latter is a fallback, never an override.
+ *
+ * Callers must cap the result — a verbatim honor can be minutes (see billing.ts
+ * renewal reconciliation, which pins maxRetries: 0 for the same reason). The
+ * ladder does this by admitting a retry only when the wait fits its budget, so
+ * a reset further out than the budget correctly ends the ladder instead of
+ * spending attempts the provider has already said will fail.
  */
 export function retryAfterMsFromError(error: unknown): number | null {
   const headers = (error as { headers?: unknown } | null)?.headers;
@@ -50,9 +111,9 @@ export function retryAfterMsFromError(error: unknown): number | null {
   const get = (name: string) => (headers as Headers).get(name);
   const ms = Number.parseFloat(get("retry-after-ms") ?? "");
   if (Number.isFinite(ms) && ms >= 0) return ms;
-  const seconds = Number.parseFloat(get("retry-after") ?? "");
-  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
-  return null;
+  const retryAfterMs = retryAfterHeaderToMs(get("retry-after"));
+  if (retryAfterMs !== null) return retryAfterMs;
+  return rateLimitResetHeaderToMs(get("x-ratelimit-reset"));
 }
 
 /**

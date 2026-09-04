@@ -65,7 +65,7 @@ combinedScore = baselineRisk * 0.40
 | AIS 中断 | 10 | 海事中断分桶 |
 
 评分下限取 UCDP 冲突下限与国务院警示下限中的较大值。当实时警示数据缺失时，评分器会在计算警示加成与下限之前，应用
-[方法论](/zh/methodology/cii-risk-scores#advisory-fallback-table) 中发布的精选兜底等级。
+[方法论](/zh/methodology/cii-risk-scores#警示兜底表) 中发布的精选兜底等级。
 
 | 下限 | 阈值 |
 |-------|----------:|
@@ -74,7 +74,7 @@ combinedScore = baselineRisk * 0.40
 | 切勿旅行警示 | 60 |
 | 重新考虑旅行警示 | 50 |
 
-UCDP 冲突下限源自**最新可用的** UCDP GED 版本（种子器选择返回事件的最新版本，而非仅仅第一个响应的版本），并且只统计**2 年时效窗口**内的事件——更早的事件不再锁定下限。在该窗口内，当一个 Tier-1 国家死亡总数大于 1000 或事件数大于 100 时，CII 将其归类为 UCDP **活跃战争**；当事件数大于 10 但未达到战争阈值时，归类为 UCDP **轻度冲突**。由于 UCDP GED 以年度版本发布、滞后于实时，近期的动能冲突由 **ACLED**（实时）与跨源信号源承载；UCDP 提供历史基线下限。在 `riskScores` 健康/缓存信号中，当 ACLED 或窗口内的 UCDP 源任一存在时，即视为冲突实时族已覆盖。ACLED 鉴权未配置会将冲突信号降级为仅 UCDP；只有当 ACLED 静默且 UCDP 也缺失、过期或超出 2 年评分窗口时，才变为 `COVERAGE_PARTIAL`（参见[数据源](/zh/data-sources#dual-source-protest-tracking)）。
+UCDP 冲突下限源自**最新可用的** UCDP GED 版本（种子器选择返回事件的最新版本，而非仅仅第一个响应的版本），并且只统计**2 年时效窗口**内的事件——更早的事件不再锁定下限。在该窗口内，当一个 Tier-1 国家死亡总数大于 1000 或事件数大于 100 时，CII 将其归类为 UCDP **活跃战争**；当事件数大于 10 但未达到战争阈值时，归类为 UCDP **轻度冲突**。由于 UCDP GED 以年度版本发布、滞后于实时，近期的动能冲突由 **ACLED**（实时）与跨源信号源承载；UCDP 提供历史基线下限。在 `riskScores` 健康/缓存信号中，当 ACLED 或窗口内的 UCDP 源任一存在时，即视为冲突实时族已覆盖。ACLED 鉴权未配置会将冲突信号降级为仅 UCDP；只有当 ACLED 静默且 UCDP 也缺失、过期或超出 2 年评分窗口时，才变为 `COVERAGE_PARTIAL`（参见[数据源](/zh/data-sources#双源抗议跟踪)）。
 
 ## 不稳定性等级
 

@@ -1,8 +1,7 @@
 import { Panel } from './Panel';
 import { t } from '@/services/i18n';
 import { joinSafeHtml, safeHtml, unsafeRawHtml, type SafeHtml } from '@/utils/sanitize';
-import { getHydratedData } from '@/services/bootstrap';
-import { fetchChokepointStatus } from '@/services/supply-chain';
+import { fetchChokepointStatus, refreshChokepointStatusAfterHydration } from '@/services/supply-chain';
 import { attributionFooterHtml, ATTRIBUTION_FOOTER_CSS } from '@/utils/attribution-footer';
 import type { GetChokepointStatusResponse, ChokepointInfo } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
 
@@ -62,26 +61,29 @@ export class ChokepointStripPanel extends Panel {
   }
 
   public async fetchData(): Promise<void> {
+    let initial: GetChokepointStatusResponse;
     try {
-      const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
-      if (hydrated?.chokepoints?.length) {
-        this.data = hydrated;
-        this.render();
-        void fetchChokepointStatus().then(fresh => {
-          if (!this.element?.isConnected || !fresh?.chokepoints?.length) return;
-          this.data = fresh;
-          this.render();
-        }).catch(() => {});
-        return;
-      }
-      const fresh = await fetchChokepointStatus();
-      if (!this.element?.isConnected) return;
-      this.data = fresh;
-      this.render();
+      initial = await fetchChokepointStatus();
     } catch (err) {
       if (this.isAbortError(err)) return;
       if (!this.element?.isConnected) return;
       this.showError(t('components.chokepointStrip.errors.unavailable'), () => void this.fetchData());
+      return;
+    }
+
+    if (!this.element?.isConnected) return;
+    this.data = initial;
+    this.render();
+
+    try {
+      const refreshed = await refreshChokepointStatusAfterHydration(initial);
+      if (!refreshed?.chokepoints.length || !this.element?.isConnected) return;
+      this.data = refreshed;
+      this.render();
+    } catch (err) {
+      if (this.isAbortError(err) || !this.element?.isConnected) return;
+      // Keep the already-rendered hydration result when background recovery fails.
+      console.warn('[ChokepointStripPanel] Hydration refresh failed:', err);
     }
   }
 
@@ -100,7 +102,7 @@ export class ChokepointStripPanel extends Panel {
       const color = statusColor(cp.status);
       const short = shortName(cp.id) || cp.name;
       const flow = formatFlow(cp);
-      const warnings = cp.activeWarnings > 0
+      const warnings = cp.navigationalWarningsAvailable === true && cp.activeWarnings > 0
         ? safeHtml`<span class="cp-chip-warn">${cp.activeWarnings}</span>`
         : safeHtml``;
       return safeHtml`
@@ -112,8 +114,14 @@ export class ChokepointStripPanel extends Panel {
           </div>
         </div>`;
     }));
+    const coverageWarning = this.data.upstreamUnavailable
+      ? safeHtml`<div class="cp-strip-warning">${t('components.supplyChain.upstreamUnavailable')}</div>`
+      : safeHtml``;
 
-    const nAis = ordered.reduce((sum, cp) => sum + (cp.aisDisruptions ?? 0), 0);
+    const nAis = ordered.reduce(
+      (sum, cp) => sum + (cp.aisSnapshotAvailable === true ? cp.aisDisruptions : 0),
+      0,
+    );
     const footer: SafeHtml = unsafeRawHtml(attributionFooterHtml({
       sourceType: 'ais',
       method: t('components.chokepointStrip.attribution.method'),
@@ -124,12 +132,14 @@ export class ChokepointStripPanel extends Panel {
     }), 'attributionFooterHtml escapes fields and returns shared footer markup');
 
     this.setSafeContent(safeHtml`
+      ${coverageWarning}
       <div class="cp-strip-wrap">
         <div class="cp-strip">${chips}</div>
         ${footer}
       </div>
       ${unsafeRawHtml(ATTRIBUTION_FOOTER_CSS, 'static attribution footer CSS constant')}
       <style>
+        .cp-strip-warning { margin: 0 0 6px; color: var(--warning, #f59e0b); font-size: calc(11px * var(--wm-panel-effective-scale, 1)); }
         .cp-strip-wrap { padding: 4px 0; }
         .cp-strip { display: flex; flex-wrap: wrap; gap: 8px; }
         .cp-chip {
@@ -139,14 +149,14 @@ export class ChokepointStripPanel extends Panel {
           border: 1px solid rgba(255,255,255,0.08);
           border-radius: 8px;
           min-width: 120px;
-          font-size: 11px;
+          font-size: calc(11px * var(--wm-panel-effective-scale, 1));
           cursor: default;
         }
         .cp-chip-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 8px; }
         .cp-chip-body { display: flex; flex-direction: column; line-height: 1.2; }
         .cp-chip-name { font-weight: 600; color: var(--text, #eee); display: flex; align-items: center; gap: 4px; }
-        .cp-chip-warn { background:#e74c3c;color:#fff;border-radius:9px;padding:0 5px;font-size:9px;font-weight:700; }
-        .cp-chip-flow { color: var(--text-dim, #888); font-size: 10px; }
+        .cp-chip-warn { background:#e74c3c;color:#fff;border-radius:9px;padding:0 5px;font-size:calc(9px * var(--wm-panel-effective-scale, 1));font-weight:700; }
+        .cp-chip-flow { color: var(--text-dim, #888); font-size: calc(10px * var(--wm-panel-effective-scale, 1)); }
       </style>
     `);
   }

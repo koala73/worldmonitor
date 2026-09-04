@@ -26,7 +26,11 @@ import type { UnifiedSettingsTabId } from '@/components/settings-types';
 export type { UnifiedSettingsTabId };
 
 export interface UnifiedSettingsController {
-  open(tab?: UnifiedSettingsTabId, replaceOverlayId?: OverlayId, historyPending?: boolean): void;
+  open(
+    tab?: UnifiedSettingsTabId,
+    replaceOverlayId?: OverlayId,
+    historyPending?: boolean,
+  ): void | Promise<boolean>;
   close(): void;
   hasPendingChanges(): boolean;
   refreshPanelToggles(): void;
@@ -36,10 +40,10 @@ export interface UnifiedSettingsController {
 
 export interface IntelligenceCache {
   conflicts?: ConflictEvent[];
-  // Coordinate-resolved sources whose CII attribution depends on precision
+  // Coordinate-resolved sources whose country-detail attribution depends on precision
   // country geometry. They are ingested during the visible-data fan-out (before
   // geometry is ready, so attribution is coarse/empty) and replayed once
-  // geometry lands — see refreshGeometryDependentCiiAfterCountryGeometry (#4512).
+  // geometry lands — see refreshGeometryDependentCountryData (#4512).
   gpsJamming?: GpsJamHex[];
   aisDisruptions?: AisDisruptionEvent[];
   satelliteFires?: SatelliteFireSignal[];

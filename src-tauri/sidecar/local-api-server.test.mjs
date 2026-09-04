@@ -1,15 +1,84 @@
 import { strict as assert } from 'node:assert';
+import { readFileSync } from 'node:fs';
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises';
 import http, { createServer, request as httpRequest } from 'node:http';
 import https from 'node:https';
 import { createHmac } from 'node:crypto';
+import dns from 'node:dns/promises';
 import { EventEmitter } from 'node:events';
 import net from 'node:net';
 import { brotliDecompressSync, gunzipSync } from 'node:zlib';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { runInNewContext } from 'node:vm';
 import { createLocalApiServer, __testing__ } from './local-api-server.mjs';
+
+test('bundles the shared LLM health provider registry with the sidecar (#7126)', () => {
+  const config = JSON.parse(readFileSync(new URL('../tauri.conf.json', import.meta.url), 'utf8'));
+  const dockerfile = readFileSync(new URL('../../Dockerfile', import.meta.url), 'utf8');
+  assert.ok(config.bundle.resources.includes('../shared/llm-health-providers.js'));
+  assert.match(
+    dockerfile,
+    /COPY --from=builder \/app\/shared\/llm-health-providers\.js \.\/shared\/llm-health-providers\.js/,
+  );
+  assert.match(dockerfile, /^ENV LOCAL_API_RESOURCE_DIR=\/app$/m);
+});
+
+test('keeps seed-owned defense snapshots cloud-preferred regardless of relay configuration', () => {
+  assert.equal(__testing__.isCloudPreferred('/api/bootstrap'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/military/v1/get-defense-industrial-base'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/get-five-factor-scorecard'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/get-bloc-scorecard'), true);
+  assert.equal(__testing__.isCloudPreferred('/api/scorecard/v1/list-five-factor-scorecards'), true);
+});
+
+test('keeps seed-owned commodity vulnerability snapshots cloud-preferred', async () => {
+  const endpoints = [
+    '/api/supply-chain/v1/get-country-vulnerabilities',
+    '/api/supply-chain/v1/get-chokepoint-dependencies',
+    '/api/supply-chain/v1/list-vulnerability-rankings',
+  ];
+  for (const endpoint of endpoints) {
+    assert.equal(__testing__.isCloudPreferred(endpoint), true);
+  }
+
+  const remote = await setupRemoteServer();
+  const unavailableHandler = `
+    export default async function handler() {
+      return new Response(JSON.stringify({ source: 'local-empty', upstreamUnavailable: true }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' }
+      });
+    }
+  `;
+  const localApi = await setupApiDir(Object.fromEntries(
+    endpoints.map((endpoint) => [`${endpoint.slice('/api/'.length)}.js`, unavailableHandler]),
+  ));
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    cloudFallback: 'true',
+    allowPrivateRemoteBase: true,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    for (const endpoint of endpoints) {
+      const response = await authFetch(`http://127.0.0.1:${port}${endpoint}`);
+      assert.equal(response.status, 200);
+      const body = await response.json();
+      assert.equal(body.source, 'remote');
+    }
+    assert.deepEqual(remote.hits, endpoints);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+  }
+});
 
 // The sidecar default-denies when LOCAL_API_TOKEN is unset (security fix:
 // previously "unset" meant "auth disabled", which made any standalone run
@@ -48,6 +117,94 @@ async function listen(server, host = '127.0.0.1', port = 0) {
   }
   return address.port;
 }
+
+function executeYoutubeEmbedHtml(html) {
+  const script = html.match(/<script>([\s\S]*)<\/script>/)?.[1];
+  assert.ok(script, 'youtube embed response must contain an executable script');
+  const posted = [];
+  const appendedScripts = [];
+  let playerEvents = null;
+  const parent = {};
+  Object.defineProperty(parent, 'postMessage', {
+    configurable: false,
+    get: () => (message, targetOrigin) => posted.push({ message, targetOrigin }),
+    set: () => {
+      throw new Error('child attempted to replace parent.postMessage');
+    },
+  });
+  const sandbox = {
+    console: { log() {}, warn() {}, error() {} },
+    window: { parent, addEventListener() {} },
+    document: {
+      createElement: () => ({}),
+      head: { appendChild: (node) => appendedScripts.push(node) },
+      getElementById: () => ({ classList: { add() {}, remove() {} } }),
+    },
+    MutationObserver: class {
+      observe() {}
+      disconnect() {}
+    },
+    setTimeout: () => 0,
+    clearTimeout() {},
+    setInterval: () => 0,
+    clearInterval() {},
+    YT: {
+      Player: class {
+        constructor(_elementId, options) {
+          playerEvents = options.events;
+        }
+
+        mute() {}
+        playVideo() {}
+        isMuted() { return true; }
+        getVolume() { return 0; }
+      },
+    },
+  };
+
+  runInNewContext(script, sandbox);
+  assert.equal(typeof sandbox.onYouTubeIframeAPIReady, 'function');
+  sandbox.onYouTubeIframeAPIReady();
+  playerEvents.onReady();
+  return { posted, appendedScripts };
+}
+
+test('youtube embed bridge accepts exact Tauri origin and no-ops rejected parents', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const allowedResponse = await fetch(
+      `http://127.0.0.1:${port}/api/youtube-embed?videoId=e34xb-Fbl0U&parentOrigin=${encodeURIComponent('https://tauri.localhost')}`,
+    );
+    assert.equal(allowedResponse.status, 200);
+    const allowed = executeYoutubeEmbedHtml(await allowedResponse.text());
+    assert.equal(allowed.appendedScripts.length, 1, 'the YouTube API must still initialize');
+    assert.ok(
+      allowed.posted.some(({ message, targetOrigin }) => message?.type === 'yt-ready' && targetOrigin === 'https://tauri.localhost'),
+      'supported Tauri parent must receive yt-ready at its exact origin',
+    );
+
+    for (const parentOrigin of ['', 'https://evil.example']) {
+      const query = parentOrigin ? `&parentOrigin=${encodeURIComponent(parentOrigin)}` : '';
+      const response = await fetch(
+        `http://127.0.0.1:${port}/api/youtube-embed?videoId=e34xb-Fbl0U${query}`,
+      );
+      assert.equal(response.status, 200);
+      const rejected = executeYoutubeEmbedHtml(await response.text());
+      assert.equal(rejected.appendedScripts.length, 1, 'rejected parents must not abort player setup');
+      assert.deepEqual(rejected.posted, [], 'rejected parents must receive no bridge messages');
+    }
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+  }
+});
 
 async function postJsonViaHttp(url, payload, headers = {}) {
   const target = new URL(url);
@@ -532,6 +689,54 @@ test('replaces browser origin with localhost origin for local handlers', async (
     await app.close();
     await localApi.cleanup();
     await remote.close();
+  }
+});
+
+test('injects the desktop product key into the product-only OpenSky local handler', async () => {
+  const originalProductKey = process.env.WORLDMONITOR_API_KEY;
+  process.env.WORLDMONITOR_API_KEY = 'desktop-product-key';
+  const remote = await setupRemoteServer();
+  const localApi = await setupApiDir({
+    'opensky.js': `
+      export default async function handler(req) {
+        return new Response(JSON.stringify({
+          origin: req.headers.get('origin'),
+          productKey: req.headers.get('x-worldmonitor-key'),
+        }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        });
+      }
+    `,
+  });
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    remoteBase: remote.remoteBase,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/opensky`, {
+      headers: {
+        Origin: 'https://tauri.localhost',
+        'X-WorldMonitor-Key': 'renderer-supplied-key',
+      },
+    });
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), {
+      origin: `http://127.0.0.1:${port}`,
+      productKey: 'desktop-product-key',
+    });
+    assert.equal(remote.hits.length, 0);
+  } finally {
+    await app.close();
+    await localApi.cleanup();
+    await remote.close();
+    if (originalProductKey === undefined) delete process.env.WORLDMONITOR_API_KEY;
+    else process.env.WORLDMONITOR_API_KEY = originalProductKey;
   }
 });
 
@@ -1189,6 +1394,50 @@ test('uses IPv4 sidecar fetch for allowed private-network LLM probes (#3549)', a
   }
 });
 
+test('reports Groq health for configured keys without a gsk_ prefix (#7126)', async () => {
+  const envSnapshot = {
+    GROQ_API_KEY: process.env.GROQ_API_KEY,
+    OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY,
+    OLLAMA_API_URL: process.env.OLLAMA_API_URL,
+    LLM_API_URL: process.env.LLM_API_URL,
+  };
+  const restoreHttps = mockHttpsRequestOnce({
+    statusCode: 404,
+    headers: { 'content-type': 'application/json' },
+    body: '{}',
+  });
+
+  process.env.GROQ_API_KEY = 'groq-test-key';
+  delete process.env.OPENROUTER_API_KEY;
+  delete process.env.OLLAMA_API_URL;
+  delete process.env.LLM_API_URL;
+
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await getJsonViaHttp(`http://127.0.0.1:${port}/api/llm-health`);
+    assert.equal(response.status, 200);
+    assert.equal(response.json.available, true);
+    assert.deepEqual(response.json.providers, [
+      { name: 'groq', url: 'https://api.groq.com', available: true },
+    ]);
+  } finally {
+    restoreHttps();
+    for (const [key, value] of Object.entries(envSnapshot)) {
+      if (value === undefined) delete process.env[key];
+      else process.env[key] = value;
+    }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
 test('uses canonical app origin when proxying to cloud fallback (cloudFallback enabled)', async () => {
   const remote = await setupRemoteServer();
   const localApi = await setupApiDir({});
@@ -1448,6 +1697,55 @@ test('accepts WM_DESKTOP_SHARED_SECRET via /api/local-env-update', async () => {
   } finally {
     if (originalSecret === undefined) delete process.env.WM_DESKTOP_SHARED_SECRET;
     else process.env.WM_DESKTOP_SHARED_SECRET = originalSecret;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('accepts ALPHA_VANTAGE_API_KEY via /api/local-env-update', async () => {
+  const originalKey = process.env.ALPHA_VANTAGE_API_KEY;
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await authFetch(`http://127.0.0.1:${port}/api/local-env-update`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: 'ALPHA_VANTAGE_API_KEY', value: 'desktop-av-key' }),
+    });
+    assert.equal(response.status, 200);
+    assert.equal(process.env.ALPHA_VANTAGE_API_KEY, 'desktop-av-key');
+  } finally {
+    if (originalKey === undefined) delete process.env.ALPHA_VANTAGE_API_KEY;
+    else process.env.ALPHA_VANTAGE_API_KEY = originalKey;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('stores ALPHA_VANTAGE_API_KEY without claiming the provider demo response verifies it', async () => {
+  const localApi = await setupApiDir({});
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() { }, warn() { }, error() { } },
+  });
+  const { port } = await app.start();
+
+  try {
+    const response = await postJsonViaHttp(`http://127.0.0.1:${port}/api/local-validate-secret`, {
+      key: 'ALPHA_VANTAGE_API_KEY',
+      value: 'desktop-av-key',
+    });
+    assert.equal(response.status, 200);
+    assert.equal(response.json?.valid, true);
+    assert.equal(response.json?.message, 'Key stored');
+  } finally {
     await app.close();
     await localApi.cleanup();
   }
@@ -1867,6 +2165,32 @@ test('uses gzip compression when Brotli is unavailable but gzip is accepted', as
   }
 });
 
+test('skips gzip/br for already-compressed raster image payloads (#7382)', () => {
+  const jpegBody = Buffer.alloc(2048, 0xff);
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/jpeg' }, jpegBody),
+    false,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/png' }, jpegBody),
+    false,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/webp' }, jpegBody),
+    false,
+  );
+  // SVG is text — still worth compressing (e.g. /api/og-story).
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'image/svg+xml' }, Buffer.from('x'.repeat(2048))),
+    true,
+  );
+  assert.equal(
+    __testing__.canCompress({ 'content-type': 'application/json' }, Buffer.from('x'.repeat(2048))),
+    true,
+  );
+});
+
+
 // ── Security hardening tests ────────────────────────────────────────────
 
 test('rejects unauthenticated requests to /api/local-status when token is set', async () => {
@@ -2112,6 +2436,114 @@ test('default-deny: rejects every authenticated route when LOCAL_API_TOKEN is un
     if (originalToken !== undefined) {
       process.env.LOCAL_API_TOKEN = originalToken;
     }
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy pins an IPv6-only hostname to the validated address', async () => {
+  const localApi = await setupApiDir({});
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  const publicIpv6 = '2606:4700:4700::1111';
+  let outboundOptions = null;
+  let pinnedLookup = null;
+
+  dns.resolve4 = async () => {
+    const error = new Error('No A records');
+    error.code = 'ENODATA';
+    throw error;
+  };
+  dns.resolve6 = async (hostname) => {
+    assert.equal(hostname, 'ipv6-only.example');
+    return [publicIpv6];
+  };
+  https.request = (options, onResponse) => {
+    outboundOptions = options;
+    if (typeof options.lookup === 'function') {
+      options.lookup(options.hostname, { family: options.family }, (error, address, family) => {
+        assert.ifError(error);
+        pinnedLookup = { address, family };
+      });
+    }
+
+    const req = new EventEmitter();
+    req.setTimeout = () => {};
+    req.write = () => {};
+    req.destroy = (error) => {
+      if (error) req.emit('error', error);
+    };
+    req.end = () => {
+      queueMicrotask(() => {
+        const res = new EventEmitter();
+        res.statusCode = 200;
+        res.statusMessage = 'OK';
+        res.headers = { 'content-type': 'application/rss+xml' };
+        onResponse(res);
+        res.emit('data', Buffer.from('<rss />'));
+        res.emit('end');
+      });
+    };
+    return req;
+  };
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = encodeURIComponent('https://ipv6-only.example/feed.xml');
+    const response = await authFetch(`http://127.0.0.1:${port}/api/rss-proxy?url=${feedUrl}`);
+    assert.equal(response.status, 200);
+    assert.equal(await response.text(), '<rss />');
+    assert.equal(outboundOptions?.hostname, 'ipv6-only.example');
+    assert.equal(outboundOptions?.family, 6);
+    assert.deepEqual(pinnedLookup, { address: publicIpv6, family: 6 });
+  } finally {
+    dns.resolve4 = originalResolve4;
+    dns.resolve6 = originalResolve6;
+    https.request = originalHttpsRequest;
+    await app.close();
+    await localApi.cleanup();
+  }
+});
+
+test('rss-proxy rejects a hostname with mixed public and private DNS answers', async () => {
+  const localApi = await setupApiDir({});
+  const originalResolve4 = dns.resolve4;
+  const originalResolve6 = dns.resolve6;
+  const originalHttpsRequest = https.request;
+  let outboundCalls = 0;
+
+  dns.resolve4 = async () => ['93.184.216.34'];
+  dns.resolve6 = async () => ['fd00::1'];
+  https.request = () => {
+    outboundCalls += 1;
+    throw new Error('blocked DNS result must not reach the network');
+  };
+
+  const app = await createLocalApiServer({
+    port: 0,
+    apiDir: localApi.apiDir,
+    logger: { log() {}, warn() {}, error() {} },
+  });
+  const { port } = await app.start();
+
+  try {
+    const feedUrl = encodeURIComponent('https://mixed-dns.example/feed.xml');
+    const response = await authFetch(`http://127.0.0.1:${port}/api/rss-proxy?url=${feedUrl}`);
+    assert.equal(response.status, 403);
+    const body = await response.json();
+    assert.match(body.error, /private\/reserved/);
+    assert.equal(outboundCalls, 0);
+  } finally {
+    dns.resolve4 = originalResolve4;
+    dns.resolve6 = originalResolve6;
+    https.request = originalHttpsRequest;
     await app.close();
     await localApi.cleanup();
   }

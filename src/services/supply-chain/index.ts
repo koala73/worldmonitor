@@ -1,10 +1,12 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import { premiumFetch } from '@/services/premium-fetch';
 import type { CargoType } from '@/config/bypass-corridors';
-import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
-import { createCircuitBreaker } from '@/utils';
+import type { GetShippingRatesResponse, GetChokepointStatusResponse, GetChokepointHistoryResponse, GetCriticalMineralsResponse, GetMineralProductionResponse, GetShippingStressResponse, GetCountryChokepointIndexResponse, GetBypassOptionsResponse, GetCountryCostShockResponse, GetCountryProductsResponse, GetMultiSectorCostShockResponse, GetSectorDependencyResponse, GetRouteExplorerLaneResponse, GetRouteImpactResponse, GetCountryVulnerabilitiesResponse, GetChokepointDependenciesResponse, ListVulnerabilityRankingsResponse, ShippingIndex, ChokepointInfo, CriticalMineral, MineralProducer, ShippingRatePoint, ChokepointExposureEntry, BypassOption, TransitDayCount, CountryProduct, ProductExporter, MultiSectorCostShock, CommodityVulnerability, ChokepointDependency, VulnerabilityInput } from '@/generated/client/worldmonitor/supply_chain/v1/service_client';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
+import { createHydrationHandoff } from '@/services/hydration-handoff';
 import { hasPremiumAccess } from '@/services/panel-gating';
+import { combineAbortSignals, createTimeoutSignal } from '@/services/timeout-signal';
 import { SupplyChainServiceClient } from '@/services/generated-rpc-clients';
 import {
   type ChinaCorridorControlTowerResponse,
@@ -29,6 +31,7 @@ export type {
   GetChokepointStatusResponse,
   GetChokepointHistoryResponse,
   GetCriticalMineralsResponse,
+  GetMineralProductionResponse,
   GetShippingStressResponse,
   GetCountryChokepointIndexResponse,
   GetBypassOptionsResponse,
@@ -38,6 +41,9 @@ export type {
   GetSectorDependencyResponse,
   GetRouteExplorerLaneResponse,
   GetRouteImpactResponse,
+  GetCountryVulnerabilitiesResponse,
+  GetChokepointDependenciesResponse,
+  ListVulnerabilityRankingsResponse,
   ShippingIndex,
   ChokepointInfo,
   CriticalMineral,
@@ -49,6 +55,9 @@ export type {
   CountryProduct,
   ProductExporter,
   MultiSectorCostShock,
+  CommodityVulnerability,
+  ChokepointDependency,
+  VulnerabilityInput,
 };
 
 // Legacy aliases consumed by CountryBriefPanel + CountryDeepDivePanel — match the
@@ -57,14 +66,21 @@ export type CountryProductsResponse = GetCountryProductsResponse;
 export type MultiSectorShockResponse = GetMultiSectorCostShockResponse;
 export type MultiSectorShock = MultiSectorCostShock;
 
+const VULNERABILITY_REQUEST_TIMEOUT_MS = 10_000;
+
+function vulnerabilityRequestSignal(callerSignal?: AbortSignal): AbortSignal {
+  const timeoutSignal = createTimeoutSignal(VULNERABILITY_REQUEST_TIMEOUT_MS);
+  return callerSignal ? combineAbortSignals([callerSignal, timeoutSignal]) : timeoutSignal;
+}
+
 // premiumFetch for the whole client: 8 of 13 methods target paths in
 // PREMIUM_RPC_PATHS. The gateway runs validateApiKey with forceKey=true on
 // those paths *before* isCallerPremium; globalThis.fetch here would 401 for
 // signed-in browser pros (no Clerk bearer / no WM key injected) and the
 // generated client's try/catch would swallow the 401, returning the empty
 // fallbacks below. premiumFetch no-ops safely when no credentials are
-// available, so the 5 non-premium methods (shippingRates, chokepointStatus,
-// chokepointHistory, criticalMinerals, shippingStress) keep working as before.
+// available, so the public methods (shippingRates, chokepointStatus,
+// chokepointHistory, criticalMinerals, mineralProduction, shippingStress) keep working as before.
 const client = new SupplyChainServiceClient(getRpcBaseUrl(), { fetch: premiumFetch });
 
 const shippingBreaker = createCircuitBreaker<GetShippingRatesResponse>({ name: 'Shipping Rates', cacheTtlMs: 60 * 60 * 1000, persistCache: true });
@@ -78,6 +94,33 @@ const chinaCorridorBreaker = createCircuitBreaker<ChinaCorridorControlTowerRespo
 const emptyShipping: GetShippingRatesResponse = { indices: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyChokepoints: GetChokepointStatusResponse = { chokepoints: [], fetchedAt: '', upstreamUnavailable: false };
 const emptyMinerals: GetCriticalMineralsResponse = { minerals: [], fetchedAt: '', upstreamUnavailable: false };
+const isCacheableChokepointStatus = (value: GetChokepointStatusResponse): boolean =>
+  value.chokepoints.length > 0 && !value.upstreamUnavailable;
+
+// A hydrated response is returned immediately for first paint, then refreshed
+// once in the background. The breaker coalesces the normal cached case; this
+// service-owned promise also coalesces degraded hydration, which is deliberately
+// not admitted to the breaker cache.
+const chokepointHydrationRefreshes = new WeakMap<
+  GetChokepointStatusResponse,
+  Promise<GetChokepointStatusResponse>
+>();
+let activeChokepointHydrationHandoff: {
+  response: GetChokepointStatusResponse;
+  refresh: Promise<GetChokepointStatusResponse>;
+} | null = null;
+const emptyMineralProduction: GetMineralProductionResponse = {
+  commodities: [],
+  countries: [],
+  fetchedAt: '',
+  upstreamUnavailable: false,
+  dataYear: 0,
+};
+const mineralProductionBreaker = createCircuitBreaker<GetMineralProductionResponse>({
+  name: 'Mineral Production',
+  cacheTtlMs: 24 * 60 * 60 * 1000,
+  persistCache: true,
+});
 
 export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorControlTowerResponse> {
   return fetchChinaCorridorControlTowersWithDependencies({
@@ -90,7 +133,10 @@ export async function fetchChinaCorridorControlTowers(): Promise<ChinaCorridorCo
 
 export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
   const hydrated = getHydratedData('shippingRates') as GetShippingRatesResponse | undefined;
-  if (hydrated?.indices?.length) return hydrated;
+  if (hydrated?.indices?.length) {
+    shippingBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await shippingBreaker.execute(async () => {
@@ -101,17 +147,64 @@ export async function fetchShippingRates(): Promise<GetShippingRatesResponse> {
   }
 }
 
+function loadLiveChokepointStatus(forceRefresh = false): Promise<GetChokepointStatusResponse> {
+  return chokepointBreaker.execute(async () => {
+    return client.getChokepointStatus({});
+  }, emptyChokepoints, {
+    shouldCache: isCacheableChokepointStatus,
+    forceRefresh,
+  });
+}
+
+function startChokepointHydrationRefresh(
+  response: GetChokepointStatusResponse,
+): Promise<GetChokepointStatusResponse> {
+  if (activeChokepointHydrationHandoff) return activeChokepointHydrationHandoff.refresh;
+
+  const refresh = loadLiveChokepointStatus(true);
+  const handoff = { response, refresh };
+  activeChokepointHydrationHandoff = handoff;
+  const clearActiveRefresh = (): void => {
+    if (activeChokepointHydrationHandoff === handoff) {
+      activeChokepointHydrationHandoff = null;
+    }
+  };
+  void refresh.then(clearActiveRefresh, clearActiveRefresh);
+  return refresh;
+}
+
 export async function fetchChokepointStatus(): Promise<GetChokepointStatusResponse> {
+  if (activeChokepointHydrationHandoff) {
+    return activeChokepointHydrationHandoff.response;
+  }
+
   const hydrated = getHydratedData('chokepoints') as GetChokepointStatusResponse | undefined;
-  if (hydrated?.chokepoints?.length) return hydrated;
+  if (hydrated?.chokepoints?.length) {
+    if (isCacheableChokepointStatus(hydrated)) {
+      chokepointBreaker.recordSuccess(hydrated);
+    }
+    chokepointHydrationRefreshes.set(hydrated, startChokepointHydrationRefresh(hydrated));
+    return hydrated;
+  }
 
   try {
-    return await chokepointBreaker.execute(async () => {
-      return client.getChokepointStatus({});
-    }, emptyChokepoints);
+    return await loadLiveChokepointStatus();
   } catch {
     return emptyChokepoints;
   }
+}
+
+/**
+ * Let any caller holding the active bootstrap response join its single live
+ * refresh. Responses from normal live loads return `null`, so callers do not
+ * issue a second RPC after their normal load.
+ */
+export function refreshChokepointStatusAfterHydration(
+  response: GetChokepointStatusResponse,
+): Promise<GetChokepointStatusResponse | null> {
+  const refresh = chokepointHydrationRefreshes.get(response);
+  if (!refresh) return Promise.resolve(null);
+  return refresh;
 }
 
 /**
@@ -132,7 +225,10 @@ export async function fetchChokepointHistory(
 
 export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsResponse> {
   const hydrated = getHydratedData('minerals') as GetCriticalMineralsResponse | undefined;
-  if (hydrated?.minerals?.length) return hydrated;
+  if (hydrated?.minerals?.length) {
+    mineralsBreaker.recordSuccess(hydrated);
+    return hydrated;
+  }
 
   try {
     return await mineralsBreaker.execute(async () => {
@@ -143,17 +239,44 @@ export async function fetchCriticalMinerals(): Promise<GetCriticalMineralsRespon
   }
 }
 
+// No bootstrap hydration path here on purpose. The bootstrap serves the RAW seed
+// payload, whose `commodities` is an object keyed by commodity id, while this
+// response type declares an array -- so a `hydrated?.commodities?.length` guard
+// was always `undefined` and every caller fell through to the RPC anyway, after
+// paying for the payload in the slow bootstrap tier. Projecting the raw shape
+// client-side would duplicate the server's mapping (label -> commodity,
+// stages.mine -> mine) and drift from it, so the daily-CDN-cached RPC is the
+// single source. Re-adding the key to BOOTSTRAP_CACHE_KEYS requires a real
+// projection plus a test that feeds the raw seed shape through this function.
+export async function fetchMineralProduction(): Promise<GetMineralProductionResponse> {
+  try {
+    return await mineralProductionBreaker.execute(async () => {
+      return client.getMineralProduction({ commodity: '', iso2: '', stage: '' });
+    }, emptyMineralProduction);
+  } catch {
+    return emptyMineralProduction;
+  }
+}
+
 const emptyShippingStress: GetShippingStressResponse = { carriers: [], stressScore: 0, stressLevel: 'low', fetchedAt: 0, upstreamUnavailable: false };
 
-export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
-  const hydrated = getHydratedData('shippingStress') as GetShippingStressResponse | undefined;
-  if (hydrated?.carriers?.length) return hydrated;
+// No breaker or TTL cache owns this loader's results, so the accepted
+// bootstrap value is preserved in a service-owned bounded handoff (#7048);
+// before this, every recurring call after the consume-once read refetched
+// the RPC.
+const shippingStressHandoff = createHydrationHandoff<GetShippingStressResponse>(
+  'shippingStress',
+  (value) => {
+    const payload = value as GetShippingStressResponse;
+    return payload?.carriers?.length ? payload : null;
+  },
+);
 
-  try {
-    return await client.getShippingStress({});
-  } catch {
-    return emptyShippingStress;
-  }
+export async function fetchShippingStress(): Promise<GetShippingStressResponse> {
+  return shippingStressHandoff.getOrLoad(
+    () => client.getShippingStress({}),
+    emptyShippingStress,
+  );
 }
 
 const emptyChokepointIndex: GetCountryChokepointIndexResponse = {
@@ -365,6 +488,80 @@ export async function fetchCountryProducts(iso2: string): Promise<GetCountryProd
     return await client.getCountryProducts({ iso2 });
   } catch {
     return { ...emptyProducts, iso2 };
+  }
+}
+
+export async function fetchCountryVulnerabilities(
+  iso2: string,
+  options?: { signal?: AbortSignal },
+): Promise<GetCountryVulnerabilitiesResponse> {
+  const empty: GetCountryVulnerabilitiesResponse = {
+    iso2,
+    country: '',
+    vulnerabilities: [],
+    generatedAt: '',
+    methodologyVersion: '',
+    upstreamUnavailable: true,
+  };
+  try {
+    return await client.getCountryVulnerabilities(
+      { iso2 },
+      { signal: vulnerabilityRequestSignal(options?.signal) },
+    );
+  } catch {
+    return empty;
+  }
+}
+
+export async function fetchChokepointDependencies(
+  chokepointId: string,
+  pageSize = 25,
+  options?: { signal?: AbortSignal },
+): Promise<GetChokepointDependenciesResponse> {
+  const empty: GetChokepointDependenciesResponse = {
+    chokepointId,
+    chokepoint: '',
+    dependencies: [],
+    generatedAt: '',
+    methodologyVersion: '',
+    upstreamUnavailable: true,
+  };
+  try {
+    return await client.getChokepointDependencies(
+      { chokepointId, pageSize },
+      { signal: vulnerabilityRequestSignal(options?.signal) },
+    );
+  } catch {
+    return empty;
+  }
+}
+
+export interface VulnerabilityRankingFilters {
+  commodityId?: string;
+  band?: string;
+  state?: string;
+  pageSize?: number;
+}
+
+export async function fetchVulnerabilityRankings(
+  filters: VulnerabilityRankingFilters = {},
+  options?: { signal?: AbortSignal },
+): Promise<ListVulnerabilityRankingsResponse> {
+  const empty: ListVulnerabilityRankingsResponse = {
+    vulnerabilities: [],
+    generatedAt: '',
+    methodologyVersion: '',
+    upstreamUnavailable: true,
+  };
+  try {
+    return await client.listVulnerabilityRankings({
+      commodityId: filters.commodityId || '',
+      band: filters.band || '',
+      state: filters.state || '',
+      pageSize: filters.pageSize || 25,
+    }, { signal: vulnerabilityRequestSignal(options?.signal) });
+  } catch {
+    return empty;
   }
 }
 

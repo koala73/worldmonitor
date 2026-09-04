@@ -19,7 +19,7 @@ https://api.worldmonitor.app/api/<service>/v1/<rpc-name>
 
 正在构建 agent 或代码生成管道？指向 `https://worldmonitor.app/` 并跟随 `Link:` 响应头 — 通过标准的 `.well-known` 路径，可从一个根 URL 发现所有 OpenAPI 规范、MCP server 卡片、OAuth 端点与 agent-skill 包。完整走查详见 [Agent 发现](/zh/agent-discovery)。
 
-单一打包规范位于 [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — 将其喂给任意 OpenAPI 生成器，即可一次性为全部 35 个生成的服务生成带类型的客户端，包括没有专用侧边栏页面的平台服务。
+单一打包规范位于 [`/openapi.yaml`](https://www.worldmonitor.app/openapi.yaml) — 将其喂给任意 OpenAPI 生成器，即可一次性为完整的生成服务目录创建带类型的客户端，包括没有专用侧边栏页面的平台服务。
 
 ## 服务目录
 
@@ -48,7 +48,7 @@ curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
   -d '{
     "operations": [
       { "id": "fear-greed", "path": "/api/market/v1/get-fear-greed-index" },
-      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country=DE&jmespath=score" }
+      { "id": "risk-de",    "path": "/api/intelligence/v1/get-country-risk?country_code=DE&jmespath=score" }
     ]
   }'
 ```
@@ -59,7 +59,7 @@ curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
 
 如果你要在 REST 与 [MCP server](/zh/mcp-overview) 之间切换，请将二者视为相关但独立的目录。REST 覆盖范围由 OpenAPI 定义。MCP 覆盖范围更窄：只有当某个工具的注册表 `_apiPaths` 条目中声明了确切的 `METHOD /api/...` 路径时，该端点才是 **MCP 暴露的**。
 
-请将 [MCP API 覆盖表](/zh/mcp-overview#api-coverage)作为面向人类的反向查询。它将每个 MCP 工具映射到其明确服务的 REST 端点。如果某条 REST 路由不在该表中，则作为 API 等价而言它是 REST 专有的，即便某个缓存支撑的 MCP 工具会返回类似的领域数据。
+请将 [MCP API 覆盖表](/zh/mcp-overview#api-覆盖)作为面向人类的反向查询。它将每个 MCP 工具映射到其明确服务的 REST 端点。如果某条 REST 路由不在该表中，则作为 API 等价而言它是 REST 专有的，即便某个缓存支撑的 MCP 工具会返回类似的领域数据。
 
 常见形态：
 
@@ -78,7 +78,7 @@ curl -X POST https://api.worldmonitor.app/api/batch/v1/execute \
 | `GET /api/research/v1/list-arxiv-papers`、`GET /api/research/v1/list-trending-repos`、`GET /api/research/v1/list-hackernews-items` | REST 专有。`get_research_signals` 仅声明 `list-tech-events`。 |
 | `GET /api/aviation/v1/list-airport-delays`、`GET /api/aviation/v1/get-flight-status` | REST 专有。MCP 航空覆盖通过 `get_airspace`、航班搜索工具以及缓存支撑的 `get_aviation_status` 提供，而非这些路由。 |
 
-请始终对照[打包的 OpenAPI 规范](https://www.worldmonitor.app/openapi.yaml)交叉验证 REST 路径名、参数与响应结构，并对照 [MCP API 覆盖](/zh/mcp-overview#api-coverage)验证 MCP 暴露情况。
+请始终对照[打包的 OpenAPI 规范](https://www.worldmonitor.app/openapi.yaml)交叉验证 REST 路径名、参数与响应结构，并对照 [MCP API 覆盖](/zh/mcp-overview#api-覆盖)验证 MCP 暴露情况。
 
 ## 平台端点
 

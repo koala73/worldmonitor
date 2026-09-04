@@ -6,6 +6,7 @@ import {
   formatTrend,
   instabilityBand,
   liveRiskViewModel,
+  parseCiiMovement,
 } from '../scripts/crawlable-live-tools.mjs';
 
 const NOW = Date.UTC(2026, 6, 24, 12);
@@ -26,10 +27,30 @@ describe('crawlable country live-risk tool', () => {
   it('formats trend and advisory tokens for readers', () => {
     assert.equal(formatTrend(2.4, 'TREND_DIRECTION_RISING'), 'Rising +2.4');
     assert.equal(formatTrend(-1.2, 'TREND_DIRECTION_FALLING'), 'Falling -1.2');
-    assert.equal(formatTrend(0, 'TREND_DIRECTION_STABLE'), 'Stable');
+    assert.equal(formatTrend(0, 'TREND_DIRECTION_STABLE'), 'Stable or unavailable');
     assert.equal(formatAdvisory('reconsider'), 'Reconsider Travel');
     assert.equal(formatAdvisory('caution'), 'Exercise Increased Caution');
     assert.equal(formatAdvisory(''), 'Not present');
+  });
+
+  it('parses every formatTrend label the corpus builder can freeze', () => {
+    assert.deepEqual(parseCiiMovement(formatTrend(2.4, 'TREND_DIRECTION_RISING')), {
+      change24h: 2.4,
+      movementText: 'up 2.4 points over approximately 24 hours',
+    });
+    assert.deepEqual(parseCiiMovement(formatTrend(-1, 'TREND_DIRECTION_FALLING')), {
+      change24h: -1,
+      movementText: 'down 1 point over approximately 24 hours',
+    });
+    assert.deepEqual(parseCiiMovement(formatTrend(0, 'TREND_DIRECTION_STABLE')), {
+      change24h: null,
+      movementText: 'stable or unavailable over approximately 24 hours',
+    });
+    assert.deepEqual(parseCiiMovement(formatTrend(null, '')), {
+      change24h: null,
+      movementText: 'stable or unavailable over approximately 24 hours',
+    });
+    assert.throws(() => parseCiiMovement('Rising later'), /Invalid CII movement label/);
   });
 
   it('builds a labelled view model without treating structural resilience as live risk', () => {

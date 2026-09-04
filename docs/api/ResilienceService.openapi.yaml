@@ -75,6 +75,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -104,6 +109,453 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/resilience/v1/get-resilience-indicators:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetResilienceIndicators
+            description: GetResilienceIndicators explains one country's score at indicator level. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetResilienceIndicators
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: countryCode
+                  in: query
+                  description: Required ISO 3166-1 alpha-2 country code.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "constructVersions":
+                                    "education": "example"
+                                    "energy": "example"
+                                    "financialSystemExposure": "example"
+                                "countryCode": "US"
+                                "dataVersion": "example"
+                                "dimensions":
+                                    - "active": true
+                                      "coverage": 1.5
+                                      "effectiveContributionTotal": 1
+                                      "id": "example-id"
+                                      "literalContributionTotal": 1
+                                "formula": "example"
+                            schema:
+                                $ref: '#/components/schemas/GetResilienceIndicatorsResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ValidationError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/resilience/v1/get-food-stocks:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetFoodStocks
+            description: Returns seeded PSD cereal balances with FAOSTAT gap fill. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetFoodStocks
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: countryCode
+                  in: query
+                  description: ISO 3166-1 alpha-2, or WORLD. Empty returns the unfiltered snapshot.
+                  required: false
+                  example: "US"
+                  schema:
+                    type: string
+                - name: commodity
+                  in: query
+                  description: Commodity slug (wheat, corn, rice, soybeans, barley, palmOil). Empty = all.
+                  required: false
+                  example: "corn"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "calorieWeightedStocksToUse": 1.5
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                                "records":
+                                    - "commodity": "corn"
+                                      "consumptionTmt": 1.5
+                                      "countryCode": "US"
+                                      "endingStocksTmt": 1.5
+                                      "exportsTmt": 1.5
+                                "unavailable": false
+                            schema:
+                                $ref: '#/components/schemas/GetFoodStocksResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
+                default:
+                    description: Gateway or handler error response.
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/GatewayError'
+    /api/resilience/v1/get-demographics-capability:
+        get:
+            tags:
+                - ResilienceService
+            summary: GetDemographicsCapability
+            description: GetDemographicsCapability returns age, education and industrial-workforce observations for one country. PRO-gated. Requires entitlement tier >= 1.
+            operationId: GetDemographicsCapability
+            security:
+                - WorldMonitorKey: []
+                - ApiKeyHeader: []
+                - BearerAuth: []
+            parameters:
+                - name: countryCode
+                  in: query
+                  description: Required ISO 3166-1 alpha-2 country code.
+                  required: true
+                  example: "US"
+                  schema:
+                    type: string
+                - name: jmespath
+                  in: query
+                  description: |-
+                    Optional JMESPath expression applied server-side to project or reduce the JSON response before it is returned (mirrors the MCP jmespath argument). Invalid expressions, expressions larger than 1024 UTF-8 bytes, or projections that exceed the 256 KB output cap return HTTP 400 with a {_jmespath_error, original_keys} envelope. Grammar and worked examples: https://www.worldmonitor.app/docs/mcp-jmespath.
+                  required: false
+                  example: "keys(@)"
+                  schema:
+                    type: string
+            responses:
+                "200":
+                    description: Successful response
+                    content:
+                        application/json:
+                            example:
+                                "ageStructure":
+                                    "available": true
+                                    "medianAgeYears":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "oldAgeDependencyRatioPercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "totalDependencyRatioPercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "workingAgePopulationPeople":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                "available": true
+                                "countryCode": "US"
+                                "education":
+                                    "available": true
+                                    "researchersPerMillion":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "stemGraduatesSharePercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                    "tertiaryEnrollmentGrossPercent":
+                                        "available": true
+                                        "source": "example"
+                                        "unit": "example"
+                                        "value": 1.5
+                                        "year": 1
+                                "fetchedAt": "2026-01-15T12:00:00Z"
+                            schema:
+                                $ref: '#/components/schemas/GetDemographicsCapabilityResponse'
+                "400":
+                    description: Validation error
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/ValidationError'
+                                    - $ref: '#/components/schemas/JmespathProjectionError'
+                "401":
+                    description: Missing or invalid API key.
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/UnauthorizedError'
+                "403":
+                    description: PRO entitlement access denied.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                $ref: '#/components/schemas/ForbiddenError'
+                "429":
+                    description: Rate limit exceeded.
+                    headers:
+                        X-RateLimit-Limit:
+                            description: Maximum requests allowed in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Remaining:
+                            description: Requests remaining in the active rate-limit window.
+                            schema:
+                                type: string
+                        X-RateLimit-Reset:
+                            description: Unix epoch milliseconds when the active rate-limit window resets.
+                            schema:
+                                type: string
+                        Retry-After:
+                            description: Seconds to wait before retrying the request.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/Error'
+                                    - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -171,6 +623,11 @@ paths:
                                 $ref: '#/components/schemas/UnauthorizedError'
                 "403":
                     description: Pro subscription required.
+                    headers:
+                        X-Billing-Verification:
+                            description: Present when the 403 is a billing-provider-confirmed subscription lapse (value subscription_lapsed, matching the body `code`).
+                            schema:
+                                type: string
                     content:
                         application/json:
                             schema:
@@ -200,6 +657,31 @@ paths:
                                 oneOf:
                                     - $ref: '#/components/schemas/Error'
                                     - $ref: '#/components/schemas/RateLimitError'
+                "503":
+                    description: Service unavailable. Billing-verification responses include code and X-Billing-Verification; other gateway infrastructure failures use the generic GatewayError shape.
+                    headers:
+                        Retry-After:
+                            description: Seconds to wait before retrying (1-60).
+                            schema:
+                                type: string
+                        X-Billing-Verification:
+                            description: Billing-verification state that produced this response (matches the body `code`).
+                            schema:
+                                type: string
+                        X-Validation-Mode:
+                            description: Present with value degraded when user API-key validation is temporarily unavailable.
+                            schema:
+                                type: string
+                        X-RateLimit-Mode:
+                            description: Present with value degraded when a fail-closed rate-limit dependency is unavailable.
+                            schema:
+                                type: string
+                    content:
+                        application/json:
+                            schema:
+                                oneOf:
+                                    - $ref: '#/components/schemas/BillingVerificationError'
+                                    - $ref: '#/components/schemas/GatewayError'
                 default:
                     description: Gateway or handler error response.
                     content:
@@ -238,7 +720,9 @@ paths:
                                     "rankingKey": "example"
                                     "scorePrefix": "example"
                                 "constructVersions":
+                                    "education": "example"
                                     "energy": "example"
+                                    "financialSystemExposure": "example"
                                 "dataVersion": "example"
                                 "deployedCommitSha": "example"
                                 "flags":
@@ -335,6 +819,27 @@ components:
                     type: string
                     description: Error message (e.g., 'user not found', 'database connection failed')
             description: Error is returned when a handler encounters an error. It contains a simple error message that the developer can customize.
+        BillingVerificationError:
+            type: object
+            description: "Returned with HTTP 503 when paid access cannot be confirmed right now: the billing provider is re-verifying a recently expired subscription, or the entitlement backend is unreachable. Retryable — honor Retry-After."
+            properties:
+                error:
+                    type: string
+                    description: Human-readable billing-verification failure reason.
+                code:
+                    type: string
+                    enum:
+                        - renewal_verification_pending
+                        - renewal_verification_failed
+                        - entitlement_verification_unavailable
+                    description: Machine-readable billing-verification state, mirrored in the X-Billing-Verification response header.
+                requiredTier:
+                    type: integer
+                    format: int32
+                    description: Minimum entitlement tier required for this endpoint, when the denial came from a tier gate.
+            required:
+                - error
+                - code
         InvalidRequestBodyError:
             type: object
             description: Returned when a JSON POST request body is empty or malformed.
@@ -371,6 +876,11 @@ components:
                 error:
                     type: string
                     description: Human-readable entitlement failure reason.
+                code:
+                    type: string
+                    enum:
+                        - subscription_lapsed
+                    description: Machine-readable denial code, present when the 403 is a billing-provider-confirmed subscription lapse (mirrored in the X-Billing-Verification response header).
                 requiredTier:
                     type: integer
                     format: int32
@@ -588,6 +1098,473 @@ components:
                  uses the pillar-combined score with the min-pillar penalty term in
                  _shared.ts#penalizedPillarScore. The legacy six-domain weighted aggregate
                  remains the flag-off rollback path.
+        GetResilienceIndicatorsRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: Required ISO 3166-1 alpha-2 country code.
+            required:
+                - countryCode
+        GetResilienceIndicatorsResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: Normalized ISO 3166-1 alpha-2 country code used by the scorer.
+                methodology:
+                    type: string
+                    description: Stable decomposition method used to reconcile rows to dimension scores.
+                formula:
+                    type: string
+                    description: Active score formula tag, for example d6 or pc.
+                dataVersion:
+                    type: string
+                    description: Source snapshot version used for the score, normally an ISO date.
+                schemaVersion:
+                    type: string
+                    description: Public resilience score schema version.
+                constructVersions:
+                    $ref: '#/components/schemas/ResilienceRuntimeConstructVersions'
+                dimensions:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceIndicatorDimension'
+                indicators:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceIndicator'
+        ResilienceRuntimeConstructVersions:
+            type: object
+            properties:
+                energy:
+                    type: string
+                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
+                education:
+                    type: string
+                    description: 'Safe derived education construct version. Valid values: "active" or "rollback".'
+                financialSystemExposure:
+                    type: string
+                    description: 'Safe derived financial-system construct version. Valid values: "active" or "rollback".'
+        ResilienceIndicatorDimension:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Stable dimension identifier from the resilience construct.
+                score:
+                    type: number
+                    format: double
+                    description: Final dimension score on the 0-100 scale.
+                coverage:
+                    type: number
+                    format: double
+                    description: Fraction of active dimension weight backed by observations, from 0 to 1.
+                prePolicyScore:
+                    type: number
+                    format: double
+                    description: Dimension score before a policy cap or other post-blend adjustment.
+                policyCapName:
+                    type: string
+                    description: Name of the applied post-blend policy cap, or empty when none applies.
+                policyCapFactor:
+                    type: number
+                    format: double
+                    description: Multiplicative factor applied by the post-blend policy cap.
+                literalContributionTotal:
+                    type: number
+                    format: double
+                    description: Sum of literal indicator contributions before dimension-level policy.
+                effectiveContributionTotal:
+                    type: number
+                    format: double
+                    description: Sum of exposed effective contributions. This reconciles to score.
+                active:
+                    type: boolean
+                    description: False for retired or runtime-disabled placeholder dimensions.
+                reconciliationAvailable:
+                    type: boolean
+                    description: True when effective_contribution_total is required to equal score.
+                reason:
+                    type: string
+                    description: Explanation when this dimension is inactive or cannot reconcile contributions.
+            description: Reconciled metadata for one resilience dimension.
+        ResilienceIndicator:
+            type: object
+            properties:
+                id:
+                    type: string
+                    description: Stable indicator identifier from the 72-row registry.
+                dimension:
+                    type: string
+                    description: Stable identifier of the dimension that owns this indicator.
+                tier:
+                    type: string
+                    description: 'Scoring tier: core, enrichment, or experimental.'
+                active:
+                    type: boolean
+                    description: Active means the current construct version can use this indicator.
+                includedInDimensionScore:
+                    type: boolean
+                    description: True when this country observation participated in the dimension score.
+                state:
+                    type: string
+                    description: |-
+                        observed, imputed, missing, fallback, source-failure, inactive, retired,
+                         or not-applicable.
+                reason:
+                    type: string
+                    description: Explains exclusion, inactive selection, retirement, or fallback state.
+                normalizedScoreAvailable:
+                    type: boolean
+                    description: True when normalized_score contains the score used by the scorer.
+                normalizedScore:
+                    type: number
+                    format: double
+                    description: Indicator score normalized to the 0-100 resilience scale.
+                nominalWeight:
+                    type: number
+                    format: double
+                    description: Configured indicator weight before runtime selection or reweighting.
+                runtimeWeightAvailable:
+                    type: boolean
+                    description: True when runtime_weight applies to this execution path.
+                runtimeWeight:
+                    type: number
+                    format: double
+                    description: Weight selected by the executed scorer branch before normalization.
+                scoringWeightShareAvailable:
+                    type: boolean
+                    description: True when scoring_weight_share applies to this execution path.
+                scoringWeightShare:
+                    type: number
+                    format: double
+                    description: Indicator share of the active blend after runtime reweighting.
+                literalContribution:
+                    type: number
+                    format: double
+                    description: Indicator contribution before dimension-level caps or adjustments.
+                effectiveContribution:
+                    type: number
+                    format: double
+                    description: Reconciled contribution after dimension-level caps or adjustments.
+                imputationClass:
+                    type: string
+                    description: Empty for observed or unavailable rows; otherwise the scorer taxonomy.
+                sourceYearAvailable:
+                    type: boolean
+                    description: True when source_year contains the provider observation year.
+                sourceYear:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Provider observation year, not the WorldMonitor retrieval year.
+                observationAgeAvailable:
+                    type: boolean
+                    description: Age of the source observation, not the time since WorldMonitor fetched it.
+                observationAgeValue:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Integer observation age expressed in observation_age_unit.
+                observationAgeUnit:
+                    type: string
+                    description: '"days" for an observation timestamp or "years" for an annual source row.'
+                observationAgeBasis:
+                    type: string
+                    description: '"observation-timestamp" or "source-year". Never derived from retrieval time.'
+                retrievedAtAvailable:
+                    type: boolean
+                    description: True when retrieved_at contains an explicit retrieval timestamp.
+                retrievedAt:
+                    type: string
+                    description: Explicit ISO-8601 retrieval timestamp; never inferred from source year.
+                observedAtAvailable:
+                    type: boolean
+                    description: True when observed_at contains a provider observation timestamp.
+                observedAt:
+                    type: string
+                    description: Provider observation timestamp in ISO-8601 form.
+                sources:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/ResilienceIndicatorSource'
+                rawValue:
+                    $ref: '#/components/schemas/ResilienceIndicatorRawValue'
+            description: One registry indicator and its effective contribution to a dimension.
+        ResilienceIndicatorSource:
+            type: object
+            properties:
+                key:
+                    type: string
+                    description: Stable source or cache key used by the resilience scorer.
+                name:
+                    type: string
+                    description: Human-readable provider or dataset name.
+                attribution:
+                    type: string
+                    description: Attribution text that callers must preserve when displaying the value.
+                license:
+                    type: string
+                    description: Audited source license or redistribution classification.
+                url:
+                    type: string
+                    description: Canonical provider or methodology URL when one is available.
+                observationProvenance:
+                    type: boolean
+                    description: |-
+                        True only when this source was recorded for the selected country observation.
+                         False means the entry is registry attribution, not observation provenance.
+                licenseUrl:
+                    type: string
+                    description: Canonical URL for the audited source license or redistribution terms.
+                attributionUrl:
+                    type: string
+                    description: Canonical attribution URL when it differs from the source dataset URL.
+            description: |-
+                Source-level attribution and provenance for one indicator. Composite
+                 indicators repeat this message once for every upstream source they use.
+        ResilienceIndicatorRawValue:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: True only when at least one raw value representation may be redistributed.
+                numericValue:
+                    type: number
+                    format: double
+                    description: Numeric raw observation. Read numeric_value_available before this value.
+                numericValueAvailable:
+                    type: boolean
+                    description: True when numeric_value contains an audited redistributable observation.
+                textValue:
+                    type: string
+                    description: Categorical raw observation. Read text_value_available before this value.
+                textValueAvailable:
+                    type: boolean
+                    description: True when text_value contains an audited redistributable observation.
+                unit:
+                    type: string
+                    description: Unit attached to the raw observation, for example percent or days.
+                status:
+                    type: string
+                    description: |-
+                        available, absent, restricted, audit-incomplete, conditional,
+                         ineligible-observation, or unknown-indicator.
+                reason:
+                    type: string
+                    description: Human-readable explanation for an unavailable or withheld value.
+            description: |-
+                Selectively exposed raw observation. Availability fields keep a withheld or
+                 absent value distinct from a genuine numeric zero or empty categorical value.
+        GetFoodStocksRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2, or WORLD. Empty returns the unfiltered snapshot.
+                commodity:
+                    type: string
+                    description: Commodity slug (wheat, corn, rice, soybeans, barley, palmOil). Empty = all.
+            description: GetFoodStocksRequest filters the seeded USDA-style food-stocks snapshot.
+        GetFoodStocksResponse:
+            type: object
+            properties:
+                records:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/FoodStockRecord'
+                fetchedAt:
+                    type: string
+                    description: ISO-8601 time the seeder wrote resilience:food-stocks:v1. Empty when unavailable.
+                unavailable:
+                    type: boolean
+                    description: True when the seed is missing or unreadable (not a confirmed zero).
+                calorieWeightedStocksToUse:
+                    type: number
+                    format: double
+                    description: Calorie-weighted stocks-to-use for the requested country, or 0 when unknown / unfiltered.
+            description: GetFoodStocksResponse is the filtered seed snapshot.
+        FoodStockRecord:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: ISO 3166-1 alpha-2, or "WORLD" for the global balance sheet.
+                commodity:
+                    type: string
+                    description: 'Commodity slug: wheat, corn, rice, soybeans, barley, palmOil.'
+                marketingYear:
+                    type: string
+                    description: Marketing year label stored verbatim, e.g. "2025/26". Never a calendar year.
+                stocksToUse:
+                    type: number
+                    format: double
+                    description: |-
+                        Ending stocks divided by total use (0.18 = 18%). Read has_stocks_to_use
+                         BEFORE this value: proto3 has no presence for a bare double, so an unknown
+                         ratio and a genuine 0% are the same wire value. USDA/PSD estimates ending
+                         stocks only for selected countries, so a minor producer routinely reports
+                         real production and consumption with no stocks series at all — and 0.0% on
+                         a food-security surface reads as famine, not as "not measured".
+                hasStocksToUse:
+                    type: boolean
+                    description: False when stocks_to_use is a placeholder rather than a measurement.
+                endingStocksTmt:
+                    type: number
+                    format: double
+                    description: |-
+                        Ending stocks in thousand metric tons. Read has_ending_stocks first, for
+                         the same reason as stocks_to_use above.
+                hasEndingStocks:
+                    type: boolean
+                    description: False when ending_stocks_tmt is a placeholder rather than a measurement.
+                totalUseTmt:
+                    type: number
+                    format: double
+                    description: |-
+                        1000 MT. PSD country: consumption + exports. WORLD: consumption.
+                         FAOSTAT: domestic-supply quantity.
+                productionTmt:
+                    type: number
+                    format: double
+                    description: Production in thousand metric tons. Zero when unknown.
+                consumptionTmt:
+                    type: number
+                    format: double
+                    description: |-
+                        1000 MT. PSD: domestic consumption. FAOSTAT: domestic-supply quantity.
+                         Zero when unknown.
+                importsTmt:
+                    type: number
+                    format: double
+                    description: Imports in thousand metric tons. Zero when unknown.
+                exportsTmt:
+                    type: number
+                    format: double
+                    description: Exports in thousand metric tons. Zero when unknown.
+                unit:
+                    type: string
+                    description: Unit the raw quantities are stored in, typically "1000 MT".
+                source:
+                    type: string
+                    description: |-
+                        "psd" or "faostat". FAOSTAT Food Balances supplies production and
+                         domestic-supply, but no stocks.
+            description: One country (or WORLD) × commodity production/stocks balance from the seeded snapshot.
+        GetDemographicsCapabilityRequest:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                    description: Required ISO 3166-1 alpha-2 country code.
+            required:
+                - countryCode
+        GetDemographicsCapabilityResponse:
+            type: object
+            properties:
+                countryCode:
+                    type: string
+                available:
+                    type: boolean
+                    description: True when at least one validated observation exists for the country.
+                fetchedAt:
+                    type: string
+                    description: ISO-8601 time the canonical snapshot was generated.
+                stages:
+                    type: array
+                    items:
+                        $ref: '#/components/schemas/DemographicsCapabilityStage'
+                ageStructure:
+                    $ref: '#/components/schemas/DemographicsAgeStructure'
+                education:
+                    $ref: '#/components/schemas/DemographicsEducation'
+                industrialWorkforce:
+                    $ref: '#/components/schemas/DemographicsIndustrialWorkforce'
+        DemographicsCapabilityStage:
+            type: object
+            properties:
+                name:
+                    type: string
+                    description: 'Stable stage name: wpp, education, or ilostat.'
+                status:
+                    type: string
+                    description: Seeder state, normally fresh, retained, or unavailable.
+                fetchedAt:
+                    type: string
+                    description: ISO-8601 time of the data retained for this stage.
+                recordCount:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Number of country records retained for the stage.
+                newestObservationYear:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Most recent source observation year retained for the stage.
+            description: Independent fetch-stage state. One failed stage must not hide healthy groups.
+        DemographicsAgeStructure:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                medianAgeYears:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                oldAgeDependencyRatioPercent:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                totalDependencyRatioPercent:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                workingAgePopulationPeople:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                workingAgePopulationProjected10yPeople:
+                    $ref: '#/components/schemas/CapabilityObservation'
+        CapabilityObservation:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                    description: True only when value, year, source and unit passed the server contract.
+                value:
+                    type: number
+                    format: double
+                    description: 'Numeric observation. Read available first: zero is also the proto3 placeholder.'
+                year:
+                    type: integer
+                    minimum: 0
+                    format: int32
+                    description: Observation year from the source, not the seed run year.
+                source:
+                    type: string
+                    description: Provider or dataset attribution stored with the observation.
+                unit:
+                    type: string
+                    description: Human-readable unit such as "percent", "people", or "years".
+            description: CapabilityObservation keeps a measured zero distinct from a missing value.
+        DemographicsEducation:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                tertiaryEnrollmentGrossPercent:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                stemGraduatesSharePercent:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                researchersPerMillion:
+                    $ref: '#/components/schemas/CapabilityObservation'
+        DemographicsIndustrialWorkforce:
+            type: object
+            properties:
+                available:
+                    type: boolean
+                craftTradesEmploymentPeople:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                plantMachineOperatorsEmploymentPeople:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                trainedIndustrialWorkforcePeople:
+                    $ref: '#/components/schemas/CapabilityObservation'
+                manufacturingEmploymentSharePercent:
+                    $ref: '#/components/schemas/CapabilityObservation'
         GetResilienceRankingRequest:
             type: object
         GetResilienceRankingResponse:
@@ -703,18 +1680,14 @@ components:
                 total:
                     type: integer
                     format: int32
-        ResilienceRuntimeConstructVersions:
-            type: object
-            properties:
-                energy:
-                    type: string
-                    description: 'Safe derived energy construct version. Valid values: "legacy" or "v2".'
         ResilienceRuntimeIntervalState:
             type: object
             properties:
                 available:
                     type: boolean
-                    description: True only when the public sample interval can be read for the active formula.
+                    description: |-
+                        True only when the public sample interval matches the active formula,
+                         education construct version, and interval methodology.
                 methodology:
                     type: string
                     description: Public methodology tag used to audit scoreInterval/rankStable semantics.

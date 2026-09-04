@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Breaking News Banner Provenance Harness</title>
+  </head>
+  <body>
+    <div id="app">
+      <header class="header">World Monitor</header>
+      <main id="main" class="main-content">
+        <div class="harness-map-slot">Map slot</div>
+      </main>
+    </div>
+    <style>
+      html, body { margin: 0; min-height: 100%; background: var(--bg, #0a0a0a); }
+      .harness-map-slot {
+        flex: 1;
+        min-height: 0;
+        background: var(--map-bg, #020a08);
+        color: var(--text-dim, #888);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font: 12px/1.4 var(--font-mono, monospace);
+      }
+    </style>
+    <script type="module" src="/src/e2e/breaking-news-banner-harness.ts"></script>
+  </body>
+</html>

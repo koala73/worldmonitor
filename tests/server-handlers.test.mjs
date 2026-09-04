@@ -86,65 +86,6 @@ describe('aggregateHapiConflictEvents (scripts/_conflict-hapi.mjs)', () => {
   });
 });
 
-describe('getHumanitarianSummary handler (cache-only)', () => {
-  const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
-
-  it('never calls HAPI directly — reads the seeder-written cache only', () => {
-    assert.doesNotMatch(src, /hapi\.humdata\.org/,
-      'The RPC handler must not fetch HAPI directly (#5554 — per-identifier rate limiting means every direct-fetch call site shares one throttle bucket)');
-    assert.match(src, /getCachedJson\(/,
-      'Should read via a plain cache lookup, not a fetch-on-miss helper');
-  });
-});
-
-// ========================================================================
-// 2. Humanitarian summary proto: field semantics
-// ========================================================================
-
-describe('humanitarian_summary.proto', () => {
-  const proto = readSrc('proto/worldmonitor/conflict/v1/humanitarian_summary.proto');
-
-  it('has conflict-event field names instead of humanitarian field names', () => {
-    assert.match(proto, /conflict_events_total/);
-    assert.match(proto, /conflict_political_violence_events/);
-    assert.match(proto, /conflict_fatalities/);
-    assert.match(proto, /reference_period/);
-    assert.match(proto, /conflict_demonstrations/);
-    // Old names removed
-    assert.doesNotMatch(proto, /population_affected/);
-    assert.doesNotMatch(proto, /people_in_need/);
-    assert.doesNotMatch(proto, /internally_displaced/);
-    assert.doesNotMatch(proto, /food_insecurity_level/);
-    assert.doesNotMatch(proto, /water_access_pct/);
-  });
-
-  it('declares country_code as ISO-2', () => {
-    assert.match(proto, /ISO 3166-1 alpha-2/);
-  });
-});
-
-// ========================================================================
-// 3. Hardcoded political context removed (LOW-1)
-// ========================================================================
-
-describe('LLM prompt political context (LOW-1)', () => {
-  const src = readSrc('server/worldmonitor/news/v1/_shared.ts');
-
-  it('does not contain hardcoded "Donald Trump" reference', () => {
-    assert.doesNotMatch(src, /Donald Trump/,
-      'Should not contain hardcoded political figure name');
-  });
-
-  it('uses date-based dynamic context instead', () => {
-    assert.match(src, /Provide geopolitical context appropriate for the current date/,
-      'Should instruct LLM to use current-date context');
-  });
-});
-
-// ========================================================================
-// 4. Headline deduplication (ported logic test)
-// ========================================================================
-
 describe('headline deduplication', () => {
   // Imports the real deduplicateHeadlines from dedup.mjs (shared with _shared.ts)
 
@@ -188,156 +129,28 @@ describe('headline deduplication', () => {
 // 5. Cache key builder (determinism test)
 // ========================================================================
 
-describe('getCacheKey determinism', () => {
-  const src = readSrc('src/utils/summary-cache-key.ts');
-  const sharedSrc = readSrc('server/worldmonitor/news/v1/_shared.ts');
-
-  it('getCacheKey function exists and builds versioned keys', () => {
-    assert.match(src, /export function buildSummaryCacheKey\(/,
-      'buildSummaryCacheKey should be exported from shared module');
-    assert.match(sharedSrc, /getCacheKey/,
-      '_shared.ts should re-export getCacheKey');
-    assert.match(src, /CACHE_VERSION/,
-      'Should use CACHE_VERSION for cache key prefixing');
-    assert.match(src, /`summary:\$\{CACHE_VERSION\}:\$\{mode\}/,
-      'Cache key should include mode');
-  });
-
-  it('handles translate mode separately', () => {
-    assert.match(src, /if\s*\(mode\s*===\s*'translate'\)/,
-      'Should have separate key format for translate mode');
-  });
-});
-
 // ========================================================================
-// 6. Vessel snapshot caching (structural verification)
+// Architectural guards. These assert the ABSENCE of a call, which no test that
+// runs the handler can observe — everything else this file used to pin (proto
+// field names, cache-Map declarations, NOT_FOUND literals, the summary
+// cache-key shape) restated a line of source. Cache-key behaviour has its own
+// executable suite in tests/summary-cache-key.test.mts.
 // ========================================================================
 
-describe('getVesselSnapshot caching (HIGH-1)', () => {
-  const src = readSrc('server/worldmonitor/maritime/v1/get-vessel-snapshot.ts');
-
-  it('cache is keyed by request shape (candidates, tankers, quantized bbox)', () => {
-    // PR 3 (parity-push) replaced the prior `Record<'with'|'without'>` cache
-    // with a Map<string, SnapshotCacheSlot> where the key embeds all three
-    // axes that change response payload: includeCandidates, includeTankers,
-    // and (when present) a 1°-quantized bbox. This prevents distinct bboxes
-    // from collapsing onto a single cached response.
-    assert.match(src, /const\s+cache\s*=\s*new\s+Map<string,\s*SnapshotCacheSlot>/,
-      'cache should be a Map<string, SnapshotCacheSlot> keyed by request shape');
-    assert.match(src, /cacheKeyFor\s*\(/,
-      'cacheKeyFor() helper should compose the cache key');
-    // Key must distinguish includeCandidates, includeTankers, and bbox.
-    assert.match(src, /includeCandidates\s*\?\s*'1'\s*:\s*'0'/,
-      'cache key must encode includeCandidates');
-    assert.match(src, /includeTankers\s*\?\s*'1'\s*:\s*'0'/,
-      'cache key must encode includeTankers');
+describe('handler and prompt guards', () => {
+  it('serves humanitarian summaries from cache and never calls HAPI directly', () => {
+    // #5554: HAPI rate-limits per identifier, so every direct-fetch call site
+    // shares one throttle bucket. The RPC handler must read what the seeder
+    // wrote rather than adding a second caller.
+    const src = readSrc('server/worldmonitor/conflict/v1/get-humanitarian-summary.ts');
+    assert.doesNotMatch(src, /hapi\.humdata\.org/);
+    assert.match(src, /getCachedJson\(/);
   });
 
-  it('has split TTLs for base (5min) and live tanker / bbox (60s) reads', () => {
-    // Base path (density + military-detection consumers) keeps the prior
-    // 5-min cache. Live-tanker and bbox-filtered paths drop to 60s to honor
-    // the freshness contract that drives the Energy Atlas LiveTankersLayer.
-    assert.match(src, /SNAPSHOT_CACHE_TTL_BASE_MS\s*=\s*300[_]?000/,
-      'base TTL should remain 5 minutes (300000ms) for density/disruption consumers');
-    assert.match(src, /SNAPSHOT_CACHE_TTL_LIVE_MS\s*=\s*60[_]?000/,
-      'live tanker / bbox TTL should be 60s to match the gateway live tier s-maxage');
-  });
-
-  it('checks cache before calling relay', () => {
-    // fetchVesselSnapshot should check slot freshness before fetchVesselSnapshotFromRelay
-    const cacheCheckIdx = src.indexOf('slot.snapshot && (now - slot.timestamp)');
-    const relayCallIdx = src.indexOf('fetchVesselSnapshotFromRelay(');
-    assert.ok(cacheCheckIdx > -1, 'Should check slot freshness');
-    assert.ok(relayCallIdx > -1, 'Should have relay fetch function');
-    assert.ok(cacheCheckIdx < relayCallIdx,
-      'Cache check should come before relay call');
-  });
-
-  it('has in-flight dedup via per-slot promise', () => {
-    assert.match(src, /if\s*\(slot\.inFlight\)/,
-      'Should check for in-flight request on the selected slot');
-    assert.match(src, /slot\.inFlight\s*=\s*fetchVesselSnapshotFromRelay/,
-      'Should assign in-flight promise on the slot');
-    assert.match(src, /slot\.inFlight\s*=\s*null/,
-      'Should clear in-flight promise in finally block');
-  });
-
-  it('serves stale snapshot when relay fetch fails', () => {
-    assert.match(src, /return\s+result\s*\?\?\s*slot\.snapshot/,
-      'Should return stale cached snapshot from the selected slot when fresh relay fetch fails');
-  });
-
-  it('rejects oversized bbox AND out-of-range coords with statusCode=400', () => {
-    // PR 3 (parity-push): server-side guard against a malicious or buggy
-    // global-bbox query that would pull every tanker through one request.
-    // Range guard added in #3402 review-fix: relay silently drops malformed
-    // bboxes and serves global capped subsets — handler MUST validate
-    // -90..90 / -180..180 before calling relay. Error must carry
-    // statusCode=400 or error-mapper.ts maps it to a generic 500.
-    assert.match(src, /MAX_BBOX_DEGREES\s*=\s*10/,
-      'should declare a 10° max-bbox guard');
-    assert.match(src, /class\s+BboxValidationError/,
-      'should throw BboxValidationError on invalid bbox');
-    assert.match(src, /readonly\s+statusCode\s*=\s*400/,
-      'BboxValidationError must carry statusCode=400 (error-mapper surfaces it as HTTP 400 only when the error has a statusCode property)');
-    assert.match(src, /lat\s*>=\s*-90\s*&&\s*lat\s*<=\s*90/,
-      'must validate lat is in [-90, 90]');
-    assert.match(src, /lon\s*>=\s*-180\s*&&\s*lon\s*<=\s*180/,
-      'must validate lon is in [-180, 180]');
-  });
-
-  // NOTE: Full integration test (mocking fetch, verifying cache hits) requires
-  // a TypeScript-capable test runner. This structural test verifies the pattern.
-});
-
-// ========================================================================
-// getSimulationOutcome handler — structural tests
-// ========================================================================
-
-describe('getSimulationOutcome handler', () => {
-  const src = readSrc('server/worldmonitor/forecast/v1/get-simulation-outcome.ts');
-
-  it('returns found:false (NOT_FOUND) when pointer is absent', () => {
-    // The handler must define a NOT_FOUND sentinel with found: false
-    assert.match(src, /found:\s*false/,
-      'NOT_FOUND constant should set found: false');
-    // And return it when the pointer is missing
-    assert.match(src, /return\s+NOT_FOUND/,
-      'Should return NOT_FOUND when key is absent');
-  });
-
-  it('uses isOutcomePointer type guard before accessing pointer fields', () => {
-    assert.match(src, /isOutcomePointer\(raw\)/,
-      'Should use isOutcomePointer type guard on getRawJson result');
-    // Guard must check string and number fields — not just truthy
-    assert.match(src, /typeof\s+o\[.runId.\]\s*===\s*'string'/,
-      'Type guard should verify runId is a string');
-    assert.match(src, /typeof\s+o\[.theaterCount.\]\s*===\s*'number'/,
-      'Type guard should verify theaterCount is a number');
-  });
-
-  it('returns found:true without exposing the internal outcome storage key', () => {
-    assert.match(src, /found:\s*true/,
-      'Success path should return found: true');
-    assert.doesNotMatch(src, /outcomeKey:\s*pointer\.outcomeKey/,
-      'Public response must not include outcomeKey from pointer');
-    assert.match(src, /theaterCount:\s*pointer\.theaterCount/,
-      'Success path should include theaterCount from pointer');
-  });
-
-  it('populates note when runId supplied but does not match pointer runId', () => {
-    assert.match(src, /req\.runId.*pointer\.runId/,
-      'Should compare req.runId with pointer.runId for note');
-    // #3734 U6: filter is now actually active. Note text was rewritten to
-    // distinguish "expired beyond 24h retention" from the tombstone path.
-    assert.match(src, /may have expired beyond 24h retention/,
-      'Note text should explain the 24h retention boundary (#3734 U6)');
-  });
-
-  it('returns redis_unavailable error string on Redis failure', () => {
-    assert.match(src, /redis_unavailable/,
-      'Should return redis_unavailable on catch');
-    assert.match(src, /markNoCacheResponse.*catch|catch[\s\S]*?markNoCacheResponse/,
-      'Should mark no-cache on error to avoid caching error state');
+  it('keeps named political figures out of the LLM prompt', () => {
+    // A hardcoded name dates the prompt and biases summaries; the prompt asks
+    // for context appropriate to the current date instead.
+    const src = readSrc('server/worldmonitor/news/v1/_shared.ts');
+    assert.doesNotMatch(src, /Donald Trump/);
   });
 });

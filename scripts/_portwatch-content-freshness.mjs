@@ -3,11 +3,22 @@
 // ordering so those contracts can be tested without loading the full runner.
 
 export const PORTWATCH_CONTENT_FRESHNESS_CADENCE_MINUTES = 12 * 60;
-// One full cold-fetch rotation is six 12-hour runs (174 countries / 30 slots).
-// Keep two rotations of headroom so the health alarm measures a stalled source,
-// not the normal tail of the producer's bounded recovery queue. The parity test
-// derives the actual producer rotation and fails if either side drifts.
-export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 2 * 72 * 60;
+// One full cold-fetch rotation is six 12-hour runs (174 countries / 30 slots),
+// so two rotations -- the derived floor this budget must clear -- is 144h/6d.
+// The parity test recomputes that floor from the seeder's own constants and the
+// cron cadence, and fails if the budget drops under it.
+//
+// 10 days is an OPERATOR CHOICE above that floor (3.3 rotations), not a derived
+// value. It was raised from the bare 2-rotation 6d on 2026-08-18 while CN sat at
+// 6.9 days and 173 of 174 countries were fresh.
+//
+// The cost is stated plainly because the next person will need it: this clock is
+// contentAsOfChangedAt -- upstream's own max(date) advancing, never our
+// fetchedAt -- so it measures the SOURCE going quiet, not our fetch lagging. At
+// 10 days a genuinely stalled critical country stays invisible ~4 days longer
+// than the rotation math alone would allow. Lower it back toward the derived
+// floor if that detection delay ever costs more than the alarm did.
+export const PORTWATCH_CONTENT_FRESHNESS_BUDGET_MINUTES = 10 * 24 * 60;
 export const PORTWATCH_MAX_REPORTED_STALE_COUNTRIES = 40;
 export const PORTWATCH_CONTENT_FRESHNESS_ACTIVATION_KEY =
   'seed-activated:supply_chain:portwatch-ports:content-freshness';
@@ -186,9 +197,19 @@ export function buildPortActivityMetaPayload({ countryData, coverage, now = Date
  */
 export function contentClockFor(priorPayload, upstreamMaxDate, refreshedAt) {
   const prior = priorPayload && typeof priorPayload === 'object' ? priorPayload : null;
+  const hasUsableUpstreamDate = typeof upstreamMaxDate === 'string'
+    && Number.isFinite(Date.parse(upstreamMaxDate + 'T23:59:59.999Z'));
   const asofUnchanged = prior !== null
-    && upstreamMaxDate != null
+    && hasUsableUpstreamDate
     && prior.asof === upstreamMaxDate;
+
+  // A failed preflight is not evidence of fresh content. Keep the known clock
+  // so a successful fallback fetch cannot make frozen upstream data look new.
+  if (prior !== null
+    && !hasUsableUpstreamDate
+    && Number.isFinite(prior.contentAsOfChangedAt)) {
+    return prior.contentAsOfChangedAt;
+  }
 
   // Upstream advanced: we observed new content now. Anchoring to `refreshedAt`
   // rather than the observation date is what makes this clock independent of

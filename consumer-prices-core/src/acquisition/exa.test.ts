@@ -40,8 +40,94 @@ describe('ExaProvider.extract', () => {
       };
     };
     expect(body.summary.query).toContain('Extract the grocery price.');
-    expect(body.summary.schema.properties.price.type).toEqual(['number', 'null']);
+    expect(body.summary.schema.properties.price).toEqual({
+      anyOf: [{ type: 'number' }, { type: 'null' }],
+      description: 'Retail price',
+    });
     expect(body.summary.schema.required).toEqual(['productName', 'price']);
+  });
+
+  // Page text is the ground truth the caller verifies an extracted price
+  // against (price-evidence.ts, #6182) — requested in the SAME /contents call
+  // that produces the structured summary, and bounded so a catalogue page
+  // cannot balloon the response.
+  it('requests bounded page text and returns it as pageContent', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          results: [{ summary: '{"productName":"White Bread","price":4.95}', text: 'White Bread SGD 4.95' }],
+        }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema, { timeout: 1000 });
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as {
+      text: { maxCharacters: number };
+    };
+    expect(body.text).toEqual({ maxCharacters: 30_000 });
+    expect(result.pageContent).toBe('White Bread SGD 4.95');
+  });
+
+  // Mirror of firecrawl.test.ts's omission pair: pageContent feeds the
+  // anti-fabrication evidence gate, and an inverted/broken guard here would
+  // flip every Exa extraction from 'no-content passthrough' to hard reject.
+  it('omits pageContent when the response has no text field', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ results: [{ summary: '{"productName":"White Bread","price":4.95}' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema, { timeout: 1000 });
+    expect(result.pageContent).toBeUndefined();
+  });
+
+  it('omits pageContent when the response text is whitespace-only', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(
+        JSON.stringify({ results: [{ summary: '{"productName":"White Bread","price":4.95}', text: '   ' }] }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      ),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    const result = await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema, { timeout: 1000 });
+    expect(result.pageContent).toBeUndefined();
+  });
+
+  // Regression lock for #6182. Exa's /contents validator requires `type` to be a
+  // scalar; a `type: ['number','null']` array is rejected with
+  // HTTP 400 INVALID_REQUEST_BODY ("expected \"string\" at
+  // summary.schema.properties.price.type or ... or expected \"null\" at ...").
+  // Because every nullable field emits that array, EVERY Exa extraction call
+  // 400s, and two consecutive failures open the per-scrape Exa cooldown — so the
+  // opt-in fallback for the priority retailers never ran once. Verified live:
+  // the array form returns 400 while this anyOf form returns 200 with a real
+  // null price. A mocked fetch cannot see that 400, so assert the wire shape.
+  it('never emits an array-valued "type" that Exa rejects', async () => {
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ results: [{ summary: '{"productName":"x","price":null}' }] }), { status: 200 }),
+    );
+    vi.stubGlobal('fetch', fetchMock);
+
+    await new ExaProvider('test-key').extract('https://retailer.example/p/bread', schema);
+
+    const body = JSON.parse(String((fetchMock.mock.calls[0]?.[1] as RequestInit).body)) as unknown;
+    const arrayTypes: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (!node || typeof node !== 'object') return;
+      for (const [key, value] of Object.entries(node as Record<string, unknown>)) {
+        if (key === 'type' && Array.isArray(value)) arrayTypes.push(`${path}.${key}`);
+        walk(value, `${path}.${key}`);
+      }
+    };
+    walk(body, '$');
+    expect(arrayTypes).toEqual([]);
   });
 
   it('maps bounded Exa search results and forwards the host policy', async () => {

@@ -59,6 +59,178 @@ export interface ResiliencePillar {
   domains: ResilienceDomain[];
 }
 
+export interface GetResilienceIndicatorsRequest {
+  countryCode: string;
+}
+
+export interface GetResilienceIndicatorsResponse {
+  countryCode: string;
+  methodology: string;
+  formula: string;
+  dataVersion: string;
+  schemaVersion: string;
+  constructVersions?: ResilienceRuntimeConstructVersions;
+  dimensions: ResilienceIndicatorDimension[];
+  indicators: ResilienceIndicator[];
+}
+
+export interface ResilienceRuntimeConstructVersions {
+  energy: string;
+  education: string;
+  financialSystemExposure: string;
+}
+
+export interface ResilienceIndicatorDimension {
+  id: string;
+  score: number;
+  coverage: number;
+  prePolicyScore: number;
+  policyCapName: string;
+  policyCapFactor: number;
+  literalContributionTotal: number;
+  effectiveContributionTotal: number;
+  active: boolean;
+  reconciliationAvailable: boolean;
+  reason: string;
+}
+
+export interface ResilienceIndicator {
+  id: string;
+  dimension: string;
+  tier: string;
+  active: boolean;
+  includedInDimensionScore: boolean;
+  state: string;
+  reason: string;
+  normalizedScoreAvailable: boolean;
+  normalizedScore: number;
+  nominalWeight: number;
+  runtimeWeightAvailable: boolean;
+  runtimeWeight: number;
+  scoringWeightShareAvailable: boolean;
+  scoringWeightShare: number;
+  literalContribution: number;
+  effectiveContribution: number;
+  imputationClass: string;
+  sourceYearAvailable: boolean;
+  sourceYear: number;
+  observationAgeAvailable: boolean;
+  observationAgeValue: number;
+  observationAgeUnit: string;
+  observationAgeBasis: string;
+  retrievedAtAvailable: boolean;
+  retrievedAt: string;
+  observedAtAvailable: boolean;
+  observedAt: string;
+  sources: ResilienceIndicatorSource[];
+  rawValue?: ResilienceIndicatorRawValue;
+}
+
+export interface ResilienceIndicatorSource {
+  key: string;
+  name: string;
+  attribution: string;
+  license: string;
+  url: string;
+  observationProvenance: boolean;
+  licenseUrl: string;
+  attributionUrl: string;
+}
+
+export interface ResilienceIndicatorRawValue {
+  available: boolean;
+  numericValue: number;
+  numericValueAvailable: boolean;
+  textValue: string;
+  textValueAvailable: boolean;
+  unit: string;
+  status: string;
+  reason: string;
+}
+
+export interface GetFoodStocksRequest {
+  countryCode: string;
+  commodity: string;
+}
+
+export interface GetFoodStocksResponse {
+  records: FoodStockRecord[];
+  fetchedAt: string;
+  unavailable: boolean;
+  calorieWeightedStocksToUse: number;
+}
+
+export interface FoodStockRecord {
+  countryCode: string;
+  commodity: string;
+  marketingYear: string;
+  stocksToUse: number;
+  hasStocksToUse: boolean;
+  endingStocksTmt: number;
+  hasEndingStocks: boolean;
+  totalUseTmt: number;
+  productionTmt: number;
+  consumptionTmt: number;
+  importsTmt: number;
+  exportsTmt: number;
+  unit: string;
+  source: string;
+}
+
+export interface GetDemographicsCapabilityRequest {
+  countryCode: string;
+}
+
+export interface GetDemographicsCapabilityResponse {
+  countryCode: string;
+  available: boolean;
+  fetchedAt: string;
+  stages: DemographicsCapabilityStage[];
+  ageStructure?: DemographicsAgeStructure;
+  education?: DemographicsEducation;
+  industrialWorkforce?: DemographicsIndustrialWorkforce;
+}
+
+export interface DemographicsCapabilityStage {
+  name: string;
+  status: string;
+  fetchedAt: string;
+  recordCount: number;
+  newestObservationYear: number;
+}
+
+export interface DemographicsAgeStructure {
+  available: boolean;
+  medianAgeYears?: CapabilityObservation;
+  oldAgeDependencyRatioPercent?: CapabilityObservation;
+  totalDependencyRatioPercent?: CapabilityObservation;
+  workingAgePopulationPeople?: CapabilityObservation;
+  workingAgePopulationProjected10yPeople?: CapabilityObservation;
+}
+
+export interface CapabilityObservation {
+  available: boolean;
+  value: number;
+  year: number;
+  source: string;
+  unit: string;
+}
+
+export interface DemographicsEducation {
+  available: boolean;
+  tertiaryEnrollmentGrossPercent?: CapabilityObservation;
+  stemGraduatesSharePercent?: CapabilityObservation;
+  researchersPerMillion?: CapabilityObservation;
+}
+
+export interface DemographicsIndustrialWorkforce {
+  available: boolean;
+  craftTradesEmploymentPeople?: CapabilityObservation;
+  plantMachineOperatorsEmploymentPeople?: CapabilityObservation;
+  trainedIndustrialWorkforcePeople?: CapabilityObservation;
+  manufacturingEmploymentSharePercent?: CapabilityObservation;
+}
+
 export interface GetResilienceRankingRequest {
 }
 
@@ -117,10 +289,6 @@ export interface ResilienceRankingCacheState {
   count: number;
   scored: number;
   total: number;
-}
-
-export interface ResilienceRuntimeConstructVersions {
-  energy: string;
 }
 
 export interface ResilienceRuntimeIntervalState {
@@ -201,6 +369,82 @@ export class ResilienceServiceClient {
     }
 
     return await resp.json() as GetResilienceScoreResponse;
+  }
+
+  async getResilienceIndicators(req: GetResilienceIndicatorsRequest, options?: ResilienceServiceCallOptions): Promise<GetResilienceIndicatorsResponse> {
+    let path = "/api/resilience/v1/get-resilience-indicators";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("countryCode", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetResilienceIndicatorsResponse;
+  }
+
+  async getFoodStocks(req: GetFoodStocksRequest, options?: ResilienceServiceCallOptions): Promise<GetFoodStocksResponse> {
+    let path = "/api/resilience/v1/get-food-stocks";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("countryCode", String(req.countryCode));
+    if (req.commodity != null && req.commodity !== "") params.set("commodity", String(req.commodity));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetFoodStocksResponse;
+  }
+
+  async getDemographicsCapability(req: GetDemographicsCapabilityRequest, options?: ResilienceServiceCallOptions): Promise<GetDemographicsCapabilityResponse> {
+    let path = "/api/resilience/v1/get-demographics-capability";
+    const params = new URLSearchParams();
+    if (req.countryCode != null && req.countryCode !== "") params.set("countryCode", String(req.countryCode));
+    const url = this.baseURL + path + (params.toString() ? "?" + params.toString() : "");
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...this.defaultHeaders,
+      ...options?.headers,
+    };
+
+    const resp = await this.fetchFn(url, {
+      method: "GET",
+      headers,
+      signal: options?.signal,
+    });
+
+    if (!resp.ok) {
+      return this.handleError(resp);
+    }
+
+    return await resp.json() as GetDemographicsCapabilityResponse;
   }
 
   async getResilienceRanking(_req: GetResilienceRankingRequest, options?: ResilienceServiceCallOptions): Promise<GetResilienceRankingResponse> {

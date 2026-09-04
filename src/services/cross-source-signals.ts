@@ -1,6 +1,6 @@
 import { getHydratedData } from '@/services/bootstrap';
 import { getRpcBaseUrl } from '@/services/rpc-client';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import type { ListCrossSourceSignalsResponse } from '@/generated/client/worldmonitor/intelligence/v1/service_client';
 import { IntelligenceServiceClient } from '@/services/generated-rpc-clients';
 
@@ -13,7 +13,11 @@ const EMPTY: ListCrossSourceSignalsResponse = { signals: [], evaluatedAt: 0, com
 
 export async function fetchCrossSourceSignals(): Promise<ListCrossSourceSignalsResponse> {
   const hydrated = getHydratedData('crossSourceSignals') as ListCrossSourceSignalsResponse | undefined;
-  if (hydrated?.signals?.length) return hydrated;
+  if (hydrated?.signals?.length) {
+    breaker.recordSuccess(hydrated);
+    return hydrated;
+  }
+
   return breaker.execute(async () => {
     return await client.listCrossSourceSignals({}, { signal: AbortSignal.timeout(15_000) });
   }, EMPTY, { shouldCache: (r) => r.signals.length > 0 });

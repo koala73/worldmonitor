@@ -208,6 +208,70 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
     });
   });
 
+  // ─── font-src: one invariant replaces the sixteen host rules ───────────────
+  //
+  // Rounds 1-8 pinned a host at a time (gstatic, perplexity, doubao, migaku,
+  // alicdn, slant, shopback, simplycodes, scite, typekit, fontawesome,
+  // merci-app, yiban, marmot, unpkg, jsDelivr, cdnjs) and the issue regressed
+  // each time a new extension injected a new host — round 9 would have been
+  // assets.faircado.com. The app ships `font-src 'self' data:` and self-hosts
+  // every face, so a cross-origin font block can never be ours; that invariant
+  // is now applied once instead of enumerated.
+  //
+  // The host-pinning negatives those rounds carried (lookalike hosts, sibling
+  // registrable domains, off-signature paths, the shared fontFile end-anchor)
+  // asserted a property this design deliberately drops for font-src. What
+  // replaces them is below: the policy-aware off-switch, the protocol conjunct,
+  // and the directive scope.
+  describe('font-src cross-origin invariant (TR rounds 1-9)', () => {
+    it('suppresses a never-before-seen injected font host', () => {
+      // The round-9 escape, verbatim: 30 events in one second from one page
+      // load, a font fallback chain from the Faircado shopping extension.
+      assert.ok(suppress('enforce', 'font-src', 'https://assets.faircado.com/fonts/Hanken_Grotesk/HankenGrotesk-Regular.woff2', '', false, null, false, false));
+      // A host nobody has ever reported — the whole point of the change.
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.evil.example/s/mulish/v18/font.woff2', '', false, null, false, false));
+      // Extensionless and query-only shapes that defeated the fontFile matcher
+      // in rounds 3 and 7 are covered by the same invariant.
+      assert.ok(suppress('enforce', 'font-src', 'https://use.typekit.net/af/abc123/def456/27/l', '', false, null, false, false));
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/l/font?kit=abc&skey=def', '', false, null, false, false));
+    });
+
+    it('still surfaces a font block when the policy DOES admit a cross-origin source', () => {
+      // The load-bearing safety property of the new design: suppression is
+      // licensed by the policy, not assumed. If the app ever adopts a
+      // cross-origin font host, every font block reports again — including the
+      // extension noise, which is the correct trade at that point.
+      assert.ok(!suppress('enforce', 'font-src', 'https://assets.faircado.com/fonts/x.woff2', '', false, null, false, true));
+      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/x.woff2', '', false, null, false, true));
+    });
+
+    it('does NOT suppress non-https font-src schemes', () => {
+      // Pins the protocol conjunct. http: on an https page is mixed content —
+      // a different failure worth seeing, and not what the CSP invariant covers.
+      assert.ok(!suppress('enforce', 'font-src', 'http://assets.faircado.com/fonts/x.woff2', '', false, null, false, false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://fonts.gstatic.com/s/a/b.woff2', '', false, null, false, false));
+    });
+
+    it('leaves other directives host-pinned — the invariant is font-src only', () => {
+      // A blocked webfont is cosmetic and already mitigated; a blocked SCRIPT or
+      // STYLESHEET can indicate a real injection vector, so those keep their
+      // exact-host rules. These four assertions are preserved verbatim from the
+      // per-host tests this block replaces.
+      assert.ok(!suppress('enforce', 'script-src', 'https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js', '', false));
+      assert.ok(!suppress('enforce', 'script-src', 'https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com/icon.js', '', false));
+      // A cross-origin font URI under a non-font directive is NOT covered.
+      assert.ok(!suppress('enforce', 'script-src', 'https://fonts.gstatic.com/s/mulish/v18/x.woff2', '', false, null, false, false));
+    });
+
+    it('leaves scheme-only blockedURI values to the rules below', () => {
+      // `new URL('inline')` throws; the catch must fall through rather than
+      // swallow the inline/eval/data cases the later rules own.
+      assert.ok(!suppress('enforce', 'font-src', 'nonsense-not-a-url', '', false, null, false, false));
+    });
+  });
+
   describe('third-party noise', () => {
     it('suppresses Google Translate', () => {
       assert.ok(suppress('enforce', 'connect-src', 'https://translate.gstatic.com/_/translate_http', '', false));
@@ -221,22 +285,87 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff2?display=swap', '', false));
     });
 
-    it('does NOT suppress non-woff2 Google Fonts paths with woff2 query values', () => {
-      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/font.woff?kit=abc.woff2', '', false));
+    it('suppresses the Google Fonts /l/font subsetting endpoint (TR round 7)', () => {
+      // Verbatim from the 2026-08-13T14:00Z regression event: Google-injected
+      // stylesheets (Translate-class) request SUBSETTED faces from the
+      // extensionless /l/font?kit=... endpoint, which the /s/-prefixed,
+      // extension-tested rule above cannot match.
+      assert.ok(suppress('enforce', 'font-src',
+        'https://fonts.gstatic.com/l/font?kit=1PtFg83HX_SGhgqO0yLcmjzUAuWexRNRo6uH6mSinjBIwc7EJTFEoAQw3Q&skey=9f5b077cc22e75c7&v=v18', '', false));
     });
 
-    it('does NOT suppress arbitrary third-party font-src hosts', () => {
-      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.evil.example/s/mulish/v18/font.woff2', '', false));
+    it('does NOT suppress http: on the /l/font endpoint', () => {
+      assert.ok(!suppress('enforce', 'font-src', 'http://fonts.gstatic.com/l/font?kit=abc', '', false));
+    });
+
+    it('does NOT suppress http: font-src on the injected-webfont hosts', () => {
+      // Pins the `url.protocol === 'https:'` conjunct the new rules share; the
+      // other new negatives only cover lookalike host and non-font path.
+      assert.ok(!suppress('enforce', 'font-src', 'http://migaku-public-data.migaku.com/fonts/x/cw_0.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://at.alicdn.com/t/c/font_1011144_jmo4009ffif.woff', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://www.slant.co/fonts/plus-jakarta/Display-Bold.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://static.shopback.com/fonts/ShopBackSans-Bold.woff2', '', false));
+      assert.ok(!suppress('enforce', 'font-src', 'http://images.simplycodes.com/fonts/simply-circular/CircularXXWeb-Regular.woff2', '', false));
+    });
+
+    it('suppresses the round-6 package-CDN webfonts (unpkg, jsDelivr)', () => {
+      // The exact URIs still leaking in the window strictly AFTER the round-5
+      // rules went live (03e4c1e8, 2026-08-10T14:18Z) — three events, the whole
+      // live tail of this issue. Both formats of the element-ui face appear
+      // because an @font-face src: list is tried in order.
+      assert.ok(suppress('enforce', 'font-src', 'https://unpkg.com/element-ui@2.15.6/lib/theme-chalk/fonts/element-icons.ttf', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://unpkg.com/element-ui@2.15.6/lib/theme-chalk/fonts/element-icons.woff', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.jsdelivr.net/gh/Project-Noonnu/noonfonts_2107@1.1/Pretendard-Regular.woff', '', false));
+    });
+
+    it('suppresses the round-8 cdnjs FontAwesome webfonts', () => {
+      // Every distinct URI observed in the window strictly AFTER the round-7
+      // rule went live (a769c51a, 2026-08-13T14:18Z): 171 of that window's 172
+      // events, i.e. the whole live tail of this issue. All four faces appear in
+      // both .woff2 and .ttf because an @font-face src: list is tried in order —
+      // the same fallback-chain shape the round-3 and round-6 rules were widened
+      // for. Real production URIs, so a path/extension refactor that stops
+      // matching them fails here rather than in Sentry.
+      const cdnjsFa = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/webfonts';
+      for (const face of ['fa-solid-900', 'fa-regular-400', 'fa-brands-400']) {
+        assert.ok(suppress('enforce', 'font-src', `${cdnjsFa}/${face}.woff2`, '', false));
+        assert.ok(suppress('enforce', 'font-src', `${cdnjsFa}/${face}.ttf`, '', false));
+      }
+      assert.ok(suppress('enforce', 'font-src', `${cdnjsFa}/fa-v4compatibility.woff2`, '', false));
+    });
+
+    it('does NOT suppress http: font-src on gstatic', () => {
+      // The other http: negative covers migaku/alicdn/slant; without this one,
+      // dropping gstatic's https gate leaves the whole suite green.
+      assert.ok(!suppress('enforce', 'font-src', 'http://fonts.gstatic.com/s/a/b.woff2', '', false));
+    });
+
+    it('does NOT suppress a SIBLING registrable domain, or http:, on a pinned stylesheet host', () => {
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://notfontawesome.com/releases/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://faketypekit.net/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://use.fontawesome.com/releases/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://use.typekit.net/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://p.typekit.net/p.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdn.fontawesome.com/releases/v4.7.0/css/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdn.6ppn.com/ext/assets/style.abc.css', '', false));
+    });
+
+    it('pins the end-anchor on the shared stylesheet matcher', () => {
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://www.6ppn.com/ext/assets/style.abc.css.map', '', false));
+    });
+
+    it('does NOT suppress an unrelated path on an injected-stylesheet host', () => {
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://use.fontawesome.com/unrelated/regression.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://use.typekit.net/nested/regression.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://p.typekit.net/regression.css', '', false));
     });
 
     it('suppresses Perplexity Comet overlay webfont injection (WORLDMONITOR-TR)', () => {
       assert.ok(suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/fonts/FKGroteskNeue.woff2', '', false));
       assert.ok(suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/fonts/FKGroteskNeue.woff', '', false));
-    });
-
-    it('does NOT suppress a perplexity.ai lookalike host or non-font path', () => {
-      assert.ok(!suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai.evil.com/x.woff2', '', false));
-      assert.ok(!suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/app.js', '', false));
+      // Shares the whole-chain matcher with the other font-src hosts, so the
+      // block header's "every host rule below" claim is literally true.
+      assert.ok(suppress('enforce', 'font-src', 'https://frontend-cdn.perplexity.ai/_agi_assets/fonts/FKGroteskNeue.ttf', '', false));
     });
 
     it('suppresses Doubao AI-assistant overlay KaTeX font injection (WORLDMONITOR-TR round 2)', () => {
@@ -247,9 +376,104 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/flow-ext-doubao/cdn-media-assets/KaTeX_Fraktur-Bold.b18f59e1.ttf', '', false));
     });
 
-    it('does NOT suppress a doubao.com lookalike host or non-font path', () => {
-      assert.ok(!suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com.evil.com/x.woff2', '', false));
-      assert.ok(!suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/app.js', '', false));
+    it('suppresses the Doubao .otf fallback the woff2/woff/ttf rule missed (WORLDMONITOR-TR round 3)', () => {
+      // The observed escape: an .otf face is part of the same @font-face
+      // fallback chain, so restricting the rule to woff2?/ttf leaked it.
+      assert.ok(suppress('enforce', 'font-src', 'https://lf-flow-web-cdn.doubao.com/obj/flow-doubao/flow-ext-doubao/cdn-media-assets/Montserrat-SemiBold.c57269b8.otf', '', false));
+    });
+
+    it('suppresses Google Fonts faces in every format, not just woff2 (WORLDMONITOR-TR round 3)', () => {
+      // Observed escape: fonts.gstatic.com/s/poppins/v24/*.ttf. Legacy browsers
+      // and stale injected stylesheets request ttf/woff from the same /s/ path.
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/poppins/v24/pxiEyp8kv8JHgFVrJJfedw.ttf', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://fonts.gstatic.com/s/mulish/v18/1Ptvg83HX_SGhgqk2wotcqA.woff', '', false));
+    });
+
+    it('suppresses Migaku language-extension webfont injection (WORLDMONITOR-TR round 3)', () => {
+      // Migaku injects a subsetted Chiron Hei HK webfont as many numbered
+      // chunks; 38 distinct URLs in a 14-day sample, 69% of the issue's volume.
+      assert.ok(suppress('enforce', 'font-src', 'https://migaku-public-data.migaku.com/fonts/chiron-hei-hk-webfont-2.6.7/cw_0.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://migaku-public-data.migaku.com/fonts/chiron-hei-hk-webfont-2.6.7/kx_12.woff2', '', false));
+    });
+
+    it('suppresses Alibaba iconfont CDN injection (WORLDMONITOR-TR round 3)', () => {
+      // at.alicdn.com/t/c/font_* is iconfont.cn's project CDN. One icon font
+      // requested in all three formats by an injected @font-face chain.
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/c/font_1011144_jmo4009ffif.woff?t=1719821135173', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/c/font_1011144_jmo4009ffif.woff2?t=1719821135173', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/c/font_1011144_jmo4009ffif.ttf?t=1719821135173', '', false));
+    });
+
+    it('suppresses the LEGACY alicdn /t/ path and its eot/svg chain members (WORLDMONITOR-TR round 5)', () => {
+      // iconfont.cn serves projects under both `/t/c/font_*` and the legacy
+      // `/t/font_*`. The round-3 rule pinned `/t/c/` only, so it matched almost
+      // nothing: 755 of this host's 776 events over 14d used `/t/`. These
+      // fixtures are the exact URLs observed in Sentry.
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.woff?t=1574048839056', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.ttf?t=1574048839056', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_1334179_yeeyzhmgwya.woff?t=1', '', false));
+      // The five-format chain: 223 of those 776 events were `.svg` and 1 was
+      // `.eot`; neither format was in the shared matcher before round 5.
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.svg?t=1574048839056', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://at.alicdn.com/t/font_792691_ptvyboo0bno.eot?t=1574048839056', '', false));
+    });
+
+    it('suppresses slant.co overlay webfont injection (WORLDMONITOR-TR round 3)', () => {
+      // Plus Jakarta Display in 3 weights x 2 formats, served from the
+      // injecting extension's own origin. We ship no cross-origin webfonts.
+      assert.ok(suppress('enforce', 'font-src', 'https://www.slant.co/fonts/plus-jakarta/Display-Bold.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://www.slant.co/fonts/plus-jakarta/Display-Regular.woff', '', false));
+    });
+
+    it('suppresses ShopBack cashback-extension webfont injection (WORLDMONITOR-TR round 4)', () => {
+      // ShopBackSans in 8 weight/style combinations from the extension's own
+      // static origin. 100% of the issue's volume in the window after the
+      // round-3 rules deployed — every host named there went silent, this one
+      // did not, which is what regressed the issue minutes after a resolve.
+      assert.ok(suppress('enforce', 'font-src', 'https://static.shopback.com/fonts/ShopBackSans-Bold.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://static.shopback.com/fonts/ShopBackSans-BlackItalic.woff2', '', false));
+    });
+
+    it('suppresses SimplyCodes coupon-extension webfont injection (WORLDMONITOR-TR round 4)', () => {
+      // Three families (Circular XX, Neue Haas Grotesk, Degular) under one
+      // /fonts/ root — 10 distinct URLs, the second-largest remaining slice.
+      assert.ok(suppress('enforce', 'font-src', 'https://images.simplycodes.com/fonts/simply-circular/CircularXXWeb-Regular.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://images.simplycodes.com/fonts/neue-haas-grotesk/NHaasGroteskDSPro-55Rg.woff2', '', false));
+    });
+
+    it('suppresses scite.ai citation-badge webfont injection (WORLDMONITOR-TR round 5)', () => {
+      // The only host still firing at the head of the window measured strictly
+      // after the round-4 rules were live (25 of 61 events, latest
+      // 2026-08-10T13:18Z) — i.e. the one that keeps regressing this issue.
+      // `scite` appears nowhere in src.
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.woff2?v=5', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.woff?v=5', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.ttf?v=5', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.scite.ai/assets/fonts/scite-icons/scite-icons.svg?v=5', '', false));
+    });
+
+    it('suppresses Adobe Typekit kit FONTS under font-src (WORLDMONITOR-TR round 5)', () => {
+      // Typekit serves font binaries from EXTENSIONLESS paths
+      // (/af/<hex>/<hex>/<n>/<a|d|l>), so the shared `fontFile` matcher cannot
+      // reach them and the existing style-src `.css` rule does not either. 1137
+      // events / 14d — the largest slice after migaku.
+      assert.ok(suppress('enforce', 'font-src', 'https://use.typekit.net/af/bcdde2/00000000000000003b9af1d8/27/a?primer=7cdcb44be4a7', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://use.typekit.net/af/173a8e/00000000000000003b9af1d9/27/d?primer=7cdcb44be4a7', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://use.typekit.net/af/5424c6/00000000000000003b9af1de/30/l?primer=7cdcb44be4a7', '', false));
+    });
+
+    it('suppresses FontAwesome CDN webfonts under font-src (WORLDMONITOR-TR round 5)', () => {
+      // font-src counterpart of the existing style-src rule: the injected
+      // release is v4.7.0, a 2016 version this app never shipped.
+      assert.ok(suppress('enforce', 'font-src', 'https://use.fontawesome.com/releases/v4.7.0/fonts/fontawesome-webfont.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://use.fontawesome.com/releases/v4.7.0/fonts/fontawesome-webfont.ttf', '', false));
+    });
+
+    it('suppresses MerciApp, Yiban and marmot-cloud overlay webfonts (WORLDMONITOR-TR round 5)', () => {
+      assert.ok(suppress('enforce', 'font-src', 'https://assets.merci-app.com/fonts/Inter-Bold.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://assets.merci-app.com/fonts/Tropiline-Bold.woff', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://cdn.yiban.io/fonts/AlimamaShuHeiTi/AlimamaShuHeiTi-Bold.woff2', '', false));
+      assert.ok(suppress('enforce', 'font-src', 'https://antbank-cdn.marmot-cloud.com/file/ee7a463b/Inter-Regular.ttf', '', false));
     });
 
     it('does NOT suppress Google Fonts under unrelated directives', () => {
@@ -293,6 +517,26 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'connect-src', 'https://cdn.jsdelivr.net/npm/world-atlas@2/countries-50m.json', '', false));
     });
 
+    it('suppresses unpkg Leaflet CSS injection under style-src* (WORLDMONITOR-J0 round 4)', () => {
+      // The only blockedURI still live in J0 on 2026-08-16. Leaflet appears
+      // nowhere in the repo (MapLibre/deck.gl render every map), and the
+      // dashboard style-src ships no cross-origin host, so this is an
+      // extension/userscript injection. Both directive spellings, since older
+      // browsers report `style-src` rather than `style-src-elem`.
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(suppress('enforce', 'style-src', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+    });
+
+    it('does NOT suppress unpkg outside style-src*, on http:, on a sibling host, or off a .css path', () => {
+      // unpkg is a general npm CDN, so the rule must stay narrow. Each negative
+      // pins one conjunct of the guard: drop any one and this test goes red.
+      assert.ok(!suppress('enforce', 'script-src', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'http://unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://cdn.unpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://notunpkg.com/leaflet@1.9.4/dist/leaflet.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css.map', '', false));
+    });
+
     it('suppresses Google Fonts CSS injection under style-src* (WORLDMONITOR-J0 round 2)', () => {
       // Extensions/user-style themes inject <link> stylesheets for families we
       // never reference (DM Sans, Syne, Roboto). We self-host all fonts, so a
@@ -301,17 +545,40 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'style-src', 'https://fonts.googleapis.com/css?family=Roboto:wght@400;500&display=swap', '', false));
     });
 
-    it('does NOT suppress fonts.googleapis.com under other directives or non-css paths', () => {
-      assert.ok(!suppress('enforce', 'font-src', 'https://fonts.googleapis.com/css2?family=DM+Sans', '', false));
-      assert.ok(!suppress('enforce', 'style-src-elem', 'https://fonts.googleapis.com/icon.js', '', false));
-    });
-
     it('suppresses 6ppn.com extension stylesheet injection (WORLDMONITOR-J0)', () => {
       assert.ok(suppress('enforce', 'style-src-elem', 'https://www.6ppn.com/ext/assets/style.CMoYtLrp.css?v=uTaroZOITRdUkyChp', '', false));
     });
 
     it('suppresses literal [email] placeholder stylesheet URL from a broken extension template', () => {
       assert.ok(suppress('enforce', 'style-src-elem', 'https://[email]', '', false));
+    });
+
+    it('suppresses FontAwesome CDN stylesheet injection (WORLDMONITOR-J0 round 3)', () => {
+      // FontAwesome 4.7.0 (a 2016 release we never shipped) loaded from the
+      // public CDN — 80% of the issue's current volume.
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://use.fontawesome.com/releases/v4.7.0/css/font-awesome-css.min.css', '', false));
+    });
+
+    it('does NOT suppress a fontawesome lookalike host or non-css path', () => {
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://use.fontawesome.com.evil.com/releases/v4.7.0/css/x.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://use.fontawesome.com/releases/v4.7.0/js/all.js', '', false));
+    });
+
+    it('suppresses Adobe Typekit stylesheet injection (WORLDMONITOR-J0 round 3)', () => {
+      // Typekit kit css from both of its hosts; we self-host every font and
+      // reference no Adobe Fonts kit.
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://use.typekit.net/izn6gyh.css', '', false));
+      assert.ok(suppress('enforce', 'style-src-elem', 'https://p.typekit.net/p.css?s=1&k=izn6gyh&ht=tk&f=16927.17005.17006&a=5344842&app=typekit&e=css', '', false));
+    });
+
+    it('does NOT suppress a typekit lookalike host or non-css path', () => {
+      // BOTH arms of the hostname OR need lookalike cover — a mutation that
+      // widened only the p.typekit.net side left every use.typekit.net
+      // assertion green, so testing one arm proves nothing about the other.
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://use.typekit.net.evil.com/izn6gyh.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://use.typekit.net/kit.js', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://p.typekit.net.evil.com/p.css', '', false));
+      assert.ok(!suppress('enforce', 'style-src-elem', 'https://p.typekit.net/kit.js', '', false));
     });
 
     it('does NOT suppress arbitrary third-party style-src hosts', () => {
@@ -385,6 +652,29 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(!suppress('enforce', 'script-src-elem', 'https://www.youtube.com/embed/abc', '', false, FIRST_PARTY_CONVEX));
     });
 
+    it('suppresses script-src-elem for HeyTap Browser vendor script injection (WORLDMONITOR-HP)', () => {
+      // Verbatim production value: HeyTap Browser 40.10.19 on an Oppo PDVM00
+      // injects its own chrome scripts from the vendor asset CDN into every
+      // page it renders. `heytap` appears nowhere in our sources.
+      assert.ok(suppress('enforce', 'script-src-elem', 'https://dhfs.heytapimage.com/2026/02/25/dfd2694e72835a1b58beaef5900ac938.js', '', false, FIRST_PARTY_CONVEX));
+      // Browser-variant directive, same injection.
+      assert.ok(suppress('enforce', 'script-src', 'https://dhfs.heytapimage.com/2025/07/01/d39da93ac9178b0548d25a1ee8fed5fb.js', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress a heytapimage lookalike host', () => {
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://dhfs.heytapimage.com.evil.com/a.js', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://cdn.heytapimage.com/a.js', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress first-party script-src blocks that share the cross-origin shape (WORLDMONITOR-HP history)', () => {
+      // `'strict-dynamic'` means these are cross-origin-and-blocked exactly
+      // like the HeyTap script, but they are OUR scripts failing to carry the
+      // nonce forward — a real defect the vendor pin must not swallow. Both
+      // shapes appear in HP's own June/July history.
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://clerk.worldmonitor.app/npm/@clerk/ui@1/dist/ui.browser.js', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'script-src-elem', 'https://www.worldmonitor.app/assets/locale-zh-Bl6_8Wci.js', '', false, FIRST_PARTY_CONVEX));
+    });
+
     it('suppresses frame-src for Zscaler corporate proxy injection', () => {
       assert.ok(suppress('enforce', 'frame-src', 'https://gateway.zscloud.net/auth/sso', '', false, FIRST_PARTY_CONVEX));
     });
@@ -412,10 +702,27 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
       assert.ok(suppress('enforce', 'frame-src', 'https://h5player.anzz.site', '', false, FIRST_PARTY_CONVEX));
     });
 
+    it('suppresses frame-src for the div.show injected frame (WORLDMONITOR-HT)', () => {
+      // Origin-only frame to a host that appears nowhere in our source, seen
+      // repeatedly across many users — the stable head of HT, unlike its
+      // rotating merchant-domain tail below.
+      assert.ok(suppress('enforce', 'frame-src', 'https://div.show', '', false, FIRST_PARTY_CONVEX));
+    });
+
     it('does NOT suppress frame-src for lookalike filter-vendor hosts', () => {
       assert.ok(!suppress('enforce', 'frame-src', 'https://netstar-inc.com.evil.com', '', false, FIRST_PARTY_CONVEX));
       assert.ok(!suppress('enforce', 'frame-src', 'https://clients6.google.com.evil.com', '', false, FIRST_PARTY_CONVEX));
       assert.ok(!suppress('enforce', 'frame-src', 'https://h5player.anzz.site.evil.com', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://div.show.evil.com', '', false, FIRST_PARTY_CONVEX));
+      // Pinned to the exact observed shape, so a pathful or http: frame on the
+      // same host still reports — a destination match alone is not provenance.
+      assert.ok(!suppress('enforce', 'frame-src', 'https://div.show/embed', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'http://div.show', '', false, FIRST_PARTY_CONVEX));
+      // Sibling registrable domain + subdomain: a suffix-match refactor would
+      // swallow both, and `div.show.evil.com` alone would not catch it.
+      assert.ok(!suppress('enforce', 'frame-src', 'https://xdiv.show', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://sub.div.show', '', false, FIRST_PARTY_CONVEX));
+      assert.ok(!suppress('enforce', 'frame-src', 'https://cdn.anzz.site', '', false, FIRST_PARTY_CONVEX));
     });
 
     it('does NOT suppress frame-src for arbitrary third-party hosts (rotating extension long tail stays surfaced)', () => {
@@ -452,6 +759,33 @@ describe('CSP violation filter (shouldSuppressCspViolation)', () => {
 
     it('suppresses img-src to tech.worldmonitor.app subdomain', () => {
       assert.ok(suppress('enforce', 'img-src', 'https://tech.worldmonitor.app/favico/tech/favicon-32x32.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    // Clerk avatar CDN — the only cross-origin image host our UI loads (the
+    // Clerk UserButton avatar). Our img-src allows every https: host, so an
+    // enforced block on img.clerk.com is the same mutated-policy class as the
+    // first-party rules above (WORLDMONITOR-JP round 2, Firefox privacy
+    // extensions stripping `https:` from img-src).
+    it('suppresses img-src to img.clerk.com (Clerk avatar, WORLDMONITOR-JP)', () => {
+      assert.ok(suppress('enforce', 'img-src', 'https://img.clerk.com/eyJ0eXBlIjoicHJveHkifQ?width=200', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress http:// img-src to img.clerk.com (wrong-scheme block must surface)', () => {
+      assert.ok(!suppress('enforce', 'img-src', 'http://img.clerk.com/eyJ0eXBlIjoicHJveHkifQ', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress img-src to suffix-spoof `img.clerk.com.evil.com`', () => {
+      assert.ok(!suppress('enforce', 'img-src', 'https://img.clerk.com.evil.com/pixel.gif', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress img-src to other clerk.com hosts (rule is exact-host)', () => {
+      // Only the avatar CDN is expected; a block on any other clerk.com host
+      // is not a known injection pattern and must surface.
+      assert.ok(!suppress('enforce', 'img-src', 'https://clerk.com/logo.png', '', false, FIRST_PARTY_CONVEX));
+    });
+
+    it('does NOT suppress connect-src to img.clerk.com (rule is scoped to img-src)', () => {
+      assert.ok(!suppress('enforce', 'connect-src', 'https://img.clerk.com/avatar', '', false, FIRST_PARTY_CONVEX));
     });
 
     it('does NOT suppress img-src to a foreign host', () => {

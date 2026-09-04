@@ -54,7 +54,7 @@ function stateOf(view: WatchlistTableView<Item>): ViewState {
 }
 
 type Internals = {
-  computeVirtualStart(scrollTop: number, list: Item[]): number;
+  computeVirtualStart(scrollTop: number, list: Item[], rowHeightPx?: number): number;
   getFilteredSorted(): Item[];
 };
 
@@ -102,6 +102,16 @@ describe('WatchlistTableView virtualization', () => {
     assert.match(html, /SYM043/);
     assert.doesNotMatch(html, /SYM044/);
     assert.doesNotMatch(html, /SYM617/);
+    assert.match(html, /<th scope="col"[^>]*data-sortkey="symbol-asc"[^>]*aria-sort="ascending"/);
+    assert.doesNotMatch(html, /data-sortkey="rank-desc"[^>]*aria-sort=/);
+  });
+
+  it('derives aria-sort from the active sort option key suffix', () => {
+    const view = createView();
+    stateOf(view).sort = 'rank-desc';
+    const html = view.render();
+    assert.match(html, /<th scope="col"[^>]*data-sortkey="rank-desc"[^>]*aria-sort="descending"/);
+    assert.doesNotMatch(html, /data-sortkey="symbol-asc"[^>]*aria-sort=/);
   });
 
   it('keeps the full sorted list scrollable by shifting the virtual window', () => {
@@ -113,7 +123,7 @@ describe('WatchlistTableView virtualization', () => {
 
     assert.equal(countRows(html), 44);
     assert.match(html, /watchlist-virtual-spacer-top/);
-    assert.match(html, /height:6600px/);
+    assert.match(html, /height:calc\(6600px \* var\(--wm-panel-effective-scale, 1\)\)/);
     assert.match(html, /SYM200/);
     assert.match(html, /SYM243/);
     assert.doesNotMatch(html, /SYM199/);
@@ -163,7 +173,11 @@ describe('WatchlistTableView virtualization', () => {
     const html = view.render();
 
     assert.match(html, /watchlist-virtual-spacer-top/);
-    assert.match(html, /height:570px/, 'top spacer includes 10 rows plus the measured expanded detail height');
+    assert.match(
+      html,
+      /height:calc\(330px \* var\(--wm-panel-effective-scale, 1\) \+ 240px\)/,
+      'top spacer scales its rows and includes the measured expanded detail height',
+    );
     assert.doesNotMatch(html, /Detail SYM002/, 'off-window expanded detail should be represented by spacer height, not mounted');
   });
 
@@ -199,6 +213,19 @@ describe('WatchlistTableView virtualization', () => {
     // engaging at the bottom before the fix.
     assert.equal(internals.computeVirtualStart(10_000_000, list), maxStart);
     assert.equal(internals.computeVirtualStart(0, list), 0);
+  });
+
+  it('uses the measured scaled row height for scroll→window mapping', () => {
+    const view = createView();
+    const internals = internalsOf(view);
+    const list = internals.getFilteredSorted();
+
+    const scrollTop = 200 * 66;
+    assert.equal(
+      internals.computeVirtualStart(scrollTop, list, 66),
+      194,
+      '200% rows must divide scrollTop by 66px rather than the 33px base height',
+    );
   });
 
   it('subtracts the expanded-detail height from the scroll→window mapping when the expanded row is above', () => {
@@ -252,9 +279,13 @@ describe('WatchlistTableView virtualization', () => {
 
     const html = view.render();
 
-    // bottom spacer = (618 - 44) rows * 33 + 200 detail = 18942 + 200 = 19142
+    // bottom spacer = (618 - 44) rows * scaled 33px + 200px measured detail.
     assert.match(html, /watchlist-virtual-spacer-bottom/);
-    assert.match(html, /height:19142px/, 'bottom spacer includes off-window expanded-detail height');
+    assert.match(
+      html,
+      /height:calc\(18942px \* var\(--wm-panel-effective-scale, 1\) \+ 200px\)/,
+      'bottom spacer scales its rows and includes off-window expanded-detail height',
+    );
     assert.doesNotMatch(html, /watchlist-virtual-spacer-top/, 'no top spacer at virtualStart=0');
     assert.doesNotMatch(html, /Detail SYM580/, 'off-window expanded detail is spacer height, not mounted');
   });

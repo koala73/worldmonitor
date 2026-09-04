@@ -22,10 +22,14 @@ import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   postCreateCheckout,
+  createDefaultCheckoutTransportDeps,
   RETRYABLE_CHECKOUT_STATUSES,
   CHECKOUT_RETRY_DELAY_MS,
   type CreateCheckoutTransportDeps,
 } from '../src/services/checkout-transport';
+import {
+  createDefaultCheckoutTransportDeps as createProCheckoutTransportDeps,
+} from '../pro-test/src/services/checkout-transport.ts';
 
 type FetchOutcome = { response: Response } | { throws: Error };
 
@@ -220,4 +224,71 @@ describe('postCreateCheckout transport', () => {
     assert.equal(calls.length, 2);
     assert.equal(signalsIssued, 2, 'each attempt needs its own timeout budget');
   });
+});
+
+/**
+ * WORLDMONITOR-109: Chrome Mobile 101 (and the other Baseline-2024 gaps) has
+ * AbortSignal but not AbortSignal.timeout, and calling timeout() throws
+ * TypeError before fetch runs. `tests/pro-timeout-signal.test.mts` covers the
+ * helper directly; this covers the WIRING — that each root's real
+ * `createDefaultCheckoutTransportDeps()` actually reaches the fallback, rather
+ * than the helper being correct while a deps factory still closes over a bare
+ * `AbortSignal.timeout`.
+ */
+async function withMissingAbortSignalTimeout<T>(fn: () => T | Promise<T>): Promise<T> {
+  const original = Object.getOwnPropertyDescriptor(AbortSignal, 'timeout');
+  Object.defineProperty(AbortSignal, 'timeout', {
+    configurable: true,
+    enumerable: true,
+    writable: true,
+    value: undefined,
+  });
+  try {
+    return await fn();
+  } finally {
+    if (original) Object.defineProperty(AbortSignal, 'timeout', original);
+    else delete (AbortSignal as { timeout?: unknown }).timeout;
+  }
+}
+
+const TIMEOUT_HELPERS = [
+  { label: 'src checkout-transport', create: createDefaultCheckoutTransportDeps },
+  { label: '/pro checkout-transport', create: createProCheckoutTransportDeps },
+] as const;
+
+describe('createTimeoutSignal wiring without AbortSignal.timeout (WORLDMONITOR-109)', () => {
+  for (const { label, create } of TIMEOUT_HELPERS) {
+    it(`${label} does not throw when AbortSignal.timeout is missing`, async () => {
+      await withMissingAbortSignalTimeout(() => {
+        const signal = create().createTimeoutSignal(5_000);
+        assert.equal(signal.aborted, false);
+        assert.equal(typeof signal.addEventListener, 'function');
+      });
+    });
+
+    it(`${label} still aborts after the timeout budget without AbortSignal.timeout`, async () => {
+      await withMissingAbortSignalTimeout(async () => {
+        const signal = create().createTimeoutSignal(25);
+        assert.equal(signal.aborted, false);
+        await new Promise((resolve) => setTimeout(resolve, 80));
+        assert.equal(signal.aborted, true);
+      });
+    });
+
+    it(`${label} uses native AbortSignal.timeout when it is a function`, () => {
+      const original = AbortSignal.timeout;
+      const seen: number[] = [];
+      AbortSignal.timeout = (ms) => {
+        seen.push(ms);
+        return original.call(AbortSignal, ms);
+      };
+      try {
+        const signal = create().createTimeoutSignal(1_234);
+        assert.deepEqual(seen, [1_234]);
+        assert.equal(signal.aborted, false);
+      } finally {
+        AbortSignal.timeout = original;
+      }
+    });
+  }
 });

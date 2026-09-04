@@ -140,6 +140,44 @@ export function settledDirtyKeys(
   return settled;
 }
 
+/**
+ * #4746: read-modify-write projection for ADDING dirty keys. Two same-user
+ * tabs share one persisted marker set; a wholesale overwrite by the second
+ * tab drops the first tab's pending markers. Union with whatever the entry
+ * already holds (empty for another user's entry — parsePersistedDirtyKeys
+ * refuses cross-user reads — so the write correctly re-scopes it).
+ */
+export function unionPersistedDirtyKeys(
+  raw: string | null,
+  allowedKeys: Iterable<string>,
+  userId: string,
+  additions: Iterable<string>,
+): { userId: string; keys: string[] } {
+  const merged = new Set(parsePersistedDirtyKeys(raw, allowedKeys, userId));
+  const allowed = new Set(allowedKeys);
+  for (const key of additions) {
+    if (typeof key === 'string' && allowed.has(key)) merged.add(key);
+  }
+  return { userId, keys: [...merged] };
+}
+
+/**
+ * #4746: read-modify-write projection for SETTLING dirty keys. Removes only
+ * the settled keys; a wholesale overwrite here would resurrect nothing but
+ * could drop another tab's still-pending markers.
+ */
+export function withoutPersistedDirtyKeys(
+  raw: string | null,
+  allowedKeys: Iterable<string>,
+  userId: string,
+  removals: Iterable<string>,
+): { userId: string; keys: string[] } {
+  const remove = new Set(removals);
+  const keys = parsePersistedDirtyKeys(raw, allowedKeys, userId)
+    .filter((key) => !remove.has(key));
+  return { userId, keys };
+}
+
 export function parsePersistedDirtyKeys(
   raw: string | null,
   allowedKeys: Iterable<string>,
@@ -191,6 +229,12 @@ export interface CloudPrefsMigrationOptions {
   canadaArctic?: {
     optInSources?: ReadonlyArray<string>;
   };
+  canadaDepth?: {
+    optInSources?: ReadonlyArray<string>;
+  };
+  crisisDesk?: {
+    optInSources?: ReadonlyArray<string>;
+  };
 }
 
 export function buildMigrations(
@@ -201,6 +245,8 @@ export function buildMigrations(
   const strategic = options.strategic ?? {};
   const regionalRollout = options.regionalRollout ?? {};
   const canadaArctic = options.canadaArctic ?? {};
+  const canadaDepth = options.canadaDepth ?? {};
+  const crisisDesk = options.crisisDesk ?? {};
   return {
     2: (data) => migrateDisabledFeedsV2(data, feedsByCategory),
     3: (data) => migrateFrontlineEuropeDefaultsV3(
@@ -221,6 +267,8 @@ export function buildMigrations(
       regionalRollout.targets ?? [],
     ),
     6: (data) => migrateCanadaArcticOptInsV6(data, canadaArctic.optInSources ?? []),
+    7: (data) => migrateCanadaDepthOptInsV7(data, canadaDepth.optInSources ?? []),
+    8: (data) => migrateCrisisDeskOptInsV8(data, crisisDesk.optInSources ?? []),
   };
 }
 
@@ -495,6 +543,76 @@ export function migrateCanadaArcticOptInsV6(
 
   console.log(
     `[prefs] schema-6 migration: disabled ${updated.length - parsed.length} Canada/Arctic opt-in source(s)`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
+}
+
+/**
+ * Schema-7 migration for the Canada depth pack (#6604/#6605).
+ *
+ * Copy of migrateCanadaArcticOptInsV6: insert ONLY the new opt-in names.
+ * Schema 6 already ran for returners; a new App.ts localStorage key alone
+ * is not enough — cloud blobs need this version bump.
+ */
+export function migrateCanadaDepthOptInsV7(
+  data: Record<string, unknown>,
+  optInSources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (
+    !Array.isArray(parsed)
+    || parsed.length === 0
+    || parsed.some((name) => typeof name !== 'string')
+  ) return data;
+
+  const existing = new Set(parsed);
+  const updated = [...parsed];
+  for (const name of optInSources) {
+    if (!existing.has(name)) updated.push(name);
+  }
+  if (updated.length === parsed.length) return data;
+
+  console.log(
+    `[prefs] schema-7 migration: disabled ${updated.length - parsed.length} Canada depth opt-in source(s)`,
+  );
+  return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
+}
+
+/**
+ * Schema-8 migration for the validated crisis-desk pack (#6813-#6830).
+ *
+ * Only the reviewed opt-in companions are inserted into a non-empty denylist.
+ * English and strategic floor defaults remain enabled. Empty or malformed
+ * states stay untouched because they do not prove a returning profile.
+ */
+export function migrateCrisisDeskOptInsV8(
+  data: Record<string, unknown>,
+  optInSources: ReadonlyArray<string>,
+): Record<string, unknown> {
+  const raw = data['worldmonitor-disabled-feeds'];
+  if (typeof raw !== 'string') return data;
+
+  let parsed: unknown;
+  try { parsed = JSON.parse(raw); } catch { return data; }
+  if (
+    !Array.isArray(parsed)
+    || parsed.length === 0
+    || parsed.some((name) => typeof name !== 'string')
+  ) return data;
+
+  const existing = new Set(parsed);
+  const updated = [...parsed];
+  for (const name of optInSources) {
+    if (!existing.has(name)) updated.push(name);
+  }
+  if (updated.length === parsed.length) return data;
+
+  console.log(
+    `[prefs] schema-8 migration: disabled ${updated.length - parsed.length} crisis-desk opt-in source(s)`,
   );
   return { ...data, 'worldmonitor-disabled-feeds': JSON.stringify(updated) };
 }

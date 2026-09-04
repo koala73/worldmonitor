@@ -93,6 +93,58 @@ test('llm-chain: fallback emits one event per attempt with the caller stage', as
   assert.ok(fail.prompt_chars > 0);
 });
 
+test('llm-chain: reaches both fixed OpenRouter free models with routing intact', async () => {
+  baseEnv();
+  const attempted = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) return { ok: true, json: async () => ({}) };
+    if (raw.includes('api.groq.com')) return { ok: false, status: 503, json: async () => ({}) };
+    if (raw.includes('openrouter.ai')) {
+      const body = JSON.parse(String(init.body || '{}'));
+      attempted.push(body);
+      const content = body.model === 'minimax/minimax-m3:free' ? 'backup free answer' : '';
+      return { ok: true, json: async () => llmJson(content) };
+    }
+    throw new Error(`unexpected fetch: ${raw}`);
+  };
+
+  const text = await callLLM('system', 'user prompt', { stage: 'brief-digest-cron' });
+
+  assert.equal(text, 'backup free answer');
+  assert.deepEqual(attempted.map(body => body.model), [
+    'google/gemini-2.5-flash',
+    'google/gemma-4-26b-a4b-it:free',
+    'minimax/minimax-m3:free',
+  ]);
+  for (const body of attempted.slice(1)) {
+    assert.deepEqual(body.reasoning, { enabled: false });
+    assert.equal(body.provider?.sort, 'throughput');
+    assert.ok(body.provider?.ignore?.includes('deepseek'));
+  }
+});
+
+test('llm-chain: an exact allowlist prevents fallback models from changing a pinned surface', async () => {
+  baseEnv();
+  const attempted = [];
+  global.fetch = async (url, init = {}) => {
+    const raw = String(url);
+    if (raw.includes('api.axiom.co')) return { ok: true, json: async () => ({}) };
+    if (!raw.includes('openrouter.ai')) throw new Error(`unexpected provider: ${raw}`);
+    const body = JSON.parse(String(init.body || '{}'));
+    attempted.push(body.model);
+    return { ok: false, status: 503, json: async () => ({}) };
+  };
+
+  const text = await callLLM('system', 'user prompt', {
+    allowedProviders: ['openrouter'],
+    stage: 'brief-digest-cron',
+  });
+
+  assert.equal(text, null);
+  assert.deepEqual(attempted, ['google/gemini-2.5-flash']);
+});
+
 test('llm-chain: rejects length-limited prose and falls through to the next provider', async () => {
   baseEnv();
   const captured = [];
@@ -225,8 +277,8 @@ test('narrative: validate_reject and success attempts both reach the ingest', as
     }
     throw new Error(`unexpected global fetch: ${raw}`);
   };
-  // Provider transport is injected: openrouter (first since #4944 U6)
-  // answers but fails validation, groq answers with the accepted payload.
+  // Provider transport is injected: the paid and fixed free OpenRouter models
+  // fail validation, then Groq answers with the accepted payload.
   __setNarrativeTransportForTests({
     fetch: async (url) => {
       const raw = String(url);
@@ -243,13 +295,21 @@ test('narrative: validate_reject and success attempts both reach the ingest', as
   );
   assert.ok(res);
   assert.equal(res.provider, 'groq');
-  assert.equal(captured.length, 2);
+  assert.equal(captured.length, 4);
   assert.equal(captured[0].stage, 'regional-narrative');
   assert.equal(captured[0].provider, 'openrouter');
   assert.equal(captured[0].ok, false);
   assert.equal(captured[0].reason, 'validate_reject');
   assert.equal(captured[0].fallback_index, 0);
-  assert.equal(captured[1].provider, 'groq');
-  assert.equal(captured[1].ok, true);
+  assert.equal(captured[1].provider, 'openrouter-free');
+  assert.equal(captured[1].ok, false);
+  assert.equal(captured[1].reason, 'validate_reject');
   assert.equal(captured[1].fallback_index, 1);
+  assert.equal(captured[2].provider, 'openrouter-free-backup');
+  assert.equal(captured[2].ok, false);
+  assert.equal(captured[2].reason, 'validate_reject');
+  assert.equal(captured[2].fallback_index, 2);
+  assert.equal(captured[3].provider, 'groq');
+  assert.equal(captured[3].ok, true);
+  assert.equal(captured[3].fallback_index, 3);
 });

@@ -23,7 +23,7 @@ description: "AI 预测面板生成跨冲突升级、金融市场走势、全球
 
 ## 校准与投射说明
 
-预测概率来自 `scripts/seed-forecasts.mjs` 中确定性的、基于规则的信号检测器，并在存在匹配的市场锚点时可选地与预测市场混合。LLM 调用不设定数值概率。它们在已评分的预测周围生成叙事场景、案例文件、分支和视角文本。种子器中默认由源支持的 LLM 路由为 OpenRouter `deepseek/deepseek-v4-flash`（主，推理已禁用）和 Groq `llama-3.3-70b-versatile`（回退）。一个被跟踪的例外：关键信号提取阶段向状态派生（市场/供应链）预测的确定性评分贡献信号强度/置信度，因此在校准问题解决之前，该阶段保持锁定在其旧有模型上（见 issue #4963）。
+预测概率来自 `scripts/seed-forecasts.mjs` 中确定性的、基于规则的信号检测器，并在存在匹配的市场锚点时可选地与预测市场混合。LLM 调用不设定数值概率。它们在已评分的预测周围生成叙事场景、案例文件、分支和视角文本。种子器中的默认路由为 OpenRouter `deepseek/deepseek-v4-flash`（主，推理已禁用）、固定的免费 OpenRouter 回退 `google/gemma-4-26b-a4b-it:free` 和 `minimax/minimax-m3:free`，然后是 Groq `openai/gpt-oss-20b`。一个被跟踪的例外：关键信号提取阶段向状态派生（市场/供应链）预测的确定性评分贡献信号强度/置信度，因此该阶段保留现有的提供商顺序，但将已停用的 Groq 模型迁移到 `openai/gpt-oss-20b`（见 issue #4963）。
 
 仅当种子器能将预测匹配到预测市场锚点时，预测概率才经过市场校准。在那些情况下，`calibration` 对象包含市场标题、市场价格、漂移和来源，显示的概率与该市场锚点混合。`calibration: null` 的预测是源自 WorldMonitor 信号规则的内部/旧有估计，而非外部市场校准的概率。
 
@@ -158,5 +158,5 @@ World Monitor 还会在 `forecast:bets:history:v1` 运行一个**仅影子评估
 
 ## API 参考
 
-- [Forecast service](/api/ForecastService.openapi.yaml) — 涵盖 `get-forecasts`、`get-forecast-scorecard`、`get-simulation-outcome`、`get-simulation-package` 和 `trigger-simulation`。
-- 关于**程序化预测生成**（在缓存的 cron 输出之外生成新概率），请参见 [MCP `generate_forecasts` 工具](/zh/mcp-overview#ai-intelligence-live-llm)。
+- [Forecast service](https://github.com/koala73/worldmonitor/blob/main/docs/api/ForecastService.openapi.yaml) — 涵盖 `get-forecasts`、`get-forecast-scorecard`、`get-simulation-outcome`、`get-simulation-package` 和 `trigger-simulation`。
+- 关于**程序化预测生成**（在缓存的 cron 输出之外生成新概率），请参见 [MCP `generate_forecasts` 工具](/zh/mcp-overview#ai-情报)。

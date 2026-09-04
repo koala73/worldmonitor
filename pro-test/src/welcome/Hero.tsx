@@ -10,14 +10,23 @@ import {
   DASHBOARD_SCREENSHOT_AVIF_SRCSET,
   DASHBOARD_SCREENSHOT_WEBP_SRCSET,
 } from '../assets/dashboard-screenshot';
+import { SILICON_CANALS_2M_URL } from '../../../shared/press';
+import heroProofStats from '../generated/hero-stats.json';
 
 const HERO_IMAGE_SIZES = '(min-width: 1072px) 1024px, (min-width: 640px) calc(100vw - 3rem), calc(100vw - 2rem)';
 
+// Homepage proof numerals are measured at build time (see heroProofStats in
+// scripts/generate-public-product-facts.mjs), never hardcoded adjectives.
+// Labels stay in locale files; numerals bypass i18n because they are universal.
 const HERO_PROOF_STATS = [
-  { valueKey: 'welcome.depth.s1v', labelKey: 'welcome.depth.s1l' },
-  { valueKey: 'welcome.depth.s2v', labelKey: 'welcome.depth.s2l' },
-  { valueKey: 'welcome.depth.s3v', labelKey: 'welcome.depth.s3l' },
-  { valueKey: 'welcome.depth.s15v', labelKey: 'welcome.depth.s15l' },
+  { value: String(heroProofStats.mapLayers), labelKey: 'welcome.depth.s1l' },
+  { value: String(heroProofStats.feeds), labelKey: 'welcome.depth.s2l' },
+  {
+    value: String(heroProofStats.providers),
+    labelKey: 'welcome.depth.s3l',
+    href: '/sources/?utm_source=welcome-hero',
+  },
+  { value: String(heroProofStats.alertOrigins), labelKey: 'welcome.depth.s15l' },
 ] as const;
 
 const HeroProofRail = () => (
@@ -27,15 +36,26 @@ const HeroProofRail = () => (
     transition={{ duration: 0.6, delay: 0.28 }}
     className="mt-8 mx-auto grid w-full max-w-[22rem] sm:max-w-3xl grid-cols-2 sm:grid-cols-4 overflow-hidden rounded-sm border border-wm-border bg-wm-card/70 text-left backdrop-blur-sm"
   >
-    {HERO_PROOF_STATS.map(({ valueKey, labelKey }, i) => (
-      <div
-        key={valueKey}
-        className={`px-4 py-3 ${i % 2 === 1 ? 'border-l border-wm-border' : ''} ${i > 1 ? 'border-t border-wm-border sm:border-t-0' : ''} ${i > 0 ? 'sm:border-l sm:border-wm-border' : ''}`}
-      >
-        <div className="font-display text-2xl font-bold text-wm-text">{t(valueKey)}</div>
-        <div className="mt-1 font-mono text-[10px] uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(labelKey)}</div>
-      </div>
-    ))}
+    {HERO_PROOF_STATS.map((stat, i) => {
+      const className = `px-4 py-3 ${i % 2 === 1 ? 'border-l border-wm-border' : ''} ${i > 1 ? 'border-t border-wm-border sm:border-t-0' : ''} ${i > 0 ? 'sm:border-l sm:border-wm-border' : ''}`;
+      const content = (
+        <>
+          <div className="font-display text-2xl font-bold text-wm-text">{stat.value}</div>
+          <div className="mt-1 font-mono text-[10px] uppercase tracking-[1px] leading-relaxed break-words text-wm-muted">{t(stat.labelKey)}</div>
+        </>
+      );
+      return 'href' in stat ? (
+        <a
+          key={stat.labelKey}
+          href={stat.href}
+          data-umami-event="welcome-cta"
+          data-umami-event-target="welcome-sources-proof"
+          className={`${className} hover:bg-wm-green/5 transition-colors`}
+        >
+          {content}
+        </a>
+      ) : <div key={stat.labelKey} className={className}>{content}</div>;
+    })}
   </motion.div>
 );
 
@@ -48,7 +68,7 @@ const ConsoleFrame = () => (
   >
     <div className="absolute -inset-8 bg-wm-green/5 blur-[60px] rounded-full pointer-events-none" aria-hidden="true" />
     <a
-      href={`${DASHBOARD_PATH}?ref=welcome-plate`}
+      href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=plate`}
       data-umami-event="welcome-cta"
       data-umami-event-target="welcome-plate"
       className="relative block border border-wm-border rounded-md overflow-hidden border-glow bg-wm-card hover:border-wm-green/40 transition-colors"
@@ -105,6 +125,9 @@ export const Hero = () => (
         <p className="text-base md:text-lg text-wm-muted max-w-2xl mx-auto mt-6">
           {t('welcome.hero.sub')}
         </p>
+        <p className="mt-3 font-mono text-[11px] uppercase tracking-widest text-wm-muted">
+          <time dateTime="2026-08-31">{t('welcome.hero.asOf')}</time>
+        </p>
       </motion.div>
 
       <motion.div
@@ -114,7 +137,7 @@ export const Hero = () => (
         className="mt-9 mx-auto flex max-w-[22rem] sm:max-w-none flex-col sm:flex-row items-stretch sm:items-center justify-center gap-4"
       >
         <a
-          href={`${DASHBOARD_PATH}?ref=welcome-hero`}
+          href={`${DASHBOARD_PATH}?utm_source=welcome&utm_content=hero`}
           data-umami-event="welcome-cta"
           data-umami-event-target="welcome-hero"
           className="w-full sm:w-auto justify-center bg-wm-green text-wm-bg px-5 sm:px-8 py-3.5 rounded-sm font-mono text-sm uppercase tracking-wide sm:tracking-wider font-bold hover:bg-green-400 transition-colors inline-flex items-center gap-2"
@@ -145,7 +168,15 @@ export const Hero = () => (
         className="mt-8 flex flex-wrap items-center justify-center gap-x-6 gap-y-3 text-xs font-mono text-wm-muted"
       >
         <WiredBadge />
-        <span>{t('welcome.hero.trustUsers')}</span>
+        <a
+          href={SILICON_CANALS_2M_URL}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="hover:text-wm-text transition-colors"
+          title="2M+ users — Silicon Canals"
+        >
+          {t('welcome.hero.trustUsers')}
+        </a>
         <span aria-hidden="true" className="text-wm-border">|</span>
         <a
           href="https://github.com/koala73/worldmonitor"
@@ -161,6 +192,10 @@ export const Hero = () => (
           <span className="text-wm-green">{t('welcome.hero.trustBuild')}</span> REST API · MCP · npm · PyPI · Go · RubyGems
         </a>
       </motion.div>
+      <div className="mx-auto mt-10 max-w-2xl text-center">
+        <h2 className="font-display text-xl font-bold text-wm-text">{t('welcome.hero.whatIsTitle')}</h2>
+        <p className="mt-3 text-sm leading-relaxed text-wm-muted">{t('welcome.hero.whatIsBody')}</p>
+      </div>
       <motion.div
         initial={false}
         animate={{ opacity: 1 }}

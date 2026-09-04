@@ -1,7 +1,7 @@
 import { getRpcBaseUrl } from '@/services/rpc-client';
 import type { UnrestEvent, ListUnrestEventsResponse } from '@/generated/client/worldmonitor/unrest/v1/service_client';
 import type { SocialUnrestEvent, ProtestSeverity, ProtestEventType, ProtestSource } from '@/types';
-import { createCircuitBreaker } from '@/utils';
+import { createCircuitBreaker } from '@/utils/circuit-breaker';
 import { getHydratedData } from '@/services/bootstrap';
 import { UnrestServiceClient } from '@/services/generated-rpc-clients';
 
@@ -100,6 +100,10 @@ const emptyFallback: ListUnrestEventsResponse = {
 export async function fetchProtestEvents(): Promise<ProtestData> {
   const hydrated = getHydratedData('unrestEvents') as ListUnrestEventsResponse | undefined;
   if (hydrated?.events?.length) {
+    // Warm the breaker under the same key a later recurring call reads
+    // (#7048); a bare return drained the consume-once slot and forced a
+    // refetch.
+    unrestBreaker.recordSuccess(hydrated);
     const events = hydrated.events.map(toSocialUnrestEvent);
     const byCountry = new Map<string, SocialUnrestEvent[]>();
     for (const event of events) {

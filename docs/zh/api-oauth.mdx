@@ -58,7 +58,7 @@ WorldMonitor 运行一个最小化的 OAuth 2.1 授权服务器,目前其面向�
 
 ### `GET /api/oauth/authorize`
 
-启动 OAuth 流程。渲染一个同意页,重定向到 Clerk 登录,随后签发与调用方 PRO 权益绑定的授权码。
+启动 OAuth 流程。它会渲染同意页并重定向到 Clerk 登录，随后签发与调用方账户绑定的授权码。该流程的 Pro 登录分支由相邻的 `GET /oauth/authorize-pro` 提供（客户端不会直接调用）：Pro 订阅者与已确认的免费账户均可完成授权；服务方确认付费覆盖期已经结束时，账户会转入同一受限免费账户路径，保留 OAuth 身份并仅能使用按免费额度计量的 `free-account` 工具。无法校验的状态返回可重试的 `503`；不具备免费账户资格的非免费权益不足或已停用权益仍会被拒绝。
 
 **必填 query 参数**:
 
@@ -103,7 +103,7 @@ refresh_token=<from previous exchange>
 client_id=<from DCR>
 ```
 
-**速率限制**:10 次令牌请求 / 分钟。限制器按键依据为:`client_credentials` 按 `client_secret` 哈希,有 `client_id` 时(`authorization_code` 与 `refresh_token`)按 `client_id`,两者均不可用时才回退到调用方 IP。
+**速率限制**:10 次令牌请求 / 分钟。限制器按键依据为:`client_credentials` 按 `client_secret` 哈希,有 `client_id` 时(`authorization_code` 与 `refresh_token`)按 `client_id`,两者均不可用时才回退到调用方 IP。三种授权类型在限流器未配置或抛错时均失败开放；此时响应带有 `X-RateLimit-Mode: degraded`（已列入 `Access-Control-Expose-Headers`），以便运营方与跨域客户端区分健康限流放行与降级放行。Redis 存储故障时令牌持久化仍失败关闭。
 
 **令牌 TTL**:
 
@@ -120,7 +120,7 @@ Access 与 refresh 令牌为不透明 UUID。所有令牌端点响应均包含 `
 Authorization: Bearer 6f13d8fa-89b6-4a02-a527-7f6f61a2df55
 ```
 
-令牌绑定到用户账户,并在每次调用时重新校验权益 — 降级后下一次请求即撤销访问。
+令牌绑定到用户账户，并在每次调用时重新校验权益。套餐降级会在下一次请求时移除不再具备的付费能力，但不会无条件撤销 OAuth 身份：服务方确认付费覆盖期已经结束时，令牌继续作为受限、按额度计量的免费账户凭据，只能调用 `free-account` 工具；不具备免费账户资格的非免费权益不足或已停用权益仍会被拒绝。
 
 ## 错误响应
 

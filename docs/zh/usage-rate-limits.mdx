@@ -11,13 +11,20 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 |-------|-------|--------|
 | 按 IP（默认） | **600 次请求** | 60 秒 |
 
-适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js` / `api/_ip-rate-limit.js` 实现。
+适用于所有没有更严格覆盖规则的 `/api/*` 路由。由 `api/_rate-limit.js`（遗留 `api/*.js` 边缘函数）和 `server/_shared/rate-limit.ts`（网关与 `.ts` 边缘函数）实现。
 
 ## MCP 服务器
 
+MCP 的每分钟突发上限由套餐决定；OAuth 令牌与仪表盘签发的 `wm_…` 密钥同样按账户计算。
+
 | 范围 | 限制 | 窗口 |
 |-------|-------|--------|
-| 按 API 密钥（MCP 工具） | **60 次请求** | 60 秒 |
+| Pro、Pro Business、API Starter（按用户） | **60 次请求** | 60 秒 |
+| API Business（按用户） | **300 次请求** | 60 秒 |
+| Enterprise（按用户） | **1,000 次请求** | 60 秒 |
+| 运维签发的遗留密钥（按密钥） | **60 次请求** | 60 秒 |
+| 匿名发现（按 IP） | **60 次请求** | 60 秒 |
+| 匿名 `get_sources`（按 IP） | **10 次请求**，失败关闭 | 60 秒 |
 
 详见 [MCP](/zh/mcp-overview)。
 
@@ -27,14 +34,33 @@ description: "World Monitor API 中的按端点、按密钥、按 IP 三层速�
 
 | 套餐 | 每分钟（突发） | 每日包含 | 超出每日额度之后 |
 |------|--------------------|----------------|----------------------------|
-| **API Starter** | **60** / 60 秒 | **1,000** / UTC 日 | 计量 —— 10,000 / 天硬停 |
-| **API Business** | **300** / 60 秒 | **10,000** / UTC 日 | 计量 —— 100,000 / 天硬停 |
+| **API Starter** | **60** / 60 秒 | **1,000** / UTC 日 | **429** —— 已售额度即硬性上限 |
+| **API Business** | **300** / 60 秒 | **10,000** / UTC 日 | **429** —— 已售额度即硬性上限 |
 | **Enterprise** | **1,000** / 60 秒 | 不限 | — |
 
 - **每分钟**是硬性突发限制 —— 超出会立即返回 429。
-- **每日包含**是你的套餐额度；在 **00:00 UTC** 重置。超出部分是**计量而非拒绝** —— 基于用量的超额计费正在推出。在此之前，一个安全上限（包含额度的 10 倍）会以 429 封顶失控用量。
-- 每分钟突发、每日额度和上限均为**按账户**（在一个账户的所有 `wm_…` 密钥间共享），因此签发更多密钥不会提高你的限制。（运维签发的 Enterprise 密钥是例外 —— 每个密钥独立限流。）
+- **每日包含**是你的套餐额度；在 **00:00 UTC** 重置。超出的请求会被 **429 拒绝** —— 已售套餐额度即为权威上限，没有超额余量。计量与执行读取同一计数器，因此设置页的通知与 429 完全一致。
+- **MCP 调用消耗的是同一份每日额度。** API 套餐只有一个额度，同时覆盖 REST 请求与 MCP 工具调用，不存在另一份需要单独跟踪的 MCP 额度。命中缓存的 MCP 调用与一次 REST 请求等价，向下游实时取数的调用计两个单位，`get_country_brief` 与 `get_airspace` 计三个单位。详见 [MCP 调用计入 API 套餐额度](#mcp-调用计入-api-套餐额度)。
+- 每分钟突发与每日额度均为**按账户**（在一个账户的所有 `wm_…` 密钥间共享），因此签发更多密钥不会提高你的限制。（运维签发的 Enterprise 密钥是例外 —— 每个密钥独立限流。）
 - 需要更高限制？**联系支持团队**提升你套餐的额度。
+
+## MCP 调用计入 API 套餐额度
+
+API Starter 与 API Business 没有单独的 MCP 额度。它们的 MCP 工具调用与 REST 请求消耗同一份每日额度，因此 API Starter 的每天 1,000 次就是每个 UTC 日 1,000 个单位的工作量，怎么花由你决定。
+
+一次 MCP 工具调用并不总是计一个单位，因为各工具的成本并不相同：
+
+| 工具做了什么 | 计费单位 | 示例 |
+|--------------|----------|------|
+| 直接读缓存 | **1** | `get_market_data`、`get_conflict_events`、`get_news_intelligence` |
+| 向下游实时取数 | **2** | `get_country_risk`、`get_wto_trade_flows`、`search_intel_history` |
+| 向两个来源取数 | **3** | `get_country_brief`、`get_airspace` |
+
+加权调用是全有或全无。在 1,000 个单位已用掉 999 个时，一次 2 单位的调用会被直接拒绝，而不是只完成一部分。`describe_tool` 与 `get_sources` 不计费，所有发现类方法同样不计费。
+
+目前 REST 与 MCP 两侧各自预留在独立的计数器上，且每个计数器都持有该套餐的完整数字，因此纯 MCP 负载与纯 REST 负载都能各自用满 1,000 或 10,000。等 REST 强制执行开启后，两者会合并为同一个物理计数器。请按合并后的数字来规划：套餐卖的是这个合并额度，合并本身不会把它调高。
+
+Pro 与 Pro Business 不受影响。它们没有 REST 额度，其 MCP 调用计在自己的计数器上，每天分别为 50 次和 250 次，每次调用计一个单位。
 
 ## 仪表盘 AI 配额
 
@@ -53,19 +79,44 @@ Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关
 
 未登录的调用会被直接拒绝，受 Pro 保护的 AI 路由也会在产生任何花费之前拒绝免费账户。除上述套餐额度之外，对于在请求时无法确认其付费权益的调用方（订阅已失效，或权益查询出现暂时性故障），另有一个**每天 50 次请求**的非套餐安全下限。它的作用是让故障优雅降级，而不是拒绝付费客户；它不属于任何套餐包含的额度，且永远不会大于最小的付费额度。
 
+## 股票回测提供方工作额度
+
+`GET /api/market/v1/backtest-stock` 当前不以 LLM 计费。缓存未命中时会按调用方指定的代码抓取 Yahoo Finance 历史行情，因此不得计入 `llm:direct-usage` 或 `dashboardAiCallsPerDay`。该额度独立于该路由的 **60 次 / 60 秒** 策略：
+
+| 范围 | 限制 | 窗口 |
+|------|------|------|
+| 每个已认证用户 | **200** 次未缓存 Yahoo 历史抓取 | UTC 日 |
+
+200 次上限相当于四次完整的 50 代码 Pro 自选列表灌入。缓存命中与无效代码不消耗该额度。超出时返回 **429**，并给出到下一个 **00:00 UTC** 的 `Retry-After`。若配额存储无法证明预留成功，该路由 **失败关闭** 并返回 **503**，不会放行 Yahoo 抓取。
+
 ## OAuth 端点
 
 | 端点 | 限制 | 窗口 | 范围 |
 |----------|-------|--------|-------|
 | `POST /api/oauth/register` | 5 | 60 秒 | 按 IP |
-| `GET /api/oauth/authorize` | 10 | 60 秒 | 按 IP |
+| `POST /api/oauth/authorize`（同意页提交） | 10 | 60 秒 | 按 IP |
 | `POST /api/oauth/token` | 10 | 60 秒 | 按凭证 / 客户端 / IP 兜底 |
 
 与 `api/oauth/register.js`、`api/oauth/authorize.js` 和 `api/oauth/token.ts` 中的实现保持一致。
 
 对于 `/api/oauth/token`，限流器键在 `client_credentials` 下为 `client_secret` 哈希，其次为 `client_id`（若存在），仅当两个凭证标识均不可用时才回退到调用方 IP。
 
+三种授权类型（`authorization_code`、`refresh_token`、`client_credentials`）在 Upstash 限流器未配置或抛错时均 **失败开放**。令牌持久化在 Redis 存储不可用时仍会失败关闭；仅因限流器超时而返回 503 会在管道路径仍可用时中断 MCP 客户端握手。`client_credentials` 仍以运营方环境密钥允许列表作为第二道门。降级可观测：有界/去重的 `[rate-limit] redis-error` 日志与 Sentry 捕获、响应上的 `X-RateLimit-Mode: degraded`（已列入 `Access-Control-Expose-Headers`，跨域 JS 可读）、以及用量 `reason` 为 `rate_limit_degraded`。真正耗尽额度时仍返回 HTTP **429** `rate_limit_exceeded`。
+
 在 OAuth 流程中超过以上任一限制都会导致 MCP 客户端连接握手失败 — 请等待 60 秒后重试。
+
+## 提供方代理
+
+代表我们抓取第三方主机的路由拥有各自的按 IP 额度，以免单个脚本化调用方向我们无法控制的提供方发出无限流量。这些额度按 IP 计算而非总量：它们限制任意单个调用方，但不限制所有调用方的总出口流量。
+
+| 端点 | 限制 | 窗口 | 范围 |
+|----------|-------|--------|-------|
+| `POST /api/skills/fetch-agentskills` | 30 | 60 秒 | 按 IP |
+| `GET /api/youtube/live` | 30 | 60 秒 | 按 IP |
+| `GET /api/reverse-geocode` | 60 | 60 秒 | 按 IP |
+| `GET /api/infrastructure/v1/reverse-geocode` | 60 | 60 秒 | 按 IP |
+
+两个边缘处理函数（`/api/skills/fetch-agentskills`、`/api/youtube/live`）通过 `checkScopedRateLimit`/`checkRateLimit` 在处理函数内部执行其额度；`/api/reverse-geocode` 根据 `api/*.js` 约束将按 IP 额度镜像为字面常量；`/api/infrastructure/v1/reverse-geocode` 是网关 RPC，由网关通过 `checkEndpointRateLimit` 执行其按 IP 额度（Redis 故障时默认失败关闭）。共享缓存未命中后，两条 reverse-geocode 路由还会在调用 Nominatim 之前共用一个失败关闭的提供商级 Redis 桶，限速为每秒 1 个请求；缓存命中不会消耗该聚合额度。
 
 ## 写入端点
 
@@ -82,7 +133,7 @@ Free 与未登录的仪表盘用户在信息流增强上仍可使用常规的关
 
 这些端点大多使用默认公开 API 限制。缓存头因端点而异：
 
-- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；目前仅 `chinaDecisionSignals` 声明了自有配置（浏览器 `max-age=60`、CDN `s-maxage=900`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
+- `GET /api/bootstrap` — 只有显式标记的 `?...&public=1` URL 可被共享缓存。`?tier=fast&public=1` / `?tier=slow&public=1` 使用浏览器 `max-age=60` / `max-age=300` 和 CDN `s-maxage=600` / `s-maxage=7200`。单键公开 URL：on-demand 键（`?keys=<onDemandName>&public=1`）在未声明自有配置时继承 slow 配置 —— 浏览器 `max-age=300`、CDN `s-maxage=7200`；发布频率高于该缓存时长的键均声明了自有配置：`correlationCards`（浏览器 `max-age=60`、CDN `s-maxage=300`）、`chinaDecisionSignals`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`canadaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`albertaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`manitobaRoads`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`marketCorrelationSeries`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`imdCycloneMarine`（浏览器 `max-age=60`、CDN `s-maxage=900`）、`bcOpen511`（浏览器 `max-age=60`、CDN `s-maxage=1800`）、`flightDelays`（浏览器 `max-age=60`、CDN `s-maxage=1800`）和 `forecasts`（浏览器 `max-age=300`、CDN `s-maxage=3600`）；`?keys=weatherAlerts&public=1` 使用 `Cache-Control: public, s-maxage=600, stale-while-revalidate=120, stale-if-error=900` 并配合 fast 层 CDN 屏蔽。其余所有形态 —— 密钥认证、会话认证、未标记的 `?tier=...` URL，以及匿名 `?keys=weatherAlerts` 路径 —— 均使用 `Cache-Control: no-store` 且不发出 CDN 缓存头，因此凭据 URL 永远不会由共享缓存应答。用户 API 密钥校验还有一个故障关闭的固定 60 秒按 IP 预校验限制，最多 600 次尝试。
 - `GET /api/health` — `private, no-store, max-age=0` 加上 `CDN-Cache-Control: no-store`。
 - `GET /api/version` — `public, s-maxage=300, stale-while-revalidate=60, stale-if-error=3600`。
 
@@ -126,7 +177,7 @@ Content-Type: application/json
 
 - 遵守 `Retry-After`。不要在 429 上反复猛击。
 - 对于批量任务请控制节奏：默认按 IP 600 次/分钟，约为你提供 ~10 次/秒的余量。
-- 对于 MCP，60 次/分钟对对话式使用绰绰有余，但对脚本化批量抓取较为紧张 — 批量任务请优先使用 REST API。
+- 对于 MCP，Pro、Pro Business 与 API Starter 的 60 次/分钟对对话式使用绰绰有余，但对脚本化批量抓取较为紧张。批量任务请优先使用 REST API，或选择 300 次/分钟的 API Business。
 - 莫名其妙的 429 通常意味着你正在共享一个出口 IP（公司代理、CI runner）。如需提升按密钥的限制，请联系支持团队。
 
 ## 客户通知与付费套餐上限
@@ -137,9 +188,12 @@ API 与 MCP 套餐上限依据权益附带的产品目录限制进行跟踪：
 |------|--------------------|--------------------|-----------------|--------------------|
 | Free | 0 | 0 | 0 | 0 |
 | Pro | 0 | 0 | 50 | 60 |
-| API Starter | 1,000 | 60 | 1,000 | 60 |
-| API Business | 10,000 | 300 | 10,000 | 300 |
+| Pro Business | 0 | 0 | 250 | 60 |
+| API Starter | 1,000 | 60 | 与该 1,000 共享 | 60 |
+| API Business | 10,000 | 300 | 与该 10,000 共享 | 300 |
 | Enterprise | 不限 | 1,000 | 不限 | 1,000 |
+
+Pro 与 Pro Business 没有 REST 额度，因此其 MCP 调用单独计数，每次调用计一个单位。API 套餐只有一个额度：“MCP 调用 / 天”一列并非在 API 额度之外另行提供的配额，而是同一个数字，并按[每个工具的权重](#mcp-调用计入-api-套餐额度)扣减。缓存读取每次计 1 个单位，向下游实时取数的工具计 2 个单位，`get_country_brief` 与 `get_airspace` 计 3 个单位。
 
 当付费用户接近或超过以上任一限制时，WorldMonitor 会记录一条精简的 Convex 汇总并在设置中开启一条当前账户通知。每日计数读取自同一治理强制执行的按账户计量器，因此警告反映的用量数值与套餐计量口径一致。每日限制在 80% 时警告，并在 100% 时切换为超限；突发限制仅在持续压力下通知，而非单次孤立尖峰。
 
