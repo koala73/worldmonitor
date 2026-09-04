@@ -77,6 +77,11 @@ async function readPriorContentAge(
     `[TemporalAnomalies] count-source read error (${erroredSourceTypes.join(', ')}); `
     + 'carrying the previous content clock forward rather than stamping a false STALE_CONTENT',
   );
+  // seed-meta:temporal:anomalies is ROUTE-stamped (app-owned): this handler is
+  // its only producer, so unlike the seeder-written seed-meta:* keys it must
+  // stay on the prefixed (non-raw) read to remain in the deployment namespace.
+  // Pattern-matching the "seed-meta" prefix into raw=true would cross namespaces
+  // on preview — the inverse of #7575.
   const prior = await getCachedJson('seed-meta:temporal:anomalies').catch(() => null);
   if (!prior || typeof prior !== 'object') return null;
   const meta = prior as { newestItemAt?: unknown; oldestItemAt?: unknown };
