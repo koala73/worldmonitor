@@ -180,7 +180,7 @@ export function buildMapUrl(
   }
   const params = new URLSearchParams();
 
-  if (state.center) {
+  if (state.center && Number.isFinite(state.center.lat) && Number.isFinite(state.center.lon)) {
     params.set('lat', state.center.lat.toFixed(4));
     params.set('lon', state.center.lon.toFixed(4));
   }
