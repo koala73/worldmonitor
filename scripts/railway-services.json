@@ -1200,10 +1200,12 @@
       "scripts/package.json",
       "scripts/seed-conflict-intel.mjs",
       "scripts/shared/country-names.json",
+      "scripts/shared/crawlable-crises.json",
       "scripts/shared/hapi-app-identifier.json",
       "scripts/shared/iso2-to-iso3.json",
       "scripts/shared/iso3-to-iso2.json",
       "shared/country-names.json",
+      "shared/crawlable-crises.json",
       "shared/hapi-app-identifier.json",
       "shared/iso2-to-iso3.json",
       "shared/iso3-to-iso2.json"

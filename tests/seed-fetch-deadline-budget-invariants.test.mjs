@@ -86,6 +86,7 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     const {
       HAPI_HDX_METADATA_TIMEOUT_MS,
       HAPI_HDX_SNAPSHOT_TIMEOUT_MS,
+      HAPI_MAX_PAGES,
     } = await import('../scripts/_conflict-hapi.mjs');
     const { GDELT_BULK_WORST_NETWORK_MS } = await import('../scripts/_conflict-gdelt-bulk.mjs');
 
@@ -111,6 +112,15 @@ describe('seed fetch-phase deadline & TTL invariants (issue #4864)', () => {
     const HAPI_WORST_MS = HAPI_DIRECT_REQUEST_MS
       + HAPI_HDX_METADATA_TIMEOUT_MS
       + 2 * HAPI_HDX_SNAPSHOT_TIMEOUT_MS;
+    // Pure-direct route (no bot block): the admin-0 and admin-2 global sweeps each
+    // page up to HAPI_MAX_PAGES. That budget was raised for the ~13.8k-row
+    // subnational sweep, and it must not push the direct route past the snapshot
+    // route the max() above is anchored on — otherwise this model understates.
+    const HAPI_GLOBAL_SWEEPS = 2;
+    const HAPI_DIRECT_WORST_MS = HAPI_GLOBAL_SWEEPS * HAPI_MAX_PAGES * HAPI_DIRECT_REQUEST_MS;
+    assert.ok(HAPI_DIRECT_WORST_MS <= HAPI_WORST_MS,
+      `direct sweeps ${HAPI_DIRECT_WORST_MS}ms must stay inside the ${HAPI_WORST_MS}ms bot-block bound this model is anchored on`);
+
     const EXTRA_KEY_WRITE_SLACK_MS = 30_000;
     const worstFetchAttempt = Math.max(HAPI_WORST_MS, GDELT_SWEEP_BUDGET_MS + worstBatch)
       + GDELT_BULK_WORST_NETWORK_MS
