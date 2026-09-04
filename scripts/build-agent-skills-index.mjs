@@ -24,7 +24,7 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { createHash } from 'node:crypto';
-import { basename, resolve, dirname, join } from 'node:path';
+import { basename, resolve, dirname, join, extname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import yaml from 'js-yaml';
 
@@ -106,6 +106,19 @@ export function buildResourceContent(content, mimeType) {
   return isTextMimeType(mimeType)
     ? { mimeType, text: content.toString('utf-8') }
     : { mimeType, blob: content.toString('base64') };
+}
+
+const TEXT_EXTENSIONS = new Set(['.json', '.md', '.html', '.yaml', '.yml', '.txt']);
+
+function getPlatformAgnosticContent(file) {
+  const ext = extname(file).toLowerCase();
+  const raw = readFileSync(file);
+  if (TEXT_EXTENSIONS.has(ext)) {
+    const text = raw.toString('utf-8');
+    const normalized = text.replace(/\r\n/g, '\n');
+    return Buffer.from(normalized, 'utf-8');
+  }
+  return raw;
 }
 
 // Agent Plugins 1.0.0 requires skills/<name>/SKILL.md to resolve to a regular
@@ -296,10 +309,10 @@ export function collectSkills() {
       type: 'skill-md',
       description: fm.description,
       url: `${PUBLIC_BASE}/.well-known/agent-skills/${name}/SKILL.md`,
-      digest: `sha256:${sha256Hex(bytes)}`,
+      digest: `sha256:${sha256Hex(Buffer.from(lfMd, 'utf-8'))}`,
       frontmatter: fm,
       resources: files.map((file) => {
-        const content = readFileSync(file);
+        const content = getPlatformAgnosticContent(file);
         const relativePath = file.slice(skillDir.length + 1).split('\\').join('/');
         const mimeType = relativePath.endsWith('.md') ? 'text/markdown' : 'application/octet-stream';
         return {

@@ -1006,7 +1006,7 @@ const EXCLUDED_HOSTS = new Set([
 ]);
 
 function read(rootDir, path) {
-  return readFileSync(join(rootDir, path), 'utf8');
+  return readFileSync(join(rootDir, path), 'utf8').replace(/\r\n/g, '\n');
 }
 
 function readdirPresentSync(absoluteDir) {
@@ -1744,7 +1744,7 @@ export function matchGeneratedAttributionSection(docs) {
 
 function updateDocs(rootDir, section) {
   const path = join(rootDir, DOCS_PATH);
-  const current = readFileSync(path, 'utf8');
+  const current = readFileSync(path, 'utf8').replace(/\r\n/g, '\n');
   const markerPattern = inventoryMarkerPattern(true);
   const updated = markerPattern.test(current)
     // Function replacement: `section` is generated from manifest text that can
@@ -1796,10 +1796,10 @@ export function checkSourceAttribution(rootDir = ROOT) {
     declarations,
     geography: loadSourceGeography(rootDir),
   }));
-  if (readFileSync(manifestPath, 'utf8') !== rebuilt) {
+  if (readFileSync(manifestPath, 'utf8').replace(/\r\n/g, '\n') !== rebuilt) {
     return { errors: [`${MANIFEST_PATH} is out of date; ${REGENERATE_HINT}`] };
   }
-  const actual = matchGeneratedAttributionSection(readFileSync(docsPath, 'utf8'));
+  const actual = matchGeneratedAttributionSection(readFileSync(docsPath, 'utf8').replace(/\r\n/g, '\n'));
   if (actual !== renderAttributionSection(inventory, previous)) {
     return { errors: [`${DOCS_PATH} is out of date; ${REGENERATE_HINT}`] };
   }
