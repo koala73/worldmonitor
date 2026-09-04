@@ -31,12 +31,18 @@ import { PIPELINES } from '../shared/pipelines-data.ts';
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { SOURCE_DOMAINS } from './crawlable-sources-page.mjs';
 import { resolveLatestResilienceSnapshotPath } from './build-crawlable-corpus.mjs';
+import { AI_SEARCH_COVERAGE_HEADING } from './docs-stats.mjs';
 import { loadStatsForInventoryFacts } from './generate-inventory-facts.mjs';
 
 const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 export const AI_SEARCH_PATH = 'public/ai-search.md';
-export const COVERAGE_HEADING = '## Data Coverage';
+// Single-sourced from docs-stats, which uses the same heading to exempt this
+// block from its volatile-claim scan. Two independent copies of the literal
+// would let the generator and the gate drift onto different headings. The
+// import only goes this way: docs-stats stays dependency-free so it can run in
+// container build stages that have no TypeScript loader.
+export const COVERAGE_HEADING = AI_SEARCH_COVERAGE_HEADING;
 const LAST_UPDATED_RE = /^Last updated: \d{4}-\d{2}-\d{2}$/m;
 const RECONCILED_RE = /^Coverage reconciled: \d{4}-\d{2}-\d{2}\b.*$/m;
 
@@ -71,8 +77,11 @@ export function publishedRankedCountries(rootDir = ROOT) {
  * one and leaving the other surface to contradict it.
  */
 export function mapLayerCoverage(stats) {
-  const registry = stats.layerDefinitions;
-  const fullVariant = getCompleteLayerCatalogKeys('full').length;
+  return mapLayerCoverageText(stats.layerDefinitions, getCompleteLayerCatalogKeys('full').length);
+}
+
+/** Split from the registry read so every branch is reachable from a unit test. */
+export function mapLayerCoverageText(registry, fullVariant) {
   if (fullVariant > registry) {
     throw new Error(`the full-variant layer catalog (${fullVariant}) cannot exceed the registry (${registry})`);
   }

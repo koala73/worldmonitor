@@ -9,7 +9,8 @@
 // and the AI briefings carry a machine-readable version header.
 
 import assert from 'node:assert/strict';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -18,8 +19,10 @@ import {
   AI_SEARCH_PATH,
   COVERAGE_HEADING,
   buildAiSearchText,
+  mapLayerCoverageText,
   publishedRankedCountries,
   resolveReconciledAt,
+  writeAiSearch,
 } from '../scripts/build-ai-search.mjs';
 import { VERSION_HEADER_RE } from '../scripts/build-llms-full.mjs';
 import { SOURCE_DOMAINS } from '../scripts/crawlable-sources-page.mjs';
@@ -79,24 +82,27 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
     const published = JSON.parse(read('public/product-facts.json')).capabilities;
 
     // The audit found /sources/ publishing 747/760/331/461/10 while the file
-    // written for AI citation published none of them. Pin the agreement.
-    for (const [label, value] of [
-      ['active providers', attribution.providerCount],
-      ['source hosts', attribution.activeHosts],
-      ['structured hosts', attribution.structuredHosts],
-      ['feed hosts', attribution.feedHosts],
-      ['signal domains', SOURCE_DOMAINS.length],
-      ['MCP tools', stats.mcpToolCount],
-      ['locales', stats.locales],
-      ['map layers', stats.layerDefinitions],
-      ['feed definitions', stats.feedDefinitions],
-      ['CII countries', stats.tier1Countries],
-      ['ranked countries', publishedRankedCountries(repoRoot).ranked],
+    // written for AI citation published none of them. Pin the agreement — and
+    // anchor each figure to the phrase it belongs to, not to the section as a
+    // whole. A section-wide `\b<n>\b` search passes even when the generator
+    // transposes two figures onto each other's bullets.
+    for (const [phrase, value] of [
+      ['%d active data providers', attribution.providerCount],
+      ['across %d observed source hosts', attribution.activeHosts],
+      ['(%d structured/API', attribution.structuredHosts],
+      ['%d news & OSINT feed', attribution.feedHosts],
+      ['grouped into %d signal domains', SOURCE_DOMAINS.length],
+      ['%d MCP tools', stats.mcpToolCount],
+      ['%d supported interface languages', stats.locales],
+      ['%d map layer types in the shared registry', stats.layerDefinitions],
+      ['%d feed definitions in the shared feed registry', stats.feedDefinitions],
+      ['%d countries scored by the Country Instability Index', stats.tier1Countries],
+      ['of which %d are ranked in the published snapshot', publishedRankedCountries(repoRoot).ranked],
     ]) {
-      assert.match(
-        coverage,
-        new RegExp(`\\b${value.toLocaleString('en-US')}\\b`),
-        `Data Coverage must publish the registry value for ${label} (${value})`,
+      const expected = phrase.replace('%d', value.toLocaleString('en-US'));
+      assert.ok(
+        coverage.includes(expected),
+        `Data Coverage must publish "${expected}" — the registry value attached to its own claim`,
       );
     }
 
@@ -120,6 +126,51 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
       new RegExp(`${registryLayers} map layer types in the shared registry, ${heroLayers} of them reachable in the full variant`),
       'the coverage block must name both the registry total and the homepage figure',
     );
+  });
+
+  it('states the layer gap correctly at every branch, including ones the registry cannot reach today', () => {
+    assert.match(
+      mapLayerCoverageText(58, 57),
+      /58 map layer types in the shared registry, 57 of them reachable in the full variant.*the remaining 1 is sunset or build-flag gated/,
+    );
+    assert.match(mapLayerCoverageText(58, 56), /the remaining 2 are sunset or build-flag gated/);
+    assert.match(mapLayerCoverageText(58, 58), /58 map layer types in the shared registry, all of them reachable/);
+    assert.doesNotMatch(mapLayerCoverageText(58, 58), /remaining/);
+    // A full-variant catalog larger than the registry it draws from means one
+    // of the two readings is wrong; publishing either would be a false claim.
+    assert.throws(() => mapLayerCoverageText(57, 58), /cannot exceed the registry/);
+  });
+
+  it('fails the check run when the committed figures are stale', () => {
+    // An unchanged repo can never look stale, so stage a tree whose coverage
+    // block carries a wrong figure. Only public/ is copied; docs/ is symlinked
+    // so the resilience-snapshot read resolves without duplicating the tree.
+    const sandbox = mkdtempSync(join(tmpdir(), 'wm-ai-search-'));
+    try {
+      mkdirSync(join(sandbox, 'public'), { recursive: true });
+      symlinkSync(join(repoRoot, 'docs'), join(sandbox, 'docs'), 'dir');
+      writeFileSync(
+        join(sandbox, AI_SEARCH_PATH),
+        read(AI_SEARCH_PATH).replace(/^- \d[\d,]* MCP tools.*$/m, '- 1 MCP tool; use `tools/list` for the live inventory'),
+      );
+      assert.throws(
+        () => writeAiSearch({ rootDir: sandbox, check: true }),
+        /is stale — run npm run build:ai-search/,
+        'a stale committed figure must fail --check rather than pass quietly',
+      );
+    } finally {
+      rmSync(sandbox, { recursive: true, force: true });
+    }
+  });
+
+  it('regenerates ai-search.md when the monthly resilience snapshot refreshes', () => {
+    // publishedRankedCountries() reads the latest resilience snapshot, so the
+    // monthly cron that rotates that snapshot must rebuild this file too —
+    // otherwise the committed ranked count and captured date go a month stale
+    // and the drift test above turns red on main.
+    const workflow = read('.github/workflows/resilience-snapshot-refresh.yml');
+    assert.match(workflow, /npm run build:ai-search/);
+    assert.match(workflow, /git add "\$snapshot_path".*public\/ai-search\.md/);
   });
 
   it('carries the reconciliation date forward when nothing changed', () => {
