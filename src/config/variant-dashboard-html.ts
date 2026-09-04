@@ -22,7 +22,7 @@ export function renderVariantSeoSummaryHtml(variant: VariantSeoKey): string {
     throw new Error(`[variant-dashboard-html] missing SEO paragraphs for "${variant}"`);
   }
   const body = paragraphs.map((p) => `<p>${escHtml(p)}</p>`).join('\n      ');
-  return `<section class="app-seo-summary" aria-hidden="true">\n      ${body}\n    </section>`;
+  return `<section class="app-seo-summary">\n      ${body}\n    </section>`;
 }
 
 export function renderVariantNoscriptMainHtml(variant: VariantSeoKey, meta: VariantMeta): string {
@@ -296,7 +296,7 @@ export function renderVariantDashboardHtml(fullDashboardHtml: string, variant: s
   const seoKey = variant as VariantSeoKey;
   html = replaceCounted(
     html,
-    /<section class="app-seo-summary" aria-hidden="true">[\s\S]*?<\/section>/,
+    /<section class="app-seo-summary">[\s\S]*?<\/section>/,
     () => renderVariantSeoSummaryHtml(seoKey),
     ONE,
     'app-seo-summary',

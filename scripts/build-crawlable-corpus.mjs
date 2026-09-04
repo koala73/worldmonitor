@@ -116,10 +116,10 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
-export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-02';
-const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-01';
-const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-01';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
+export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
+const COUNTRIES_INDEX_CONTENT_VERSION = '2026-09-03';
+const CII_RANKING_PAGE_CONTENT_VERSION = '2026-09-03';
 // Public ranking / confidence gates. Keep aligned with
 // server/worldmonitor/resilience/v1/_shared.ts and
 // docs/methodology/country-resilience-index.mdx.
@@ -132,7 +132,7 @@ export const RANKING_ELIGIBILITY_CLAUSE = `Ranking requires coverage of at least
 const RETIRED_DIMENSION_IDS = new Set(['fuelStockDays', 'reserveAdequacy']);
 const UNRANKED_INVENTORY_LIMIT = 12;
 const AVAILABLE_EVIDENCE_LIMIT = 6;
-export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-02';
+export const CHOKEPOINT_PAGE_CONTENT_VERSION = '2026-09-03';
 const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // Dataset schema versions stamp Dataset JSON-LD shape changes, per family. They
 // must NOT fold into every family's sitemap/page lastmod — that made ~90% of main
@@ -143,18 +143,23 @@ const SOURCES_PAGE_CONTENT_VERSION = '2026-08-20';
 // dateModified is pinned to the snapshot capturedAt as a truthful freshness
 // contract (#7391), so their recrawl signal is COUNTRY_PAGE_CONTENT_VERSION.
 export const DATASET_SCHEMA_CONTENT_VERSION = {
-  chokepoint: '2026-08-31',
-  crisis: '2026-09-01',
-  tools: '2026-09-01',
+  chokepoint: '2026-09-03',
+  crisis: '2026-09-03',
+  tools: '2026-09-03',
 };
-export const CRISIS_PAGE_CONTENT_VERSION = '2026-09-01';
-const TOOLS_PAGE_CONTENT_VERSION = '2026-09-01';
+export const CRISIS_PAGE_CONTENT_VERSION = '2026-09-03';
+const TOOLS_PAGE_CONTENT_VERSION = '2026-09-03';
+const RESEARCH_PAGE_CONTENT_VERSION = '2026-09-03';
 const DATASET_LICENSE = {
   '@type': 'CreativeWork',
   name: 'World Monitor Terms of Service (27 July 2026)',
   url: 'https://www.worldmonitor.app/docs/terms',
 };
+const CII_INDEX_DATASET_DOWNLOAD = 'cii-ranking.json';
+const COUNTRIES_INDEX_DATASET_DOWNLOAD = 'resilience-ranking.json';
 const COUNTRY_DATASET_DOWNLOAD = 'resilience.json';
+const COUNTRY_CII_DATASET_DOWNLOAD = 'cii.json';
+const CHOKEPOINTS_INDEX_DATASET_DOWNLOAD = 'status.json';
 const CHOKEPOINT_DATASET_DOWNLOAD = 'reference.json';
 const CRISIS_DATASET_DOWNLOAD = 'tracker.json';
 const CONVERGENCE_DATASET_DOWNLOAD = 'reference.json';
@@ -379,7 +384,7 @@ export function buildCiiRankingEntries(countries, livePulse) {
       throw new Error(`CII pulse score or band is invalid for ${code}`);
     }
     const asOf = String(pulse.asOf || '').trim();
-    if (!Number.isFinite(Date.parse(asOf))) {
+    if (!isCanonicalIsoInstant(asOf)) {
       throw new Error(`CII pulse timestamp is invalid for ${code}`);
     }
     const methodologyVersion = String(pulse.methodologyVersion || '').trim();
@@ -543,6 +548,16 @@ export function datasetTemporalCoverage(observationInterval) {
   return OBSERVATION_COVERAGE_RE.test(trimmed) ? trimmed : undefined;
 }
 
+export function datasetObservationCoverage(observedAtValues) {
+  const dates = [...new Set(
+    observedAtValues
+      .map((observedAt) => pulseDateOnly(observedAt, null))
+      .filter(Boolean),
+  )].sort();
+  if (dates.length === 0) return undefined;
+  return datasetTemporalCoverage(dates.length === 1 ? dates[0] : `${dates[0]}/${dates.at(-1)}`);
+}
+
 function datasetDownloadHref(pagePath, filename) {
   return `${pagePath}${filename}`;
 }
@@ -582,6 +597,40 @@ function countryDatasetDownload(country, {
   });
 }
 
+function countryCiiDatasetDownload(country, ciiEntry, { capturedAt, snapshotPath }) {
+  return stableJson({
+    dataset: 'country-instability-index',
+    countryCode: country.code,
+    countryName: country.name,
+    methodologyVersion: ciiEntry.methodologyVersion,
+    score: ciiEntry.score,
+    approximate24HourMovement: ciiEntry.change24h,
+    instabilityLevel: ciiEntry.band,
+    observedAt: ciiEntry.asOf,
+    capturedAt,
+    source: snapshotPath,
+    license: DATASET_LICENSE.url,
+  });
+}
+
+function countriesIndexDatasetDownload(countries, { capturedAt, snapshotPath }) {
+  return stableJson({
+    dataset: 'country-resilience-ranking',
+    capturedAt,
+    source: snapshotPath,
+    license: DATASET_LICENSE.url,
+    countries: countries.map((country) => ({
+      code: country.code,
+      name: country.name,
+      rank: country.headlineEligible === false ? null : country.rank,
+      overallScore: country.headlineEligible === false ? null : country.overallScore,
+      dimensionCoverage: country.dimensionCoverage,
+      confidence: country.lowConfidence ? 'low' : 'standard',
+      level: country.headlineEligible === false ? 'unpublished' : country.level,
+    })),
+  });
+}
+
 function chokepointDatasetDownload(chokepoint, {
   tradeRoutesById,
   capturedAt = null,
@@ -611,6 +660,44 @@ function chokepointDatasetDownload(chokepoint, {
     volumeObservedAt: volumeObservedAt || capturedAt || null,
     source: [CHOKEPOINT_REGISTRY_PATH, TRADE_ROUTES_PATH],
     license: DATASET_LICENSE.url,
+  });
+}
+
+function ciiIndexDatasetDownload(ciiRanking, { capturedAt, snapshotPath }) {
+  return stableJson({
+    dataset: 'country-instability-index',
+    methodologyVersion: ciiRanking.methodologyVersion,
+    capturedAt,
+    source: snapshotPath,
+    license: DATASET_LICENSE.url,
+    countries: ciiRanking.entries.map((entry) => ({
+      code: entry.code,
+      name: entry.country.name,
+      score: entry.score,
+      approximate24HourMovement: entry.change24h,
+      instabilityLevel: entry.band,
+      observedAt: entry.asOf,
+    })),
+  });
+}
+
+function chokepointsIndexDatasetDownload(chokepointHubRows, { capturedAt, snapshotPath }) {
+  return stableJson({
+    dataset: 'maritime-chokepoint-status',
+    capturedAt,
+    source: snapshotPath,
+    license: DATASET_LICENSE.url,
+    chokepoints: chokepointHubRows.map((row) => ({
+      id: row.chokepoint.id,
+      name: row.chokepoint.displayName,
+      slug: row.chokepoint.slug,
+      region: row.region,
+      disruptionScore: row.score,
+      status: row.status,
+      aisCongestion: row.congestion,
+      aisSnapshotAvailable: row.aisSnapshotAvailable,
+      observedAt: row.asOf,
+    })),
   });
 }
 
@@ -1541,6 +1628,7 @@ export async function loadCorpusData({ rootDir = DEFAULT_ROOT } = {}) {
   );
   const researchLastmod = laterDate(
     ...researchReports.map(({ report }) => report.dateModified),
+    RESEARCH_PAGE_CONTENT_VERSION,
   );
   const useCasesLastmod = laterDate(
     USE_CASES_CONTENT_VERSION,
@@ -1996,12 +2084,13 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
         name: `World Monitor Country Instability Index (CII) ${ciiRanking.methodologyVersion}`,
         description: `Current 0-100 instability scores, available approximate 24-hour movement, and instability levels for ${ciiRanking.entries.length} monitored countries.`,
         url: absoluteUrl(baseUrl, path),
-        identifier: `world-monitor-cii-${ciiRanking.methodologyVersion}-${capturedAt}`,
+        identifier: `world-monitor-cii-${ciiRanking.methodologyVersion}`,
+        keywords: ['country instability', 'country risk', 'instability index', 'geopolitical risk'],
         creator: { ...WORLD_MONITOR_ORG },
         license: DATASET_LICENSE,
         datePublished: capturedAt,
         dateModified: ciiRanking.updatedAt,
-        temporalCoverage: datasetTemporalCoverage(capturedAt),
+        temporalCoverage: datasetObservationCoverage(ciiRanking.entries.map((entry) => entry.asOf)),
         spatialCoverage: 'Worldwide',
         isAccessibleForFree: true,
         includedInDataCatalog: includedInDataCatalog(baseUrl),
@@ -2011,7 +2100,7 @@ ${ciiRanking.entries.map((entry) => `            <tr data-cii-country="${escapeH
           { '@type': 'PropertyValue', name: 'Approximate 24-hour movement', unitText: 'index points' },
           { '@type': 'PropertyValue', name: 'Instability level' },
         ],
-        distribution: [dataDownload(absoluteUrl(baseUrl, path), 'text/html')],
+        distribution: [dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CII_INDEX_DATASET_DOWNLOAD)))],
         mainEntity: { '@id': rankingId },
       },
       {
@@ -2133,7 +2222,8 @@ ${countries.map((country) => {
         name: `World Monitor Country Resilience Index snapshot for ${capturedAt}`,
         description,
         url: absoluteUrl(baseUrl, path),
-        identifier: `country-resilience-ranking-${capturedAt}`,
+        identifier: 'country-resilience-ranking',
+        keywords: ['country resilience', 'country risk', 'resilience index', 'global indicators'],
         creator: { ...WORLD_MONITOR_ORG },
         license: DATASET_LICENSE,
         datePublished: capturedAt,
@@ -2149,7 +2239,7 @@ ${countries.map((country) => {
           maxValue: 100,
           unitText: 'index points',
         },
-        distribution: dataDownload(absoluteUrl(baseUrl, path), 'text/html'),
+        distribution: dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, COUNTRIES_INDEX_DATASET_DOWNLOAD))),
       },
       dataCatalogLd(baseUrl),
     ],
@@ -2968,6 +3058,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
     description: datasetDescription,
     url: absoluteUrl(baseUrl, path),
     identifier: country.code,
+    keywords: ['country resilience', country.name, 'resilience index', 'country risk'],
     creator: { ...WORLD_MONITOR_ORG },
     license: DATASET_LICENSE,
     datePublished: capturedAt,
@@ -2987,6 +3078,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
     description: `The current World Monitor Country Instability Index score, available approximate 24-hour movement, instability level, and methodology version for ${country.name}.`,
     url: absoluteUrl(baseUrl, path),
     identifier: `${country.code}-cii-${ciiEntry.methodologyVersion}`,
+    keywords: ['country instability', country.name, 'instability index', 'country risk'],
     creator: { ...WORLD_MONITOR_ORG },
     license: DATASET_LICENSE,
     datePublished: pulseDateOnly(ciiEntry.asOf, capturedAt),
@@ -2995,7 +3087,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
     spatialCoverage,
     isAccessibleForFree: true,
     includedInDataCatalog: includedInDataCatalog(baseUrl),
-    distribution: [dataDownload(absoluteUrl(baseUrl, path), 'text/html')],
+    distribution: [dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, COUNTRY_CII_DATASET_DOWNLOAD)))],
     measurementTechnique: `World Monitor CII ${ciiEntry.methodologyVersion}`,
     variableMeasured: [
       { '@type': 'PropertyValue', name: 'Instability score', value: ciiEntry.score, minValue: 0, maxValue: 100 },
@@ -3123,10 +3215,9 @@ export function buildChokepointHubRows(chokepoints, livePulse) {
   });
 }
 
-function renderChokepointsIndex({ chokepoints, livePulse, baseUrl, lastmod, snapshotPath }) {
+function renderChokepointsIndex({ chokepoints, chokepointHubRows, livePulse, baseUrl, lastmod, snapshotPath }) {
   const path = '/chokepoints/';
   const description = `Track current disruption scores, status, AIS congestion, and update times for the ${chokepoints.length} maritime chokepoints in the World Monitor public status snapshot.`;
-  const chokepointHubRows = buildChokepointHubRows(chokepoints, livePulse);
   const updatedAt = chokepointHubRows
     .map((row) => row.asOf)
     .sort((left, right) => Date.parse(left) - Date.parse(right))
@@ -3249,12 +3340,13 @@ ${chokepointHubRows.map((row) => {
         name: `World Monitor maritime chokepoint status snapshot for ${livePulse.capturedAt}`,
         description,
         url: absoluteUrl(baseUrl, path),
-        identifier: `world-monitor-chokepoint-status-${livePulse.capturedAt}`,
+        identifier: 'world-monitor-chokepoint-status',
+        keywords: ['maritime chokepoints', 'shipping disruption', 'AIS congestion', 'maritime risk'],
         creator: { ...WORLD_MONITOR_ORG },
         license: DATASET_LICENSE,
         datePublished: livePulse.capturedAt,
         dateModified: updatedAt,
-        temporalCoverage: datasetTemporalCoverage(livePulse.capturedAt),
+        temporalCoverage: datasetObservationCoverage(chokepointHubRows.map((row) => row.asOf)),
         spatialCoverage: 'Worldwide',
         isAccessibleForFree: true,
         includedInDataCatalog: includedInDataCatalog(baseUrl),
@@ -3264,7 +3356,7 @@ ${chokepointHubRows.map((row) => {
           { '@type': 'PropertyValue', name: 'Status' },
           { '@type': 'PropertyValue', name: 'AIS congestion' },
         ],
-        distribution: dataDownload(absoluteUrl(baseUrl, path), 'text/html'),
+        distribution: dataDownload(absoluteUrl(baseUrl, datasetDownloadHref(path, CHOKEPOINTS_INDEX_DATASET_DOWNLOAD))),
         mainEntity: { '@id': itemListId },
       },
       {
@@ -3559,6 +3651,7 @@ ${relatedItems.map((item) => `        <li>${item}</li>`).join('\n')}
     description: `A World Monitor maritime reference dataset for ${chokepoint.displayName}, with its position, connected waters, energy shock model support, and modelled trade-route corridors.`,
     url: absoluteUrl(baseUrl, path),
     identifier: chokepoint.id,
+    keywords: ['maritime chokepoint', chokepoint.displayName, 'shipping route', 'trade corridor'],
     creator: { ...WORLD_MONITOR_ORG },
     license: DATASET_LICENSE,
     datePublished: capturedAt || undefined,
@@ -3837,6 +3930,7 @@ ${snapshotSection}
           description: datasetDescription,
           url: absoluteUrl(baseUrl, path),
           identifier: `crisis-tracker-${crisis.slug}`,
+          keywords: ['crisis tracker', crisis.shortTitle || crisis.title, 'humanitarian conflict', ...crisis.coverage.map((country) => country.name)],
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
           datePublished: publishedDate,
@@ -3973,7 +4067,8 @@ ${examples}
           name: `World Monitor ${metricName} reference`,
           description,
           url: datasetUrl,
-          identifier: `signal-convergence-${signalConvergence.capturedAt || 'reference'}`,
+          identifier: 'signal-convergence-reference',
+          keywords: ['signal convergence', 'geographic convergence', 'event correlation', 'geopolitical signals'],
           creator: { ...WORLD_MONITOR_ORG },
           license: DATASET_LICENSE,
           // This reference is a formula plus documentation-derived examples. It
@@ -4365,6 +4460,14 @@ export async function buildCorpus({
       snapshotPath: data.sources.livePulseSnapshot,
     }),
   );
+  writeGeneratedFile(
+    outDir,
+    datasetDownloadFile('/country-instability-index/', CII_INDEX_DATASET_DOWNLOAD),
+    ciiIndexDatasetDownload(data.ciiRanking, {
+      capturedAt: data.livePulse.capturedAt,
+      snapshotPath: data.sources.livePulseSnapshot,
+    }),
+  );
 
   writeGeneratedFile(
     outDir,
@@ -4378,9 +4481,18 @@ export async function buildCorpus({
       snapshotPath: data.sources.resilienceSnapshot,
     }),
   );
+  writeGeneratedFile(
+    outDir,
+    datasetDownloadFile('/countries/', COUNTRIES_INDEX_DATASET_DOWNLOAD),
+    countriesIndexDatasetDownload(data.countries, {
+      capturedAt: data.resilience.capturedAt,
+      snapshotPath: data.sources.resilienceSnapshot,
+    }),
+  );
   const rankedCount = data.countries.filter((country) => country.rank != null).length;
   for (const country of data.countries) {
     const pagePath = `/countries/${country.slug}/`;
+    const ciiEntry = data.ciiRanking.byCode.get(country.code) || null;
     writeGeneratedFile(
       outDir,
       routeFile(pagePath),
@@ -4388,7 +4500,7 @@ export async function buildCorpus({
         country,
         baseUrl,
         capturedAt: data.resilience.capturedAt,
-        lastmod: data.ciiRanking.byCode.has(country.code)
+        lastmod: ciiEntry
           ? data.lastmod.ciiCountries
           : data.lastmod.countries,
         methodologyFormula: data.resilience.methodologyFormula || 'unknown',
@@ -4397,9 +4509,19 @@ export async function buildCorpus({
         snapshotPath: data.sources.resilienceSnapshot,
         bbox: data.countryBboxByCode.get(country.code) || null,
         livePulse: data.livePulse,
-        ciiEntry: data.ciiRanking.byCode.get(country.code) || null,
+        ciiEntry,
       }),
     );
+    if (ciiEntry) {
+      writeGeneratedFile(
+        outDir,
+        datasetDownloadFile(pagePath, COUNTRY_CII_DATASET_DOWNLOAD),
+        countryCiiDatasetDownload(country, ciiEntry, {
+          capturedAt: data.livePulse.capturedAt,
+          snapshotPath: data.sources.livePulseSnapshot,
+        }),
+      );
+    }
     writeGeneratedFile(
       outDir,
       datasetDownloadFile(pagePath, COUNTRY_DATASET_DOWNLOAD),
@@ -4412,16 +4534,29 @@ export async function buildCorpus({
     );
   }
 
+  const chokepointHubRows = buildChokepointHubRows(data.chokepoints, data.livePulse);
   writeGeneratedFile(
     outDir,
     'chokepoints/index.html',
     renderChokepointsIndex({
       chokepoints: data.chokepoints,
+      chokepointHubRows,
       livePulse: data.livePulse,
       baseUrl,
       lastmod: data.lastmod.chokepoints,
       snapshotPath: data.sources.livePulseSnapshot,
     }),
+  );
+  writeGeneratedFile(
+    outDir,
+    datasetDownloadFile('/chokepoints/', CHOKEPOINTS_INDEX_DATASET_DOWNLOAD),
+    chokepointsIndexDatasetDownload(
+      chokepointHubRows,
+      {
+        capturedAt: data.livePulse.capturedAt,
+        snapshotPath: data.sources.livePulseSnapshot,
+      },
+    ),
   );
   for (const chokepoint of data.chokepoints) {
     const pagePath = `/chokepoints/${chokepoint.slug}/`;
