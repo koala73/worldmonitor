@@ -223,7 +223,7 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // inside the ≤315s envelope this model is anchored on; without the demotion gate
 // a slow snapshot failure would have stacked 300s + 150s + 15s = 465s (#7656 is
 // the same lesson for the fan-out: unbounded it was 150s + 369s = 519s).
-// All three remain under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline
+// Both remain under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline
 // (lockTtlMs+120s) below. What this replaced was a fan-out paid on EVERY run —
 // 6 missing countries ≈ 97s, and ≈290s once the 13 HRP countries that publish
 // only admin-2 rows were added to the required set (re-verified #5554 review;
@@ -1205,6 +1205,71 @@ async function fetchGdeltTensions() {
   });
 }
 
+/**
+ * Build the HAPI coverage marker and the seed-meta diagnostics for one run.
+ *
+ * Extracted from fetchAll ONLY so it is reachable by a test that can actually
+ * fail: the write itself lives behind Redis and a 5-way Promise.allSettled, so
+ * asserting on a hand-built argument object proved nothing about what the
+ * seeder constructs. Dropping the channel from the marker used to keep the
+ * whole suite green.
+ *
+ * #7658: `sourceChannel` names which of HAPI's two channels served this tick,
+ * recorded on BOTH the marker and the seed-meta record. The channels disagree
+ * by ~23% on the trailing reference period, so a published number that cannot
+ * name its channel cannot be compared with the tick before it. A RUN is
+ * single-channel by construction — the channel latches once, before the first
+ * sweep — so this names the channel behind every country the caller writes.
+ *
+ * Scope caveat, because the distinction is load-bearing: the per-country keys
+ * outlive a run (HAPI_TTL is 6h, ~3 refresh cycles), and the caller's loop
+ * overwrites only the countries THIS run covered. So after a partial run that
+ * changed channel, the FAMILY can hold both vintages — the countries this run
+ * wrote, plus older ones the previous channel wrote. The marker says which is
+ * which: `sourceChannel` describes the whole family exactly when
+ * requiredCountriesCovered === requiredCountriesTotal, and a shortfall there is
+ * the signal that older countries may be on the other channel. Making the
+ * family atomically single-vintage would mean publishing all 44 countries as
+ * one generation behind a pointer swap — a bigger change to the write path than
+ * this fix; the coverage fields make the current state readable, not silent.
+ *
+ * `sourceState: 'degraded'` is the hook api/health.js already has for "degraded
+ * BUT SERVING" (readSeedMeta -> sourceDegraded -> SEED_ERROR at warn, record
+ * count preserved). Without it this change would REDUCE observability: a
+ * snapshot failure used to be terminal and surfaced as SEED_ERROR, whereas a
+ * demotion succeeds, so a permanent HDX-side break (resource rename, 403) would
+ * otherwise publish the lagging channel indefinitely with health fully green.
+ * Set only when demoted — omitting the field is the no-degradation-claim
+ * default, and 'blocked' is deliberately NOT used: api/health.js escalates it
+ * to a hard SEED_ERROR for every key but one allowlisted adapter.
+ */
+export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {}) {
+  const summaries = humanitarian?.summaries ?? {};
+  const requiredCountriesCovered = HAPI_REQUIRED_COUNTRIES.filter(
+    (countryCode) => summaries[countryCode],
+  ).length;
+  const channelProvenance = {
+    sourceChannel: humanitarian?.sourceChannel,
+    ...(humanitarian?.snapshotFailureReason
+      ? {
+          snapshotFailureReason: humanitarian.snapshotFailureReason,
+          sourceState: 'degraded',
+        }
+      : {}),
+  };
+  return {
+    requiredCountriesCovered,
+    channelProvenance,
+    marker: {
+      countriesCovered: Object.keys(summaries).length,
+      requiredCountriesCovered,
+      requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
+      ...channelProvenance,
+      updatedAt: nowMs,
+    },
+  };
+}
+
 // ─── Main ───
 
 // runSeed invokes this as `fetchFn()` with no arguments, so the injected dep is for tests
@@ -1260,52 +1325,13 @@ export async function fetchAll({
     // degraded) to a path that previously did nothing at all in that scenario —
     // staleness still surfaces naturally once the last real marker's TTL/maxStaleMin
     // window elapses, no need to force a write here.
-    const requiredCountriesCovered = HAPI_REQUIRED_COUNTRIES.filter((countryCode) => ha.summaries[countryCode]).length;
-    // #7658: which of HAPI's two channels served this tick, recorded on BOTH the
-    // marker and the seed-meta record. The channels disagree by ~23% on the
-    // trailing reference period, so a published number that cannot name its
-    // channel cannot be compared with the tick before it. A RUN is
-    // single-channel by construction — the channel latches once, before the
-    // first sweep — so this names the channel behind every country written just
-    // above.
-    //
-    // Scope caveat, because the distinction is load-bearing: the per-country
-    // keys outlive a run (HAPI_TTL is 6h, ~3 refresh cycles), and this loop
-    // overwrites only the countries THIS run covered. So after a partial run
-    // that changed channel, the FAMILY can hold both vintages — the countries
-    // this run wrote, plus older ones the previous channel wrote. The marker
-    // says which is which: `sourceChannel` describes the whole family exactly
-    // when requiredCountriesCovered === requiredCountriesTotal, and a shortfall
-    // there is the signal that older countries may be on the other channel.
-    // Making the family atomically single-vintage would mean publishing all 44
-    // countries as one generation behind a pointer swap, which is a bigger
-    // change to the write path than this fix; the coverage fields make the
-    // current state readable rather than silent.
-    // `sourceState: 'degraded'` is the hook api/health.js already has for
-    // "degraded BUT SERVING" (readSeedMeta -> sourceDegraded -> SEED_ERROR at
-    // warn, record count preserved). Without it this change would REDUCE
-    // observability: a snapshot failure used to be terminal and surfaced as
-    // SEED_ERROR, whereas a demotion succeeds, so a permanent HDX-side break
-    // (resource rename, 403) would otherwise publish the lagging channel
-    // indefinitely with health fully green. Set only when demoted — omitting the
-    // field is the no-degradation-claim default, and 'blocked' is deliberately
-    // NOT used: api/health.js escalates it to a hard SEED_ERROR for every key
-    // but one allowlisted adapter.
-    const channelProvenance = {
-      sourceChannel: ha.sourceChannel,
-      ...(ha.snapshotFailureReason
-        ? { snapshotFailureReason: ha.snapshotFailureReason, sourceState: 'degraded' }
-        : {}),
-    };
+    // Marker fields and channel provenance are built by buildHapiSeedProvenance
+    // above, where a test can reach them — see its contract note for what
+    // sourceChannel does and does not claim about the family.
+    const { requiredCountriesCovered, channelProvenance, marker } = buildHapiSeedProvenance(ha);
     await writeExtraKeyWithMeta(
       HAPI_CACHE_KEY_PREFIX,
-      {
-        countriesCovered: Object.keys(ha.summaries).length,
-        requiredCountriesCovered,
-        requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
-        ...channelProvenance,
-        updatedAt: Date.now(),
-      },
+      marker,
       HAPI_SEED_META_TTL_SECONDS,
       requiredCountriesCovered,
       HAPI_SEED_META_KEY,

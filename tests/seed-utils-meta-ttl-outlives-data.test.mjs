@@ -101,6 +101,38 @@ test('writeExtraKeyWithMeta: an explicit metaTtlSeconds still wins', async () =>
   assert.equal(ttlOf(metaSet), 300);
 });
 
+test('writeExtraKeyWithMeta: `extra` reaches the meta record, and overwrites it last', async () => {
+  // #7658 widened `extra` from writeSeedMeta's direct callers to every
+  // writeExtraKeyWithMeta caller, so the precedence needs to be a pinned
+  // contract rather than an accident. It is copied over the record AFTER
+  // fetchedAt/recordCount/coverage, which means a caller CAN clobber the
+  // heartbeat api/health.js reads. That is deliberate — an explicit override
+  // beats a silent drop — but it is a footgun worth failing loudly on if the
+  // order ever changes, and no test covered `extra` at all before this.
+  await writeExtraKeyWithMeta(
+    'conflict:humanitarian:v1',
+    { countriesCovered: 2 },
+    600,
+    41,
+    'seed-meta:conflict:humanitarian',
+    undefined,
+    undefined,
+    { sourceChannel: 'hapi-api', sourceState: 'degraded', recordCount: 0 },
+  );
+
+  const metaSet = sets.find((c) => c[1] === 'seed-meta:conflict:humanitarian');
+  assert.ok(metaSet, 'seed-meta key was written');
+  const meta = JSON.parse(metaSet[2]);
+  assert.equal(meta.sourceChannel, 'hapi-api', 'producer diagnostics must reach the meta record');
+  assert.equal(meta.sourceState, 'degraded');
+  assert.equal(
+    meta.recordCount,
+    0,
+    '`extra` is applied last, so it wins over the derived fields — pinned so a reorder fails here',
+  );
+  assert.ok(Number.isFinite(meta.fetchedAt), 'the heartbeat survives when `extra` does not name it');
+});
+
 test('resolveSeedMetaTtl: floor, clamp, and explicit override', () => {
   assert.equal(resolveSeedMetaTtl(undefined, 600), SEED_META_MIN_TTL_SECONDS);
   assert.equal(resolveSeedMetaTtl(undefined, EIA_WEEKLY_DATA_TTL), EIA_WEEKLY_DATA_TTL);

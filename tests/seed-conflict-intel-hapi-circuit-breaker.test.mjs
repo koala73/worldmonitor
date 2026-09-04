@@ -27,6 +27,7 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import {
+  HAPI_API_CHANNEL,
   HAPI_DEMOTED_REFRESH_INTERVAL_MS,
   HAPI_FAILURE_BACKOFF_MS,
   HAPI_FALLBACK_BUDGET_MS,
@@ -36,8 +37,10 @@ import {
   HAPI_DASHBOARD_COUNTRIES,
   HAPI_REFRESH_INTERVAL_MS,
   HAPI_REQUIRED_COUNTRIES,
+  HAPI_SNAPSHOT_CHANNEL,
   aggregateHapiConflictEvents,
   buildHapiConflictEventsUrl,
+  buildHapiSeedProvenance,
   fetchAllHumanitarianSummaries,
   fetchHapiHdxSnapshotRows,
   selectHapiHdxCsvResources,
@@ -147,17 +150,67 @@ test('humanitarian health reports partial target-country coverage', () => {
   );
 });
 
-test('the channel that served a seed is recorded on the marker AND the seed-meta record', async () => {
+test('the channel that served a seed reaches the marker AND the seed-meta record', async () => {
   // #7658. The two HAPI channels disagree by ~23% on the trailing reference
   // period, so a published number that cannot name its channel cannot be
-  // compared with the tick before it. Marker-only is not enough: api/health's
-  // freshness view and every operator query read the seed-meta key, and the
-  // `extra` slot is the ONLY argument position that reaches it — passing the
-  // provenance one slot earlier lands it in `coverage` and silently drops it.
+  // compared with the tick before it.
+  //
+  // This asserts on what the SEEDER builds, not on an object literal the test
+  // itself passed in. The earlier version did the latter and was proven
+  // toothless by mutation: deleting the channel from the marker payload, or
+  // sourcing it from a field that does not exist, both kept the whole suite
+  // green — writeSeedMeta drops undefined values, so the field simply vanished.
+  const demoted = buildHapiSeedProvenance({
+    summaries: { SD: { summary: {} }, UA: { summary: {} } },
+    sourceChannel: HAPI_API_CHANNEL,
+    snapshotFailureReason: 'HDX_HTTP_503',
+  }, { nowMs: NOW });
+  const authoritative = buildHapiSeedProvenance({
+    summaries: { SD: { summary: {} } },
+    sourceChannel: HAPI_SNAPSHOT_CHANNEL,
+    snapshotFailureReason: null,
+  }, { nowMs: NOW });
+
+  assert.equal(demoted.marker.sourceChannel, HAPI_API_CHANNEL);
+  assert.equal(demoted.channelProvenance.sourceChannel, HAPI_API_CHANNEL);
+  assert.equal(demoted.channelProvenance.snapshotFailureReason, 'HDX_HTTP_503');
+  assert.equal(
+    demoted.channelProvenance.sourceState,
+    'degraded',
+    'a demoted seed must trip health’s degraded-but-serving hook, or a permanent HDX break runs green',
+  );
+  assert.equal(demoted.marker.countriesCovered, 2);
+  assert.equal(demoted.marker.requiredCountriesTotal, HAPI_REQUIRED_COUNTRIES.length);
+  assert.equal(demoted.marker.updatedAt, NOW);
+
+  // A healthy run must claim neither a failure reason nor a degraded source, or
+  // the demotion alarm fires every tick and stops meaning anything.
+  assert.equal(authoritative.marker.sourceChannel, HAPI_SNAPSHOT_CHANNEL);
+  assert.deepEqual(
+    Object.keys(authoritative.channelProvenance),
+    ['sourceChannel'],
+    'an authoritative run must not carry snapshotFailureReason or sourceState',
+  );
+
+  // The per-country keys outlive a run (HAPI_TTL), and the caller's loop
+  // overwrites only the countries THIS run covered, so after a partial run that
+  // changed channel the family can hold both vintages. sourceChannel is
+  // family-wide only when coverage is complete — so the marker must keep
+  // carrying the coverage pair that lets a reader tell those apart.
+  for (const field of ['requiredCountriesCovered', 'requiredCountriesTotal', 'countriesCovered']) {
+    assert.ok(
+      Object.hasOwn(demoted.marker, field),
+      `the marker must keep ${field} — it is what scopes sourceChannel to the whole family or just this run`,
+    );
+  }
+
+  // Second half of the contract: `extra` is the ONLY writeExtraKeyWithMeta
+  // argument slot that reaches the seed-meta record, so provenance passed one
+  // slot earlier lands in `coverage` and is silently dropped. Drive the real
+  // helper with the seeder's own arguments, then pin the call site's shape.
   process.env.UPSTASH_REDIS_REST_URL ||= 'https://redis.test';
   process.env.UPSTASH_REDIS_REST_TOKEN ||= 'fake-token';
   const { writeExtraKeyWithMeta } = await import('../scripts/_seed-utils.mjs');
-  const seedSource = readFileSync(new URL('../scripts/seed-conflict-intel.mjs', import.meta.url), 'utf8');
   const originalFetch = globalThis.fetch;
   const sets = [];
   globalThis.fetch = async (_url, opts = {}) => {
@@ -166,70 +219,36 @@ test('the channel that served a seed is recorded on the marker AND the seed-meta
     return Response.json({ result: 'OK' });
   };
   try {
-    const channelProvenance = {
-      sourceChannel: 'hapi-api',
-      snapshotFailureReason: 'HDX_HTTP_503',
-      sourceState: 'degraded',
-    };
     await writeExtraKeyWithMeta(
       'conflict:humanitarian:v1',
-      {
-        countriesCovered: 2,
-        requiredCountriesCovered: 1,
-        requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
-        ...channelProvenance,
-        updatedAt: NOW,
-      },
+      demoted.marker,
       3 * 86400,
-      1,
+      demoted.requiredCountriesCovered,
       'seed-meta:conflict:humanitarian',
       3 * 86400,
       undefined,
-      channelProvenance,
+      demoted.channelProvenance,
     );
   } finally {
     globalThis.fetch = originalFetch;
   }
 
-  const marker = JSON.parse(sets.find((c) => c[1] === 'conflict:humanitarian:v1')[2]);
   const meta = JSON.parse(sets.find((c) => c[1] === 'seed-meta:conflict:humanitarian')[2]);
-  assert.equal(marker.sourceChannel, 'hapi-api');
-  assert.equal(meta.sourceChannel, 'hapi-api', 'the seed-meta record must name the channel too');
+  assert.equal(meta.sourceChannel, HAPI_API_CHANNEL, 'the seed-meta record must name the channel too');
   assert.equal(meta.snapshotFailureReason, 'HDX_HTTP_503');
-  assert.equal(
-    meta.sourceState,
-    'degraded',
-    'a demoted seed must trip health’s degraded-but-serving hook, or a permanent HDX break runs green',
-  );
+  assert.equal(meta.sourceState, 'degraded');
 
-  // …and the seeder must build that object only when it actually demoted: a
-  // healthy snapshot run claiming a failure reason (or a degraded source) would
-  // alarm on every tick.
-  assert.match(
-    seedSource,
-    /\.\.\.\(ha\.snapshotFailureReason\s*\n?\s*\?\s*\{\s*snapshotFailureReason: ha\.snapshotFailureReason, sourceState: 'degraded' \}\s*\n?\s*:\s*\{\}\),/,
-    'snapshotFailureReason and sourceState must be conditional on the run having demoted',
-  );
-
-  // …and the seeder must actually hand it to that slot: `coverage` skipped,
-  // provenance last.
+  const seedSource = readFileSync(new URL('../scripts/seed-conflict-intel.mjs', import.meta.url), 'utf8');
   assert.match(
     seedSource,
     /HAPI_SEED_META_TTL_SECONDS,\s*undefined,\s*channelProvenance,/,
     'the HAPI marker write must pass channelProvenance in writeExtraKeyWithMeta’s `extra` slot',
   );
-
-  // The per-country keys outlive a run (HAPI_TTL), and the loop overwrites only
-  // the countries THIS run covered, so after a partial run that changed channel
-  // the family can hold both vintages. sourceChannel is family-wide only when
-  // coverage is complete — so the marker must keep carrying the coverage pair
-  // that lets a reader tell those apart, next to the channel itself.
-  for (const field of ['requiredCountriesCovered', 'requiredCountriesTotal', 'countriesCovered']) {
-    assert.ok(
-      Object.hasOwn(marker, field),
-      `the marker must keep ${field} — it is what scopes sourceChannel to the whole family or just this run`,
-    );
-  }
+  assert.match(
+    seedSource,
+    /buildHapiSeedProvenance\(ha\)/,
+    'fetchAll must build the marker through the tested helper, not inline',
+  );
 });
 
 test('every crisis-tracker registry country reaches the HAPI aggregation filter', () => {
@@ -585,7 +604,7 @@ test('a demoted run makes two global bulk requests and maps all returned target 
     11,
     'an HRP country with no national row must publish from the subnational sweep',
   );
-  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(result.sourceChannel, HAPI_API_CHANNEL);
   assert.equal(
     result.snapshotFailureReason,
     'HDX_HTTP_503',
@@ -717,7 +736,7 @@ test('the HDX snapshot serves both sweeps without ever touching the JSON API', a
     11,
     'admin-2 rows must survive the snapshot admin_level filter',
   );
-  assert.equal(result.sourceChannel, 'hdx-snapshot');
+  assert.equal(result.sourceChannel, HAPI_SNAPSHOT_CHANNEL);
   assert.equal(result.snapshotFailureReason, null);
 });
 
@@ -780,7 +799,7 @@ test('a bot-blocked API is irrelevant while the snapshot is healthy', async () =
   assert.equal(snapshotUrls.length, 2);
   assert.deepEqual(Object.keys(result.summaries), ['SD']);
   assert.equal(result.summaries.SD.summary.countryName, 'Sudan');
-  assert.equal(result.sourceChannel, 'hdx-snapshot');
+  assert.equal(result.sourceChannel, HAPI_SNAPSHOT_CHANNEL);
 });
 
 test('a quota rejection on the demoted API backs off and names both channels', async () => {
@@ -815,7 +834,7 @@ test('a quota rejection on the demoted API backs off and names both channels', a
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
   assert.equal(failureMeta.status, 'error');
   assert.equal(failureMeta.errorReason, 'HAPI_RATE_LIMIT');
-  assert.equal(failureMeta.sourceChannel, 'hapi-api');
+  assert.equal(failureMeta.sourceChannel, HAPI_API_CHANNEL);
   assert.equal(
     failureMeta.snapshotFailureReason,
     'HDX_HTTP_503',
@@ -854,7 +873,7 @@ test('HAPI snapshot network failure publishes actionable SEED_ERROR metadata bef
   assert.equal(backoff.reasonCode, 'HAPI_BOT_BLOCK', 'the terminal failure is the demoted channel’s own');
   assert.equal(failureMeta.status, 'error');
   assert.equal(failureMeta.errorReason, 'HAPI_BOT_BLOCK');
-  assert.equal(failureMeta.sourceChannel, 'hapi-api');
+  assert.equal(failureMeta.sourceChannel, HAPI_API_CHANNEL);
   assert.equal(failureMeta.snapshotFailureReason, 'HDX_DNS_ERROR');
   assert.equal(failureMeta.failedAt, NOW);
 });
@@ -1038,7 +1057,7 @@ test('a snapshot outage publishes the demoted aggregate rather than going dark',
   });
 
   assert.deepEqual(Object.keys(result.summaries), ['SD']);
-  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(result.sourceChannel, HAPI_API_CHANNEL);
   assert.equal(result.snapshotFailureReason, 'HDX_HTTP_503');
   assert.equal(directCalls, 3, 'both global sweeps and the first missing-country request should run');
   assert.equal(snapshotUrls.length, 2, 'metadata plus one failed CSV request should run');
@@ -1070,7 +1089,7 @@ test('a snapshot that parses but covers nothing demotes rather than going dark',
     }),
   });
 
-  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(result.sourceChannel, HAPI_API_CHANNEL);
   assert.equal(result.snapshotFailureReason, 'HDX_SNAPSHOT_EMPTY');
   assert.equal(result.summaries.SD.summary.conflictEventsTotal, 12);
 });
@@ -1117,7 +1136,7 @@ test('a slow-failing snapshot does not starve the demoted per-country fan-out', 
     'the fan-out window must be re-anchored at the demotion, not spent by the failed primary',
   );
   assert.deepEqual(Object.keys(result.summaries).sort(), ['SD', 'UA']);
-  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(result.sourceChannel, HAPI_API_CHANNEL);
 });
 
 test('the demotion gate admits a snapshot failure one tick inside the budget', async () => {
@@ -1146,7 +1165,7 @@ test('the demotion gate admits a snapshot failure one tick inside the budget', a
     }),
   });
 
-  assert.equal(result.sourceChannel, 'hapi-api');
+  assert.equal(result.sourceChannel, HAPI_API_CHANNEL);
   assert.equal(result.summaries.SD.summary.conflictEventsTotal, 12);
 });
 
@@ -1162,7 +1181,7 @@ test('a demoted seed shortens its own freshness pin so the next tick retries the
     countryCodes: ['SD'],
     loadPreviousMarker: async () => ({
       updatedAt: NOW - (HAPI_DEMOTED_REFRESH_INTERVAL_MS - 1),
-      sourceChannel: 'hapi-api',
+      sourceChannel: HAPI_API_CHANNEL,
     }),
     loadFailureBackoff: async () => null,
     snapshotFetchFn: async () => assert.fail('inside the demoted window, nothing should refetch'),
@@ -1174,7 +1193,7 @@ test('a demoted seed shortens its own freshness pin so the next tick retries the
     pace: async () => {},
     loadPreviousMarker: async () => ({
       updatedAt: NOW - HAPI_DEMOTED_REFRESH_INTERVAL_MS,
-      sourceChannel: 'hapi-api',
+      sourceChannel: HAPI_API_CHANNEL,
     }),
     loadFailureBackoff: async () => null,
     writeFailureBackoff: async () => assert.fail('a recovered snapshot must not back off'),
@@ -1188,7 +1207,7 @@ test('a demoted seed shortens its own freshness pin so the next tick retries the
     countryCodes: ['SD'],
     loadPreviousMarker: async () => ({
       updatedAt: NOW - HAPI_DEMOTED_REFRESH_INTERVAL_MS,
-      sourceChannel: 'hdx-snapshot',
+      sourceChannel: HAPI_SNAPSHOT_CHANNEL,
     }),
     loadFailureBackoff: async () => null,
     snapshotFetchFn: async () => assert.fail('a fresh snapshot seed must not refetch'),
@@ -1197,7 +1216,7 @@ test('a demoted seed shortens its own freshness pin so the next tick retries the
 
   assert.equal(stillPinned, null);
   assert.equal(snapshotPinned, null, 'the shortened pin must apply ONLY to demoted seeds');
-  assert.equal(retried.sourceChannel, 'hdx-snapshot', 'the next tick must reclaim the authoritative channel');
+  assert.equal(retried.sourceChannel, HAPI_SNAPSHOT_CHANNEL, 'the next tick must reclaim the authoritative channel');
   assert.equal(snapshotCalls, 2);
   assert.ok(HAPI_DEMOTED_REFRESH_INTERVAL_MS < HAPI_REFRESH_INTERVAL_MS);
 });
@@ -1238,7 +1257,7 @@ test('a snapshot that fails SLOWLY fails closed instead of stacking API sweeps b
   assert.equal(failureMeta.errorReason, 'HDX_TIMEOUT');
   assert.equal(
     failureMeta.sourceChannel,
-    'hdx-snapshot',
+    HAPI_SNAPSHOT_CHANNEL,
     'a run that never demoted must not be attributed to the API',
   );
 });
