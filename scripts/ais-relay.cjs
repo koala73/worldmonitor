@@ -8783,6 +8783,14 @@ const MAX_VESSEL_META = 50000;
 
 const vessels = new Map();
 const vesselHistory = new Map();
+// mmsi → timestamp of the vessel's most recent position fix. Retention must
+// exceed GAP_THRESHOLD: the dark-ship return check compares the CURRENT fix
+// against this value, and the vesselHistory equivalent loses the prior fix
+// to its 30-minute DENSITY_WINDOW prune and 10-entry cap long before a >1h
+// silence ends. Bounded by the same retention prune + recency eviction
+// cleanupAggregates applies to vesselHistory.
+const vesselLastFixSeen = new Map();
+const LAST_FIX_RETENTION_MS = 6 * 60 * 60 * 1000; // 6h — 6× GAP_THRESHOLD
 const densityGrid = new Map();
 const candidateReports = new Map();
 // Parallel store for tanker (AIS ship type 80-89) position reports — populated
@@ -9114,14 +9122,16 @@ function processPositionReportForSnapshot(data) {
   const history = vesselHistory.get(mmsi) || [];
   // Dark-ship return detection (#7574): a fix arriving more than
   // GAP_THRESHOLD after the previous one marks the vessel as returned from
-  // extended AIS silence. This MUST be recorded at ingestion time —
-  // cleanupAggregates prunes vesselHistory to the 30-min DENSITY_WINDOW, so
-  // a >1h silence can never be reconstructed from the pruned history (the
-  // history-diffing form of this check could never fire).
-  const lastFix = history.length ? history[history.length - 1] : 0;
-  if (lastFix && now - lastFix > GAP_THRESHOLD) {
+  // extended AIS silence. The prior fix is read from vesselLastFixSeen, NOT
+  // from vesselHistory — cleanupAggregates prunes vesselHistory to the
+  // 30-min DENSITY_WINDOW and caps it at 10 entries, so by the time a >1h
+  // silence ends the old fix is long gone from that structure and a
+  // history-diffing form of this check can never fire.
+  const lastFixAt = vesselLastFixSeen.get(mmsi);
+  if (lastFixAt && now - lastFixAt > GAP_THRESHOLD) {
     darkShipReturns.set(mmsi, now);
   }
+  vesselLastFixSeen.set(mmsi, now);
   history.push(now);
   if (history.length > 10) history.shift();
   vesselHistory.set(mmsi, history);
@@ -9208,6 +9218,14 @@ function cleanupAggregates() {
       vesselHistory.set(mmsi, filtered);
     }
   }
+  // Retention prune + recency cap for the dark-ship last-fix map: entries
+  // older than the retention window can never be part of a live >1h silence
+  // comparison again, and the cap bounds memory against vessel churn.
+  const lastFixCutoff = now - LAST_FIX_RETENTION_MS;
+  for (const [mmsi, ts] of vesselLastFixSeen) {
+    if (ts < lastFixCutoff) vesselLastFixSeen.delete(mmsi);
+  }
+  evictMapByTimestamp(vesselLastFixSeen, MAX_VESSEL_HISTORY, (ts) => ts);
   // Hard cap: keep the most recent vessel histories.
   evictMapByTimestamp(vesselHistory, MAX_VESSEL_HISTORY, (history) => history[history.length - 1] || 0);
 

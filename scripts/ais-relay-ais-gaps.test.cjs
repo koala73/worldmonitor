@@ -50,11 +50,21 @@ assert.ok(relaySource.includes('const GAP_THRESHOLD = 60 * 60 * 1000'),
   'GAP_THRESHOLD must stay 1h in ais-relay.cjs');
 assert.ok(relaySource.includes('const AIS_GAPS_TTL = 3600'),
   'AIS_GAPS_TTL must stay 3600 (must strictly exceed the 30min health budget)');
-// The sightings MUST be recorded at ingestion — vesselHistory is pruned to
-// the 30-min DENSITY_WINDOW by cleanupAggregates, so a history-diffing form
-// of this check can never observe a >1h silence.
+// The prior fix MUST come from vesselLastFixSeen (retention > GAP_THRESHOLD)
+// and the sighting MUST be recorded at ingestion — cleanupAggregates prunes
+// vesselHistory to the 30-min DENSITY_WINDOW and caps it at 10 entries, so
+// neither a history-diffing form of this check nor a vesselHistory-sourced
+// last fix can ever observe a >1h silence.
+assert.ok(relaySource.includes('const lastFixAt = vesselLastFixSeen.get(mmsi);'),
+  'the dark-ship return check must read the prior fix from vesselLastFixSeen');
 assert.ok(relaySource.includes('darkShipReturns.set(mmsi, now)'),
   'dark-ship returns must be recorded at ingestion time in processPositionReportForSnapshot');
+assert.ok(relaySource.includes('vesselLastFixSeen.set(mmsi, now)'),
+  'the last-fix map must be updated on every position report');
+assert.ok(relaySource.includes('const lastFixCutoff = now - LAST_FIX_RETENTION_MS;'),
+  'vesselLastFixSeen must be retention-pruned in cleanupAggregates');
+assert.ok(relaySource.includes('const LAST_FIX_RETENTION_MS = 6 * 60 * 60 * 1000;'),
+  'last-fix retention must exceed GAP_THRESHOLD');
 
 const GAP_THRESHOLD_MS = 60 * 60 * 1000; // mirrors the pinned production constant
 const { countDarkShips, seedAisGaps } = loadFunctions(['countDarkShips', 'seedAisGaps']);
