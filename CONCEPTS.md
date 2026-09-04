@@ -442,6 +442,26 @@ The upstream that actually fed a published theater-posture cycle, recorded with 
 
 Each cycle attributes exactly one winning source (or a vessels-only outcome when no flight source contributed), and per-source cycle counts accumulate for the life of the producer process. The attribution answers "who fed this record", not "which sources are healthy" — a primary source that answered healthily with zero relevant traffic is a quiet primary, not a failed one, and its health is judged from its own request counters, never from the attribution. Because the two Theater Posture producers use different vocabularies for their sources, every attribution also names its producer. See also: Theater Posture.
 
+## Temporal Baselines
+
+### Temporal Baseline
+
+The running per-type mean and variance a dashboard's anomaly detection compares each period's count against — e.g. how many military flights, vessels, or dark ships are "normal" for this weekday and month.
+
+Baselines are computed exclusively by trusted server-side producers; browser sessions can never contribute samples to them. The statistics live under a versioned namespace, so a change in what a metric MEANS (or in who may write it) orphans the old accumulation instead of silently re-basing it — a client-reported mean and a server-counted mean never blend. Sampling is decoupled from rebuild cadence: a sample folds on its own statistical clock, so tuning a cache interval must never change the sample rate.
+
+### Count Source
+
+The trusted server-side data payload a temporal metric's count is computed from each cycle — the number whose deviation from the baseline raises the anomaly.
+
+One producer per metric type, always a seeded server-side payload; the count semantic is deliberately specific (an array length, a sum over sub-records, a producer-published counter) and re-deriving it differently silently re-bases the baseline. Every configured count source also feeds the shared content-age contract, so a count source that stops publishing dates the whole baseline set as stale.
+
+### Dark Ship
+
+A vessel observed again after an extended AIS silence — it "went dark" and returned.
+
+A return only counts when the silence exceeded the gap threshold and the re-sighting is recent, so the observation must be recorded at the moment the returning fix arrives from a structure whose retention spans the whole silence; a history buffer pruned to a shorter display window (or capped at a few entries) can never span the gap, making the detection read as permanently zero. See also: Count Source (dark-ship returns feed the ais_gaps baseline).
+
 ## Metered Upstreams
 
 ### Credit Budget
