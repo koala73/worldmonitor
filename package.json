@@ -304,6 +304,8 @@
     "sharp": "0.35.3",
     "postcss": "8.5.23",
     "fast-uri": "3.1.7",
-    "markdown-it": "14.2.0"
+    "markdown-it": "14.2.0",
+    "fflate@0.7": "0.7.5",
+    "fflate@0.8": "0.8.3"
   }
 }

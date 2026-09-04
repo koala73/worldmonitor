@@ -4287,7 +4287,10 @@ ${snapshotSection}
   });
 }
 
-function renderToolsIndex({ baseUrl, lastmod }) {
+// Counts come from the registries this same build renders, never a frozen
+// literal: the hub card is the one place a stale number reads as a factual
+// claim about the corpus rather than as prose.
+function renderToolsIndex({ baseUrl, lastmod, crisisCount, chokepointCount }) {
   const path = '/tools/';
   const description = 'Focused World Monitor tools for current natural hazards, country-level airspace disruption, and geographic signal convergence, backed by maintained first-party data contracts.';
   const body = `      <p class="eyebrow">Live intelligence tools</p>
@@ -4297,8 +4300,8 @@ function renderToolsIndex({ baseUrl, lastmod }) {
         <a class="card" href="/tools/natural-hazard-pulse/"><strong>Natural-hazard pulse</strong><br><span>Worldwide or approximate country filter</span></a>
         <a class="card" href="/tools/airspace-disruption-checker/"><strong>Airspace-disruption checker</strong><br><span>Commercial airport disruption and observed military flights</span></a>
         <a class="card" href="/tools/signal-convergence/"><strong>Geographic signal convergence</strong><br><span>Named multi-domain correlation score</span></a>
-        <a class="card" href="/chokepoints/"><strong>Maritime chokepoint status</strong><br><span>13 canonical waterways</span></a>
-        <a class="card" href="/crises/"><strong>Bounded crisis trackers</strong><br><span>Four curated geographic scopes</span></a>
+        <a class="card" href="/chokepoints/"><strong>Maritime chokepoint status</strong><br><span>${chokepointCount} canonical waterways</span></a>
+        <a class="card" href="/crises/"><strong>Bounded crisis trackers</strong><br><span>${crisisCount} curated geographic scopes</span></a>
       </div>
       <h2>How these tools work</h2>
       <p>Each tool asks one narrow operational question — what natural hazards are open right now, is a country's monitored airspace disrupted, where independent streams converge — and answers it from a maintained World Monitor contract. Results are labelled with their source and retrieval time, unavailable data is reported as unavailable rather than zero, and independent signals are never combined into a single opaque threat score unless the tool names that combination explicitly.</p>
@@ -5005,6 +5008,8 @@ export async function buildCorpus({
     renderToolsIndex({
       baseUrl,
       lastmod: data.lastmod.tools,
+      crisisCount: data.crises.length,
+      chokepointCount: data.chokepoints.length,
     }),
   );
   writeGeneratedFile(

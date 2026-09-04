@@ -1286,12 +1286,12 @@ Recovery is accepted only when:
 |---|---|
 | **Service name** | `seed-bundle-macro` |
 | **Start command** | `node scripts/seed-bundle-macro.mjs` |
-| **Cron schedule** | `0 8 * * *` (daily 08:00 UTC) |
+| **Cron schedule** | `0 8,9 * * *` (daily 08:00 and 09:00 UTC) |
 | **Watch paths** | `scripts/**`, `shared/**` |
 | **Replaces** | 6 services |
 | **Net savings** | 5 slots |
 | **Members** | BIS Data (12h), CBR Rates (daily), BoC Valet (daily), StatCan WDS (daily), China Macro (36h), China Release Calendar (36h), China Policy Events (6h), BIS Extended (12h), BLS Series (daily), Eurostat (daily), Eurostat House Prices (7d), Eurostat Government Debt (2d), Eurostat Industrial Production (daily), IMF Macro (30d), National Debt (30d), FAO FFPI (daily), World Bank External Debt (30d), BIS LBS (7d), FATF Listing (30d), Education Attainment (7d) |
-| **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Education stays last on six UTC days so a persistent failure in the new flag-dark producer cannot starve established production members; it gets first priority each Sunday UTC so sustained production load cannot defer its first envelope forever. |
+| **Wall budget** | 570 seconds. The runner defers a section when its timeout plus 10-second kill grace cannot fit before Railway's 10-minute limit. Physical Premiums runs first with 80 seconds of admission headroom. Education gets first priority at 08:00 each Sunday UTC, with Physical second. The 09:00 retry always puts Physical first, so a deferred run has another full admission window even when Education fails. Completed members skip through their interval gates. |
 
 ### Bundle 9: seed-bundle-health
 
