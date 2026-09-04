@@ -405,6 +405,12 @@ describe('MCP live smoke — the production detection net', () => {
     );
   });
 
+  it('runs on pushes that change the mcp-proxy probe helper', () => {
+    const pushBlock = smokeWorkflow.match(/\n {2}push:\n[\s\S]*?(?=\n {2}[a-z_]+:)/)?.[0];
+    assert.ok(pushBlock, 'MCP live smoke workflow must define a push trigger');
+    assert.match(pushBlock, /^\s+- 'scripts\/mcp-proxy-live-smoke\.mjs'\s*$/m);
+  });
+
   // Workflow-level concurrency lets a pending or in-progress Production event
   // evict a QUEUED successful-production smoke before the job gate skips it.
   // An evicted run reads as neither pass nor fail, which is the worst outcome

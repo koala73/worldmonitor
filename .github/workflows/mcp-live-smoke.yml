@@ -53,6 +53,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/mcp-live-smoke.mjs'
+      - 'scripts/mcp-proxy-live-smoke.mjs'
       - 'scripts/mcp-schema-wire-check.mjs'
       - '.github/workflows/mcp-live-smoke.yml'
   schedule:
