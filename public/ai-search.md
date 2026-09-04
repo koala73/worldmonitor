@@ -53,7 +53,7 @@ Coverage reconciled: 2026-09-04. Every figure below is generated from this repos
 - 747 active data providers across 760 observed source hosts (331 structured/API, 461 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
 - 724 feed definitions in the shared feed registry
 - 40 freshness-tracked source groups
-- 58 map layer types in the shared layer catalog
+- 58 map layer types in the shared registry, 57 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
 - 113 concrete panel implementations across 6 product variants
 - 74 MCP tools; use `tools/list` for the live inventory
 - 28 supported interface languages

@@ -106,6 +106,22 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
     assert.equal(stats.locales, published.locales);
   });
 
+  it('reconciles the map-layer figure the homepage publishes instead of contradicting it', () => {
+    // Live probe 2026-09-04: the homepage hero reads "57 · Map layer types"
+    // while the registry holds 58 entries. Both are true under different
+    // definitions; publishing one of them alone is what makes AI answers
+    // disagree, so ai-search.md must state both and name which is which.
+    const coverage = section(read(AI_SEARCH_PATH), COVERAGE_HEADING);
+    const heroLayers = JSON.parse(read('pro-test/src/generated/hero-stats.json')).mapLayers;
+    const registryLayers = loadStatsForInventoryFacts().layerDefinitions;
+
+    assert.match(
+      coverage,
+      new RegExp(`${registryLayers} map layer types in the shared registry, ${heroLayers} of them reachable in the full variant`),
+      'the coverage block must name both the registry total and the homepage figure',
+    );
+  });
+
   it('carries the reconciliation date forward when nothing changed', () => {
     const current = read(AI_SEARCH_PATH);
     assert.equal(

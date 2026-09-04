@@ -26,6 +26,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { AI_DATA_CENTERS } from '../src/config/ai-datacenters.ts';
 import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
 import { UNDERSEA_CABLES } from '../src/config/geo-map.ts';
+import { getCompleteLayerCatalogKeys } from '../src/config/map-layer-definitions.ts';
 import { PIPELINES } from '../shared/pipelines-data.ts';
 import { INTEL_HOTSPOTS } from '../shared/geo-data.ts';
 import { SOURCE_DOMAINS } from './crawlable-sources-page.mjs';
@@ -63,6 +64,26 @@ export function publishedRankedCountries(rootDir = ROOT) {
 }
 
 /**
+ * The homepage publishes "57 · Map layer types" (the full variant's reachable
+ * catalog) while the registry holds 58 entries. Both are true and both were
+ * published under the same words, which is precisely the ambiguity that makes
+ * AI answers disagree. State both with their definitions instead of picking
+ * one and leaving the other surface to contradict it.
+ */
+export function mapLayerCoverage(stats) {
+  const registry = stats.layerDefinitions;
+  const fullVariant = getCompleteLayerCatalogKeys('full').length;
+  if (fullVariant > registry) {
+    throw new Error(`the full-variant layer catalog (${fullVariant}) cannot exceed the registry (${registry})`);
+  }
+  if (fullVariant === registry) {
+    return `- ${count(registry)} map layer types in the shared registry, all of them reachable in the full variant`;
+  }
+  const gated = registry - fullVariant;
+  return `- ${count(registry)} map layer types in the shared registry, ${count(fullVariant)} of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining ${count(gated)} ${gated === 1 ? 'is' : 'are'} sunset or build-flag gated`;
+}
+
+/**
  * One bullet per registry, each stating the figure AND the definition that
  * produced it. A bare "747 providers" is unattributable; "747 active providers
  * across 760 observed source hosts" can be checked against /sources/.
@@ -77,7 +98,7 @@ export function buildCoverageBullets({ stats, resilience }) {
     `- ${count(attribution.providerCount)} active data providers across ${count(attribution.activeHosts)} observed source hosts (${count(attribution.structuredHosts)} structured/API, ${count(attribution.feedHosts)} news & OSINT feed, ${count(attribution.operationalStatusHosts)} operational-status; a host can be more than one), grouped into ${count(SOURCE_DOMAINS.length)} signal domains — full catalog at https://www.worldmonitor.app/sources/`,
     `- ${count(stats.feedDefinitions)} feed definitions in the shared feed registry`,
     `- ${count(stats.freshnessSources)} freshness-tracked source groups`,
-    `- ${count(stats.layerDefinitions)} map layer types in the shared layer catalog`,
+    mapLayerCoverage(stats),
     `- ${count(stats.panelClasses)} concrete panel implementations across ${count(stats.variantCount)} product variants`,
     `- ${count(stats.mcpToolCount)} MCP tools; use \`tools/list\` for the live inventory`,
     `- ${count(stats.locales)} supported interface languages`,
