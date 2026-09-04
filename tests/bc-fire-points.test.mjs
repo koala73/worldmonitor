@@ -341,8 +341,79 @@ describe('independent FIRMS + CWFIS + BC merge', () => {
         sourceState: 'degraded',
         errorCode: 'FIRMS_PARTIAL_COVERAGE',
         canadaSourceFailureCount: 0,
+        consecutiveSourceFailures: 1,
+        lastSourceFailureCode: 'FIRMS_PARTIAL_COVERAGE',
       },
       'partial worldwide coverage must be visible, not silent',
+    );
+  });
+
+  it('debounces only the first identical partial FIRMS failure while usable data survives', () => {
+    const now = Date.parse('2026-09-04T20:40:00Z');
+    const dataKey = healthTesting.BOOTSTRAP_KEYS.wildfires;
+    const metaKey = healthTesting.SEED_META.wildfires.key;
+    const partial = {
+      _firmsState: 'ok',
+      _firmsPartial: true,
+      _cwfisState: 'ok',
+      _bcState: 'ok',
+    };
+    const firstPatch = canadianWildfireAfterPublish(partial, {
+      previousMeta: { sourceState: 'ok' },
+    }).freshnessMetaPatch;
+    const classify = (patch, { hasData = true, fetchedAt = now - 60_000 } = {}) => (
+      healthTesting.classifyKey('wildfires', dataKey, { allowOnDemand: false }, {
+        keyStrens: new Map(hasData ? [[dataKey, 256]] : []),
+        keyErrors: new Map(),
+        keyMetaValues: new Map([[metaKey, JSON.stringify({
+          fetchedAt,
+          recordCount: hasData ? 100 : 0,
+          ...patch,
+        })]]),
+        keyMetaErrors: new Map(),
+        now,
+      })
+    );
+
+    assert.equal(firstPatch.consecutiveSourceFailures, 1);
+    assert.equal(firstPatch.lastSourceFailureCode, 'FIRMS_PARTIAL_COVERAGE');
+    assert.deepEqual(classify(firstPatch), {
+      status: 'OK',
+      records: 100,
+      errorCode: 'FIRMS_PARTIAL_COVERAGE',
+      consecutiveSourceFailures: 1,
+      lastSourceFailureCode: 'FIRMS_PARTIAL_COVERAGE',
+      sourceFailurePending: true,
+    });
+
+    const secondPatch = canadianWildfireAfterPublish(partial, {
+      previousMeta: { fetchedAt: now - 60_000, recordCount: 100, ...firstPatch },
+    }).freshnessMetaPatch;
+    assert.equal(secondPatch.consecutiveSourceFailures, 2);
+    assert.equal(classify(secondPatch).status, 'SEED_ERROR');
+
+    const legacyProductionPatch = canadianWildfireAfterPublish(partial, {
+      previousMeta: {
+        sourceState: 'degraded',
+        errorCode: 'FIRMS_PARTIAL_COVERAGE',
+      },
+    }).freshnessMetaPatch;
+    assert.equal(
+      legacyProductionPatch.consecutiveSourceFailures,
+      2,
+      'the first repaired run must preserve the existing production warning',
+    );
+    assert.equal(classify(legacyProductionPatch).status, 'SEED_ERROR');
+
+    assert.equal(
+      classify(firstPatch, { fetchedAt: now - 5 * 60_000 }).status,
+      'OK',
+      'a usable last-good snapshot receives the same single-run grace',
+    );
+    assert.notEqual(
+      classify(firstPatch, { hasData: false }).status,
+      'OK',
+      'missing global data fails immediately even on the first partial failure',
     );
   });
 
@@ -680,6 +751,7 @@ describe('module import contract', () => {
     assert.match(seederSrc, /wildfire:fires:v1/);
     assert.doesNotMatch(seederSrc, /wildfire:canada/);
     assert.doesNotMatch(seederSrc, /fetch\.bind/);
+    assert.match(seederSrc, /firms2\.modaps\.eosdis\.nasa\.gov/);
     assert.match(railwaySrc, /scripts\/wildfire\/bc-fire-points\.mjs/);
     assert.match(railwaySrc, /scripts\/wildfire\/cwfis-wfs\.mjs/);
   });
