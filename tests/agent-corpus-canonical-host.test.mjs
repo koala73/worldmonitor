@@ -77,7 +77,6 @@ function apexOffenders() {
     readFileSync(file, 'utf-8')
       .split('\n')
       .forEach((line, index) => {
-        APEX_URL_RE.lastIndex = 0;
         for (const match of line.matchAll(APEX_URL_RE)) {
           const path = match[1] ?? '';
           if (path && APEX_SERVED.some((re) => re.test(path))) continue;

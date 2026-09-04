@@ -4137,13 +4137,16 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
   // Allow beats an equal-length Disallow) so a future edit that quietly
   // narrows or widens a pattern fails here rather than in Search Console.
   describe('resolved against the paths Search Console actually reported', () => {
+    const escapeRe = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // Google's robots.txt path matching: `*` is any sequence, a trailing `$`
+    // anchors the end of the URL (query string included), everything else is
+    // a literal prefix match.
     const pathMatches = (pattern, path) => {
       const source = pattern.endsWith('$')
         ? `^${pattern.slice(0, -1).split('*').map(escapeRe).join('.*')}$`
         : `^${pattern.split('*').map(escapeRe).join('.*')}`;
       return new RegExp(source).test(path);
     };
-    const escapeRe = (part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
     const starGroupRules = (file) => {
       const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
