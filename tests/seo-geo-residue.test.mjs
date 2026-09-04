@@ -10,6 +10,7 @@ import { describe, it } from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import { buildLlmsFullText, redactInternalApiOrigins } from '../scripts/build-llms-full.mjs';
+import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { parseSitemapDocument } from '../scripts/verify-sitemaps.mjs';
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
@@ -170,17 +171,25 @@ describe('GEO residue #7463', () => {
   });
 
   it('homepage source has a YYYY-MM-DD as-of date in JSON-LD and visible copy', () => {
-    const welcome = read('pro-test/welcome.html');
     const index = read('pro-test/index.html');
     const hero = read('pro-test/src/welcome/Hero.tsx');
     const home = read('public/home.md');
     const en = readJson('pro-test/src/locales/en.json');
 
-    assert.match(welcome, /"dateModified": "2026-08-31"/);
     assert.match(index, /"dateModified": "2026-08-31"/);
     assert.match(hero, /dateTime="2026-08-31"/);
     assert.match(home, /2026-08-31/);
     assert.match(String(en.welcome?.hero?.asOf || ''), /2026-08-31|31 August 2026/);
+  });
+
+  it('homepage welcome.html dates track the teaser strip snapshot (#7654)', () => {
+    // The strip reads docs/snapshots/crawlable-live-pulse-*.json, so the host
+    // page's crawler-facing dates come from the same freeze — refreshed by
+    // `npm run teasers:welcome`, never hand-maintained.
+    const snapshot = readJson(resolveLatestLivePulseSnapshotPath(repoRoot));
+    const welcome = read('pro-test/welcome.html');
+    assert.match(welcome, new RegExp(`<meta name="lastmod" content="${snapshot.capturedAt}"`));
+    assert.match(welcome, new RegExp(`"dateModified": "${snapshot.capturedAt}"`));
   });
 
   it('does not add well-known server.json to the MCP registry publish path filter', () => {

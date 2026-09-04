@@ -45,6 +45,8 @@ export interface TeaserQuote {
 }
 
 export interface TeaserState {
+  /** Capture date (YYYY-MM-DD) of the frozen snapshot behind the fallback rows. */
+  capturedAt: string;
   headlines: { items: TeaserHeadline[]; live: boolean };
   cii: { items: TeaserCiiScore[]; live: boolean };
   chokepoints: { items: TeaserChokepoint[]; total: number; disrupted: number; live: boolean };
@@ -74,6 +76,7 @@ function articleUrl(link: string | undefined): string {
 }
 
 interface FallbackShape {
+  capturedAt: string;
   headlines: TeaserHeadline[];
   cii: TeaserCiiScore[];
   chokepoints: TeaserChokepoint[];
@@ -84,10 +87,28 @@ interface FallbackShape {
 
 const fallback = fallbackJson as unknown as FallbackShape;
 
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
+/**
+ * Render a snapshot capture date (YYYY-MM-DD) the way the crawlable corpus
+ * names its dates ("Sep 4, 2026") — the homepage badge must read as the same
+ * publication event, not a second date dialect (#7654).
+ */
+export function formatSnapshotDate(capturedAt: string): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(capturedAt || ''));
+  if (!match) return String(capturedAt || '');
+  return `${MONTHS[Number(match[2]) - 1]} ${Number(match[3])}, ${match[1]}`;
+}
+
 const isDisrupted = (c: { status: string }) => c.status !== 'green';
 
 export function getFallbackTeasers(): TeaserState {
   return {
+    // The fallback rows are a frozen capture of real published data (#7608),
+    // so they carry the capture date for the Published-pulse badge. A card
+    // earns LIVE only when its fetch succeeds (see fetchLiveTeasers); until
+    // then it is an attributable snapshot, never a sample (#7654).
+    capturedAt: fallback.capturedAt,
     headlines: { items: fallback.headlines, live: false },
     cii: { items: fallback.cii, live: false },
     chokepoints: {
@@ -309,7 +330,9 @@ async function fetchHeadlines(): Promise<{ items: TeaserHeadline[]; live: boolea
 /**
  * Fetch all four teasers, merging successes over the committed fallback.
  * Never throws; cards whose fetch failed keep their fallback values with
- * live=false so the UI shows SAMPLE instead of LIVE.
+ * live=false so the UI shows the Published-pulse snapshot instead of LIVE.
+ * The capture date always travels with the state — live cards and snapshot
+ * cards alike answer "as of when" from the same field.
  */
 export async function fetchLiveTeasers(): Promise<TeaserState> {
   const state = getFallbackTeasers();
