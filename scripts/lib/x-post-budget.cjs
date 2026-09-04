@@ -81,27 +81,52 @@ const RESERVE_LUA = [
   '  local serverNowMs = (tonumber(serverTime[1]) * 1000) + math.floor(tonumber(serverTime[2]) / 1000)',
   '  if serverNowMs >= deadlineMs then return {0, dayUsed, monthUsed, 7, coverageHeld, ""} end',
   'end',
-  'if coverageRaw == false and coverageTotal > 0 then',
-  '  coverageHeld = coverageTotal',
-  '  redis.call("set", KEYS[5], coverageHeld, "EXAT", tonumber(ARGV[5]))',
-  '  redis.call("set", KEYS[9], coverageModel, "EXAT", tonumber(ARGV[5]))',
+  'local coverageEffectiveHeld = coverageHeld',
+  'local coverageShouldWrite = false',
+  'local hasCoverageState = coverageRaw ~= false or coverageModelRaw ~= false',
+  'if hasCoverageState then',
+  '  if (coverageRaw == false) ~= (coverageModelRaw == false) then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
+  '  local canonicalHeld = coverageRaw == "0" or string.match(coverageRaw, "^[1-9]%d*$") ~= nil',
+  '  local storedTotalRaw = string.match(coverageModelRaw, "^fixed%-slots%-v1:([1-9]%d*)$")',
+  '  local storedTotal = tonumber(storedTotalRaw)',
+  '  if not canonicalHeld or storedTotal == nil or storedTotal > dailyLimit then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
+  '  if coverageHeld > storedTotal then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
+  '  if coverageTotal > 0 then',
+  '    local requestedTotalRaw = string.match(coverageModel, "^fixed%-slots%-v1:([1-9]%d*)$")',
+  '    local requestedTotal = tonumber(requestedTotalRaw)',
+  '    if requestedTotal == nil or requestedTotal ~= coverageTotal or requestedTotal > dailyLimit or storedTotal < coverageTotal then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
+  '    local spent = storedTotal - coverageHeld',
+  '    if spent > coverageTotal then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
+  '    coverageEffectiveHeld = coverageTotal - spent',
+  '    coverageShouldWrite = storedTotal > coverageTotal',
+  '  end',
+  'elseif coverageTotal > 0 then',
+  '  local requestedTotalRaw = string.match(coverageModel, "^fixed%-slots%-v1:([1-9]%d*)$")',
+  '  local requestedTotal = tonumber(requestedTotalRaw)',
+  '  if requestedTotal == nil or requestedTotal ~= coverageTotal or requestedTotal > dailyLimit then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
+  '  coverageEffectiveHeld = coverageTotal',
+  '  coverageShouldWrite = true',
   'end',
-  'if hasCoverageUnit and coverageModelRaw ~= false and coverageModelRaw ~= coverageModel then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
-  'if hasCoverageUnit and coverageRaw ~= false and coverageModelRaw == false then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
   'local coverageAccounted = hasCoverageUnit and redis.call("exists", KEYS[6]) == 1',
   'if coverageAccounted then return {0, dayUsed, monthUsed, 3, coverageHeld, ""} end',
-  'local coverageAfter = coverageHeld',
-  'if hasCoverageUnit then coverageAfter = math.max(0, coverageHeld - coverageUnit) end',
+  'if hasCoverageUnit and coverageEffectiveHeld < coverageUnit then return {0, dayUsed, monthUsed, 6, coverageHeld, ""} end',
+  'local coverageAfter = coverageEffectiveHeld',
+  'if hasCoverageUnit then coverageAfter = coverageEffectiveHeld - coverageUnit end',
   'local oncePerDay = ARGV[8] == "1"',
   'if oncePerDay and redis.call("exists", KEYS[4]) == 1 then return {0, dayUsed, monthUsed, 3, coverageHeld} end',
-  'if dayUsed + requested + coverageAfter > dailyLimit then return {0, dayUsed, monthUsed, 1, coverageHeld} end',
-  'if monthUsed + requested + coverageAfter > monthlyLimit then return {0, dayUsed, monthUsed, 2, coverageHeld} end',
+  'if dayUsed + requested + coverageAfter > dailyLimit then return {0, dayUsed, monthUsed, 1, coverageEffectiveHeld} end',
+  'if monthUsed + requested + coverageAfter > monthlyLimit then return {0, dayUsed, monthUsed, 2, coverageEffectiveHeld} end',
   'dayUsed = redis.call("incrby", KEYS[1], requested)',
   'monthUsed = redis.call("incrby", KEYS[2], requested)',
   'redis.call("expireat", KEYS[1], tonumber(ARGV[5]))',
   'redis.call("expireat", KEYS[2], tonumber(ARGV[6]))',
-  'if hasCoverageUnit then',
+  'if coverageShouldWrite or hasCoverageUnit then',
   '  redis.call("set", KEYS[5], coverageAfter, "EXAT", tonumber(ARGV[5]))',
+  'end',
+  'if coverageShouldWrite then',
+  '  redis.call("set", KEYS[9], coverageModel, "EXAT", tonumber(ARGV[5]))',
+  'end',
+  'if hasCoverageUnit then',
   '  redis.call("set", KEYS[6], "1", "EXAT", tonumber(ARGV[5]))',
   'end',
   'redis.call("set", KEYS[3], requested, "EX", tonumber(ARGV[7]))',
@@ -166,9 +191,21 @@ const STATUS_LUA = [
   'local dayUsed = tonumber(redis.call("get", KEYS[1]) or "0")',
   'local monthUsed = tonumber(redis.call("get", KEYS[2]) or "0")',
   'local coverageRaw = redis.call("get", KEYS[3])',
-  'local coverageHeld = tonumber(coverageRaw or "0") or 0',
+  'local coverageHeld = 0',
+  'local coverageState = 0',
+  'if coverageRaw ~= false then',
+  '  local canonicalHeld = coverageRaw == "0" or string.match(coverageRaw, "^[1-9]%d*$") ~= nil',
+  '  local parsedHeld = tonumber(coverageRaw)',
+  '  if canonicalHeld and parsedHeld ~= nil and parsedHeld <= 9007199254740991 then',
+  '    coverageHeld = parsedHeld',
+  '    coverageState = 1',
+  '  else',
+  '    coverageState = -1',
+  '  end',
+  'end',
   'local coverageModel = redis.call("get", KEYS[4])',
-  'return {dayUsed, monthUsed, coverageHeld, coverageRaw == false and 0 or 1, coverageModel or ""}',
+  'if (coverageRaw == false) ~= (coverageModel == false) then coverageState = -1 end',
+  'return {dayUsed, monthUsed, coverageHeld, coverageState, coverageModel or ""}',
 ].join('\n');
 
 function positiveInteger(value, fallback, name) {
@@ -269,6 +306,34 @@ function budgetStatus({
       ...(nextRequestBlockedReason ? { nextRequestBlockedReason } : {}),
     } : {}),
   };
+}
+
+function projectCoverageHold({
+  coverageHeld,
+  coverageState,
+  coverageModel,
+  expectedTotal,
+  coverageUnitPosts,
+  dailyLimit,
+}) {
+  const blocked = () => ({ coverageHeld, blockedReason: 'coverage_model_mismatch' });
+  if (coverageState === 0 && coverageModel === '') {
+    if (expectedTotal === 0) return { coverageHeld: 0, blockedReason: null };
+    return expectedTotal <= dailyLimit
+      ? { coverageHeld: expectedTotal, blockedReason: null }
+      : blocked();
+  }
+  if (coverageState !== 1 || coverageModel === '') return blocked();
+  const modelMatch = /^fixed-slots-v1:([1-9]\d*)$/.exec(coverageModel);
+  const storedTotal = Number(modelMatch?.[1]);
+  if (!Number.isSafeInteger(storedTotal) || storedTotal > dailyLimit
+    || coverageHeld > storedTotal || storedTotal < expectedTotal) return blocked();
+  const spent = storedTotal - coverageHeld;
+  if (spent > expectedTotal) return blocked();
+  const effectiveHeld = expectedTotal - spent;
+  return effectiveHeld >= coverageUnitPosts
+    ? { coverageHeld: effectiveHeld, blockedReason: null }
+    : blocked();
 }
 
 function xPostBudgetServiceStatus(value) {
@@ -404,7 +469,15 @@ function createXPostBudget(options = {}) {
     const admitted = nonNegativeAt(result, 0);
     const dailyUsed = nonNegativeAt(result, 1);
     const monthlyUsed = nonNegativeAt(result, 2);
+    const reasonCode = nonNegativeAt(result, 3);
     const dailyCoverageHeld = nonNegativeAt(result, 4);
+    if (admitted === 0 && reasonCode === 6 && dailyUsed !== null && monthlyUsed !== null) {
+      return {
+        allowed: false,
+        reason: 'coverage_model_mismatch',
+        status: unavailableStatus(period, { dailyLimit, monthlyLimit, costUsdMicrosPerPost }),
+      };
+    }
     if (admitted === null || dailyUsed === null || monthlyUsed === null || dailyCoverageHeld === null) {
       return {
         allowed: false,
@@ -414,7 +487,6 @@ function createXPostBudget(options = {}) {
     }
     const status = toStatus(period, dailyUsed, monthlyUsed, dailyCoverageHeld);
     if (admitted !== 1) {
-      const reasonCode = nonNegativeAt(result, 3);
       if (reasonCode === 4) {
         const receiptRaw = Array.isArray(result) ? result[5] : null;
         if (typeof receiptRaw !== 'string' || !receiptRaw) {
@@ -691,29 +763,31 @@ function createXPostBudget(options = {}) {
     const dailyUsed = nonNegativeAt(result, 0);
     const monthlyUsed = nonNegativeAt(result, 1);
     const dailyCoverageHeld = nonNegativeAt(result, 2);
-    const hasCoverageHold = nonNegativeAt(result, 3);
+    const coverageState = integerAt(result, 3);
     const coverageModel = stringAt(result, 4);
     if (
       dailyUsed === null
       || monthlyUsed === null
       || dailyCoverageHeld === null
-      || (hasCoverageHold !== 0 && hasCoverageHold !== 1)
+      || ![-1, 0, 1].includes(coverageState)
       || coverageModel === null
     ) {
       return unavailableStatus(period, { dailyLimit, monthlyLimit, costUsdMicrosPerPost });
     }
-    const expectedCoverageModel = `fixed-slots-v1:${dailyCoveragePosts}`;
-    const coverageModelMismatch = coverageUnitPosts > 0 && (
-      (hasCoverageHold === 1 && coverageModel === '')
-      || (coverageModel !== '' && coverageModel !== expectedCoverageModel)
-    );
-    const projectedCoverageHeld = coverageUnitPosts > 0 && hasCoverageHold === 0
-      ? dailyCoveragePosts
-      : dailyCoverageHeld;
-    return toStatus(period, dailyUsed, monthlyUsed, projectedCoverageHeld, true, {
+    const projection = requestedPosts > 0
+      ? projectCoverageHold({
+        coverageHeld: dailyCoverageHeld,
+        coverageState,
+        coverageModel,
+        expectedTotal: dailyCoveragePosts,
+        coverageUnitPosts,
+        dailyLimit,
+      })
+      : { coverageHeld: dailyCoverageHeld, blockedReason: null };
+    return toStatus(period, dailyUsed, monthlyUsed, projection.coverageHeld, true, {
       requestedPosts,
       coverageUnitPosts,
-      blockedReason: coverageModelMismatch ? 'coverage_model_mismatch' : null,
+      blockedReason: projection.blockedReason,
     });
   }
 

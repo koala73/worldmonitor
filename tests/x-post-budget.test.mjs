@@ -469,6 +469,54 @@ describe('shared X returned-Post budget', () => {
     assert.equal(xPostBudgetServiceStatus(status), 'degraded');
   });
 
+  it('blocks the same unsafe coverage states as reserve', async () => {
+    const cases = [
+      ['upward model', [5, 105, 495, 1, 'fixed-slots-v1:500']],
+      ['cross-version model', [5, 105, 592, 1, 'fixed-slots-v2:597']],
+      ['malformed model', [5, 105, 592, 1, 'not-a-model']],
+      ['hold without model', [5, 105, 592, -1, '']],
+      ['model without hold', [5, 105, 0, -1, 'fixed-slots-v1:597']],
+      ['noncanonical model', [5, 105, 592, 1, 'fixed-slots-v1:0597']],
+      ['noncanonical hold', [5, 105, 0, -1, 'fixed-slots-v1:597']],
+      ['negative hold', [5, 105, 0, -1, 'fixed-slots-v1:597']],
+      ['fractional hold', [5, 105, 0, -1, 'fixed-slots-v1:597']],
+      ['hold over stored total', [5, 105, 598, 1, 'fixed-slots-v1:597']],
+      ['spent Posts over new total', [5, 105, 91, 1, 'fixed-slots-v1:597']],
+      ['effective hold below the unit', [5, 105, 96, 1, 'fixed-slots-v1:597']],
+    ];
+
+    for (const [label, redisStatus] of cases) {
+      const budget = createXPostBudget({
+        evalCommand: async () => redisStatus,
+        dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+        now: () => NOW,
+      });
+      const status = await budget.status({ requestedPosts: 5, coverageUnitPosts: 5 });
+      assert.equal(status.nextRequestAdmissible, false, label);
+      assert.equal(status.nextRequestBlockedReason, 'coverage_model_mismatch', label);
+      assert.equal(xPostBudgetServiceStatus(status), 'degraded', label);
+    }
+  });
+
+  it('keeps malformed reserve states classified as coverage model mismatches', async () => {
+    for (const invalidHold of [-1, 592.5]) {
+      const budget = createXPostBudget({
+        evalCommand: async () => [0, 5, 105, 6, invalidHold, ''],
+        dailyCoveragePosts: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+        now: () => NOW,
+      });
+      const outcome = await budget.reserve({
+        requestedPosts: 5,
+        coverageTotal: DEFAULT_X_CURATED_DAILY_COVERAGE_POSTS,
+        coverageUnitPosts: 5,
+        coverageId: `malformed-${invalidHold}`,
+      });
+      assert.equal(outcome.allowed, false);
+      assert.equal(outcome.reason, 'coverage_model_mismatch');
+      assert.equal(xPostBudgetServiceStatus(outcome.status), 'degraded');
+    }
+  });
+
   it('reports the binding limit without creating a reservation', async () => {
     const calls = [];
     const budget = createXPostBudget({

@@ -18,6 +18,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -51,8 +52,10 @@ function extract(pattern, label) {
 const allowedCommandsSrc = extract(/const ALLOWED_COMMANDS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_COMMANDS');
 const scriptConstsSrc = [...proxySrc.matchAll(/const [A-Z_]+_SCRIPT = \[[\s\S]*?\]\.join\('\\n'\);/g)].map((m) => m[0]);
 const allowedEvalSrc = extract(/const ALLOWED_EVAL_SCRIPTS = new Set\(\[[\s\S]*?\]\);/, 'ALLOWED_EVAL_SCRIPTS');
+const legacyReplacementsSrc = extract(/const LEGACY_EVAL_REPLACEMENTS = new Map\(\[[\s\S]*?\]\);/, 'LEGACY_EVAL_REPLACEMENTS');
 const isAllowedEvalSrc = extract(/function isAllowedEval\([\s\S]*?\n\}/, 'isAllowedEval');
 const assertAllowedSrc = extract(/function assertCommandAllowed\([\s\S]*?\n\}/, 'assertCommandAllowed');
+const commandForExecutionSrc = extract(/function commandForExecution\([\s\S]*?\n\}/, 'commandForExecution');
 
 function buildGate() {
   // eslint-disable-next-line no-new-func
@@ -61,9 +64,20 @@ function buildGate() {
     ${allowedCommandsSrc}
     ${scriptConstsSrc.join('\n')}
     ${allowedEvalSrc}
+    ${legacyReplacementsSrc}
     ${isAllowedEvalSrc}
     ${assertAllowedSrc}
-    return { assertCommandAllowed, ALLOWED_COMMANDS, ALLOWED_EVAL_SCRIPTS };
+    ${commandForExecutionSrc}
+    return {
+      assertCommandAllowed,
+      commandForExecution,
+      ALLOWED_COMMANDS,
+      ALLOWED_EVAL_SCRIPTS,
+      X_POST_BUDGET_RESERVE_SCRIPT,
+      X_POST_BUDGET_STATUS_SCRIPT,
+      LEGACY_X_POST_BUDGET_RESERVE_SCRIPT,
+      LEGACY_X_POST_BUDGET_STATUS_SCRIPT,
+    };
   `)();
 }
 
@@ -126,10 +140,10 @@ describe('redis-rest-proxy command gate', () => {
     // The divergence this replaced: /multi-exec had its own bare
     // ALLOWED_COMMANDS.has() check, so a command added to the Set ran there
     // without the pinned-script branch runCommand enforces.
-    assert.match(proxySrc, /const cmd = assertCommandAllowed\(args\);/,
-      'runCommand must delegate to assertCommandAllowed');
-    assert.match(proxySrc, /assertCommandAllowed\(cmd\);/,
-      'the /multi-exec handler must delegate to assertCommandAllowed');
+    assert.match(proxySrc, /client\.sendCommand\(commandForExecution\(args\)\)/,
+      'runCommand must delegate to the shared command gate');
+    assert.match(proxySrc, /multi\.sendCommand\(commandForExecution\(cmd\)\)/,
+      'the /multi-exec handler must delegate to the shared command gate');
     assert.doesNotMatch(proxySrc, /if \(!ALLOWED_COMMANDS\.has\(cmdName\)\)/,
       '/multi-exec must not re-implement the allowlist check');
   });
@@ -233,5 +247,30 @@ describe('redis-rest-proxy command gate', () => {
         'a one-character script variant must stay blocked',
       );
     }
+  });
+
+  it('accepts current and immediately prior X budget callers during rollout', () => {
+    const gate = buildGate();
+    const legacyScripts = [
+      [
+        gate.LEGACY_X_POST_BUDGET_RESERVE_SCRIPT,
+        gate.X_POST_BUDGET_RESERVE_SCRIPT,
+        '16673cafd28e2c29b645f1fd6c5a98465f9d4d6e4aa2af4b8e1d9ffb67de03ce',
+      ],
+      [
+        gate.LEGACY_X_POST_BUDGET_STATUS_SCRIPT,
+        gate.X_POST_BUDGET_STATUS_SCRIPT,
+        'dd44c93034f8fdfb89b1460e651e158e213c92a37f532d58954e537367fcd99e',
+      ],
+    ];
+    for (const [script, currentScript, expectedHash] of legacyScripts) {
+      assert.equal(createHash('sha256').update(script).digest('hex'), expectedHash);
+      assert.equal(gate.ALLOWED_EVAL_SCRIPTS.has(script), true);
+      assert.equal(accepts(gate, ['EVAL', script, '1', 'budget-key']), true);
+      assert.equal(gate.commandForExecution(['EVAL', script, '1', 'budget-key'])[1], currentScript);
+      assert.equal(accepts(gate, ['EVAL', `${script} `, '1', 'budget-key']), false);
+    }
+    assert.notEqual(gate.LEGACY_X_POST_BUDGET_RESERVE_SCRIPT, RESERVE_LUA);
+    assert.notEqual(gate.LEGACY_X_POST_BUDGET_STATUS_SCRIPT, STATUS_LUA);
   });
 });
