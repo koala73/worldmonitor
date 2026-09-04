@@ -4148,14 +4148,21 @@ describe('agent readiness: crawl-budget disallows (#7660)', () => {
       return new RegExp(source).test(path);
     };
 
+    const ruleCache = new Map();
     const starGroupRules = (file) => {
-      const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
-      const star = groups.find((g) => g.agents.includes('*'));
-      assert.ok(star, `${file} must have a * group`);
-      return star.rules.map((rule) => {
-        const [key, ...rest] = rule.split(': ');
-        return { allow: key === 'allow', pattern: rest.join(': ') };
-      });
+      if (!ruleCache.has(file)) {
+        const groups = parseGroups(readFileSync(resolve(__dirname, `../public/${file}`), 'utf-8'));
+        const star = groups.find((g) => g.agents.includes('*'));
+        assert.ok(star, `${file} must have a * group`);
+        ruleCache.set(
+          file,
+          star.rules.map((rule) => {
+            const [key, ...rest] = rule.split(': ');
+            return { allow: key === 'allow', pattern: rest.join(': ') };
+          })
+        );
+      }
+      return ruleCache.get(file);
     };
 
     const isCrawlable = (file, path) => {
