@@ -4223,6 +4223,19 @@ describe('crawlable corpus generator', () => {
 
       const toolsIndex = read(outDir, 'tools/index.html');
       assert.match(toolsIndex, /<h1>Check a current operational signal<\/h1>/);
+      // The hub cards state corpus sizes as fact, so they must track the registries
+      // this same build rendered. A literal here shipped "Four curated geographic
+      // scopes" against a 14-tracker corpus.
+      assert.match(
+        toolsIndex,
+        new RegExp(`href="/crises/"[^]*?<span>${corpus.crises.length} curated geographic scopes</span>`),
+        'the tools hub crisis count must match the rendered registry',
+      );
+      assert.match(
+        toolsIndex,
+        new RegExp(`href="/chokepoints/"[^]*?<span>${corpus.chokepoints.length} canonical waterways</span>`),
+        'the tools hub chokepoint count must match the rendered registry',
+      );
       assertDefaultSpeakable(
         jsonLdObjects(toolsIndex).find((entry) => entry['@type'] === 'CollectionPage'),
         'tools hub CollectionPage',
