@@ -774,7 +774,7 @@ async function warmDigestCache(language = 'en') {
   }
 }
 
-async function readOrWarmDigest(language) {
+export async function readOrWarmDigest(language) {
   const key = digestKeyForLanguage(language);
   let digest = await readDigestFromRedis(key);
   if (digest) return digest;
