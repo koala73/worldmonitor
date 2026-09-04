@@ -2010,16 +2010,42 @@ export function roundGeoCoordinate(value, decimals = GEO_COORDINATE_DECIMALS) {
   return Number.isFinite(value) ? Number(value.toFixed(decimals)) : value;
 }
 
+/**
+ * A measured observation from an upstream feed, or null when there isn't one.
+ *
+ * Statistical and market APIs spell "suppressed", "not yet released" and "no
+ * quote" as null, '' or false. Number() turns all three into 0, and 0 is a
+ * publishable measurement, so a bare Number() converts missing data into a
+ * confident reading of zero. Numeric strings stay valid because several feeds
+ * quote their values.
+ */
+export function finiteObservation(value) {
+  if (typeof value !== 'number' && (typeof value !== 'string' || !value.trim())) return null;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function parseYahooChart(data, symbol) {
   const result = data?.chart?.result?.[0];
   const meta = result?.meta;
   if (!meta) return null;
 
-  const price = meta.regularMarketPrice;
-  const prevClose = meta.chartPreviousClose || meta.previousClose || price;
+  // A quote with no price is not a quote. Publishing it produced a market row
+  // carrying an undefined price and a change of exactly 0.00%.
+  const price = finiteObservation(meta.regularMarketPrice);
+  if (price == null) return null;
+  // A zero previous close makes the percentage change infinite, so it is
+  // treated as unusable here exactly as the previous `||` chain did.
+  const prevClose = [meta.chartPreviousClose, meta.previousClose]
+    .map(finiteObservation)
+    .find(value => value != null && value !== 0) ?? price;
   const change = prevClose ? ((price - prevClose) / prevClose) * 100 : 0;
   const closes = result.indicators?.quote?.[0]?.close;
-  const sparkline = roundSparkline(Array.isArray(closes) ? closes.filter((v) => v != null) : []);
+  // NaN survives a != null filter and serializes as null in the published
+  // sparkline, leaving a hole in the chart rather than a shorter series.
+  const sparkline = roundSparkline(
+    Array.isArray(closes) ? closes.map(finiteObservation).filter(v => v != null) : [],
+  );
 
   return { symbol, name: symbol, display: symbol, price, change: +change.toFixed(2), sparkline };
 }
