@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { readOrWarmDigest } from '../scripts/seed-insights.mjs';
+import { digestItemsForInsights, readOrWarmDigest } from '../scripts/seed-insights.mjs';
 
 const NEGATIVE_SENTINEL = '__WM_NEG__';
 const ACCEPTED_DIGEST = {
@@ -12,12 +12,19 @@ const ACCEPTED_DIGEST = {
   },
   coverage: { servedStale: true },
 };
+const ACCEPTED_REREAD = {
+  categories: {
+    politics: {
+      items: [{ title: 'Accepted canonical story', link: 'https://example.test/canonical' }],
+    },
+  },
+};
 
 function redisResponse(value) {
   return new Response(JSON.stringify({ result: value == null ? null : JSON.stringify(value) }));
 }
 
-function installDigestFetch(t, redisValues) {
+function installDigestFetch(t, redisValues, warmValue = ACCEPTED_DIGEST) {
   const previousEnv = {
     apiBaseUrl: process.env.API_BASE_URL,
     redisUrl: process.env.UPSTASH_REDIS_REST_URL,
@@ -38,6 +45,7 @@ function installDigestFetch(t, redisValues) {
   });
 
   const calls = [];
+  let waits = 0;
   let redisRead = 0;
   t.mock.method(globalThis, 'fetch', async (input) => {
     const url = String(input);
@@ -48,28 +56,20 @@ function installDigestFetch(t, redisValues) {
       return redisResponse(value);
     }
     if (url.startsWith('https://api.example.test/api/news/v1/list-feed-digest')) {
-      return new Response(JSON.stringify(ACCEPTED_DIGEST));
+      return new Response(JSON.stringify(warmValue));
     }
     throw new Error(`Unexpected fetch: ${url}`);
   });
   t.mock.method(globalThis, 'setTimeout', (callback) => {
+    waits += 1;
     callback();
     return 0;
   });
-  return calls;
+  return { calls, waitCount: () => waits };
 }
 
-test('a digest negative-cache sentinel is a miss and triggers the warm RPC', async (t) => {
-  const calls = installDigestFetch(t, [NEGATIVE_SENTINEL, NEGATIVE_SENTINEL]);
-
-  const digest = await readOrWarmDigest('en');
-
-  assert.deepEqual(digest, ACCEPTED_DIGEST);
-  assert.equal(calls.filter(url => url.includes('/list-feed-digest')).length, 1);
-});
-
-test('an accepted warm response wins when Redis readback contains the sentinel', async (t) => {
-  const calls = installDigestFetch(t, [null, NEGATIVE_SENTINEL]);
+test('an accepted warm response is returned without a Redis readback', async (t) => {
+  const { calls, waitCount } = installDigestFetch(t, [NEGATIVE_SENTINEL]);
 
   const digest = await readOrWarmDigest('en');
 
@@ -77,6 +77,43 @@ test('an accepted warm response wins when Redis readback contains the sentinel',
   assert.deepEqual(calls.map(url => new URL(url).hostname), [
     'redis.example.test',
     'api.example.test',
+  ]);
+  assert.equal(waitCount(), 0);
+});
+
+test('an unacceptable warm response falls back to an accepted Redis readback', async (t) => {
+  const { calls, waitCount } = installDigestFetch(t, [null, ACCEPTED_REREAD], {
+    categories: { politics: { items: 'not-an-array' } },
+  });
+
+  const digest = await readOrWarmDigest('en');
+
+  assert.deepEqual(digest, ACCEPTED_REREAD);
+  assert.deepEqual(calls.map(url => new URL(url).hostname), [
+    'redis.example.test',
+    'api.example.test',
     'redis.example.test',
   ]);
+  assert.equal(waitCount(), 1);
+});
+
+test('negative sentinels and malformed digests never escape acquisition', async (t) => {
+  installDigestFetch(t, [NEGATIVE_SENTINEL, {
+    categories: { politics: { items: { length: 1 } } },
+  }], NEGATIVE_SENTINEL);
+
+  const digest = await readOrWarmDigest('en');
+
+  assert.equal(digest, null);
+});
+
+test('accepted digests ignore malformed category buckets during item extraction', () => {
+  const validItem = ACCEPTED_DIGEST.categories.politics.items[0];
+
+  assert.deepEqual(digestItemsForInsights({
+    categories: {
+      malformed: null,
+      politics: { items: [validItem] },
+    },
+  }), [validItem]);
 });

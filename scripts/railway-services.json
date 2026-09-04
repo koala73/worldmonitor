@@ -1469,6 +1469,7 @@
       "scripts/seed-insights.mjs",
       "scripts/shared/brief-llm-core.js",
       "scripts/shared/country-names.json",
+      "scripts/shared/digest-acceptance.mjs",
       "scripts/shared/diplomacy-keywords.json",
       "scripts/shared/geo-extract.mjs",
       "scripts/shared/publisher-families.js",
