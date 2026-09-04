@@ -1,8 +1,8 @@
 # World Monitor
 
-[简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md) | [Русский](README.ru.md)
+[English](README.md) | [简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md) | [**Русский**](README.ru.md)
 
-**Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
+**Дашборд глобальной разведки в реальном времени** — AI-агрегация новостей, геополитический мониторинг и отслеживание инфраструктуры в едином интерфейсе ситуационной осведомлённости.
 
 [![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
 [![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
@@ -48,37 +48,37 @@
 
 ---
 
-## What It Does
+## Что делает
 
-- **Curated news feeds** across global and regional categories, AI-synthesized into briefs
-- **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with a shared map-layer catalog
-- **Panel inventory** — concrete panel implementations across specialized variants
-- **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
-- **[Country Instability Index (CII)](https://www.worldmonitor.app/country-instability-index/)** — live CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
-- **Finance radar** — stock exchanges, commodities, crypto, and a market composite
-- **Local AI** — run everything with Ollama, no API keys required
-- **Site variants** from a single codebase (world, tech, finance, commodity, happy, energy)
-- **Native desktop app** (Tauri 2) for macOS, Windows, and Linux
-- **Multilingual UI** with native-language feeds and RTL support
+- **Курируемые новостные ленты** по глобальным и региональным категориям, AI-синтез в briefs
+- **Dual map engine** — 3D globe (globe.gl) и WebGL flat map (deck.gl) с общим каталогом map-layer
+- **Panel inventory** — конкретные реализации панелей для специализированных variants
+- **Cross-stream correlation** — сходимость военных, экономических, disaster и escalation сигналов
+- **Country Instability Index (CII)** — server-authoritative CII v8 stress scoring для Tier-1 registry
+- **Finance radar** — биржи, commodities, crypto и market composite
+- **Local AI** — всё на Ollama, без обязательных API keys
+- **Site variants** из одной codebase (world, tech, finance, commodity, happy, energy)
+- **Native desktop app** (Tauri 2) для macOS, Windows и Linux
+- **Multilingual UI** с native-language feeds и RTL support
 
-For the full feature list, architecture, data sources, and algorithms, see the **[documentation](https://www.worldmonitor.app/docs/documentation)**.
+Полный список фич, архитектура, data sources и алгоритмы — в **[документации](https://www.worldmonitor.app/docs/documentation)**.
 
 ---
 
-## Support Status
+## Статус поддержки
 
-All site variants and desktop binaries are built from a single codebase and ship from the same release process. The table below clarifies maintenance status so you know which surfaces are safe to depend on.
+Все site variants и desktop binaries собираются из одной codebase и выходят одним release process. Таблица ниже показывает, на что можно опираться.
 
 | Surface | Status | Notes |
 |---------|--------|-------|
-| `worldmonitor.app`, `tech.`, `finance.`, `commodity.`, `happy.`, `energy.` | Stable | Public deployments built from this repo, actively maintained |
-| Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage) | Stable | One Tauri binary for every variant — install World Monitor and switch to tech, finance, commodity, energy, or happy in-app. There is deliberately no per-variant download |
+| `worldmonitor.app`, `tech.`, `finance.`, `commodity.`, `happy.`, `energy.` | Stable | Публичные деплои из этого репо, активно поддерживаются |
+| Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage) | Stable | **Один Tauri binary для всех variants** — установите World Monitor и переключайтесь на tech, finance, commodity, energy или happy в приложении. Отдельных per-variant download намеренно нет |
 
-Issues filed against any of the above are triaged from the same backlog — see the [issues board](https://github.com/koala73/worldmonitor/issues) for currently-open work.
+Issues по любому из пунктов выше идут в один backlog — см. [issues board](https://github.com/koala73/worldmonitor/issues).
 
 ---
 
-## Quick Start
+## Быстрый старт
 
 ```bash
 git clone https://github.com/koala73/worldmonitor.git
@@ -87,11 +87,11 @@ npm install
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000) (override the port with `DEV_PORT` in `.env.local`). The app runs with no environment variables.
+Откройте [localhost:3000](http://localhost:3000) (порт можно задать через `DEV_PORT` в `.env.local`). Приложение запускается без обязательных environment variables.
 
-Feature-specific data sources may require credentials. See `.env.example` for the full list.
+Для feature-specific data sources могут понадобиться credentials — полный список в `.env.example`.
 
-For variant-specific development:
+Variant-specific development:
 
 ```bash
 npm run dev:tech       # tech.worldmonitor.app
@@ -101,7 +101,7 @@ npm run dev:happy      # happy.worldmonitor.app
 npm run dev:energy     # energy.worldmonitor.app
 ```
 
-See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started)** for deployment options (Vercel, Docker, static).
+См. **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started)** (Vercel, Docker, static).
 
 ---
 
@@ -116,18 +116,17 @@ See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started
 | **Deployment** | Vercel Edge Functions, Railway relay, Tauri, PWA |
 | **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
 
-Full stack details in the **[architecture docs](https://www.worldmonitor.app/docs/architecture)**.
+Подробности — в **[architecture docs](https://www.worldmonitor.app/docs/architecture)**.
 
 ---
 
 ## Programmatic Access
 
-World Monitor is built for agents and scripts as well as browsers:
+World Monitor рассчитан и на агентов/скрипты, и на браузеры:
 
-- **MCP server** — `https://worldmonitor.app/mcp` (Streamable HTTP). Public `tools/list`; `tools/call` authenticates with a `X-WorldMonitor-Key` header or OAuth.
-  The server also publishes its Agent Skills through the draft `io.modelcontextprotocol/skills` extension (`skills/list`, `skills/get`, and `skill://…` resource reads).
-- **REST API** — base `https://api.worldmonitor.app`, described by the [OpenAPI spec](https://worldmonitor.app/openapi.yaml).
-- **CLI** — the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm package (source in [`cli/`](cli/)):
+- **MCP server** — `https://worldmonitor.app/mcp` (Streamable HTTP). Public `tools/list`; `tools/call` с `X-WorldMonitor-Key` или OAuth.
+- **REST API** — base `https://api.worldmonitor.app`, [OpenAPI spec](https://worldmonitor.app/openapi.yaml).
+- **CLI** — официальный npm-пакет [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) (исходники в [`cli/`](cli/)):
 
   ```sh
   npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
@@ -135,27 +134,27 @@ World Monitor is built for agents and scripts as well as browsers:
   worldmonitor risk IR --api-key wm_xxx
   ```
 
-- **SDKs** — official zero-dependency client libraries mirroring the CLI: Python [`worldmonitor-sdk`](https://pypi.org/project/worldmonitor-sdk/) (source in [`sdk/python/`](sdk/python/)), Ruby [`worldmonitor`](https://rubygems.org/gems/worldmonitor) ([`sdk/ruby/`](sdk/ruby/)), Go [`github.com/koala73/worldmonitor/sdk/go`](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) ([`sdk/go/`](sdk/go/)). Guide: [worldmonitor.app/docs/sdks](https://www.worldmonitor.app/docs/sdks).
+- **SDKs** — zero-dependency клиенты зеркалят CLI: Python [`worldmonitor-sdk`](https://pypi.org/project/worldmonitor-sdk/) ([`sdk/python/`](sdk/python/)), Ruby [`worldmonitor`](https://rubygems.org/gems/worldmonitor) ([`sdk/ruby/`](sdk/ruby/)), Go [`github.com/koala73/worldmonitor/sdk/go`](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) ([`sdk/go/`](sdk/go/)). Гайд: [worldmonitor.app/docs/sdks](https://www.worldmonitor.app/docs/sdks).
 
-Agent discovery files: [`llms.txt`](https://worldmonitor.app/llms.txt) · [agent-skills manifest](https://worldmonitor.app/.well-known/agent-skills/index.json) · [api-catalog](https://worldmonitor.app/.well-known/api-catalog). Get an API key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro).
+Agent discovery: [`llms.txt`](https://worldmonitor.app/llms.txt) · [agent-skills manifest](https://worldmonitor.app/.well-known/agent-skills/index.json) · [api-catalog](https://worldmonitor.app/.well-known/api-catalog). API key: [worldmonitor.app/pro](https://www.worldmonitor.app/pro).
 
 ---
 
 ## Flight Data
 
-Flight data provided graciously by [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor), the most advanced ADS-B flight data solution.
+Данные полётов любезно предоставлены [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor) — advanced ADS-B flight data solution.
 
 ---
 
 ## Data Sources
 
-WorldMonitor aggregates attributed upstream sources across geopolitics, finance, energy, climate, aviation, cyber, military, infrastructure, and news intelligence. Curated feeds and freshness-tracked source groups are published in the full [data sources catalog](https://www.worldmonitor.app/docs/data-sources), with provider, feed-tier, license-posture, and collection-method details.
+WorldMonitor агрегирует attributed upstream sources по geopolitics, finance, energy, climate, aviation, cyber, military, infrastructure и news intelligence. Курируемые feeds и freshness-tracked source groups — в полном [каталоге data sources](https://www.worldmonitor.app/docs/data-sources) (provider, feed-tier, license-posture, collection-method).
 
 ---
 
 ## Contributing
 
-Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+Contributions welcome! См. [CONTRIBUTING.md](./CONTRIBUTING.md).
 
 ```bash
 npm run typecheck        # Type checking
@@ -166,7 +165,7 @@ npm run build:full       # Production build
 
 ## License
 
-**AGPL-3.0-only** for the source code. Commercial use is permitted under the AGPL when you comply with its copyleft and source-availability terms.
+**AGPL-3.0-only** для исходного кода. Commercial use разрешён под AGPL при соблюдении copyleft и source-availability.
 
 | Use Case | Allowed? |
 |----------|----------|
@@ -176,7 +175,7 @@ npm run build:full       # Production build
 | Commercial use / SaaS | Yes, under AGPL-3.0-only when you comply with AGPL obligations |
 | Private-source proprietary use or official branding rights | Separate commercial or trademark permission needed |
 
-See [LICENSE](LICENSE) for the full code license and [docs/license.mdx](docs/license.mdx) for a plain-language summary. Commercial licensing is available as an alternative option for teams that need non-AGPL terms.
+Полный текст: [LICENSE](LICENSE). Кратко: [docs/license.mdx](docs/license.mdx). Commercial licensing доступен как альтернатива для non-AGPL terms.
 
 Copyright (C) 2024-2026 Elie Habib. All rights reserved.
 
@@ -194,11 +193,11 @@ Copyright (C) 2024-2026 Elie Habib. All rights reserved.
 
 ## Security Acknowledgments
 
-We thank the following researchers for responsibly disclosing security issues:
+Благодарим исследователей за responsible disclosure:
 
-- **Cody Richard** — Disclosed three security findings covering IPC command exposure, renderer-to-sidecar trust boundary analysis, and fetch patch credential injection architecture (2026)
+- **Cody Richard** — три находки: IPC command exposure, renderer-to-sidecar trust boundary, fetch patch credential injection architecture (2026)
 
-See our [Security Policy](./SECURITY.md) for responsible disclosure guidelines.
+См. [Security Policy](./SECURITY.md).
 
 ---
 
