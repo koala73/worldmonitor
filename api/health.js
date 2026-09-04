@@ -1054,7 +1054,19 @@ const SEED_META = {
   chokepointTransits:  { key: 'seed-meta:supply_chain:chokepoint_transits',  maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   transitSummaries:    { key: 'seed-meta:supply_chain:transit-summaries',    maxStaleMin: 30 }, // relay every 10min; 30min = 3x interval,
   usniFleet:           { key: 'seed-meta:military:usni-fleet',               maxStaleMin: 720 }, // relay loop every 6h; 720 = 2× interval (was 480 = 1.3×, too tight)
-  aisGaps:             { key: 'seed-meta:maritime:ais-gaps',                 maxStaleMin: 30 },  // relay loop every 10min; feeds the temporal anomalies ais_gaps count source (COUNT_SOURCE_KEYS #7574). 30min = 3× interval, matching militaryFlights' budget style.
+  aisGaps:             {
+    key: 'seed-meta:maritime:ais-gaps',
+    maxStaleMin: 30, // relay loop every 10min; feeds the temporal anomalies ais_gaps count source (COUNT_SOURCE_KEYS #7574). 30min = 3× interval, matching militaryFlights' budget style.
+    cutover: {
+      mode: 'expiring-ack',
+      fromKey: null,
+      issue: 7574,
+      // Bounded deploy-order window: until the Railway relay's first publish,
+      // the data key is absent and reads plain EMPTY. Acknowledged with an
+      // expiry bounded to the first scheduled producer run.
+      status: 'EMPTY',
+    },
+  },
   securityAdvisories:  { key: 'seed-meta:intelligence:advisories',           maxStaleMin: 120 },
   secCikMap:           { key: 'seed-meta:intelligence:sec-cik-map',          maxStaleMin: 2880, minRecordCount: 5000 }, // daily bundle section; 2880min = 48h = 2x interval. minRecordCount mirrors MIN_CIK_ENTRIES in scripts/seed-sec-cik-map.mjs.
   sec8kStream:         { key: 'seed-meta:intelligence:sec-8k-stream',        maxStaleMin: 120, minRecordCount: 50 }, // 30min bundle section; 120min = 4x interval. minRecordCount mirrors MIN_STREAM_EVENTS in scripts/seed-sec-8k-stream.mjs — a drained window means Atom-parse decay, not a quiet market.
