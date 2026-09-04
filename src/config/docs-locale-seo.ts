@@ -275,9 +275,10 @@ function collectJsonLdNodes(value: unknown, into: Record<string, unknown>[] = []
 
 function docsSlugForPathname(pathname: string | undefined): string | null {
   if (!pathname) return null;
-  const match = pathname.match(/^\/docs\/(.+)$/);
-  if (!match) return null;
-  const slug = (match[1] ?? '').replace(/\/$/, '');
+  const pair = resolveDocsLocalePair(pathname);
+  if (!pair) return null;
+  const active = pair.active === 'zh' ? pair.zhPath : pair.enPath;
+  const slug = active.replace(/^\/docs\//, '').replace(/\/$/, '');
   return slug.length > 0 ? slug : null;
 }
 
