@@ -3802,6 +3802,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/mcp-live-smoke.mjs"
+        },
+        {
           "path": "scripts/openapi-inject-examples.mjs"
         },
         {

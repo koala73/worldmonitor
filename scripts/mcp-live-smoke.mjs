@@ -53,7 +53,8 @@
 // and both hosts see the same runner IP, so the walk caps its fan-out
 // (MAX_PROMPT_GETS / MAX_RESOURCE_READS) and reuses each catalog listing
 // instead of re-fetching it per sub-walk. Current shape: ≤16 /mcp POSTs per
-// host (≤32 total) + 3 non-/mcp OAuth probes per host — comfortable headroom
+// host (≤32 total) + 3 non-/mcp OAuth probes per host + 2 non-/mcp
+// /api/mcp-proxy probes per host (1 on the apex, which 301s) — headroom
 // under the bucket even as the prompt/resource catalogs grow. The discovery
 // probes (5) add 6 GET/HEAD requests per host that cost NOTHING against the bucket: both
 // the discovery branch and the transport 405 return ahead of
@@ -430,6 +431,93 @@ async function probeDiscovery(host) {
   }
 }
 
+// The edge bot gate answers some User-Agents with 403 and an HTML body, which
+// MASKS an underlying 5xx: during the 2026-09-03 outage a default curl UA saw
+// 403 while a browser UA saw the 500. This script's UA is allowed through
+// today (measured), but if that ever changes the probe would silently stop
+// testing what it exists to test — so name it in the failure rather than let
+// it read as an ordinary status mismatch.
+function botGateHint(res, text = '') {
+  const contentType = res.headers.get('content-type') ?? '';
+  if (res.status === 403 && (contentType.includes('text/html') || text.trimStart().startsWith('<'))) {
+    return ' — 403 with an HTML body: the bot gate is blocking this probe UA, which would MASK a 5xx here';
+  }
+  return '';
+}
+
+// /api/mcp-proxy liveness (issue #7663, GHSA-887j).
+//
+// This is a SEPARATE Vercel function from /mcp with its own runtime config,
+// and it has gone hard-down twice from a runtime/handler mismatch: #4749
+// (reverted by #4754 after 31 minutes) and #7578 (reverted by #7605 after
+// ~3 hours). Both answered FUNCTION_INVOCATION_FAILED on EVERY request,
+// OPTIONS included. Everything else in this script walks the MCP *server*
+// surface and never requests this path, which is why a green 15-minute smoke
+// sat alongside the second outage for three hours. Cadence was never the
+// problem; coverage was.
+//
+// The unauthenticated GET is the discriminating assertion: a healthy deploy
+// answers the handler's OWN 401 JSON, a broken one answers a platform 5xx.
+// That separates "the function ran and rejected me" from "the function
+// crashed at invocation".
+async function probeMcpProxy(host) {
+  // The serverUrl is never fetched: both probes are refused by the auth wall
+  // before URL validation runs. `example.com` rather than a subdomain of it
+  // because the source-attribution inventory treats an unrecognised hostname
+  // literal in scripts/ as an unregistered data source.
+  const url = `${host}/api/mcp-proxy?serverUrl=${encodeURIComponent('https://example.com/mcp')}`;
+  const origin = 'https://www.worldmonitor.app';
+
+  checks += 1;
+  let preflight;
+  try {
+    preflight = await timedFetch(url, {
+      method: 'OPTIONS',
+      headers: { Origin: origin, 'Access-Control-Request-Method': 'POST' },
+    });
+  } catch (err) {
+    fail(host, 'mcp-proxy OPTIONS', `HANG/transport error: ${err?.name ?? err}`);
+    return;
+  }
+
+  // The apex 301s this path to www, same CDN rule family as #4938. A redirect
+  // means the function was never reached here, so record the shape and let the
+  // www host carry the real assertions instead of asserting against a CDN hop.
+  if (preflight.res.status >= 300 && preflight.res.status < 400) {
+    ok(host, 'mcp-proxy OPTIONS', `${preflight.res.status} → ${preflight.res.headers.get('location')} (host split; www carries the assertions)`);
+    return;
+  }
+  if (preflight.res.status === 204) {
+    ok(host, 'mcp-proxy OPTIONS', '204');
+  } else {
+    fail(host, 'mcp-proxy OPTIONS', `expected 204, got ${preflight.res.status}${botGateHint(preflight.res, preflight.text)}`);
+  }
+
+  checks += 1;
+  try {
+    const { res, text } = await timedFetch(url, { headers: { Origin: origin } });
+    if (res.status !== 401) {
+      fail(host, 'mcp-proxy anon GET',
+        `expected the handler's 401 auth wall, got ${res.status}${botGateHint(res, text)} — a 5xx here is the FUNCTION_INVOCATION_FAILED fingerprint of #4749/#7578`);
+      return;
+    }
+    let body;
+    try {
+      body = JSON.parse(text);
+    } catch {
+      fail(host, 'mcp-proxy anon GET', `401 body is not the handler's JSON: ${text.slice(0, 120)}`);
+      return;
+    }
+    if (typeof body?.error !== 'string') {
+      fail(host, 'mcp-proxy anon GET', `401 JSON lacks an \`error\` string: ${text.slice(0, 120)}`);
+      return;
+    }
+    ok(host, 'mcp-proxy anon GET', `401 ${JSON.stringify(body.error)}`);
+  } catch (err) {
+    fail(host, 'mcp-proxy anon GET', `HANG/transport error: ${err?.name ?? err}`);
+  }
+}
+
 // Variant subdomains: crawler GETs canonicalize to apex, POST never does.
 const VARIANT_HOSTS = (process.env.MCP_SMOKE_VARIANT_HOSTS
   ?? 'tech,finance,commodity,happy,energy')
@@ -524,6 +612,7 @@ async function probeVariantCanonical(host) {
 for (const host of HOSTS) {
   await walkHost(host);
   await probeDiscovery(host);
+  await probeMcpProxy(host);
 }
 
 console.log('\n── variant canonicalization ──');
