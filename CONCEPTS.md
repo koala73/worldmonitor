@@ -706,6 +706,36 @@ A change in a Physical Premium Regime between one published reading and the next
 
 The explicit state a derived reading reports when its reference window has not yet accumulated enough points to say anything — distinct from missing input and from stale input, and distinct again from a confident verdict of normal. It is the correct and expected state for the whole warm-up period after a derived series is first published, which is why it cannot on its own be treated as unhealthy. The trap is the mirror case: a series that reaches a working state and later falls back to insufficient history because its accumulated window was lost looks identical to one that never warmed up, unless something records the depth actually reached. See also: Activation Marker, Physical Premium Regime.
 
+## Chokepoint Status
+
+### Disruption Score
+
+A 0-100 reading of current pressure on a maritime chokepoint, published as a green/yellow/red badge. It is a risk signal and never an operational declaration: a waterway with a high score has not been reported closed, and one with a low score has not been certified open. The score sums a configured Threat Baseline with observed navigational-warning and AIS-congestion evidence and a Transit Anomaly bonus, then caps.
+
+The baseline term is what makes the score legible in a crisis and illegible without it: a waterway in an active conflict can carry a red score while every observed input reads calm, because the standing geopolitical weight alone clears the top band. A page that publishes the observed inputs without the baseline shows a reader numbers that cannot produce the score they are looking at. See also: Score Input, Context Metric, Threat Baseline.
+
+### Threat Baseline
+
+The standing geopolitical weight assigned to a waterway from its war-risk tier, ranging from no weight for an untroubled strait up to the dominant share of a red Disruption Score for one under active naval conflict or blockade. It is configured per waterway and reviewed rather than observed, so it moves on editorial revision and not on a data tick — which is why a score can sit unchanged for weeks while every live input around it churns. See also: Disruption Score.
+
+### Score Input
+
+A published quantity that actually moves the Disruption Score, as opposed to a Context Metric displayed beside it. The set is closed and small, and stating it is a published commitment: naming an input the score does not read, or omitting one it does, leaves a reader unable to reconstruct the number on the page.
+
+An input must be published with enough precision to identify the metric behind it. A term named for its effect on the score rather than its source — a "bonus", a "weight" — is not yet a usable disclosure, because the reader cannot tell which displayed value to check it against. See also: Context Metric, Disruption Score.
+
+### Context Metric
+
+A value a chokepoint page displays that never enters the Disruption Score — event counts, observed transit counts, and period-over-period movement. Publishing the exclusion is as load-bearing as publishing the inputs, since a number rendered next to a score reads as a cause of it by default.
+
+One upstream feed can supply both a Score Input and a Context Metric, so the split is per-metric and never per-source: the same provider's daily series can drive an input while its summarised movement figure stays presentational. Excluding a source wholesale is therefore the easy way to publish a false exclusion. See also: Score Input, Transit Anomaly.
+
+### Transit Anomaly
+
+The detection of a sharp collapse in a waterway's daily transit counts against its own trailing baseline, which contributes to the Disruption Score only when the waterway already carries one of the highest Threat Baselines. Elsewhere a traffic dip is seasonal rather than a disruption, and the signal is suppressed rather than scored.
+
+The comparison needs enough accumulated history to be meaningful and is suppressed below a baseline traffic floor, so a quiet waterway reports no signal rather than a dramatic percentage of a tiny number. See also: Disruption Score, Score Input.
+
 ## Flagged ambiguities
 
 - *"Pool"* had been used for both a labelled market category and the complete set of markets — these are distinct. A pool is always a labelled subset; the complete set has no pool and must be requested as an explicit union.
