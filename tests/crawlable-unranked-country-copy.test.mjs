@@ -570,6 +570,15 @@ describe('unranked observed support threshold', () => {
       null,
     );
   });
+
+  it('does not treat a positive-coverage stable absence as observed', () => {
+    const country = countryFixture({ microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, 'stable-absence', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    assert.equal(describeSupportThreshold(country), null);
+    assert.doesNotThrow(() => assertUnrankedInventoryIntegrity(country));
+  });
 });
 
 // The durable deliverable of #7609: a page whose inventory contradicts itself
@@ -663,6 +672,35 @@ describe('unranked evidence inventory build assertion', () => {
         supportThreshold: 'Social cohesion is observed but not a supported reading.',
       }),
       /TV lists socialCohesion as observed outside the supported readings without publishing the 50% support threshold/,
+    );
+  });
+
+  it('rejects threshold notes that do not identify the exact affected rows and rule', () => {
+    const country = countryFixture({ code: 'TV', microstateTerritory: true }, [
+      dimension('socialCohesion', 0.37, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    const invalidNotes = [
+      '50%',
+      'Social cohesion is observed but below the 150% coverage a supported reading needs.',
+      'Energy system resilience is observed but below the 50% coverage a supported reading needs.',
+    ];
+    for (const supportThreshold of invalidNotes) {
+      assert.throws(
+        () => assertUnrankedInventoryIntegrity(country, { supportThreshold }),
+        /TV lists socialCohesion as observed outside the supported readings without publishing the 50% support threshold/,
+      );
+    }
+  });
+
+  it('rejects a threshold note when no shown observed dimension is below the floor', () => {
+    const country = countryFixture({ code: 'IQ' }, [
+      dimension('socialCohesion', 0.6, '', 40),
+      dimension('macroFiscal', 0.8, '', 60),
+    ]);
+    assert.throws(
+      () => assertUnrankedInventoryIntegrity(country, { supportThreshold: '50%' }),
+      /IQ publishes a support threshold note although no shown observed dimension falls below the 50% floor/,
     );
   });
 

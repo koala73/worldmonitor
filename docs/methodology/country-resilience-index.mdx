@@ -760,17 +760,21 @@ The API response includes `imputationShare` (0.0-1.0), representing the fraction
 ### Supported Readings on Unranked Country Pages
 
 A country that publishes no headline score still publishes a dimension evidence
-inventory. Two labels appear there and they do not mean the same thing:
+inventory. The page uses three evidence terms that do not mean the same thing:
 
-- **Observed** — the snapshot holds a usable series for that dimension. The
-  inventory applies this label to any dimension that is neither a coverage gap
-  nor marked not-applicable.
-- **Supported reading** — the dimension additionally clears **0.50** coverage,
-  so the page publishes its score next to the label.
+- **Observed.** The snapshot holds a usable partial series for that dimension
+  and no more specific absence or failure class applies. Stable absence is
+  labeled separately, even when its recorded coverage is positive.
+- **Supported reading.** On a microstate or territory page, the dimension has no
+  imputation class, clears **0.50** coverage, and has a finite score. The page
+  publishes the dimension score and its coverage.
+- **Available evidence.** On another unranked country page, the summary names
+  non-gap dimensions that clear **0.50** coverage. The summary publishes their
+  labels and coverage, but it does not publish dimension scores.
 
-A dimension between those two states is recorded as observed without appearing
-among the supported readings. The page names those dimensions and states the
-0.50 floor inline, so the two lists never appear to contradict each other.
+When a shown inventory row is labeled observed but falls below **0.50** coverage,
+the page names that row and states the floor inline. This explains why the row
+does not count as a supported reading.
 
 The inventory is ordered weakest evidence first — not-applicable slots, then
 dimensions with no usable series, then partial coverage ascending — and capped

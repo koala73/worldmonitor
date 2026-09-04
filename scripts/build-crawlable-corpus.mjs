@@ -66,6 +66,7 @@ import {
 } from './chokepoint-page-content.mjs';
 import { EIA_OIL_TRANSIT_BASELINES_PATH } from './chokepoint-eia-baselines.mjs';
 import { buildMicrostateCoverageStoryContent } from './microstate-coverage-stories.mjs';
+import { buildUnrankedCountryInventory } from './unranked-country-inventory.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -2624,87 +2625,6 @@ export function dimensionInventoryNote(country, dimension) {
   return 'observed';
 }
 
-// The inventory pool is weakest-first, so a dimension already at full coverage
-// never enters it, and UNRANKED_INVENTORY_LIMIT then drops the strongest tail of
-// what did. That is three buckets, not two. Partition once and derive every
-// count from the same split, so shown + fullCoverage + droppedByCap === total
-// holds by construction rather than by two filters agreeing (#7609).
-function partitionUnrankedInventory(country) {
-  const dimensions = activeCountryDimensions(country);
-  const notApplicable = dimensions
-    .filter((dimension) => String(dimension.imputationClass || '') === 'not-applicable')
-    .sort((left, right) => left.id.localeCompare(right.id));
-  const gaps = dimensions.filter(isCoverageGap).sort(compareDimensionsByCoverageAsc);
-  const observed = dimensions
-    .filter((dimension) => (
-      !isCoverageGap(dimension)
-      && String(dimension.imputationClass || '') !== 'not-applicable'
-      && Number(dimension.coverage) < 1
-    ))
-    .sort(compareDimensionsByCoverageAsc);
-  const pool = [];
-  const pooled = new Set();
-  for (const dimension of [...notApplicable, ...gaps, ...observed]) {
-    if (pooled.has(dimension.id)) continue;
-    pooled.add(dimension.id);
-    pool.push(dimension);
-  }
-  // fullCoverage is what the page captions "more at full coverage", so define it
-  // by that claim, not by "whatever escaped the pool". A dimension with unusable
-  // coverage fails the pool's `coverage < 1` test too, and defining this bucket
-  // by exclusion would publish it as complete while the arithmetic still closed
-  // -- the gate green on a page that lies, which is the #7609 failure exactly.
-  const unpooled = dimensions.filter((dimension) => !pooled.has(dimension.id));
-  return {
-    // A duplicate id is one dimension counted twice, not two: the pool dedupes,
-    // so counting rows here would inflate the published "of N" and fire the
-    // closure check with a message blaming the wrong thing.
-    total: new Set(dimensions.map((dimension) => dimension.id)).size,
-    rowCount: dimensions.length,
-    shown: pool.slice(0, UNRANKED_INVENTORY_LIMIT),
-    droppedByCap: pool.slice(UNRANKED_INVENTORY_LIMIT),
-    fullCoverage: unpooled.filter((dimension) => Number(dimension.coverage) >= 1),
-    unclassified: unpooled.filter((dimension) => !(Number(dimension.coverage) >= 1)),
-  };
-}
-
-function selectUnrankedInventory(country) {
-  return partitionUnrankedInventory(country).shown;
-}
-
-// One clause per non-empty omitted bucket, built from the partition itself, so a
-// bucket cannot be silently dropped from the sentence the way the cap bucket was
-// in #7530 -- assertUnrankedInventoryIntegrity adds up exactly these numbers.
-function unrankedInventoryScope(country) {
-  const { total, shown, fullCoverage, droppedByCap } = partitionUnrankedInventory(country);
-  return {
-    total,
-    shown: shown.length,
-    omittedClauses: [
-      { count: fullCoverage.length, text: 'more at full coverage' },
-      { count: droppedByCap.length, text: 'omitted for brevity' },
-    ].filter((clause) => clause.count > 0),
-  };
-}
-
-// The inventory is weakest-first and capped, so on a country like Tuvalu a
-// reader sees 12 of 21 dimensions -- the 12 worst -- with 7 at full coverage
-// never entering the pool at all and 2 more dropped by the cap. Listing only the
-// weakest evidence with no note reads as uniformly poor coverage, which is the
-// opposite of what the snapshot says (#7530). State what is shown and every
-// bucket that is omitted, and say it only when something actually is omitted.
-export function describeInventoryScope(country) {
-  const { total, shown, omittedClauses } = unrankedInventoryScope(country);
-  if (omittedClauses.length === 0) return null;
-  const omittedTail = omittedClauses.map((clause) => `; ${clause.count} ${clause.text}`).join('');
-  // "weakest evidence first", not "lowest coverage first": the pool is grouped
-  // -- not-applicable slots, then coverage gaps, then partial coverage, each
-  // ascending -- so a 30% gap precedes a 15% observed reading and the stricter
-  // claim was false on 6 of 26 pages. #7530's own commit body described the
-  // order as weakest-first; only the published wording over-claimed (#7609).
-  return `Showing ${shown} of ${total} active dimensions, weakest evidence first${omittedTail}.`;
-}
-
 // Dimensions the page can call supported readings. The microstate branch
 // enumerates this set exhaustively and counts it out loud; the generic branch
 // prints only the strongest AVAILABLE_EVIDENCE_LIMIT of it and makes no claim to
@@ -2715,124 +2635,36 @@ function supportedReadingDimensions(country) {
     : observedEvidenceDimensions(country);
 }
 
-function unsupportedObservedInventory(country) {
+function buildCountryUnrankedInventory(country) {
   const supported = new Set(supportedReadingDimensions(country).map((dimension) => dimension.id));
-  return partitionUnrankedInventory(country).shown.filter((dimension) => (
-    dimensionInventoryNote(country, dimension) === 'observed'
-    && !supported.has(dimension.id)
-  ));
+  const dimensions = activeCountryDimensions(country).map((dimension) => ({
+    id: dimension.id,
+    label: dimensionLabel(dimension),
+    coverage: dimension.coverage,
+    isCoverageGap: isCoverageGap(dimension),
+    isNotApplicable: String(dimension.imputationClass || '') === 'not-applicable',
+    inventoryNote: dimensionInventoryNote(country, dimension),
+    supported: supported.has(dimension.id),
+    value: dimension,
+  }));
+  return buildUnrankedCountryInventory({
+    countryCode: country.code,
+    dimensions,
+    inventoryLimit: UNRANKED_INVENTORY_LIMIT,
+    supportFloor: SUPPORTED_READING_MIN_COVERAGE,
+  });
 }
 
-// An inventory row reading "Social cohesion: 37% coverage; observed" next to a
-// supported-readings list that omits it is only a contradiction because the
-// threshold between the two is never stated. State it, and name the rows it
-// applies to rather than leaving the reader to work out which ones (#7609).
+export function describeInventoryScope(country) {
+  return buildCountryUnrankedInventory(country).inventoryScope;
+}
+
 export function describeSupportThreshold(country) {
-  const belowThreshold = unsupportedObservedInventory(country)
-    .sort(compareDimensionsByCoverageAsc);
-  if (belowThreshold.length === 0) return null;
-  const labels = formatProseList(belowThreshold.map(dimensionLabel));
-  const verb = belowThreshold.length === 1 ? 'is' : 'are';
-  const pronoun = belowThreshold.length === 1 ? 'it is' : 'they are';
-  const floor = `${Math.round(SUPPORTED_READING_MIN_COVERAGE * 100)}%`;
-  // "without counting as supported readings" rather than "not among the
-  // supported readings": only the microstate branch enumerates that list, so on
-  // a generic page the latter points at something the page never renders. The
-  // sentence defines the term it uses, so it stands alone on both branches.
-  return `${labels} ${verb} observed but below the ${floor} coverage a supported reading needs, so ${pronoun} recorded here without counting as supported readings.`;
+  return buildCountryUnrankedInventory(country).supportThreshold;
 }
 
-// These pages publish an evidence inventory about their own evidence base, so a
-// reader who adds the numbers up has to find them consistent. Fail the build
-// rather than the review: #7530's fix for the missing truncation note is what
-// introduced the arithmetic defect, and no test covered the claim (#7609).
 export function assertUnrankedInventoryIntegrity(country, rendered = {}) {
-  // Order matters: name the true cause before the closure check, which would
-  // otherwise report every one of these as generic arithmetic drift.
-  const partition = partitionUnrankedInventory(country);
-  if (partition.rowCount !== partition.total) {
-    throw new Error(
-      `${country.code} repeats a dimension id across its domains, so the inventory`
-      + ` would publish ${partition.rowCount} rows as ${partition.total} distinct dimensions`,
-    );
-  }
-  if (partition.unclassified.length > 0) {
-    throw new Error(
-      `${country.code} would publish ${partition.unclassified.map((dimension) => (
-        `${dimension.id} (coverage ${dimension.coverage})`
-      )).join(', ')} as "at full coverage" without reaching full coverage`,
-    );
-  }
-  if (partition.droppedByCap.length > 0 && partition.shown.length !== UNRANKED_INVENTORY_LIMIT) {
-    throw new Error(
-      `${country.code} omits ${partition.droppedByCap.length} dimensions for brevity while showing`
-      + ` only ${partition.shown.length} of the ${UNRANKED_INVENTORY_LIMIT} the cap allows`,
-    );
-  }
-  const { total, shown, omittedClauses } = unrankedInventoryScope(country);
-  const accounted = omittedClauses.reduce((sum, clause) => sum + clause.count, shown);
-  if (accounted !== total) {
-    throw new Error(
-      `${country.code} evidence inventory scope does not close: ${shown} shown`
-      + `${omittedClauses.map((clause) => ` + ${clause.count} ${clause.text}`).join('')}`
-      + ` = ${accounted}, not the ${total} active dimensions the page claims`,
-    );
-  }
-  // Check the sentence, not just the buckets behind it. The reader adds up
-  // rendered numbers, so the regression this gate exists to stop -- #7530
-  // dropping a bucket from the copy -- is invisible to a check that only
-  // re-reads the partition. Parsing the published string is a second derivation.
-  const scope = rendered.inventoryScope === undefined
-    ? describeInventoryScope(country)
-    : rendered.inventoryScope;
-  if (accounted !== shown) {
-    // Anchor each number to the words around it. A flat digit stream would
-    // silently re-attribute captures if the sentence ever gained or reordered a
-    // number, which is the same "read positionally, hope for the best" mistake
-    // the buckets themselves made.
-    const head = String(scope ?? '').match(/^Showing (\d+) of (\d+) active dimensions/);
-    const statedOmitted = omittedClauses.map((clause) => (
-      String(scope ?? '').match(new RegExp(`(\\d+) ${clause.text}`))?.[1]
-    ));
-    if (
-      !head
-      || Number(head[1]) !== shown
-      || Number(head[2]) !== total
-      || statedOmitted.some((count, index) => Number(count) !== omittedClauses[index].count)
-      || statedOmitted.reduce((sum, count) => sum + Number(count), shown) !== total
-    ) {
-      throw new Error(
-        `${country.code} publishes an inventory scope note a reader cannot add up to`
-        + ` its ${total} active dimensions: "${scope}"`,
-      );
-    }
-  } else if (scope !== null) {
-    throw new Error(
-      `${country.code} publishes an inventory scope note although nothing is omitted: "${scope}"`,
-    );
-  }
-  const floor = `${Math.round(SUPPORTED_READING_MIN_COVERAGE * 100)}%`;
-  const unsupported = unsupportedObservedInventory(country);
-  const threshold = rendered.supportThreshold === undefined
-    ? describeSupportThreshold(country)
-    : rendered.supportThreshold;
-  if (unsupported.length > 0 && !String(threshold ?? '').includes(floor)) {
-    throw new Error(
-      `${country.code} lists ${unsupported.map((dimension) => dimension.id).join(', ')} as observed`
-      + ` outside the supported readings without publishing the ${floor} support threshold`,
-    );
-  }
-  const aboveThreshold = unsupported.filter((dimension) => (
-    Number(dimension.coverage) >= SUPPORTED_READING_MIN_COVERAGE
-  ));
-  if (aboveThreshold.length > 0) {
-    throw new Error(
-      `${country.code} lists ${aboveThreshold.map((dimension) => dimension.id).join(', ')} as observed`
-      + ` at or above the ${floor} support threshold yet omits them from the supported readings.`
-      + ' Either the dimension carries no usable score, or dimensionInventoryNote fell through to'
-      + ' "observed" for an imputationClass it does not recognise; the threshold note explains neither.',
-    );
-  }
+  buildCountryUnrankedInventory(country).assertIntegrity(rendered);
 }
 
 function formatSignedScore(value, evidence) {
@@ -2945,13 +2777,13 @@ export function renderCountryAnalysis({ country, capturedAt, methodologyFormula,
   });
   const faqs = coverageStory?.faqs || countryFaqs(country, capturedAt, rankedCount, ciiEntry);
   if (!scorePublished) {
-    const inventory = selectUnrankedInventory(country);
+    const unrankedInventory = buildCountryUnrankedInventory(country);
+    const inventory = unrankedInventory.shown;
     const inventoryItems = inventory.length > 0
       ? inventory.map((dimension) => `          <li><strong>${escapeHtml(dimensionLabel(dimension))}</strong>: ${escapeHtml(formatPercent(dimension.coverage))} coverage; ${escapeHtml(dimensionInventoryNote(country, dimension))}.</li>`).join('\n')
       : `          <li>${escapeHtml(country.name)} has no active dimension inventory after retired slots are removed.</li>`;
-    const inventoryScope = describeInventoryScope(country);
-    const supportThreshold = describeSupportThreshold(country);
-    assertUnrankedInventoryIntegrity(country, { inventoryScope, supportThreshold });
+    const { inventoryScope, supportThreshold } = unrankedInventory;
+    unrankedInventory.assertIntegrity({ inventoryScope, supportThreshold });
     const inventoryPreamble = [
       inventoryScope
         ? `        <p class="source" data-inventory-scope>${escapeHtml(inventoryScope)}</p>\n`

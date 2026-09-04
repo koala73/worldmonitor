@@ -606,6 +606,7 @@ describe('crawlable content corpus deployment contracts', () => {
     for (const path of [
       'docs/docs.json',
       'scripts/build-comparison-pages.mjs',
+      'scripts/unranked-country-inventory.mjs',
       'scripts/build-use-cases.mjs',
       'scripts/crawlable-sources-page.mjs',
       'scripts/source-origin.mjs',
@@ -637,6 +638,7 @@ describe('crawlable content corpus deployment contracts', () => {
       for (const path of [
         'docs/docs.json',
         'scripts/build-comparison-pages.mjs',
+        'scripts/unranked-country-inventory.mjs',
         'scripts/build-use-cases.mjs',
         'scripts/crawlable-sources-page.mjs',
         'scripts/source-origin.mjs',
