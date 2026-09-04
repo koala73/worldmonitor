@@ -311,7 +311,21 @@ export const MOVERS_PER_DIRECTION = 10;
 // only the severity of an all-gated window, never whether it is trustworthy —
 // too few candidates to tell a systemic parse break from a thin market means
 // stay quiet, not publish anyway.
-export const MIN_PARSE_BREAK_SAMPLE = 10;
+//
+// Sized against the real candidate universe, which is far smaller than the
+// query's LIMIT 200 suggests: scrape targets come from basket items
+// (adapters/search.ts discoverTargets), baskets hold 12 items, and enabled
+// retailers per market run 2 to 4. The ceiling is therefore 24 to 48 rows,
+// and a row also needs a current in-stock price AND an observation inside the
+// one-day slot rangeDays back, so live counts sit far below it — market `in`
+// produced 1. A floor of 10 would be 42% of the smallest ceiling and would
+// leave this alarm effectively unreachable. 5 stays above the thin-window
+// noise that caused the #5445 gate to fail the cron while remaining reachable
+// for a market with real coverage.
+//
+// This wants a distribution query against production candidate counts to
+// confirm; it is currently reasoned from the config ceilings, not measured.
+export const MIN_PARSE_BREAK_SAMPLE = 5;
 
 export function isPlausiblePriceMove(changePct: number): boolean {
   if (!Number.isFinite(changePct)) return false;

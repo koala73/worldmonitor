@@ -3,8 +3,13 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 const mockQuery = vi.fn();
 vi.mock('../db/client.js', () => ({ query: mockQuery }));
 
-const { buildMoversSnapshot, isPlausiblePriceMove, MAX_MOVE_RATIO, MIN_PARSE_BREAK_SAMPLE } =
-  await import('./worldmonitor.js');
+const {
+  buildMoversSnapshot,
+  isPlausiblePriceMove,
+  MAX_MOVE_RATIO,
+  MIN_PARSE_BREAK_SAMPLE,
+  MOVERS_PER_DIRECTION,
+} = await import('./worldmonitor.js');
 
 describe('isPlausiblePriceMove', () => {
   it('rejects the parse-artifact movers reported in #5445', () => {
@@ -85,13 +90,19 @@ describe('buildMoversSnapshot', () => {
 
     // A full window of artifacts is a parse break, so the run goes red.
     await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(
-      /all 10 candidates gated as implausible/,
+      /all 5 candidates gated as implausible/,
     );
-    expect(String(warn.mock.calls[0][0])).toContain('dropped 10/10');
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 5/5');
   });
 
   it('separates the alarm threshold from the published column size', async () => {
-    // Retuning how many movers the UI shows must not move the alarm floor.
+    // Retuning how many movers the UI shows must not move the alarm floor, and
+    // the floor is a safety value: changing it should fail here, deliberately.
+    // It is sized against a candidate universe of 24-48 (12 basket items x 2-4
+    // enabled retailers), not the query's LIMIT 200.
+    expect(MIN_PARSE_BREAK_SAMPLE).toBe(5);
+    expect(MOVERS_PER_DIRECTION).toBe(10);
+
     mockQuery.mockResolvedValueOnce({ rows: artifactRows(MIN_PARSE_BREAK_SAMPLE - 1) });
     expect(await buildMoversSnapshot('ae', 7)).toBeNull();
 
