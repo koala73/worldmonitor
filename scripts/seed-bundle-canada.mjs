@@ -73,6 +73,28 @@ const CANADA_SECTIONS = [
   // Official TPS C4S_Public_NoGO FeatureServer. Own key; privacy exclusions
   // stay empty. 15min matches the 15–20min map refresh; stale at 45min.
   { label: 'Toronto-TPS', script: 'seed-toronto-tps.mjs', seedMetaKey: 'seed-meta:safety:toronto-tps', canonicalKey: 'safety:toronto-tps:v1', completionMetaKey: 'seed-completion:safety:toronto-tps', intervalMs: 15 * MIN, timeoutMs: 105_000 },
+  // TPS Open Data (#7012/#7036) — the retrospective MCI and annual Calls
+  // Attended datasets, distinct from the live C4S CAD member above.
+  //
+  // WHY THEY JOINED THE BUNDLE: "on-demand" had no invoker. Nothing scheduled
+  // scripts/seed-tps-open-data.mjs and no request path gap-fills it, so the 24h
+  // canonical TTL emptied both keys a day after each hand run while seed-meta
+  // (5.9d TTL) still reported `ok`. Observed live 2026-09-04: both canonical
+  // keys absent, both seed-metas ok.
+  //
+  // WHY THE CAPACITY OBJECTION NO LONGER APPLIES: the adapter header rules this
+  // out on the cost of a full 486k-row MCI walk (~243 pages), which the adapter
+  // never performs — it is a bounded worker (90-day lookback, maxPages 3,
+  // 2,000-row page cap). Measured live 2026-09-04: MCI 3,195 records in 7.9s,
+  // Calls 5,982 in 7.1s, 22.1s for the pair — ~4% of this runner's 570s budget,
+  // against the ~33s this bundle already accepts for the rest of the pack.
+  //
+  // WHY 6h AND NOT 5min: MCI is retrospective and Calls is an annual aggregate
+  // (upstream edit dates are months apart), so cadence here keeps OUR copy warm
+  // rather than chasing upstream. Four runs a day hold 4x margin against the
+  // 24h TTL, so the canonical key never lapses between ticks.
+  { label: 'TPS-MCI', script: 'seed-tps-mci.mjs', seedMetaKey: 'seed-meta:safety:tps-mci', canonicalKey: 'safety:toronto:tps-mci:v1', intervalMs: 6 * HOUR, timeoutMs: 180_000 },
+  { label: 'TPS-Calls-Attended', script: 'seed-tps-calls-attended.mjs', seedMetaKey: 'seed-meta:safety:tps-calls-attended', canonicalKey: 'safety:toronto:tps-calls-attended:v1', intervalMs: 6 * HOUR, timeoutMs: 180_000 },
 ];
 
 // This bundle is registered before its members merge, so on an intermediate
