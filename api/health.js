@@ -606,7 +606,14 @@ const SEED_META = {
   // churn while still detecting a stopped worker well before leases age out.
   companyMonitoringWorker: { key: 'seed-meta:company-monitoring:worker', maxStaleMin: 5, workerControl: true },
   earthquakes:      { key: 'seed-meta:seismology:earthquakes',  maxStaleMin: 30 },
-  wildfires:        { key: 'seed-meta:wildfire:fires',          maxStaleMin: 360 }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
+  wildfires:        {
+    key: 'seed-meta:wildfire:fires',
+    maxStaleMin: 360,
+    sourceFailure: {
+      warnAfterConsecutive: 2,
+      failureCodePattern: /^FIRMS_PARTIAL_COVERAGE$/,
+    },
+  }, // FIRMS NRT resets at midnight UTC; new-day data takes 3-6h to accumulate
   wildfiresBootstrap: { key: 'seed-meta:wildfire:fires-bootstrap', maxStaleMin: 360 }, // Compact CDN payload is a distinct publish target; monitor it so canonical fallback cannot hide transform/write failures.
   outages:          { key: 'seed-meta:infra:outages',           maxStaleMin: 30 },
   climateAnomalies: { key: 'seed-meta:climate:anomalies',       maxStaleMin: 540 }, // bundled into seed-bundle-climate (cron `0 */3 * * *`, every 3h); 540 = 3× cron cadence per project convention. Prior 240 (1.33× cron) flipped to silent-EMPTY between minute 180 (TTL_DATA expiry) and 240 (alarm trigger) on every routine cron-jitter cycle — see scripts/seed-climate-anomalies.mjs CACHE_TTL comment.
@@ -2167,14 +2174,40 @@ function parseFiniteRecordCount(raw) {
   return null;
 }
 
+function projectSourceFailure(meta, policy) {
+  if (!policy || meta?.sourceState !== 'degraded') return null;
+  const errorCode = typeof meta?.errorCode === 'string'
+    && policy.failureCodePattern.test(meta.errorCode)
+    ? meta.errorCode
+    : null;
+  if (!errorCode) return null;
+  const lastSourceFailureCode = typeof meta?.lastSourceFailureCode === 'string'
+    && policy.failureCodePattern.test(meta.lastSourceFailureCode)
+    ? meta.lastSourceFailureCode
+    : null;
+  const consecutiveSourceFailures = Number.isInteger(meta?.consecutiveSourceFailures)
+    && meta.consecutiveSourceFailures >= 1
+    ? Math.min(meta.consecutiveSourceFailures, 100)
+    : null;
+  const pending = lastSourceFailureCode === errorCode
+    && consecutiveSourceFailures !== null
+    && consecutiveSourceFailures < policy.warnAfterConsecutive;
+  return {
+    errorCode,
+    consecutiveSourceFailures,
+    lastSourceFailureCode,
+    pending,
+  };
+}
+
 function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   if (!seedCfg) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null, resilienceCacheState: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: false, metaCount: null, contentAge: null, coverage: null, sourceFailure: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null, resilienceCacheState: null };
   }
   // Per-command Redis errors on the GET seed-meta half of the pipeline must
   // not silently fall through to STALE_SEED — promote to REDIS_PARTIAL.
   if (keyMetaErrors.get(seedCfg.key)) {
-    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null, resilienceCacheState: null };
+    return { hasMeta: false, seedAge: null, seedStale: null, seedError: false, sourceUnavailable: false, sourceBlocked: false, metaReadFailed: true, metaCount: null, contentAge: null, coverage: null, sourceFailure: null, synthesisFailure: null, dominantFailureMode: null, chinaRow: null, workerControl: null, resilienceCacheState: null };
   }
   // Unwrap through the envelope helper. Legacy seed-meta is a bare
   // `{ fetchedAt, recordCount, sourceVersion, status? }` object with no `_seed`
@@ -2231,6 +2264,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
       decisionGroups: null,
       coverage: null,
       errorCode,
+      sourceFailure: null,
       synthesisFailure: null,
       dominantFailureMode: null,
       // A producer that reported `status: 'error'` never got far enough to
@@ -2260,6 +2294,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   // transport path is externally blocked. Keep that state visible without
   // treating it as a broken producer that can be repaired by another retry.
   const sourceBlocked = meta?.sourceState === 'blocked';
+  const sourceFailure = projectSourceFailure(meta, seedCfg.sourceFailure);
   // Source-specific producers can preserve usable last-good records while a
   // current upstream attempt is degraded. Surface that state immediately as a
   // warning without discarding the retained record count from health output.
@@ -2270,7 +2305,8 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
   const sourceDegraded = inputFreshnessExpired || (typeof meta?.sourceState === 'string'
     && meta.sourceState !== 'ok'
     && !sourceUnavailable
-    && !sourceBlocked);
+    && !sourceBlocked
+    && sourceFailure?.pending !== true);
   // Content-age trio (2026-05-04 health-readiness plan). Presence of
   // maxContentAgeMin is the opt-in signal — legacy seeders without it
   // get contentAge: null and skip the STALE_CONTENT branch in classifyKey.
@@ -2420,6 +2456,7 @@ function readSeedMeta(seedCfg, keyMetaValues, keyMetaErrors, now) {
     decisionGroups,
     coverage,
     errorCode,
+    sourceFailure,
     synthesisFailure,
     dominantFailureMode,
     chinaRow,
@@ -2525,6 +2562,7 @@ function classifyKey(name, redisKey, opts, ctx) {
     decisionGroups,
     coverage,
     errorCode,
+    sourceFailure,
     synthesisFailure,
     dominantFailureMode,
     chinaRow,
@@ -2816,7 +2854,16 @@ function classifyKey(name, redisKey, opts, ctx) {
   // becomes EMPTY, and gating the code on SEED_ERROR would trade the operator's
   // "why" for the severity bump — leaving a bare crit whose explanation is
   // sitting unread in seed-meta.
-  if (fault === 'SEED_ERROR' && errorCode) entry.errorCode = errorCode;
+  if ((fault === 'SEED_ERROR' || sourceFailure) && errorCode) entry.errorCode = errorCode;
+  if (sourceFailure) {
+    if (sourceFailure.consecutiveSourceFailures !== null) {
+      entry.consecutiveSourceFailures = sourceFailure.consecutiveSourceFailures;
+    }
+    if (sourceFailure.lastSourceFailureCode) {
+      entry.lastSourceFailureCode = sourceFailure.lastSourceFailureCode;
+    }
+    if (sourceFailure.pending) entry.sourceFailurePending = true;
+  }
   // Coarse producer-run diagnostic, relayed whenever the producer recorded it —
   // the whole point of #6323 is that a coverage shortfall's dominant cause is
   // visible on /api/health without Railway logs or a raw index read, so gating

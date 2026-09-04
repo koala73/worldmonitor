@@ -678,7 +678,32 @@ export async function mergeWildfireSourcesWithBc({ fetchFirms, fetchCwfis, fetch
   };
 }
 
-export function canadianWildfireAfterPublish(data) {
+export function hasCompleteWorldwideWildfireCoverage(data) {
+  return Array.isArray(data?.fireDetections)
+    && data.fireDetections.length > 0
+    && data?._firmsState === 'ok'
+    && data?._firmsPartial !== true;
+}
+
+function nextIdenticalSourceFailureCount(previousMeta, errorCode) {
+  // A missing or unreadable predecessor cannot prove this is the first failure.
+  // Fail closed so a transient seed-meta read error cannot restart the grace
+  // window while the same partial-coverage incident continues.
+  if (!previousMeta || typeof previousMeta !== 'object') return 2;
+  const previousCode = previousMeta?.lastSourceFailureCode ?? previousMeta?.errorCode;
+  if (previousCode !== errorCode) return 1;
+  if (Number.isInteger(previousMeta?.consecutiveSourceFailures)
+    && previousMeta.consecutiveSourceFailures >= 1) {
+    return Math.min(previousMeta.consecutiveSourceFailures + 1, 100);
+  }
+  // Metadata written before the streak fields shipped already represents one
+  // observed failure. Count the next identical run as the second failure so a
+  // rollout cannot turn an active production warning green.
+  if (previousMeta?.sourceState === 'degraded' && previousMeta?.errorCode === errorCode) return 2;
+  return 1;
+}
+
+export function canadianWildfireAfterPublish(data, { previousMeta = null } = {}) {
   const cwfisFailed = data?._cwfisState !== 'ok';
   const bcFailed = data?._bcState !== 'ok';
   // FIRMS is the GLOBAL source for this key. Losing it drops the canonical
@@ -696,11 +721,14 @@ export function canadianWildfireAfterPublish(data) {
   // outage and above healthy: report it rather than let the surviving regions
   // stand in for the globe unremarked.
   if (firmsPartial && !firmsFailed && failureCount === 0) {
+    const errorCode = 'FIRMS_PARTIAL_COVERAGE';
     return {
       freshnessMetaPatch: {
         sourceState: 'degraded',
-        errorCode: 'FIRMS_PARTIAL_COVERAGE',
+        errorCode,
         canadaSourceFailureCount: 0,
+        consecutiveSourceFailures: nextIdenticalSourceFailureCount(previousMeta, errorCode),
+        lastSourceFailureCode: errorCode,
       },
     };
   }
