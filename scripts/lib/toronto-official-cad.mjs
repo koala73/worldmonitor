@@ -13,6 +13,7 @@
 
 import { decodeHtmlEntities } from '../_html-entities.mjs';
 import { CHROME_UA, MAX_PAYLOAD_BYTES } from '../_seed-utils.mjs';
+import { finiteLat, finiteLon } from './geo-coord.mjs';
 
 export const TFS_HOST = 'www.toronto.ca';
 export const TFS_PAGE_PATH = '/community-people/public-safety-alerts/alerts-notifications/toronto-fire-active-incidents/';
@@ -153,12 +154,6 @@ export function parseTorontoLocalMs(raw) {
   return null;
 }
 
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
-  const numeric = Number(value);
-  return Number.isFinite(numeric) ? numeric : null;
-}
-
 function torontoPoint(lon, lat) {
   if (lon == null || lat == null) return { lat: null, lon: null };
   if (lon < -80.5 || lon > -78.5 || lat < 43.3 || lat > 44.1) return { lat: null, lon: null };
@@ -242,14 +237,14 @@ function featureAttributes(feature) {
 
 function featureCoords(feature, attributes) {
   const geometry = feature?.geometry;
-  if (geometry && Number.isFinite(Number(geometry.x)) && Number.isFinite(Number(geometry.y))) {
-    return torontoPoint(Number(geometry.x), Number(geometry.y));
-  }
+  const x = finiteLon(geometry?.x);
+  const y = finiteLat(geometry?.y);
+  if (x != null && y != null) return torontoPoint(x, y);
   const coords = geometry?.coordinates;
   if (Array.isArray(coords) && coords.length >= 2) {
-    return torontoPoint(finiteCoord(coords[0]), finiteCoord(coords[1]));
+    return torontoPoint(finiteLon(coords[0]), finiteLat(coords[1]));
   }
-  return torontoPoint(finiteCoord(attributes?.LONGITUDE), finiteCoord(attributes?.LATITUDE));
+  return torontoPoint(finiteLon(attributes?.LONGITUDE), finiteLat(attributes?.LATITUDE));
 }
 
 function classifyTpsFeature(feature) {

@@ -14,6 +14,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { roundGeoCoordinate } from './_seed-utils.mjs';
+import { finiteLat, finiteLon, lonLatPair } from './lib/geo-coord.mjs';
 
 const ISO3_TO_ISO2 = JSON.parse(
   readFileSync(join(dirname(fileURLToPath(import.meta.url)), 'shared/iso3-to-iso2.json'), 'utf8'),
@@ -142,10 +143,14 @@ function isClosedLinearRing(ring) {
   // rounded: sub-metre-adjacent vertices collapse onto each other, so a ring can
   // keep 4+ positions and matching endpoints while enclosing zero area. PostGIS
   // accepts that as "closed" and it reaches third-party webhooks as a degenerate
-  // Polygon. A real ring has at least 3 distinct vertices.
+  // Polygon. A real ring has at least 3 distinct vertices, and every one of
+  // them has to be a usable position: NaN and Infinity serialize as null in
+  // the outgoing GeoJSON, which PostGIS rejects at the far end of the webhook.
   const distinct = new Set();
   for (const position of ring) {
-    if (Array.isArray(position)) distinct.add(`${position[0]},${position[1]}`);
+    const pair = lonLatPair(position);
+    if (!pair) return false;
+    distinct.add(`${pair[0]},${pair[1]}`);
   }
   return distinct.size >= 3;
 }
@@ -618,16 +623,14 @@ function swicCentroid(item, member) {
   if (coords.length) {
     return { coordinates: coords, centroid: calculateCentroid(coords), geometryPrecision: 'polygon' };
   }
-  const itemLat = Number(item?.lat ?? item?.latitude);
-  const itemLon = Number(item?.lon ?? item?.lng ?? item?.longitude);
-  if (Number.isFinite(itemLat) && Number.isFinite(itemLon)
-    && itemLat >= -90 && itemLat <= 90 && itemLon >= -180 && itemLon <= 180) {
+  const itemLat = finiteLat(item?.lat ?? item?.latitude);
+  const itemLon = finiteLon(item?.lon ?? item?.lng ?? item?.longitude);
+  if (itemLat != null && itemLon != null) {
     return { coordinates: [], centroid: [itemLon, itemLat], geometryPrecision: 'point' };
   }
-  const memberLat = Number(member?.lat);
-  const memberLon = Number(member?.lng ?? member?.lon);
-  if (Number.isFinite(memberLat) && Number.isFinite(memberLon)
-    && memberLat >= -90 && memberLat <= 90 && memberLon >= -180 && memberLon <= 180) {
+  const memberLat = finiteLat(member?.lat);
+  const memberLon = finiteLon(member?.lng ?? member?.lon);
+  if (memberLat != null && memberLon != null) {
     return { coordinates: [], centroid: [memberLon, memberLat], geometryPrecision: 'country' };
   }
   return null;

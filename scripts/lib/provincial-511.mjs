@@ -10,6 +10,7 @@
  */
 
 import { acquire511Slot } from '../_511-rate-limit.mjs';
+import { finiteLat, finiteLon, lonLatPair } from './geo-coord.mjs';
 // #6618 limiter v1 lives in scripts/_511-rate-limit.mjs only — no scripts/shared/ mirror.
 
 const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36';
@@ -183,12 +184,6 @@ export function centroidOfPath(path) {
   return [lon / path.length, lat / path.length];
 }
 
-function finiteCoord(value) {
-  if (value == null || value === '') return null;
-  const n = Number(value);
-  return Number.isFinite(n) ? n : null;
-}
-
 function textOf(...values) {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -229,10 +224,12 @@ function severityOf(item, { isFullClosure, highImportance, kind } = {}) {
 export function normalize511Record(item, ctx) {
   const kind = ctx.kind;
   const jurisdiction = ctx.jurisdiction || 'ON';
-  const lat = finiteCoord(item?.Latitude ?? item?.latitude ?? item?.lat);
-  const lon = finiteCoord(item?.Longitude ?? item?.longitude ?? item?.lon ?? item?.lng);
+  const lat = finiteLat(item?.Latitude ?? item?.latitude ?? item?.lat);
+  const lon = finiteLon(item?.Longitude ?? item?.longitude ?? item?.lon ?? item?.lng);
   const encoded = polylinesFrom(item?.EncodedPolyline ?? item?.encodedPolyline);
-  const decoded = encoded.flatMap(decodeEncodedPolyline);
+  // A corrupt encoded polyline decodes to arithmetically valid but off-planet
+  // deltas, and centroidOfPath averages whatever it is handed.
+  const decoded = encoded.flatMap(decodeEncodedPolyline).filter(point => lonLatPair(point) != null);
   const path = downsamplePath(decoded);
   const centroid = (lat != null && lon != null) ? [lon, lat] : centroidOfPath(decoded);
   const isFullClosure = Boolean(item?.IsFullClosure ?? item?.isFullClosure);
