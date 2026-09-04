@@ -1,219 +1,226 @@
-# World Monitor
+<div align="center">
 
-[简体中文](README.zh-CN.md) | [日本語](README.ja-JP.md)
+# 🌿 THE GREEN HOUSE
 
-**Real-time global intelligence dashboard** — AI-powered news aggregation, geopolitical monitoring, and infrastructure tracking in a unified situational awareness interface.
+### Global environmental · biological · pharmaceutical · regulatory intelligence
 
-[![GitHub stars](https://img.shields.io/github/stars/koala73/worldmonitor?style=social)](https://github.com/koala73/worldmonitor/stargazers)
-[![Discord](https://img.shields.io/badge/Discord-Join-5865F2?style=flat&logo=discord&logoColor=white)](https://discord.gg/re63kWKxaz)
-[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](https://www.gnu.org/licenses/agpl-3.0)
+**A free-first situational-awareness surface built on the WorldMonitor engine.**  
+Real-time news, maps, public data, infrastructure signals, markets, weather, disasters, and cross-stream intelligence in one interface.
+
+[![GitHub stars](https://img.shields.io/github/stars/sonoxo/thegreenhouse?style=social)](https://github.com/sonoxo/thegreenhouse/stargazers)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-2ea043.svg)](https://www.gnu.org/licenses/agpl-3.0)
 [![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=flat&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Last commit](https://img.shields.io/github/last-commit/koala73/worldmonitor)](https://github.com/koala73/worldmonitor/commits/main)
-[![Latest release](https://img.shields.io/github/v/release/koala73/worldmonitor?style=flat)](https://github.com/koala73/worldmonitor/releases/latest)
-[![npm: worldmonitor](https://img.shields.io/npm/v/worldmonitor?logo=npm&label=npm)](https://www.npmjs.com/package/worldmonitor)
-[![smithery badge](https://smithery.ai/badge/worldmonitor/wm-mcp)](https://smithery.ai/servers/worldmonitor/wm-mcp)
-[![skills.sh](https://skills.sh/b/koala73/worldmonitor)](https://skills.sh/koala73/worldmonitor)
+[![Last commit](https://img.shields.io/github/last-commit/sonoxo/thegreenhouse)](https://github.com/sonoxo/thegreenhouse/commits/main)
+[![WorldMonitor Engine](https://img.shields.io/badge/Engine-WorldMonitor-0b8f55?style=flat)](https://github.com/koala73/worldmonitor)
+[![Free First](https://img.shields.io/badge/Data-Zero--Cost--First-22c55e?style=flat)](#free--public-data-first)
 
-<p align="center">
-  <a href="https://www.worldmonitor.app"><img src="https://img.shields.io/badge/Web_App-worldmonitor.app-blue?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web App"></a>&nbsp;
-  <a href="https://tech.worldmonitor.app"><img src="https://img.shields.io/badge/Tech_Variant-tech.worldmonitor.app-0891b2?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Tech Variant"></a>&nbsp;
-  <a href="https://finance.worldmonitor.app"><img src="https://img.shields.io/badge/Finance_Variant-finance.worldmonitor.app-059669?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Finance Variant"></a>&nbsp;
-  <a href="https://commodity.worldmonitor.app"><img src="https://img.shields.io/badge/Commodity_Variant-commodity.worldmonitor.app-b45309?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Commodity Variant"></a>&nbsp;
-  <a href="https://happy.worldmonitor.app"><img src="https://img.shields.io/badge/Happy_Variant-happy.worldmonitor.app-f59e0b?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Happy Variant"></a>&nbsp;
-  <a href="https://energy.worldmonitor.app"><img src="https://img.shields.io/badge/Energy_Variant-energy.worldmonitor.app-eab308?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Energy Variant"></a>
+<p>
+  <a href="https://github.com/sonoxo/thegreenhouse"><img src="https://img.shields.io/badge/GREEN_HOUSE-OPEN_REPOSITORY-16a34a?style=for-the-badge&logo=github&logoColor=white" alt="Open Green House"></a>&nbsp;
+  <a href="https://github.com/koala73/worldmonitor"><img src="https://img.shields.io/badge/UPSTREAM-WORLDMONITOR-0891b2?style=for-the-badge&logo=github&logoColor=white" alt="WorldMonitor upstream"></a>&nbsp;
+  <a href="#quick-start"><img src="https://img.shields.io/badge/LOCAL_LAUNCH-NPM_RUN_DEV-14532d?style=for-the-badge&logo=nodedotjs&logoColor=white" alt="Local launch"></a>
 </p>
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/worldmonitor"><img src="https://img.shields.io/npm/v/worldmonitor?style=for-the-badge&logo=npm&logoColor=white&label=npm%20i%20worldmonitor&color=CB3837" alt="npm i worldmonitor"></a>&nbsp;
-  <a href="https://www.npmjs.com/package/worldmonitor"><img src="https://img.shields.io/badge/CLI-npx%20worldmonitor-CB3837?style=for-the-badge&logo=npm&logoColor=white" alt="npx worldmonitor"></a>&nbsp;
-  <a href="https://pypi.org/project/worldmonitor-sdk/"><img src="https://img.shields.io/pypi/v/worldmonitor-sdk?style=for-the-badge&logo=pypi&logoColor=white&label=pip%20install%20worldmonitor-sdk&color=3775A9" alt="pip install worldmonitor-sdk"></a>&nbsp;
-  <a href="https://rubygems.org/gems/worldmonitor"><img src="https://img.shields.io/gem/v/worldmonitor?style=for-the-badge&logo=rubygems&logoColor=white&label=gem%20install%20worldmonitor&color=E9573F" alt="gem install worldmonitor"></a>&nbsp;
-  <a href="https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go"><img src="https://img.shields.io/badge/go%20get-sdk%2Fgo-00ADD8?style=for-the-badge&logo=go&logoColor=white" alt="go get github.com/koala73/worldmonitor/sdk/go"></a>
+<p>
+  <a href="#what-it-does"><strong>Capabilities</strong></a> &nbsp;·&nbsp;
+  <a href="#quick-start"><strong>Quick Start</strong></a> &nbsp;·&nbsp;
+  <a href="#free--public-data-first"><strong>Free Data</strong></a> &nbsp;·&nbsp;
+  <a href="#architecture"><strong>Architecture</strong></a> &nbsp;·&nbsp;
+  <a href="#license--upstream-attribution"><strong>License</strong></a>
 </p>
 
-<p align="center">
-  <a href="https://www.worldmonitor.app/api/download?platform=windows-exe"><img src="https://img.shields.io/badge/Download-Windows_(.exe)-0078D4?style=for-the-badge&logo=windows&logoColor=white" alt="Download Windows"></a>&nbsp;
-  <a href="https://www.worldmonitor.app/api/download?platform=macos-arm64"><img src="https://img.shields.io/badge/Download-macOS_Apple_Silicon-000000?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS ARM"></a>&nbsp;
-  <a href="https://www.worldmonitor.app/api/download?platform=macos-x64"><img src="https://img.shields.io/badge/Download-macOS_Intel-555555?style=for-the-badge&logo=apple&logoColor=white" alt="Download macOS Intel"></a>&nbsp;
-  <a href="https://www.worldmonitor.app/api/download?platform=linux-appimage"><img src="https://img.shields.io/badge/Download-Linux_(.AppImage)-FCC624?style=for-the-badge&logo=linux&logoColor=black" alt="Download Linux"></a>
-</p>
+</div>
 
-<p align="center">
-  <a href="https://www.worldmonitor.app/docs/documentation"><strong>Documentation</strong></a> &nbsp;·&nbsp;
-  <a href="https://github.com/koala73/worldmonitor/releases/latest"><strong>Releases</strong></a> &nbsp;·&nbsp;
-  <a href="https://www.worldmonitor.app/docs/contributing"><strong>Contributing</strong></a>
-</p>
-
-![World Monitor Dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
+![The Green House / WorldMonitor intelligence dashboard](docs/images/worldmonitor-7-mar-2026.jpg)
 
 ---
 
 ## What It Does
 
-- **Curated news feeds** across global and regional categories, AI-synthesized into briefs
-- **Dual map engine** — 3D globe (globe.gl) and WebGL flat map (deck.gl) with a shared map-layer catalog
-- **Panel inventory** — concrete panel implementations across specialized variants
-- **Cross-stream correlation** — military, economic, disaster, and escalation signal convergence
-- **[Country Instability Index (CII)](https://www.worldmonitor.app/country-instability-index/)** — live CII v8 scores, bands, and approximate 24-hour movement for 31 Tier-1 countries
-- **Finance radar** — stock exchanges, commodities, crypto, and a market composite
-- **Local AI** — run everything with Ollama, no API keys required
-- **Site variants** from a single codebase (world, tech, finance, commodity, happy, energy)
-- **Native desktop app** (Tauri 2) for macOS, Windows, and Linux
-- **Multilingual UI** with native-language feeds and RTL support
+The Green House keeps the high-density WorldMonitor experience while organizing it as a **free-first public intelligence surface** for environmental, biological, pharmaceutical, regulatory, infrastructure, and global-event awareness.
 
-For the full feature list, architecture, data sources, and algorithms, see the **[documentation](https://www.worldmonitor.app/docs/documentation)**.
+- **Curated global news feeds** with regional and topical intelligence streams
+- **Dual map engine** — 3D globe plus high-performance WebGL flat mapping
+- **Environmental intelligence** — weather, climate, earthquakes, disasters, energy and infrastructure signals
+- **Bio / public-health context** — public datasets and evidence-oriented monitoring surfaces where available
+- **Pharma / regulatory context** — structured public-source monitoring for regulatory and market awareness
+- **Cross-stream correlation** across geopolitical, economic, infrastructure and disaster signals
+- **Finance radar** — exchanges, commodities, crypto and market context
+- **Browser-side AI capability** through Transformers.js where appropriate
+- **Optional AI providers** such as Groq / OpenRouter without making paid services the baseline requirement
+- **Desktop-capable upstream architecture** through Tauri 2
+- **Multilingual interface** inherited from the WorldMonitor codebase
+
+> **Identity:** The Green House is an independent derivative/integration built from the open-source WorldMonitor codebase. It is not the official WorldMonitor project. Upstream attribution and AGPL obligations remain intact.
 
 ---
 
-## Support Status
+## Free / Public Data First
 
-All site variants and desktop binaries are built from a single codebase and ship from the same release process. The table below clarifies maintenance status so you know which surfaces are safe to depend on.
+The Green House baseline is designed around **zero-cost-first access**.
 
-| Surface | Status | Notes |
-|---------|--------|-------|
-| `worldmonitor.app`, `tech.`, `finance.`, `commodity.`, `happy.`, `energy.` | Stable | Public deployments built from this repo, actively maintained |
-| Desktop binaries (Windows / macOS Apple Silicon / macOS Intel / Linux AppImage) | Stable | One Tauri binary for every variant — install World Monitor and switch to tech, finance, commodity, energy, or happy in-app. There is deliberately no per-variant download |
+| Source / Capability | Baseline posture |
+|---|---|
+| Open-Meteo | Public / no-key weather data |
+| USGS | Public earthquake and geology feeds |
+| GDELT | Open global events and media intelligence |
+| UNHCR | Public humanitarian / displacement data |
+| WorldPop | Public population datasets |
+| FAA NASSTATUS | Public aviation status information |
+| OpenFreeMap | Free map-tile fallback |
+| Transformers.js | Browser-local AI / ML |
+| Groq, Finnhub, EIA, OpenSky, ACLED, OpenAQ | Optional free-registration enhancements |
 
-Issues filed against any of the above are triaged from the same backlog — see the [issues board](https://github.com/koala73/worldmonitor/issues) for currently-open work.
+Paid APIs may enhance specific panels, but they are **not the design requirement for the baseline Green House experience**.
 
 ---
 
 ## Quick Start
 
 ```bash
-git clone https://github.com/koala73/worldmonitor.git
-cd worldmonitor
+git clone https://github.com/sonoxo/thegreenhouse.git
+cd thegreenhouse
 npm install
 npm run dev
 ```
 
-Open [localhost:3000](http://localhost:3000) (override the port with `DEV_PORT` in `.env.local`). The app runs with no environment variables.
+Then open:
 
-Feature-specific data sources may require credentials. See `.env.example` for the full list.
-
-For variant-specific development:
-
-```bash
-npm run dev:tech       # tech.worldmonitor.app
-npm run dev:finance    # finance.worldmonitor.app
-npm run dev:commodity  # commodity.worldmonitor.app
-npm run dev:happy      # happy.worldmonitor.app
-npm run dev:energy     # energy.worldmonitor.app
+```text
+http://localhost:3000
 ```
 
-See the **[self-hosting guide](https://www.worldmonitor.app/docs/getting-started)** for deployment options (Vercel, Docker, static).
+The inherited WorldMonitor application can run without environment variables for its baseline experience. Feature-specific providers may require optional credentials; see `.env.example`.
+
+### Update later
+
+```bash
+cd thegreenhouse
+git pull
+npm install
+npm run dev
+```
 
 ---
 
-## Tech Stack
+## Architecture
+
+```text
+┌──────────────────────────────────────────────────────────┐
+│                    THE GREEN HOUSE                       │
+│       Free-first global intelligence interface          │
+├──────────────────────────────────────────────────────────┤
+│  NEWS  │  MAPS  │ WEATHER │ BIO │ PHARMA │ MARKETS     │
+├──────────────────────────────────────────────────────────┤
+│        WorldMonitor visualization + panel engine         │
+├──────────────────────────────────────────────────────────┤
+│ Open/public APIs │ free registration │ browser compute   │
+├──────────────────────────────────────────────────────────┤
+│     provenance · attribution · evidence · licensing      │
+└──────────────────────────────────────────────────────────┘
+```
+
+### Stack
 
 | Category | Technologies |
-|----------|-------------|
-| **Frontend** | Vanilla TypeScript, Vite, globe.gl + Three.js, deck.gl + MapLibre GL |
-| **Desktop** | Tauri 2 (Rust) with Node.js sidecar |
-| **AI/ML** | Ollama / Groq / OpenRouter, Transformers.js (browser-side) |
-| **API Contracts** | Protocol Buffers and sebuf HTTP annotations |
-| **Deployment** | Vercel Edge Functions, Railway relay, Tauri, PWA |
-| **Caching** | Redis (Upstash), 3-tier cache, CDN, service worker |
-
-Full stack details in the **[architecture docs](https://www.worldmonitor.app/docs/architecture)**.
-
----
-
-## Programmatic Access
-
-World Monitor is built for agents and scripts as well as browsers:
-
-- **MCP server** — `https://worldmonitor.app/mcp` (Streamable HTTP). Public `tools/list`; `tools/call` authenticates with a `X-WorldMonitor-Key` header or OAuth.
-  The server also publishes its Agent Skills through the draft `io.modelcontextprotocol/skills` extension (`skills/list`, `skills/get`, and `skill://…` resource reads).
-- **REST API** — base `https://api.worldmonitor.app`, described by the [OpenAPI spec](https://worldmonitor.app/openapi.yaml).
-- **CLI** — the official [`worldmonitor`](https://www.npmjs.com/package/worldmonitor) npm package (source in [`cli/`](cli/)):
-
-  ```sh
-  npx worldmonitor tools          # run ad-hoc — list every MCP tool (no key needed)
-  npm install -g worldmonitor     # or install the `worldmonitor` (alias `wm`) command
-  worldmonitor risk IR --api-key wm_xxx
-  ```
-
-- **SDKs** — official zero-dependency client libraries mirroring the CLI: Python [`worldmonitor-sdk`](https://pypi.org/project/worldmonitor-sdk/) (source in [`sdk/python/`](sdk/python/)), Ruby [`worldmonitor`](https://rubygems.org/gems/worldmonitor) ([`sdk/ruby/`](sdk/ruby/)), Go [`github.com/koala73/worldmonitor/sdk/go`](https://pkg.go.dev/github.com/koala73/worldmonitor/sdk/go) ([`sdk/go/`](sdk/go/)). Guide: [worldmonitor.app/docs/sdks](https://www.worldmonitor.app/docs/sdks).
-
-Agent discovery files: [`llms.txt`](https://worldmonitor.app/llms.txt) · [agent-skills manifest](https://worldmonitor.app/.well-known/agent-skills/index.json) · [api-catalog](https://worldmonitor.app/.well-known/api-catalog). Get an API key at [worldmonitor.app/pro](https://www.worldmonitor.app/pro).
+|---|---|
+| **Frontend** | Vanilla TypeScript, Vite |
+| **3D Mapping** | globe.gl, Three.js |
+| **2D Mapping** | deck.gl, MapLibre GL |
+| **Desktop** | Tauri 2 / Rust |
+| **AI / ML** | Transformers.js, optional Groq / OpenRouter / upstream providers |
+| **Caching** | Browser/service-worker + upstream cache architecture |
+| **Data posture** | Public / open / free-registration first |
+| **Source engine** | WorldMonitor |
 
 ---
 
-## Flight Data
+## Green House Intelligence Domains
 
-Flight data provided graciously by [Wingbits](https://wingbits.com?utm_source=worldmonitor&utm_medium=referral&utm_campaign=worldmonitor), the most advanced ADS-B flight data solution.
+| Domain | Focus |
+|---|---|
+| 🌎 **Eco** | climate, weather, disasters, energy, environment, infrastructure |
+| 🧬 **Bio** | public-health signals, biological context, population and humanitarian data |
+| 💊 **Pharma** | pharmaceutical-market and public-source intelligence context |
+| 🏛️ **Regulatory** | FDA / government / public regulatory-source awareness |
+| 📡 **Global Intel** | geopolitical, aviation, economic, cyber and event convergence |
+
+The interface is an **intelligence and research surface**, not a substitute for authoritative medical, regulatory, emergency, or governmental determinations.
 
 ---
 
-## Data Sources
+## Upstream WorldMonitor
 
-WorldMonitor aggregates attributed upstream sources across geopolitics, finance, energy, climate, aviation, cyber, military, infrastructure, and news intelligence. Curated feeds and freshness-tracked source groups are published in the full [data sources catalog](https://www.worldmonitor.app/docs/data-sources), with provider, feed-tier, license-posture, and collection-method details.
+The visualization engine and substantial portions of the underlying application originate from **WorldMonitor** by Elie Habib and contributors.
+
+- Upstream source: https://github.com/koala73/worldmonitor
+- Official upstream web app: https://www.worldmonitor.app
+- Upstream documentation: https://www.worldmonitor.app/docs/documentation
+
+The Green House intentionally preserves upstream attribution while applying its own project identity, data posture, ontology, and integration direction.
 
 ---
 
-## Contributing
-
-Contributions welcome! See [CONTRIBUTING.md](./CONTRIBUTING.md) for guidelines.
+## Development
 
 ```bash
-npm run typecheck        # Type checking
-npm run build:full       # Production build
+npm run typecheck
+npm run build:full
+```
+
+Useful inherited variant commands may include:
+
+```bash
+npm run dev:tech
+npm run dev:finance
+npm run dev:commodity
+npm run dev:happy
+npm run dev:energy
 ```
 
 ---
 
-## License
+## License & Upstream Attribution
 
-**AGPL-3.0-only** for the source code. Commercial use is permitted under the AGPL when you comply with its copyleft and source-availability terms.
+**AGPL-3.0-only** applies to the WorldMonitor-derived source in this repository. Commercial use is permitted when the AGPL's copyleft and source-availability obligations are satisfied.
 
-| Use Case | Allowed? |
-|----------|----------|
-| Personal / research / educational | Yes, under AGPL-3.0-only |
-| Self-hosted instance | Yes, under AGPL-3.0-only |
-| Fork and modify | Yes, share source under AGPL-3.0-only when required |
-| Commercial use / SaaS | Yes, under AGPL-3.0-only when you comply with AGPL obligations |
-| Private-source proprietary use or official branding rights | Separate commercial or trademark permission needed |
+| Use Case | Status |
+|---|---|
+| Personal / research / educational | ✅ Allowed under AGPL-3.0-only |
+| Self-hosting | ✅ Allowed under AGPL-3.0-only |
+| Forking and modification | ✅ Allowed, subject to AGPL obligations |
+| Commercial / SaaS deployment | ✅ Allowed when AGPL obligations are followed |
+| Official WorldMonitor branding rights | ⚠️ Not granted by the code license |
 
-See [LICENSE](LICENSE) for the full code license and [docs/license.mdx](docs/license.mdx) for a plain-language summary. Commercial licensing is available as an alternative option for teams that need non-AGPL terms.
+See [`LICENSE`](LICENSE) for the complete license terms.
 
-Copyright (C) 2024-2026 Elie Habib. All rights reserved.
+**Upstream copyright:** Copyright (C) 2024-2026 Elie Habib. All rights reserved as stated in the upstream project.
+
+The Green House project does not remove or replace upstream copyright, license, attribution, or provenance requirements.
 
 ---
-
-## Author
-
-**Elie Habib** — [GitHub](https://github.com/koala73)
 
 ## Contributors
 
+### Upstream WorldMonitor contributors
+
 <a href="https://github.com/koala73/worldmonitor/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=koala73/worldmonitor" />
+  <img src="https://contrib.rocks/image?repo=koala73/worldmonitor" alt="WorldMonitor contributors" />
 </a>
 
-## Security Acknowledgments
+### The Green House repository
 
-We thank the following researchers for responsibly disclosing security issues:
-
-- **Cody Richard** — Disclosed three security findings covering IPC command exposure, renderer-to-sidecar trust boundary analysis, and fetch patch credential injection architecture (2026)
-
-See our [Security Policy](./SECURITY.md) for responsible disclosure guidelines.
+<a href="https://github.com/sonoxo/thegreenhouse/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=sonoxo/thegreenhouse" alt="The Green House contributors" />
+</a>
 
 ---
 
-<p align="center">
-  <a href="https://www.worldmonitor.app">worldmonitor.app</a> &nbsp;·&nbsp;
-  <a href="https://www.worldmonitor.app/docs/documentation">docs.worldmonitor.app</a> &nbsp;·&nbsp;
-  <a href="https://finance.worldmonitor.app">finance.worldmonitor.app</a> &nbsp;·&nbsp;
-  <a href="https://commodity.worldmonitor.app">commodity.worldmonitor.app</a>
-</p>
+<div align="center">
 
-## Star History
+### 🌿 THE GREEN HOUSE
 
-<a href="https://star-history.dera.page/#koala73/worldmonitor&type=Date">
- <picture>
-   <source media="(prefers-color-scheme: dark)" srcset="https://star-history.dera.page/svg?repos=koala73/worldmonitor&type=Date&theme=dark" />
-   <img alt="Star History Chart" src="https://star-history.dera.page/svg?repos=koala73/worldmonitor&type=Date" />
- </picture>
-</a>
+**WorldMonitor engine · Green House identity · free/public-data-first intelligence**
+
+[Repository](https://github.com/sonoxo/thegreenhouse) · [Upstream](https://github.com/koala73/worldmonitor) · [License](LICENSE)
+
+</div>
