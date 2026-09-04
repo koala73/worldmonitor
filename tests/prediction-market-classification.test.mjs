@@ -616,6 +616,10 @@ describe('the seeder is wired to the tested pool-building path', () => {
     assert.match(source, /if \(!kalshiMarkets\.complete\) countryProjectionComplete = false/);
     assert.match(source, /selectKalshiSeriesTickers\(/);
     assert.match(source, /fetchKalshiMarketsBySeries\(/);
+    assert.match(source, /excludedTickers:\s*triedSeriesTickers/);
+    assert.match(source, /totalLimit:\s*MAX_KALSHI_COUNTRY_REQUESTS - requestsUsed/);
+    assert.match(source, /maxRequests:\s*MAX_KALSHI_COUNTRY_REQUESTS - requestsUsed/);
+    assert.match(source, /lockTtlMs:\s*KALSHI_COUNTRY_LOCK_TTL_MS/);
     assert.match(source, /key:\s*COUNTRY_INDEX_KEY/);
     assert.match(source, /metaKey:\s*COUNTRY_INDEX_META_KEY/);
     assert.match(source, /skipWhenEmpty:\s*true/);

@@ -221,11 +221,20 @@ export function buildCountryMarketIndex(markets, {
 
 export function selectKalshiSeriesTickers(series, targetCountryCodes, {
   perCountryLimit = 2,
+  totalLimit = Number.POSITIVE_INFINITY,
+  excludedTickers = [],
   countries = countryCodes,
 } = {}) {
   const targets = new Set((targetCountryCodes ?? []).map((code) => String(code).toUpperCase()));
   const limit = Math.max(0, Math.floor(Number(perCountryLimit) || 0));
-  if (!Array.isArray(series) || targets.size === 0 || limit === 0) return [];
+  const parsedTotalLimit = Number(totalLimit);
+  const maxSelected = Number.isFinite(parsedTotalLimit)
+    ? Math.max(0, Math.floor(parsedTotalLimit))
+    : Number.POSITIVE_INFINITY;
+  const excluded = new Set((excludedTickers ?? [])
+    .map((ticker) => String(ticker).trim())
+    .filter(Boolean));
+  if (!Array.isArray(series) || targets.size === 0 || limit === 0 || maxSelected === 0) return [];
 
   const matchers = compileCountryMatchers(countries)
     .filter(({ countryCode }) => targets.has(countryCode));
@@ -233,7 +242,7 @@ export function selectKalshiSeriesTickers(series, targetCountryCodes, {
 
   for (const entry of series) {
     const ticker = String(entry?.ticker ?? '').trim();
-    if (!ticker || String(entry?.category ?? '').toLowerCase() === 'sports') continue;
+    if (!ticker || excluded.has(ticker) || String(entry?.category ?? '').toLowerCase() === 'sports') continue;
     const title = [entry?.title, ...(Array.isArray(entry?.tags) ? entry.tags : [])]
       .map((part) => String(part ?? '').trim())
       .filter(Boolean)
@@ -259,7 +268,10 @@ export function selectKalshiSeriesTickers(series, targetCountryCodes, {
         || left.title.localeCompare(right.title)
         || left.ticker.localeCompare(right.ticker))
       .slice(0, limit)
-      .forEach(({ ticker }) => selected.add(ticker));
+      .forEach(({ ticker }) => {
+        if (selected.size < maxSelected) selected.add(ticker);
+      });
+    if (selected.size >= maxSelected) break;
   }
   return [...selected];
 }

@@ -292,4 +292,35 @@ describe('selectKalshiSeriesTickers', () => {
 
     assert.deepEqual(selectKalshiSeriesTickers(series, ['US', 'IR']), ['KXUSIRAN']);
   });
+
+  it('selects the next ranked series after an earlier series produced no eligible markets', () => {
+    const series = [
+      { ticker: 'KXIRANEMPTY', title: 'Iran agreement', category: 'World', volume_fp: '50000' },
+      { ticker: 'KXIRANACTIVE', title: 'Iran election', category: 'Elections', volume_fp: '40000' },
+      { ticker: 'KXLEBANONACTIVE', title: 'Lebanon election', category: 'Elections', volume_fp: '30000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB'], {
+        perCountryLimit: 1,
+        excludedTickers: ['KXIRANEMPTY'],
+      }),
+      ['KXIRANACTIVE', 'KXLEBANONACTIVE'],
+    );
+  });
+
+  it('caps a selection round by the remaining global request budget', () => {
+    const series = [
+      { ticker: 'KXIRAN', title: 'Iran election', category: 'Elections', volume_fp: '50000' },
+      { ticker: 'KXLEBANON', title: 'Lebanon election', category: 'Elections', volume_fp: '40000' },
+    ];
+
+    assert.deepEqual(
+      selectKalshiSeriesTickers(series, ['IR', 'LB'], {
+        perCountryLimit: 1,
+        totalLimit: 1,
+      }),
+      ['KXIRAN'],
+    );
+  });
 });

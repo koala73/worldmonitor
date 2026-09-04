@@ -182,6 +182,23 @@ describe('prediction-market upstream coverage', () => {
     );
   });
 
+  it('bounds requests across all selected series', async () => {
+    let calls = 0;
+    await assert.rejects(
+      fetchKalshiMarketsBySeries(['KXIRAN', 'KXLEBANON'], {
+        fetchFn: async () => Response.json({
+          markets: [{ ticker: `MARKET-${++calls}` }],
+          cursor: calls === 1 ? 'next-page' : '',
+        }),
+        baseUrl: 'https://kalshi.example.test',
+        userAgent: 'test',
+        maxRequests: 2,
+      }),
+      /Kalshi markets request budget exceeded 2 requests/,
+    );
+    assert.equal(calls, 2);
+  });
+
   it('rejects malformed Kalshi series and market payloads', async () => {
     await assert.rejects(
       fetchKalshiSeries({

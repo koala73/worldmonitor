@@ -111,17 +111,27 @@ export async function fetchKalshiMarketsBySeries(seriesTickers, {
   timeoutMs = DEFAULT_TIMEOUT_MS,
   pageSize = DEFAULT_KALSHI_MARKETS_PAGE_SIZE,
   maxPagesPerSeries = DEFAULT_KALSHI_SERIES_MARKET_MAX_PAGES,
+  maxRequests = Number.POSITIVE_INFINITY,
+  onRequest,
 } = {}) {
   const markets = [];
   const uniqueTickers = [...new Set((seriesTickers ?? [])
     .map((ticker) => String(ticker).trim())
     .filter(Boolean))];
+  const parsedMaxRequests = Number(maxRequests);
+  const requestLimit = Number.isFinite(parsedMaxRequests)
+    ? Math.max(0, Math.floor(parsedMaxRequests))
+    : Number.POSITIVE_INFINITY;
+  let requestCount = 0;
 
   for (const seriesTicker of uniqueTickers) {
     const seenCursors = new Set();
     let cursor = '';
 
     for (let page = 0; page < maxPagesPerSeries; page += 1) {
+      if (requestCount >= requestLimit) {
+        throw new Error(`Kalshi markets request budget exceeded ${requestLimit} requests`);
+      }
       const params = new URLSearchParams({
         status: 'open',
         series_ticker: seriesTicker,
@@ -130,6 +140,8 @@ export async function fetchKalshiMarketsBySeries(seriesTickers, {
       });
       if (cursor) params.set('cursor', cursor);
 
+      requestCount += 1;
+      onRequest?.({ requestCount, seriesTicker, page: page + 1 });
       const response = await fetchFn(`${baseUrl.replace(/\/$/, '')}/markets?${params}`, {
         headers: requestHeaders(userAgent),
         signal: AbortSignal.timeout(timeoutMs),
