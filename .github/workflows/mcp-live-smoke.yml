@@ -17,15 +17,33 @@ name: MCP Live Smoke
 # malformed POSTs. Dependency-free — no npm ci.
 #
 # Triggers:
-#   - schedule (every 6h): catches prod-layer drift (CDN rules, deploy config,
-#     host-split) on a cadence operators can act on. The probes are ~40 cheap
-#     requests per run — well under the anon 60/min/IP MCP limit.
+#   - schedule (every 15 min): this is the ONLY net that catches a production
+#     failure which happens between deploys, and its cadence is the upper bound
+#     on how long such a failure can run unnoticed. It was `23 */6 * * *` until
+#     a 2026-09-03 FUNCTION_INVOCATION_FAILED outage ran 13:24→16:30 UTC and
+#     fell ENTIRELY between the 12:23 and 18:23 runs — six-hourly cannot see a
+#     three-hour outage. The probes are ~40 cheap requests per run, well under
+#     the anon 60/min/IP MCP limit, and this repo is public so Actions minutes
+#     are free; there is no reason to buy exposure back with a sparse cadence.
+#   - successful Vercel Production deployment: re-probes production once a
+#     deployed commit is live. See the smoke step below for what a green run
+#     does and does not attribute to that specific deployment.
 #   - push to main touching the script/workflow: validates edits on merge.
+#     Kept alongside deployment_status because scripts/vercel-ignore.sh does
+#     NOT list these paths as web-relevant, so a smoke-only merge produces no
+#     Vercel build and therefore no deployment_status event at all.
 #   - workflow_dispatch: manual re-runs from the Actions UI.
 # NOT pull_request: the target is live production, not PR code — a PR run
 # could neither exercise its own changes nor fail for reasons the PR caused.
+#
+# On the deployment_status trigger's limits, learned the hard way: it cannot
+# catch the deploy that INTRODUCES it (no prior event fires it), and it only
+# fires when something deploys — so between-deploy failures are the schedule's
+# job alone. In the 2026-09-03 outage the breaking deploy was itself the one
+# adding this trigger, and nothing deployed again for three hours.
 
 on:
+  deployment_status:
   push:
     branches: [main]
     paths:
@@ -33,21 +51,56 @@ on:
       - 'scripts/mcp-schema-wire-check.mjs'
       - '.github/workflows/mcp-live-smoke.yml'
   schedule:
-    - cron: '23 */6 * * *'
+    - cron: '*/15 * * * *'
   workflow_dispatch:
 
 permissions:
   contents: read
 
+# Keyed per deployment environment so the many ineligible deployment_status
+# events this repo emits (Vercel Preview, Railway, Mintlify docs) cannot enter
+# the production queue. GitHub cancels the PREVIOUSLY PENDING run in a group
+# when a new one is queued — even with cancel-in-progress: false — so a shared
+# static group lets an unrelated preview deploy silently evict a queued
+# production smoke, which reads as neither pass nor fail.
+concurrency:
+  group: mcp-live-smoke-${{ github.event_name == 'deployment_status' && github.event.deployment.environment || github.event_name }}
+  cancel-in-progress: false
+
 jobs:
   smoke:
+    # Only a live Vercel PRODUCTION deploy should re-probe. Every other
+    # deployment_status event (Preview, Railway, Mintlify docs, and the
+    # pending/in_progress states of all of them) is skipped by design — a run
+    # list that is mostly `skipped` is this gate WORKING, not a broken filter.
+    # The three literals below are pinned by tests/ci-workflow-coverage.test.mts
+    # against the shapes the GitHub API actually returns, because a casing drift
+    # ('production' vs 'Production') would silently disable the trigger and look
+    # identical to the healthy case.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (
+        github.event.deployment_status.state == 'success' &&
+        github.event.deployment.environment == 'Production' &&
+        github.event.deployment.creator.login == 'vercel[bot]'
+      )
     runs-on: ubuntu-latest
     # ~40 requests × 15s worst-case timeout each ≈ 10min absolute ceiling;
     # nominal runs finish in well under a minute.
     timeout-minutes: 12
     steps:
       - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6.1.0
+        with:
+          ref: ${{ github.event_name == 'deployment_status' && github.event.deployment.sha || github.sha }}
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: '24'
-      - run: node scripts/mcp-live-smoke.mjs
+      # Probes the production ALIASES, never the checked-out SHA's own bits: the
+      # `ref:` above pins which copy of this checker runs, not what it measures.
+      # That is deliberate — CDN rules, host-split and deploy config only exist
+      # at the alias — but it bounds what a green run proves. A run that queued
+      # behind another, or one following a rollback, can measure a build later
+      # or earlier than the commit that triggered it, so treat green as "the
+      # production surface is healthy now", NOT as "this deployment is good".
+      - name: Live MCP production smoke
+        run: node scripts/mcp-live-smoke.mjs
