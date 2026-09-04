@@ -194,9 +194,12 @@ interface CryptoQuotesResponse {
 const MARKET_QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX'];
 const COMMODITY_QUOTE_SYMBOLS = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 const CRYPTO_QUOTE_IDS = ['bitcoin', 'ethereum'];
-const QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
+// Exported so tests/welcome-teasers.test.mjs can pin these against the
+// duplicated copies in scripts/freeze-crawlable-live-pulse.mjs (pro-test is an
+// isolated package and cannot share the constants directly).
+export const QUOTE_SYMBOLS = ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'];
 
-const QUOTE_LABELS: Record<string, string> = {
+export const QUOTE_LABELS: Record<string, string> = {
   '^GSPC': 'S&P 500',
   '^IXIC': 'Nasdaq',
   '^VIX': 'VIX',

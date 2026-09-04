@@ -23,6 +23,15 @@ import {
   buildWelcomeTeasers,
   renderWelcomeTeasers,
 } from '../scripts/build-welcome-teasers.mjs';
+import {
+  QUOTE_LABELS as FROZEN_QUOTE_LABELS,
+  QUOTE_SYMBOLS as FROZEN_QUOTE_SYMBOLS,
+  downsampleSparkline,
+} from '../scripts/freeze-crawlable-live-pulse.mjs';
+import {
+  QUOTE_LABELS as CLIENT_QUOTE_LABELS,
+  QUOTE_SYMBOLS as CLIENT_QUOTE_SYMBOLS,
+} from '../pro-test/src/services/teasers.ts';
 import { resolveLatestLivePulseSnapshotPath } from '../scripts/build-crawlable-corpus.mjs';
 import { CHOKEPOINT_REGISTRY } from '../src/config/chokepoint-registry.ts';
 
@@ -163,6 +172,37 @@ describe('welcome teaser strip is derived from the committed pulse snapshot', ()
     }
   });
 
+  it('publishes only market quotes the capture actually returned', () => {
+    // Until #7608 these twelve rows were hand-written and had drifted to a 22%
+    // error on the S&P and a 30% error on Bitcoin -- specific false numbers
+    // about named instruments, crawlable under "What live data is this page
+    // showing right now?".
+    const frozen = new Map((snapshot.quotes ?? []).map((quote) => [quote.symbol, quote]));
+    assert.ok(committed.quotes.length > 0, 'the tape must publish the captured rows');
+    for (const quote of committed.quotes) {
+      const source = frozen.get(quote.symbol);
+      assert.ok(source, `${quote.symbol} is not in the frozen capture -- it was hand-written`);
+      assert.equal(quote.price, source.price);
+      assert.equal(quote.change, source.change);
+      assert.deepEqual(quote.sparkline, source.sparkline);
+      assert.ok(Number.isFinite(quote.price) && quote.price > 0, `${quote.symbol} needs a real price`);
+    }
+  });
+
+  it('keeps the freeze quote config in step with the strip that renders it', () => {
+    // pro-test is an isolated package, so the symbol list and labels are
+    // duplicated in scripts/freeze-crawlable-live-pulse.mjs on purpose. Pin
+    // them: a symbol added on one side only would silently never be frozen.
+    assert.deepEqual(FROZEN_QUOTE_SYMBOLS, CLIENT_QUOTE_SYMBOLS);
+    assert.deepEqual(FROZEN_QUOTE_LABELS, CLIENT_QUOTE_LABELS);
+  });
+
+  it('renders the tape in the strip order, never response order', () => {
+    const order = committed.quotes.map((quote) => quote.symbol);
+    const expected = CLIENT_QUOTE_SYMBOLS.filter((symbol) => order.includes(symbol));
+    assert.deepEqual(order, expected);
+  });
+
   it('ranks the strip by severity, so the worst chokepoint is the one shown first', () => {
     const scores = committed.chokepoints.map((row) => row.disruptionScore);
     assert.deepEqual(scores, [...scores].sort((a, b) => b - a));
@@ -200,6 +240,10 @@ describe('welcome teaser generator refuses unpublishable input', () => {
           url: 'https://news.un.org/story/1',
           publishedAt: '2026-09-03T16:00:00.000Z',
         },
+      ],
+      quotes: [
+        { symbol: '^GSPC', display: 'S&P 500', price: 7747.71, change: 1.06, sparkline: [7702, 7715, 7747] },
+        { symbol: 'BTC', display: 'Bitcoin', price: 80697, change: 3.98, sparkline: [77561, 79000, 80697] },
       ],
       ...overrides,
     };
@@ -267,6 +311,42 @@ describe('welcome teaser generator refuses unpublishable input', () => {
       /Invalid CII movement label/,
       'an unrecognised label must red the generator, not fall through to a confident direction',
     );
+  });
+
+  it('rejects a market quote it cannot source', () => {
+    for (const patch of [
+      { price: undefined },
+      { price: 0 },
+      { price: -1 },
+      { change: 'n/a' },
+      { symbol: 'DOGE' },
+      { sparkline: [1, 'x', 3] },
+    ]) {
+      const fixture = snapshotFixture();
+      Object.assign(fixture.quotes[0], patch);
+      assert.throws(
+        () => buildWelcomeTeasers(fixture, 'docs/snapshots/x.json'),
+        /quote/i,
+        `a quote with ${JSON.stringify(patch)} must not reach the homepage`,
+      );
+    }
+  });
+
+  it('publishes an empty tape rather than an invented one', () => {
+    const built = buildWelcomeTeasers(snapshotFixture({ quotes: [] }), 'docs/snapshots/x.json');
+    assert.deepEqual(built.quotes, []);
+  });
+
+  it('downsamples a sparkline to an even sample that keeps both endpoints', () => {
+    const series = Array.from({ length: 390 }, (_, i) => i);
+    const reduced = downsampleSparkline(series, 12);
+    assert.equal(reduced.length, 12);
+    assert.equal(reduced[0], 0, 'the frozen curve must start where the real series does');
+    assert.equal(reduced.at(-1), 389, 'and end where it ends');
+    assert.deepEqual(reduced, [...reduced].sort((a, b) => a - b), 'order is preserved');
+    // A shorter series is kept whole rather than padded.
+    assert.deepEqual(downsampleSparkline([1, 2, 3], 12), [1, 2, 3]);
+    assert.deepEqual(downsampleSparkline(undefined, 12), []);
   });
 
   it('rejects a chokepoint whose status or score is unpublishable', () => {

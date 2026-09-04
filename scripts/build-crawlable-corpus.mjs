@@ -3161,17 +3161,39 @@ export function assertCountryDevelopmentsRendered({ pagePath, html, developments
   }
 }
 
-// Pipeline tripwire decision (#7615), exported for tests: the per-page guard
-// proves frozen items render; this proves every indexed country captured one.
+// A floor, not completeness. #7615 shipped this as
+// `developmentsPageCount !== indexedCountryPageCount` -- every indexed country
+// owed a dated development -- which no real capture can satisfy: the news cycle
+// simply does not mention most countries. A fully keyed freeze on 2026-09-04
+// covered 61 of 196 pages (54 headline-matched, 40 briefs, 18 timelines), so
+// the gate rejected every snapshot the freeze could produce. That left the
+// weekly refresh unable to publish and armed the
+// MAX_LIVE_PULSE_SNAPSHOT_AGE_DAYS fuse against the whole corpus build.
+//
+// Rendering is not this gate's job -- assertDevelopmentsRendered already fails
+// per page when a frozen item is dropped, and it compares against the same
+// snapshot rows, so demanding equality here proved nothing extra. What is worth
+// catching is a COLLAPSE: the digest matcher breaking, or a wrong-tiered key
+// leaving briefs and timelines empty. Gate on a floor that a quiet news week
+// clears and a broken pipeline does not.
+export const MIN_DEVELOPMENTS_COVERAGE_RATIO = 0.1;
+
+// Pipeline tripwire decision (#7615, retuned in #7620 follow-up), exported for
+// tests: the per-page guard proves frozen items render; this proves the capture
+// did not collapse.
 export function assertDevelopmentsCoverage({
   carriesDevelopments,
   developmentsPageCount,
   indexedCountryPageCount,
 }) {
-  if (carriesDevelopments && developmentsPageCount !== indexedCountryPageCount) {
+  if (!carriesDevelopments) return;
+  const floor = Math.max(1, Math.ceil(indexedCountryPageCount * MIN_DEVELOPMENTS_COVERAGE_RATIO));
+  if (developmentsPageCount < floor) {
     throw new Error(
       `crawlable corpus captured dated country developments for ${developmentsPageCount} `
-      + `of ${indexedCountryPageCount} indexed country pages; refusing to publish incomplete coverage`,
+      + `of ${indexedCountryPageCount} indexed country pages; expected at least ${floor}. `
+      + 'A snapshot that carries developments should cover far more than this — check the '
+      + 'digest match and the freeze service key before republishing.',
     );
   }
 }

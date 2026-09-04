@@ -9,6 +9,7 @@ import {
   buildBriefContext,
   countryDisplayName,
   freezeCrawlableLivePulse,
+  minimumBriefCaptures,
   mintSession,
   normalizeApiBase,
   timelineRecord,
@@ -132,6 +133,23 @@ function countryPayload() {
     };
   }
 
+  // Shaped like the three /api/market/v1/list-*-quotes routes.
+  function quotePayload(symbols, overrides = {}) {
+    return {
+      asOf: new Date().toISOString(),
+      rateLimited: false,
+      quotes: symbols.map((symbol) => ({
+        symbol,
+        name: symbol,
+        display: symbol,
+        price: 100,
+        change: 1.234,
+        sparkline: Array.from({ length: 40 }, (_, i) => 100 + i),
+      })),
+      ...overrides,
+    };
+  }
+
   function humanitarianPayload(countryCode) {
     return {
       summary: {
@@ -171,6 +189,9 @@ function countryPayload() {
     timelineStatus = 'ok',
     timelineSourceUrl = 'https://example.test/port-call',
     onRequest = null,
+    marketSymbols = ['^GSPC', '^IXIC', '^VIX'],
+    commoditySymbols = ['CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
+    cryptoSymbols = ['BTC', 'ETH'],
   } = {}) {
     let countriesServed = 0;
     globalThis.fetch = async (url, options = {}) => {
@@ -198,6 +219,9 @@ function countryPayload() {
         return jsonResponse(humanitarianPayload(new URL(href).searchParams.get('country_code')));
       }
       if (href.includes('list-feed-digest')) return jsonResponse(digestPayload(digestItems, digestCoverage));
+      if (href.includes('list-market-quotes')) return jsonResponse(quotePayload(marketSymbols));
+      if (href.includes('list-commodity-quotes')) return jsonResponse(quotePayload(commoditySymbols));
+      if (href.includes('list-crypto-quotes')) return jsonResponse(quotePayload(cryptoSymbols));
       if (href.includes('get-country-intel-brief')) {
         if (briefStatus === 'fail') return { ok: false, status: 503, text: async () => '{}' };
         const code = new URL(href).searchParams.get('country_code');
@@ -254,6 +278,32 @@ function countryPayload() {
       throw new Error(`unexpected request: ${href}`);
     };
   }
+
+// The brief tolerance decides whether a weekly run publishes at all, and it
+// borrowed an absolute allowance calibrated for ~196 countries. Applied to the
+// headline-matched set it became a 90% demand on a stochastic upstream: a real
+// run capturing 41 of 51 threw and wrote NO snapshot, discarding the country,
+// chokepoint and crisis captures with it and arming the corpus staleness fuse.
+describe('brief capture tolerance', () => {
+  it('scales with the matched set instead of a fixed allowance', () => {
+    // A real run: 51 matched, 10 LLM rejections. Must publish.
+    assert.ok(41 >= minimumBriefCaptures(51), '41 of 51 is an ordinary run, not a failure');
+    // A collapse at the same size must not.
+    assert.ok(10 < minimumBriefCaptures(51), '10 of 51 is a broken pipeline');
+  });
+
+  it('keeps a majority collapse failing at every set size', () => {
+    assert.ok(1 < minimumBriefCaptures(7), '1 of 7 is a collapse');
+    assert.ok(6 >= minimumBriefCaptures(7), '6 of 7 is a few rejections');
+  });
+
+  it('does not read a single rejection in a tiny set as a collapse', () => {
+    // One failure out of two is 50% and says nothing about pipeline health;
+    // the separate zero-brief check is what catches a genuine outage there.
+    assert.equal(minimumBriefCaptures(2), 1);
+    assert.equal(minimumBriefCaptures(1), 1);
+  });
+});
 
 describe('freeze crawlable live pulse coverage gates', () => {
   const originalFetch = globalThis.fetch;
@@ -442,6 +492,69 @@ describe('freeze crawlable live pulse coverage gates', () => {
     const { snapshot } = await runFreeze();
     assert.equal(snapshot.coverage.headlineDigestState, 'complete');
     assert.equal(snapshot.coverage.headlineServedStale, null);
+  });
+
+  // The market tape names real instruments, so an invented row is a specific
+  // false claim. #7608 shipped one that had drifted 22% on the S&P.
+  it('captures the market tape in strip order with a reduced sparkline', async () => {
+    stubFetch();
+    const { snapshot } = await runFreeze();
+    assert.deepEqual(
+      snapshot.quotes.map((quote) => quote.symbol),
+      ['^GSPC', '^IXIC', '^VIX', 'BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
+    );
+    assert.equal(snapshot.coverage.quoteCount, 12);
+    assert.equal(snapshot.coverage.quoteErrorCount, 0);
+    assert.ok(snapshot.quotesAsOf, 'the tape carries the upstream as-of stamp');
+    const spx = snapshot.quotes[0];
+    assert.equal(spx.display, 'S&P 500', 'the frozen row carries the label the card renders');
+    assert.equal(spx.change, 1.23, 'change is rounded, not carried at full float precision');
+    assert.equal(spx.sparkline.length, 12, 'a 40-point series is reduced for the 14x5px sparkline');
+    assert.equal(spx.sparkline[0], 100);
+    assert.equal(spx.sparkline.at(-1), 139);
+  });
+
+  it('keeps the country capture when the market upstream is down', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('list-market-quotes')) throw new Error('offline');
+      return outer(url);
+    };
+    const { snapshot } = await runFreeze();
+    // The equities leg is gone; commodities and crypto still publish.
+    assert.deepEqual(
+      snapshot.quotes.map((quote) => quote.symbol),
+      ['BTC', 'ETH', 'CL=F', 'BZ=F', 'GC=F', 'HG=F', 'NG=F', 'EURUSD=X', 'USDJPY=X'],
+    );
+    assert.equal(snapshot.errors.quotes[0].message, 'offline');
+    assert.match(snapshot.errors.quotes[1].message, /missing \^GSPC, \^IXIC, \^VIX/);
+    assert.ok(snapshot.coverage.countryCount > 100, 'a market outage must not cost the corpus its refresh');
+  });
+
+  it('drops a quote with no usable price rather than defaulting one', async () => {
+    stubFetch();
+    const outer = globalThis.fetch;
+    globalThis.fetch = async (url) => {
+      if (String(url).includes('list-crypto-quotes')) {
+        return {
+          ok: true,
+          status: 200,
+          text: async () => JSON.stringify({
+            quotes: [
+              { symbol: 'BTC', price: 0, change: 1, sparkline: [1, 2] },
+              { symbol: 'ETH', price: 2504.62, change: 4.49, sparkline: [2400, 2504.62] },
+            ],
+          }),
+        };
+      }
+      return outer(url);
+    };
+    const { snapshot } = await runFreeze();
+    const symbols = snapshot.quotes.map((quote) => quote.symbol);
+    assert.ok(!symbols.includes('BTC'), 'a zero price is not a price');
+    assert.ok(symbols.includes('ETH'));
+    assert.match(snapshot.errors.quotes[0].message, /missing BTC/);
   });
 
   it('omits the upstream no-active-disruptions boilerplate from frozen chokepoints', async () => {
