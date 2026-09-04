@@ -52,7 +52,7 @@ Coverage reconciled: 2026-09-04. Every figure below is generated from this repos
 
 - 747 active data providers across 760 observed source hosts (331 structured/API, 461 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
 - 724 feed definitions in the shared feed registry
-- 40 freshness-tracked source groups
+- 40 named live data streams whose staleness is tracked and surfaced individually (ACLED, OpenSky, AIS, GDELT, RSS and the rest) — a different axis from the 10 signal domains above, which group the source catalog by subject
 - 58 map layer types in the shared registry, 57 of them reachable in the full variant — the homepage publishes the full-variant figure; the remaining 1 is sunset or build-flag gated
 - 113 concrete panel implementations across 6 product variants
 - 74 MCP tools; use `tools/list` for the live inventory
@@ -76,6 +76,9 @@ World Monitor uses public or documented feeds including ACLED, UCDP, AISStream, 
 - Main dashboard: https://www.worldmonitor.app/dashboard
 - Live Country Instability Index rankings: https://www.worldmonitor.app/country-instability-index/
 - World Monitor Pro: https://www.worldmonitor.app/pro
+- Source catalog — the authority behind the Data Coverage figures above: https://www.worldmonitor.app/sources/
+- Agent guide — machine surfaces, auth, crawl policy, rate limits: https://www.worldmonitor.app/agents.md
+- MCP server — endpoint, live tool registry, auth: https://www.worldmonitor.app/mcp-server.md
 - Finance Monitor: https://finance.worldmonitor.app/
 - Commodity Monitor: https://commodity.worldmonitor.app/
 - Energy Monitor: https://energy.worldmonitor.app/

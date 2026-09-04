@@ -97,7 +97,10 @@ export function buildCoverageBullets({ stats, resilience }) {
   return [
     `- ${count(attribution.providerCount)} active data providers across ${count(attribution.activeHosts)} observed source hosts (${count(attribution.structuredHosts)} structured/API, ${count(attribution.feedHosts)} news & OSINT feed, ${count(attribution.operationalStatusHosts)} operational-status; a host can be more than one), grouped into ${count(SOURCE_DOMAINS.length)} signal domains — full catalog at https://www.worldmonitor.app/sources/`,
     `- ${count(stats.feedDefinitions)} feed definitions in the shared feed registry`,
-    `- ${count(stats.freshnessSources)} freshness-tracked source groups`,
+    // "Freshness-tracked" is a different axis from the source catalog's signal
+    // domains, and the two sat adjacent with no definition — an agent could
+    // reasonably have collapsed them into one grouping. Name the axis.
+    `- ${count(stats.freshnessSources)} named live data streams whose staleness is tracked and surfaced individually (ACLED, OpenSky, AIS, GDELT, RSS and the rest) — a different axis from the ${count(SOURCE_DOMAINS.length)} signal domains above, which group the source catalog by subject`,
     mapLayerCoverage(stats),
     `- ${count(stats.panelClasses)} concrete panel implementations across ${count(stats.variantCount)} product variants`,
     `- ${count(stats.mcpToolCount)} MCP tools; use \`tools/list\` for the live inventory`,
