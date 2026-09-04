@@ -9,8 +9,8 @@ import { fileURLToPath } from 'node:url';
 import { createServer } from 'vite';
 
 import {
+  injectStarsInteractionCounter,
   latestValidGithubStarsSnapshot,
-  starsInteractionCounter,
 } from '../scripts/github-stars-snapshot.mjs';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -228,19 +228,12 @@ const welcomeContent = await renderWelcomeRoot();
 // GitHub star InteractionCounter: populated from the committed freeze
 // snapshot, never hardcoded and never fetched at build time (offline builds
 // stay deterministic). Refresh via `npm run freeze:github-stars`.
-const GITHUB_STARS_TOKEN = '"%GITHUB_STARS_INTERACTION%"';
-// Pages whose committed template carries the token. A missing token on one of
-// these is a dropped counter, not an optional page — fail the build.
+// Pages whose committed template carries a #software node must leave the
+// build with the counter injected — a missing node is a dropped counter,
+// not an optional page.
 const GITHUB_STARS_PAGES = ['welcome.html'];
 
 function injectGithubStars(html, file) {
-  if (!html.includes(GITHUB_STARS_TOKEN)) {
-    if (GITHUB_STARS_PAGES.includes(file)) {
-      console.error('[prerender] ERROR: welcome.html lost the GitHub stars injection token. Restore "interactionStatistic" or update injectGithubStars().');
-      process.exit(1);
-    }
-    return html;
-  }
   let snapshot;
   try {
     snapshot = latestValidGithubStarsSnapshot();
@@ -248,7 +241,12 @@ function injectGithubStars(html, file) {
     console.error(`[prerender] ERROR: ${error.message}`);
     process.exit(1);
   }
-  return html.replaceAll(GITHUB_STARS_TOKEN, JSON.stringify(starsInteractionCounter(snapshot)));
+  const { html: next, injected } = injectStarsInteractionCounter(html, snapshot);
+  if (!injected && GITHUB_STARS_PAGES.includes(file)) {
+    console.error('[prerender] ERROR: welcome.html carries no #software JSON-LD node to receive the star counter.');
+    process.exit(1);
+  }
+  return next;
 }
 
 const PAGES = [

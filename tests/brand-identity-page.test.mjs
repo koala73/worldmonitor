@@ -124,9 +124,9 @@ describe('Organization JSON-LD NAP alignment', () => {
     );
   });
 
-  it('carries a build-populated star counter placeholder, never a hardcoded count', () => {
+  it('keeps star counts out of the source template for build-time injection', () => {
     const source = read('pro-test/welcome.html');
-    assert.ok(source.includes('"%GITHUB_STARS_INTERACTION%"'), 'welcome source must carry the star injection token');
     assert.doesNotMatch(source, /"userInteractionCount":\s*\d+/, 'star counts must not be hardcoded in the source template');
+    assert.doesNotMatch(source, /GITHUB_STARS/, 'the source template must not carry injection tokens');
   });
 });

@@ -59,3 +59,33 @@ export function starsInteractionCounter(snapshot) {
     userInteractionCount: snapshot.stargazers_count,
   };
 }
+
+const SOFTWARE_ID = 'https://www.worldmonitor.app/#software';
+
+/**
+ * Insert the star InteractionCounter into every #software JSON-LD node in the
+ * HTML. Nodes that already carry one are left alone (never double-inject).
+ * Returns the rewritten HTML plus whether any node was populated, so callers
+ * can fail loudly when a page that must carry the counter has no node.
+ */
+export function injectStarsInteractionCounter(html, snapshot) {
+  let injected = false;
+  const next = String(html).replace(
+    /<script type="application\/ld\+json"([^>]*)>([\s\S]*?)<\/script>/g,
+    (tag, attrs, body) => {
+      let node;
+      try {
+        node = JSON.parse(body);
+      } catch {
+        return tag;
+      }
+      const nodes = Array.isArray(node) ? node : [node];
+      const app = nodes.find((entry) => entry && entry['@id'] === SOFTWARE_ID);
+      if (!app || app.interactionStatistic !== undefined) return tag;
+      app.interactionStatistic = starsInteractionCounter(snapshot);
+      injected = true;
+      return `<script type="application/ld+json"${attrs}>${JSON.stringify(node, null, 2).replace(/</g, '\\u003c')}</script>`;
+    },
+  );
+  return { html: next, injected };
+}

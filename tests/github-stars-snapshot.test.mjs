@@ -101,3 +101,31 @@ describe('freeze-github-stars', () => {
     }
   });
 });
+
+describe('injectStarsInteractionCounter', () => {
+  const wrap = (node) =>
+    `<html><head><script type="application/ld+json">${JSON.stringify(node)}</script></head><body></body></html>`;
+
+  it('populates the #software node and never double-injects', async () => {
+    const { injectStarsInteractionCounter } = await import('../scripts/github-stars-snapshot.mjs');
+    const page = {
+      '@context': 'https://schema.org',
+      '@type': 'SoftwareApplication',
+      '@id': 'https://www.worldmonitor.app/#software',
+    };
+    const first = injectStarsInteractionCounter(wrap(page), { stargazers_count: 42 });
+    assert.equal(first.injected, true);
+    assert.match(first.html, /"userInteractionCount": 42/);
+    const second = injectStarsInteractionCounter(first.html, { stargazers_count: 43 });
+    assert.equal(second.injected, false);
+    assert.match(second.html, /"userInteractionCount": 42/);
+  });
+
+  it('leaves pages without a #software node untouched', async () => {
+    const { injectStarsInteractionCounter } = await import('../scripts/github-stars-snapshot.mjs');
+    const html = wrap({ '@context': 'https://schema.org', '@type': 'WebPage' });
+    const { html: next, injected } = injectStarsInteractionCounter(html, { stargazers_count: 1 });
+    assert.equal(injected, false);
+    assert.equal(next, html);
+  });
+});
