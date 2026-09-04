@@ -31,6 +31,13 @@ const SAFETY_KEYS = [
 ];
 
 const SAFETY_HINT = /gta-update|gtaupdate|tps-mci|tps-calls-attended|tps-open-data/i;
+// GTA Update must stay out of every production writer surface pending its
+// rights gate, so it keeps a hint of its own. The TPS pair is deliberately no
+// longer held to that rule: since #7036 both are seed-bundle-canada members,
+// because "on-demand" had no invoker at all and the 24h canonical TTL emptied
+// their keys a day after each hand run.
+const GTA_HINT = /gta-update|gtaupdate/i;
+const TPS_BUNDLE_SCRIPTS = ['seed-tps-mci.mjs', 'seed-tps-calls-attended.mjs'];
 
 describe('Toronto safety qualification wiring (#7012)', () => {
   it('keeps live_dispatch, reported_occurrence, and annual_aggregate distinct', () => {
@@ -52,7 +59,7 @@ describe('Toronto safety qualification wiring (#7012)', () => {
       true,
     );
     assert.equal(
-      TORONTO_SAFETY_SOURCES.filter((source) => source.id.startsWith('tps-')).every((source) => source.productionWriter === 'on-demand'),
+      TORONTO_SAFETY_SOURCES.filter((source) => source.id.startsWith('tps-')).every((source) => source.productionWriter === 'bundle'),
       true,
     );
 
@@ -65,7 +72,7 @@ describe('Toronto safety qualification wiring (#7012)', () => {
     assert.match(coreSrc, /safety:toronto:tps-mci:v1/);
     assert.match(coreSrc, /safety:toronto:tps-calls-attended:v1/);
     assert.match(coreSrc, /productionWriter: 'disabled'/);
-    assert.match(coreSrc, /productionWriter: 'on-demand'/);
+    assert.match(coreSrc, /productionWriter: 'bundle'/);
     assert.equal(/safety:toronto-tfs:v1|safety:toronto-tps:v1/.test(coreSrc), false);
     assert.match(read('src/services/toronto-safety.ts'), /SafetyServiceClient/);
     assert.match(read('src/components/TorontoSafetyPanel.ts'), /reported occurrences/i);
@@ -87,20 +94,43 @@ describe('Toronto safety qualification wiring (#7012)', () => {
     assert.equal(calls.sourceUrl, 'https://open.toronto.ca/dataset/police-annual-statistical-report-calls-for-service-attended/');
   });
 
-  it('does not add GTA or the on-demand TPS datasets to seed-bundle-canada', () => {
+  it('keeps GTA out of seed-bundle-canada and runs the TPS pair as members', () => {
     const bundle = read('scripts/seed-bundle-canada.mjs');
     const sections = extractBundleSections(bundle);
-    assert.equal(sections.length, 10);
-    assert.equal(sections.some((section) => SAFETY_HINT.test(section.label) || SAFETY_HINT.test(section.script)), false);
-    assert.equal(SAFETY_HINT.test(bundle), false);
+    assert.equal(sections.length, 12);
+    assert.equal(sections.some((section) => GTA_HINT.test(section.label) || GTA_HINT.test(section.script)), false);
+    assert.equal(GTA_HINT.test(bundle), false);
+    for (const script of TPS_BUNDLE_SCRIPTS) {
+      assert.ok(
+        sections.some((section) => section.script === script),
+        `${script} must run as a seed-bundle-canada member`,
+      );
+    }
+    // The canonical TTL is 24h; a member interval at or above it would let the
+    // key lapse between ticks, which is the failure this membership fixes.
+    for (const label of ['TPS-MCI', 'TPS-Calls-Attended']) {
+      assert.match(
+        bundle,
+        new RegExp(`label: '${label}'[^\\n]*intervalMs: 6 \\* HOUR`),
+        `${label} must stay well inside the 24h canonical TTL`,
+      );
+    }
   });
 
-  it('does not register a Railway cron or watch path for either source', () => {
+  it('registers TPS watch paths on the Canada service and no GTA cron or path', () => {
     const railway = JSON.parse(read('scripts/railway-services.json'));
-    assert.equal(railway.some((row) => SAFETY_HINT.test(row.service || '')), false);
+    assert.equal(railway.some((row) => GTA_HINT.test(row.service || '')), false);
     const canada = railway.find((row) => row.service === 'seed-bundle-canada');
     assert.ok(canada);
-    assert.equal((canada.watchPatterns || []).some((pattern) => SAFETY_HINT.test(pattern)), false);
+    const patterns = canada.watchPatterns || [];
+    assert.equal(patterns.some((pattern) => GTA_HINT.test(pattern)), false);
+    // A member whose sources are not watched deploys stale code on merge.
+    for (const script of [...TPS_BUNDLE_SCRIPTS, 'lib/tps-open-data.mjs', 'lib/tps-seed-runner.mjs']) {
+      assert.ok(
+        patterns.includes(`scripts/${script}`),
+        `scripts/${script} must be a seed-bundle-canada watch path`,
+      );
+    }
   });
 
   it('keeps startup FAST/SLOW bootstrap keys unchanged and free of GTA/TPS', () => {

@@ -5,7 +5,15 @@ import {
 } from './_seed-utils.mjs';
 
 export const HAPI_PAGE_LIMIT = 10_000;
-export const HAPI_MAX_PAGES = 3;
+// 3 pages sized the admin-0-only sweep, which is ~650 rows — two orders of
+// magnitude of slack. The global admin-2 sweep that covers the HRP countries is
+// ~13.8k rows for ONE monthly reference period (measured 2026-09-04), and the
+// seeder's previousMonthStart window can hold TWO of them, i.e. ~27.6k — 92% of
+// a 30k ceiling, with an overflow throwing instead of truncating. 5 pages keeps
+// ~1.8x headroom on that measured worst case while capping a stalled sweep at
+// 5 x HAPI_REQUEST_TIMEOUT_MS(15s) = 75s, which the seeder's fetch-deadline
+// arithmetic above GDELT_SWEEP_BUDGET_MS accounts for.
+export const HAPI_MAX_PAGES = 5;
 export const HAPI_HDX_PACKAGE_URL = 'https://data.humdata.org/api/3/action/package_show?id=hdx-hapi-conflict-event';
 const HAPI_HDX_METADATA_MAX_RESPONSE_BYTES = 2 * 1024 * 1024;
 export const HAPI_HDX_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;

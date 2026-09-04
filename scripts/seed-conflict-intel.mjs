@@ -106,6 +106,19 @@ export const HAPI_FAILURE_BACKOFF_MS = 2 * 60 * 60 * 1000;
 const HAPI_FAILURE_BACKOFF_KEY = 'conflict:humanitarian:hapi-backoff:v1';
 const HAPI_REQUEST_TIMEOUT_MS = 15_000;
 const HAPI_REQUEST_DELAY_MS = 1_100;
+// #7656: wall-clock budget for the last-resort per-country fan-out, in the same
+// "a request may not LAUNCH after the cutoff" shape as GDELT_SWEEP_BUDGET_MS.
+// Without it the two global sweeps (each ≤ HAPI_MAX_PAGES × HAPI_REQUEST_TIMEOUT_MS
+// = 75s) could be followed by 23 sequential per-country requests — 23 × 15s plus
+// 22 × 1.1s pacing ≈ 369s — for a 519s direct route, well past the 315s envelope
+// the whole fetch-deadline model is anchored on. Elapsed is measured from
+// fetchAllHumanitarianSummaries ENTRY, matching fetchAll's own documented anchor,
+// so slow sweeps SHRINK this window instead of stacking on top of it: the direct
+// route is bounded by max(150s sweeps, 140s budget) + one 15s in-flight request
+// = 165s. seed-fetch-deadline-budget-invariants models the looser 150 + 140 + 15
+// = 305s ≤ 315s on purpose — an invariant that cannot understate reality is the
+// one worth asserting, and it still fails if this constant grows past 150s.
+export const HAPI_FALLBACK_BUDGET_MS = 140_000;
 const PIZZINT_TTL = 600;
 
 export const CONFLICT_COUNTRIES = [
@@ -113,30 +126,48 @@ export const CONFLICT_COUNTRIES = [
   'IQ', 'PS', 'LY', 'ML', 'BF', 'NE', 'NG', 'CM', 'MZ', 'HT',
 ];
 export const GDELT_MIN_SUCCESSFUL_COUNTRIES = Math.ceil(CONFLICT_COUNTRIES.length * 0.8);
-// Crisis-tracker registry (shared/crawlable-crises.json) countries HAPI must cover that
-// CONFLICT_COUNTRIES doesn't already include. Kept as a SEPARATE list, not merged into
-// CONFLICT_COUNTRIES — that array also sizes GDELT_MIN_SUCCESSFUL_COUNTRIES and the GDELT
-// sweep threshold below; growing it here would silently shift GDELT's coverage floor and
-// break its fixed-count tests (#5554 — a prior fix attempt did exactly this).
-const HAPI_ONLY_COUNTRIES = ['IR', 'IL', 'RU', 'SA', 'DJ', 'ER'];
+// DERIVED from the crisis-tracker registry, never hand-listed. This used to be a
+// hardcoded duplicate of shared/crawlable-crises.json's coverage codes with nothing
+// pinning the two together, so adding a tracker shipped a public /crises/<slug> page
+// whose country the seeder never requested — a page that fails closed forever with no
+// test, no alarm and no drift signal. Reading the registry makes it the single source.
+export const HAPI_CRISIS_COUNTRIES = [
+  ...new Set(
+    (loadSharedConfig('crawlable-crises.json') || [])
+      .flatMap((crisis) => (Array.isArray(crisis?.coverage) ? crisis.coverage : []))
+      .map((entry) => String(entry?.code || '').toUpperCase())
+      .filter(Boolean),
+  ),
+].sort();
+// Registry countries HAPI must cover that CONFLICT_COUNTRIES doesn't already include.
+// Kept as a SEPARATE list, not merged into CONFLICT_COUNTRIES — that array also sizes
+// GDELT_MIN_SUCCESSFUL_COUNTRIES and the GDELT sweep threshold below; growing it here
+// would silently shift GDELT's coverage floor and break its fixed-count tests
+// (#5554 — a prior fix attempt did exactly this).
+const HAPI_ONLY_COUNTRIES = HAPI_CRISIS_COUNTRIES.filter(
+  (countryCode) => !CONFLICT_COUNTRIES.includes(countryCode),
+);
 // The dashboard's country-tension widget (src/services/conflict/index.ts
 // HAPI_COUNTRY_CODES) requests this 20-country watchlist. Before this fix, a cache
 // miss fell back to a live HAPI fetch, so incomplete seed coverage was invisible;
 // the RPC handlers are now cache-only (#5554 review), so every widget country is
 // part of the guaranteed coverage contract. Keep the complete list in sync with
 // that file rather than listing only the countries unique to the dashboard.
-const HAPI_DASHBOARD_COUNTRIES = [
+export const HAPI_DASHBOARD_COUNTRIES = [
   'US', 'RU', 'CN', 'UA', 'IR', 'IL', 'TW', 'KP', 'SA', 'TR',
   'PL', 'DE', 'FR', 'GB', 'IN', 'PK', 'SY', 'YE', 'MM', 'VE',
 ];
-const HAPI_CRISIS_COUNTRIES = ['IR', 'IL', 'UA', 'RU', 'SD', 'YE', 'SA', 'DJ', 'ER'];
 // Public crisis trackers and the dashboard batch are the guaranteed coverage
-// contract. The broader conflict set is still collected when national rows are
-// present, but it does not trigger a per-country fallback fan-out.
+// contract. The broader conflict set is still collected opportunistically from the
+// same two bulk sweeps. api/health.js's humanitarianSummary minRecordCount tracks
+// this length — tests/seed-conflict-intel-hapi-circuit-breaker pins the pair.
 export const HAPI_REQUIRED_COUNTRIES = [
   ...new Set([...HAPI_CRISIS_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES]),
 ];
-const HAPI_COUNTRIES = [...new Set([...HAPI_ONLY_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES, ...CONFLICT_COUNTRIES])];
+// countryCodes filters the aggregation, so a registry code absent here would be
+// fetched by the sweeps below and then silently discarded. HAPI_ONLY_COUNTRIES is what
+// carries every crisis-registry code into this list; that link is asserted by test.
+export const HAPI_COUNTRIES = [...new Set([...HAPI_ONLY_COUNTRIES, ...HAPI_DASHBOARD_COUNTRIES, ...CONFLICT_COUNTRIES])];
 // The bounded transport emits stable route-specific failure codes. Treat the
 // failures known to implicate the selected route as a run-scoped circuit
 // signal; repeating them for another country cannot improve source reachability.
@@ -144,8 +175,8 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // #5140: the GDELT fallback sweep may not LAUNCH a batch after this much of the
 // fetch phase has elapsed (fetchAll anchors the clock at its own entry and passes
 // an absolute deadline down, so slow aux feeds automatically shrink the sweep
-// window instead of stacking on top of it). HAPI now uses one bounded API request
-// plus, only on bot detection, an official snapshot instead of a 38-country
+// window instead of stacking on top of it). HAPI now uses two bounded global API
+// sweeps plus, only on bot detection, an official snapshot instead of a 38-country
 // sequential sweep. One
 // in-flight batch may still drain past the cutoff: ≤~100s at the knobs below
 // (either 15s concurrent direct legs when no proxy is configured, or 4 × 20s
@@ -153,11 +184,25 @@ const GDELT_ROUTE_FAILURE = /\bGDELT_(?:SOURCE_PROXY|SHARED_PROXY|PROXY|DIRECT)_
 // proxy attempts block the event loop one at a time). Worst single fetchAll attempt before the bulk
 // fallback is now dominated by the GDELT path. Without this cap a
 // GDELT brownout ran 5 batches ≈ 375s+ → deadline breach → exit 75 every tick.
-// HAPI's 15s API plus 60s metadata and, only at the January boundary, at most
-// two 120s annual snapshot downloads run inside the parallel auxiliary stage,
-// not after the sweep. The resulting ≤315s HAPI bound remains comfortably under
-// ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline (lockTtlMs+120s)
-// below (re-verified #5554 review after growing HAPI_COUNTRIES to 38).
+// HAPI's two global sweeps (admin-0 then admin-2) run inside the parallel
+// auxiliary stage, not after the sweep, and re-derive as follows. Direct route:
+// each sweep costs at most HAPI_MAX_PAGES(5) × HAPI_REQUEST_TIMEOUT_MS(15s) = 75s,
+// so ≤150s, and the per-country fallback below now iterates ZERO countries because
+// the two sweeps are upstream-disjoint and jointly cover every published country —
+// and is wall-clock capped by HAPI_FALLBACK_BUDGET_MS when it does iterate.
+// Bot-block route: a 15s API rejection plus 60s HDX metadata and, only at the
+// January boundary, at most two 120s annual snapshot downloads — the same ≤315s
+// bound as before, because that ONE memoized snapshot serves both sweeps and the
+// fallback rather than being paid per request. Degenerate route (both sweeps miss
+// a required country): the retained fallback is capped by HAPI_FALLBACK_BUDGET_MS
+// measured from this function's entry, so the sweeps and the fan-out SHARE that
+// window rather than stacking — max(150s, 140s) + one 15s in-flight request =
+// 165s (#7656; unbounded it was 150s + 369s = 519s, which broke the anchor).
+// All three remain under ACLED_INTEL_LOCK_TTL_MS's 540s fetch deadline
+// (lockTtlMs+120s) below. What this replaced was a fan-out paid on EVERY run —
+// 6 missing countries ≈ 97s, and ≈290s once the 13 HRP countries that publish
+// only admin-2 rows were added to the required set (re-verified #5554 review;
+// HAPI_COUNTRIES is 38).
 export const GDELT_SWEEP_BUDGET_MS = 120_000;
 // Cold-start floor for the bulk-primary path (#5849 review): only consulted
 // on a TRUE cold start (no previous snapshot of any kind — #5855 review). Kept
@@ -749,6 +794,11 @@ async function fetchHapiRows({
 export async function fetchAllHumanitarianSummaries({
   fetchFn = (...args) => globalThis.fetch(...args),
   now = Date.now,
+  // `now` is the DATA clock — tests pin it to a fixed date so request URLs and
+  // reference periods stay stable — so elapsed time needs its own reader. It
+  // defaults to the MONOTONIC clock rather than Date.now: a mid-run NTP step
+  // must not hand the fan-out below a budget it has not actually spent.
+  readElapsedMs = () => performance.now(),
   pace = sleep,
   countryCodes = HAPI_COUNTRIES,
   requiredCountryCodes = countryCodes === HAPI_COUNTRIES ? HAPI_REQUIRED_COUNTRIES : countryCodes,
@@ -768,6 +818,7 @@ export async function fetchAllHumanitarianSummaries({
   preserveLastGood = defaultPreserveHapiLastGood,
 } = {}) {
   const nowMs = now();
+  const startedAtMs = readElapsedMs();
   const failureBackoff = await loadFailureBackoff().catch((error) => {
     console.warn(`  HAPI backoff read failed: ${error.message}`);
     return null;
@@ -854,16 +905,60 @@ export async function fetchAllHumanitarianSummaries({
       nowMs,
       adminLevel: '0',
     });
-    const results = aggregateHapiConflictEvents(nationalRows, { nowMs, countryCodes });
 
-    // HRP/GHO countries may only publish subnational rows. Fetch only the
-    // national-missing target countries and aggregate their deepest available
-    // administrative level, pacing the bounded fallback sequentially.
+    // HRP/GHO countries publish ONLY admin-2 rows and never a national row, so
+    // admin-0 alone left every one of them (AFG, SOM, COD, SSD, ETH, MLI, BFA,
+    // NER, NGA, CMR, MOZ, HTI, PSE …) reachable only through the per-country
+    // fan-out below — i.e. invisible unless someone remembered to hand-add the
+    // code to a required list. One more global request at the deepest published
+    // level covers all of them in ~2 pages. Upstream publishes each country at
+    // exactly ONE admin level, so the two sweeps are disjoint today; aggregating
+    // the concatenation in a SINGLE pass (rather than merging two aggregates)
+    // still routes any future overlap through aggregateHapiConflictEvents'
+    // "latest reference period, then deepest admin level" tiebreak, with the
+    // national rows placed first so the deeper level wins the reset.
+    // A failure here is deliberately NOT fatal — the admin-0 countries are
+    // already in hand and the bounded fallback below can still cover the rest —
+    // but it is recorded as a fallback failure so the run still backs off.
+    let subnationalRows = [];
+    let sweepFailure = null;
+    try {
+      subnationalRows = await fetchRows({
+        nowMs,
+        adminLevel: '2',
+      });
+    } catch (error) {
+      if (error.reasonCode === 'HAPI_HDX_SNAPSHOT_FALLBACK_FAILED') throw error;
+      sweepFailure = error;
+      console.warn(`  HAPI subnational sweep failed: ${error.message}`);
+    }
+
+    const results = aggregateHapiConflictEvents(
+      [...nationalRows, ...subnationalRows],
+      { nowMs, countryCodes },
+    );
+
+    // Last-resort guard, not the normal path: with both global sweeps in hand
+    // this iterates ZERO countries. It stays as the fail-closed net for a
+    // required country upstream moves to an admin level neither sweep requests,
+    // pacing the bounded per-country requests sequentially.
     const missingCountries = requiredCountryCodes.filter((countryCode) => !results[countryCode]);
-    let fallbackFailure = null;
+    let fallbackFailure = sweepFailure;
     let fallbackRows = 0;
     for (let i = 0; i < missingCountries.length; i += 1) {
       const countryCode = missingCountries[i];
+      // Snapshot-backed iterations issue no network request — they filter rows
+      // already in memory — so they are not what this budget bounds, and gating
+      // them would disable the net exactly when the bot-block route needs it.
+      if (!useSnapshot && readElapsedMs() - startedAtMs >= HAPI_FALLBACK_BUDGET_MS) {
+        const skipped = missingCountries.slice(i);
+        fallbackFailure = Object.assign(
+          new Error(`fallback budget exhausted with ${skipped.length} required countries unattempted`),
+          { reasonCode: 'HAPI_FALLBACK_BUDGET_EXHAUSTED' },
+        );
+        console.warn(`  HAPI fallback budget exhausted after ${i}/${missingCountries.length} countries — skipped ${skipped.join(', ')}`);
+        break;
+      }
       try {
         const rows = await fetchRows({
           nowMs,
@@ -920,7 +1015,7 @@ export async function fetchAllHumanitarianSummaries({
     }
 
     const requiredCovered = requiredCountryCodes.filter((countryCode) => results[countryCode]).length;
-    console.log(`  Humanitarian: ${Object.keys(results).length}/${countryCodes.length} countries (${requiredCovered}/${requiredCountryCodes.length} required) from ${nationalRows.length + fallbackRows} bulk rows`);
+    console.log(`  Humanitarian: ${Object.keys(results).length}/${countryCodes.length} countries (${requiredCovered}/${requiredCountryCodes.length} required) from ${nationalRows.length + subnationalRows.length + fallbackRows} bulk rows`);
     return results;
   } catch (error) {
     failure = error;
