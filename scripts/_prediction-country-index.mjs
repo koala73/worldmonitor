@@ -219,6 +219,51 @@ export function buildCountryMarketIndex(markets, {
   return index;
 }
 
+export function selectKalshiSeriesTickers(series, targetCountryCodes, {
+  perCountryLimit = 2,
+  countries = countryCodes,
+} = {}) {
+  const targets = new Set((targetCountryCodes ?? []).map((code) => String(code).toUpperCase()));
+  const limit = Math.max(0, Math.floor(Number(perCountryLimit) || 0));
+  if (!Array.isArray(series) || targets.size === 0 || limit === 0) return [];
+
+  const matchers = compileCountryMatchers(countries)
+    .filter(({ countryCode }) => targets.has(countryCode));
+  const rankedByCountry = new Map(matchers.map(({ countryCode }) => [countryCode, []]));
+
+  for (const entry of series) {
+    const ticker = String(entry?.ticker ?? '').trim();
+    if (!ticker || String(entry?.category ?? '').toLowerCase() === 'sports') continue;
+    const title = [entry?.title, ...(Array.isArray(entry?.tags) ? entry.tags : [])]
+      .map((part) => String(part ?? '').trim())
+      .filter(Boolean)
+      .join(' ');
+    const parsedVolume = Number(entry?.volume_fp);
+    const candidate = {
+      title,
+      yesPrice: 50,
+      volume: Number.isFinite(parsedVolume) ? parsedVolume : 0,
+    };
+    if (!shouldInclude(candidate)) continue;
+
+    for (const [countryCode, match] of countryMatches(normalizeSearchText(title), matchers)) {
+      rankedByCountry.get(countryCode)?.push({ ticker, title, ...match, volume: candidate.volume });
+    }
+  }
+
+  const selected = new Set();
+  for (const { countryCode } of matchers) {
+    rankedByCountry.get(countryCode)
+      ?.sort((left, right) => right.matchStrength - left.matchStrength
+        || right.volume - left.volume
+        || left.title.localeCompare(right.title)
+        || left.ticker.localeCompare(right.ticker))
+      .slice(0, limit)
+      .forEach(({ ticker }) => selected.add(ticker));
+  }
+  return [...selected];
+}
+
 /**
  * Build the country index only when every source segment succeeded.
  * A partial fetch must yield `{}` so `skipWhenEmpty` retains the last-good

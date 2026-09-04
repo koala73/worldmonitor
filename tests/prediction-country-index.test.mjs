@@ -263,12 +263,13 @@ describe('projectCountryMarketIndex', () => {
 });
 
 describe('selectKalshiSeriesTickers', () => {
-  it('selects two liquid non-sports series for each requested country', () => {
+  it('selects two high-volume non-sports series for each requested country', () => {
     const series = [
       { ticker: 'KXIRANSPORT', title: 'Iran match winner', category: 'Sports', volume_fp: '90000000' },
       { ticker: 'KXIRANSTALE', title: 'Ali Khamenei out?', tags: ['Iran'], category: 'Politics', volume_fp: '54513052' },
       { ticker: 'KXIRANDEAL', title: 'US Iran nuclear deal', tags: ['Iran'], category: 'World', volume_fp: '21065356' },
       { ticker: 'KXIRANLOW', title: 'Iran trade agreement', category: 'World', volume_fp: '4999' },
+      { ticker: 'KXIRANUNKNOWN', title: 'A new Iran agreement', category: 'World' },
       { ticker: 'KXLEBANONPARLI', title: 'Lebanon parliament', category: 'Elections', volume_fp: '28888' },
       { ticker: 'KXLEBUSFLIGHT', title: 'Lebanon-US flight resumption', category: 'World', volume_fp: '11181' },
       { ticker: 'KXFRANCE', title: 'France election', category: 'Elections', volume_fp: '500000' },

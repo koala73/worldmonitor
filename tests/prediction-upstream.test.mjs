@@ -167,9 +167,13 @@ describe('prediction-market upstream coverage', () => {
   });
 
   it('rejects an incomplete selected-series hydration', async () => {
+    let calls = 0;
     await assert.rejects(
       fetchKalshiMarketsBySeries(['KXIRAN'], {
-        fetchFn: async () => Response.json({ markets: [{ ticker: 'IRAN-1' }], cursor: 'never-ends' }),
+        fetchFn: async () => Response.json({
+          markets: [{ ticker: `IRAN-${calls + 1}` }],
+          cursor: `page-${++calls}`,
+        }),
         baseUrl: 'https://kalshi.example.test',
         userAgent: 'test',
         maxPagesPerSeries: 2,
