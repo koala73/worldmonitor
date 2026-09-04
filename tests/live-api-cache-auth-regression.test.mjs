@@ -138,10 +138,16 @@ async function fetchText(pathOrUrl, init = {}) {
  * #7659 exists to deliver never happened. A cold edge server legitimately answers
  * MISS once, so retry rather than demanding a HIT on the first request: six fresh
  * country documents each reached HIT on their second attempt when measured.
+ *
+ * The retry budget is sized for the one condition observed to need more than two:
+ * changing the zone ruleset purges the edge cache, so requests in the seconds
+ * after `--apply` legitimately MISS repeatedly. The 6-hourly schedule never
+ * coincides with an apply, but a manual re-run right after one would, and the
+ * failure message says so.
  */
 async function waitForCloudflareHit(url, name) {
   const seen = [];
-  for (let attempt = 1; attempt <= 5; attempt += 1) {
+  for (let attempt = 1; attempt <= 8; attempt += 1) {
     const result = await fetchText(url);
     assert.equal(result.resp.status, 200, `${name}: corpus document must still be served`);
     const status = cfCacheStatus(result.resp).toUpperCase();
@@ -156,11 +162,13 @@ async function waitForCloudflareHit(url, name) {
         + ' "Bypass cache - WWW documents" rule — regenerate it with'
         + ' `node scripts/cloudflare-cache-rule.mjs --apply`',
     );
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await new Promise((resolve) => setTimeout(resolve, 400));
   }
   assert.fail(
     `${name}: eligible for the Cloudflare cache but never returned a HIT (${seen.join(' -> ')}) —`
-    + ' the rule is in force yet nothing is being stored, so the corpus still pays full origin TTFB',
+    + ' the rule is in force yet nothing is being stored, so the corpus still pays full origin TTFB.'
+    + ' If a `cloudflare-cache-rule.mjs --apply` just ran, the ruleset change purged the edge cache'
+    + ' and this clears on its own; otherwise the origin has stopped sending a cacheable response.',
   );
 }
 
