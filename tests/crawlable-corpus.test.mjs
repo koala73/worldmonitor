@@ -50,6 +50,7 @@ import {
   MAX_LIVE_SNAPSHOT_AGE_MS,
 } from '../scripts/crawlable-live-tools.mjs';
 import {
+  COMPARISON_HUB_MATRIX_ROWS,
   COMPARISON_MATRIX_COLUMNS,
   COMPARISON_PAGES,
 } from '../scripts/build-comparison-pages.mjs';
@@ -4200,6 +4201,7 @@ describe('crawlable corpus generator', () => {
           const itemList = ld.find((entry) => entry['@type'] === 'ItemList');
           assert.ok(itemList, page.slug + ' must emit ranked ItemList JSON-LD (#7610)');
           assert.equal(itemList.numberOfItems, page.itemList.length);
+          assert.equal(itemList.itemListOrder, 'https://schema.org/ItemListOrderAscending');
         }
         assert.match(
           html,
@@ -4270,13 +4272,70 @@ describe('crawlable corpus generator', () => {
 
       // Liveuamap alternatives page: literal competitor set including the two
       // issue-required additions.
-      const liveuamapCompetitors = COMPARISON_PAGES.find((page) => page.slug === 'liveuamap-alternatives').competitors;
+      const liveuamapDefinition = COMPARISON_PAGES.find((page) => page.slug === 'liveuamap-alternatives');
+      const liveuamapCompetitors = liveuamapDefinition.competitors;
       assert.deepEqual(
         liveuamapCompetitors,
         ['Liveuamap', 'Deep State Map', 'ACLED', 'ConflictZone.io', 'ISW', 'UNOSAT', 'ICG CrisisWatch', 'ConflictRadar'],
       );
+      assert.deepEqual(
+        liveuamapDefinition.itemList,
+        [
+          { name: 'World Monitor', position: 1 },
+          { name: 'Liveuamap', position: 2 },
+          { name: 'Deep State Map', position: 3 },
+          { name: 'ACLED', position: 4 },
+          { name: 'ConflictZone.io', position: 5 },
+          { name: 'ISW', position: 6 },
+          { name: 'UNOSAT', position: 7 },
+          { name: 'ICG CrisisWatch', position: 8 },
+          { name: 'ConflictRadar', position: 9 },
+        ],
+      );
+      const liveuamapItemList = jsonLdObjects(liveuamapPage).find((entry) => entry['@type'] === 'ItemList');
+      assert.deepEqual(
+        liveuamapItemList.itemListElement.map(({ name, position }) => ({ name, position })),
+        liveuamapDefinition.itemList,
+      );
       assert.match(liveuamapPage, /ICG CrisisWatch/);
       assert.match(liveuamapPage, /ConflictRadar/);
+
+      const comparisonRows = [
+        ...COMPARISON_HUB_MATRIX_ROWS,
+        ...COMPARISON_PAGES.flatMap((page) => page.matrixRows),
+      ];
+      const mcpColumn = COMPARISON_MATRIX_COLUMNS.indexOf('MCP server');
+      const verifiedMcpProducts = [
+        'World Monitor',
+        'GDELT',
+        'war-dashboard-data',
+        'world-intel-mcp',
+        'Off-Nadir Delta',
+        'Satellite MCP',
+        'OSINT MCP',
+        'IMF PortWatch',
+      ];
+      for (const row of comparisonRows) {
+        const hasVerifiedMcp = verifiedMcpProducts.some((name) => row[0].includes(name));
+        if (hasVerifiedMcp) {
+          assert.doesNotMatch(row[mcpColumn], /^(?:No|Unverified)$/i, row[0] + ' has verified MCP evidence');
+        } else {
+          assert.equal(row[mcpColumn], 'Unverified', row[0] + ' MCP status must preserve the unverified evidence state');
+        }
+      }
+
+      const worldMonitorRows = comparisonRows.filter((row) => row[0].startsWith('World Monitor'));
+      for (const row of worldMonitorRows) {
+        assert.equal(
+          row[2],
+          'Source-dependent: live and minute-level feeds plus daily, weekly, and monthly datasets',
+          row[0] + ' must not publish one refresh interval for every source',
+        );
+      }
+      for (const page of COMPARISON_PAGES) {
+        const html = read(outDir, 'compare/' + page.slug + '/index.html');
+        assert.doesNotMatch(html, /5[-–]15 min/i, page.slug + ' must not publish a universal 5-15 minute cadence');
+      }
 
       // False "no public API" claim must never return (#7610 correction).
       for (const page of COMPARISON_PAGES) {
@@ -4290,21 +4349,23 @@ describe('crawlable corpus generator', () => {
       assert.ok(vsLiveuamapPage.includes('Yes. Liveuamap sells API access'));
       assert.ok(vsLiveuamapPage.includes('liveuamap.com/promo/api'));
 
-      // Six-figure enterprise claims must stay attributed or undisclosed.
+      // Unnamed third-party enterprise price claims must never be published.
       const dataminrPage = read(outDir, 'compare/worldmonitor-vs-dataminr/index.html');
       const recordedFuturePage = read(outDir, 'compare/worldmonitor-vs-recorded-future/index.html');
       for (const [label, html] of [['dataminr', dataminrPage], ['recorded-future', recordedFuturePage]]) {
-        const sixFigureMentions = html.split('.').filter((sentence) => sentence.includes('six figures'));
-        assert.ok(sixFigureMentions.length > 0, label + ' page should discuss enterprise pricing');
-        for (const sentence of sixFigureMentions) {
-          assert.match(
-            sentence,
-            /widely reported|undisclosed|negotiated/i,
-            label + ' six-figure claim must be attributed, not asserted as list pricing',
-          );
-        }
+        assert.doesNotMatch(html, /six figures|\$100K|\$300K/i, label + ' must omit enterprise figures without a named source');
         assert.match(html, /does not publish list pricing/);
       }
+      assert.doesNotMatch(recordedFuturePage, /cyber-only/i);
+      assert.match(recordedFuturePage, /physical[^.]*geopolitical risk/i);
+
+      assert.doesNotMatch(acledPage, /CC-BY-NC|myACLED free tier|Daily event coding/i);
+      assert.match(acledPage, /Research, Partner, and Enterprise/);
+
+      const chokepointComparisonPage = read(outDir, 'compare/chokepoint-monitoring-tools/index.html');
+      assert.equal(manifest.sections.chokepoints.count, 13);
+      assert.doesNotMatch(chokepointComparisonPage, /\b14 chokepoints\b|28 vs 14/i);
+      assert.match(chokepointComparisonPage, /\b13 chokepoints\b/);
 
       // Required alternative H2 headings on their pages (#7610).
       const headingExpectations = [
