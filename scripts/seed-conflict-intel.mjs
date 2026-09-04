@@ -881,9 +881,17 @@ export async function fetchAllHumanitarianSummaries({
   const demotedVintageStillFresh = previousWasDemoted
     && Number.isFinite(previousMarkerAgeMs)
     && previousMarkerAgeMs < HAPI_REFRESH_INTERVAL_MS;
+  const requiredCountryContract = [...requiredCountryCodes].sort();
   if (
     Number.isFinite(Number(previousMarker?.updatedAt))
     && previousMarkerAgeMs < previousRefreshIntervalMs
+    && Number(previousMarker?.requiredCountriesTotal) === requiredCountryCodes.length
+    && Number(previousMarker?.requiredCountriesCovered) >= requiredCountryCodes.length
+    && Array.isArray(previousMarker?.requiredCountryCodes)
+    && previousMarker.requiredCountryCodes.length === requiredCountryContract.length
+    && [...previousMarker.requiredCountryCodes]
+      .sort()
+      .every((countryCode, index) => countryCode === requiredCountryContract[index])
   ) {
     console.log(`  Humanitarian: recent bulk snapshot still fresh (${Object.keys(previousMarker).length > 0 ? previousMarker.countriesCovered ?? 'unknown' : 'unknown'} countries)`);
     return null;
@@ -1308,6 +1316,7 @@ export function buildHapiSeedProvenance(humanitarian, { nowMs = Date.now() } = {
       countriesCovered: Object.keys(summaries).length,
       countriesTotal: HAPI_COUNTRIES.length,
       requiredCountriesCovered,
+      requiredCountryCodes: [...HAPI_REQUIRED_COUNTRIES].sort(),
       requiredCountriesTotal: HAPI_REQUIRED_COUNTRIES.length,
       ...channelProvenance,
       updatedAt: nowMs,

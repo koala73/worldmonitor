@@ -539,7 +539,7 @@ describe('content-age comes from publication date, not Date.now()/fetchedAt', ()
 
 describe('seeder merge, health, railway, no new surface', () => {
   it('does not import the seeder entrypoint from this test file', () => {
-    assert.doesNotMatch(testSrc, /from ['\"]\.\.\/scripts\/seed-sanctions-pressure\.mjs['\"]/);
+    assert.doesNotMatch(testSrc, /from ['"]\.\.\/scripts\/seed-sanctions-pressure\.mjs['"]/);
   });
 
   it('does not add an ais-relay Canada loop or a new panel/proto', () => {
@@ -817,7 +817,7 @@ describe('SEMA outage must not delete the last-good Canadian cohort', () => {
     // The carry-forward lives inside the error branch only. If it ran
     // unconditionally, a recovered SEMA list would be unioned with stale
     // entries and delistings would never take effect.
-    const elseBlock = /\} else \{\s*console\.log\(`  SEMA:/.exec(seedSrc);
+    const elseBlock = /\} else \{\s*console\.log\(` {2}SEMA:/.exec(seedSrc);
     assert.ok(elseBlock, 'the success branch must remain a plain log');
     assert.equal(
       /else \{[\s\S]{0,200}?verifySeedKey\(CANONICAL_KEY\)/.test(seedSrc),

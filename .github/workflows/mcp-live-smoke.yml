@@ -16,6 +16,11 @@ name: MCP Live Smoke
 # OAuth endpoints for the #4938 redirect fingerprints with side-effect-free
 # malformed POSTs. Dependency-free — no npm ci.
 #
+# It also probes /api/mcp-proxy (#7663). That is a SEPARATE Vercel function
+# from /mcp with its own runtime config, and the walk above never touches it —
+# which is exactly why a green 15-minute smoke sat alongside the 2026-09-03
+# proxy outage for three hours. Cadence was not the gap; coverage was.
+#
 # Triggers:
 #   - schedule (every 15 min): this is the ONLY net that catches a production
 #     failure which happens between deploys, and its cadence is the upper bound
@@ -48,6 +53,7 @@ on:
     branches: [main]
     paths:
       - 'scripts/mcp-live-smoke.mjs'
+      - 'scripts/mcp-proxy-live-smoke.mjs'
       - 'scripts/mcp-schema-wire-check.mjs'
       - '.github/workflows/mcp-live-smoke.yml'
   schedule:

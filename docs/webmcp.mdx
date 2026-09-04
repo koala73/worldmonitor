@@ -50,7 +50,7 @@ For discovery and read-only dashboard tools, use Chrome 149 or newer:
 1. Open `chrome://flags/#enable-webmcp-testing`.
 2. Set **WebMCP for testing** to **Enabled**.
 3. Relaunch Chrome completely.
-4. Start WorldMonitor locally. Open `/dashboard` for the thirty-one-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
+4. Start WorldMonitor locally. Open `/dashboard` for the thirty-three-tool dashboard, not `/embed`. To inspect the static two-tool homepage, first run `npm run build:pro`, then open `/pro/welcome.html`. The local Vite route `/` loads the dashboard SPA; only production rewrites `/` to the welcome page.
 5. Confirm feature detection in DevTools:
 
 ```js
@@ -65,7 +65,7 @@ Follow OpenAI's [Site tools flow](https://learn.chatgpt.com/docs/webmcp), not th
 
 1. Update the ChatGPT desktop app, then select a model and workspace that currently support Site tools.
 2. Open `https://www.worldmonitor.app/` in the built-in browser. Use `/dashboard` to test the dashboard inventory.
-3. Select **Site tools** in the browser address bar, then select **Available site tools**. The homepage lists two imperative tools. The dashboard lists thirty-one.
+3. Select **Site tools** in the browser address bar, then select **Available site tools**. The homepage lists two imperative tools. The dashboard lists thirty-three.
 4. Ask ChatGPT Work or Codex to use a WorldMonitor tool while that page remains open.
 5. If no tools appear, reload the page in the built-in browser and inspect **Available site tools** again.
 
@@ -84,9 +84,9 @@ WorldMonitor registers the full dashboard inventory, then applies one cancellati
 
 | Class | Tools | Behavior when the host omits the target-side `AbortSignal` |
 |---|---|---|
-| `read-only` | `get_dashboard_context`, `get_access_context`, `list_map_layers`, `list_dashboard_panels`, `search_dashboard`, `list_dashboard_tabs`, `get_panel_layout`, `list_mission_presets` | Runs normally. |
+| `read-only` | `get_dashboard_context`, `get_access_context`, `list_map_layers`, `list_dashboard_panels`, `search_dashboard`, `list_dashboard_tabs`, `get_panel_layout`, `list_mission_presets`, `list_followed_countries` | Runs normally. |
 | `view-state` | `openSearch`, `open_settings`, `open_alerts`, `open_sign_in`, `open_dashboard_panel`, `set_map_view`, `set_time_range`, `focus_country`, `set_panel_fullscreen`, `open_mission_picker` | Runs normally, but caller cancellation cannot stop a visible change that is already in progress. |
-| `cancellation-required` | `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_panel_collapsed`, `move_panel`, `set_map_layers`, `set_map_mode`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, `delete_dashboard_tab`, `apply_mission_preset` | Returns `target_cancellation_unsupported` before starting the action. |
+| `cancellation-required` | `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_panel_collapsed`, `move_panel`, `set_map_layers`, `set_map_mode`, `select_dashboard_tab`, `create_dashboard_tab`, `rename_dashboard_tab`, `delete_dashboard_tab`, `apply_mission_preset`, `set_country_followed` | Returns `target_cancellation_unsupported` before starting the action. |
 | `result-dependent` | `open_search_result` | Runs a view-state result. Rejects a persistent, quota-consuming, or external-navigation result. |
 
 <Warning>
@@ -116,7 +116,7 @@ The static `https://www.worldmonitor.app/` welcome page registers two imperative
 
 ### Dashboard imperative tools
 
-Every dashboard variant registers the same thirty-one imperative tools. Registration is stable across sign-in and entitlement changes. Each invocation rechecks live state and the [host's cancellation support](#host-support-and-cancellation).
+Every dashboard variant registers the same thirty-three imperative tools. Registration is stable across sign-in and entitlement changes. Each invocation rechecks live state and the [host's cancellation support](#host-support-and-cancellation).
 
 | Tool | Input schema | Visible result |
 |---|---|---|
@@ -149,6 +149,8 @@ Every dashboard variant registers the same thirty-one imperative tools. Registra
 | `list_mission_presets` | Optional boolean `available`; no additional properties. | Read-only catalog of bundled mission presets offered on the current monitor. Variant-restricted presets are omitted on other monitors. Each item uses a stable preset ID plus panel/layer counts without premium payloads. Available rows also include intended view and time range. Includes active, monitorCompatible, entitled, and available flags plus a stable `unavailableReason` when gated. |
 | `apply_mission_preset` | Required string `presetId`, 1–48 characters, pattern `^[a-z][a-z0-9-]*$`; no additional properties. | Applies a bundled mission preset through the same mission-control path a person uses. Reports entitlement and monitor compatibility before writing. Returns the final monitor, map view, time range, enabled layers, and enabled panel IDs. Requires target-side cancellation. On failure, restores the prior dashboard state. |
 | `open_mission_picker` | Empty object; no additional properties. | Opens the mission preset picker without applying a preset. |
+| `list_followed_countries` | Empty object; no additional properties. | Read-only list of followed countries as ISO alpha-2 codes. Returns whether the feature is enabled, the live access state, and the free-tier limit without names or account data. |
+| `set_country_followed` | Required string `iso2`, pattern `^[A-Z]{2}$`; required boolean `followed`; no additional properties. | Follows or unfollows one country through the same service as the dashboard. The service enforces supported countries, access loading, free-tier limits, sign-in handoff, and persistence. Repeating the requested state is an idempotent success. Requires target-side cancellation. |
 | `get_access_context` | Empty object; no additional properties. | Read-only snapshot of whether this tab is signed out, still loading account state, or signed in, plus product tier, capability flags, panel and dashboard-tab limits, and whether the host can cancel tools. Contains no names, emails, account IDs, tokens, or session details. |
 | `open_sign_in` | Empty object; no additional properties. | Opens the existing Clerk sign-in dialog. Does not accept credentials, one-time codes, or provider choices. Returns a stable reason when Clerk is unavailable or the dialog is already open. |
 
@@ -205,6 +207,8 @@ Discover the inventory only after the page has finished registering tools. Then 
 | List mission presets | `list_mission_presets` | Use stable preset IDs. Inspect `available`, `monitorCompatible`, `entitled`, and `unavailableReason`. |
 | Apply a mission preset | `list_mission_presets` → `apply_mission_preset` | Pass a returned eligible preset ID. Confirm the returned monitor, map view, time range, enabled layers, and enabled panels. Unavailable when the browser cannot deliver target-side cancellation. On failure, the prior dashboard state remains intact. |
 | Open the mission picker | `open_mission_picker` | Confirm the mission popover. This tool does not apply a preset. |
+| List followed countries | `list_followed_countries` | Read the ISO alpha-2 codes, access state, and free-tier limit. The result contains no account identity. |
+| Follow or unfollow a country | `list_followed_countries` → `set_country_followed` | Pass a supported uppercase ISO alpha-2 code and the desired boolean state. Inspect `status` and `reason`. Mutations are unavailable when the host cannot deliver target-side cancellation. |
 
 Do not guess panel IDs, layer IDs, tab IDs, result keys, entitlements, or hidden data. Read the current page state or the appropriate catalog, invoke one bounded action, inspect its result and visible effect, then continue.
 
@@ -228,7 +232,13 @@ The panel-layout tools and the mission-preset tools return a stable `reason` on 
 
 | Reason | Returned by | Meaning and recovery |
 |---|---|---|
-| `malformed_arguments` | `get_panel_layout`, `set_panel_collapsed`, `move_panel`, `set_panel_fullscreen`, `apply_mission_preset`, `open_mission_picker` | An unknown property, a non-string cursor, a panel ID outside `^[A-Za-z0-9][A-Za-z0-9@_-]*$`, or a preset ID outside `^[a-z][a-z0-9-]*$`. Fix the arguments instead of retrying the same payload. |
+| `malformed_arguments` | `get_panel_layout`, `set_panel_collapsed`, `move_panel`, `set_panel_fullscreen`, `apply_mission_preset`, `open_mission_picker`, `set_country_followed` | An unknown property, a non-string cursor, a panel ID outside `^[A-Za-z0-9][A-Za-z0-9@_-]*$`, a preset ID outside `^[a-z][a-z0-9-]*$`, or invalid followed-country input. Fix the arguments instead of retrying the same payload. |
+| `disabled` | `set_country_followed` | Followed countries are disabled for this monitor. Do not retry until the feature is enabled. |
+| `invalid_country` | `set_country_followed` | The ISO code is not in the dashboard's supported country catalog. Use a supported uppercase ISO alpha-2 code. |
+| `free_cap` | `set_country_followed` | The free-tier follow limit has been reached. Unfollow a country or upgrade before adding another one. |
+| `entitlement_loading` | `set_country_followed` | Access is still loading. Wait for entitlement resolution before retrying. |
+| `handoff_pending` | `set_country_followed` | The action needs an authenticated session. Complete the sign-in handoff before retrying. |
+| `storage_full` | `set_country_followed` | The browser could not persist the change. Free storage or permit site storage, then retry. |
 | `panel_not_found` | `get_panel_layout` | The `cursor` panel left the layout between pages. Restart the listing without a cursor. |
 | `panel_not_mounted` | `set_panel_collapsed`, `move_panel`, `set_panel_fullscreen` | The panel is not mounted in the current layout. It can still be a valid catalog panel, so enable it with `set_panel_enabled` first. |
 | `collapse_unsupported` | `set_panel_collapsed` | That panel exposes no collapse control. Only panels with `collapsible: true` in `get_panel_layout` accept it. |
@@ -243,7 +253,7 @@ The panel-layout tools and the mission-preset tools return a stable `reason` on 
 | `preset_not_entitled` | `apply_mission_preset`, and as `unavailableReason` on a `list_mission_presets` row | The current plan cannot enable a panel the preset requires. Offer an available preset instead. |
 | `apply_failed` | `apply_mission_preset` | Mission control rejected the write. The prior dashboard state has been restored; read `get_dashboard_context` before deciding what to do next. |
 | `unavailable` | `open_mission_picker` | Mission presets are not offered on this dashboard. Treat it as terminal for this monitor rather than retrying or falling back to `apply_mission_preset`. |
-| `target_cancellation_unsupported` | `set_panel_collapsed`, `move_panel`, `apply_mission_preset` | The host did not give the page the invocation's `AbortSignal`. Nothing was written. See [Host support and cancellation](#host-support-and-cancellation). |
+| `target_cancellation_unsupported` | `set_panel_collapsed`, `move_panel`, `apply_mission_preset`, `set_country_followed` | The host did not give the page the invocation's `AbortSignal`. Nothing was written. See [Host support and cancellation](#host-support-and-cancellation). |
 
 Some failures arrive as rejected promises rather than bounded results. A destroyed dashboard rejects the panel-layout tools, `list_mission_presets`, and `apply_mission_preset` with a `WebMcpToolError` naming `app_destroyed` as its reason, and `list_mission_presets` also rejects malformed arguments and an unrecognized variant instead of returning them. Handle those on the rejection path.
 
@@ -343,7 +353,7 @@ The Inspector's natural-language workflow sends prompts to an external Gemini mo
 | `getTools()` hangs or an origin-trial page settles with no inventory | The page provider may have been touched before registration completed | Reload the page, wait for document load and WorldMonitor registration to settle, then perform one inventory read. Do not poll `document.modelContext`. |
 | Only the homepage inventory is visible | The agent is on the static homepage | Invoke `launchWorldMonitor` or navigate to `/dashboard` for the imperative dashboard inventory. |
 | The imperative dashboard inventory is visible but `search_procurement` is absent | The host does not support declarative tools, or the conditional form is not eligible | In ChatGPT's built-in browser, this is expected. In Chrome, open and enable the Global Procurement panel, satisfy entitlement, wait for data to settle, and ensure the form is visible and idle. |
-| A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_panel_collapsed`, `move_panel`, `set_map_layers`, `set_map_mode`, `apply_mission_preset`, or dashboard tab mutations. For `open_search_result`, choose a view-state result or wait for a host that can cancel persistent work. |
+| A call returns `target_cancellation_unsupported` | The browser accepted WebMCP but did not give the page the invocation's `AbortSignal` | Use read-only or reversible view-state tools. Do not bypass the denial for `openCountryBrief`, `switch_monitor`, `set_panel_enabled`, `set_panel_collapsed`, `move_panel`, `set_map_layers`, `set_map_mode`, `apply_mission_preset`, `set_country_followed`, or dashboard tab mutations. For `open_search_result`, choose a view-state result or wait for a host that can cancel persistent work. |
 | A panel or layer is denied | The current page state failed a live variant, renderer, enabled-state, or entitlement check | Read `reason` and each target status. Change state through normal visible controls or ask the person; do not force a hidden path. |
 | `open_search_result` reports an invalid, expired, changed, or unavailable key | The one-use capability is stale or the dashboard changed after search | Run `search_dashboard` again and present the new result before opening it. Never reinterpret a key as a URL. |
 | A tab mutation returns `tab_cap`, `last_tab`, or `confirmation_required` | The dashboard tab bar would refuse the same action | List tabs again. Use a current tab ID. Delete requires `confirm: true` and will not remove the last remaining tab. |

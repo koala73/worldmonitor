@@ -5,6 +5,8 @@ import {
   onEntitlementVerificationChange,
 } from '@/services/entitlements';
 import { PanelGateReason, getPanelGateReason } from '@/services/panel-gating';
+import { loadStoredMissionPreset, onMissionPresetChange } from '@/services/mission-presets';
+import { trackProPreviewCta, trackProPreviewViewed } from '@/services/analytics';
 import { isProTierResolved } from '@/services/widget-store';
 import { getResilienceScore, type ResilienceDomain, type ResilienceScoreResponse } from '@/services/resilience';
 import { h, replaceChildren } from '@/utils/dom-utils';
@@ -56,6 +58,9 @@ export class ResilienceWidget {
   private unsubscribeAuth: (() => void) | null = null;
   private unsubscribeEntitlement: (() => void) | null = null;
   private unsubscribeVerification: (() => void) | null = null;
+  private unsubscribeMission: (() => void) | null = null;
+  private crisisPreviewObserver: IntersectionObserver | null = null;
+  private crisisPreviewFallbackTimer: number | null = null;
   private currentCountryCode: string | null = null;
   private currentData: ResilienceScoreResponse | null = null;
   private loading = false;
@@ -83,6 +88,7 @@ export class ResilienceWidget {
     // isAccessStillResolving. Without this subscription the widget would still
     // hang on the waiting state until some unrelated event forced a re-render.
     this.unsubscribeVerification = onEntitlementVerificationChange(() => this.reactToAccessChange());
+    this.unsubscribeMission = onMissionPresetChange(() => this.render());
 
     this.setCountryCode(countryCode ?? null);
   }
@@ -155,6 +161,9 @@ export class ResilienceWidget {
     this.unsubscribeEntitlement = null;
     this.unsubscribeVerification?.();
     this.unsubscribeVerification = null;
+    this.unsubscribeMission?.();
+    this.unsubscribeMission = null;
+    this.stopCrisisPreviewTracking();
   }
 
   /**
@@ -225,6 +234,7 @@ export class ResilienceWidget {
       ),
       body,
     );
+    this.reconcileCrisisPreviewTracking();
   }
 
   private renderBody(gateReason: PanelGateReason): HTMLElement {
@@ -268,6 +278,19 @@ export class ResilienceWidget {
     return this.renderScoreCard(this.currentData);
   }
 
+  // KTD7: crisis-desk's Release 1 preview IS this locked surface — it ships
+  // already, so its treated-mission work is instrumentation only. Events are
+  // scoped to the active mission so ordinary locked renders stay unattributed.
+  private crisisDeskPreviewViewedTracked = false;
+
+  private isCrisisDeskMissionActive(): boolean {
+    try {
+      return loadStoredMissionPreset()?.id === 'crisis-desk';
+    } catch {
+      return false;
+    }
+  }
+
   private renderLocked(gateReason: PanelGateReason): HTMLElement {
     const description = gateReason === PanelGateReason.ANONYMOUS
       ? 'Sign in to unlock premium resilience scores.'
@@ -287,7 +310,9 @@ export class ResilienceWidget {
             .catch(() => this.showAuthUnavailable());
           return;
         }
-        void this.openUpgradeFlow().catch(() => {
+        const crisisDesk = this.isCrisisDeskMissionActive();
+        if (crisisDesk) trackProPreviewCta('crisis-desk', 'cii');
+        void this.openUpgradeFlow(crisisDesk).catch(() => {
           window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
         });
       },
@@ -306,6 +331,40 @@ export class ResilienceWidget {
         : [createCheckoutConsentElement(WEB_APP_ORIGIN)]),
       button,
     );
+  }
+
+  private reconcileCrisisPreviewTracking(): void {
+    this.stopCrisisPreviewTracking();
+    if (this.crisisDeskPreviewViewedTracked || !this.isCrisisDeskMissionActive()) return;
+    if (!this.element.querySelector('.resilience-widget__locked')) return;
+
+    const recordView = (): void => {
+      if (this.crisisDeskPreviewViewedTracked) return;
+      if (!this.element.isConnected || !this.isCrisisDeskMissionActive()) return;
+      if (!this.element.querySelector('.resilience-widget__locked')) return;
+      this.crisisDeskPreviewViewedTracked = true;
+      this.stopCrisisPreviewTracking();
+      trackProPreviewViewed('crisis-desk', 'cii');
+    };
+
+    if (typeof IntersectionObserver === 'undefined') {
+      this.crisisPreviewFallbackTimer = window.setTimeout(recordView, 0);
+      return;
+    }
+
+    this.crisisPreviewObserver = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) recordView();
+    }, { threshold: 0.3 });
+    this.crisisPreviewObserver.observe(this.element);
+  }
+
+  private stopCrisisPreviewTracking(): void {
+    this.crisisPreviewObserver?.disconnect();
+    this.crisisPreviewObserver = null;
+    if (this.crisisPreviewFallbackTimer !== null) {
+      window.clearTimeout(this.crisisPreviewFallbackTimer);
+      this.crisisPreviewFallbackTimer = null;
+    }
   }
 
   private async showAuthUnavailable(): Promise<void> {
@@ -560,22 +619,10 @@ export class ResilienceWidget {
     return h('div', { className: 'cdp-empty' }, text);
   }
 
-  private async openUpgradeFlow(): Promise<void> {
-    const [{ DEFAULT_UPGRADE_PRODUCT }, { isDesktopRuntime }] = await Promise.all([
-      import('@/config/products'),
-      import('@/services/runtime'),
-    ]);
-
-    if (isDesktopRuntime()) {
-      const { openExternalUrl } = await import('@/services/external-navigation');
-      await openExternalUrl('https://worldmonitor.app/pro');
-      return;
-    }
-
-    await import('@/services/checkout')
-      .then((module) => module.startCheckout(DEFAULT_UPGRADE_PRODUCT))
-      .catch(() => {
-        window.open('https://worldmonitor.app/pro', '_blank', 'noopener,noreferrer');
-      });
+  private async openUpgradeFlow(crisisDeskAttribution = false): Promise<void> {
+    const { openUpgradeCheckout } = await import('@/services/upgrade-flow');
+    await openUpgradeCheckout(
+      crisisDeskAttribution ? { missionId: 'crisis-desk', panelKey: 'cii' } : undefined,
+    );
   }
 }

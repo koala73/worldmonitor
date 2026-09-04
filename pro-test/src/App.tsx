@@ -42,6 +42,10 @@ import { readMcpAttributionFromSearch } from '../../shared/mcp-attribution';
 import { LegalFooterNav } from './components/LegalFooterNav';
 import { PressFooterNav } from './components/PressFooterNav';
 import { ABOUT_DOCS_PATH } from '../../shared/press';
+import {
+  isDesktopCheckoutHandoff,
+  parseMissionPreviewAttributionFromSearch,
+} from '../../shared/checkout-attribution';
 
 const API_BASE = 'https://api.worldmonitor.app/api';
 const TURNSTILE_SITE_KEY = '0x4AAAAAACnaYgHIyxclu8Tj';
@@ -1443,7 +1447,12 @@ export default function App() {
           <SocialProof />
           <LivePreview />
           <WhatsNew />
-          <PricingSection refCode={getRefCode()} attributionSource={getMcpAttributionSource()} />
+          <PricingSection
+            refCode={getRefCode()}
+            attributionSource={getMcpAttributionSource()}
+            checkoutAttribution={parseMissionPreviewAttributionFromSearch(window.location.search) ?? undefined}
+            desktopHandoff={isDesktopCheckoutHandoff(window.location.search)}
+          />
           <PricingTable />
           <ApiSection />
           <EnterpriseShowcase />

@@ -37,8 +37,10 @@
 //  27. list_mission_presets()     — lists bundled mission presets for this monitor.
 //  28. apply_mission_preset()     — applies a bundled preset atomically.
 //  29. open_mission_picker()      — opens the mission preset picker.
-//  30. get_access_context()       — reads signed-out / loading / signed-in access.
-//  31. open_sign_in()             — opens the existing Clerk sign-in dialog.
+//  30. list_followed_countries()  — reads the current followed-country list.
+//  31. set_country_followed()     — follows or unfollows one country.
+//  32. get_access_context()       — reads signed-out / loading / signed-in access.
+//  33. open_sign_in()             — opens the existing Clerk sign-in dialog.
 //
 // No tool is conditionally registered. Live controls re-check auth and
 // entitlement through the agent-bus applier on every invocation, so a single
@@ -195,6 +197,14 @@ export interface WebMcpAppBindings {
   openMissionPicker(
     options?: WebMcpExecutionOptions,
   ): WebMcpNavigationResult | Promise<WebMcpNavigationResult>;
+  listFollowedCountries(
+    options?: WebMcpExecutionOptions,
+  ): FollowedCountryListResult | Promise<FollowedCountryListResult>;
+  setCountryFollowed(
+    iso2: unknown,
+    followed: unknown,
+    options?: WebMcpExecutionOptions,
+  ): FollowedCountryMutationResult | Promise<FollowedCountryMutationResult>;
   getPanelLayout(
     options?: WebMcpExecutionOptions,
   ): PanelLayoutSnapshot | Promise<PanelLayoutSnapshot>;
@@ -239,6 +249,37 @@ export interface ApplyMissionPresetResult {
     enabled: string[];
   };
   reason?: MissionPresetApplyDenyReason;
+  message: string;
+}
+
+export interface FollowedCountryListResult {
+  ok: true;
+  enabled: boolean;
+  countries: string[];
+  count: number;
+  access: 'free' | 'pro' | 'loading';
+  limit: number | null;
+}
+
+export const FOLLOWED_COUNTRY_MUTATION_REASONS = [
+  'malformed_arguments',
+  'disabled',
+  'invalid_country',
+  'free_cap',
+  'entitlement_loading',
+  'handoff_pending',
+  'storage_full',
+] as const;
+
+export type FollowedCountryMutationReason = typeof FOLLOWED_COUNTRY_MUTATION_REASONS[number];
+
+export interface FollowedCountryMutationResult {
+  ok: boolean;
+  status: 'accepted' | 'unchanged' | 'denied' | 'invalid';
+  iso2?: string;
+  followed?: boolean;
+  reason?: FollowedCountryMutationReason;
+  limit?: number;
   message: string;
 }
 
@@ -515,6 +556,8 @@ export const WEBMCP_TOOL_CANCELLATION_POLICY: Readonly<
   [WEBMCP_SPA_TOOL.listMissionPresets]: 'read-only',
   [WEBMCP_SPA_TOOL.applyMissionPreset]: 'cancellation-required',
   [WEBMCP_SPA_TOOL.openMissionPicker]: 'view-state',
+  [WEBMCP_SPA_TOOL.listFollowedCountries]: 'read-only',
+  [WEBMCP_SPA_TOOL.setCountryFollowed]: 'cancellation-required',
 });
 
 /** Tools the page refuses to run without a target-side AbortSignal. */
@@ -594,6 +637,8 @@ const TOOL_FAILURE_MESSAGES: Record<WebMcpSpaToolName, string> = {
   list_mission_presets: 'World Monitor could not list mission presets.',
   apply_mission_preset: 'World Monitor could not apply that mission preset.',
   open_mission_picker: 'World Monitor could not open the mission picker.',
+  list_followed_countries: 'World Monitor could not list followed countries.',
+  set_country_followed: 'World Monitor could not update that followed country.',
   get_access_context: 'World Monitor could not read access context.',
   open_sign_in: 'World Monitor could not open sign-in.',
 };
@@ -824,6 +869,7 @@ const VALIDATION_DENIAL_REASONS = new Set([
   'unknown_monitor',
   'unknown_panel',
   'unknown_country',
+  'invalid_country',
 ]);
 const ENTITLEMENT_DENIAL_REASONS = new Set([
   'panel_not_entitled',
@@ -831,6 +877,7 @@ const ENTITLEMENT_DENIAL_REASONS = new Set([
   'layer_not_entitled',
   'tab_cap',
   'preset_not_entitled',
+  'free_cap',
 ]);
 const STALE_DENIAL_REASONS = new Set([
   'invalid_or_expired_key',
@@ -1291,6 +1338,55 @@ function boundApplyMissionPresetResult(result: ApplyMissionPresetResult): ApplyM
     ...(!ok && reason ? { reason } : {}),
     message: boundedText(result.message, 160)
       || (ok ? 'Mission preset applied.' : 'Mission preset change denied.'),
+  };
+}
+
+const FOLLOWED_COUNTRY_MUTATION_REASON_SET = new Set(FOLLOWED_COUNTRY_MUTATION_REASONS);
+
+function boundFollowedCountryList(result: FollowedCountryListResult): FollowedCountryListResult {
+  const countries = normalizeIdentifiers(result.countries, 2)
+    .filter((country) => /^[A-Z]{2}$/.test(country))
+    .slice(0, 249);
+  const access = result.access === 'pro' || result.access === 'loading'
+    ? result.access
+    : 'free';
+  return {
+    ok: true,
+    enabled: result.enabled === true,
+    countries,
+    count: countries.length,
+    access,
+    limit: typeof result.limit === 'number'
+      ? Math.max(0, Math.floor(boundedNumber(result.limit)))
+      : null,
+  };
+}
+
+function boundFollowedCountryMutation(
+  result: FollowedCountryMutationResult,
+): FollowedCountryMutationResult {
+  const status = result.status === 'accepted'
+    || result.status === 'unchanged'
+    || result.status === 'invalid'
+    ? result.status
+    : 'denied';
+  const ok = result.ok === true && (status === 'accepted' || status === 'unchanged');
+  const reason = result.reason && FOLLOWED_COUNTRY_MUTATION_REASON_SET.has(result.reason)
+    ? result.reason
+    : undefined;
+  return {
+    ok,
+    status: ok ? status : status === 'invalid' ? 'invalid' : 'denied',
+    ...(typeof result.iso2 === 'string' && /^[A-Z]{2}$/.test(result.iso2)
+      ? { iso2: result.iso2 }
+      : {}),
+    ...(typeof result.followed === 'boolean' ? { followed: result.followed } : {}),
+    ...(!ok && reason ? { reason } : {}),
+    ...(!ok && typeof result.limit === 'number'
+      ? { limit: Math.max(0, Math.floor(boundedNumber(result.limit))) }
+      : {}),
+    message: boundedText(result.message, 200)
+      || (ok ? 'Followed-country preference accepted.' : 'Followed-country change denied.'),
   };
 }
 
@@ -2832,6 +2928,67 @@ export function buildWebMcpTools(
           });
         }
         return boundDashboardNavigationResult(await app.openMissionPicker(extra));
+      }, trackEvent),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.listFollowedCountries,
+      title: 'List Followed Countries',
+      description:
+        'Read the current followed-country list through the same anonymous or signed-in state used by the dashboard. Returns only ISO 3166-1 alpha-2 codes, access state, and the free-tier limit.',
+      inputSchema: {
+        type: 'object',
+        properties: {},
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: true },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.listFollowedCountries, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, [])) {
+          throw new SafeWebMcpError(
+            'list_followed_countries does not accept arguments.',
+            'validation',
+          );
+        }
+        return boundFollowedCountryList(await app.listFollowedCountries(extra));
+      }, trackEvent, {
+        successMetadata: (_args, value) => ({
+          resultCount: (value as FollowedCountryListResult).countries.length,
+        }),
+      }),
+    },
+    {
+      name: WEBMCP_SPA_TOOL.setCountryFollowed,
+      title: 'Set Country Followed',
+      description:
+        'Follow or unfollow one country through the dashboard service that owns ISO validation, access state, the free-tier cap, sign-in handoff, and storage. Idempotent for the requested state. Requires target-side cancellation because it persists state or writes to the signed-in account.',
+      inputSchema: {
+        type: 'object',
+        properties: {
+          iso2: {
+            type: 'string',
+            pattern: '^[A-Z]{2}$',
+            description: 'ISO 3166-1 alpha-2 country code, uppercase.',
+          },
+          followed: {
+            type: 'boolean',
+            description: 'True to follow the country; false to unfollow it.',
+          },
+        },
+        required: ['iso2', 'followed'],
+        additionalProperties: false,
+      },
+      annotations: { readOnlyHint: false },
+      execute: withInvocationLogging(WEBMCP_SPA_TOOL.setCountryFollowed, async (args, extra) => {
+        if (!hasOnlyOwnKeys(args, ['iso2', 'followed'])) {
+          return boundFollowedCountryMutation({
+            ok: false,
+            status: 'invalid',
+            reason: 'malformed_arguments',
+            message: 'set_country_followed accepts only iso2 and followed.',
+          });
+        }
+        return boundFollowedCountryMutation(
+          await app.setCountryFollowed(args.iso2, args.followed, extra),
+        );
       }, trackEvent),
     },
     {

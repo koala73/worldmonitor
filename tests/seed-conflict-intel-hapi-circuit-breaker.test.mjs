@@ -136,6 +136,10 @@ test('humanitarian health reports partial target-country coverage', () => {
     seedSource,
     /HAPI_SEED_META_TTL_SECONDS,\s*requiredCountriesCovered,\s*HAPI_SEED_META_KEY/,
   );
+  assert.match(
+    seedSource,
+    /requiredCountryCodes:\s*\[\.\.\.HAPI_REQUIRED_COUNTRIES\]\.sort\(\)/,
+  );
   assert.equal(
     minRecordCount,
     HAPI_REQUIRED_COUNTRIES.length,
@@ -1385,6 +1389,64 @@ test('HAPI backoff records the fallback rejection status when the national sweep
   assert.equal(backoff.retryAt, NOW + HAPI_FAILURE_BACKOFF_MS);
 });
 
+test('HAPI ingestion refreshes when a fresh marker has a missing, changed, or incomplete coverage contract', async () => {
+  const previousMarkers = [
+    {
+      updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1,
+      requiredCountriesCovered: 2,
+      requiredCountriesTotal: 2,
+    },
+    {
+      updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1,
+      requiredCountriesCovered: 1,
+      requiredCountryCodes: ['SD'],
+      requiredCountriesTotal: 1,
+    },
+    {
+      updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1,
+      requiredCountriesCovered: 1,
+      requiredCountryCodes: ['SD', 'UA'],
+      requiredCountriesTotal: 2,
+    },
+    {
+      updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1,
+      requiredCountriesCovered: 2,
+      requiredCountryCodes: ['SD', 'YE'],
+      requiredCountriesTotal: 2,
+    },
+    {
+      updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1,
+      requiredCountriesCovered: 3,
+      requiredCountryCodes: ['SD', 'UA', 'YE'],
+      requiredCountriesTotal: 3,
+    },
+  ];
+
+  for (const previousMarker of previousMarkers) {
+    let calls = 0;
+    const result = await fetchAllHumanitarianSummaries({
+      now: () => NOW,
+      countryCodes: ['SD', 'UA'],
+      pace: async () => {},
+      loadPreviousMarker: async () => previousMarker,
+      loadFailureBackoff: async () => null,
+      writeFailureBackoff: async () => assert.fail('complete coverage must not write a failure backoff'),
+      preserveLastGood: async () => assert.fail('complete coverage must not extend stale rows'),
+      fetchFn: async (url) => {
+        calls += 1;
+        const parsed = new URL(url);
+        const data = parsed.searchParams.get('admin_level') === '0'
+          ? [hapiRow('SDN'), hapiRow('UKR')]
+          : [];
+        return new Response(JSON.stringify({ data }), { status: 200 });
+      },
+    });
+
+    assert.equal(calls, 2);
+    assert.deepEqual(Object.keys(result).sort(), ['SD', 'UA']);
+  }
+});
+
 test('HAPI ingestion skips network calls during success and failure backoff windows', async () => {
   // Counting only fetchFn used to be enough, but since #7658 the SNAPSHOT
   // resolves first on every non-gated run — and snapshotFetchFn defaults to the
@@ -1406,7 +1468,12 @@ test('HAPI ingestion skips network calls during success and failure backoff wind
     now: () => NOW,
     countryCodes: ['SD'],
     pace: async () => {},
-    loadPreviousMarker: async () => ({ updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1 }),
+    loadPreviousMarker: async () => ({
+      updatedAt: NOW - HAPI_REFRESH_INTERVAL_MS + 1,
+      requiredCountriesCovered: 1,
+      requiredCountryCodes: ['SD'],
+      requiredCountriesTotal: 1,
+    }),
     loadFailureBackoff: async () => null,
     snapshotFetchFn,
     fetchFn,

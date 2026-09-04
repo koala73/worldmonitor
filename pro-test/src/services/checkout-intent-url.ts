@@ -11,6 +11,16 @@
  * a browser or SDK environment. Reviewer-requested after the
  * afterSignInUrl refactor introduced this flow.
  */
+import {
+  CHECKOUT_MISSION_PARAM,
+  CHECKOUT_PANEL_PARAM,
+  CHECKOUT_HANDOFF_PARAM,
+  DESKTOP_CHECKOUT_HANDOFF,
+  parseMissionPreviewAttribution,
+  isDesktopCheckoutHandoff,
+  type CheckoutAttribution,
+  type MissionPreviewAttribution,
+} from '../../../shared/checkout-attribution';
 
 export const CHECKOUT_PRODUCT_PARAM = 'wm_checkout_product';
 export const CHECKOUT_REF_PARAM = 'wm_checkout_ref';
@@ -22,6 +32,8 @@ export interface CheckoutIntentFromUrl {
   referralCode?: string;
   discountCode?: string;
   attributionSource?: string;
+  checkoutAttribution?: MissionPreviewAttribution;
+  desktopHandoff?: boolean;
 }
 
 /**
@@ -33,11 +45,17 @@ export function parseCheckoutIntentFromSearch(search: string): CheckoutIntentFro
   const params = new URLSearchParams(search);
   const productId = params.get(CHECKOUT_PRODUCT_PARAM);
   if (!productId) return null;
+  const checkoutAttribution = parseMissionPreviewAttribution(
+    params.get(CHECKOUT_MISSION_PARAM),
+    params.get(CHECKOUT_PANEL_PARAM),
+  );
   return {
     productId,
     referralCode: params.get(CHECKOUT_REF_PARAM) ?? undefined,
     discountCode: params.get(CHECKOUT_DISCOUNT_PARAM) ?? undefined,
     attributionSource: params.get(CHECKOUT_ATTRIBUTION_PARAM) ?? undefined,
+    ...(checkoutAttribution ? { checkoutAttribution } : {}),
+    ...(isDesktopCheckoutHandoff(search) ? { desktopHandoff: true } : {}),
   };
 }
 
@@ -55,6 +73,9 @@ export function stripCheckoutIntentFromSearch(search: string): string {
   params.delete(CHECKOUT_REF_PARAM);
   params.delete(CHECKOUT_DISCOUNT_PARAM);
   params.delete(CHECKOUT_ATTRIBUTION_PARAM);
+  params.delete(CHECKOUT_MISSION_PARAM);
+  params.delete(CHECKOUT_PANEL_PARAM);
+  params.delete(CHECKOUT_HANDOFF_PARAM);
   const remaining = params.toString();
   return remaining ? `?${remaining}` : '';
 }
@@ -70,18 +91,37 @@ export function stripCheckoutIntentFromSearch(search: string): string {
 export function buildCheckoutReturnUrl(
   currentHref: string,
   productId: string,
-  options?: { referralCode?: string; discountCode?: string; attributionSource?: string },
+  options?: {
+    referralCode?: string;
+    discountCode?: string;
+    attributionSource?: string;
+    checkoutAttribution?: CheckoutAttribution;
+  },
 ): string {
   const url = new URL(currentHref);
   url.searchParams.delete(CHECKOUT_PRODUCT_PARAM);
   url.searchParams.delete(CHECKOUT_REF_PARAM);
   url.searchParams.delete(CHECKOUT_DISCOUNT_PARAM);
   url.searchParams.delete(CHECKOUT_ATTRIBUTION_PARAM);
+  url.searchParams.delete(CHECKOUT_MISSION_PARAM);
+  url.searchParams.delete(CHECKOUT_PANEL_PARAM);
+  url.searchParams.delete(CHECKOUT_HANDOFF_PARAM);
   url.searchParams.set(CHECKOUT_PRODUCT_PARAM, productId);
   if (options?.referralCode) url.searchParams.set(CHECKOUT_REF_PARAM, options.referralCode);
   if (options?.discountCode) url.searchParams.set(CHECKOUT_DISCOUNT_PARAM, options.discountCode);
   if (options?.attributionSource) {
     url.searchParams.set(CHECKOUT_ATTRIBUTION_PARAM, options.attributionSource);
+  }
+  const checkoutAttribution = parseMissionPreviewAttribution(
+    options?.checkoutAttribution?.missionId,
+    options?.checkoutAttribution?.panelKey,
+  );
+  if (checkoutAttribution) {
+    url.searchParams.set(CHECKOUT_MISSION_PARAM, checkoutAttribution.missionId);
+    url.searchParams.set(CHECKOUT_PANEL_PARAM, checkoutAttribution.panelKey);
+  }
+  if (options?.desktopHandoff) {
+    url.searchParams.set(CHECKOUT_HANDOFF_PARAM, DESKTOP_CHECKOUT_HANDOFF);
   }
   return url.toString();
 }

@@ -3802,6 +3802,9 @@
       "status": "excluded",
       "references": [
         {
+          "path": "scripts/mcp-live-smoke.mjs"
+        },
+        {
           "path": "scripts/openapi-inject-examples.mjs"
         },
         {
@@ -10149,7 +10152,7 @@
           "path": "scripts/lib/x-news-accounts.cjs"
         },
         {
-          "path": "scripts/mcp-live-smoke.mjs"
+          "path": "scripts/mcp-proxy-live-smoke.mjs"
         },
         {
           "path": "scripts/measure-mobile-mainthread.mjs"
@@ -14266,7 +14269,7 @@
           "path": "scripts/github-stars-snapshot.mjs"
         },
         {
-          "path": "scripts/mcp-live-smoke.mjs"
+          "path": "scripts/mcp-proxy-live-smoke.mjs"
         },
         {
           "path": "scripts/measure-composited-layers.mjs"

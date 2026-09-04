@@ -71,7 +71,7 @@ function extractYamlSchema(source, schemaName) {
   const start = source.indexOf(startNeedle);
   assert.notEqual(start, -1, `${schemaName} schema not found`);
   const afterStart = start + startNeedle.length;
-  const nextSchema = source.slice(afterStart).match(/\n        [A-Za-z0-9_]+:\n/);
+  const nextSchema = source.slice(afterStart).match(/\n {8}[A-Za-z0-9_]+:\n/);
   const end = nextSchema ? afterStart + nextSchema.index : source.length;
   return source.slice(start, end);
 }

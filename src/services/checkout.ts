@@ -54,7 +54,17 @@ import {
 } from './checkout-banner-state';
 import { startEntitlementWait } from './checkout-entitlement-wait';
 import { isAffiliateCode, loadActiveReferral } from './referral-capture';
-import { trackCheckoutStart, type CheckoutAttribution, type CheckoutSurface } from './analytics';
+import {
+  trackCheckoutStart,
+  type CheckoutAttribution,
+  type CheckoutContext,
+  type CheckoutSurface,
+} from './analytics';
+import {
+  buildAttributedProUrl,
+  parseCheckoutContext,
+  resolveCheckoutContext,
+} from '../../shared/checkout-attribution';
 import { showDuplicateSubscriptionDialog } from './checkout-duplicate-dialog';
 import { showCheckoutPendingDialog } from './checkout-pending-dialog';
 import { resolvePlanDisplayName } from './checkout-plan-names';
@@ -168,8 +178,8 @@ interface PendingCheckoutIntent {
   productId: string;
   referralCode?: string;
   discountCode?: string;
-  /** Mission/panel attribution from the originating surface; re-bucketed on emit. */
-  analyticsAttribution?: CheckoutAttribution;
+  /** Validated checkout origin that survives sign-in without losing preview attribution. */
+  checkoutContext?: CheckoutContext;
   /**
    * User id who saved this intent, or null if saved anonymously (the
    * common "click Buy, get sign-in modal" path). On resume, we only
@@ -562,7 +572,10 @@ function loadPendingCheckoutIntent(): PendingCheckoutIntent | null {
       clearPendingCheckoutIntent();
       return null;
     }
-    return parsed;
+    return {
+      ...parsed,
+      checkoutContext: parseCheckoutContext(parsed.checkoutContext) ?? undefined,
+    };
   } catch {
     return null;
   }
@@ -691,10 +704,12 @@ export function capturePendingCheckoutIntentFromUrl(): PendingCheckoutIntent | n
   // /pro-origin intent captured here also populates the failure-retry
   // record so a decline on this session's checkout can retry cross-origin.
   saveCheckoutAttempt({
+    version: 2,
     productId,
     referralCode: intent.referralCode,
     discountCode: intent.discountCode,
     startedAt: Date.now(),
+    context: resolveCheckoutContext({ surface: 'dashboard' }),
   });
 
   url.searchParams.delete(CHECKOUT_PRODUCT_PARAM);
@@ -745,7 +760,7 @@ export async function resumePendingCheckout(options?: {
     {
       fallbackToPricingPage: false,
       analyticsSurface: 'dashboard-resume',
-      analyticsAttribution: intent.analyticsAttribution,
+      checkoutContext: intent.checkoutContext,
     },
   );
   if (success) clearPendingCheckoutIntent();
@@ -850,10 +865,12 @@ export async function startCheckout(
     fallbackToPricingPage?: boolean;
     analyticsSurface?: CheckoutSurface;
     analyticsAttribution?: CheckoutAttribution;
+    checkoutContext?: CheckoutContext;
   },
 ): Promise<boolean> {
   if (_checkoutInFlight) return false;
   const fallbackToPricingPage = behavior?.fallbackToPricingPage ?? true;
+  const desktopRuntime = isDesktopRuntime();
 
   const user = getCurrentClerkUser();
   // Funnel (#4931): every dashboard upgrade CTA routes through here, so one
@@ -861,7 +878,13 @@ export async function startCheckout(
   // intent clicks are counted (flagged authed:false). The post-sign-in
   // auto-resume passes 'dashboard-resume' so a signed-out conversion isn't
   // read as two independent attempts.
-  trackCheckoutStart(productId, Boolean(user), behavior?.analyticsSurface ?? 'dashboard', behavior?.analyticsAttribution);
+  const checkoutContext = trackCheckoutStart(
+    productId,
+    Boolean(user),
+    behavior?.analyticsSurface ?? behavior?.checkoutContext?.eventSurface ?? 'dashboard',
+    behavior?.analyticsAttribution,
+    behavior?.checkoutContext,
+  );
   if (!user) {
     const intent = {
       productId,
@@ -870,7 +893,7 @@ export async function startCheckout(
       // Kept so the post-sign-in auto-resume re-emits checkout-start with the
       // originating mission/panel; trackCheckoutStart re-buckets on emit, so a
       // tampered stored value still collapses to 'unknown'.
-      analyticsAttribution: behavior?.analyticsAttribution,
+      checkoutContext,
     };
     reportCheckoutError(
       classifySyntheticCheckoutError('unauthorized'),
@@ -891,9 +914,18 @@ export async function startCheckout(
       // the branch a signed-out desktop user takes — the most reachable one
       // in the app's first session — so leaving it on `assign` would keep the
       // reported bug alive under the fix.
-      navigate: (url) => navigateToWebSurface(url),
+      navigate: (url) => navigateToWebSurface(buildAttributedProUrl(
+        url,
+        checkoutContext.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
+        { desktopHandoff: desktopRuntime },
+      )),
       persistIntent: () => savePendingCheckoutIntent(intent),
-      persistAttempt: () => saveCheckoutAttempt({ ...intent, startedAt: Date.now() }),
+      persistAttempt: () => saveCheckoutAttempt({
+        version: 2,
+        ...intent,
+        startedAt: Date.now(),
+        context: checkoutContext,
+      }),
       openSignIn: () => openSignIn(),
     });
     return false;
@@ -940,12 +972,13 @@ export async function startCheckout(
   // banner has context even if every subsequent step fails (timeout,
   // user closes tab before Dodo redirects, SDK crashes, etc.).
   saveCheckoutAttempt({
+    version: 2,
     productId,
     referralCode: effectiveReferral,
     discountCode: options?.discountCode,
     startedAt: Date.now(),
+    context: checkoutContext,
   });
-  const desktopRuntime = isDesktopRuntime();
   try {
     let token = await getClerkToken();
     if (!token) {
@@ -955,7 +988,7 @@ export async function startCheckout(
     if (!token) {
       const error = classifySyntheticCheckoutError('session_expired');
       reportCheckoutError(error, { productId, action: 'no-token' });
-      renderCheckoutErrorSurface(error, fallbackToPricingPage);
+      renderCheckoutErrorSurface(error, fallbackToPricingPage, checkoutContext);
       return false;
     }
 
@@ -1079,12 +1112,12 @@ export async function startCheckout(
           productId,
           referralCode: options?.referralCode,
           discountCode: options?.discountCode,
-          analyticsAttribution: behavior?.analyticsAttribution,
+          checkoutContext,
         });
         openSignIn();
         return false;
       }
-      renderCheckoutErrorSurface(error, fallbackToPricingPage);
+      renderCheckoutErrorSurface(error, fallbackToPricingPage, checkoutContext);
       return false;
     }
 
@@ -1121,7 +1154,7 @@ export async function startCheckout(
         undefined,
         snapshotUpstreamResponse(resp, rawSuccessText),
       );
-      renderCheckoutErrorSurface(unparsableBodyError, fallbackToPricingPage);
+      renderCheckoutErrorSurface(unparsableBodyError, fallbackToPricingPage, checkoutContext);
       return false;
     }
     const result = parsedSuccess.body;
@@ -1167,7 +1200,7 @@ export async function startCheckout(
             retryable: true,
           };
           reportCheckoutError(handoffError, { productId, action: 'desktop-handoff-failed' });
-          renderCheckoutErrorSurface(handoffError, fallbackToPricingPage);
+          renderCheckoutErrorSurface(handoffError, fallbackToPricingPage, checkoutContext);
           return false;
         }
         // Only `native` actually reached the OS browser. `popup` means the
@@ -1211,12 +1244,12 @@ export async function startCheckout(
       // redaction deny-list would silently outrun any schema change.
       snapshotUpstreamBodyKeys(resp, result),
     );
-    renderCheckoutErrorSurface(missingUrlError, fallbackToPricingPage);
+    renderCheckoutErrorSurface(missingUrlError, fallbackToPricingPage, checkoutContext);
     return false;
   } catch (err) {
     const error = classifyThrownCheckoutError(err);
     reportCheckoutError(error, { productId, action: 'exception' }, err);
-    renderCheckoutErrorSurface(error, fallbackToPricingPage);
+    renderCheckoutErrorSurface(error, fallbackToPricingPage, checkoutContext);
     return false;
   } finally {
     _checkoutInFlight = false;
@@ -1304,6 +1337,7 @@ function reportCheckoutError(
 function renderCheckoutErrorSurface(
   error: CheckoutError,
   fallbackToPricingPage: boolean,
+  checkoutContext?: CheckoutContext,
 ): void {
   // A 429 already carries a safe local recovery path. Keep the user on the
   // current surface so the message and in-memory cooldown remain active
@@ -1313,16 +1347,21 @@ function renderCheckoutErrorSurface(
     return;
   }
   if (fallbackToPricingPage) {
+    const proUrl = buildAttributedProUrl(
+      `${WEB_APP_ORIGIN}/pro`,
+      checkoutContext?.origin.kind === 'mission-preview' ? checkoutContext.origin : undefined,
+      { desktopHandoff: isDesktopRuntime() },
+    );
     // Same desktop rule as every other exit from this file (#5911): the
     // pricing page is a web surface, so it leaves for the OS browser instead
     // of replacing the app. The toast stays on desktop because, unlike the
     // web redirect, the app is still on screen to show it.
     if (isDesktopRuntime()) {
-      void openExternalUrl(`${WEB_APP_ORIGIN}/pro`);
+      void openExternalUrl(proUrl);
       showCheckoutErrorToast(error.userMessage);
       return;
     }
-    window.location.assign(`${WEB_APP_ORIGIN}/pro`);
+    window.location.assign(proUrl);
     return;
   }
   showCheckoutErrorToast(error.userMessage);

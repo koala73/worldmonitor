@@ -92,8 +92,11 @@ test('API outcome telemetry emits only the closed key lifecycle buckets at runti
 
 test('dashboard checkout entry fires checkout-start', () => {
   const src = read('src/services/checkout.ts');
-  assert.ok(src.includes('trackCheckoutStart(productId'),
-    'startCheckout no longer fires trackCheckoutStart — funnel start is blind');
+  assert.match(
+    src,
+    /const checkoutContext = trackCheckoutStart\(\s*productId,\s*Boolean\(user\),/,
+    'startCheckout no longer fires trackCheckoutStart or preserves its checkout context',
+  );
 });
 
 test('checkout-return reconciliation fires success/failed events', () => {

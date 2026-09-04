@@ -162,7 +162,9 @@ const stubSources: Record<string, string> = {
     export const openSignIn = () => globalThis.__xvHarness.checkoutEffects.push('openSignIn');
   `,
   './analytics': `
-    export const trackCheckoutStart = () => {};
+    export const trackCheckoutStart = (_productId, _authed, surface, _attribution, context) => (
+      context ?? { eventSurface: surface, origin: { kind: 'dashboard' } }
+    );
   `,
   // #5911 pulled the desktop detector into checkout.ts (desktop routes
   // checkout to the OS browser). Stubbed so these web-path suites STATE their

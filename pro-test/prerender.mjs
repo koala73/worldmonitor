@@ -234,7 +234,10 @@ const welcomeContent = await renderWelcomeRoot();
 
 // GitHub star InteractionCounter: populated from the committed freeze
 // snapshot, never hardcoded and never fetched at build time (offline builds
-// stay deterministic). Refresh via `npm run freeze:github-stars`.
+// stay deterministic). Refresh via `npm run freeze:github-stars` (monthly via
+// .github/workflows/github-stars-refresh.yml); the lookup rejects snapshots
+// older than MAX_GITHUB_STARS_SNAPSHOT_AGE_DAYS, so a stale freeze reds the
+// build instead of publishing a rotting figure.
 // Pages whose committed template carries a #software node must leave the
 // build with the counter injected — a missing node is a dropped counter,
 // not an optional page.

@@ -5,6 +5,7 @@ import { startCheckout, subscribeCheckoutPhase, type CheckoutPhase } from '../se
 import { createTimeoutSignal } from '../services/timeout-signal';
 import { CheckoutConsent } from './CheckoutConsent';
 import { t, tArray } from '../i18n';
+import type { CheckoutAttribution } from '../../../shared/checkout-attribution';
 
 // Static fallback from build-time generation (used while fetching live prices)
 import fallbackTiers from '../generated/tiers.json';
@@ -259,9 +260,13 @@ function TierCta({ cta, highlighted, loadingProductId, rateLimited, onCheckout }
 export function PricingSection({
   refCode,
   attributionSource,
+  checkoutAttribution,
+  desktopHandoff,
 }: {
   refCode?: string;
   attributionSource?: string;
+  checkoutAttribution?: CheckoutAttribution;
+  desktopHandoff?: boolean;
 }) {
   const [billing, setBilling] = useState<'monthly' | 'annual'>(() => {
     const planKey = new URLSearchParams(window.location.search).get('wm_reactivate_plan');
@@ -291,8 +296,13 @@ export function PricingSection({
   // checkoutInFlight in the service guards concurrent doCheckout runs.
   // The handler is fire-and-forget — no local loading state to manage.
   const handleCheckout = useCallback((productId: string) => {
-    void startCheckout(productId, { referralCode: refCode, attributionSource });
-  }, [refCode, attributionSource]);
+    void startCheckout(productId, {
+      referralCode: refCode,
+      attributionSource,
+      checkoutAttribution,
+      desktopHandoff,
+    });
+  }, [refCode, attributionSource, checkoutAttribution, desktopHandoff]);
 
   return (
     <section id="pricing" className="py-24 px-6 border-t border-wm-border bg-[#060606]">

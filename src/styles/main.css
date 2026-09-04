@@ -28480,3 +28480,67 @@ body.map-width-resizing {
 .passkey-offer-close:hover {
   color: #e8e8e8;
 }
+
+/* Mission Pro preview (plan U4/U5) — sits after a hosting panel's content. */
+.pro-preview {
+  margin: 8px 12px 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border-color, #2a3542);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pro-preview[hidden] { display: none; }
+.pro-preview__badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.pro-preview__badge-tag {
+  color: var(--accent-color, #4fd6c2);
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-weight: 700;
+}
+.pro-preview__badge-sample { opacity: 0.65; }
+.pro-preview__dismiss {
+  margin-left: auto;
+  background: none;
+  border: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+.pro-preview__dismiss:hover, .pro-preview__dismiss:focus-visible { opacity: 1; }
+.pro-preview__sample {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  opacity: 0.85;
+}
+.pro-preview__row { display: flex; justify-content: space-between; gap: 12px; }
+.pro-preview__row-label { opacity: 0.75; }
+.pro-preview__row-value { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pro-preview__copy { margin: 0; }
+.pro-preview__cta { align-self: flex-start; }
+.pro-preview__reopen {
+  background: none;
+  border: 1px dashed var(--border-color, #2a3542);
+  border-radius: 6px;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+  font-size: 11px;
+  padding: 3px 10px;
+  align-self: flex-start;
+}
+.pro-preview__reopen:hover, .pro-preview__reopen:focus-visible { opacity: 1; }

@@ -129,6 +129,12 @@ describe('webmcp mission preset catalog', () => {
     assert.equal(goodNews.unavailableReason, undefined);
     assert.equal(goodNews.view, 'global');
     assert.equal(goodNews.timeRange, '7d');
+
+    const countryWatcher = result.presets.find((preset) => preset.id === 'country-watcher');
+    assert.ok(countryWatcher);
+    assert.equal(countryWatcher.monitorCompatible, true);
+    assert.equal(countryWatcher.available, true);
+    assert.equal(countryWatcher.panelCount, 6);
   });
 
   it('reports entitlement denials without leaking premium payloads', () => {
@@ -172,6 +178,7 @@ describe('webmcp mission preset catalog', () => {
     const result = listMissionPresetCatalog(live({ variant: 'happy' }), { available: true });
     assert.ok(result.presets.every((preset) => preset.available));
     assert.ok(result.presets.some((preset) => preset.id === 'good-news-explorer'));
+    assert.ok(result.presets.some((preset) => preset.id === 'country-watcher'));
     assert.ok(!result.presets.some((preset) => preset.id === 'crisis-desk'));
   });
 
@@ -429,6 +436,21 @@ describe('webmcp mission preset tools', () => {
           },
           panels: { mounted: [], enabled: [] },
         },
+      }),
+      listFollowedCountries: async () => ({
+        ok: true,
+        enabled: true,
+        countries: [],
+        count: 0,
+        access: 'free',
+        limit: 3,
+      }),
+      setCountryFollowed: async () => ({
+        ok: true,
+        status: 'unchanged',
+        iso2: 'DE',
+        followed: true,
+        message: 'Unused followed-country binding.',
       }),
       getAccessContext: async () => ({
         accountState: 'signed_out',
