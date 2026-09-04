@@ -428,6 +428,80 @@ describe('MCP live smoke — the production detection net', () => {
   });
 });
 
+// #7593: a `deployment_status` trigger is privileged — repo secrets and a
+// write-capable GITHUB_TOKEN are in scope — and these workflows check out
+// `github.event.deployment.sha`, so a dependency install there would resolve
+// THAT commit's lockfile and could write its package cache into the shared
+// Actions cache scope that main-branch runs restore from. PR #7591 shipped
+// exactly that shape (`cache: 'npm'` + `npm ci --ignore-scripts`) and the
+// #7605 emergency revert removed it; this guard keeps it from coming back.
+// Deliberately file-level and fail-closed: if a deployment_status workflow
+// ever genuinely needs npm, extend this guard consciously with the
+// event-scoping argument rather than special-casing around it.
+describe('deployment_status triggers — npm cache scope hygiene (#7593)', () => {
+  // YAML comment lines are not executable: the workflows themselves explain
+  // the absence ("no npm ci", #7593) and must not self-trip the guard.
+  const executableText = (source: string): string =>
+    source
+      .split('\n')
+      .filter((line) => !/^\s*#/.test(line))
+      .join('\n');
+
+  // Block-style (`on:\n  deployment_status:`) and flow-style (`on: [ … ]`)
+  // triggers; the block is the `on:` value up to the next column-0 key. Both
+  // forms tolerate a trailing YAML comment (`on: # ...`,
+  // `deployment_status: # ...`) — the guard is fail-closed, so a comment must
+  // never silently exclude a workflow from the sweep.
+  const triggersOnDeploymentStatus = (source: string): boolean => {
+    const flow = source.match(/^on:[ \t]*(?:#[^\n]*)?\s*\[([^\]]*)\]/m);
+    if (flow) return /['"]?deployment_status['"]?/.test(flow[1]);
+    const onIndex = source.search(/^on:(?:[ \t]*#[^\n]*)?\s*$/m);
+    if (onIndex === -1) return false;
+    const block = source.slice(onIndex).split(/\n(?=\S)/)[0];
+    return /^ {2}deployment_status:(?:[ \t]*#[^\n]*)?\s*$/m.test(block);
+  };
+
+  it('keeps every deployment_status-triggered workflow free of package-cache writes and lockfile installs (#7593)', () => {
+    const scanned: string[] = [];
+    const offenders: string[] = [];
+
+    for (const file of readdirSync(workflowsDir)
+      .filter((name) => name.endsWith('.yml') || name.endsWith('.yaml'))
+      .sort()) {
+      const source = read(resolve(workflowsDir, file));
+      if (!triggersOnDeploymentStatus(source)) continue;
+      scanned.push(file);
+
+      const executable = executableText(source);
+      const problems: string[] = [];
+      if (/^[ \t]+cache:[ \t]*(?!false\b)\S/m.test(executable)) {
+        problems.push(
+          'a step carries a truthy `cache:` input, so a privileged deployment_status run could save a package cache resolved from github.event.deployment.sha',
+        );
+      }
+      if (/\bnpm (?:ci|install)\b/.test(executable)) {
+        problems.push("the job runs npm ci/install, resolving the deployed SHA's lockfile instead of main's");
+      }
+      if (problems.length > 0) offenders.push(`${file}\n    - ${problems.join('\n    - ')}`);
+    }
+
+    // Not vacuous: mcp-live-smoke.yml's deployment_status trigger is pinned
+    // by the describe above, so if the sweep stops seeing that file the
+    // trigger parser has broken and this guard is green while covering
+    // nothing.
+    assert.ok(
+      scanned.includes('mcp-live-smoke.yml'),
+      'the sweep matched no workflows — mcp-live-smoke.yml still triggers on deployment_status, so the trigger parser here is broken and this guard covers nothing',
+    );
+    assert.deepEqual(
+      offenders,
+      [],
+      '#7593: a deployment_status trigger is privileged (repo secrets, write-capable GITHUB_TOKEN) and these workflows check out github.event.deployment.sha, so resolving dependencies there could write a package cache built from a non-main lockfile into the shared scope main-branch runs restore from. PR #7591 shipped that shape and #7605 reverted it; if one of these workflows genuinely needs npm, extend this guard deliberately:\n' +
+        offenders.join('\n'),
+    );
+  });
+});
+
 describe('CI workflow coverage', () => {
   it('stages the regenerated main sitemap in the weekly pulse PR', () => {
     const pulseWorkflow = read(resolve(workflowsDir, 'crawlable-pulse-refresh.yml'));
