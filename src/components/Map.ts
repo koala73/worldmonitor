@@ -72,6 +72,7 @@ import {
   type GlobeMarkerGroup,
   type LatLng,
 } from '@/utils/globe-marker-budget';
+import { capEarthquakesForMobile, capIranEventsForMobile } from '@/utils/mobile-feature-caps';
 import {
   getLayerExplanation,
   hasCuratedLayerExplanation,
@@ -144,8 +145,11 @@ const RENDERABLE_AI_DATA_CENTERS = AI_DATA_CENTERS.filter(
 );
 
 export class MapComponent {
-  private static readonly MOBILE_MIN_EARTHQUAKE_MAGNITUDE = 5;
-  private static readonly MOBILE_MAX_IRAN_EVENTS = 50;
+  // #4545: the mobile density caps moved to '@/utils/mobile-feature-caps' when
+  // globe mode turned out to reach these feeds without them. They are applied
+  // here at render time (overlayFeedSlices) rather than at the setter, because
+  // setEarthquakes below keeps the previous feed when handed an empty one — a
+  // caller that pre-filtered to nothing would pin stale markers on screen.
   // #4669: how long markers pulse after a render before settling to static.
   // Infinite opacity pulses hold a permanent compositing layer per marker
   // (385 of 517 desktop layers; Layerize ~34% of the main thread scales with
@@ -1816,12 +1820,8 @@ export class MapComponent {
     const activeIranEvents = layers.iranAttacks ? this.iranEvents : [];
     const filteredQuakes = withinTimeRange(activeQuakes);
     return {
-      quakes: this.isMobile
-        ? filteredQuakes.filter((eq) => eq.magnitude >= MapComponent.MOBILE_MIN_EARTHQUAKE_MAGNITUDE)
-        : filteredQuakes,
-      iranEvents: this.isMobile
-        ? activeIranEvents.slice(0, MapComponent.MOBILE_MAX_IRAN_EVENTS)
-        : activeIranEvents,
+      quakes: capEarthquakesForMobile(filteredQuakes, this.isMobile),
+      iranEvents: capIranEventsForMobile(activeIranEvents, this.isMobile),
       // Already capped at 200 by the render loop; planned on the same slice so
       // the budget cannot spend share on the 201st position onwards.
       aircraft: layers.flights ? this.aircraftPositions.slice(0, 200) : [],
@@ -1874,7 +1874,7 @@ export class MapComponent {
     }
     // The mobile-trimmed slice, i.e. exactly what the loop iterates. Planning the
     // untrimmed field here would spend this layer's fair share on events the
-    // MOBILE_MAX_IRAN_EVENTS cut then discards — the same slice/loop mismatch
+    // capIranEventsForMobile cut then discards — the same slice/loop mismatch
     // that 3356f19c8 fixed for earthquakes.
     if (layers.iranAttacks) add('iranAttacks', slices.iranEvents);
     if (layers.hotspots) add('hotspots', this.hotspots);

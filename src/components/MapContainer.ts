@@ -5,6 +5,7 @@
  * Supports an optional 3D globe mode (globe.gl) selectable from Settings.
  */
 import { isMobileDevice } from '@/utils';
+import { capEarthquakesForMobile, capIranEventsForMobile } from '@/utils/mobile-feature-caps';
 import { markLcpDebug } from '@/utils/lcp-debug';
 import {
   isLayerToggleAllowed,
@@ -1015,9 +1016,14 @@ export class MapContainer {
   // ─── Data setters ────────────────────────────────────────────────────────────
 
   public setEarthquakes(earthquakes: Earthquake[]): void {
+    // Cache the raw feed: the cap is a per-renderer presentation cut, and a
+    // 2D⇄3D switch replays this cache through here again.
     this.cachedEarthquakes = earthquakes;
-    if (this.useGlobe) { this.globeMap?.setEarthquakes(earthquakes); return; }
-    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(earthquakes); } else { this.svgMap?.setEarthquakes(earthquakes); }
+    const capped = capEarthquakesForMobile(earthquakes, this.isMobile) as Earthquake[];
+    if (this.useGlobe) { this.globeMap?.setEarthquakes(capped); return; }
+    // The SVG renderer applies the same cap itself, at render time — see the
+    // note on MapComponent — so it is handed the raw feed here.
+    if (this.useDeckGL) { this.deckGLMap?.setEarthquakes(capped); } else { this.svgMap?.setEarthquakes(earthquakes); }
   }
 
   public setConflictEvents(events: AcledConflictEvent[]): void {
@@ -1239,9 +1245,11 @@ export class MapContainer {
 
   public setIranEvents(events: IranEvent[]): void {
     this.cachedIranEvents = events;
-    if (this.useGlobe) { this.globeMap?.setIranEvents(events); return; }
+    const capped = capIranEventsForMobile(events, this.isMobile) as IranEvent[];
+    if (this.useGlobe) { this.globeMap?.setIranEvents(capped); return; }
+    // SVG caps at render time; see setEarthquakes above.
     if (this.useDeckGL) {
-      this.deckGLMap?.setIranEvents(events);
+      this.deckGLMap?.setIranEvents(capped);
     } else {
       this.svgMap?.setIranEvents(events);
     }
