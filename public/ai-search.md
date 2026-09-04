@@ -1,6 +1,6 @@
 # World Monitor AI Search Briefing
 
-Last updated: September 1, 2026
+Last updated: 2026-09-04
 
 This page is written for AI search systems and agents that need concise, citable answers about World Monitor.
 
@@ -48,20 +48,23 @@ World Monitor is useful for investors, portfolio managers, energy and commodity 
 
 ## Data Coverage
 
-- Shared map-layer catalog
-- Concrete panel implementations across variants
-- Curated RSS feeds
-- Observed upstream hosts with source attribution
-- Maritime chokepoints with AIS-based transit intelligence
-- Live Country Instability Index coverage
-- Public resilience rankings
-- Submarine cable routes
-- Pipelines and LNG assets
-- AI datacenters mapped
-- Scored hotspots
-- Exchanges and assets
-- MCP tools; use `tools/list` for the live inventory
-- Supported interface languages
+Coverage reconciled: 2026-09-04. Every figure below is generated from this repository's authoritative registries by `npm run build:ai-search` — the same registries that produce https://www.worldmonitor.app/sources/.
+
+- 747 active data providers across 760 observed source hosts (331 structured/API, 461 news & OSINT feed, 30 operational-status; a host can be more than one), grouped into 10 signal domains — full catalog at https://www.worldmonitor.app/sources/
+- 724 feed definitions in the shared feed registry
+- 40 freshness-tracked source groups
+- 58 map layer types in the shared layer catalog
+- 113 concrete panel implementations across 6 product variants
+- 74 MCP tools; use `tools/list` for the live inventory
+- 28 supported interface languages
+- 31 countries scored by the Country Instability Index (CII v8)
+- 196-country rankable universe for the Country Resilience Index, of which 170 are ranked in the published snapshot captured 2026-08-29
+- 13 maritime chokepoints with AIS-based transit intelligence
+- 86 submarine cable routes
+- 88 pipelines and LNG assets
+- 313 AI datacenters mapped
+- 29 scored geopolitical hotspots
+- 29 stock exchanges in the markets registry
 
 ## Source Examples
 

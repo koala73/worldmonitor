@@ -14236,6 +14236,9 @@
           "path": "api/not-found.ts"
         },
         {
+          "path": "scripts/build-ai-search.mjs"
+        },
+        {
           "path": "scripts/build-crawlable-corpus.mjs"
         },
         {

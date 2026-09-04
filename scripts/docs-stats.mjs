@@ -1300,6 +1300,29 @@ export function retainedExactContractCoverageFailures(contracts, observedContrac
     .map((contract) => `${contract.path}: retained exact count contract is missing or changed: ${contract.text}`);
 }
 
+export const AI_SEARCH_COVERAGE_HEADING = '## Data Coverage';
+
+/**
+ * Line span of the generated `## Data Coverage` block in public/ai-search.md.
+ *
+ * The scanner's rule is that *hand-authored* acquisition copy may not publish
+ * extensible inventory totals, because hand-maintained totals rot. This block
+ * is written by scripts/build-ai-search.mjs from the same registries that
+ * produce /sources/, and tests/ai-search-product-facts.test.mjs fails when the
+ * committed block drifts from the generator — so its figures are
+ * registry-derived by construction. #6736 removed the numerals instead, which
+ * made the one file written for AI citation uncitable (#6038). Every other
+ * line of the file, including the surrounding prose, stays in the scan.
+ */
+function generatedCoverageLines(path, source) {
+  if (path !== 'public/ai-search.md') return null;
+  const lines = source.split('\n');
+  const start = lines.indexOf(AI_SEARCH_COVERAGE_HEADING);
+  if (start === -1) return null;
+  const after = lines.findIndex((line, index) => index > start && line.startsWith('## '));
+  return { start, end: after === -1 ? lines.length : after };
+}
+
 export function validateVolatileInventoryClaims() {
   const retainedExactContracts = [
     { path: 'docs/signal-intelligence.mdx', text: /(?:3\+ source types|6\+ sources\/hour)/ },
@@ -1375,7 +1398,9 @@ export function validateVolatileInventoryClaims() {
       ? source.indexOf('\n## Generated corpus\n')
       : -1;
     const scannable = generatedCorpusAt === -1 ? source : source.slice(0, generatedCorpusAt);
+    const generatedCoverage = generatedCoverageLines(path, scannable);
     for (const [index, line] of scannable.split('\n').entries()) {
+      if (generatedCoverage && index >= generatedCoverage.start && index < generatedCoverage.end) continue;
       if (/\btool errors\b/i.test(line)) continue;
       if (/\bTier \d+(?:[–-]\d+)? sources\b/i.test(line)) continue;
       const retained = retainedExactContracts.filter((entry) => entry.path === path && entry.text.test(line));
