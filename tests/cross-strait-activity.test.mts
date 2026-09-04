@@ -38,6 +38,7 @@ import {
   CROSS_STRAIT_ACTIVITY_TTL_SECONDS,
   crossStraitActivityContentMeta,
   fetchCrossStraitActivitySeedSnapshot,
+  writeSourceHealth,
 } from '../scripts/seed-cross-strait-activity.mjs';
 import { isCrossStraitActivitySnapshot } from '../src/components/cross-strait-activity-summary';
 
@@ -1417,7 +1418,9 @@ describe('quantified cross-Strait activity (#5575)', () => {
       const url = String(input);
       calls.push({ url, init });
       if (url.includes('mnd.gov.tw') && /plaactlist/i.test(url)) {
-        return new Response(fixture('mnd-list.html'), { headers: { 'Content-Type': 'text/html' } });
+        return new Response(mndListWithCount(1, 87_151), {
+          headers: { 'Content-Type': 'text/html' },
+        });
       }
       if (url.includes('mnd.gov.tw')) {
         return new Response(fixture('mnd-detail.html'), { headers: { 'Content-Type': 'text/html' } });
@@ -1435,7 +1438,27 @@ describe('quantified cross-Strait activity (#5575)', () => {
       previousSnapshot: null,
       sleepFn: async (ms) => { delays.push(ms); },
     });
+    const mnd = snapshot.sources.find((source: { id: string }) => source.id === 'taiwan-mnd');
+    const healthWrites = new Map<string, unknown>();
+    await writeSourceHealth(snapshot, async (key: string, value: unknown) => {
+      healthWrites.set(key, value);
+    });
+
     assert.ok(snapshot.observations.length >= 3);
+    assert.equal(validateCrossStraitActivitySnapshot(snapshot), true);
+    assert.equal(mnd?.transportStatus, 'fresh');
+    assert.deepEqual(mnd?.errorCodes, []);
+    assert.deepEqual(
+      healthWrites.get('seed-meta:military:cross-strait-activity:taiwan-mnd'),
+      {
+        fetchedAt: Date.parse(retrievedAt),
+        recordCount: snapshot.observations.filter(
+          (row: { sourceId: string }) => row.sourceId === 'taiwan-mnd',
+        ).length,
+        sourceState: 'ok',
+        stale: false,
+      },
+    );
     assert.ok(
       calls.length
         <= MND_MAX_LIST_PAGES_PER_BACKFILL_RUN + MND_MAX_DETAIL_REQUESTS_PER_RUN + 1,
