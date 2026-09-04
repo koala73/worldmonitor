@@ -92,6 +92,23 @@ describe('buildMoversSnapshot', () => {
     expect(String(warn.mock.calls[0][0])).toContain('dropped 3/3');
   });
 
+  it('does not fail a sparse market whose only candidate is an artifact', async () => {
+    // Production repro (seed-consumer-prices-publish, 2026-09-04): market `in`
+    // over 30d returned a single candidate, it was gated, and the whole publish
+    // job exited 1 while every other market published fine. "All candidates are
+    // artifacts" is evidence of a systemic parse break only when the sample is
+    // big enough to carry that claim; at n=1 it is indistinguishable from one
+    // odd product. A zero-row window already publishes an empty snapshot, so a
+    // one-bad-row window must not be the fatal case.
+    mockQuery.mockResolvedValueOnce({ rows: [row('1', '874.68')] });
+
+    const snap = await buildMoversSnapshot('in', 30);
+
+    expect(snap.risers).toEqual([]);
+    expect(snap.fallers).toEqual([]);
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 1/1');
+  });
+
   it('returns an empty snapshot when the window has no movers at all', async () => {
     mockQuery.mockResolvedValueOnce({ rows: [] });
 
