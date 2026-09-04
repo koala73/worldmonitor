@@ -196,7 +196,7 @@ export const DOCS_PAGE_DATES: Record<string, string> = {
   "zh/mcp-quickstart": "2026-09-02",
   "zh/mcp-tools-reference": "2026-09-02",
   "zh/methodology/china-activity-nowcast": "2026-08-31",
-  "zh/methodology/chokepoints": "2026-08-31",
+  "zh/methodology/chokepoints": "2026-09-04",
   "zh/methodology/cii-risk-scores": "2026-08-31",
   "zh/methodology/country-resilience-index": "2026-08-31",
   "zh/methodology/defense-industrial-base": "2026-08-31",
