@@ -35,15 +35,11 @@ jobs:
           existing_pr=$(gh pr list --state all --head "$branch" --json number --jq '.[0].number // empty')
           if [ -n "$existing_pr" ]; then
             echo "skip=true" >> "$GITHUB_OUTPUT"
+            echo "existing_pr=true" >> "$GITHUB_OUTPUT"
             echo "Monthly snapshot PR #${existing_pr} already exists."
             exit 0
           fi
           if git ls-remote --exit-code --heads origin "$branch" >/dev/null 2>&1; then
-            gh pr create \
-              --base main \
-              --head "$branch" \
-              --title "chore(resilience): refresh published snapshot ${period}" \
-              --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and llms-full corpus."
             echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
@@ -88,7 +84,7 @@ jobs:
             tests/sitemap-generation.test.mjs \
             tests/seo-geo-residue.test.mjs \
             tests/ai-search-product-facts.test.mjs
-      - name: Open the monthly snapshot PR
+      - name: Commit the monthly snapshot
         if: steps.reconcile.outputs.skip != 'true'
         env:
           GH_TOKEN: ${{ github.token }}
@@ -102,8 +98,43 @@ jobs:
           git add "$snapshot_path" public/sitemap.xml public/sitemap-main.xml public/llms-full.txt public/ai-search.md
           git commit -m "chore(resilience): refresh published snapshot ${snapshot_date}"
           git push --set-upstream origin "$BRANCH_NAME"
-          gh pr create \
-            --base main \
-            --head "$BRANCH_NAME" \
-            --title "chore(resilience): refresh published snapshot ${snapshot_date}" \
-            --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and llms-full corpus."
+      - name: Open the monthly snapshot PR
+        id: delivery
+        if: steps.reconcile.outputs.existing_pr != 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BRANCH_NAME: ${{ steps.reconcile.outputs.branch }}
+        run: |
+          git fetch --no-tags origin "$BRANCH_NAME"
+          git diff --binary origin/main...FETCH_HEAD > "$RUNNER_TEMP/resilience-snapshot.patch"
+          if gh pr create \
+              --base main \
+              --head "$BRANCH_NAME" \
+              --title "chore(resilience): refresh published snapshot ${BRANCH_NAME##*-snapshot-}" \
+              --body "Monthly credentialed CRI snapshot refresh. Rebuilds the crawlable corpus, root sitemap, and llms-full corpus." \
+              > "$RUNNER_TEMP/snapshot-pr.out" 2> "$RUNNER_TEMP/snapshot-pr.err"; then
+            cat "$RUNNER_TEMP/snapshot-pr.out" >> "$GITHUB_STEP_SUMMARY"
+          elif grep -Fq 'GitHub Actions is not permitted to create or approve pull requests' "$RUNNER_TEMP/snapshot-pr.err"; then
+            echo "manual=true" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Snapshot needs maintainer review::Repository policy blocks bot PR creation; use the retained patch or compare link."
+            {
+              echo '### Maintainer action required'
+              echo
+              echo 'The snapshot is generated and the monthly branch is pushed. No PR was created because repository policy blocks it.'
+              echo
+              echo "[Review and open the monthly PR](${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/compare/main...${BRANCH_NAME})"
+              echo
+              echo 'The resilience-snapshot-handoff artifact contains the binary patch. Publication remains pending review and merge.'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat "$RUNNER_TEMP/snapshot-pr.err" >&2
+            exit 1
+          fi
+      - name: Retain the monthly snapshot handoff
+        if: steps.delivery.outputs.manual == 'true'
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: resilience-snapshot-handoff
+          path: ${{ runner.temp }}/resilience-snapshot.patch
+          retention-days: 30
+          if-no-files-found: error
