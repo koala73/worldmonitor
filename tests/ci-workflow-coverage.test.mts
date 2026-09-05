@@ -1329,7 +1329,9 @@ describe('CI workflow coverage', () => {
       /^\s+run: node scripts\/check-desktop-build-env\.mjs\s*$/m,
       'unit job must run the desktop build env parity check',
     );
-    const releasePreflight = workflowStepBlock(desktopBuildWorkflow, 'Release client-env preflight (#5905)');
+    const releasePreflight = workflowStepBlock(
+      workflowJobBlock(desktopBuildWorkflow, 'client-env'), 'Release client-env preflight (#5905)',
+    );
     assert.match(releasePreflight, /\[ "\$\{\{ github\.event_name \}\}" = "push" \] \|\|/);
     assert.match(releasePreflight, /\[ "\$\{\{ github\.event_name \}\}" = "workflow_dispatch" \]/);
     assert.match(releasePreflight, /\[ "\$\{\{ github\.event\.inputs\.draft \}\}" != "true" \]/);

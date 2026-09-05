@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import { spawnSync } from 'node:child_process';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -24,6 +25,110 @@ const stepNamed = (name) => {
   assert.equal(matches.length, 1, `expected one "${name}" step`);
   return matches[0];
 };
+const clientEnv = Object.fromEntries([
+  'VITE_CLERK_PUBLISHABLE_KEY', 'VITE_WS_RELAY_URL', 'VITE_PMTILES_URL_PUBLIC', 'CONVEX_URL',
+].map((key) => [key, 'fixture-configured']));
+
+function runPreparation({ env = clientEnv, runs = [], apiExit = 0, response = [{ workflow_runs: runs }] } = {}) {
+  const temp = mkdtempSync(join(tmpdir(), 'wm-desktop-prepare-'));
+  try {
+    const bin = join(temp, 'bin');
+    mkdirSync(bin);
+    writeFileSync(join(bin, 'gh'), [
+      '#!/bin/sh',
+      'if [ "$1" = "api" ]; then',
+      '  echo api >> "$FAKE_CALLS"',
+      '  [ "$FAKE_API_EXIT" = 0 ] || exit "$FAKE_API_EXIT"',
+      '  printf \'%s\\n\' "$FAKE_RUNS"',
+      'else',
+      '  printf \'%s\\n\' "$*" >> "$FAKE_CALLS"',
+      'fi',
+    ].join('\n'));
+    chmodSync(join(bin, 'gh'), 0o755);
+    writeFileSync(join(temp, 'calls'), '');
+    writeFileSync(join(temp, 'output'), '');
+    const script = [
+      'set -euo pipefail',
+      stepNamed('Require release configuration').run,
+      stepNamed('Check for an active desktop build').run,
+      'if [ "$(sed -n \'s/^running=//p\' "$GITHUB_OUTPUT")" = false ]; then',
+      stepNamed('Dispatch desktop build').run,
+      'fi',
+    ].join('\n');
+    const result = spawnSync('bash', ['-c', script], {
+      encoding: 'utf8',
+      env: {
+        PATH: `${bin}:${process.env.PATH}`,
+        GITHUB_REPOSITORY: 'fixture/repository',
+        GITHUB_OUTPUT: join(temp, 'output'),
+        TAG: 'v2.10.0',
+        FAKE_CALLS: join(temp, 'calls'),
+        FAKE_API_EXIT: String(apiExit),
+        FAKE_RUNS: JSON.stringify(response),
+        ...env,
+      },
+      timeout: 10_000,
+    });
+    return { ...result, calls: readFileSync(join(temp, 'calls'), 'utf8').trim().split('\n').filter(Boolean) };
+  } finally {
+    rmSync(temp, { recursive: true, force: true });
+  }
+}
+
+test('preparation refuses every missing release secret before tag creation or dispatch', () => {
+  const config = stepNamed('Require release configuration');
+  assert.ok(steps.indexOf(config) < steps.indexOf(stepNamed('Create or verify release tag')));
+  assert.equal(config.if, "steps.release.outputs.action == 'release'");
+  for (const key of Object.keys(clientEnv)) {
+    assert.equal(config.env[key], `\${{ secrets.${key} }}`);
+    const result = runPreparation({ env: { ...clientEnv, [key]: '' } });
+    assert.notEqual(result.status, 0);
+    assert.match(result.stdout + result.stderr, new RegExp(key));
+    assert.deepEqual(result.calls, []);
+  }
+});
+
+test('preparation skips active builds and permits a configured retry after a completed failure', () => {
+  for (const status of ['queued', 'in_progress', 'waiting', 'pending', 'requested']) {
+    const result = runPreparation({ runs: [{ status }] });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, ['api']);
+  }
+  for (const runs of [[], [{ status: 'completed', conclusion: 'failure' }]]) {
+    const result = runPreparation({ runs });
+    assert.equal(result.status, 0, result.stderr);
+    assert.deepEqual(result.calls, ['api', 'workflow run build-desktop.yml --repo fixture/repository --ref v2.10.0 -f draft=false']);
+  }
+  const failedRead = runPreparation({ apiExit: 1 });
+  assert.notEqual(failedRead.status, 0);
+  assert.deepEqual(failedRead.calls, ['api']);
+  const incompleteRead = runPreparation({ response: [{ message: 'unavailable' }] });
+  assert.notEqual(incompleteRead.status, 0);
+  assert.deepEqual(incompleteRead.calls, ['api']);
+});
+
+test('direct builds validate client configuration once before matrix expansion and preserve draft policy', () => {
+  const desktop = loadYaml(readFileSync(resolve(root, '.github/workflows/build-desktop.yml'), 'utf8'));
+  assert.equal(desktop.jobs['build-tauri'].needs, 'client-env');
+  const job = desktop.jobs['client-env'];
+  assert.equal(job.strategy, undefined);
+  const preflight = job.steps.find((step) => step.name === 'Release client-env preflight (#5905)');
+  assert.ok(preflight);
+  assert.equal(desktop.jobs['build-tauri'].steps.some((step) => step.name === preflight.name), false);
+  assert.deepEqual(preflight.env, stepNamed('Require release configuration').env);
+  for (const [event, draft, env, success] of [
+    ['push', 'false', {}, false],
+    ['workflow_dispatch', 'false', {}, false],
+    ['workflow_dispatch', 'true', {}, true],
+    ['push', 'false', clientEnv, true],
+  ]) {
+    const script = preflight.run
+      .replaceAll('${{ github.event_name }}', event)
+      .replaceAll('${{ github.event.inputs.draft }}', draft);
+    const result = spawnSync('bash', ['-e', '-c', script], { encoding: 'utf8', env: { PATH: process.env.PATH, ...env } });
+    assert.equal(result.status === 0, success, result.stdout + result.stderr);
+  }
+});
 
 test('release version comparison is numeric and strict', () => {
   assert.equal(compareReleaseVersions('2.10.0', '2.5.23'), 1);
@@ -106,7 +211,7 @@ test('the workflow creates only a compatible main-history tag and dispatches the
   assert.match(resolve.run, /exit "\$LATEST_STATUS"/);
 
   const tag = stepNamed('Create or verify release tag');
-  assert.equal(tag.if, "steps.release.outputs.action == 'release'");
+  assert.equal(tag.if, "steps.release.outputs.action == 'release' && steps.active.outputs.running == 'false'");
   assert.match(tag.run, /git ls-remote/);
   assert.match(tag.run, /git merge-base --is-ancestor/);
   assert.match(tag.run, /git rev-list -n 1/);
@@ -117,7 +222,7 @@ test('the workflow creates only a compatible main-history tag and dispatches the
   assert.match(tag.run, /git push origin "refs\/tags\/\$TAG"/);
 
   const dispatch = stepNamed('Dispatch desktop build');
-  assert.equal(dispatch.if, "steps.release.outputs.action == 'release'");
+  assert.equal(dispatch.if, "steps.release.outputs.action == 'release' && steps.active.outputs.running == 'false'");
   assert.match(dispatch.run, /gh workflow run build-desktop\.yml/);
   assert.match(dispatch.run, /--ref "\$TAG"/);
   assert.match(dispatch.run, /-f draft=false/);
