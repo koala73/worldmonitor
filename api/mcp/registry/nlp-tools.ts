@@ -866,6 +866,10 @@ export const NLP_TOOLS: ToolDef[] = [
 
       // v3 invalidates v2 title-only sampleHeadlines (no source/link/sourceNames).
       const cacheKey = `intelligence:keyword-spikes:mcp:v3:${windowHours}h:${minCount}`;
+      // App-owned cache key (#7674): this tool is its own writer, so read and
+      // write it through the deployment-prefixed default. A preview deploy
+      // computes and caches into its own namespace instead of leaking into
+      // production rows.
       // A cache-read failure must degrade to live computation, not surface as a
       // tool error: readJsonFromUpstash throws on network failure (unlike
       // redisPipeline, which returns null).
@@ -894,6 +898,12 @@ export const NLP_TOOLS: ToolDef[] = [
       // Read recent and pre-window cohorts independently. A single newest-first
       // cap can be consumed entirely by a busy recent window, which proves
       // nothing about whether older baseline rows exist.
+      // App-owned state (#7674): the digest route writes the accumulator and
+      // the story rows through the prefix-aware server helpers, so the MCP
+      // reader must request the same deployment-namespaced keys (runRedisPipeline
+      // (…, false) in server/worldmonitor/news/v1/list-feed-digest.ts). The
+      // unprefixed reads here made every preview deployment consume — and the
+      // spike cache write below leak into — the production namespace.
       const zres = await redisPipeline([
         [
           'ZRANGE', DIGEST_ACCUMULATOR_KEY_MCP,

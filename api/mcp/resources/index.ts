@@ -76,7 +76,9 @@ import { CHOKEPOINT_SLUGS } from './slugs';
 const MARKET_FRESHNESS_CHECK = { key: 'seed-meta:market:stocks', maxStaleMin: 30 } as const;
 
 async function readMarketFreshness(): Promise<string> {
-  const meta = await readJsonFromUpstash(MARKET_FRESHNESS_CHECK.key).catch(() => null);
+  // Seeder-owned seed-meta (#7674): the seeder fleet stamps it bare, so the
+  // probe reads raw in every environment.
+  const meta = await readJsonFromUpstash(MARKET_FRESHNESS_CHECK.key, 3_000, true).catch(() => null);
   const { cached_at, stale } = evaluateFreshness([MARKET_FRESHNESS_CHECK], [meta]);
   return JSON.stringify({ cached_at, stale });
 }
@@ -184,7 +186,10 @@ export async function buildAccountAllowanceResourceResponse(
 
   let result: Array<{ result?: unknown; error?: unknown }> | null;
   try {
-    result = await deps.redisPipeline(commands);
+    // The allowance/quota counter keys are already deployment-prefixed by
+    // free-account-allowance.ts / quota.ts — send the commands verbatim
+    // (#7674).
+    result = await deps.redisPipeline(commands, 5_000, true);
   } catch {
     result = null;
   }
@@ -615,7 +620,8 @@ export async function buildResourceResponse(
       wrappedText = innerText;
     } else {
       const { seedMetaKey, maxStaleMin } = matched.def.freshnessWrap;
-      const meta = await readJsonFromUpstash(seedMetaKey).catch(() => null);
+      // Seeder-owned seed-meta (#7674) — read raw in every environment.
+      const meta = await readJsonFromUpstash(seedMetaKey, 3_000, true).catch(() => null);
       const { cached_at, stale } = evaluateFreshness(
         [{ key: seedMetaKey, maxStaleMin }],
         [meta],

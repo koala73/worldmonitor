@@ -542,7 +542,11 @@ async function getSeedBatch(entries) {
     }
   }
 
-  const data = await redisPipeline(commands, 3000);
+  // All keys here are written by the Railway seeder fleet (data payloads,
+  // seed-meta, activation markers) — read them raw in every environment so
+  // preview monitors the fleet rows, not an empty deployment namespace
+  // (#7674).
+  const data = await redisPipeline(commands, 3000, true);
   if (!data) throw new Error('Redis not configured');
 
   const metaMap = new Map();

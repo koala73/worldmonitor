@@ -124,8 +124,13 @@ function cacheUnavailable(stage) {
   console.warn(`[bootstrap-user-api-key] auth-cache unavailable stage=${stage}`);
 }
 
+// Both cache helpers below receive keys that are already final:
+// user-api-key:<hash> and bootstrap-user-api-key-invalid:<hash> carry the
+// deployment prefix from getServerRedisKeyPrefix(), and entitlements:<env>:
+// <userId> is deliberately cross-deployment (server/_shared/entitlement-check.ts
+// reads it raw too, P2-3). Send the commands verbatim (#7674).
 async function readCachedJson(key) {
-  const result = await redisPipeline([['GET', key]], 1_000);
+  const result = await redisPipeline([['GET', key]], 1_000, true);
   if (!result) return { status: 'unavailable' };
 
   const raw = result[0]?.result;
@@ -142,7 +147,7 @@ async function readCachedJson(key) {
 async function writeCachedJson(key, value, ttlSeconds) {
   const result = await redisPipeline([
     ['SET', key, JSON.stringify(value), 'EX', String(ttlSeconds)],
-  ], 1_000);
+  ], 1_000, true);
   if (!result) cacheUnavailable('write-failed');
 }
 
@@ -166,6 +171,9 @@ export function isCanonicalUserApiKey(key) {
 export async function checkBootstrapUserApiKeyRateLimit(req) {
   const identifier = getClientIp(req);
   const cacheKey = `${RATE_LIMIT_PREFIX}${identifier}`;
+  // App-owned rate-limit counter (#7674): rides the deployment-prefixed
+  // default, matching the server layer's own prefixed rate-limit keys
+  // (server/_shared/api-key-rate-limit.ts).
   const result = await redisPipeline([
     ['INCR', cacheKey],
     ['EXPIRE', cacheKey, String(RATE_LIMIT_WINDOW_SECONDS), 'NX'],

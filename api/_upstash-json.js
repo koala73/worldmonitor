@@ -1,17 +1,67 @@
 import { unwrapEnvelope } from './_seed-envelope.js';
 
 /**
+ * Deployment key prefix — the api-layer mirror of
+ * `server/_shared/redis.ts::getKeyPrefix` (the M-6 fix). Preview/development
+ * Vercel deployments share one Upstash instance with production, so every key
+ * THIS deployment owns is namespaced `preview:<sha>:…` to keep its reads and
+ * writes out of the production namespace. Production (and any runtime without
+ * VERCEL_ENV — the Railway digest service imports this module) gets ''.
+ *
+ * The prefix is a WRITE-OWNERSHIP contract (#7575/#7673/#7674):
+ *   - Keys this app writes (route-owned caches, per-user state, rate-limit
+ *     counters, MCP story/digest state) — leave `raw` unset so reads and
+ *     writes land in the deployment's own namespace.
+ *   - Keys written by Railway seeders/relays, which do not know the prefix
+ *     scheme — pass `raw = true` so preview reads the real production rows
+ *     instead of a namespace no seeder populates. The same rule already
+ *     applies to the server helpers (`getCachedJson(key, true)` for
+ *     seeder-owned keys) and to deliberately cross-deployment user state
+ *     (`entitlements:*`, see server/_shared/entitlement-check.ts P2-3).
+ * Production is unaffected either way: the prefix is '' there, so a wrong
+ * classification can only fail visibly on a preview deployment.
+ */
+export function getKeyPrefix() {
+  const env = process.env.VERCEL_ENV; // 'production' | 'preview' | 'development'
+  if (!env || env === 'production') return '';
+  const sha = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 8) || 'dev';
+  return `${env}:${sha}:`;
+}
+
+let cachedKeyPrefix;
+/**
+ * Apply the deployment prefix to an app-owned key. Exported for the mixed
+ * pipelines that must name per-key ownership at command-construction time
+ * (api/health.js sweep, api/bootstrap.js) and then pass `raw = true` so the
+ * pipeline helpers do not prefix again.
+ */
+export function applyRedisKeyPrefix(key) {
+  if (cachedKeyPrefix === undefined) cachedKeyPrefix = getKeyPrefix();
+  return cachedKeyPrefix ? `${cachedKeyPrefix}${key}` : key;
+}
+
+// Test-only: invalidate the memoized key prefix so a test that mutates
+// process.env.VERCEL_ENV / VERCEL_GIT_COMMIT_SHA sees the new value on the
+// next read. Mirrors server/_shared/redis.ts's hook. No production caller
+// should ever invoke this.
+export function __resetKeyPrefixCacheForTests() {
+  cachedKeyPrefix = undefined;
+}
+
+/**
  * Envelope-aware Redis read that preserves the difference between a cache
  * miss and an infrastructure/parse failure. Analysis composites use this
  * status to avoid turning a lost input into a fresh-looking empty feed.
  *
  * @param {string} key
  * @param {number} [timeoutMs=3000]
+ * @param {boolean} [raw=false] - true reads the key verbatim (seeder-owned /
+ *   already-final keys); default applies the deployment key prefix.
  * @returns {Promise<{ status: 'hit' | 'miss' | 'error'; value: unknown | null }>}
  */
-export async function readJsonFromUpstashWithStatus(key, timeoutMs = 3_000) {
+export async function readJsonFromUpstashWithStatus(key, timeoutMs = 3_000, raw = false) {
   try {
-    const value = await readRawJsonFromUpstash(key, timeoutMs);
+    const value = await readRawJsonFromUpstash(key, timeoutMs, raw);
     if (value === null) return { status: 'miss', value: null };
     const unwrapped = unwrapEnvelope(value).data;
     if (unwrapped === undefined) {
@@ -30,9 +80,11 @@ export async function readJsonFromUpstashWithStatus(key, timeoutMs = 3_000) {
  *
  * @param {readonly string[]} keys
  * @param {number} [timeoutMs=3000]
+ * @param {boolean} [raw=false] - true reads the keys verbatim; default
+ *   applies the deployment key prefix to every key.
  * @returns {Promise<Array<{ status: 'hit' | 'miss' | 'error'; value: unknown | null }>>}
  */
-export async function readJsonBatchFromUpstashWithStatus(keys, timeoutMs = 3_000) {
+export async function readJsonBatchFromUpstashWithStatus(keys, timeoutMs = 3_000, raw = false) {
   if (keys.length === 0) return [];
 
   const creds = getRedisCredentials();
@@ -46,7 +98,7 @@ export async function readJsonBatchFromUpstashWithStatus(keys, timeoutMs = 3_000
         'Content-Type': 'application/json',
         'User-Agent': 'worldmonitor-edge/1.0',
       },
-      body: JSON.stringify(keys.map((key) => ['GET', key])),
+      body: JSON.stringify(keys.map((key) => ['GET', raw ? key : applyRedisKeyPrefix(key)])),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) return keys.map(() => ({ status: 'error', value: null }));
@@ -81,12 +133,12 @@ export async function readJsonBatchFromUpstashWithStatus(keys, timeoutMs = 3_000
   }
 }
 
-export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
+export async function readJsonFromUpstash(key, timeoutMs = 3_000, raw = false) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) return null;
 
-  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+  const resp = await fetch(`${url}/get/${encodeURIComponent(raw ? key : applyRedisKeyPrefix(key))}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -120,16 +172,18 @@ export async function readJsonFromUpstash(key, timeoutMs = 3_000) {
  *
  * @param {string} key
  * @param {number} [timeoutMs=3000]
+ * @param {boolean} [raw=false] - true reads the key verbatim (seeder-owned /
+ *   already-final keys); default applies the deployment key prefix.
  * @returns {Promise<unknown | null>}
  */
-export async function readRawJsonFromUpstash(key, timeoutMs = 3_000) {
+export async function readRawJsonFromUpstash(key, timeoutMs = 3_000, raw = false) {
   const url = process.env.UPSTASH_REDIS_REST_URL;
   const token = process.env.UPSTASH_REDIS_REST_TOKEN;
   if (!url || !token) {
     throw new Error('readRawJsonFromUpstash: UPSTASH_REDIS_REST_URL/TOKEN not configured');
   }
 
-  const resp = await fetch(`${url}/get/${encodeURIComponent(key)}`, {
+  const resp = await fetch(`${url}/get/${encodeURIComponent(raw ? key : applyRedisKeyPrefix(key))}`, {
     headers: { Authorization: `Bearer ${token}` },
     signal: AbortSignal.timeout(timeoutMs),
   });
@@ -190,14 +244,36 @@ export function readExistsFlags(results, keys) {
 }
 
 /**
+ * Prefix the key argument of one pipeline command, mirroring
+ * `server/_shared/redis.ts::normalizePipelineCommand` so the two layers
+ * behave identically: only the first string argument after the verb is a key,
+ * and EVAL's KEYS are found via its key-count argument.
+ */
+function normalizePipelineCommand(command, raw) {
+  if (raw || !Array.isArray(command) || command.length < 2) return [...command];
+  const [verb, key, ...rest] = command;
+  if (typeof verb !== 'string' || typeof key !== 'string') return [...command];
+  if (verb.toUpperCase() === 'EVAL') {
+    const keyCount = Number(rest[0]);
+    if (!Number.isInteger(keyCount) || keyCount < 0 || rest.length < keyCount + 1) return [...command];
+    const keys = rest.slice(1, keyCount + 1).map((item) => (typeof item === 'string' ? applyRedisKeyPrefix(item) : item));
+    return [verb, key, rest[0], ...keys, ...rest.slice(keyCount + 1)];
+  }
+  return [verb, applyRedisKeyPrefix(key), ...rest];
+}
+
+/**
  * Execute a batch of Redis commands via the Upstash pipeline endpoint.
  * Returns null on missing credentials, HTTP error, timeout, or a response body
  * that is not an array with exactly one entry per command.
  * @param {Array<string[]>} commands - e.g. [['GET', 'key'], ['EXPIRE', 'key', '60']]
  * @param {number} [timeoutMs=5000]
+ * @param {boolean} [raw=false] - true sends the commands verbatim (keys are
+ *   already final: seeder-owned, or pre-prefixed via applyRedisKeyPrefix for
+ *   mixed-ownership pipelines); default prefixes each command's key.
  * @returns {Promise<Array<{ result?: unknown, error?: unknown }> | null>}
  */
-export async function redisPipeline(commands, timeoutMs = 5_000) {
+export async function redisPipeline(commands, timeoutMs = 5_000, raw = false) {
   const creds = getRedisCredentials();
   if (!creds) return null;
   if (!Array.isArray(commands)) return null;
@@ -209,7 +285,7 @@ export async function redisPipeline(commands, timeoutMs = 5_000) {
         'Content-Type': 'application/json',
         'User-Agent': 'worldmonitor-edge/1.0',
       },
-      body: JSON.stringify(commands),
+      body: JSON.stringify(commands.map((command) => normalizePipelineCommand(command, raw))),
       signal: AbortSignal.timeout(timeoutMs),
     });
     if (!resp.ok) return null;
@@ -226,11 +302,13 @@ export async function redisPipeline(commands, timeoutMs = 5_000) {
  * @param {string} key
  * @param {unknown} value - will be JSON.stringify'd
  * @param {number} ttlSeconds
+ * @param {boolean} [raw=false] - true writes the key verbatim (seeder-owned /
+ *   already-final keys); default applies the deployment key prefix.
  * @returns {Promise<boolean>} true on success
  */
-export async function setCachedData(key, value, ttlSeconds) {
+export async function setCachedData(key, value, ttlSeconds, raw = false) {
   const results = await redisPipeline([
     ['SET', key, JSON.stringify(value), 'EX', String(ttlSeconds)],
-  ]);
+  ], 5_000, raw);
   return results !== null;
 }

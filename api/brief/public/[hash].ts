@@ -170,7 +170,11 @@ export default async function handler(
   // Step 2: resolve the actual brief envelope.
   let envelope: unknown;
   try {
-    envelope = await readRawJsonFromUpstash(`brief:${pointer.userId}:${pointer.issueDate}`);
+    // Seeder-owned envelope (#7674): the Railway digest composer writes the
+    // per-user brief envelope key bare — read it raw in every environment.
+    // (The pointer above IS app-owned and correctly rides the deployment
+    // prefix: this same route family writes it.)
+    envelope = await readRawJsonFromUpstash(`brief:${pointer.userId}:${pointer.issueDate}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/public] envelope read failed:', (err as Error).message);
     captureSilentError(err, { tags: { route: 'api/brief/public', step: 'envelope-read' }, ctx });

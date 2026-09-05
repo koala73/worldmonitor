@@ -199,7 +199,10 @@ export const PRODUCTION_DEPS: McpHandlerDeps = {
     '60 s',
     corsHeaders,
   ),
-  redisPipeline: rawRedisPipeline,
+  // The quota/allowance counter keys are already deployment-prefixed by
+  // quota.ts / free-account-allowance.ts (their envPrefix), so the pipeline
+  // must send them verbatim rather than prefixing again (#7674).
+  redisPipeline: (commands, timeoutMs, raw = true) => rawRedisPipeline(commands, timeoutMs, raw),
 };
 
 // ---------------------------------------------------------------------------

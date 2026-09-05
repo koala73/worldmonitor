@@ -41,6 +41,15 @@ async function fetchOAuthValue(key) {
   const creds = getRedisCredentials();
   if (!creds) return null;
 
+  // Deliberately cross-deployment namespace (#7674): oauth:token/tokenfam/
+  // famrev state is per-principal credential material, and BOTH sides of it
+  // bypass the shared helpers — api/oauth/token.ts writes through its own
+  // raw fetchers, this file reads through a raw GET. Keeping both bare (like
+  // entitlements:* in server/_shared/entitlement-check.ts, P2-3) preserves
+  // production-issued bearer resolution on preview deployments without
+  // churning the auth surface, so this read must NOT gain the deployment
+  // prefix even though the shared pipeline helpers now prefix app-owned keys
+  // by default.
   const resp = await fetch(`${creds.url}/get/${encodeURIComponent(key)}`, {
     headers: { Authorization: `Bearer ${creds.token}` },
     signal: AbortSignal.timeout(3_000),

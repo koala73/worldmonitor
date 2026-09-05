@@ -1,4 +1,5 @@
 import { readExistsFlags, readJsonFromUpstash, redisPipeline } from '../_upstash-json.js';
+import { isAppOwnedRedisKey } from '../_redis-key-ownership.js';
 // @ts-expect-error — JS module, no declaration file
 import { captureSilentError } from '../_sentry-edge.js';
 import { secondsUntilUtcMidnight } from '../../server/_shared/pro-mcp-token';
@@ -62,9 +63,14 @@ export async function executeTool(
   contentFreshnessPendingUntil?: string;
   data: Record<string, unknown>;
 }> {
-  const reads = tool._cacheKeys.map(k => readJsonFromUpstash(k));
+  // Per-key namespace decision (#7674): most _cacheKeys / freshness keys are
+  // written by the Railway seeder fleet and are read raw; the route-owned
+  // exceptions (temporal anomalies snapshot + its stamp) ride the deployment
+  // prefix so a preview deployment classifies its own producer instead of the
+  // production rows.
+  const reads = tool._cacheKeys.map((k) => readJsonFromUpstash(k, 3_000, !isAppOwnedRedisKey(k)));
   const freshnessChecks = tool._freshnessChecks;
-  const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key));
+  const metaReads = freshnessChecks.map((check) => readJsonFromUpstash(check.key, 3_000, !isAppOwnedRedisKey(check.key)));
   // #6080 deployment-order grace. Only checks declaring a content contract pay
   // for this read, so it is one extra command on get_chokepoint_status and
   // none at all on every other tool.
@@ -80,8 +86,10 @@ export async function executeTool(
   // divergence #6080 exists to close.
   // redisPipeline never rejects — it returns null on any failure — so this
   // cannot turn a freshness hint into a hard tool-execution failure.
+  // Activation markers are seeder-written (`seed-activated:*`) and are read
+  // raw in every environment (#7674).
   const activationRead = activationKeys.length > 0
-    ? redisPipeline(activationKeys.map((key) => ['EXISTS', key]))
+    ? redisPipeline(activationKeys.map((key) => ['EXISTS', key]), 5_000, true)
     : Promise.resolve([]);
   const [results, metas, activationResults] = await Promise.all([
     Promise.all(reads),

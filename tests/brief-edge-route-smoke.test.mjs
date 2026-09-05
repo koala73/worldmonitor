@@ -95,7 +95,7 @@ describe('api/brief followed-countries telemetry fetch', () => {
 
   it('starts followed-countries lookup before the required Redis envelope read', () => {
     const followedIdx = src.indexOf('const followedCountriesPromise = fetchFollowedCountriesEdge(userId, ctx);');
-    const envelopeIdx = src.indexOf('envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);');
+    const envelopeIdx = src.indexOf("envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`, 3_000, true);");
     assert.ok(followedIdx !== -1, 'followedCountriesPromise start not found');
     assert.ok(envelopeIdx !== -1, 'envelope read not found');
     assert.ok(

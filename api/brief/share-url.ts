@@ -145,7 +145,9 @@ export default async function handler(
   if (!callerProvidedSlot) {
     // No slot given → fall back to the latest-pointer the cron writes.
     try {
-      const latest = await readRawJsonFromUpstash(`brief:latest:${session.userId}`);
+      // Seeder-owned pointer (#7674): the Railway digest cron writes
+      // brief:latest:{userId} bare — read it raw in every environment.
+      const latest = await readRawJsonFromUpstash(`brief:latest:${session.userId}`, 3_000, true);
       const slot = (latest as { issueSlot?: unknown } | null)?.issueSlot;
       if (typeof slot === 'string' && ISSUE_SLOT_RE.test(slot)) {
         issueSlot = slot;
@@ -174,7 +176,9 @@ export default async function handler(
   // gives a clean 503 path if Upstash is down.
   let existing: unknown;
   try {
-    existing = await readRawJsonFromUpstash(`brief:${session.userId}:${issueSlot}`);
+    // Seeder-owned envelope (#7674): the Railway digest composer writes it
+    // bare — read it raw in every environment.
+    existing = await readRawJsonFromUpstash(`brief:${session.userId}:${issueSlot}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/share-url] Upstash read failed:', (err as Error).message);
     captureSilentError(err, { tags: { route: 'api/brief/share-url', step: 'envelope-read' }, ctx });

@@ -353,7 +353,7 @@ export interface PublicToolShape {
 // otherwise-successful 200 — the shape readExistsFlags branches on. While this
 // omitted `error`, a consumer could not read that field without a local cast
 // (api/mcp/dispatch.ts carried one, with a comment saying so, until #6152).
-export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number) => Promise<Array<{ result?: unknown; error?: unknown }> | null>;
+export type PipelineFn = (commands: Array<Array<string | number>>, timeoutMs?: number, raw?: boolean) => Promise<Array<{ result?: unknown; error?: unknown }> | null>;
 
 export interface QuotaReserved {
   ok: true;
