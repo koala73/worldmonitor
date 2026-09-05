@@ -191,6 +191,31 @@ This repository contains an independently branded derivative of an AGPL-licensed
 
 ## THE GREEN HOUSE Contributors
 
+### Creator & Maintainer
+
+<table>
+  <tr>
+    <td align="center" width="140">
+      <a href="https://github.com/sonoxo">
+        <img src="https://github.com/sonoxo.png?size=160" width="96" height="96" alt="@sonoxo" />
+        <br />
+        <strong>@sonoxo</strong>
+      </a>
+    </td>
+    <td>
+      <strong>Douglas Brown Jr. · Almighty Sonoxo</strong><br />
+      Musician, web developer, and creator of THE GREEN HOUSE from Richmond, Virginia.<br />
+      <a href="https://github.com/sonoxo/gpt-doug-llm">GPT-Doug-LLM</a> · ZYRA · 24K Media Productions<br />
+      <a href="https://zyra.host/">Zyra.Host</a> ·
+      <a href="https://24kmediaproductions.com/">24K Media Productions</a> ·
+      <a href="https://www.linkedin.com/in/douglasbrownjr">LinkedIn</a> ·
+      <a href="https://x.com/almightysonoxo">X</a>
+    </td>
+  </tr>
+</table>
+
+### Community Contributors
+
 <a href="https://github.com/sonoxo/thegreenhouse/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=sonoxo/thegreenhouse" alt="The Green House contributors" />
 </a>
