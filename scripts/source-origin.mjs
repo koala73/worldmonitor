@@ -349,6 +349,7 @@ const HOST_ORIGINS = Object.freeze({
   'rss.libsyn.com': 'US',
   'rss.politico.com': 'US',
   'rsf.org': 'FR',
+  'scanner.tradingview.com': 'US',
   'schema.org': 'US',
   'seekingalpha.com': 'US',
   'serpapi.com': 'US',

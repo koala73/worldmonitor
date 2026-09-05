@@ -111,6 +111,8 @@ const SOURCE_DOMAIN_OVERRIDES = new Map([
   ['B.C. Evacuation Orders and Alerts', 'environment'],
   ['SaskAlert', 'environment'],
   ['Hyperliquid', 'finance'],
+  ['Barchart', 'finance'],
+  ['TradingView', 'finance'],
   ['api.rainviewer.com', 'environment'],
   ['api.scrapecreators.com', 'news'],
   ['api.telegram.org', 'news'],

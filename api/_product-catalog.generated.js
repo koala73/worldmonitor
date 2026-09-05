@@ -167,7 +167,7 @@ export const PUBLIC_PRODUCT_FACTS = {
   "heroProofStats": {
     "mapLayers": 57,
     "feeds": 461,
-    "providers": 747,
+    "providers": 748,
     "alertOrigins": 5
   }
 };
