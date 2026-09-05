@@ -320,13 +320,16 @@ describe('#6038 ai-search.md is generated, not hand-maintained', () => {
 });
 
 describe('#6038 AI briefing version headers', () => {
-  it('pins the llms.txt version to the published package version', () => {
-    const header = read('public/llms.txt').match(VERSION_HEADER_RE)?.[0];
-    assert.ok(header, 'public/llms.txt must carry a machine-readable version line');
-    assert.equal(
-      header.match(/\d+\.\d+\.\d+/)[0],
-      JSON.parse(read('package.json')).version,
-      'the briefing version must track the published package version',
+  it('declares a machine-readable version header llms-full can copy', () => {
+    // Deliberately NOT pinned to package.json. Deriving this line from the
+    // package version would make an unrelated release commit red until both
+    // briefings were regenerated — a release chore for a field that is not
+    // among the stale-claim classes #6038 exists to close. The line is
+    // hand-maintained; what is enforced is that it is well-formed, so
+    // readVersionHeader cannot fail silently, and that llms-full matches it.
+    assert.ok(
+      VERSION_HEADER_RE.test(read('public/llms.txt')),
+      'public/llms.txt must carry a "> Version: X.Y.Z · Last updated: YYYY-MM-DD" line',
     );
   });
 
