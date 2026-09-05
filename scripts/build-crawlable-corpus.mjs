@@ -128,7 +128,7 @@ export const CHOKEPOINT_PAGE_LASTMOD_PATHS = Object.freeze([
 // families take the later of this version and their own committed source date,
 // so template changes are reflected without pretending every deploy is fresh.
 export const CORPUS_GENERATOR_CONTENT_VERSION = '2026-09-01';
-export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
+export const COUNTRY_PAGE_CONTENT_VERSION = '2026-09-05';
 export const CII_COUNTRY_PAGE_CONTENT_VERSION = '2026-09-03';
 // Exported so the #7533 guard test can recompute every family clock without
 // re-implementing the version constants themselves.
@@ -3000,6 +3000,101 @@ ${faqs.map((faq) => `        <details data-country-faq><summary>${escapeHtml(faq
 // numbers moved in the same window the reporting was captured. Asserting that
 // a headline *drove* a score move would be fabrication — only an analyst (or
 // the brief, which cites its sources) may draw that link.
+const INTEL_BRIEF_SECTION_RE = /^(SITUATION NOW|WHAT THIS MEANS FOR\b.*|KEY RISKS|OUTLOOK|WATCH ITEMS)\s*$/i;
+
+function unwrapBriefEmphasisLine(line) {
+  let current = String(line || '').trim();
+  for (let i = 0; i < 4; i++) {
+    const next = current
+      .replace(/^#{1,6}\s+/, '')
+      .replace(/^\*\*(.*)\*\*$/, '$1')
+      .trim();
+    if (next === current) break;
+    current = next;
+  }
+  return current;
+}
+
+function applyCrawlableBriefEmphasis(escaped) {
+  return escaped.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>').replace(/\*\*/g, '');
+}
+
+// Frozen intel briefs are markdown-ish LLM text. Country pages are prerendered
+// HTML for crawlers, so convert emphasis and promote the five section titles
+// rather than injecting the string into a <p>. Always rewrite the "means for"
+// title from the page's country name: stored briefs still contain ISO codes
+// from the TIER1-only prompt fallback (#7738).
+export function formatCrawlableIntelBrief(text, countryName) {
+  const name = String(countryName || '').trim();
+  if (!name) throw new Error('formatCrawlableIntelBrief requires a country name');
+  const out = [];
+  let listOpen = false;
+  const closeList = () => {
+    if (listOpen) {
+      out.push('          </ul>');
+      listOpen = false;
+    }
+  };
+  const openList = () => {
+    if (!listOpen) {
+      out.push('          <ul>');
+      listOpen = true;
+    }
+  };
+
+  for (const rawLine of String(text || '').split('\n')) {
+    const trimmed = unwrapBriefEmphasisLine(rawLine.trim());
+    if (!trimmed) {
+      closeList();
+      continue;
+    }
+    if (/^WHAT THIS MEANS FOR\b/i.test(trimmed)) {
+      closeList();
+      out.push(`          <h3>What this means for ${escapeHtml(name)}</h3>`);
+      continue;
+    }
+    if (/^SITUATION NOW\b/i.test(trimmed)) {
+      closeList();
+      out.push('          <h3>Situation now</h3>');
+      continue;
+    }
+    if (/^KEY RISKS\b/i.test(trimmed)) {
+      closeList();
+      out.push('          <h3>Key risks</h3>');
+      continue;
+    }
+    if (/^OUTLOOK\b/i.test(trimmed)) {
+      closeList();
+      out.push('          <h3>Outlook</h3>');
+      continue;
+    }
+    if (/^WATCH ITEMS\b/i.test(trimmed)) {
+      closeList();
+      out.push('          <h3>Watch items</h3>');
+      continue;
+    }
+    if (/^(?:[•\-]\s*|\*\s+)/.test(trimmed)) {
+      openList();
+      const item = applyCrawlableBriefEmphasis(escapeHtml(trimmed.replace(/^(?:[•\-]\s*|\*\s+)/, '')));
+      out.push(`            <li>${item}</li>`);
+      continue;
+    }
+    closeList();
+    if (/^NEXT \d/i.test(trimmed)) {
+      const colonIdx = trimmed.indexOf(':');
+      if (colonIdx !== -1) {
+        const label = applyCrawlableBriefEmphasis(escapeHtml(trimmed.slice(0, colonIdx)));
+        const body = applyCrawlableBriefEmphasis(escapeHtml(trimmed.slice(colonIdx + 1).trim()));
+        out.push(`          <p><strong>${label}:</strong> ${body}</p>`);
+        continue;
+      }
+    }
+    out.push(`          <p>${applyCrawlableBriefEmphasis(escapeHtml(trimmed))}</p>`);
+  }
+  closeList();
+  return out.join('\n');
+}
+
 export function renderCountryDevelopments({ countryName, developments, ciiEntry = null, pulse = null }) {
   const name = String(countryName || '').trim();
   if (!name) throw new Error('renderCountryDevelopments requires a country name');
@@ -3037,9 +3132,9 @@ export function renderCountryDevelopments({ countryName, developments, ciiEntry 
     parts.push(`        <ul>\n${items}\n        </ul>`);
   }
   if (brief) {
-    const briefHtml = escapeHtml(brief.text).replace(/\n/g, '<br>');
+    const briefHtml = formatCrawlableIntelBrief(brief.text, name);
     const generatedLine = `Brief generated <time datetime="${escapeHtml(brief.generatedAt)}">${escapeHtml(formatStaticDateTime(brief.generatedAt))}</time>`;
-    parts.push(`        <div data-intel-brief>\n          <h3>Country brief</h3>\n          <p>${briefHtml}</p>\n          <p class="source">${generatedLine}${brief.model ? ` by ${escapeHtml(brief.model)}` : ''} from ${brief.sources.length} grounding sources.</p>\n        </div>`);
+    parts.push(`        <div data-intel-brief>\n          <h3>Country brief</h3>\n${briefHtml}\n          <p class="source">${generatedLine}${brief.model ? ` by ${escapeHtml(brief.model)}` : ''} from ${brief.sources.length} grounding sources.</p>\n        </div>`);
   }
   if (timeline.length > 0) {
     const events = timeline
@@ -3172,12 +3267,16 @@ export function assertCountryDevelopmentsRendered({ pagePath, html, developments
     }
   }
   if (rows.brief && typeof rows.brief.text === 'string' && rows.brief.text.trim()) {
-    // Anchor on the first AND last non-empty lines: every generated brief
-    // opens with the same boilerplate header, so the first line alone cannot
-    // catch a cross-country brief swap. The renderer escapes newlines to
-    // <br>, so raw multi-line slices never appear verbatim.
-    const nonEmpty = rows.brief.text.trim().split('\n').map((line) => line.trim()).filter(Boolean);
-    const anchors = [nonEmpty[0], nonEmpty.at(-1)]
+    // Anchor on first AND last content lines after stripping section titles,
+    // bullets, and emphasis markers. Every generated brief opens with the same
+    // boilerplate header, so the first line alone cannot catch a cross-country
+    // swap; markdown conversion means raw `**` and ISO titles never appear.
+    const contentLines = rows.brief.text.trim().split('\n')
+      .map((line) => unwrapBriefEmphasisLine(line.trim()))
+      .filter(Boolean)
+      .filter((line) => !INTEL_BRIEF_SECTION_RE.test(line))
+      .map((line) => line.replace(/^(?:[•\-]\s*|\*\s+)/, '').replace(/\*\*/g, ''));
+    const anchors = [contentLines[0], contentLines.at(-1)]
       .filter((line, index, all) => line && all.indexOf(line) === index)
       .map((line) => escapeHtml(line.slice(0, 120)));
     for (const anchor of anchors) {
@@ -3199,6 +3298,49 @@ export function assertCountryDevelopmentsRendered({ pagePath, html, developments
     if (typeof event.occurredAt === 'string' && !html.includes(`datetime="${escapeHtml(event.occurredAt)}"`)) {
       throw new Error(`${pagePath} dropped the date of frozen timeline event ${event.title}`);
     }
+  }
+}
+
+function corpusMainHtml(html) {
+  const source = String(html || '');
+  const match = source.match(/<main\b[^>]*>([\s\S]*?)<\/main>/i);
+  const main = match ? match[1] : source;
+  return main
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '')
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, '');
+}
+
+function corpusVisibleText(html) {
+  return corpusMainHtml(html).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+function intelBriefHtml(html) {
+  const match = corpusMainHtml(html).match(/<div\b[^>]*\bdata-intel-brief\b[^>]*>([\s\S]*?)<\/div>/i);
+  return match ? match[1] : null;
+}
+
+// #7738: prerendered country briefs were injected as escaped markdown, so
+// crawlers saw literal `**` and `WHAT THIS MEANS FOR NO`. Fail the build
+// when either artifact reaches <main>, including section titles that are
+// still plain text rather than <h*> tags.
+const MEANS_FOR_ISO_RE = /\bwhat this means for [a-z]{2}\b/i;
+
+export function assertCountryBriefPresentation({ pagePath, html }) {
+  const main = corpusMainHtml(html);
+  if (main.includes('**')) {
+    throw new Error(`${pagePath} renders literal markdown emphasis in <main>`);
+  }
+  const brief = intelBriefHtml(html);
+  const headingSource = brief ?? main;
+  const headingHits = [...headingSource.matchAll(/<h[1-6]\b[^>]*>([\s\S]*?)<\/h[1-6]>/gi)];
+  for (const hit of headingHits) {
+    const text = hit[1].replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+    if (MEANS_FOR_ISO_RE.test(text)) {
+      throw new Error(`${pagePath} heading leaks ISO code: ${text}`);
+    }
+  }
+  if (MEANS_FOR_ISO_RE.test(corpusVisibleText(brief ?? html))) {
+    throw new Error(`${pagePath} brief heading leaks an ISO-3166 alpha-2 code`);
   }
 }
 
@@ -3475,6 +3617,7 @@ ${analysis.readingGuide ? `      <h2>How to use this evidence</h2>
     scriptSrcs: ['/tools/live-tools.js'],
   });
   assertCountryDevelopmentsRendered({ pagePath: path, html, developments });
+  assertCountryBriefPresentation({ pagePath: path, html });
   return html;
 }
 

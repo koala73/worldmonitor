@@ -199,6 +199,21 @@ describe('normalizeCountryToIso2', () => {
   });
 });
 
+describe('displayNameForIso2', () => {
+  it('resolves non-tier-1 codes such as Norway instead of leaking the ISO code', async () => {
+    const { displayNameForIso2 } = await import('../server/_shared/country-normalize.ts');
+    assert.equal(displayNameForIso2('NO'), 'Norway');
+    assert.equal(displayNameForIso2('no'), 'Norway');
+    assert.equal(displayNameForIso2('US'), 'United States');
+    assert.equal(displayNameForIso2('GB'), 'United Kingdom');
+    assert.equal(displayNameForIso2('PS'), 'Palestinian Territories');
+    assert.equal(displayNameForIso2('CD'), 'Congo - Kinshasa');
+    assert.equal(displayNameForIso2('LA'), 'Laos');
+    assert.equal(displayNameForIso2('KR'), 'South Korea');
+    assert.equal(displayNameForIso2('ZZ'), null);
+  });
+});
+
 // ── Cache-key stability ──────────────────────────────────────────────────
 
 describe('cache key identity', () => {

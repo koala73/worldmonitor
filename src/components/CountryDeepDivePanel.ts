@@ -3754,6 +3754,7 @@ export class CountryDeepDivePanel implements CountryBriefPanel {
         : headlineCount > 0
           ? { count: headlineCount, hrefPrefix: '#cdp-news-' }
           : undefined,
+      this.currentName ?? undefined,
     );
   }
 

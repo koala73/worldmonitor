@@ -6,6 +6,7 @@ import type {
 } from '../../../../src/generated/server/worldmonitor/intelligence/v1/service_server';
 
 import { cachedFetchJson, getCachedJson } from '../../../_shared/redis';
+import { displayNameForIso2 } from '../../../_shared/country-normalize';
 import { UPSTREAM_TIMEOUT_MS, TIER1_COUNTRIES, sha256Hex } from './_shared';
 import { callLlm } from '../../../_shared/llm';
 import { verifyCitationIndexes, checkLeadGrounding } from '../../../../shared/brief-llm-core.js';
@@ -176,7 +177,10 @@ export async function getCountryIntelBrief(
     energyYear,
     energyImportYear,
   });
-  const countryName = TIER1_COUNTRIES[req.countryCode.toUpperCase()] || req.countryCode;
+  const countryCode = req.countryCode.toUpperCase();
+  const countryName = TIER1_COUNTRIES[countryCode]
+    || displayNameForIso2(countryCode)
+    || req.countryCode;
   const dateStr = new Date().toISOString().split('T')[0];
 
   const systemPrompt = `You are a senior intelligence analyst. Current date: ${dateStr}.
@@ -211,6 +215,7 @@ Rules:
 - If no infrastructure context is provided, use named economic sectors or companies instead.
 - Be specific. Avoid generic phrases like "supply chain disruption risk".
 - If "Brief source articles" are provided, cite supporting claims with bracket markers like [1] or [2]. Do not invent source numbers or URLs.
+- Do not use markdown. Do not wrap names or phrases in ** or other emphasis markers.
 - No speculation beyond what data supports.${lang === 'fr' ? '\n- IMPORTANT: You MUST respond ENTIRELY in French language.' : ''}`;
 
   let result: GetCountryIntelBriefResponse | null = null;

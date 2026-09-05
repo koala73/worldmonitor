@@ -23,6 +23,55 @@ const COUNTRY_NAMES = COUNTRY_NAMES_RAW as Record<string, string>;
 // validated against the authoritative gazetteer.
 const ISO2_SET = new Set<string>(Object.values(COUNTRY_NAMES));
 
+function titleCaseName(value: string): string {
+  return value
+    .split(/\s+/)
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(' ');
+}
+
+// Reverse the gazetteer once. Several aliases map to the same ISO2; prefer a
+// real name over abbreviations ("usa", "uk", "u s") so callers never have to
+// fall back to the code itself.
+const ISO2_TO_DISPLAY_NAME = (() => {
+  const aliases = new Map<string, string[]>();
+  for (const [name, code] of Object.entries(COUNTRY_NAMES)) {
+    const iso = String(code || '').toUpperCase();
+    if (!/^[A-Z]{2}$/.test(iso)) continue;
+    const list = aliases.get(iso) || [];
+    list.push(name);
+    aliases.set(iso, list);
+  }
+  const out = new Map<string, string>();
+  for (const [iso, names] of aliases) {
+    const preferred = names.find((candidate) => candidate.replace(/[^a-z]/g, '').length > 3)
+      ?? names[0];
+    if (!preferred) continue;
+    out.set(iso, titleCaseName(preferred));
+  }
+  return out;
+})();
+
+function intlRegionName(iso: string): string | null {
+  try {
+    const name = new Intl.DisplayNames(['en'], { type: 'region' }).of(iso);
+    if (typeof name === 'string' && name.trim() && name.toUpperCase() !== iso) {
+      return name;
+    }
+  } catch {
+    // Intl.DisplayNames missing or unknown region — gazetteer fallback below.
+  }
+  return null;
+}
+
+export function displayNameForIso2(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const upper = raw.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(upper) || !ISO2_SET.has(upper)) return null;
+  return intlRegionName(upper) ?? ISO2_TO_DISPLAY_NAME.get(upper) ?? null;
+}
+
 export function normalizeCountryToIso2(raw: unknown): string | null {
   if (typeof raw !== 'string') return null;
   const trimmed = raw.trim();

@@ -695,6 +695,7 @@ export class CountryBriefPage implements CountryBriefPanel {
         : headlineCount > 0
           ? { count: headlineCount, hrefPrefix: '#cb-news-' }
           : undefined,
+      this.currentName ?? undefined,
     );
   }
 
