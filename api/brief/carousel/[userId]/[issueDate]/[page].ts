@@ -109,7 +109,9 @@ export default async function handler(
 
   let envelope;
   try {
-    envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`);
+    // Seeder-owned envelope (#7674): the Railway digest composer writes the
+    // per-user brief envelope key bare — read it raw in every environment.
+    envelope = await readRawJsonFromUpstash(`brief:${userId}:${issueDate}`, 3_000, true);
   } catch (err) {
     console.error('[api/brief/carousel] Upstash read failed:', (err as Error).message);
     captureSilentError(err, { tags: { route: 'api/brief/carousel', step: 'envelope-read' }, ctx });

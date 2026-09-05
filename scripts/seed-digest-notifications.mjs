@@ -1663,7 +1663,11 @@ async function composeBriefsForRun(rules, nowMs) {
   // was far worse than a brief with dashes on the stats page.)
   let insightsNumbers = { clusters: 0, multiSource: 0 };
   try {
-    const insightsRaw = await readRawJsonFromUpstash(INSIGHTS_KEY);
+    // raw = true pins the bare-key read (#7674): the seeder fleet publishes
+    // bare rows and must keep doing so even if VERCEL_ENV ever leaks into
+    // this container's runtime. The api readers of this key are hard-locked
+    // raw too (api/latest-brief.ts and the brief routes).
+    const insightsRaw = await readRawJsonFromUpstash(INSIGHTS_KEY, 3_000, true);
     if (insightsRaw) insightsNumbers = extractInsights(insightsRaw).numbers;
   } catch (err) {
     console.warn('[digest] brief: insights read failed, using zeroed stats:', err.message);
@@ -2137,10 +2141,13 @@ async function composeAndStoreBriefForUser(userId, annotated, insightsNumbers, d
   // One SET per compose is cheap and always current.
   const latestPointerKey = `brief:latest:${userId}`;
   const latestPointerValue = JSON.stringify({ issueSlot });
+  // raw = true pins the bare-key write (#7674): the digest composer publishes
+  // the envelopes every api/brief reader resolves raw; see the insights read
+  // above for the VERCEL_ENV-leak rationale.
   const pipelineResult = await redisPipeline([
     ['SETEX', key, String(BRIEF_TTL_SECONDS), JSON.stringify(finalEnvelope)],
     ['SETEX', latestPointerKey, String(BRIEF_TTL_SECONDS), latestPointerValue],
-  ]);
+  ], 5_000, true);
   if (!pipelineResult || !Array.isArray(pipelineResult) || pipelineResult.length < 2) {
     throw new Error('null pipeline response from Upstash');
   }

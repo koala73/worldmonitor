@@ -2309,9 +2309,12 @@ export const RPC_TOOLS: ToolDef[] = [
         { key: `seed-meta:consumer-prices:freshness:${code}`,      maxStaleMin: 1500 },
       ];
 
+      // Seeder-owned keys (#7674): the consumer-prices seeder writes the data
+      // keys and their seed-meta freshness stamps bare — read them raw in
+      // every environment so a preview deployment sees the real fleet rows.
       const [dataResults, metaResults] = await Promise.all([
-        Promise.all(dataKeys.map((k) => readJsonFromUpstash(k))),
-        Promise.all(freshnessChecks.map((c) => readJsonFromUpstash(c.key))),
+        Promise.all(dataKeys.map((k) => readJsonFromUpstash(k, 3_000, true))),
+        Promise.all(freshnessChecks.map((c) => readJsonFromUpstash(c.key, 3_000, true))),
       ]);
 
       // F6 contract parity with the cache-tool path (executeTool, ~line 1139):

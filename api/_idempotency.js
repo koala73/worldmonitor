@@ -72,6 +72,8 @@ async function getRequestHashAndRedisKey(request, pathname, scope, idempotencyKe
   try {
     const bodyBuf = await request.clone().arrayBuffer();
     const reqHash = await sha256Hex(bodyBuf);
+    // App-owned idempotency record (#7674): rides the deployment-prefixed
+    // default so a preview deployment's retries settle in its own namespace.
     const redisKey = `idem:v1:${await sha256Hex(`${scope}\n${pathname}\n${idempotencyKey}`)}`;
     return { reqHash, redisKey };
   } catch {

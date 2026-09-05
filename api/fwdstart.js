@@ -8,6 +8,8 @@ export const config = { runtime: 'edge' };
 // The archive URL is fixed, so every CDN miss was re-scraping the same page.
 // Cache the parsed items — not the rendered RSS, whose lastBuildDate must stay
 // current — for the same window the response already advertises.
+// App-owned self-cache (#7674): this route is its only writer, so read and
+// write ride the deployment-prefixed helper default.
 const CACHE_KEY = 'fwdstart:archive-items:v1';
 const CACHE_TTL_SECONDS = 1800;
 

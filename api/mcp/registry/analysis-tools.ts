@@ -52,7 +52,8 @@ import {
   listCountryPopulations,
 } from '../../../shared/analysis-population-exposure';
 import { INTEL_HOTSPOTS } from '../../../shared/geo-data';
-import { readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
+import { applyRedisKeyPrefix, readJsonBatchFromUpstashWithStatus } from '../../_upstash-json.js';
+import { isAppOwnedRedisKey } from '../../_redis-key-ownership.js';
 import { evaluateFreshness } from '../freshness';
 import { McpSourceUnavailableError } from '../source-unavailable';
 import type { FreshnessCheck, ToolDef } from '../types';
@@ -105,6 +106,12 @@ const ANALYSIS_PAYLOAD_VALIDATORS: Readonly<Record<string, PayloadValidator>> = 
 /**
  * Read data caches and freshness metadata in one parallel round while keeping
  * payload and metadata positions structurally separate.
+ *
+ * Per-key namespace decision (#7674): the batch mixes seeder-owned keys (read
+ * raw — the Railway fleet writes them bare) with route-owned keys like
+ * `temporal:anomalies:v1` (read with the deployment prefix — the producer
+ * stamps them there). Each key is finalized here and the batch is sent
+ * verbatim.
  */
 async function readCachesWithFreshness(
   keys: readonly string[],
@@ -118,10 +125,13 @@ async function readCachesWithFreshness(
     failed_inputs: string[];
   };
 }> {
-  const results = await readJsonBatchFromUpstashWithStatus([
-    ...keys,
-    ...checks.map((check) => check.key),
-  ]);
+  const results = await readJsonBatchFromUpstashWithStatus(
+    [...keys, ...checks.map((check) => check.key)].map(
+      (key) => (isAppOwnedRedisKey(key) ? applyRedisKeyPrefix(key) : key),
+    ),
+    3_000,
+    true,
+  );
   const payloadReads = results.slice(0, keys.length).map((result, index) => {
     const validator = ANALYSIS_PAYLOAD_VALIDATORS[keys[index] ?? ''];
     if (result.status === 'hit' && validator && !validator(result.value)) {

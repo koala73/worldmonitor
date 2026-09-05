@@ -19,7 +19,8 @@ import {
 // as `.data`), so importing it is behavior-preserving.
 import { unwrapEnvelope } from './_seed-envelope.js';
 // @ts-expect-error — JS module, no declaration file
-import { redisPipeline, getRedisCredentials, readExistsFlags } from './_upstash-json.js';
+import { redisPipeline, applyRedisKeyPrefix, getRedisCredentials, readExistsFlags } from './_upstash-json.js';
+import { isAppOwnedRedisKey } from './_redis-key-ownership.js';
 import { CII_RISK_SCORE_CACHE_KEYS } from './_cii-risk-cache-keys.js';
 import { BOOTSTRAP_CACHE_KEYS } from './_bootstrap-tier-keys.js';
 import { CANADA_ALERTS_CUTOVER_FALLBACK_KEYS } from './_canada-alerts-cutover.js';
@@ -3182,13 +3183,15 @@ function parseHealthVerdictSnapshot(raw, now, { requireChecks = true } = {}) {
 
 async function releaseHealthVerdictRefreshLock(lockToken) {
   if (!lockToken) return;
+  // The lock key is already deployment-prefixed via healthVerdictRedisKey —
+  // send the command verbatim (#7674).
   await redisPipeline([[
     'EVAL',
     HEALTH_VERDICT_RELEASE_LOCK_SCRIPT,
     '1',
     HEALTH_VERDICT_REFRESH_LOCK_KEY,
     lockToken,
-  ]], 4_000).catch(() => null);
+  ]], 4_000, true).catch(() => null);
 }
 
 // Single source of truth for "is this check a problem?", shared by the compact
@@ -3504,6 +3507,11 @@ export async function handleHealth(req, ctx, options = {}) {
   // See WM 2026-05-10 — added after a night of UptimeRobot flips that needed
   // direct Upstash inspection to diagnose.
   if (wantsHistory) {
+    // App-owned incident log (#7674): health.js is the only writer of these
+    // keys, so the read below and the persist/clear pipelines after the sweep
+    // all ride the deployment-prefixed helper default — a preview
+    // deployment's failure history stays inside its own namespace, and
+    // production keeps the bare historical shape.
     const results = await redisPipeline(
       [
         ['GET', 'health:last-failure'],
@@ -3538,7 +3546,9 @@ export async function handleHealth(req, ctx, options = {}) {
     // browser poll, ~115k/day — reads the ~1 KB compact key instead of dragging the
     // full ~20 KB check map out of Redis to show a tenth of it (#5300).
     const snapshotKey = compact ? HEALTH_VERDICT_COMPACT_SNAPSHOT_KEY : HEALTH_VERDICT_SNAPSHOT_KEY;
-    const snapshotResult = await redisPipeline([['GET', snapshotKey]], 4_000);
+    // Snapshot/lock keys are already deployment-prefixed via
+    // healthVerdictRedisKey — read and write them verbatim (#7674).
+    const snapshotResult = await redisPipeline([['GET', snapshotKey]], 4_000, true);
     if (!snapshotResult) throw new Error('Redis request failed');
     if (snapshotResult[0]?.error) throw new Error('Redis snapshot read failed');
     const cachedSnapshot = parseHealthVerdictSnapshot(snapshotResult[0]?.result, snapshotNow(), { requireChecks: !compact });
@@ -3558,7 +3568,7 @@ export async function handleHealth(req, ctx, options = {}) {
       'EX',
       String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
       'NX',
-    ]], 4_000);
+    ]], 4_000, true);
     if (!lockResult || lockResult[0]?.error) throw new Error('Redis snapshot lock failed');
     ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
 
@@ -3580,7 +3590,7 @@ export async function handleHealth(req, ctx, options = {}) {
         const remainingMs = waitDeadline - Date.now();
         if (remainingMs < HEALTH_VERDICT_MIN_REDIS_TIMEOUT_MS) break;
         const redisTimeoutMs = Math.min(4_000, remainingMs);
-        const refreshedResult = await redisPipeline([['GET', snapshotKey]], redisTimeoutMs);
+        const refreshedResult = await redisPipeline([['GET', snapshotKey]], redisTimeoutMs, true);
         if (!refreshedResult || refreshedResult[0]?.error) throw new Error('Redis snapshot wait failed');
         const refreshedSnapshot = parseHealthVerdictSnapshot(refreshedResult[0]?.result, snapshotNow(), { requireChecks: !compact });
         if (
@@ -3597,7 +3607,7 @@ export async function handleHealth(req, ctx, options = {}) {
           'EX',
           String(HEALTH_VERDICT_REFRESH_LOCK_TTL_SECONDS),
           'NX',
-        ]], redisTimeoutMs);
+        ]], redisTimeoutMs, true);
         if (!lockResult || lockResult[0]?.error) throw new Error('Redis snapshot lock retry failed');
         ownsSnapshotRefreshLock = lockResult[0]?.result === 'OK';
         if (ownsSnapshotRefreshLock) break;
@@ -3631,19 +3641,28 @@ export async function handleHealth(req, ctx, options = {}) {
   // NEG_SENTINEL ('__WM_NEG__') is 10 bytes — strlenIsData() rejects exactly
   // that length while accepting any other non-zero strlen as data. List-typed
   // keys (LIST_DATA_KEYS) take LLEN instead; STRLEN would WRONGTYPE on them.
+  // Mixed-ownership sweep (#7674): registry data keys, seed-meta, and
+  // activation markers are written by the Railway seeder fleet and are read
+  // RAW (the fleet does not know the deployment prefix scheme). The two
+  // route-owned temporal keys are stamped by the prefix-aware
+  // list-temporal-anomalies route, so they must be read from this
+  // deployment's own namespace — otherwise preview health classifies the
+  // producer against the production stamp. Each key is finalized here and
+  // the pipeline below is sent verbatim.
+  const sweepKey = (key) => (isAppOwnedRedisKey(key) ? applyRedisKeyPrefix(key) : key);
   let results;
   try {
     const commands = [
-      ...allDataKeys.map(dataLenCommand),
-      ...allMetaKeys.map(k => ['GET', k]),
-      ...activationEntries.map(([, marker]) => ['EXISTS', marker]),
-      ['GET', CHINA_COVERAGE_SUMMARY_KEY],
-      ['GET', STANDALONE_KEYS.educationAttainment],
-      ['HEXISTS', FIVE_FACTOR_SCORECARD_READ_MODEL_KEY, 'metadata'],
+      ...allDataKeys.map((k) => dataLenCommand(sweepKey(k))),
+      ...allMetaKeys.map(k => ['GET', sweepKey(k)]),
+      ...activationEntries.map(([, marker]) => ['EXISTS', sweepKey(marker)]),
+      ['GET', sweepKey(CHINA_COVERAGE_SUMMARY_KEY)],
+      ['GET', sweepKey(STANDALONE_KEYS.educationAttainment)],
+      ['HEXISTS', sweepKey(FIVE_FACTOR_SCORECARD_READ_MODEL_KEY), 'metadata'],
       ...fredRolloutCommands,
     ];
     if (!getRedisCredentials()) throw new Error('Redis not configured');
-    results = await redisPipeline(commands, 8_000);
+    results = await redisPipeline(commands, 8_000, true);
     if (!results) throw new Error('Redis request failed');
   } catch (err) {
     if (ownsSnapshotRefreshLock) await releaseHealthVerdictRefreshLock(refreshLockToken);
@@ -3777,7 +3796,9 @@ export async function handleHealth(req, ctx, options = {}) {
     // `parseStaleContentGraceUntil` returns an empty map for anything that is
     // not a well-formed reply array. Both roads lead to "no grace, keep the
     // warning", which is the fail-closed direction.
-    const graceResults = await redisPipeline(graceStatePlan.claimCommands, 4_000).catch(() => null);
+    // The grace state hash key is deployment-prefixed via
+    // healthVerdictRedisKey — send the plan verbatim (#7674).
+    const graceResults = await redisPipeline(graceStatePlan.claimCommands, 4_000, true).catch(() => null);
     applyStaleContentGrace(
       checks,
       graceEvidenceByName,
@@ -3786,7 +3807,7 @@ export async function handleHealth(req, ctx, options = {}) {
     );
   }
   if (graceStatePlan.cleanupCommands.length > 0) {
-    const graceCleanup = redisPipeline(graceStatePlan.cleanupCommands, 4_000).catch(() => {});
+    const graceCleanup = redisPipeline(graceStatePlan.cleanupCommands, 4_000, true).catch(() => {});
     if (ctx && typeof ctx.waitUntil === 'function') ctx.waitUntil(graceCleanup);
   }
 
@@ -3886,6 +3907,8 @@ export async function handleHealth(req, ctx, options = {}) {
   // Both keys share one TTL for the same reason they share one sweep: they
   // carry the same deadlines, so they must stop being servable together.
   const snapshotTtl = String(snapshotTtlSeconds(verdictSnapshot, snapshotNow()));
+  // Both snapshot keys are deployment-prefixed via healthVerdictRedisKey —
+  // write them verbatim (#7674).
   const snapshotWriteResult = await redisPipeline([
     [
       'SET',
@@ -3901,7 +3924,7 @@ export async function handleHealth(req, ctx, options = {}) {
       'EX',
       snapshotTtl,
     ],
-  ], 4_000).catch(() => null);
+  ], 4_000, true).catch(() => null);
   const snapshotWriteFailed = !snapshotWriteResult
     || snapshotWriteResult.length !== 2
     || snapshotWriteResult.some((entry) => entry?.error);

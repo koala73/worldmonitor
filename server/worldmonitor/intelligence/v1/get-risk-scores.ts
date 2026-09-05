@@ -734,7 +734,12 @@ async function fetchAuxiliarySources(): Promise<AuxiliarySources> {
     getCachedJson('seismology:earthquakes:v1', true).catch(() => null),
     getCachedJson('sanctions:pressure:v1', true).catch(() => null),
     getCachedJson('sanctions:country-counts:v1', true).catch(() => null),
-    getCachedJson('temporal:anomalies:v1', true).catch(() => null),
+    // App-owned snapshot (#7674): the temporal-anomalies route stamps
+    // temporal:anomalies:v1 through the prefix-aware helpers, so unlike the
+    // seeder-owned sources around it this read must ride the deployment
+    // prefix — otherwise a preview deployment's risk scores consume the
+    // production snapshot instead of the one this deployment rebuilt.
+    getCachedJson('temporal:anomalies:v1').catch(() => null),
     getCachedJson('intelligence:military-cii:v1', true).catch(() => null),
   ]);
   const arr = (v: any, field?: string, maxLen = 10000) => {

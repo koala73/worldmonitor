@@ -293,7 +293,9 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
 
   // Always read unprefixed keys — bootstrap is a read-only consumer of
   // production cache data. Preview/branch deploys don't run handlers that
-  // populate prefixed keys, so prefixing would always miss.
+  // populate prefixed keys, so prefixing would always miss. Declared
+  // explicitly since #7674 made the shared pipeline helpers prefix
+  // app-owned keys by default.
   const pipeline = keys.map((k) => ['GET', k]);
   if (shadowMarkerTier) {
     // This intentionally-missing marker makes shadow origin requests uniquely
@@ -301,7 +303,7 @@ async function getCachedJsonBatch(keys, shadowMarkerTier = null) {
     // so canonical GET counts alone no longer distinguish it from serving.
     pipeline.push(['GET', `bootstrap:r2-shadow-origin-marker:${shadowMarkerTier}`]);
   }
-  const data = await redisPipeline(pipeline, 3000);
+  const data = await redisPipeline(pipeline, 3000, true);
   if (!Array.isArray(data) || data.length !== pipeline.length) {
     throw new Error('Bootstrap Redis pipeline unavailable');
   }
