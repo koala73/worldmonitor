@@ -745,7 +745,14 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
   );
   let worktree = worktreeState(rootDir, runner, options);
   const credentials = credentialState(rootDir, runner, options.requireEnv || []);
-  const repo = repoIdentity(rootDir, runner);
+  let repo = null;
+  let repoError = null;
+  try {
+    repo = repoIdentity(rootDir, runner);
+  } catch (error) {
+    if (mode !== 'review') throw error;
+    repoError = error.message;
+  }
   let dependencies = probeDependencies(rootDir, runner);
   const canPrepare = () => [
     node.ok,
@@ -790,11 +797,13 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
 
   // Capture mutable Git and GitHub state only after a possible bootstrap. A
   // long install must not make the task-start snapshot stale before we use it.
-  const originMain = currentOriginMain(rootDir, runner, options.allowStaleMain);
+  const originMain = repo
+    ? currentOriginMain(rootDir, runner, options.allowStaleMain)
+    : { error: repoError, fetched: false, ok: false };
 
   let prSnapshot = null;
-  let prSnapshotError = null;
-  if (credentials.github.available) {
+  let prSnapshotError = repoError;
+  if (repo && credentials.github.available) {
     try {
       prSnapshot = createPrSnapshot({
         cacheDir: options.cacheDir,
@@ -812,14 +821,14 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
   const alignment = prSnapshotError || (mode && options.pr && !prSnapshot)
     ? { applicable: Boolean(options.pr), error: prSnapshotError, ok: false }
     : prAlignment(prSnapshot, rootDir, runner, { allowDetached: options.allowDetached });
-  const duplicates = duplicatePrState({
+  const duplicates = repo ? duplicatePrState({
     currentPr: prSnapshot?.pullRequest.number || null,
     ghBin: credentials.github.binary,
     issue: options.issue,
     repo,
     rootDir,
     runner,
-  });
+  }) : { checked: false, duplicates: [], error: repoError, ok: false };
   const listedWorktrees = git(runner, rootDir, ['worktree', 'list', '--porcelain']);
   const worktrees = listedWorktrees.ok ? parseWorktrees(listedWorktrees.value) : [];
   const watchedBranches = [
@@ -890,6 +899,7 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
       requestedPr: options.pr || null,
       livePrState: prSnapshot !== null,
       gaps: [
+        ...(repoError ? [`Repository identity could not be verified: ${repoError}`] : []),
         ...(!prSnapshot ? ['Live PR state and feedback are not verified. Inspect only the recorded local commit.'] : []),
         ...(!originMain.fetched || originMain.error ? ['Current base could not be verified.'] : []),
         ...(worktree.dirty ? ['Committed source excludes uncommitted worktree changes.'] : []),
@@ -905,7 +915,7 @@ export function runAgentPreflight(options = {}, runner = spawnSync) {
     completedAt: new Date().toISOString(),
     expensiveTestsAllowed: mode ? readiness.tests.ready : ok,
     ok,
-    repository: repo.nameWithOwner,
+    repository: repo?.nameWithOwner ?? null,
     schema: mode ? ACTION_SCHEMA : SCHEMA,
     status: ok ? 'ready' : 'blocked',
     ...(mode ? { mode, readiness, coverage } : {}),
@@ -917,8 +927,9 @@ const isDirectRun = process.argv[1]
   : false;
 
 if (isDirectRun) {
+  let options;
   try {
-    const options = parseArgs(process.argv.slice(2));
+    options = parseArgs(process.argv.slice(2));
     if (options.help) printHelp();
     else {
       const result = runAgentPreflight(options);
@@ -926,7 +937,13 @@ if (isDirectRun) {
       if (!result.ok) process.exitCode = 1;
     }
   } catch (error) {
-    console.log(JSON.stringify({ error: error.message, schema: SCHEMA, status: 'error' }, null, 2));
+    const mode = options?.mode;
+    console.log(JSON.stringify({
+      error: error.message,
+      schema: mode ? ACTION_SCHEMA : SCHEMA,
+      status: 'error',
+      ...(mode ? { mode } : {}),
+    }, null, 2));
     process.exitCode = 1;
   }
 }
