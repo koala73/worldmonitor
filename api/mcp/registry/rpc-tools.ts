@@ -9,7 +9,7 @@ import {
 // @ts-expect-error — generated JS module, no declaration file
 import MINING_SITES_RAW from '../../../shared/mining-sites.js';
 import { readJsonFromUpstash } from '../../_upstash-json.js';
-import { argStr } from '../filters';
+import { argNum, argStr, argStrList } from '../filters';
 import { buildAuthHeaders } from '../auth';
 import { assertToolFetchOk, BillingDenialError, RpcValidationError, throwIfBillingDenial } from '../billing-denial';
 import { SUPPORTED_CONSUMER_PRICES_COUNTRIES } from '../constants';
@@ -2359,6 +2359,76 @@ export const RPC_TOOLS: ToolDef[] = [
       'GET /api/consumer-prices/v1/list-consumer-price-categories',
       'GET /api/consumer-prices/v1/list-consumer-price-movers',
       'GET /api/consumer-prices/v1/list-retailer-price-spreads',
+    ],
+  },
+  {
+    name: 'get_fred_series',
+    _outputBudgetBytes: 131072,
+    description:
+      'On-demand FRED macro series from the seeded cache: rates, yields, inflation, labor, money supply, and stress indices. ' +
+      'Answers through the canonical get-fred-series-batch RPC — the same bounded allowlist and Railway-seeded data the ' +
+      'dashboard reads, so no external FRED call ever happens at request time and unlisted series cannot be pulled. Up to 20 ' +
+      'series per call; observations return newest-last. A requested id missing from `results` is either outside the ' +
+      'allowlist or not yet seeded — compare `fetched` with `requested`.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        series_ids: {
+          type: 'array',
+          items: { type: 'string' },
+          description:
+            'FRED series ids (case-insensitive), bounded to the seeded allowlist: WALCL, FEDFUNDS, T10Y2Y, UNRATE, ' +
+            'CPIAUCSL, DGS10, VIXCLS, GDP, M2SL, DCOILWTICO, BAMLH0A0HYM2, ICSA, MORTGAGE30US, GSCPI, T10Y3M, STLFSI4, ' +
+            'DGS1MO, DGS3MO, DGS6MO, DGS1, DGS2, DGS5, DGS30, BAMLC0A0CM, SOFR, ESTR, EURIBOR3M, EURIBOR6M, EURIBOR1Y.',
+        },
+        limit: {
+          type: 'number',
+          description: 'Observations per series, newest-last (default 24, max 1000). Keep small — 20 series at full history is large.',
+        },
+      },
+      required: ['series_ids'],
+    },
+    outputSchema: {
+      type: 'object',
+      properties: {
+        results: { type: 'object', additionalProperties: { type: 'object', properties: {
+          seriesId: { type: 'string' }, title: { type: 'string' },
+          units: { type: 'string' }, frequency: { type: 'string' },
+          observations: { type: 'array', items: { type: 'object', properties: {
+            date: { type: 'string' }, value: { type: 'number' },
+          } } },
+        } } },
+        fetched: { type: 'number' },
+        requested: { type: 'number', description: 'Allowlisted ids actually looked up; below the ids sent when some were unlisted.' },
+      },
+    },
+    annotations: { readOnlyHint: true, destructiveHint: false, idempotentHint: true, openWorldHint: false },
+    _execute: async (params, base, context) => {
+      const seriesIds = argStrList(params.series_ids)
+        .map((id) => id.trim().toUpperCase())
+        .filter(Boolean)
+        .slice(0, 20);
+      const requestedLimit = argNum(params.limit);
+      // Bounded by default: the RPC's own default is 120 observations, which
+      // at 20 series would dwarf the output budget for an agent that only
+      // wanted the latest readings.
+      const limit = requestedLimit !== null && requestedLimit > 0
+        ? Math.min(requestedLimit, 1000)
+        : 24;
+      const url = `${base}/api/economic/v1/get-fred-series-batch`;
+      const body = JSON.stringify({ seriesIds, limit });
+      const auth = await buildAuthHeaders(context, 'POST', url, body);
+      const res = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...auth, 'User-Agent': 'worldmonitor-mcp-edge/1.0' },
+        body,
+        signal: AbortSignal.timeout(8_000),
+      });
+      await assertToolFetchOk(res, 'get-fred-series-batch');
+      return res.json();
+    },
+    _apiPaths: [
+      "POST /api/economic/v1/get-fred-series-batch",
     ],
   },
   {
