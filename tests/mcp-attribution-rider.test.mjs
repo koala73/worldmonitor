@@ -1,9 +1,28 @@
 import assert from 'node:assert/strict';
-import { describe, test } from 'node:test';
+import { readFileSync } from 'node:fs';
+import { afterEach, describe, test } from 'node:test';
 
 import jmespath from 'jmespath';
 
+import { executeTool } from '../api/mcp/dispatch.ts';
 import { TOOL_REGISTRY } from '../api/mcp/registry/index.ts';
+import { torontoSafetySourceById } from '../shared/toronto-safety.js';
+import {
+  TPS_CALLS_ATTRIBUTION,
+  TPS_CALLS_SOURCE,
+  TPS_MCI_SOURCE,
+  TPS_OGL_ATTRIBUTION,
+  buildTpsCallsSnapshot,
+  buildTpsMciSnapshot,
+} from '../scripts/lib/tps-open-data.mjs';
+import {
+  IMD_API_REFERENCE_URL,
+  IMD_RIGHTS_DECISION,
+  IMD_SOURCE_NAME,
+  assembleImdSnapshot,
+  buildDisabledSnapshot,
+  parseImdProductPayload,
+} from '../scripts/lib/imd-cyclone-marine.mjs';
 import {
   ATTRIBUTION_RIDER_NOTICE,
   LICENCE_MARKER_FIELDS,
@@ -291,5 +310,155 @@ describe('mergeAttributionRider — the rider cannot be projected away', () => {
     const parsed = JSON.parse(mergeAttributionRider('null', rider));
     assert.equal(parsed.data, null);
     assert.deepEqual(parsed._attribution, rider);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Producer-grounded verification.
+//
+// A cache tool's MCP payload is the cache ENVELOPE ({cached_at, stale, data}),
+// not the REST body, and its `data` map is keyed by `_cacheLabels`. Reading the
+// outputSchema is not enough to prove an extraction works against that shape —
+// the schema is authored by hand and the snapshot is written by a seeder that
+// could rename a field without touching it.
+//
+// So these tests build the snapshot with the PRODUCER's own exported builder
+// (from the real upstream fixtures where they exist), serve it as the tool's
+// cache value, and run the real `executeTool` — the same function dispatch
+// calls, including `_postFilter` and the envelope assembly. The declared
+// expression is then evaluated over exactly what an MCP caller would receive,
+// and asserted against the producer's own exported constants rather than
+// strings retyped here. A seeder that renames `attribution` fails this.
+// ---------------------------------------------------------------------------
+const ORIGINAL_FETCH = globalThis.fetch;
+const ORIGINAL_UPSTASH_URL = process.env.UPSTASH_REDIS_REST_URL;
+const ORIGINAL_UPSTASH_TOKEN = process.env.UPSTASH_REDIS_REST_TOKEN;
+
+function serveCacheKeys(values) {
+  process.env.UPSTASH_REDIS_REST_URL = 'https://fake.upstash.io';
+  process.env.UPSTASH_REDIS_REST_TOKEN = 'fake_token';
+  globalThis.fetch = async (url) => {
+    const u = url.toString();
+    for (const [key, value] of Object.entries(values)) {
+      if (u.includes(`/get/${encodeURIComponent(key)}`)) {
+        return new Response(
+          JSON.stringify({ result: value === null ? null : JSON.stringify(value) }),
+          { status: 200, headers: { 'Content-Type': 'application/json' } },
+        );
+      }
+    }
+    return new Response(JSON.stringify({ result: null }), {
+      status: 200, headers: { 'Content-Type': 'application/json' },
+    });
+  };
+}
+
+function toolNamed(name) {
+  const tool = TOOL_REGISTRY.find((candidate) => candidate.name === name);
+  assert.ok(tool, `${name} missing from the registry`);
+  return tool;
+}
+
+/** Run the real executeTool over a seeded snapshot and return its rider. */
+async function riderFromCache(name, snapshot, params = {}) {
+  const tool = toolNamed(name);
+  serveCacheKeys({ [tool._cacheKeys[0]]: snapshot });
+  const envelope = await executeTool(tool, params);
+  return { envelope, rider: buildAttributionRider(envelope, tool._attribution) };
+}
+
+const imdFixture = (file) => JSON.parse(
+  readFileSync(new URL(`./fixtures/${file}`, import.meta.url), 'utf8'),
+);
+
+describe('attribution rider — against real producer output', () => {
+  afterEach(() => {
+    globalThis.fetch = ORIGINAL_FETCH;
+    if (ORIGINAL_UPSTASH_URL == null) delete process.env.UPSTASH_REDIS_REST_URL;
+    else process.env.UPSTASH_REDIS_REST_URL = ORIGINAL_UPSTASH_URL;
+    if (ORIGINAL_UPSTASH_TOKEN == null) delete process.env.UPSTASH_REDIS_REST_TOKEN;
+    else process.env.UPSTASH_REDIS_REST_TOKEN = ORIGINAL_UPSTASH_TOKEN;
+  });
+
+  test('get_toronto_reported_occurrences extracts from a real buildTpsMciSnapshot', async () => {
+    const snapshot = buildTpsMciSnapshot({
+      records: [{ id: 'r1', reportDateMs: Date.parse('2026-08-01T00:00:00.000Z'), division: 'D51', offence: 'Assault' }],
+      fetchedAt: '2026-09-01T00:00:00.000Z',
+    });
+    const { envelope, rider } = await riderFromCache('get_toronto_reported_occurrences', snapshot);
+    // The envelope really is the cache envelope, keyed by _cacheLabels.
+    assert.ok('cached_at' in envelope && 'stale' in envelope);
+    assert.ok(envelope.data.reported_occurrences);
+    assert.ok(rider, 'the declared expression found nothing in the real snapshot');
+    assert.deepEqual(rider.sources, [{
+      attribution: TPS_OGL_ATTRIBUTION,
+      source: TPS_MCI_SOURCE,
+      fetchedAt: '2026-09-01T00:00:00.000Z',
+    }]);
+    // The MCI seeder writes the same licence claim the descriptor asserts, so
+    // this tool needs no post-filter repair — unlike calls-attended below.
+    assert.equal(rider.sources[0].attribution, torontoSafetySourceById('tps-mci').attribution);
+  });
+
+  test('get_toronto_calls_attended publishes the CURRENT licence, not a stale cached one', async () => {
+    const snapshot = buildTpsCallsSnapshot({
+      records: [{ id: 'a1', eventYear: 2025, divisionFinal: 'D52', eventCount: 12 }],
+      fetchedAt: '2026-09-02T00:00:00.000Z',
+    });
+    const fresh = await riderFromCache('get_toronto_calls_attended', snapshot);
+    assert.ok(fresh.rider);
+    assert.deepEqual(fresh.rider.sources, [{
+      attribution: TPS_CALLS_ATTRIBUTION,
+      source: TPS_CALLS_SOURCE,
+      fetchedAt: '2026-09-02T00:00:00.000Z',
+    }]);
+
+    // A pre-CKAN blob still carries the retired OGL-Ontario claim. The tool's
+    // _postFilter rewrites it from the descriptor, and the rider is extracted
+    // AFTER that filter — so the rider must publish the current claim. This is
+    // the case that makes "read the post-filtered payload" load-bearing rather
+    // than incidental.
+    const stale = await riderFromCache('get_toronto_calls_attended', {
+      ...snapshot,
+      attribution: TPS_OGL_ATTRIBUTION,
+    });
+    assert.equal(stale.rider.sources[0].attribution, torontoSafetySourceById('tps-calls-attended').attribution);
+    assert.notEqual(stale.rider.sources[0].attribution, TPS_OGL_ATTRIBUTION);
+  });
+
+  test('get_imd_cyclone_marine extracts from a real assembleImdSnapshot over IMD fixtures', async () => {
+    const now = Date.parse('2026-09-05T00:00:00.000Z');
+    const productResults = {
+      cycloneTrack: { status: 'ok', records: parseImdProductPayload('cycloneTrack', imdFixture('imd-cyclone-track.json')) },
+      portWarning: { status: 'ok', records: parseImdProductPayload('portWarning', imdFixture('imd-port-warning.json')) },
+    };
+    const snapshot = assembleImdSnapshot({ productResults, now });
+    const { rider } = await riderFromCache('get_imd_cyclone_marine', snapshot);
+    assert.ok(rider, 'the declared expression found nothing in the real snapshot');
+    assert.deepEqual(rider.sources, [{
+      attribution: IMD_RIGHTS_DECISION.attribution,
+      sourceName: IMD_SOURCE_NAME,
+      sourceUrl: IMD_API_REFERENCE_URL,
+    }]);
+  });
+
+  test('a disabled IMD snapshot still carries its attribution', async () => {
+    // The key-missing path builds a different object than the live assembler.
+    // It serves no records, but it does declare the source, so the rider holds.
+    const { rider } = await riderFromCache('get_imd_cyclone_marine', buildDisabledSnapshot({ now: 1_757_030_400_000 }));
+    assert.ok(rider);
+    assert.equal(rider.sources[0].attribution, IMD_RIGHTS_DECISION.attribution);
+  });
+
+  test('an unavailable TPS snapshot yields no rider, because it serves no licensed values', async () => {
+    // What the seeder writes when the upstream fetch fails: no attribution, no
+    // source, no fetchedAt. Nothing to accompany, so nothing is wrapped.
+    const { rider } = await riderFromCache('get_toronto_reported_occurrences', {
+      sourceUnavailable: true,
+      sourceState: 'degraded',
+      sourceReason: 'fetch_failed',
+      semantic: 'reported_occurrence',
+    });
+    assert.equal(rider, null);
   });
 });

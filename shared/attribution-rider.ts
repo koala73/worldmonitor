@@ -23,9 +23,18 @@ import jmespath from 'jmespath';
  *
  * Both surfaces import this module: `api/mcp/dispatch.ts` (keyed on the tool's
  * `_attribution`) and `server/gateway.ts` (keyed on the request pathname, via
- * `REST_ATTRIBUTION_EXPRESSIONS`). `api/mcp/` must not import from
- * `server/_shared/` — bundling drags the edge Redis stack into every deploy —
- * so the shared seam lives here.
+ * `REST_ATTRIBUTION_EXPRESSIONS`).
+ *
+ * It lives in `shared/`, not `server/_shared/`, because `shared/` is the only
+ * directory reachable from every surface that needs the policy. `api/mcp/`
+ * could import `server/_shared/` — 13 of its modules already do — but the
+ * Railway seeder images build with `root_dir=scripts` and package only
+ * `scripts/` and `shared/`, so a relative import that escapes into `server/`
+ * is `ERR_MODULE_NOT_FOUND` at runtime there (see the rule stated at length in
+ * `scripts/_simulation-queue-constants.mjs` and pinned by
+ * `tests/scripts-railway-nixpacks-no-escape-import.test.mts`). A licence
+ * policy is exactly the kind of thing a seeder or a plain-node check will want
+ * to read, so it goes where all three can load it.
  */
 
 /**
