@@ -131,7 +131,6 @@ jobs:
               state="pending"
               description=$(gate_description "Deploy Gate could not read status; retry scheduled")
               read_failed=1
-              gate_fallback_handled=1
             fi
             error_file=$(mktemp "${RUNNER_TEMP:-/tmp}/deploy-gate-status.XXXXXX")
             if gh_api_with_rate_limit_retry core "repos/$REPO/statuses/$SHA" --method POST \
@@ -139,6 +138,9 @@ jobs:
               --field context="gate" \
               --field description="$description" 2>"$error_file"; then
               rm -f "$error_file"
+              if [ "$read_failed" -eq 1 ]; then
+                gate_fallback_handled=1
+              fi
               return "$read_failed"
             else
               result=$?

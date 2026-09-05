@@ -491,6 +491,20 @@ describe('deploy gate commit-status description', () => {
     assert.deepEqual(result.posted.map(({ state }) => state), ['pending']);
   });
 
+  it('retries pending when the status read and first fallback write fail', () => {
+    const result = runGate(conclusionsFor('success'), {
+      statusReadFailures: 10,
+      statusFailures: 1,
+      previousStatus: { state: 'success', description: stamped('All required PR gates passed') },
+    });
+    assert.notEqual(result.status, 0);
+    assert.equal(result.statusReads, 2);
+    assert.equal(result.calls.filter((call) => call === 'status:pending').length, 2);
+    assert.deepEqual(result.posted, [
+      { state: 'pending', description: stamped('Deploy Gate could not read status; retry scheduled') },
+    ]);
+  });
+
   it('fails closed on an incomplete status response', () => {
     const result = runGate(conclusionsFor('success'), { malformedStatusResponse: true });
     assert.notEqual(result.status, 0);
