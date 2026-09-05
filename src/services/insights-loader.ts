@@ -83,10 +83,6 @@ let rejectedHydration = false;
 // inlining a copy that drifts silently when this constant changes.
 export const MAX_AGE_MS = INSIGHTS_MAX_AGE_MS;
 
-function isFresh(data: ServerInsights): boolean {
-  return isAcceptedInsightsSnapshot(data);
-}
-
 function validateInsights(raw: unknown): ServerInsights | null {
   return isAcceptedInsightsSnapshot(raw) ? raw as ServerInsights : null;
 }
@@ -107,7 +103,7 @@ function consumeHydration(): ServerInsights | null {
 }
 
 export function getServerInsights(): ServerInsights | null {
-  if (cached && isFresh(cached)) {
+  if (cached && isAcceptedInsightsSnapshot(cached)) {
     return cached;
   }
   cached = null;

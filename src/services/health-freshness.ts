@@ -103,10 +103,6 @@ function isRedisOutageStatus(status: string | undefined): status is 'REDIS_DOWN'
   return status === 'REDIS_DOWN' || status === 'REDIS_PARTIAL';
 }
 
-function getMappedSourceIds(): DataSourceId[] {
-  return getHealthMappedSourceIds();
-}
-
 export async function refreshDataFreshnessFromHealth(options: RefreshHealthFreshnessOptions = {}): Promise<number> {
   if (Date.now() < authGateSuppressedUntilMs) return 0;
   const fetchFn = options.fetchFn ?? ((...args) => globalThis.fetch(...args));
@@ -151,7 +147,7 @@ export async function refreshDataFreshnessFromHealth(options: RefreshHealthFresh
 
   if (Object.keys(checks).length === 0 && isRedisOutageStatus(payload.status)) {
     const status = payload.status;
-    const updates = getMappedSourceIds().map((sourceId) => ({
+    const updates = getHealthMappedSourceIds().map((sourceId) => ({
       sourceId,
       status,
       records: 0,
