@@ -126,7 +126,7 @@ export const DOCS_PAGE_DATES: Record<string, string> = {
   "scenario-engine": "2026-08-15",
   "sdks": "2026-08-24",
   "signal-intelligence": "2026-08-16",
-  "source-attribution": "2026-09-04",
+  "source-attribution": "2026-09-05",
   "strategic-risk": "2026-08-16",
   "support": "2026-09-04",
   "terms": "2026-08-28",
