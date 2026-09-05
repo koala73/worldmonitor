@@ -92,6 +92,35 @@ function runPublisherFromLegacyRevision() {
   }
 }
 
+it('captures JSON when the gated ancestor predates Markdown output support', () => {
+  const tempDir = mkdtempSync(join(repoRoot, '.tmp-seed-freshness-legacy-probe-'));
+  try {
+    mkdirSync(join(tempDir, 'scripts'));
+    writeFileSync(join(tempDir, 'scripts/check-seed-freshness.mjs'), [
+      "import { parseArgs } from 'node:util';",
+      "import { writeFileSync } from 'node:fs';",
+      "const { values } = parseArgs({ options: { 'json-output': { type: 'string' } } });",
+      "writeFileSync(values['json-output'], JSON.stringify({ version: 1, report: { failed: true } }));",
+      'process.exitCode = 1;',
+    ].join('\n'));
+    const result = spawnSync('bash', ['-e', '-c', stepNamed('Check ingestion operational acceptance').run], {
+      cwd: tempDir, encoding: 'utf8', env: { ...process.env, RUNNER_TEMP: tempDir },
+    });
+    assert.equal(result.status, 1, 'the legacy probe must retain its strict failure');
+    assert.doesNotMatch(result.stderr, /Unknown option/);
+    assert.deepEqual(JSON.parse(readFileSync(join(tempDir, 'seed-freshness-observation.json'), 'utf8')), {
+      version: 1, report: { failed: true },
+    });
+    const summary = join(tempDir, 'summary.md');
+    const shown = spawnSync('bash', ['-e', '-c', stepNamed('Show production acceptance').run], {
+      cwd: tempDir, encoding: 'utf8', env: { ...process.env, RUNNER_TEMP: tempDir, GITHUB_STEP_SUMMARY: summary },
+    });
+    assert.equal(shown.status, 0, shown.stderr);
+    assert.match(readFileSync(summary, 'utf8'), /observation was produced/);
+    assert.doesNotMatch(readFileSync(summary, 'utf8'), /No current observation/);
+  } finally { rmSync(tempDir, { recursive: true, force: true }); }
+});
+
 const HEAD_SHA = '0123456789abcdef';
 // Frozen so the age bound is a boundary, not a race against the wall clock:
 // `date` is faked below and every ancestor age is expressed against this.
@@ -239,6 +268,34 @@ function runScheduledGate(head, ancestors = []) {
 }
 
 describe('seed freshness workflow control plane', () => {
+  it('shows failed acceptance even after a successful publisher and marks a missing observation unverified', () => {
+    const step = stepNamed('Show production acceptance');
+    assert.equal(step.if, '${{ always() }}');
+    assertBashSyntax(step.run);
+    const artifact = stepNamed('Retain acceptance observation');
+    assert.equal(artifact.if, '${{ always() }}');
+    assert.equal(artifact.with['retention-days'], 7);
+    assert.equal(artifact.with.path, '${{ runner.temp }}/seed-freshness-observation.json');
+    const dir = mkdtempSync(join(repoRoot, '.tmp-seed-summary-'));
+    try {
+      const output = join(dir, 'summary.md');
+      const run = () => spawnSync('bash', ['-e', '-c', step.run], {
+        encoding: 'utf8',
+        env: { ...process.env, RUNNER_TEMP: dir, GITHUB_STEP_SUMMARY: output,
+          GITHUB_SERVER_URL: 'https://github.com', GITHUB_REPOSITORY: 'koala73/worldmonitor', GITHUB_RUN_ID: '123' },
+      });
+      assert.equal(run().status, 0);
+      assert.match(readFileSync(output, 'utf8'), /Unverified.*No current observation/);
+      assert.match(readFileSync(output, 'utf8'), /https:\/\/github.com\/koala73\/worldmonitor\/actions\/runs\/123/);
+      writeFileSync(output, '');
+      writeFileSync(join(dir, 'seed-freshness-summary.md'), '**Failed.** wildfires remains active.\n');
+      assert.equal(run().status, 0);
+      assert.equal(readFileSync(output, 'utf8'), '**Failed.** wildfires remains active.\n');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
   it('monitors the checked-out main SHA when its gate passed', () => {
     const success = runScheduledGate('success', [
       { sha: 'aaaaaaaaaaaaaaaa', state: 'success', ageSeconds: 900 },
