@@ -76,6 +76,30 @@ describe('consumer-price coverage publication', () => {
     expect(JSON.parse(coverageMeta[2]).coverage.retailers).toEqual(coverage.retailers);
   });
 
+  it('skips the movers write without failing the run when every candidate is gated', async () => {
+    // seed-consumer-prices-publish, 2026-09-04: market `in` returned one 30d
+    // candidate, it was gated, and the throw exited the whole cron 1 while
+    // every other market published fine. A null snapshot is a data-quality
+    // skip, so the run stays green AND the last-good key is never overwritten
+    // -- publishing zero movers would stamp the envelope OK via recordCount's
+    // floor of 1 and read as a fresh, quiet market.
+    mockBuildMoversSnapshot.mockReset().mockResolvedValue(null);
+
+    await expect(publishAll()).resolves.toBeUndefined();
+
+    const writes = commands();
+    const moversWrite = writes.some(
+      (command) => command[0] === 'SET' && String(command[1]).startsWith('consumer-prices:movers:'),
+    );
+    const moversMeta = writes.some(
+      (command) => command[0] === 'SET' && String(command[1]).startsWith('seed-meta:consumer-prices:movers:'),
+    );
+    expect(moversWrite).toBe(false);
+    expect(moversMeta).toBe(false);
+    // the rest of the market still publishes
+    expect(writes.some((command) => command[0] === 'SET' && command[1] === 'consumer-prices:overview:ae')).toBe(true);
+  });
+
   it('keeps the last-good coverage key untouched when coverage rebuild fails, then recovers on the next run', async () => {
     mockBuildCoverageSnapshot.mockRejectedValueOnce(new Error('coverage query unavailable'));
     await expect(publishAll()).rejects.toThrow('1 snapshot publication failed');

@@ -3,9 +3,13 @@ import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 const mockQuery = vi.fn();
 vi.mock('../db/client.js', () => ({ query: mockQuery }));
 
-const { buildMoversSnapshot, isPlausiblePriceMove, MAX_MOVE_RATIO } = await import(
-  './worldmonitor.js'
-);
+const {
+  buildMoversSnapshot,
+  isPlausiblePriceMove,
+  MAX_MOVE_RATIO,
+  MIN_PARSE_BREAK_SAMPLE,
+  MOVERS_PER_DIRECTION,
+} = await import('./worldmonitor.js');
 
 describe('isPlausiblePriceMove', () => {
   it('rejects the parse-artifact movers reported in #5445', () => {
@@ -70,26 +74,52 @@ describe('buildMoversSnapshot', () => {
 
     const snap = await buildMoversSnapshot('ae', 7);
 
-    expect(snap.risers.map((m) => m.productId)).toEqual(['3']);
-    expect(snap.fallers.map((m) => m.productId)).toEqual(['4']);
+    expect(snap!.risers.map((m) => m.productId)).toEqual(['3']);
+    expect(snap!.fallers.map((m) => m.productId)).toEqual(['4']);
     expect(warn).toHaveBeenCalledTimes(1);
     expect(String(warn.mock.calls[0][0])).toContain('dropped 2/4');
     // the gate is bilateral — the warn must not claim only the >4x direction
     expect(String(warn.mock.calls[0][0])).toContain('outside 0.25x-4x');
   });
 
-  it('throws instead of publishing an empty snapshot when every row is gated', async () => {
-    mockQuery.mockResolvedValueOnce({
-      rows: [row('1', '874.68'), row('2', '608.86'), row('3', '-99.25')],
-    });
+  const artifactRows = (n: number) =>
+    Array.from({ length: n }, (_, i) => row(String(i + 1), '874.68'));
 
-    // The publish job's per-snapshot catch skips the write on throw, keeping
-    // the previous (real) snapshot alive instead of overwriting it with a
-    // false-healthy empty one.
+  it('throws instead of publishing an empty snapshot when every row is gated', async () => {
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MIN_PARSE_BREAK_SAMPLE) });
+
+    // A full window of artifacts is a parse break, so the run goes red.
     await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(
-      /all 3 candidates gated as implausible/,
+      /all 5 candidates gated as implausible/,
     );
-    expect(String(warn.mock.calls[0][0])).toContain('dropped 3/3');
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 5/5');
+  });
+
+  it('separates the alarm threshold from the published column size', async () => {
+    // Retuning how many movers the UI shows must not move the alarm floor, and
+    // the floor is a safety value: changing it should fail here, deliberately.
+    // It is sized against a candidate universe of 24-48 (12 basket items x 2-4
+    // enabled retailers), not the query's LIMIT 200.
+    expect(MIN_PARSE_BREAK_SAMPLE).toBe(5);
+    expect(MOVERS_PER_DIRECTION).toBe(10);
+
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MIN_PARSE_BREAK_SAMPLE - 1) });
+    expect(await buildMoversSnapshot('ae', 7)).toBeNull();
+
+    mockQuery.mockResolvedValueOnce({ rows: artifactRows(MIN_PARSE_BREAK_SAMPLE) });
+    await expect(buildMoversSnapshot('ae', 7)).rejects.toThrow(/gated as implausible/);
+  });
+
+  it('does not fail a sparse market whose only candidate is an artifact', async () => {
+    // Production repro (seed-consumer-prices-publish, 2026-09-04): market `in`
+    // over 30d returned a single candidate, it was gated, and the whole publish
+    // job exited 1 while every other market published fine. One artifact is no
+    // evidence of a systemic parse break, so the run must stay green.
+    mockQuery.mockResolvedValueOnce({ rows: [row('1', '874.68')] });
+
+    expect(await buildMoversSnapshot('in', 30)).toBeNull();
+
+    expect(String(warn.mock.calls[0][0])).toContain('dropped 1/1');
   });
 
   it('returns an empty snapshot when the window has no movers at all', async () => {
@@ -97,9 +127,11 @@ describe('buildMoversSnapshot', () => {
 
     const snap = await buildMoversSnapshot('ae', 7);
 
-    expect(snap.risers).toEqual([]);
-    expect(snap.fallers).toEqual([]);
-    expect(snap.upstreamUnavailable).toBe(false);
+    // Zero candidates is a genuine "no movers", not the all-gated skip.
+    expect(snap).not.toBeNull();
+    expect(snap!.risers).toEqual([]);
+    expect(snap!.fallers).toEqual([]);
+    expect(snap!.upstreamUnavailable).toBe(false);
     expect(warn).not.toHaveBeenCalled();
   });
 
@@ -118,8 +150,8 @@ describe('buildMoversSnapshot', () => {
 
     const snap = await buildMoversSnapshot('ae', 7);
 
-    expect(snap.risers).toHaveLength(1);
-    expect(snap.fallers).toHaveLength(1);
+    expect(snap!.risers).toHaveLength(1);
+    expect(snap!.fallers).toHaveLength(1);
     expect(warn).not.toHaveBeenCalled();
   });
 });
