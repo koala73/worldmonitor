@@ -4,7 +4,7 @@
  * Not district/nowcast (#7004) and not NDMA SACHET (#7002).
  * Products stay typed. They are not merged into weather:alerts:v1.
  *
- * Live fetch requires an API key. Disabled is not all-clear.
+ * Live fetch requires an API key and a bearer token. Disabled is not all-clear.
  */
 
 import { CHROME_UA, roundGeoCoordinate } from '../_seed-utils.mjs';
@@ -196,6 +196,11 @@ export function imdApiKey(env = process.env) {
   return key || null;
 }
 
+export function imdApiToken(env = process.env) {
+  const token = String(env.IMD_API_TOKEN || '').trim();
+  return token || null;
+}
+
 function imdApiKeyHeader(env = process.env) {
   return String(env.IMD_API_KEY_HEADER || 'X-API-Key').trim() || 'X-API-Key';
 }
@@ -204,6 +209,9 @@ function imdLiveFetchDisabledReason(env = process.env) {
   const key = imdApiKey(env);
   if (!key) return 'IMD_API_KEY_MISSING';
   if (!/^[\u0009\u0020-\u007E\u0080-\u00FF]+$/.test(key)) return 'IMD_API_KEY_INVALID';
+  const token = imdApiToken(env);
+  if (!token) return 'IMD_API_TOKEN_MISSING';
+  if (!/^[\u0021-\u007E]+$/.test(token)) return 'IMD_API_TOKEN_INVALID';
   return /^[!#$%&'*+\-.^_`|~0-9A-Za-z]+$/.test(imdApiKeyHeader(env))
     ? null
     : 'IMD_API_KEY_HEADER_INVALID';
@@ -708,10 +716,12 @@ export async function fetchApprovedImdJson(url, {
   timeoutMs = IMD_TIMEOUT_MS,
   apiKey = null,
   apiKeyHeader = 'X-API-Key',
+  apiToken = null,
 } = {}) {
   if (!isAllowedImdHost(url)) throw new Error('UNTRUSTED_SOURCE_HOST');
   const headers = { Accept: 'application/json', 'User-Agent': userAgent };
   if (apiKey) headers[apiKeyHeader] = apiKey;
+  if (apiToken) headers.Authorization = `Bearer ${apiToken}`;
   const response = await fetchFn(url, {
     headers,
     redirect: 'error',
@@ -781,6 +791,7 @@ export async function fetchImdCycloneMarine({
     return buildDisabledSnapshot({ now, reason: disabledReason });
   }
   const apiKey = imdApiKey(env);
+  const apiToken = imdApiToken(env);
   const apiKeyHeader = imdApiKeyHeader(env);
   const productResults = {};
   await Promise.all(IMD_PRODUCT_IDS.map(async (id) => {
@@ -789,6 +800,7 @@ export async function fetchImdCycloneMarine({
       userAgent,
       apiKey,
       apiKeyHeader,
+      apiToken,
     });
   }));
   return assembleImdSnapshot({ productResults, previous, now });

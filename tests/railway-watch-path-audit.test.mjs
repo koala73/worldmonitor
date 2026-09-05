@@ -981,6 +981,7 @@ describe('planned Railway service lifecycle', () => {
     assert.equal(imd.cronSchedule, '*/15 * * * *');
     assert.deepEqual(imd.requiredEnv, [
       'IMD_API_KEY',
+      'IMD_API_TOKEN',
       'UPSTASH_REDIS_REST_URL',
       'UPSTASH_REDIS_REST_TOKEN',
     ]);

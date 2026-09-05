@@ -281,9 +281,10 @@ test('omits unstamped previous wind or cone geometry when the product fetch fail
   assert.equal(snapshot.products.cycloneCou.carried, false);
 });
 
-test('requires only IMD_API_KEY and reports a missing key as explicitly disabled', async () => {
+test('requires the IMD API key and bearer token', async () => {
   assert.equal(imdLiveFetchEnabled({}), false);
-  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret' }), true);
+  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret' }), false);
+  assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'secret', IMD_API_TOKEN: 'header.payload.signature' }), true);
   assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\r\nkey' }), false);
   assert.equal(imdLiveFetchEnabled({ IMD_API_KEY: 'bad\u2028key' }), false);
   const requested = [];
@@ -318,8 +319,36 @@ test('requires only IMD_API_KEY and reports a missing key as explicitly disabled
   assert.equal(invalidKey.skipReason, 'IMD_API_KEY_INVALID');
   assert.deepEqual(requested, []);
 
+  const missingToken = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'test-key' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('a missing bearer token must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(missingToken.coverageState, 'disabled');
+  assert.equal(missingToken.skipReason, 'IMD_API_TOKEN_MISSING');
+  assert.deepEqual(requested, []);
+
+  const invalidToken = await fetchImdCycloneMarine({
+    env: { IMD_API_KEY: 'test-key', IMD_API_TOKEN: 'bad\r\ntoken' },
+    fetchFn: async (url) => {
+      requested.push(url);
+      throw new Error('an invalid bearer token must not make an IMD request');
+    },
+    now: NOW,
+  });
+  assert.equal(invalidToken.coverageState, 'disabled');
+  assert.equal(invalidToken.skipReason, 'IMD_API_TOKEN_INVALID');
+  assert.deepEqual(requested, []);
+
   const invalidHeader = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key', IMD_API_KEY_HEADER: 'bad header' },
+    env: {
+      IMD_API_KEY: 'test-key',
+      IMD_API_TOKEN: 'header.payload.signature',
+      IMD_API_KEY_HEADER: 'bad header',
+    },
     fetchFn: async (url) => {
       requested.push(url);
       throw new Error('an invalid API key header must not make an IMD request');
@@ -333,7 +362,7 @@ test('requires only IMD_API_KEY and reports a missing key as explicitly disabled
 
 test('redacts IMD transport errors before they reach the cached public snapshot', async () => {
   const snapshot = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
+    env: { IMD_API_KEY: 'test-key', IMD_API_TOKEN: 'header.payload.signature' },
     fetchFn: async () => {
       throw new Error('upstream rejected key secret-imd-key');
     },
@@ -345,7 +374,7 @@ test('redacts IMD transport errors before they reach the cached public snapshot'
   assert.doesNotMatch(JSON.stringify(snapshot), /secret-imd-key/);
 
   const timeout = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
+    env: { IMD_API_KEY: 'test-key', IMD_API_TOKEN: 'header.payload.signature' },
     fetchFn: async () => {
       const error = new Error('timeout details must not be public');
       error.name = 'TimeoutError';
@@ -387,8 +416,10 @@ test('marks a missing IMD key as an error after the source has activated', () =>
 
 test('never fetches fishermen warning even when live fetch is enabled', async () => {
   const requested = [];
-  const fetchFn = async (url) => {
+  const fetchFn = async (url, init) => {
     requested.push(url);
+    assert.equal(init.headers['X-API-Key'], 'test-key');
+    assert.equal(init.headers.Authorization, 'Bearer header.payload.signature');
     if (String(url).includes('fishermen')) {
       throw new Error('fishermen must not be requested');
     }
@@ -401,7 +432,7 @@ test('never fetches fishermen warning even when live fetch is enabled', async ()
     return jsonResponse({ error: 'API key missing' }, 401);
   };
   const snapshot = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
+    env: { IMD_API_KEY: 'test-key', IMD_API_TOKEN: 'header.payload.signature' },
     fetchFn,
     now: CYCLONE_NOW,
   });
@@ -413,7 +444,7 @@ test('never fetches fishermen warning even when live fetch is enabled', async ()
 
 test('rejects untrusted hosts and does not treat 401 as all-clear', async () => {
   const snapshot = await fetchImdCycloneMarine({
-    env: { IMD_API_KEY: 'test-key' },
+    env: { IMD_API_KEY: 'test-key', IMD_API_TOKEN: 'header.payload.signature' },
     fetchFn: async () => jsonResponse({ error: 'API key missing' }, 401),
     now: NOW,
   });

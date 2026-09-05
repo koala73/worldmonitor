@@ -1616,6 +1616,7 @@
     "service": "seed-imd-cyclone-marine",
     "requiredEnv": [
       "IMD_API_KEY",
+      "IMD_API_TOKEN",
       "UPSTASH_REDIS_REST_URL",
       "UPSTASH_REDIS_REST_TOKEN"
     ],
